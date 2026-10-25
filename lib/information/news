@@ -1,11 +1,87 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 24, 2026&n
+&+WUpdated: October 25, 2026&n
 
-Welcome back! The Gods have new blessings for adventurers and traders.
-Newest first; later updates replace older rules.
-Coverage back to December 14, 2025, and the archive follow.
+Welcome back! New paths for Evil, kinder early deaths, and brighter boons.
+Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/24/26&n &+L-&n &+YWelcome to the dark side&n
+&+W----------------------------------------------------------------------&n
+
+&+CAn introduction with sharper teeth&n
+&+Y-&n Evil-side adventurers can choose &+CPlane of Chaos&n for their beginner
+  introduction or &+CWutvr&n for their secondary introduction. Follow the
+  reaver's racewar lesson, then enter the stream to reach Wutvr. Its quests,
+  maps, spell-ups, shops, pets and inns give Evil its own tutorial journey.
+  Choose an Introduction option offered for your race and side at creation.
+&+Y-&n Ogres now have the Evil introduction choices alongside their usual
+  home. Firbolgs gain the Good introductions alongside Ugta. Good-side
+  adventurers keep Plane of Life and Ailvio where their race permits them.
+  Terminal and browser creation now enforce the same race-and-side rules.
+&+Y-&n Tutorial signs respond to &+C'read'&n, and Ailvio's druid spell-up is
+  attached to the druid who actually provides it. Training dummies no longer
+  swallow questions and other conversations meant for nearby residents.
+
+&+CLearn the ropes before death takes its fee&n
+&+Y-&n Below &+Ylevel 30&n, every race and side is protected from losing EXP
+  or levels through death, including Liches. Reaching level 30 brings a
+  warning: death can then cost EXP and levels. Hardcore permanent-death
+  rules still apply. Resurrection of a corpse with no lost EXP no longer
+  invents a one-point refund.
+&+Y-&n &+CGithyanki&n and &+CGithzerai&n can now choose &+CMonk&n when creating
+  a character, subject to the usual creation and alignment rules.
+&+Y-&n Random encounters meant to use Good, Evil or Undead races now choose
+  from the intended side without getting stuck trying to select a race.
+
+&+CHands off my escape route&n
+&+Y-&n Passive &+CEntrapment&n belongs to &+Ylevel-45 Brigands&n, rather than
+  every Mercenary. The Brigand must see the fleeing opponent and be able
+  to act; being unseen by the opponent is no protection. Stunned or
+  immobilized Brigands cannot block you, and immaterial or wraithform
+  opponents escape this check. A blocked flee keeps your mount fighting.
+&+Y-&n Summoners now receive a failure message when an eligible contained
+  kill fails to teach a missing conjure recipe. &+C'contain being'&n lasts
+  &+Y25 seconds&n; its fading is announced. You must earn kill EXP while
+  the mark remains. Learning is chance-based: Charisma helps, while the
+  creature's level and Intelligence oppose you. Players and others' pets
+  cannot be learned this way.
+
+&+CThe Gods have learned table manners&n
+&+Y-&n &+C'boon'&n now shows a colored table of rewards, targets and remaining
+  time. New blessings and natural expirations are announced. Zone notices
+  show your side's target; trade and racewar notices reach everyone.
+  Existing boon rewards, eligibility and allowances keep their rules.
+
+&+CGear worth keeping an eye on&n
+&+Y-&n Newly created &+Mearthen hammers of Grumbar&n are unsellable artifacts.
+  Existing ordinary hammers keep their saved properties and still count
+  toward the zone limit. With artifact respawning enabled, Grumbar can
+  receive a new hammer at a full boot, subject to the limit and normal
+  artifact checks; zone repops and copyovers do not create another.
+&+Y-&n Old auction items that now resolve to artifacts are held for immortal
+  recovery, with a message directing you to staff. Raven's Claw combat
+  messages now show the weapon's name instead of a broken placeholder.
+&+Y-&n When control of a pet breaks, its ordinary carried and worn gear
+  drops in its room before it turns hostile or vanishes. Gear already held
+  for secure recovery stays under those recovery rules. Dropped player
+  items are also retained for world recovery when an old ownership record
+  would otherwise have caused the live floor item to be skipped.
+&+Y-&n Traps with an unsupported damage type preserve their charges and
+  await builder repair. Staff can see the unsupported type with
+  &+C'trapstat'&n instead of receiving no explanation.
+
+&+CWhen staff prepare a new season&n
+&+Y-&n A future player wipe now resets account banks, kingdom holdings,
+  collector stock, artifact ownership and old seasonal deliveries together
+  with player assets. Accounts and eligible account benefits follow their
+  preservation policy. Only level-62 Overlords are recreated automatically.
+  Retrying an interrupted reset cannot spend another use of a benefit;
+  separate resets less than &+Y28 days&n apart also protect benefit uses.
+&+Y-&n Staff shutdown requests now reject invalid delays without disturbing
+  an existing countdown. Manual countdowns cancel if their issuer leaves
+  play, disconnects or loses permission, including the final countdown tick.
+  Interrupted season resets remain closed until staff finish recovery.
 
 &+R10/23/26&n &+L-&n &+YDivine Boons: follow the Gods' favor&n
 &+W----------------------------------------------------------------------&n
