@@ -1,7 +1,9 @@
 # Issue #215: Conjurer specialisation rebalance
 
-Updated 2026-10-25. **Status: implementation plan prepared; feature work has not
-started.** Work on branch `branch/issue-215-conjurer-rebalance`.
+Updated 2026-10-25. **Status: implementation in progress; Planar Affinity is the
+first independent review chunk.** Work on branch
+`branch/issue-215-conjurer-rebalance`, in the existing worktree
+`/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`.
 
 Source baseline: `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`.
 The [issue](https://github.com/LuminariMUD/Duris/issues/215) and
@@ -17,10 +19,10 @@ Our work covers implementation and functional qualification of the agreed
 mechanics, limits and compatibility. Comparative balance benchmarks, class
 scorecards and judgments about relative spec power are outside this task.
 
-This request covers the dedicated plan. Implementing gameplay, opening an
-implementation PR, merging and deploying remain subsequent work under the issue's
-authorization boundary. The previous contents of this path are preserved verbatim
-in [the issue #264 plan](plan-issue-264.md).
+The owner's 2026-10-25 implementation request explicitly authorizes source changes,
+focused tests, commits, pushes and focused/stacked PRs. Leave delivered work ready
+for review. Merging and deployment are outside this request. The previous contents
+of this path are preserved verbatim in [the issue #264 plan](plan-issue-264.md).
 
 ## Outcome and boundaries
 
@@ -83,14 +85,14 @@ The order below is a working sequence, not a requirement for a PR stack.
 
 | Step | Deliverable | Dependency | Status |
 | --- | --- | --- | --- |
-| 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | Pending |
+| 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
 | 1 | New forms, registration, resource checks and cleanup | 0 | Pending |
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Pending |
 | 3 | Air Recharge and travel lag | 1 | Pending |
 | 4 | Reliable Conjure Water | 0 | Pending |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
-| 7 | Five level-51 affinities | 0 | Pending |
+| 7 | Five level-51 affinities | 0 | Implemented and locally qualified; PR publication next |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 
 ### 0. Establish the implementation baseline
@@ -475,6 +477,51 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
       the plan records exact delivered commits and remaining release work.
 
 ## Planning checkpoint
+
+### Implementation checkpoint, 2026-10-25
+
+- Baseline: clean branch at `9d226467f`; gameplay base and fetched `origin/master`
+  remain `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`. The main checkout is on unrelated
+  `branch/contain-learning-feedback` and is untouched. The dedicated worktree has
+  no `.env`; the main checkout reports `ENVIRONMENT=local`.
+- Ablation: deliver affinity first because it is independent of forms/events.
+  Append four passive IDs (180-183), move Astral's grant to 51, and use one shared
+  PC/native-plane eligibility function at the two real aggression callers. Keep
+  existing memory creation, boundaries, scheduler and persistence formats.
+- Files: `structs.h`, `innates.c`, `prototypes.h`, `utility.c`, `mobact.c`, both help
+  sources, focused affinity test, Reflection contract adjustment and this plan.
+  No schema, prototype, balance benchmark or production change is required.
+- Pre-change checks passed: `test_innate_reflection.py`, `test_race_rebalance.py`,
+  `test_elemental_aura_runtime.py`, `test_class_helpfiles_contract.py`.
+- Candidate checks so far: `test_planar_affinity_runtime.py` passes with ASan/UBSan
+  through actual registration, innate listing, ordinary aggression and both boss
+  paths, levels 30/41/46/50/51/56, lower/higher mob levels, all boundary rooms,
+  invalid rooms, NPC/no-spec controls and remembered targets. The final harness
+  also executes actual memory lookup, group-memory creation and clearing, and
+  memoryless-mob behavior. Full server room-entry and pet-combat journeys remain
+  for combined functional qualification in step 8.
+- Passed: `python3 tests/async/test_innate_reflection.py`,
+  `python3 tests/async/test_race_rebalance.py`,
+  `python3 tests/async/test_planar_affinity_runtime.py`,
+  `python3 tests/async/test_class_helpfiles_contract.py`,
+  `python3 tests/async/test_help_layout.py` (3 tests),
+  `python3 tests/async/test_help_import_live_parser.py`, and
+  `python3 tests/async/test_flatfile_help_catalog.py` (including production
+  `wiki_help()` lookups of all five affinity topics and the overview).
+- `bash tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_help_import_atomic.py` passed **all 9 tests**, including a new
+  full-source dry-run/import into an isolated schema proving one page per affinity
+  and parsed-source precedence. No test uses the game database.
+- `make -C src -j8` passed with no warnings; `./scripts/format.sh --check` and
+  `git diff --check` pass. Build output is under
+  `bin/qualification/issue215/` (untracked). No full regression or hosted CI wait
+  is needed for this independent slice. No affinity persistence format changed:
+  passive grants are derived from existing class/spec/level, not stored timers.
+- Next: publish this focused PR, then continue forms/casting and remaining steps.
+  Update this checkpoint and the table with delivered commits and PR URLs. No
+  gameplay test server has been started and no production operations performed.
+
+### Historical planning-only evidence
 
 The current change writes this plan and preserves the previous #264 document.
 Source inspection supports the proposed paths above. No proposed-feature tests,
