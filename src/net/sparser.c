@@ -2794,6 +2794,8 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	if (!weaving)
 	{
 		const char *failure = elemental_form_failure_message(ch, tar_char, arg->spell);
+		if (!failure)
+			failure = elemental_summon_failure_message(ch, args, arg->spell);
 		if (!failure && arg->spell == SPELL_ELEMENTAL_AURA)
 			failure = elemental_aura_failure_message(ch);
 		if (failure)

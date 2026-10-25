@@ -113,6 +113,22 @@ struct studio_scene : scene {
 };
 static void bridge_and_payment() {
     for(bool active:{false,true}) {
+        studio_scene s(active);
+        skills[SPELL_SOLAR_FLARE]=skills[1];
+        auto root=cJSON_Parse(document().c_str()); assert(root);
+        auto entry=cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root,"abilities"),0);
+        assert(cJSON_ReplaceItemInObjectCaseSensitive(entry,"revision",cJSON_CreateNumber(2)));
+        if(active) {
+            assert(cJSON_ReplaceItemInObjectCaseSensitive(entry,"trigger",cJSON_CreateString("use")));
+            assert(cJSON_ReplaceItemInObjectCaseSensitive(entry,"mode",cJSON_CreateString("active")));
+        }
+        auto effect=cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(entry,"effects"),0);
+        assert(cJSON_ReplaceItemInObjectCaseSensitive(effect,"spell",cJSON_CreateNumber(SPELL_SOLAR_FLARE)));
+        char *encoded=cJSON_PrintUnformatted(root); std::string error;
+        assert(studio_abilities_load(encoded,error)); cJSON_free(encoded); cJSON_Delete(root);
+        s.fire(); advance(); assert(calls.size()==1 && calls[0].object==100);
+    }
+    for(bool active:{false,true}) {
         studio_scene s(active); s.fire(); assert(debits==1 && mana_reserve==0 && calls.empty());
         assert(previous_calls==1 && dispatches==1 && original_actor_id==s.actor->runtime_id);
         assert(old_actor_id==(active?s.actor->runtime_id:s.target->runtime_id));

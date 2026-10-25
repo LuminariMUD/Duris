@@ -5395,6 +5395,7 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 {
 	P_char tch, nch;
 	void (*spell_func)(int, P_char, char *, int, P_char, P_obj);
+	const int spell_type = spl == SPELL_SOLAR_FLARE ? SPELL_TYPE_STAFF : SPELL_TYPE_SPELL;
 
 	if (!ch)
 	{
@@ -5411,7 +5412,7 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 		appear(ch);
 		if (IS_SET(skills[spl].targets, TAR_AREA) ||
 		    IS_SET(skills[spl].targets, TAR_IGNORE))
-			((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, 0, 0));
+			((*spell_func)(level, ch, arg, spell_type, 0, 0));
 		else if (IS_SET(skills[spl].targets, TAR_CHAR_ROOM))
 		{
 			for (tch = world[ch->in_room].people; tch; tch = nch)
@@ -5419,14 +5420,14 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 				nch = tch->next_in_room;
 				if (ch != tch && (!ch->group || (ch->group != tch->group)))
 				{
-					((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, tch, 0));
+					((*spell_func)(level, ch, arg, spell_type, tch, 0));
 				}
 			}
 		}
 	}
 	else if (IS_SET(skills[spl].targets, TAR_AREA) || IS_SET(skills[spl].targets, TAR_IGNORE))
 	{
-		((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, 0, 0));
+		((*spell_func)(level, ch, arg, spell_type, 0, 0));
 	}
 	else
 	{
@@ -5439,11 +5440,11 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 			}
 			if (IS_SET(skills[spl].targets, TAR_CHAR_ROOM))
 			{
-				((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, tch, 0));
+				((*spell_func)(level, ch, arg, spell_type, tch, 0));
 			}
 			else if (IS_SET(skills[spl].targets, TAR_SELF_ONLY))
 			{
-				((*spell_func)(level, tch, arg, SPELL_TYPE_SPELL, tch, 0));
+				((*spell_func)(level, tch, arg, spell_type, tch, 0));
 			}
 		}
 	}
