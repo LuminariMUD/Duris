@@ -11,6 +11,14 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Legacy trap editor directions (#368)
+
+`python3 tests/async/test_legacy_trap_editor.py` compiles and executes the actual area
+editor trap formatter with ASan/UBSan for all 4096 flag combinations. It checks that
+the editor's flag indexes and constants match runtime N/E/S/W/U/D bits, verifies exact
+east/west/OPEN displays, and catches the former OPEN separator out-of-bounds read.
+It does not establish runtime support for effects 9–16 or the authored content repairs.
+
 ## Kjelgar crystal harp recipe
 
 Kjelgar (mobile 47124) accepts five moonstone crystals (400094), two gnomish
