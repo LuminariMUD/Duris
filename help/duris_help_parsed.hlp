@@ -8107,6 +8107,9 @@ None beyond the base-class registrations.
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
+Stone Skin can supply up to three independent layers on the Earth Magus
+player, retaining one-layer charge consumption and normal shatter.
+
 ==See also==
 
 * Conjurer
@@ -8133,14 +8136,25 @@ the victim (preventing him from moving) and doing minor damage.
 Earthen Maul
 Earthen Maul - Last Edited: 2007-04-20 14:02:09 by Unknown
 ==========================================================
-* Area of effect: <victim>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Generic
-"Earthen Maul" invokes the earth to form and strike the victim, causing a
-good deal of damage and a possibility that the target may be knocked down.
-	See also:bash
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous
+Type of spell: Generic; fire for valid molten-lava terrain
+
+Earthen Maul conjures the earth needed to strike its victim. Every class
+already entitled to the spell, including Druids, may cast over water or
+ocean, while flying, in no-ground rooms and on elemental planes.
+
+Earthless locations and airborne casts use normal damage. A roof over
+an earthless room does not create an indoor debris bonus. Genuine
+indoor, mountain/landslide and lava modifiers remain when grounded,
+along with the normal saving throw.
+
+==See also==
+
+* Earth Magus
+* Druid
+* Terrain
 
 #0
 
@@ -28851,3 +28865,33 @@ needs external natural water or a suitable container on the ground.
 * Elemental Aura
 * Water to Life
 * Capture
+
+#0
+
+Stone Skin
+Stone Skin - Last Edited: 2026-10-25
+============================================================
+Area of effect: Victim (spell); self (Stone innate)
+Aggressive: No
+Cumulative: Up to three layers on an Earth Magus PC
+Duration: 4 affect-duration units per cast
+
+Stone Skin protects against eligible physical attacks using its normal
+damage reduction. Each cast retains its level-based charges and caster
+bonuses. An Earth Magus player may receive up to three independent
+layers, each with its own charges and expiration. The recipient must
+be the Earth Magus: an Earth caster cannot give this benefit to pets,
+ordinary groupmates or another class. A fourth layer is refused.
+
+Each eligible hit spends one charge from the newest layer only. Older
+layers are not refreshed or combined. Multiple layers do not multiply
+the damage reduction. Normal critical shatter and dispel remove every
+layer; other skin-spell conflicts remain. Earth Form retains its own
+single physical-mitigation roll alongside Stone Skin.
+
+==See also==
+
+* Earth Magus
+* Earth Form
+* Biofeedback
+* Group Stone Skin

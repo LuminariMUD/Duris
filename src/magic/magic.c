@@ -3167,15 +3167,13 @@ void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	if ((dam_flag == 1) && !OUTSIDE(ch))
 		dam_flag = 3;
 
-	if (ch->specials.z_cord != 0)
-		dam_flag = 0;
+	/* Conjure the needed earth when terrain/altitude supplies none. Do this
+	 * after the indoor upgrade so earthless rooms keep the normal tier. */
+	if (ch->specials.z_cord != 0 || dam_flag == 0)
+		dam_flag = 1;
 
 	switch (dam_flag)
 	{
-	case 0:
-		send_to_char("No earth to move here, try a different spell.\n", ch);
-		return;
-		break;
 	case 1:
 		messages.attacker = "&+yYou cause the &+yEARTH to reach up and maul your opponent!";
 		messages.victim = messages.room =
@@ -8242,18 +8240,20 @@ void spell_group_haste(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 	}
 }
 
+static bool has_other_skin_spell(P_char ch)
+{
+	return affected_by_spell(ch, SPELL_SHADOW_SHIELD) ||
+	       affected_by_spell(ch, SPELL_BIOFEEDBACK) || IS_AFFECTED(ch, AFF_BIOFEEDBACK) ||
+	       affected_by_spell(ch, SPELL_IRONWOOD) || affected_by_spell(ch, SPELL_VINES) ||
+	       IS_AFFECTED5(ch, AFF5_VINES) || affected_by_spell(ch, SPELL_ICE_ARMOR) ||
+	       affected_by_spell(ch, SPELL_NEG_ARMOR) ||
+	       affected_by_spell(ch, SPELL_DRAKESCALE_AEGIS);
+}
+
 bool has_skin_spell(P_char ch)
 {
-	if (!affected_by_spell(ch, SPELL_STONE_SKIN) && !IS_AFFECTED(ch, AFF_STONE_SKIN) &&
-	    !affected_by_spell(ch, SPELL_SHADOW_SHIELD) &&
-	    !affected_by_spell(ch, SPELL_BIOFEEDBACK) && !IS_AFFECTED(ch, AFF_BIOFEEDBACK) &&
-	    !affected_by_spell(ch, SPELL_IRONWOOD) && !affected_by_spell(ch, SPELL_VINES) &&
-	    !IS_AFFECTED5(ch, AFF5_VINES) && !affected_by_spell(ch, SPELL_ICE_ARMOR) &&
-	    !affected_by_spell(ch, SPELL_NEG_ARMOR) &&
-	    !affected_by_spell(ch, SPELL_DRAKESCALE_AEGIS))
-		return false;
-	else
-		return true;
+	return affected_by_spell(ch, SPELL_STONE_SKIN) || IS_AFFECTED(ch, AFF_STONE_SKIN) ||
+	       has_other_skin_spell(ch);
 }
 #define MACE_OF_EARTH_VNUM 23805
 void spell_stone_skin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -8261,8 +8261,14 @@ void spell_stone_skin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 {
 	struct affected_type af;
 	int absorb = (level / 4) + number(1, 4);
+	int layers = 0;
 
-	if (!has_skin_spell(victim))
+	if (IS_PC(victim) && GET_SPEC(victim, CLASS_CONJURER, SPEC_EARTH))
+		for (struct affected_type *layer = victim->affected; layer; layer = layer->next)
+			if (layer->type == SPELL_STONE_SKIN)
+				layers++;
+
+	if (!has_skin_spell(victim) || (layers > 0 && layers < 3 && !has_other_skin_spell(victim)))
 	{
 		if (has_innate(ch, INNATE_LIVING_STONE) ||
 		    (victim->equipment[WIELD] &&

@@ -4872,16 +4872,25 @@ See also: "GREATER EARTHEN GRASP"
 #
 "EARTHEN MAUL" (Spell)
 ===========================================================================
-Area of effect: <victim>
-Aggressive:     Yes
-Cumulative:     No
-Duration:       Instantaneous
-Type of spell:  Generic
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous
+Type of spell: Generic; fire for valid molten-lava terrain
 
-"Earthen Maul" invokes the earth to form and strike the victim, causing a
-good deal of damage and a possibility that the target may be knocked down.
-===========================================================================
-See also: BASH
+Earthen Maul conjures the earth needed to strike its victim. Every class
+already entitled to the spell, including Druids, may cast over water or
+ocean, while flying, in no-ground rooms and on elemental planes.
+
+Earthless locations and airborne casts use normal damage. A roof over
+an earthless room does not create an indoor debris bonus. Genuine
+indoor, mountain/landslide and lava modifiers remain when grounded,
+along with the normal saving throw.
+
+==See also==
+
+* Earth Magus
+* Druid
+* Terrain
 
 #
 "EARTHEN RAIN" (Spell)
@@ -4957,6 +4966,9 @@ None beyond the base-class registrations.
 *&+cearth affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+Stone Skin can supply up to three independent layers on the Earth Magus
+player, retaining one-layer charge consumption and normal shatter.
 
 ==See also==
 
@@ -17400,23 +17412,30 @@ transformed into snakes.
 #
 "STONE SKIN" (Spell)
 ===========================================================================
-Syntax:         inn stone (for Wights)
-Area of effect: <victim> (for spell)  | <self> (for innate)
-Aggressive:     No
-Cumulative:     No
-Duration:       Dependent on proficiency of caster
-Type of spell:  Protection
+Area of effect: Victim (spell); self (Stone innate)
+Aggressive: No
+Cumulative: Up to three layers on an Earth Magus PC
+Duration: 4 affect-duration units per cast
 
-This spell changes the skin of the victim to a stone-like consistency and 
-negates almost all damage from physical attacks. It will last until either
-the duration expires or a variable number of attacks (of any type, whether 
-they hit or do damage) are made against the victim. The number of attacks it 
-protects against varies with level and proficiency of the caster. If a 
-particularily Damaging attack is made, it will provide no protection at all. 
-"Stone Skin" does not block any damage from magical spells (though these 
-attacks will 'chip away' at the protection).
-===========================================================================
-See also: BIOFEEDBACK
+Stone Skin protects against eligible physical attacks using its normal
+damage reduction. Each cast retains its level-based charges and caster
+bonuses. An Earth Magus player may receive up to three independent
+layers, each with its own charges and expiration. The recipient must
+be the Earth Magus: an Earth caster cannot give this benefit to pets,
+ordinary groupmates or another class. A fourth layer is refused.
+
+Each eligible hit spends one charge from the newest layer only. Older
+layers are not refreshed or combined. Multiple layers do not multiply
+the damage reduction. Normal critical shatter and dispel remove every
+layer; other skin-spell conflicts remain. Earth Form retains its own
+single physical-mitigation roll alongside Stone Skin.
+
+==See also==
+
+* Earth Magus
+* Earth Form
+* Biofeedback
+* Group Stone Skin
 
 #
 
