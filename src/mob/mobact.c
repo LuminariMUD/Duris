@@ -7129,12 +7129,9 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 			ob2 = ob->next_content;
 			if (!IS_CONTAINER(ob))
 			{
-				const bool trapped_item =
-					ob->trap_charge && ob->trap_dam >= 9 &&
-					ob->trap_dam <= 16 && IS_SET(ob->trap_eff, 2) &&
-					!IS_TRUSTED(ch) && (IS_PC(ch) || IS_PC_PET(ch));
-				put(ch, ob, obj, 1);
-				if (trapped_item)
+				bool trap_rejected = false;
+				put(ch, ob, obj, 1, &trap_rejected);
+				if (trap_rejected)
 					return; // Trap effects may have extracted any participant or sibling.
 			}
 		}
@@ -7162,14 +7159,8 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 		ob2 = ob->next_content;
 		if (ob->type == ITEM_CONTAINER)
 		{
-			const bool trapped_item = obj->trap_charge && obj->trap_dam >= 9 &&
-						  obj->trap_dam <= 16 && IS_SET(obj->trap_eff, 2) &&
-						  !IS_TRUSTED(ch) && (IS_PC(ch) || IS_PC_PET(ch));
-			if (put(ch, obj, ob, 1))
-				return; /*
-				         * problem solved, item in bag.
-				         */
-			if (trapped_item)
+			bool trap_rejected = false;
+			if (put(ch, obj, ob, 1, &trap_rejected) || trap_rejected)
 				return;
 		}
 	}

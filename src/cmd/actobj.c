@@ -278,7 +278,6 @@ struct bulk_put_state
 
 bool item_get_ack_publication = false;
 bool item_get_rejected = false;
-static bool item_put_trap_rejected = false;
 static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		       const coin_get_submission_options &options);
 std::unordered_map<uint32_t, bulk_get_state> bulk_gets;
@@ -3513,7 +3512,7 @@ void start_bulk_put(P_char actor, P_obj container, const char *filter, bool alld
 		return;
 	}
 	bulk_put_state state = { filter ? filter : "", 0, false, alldot };
-	item_put_trap_rejected = false;
+	bool trap_rejected = false;
 	for (const auto &[expected, uid] : candidates)
 	{
 		if (!valid())
@@ -3524,16 +3523,16 @@ void start_bulk_put(P_char actor, P_obj container, const char *filter, bool alld
 				!isname(state.filter.c_str(), object->name))))
 			continue;
 		state.attempted = true;
-		const bool moved = put(actor, object, container, FALSE);
+		const bool moved = put(actor, object, container, FALSE, &trap_rejected);
 		if (!valid())
 			break;
 		object = find_live_object(expected, uid);
 		if (moved && object && OBJ_INSIDE_OBJ(object, container))
 			++state.total;
-		if (item_put_trap_rejected)
+		if (trap_rejected)
 			break;
 	}
-	if (item_put_trap_rejected || !valid())
+	if (trap_rejected || !valid())
 	{
 		// Earlier successful items still need their destination save even if a later
 		// trap extracted/disabled the actor. The rejected candidate is never delivered.
@@ -3769,20 +3768,22 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 #undef PUT_ALLDOT
 #undef PUT_ITEM
 
-static bool reject_put_trap(P_char actor, P_obj item)
+static bool reject_put_trap(P_char actor, P_obj item, bool *trap_rejected)
 {
 	if (item->trap_dam >= 9 && item->trap_dam <= 16 && checkgetput(actor, item))
 	{
-		item_put_trap_rejected = true;
+		if (trap_rejected)
+			*trap_rejected = true;
 		return true;
 	}
 	return false;
 }
 
-bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
+bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 {
 	char Gbuf3[MAX_STRING_LENGTH];
-	item_put_trap_rejected = false;
+	if (trap_rejected)
+		*trap_rejected = false;
 
 	if (IS_ARTIFACT(o_obj) && !IS_TRUSTED(ch))
 	{
@@ -3827,7 +3828,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 				}
 				if (s_obj->value[0] > s_obj->value[3])
 				{
-					if (reject_put_trap(ch, o_obj))
+					if (reject_put_trap(ch, o_obj, trap_rejected))
 						return FALSE;
 					if (showit)
 						send_to_char("Ok.\r\n", ch);
@@ -3935,7 +3936,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 					      GET_ITEM_TYPE(s_obj) == ITEM_CONTAINER)))
 					{
 #endif
-						if (reject_put_trap(ch, o_obj))
+						if (reject_put_trap(ch, o_obj, trap_rejected))
 							return FALSE;
 						if (showit)
 							send_to_char("Ok.\r\n", ch);

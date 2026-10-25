@@ -13,7 +13,6 @@
 #include <string>
 #include <vector>
 #define USE_SPACE 0
-static bool item_put_trap_rejected;
 room_data rooms[2] = {};
 P_room world = rooms;
 index_data indexes[1] = {};
@@ -254,15 +253,19 @@ int main()
 				item->extra_flags = ITEM_NODROP;
 			if (failure == 3)
 				item->extra_flags = ITEM_ARTIFACT;
-			assert(!put(actor, item, container, FALSE) && !calls &&
+			bool trap_rejected = true;
+			assert(!put(actor, item, container, FALSE, &trap_rejected) && !calls &&
 			       item->trap_charge == 2 && !transfers);
+			assert(!trap_rejected);
 		}
 		for (int callback = 0; callback <= 6; ++callback)
 		{
 			reset(1, target_type);
 			item->type = ITEM_MISSILE;
 			mode = callback;
-			assert(!put(actor, item, container, TRUE));
+			bool trap_rejected = false;
+			assert(!put(actor, item, container, TRUE, &trap_rejected));
+			assert(trap_rejected);
 			assert(calls == 1 && !transfers && !publications);
 		}
 	}

@@ -281,7 +281,8 @@ def run(binary, backend):
                     assert "Ok." in text and "already open" not in text,text
                     final=TRAPS[vnum][2]
                     inspect(key,(final[0],final[1],0 if final[2]>0 else final[2],final[3]))
-                    command(builder,"purge "+key)
+                    if vnum != 142233:
+                        command(builder,"purge "+key)
 
                 # Real permission-complete item-on-put hook; retain one of two charges.
                 home(); bag = load(142438); floor(bag)
@@ -289,8 +290,11 @@ def run(binary, backend):
                 inspect(bag, (512, 9, 0, 60))
                 key = load(35506)
                 command(builder, f"give {key} {journey.CHARACTER}")
+                refused=command(actor, f"put {key} {bag}")
+                assert "won't fit" in refused,refused
+                inspect(key,(2,15,2,100))
                 control_started = time.monotonic()
-                command(actor, f"put {key} {bag}")
+                command(actor, f"put {key} probe142233")
                 inspect(key, (2, 15, 1, 100))
                 assert count(14) == caster_count
                 time.sleep(max(0, 12.2 - (time.monotonic() - control_started)))
@@ -301,11 +305,12 @@ def run(binary, backend):
                     home(); assert "Inside the Gates of Kimordril" in command(actor, direction)
                     inspect(key, TRAPS[44160][2])
                 home()
+                potion = load(38715)
+                command(builder, f"give {potion} {journey.CHARACTER}")
+                effect = command(actor, "quaff " + potion)
+                assert "translucent" in effect.lower(), effect
                 before_xp=command(builder,"stat mob "+journey.CHARACTER)
                 before_xp=re.search(r"Experience:\s*([\d,]+)",before_xp)[1]
-                cast=command(builder,"cast 'deflect' "+journey.CHARACTER)
-                effect=actor.expect("translucent",timeout=20)+drain(actor,.08)
-                assert "translucent" in effect.lower(),(cast,effect)
                 reflected=command(actor, "east")
                 assert "deflect" in reflected.lower(),reflected
                 room_text=command(actor,"look")
@@ -315,6 +320,7 @@ def run(binary, backend):
                 after_xp=re.search(r"Experience:\s*([\d,]+)",after_xp)[1]
                 assert before_xp==after_xp,(before_xp,after_xp)
                 assert count(14)==caster_count
+                command(builder, "affectpurge " + journey.CHARACTER + " all")
                 assert "Inside the Gates of Kimordril" in command(actor, "east")
 
                 # A later non-glyph remains blocking after a down glyph, including an unlimited trap.

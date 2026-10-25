@@ -241,6 +241,12 @@ The first loaded fixture used the nonexistent `trapstat` alias, then a keyword c
 with the builder's starter book; numeric-vnum stringing fixed those fixture errors.
 Room activity can emit unsolicited prompts, so the journey now uses an inventory response
 as a read-only command barrier. Full scenario/save/restart completion remains pending.
+Ordinary visibility/capacity refusals are also exercised: the mortal drops its starter
+inventory, hidden objects are searched for before opening, and a full urn must preserve
+the carried trap's budget before a valid put into the opened iron chest. Reflection uses
+the authored deflect potion 38715 because the cast command correctly restricts deflect to
+self. `put()` reports an actual trap rejection to bulk/equipment callers explicitly;
+ordinary refused puts retain their earlier container-search behavior.
 
 The legacy flat-file lethal corpse journey now passes death, bystander damage, server
 survival, reconnect, custody and spent-state restart. Its stale automatic-boon reply was
