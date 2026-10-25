@@ -813,6 +813,46 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   reconcile help/import evidence and review the complete stack. Do not rerun
   unrelated full regression suites.
 
+### Review repair checkpoint, 2026-10-25
+
+- Source-validated review finding on #379: snapshot affect hydration prepends
+  captured newest-first rows in forward order, reversing Stone Skin layers.
+  Legacy binary `restoreAffects()` has the same issue. Reproduced distinct
+  charge/duration reversal in the sanitizer harness before repair.
+- `branch/issue-215-affect-restore-order` fixes the owning consumers:
+  `player_load_materialize.c` replays snapshot rows in reverse; `files.c`
+  reverses only its new restored prefix, preserving any pre-existing affects.
+  No new saved fields or special Stone Skin representation is needed.
+- Extended `test_elemental_forms_runtime.py` exercises two repeated binary and
+  snapshot-codec/hydration round trips with charges 19/9/8 and durations 4/2/1,
+  then the actual newest-first decrement. Also checks a pre-existing independent
+  affect stays behind the restored prefix. General stat services stay fixtures.
+- Review findings on #382 still need their own focused repair: input routing
+  must admit `abort` during shoreline waits; movement must capture its crossing
+  context before specials because cancellation clears callback/actor fields.
+  Add outbound cancellation and real input-routing regressions before publishing.
+- Affect ordering repair delivered as `c7a6d009b99012dfd9c4273debc52553e58387eb`,
+  review-ready [PR #387](https://github.com/LuminariMUD/Duris/pull/387), based on
+  #386. Binary/snapshot regressions, Web Spray, player-load contracts, MariaDB
+  build and format checks pass.
+- `branch/issue-215-shoreline-interruption` now captures the crossing context
+  before `special()` and extends the existing restricted input predicate,
+  whitelist and interpreter gate to pending shoreline events. It grants abort
+  without the separate spell-abort toggle and preserves unrelated type-ahead.
+  Reproduced outbound cancellation failure before fixing it. Both-way transient
+  interruption tests, actual queue/predicate state-matrix tests, spell-abort
+  contracts, selective-queue compatibility, movement liveness and Control Flee
+  regressions pass. MariaDB/flat-file builds and check-only formatting pass.
+- Existing `test_game_loop_phase_contract.py` has a pre-existing stale direct
+  auction-outbox assertion: the recurring phase now calls the already-existing
+  `critical_gameplay_publish_outbox()` helper, which calls the auction publisher.
+  This branch changes only the input predicate in `comm.c`, not that phase.
+  Repair the test separately to follow both real calls; no game-loop change is
+  required. Keep this outside the shoreline implementation patch.
+- Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
+  review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
+  #384. Combined socket/recovery qualification remains pending these repairs.
+
 ### Historical planning-only evidence
 
 The current change writes this plan and preserves the previous #264 document.
