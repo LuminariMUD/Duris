@@ -1542,7 +1542,11 @@ revalidate_movement:
 		return 0;
 	}
 	if (sprung_traps.size() != sprung_before)
+	{
+		if (!(flags & MVFLG_FLEE) && IS_FIGHTING(ch))
+			return 0;
 		goto revalidate_movement;
+	}
 
 	// It takes 33% more moves to carry someone now.
 	if (mount && IS_NPC(mount))
