@@ -1027,6 +1027,7 @@ nevent_handle nevent_find_next_excluding_current(P_char, event_func_type);
 P_nevent get_next_scheduled_char(P_nevent, event_func_type);
 P_nevent get_next_scheduled_obj(P_nevent, event_func_type);
 void disarm_char_nevents(P_char, event_func_type);
+void event_conjure_water(P_char, P_char, P_obj, void *);
 void disarm_obj_nevents(P_obj, event_func_type);
 int ne_event_time(P_nevent);
 nevent_handle nevent_handle_from_event(P_nevent);
