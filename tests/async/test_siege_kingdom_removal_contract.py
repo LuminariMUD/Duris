@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _source_contract import function_body, strip_comments  # noqa: E402
+from _source_contract import function_body, function_bodies, strip_comments  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -226,10 +226,10 @@ class SiegeKingdomRemovalContractTest(unittest.TestCase):
         self.assertNotRegex(structs, r"\bPLR2_KINGDOMVIEW\b")
 
     def test_runtime_sql_is_detached_but_schema_tombstones_remain(self) -> None:
-        """No runtime SQL touches the retired tables; the lifecycle manifest
-        still retains them as compatibility tombstones."""
+        """Retired tables have no ordinary runtime SQL; seasonal reset still
+        clears the four stores classified reset_delete by the manifest."""
         runtime_sql = "\n".join(
-            (SRC / relative).read_text()
+            strip_comments((SRC / relative).read_text())
             for relative in ("sql/sql.c", "sql/sql_player.c", "sql/sql_player.h")
         )
         for token in (
@@ -242,6 +242,18 @@ class SiegeKingdomRemovalContractTest(unittest.TestCase):
             "sql_load_siege_list",
         ):
             self.assertNotIn(token, runtime_sql, token)
+        reset_tables = {
+            "kingdom_land", "siege_items", "siege_item_affects", "siege_item_extra_descr"
+        }
+        reset_bodies = function_bodies(
+            runtime_sql, r"\bbool\s+sql_pwipe\s*\(int code_verify\)"
+        )
+        self.assertEqual(len(reset_bodies), 2)  # Flat-file stub and MariaDB reset.
+        reset_sql = "\n".join(reset_bodies)
+        for table in reset_tables:
+            self.assertIn(f'DELETE FROM {table}"', reset_sql)
+        for body in reset_bodies:
+            runtime_sql = runtime_sql.replace(body, "")
         table_references = sorted(
             set(
                 re.findall(
@@ -277,7 +289,11 @@ class SiegeKingdomRemovalContractTest(unittest.TestCase):
             },
         )
         for store, entry in stores.items():
-            self.assertEqual(entry["season_action"], "retain", store)
+            self.assertEqual(
+                entry["season_action"],
+                "reset_delete" if store in reset_tables else "retain",
+                store,
+            )
             self.assertIn("compatibility", entry["technical_purpose"].lower(), store)
 
 
