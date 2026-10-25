@@ -23,6 +23,7 @@ prelude = r'''
 #include "guild/guildhall.h"
 #include "world/buildings.h"
 #include "world/events.h"
+#include "player/pet_restore_runtime.h"
 #include "net/comm.h"
 #include <cassert>
 #include <cstring>
@@ -31,6 +32,8 @@ prelude = r'''
 #include <vector>
 #include <set>
 #include <map>
+#include <algorithm>
+#include <ctime>
 room_data rooms[2]{};
 P_room world=rooms;
 const int top_of_world=1;
@@ -128,6 +131,12 @@ functions = [
     ('mobact.c','void remember(P_char ch, P_char victim)\n{'),
     ('mobact.c','void clearMemory('),
     ('necromancy.c','int setup_pet('),
+    ('necromancy.c','void schedule_pet_death('),
+    ('pet_restore_runtime.c','void summoned_pet_mark('),
+    ('pet_restore_runtime.c','bool summoned_pet_capture('),
+    ('pet_restore_runtime.c','bool summoned_pet_apply('),
+    ('pet_restore_runtime.c','void summoned_pet_restore_lifetime('),
+    ('magic.c','static void schedule_elemental_death('),
     ('magic.c','void spell_conjour_elemental('),
     ('magic.c','void conjure_specialized('),
     ('magic.c','void spell_conjour_greater_elemental('),
@@ -199,6 +208,27 @@ static std::vector<long long> snapshot(P_char mob) {
     for(int delay:delays) values.push_back(delay);
     values.push_back(rng); values.push_back(draws); return values;
 }
+static void roundtrip(P_char pet,P_char caster) {
+    std::string encoded; assert(summoned_pet_capture(pet,&encoded) && !encoded.empty());
+    pet_restore_state state; assert(pet_restore_state_decode(encoded,&state));
+    assert(summoned_pet_matches_prototype(state.kind,GET_VNUM(pet)));
+    assert(state.charm_expires_at>time(nullptr) && state.death_expires_at>time(nullptr));
+    auto *restored=read_mobile(GET_VNUM(pet),REAL);
+    assert(summoned_pet_apply(restored,state)); recalc_intrinsic(restored);
+    assert(restored->specials.affected_by2==pet->specials.affected_by2);
+    assert(!strcmp(restored->player.name,pet->player.name));
+    assert(!strcmp(restored->player.short_descr,pet->player.short_descr));
+    assert(!strcmp(restored->player.long_descr,pet->player.long_descr));
+    assert(!strcmp(restored->player.description,pet->player.description));
+    assert(restored->points.base_hit==pet->points.base_hit && restored->points.damsizedice==pet->points.damsizedice);
+    const auto before=delays;
+    summoned_pet_restore_lifetime(restored,caster,state);
+    assert(restored->only.npc->pet_charm_expires_at==state.charm_expires_at);
+    assert(restored->only.npc->pet_death_expires_at==state.death_expires_at);
+    assert(!strcmp(restored->player.name,pet->player.name));
+    assert(delays.size()==before.size()+1 && delays.back()>0);
+    delays=before;
+}
 int main() {
     char_data fire{}, target{}; pc_only_data pc{};
     fire.only.pc=&pc; pc.pid=215; fire.player.name=const_cast<char *>("Firetest");
@@ -214,7 +244,7 @@ int main() {
         auto summon=greater?spell_conjour_greater_elemental:spell_conjour_elemental;
         rng=215; draws=0; char plain[]=""; summon(56,&fire,plain,0,nullptr,nullptr);
         assert(pets.size()==1 && IS_AFFECTED2(pets[0],AFF2_FIRESHIELD));
-        const auto before=snapshot(pets[0]); clear(&fire);
+        const auto before=snapshot(pets[0]); roundtrip(pets[0],&fire); clear(&fire);
         rng=215; draws=0; char option[]="mephit"; summon(56,&fire,option,0,nullptr,nullptr);
         assert(pets.size()==1 && !IS_AFFECTED2(pets[0],AFF2_FIRESHIELD));
         recalc_intrinsic(pets[0]); assert(!IS_AFFECTED2(pets[0],AFF2_FIRESHIELD));
@@ -222,6 +252,7 @@ int main() {
         assert(IS_SET(pets[0]->only.npc->str_mask,STRUNG_KEYS));
         // Every random greater variant and regular prototype is retained.
         assert(GET_VNUM(pets[0])==(greater?1110+choice:1100));
+        roundtrip(pets[0],&fire);
         clear(&fire);
     }
     // Actual cap helpers see the same elemental identities in both modes.
@@ -287,5 +318,6 @@ cpp,binary=build/'harness.cpp',build/'harness'
 cpp.write_text(prelude+'\n'.join(extract_function(file,sig) for file,sig in functions)+damage_path+retaliation+recalc+cold+driver)
 subprocess.run(['g++','-std=c++20','-g','-ffunction-sections','-fdata-sections','-fsanitize=address,undefined',
                 '-fno-omit-frame-pointer','-fno-pie','-no-pie','-I'+str(ROOT/'src'),str(cpp),str(HARNESS_STUBS),
+                str(ROOT/'src/player/pet_restore_state.c'),
                 '-Wl,--gc-sections','-lbsd','-o',str(binary)],check=True)
 subprocess.run([str(binary)],check=True)

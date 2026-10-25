@@ -93,6 +93,9 @@ bool summoned_pet_apply(P_char pet, const pet_restore_state &s)
 	replace(&pet->player.name, s.name, STRUNG_KEYS);
 	replace(&pet->player.short_descr, s.short_description, STRUNG_DESC2);
 	replace(&pet->player.long_descr, s.long_description, STRUNG_DESC1);
+	if (s.kind == summoned_pet_kind::conjured_fire_mephit)
+		replace(&pet->player.description,
+			"A compact being of elemental fire watches you intently.\n", STRUNG_DESC3);
 	for (size_t i = 0; i < s.base_stats.size(); ++i)
 		pet->base_stats[i] = s.base_stats[i];
 	pet->points.base_hit = s.base_points[0];

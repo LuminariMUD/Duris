@@ -94,7 +94,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
 | 4 | Reliable Conjure Water | 0 | Review-ready [PR #381](https://github.com/LuminariMUD/Duris/pull/381), stacked on #380 |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
-| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Implemented; focused checks pass; crash-state follow-up required |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384); crash-state follow-up in progress |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 

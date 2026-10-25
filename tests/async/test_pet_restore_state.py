@@ -51,6 +51,14 @@ int main()
         assert(summoned_pet_cost(static_cast<summoned_pet_kind>(kind)) > 0);
     assert(summoned_pet_cost(summoned_pet_kind::dracolich) == 37);
     assert(summoned_pet_cost(summoned_pet_kind::greater_dracolich) == 75);
+    for (auto kind : {summoned_pet_kind::conjured_fire_elemental,
+                      summoned_pet_kind::conjured_fire_mephit}) {
+        assert(summoned_pet_cost(kind) == 0); // Existing elemental-count caps own capacity.
+        for (int vnum : {1100,1110,1111,1112})
+            assert(summoned_pet_matches_prototype(kind,vnum));
+        for (int vnum : {1099,1101,1109,1113,1201})
+            assert(!summoned_pet_matches_prototype(kind,vnum));
+    }
     assert(summoned_pet_matches_prototype(summoned_pet_kind::titan, 78));
     assert(!summoned_pet_matches_prototype(summoned_pet_kind::titan, 3));
     assert(legacy_summon_prototype(1201) && !legacy_summon_prototype(200));
@@ -73,20 +81,29 @@ int main()
     assert(restored.pets[0].hold_reason == pet_hold_reason::over_capacity);
     snapshot.pets[0].restore_state.clear(); snapshot.pets[0].hold_reason = pet_hold_reason::none;
     assert(player_snapshot_encode(snapshot, &bytes) == player_snapshot_codec_result::ok);
-    // v7 added a stable pet UID before the pet's prototype. Remove it when
-    // constructing the legacy v1 checkpoint below.
-    constexpr std::array<uint8_t, 8> uid_bytes =
-        {0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12};
-    const auto uid_at = std::search(bytes.begin(), bytes.end(),
-                                    uid_bytes.begin(), uid_bytes.end());
-    assert(uid_at != bytes.end());
-    bytes.erase(uid_at, uid_at + uid_bytes.size());
-    // v5 adds a trailing empty preferences string. Remove it to recover v3 first.
-    bytes.resize(bytes.size() - 4);
-    // v1 ended each pet immediately after its item vector; the trailing shapes,
-    // trophies and recipes fields occupy nine bytes in this minimal checkpoint.
-    bytes.erase(bytes.end() - 17, bytes.end() - 9);
-    bytes[0] = 1;
+    // Author the fixed v1 wire format directly. Trimming a current checkpoint
+    // accidentally retained v11/v12 wallet/trade fields and stopped testing v1.
+    bytes.clear();
+    const auto put = [&bytes]<typename T>(T value) {
+        for (size_t i=0; i<sizeof(T); ++i)
+            bytes.push_back(static_cast<uint64_t>(value) >> (i*8));
+    };
+    put(uint32_t{1}); put(snapshot.pid); put(snapshot.revision); put(snapshot.components);
+    put(snapshot.save_intent); put(snapshot.room_vnum); put(uint64_t(snapshot.encoded_size_bound));
+    put(uint32_t{0}); put(uint32_t{0}); // status integers and strings
+    for (auto value:snapshot.conditions) put(value);
+    for (auto value:snapshot.quest_values) put(value);
+    // languages, introductions, timers, slots, forged items, commands, skills,
+    // affects and inventory are empty in this synthetic checkpoint.
+    for (int i=0; i<9; ++i) put(uint32_t{0});
+    put(uint32_t{1}); // one pet, with no UID or restore-state extension in v1
+    const auto &legacy_pet=snapshot.pets[0];
+    for (int32_t value : {legacy_pet.mob_vnum,legacy_pet.order,legacy_pet.hit,
+                          legacy_pet.max_hit,legacy_pet.mana,legacy_pet.max_mana,
+                          legacy_pet.vitality,legacy_pet.max_vitality,
+                          legacy_pet.charm_duration,legacy_pet.room_vnum}) put(value);
+    put(uint32_t{0}); // pet inventory
+    put(uint32_t{0}); put(uint32_t{0}); put(uint8_t{0}); // shapes, trophies, recipes
     assert(player_snapshot_decode(bytes.data(), bytes.size(), &restored) == player_snapshot_codec_result::ok);
     assert(restored.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION);
     assert(restored.pets[0].restore_state.empty());

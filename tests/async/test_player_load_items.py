@@ -325,6 +325,7 @@ void extract_char(P_char pet)
     if (pet->only.npc->str_mask & STRUNG_KEYS) std::free(pet->player.name);
     if (pet->only.npc->str_mask & STRUNG_DESC1) std::free(pet->player.long_descr);
     if (pet->only.npc->str_mask & STRUNG_DESC2) std::free(pet->player.short_descr);
+    if (pet->only.npc->str_mask & STRUNG_DESC3) std::free(pet->player.description);
     std::free(pet->only.npc);
     std::free(pet);
 }
@@ -1276,6 +1277,39 @@ int main()
         assert(owner.pc.held_pets->pets[0].items[0].object_uid == 20);
         player_load_pets_commit(&owner.character, &pets, result);
         assert(!owner.character.followers);
+    }
+
+    for (bool mephit : {false,true}) for (int vnum : {1100,1110,1111,1112}) {
+        reset_test_state();
+        test_character owner(42);
+        owner.character.player.level=56;
+        owner.character.player.m_class=CLASS_CONJURER;
+        owner.character.player.spec=SPEC_FIRE;
+        player_load_result result=base_result(); result.snapshot.room_vnum=123;
+        pet_restore_state state;
+        state.kind=mephit?summoned_pet_kind::conjured_fire_mephit:summoned_pet_kind::conjured_fire_elemental;
+        state.name=mephit?"fire mephit _owner_":"fire elemental _owner_";
+        state.short_description=mephit?"a fire mephit":"a fire elemental";
+        state.long_description=state.short_description+" waits here.\n";
+        state.level=52; state.race=RACE_F_ELEMENTAL; state.size=SIZE_HUGE;
+        state.primary_class=CLASS_WARRIOR; state.act=ACT_ISNPC;
+        state.base_stats.fill(100); state.base_points={1234,55,150,-123,33,41,0};
+        state.damage_dice={3,8};
+        state.intrinsic_affects[1]=AFF2_FIRE_AURA|(mephit?0:AFF2_FIRESHIELD);
+        state.charm_expires_at=time(nullptr)+600; state.death_expires_at=time(nullptr)+660;
+        add_pet(result,3001,vnum);
+        assert(pet_restore_state_encode(state,&result.snapshot.pets[0].restore_state));
+        std::vector<P_char> pets; player_load_pet_materialize_metrics metrics{};
+        assert(player_load_pets_stage(&owner.character,result,&pets,&metrics));
+        assert(pets.size()==1 && pets[0] && !owner.pc.held_pets);
+        assert(pets[0]->points.base_hit==1234 && GET_RACE(pets[0])==RACE_F_ELEMENTAL);
+        assert(bool(IS_AFFECTED2(pets[0],AFF2_FIRESHIELD))==!mephit);
+        assert(!strcmp(pets[0]->player.name,state.name.c_str()));
+        if(mephit) assert(strstr(pets[0]->player.description,"compact being"));
+        summoned_pet_restore_lifetime(pets[0],&owner.character,state);
+        assert(pets[0]->only.npc->pet_charm_expires_at==state.charm_expires_at);
+        assert(pets[0]->only.npc->pet_death_expires_at==state.death_expires_at);
+        player_load_pets_discard(&pets);
     }
     {
         reset_test_state();

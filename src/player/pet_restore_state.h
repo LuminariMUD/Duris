@@ -30,6 +30,8 @@ enum class summoned_pet_kind : uint32_t
 	dracolich = 20,
 	avatar = 21,
 	greater_dracolich = 22,
+	conjured_fire_elemental = 23,
+	conjured_fire_mephit = 24,
 };
 
 enum class pet_hold_reason : uint32_t
