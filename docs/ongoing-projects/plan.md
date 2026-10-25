@@ -87,8 +87,8 @@ The order below is a working sequence, not a requirement for a PR stack.
 | --- | --- | --- | --- |
 | 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
 | 1 | New forms, registration, resource checks and cleanup | 0 | Review-ready [PR #378](https://github.com/LuminariMUD/Duris/pull/378), stacked on #376 |
-| 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Implemented; focused checks pass on `branch/issue-215-earth-mechanics` |
-| 3 | Air Recharge and travel lag | 1 | Pending |
+| 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Review-ready [PR #379](https://github.com/LuminariMUD/Duris/pull/379), stacked on #378 |
+| 3 | Air Recharge and travel lag | 1 | Implemented; focused checks pass on `branch/issue-215-air-recovery` |
 | 4 | Reliable Conjure Water | 0 | Pending |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
@@ -586,9 +586,38 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 - `make -C src -j8` passes with no warnings. Class-help/layout and check-only
   formatting/diff checks pass. Added the missing dedicated parsed Stone Skin
   page and aligned both sources' Earth Magus, Stone Skin and Earthen Maul text.
-- Next: publish Earth PR, then implement Air healing/travel on the next stacked
-  branch. Preserve the verified forms/affinity evidence and avoid full-suite
-  reruns for this local spell change.
+- Delivered Earth commit: `cb4f8206dfc6c6a507469517621976788d604b20`, pushed;
+  [PR #379](https://github.com/LuminariMUD/Duris/pull/379) targets forms branch.
+- Next: Air healing/travel on `branch/issue-215-air-recovery`, stacked on #379.
+  Preserve the verified forms/affinity evidence and avoid full-suite reruns for
+  this local spell change. Air uses the existing final healing cap and two
+  post-cast wait branches; no new healing API or movement service is needed.
+
+### Air checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-air-recovery` is based on Earth commit `cb4f8206d`.
+  `ethermancer.c` adds only the active-Air-Form/self/Air-Magus-PC exception to
+  ordinary Ethereal Recharge and passes `min(maxHP, currentHP + 100)` to the
+  existing heal chain. Other target routes and Greater Recharge stay unchanged.
+  `magic.c` adds only Air-PC 3-second Dimension Door and 5-second Relocate waits,
+  preserving their positions before existing travel rejection checks.
+- Extended existing `test_cleric_ward_runtime.py` under ASan/UBSan instead of
+  creating another healing harness. It executes production `heal()`/`vamp()`,
+  Cure Blind, ordinary/Greater Recharge, both whole travel handlers and
+  `can_relocate_to()`; general room-entry checks/placement and UI are fixtures.
+  Checks low/full/overfull HP, enhanced/hardcore/incoming-aura amplification,
+  Plague and Blackmantle reduction, actual achievement/XP credit, Cure Blind at
+  the cap, loose aura/wrong spec/other-player controls, normal Phantasmal targets,
+  Air/Void pet targets versus Water-pet denial, and unchanged Greater Recharge.
+  Travel checks measure pulses for Air/ordinary/Shadow PCs and NPCs on success
+  and ocean/no-teleport/hostile-PvP/non-raidable rejection.
+- `test_healing_spell_precedence_runtime.py` and `test_vampiric_overheal_regen.py`
+  pass. Incremental `make -C src -j8` passes with no warnings after correcting an
+  initial patch-location mistake in the adjacent Greater Recharge handler;
+  final diff leaves that handler unchanged. Class-help/layout, formatting and
+  diff checks pass. Both sources describe the final cap and post-cast waits.
+- Next: publish Air PR and implement Conjure Water's delayed-use lifecycle, then
+  Water shoreline and Fire mechanics. Reuse existing healing/build evidence.
 
 ### Historical planning-only evidence
 

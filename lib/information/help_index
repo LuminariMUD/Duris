@@ -234,6 +234,11 @@ An Air Magus assumes Air Form, keeping its established Air Aura
 resilience to physical attacks and reduced susceptibility to knockdown.
 The form has no new attribute bonuses or terrain requirement.
 
+While this spell is actively present, an Air Magus can cast Ethereal
+Recharge on themselves. At most 100 HP is actually restored per cast
+after all modifiers, never beyond normal maximum HP. A loose Air Aura
+alone does not qualify. Cure Blind still works, even at full HP.
+
 ==See also==
 
 * Air Magus
@@ -271,6 +276,10 @@ None beyond the base-class registrations.
 *&+cair affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+Active Air Form permits self-only Ethereal Recharge, restoring at most
+100 actual HP after healing modifiers. Dimension Door has 3 seconds of
+post-cast lag; Relocate has 5 seconds. All normal travel checks remain.
 
 ==See also==
 
@@ -4241,6 +4250,12 @@ proficiency of the caster.
 ===========================================================================
 See also: TELEPORT, "SPIRIT JUMP", WINDWALK
 
+Air Magus post-cast lag is 3 seconds; ordinary player lag remains
+9 seconds, and Shadow Sorcerer lag remains 1 second. This changes
+the wait after the attempt, not spell casting time. Existing target,
+PvP, combat and teleport restrictions still apply, including ocean
+destination restrictions. Failed attempts retain their normal lag.
+
 #
 "DIRGE OF BONES" (Song)
 ===========================================================================
@@ -5598,16 +5613,31 @@ the Air Plane, with all of the benefits and drawbacks of that terrain.
 #
 "ETHEREAL RECHARGE" (Spell)
 ===========================================================================
-Area of effect: <victim>
-Aggressive:     No
-Cumulative:     Yes
-Duration:       Instantaneous
-Type of spell:  Healing
+Area of effect: Eligible ethereal victim; formed Air Magus self
+Aggressive: No
+Duration: Instantaneous
+Type: Healing
 
-"Ethereal Recharge" is a spell that grants a recharge of hitpoints, it 
-can only be use on beings composed of ethereal matter.
-===========================================================================
-See also: HEAL
+The normal route heals up to 150 base HP (5 dice of caster level,
+limited to 150 before normal healing modifiers). Targets remain Air
+or Void elemental player pets, or eligible Phantasmal Form recipients.
+
+An Air Magus may also self-target while the Air Form spell is active.
+This exception restores at most 100 actual HP per cast after every
+healing modifier, and never above normal maximum HP. It does not heal
+another player merely because they have Air Form. A loose Air Aura
+alone is insufficient; no out-of-form self-target exception is added.
+The existing Greater Ethereal Recharge spell is unchanged.
+
+Cure Blind still applies, even when already at the HP cap. Memorised
+copies and normal casting resources remain required.
+
+==See also==
+
+* Air Magus
+* Air Form
+* Cure Blindness
+* Greater Ethereal Recharge
 
 #
 "ETHEREAL RIFT" (Spell)
@@ -13422,6 +13452,12 @@ target, no matter how far away his target may be.
 &+RWarning:&n Sometimes this artery can rupture, depositing the caster 
         someplace completely unexpected (and perhaps very dangerous).
 ===========================================================================
+
+Air Magus post-cast lag is 5 seconds; ordinary player lag remains
+20 seconds, and Shadow Sorcerer lag remains 1 second. This changes
+the wait after the attempt, not spell casting time. Existing target,
+PvP, combat and teleport restrictions still apply, including ocean
+destination restrictions. Failed attempts retain their normal lag.
 
 #
 REMORT ASCEND (General Information)
