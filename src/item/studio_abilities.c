@@ -208,7 +208,10 @@ class studio_adapter final : public item_action_adapter
 			effect.call == studio_ability_call::spell ? SPELL_TYPE_SPELL :
 								    SPELL_TYPE_WAND,
 			target,
-			effect.target == studio_ability_target::item ? context.source : nullptr);
+			effect.target == studio_ability_target::item ||
+					effect.spell == SPELL_SOLAR_FLARE ?
+				context.source :
+				nullptr);
 	}
 	void finish(const item_action_identity &identity, item_action_consumption,
 		    item_action_outcome outcome) const noexcept override

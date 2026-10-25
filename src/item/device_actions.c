@@ -263,10 +263,10 @@ class device_adapter final : public item_action_adapter
 				continue;
 			arguments = effect.arguments;
 			if (IS_SET(skills[effect.spell].targets, TAR_CHAR_ROOM))
-				skills[effect.spell].spell_pointer(effect.power, actor,
-								   arguments.data(),
-								   SPELL_TYPE_SPELL, target,
-								   nullptr);
+				skills[effect.spell].spell_pointer(
+					effect.power, actor, arguments.data(), SPELL_TYPE_SPELL,
+					target,
+					effect.spell == SPELL_SOLAR_FLARE ? source : nullptr);
 			else if (IS_SET(skills[effect.spell].targets, TAR_SELF_ONLY))
 				skills[effect.spell].spell_pointer(effect.power, target,
 								   arguments.data(),
@@ -405,7 +405,8 @@ class device_adapter final : public item_action_adapter
 			is_scroll(kind) || IS_SET(skills[effect.spell].targets, TAR_IGNORE) ?
 				arguments.data() :
 				nullptr,
-			SPELL_TYPE_SPELL, target, object);
+			SPELL_TYPE_SPELL, target,
+			effect.spell == SPELL_SOLAR_FLARE ? context.source : object);
 		if (!item_action_pending(context.identity.action_id))
 			return;
 		device_wake(context.identity.actor_id,

@@ -2490,6 +2490,7 @@ void spell_earth_form(int, P_char, char *, int, P_char, P_obj);
 void spell_fire_form(int, P_char, char *, int, P_char, P_obj);
 void spell_water_form(int, P_char, char *, int, P_char, P_obj);
 const char *elemental_form_failure_message(P_char, P_char, int);
+const char *elemental_summon_failure_message(P_char, const char *, int);
 void spell_airy_water(int, P_char, char *, int, P_char, P_obj);
 void spell_animate_dead(int, P_char, char *, int, P_char, P_obj);
 void spell_armor(int, P_char, char *, int, P_char, P_obj);

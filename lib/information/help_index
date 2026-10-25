@@ -2997,35 +2997,60 @@ is aggressive when the charm wears off, it will attack you and others.
 #
 "CONJURE ELEMENTAL" (Spell)
 ===========================================================================
-Area of effect: One elemental
-Aggressive:     No
-Cumulative:     No
-Duration:       Instantaneous
-Type of spell:  Summoning
+Syntax: cast 'conjure elemental' [mephit]
+Circle: 5
 
-When cast, "Conjure Elemental" summons an elemental from a random elemental
-plane which will follow the player as though charmed for a limited period
-of time. There is no way to control which type of elemental is summoned.
+Conjure Elemental summons a temporary elemental follower. Specialized
+Conjurers summon their own element; ordinary selection and control
+checks remain. Fire Magus uses the original regular Fire variant.
 
-If the elemental is aggressive when the charm wears off, it will attack you
-and others.
-===========================================================================
-See also: "CONJURE GREATER ELEMENTAL"
+Fire Magus players may add the optional word mephit. The summon is
+the same original Fire elemental variant with the same stats, scaling,
+Infuse Life, elemental identity, protections, control, duration, cost
+and pet limits, except for mephit naming and no Fireshield. Plain casts
+retain the normal shielded elemental. No new power or extra slot is
+granted. For Fire Magus, malformed option text is rejected before
+spending casting resources; other callers keep their old arguments.
+
+Fireshield retaliates against each attacker. The mephit option omits
+that retaliation and its resulting owner-memory/hunter side effects
+when several mobs hit the pet. Other pet actions can still provoke
+mobs normally; this is no general protection from aggression.
+
+==See also==
+
+* Conjure Greater Elemental
+* Fire Magus
+* Fireshield
 
 #
 "CONJURE GREATER ELEMENTAL" (Spell)
 ===========================================================================
-Area of effect: One elemental
-Aggressive:     No
-Cumulative:     N/A
-Duration:       Instantaneous
-Type of spell:  Summoning
+Syntax: cast 'conjure greater elemental' [mephit]
+Circle: 11
 
-Much more powerful version of the "conjure elemental" spell. This spell
-summons a much larger and much stronger elemental than its counterpart,
-"conjure elemental".
-===========================================================================
-See also: "CONJURE ELEMENTAL"
+Conjure Greater Elemental retains its ordinary random specialized
+variant selection. Fire Magus still randomly receives one of the
+original three Fire variants, with no selectable stronger variant.
+
+Fire Magus players may add the optional word mephit. The summon is
+the same original Fire elemental variant with the same stats, scaling,
+Infuse Life, elemental identity, protections, control, duration, cost
+and pet limits, except for mephit naming and no Fireshield. Plain casts
+retain the normal shielded elemental. No new power or extra slot is
+granted. For Fire Magus, malformed option text is rejected before
+spending casting resources; other callers keep their old arguments.
+
+Fireshield retaliates against each attacker. The mephit option omits
+that retaliation and its resulting owner-memory/hunter side effects
+when several mobs hit the pet. Other pet actions can still provoke
+mobs normally; this is no general protection from aggression.
+
+==See also==
+
+* Conjure Elemental
+* Fire Magus
+* Fireshield
 
 #
 "CONJURE WATER" (Innate)
@@ -6056,17 +6081,24 @@ See also: "RANGE WEAPONS", THROW
 #
 FIREBALL (Spell)
 ===========================================================================
-Syntax:         inn fireball (for Drow Elf)
-Area of effect: <victim> | <victim> <direction>
-Aggressive:     Yes
-Cumulative:     No
-Duration:       Instantaneous
-Type of spell:  Fire
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous
+Type: Fire
 
-"Fireball" is a very potent spell that causes a small ball of flame to
-shoot forth from the caster's fingertips. Upon contact with the victim, it
-explodes in a huge blast, burning the victim quite profoundly.
-===========================================================================
+Fireball strikes its victim with a burst of flame. A Fire Magus player
+at level 51 or above delivers 100% of the normally calculated damage
+through standard Globe. The unlock uses player level, not spell or item
+power. Other casters retain their normal Globe interaction.
+
+Saving throws, applicable wards, Protection from Fire, Fireshield,
+absorption and the rest of the normal damage path still apply.
+
+==See also==
+
+* Fire Magus
+* Globe of Invulnerability
+* Fire Form
 
 #
 FIRESHIELD (Spell)
@@ -6140,6 +6172,14 @@ None beyond the base-class registrations.
 *&+cfire affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+At player level 51, Fireball passes through standard Globe at full
+normally calculated damage, retaining other fire defenses. Solar Flare
+gains 10% direct base damage for player spell casts only. The existing
+circle-5/11 elemental summons accept an optional mephit argument for
+the same original variant without Fireshield; normal casts keep it.
+Fire Form retains cold vulnerability and conditional fire absorption.
+There is no new castable self-heal or Magma Burst adjustment.
 
 ==See also==
 
@@ -16409,15 +16449,25 @@ See also: SOCIETY, ASSOCIATIONS, GUILDHALL, GUILD
 #
 "SOLAR FLARE" (Spell)
 ===========================================================================
-Area of effect: <victim>
-Aggressive:     Yes
-Cumulative:     Yes
-Duration:       Dependent on proficiency of caster
-Type of spell:  Fire
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous direct damage
+Type: Fire
 
-This spell sends waves of white hot flames at the intended victim, 
-causing considerable damage.
-===========================================================================
+Solar Flare sends white-hot flame at its target. Fire Magus player
+spell casts gain exactly 10% direct base damage, rounded down to an
+integer. Star Magus, NPC and item calls are unchanged. Standard Globe
+does not normally block this spell.
+
+Existing blindness and Immolate chances and effects remain unchanged,
+along with normal fire counterplay. Magma Burst receives no change.
+
+==See also==
+
+* Fire Magus
+* Star Magus
+* Immolate
+* Magma Burst
 
 #
 SONGS

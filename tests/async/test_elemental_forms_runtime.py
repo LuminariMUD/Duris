@@ -99,6 +99,7 @@ functions = [
     ('files.c', 'ush_int getShort('), ('files.c', 'uint getInt('), ('files.c', 'long getLong('),
     ('files.c', 'int writeAffects('), ('files.c', 'int restoreAffects('),
     ('magic.c', 'const char *elemental_form_failure_message('),
+    ('magic.c', 'const char *elemental_summon_failure_message('),
     ('magic.c', 'const char *elemental_aura_failure_message('),
     ('magic.c', 'void spell_elemental_aura('),
     ('psionics.c', 'void spell_fire_aura('),
@@ -128,7 +129,7 @@ assert start < event.index('use_spell(ch, arg->spell)')
 # The exact production completion preflight is exercised with a resource sentinel;
 # the whole parser and memorization path are covered separately and in gameplay.
 gate = '''
-bool completion_allowed(P_char ch, int spell) {
+bool completion_allowed(P_char ch, int spell, const char *args = "") {
     spellcast_datatype payload{}; auto *arg = &payload; arg->spell = spell;
     P_char tar_char = ch; bool weaving = false;
     auto finish = [&]() {
@@ -258,6 +259,15 @@ int main() {
         caster.specials.affected_by4 = AFF4_ICE_AURA;
         assert(!completion_allowed(&caster, form.type));
         caster.specials.affected_by4 = 0;
+    }
+    caster.player.spec = SPEC_FIRE;
+    for (int spell : {SPELL_CONJURE_ELEMENTAL, SPELL_CONJURE_GREATER_ELEMENTAL}) {
+        assert(completion_allowed(&caster, spell, "mephit"));
+        assert(completion_allowed(&caster, spell, ""));
+        assert(!completion_allowed(&caster, spell, "mephit 1112"));
+        caster.player.spec = SPEC_AIR;
+        assert(completion_allowed(&caster, spell, "other callers keep old arguments"));
+        caster.player.spec = SPEC_FIRE;
     }
     // Stone Skin stacks on the recipient, retaining each caster's charge bonus.
     char_data earth{}, ordinary{}, pet{};

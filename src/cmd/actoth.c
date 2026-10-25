@@ -4660,9 +4660,12 @@ void do_recite(P_char ch, char *argument, int /*cmd*/)
 							continue;
 						}
 					}
+					int spell_type = SPELL_TYPE_SPELL;
+					if (j == SPELL_SOLAR_FLARE)
+						spell_type = SPELL_TYPE_SCROLL;
 					((*skills[j].spell_pointer)((int)scroll->value[0], ch,
-								    argument, SPELL_TYPE_SPELL,
-								    victim, obj));
+								    argument, spell_type, victim,
+								    obj));
 
 					/* best thing to do if victim dies is just extract the obj and quit out, since many
 					   spells kill the mud w/o a victim
@@ -4847,14 +4850,15 @@ void do_use(P_char ch, char *argument, int /*cmd*/)
 				act("You direct $p at $P.", FALSE, ch, stick, tmp_object, TO_CHAR);
 			}
 
+			int spell_type = SPELL_TYPE_SPELL;
+			if (spl == SPELL_SOLAR_FLARE)
+				spell_type = SPELL_TYPE_WAND;
 			if (IS_SET(skills[spl].targets, TAR_IGNORE))
 				((*skills[spl].spell_pointer)((int)stick->value[0], ch, argument,
-							      SPELL_TYPE_SPELL, tmp_char,
-							      tmp_object));
+							      spell_type, tmp_char, tmp_object));
 			else
 				((*skills[spl].spell_pointer)((int)stick->value[0], ch, 0,
-							      SPELL_TYPE_SPELL, tmp_char,
-							      tmp_object));
+							      spell_type, tmp_char, tmp_object));
 
 			if (char_in_list(ch))
 				CharWait(ch, PULSE_VIOLENCE * 3 / 2);

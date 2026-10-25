@@ -290,7 +290,11 @@ int setup_pet(P_char mob, P_char ch, int duration, int flag)
 	if (IS_PC(ch) && (!(flag & PET_RESTORE) || (IS_NPC(mob) && !mob->only.npc->summon_kind)))
 	{
 		name = string(mob->player.name) + " _" + string(ch->player.name) + "_";
+		if (IS_NPC(mob) && IS_SET(mob->only.npc->str_mask, STRUNG_KEYS))
+			str_free(mob->player.name);
 		mob->player.name = str_dup(name.c_str());
+		if (IS_NPC(mob))
+			SET_BIT(mob->only.npc->str_mask, STRUNG_KEYS);
 	}
 
 	return duration;

@@ -103,6 +103,12 @@ int main()
 	require(wiki_help("water form").find("5 seconds BEFORE") != string::npos &&
 			wiki_help("water form").find("25% less") != string::npos,
 		"Water Form omitted its shoreline timing and movement discount");
+	require(wiki_help("fireball").find("100%") != string::npos &&
+			wiki_help("solar flare").find("exactly 10%") != string::npos,
+		"Fire spell help omitted the approved unlock or damage increase");
+	for (const char *topic : { "conjure elemental", "conjure greater elemental" })
+		require(wiki_help(topic).find("no Fireshield") != string::npos,
+			"Elemental summon help omitted the optional mephit behavior");
 
 	cout << "flat-file help runtime passed\n";
 	return 0;

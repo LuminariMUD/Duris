@@ -90,8 +90,8 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Review-ready [PR #379](https://github.com/LuminariMUD/Duris/pull/379), stacked on #378 |
 | 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
 | 4 | Reliable Conjure Water | 0 | Review-ready [PR #381](https://github.com/LuminariMUD/Duris/pull/381), stacked on #380 |
-| 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Implemented and locally qualified; PR publication next |
-| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
+| 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Implemented; focused checks pass; crash-state follow-up required |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 
@@ -700,9 +700,71 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   personal-only entry, separate affinity and normal rules after expiry at sea.
 - Class-help/layout, flat-file runtime help (including shoreline numbers),
   documentation, check-only formatting and diff checks pass.
-- Next: publish shoreline PR, then
-  Fire damage/mephits and combined gameplay. Do not claim complete functional
+- Delivered shoreline commit: `f1c7e4b2e19d75ee485981a0193c246dd133e5d1`, pushed;
+  [PR #382](https://github.com/LuminariMUD/Duris/pull/382) targets spring branch.
+- Next: Fire damage/mephits on `branch/issue-215-fire-mechanics`, then combined
+  gameplay. Source inspection adds two necessary caller files:
+  `item/studio_abilities.c` and `item/device_actions.c` currently invoke
+  character-targeted spells as `SPELL_TYPE_SPELL` with no source object, so
+  Solar Flare needs its existing object argument populated for those item calls
+  to remain unbuffed. Keep all other item calls unchanged.
+- The legacy staff/wand/scroll paths also label their spell calls as ordinary
+  casts. `actoth.c` and staff-area helper `utility.c` therefore pass existing
+  STAFF/WAND/SCROLL call types **only for Solar Flare**. The staff-area helper's
+  only live player-driven Solar caller is the legacy staff path. No new call
+  context API or global policy is needed, and all other spells retain their
+  prior call type/object arguments.
+- `setup_pet()` appends the owner keyword after summon naming, but currently
+  overwrites an owned name without releasing it or marking the replacement as
+  owned. The mephit path requires a narrow ownership repair in `necromancy.c`;
+  test the real setup/free contract alongside summon equivalence. No new pet
+  types, prototypes, flag policy or persistence representation is needed.
+  Do not claim complete functional
   qualification until the remaining journeys and Fire implementation pass.
+
+### Fire checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-fire-mechanics` builds on shoreline `f1c7e4b2e`.
+  Fireball removes only its Globe flag for Fire Magus PCs at player level 51+.
+  Solar Flare multiplies only player Fire spell direct base damage by 110/100
+  with integer truncation and unchanged RNG/secondary effects. Existing item
+  dispatchers preserve Solar's item origin/type as detailed above; other spells'
+  call arguments stay unchanged.
+- Optional `mephit` validation is shared by casting preflight and both summon
+  handlers. Normal VNUM 1100/random 1110-1112 selection, scaling, control and
+  duration paths are reused. Only instance strings and Fireshield change. The
+  original race/protections/Infuse Life/caps remain; no new prototype or ability.
+  `setup_pet()` now releases an owned old name and owns its appended replacement.
+- `test_conjurer_fire_runtime.py` passes ASan/UBSan: production summon handlers,
+  terrain/cap helpers and pet setup; matched random state/call counts for every
+  greater variant, neutral/good/bad terrain and Infuse Life 0/100; exact stats,
+  control affects, durations, original VNUMs, cap failures, malformed args and
+  leak-free name ownership. Replays actual affect bit-recalculation, Globe,
+  Fire absorption, cold-vulnerability and per-attacker shield/owner-memory
+  branches. Checks player 50/51 versus spell power 100, NPC/Star/other spec/item
+  controls, exact +10% and unchanged secondary RNG, full Fire Form absorption
+  ceiling and cold response, multi-mob pull memory and other pet provocation.
+  Prototype reads, general stat/combat services and damage tail are fixtures;
+  complete server integration remains for step 8.
+- Extended existing forms preflight check proves invalid Fire options reject
+  before the resource sentinel while other callers retain ignored arguments.
+  Device/Studio regressions include Solar's source/type through actual legacy
+  and modern staff/wand/scroll and passive/active Studio dispatchers. Both help
+  sources describe the final Fire kit and optional summons. Full flat-file build
+  completed in preparation for isolated gameplay; final incremental rebuild
+  will include the latest item-call adjustments.
+- Final MariaDB `make -C src -j8` passes with warnings treated as errors.
+  Existing pet-control/drop, class-help/layout, runtime help, documentation,
+  check-only formatting and diff checks pass. No full regression was repeated.
+- **Required discovered follow-up:** ordinary Conjurer pet crash snapshots have
+  no restore-state payload, so loading VNUM 1100/1110-1112 reconstructs prototype
+  Fireshield/names instead of the chosen instance. This predates the feature but
+  would erase a mephit's defining choice on recovery. Publish Fire now as its
+  focused chunk, then repair this through the existing pet-state codec in a
+  separate dependent PR. Preserve both plain/mephit instance stats and finite
+  lifetime; add no gameplay pet variant, slot, prototype or schema.
+- Next: record Fire PR, implement the narrow crash-state repair, then complete
+  isolated gameplay/help/persistence journeys and final ablation/review audit.
 
 ### Historical planning-only evidence
 
