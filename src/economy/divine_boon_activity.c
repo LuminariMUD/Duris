@@ -181,6 +181,24 @@ divine_boon_activity_history::population(const std::vector<divine_boon_actor> &c
 		if (latest || (!choice.last_actor && (!choice.level || actor.level < choice.level)))
 			choice = { actor.level, latest };
 	}
+	// Exp/Epic selection uses every eligible online account at selection time,
+	// with or without recent evidence. One level per account and side.
+	std::map<std::pair<std::string, uint8_t>, uint16_t> online;
+	for (const auto &actor : current)
+	{
+		std::string account;
+		if (!actor_valid(actor) || !canonical_account(actor.account, &account))
+			continue;
+		const std::pair<std::string, uint8_t> key = { account, actor.side };
+		const auto active = present.find(key);
+		auto [level, added] = online.try_emplace(key, actor.level);
+		if (active != present.end())
+			level->second = active->second.level;
+		else if (!added)
+			level->second = std::min(level->second, actor.level);
+	}
+	for (const auto &[key, level] : online)
+		result[key.second].levels.push_back(level);
 	std::array<std::set<std::string>, 2> pvp;
 	for (const auto &[key, player] : present)
 	{
