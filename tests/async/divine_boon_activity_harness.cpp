@@ -3,6 +3,7 @@
 #include "cmd/interp.h"
 
 #include <cassert>
+#include <chrono>
 #include <iostream>
 #include <sanitizer/asan_interface.h>
 
@@ -10,6 +11,7 @@
 // ITEM_COMMAND_POLICY
 
 P_desc descriptor_list = nullptr;
+P_char character_list = nullptr;
 P_room world = nullptr;
 extern const int top_of_world = 7;
 namespace
@@ -19,8 +21,6 @@ pc_only_data players[3] = {};
 descriptor_data descriptors[3] = {};
 acct_entry accounts[3] = {};
 std::string account_names[3];
-bool present[3] = { true, true, true };
-P_char morph_body = nullptr;
 
 divine_boon_actor actor(uint32_t pid, const char *account, uint8_t side, uint16_t level)
 {
@@ -119,7 +119,6 @@ void sides_and_brackets()
 
 void setup_game()
 {
-	morph_body = nullptr;
 	static uint32_t next_pid = 1000;
 	for (size_t index = 0; index < 3; ++index)
 	{
@@ -127,8 +126,8 @@ void setup_game()
 		players[index] = {};
 		descriptors[index] = {};
 		accounts[index] = {};
-		present[index] = true;
 		bodies[index].runtime_id = index + 1;
+		bodies[index].next = index < 2 ? &bodies[index + 1] : nullptr;
 		bodies[index].only.pc = &players[index];
 		players[index].pid = ++next_pid;
 		bodies[index].player.level = 30;
@@ -143,6 +142,7 @@ void setup_game()
 		descriptors[index].next = index < 2 ? &descriptors[index + 1] : nullptr;
 	}
 	descriptor_list = &descriptors[0];
+	character_list = &bodies[0];
 }
 
 void real_input_boundary()
@@ -197,7 +197,23 @@ void real_input_boundary()
 	assert(!divine_boon_activity_begin(&bodies[0], CMD_LOOK).runtime_id);
 	bodies[0].player.racewar = RACEWAR_GOOD;
 	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
-	present[0] = false; // Quit/extraction before the post-dispatch observation.
+	character_list = &bodies[1]; // Quit/extraction before the post-dispatch observation.
+	descriptors[0].character = nullptr;
+	__asan_poison_memory_region(&bodies[0], sizeof(bodies[0]));
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	__asan_unpoison_memory_region(&bodies[0], sizeof(bodies[0]));
+
+	setup_game();
+	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
+	++bodies[0].in_room;
+	descriptors[0].character = &bodies[1]; // Original body remains in the world.
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	setup_game();
+	input = divine_boon_activity_begin(&bodies[0], CMD_LOOK);
+	++bodies[0].in_room;
+	descriptors[0].connected = CON_GET_ACCT_NAME;
 	divine_boon_activity_end(input);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
 }
@@ -304,7 +320,8 @@ void morphed_player()
 	body.specials.act = ACT_ISNPC;
 	body.desc = &descriptors[0];
 	descriptors[0].character = &body;
-	morph_body = &body;
+	body.next = character_list;
+	character_list = &body;
 	const auto input = divine_boon_activity_begin(&body, CMD_NORTH);
 	assert(input.runtime_id == 4 && input.pid == static_cast<uint32_t>(players[0].pid));
 	++body.in_room;
@@ -312,19 +329,37 @@ void morphed_player()
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
 	npc.orig_char = nullptr;
 	assert(!divine_boon_activity_begin(&body, CMD_NORTH).runtime_id);
-	morph_body = nullptr;
+	character_list = &bodies[0];
 	descriptors[0].character = nullptr;
 }
-}
-
-P_char find_character_by_runtime_id(uint64_t id)
+void world_size_independence()
 {
-	if (morph_body && morph_body->runtime_id == id)
-		return morph_body;
-	for (size_t index = 0; index < 3; ++index)
-		if (present[index] && bodies[index].runtime_id == id)
-			return &bodies[index];
-	return nullptr;
+	setup_game();
+	std::vector<char_data> mobiles(57605);
+	for (size_t index = 0; index < mobiles.size(); ++index)
+	{
+		mobiles[index].runtime_id = index + 100;
+		mobiles[index].next = index + 1 < mobiles.size() ? &mobiles[index + 1] : &bodies[0];
+	}
+	character_list = mobiles.data();
+	const auto started = std::chrono::steady_clock::now();
+	for (int run = 0; run < 50; ++run)
+		divine_boon_activity_end(divine_boon_activity_begin(&bodies[0], CMD_LOOK));
+	const auto elapsed = std::chrono::duration<double, std::micro>(
+		std::chrono::steady_clock::now() - started);
+	std::cout
+		<< "57608 characters, three descriptors: observer mean_us=" << elapsed.count() / 50
+		<< std::endl;
+	// The observer must not consult the world character list at all. ASan
+	// makes that boundary deterministic instead of asserting a timing limit.
+	__asan_poison_memory_region(mobiles.data(), mobiles.size() * sizeof(char_data));
+	auto input = divine_boon_activity_begin(&bodies[2], CMD_NORTH);
+	++bodies[2].in_room;
+	divine_boon_activity_end(input);
+	assert(divine_boon_activity_population()[0].active_accounts == 1);
+	__asan_unpoison_memory_region(mobiles.data(), mobiles.size() * sizeof(char_data));
+	character_list = &bodies[0];
+}
 }
 
 int main()
@@ -338,6 +373,7 @@ int main()
 	door_input();
 	independent_input();
 	morphed_player();
+	world_size_independence();
 	std::cout
 		<< "Divine activity: 60/15/5-minute windows, accounts, brackets, real input and exclusions passed\n";
 }

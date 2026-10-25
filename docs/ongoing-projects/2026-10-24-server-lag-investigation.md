@@ -1,6 +1,179 @@
 # October 24: lag after today's deployment
 
-Scope: **October 24, 2026 only**, from today's production reboot at 10:37 UTC.
+## Implementation handoff, October 25
+
+Issue: [#365](https://github.com/LuminariMUD/Duris/issues/365). The review stack starts
+at `investigate/365-server-lag`; current work is on `branch/issue-365-activity-lookup`
+in `/home/aiwithapex/projects/duris-issue365`.
+The branch was fast-forwarded to `master` baseline `f31283e56` before editing;
+the original October 24 observations below remain historical evidence, not
+measurements of the new implementation. General lag attribution is still open.
+
+**Owner scope clarification, October 25:** fix the measured costs already found;
+do not wait for specific player actions, command sequences or incident reports.
+Unreproduced hypotheses below remain documented limitations, not prerequisites
+or blockers for this implementation work. No production rollout is requested.
+
+### Chunk 1: publish ready critical results every pulse
+
+The coordinator poll and existing game-thread completion handlers now run each
+250 ms pulse, still after `ne_events()` and before player-save capture. Even-pulse
+GMCP/ship/locker work still precedes them; outbox publication, saves, load/recovery,
+Divine selection and caches keep their 500 ms cadence. The routing function's
+bounded locker-identify completion polling also runs each pulse. No new worker,
+configuration, database query, event budget or socket flush was added.
+
+Keeping the existing output phase means completion receipts still wait until
+the next pulse to drain. The change deliberately removes the extra alternating
+publication pulse without moving effects across the event scheduling boundary
+or changing the one-playing-command-per-pulse admission policy.
+
+`test_critical_publication_cadence.py` executes the extracted production recurring
+phase with the real coordinator and shared writer, using an immediate synthetic
+backend and a virtual pulse clock. It checks both submission parities,
+success/replay/terminal failure, fence release, exactly-once routing, and the
+other recurring owners' cadence/order. For a result ready just after pulse zero,
+baseline `f31283e56` publishes at 499 ms and drains simulated output at 749 ms;
+the new phase publishes at 249 ms and drains at 499 ms. Just after an odd pulse,
+both versions publish at 249 ms and drain at 499 ms. These are controlled
+phase waits, **not live cargo socket or database timings**. The new regression
+fails against the old phase's missing odd-pulse routing.
+
+Passed: `make -C src -j4` (MariaDB development),
+`make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=.../bin/server/dms_flatfile`,
+`python3 tests/async/test_critical_publication_cadence.py`,
+`test_critical_command_coordinator.py`, `test_critical_completion_capacity.py`,
+`test_divine_trade_runtime.py`, `test_divine_trade_outbox_versions.py`,
+`test_game_loop_phase_contract.py`, `test_command_latency_runtime.py`,
+`test_locker_identify.py`, `test_item_movement_prompt_runtime.py`,
+`bash tests/async/run_divine_trade_mysql.sh`, and `./scripts/format.sh --check`.
+Python test paths here are under `tests/async/`. The database test uses its own
+disposable MariaDB, checks receipts, ten rollback boundaries and atomic ordinary
+loss/deletion saves, and rechecks the migration without resetting trade state.
+The trade runtime test covers held payment/save reservations, rejection, retry,
+relog and ordinary losses. The phase source test had a stale direct-auction
+call expectation; it now checks the existing outbox routing wrapper.
+
+Review: [PR #372](https://github.com/LuminariMUD/Duris/pull/372), initial code
+commit `aa4ea8a5a`; review tag `review/issue-365-critical-cadence-r1` identifies
+the complete handoff. Current `master` through `e1efb9bc0` was merged without
+conflicts after publication. The MariaDB build, phase contract and executable
+cadence regression passed again after that merge; the remaining focused
+evidence above applies to unchanged owners. No full-suite rerun is required.
+
+### Delivery state and retained limits
+
+- Chunk 1 is published for review in PR #372. The change is not deployed.
+- General reported slowdown and the historical 47.759 ms callback: attribution
+  is deferred per the owner clarification. Its old concrete identity remains
+  unrecoverable; do not claim these measured improvements resolve that incident.
+- First-command polling/type-ahead: retain the existing simulation and command
+  cadence. Waking the whole loop on socket readiness would accelerate events
+  and gameplay; a separate input-dispatch loop is beyond the minimal measured
+  fixes. No type-ahead-throughput change is included.
+- Cargo: chunk 1 fixes the demonstrated alternating publication wait. Its real
+  trade/runtime and disposable database checks cover reservation, commit, retry,
+  replay, relog and save behavior. Production submit-to-receipt timing remains
+  unmeasured; next-pulse output is an explicit preserved compatibility boundary.
+- Eligible-mortal activity: chunk 3 below removes the demonstrated world-size
+  identity lookup without retaining a potentially extracted character pointer.
+- Divine selection: chunk 2 below removes repeated traversal in selection and
+  status. Recurring active-EXP reward checks retain their existing behavior.
+- Outbox, network/GMCP and unmeasured telemetry hooks: no delayed delivery or
+  causal stall was demonstrated. Further incident-specific tracing is deferred;
+  healthy queues alone still do not establish execution cost.
+
+The local primary checkout is `ENVIRONMENT=local`; its separate worktree has no
+`.env`. A read-only remote check found `/home/staging/duris` marked production
+and a different live game PID, **2235802**, started October 25 at 10:01:53 in the
+remote host's timezone. The old PID/ELF offsets below must not be reused. No
+production operation, tracing configuration, migration or restart was performed.
+The old ignored evidence was not found under that remote checkout; locate its
+actual owning checkout before relying on retained drivers. Keep new test/build
+artifacts ignored under this worktree's `bin/tests/`.
+
+### Chunk 2: share live-stone locations within each catalogue pass
+
+Current-source `epic_target()` still scanned `object_list` for every reachable
+zone on each side. Selection and diagnostic status now lazily build one local
+set of payable-stone `(home zone number, current zone index)` pairs, only after
+finding a reachable eligible target. Both sides and all candidate zones share
+it. Each call discards the snapshot, so changed magic/payment, extraction or
+container/carrier location is reconsidered on the next pass. Single-zone
+gameplay/admission queries retain their existing direct short-circuit scan.
+The shared payable-stone predicate keeps both consumers' rules identical; no
+persistent index or invalidation hooks were added.
+
+The existing selector executable was extended with 38,935 synthetic ordinary
+objects followed by two live stones, two candidate zones and both sides. The
+unchanged implementation resolves four stone locations per selection and fails
+the new once-per-stone regression. The new implementation resolves two, also
+for staff status; mutations between selection passes invalidate eligibility as
+before. In twenty `-Og` ASan/UBSan samples the mean selection duration changed
+from **2,214.92 µs to 552.76 µs**. This is a two-zone synthetic graph, not a
+repeat of the earlier full-world benchmark or a production latency measurement.
+
+Passed: `test_divine_boon_selection.py` (existing eligibility, path, weighted
+selection, quiet-hour, reserved-pool and diagnostics cases plus the new fixture),
+`test_divine_boon_commands.py`, `test_divine_boon_runtime.py`, MariaDB and
+flat-file development builds, and `./scripts/format.sh --check`. No database
+repository or persistence protocol changed, so the chunk 1 disposable trade
+evidence is reused.
+
+Review: [PR #373](https://github.com/LuminariMUD/Duris/pull/373), stacked on
+#372, code commit `d9b01e22c`, review tag `review/issue-365-selection-scan-r1`.
+
+### Chunk 3: resolve the activity observer through live sessions
+
+An eligible playing body must still be attached to a live descriptor when the
+command returns to count as activity. The end observer now matches the captured
+runtime ID against `descriptor_list`, then applies the same actor/PID and state
+fingerprint checks. It no longer calls the full-world character lookup. No raw
+pre-command pointer, character index, registration hook or new allocation was
+introduced. Quit, extraction, disconnect and replacement cannot credit a stale
+body; a morphed eligible player still qualifies.
+
+The activity executable now links the real character-identity implementation
+instead of a three-character lookup stub. A synthetic 57,608-character list
+places the eligible player behind 57,605 mobiles with three descriptors. Fifty
+`look` begin/end pairs averaged **1,496.34 µs before and 0.905 µs after** in
+`-Og` ASan/UBSan runs. The old implementation fails the added poisoned-world-list
+check in `find_character_by_runtime_id()`; the new one observes a changed body
+at the descriptor-list tail without touching that memory. A poisoned extraction
+fixture plus disconnect and replacement cases guard lifetime safety. Existing
+morph, container/device/resource/door, inventory-independent, AFK and staff-account
+exclusions remain covered. This is synthetic observer timing, not a live-player
+latency measurement.
+
+Passed: `test_divine_boon_activity.py`, `test_command_latency_runtime.py`,
+MariaDB and flat-file development builds, and `./scripts/format.sh --check`.
+The existing isolated socket session journey **passed** against the complete
+stack's built flat-file binary: character entry, queued FIFO/rendered prompts,
+save, quit and reconnect. To reuse the built artifact without another build,
+the invocation was `PYTHONPATH=tests/async python3 -c` importing
+`test_game_loop_session_journey.run_journey` and calling it with
+`Path('/home/aiwithapex/projects/duris-issue365/bin/server/dms_flatfile')`.
+Its output is `bin/tests/issue365-session-journey.log`.
+That binary's SHA-256 is
+`07c982d2f01458b1ade1a253005093a3489f0039b5252d3c5f047f7513806fe9`;
+the MariaDB build's is
+`018639f0c2db7d1f42f325a806cc298cc72088fed0b83dc41a79af9e3d01ea57`.
+
+Review: [PR #374](https://github.com/LuminariMUD/Duris/pull/374), stacked on
+#373, code commit `6ad45400d`, review tag `review/issue-365-activity-lookup-r1`.
+
+The measured-finding implementation requested in the owner's clarification is
+complete and ready for review in order **#372 → #373 → #374**. Each chunk has
+its focused executable checks, build evidence and a counterexample on the old
+implementation; the full stack also has the real session/persistence journey.
+The source diffs preserve event/output phase ordering, single-zone eligibility,
+activity exclusions and character lifetime checks. No general framework,
+persistent cache or production operation was added. Review/integration remains
+for the PRs; the original broader lag incident is not declared causally resolved.
+
+## October 24 observation record
+
+Scope of the observations below: **October 24, 2026 only**, from the production reboot at 10:37 UTC.
 Initial live observations were collected around 12:43–12:56 UTC; follow-up
 observations were collected from 18:06 UTC and resumed at 18:21 UTC. A sudo
 follow-up ran from 20:38 UTC. All times below are UTC.

@@ -9,6 +9,7 @@
 #include "world/graph.h"
 
 #include <cassert>
+#include <chrono>
 #include <cstdarg>
 #include <cstdio>
 #include <string>
@@ -40,8 +41,10 @@ index_data stone_index[1] = {};
 P_index obj_index = nullptr;
 P_obj object_list = nullptr;
 int stone_zone = 2;
+unsigned stone_location_lookups = 0;
 int obj_zone_id(P_obj obj)
 {
+	++stone_location_lookups;
 	return obj->value[2] == 20 ? 3 : stone_zone;
 }
 int top_of_objt = -1;
@@ -531,6 +534,55 @@ int main()
 	assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
 	assert(epic_multi.epic_candidates[0] == 2 && picks[0].zones[0] == 18);
 	random_value = 0;
+	// A catalogue pass shares its live-stone snapshot across zones and sides.
+	// Populate the ordinary object list too: those objects must not multiply
+	// the work for every eligible candidate. No player data enters this fixture.
+	{
+		std::vector<obj_data> ordinary(38935);
+		for (size_t index = 0; index < ordinary.size(); ++index)
+		{
+			ordinary[index].R_num = -1;
+			ordinary[index].next = index + 1 < ordinary.size() ? &ordinary[index + 1] :
+									     &stone;
+		}
+		object_list = ordinary.data();
+		const auto started = std::chrono::steady_clock::now();
+		for (int run = 0; run < 20; ++run)
+		{
+			stone_location_lookups = 0;
+			assert(divine_boon_select(epic_state, 3600, epic_population, &picks,
+						  &epic_multi));
+			assert(epic_multi.epic_candidates[0] == 2 &&
+			       epic_multi.epic_candidates[1] == 2);
+		}
+		const auto elapsed = std::chrono::duration<double, std::micro>(
+			std::chrono::steady_clock::now() - started);
+		std::cout << "38937 objects, two zones/two sides: selection mean_us="
+			  << elapsed.count() / 20 << " location_lookups=" << stone_location_lookups
+			  << std::endl;
+		assert(stone_location_lookups == 2);
+		char_data observer = {};
+		observer.player.level = IMMORTAL;
+		stone_location_lookups = 0;
+		diagnostic_output.clear();
+		divine_boon_selection_status(&observer);
+		assert(stone_location_lookups == 2);
+		assert(diagnostic_output.find("side=good experience=2 epic=2") !=
+		       std::string::npos);
+		// Rebuild for each pass: paid/removed or relocated stones cannot remain
+		// eligible through a cached previous selection or status readback.
+		stone.extra2_flags = 0;
+		assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+		assert(epic_multi.epic_candidates[0] == 1);
+		stone.extra2_flags = ITEM2_MAGIC;
+		stone_zone = 3;
+		assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+		assert(epic_multi.epic_candidates[0] == 1);
+		stone_zone = 2;
+		assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+		assert(epic_multi.epic_candidates[0] == 2);
+		object_list = &stone;
+	}
 	// An idle server must leave space for players who log in later, even while
 	// another eligible epic remains. Every quiet hour preserves just one boon.
 	auto quiet = epic_state;
