@@ -2015,6 +2015,9 @@ void affect_remove(P_char ch, struct affected_type *af)
 	 * remove structure *af from linked list
 	 */
 
+	if (af->type == SPELL_WATER_FORM)
+		disarm_char_nevents(ch, event_water_crossing);
+
 	all_affects(ch, FALSE);
 	// If af is at the head of list
 	if (ch->affected == af)

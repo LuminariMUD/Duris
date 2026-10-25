@@ -42,6 +42,8 @@ static zone_data zones[1]{};
 zone_data *zone_table = zones;
 P_char character_list;
 uint64_t character_removal_generation;
+P_nevent current_nevent;
+static bool completing_water_crossing(P_char, int) { return false; }
 static int skill, roll, escape_roll, random_exit, training, moves, special_calls, special_mode;
 static bool notch, random_rolls, trapped, woods, flying_mount, entrapment;
 static std::mt19937 generator(187);
@@ -120,6 +122,7 @@ def production():
             ("interp.c", "int fill_word("),
             ("interp.c", "char *one_argument("),
             ("utility.c", "int dir_from_keyword("),
+            ("actmove.c", "static int can_enter_room_internal("),
             ("actmove.c", "int can_enter_room("),
             ("actmove.c", "static P_char movement_special_actor("),
             ("actmove.c", "int do_simple_move("),

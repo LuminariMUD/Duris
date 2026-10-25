@@ -1473,11 +1473,12 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 			collector_service_player_busy(character));
 }
 
-/** Select the restricted queue throughout ordinary casting or active item use. */
+/** Keep abort reachable during casting, active item use and shoreline preparation. */
 static bool casting_input_for_descriptor(P_desc descriptor, P_char character)
 {
 	return character && descriptor &&
-	       (IS_AFFECTED2(character, AFF2_CASTING) || item_action_active(character)) &&
+	       (IS_AFFECTED2(character, AFF2_CASTING) || item_action_active(character) ||
+		get_scheduled(character, event_water_crossing)) &&
 	       descriptor->connected == CON_PLAYING && !descriptor->showstr_count &&
 	       !descriptor->str;
 }

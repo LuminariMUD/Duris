@@ -20,6 +20,8 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Isolated affect/abort fixtures have no shoreline movement callback to execute.
+HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
 // Ordinary NPC fixtures use their own race. Tutorial profile/parity coverage
 // links the real lookup, including the full-world read_mobile_probe comparison.
 HARNESS_STUB int tutorial_mobile_mechanics_race(char_data *ch)

@@ -1187,6 +1187,7 @@ void char_from_room(P_char ch)
 
 	/* Mark room as dirty for GMCP updates (before removal) */
 	disarm_char_nevents(ch, event_conjure_water);
+	disarm_char_nevents(ch, event_water_crossing);
 	item_actions_character_leaving(ch);
 	gmcp_mark_room_dirty(ch->in_room);
 

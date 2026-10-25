@@ -100,6 +100,9 @@ int main()
 		"Conjure Water omitted its successful-use cooldown");
 	require(wiki_help("water to life").find("232 at") != string::npos,
 		"Water to Life did not render the dedicated parsed formula topic");
+	require(wiki_help("water form").find("5 seconds BEFORE") != string::npos &&
+			wiki_help("water form").find("25% less") != string::npos,
+		"Water Form omitted its shoreline timing and movement discount");
 
 	cout << "flat-file help runtime passed\n";
 	return 0;
