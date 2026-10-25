@@ -76,7 +76,7 @@ for cls in class_names:
     assert "==skills==" in skill_lower, f"Missing '==Skills==' in skills help for '{cls}'"
     assert "==spells==" in skill_lower, f"Missing '==Spells==' in skills help for '{cls}'"
     assert "==see also==" in skill_lower, f"Missing '==See also==' in skills help for '{cls}'"
-    for circle in re.findall(r"(?m)^&\+b(\d+)(?:st|nd|rd|th) Circle:", skill_entry):
+    for circle in re.findall(r"(?m)^&\+W(\d+)(?:st|nd|rd|th) Circle:", skill_entry):
         assert 1 <= int(circle) <= MAX_CIRCLE, f"Unobtainable circle {circle} in {skills_title}"
 
     # Main class and skillset in help_index
@@ -103,7 +103,7 @@ def assert_progression(section, unit, topic):
     groups = []
     for line in section.splitlines():
         header = re.fullmatch(
-            rf"&\+b(\d+)(?:st|nd|rd|th) {unit}: &\+c(.+)&n", line
+            rf"&\+W(\d+)(?:st|nd|rd|th) {unit}: &\+c(.+)&n", line
         )
         continuation = re.fullmatch(r"    &\+c(.+)&n", line)
         assert ansi_visible_length(line) <= 79, f"Overflow in {topic}: {line}"
@@ -155,7 +155,7 @@ for class_name in class_names:
             r"==Innate abilities==\n(.*?)(?=\n==|\Z)", entry, re.S
         )
         assert innates, f"Missing innate section: {topic}"
-        assert_innates(innates[1].rstrip(), topic)
+        assert_innates(innates[1].strip("\n"), topic)
     for section, unit in (("Skills", "Level"), ("Spells", "Circle")):
         match = re.search(
             rf"=={section}==\n(.*?)(?=\n==|\Z)", skill_help, re.S
@@ -224,7 +224,7 @@ minstrel_help = parsed_map["minstrel"][1]
 song_changes = re.search(r"==Song changes==\n(.*?)(?=\n==|\Z)", minstrel_help, re.S)
 assert song_changes, "Missing Minstrel song progression"
 listed = {name: (int(level), int(cap)) for level, name, cap in re.findall(
-    r"(?m)^&\+b(\d+)(?:st|nd|rd|th) Level: &\+c(.+?) \(cap (\d+)%\)&n$",
+    r"(?m)^&\+W(\d+)(?:st|nd|rd|th) Level: &\+c(.+?) \(cap (\d+)%\)&n$",
     song_changes[1])}
 assert minstrel_grants and listed == minstrel_grants, "Minstrel songs differ from skills.c"
 
@@ -271,12 +271,12 @@ for title, (_, entry) in parsed_map.items():
             rf"=={section_name}==\n(.*?)(?=\n==|\Z)", entry, re.S
         )
         assert match, f"Missing {section_name} section in {title}"
-        lines = match[1].splitlines()
+        lines = match[1].strip().splitlines()
         numbers = []
         for line in lines:
             if re.match(r"^[^:\n]+: (?:circle|level) \d+", line):
                 raise AssertionError(f"Old progression format in {title}: {line}")
-            row = re.match(rf"^&\+b(\d+)(?:st|nd|rd|th) {unit}: &\+c.*&n$", line)
+            row = re.match(rf"^&\+W(\d+)(?:st|nd|rd|th) {unit}: &\+c.*&n$", line)
             if row:
                 numbers.append(int(row[1]))
             if line.startswith("    &+c"):
@@ -317,7 +317,7 @@ for title, (_, entry) in parsed_map.items():
     section = re.search(r"==Allowed races==\n(.*?)(?=\n==|\Z)", entry, re.S)
     assert section, title
     list_lines = []
-    for line in section[1].splitlines():
+    for line in section[1].strip().splitlines():
         if line.startswith("These permissions apply"):
             break
         list_lines.append(line)

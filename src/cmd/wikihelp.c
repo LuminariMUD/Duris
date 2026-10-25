@@ -244,7 +244,7 @@ string wiki_racial_stats(string title)
 		}
 	}
 
-	return_str += "==Racial Statistics==\n";
+	return_str += "==Racial Statistics==\n\n";
 
 	if (i > RACE_PLAYER_MAX)
 	{
@@ -314,7 +314,7 @@ string wiki_racial_stats(string title)
 	snprintf(buf, MAX_STRING_LENGTH, "%d", (int)get_property(race, 100));
 	return_str += buf;
 	return_str += "&n\n";
-	return_str += "\n==Racial Traits==\n";
+	return_str += "\n==Racial Traits==\n\n";
 	// Removing damage output because this is more of a fine tuning function
 	// for imm's, and will only confuse players.
 	// return_str += "Damage Output: &+c";
@@ -346,7 +346,7 @@ string wiki_classes(string title)
 		}
 	}
 
-	return_str += "==Class list==\n";
+	return_str += "==Class list==\n\n";
 
 	if (i > RACE_PLAYER_MAX)
 	{
@@ -387,7 +387,7 @@ string wiki_specs(string title)
 		}
 	}
 
-	return_str += "==Specializations==\n";
+	return_str += "==Specializations==\n\n";
 
 	if (i > CLASS_COUNT)
 	{
@@ -471,7 +471,7 @@ string wiki_innates(string title, int type)
 		}
 	}
 
-	return_str += "==Innate abilities==\n";
+	return_str += "==Innate abilities==\n\n";
 
 	if (!found)
 	{
@@ -526,7 +526,7 @@ string wiki_races(string title, int type)
 		}
 	}
 
-	return_str += "==Allowed races==\n";
+	return_str += "==Allowed races==\n\n";
 
 	if (cls > CLASS_COUNT)
 	{
@@ -637,7 +637,7 @@ string wiki_help_single(string str)
 	if (atoi(row[2]) == 25)
 	{
 		title += row[0];
-		return_str += "\n";
+		return_str += "\n\n";
 		return_str += wiki_classes(title);
 		return_str += "\n";
 		return_str += wiki_racial_stats(title);
@@ -648,7 +648,7 @@ string wiki_help_single(string str)
 	else if (atoi(row[2]) == 9)
 	{
 		title += row[0];
-		return_str += "\n";
+		return_str += "\n\n";
 		return_str += wiki_races(title, WIKI_CLASS);
 		return_str += "\n";
 		return_str += wiki_innates(title, WIKI_CLASS);
@@ -938,7 +938,7 @@ string wiki_spells(string title, int type)
 		}
 	}
 
-	return_str += "==Spells==";
+	return_str += "==Spells==\n";
 
 	if (!found)
 	{
@@ -954,11 +954,11 @@ string wiki_spells(string title, int type)
 	{
 		if (j == 0)
 		{
-			return_str += "\n==Songs==";
+			return_str += "\n==Songs==\n";
 		}
 		else
 		{
-			return_str += "\n==Spec Songs==";
+			return_str += "\n==Spec Songs==\n";
 		}
 		return_str += list_songs(i, j);
 	}
@@ -1007,7 +1007,7 @@ string wiki_skills(string title, int type)
 		}
 	}
 
-	return_str += "==Skills==";
+	return_str += "==Skills==\n";
 
 	if (!found)
 	{
@@ -1110,7 +1110,7 @@ string wiki_pcraces(string /*title*/)
 	bool found = FALSE;
 	int i, j;
 
-	return_str = "\n\n==Good Races==\n";
+	return_str = "\n\n==Good Races==\n\n";
 	for (i = 1; i <= RACE_PLAYER_MAX; i++)
 	{
 		// With a negative align, this won't include neutral races.
@@ -1136,7 +1136,7 @@ string wiki_pcraces(string /*title*/)
 	}
 
 	found = FALSE;
-	return_str += "\n==Evil Races==\n";
+	return_str += "\n==Evil Races==\n\n";
 	for (i = 1; i <= RACE_PLAYER_MAX; i++)
 	{
 		// With a positive align, this won't include neutral races.
@@ -1162,7 +1162,7 @@ string wiki_pcraces(string /*title*/)
 	}
 
 	found = FALSE;
-	return_str += "\n==Neutral Races==\n";
+	return_str += "\n==Neutral Races==\n\n";
 	for (i = 1; i <= RACE_PLAYER_MAX; i++)
 	{
 		if (!OLD_RACE_NEUTRAL(i))
