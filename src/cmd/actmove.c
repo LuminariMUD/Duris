@@ -2270,6 +2270,9 @@ int do_simple_move(P_char ch, int exitnumb, unsigned int flags)
 		return FALSE;
 
 	// Check for special routines
+	const bool water_crossing_move = current_nevent &&
+					 current_nevent->func == event_water_crossing &&
+					 current_nevent->ch == ch;
 	const auto removal_before_special = character_removal_generation;
 	const auto runtime_before_special = ch->runtime_id;
 	if (special(movement_special_actor(ch), exitnumb_to_cmd(exitnumb), 0))
@@ -2279,8 +2282,7 @@ int do_simple_move(P_char ch, int exitnumb, unsigned int flags)
 		return FALSE;
 	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE)
 		return FALSE;
-	if (current_nevent && current_nevent->func == event_water_crossing &&
-	    current_nevent->ch == ch && !completing_water_crossing(ch, exitnumb))
+	if (water_crossing_move && !completing_water_crossing(ch, exitnumb))
 		return FALSE;
 
 	if (grease_check(ch))

@@ -763,8 +763,95 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   focused chunk, then repair this through the existing pet-state codec in a
   separate dependent PR. Preserve both plain/mephit instance stats and finite
   lifetime; add no gameplay pet variant, slot, prototype or schema.
-- Next: record Fire PR, implement the narrow crash-state repair, then complete
+- Delivered Fire commit: `5b53d6617f235c047f15053c5c92c9ecdfd63c8a`, pushed;
+  [PR #384](https://github.com/LuminariMUD/Duris/pull/384) targets shoreline branch.
+- Crash-state repair on `branch/issue-215-fire-persistence`: append internal
+  creation-path labels for plain/mephit Fire summons to the existing portable
+  pet-state enum. These are transport labels for the already-approved choice,
+  not new gameplay pets, VNUMs, races, powers, slots or a new payload format.
+  Use existing intrinsic-state capture/apply and finite charm/death deadlines;
+  keep existing Conjurer capacity checks and zero legacy necromancy power cost.
+  Reconstruct only the mephit's constant full description on typed restoration;
+  the codec already carries its exact keywords, short/room descriptions, stats
+  and shield flags. Required owning files: `pet_restore_state.h/.c`,
+  `pet_restore_runtime.c`, existing Fire summon paths/tests and this plan.
+- Next: implement this narrow crash-state repair, then complete
   isolated gameplay/help/persistence journeys and final ablation/review audit.
+
+### Fire recovery checkpoint, 2026-10-25
+
+- `branch/issue-215-fire-persistence` adds internal state labels 23/24 for the
+  existing plain/mephit Fire creation paths, with unchanged original VNUMs.
+  Reuse portable state version 1, intrinsic flags and existing full NPC
+  materialization. There is no new database schema or gameplay pet/slot.
+  Existing elemental-count cap helpers still own capacity; the saved Fire pets
+  retain their previous zero necromancy-power cost.
+- Both original Fire summon paths mark final intrinsic state before control
+  handling. Their existing death schedules route through the maintained
+  `schedule_pet_death()` for marked summons so the exact finite deadline is
+  captured. Unmarked other-element summons keep their old event submission.
+  Restoration reconstructs the mephit's constant full description and retains
+  saved exact names/short/room descriptions, scaled stats, shield and deadlines.
+- Extended `test_conjurer_fire_runtime.py` passes ASan/UBSan through real
+  capture/encode/decode/apply/lifetime restoration for both choices and all
+  original variants, while retaining matched-RNG equivalence and string cleanup.
+  Extended `test_player_load_items.py` passes actual pet staging/materialization
+  for all eight plain/mephit original-VNUM cases and finite restoration.
+  `test_player_load_pets.py` contracts pass.
+- `test_pet_restore_state.py` passes new kind/prototype/cost boundaries and
+  legacy v1 compatibility. Its pre-existing v1 fixture failed unchanged on the
+  parent because it trimmed a current v12 checkpoint as if only v5/v7 additions
+  existed, retaining wallet/trade bytes. Replaced that brittle surgery with a
+  directly authored, fixed v1 wire fixture; no production checkpoint code changed.
+- MariaDB and flat-file builds pass with warnings treated as errors. Native
+  object/materialization services remain controlled in these component tests;
+  actual socket/recovery gameplay is the next combined qualification chunk.
+- Older binaries cannot decode labels 23/24 and will retain such pets through
+  their existing invalid-state holding path. Review/release must consider that
+  normal rollback limitation; no production release or migration is performed.
+- Next: publish this repair PR, then run the isolated combined Conjurer journeys,
+  reconcile help/import evidence and review the complete stack. Do not rerun
+  unrelated full regression suites.
+
+### Review repair checkpoint, 2026-10-25
+
+- Source-validated review finding on #379: snapshot affect hydration prepends
+  captured newest-first rows in forward order, reversing Stone Skin layers.
+  Legacy binary `restoreAffects()` has the same issue. Reproduced distinct
+  charge/duration reversal in the sanitizer harness before repair.
+- `branch/issue-215-affect-restore-order` fixes the owning consumers:
+  `player_load_materialize.c` replays snapshot rows in reverse; `files.c`
+  reverses only its new restored prefix, preserving any pre-existing affects.
+  No new saved fields or special Stone Skin representation is needed.
+- Extended `test_elemental_forms_runtime.py` exercises two repeated binary and
+  snapshot-codec/hydration round trips with charges 19/9/8 and durations 4/2/1,
+  then the actual newest-first decrement. Also checks a pre-existing independent
+  affect stays behind the restored prefix. General stat services stay fixtures.
+- Review findings on #382 still need their own focused repair: input routing
+  must admit `abort` during shoreline waits; movement must capture its crossing
+  context before specials because cancellation clears callback/actor fields.
+  Add outbound cancellation and real input-routing regressions before publishing.
+- Affect ordering repair delivered as `c7a6d009b99012dfd9c4273debc52553e58387eb`,
+  review-ready [PR #387](https://github.com/LuminariMUD/Duris/pull/387), based on
+  #386. Binary/snapshot regressions, Web Spray, player-load contracts, MariaDB
+  build and format checks pass.
+- `branch/issue-215-shoreline-interruption` now captures the crossing context
+  before `special()` and extends the existing restricted input predicate,
+  whitelist and interpreter gate to pending shoreline events. It grants abort
+  without the separate spell-abort toggle and preserves unrelated type-ahead.
+  Reproduced outbound cancellation failure before fixing it. Both-way transient
+  interruption tests, actual queue/predicate state-matrix tests, spell-abort
+  contracts, selective-queue compatibility, movement liveness and Control Flee
+  regressions pass. MariaDB/flat-file builds and check-only formatting pass.
+- Existing `test_game_loop_phase_contract.py` has a pre-existing stale direct
+  auction-outbox assertion: the recurring phase now calls the already-existing
+  `critical_gameplay_publish_outbox()` helper, which calls the auction publisher.
+  This branch changes only the input predicate in `comm.c`, not that phase.
+  Repair the test separately to follow both real calls; no game-loop change is
+  required. Keep this outside the shoreline implementation patch.
+- Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
+  review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
+  #384. Combined socket/recovery qualification remains pending these repairs.
 
 ### Historical planning-only evidence
 

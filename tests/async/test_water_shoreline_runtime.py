@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run Water Form crossings on the production scheduler and movement checks.
 
-The ordinary command/dispatcher, entry checks, cost and movement prefix through
-trap/exhaustion/deduction are production code. Final placement, room specials,
+The interpreter prefix through environmental movement, ordinary movement
+dispatcher, entry checks, cost and movement prefix through trap/exhaustion/
+deduction are production code. Final command dispatch, placement, room specials,
 combat initiation and general effect services are controlled fixtures.
 """
 import os
@@ -16,6 +17,8 @@ prelude = r'''
 #include "world/weather.h"
 #include "world/graph.h"
 #include "combat/grapple.h"
+#include "world/falling.h"
+#include "telemetry/telemetry_runtime.h"
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -40,6 +43,16 @@ static int load = 100, lag, movements, specials, mode, trap_mode;
 static bool wall, trap, grease, linked_mount, linked_rider;
 static P_char mount_fixture, rider_fixture;
 static std::string output;
+bool debug_mode;
+void cmdlog(P_char, char *) { assert(false); }
+bool poll_wizard_active(P_char) { return false; }
+void poll_wizard_handle_input(P_char, char *) { assert(false); }
+void do_confirm(P_char, bool) { assert(false); }
+bool locker_async_player_obj_locked(P_char) { return false; }
+bool item_action_active(P_char) { return false; }
+bool falling_in_progress(P_char) { return false; }
+falling_start_result falling_start(P_char) { assert(false); return falling_start_result::scheduled; }
+telemetry_capture_result telemetry_runtime_game_context(P_char, P_desc) { assert(false); return {}; }
 int do_simple_move_skipping_procs(P_char, int, unsigned int);
 int bfs_cur_marker;
 int LINKED_OBJECTS::Visible_Type() { assert(false); return 0; }
@@ -133,7 +146,18 @@ functions = [
     ('actmove.c', 'int do_simple_move('),
     ('actmove.c', 'void do_move('),
     ('sparser.c', 'void do_abort(P_char ch,'),
+    ('interp.c', 'int old_search_block(const char *argument'),
+    ('interp.c', 'bool cmd_allowed_while_casting('),
+    ('interp.c', 'static bool is_retired_command_spelling('),
 ]
+commands = re.search(r'const char \*command\[MAX_CMD\] = \{.*?\n\};',
+                     source('interp.c').read_text(), re.S)[0]
+interpreter = extract_function('interp.c', 'void command_interpreter(P_char ch,')
+interpreter = interpreter[:interpreter.index('\n\tif (IS_AFFECTED(ch, AFF_KNOCKED_OUT))')]
+interpreter += '''
+    if (cmd == CMD_ABORT) do_abort(ch, argument + begin + look_at, cmd);
+}
+'''
 core = extract_function('actmove.c','int do_simple_move_skipping_procs(')
 core = core[:core.index('\n\tif (!(flags & MVFLG_NOMSG))')]
 core += '''
@@ -168,6 +192,7 @@ int main() {
         trap=wall=grease=linked_mount=linked_rider=false; ch.lobj=nullptr;
         rooms[1].current_speed=0;
         exits[0].to_room=1; exits[0].exit_info=0;
+        exits[1].to_room=0; exits[1].exit_info=0;
     };
     for(int level : {46,50,51}) {
         reset(); ch.player.level=level;
@@ -206,18 +231,41 @@ int main() {
     }
     reset(); ch.in_room=1; rooms[1].current_speed=100; rooms[1].current_direction=2;
     walk(); advance(5*WAIT_SEC+1); assert(ch.in_room==1 && GET_VITALITY(&ch)==100);
-    for(int change : {0,1,2,3,4,5,6,7,8}) {
-        reset(); walk();
+    // Interpreter routing must cancel before a guaranteed current roll can
+    // consume abort by trying to start the already-pending crossing again.
+    for (bool current : {false, true}) for (const char *input : {"abort", "ABORT", "abo"}) {
+        reset(); ch.in_room=1; walk();
+        rooms[1].current_speed=current?100:0; rooms[1].current_direction=0;
+        output.clear(); char argument[16]; std::strcpy(argument,input);
+        command_interpreter(&ch,argument);
+        assert(!get_scheduled(&ch,event_water_crossing));
+        assert(output.find("stop preparing")!=std::string::npos);
+        assert(output.find("current sweeps")==std::string::npos);
+        advance(5*WAIT_SEC+1);
+        assert(ch.in_room==1 && movements==0 && GET_VITALITY(&ch)==100);
+    }
+    // Rejected commands leave the crossing pending without triggering currents.
+    reset(); ch.in_room=1; walk(); rooms[1].current_speed=100;
+    output.clear(); char look[]="look"; command_interpreter(&ch,look);
+    assert(get_scheduled(&ch,event_water_crossing));
+    assert(output.find("current sweeps")==std::string::npos);
+    // Without a pending crossing, ordinary input still encounters the current.
+    reset(); ch.in_room=1; rooms[1].current_speed=100; rooms[1].current_direction=0;
+    output.clear(); command_interpreter(&ch,look);
+    assert(output.find("current sweeps")!=std::string::npos);
+    assert(get_scheduled(&ch,event_water_crossing));
+    for(bool outbound : {false,true}) for(int change : {0,1,2,3,4,5,6,7,8}) {
+        reset(); const int origin=outbound?1:0; ch.in_room=origin; walk();
         if(change==0) { disarm_char_nevents(&ch,event_water_crossing); ch.specials.fighting=&mount; ch.specials.fighting=nullptr; }
         if(change==1) { affect_from_char(&ch,SPELL_WATER_FORM); ch.affected=&form; }
-        if(change==2) { char_from_room(&ch); ch.in_room=0; }
-        if(change==3) exits[0].exit_info=EX_CLOSED;
-        if(change==4) exits[0].to_room=2;
+        if(change==2) { char_from_room(&ch); ch.in_room=origin; }
+        if(change==3) exits[origin].exit_info=EX_CLOSED;
+        if(change==4) exits[origin].to_room=2;
         if(change==5) SET_POS(&ch,STAT_DEAD);
         if(change==6) do_abort(&ch,nullptr,0);
         if(change==7) mode=3; // form lost by an ordinary movement proc at completion
         if(change==8) trap_mode=1; // combat begins/ends in the normal trap check
-        advance(5*WAIT_SEC+1); assert(ch.in_room==0 && movements==0 && GET_VITALITY(&ch)==100);
+        advance(5*WAIT_SEC+1); assert(ch.in_room==origin && movements==0 && GET_VITALITY(&ch)==100);
         SET_POS(&ch,STAT_NORMAL+POS_STANDING);
     }
     reset(); linked_mount=true; walk(); assert(!get_scheduled(&ch,event_water_crossing));
@@ -241,7 +289,7 @@ int main() {
 build = ROOT / 'bin/tests/water-shoreline'
 build.mkdir(parents=True,exist_ok=True)
 cpp,binary=build/'harness.cpp',build/'harness'
-cpp.write_text(prelude+structure+'\n'+'\n'.join(extract_function(file,sig) for file,sig in functions)+core+driver)
+cpp.write_text(prelude+commands+structure+'\n'+'\n'.join(extract_function(file,sig) for file,sig in functions)+core+interpreter+driver)
 subprocess.run(['g++','-std=c++20','-O1','-g','-ffunction-sections','-fdata-sections',
                 '-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie','-pthread',
                 '-I'+str(ROOT/'src'),str(cpp),str(ROOT/'src/persistence/latency_trace.c'),
