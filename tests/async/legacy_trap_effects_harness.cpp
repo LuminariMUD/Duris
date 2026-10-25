@@ -605,6 +605,23 @@ int main()
 	mobact_memoryHandle(character_list);
 	assert(attacks == 1 && last_attacked == pet);
 
+	// Only cardinal/vertical directions have trap bits. Diagonals must not
+	// alias the OPEN, MULTI or GLYPH flags.
+	for (int flag : { 512, 1024, 2048 })
+		for (int direction = DIR_DOWN + 1; direction < NUM_EXITS; ++direction)
+		{
+			reset(13);
+			trap->trap_eff = 1 | 8 | flag;
+			assert(!checkmovetrap(actor, direction));
+			assert(damaged.empty() && trap->trap_charge == 2);
+		}
+	for (int direction = DIR_NORTH; direction <= DIR_DOWN; ++direction)
+	{
+		reset(13);
+		trap->trap_eff = 1 | (8 << direction);
+		assert(checkmovetrap(actor, direction));
+		assert(damaged.size() == 1 && trap->trap_charge == 1);
+	}
 	// Unlimited glyphs fire once per attempt; a later blocking trap remains visible.
 	reset(13);
 	trap->trap_eff = 1 | 8 | 1024 | 2048;

@@ -539,7 +539,7 @@ static void trap_restored_damage(P_char ch, P_obj obj)
 
 bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *sprung)
 {
-	if (dir < 0 || dir >= NUM_EXITS || !trap_target_eligible(ch) || ch->in_room < 0 ||
+	if (dir < DIR_NORTH || dir > DIR_DOWN || !trap_target_eligible(ch) || ch->in_room < 0 ||
 	    ch->in_room > top_of_world)
 		return false;
 	const int room = ch->in_room;
