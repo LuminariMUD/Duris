@@ -67,7 +67,8 @@ void do_slip(P_char ch, char *argument, int /*cmd*/)
 			     container->value[0]) ||
 			    ((container->value[0] == -1)))
 			{
-				put(ch, obj, container, FALSE);
+				if (!put(ch, obj, container, FALSE))
+					return;
 				act("You slip $p into $P...", TRUE, ch, obj, container, TO_CHAR);
 				if ((GET_CHAR_SKILL(ch, SKILL_SLIP) - GET_OBJ_WEIGHT(obj)) <
 				    number(1, 100))

@@ -322,7 +322,7 @@ def run(binary, backend):
                 clients.append(actor)
                 journey.create_character(actor, expected_room=None)
                 actor.send("toggle boon")
-                actor.expect("You will no longer be affected by boons.")
+                actor.expect("Divine Boons apply automatically. Your stored legacy setting is preserved.")
                 source = journey.MudClient(game_port)
                 clients.append(source)
                 journey.create_character(
@@ -333,7 +333,7 @@ def run(binary, backend):
                     email="source@example.invalid",
                 )
                 source.send("toggle boon")
-                source.expect("You will no longer be affected by boons.")
+                source.expect("Divine Boons apply automatically. Your stored legacy setting is preserved.")
                 source.send("drop all")
                 source.expect("You drop a steel long sword.", timeout=20)
                 builder = journey.reconnect_character(

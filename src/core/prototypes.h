@@ -344,7 +344,8 @@ void do_offensive(P_char, char *, int);
 
 int wield_item_size(P_char ch, P_obj obj);
 int get_numb_free_hands(P_char);
-bool put(P_char, P_obj, P_obj, int);
+// Distinguish a trap interruption from an ordinary permission/capacity refusal.
+bool put(P_char, P_obj, P_obj, int, bool *trap_rejected = nullptr);
 int wear(P_char, P_obj, int, bool);
 int remove_item(P_char, P_obj, int);
 int remove_and_wear(P_char, P_obj, int, int, bool);
@@ -2943,7 +2944,7 @@ void do_trapremove(P_char ch, char *argument, int cmd);
 void do_trapstat(P_char ch, char *argument, int cmd);
 void do_traplist(P_char ch, char *argument, int cmd);
 void do_trapset(P_char ch, char *argument, int cmd);
-bool checkmovetrap(P_char ch, int dir);
+bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *sprung = nullptr);
 bool checkgetput(P_char ch, P_obj obj);
 bool checkopen(P_char ch, P_obj obj);
 void trapdamage(P_char ch, P_obj obj);

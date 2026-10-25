@@ -257,7 +257,17 @@ double suitable_level(const candidate &zone, unsigned side)
 	return rooms.size() >= 3 && prototypes.size() >= 2 && count >= 5 ? total / count : 0;
 }
 
-bool epic_target(const candidate &zone, unsigned side)
+bool payable_epic_stone(P_obj obj)
+{
+	return obj && obj_index && obj->R_num >= 0 && obj->R_num <= top_of_objt &&
+	       obj_index[obj->R_num].func.obj == epic_stone && obj->obj_uid && OBJ_MAGIC(obj) &&
+	       obj->value[0] > 0 && obj->value[1] > 0;
+}
+
+using epic_stone_locations = std::set<std::pair<int, int>>;
+
+bool epic_target(const candidate &zone, unsigned side,
+		 std::optional<epic_stone_locations> *locations = nullptr)
 {
 	zone_info metadata;
 	if (!live_zone(zone) || !get_zone_info(zone.number, &metadata) ||
@@ -265,13 +275,6 @@ bool epic_target(const candidate &zone, unsigned side)
 	    metadata.stonecount <= 0 || metadata.epic_type < EPIC_ZONE_TYPE_SMALL ||
 	    metadata.epic_type > EPIC_ZONE_TYPE_MONOLITH || epic_zone_done_now(zone.number))
 		return false;
-	auto stone = [&](P_obj obj)
-	{
-		return obj && obj_index && obj->R_num >= 0 && obj->R_num <= top_of_objt &&
-		       obj_index[obj->R_num].func.obj == epic_stone && obj->obj_uid &&
-		       OBJ_MAGIC(obj) && obj->value[0] > 0 && obj->value[1] > 0 &&
-		       obj->value[2] == zone.number;
-	};
 	std::vector<bool> validated(paths[side].size());
 	const bool reachable = std::any_of(zone.stone_rooms.begin(), zone.stone_rooms.end(),
 					   [&](int room)
@@ -287,8 +290,22 @@ bool epic_target(const candidate &zone, unsigned side)
 	// A defeated carrier leaves the same stone in a corpse, then the player
 	// takes it. Follow the existing container/carrier location; do not withdraw
 	// the bonus precisely when the group completes that legitimate stone.
+	if (locations)
+	{
+		// Only catalogue-wide selection/status passes share this snapshot. Build
+		// it lazily after a reachable target is found, and discard it each pass.
+		if (!*locations)
+		{
+			locations->emplace();
+			for (P_obj obj = object_list; obj; obj = obj->next)
+				if (payable_epic_stone(obj))
+					(*locations)->emplace(obj->value[2], obj_zone_id(obj));
+		}
+		return (*locations)->contains({ zone.number, zone.index });
+	}
 	for (P_obj obj = object_list; obj; obj = obj->next)
-		if (stone(obj) && obj_zone_id(obj) == zone.index)
+		if (payable_epic_stone(obj) && obj->value[2] == zone.number &&
+		    obj_zone_id(obj) == zone.index)
 			return true;
 	return false;
 }
@@ -507,9 +524,10 @@ try
 		std::array<divine_boon_slot, 2> pick;
 		pick[0].category = divine_boon_category::experience;
 		pick[1].category = divine_boon_category::epic;
+		std::optional<epic_stone_locations> stones;
 		for (unsigned side = 0; side < population.size(); ++side)
 		{
-			// Path walks and stone scans happen once per side, not per pass.
+			// Path walks happen once per side; both sides share the stone scan.
 			std::vector<double> fit(catalogue.size());
 			for (size_t index = 0; index < catalogue.size(); ++index)
 				fit[index] = suitable_level(catalogue[index], side);
@@ -561,7 +579,7 @@ try
 				const auto &zone = catalogue[ranked[rank].second];
 				live[rank] = fit[ranked[rank].second] > 0 &&
 					     encounter_group(zone) <= ZONE_TOUCH_MAX_PARTICIPANTS &&
-					     epic_target(zone, side);
+					     epic_target(zone, side, &stones);
 			}
 			double centre = levels.empty() ? 0.5 : 0;
 			for (uint16_t level : levels)
@@ -691,6 +709,7 @@ void divine_boon_selection_status(P_char ch)
 	if (!ch || IS_NPC(ch) || !IS_TRUSTED(ch))
 		return;
 	refresh_paths();
+	std::optional<epic_stone_locations> stones;
 	for (unsigned side = 0; side < 2; ++side)
 	{
 		unsigned exp = 0, epic = 0;
@@ -698,7 +717,7 @@ void divine_boon_selection_status(P_char ch)
 			if (suitable_level(zone, side) > 0)
 			{
 				exp += zone.experience;
-				if (epic_target(zone, side))
+				if (epic_target(zone, side, &stones))
 				{
 					++epic;
 					send_to_char_f(ch,

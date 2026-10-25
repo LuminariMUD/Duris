@@ -773,7 +773,7 @@ def run_journey(binary: pathlib.Path, reset_coins: bool = False,
                         return
                     if not boons_enabled:
                         client.send("toggle boon")
-                        client.expect("You will no longer be affected by boons.")
+                        client.expect("Divine Boons apply automatically. Your stored legacy setting is preserved.")
                     complete_npc_combat_journey(client, reset_coins)
                     client.close()
                     client = None

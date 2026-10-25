@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_items.h"
+#include "combat/trap_legacy.h"
 
 #include "net/comm.h"
 #include "guild/artifact_admission.h"
@@ -751,6 +752,7 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 			}
 		apply_saved_strings(object, item);
 		apply_extra_descriptions(object, item);
+		normalize_legacy_trap(object, item.vnum);
 		try
 		{
 			ownership.push_back({ identity.item_uid, identity.root_item_uid,

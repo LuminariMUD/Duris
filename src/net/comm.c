@@ -1619,8 +1619,8 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
  * The pulse phase order is a compatibility boundary.  Each helper owns one
  * stage, but all helpers execute on the game thread in the order documented
  * in docs/network/GAME_LOOP_PHASES.md.  In particular, output drains before
- * ne_events() closes the current tick's scheduling window, and two-pulse
- * durable completions remain after that event phase.
+ * ne_events() closes the current tick's scheduling window, and durable
+ * completions remain after that event phase.
  */
 
 // Publish a socket high-water mark only after its server-relative hour ends.
@@ -2315,11 +2315,11 @@ static void run_event_phase(game_loop_pulse_context &ctx)
 static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 {
 	const uint64_t loop_tick = ctx.loop_tick;
+	const uint64_t gmcp_begin_us = !(pulse % 2) ? loop_monotonic_us() : 0;
 
 	/* Flush dirty room GMCP updates every 2 pulses (~500ms) */
 	if (!(pulse % 2))
 	{
-		const uint64_t gmcp_begin_us = loop_monotonic_us();
 		gmcp_flush_initial_states();
 		gmcp_flush_dirty_rooms();
 		gmcp_flush_dirty_ship_contacts();
@@ -2327,11 +2327,14 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		flush_pending_ship_saves();
 		retry_unplaced_ships();
 		locker_async_pulse();
-		critical_completion critical_completions[64] = {};
-		const size_t critical_completion_count =
-			critical_command_coordinator_pulse(critical_completions, 64);
-		critical_gameplay_handle_completions(critical_completions,
-						     critical_completion_count);
+	}
+	// Publish ready results each pulse, after events and before save capture.
+	critical_completion critical_completions[64] = {};
+	const size_t critical_completion_count =
+		critical_command_coordinator_pulse(critical_completions, 64);
+	critical_gameplay_handle_completions(critical_completions, critical_completion_count);
+	if (!(pulse % 2))
+	{
 		critical_gameplay_publish_outbox();
 		player_save_pipeline_pulse();
 		divine_boon_runtime_pulse();

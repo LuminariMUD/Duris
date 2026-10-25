@@ -32,9 +32,6 @@ prelude = r'''
 #define USE_SPACE 0
 #define CORPSE_FLAGS 1
 #define IN_WELL_ROOM(ch) false
-#define TRAP_EFF_OBJECT 2
-#define TRAP_DAM_SLEEP 0
-#define TRAP_DAM_SLASH 8
 #define GETDBG_LOG(...) debug(__VA_ARGS__)
 P_obj object_list=nullptr;
 P_char character_list=nullptr;
@@ -104,7 +101,9 @@ void trapdamage(P_char ch,P_obj obj) {
 }
 '''
 
-parts=[prelude,
+trap_source = (SRC / 'trap.c').read_text()
+trap_definitions = trap_source[trap_source.index('#define TRAP_DAM_SLEEP'):trap_source.index('static bool trap_damage_supported')]
+parts=[prelude, trap_definitions,
        extract_function('character_identity.c','P_char find_character_by_runtime_id('),
        take('P_obj find_live_item_uid('), take('static bool get_can_continue('),
        take('struct synchronous_get_item')+';',take('struct bulk_get_state')+';',
@@ -114,6 +113,7 @@ parts=[prelude,
        take('static void publish_container_get('),
        take('static void report_coin_get_rejection('),
        extract_function('trap.c','static bool trap_damage_supported('),
+       extract_function('trap.c','static bool trap_target_eligible('),
        extract_function('trap.c','bool checkgetput(')]
 start=source.index('static bool take_coins(',source.index('// Take the selected coins'))
 parts.append(source[start:source.index('P_obj find_live_item_uid(',start)])

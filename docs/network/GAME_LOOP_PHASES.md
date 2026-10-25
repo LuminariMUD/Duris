@@ -19,7 +19,7 @@ work across this table without a separate behavior change and trace evidence.
 | 2 | `run_session_input_phase` | WebSocket/login timeouts and pings, wait/slow gates, asynchronous authentication completion, selective queue dequeue, and pager/editor/playing/nanny dispatch | Authentication type-ahead remains distinct from playing input. Casting/item-action and creation-grant gates are evaluated before dequeue; the existing command latency prologue ends before queue/gate work. |
 | 3 | `run_output_phase` | Existing telnet/WebSocket bytes, partial writes, application output, control frames, prompt-related flush/close transitions, and queued ping completion | Retained bytes drain before new framing. Output remains before `ne_events()` and before recurring durable-completion publication. |
 | 4 | `run_event_phase` | `ne_events()`, telemetry pulse accounting, creation-grant preparation, artifact mana, and device actions | `ne_events()` closes the current tick's pre-event scheduling window. Creation/artifact/device work remains after it. |
-| 5 | `run_recurring_persistence_phase` | Every-two-pulse GMCP/ship, locker/corpse, critical completion routing, outbox publication, saves, load/recovery, caches, and maintenance completion delivery | Durable completions and outboxes retain their existing `pulse % 2` cadence and follow `ne_events()`. No completion is moved ahead of input or output. Maintenance completions remain before due activities. |
+| 5 | `run_recurring_persistence_phase` | Critical completion routing each pulse; every-two-pulse GMCP/ship, locker/corpse, outbox publication, saves, load/recovery and caches; maintenance completion delivery | Ready critical results publish after `ne_events()` each pulse, before save capture. On even pulses, GMCP/ship/locker polling still precedes critical routing, and outbox publication still follows it. No completion is moved ahead of input or output. Maintenance completions remain before due activities. |
 | 6 | `run_activity_phase`, then `run_combat_phase` | Due activities, violence, and descriptor-related map/group/movement updates | Activities precede combat exactly as before; descriptor traversal remains on the game thread and uses borrowed live pointers only for the duration of the phase. |
 | 7 | `run_pulse_reset_phase` | Tick advance, due affect/point updates, latency diagnostics, trace snapshots, remaining-pulse wait, and end-of-pulse time refresh | The event tick advances after combat. The wait is bounded by the pulse budget and may return early on an interrupt; the next top-level pulse retries. |
 
@@ -68,10 +68,18 @@ this boundary.
 
 The phase helpers own no command metadata, socket ownership, queue capacity,
 transaction admission, receipt identity, output formatting, or the number and
-cadence of world and persistence calls.  No synchronous database work is part of
-the pulse helper contract.
+cadence of world calls. Critical coordinator polling and its game-thread completion
+handlers run every pulse (250 ms), reducing the former 500 ms publication interval.
+Output queued by a completion still drains in the next pulse's output phase;
+this change neither flushes sockets twice nor changes command throughput. Other
+recurring persistence work keeps its existing cadence. No synchronous database
+work is part of the pulse helper contract.
 
 The phase contract is guarded by `tests/async/test_game_loop_phase_contract.py`
-and the command-latency runtime/source contract.  Runtime coverage keeps the
+and the command-latency runtime/source contract. The executable
+`tests/async/test_critical_publication_cadence.py` checks both pulse parities with
+the real coordinator/shared writer and extracted recurring phase, including
+publication fences, success/replay/failure and the other owners' ordering.
+Runtime coverage keeps the
 existing casting, command-gate, authentication, item/currency queue, output,
 telnet/WebSocket, and session-journey tests in the validation set.

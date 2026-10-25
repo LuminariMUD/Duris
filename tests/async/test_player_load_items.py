@@ -410,6 +410,33 @@ void set_obj_affected(P_obj object, int time, sh_int type, sh_int data)
 
 int main()
 {
+    for (const auto &entry : {std::array<int,7>{32820,1536,11,50,512,11,50},
+                             {32831,516,11,50,0,0,0},
+                             {44465,1057,16,80,1089,16,80},
+                             {58404,509,12,0,509,12,25},
+                             {59047,6,15,200,6,15,100},
+                             {142251,1536,12,60,1536,12,60}}) {
+        for (int charge : {-1,0,1,5}) {
+            reset_test_state(); test_character owner(42);
+            auto result=base_result();
+            add_item(result,1,10,entry[0],PLAYER_SNAPSHOT_NO_PARENT,0);
+            auto &saved=result.snapshot.items[0];
+            saved.type=ITEM_CONTAINER;
+            saved.values[3]=7;
+            result.item_identities[0].override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_TYPE;
+            char encoded[128];
+            assert(sql_encode_item_trap_state(entry[1],entry[2],charge,entry[3],encoded,sizeof(encoded)));
+            saved.extra_descriptions.push_back({SQL_ITEM_TRAP_STATE_KEYWORD,encoded,false,{}});
+            player_load_item_materialize_metrics metrics={};
+            assert(materialize_fixture_items(&owner.character,result,&metrics));
+            auto *restored=owner.character.carrying;
+            const int expected_charge=entry[0]==32831 ? 0 : entry[0]==32820 && charge!=0 ? 1 : charge;
+            assert(restored && restored->trap_eff==entry[4] && restored->trap_dam==entry[5]);
+            assert(restored->trap_charge==expected_charge && restored->trap_level==entry[6]);
+            assert(restored->value[3]==7 && restored->value[1]==(entry[0]==142251 ? 1 : 0));
+            release_tree(restored);
+        }
+    }
     for(const bool legacy_pet : {false,true}) {
         reset_test_state(); auto input=base_result(); input.outcome=player_load_outcome::applied;
         player_load_source_item foreign;
@@ -1392,6 +1419,7 @@ with tempfile.TemporaryDirectory(prefix="duris-player-load-items-") as temp_dir:
             "-Isrc",
             str(source),
             rel("player_load_items.c"),
+            "src/combat/trap_legacy.c",
             rel("player_load_topology.c"),
             rel("player_load_pets.c"),
             "src/player/pet_restore_state.c",

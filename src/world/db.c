@@ -9,6 +9,7 @@
  * ***************************************************************************
  */
 
+#include "combat/trap.h"
 #include "core/prototypes.h"
 #include "player/news.h"
 #include "player/player_save_pipeline.h"
@@ -2993,8 +2994,8 @@ object_template parse_object_template(int nr)
 		obj->trap_charge = tmp;
 		REQUIRED_FSCANF(obj_f, " %d \n", &tmp);
 		obj->trap_level = tmp;
-		// trapdamage supports sleep (0) through slash (8).
-		if (obj->trap_dam < 0 || obj->trap_dam > 8)
+		if (!trap_configuration_valid(obj_index[nr].virtual_number, obj->trap_dam,
+					      obj->trap_level))
 			logit(LOG_STATUS, "Object %d has unsupported trap damage type %d.",
 			      obj_index[nr].virtual_number, obj->trap_dam);
 	}

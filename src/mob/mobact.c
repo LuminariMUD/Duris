@@ -7121,7 +7121,12 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 		{
 			ob2 = ob->next_content;
 			if (!IS_CONTAINER(ob))
-				put(ch, ob, obj, 1);
+			{
+				bool trap_rejected = false;
+				put(ch, ob, obj, 1, &trap_rejected);
+				if (trap_rejected)
+					return; // Trap effects may have extracted any participant or sibling.
+			}
 		}
 		return;
 	}
@@ -7146,10 +7151,11 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 	{
 		ob2 = ob->next_content;
 		if (ob->type == ITEM_CONTAINER)
-			if (put(ch, obj, ob, 1))
-				return; /*
-				         * problem solved, item in bag.
-				         */
+		{
+			bool trap_rejected = false;
+			if (put(ch, obj, ob, 1, &trap_rejected) || trap_rejected)
+				return;
+		}
 	}
 }
 
@@ -7754,23 +7760,38 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 			}
 		}
 
-		if (GET_MEMORY(ch) !=
-		    NULL) // guardcheck (no real action will happen in either function if mob has no memory) -Odorf
+		if (GET_MEMORY(ch) || ch->only.npc->trap_gate_target_runtime_id)
 		{
+			const uint64_t actor_id = ch->runtime_id;
+			auto removal_before = character_removal_generation;
 			PROFILE_START(mundane_track_3);
-			if (CheckForRemember(ch))
-				PROFILE_END(mundane_track_3);
-			//      if(/*!ch - no need -Odorf ||*/ !CAN_ACT(ch)) //  do we really need to check CAN_ACT here? -Odorf
+			const bool acted = CheckForRemember(ch);
+			PROFILE_END(mundane_track_3);
+			if (removal_before != character_removal_generation)
+				ch = find_character_by_runtime_id(actor_id);
+			if (!ch)
+			{
+				PROFILE_END(mundane_track);
+				return;
+			}
+			if (acted)
 			{
 				PROFILE_END(mundane_track);
 				goto normal;
 			}
 
 			PROFILE_START(mundane_track_4);
+			removal_before = character_removal_generation;
 			mobact_memoryHandle(ch);
 			PROFILE_END(mundane_track_4);
-			if (/*!ch - no need -Odorf ||*/ !CAN_ACT(
-				ch)) //  do we really need to check CAN_ACT here? -Odorf
+			if (removal_before != character_removal_generation)
+				ch = find_character_by_runtime_id(actor_id);
+			if (!ch)
+			{
+				PROFILE_END(mundane_track);
+				return;
+			}
+			if (!CAN_ACT(ch) || IS_FIGHTING(ch))
 			{
 				PROFILE_END(mundane_track);
 				goto normal;
@@ -9210,33 +9231,39 @@ void mobact_memoryHandle(P_char mob)
 	/*  found = FALSE;*/
 	for (vict = world[mob->in_room].people; vict /*&& !found */; vict = vict->next_in_room)
 	{
-		if (IS_NPC(vict) || !CAN_SEE(mob, vict))
+		const bool gate_target = mob->only.npc->trap_gate_target_runtime_id &&
+					 mob->only.npc->trap_gate_target_runtime_id ==
+						 vict->runtime_id;
+		if ((IS_NPC(vict) && !(gate_target && IS_PC_PET(vict))) || !CAN_SEE(mob, vict))
 			continue;
 		if (vict == GET_MASTER(mob))
 			continue;
-		for (mem = mob->only.npc->memory; mem; mem = mem->next)
+		bool remembered = gate_target;
+		for (mem = mob->only.npc->memory; mem && !remembered; mem = mem->next)
 		{
-			if (mem->pcID == static_cast<unsigned int>(GET_PID(vict)))
+			if (IS_PC(vict) && mem->pcID == static_cast<unsigned int>(GET_PID(vict)))
+				remembered = true;
+		}
+		if (remembered)
+		{
+			if ((IS_ROOM(mob->in_room, ROOM_SINGLE_FILE) &&
+			     !AdjacentInRoom(mob, vict)) ||
+			    !is_aggr_to(mob, vict))
+				continue;
+			if (GET_HIT(mob) >= (GET_MAX_HIT(mob)) >> 2)
 			{
-				if ((IS_ROOM(mob->in_room, ROOM_SINGLE_FILE) &&
-				     !AdjacentInRoom(mob, vict)) ||
-				    !is_aggr_to(mob, vict))
-					continue;
-				if (GET_HIT(mob) >= (GET_MAX_HIT(mob)) >> 2)
-				{
-					act("$n recognizes $N, and charges to attack!", FALSE, mob,
-					    0, vict, TO_NOTVICT);
-					act("$n recognizes you, and charges to attack!", FALSE, mob,
-					    0, vict, TO_VICT);
+				act("$n recognizes $N, and charges to attack!", FALSE, mob, 0, vict,
+				    TO_NOTVICT);
+				act("$n recognizes you, and charges to attack!", FALSE, mob, 0,
+				    vict, TO_VICT);
 
-					MobStartFight(mob, vict);
-					return;
-				}
-				else if (!fear_check(mob))
-				{
-					do_flee(mob, 0, 0);
-					return;
-				}
+				MobStartFight(mob, vict);
+				return;
+			}
+			else if (!fear_check(mob))
+			{
+				do_flee(mob, 0, 0);
+				return;
 			}
 		}
 	}

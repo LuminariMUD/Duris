@@ -703,7 +703,7 @@ A
 A
 26 16
 T
-6 15 1 200
+6 15 1 100
 #59048
 scroll daylight~
 &+ya scroll of &+Ydaylight&N~
@@ -3634,7 +3634,7 @@ illusionary wall~
 &+cThe stone wall to the north appears to be an illusion, concealing a secret door!
 ~
 T
-260 16 1 100
+261 16 1 100
 #59240
 long magical jeweled dagger _id_~
 &+Ca long, &+cj&+Ce&+mw&+Me&+cl&+Ge&+Bd &+Cdagger&n~
@@ -4063,7 +4063,7 @@ bloody corpse velikov kasimir~
 &+che had attempted to resurrect with the dark magic of an ancient blood god.
 ~
 T
-8 15 3 60
+9 15 3 60
 #59259
 loose coffin lid~
 &+La loose &+ycoffin &+Llid&N~

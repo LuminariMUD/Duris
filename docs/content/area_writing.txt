@@ -2003,12 +2003,14 @@ type items should be aligned, even then, that should be rare.
                 2 - Triggers on get/put
                 4 - Affects all in the room
                 8 - Affects all who leave the room NORTH
-               16 - Affects all who leave the room SOUTH
-               32 - Affects all who leave the room WEST
-               64 - Affects all who leave the room EAST
+               16 - Affects all who leave the room EAST
+               32 - Affects all who leave the room SOUTH
+               64 - Affects all who leave the room WEST
               128 - Affects all who leave the room UP
               256 - Affects all who leave the room DOWN
               512 - Triggers on being opened
+             1024 - MULTI: effects 9-16 are unlimited while charges are nonzero
+             2048 - GLYPH: effects 9-16 allow movement after revalidation
    These values are additive, ie. 516--Triggers on being opened affects all in
    the room.
 
@@ -2023,13 +2025,33 @@ type items should be aligned, even then, that should be rare.
                 6 - Blunt
                 7 - Piercing
                 8 - Slashing
+                9 - Dispel magic
+               10 - Local hostile gate (listed object profile only)
+               11 - Local creature encounter (listed object profile only)
+               12 - Wither
+               13 - Harm (native nonlethal spell)
+               14 - Poison (ordinary resistance, saves and poison families)
+               15 - Minor paralysis (3-12 seconds, breaks on external damage)
+               16 - Stun (1-4 seconds before native fear saves)
+
+   Effects 9-16 target mortal PCs and PC pets; ROOM applies a spell once per
+   eligible occupant but never multiplies a creature batch. Gate/summon profiles:
+   41361/42290 gate one mobile 200 (cap 1); 32820/32870 summon three mobile 32861
+   (cap 6); 32835 summons one 32861 (cap 6); 32846 summons one 32871 (cap 1);
+   41927 summons one 200 (cap 1). Other gate/summon vnum/type pairs are invalid.
+   OBJECT affects the item being picked up or put, after normal put permissions;
+   OPEN runs after opening. A GLYPH rechecks movement and later traps after its
+   effect. A non-glyph stops the attempt. Zero charges always disarm the trap.
+   These restored effect rules leave legacy 0-8 damage and trigger behavior intact.
  
    <Charges>
    This sets the number of charges in the trap, -1 is infinite.
 
    <Trap Level>
    This sets the level of the trap for the purpose of calculating damage.
-   Trap levels can be 1-100.
+   For effects 9-16, zero uses level 25 and positive levels cap at 100.
+   Negative levels are invalid and preserve charges. For legacy damage 0-8,
+   encoded dice levels are unchanged. trapset validates edits before applying them.
 *************************************************************************
 
 <object affect fields>
