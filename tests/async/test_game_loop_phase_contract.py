@@ -68,7 +68,7 @@ assert index(events, "ne_events();") < index(events, "item_creation_grant_prepar
 
 for needle in ("if (!(pulse % 2))", "critical_command_coordinator_pulse(",
                "critical_gameplay_handle_completions(",
-               "auction_transaction_publish_outbox();", "player_save_pipeline_pulse();",
+               "critical_gameplay_publish_outbox();", "player_save_pipeline_pulse();",
                "redis_world_recovery_pulse();", "maintenance_scheduler_pulse("):
     assert contains(recurring, needle)
 

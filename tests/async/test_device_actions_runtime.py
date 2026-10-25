@@ -274,6 +274,18 @@ static void scroll_consumption() {
 }
 
 static void staff_area() {
+    for(bool enabled:{false,true}) for(int item:{ITEM_WAND,ITEM_STAFF,ITEM_SCROLL}) {
+        device_scene s(item,enabled);
+        skills[SPELL_SOLAR_FLARE]=skills[1];
+        if(item==ITEM_SCROLL) {
+            s.source->value[1]=SPELL_SOLAR_FLARE; s.source->value[2]=s.source->value[3]=0;
+            s.recite();
+        } else { s.source->value[3]=SPELL_SOLAR_FLARE; s.use(); }
+        if(enabled) advance();
+        assert(calls.size()==1);
+        if(enabled) assert(calls[0].object==100);
+        else assert(calls[0].type==(item==ITEM_STAFF?SPELL_TYPE_STAFF:(item==ITEM_SCROLL?SPELL_TYPE_SCROLL:SPELL_TYPE_WAND)));
+    }
     for(bool enabled:{false,true}) {
         device_scene s(ITEM_STAFF,enabled);
         s.use(); if(enabled) { assert(calls.empty()); advance(); }

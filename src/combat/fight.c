@@ -7848,6 +7848,8 @@ void set_fighting(P_char ch, P_char vict)
 		show_string(victim->desc, Gbuf);
 	}
 	GET_OPPONENT(ch) = victim;
+	disarm_char_nevents(ch, event_water_crossing);
+	disarm_char_nevents(victim, event_water_crossing);
 	gmcp_char_vitals(ch);
 	gmcp_combat_target(ch, victim);
 	ch->specials.next_fighting = combat_list;

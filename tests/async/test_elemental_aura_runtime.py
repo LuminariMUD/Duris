@@ -22,6 +22,7 @@ static room_data rooms[1]{};
 P_room world = rooms;
 const int top_of_world = 0;
 static std::string output;
+int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 
 void send_to_char(const char *text, P_char) {
     output += text ? text : "";
@@ -133,7 +134,7 @@ int main() {
 
 sparser = source("sparser.c").read_text(encoding="utf-8")
 event = sparser[sparser.index("void event_spellcast(") :]
-preflight = event.index("if (!weaving && arg->spell == SPELL_ELEMENTAL_AURA)")
+preflight = event.index("elemental_form_failure_message(ch, tar_char, arg->spell)")
 resource = event.index("use_spell(ch, arg->spell)")
 assert preflight < resource, "elemental-aura rejection must precede use_spell()"
 assert "StopCasting(ch);" in event[preflight:resource]
@@ -141,6 +142,7 @@ magic = source("magic.c").read_text(encoding="utf-8")
 assert "failure = elemental_aura_failure_message(ch);" in magic
 
 functions = [
+    extract_function("magic.c", "const char *elemental_form_failure_message("),
     extract_function("magic.c", "const char *elemental_aura_failure_message("),
     extract_function("magic.c", "void spell_elemental_aura("),
 ]

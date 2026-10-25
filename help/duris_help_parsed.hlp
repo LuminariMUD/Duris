@@ -882,18 +882,31 @@ druid, curse, poison, malison
 Air Form
 Air Form - Last Edited: 2018-11-05 00:41:42 by lohrr
 ====================================================
-* Area of effect: <caster>
-* Aggressive:     No
-* Cumulative:     No
-* Duration:       Dependent on proficiency of caster
-* Type of spell:  Protection
-This spell transforms the caster's body into air
-molecules, causing them to be resilient to physical
-attacks, and less prone to knockdown attacks.
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+An Air Magus assumes Air Form, keeping its established Air Aura
+resilience to physical attacks and reduced susceptibility to knockdown.
+The form has no new attribute bonuses or terrain requirement.
+
+While this spell is actively present, an Air Magus can cast Ethereal
+Recharge on themselves. At most 100 HP is actually restored per cast
+after all modifiers, never beyond normal maximum HP. A loose Air Aura
+alone does not qualify. Cure Blind still works, even at full HP.
 
 ==See also==
 
-Ethereal Form
+* Air Magus
+* Ethereal Form
+* Elemental Aura
 
 #0
 
@@ -924,8 +937,13 @@ None beyond the base-class registrations.
 
 *&+cfly&n (obtained at level &+c30&n)
 *&+cspeedy&n (obtained at level &+c30&n)
+*&+cair affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+Active Air Form permits self-only Ethereal Recharge, restoring at most
+100 actual HP after healing modifiers. Dimension Door has 3 seconds of
+post-cast lag; Relocate has 5 seconds. All normal travel checks remain.
 
 ==See also==
 
@@ -1894,12 +1912,23 @@ you as well.
 Astral Affinity
 Astral Affinity - Last Edited: 2007-04-20 14:02:09 by Unknown
 =============================================================
-As the Psycheporter progresses in power, the inhabitants of his native
-plane become enamoured with him, and therefore resist the urge to attack.
+Astral Affinity is a passive ability gained by Psycheporter at level 51.
+On the native Astral Plane (room VNUMs 19701-19825, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
 
 ==See also==
 
-psycheporter ,Plane Shift|plane shift
+* Psycheporter
+* Planar Affinity
+* Plane Shift
+
 
 #0
 
@@ -5381,50 +5410,88 @@ elementals that are much more powerful than their other counterparts.
 Conjure elemental
 Conjure elemental - Last Edited: 2013-04-17 21:47:56 by targ
 ============================================================
-* Area of effect: One elemental
-* Aggressive:     No
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Summoning
-When cast, "Conjure Elemental" summons an elemental from a random elemental
-plane which will follow the player as though charmed for a limited period
-of time. There is no way to control which type of elemental is summoned, but
-specialized conjurers will always conjure elementals of their chosen specialization.
-A character or mobile may have no more than three elemental followers at any
-time.
-If the elemental is aggressive when the charm wears off, it will attack you
-and others.
+Syntax: cast 'conjure elemental' [mephit]
+Circle: 5
+
+Conjure Elemental summons a temporary elemental follower. Specialized
+Conjurers summon their own element; ordinary selection and control
+checks remain. Fire Magus uses the original regular Fire variant.
+
+Fire Magus players may add the optional word mephit. The summon is
+the same original Fire elemental variant with the same stats, scaling,
+Infuse Life, elemental identity, protections, control, duration, cost
+and pet limits, except for mephit naming and no Fireshield. Plain casts
+retain the normal shielded elemental. No new power or extra slot is
+granted. For Fire Magus, malformed option text is rejected before
+spending casting resources; other callers keep their old arguments.
+
+Fireshield retaliates against each attacker. The mephit option omits
+that retaliation and its resulting owner-memory/hunter side effects
+when several mobs hit the pet. Other pet actions can still provoke
+mobs normally; this is no general protection from aggression.
 
 ==See also==
 
-Conjure Greater Elemental
+* Conjure Greater Elemental
+* Fire Magus
+* Fireshield
 
 #0
 
 Conjure Greater Elemental
 Conjure Greater Elemental - Last Edited: 2017-09-19 01:01:54 by lohrr
 =====================================================================
-* Area of effect: One elemental
-* Aggressive:     No
-* Cumulative:     N/A
-* Duration:       Instantaneous
-* Type of spell:  Summoning
-Much more powerful version of the "conjure elemental" spell. This spell
-summons a much larger and much stronger elemental than its counterpart,
-"conjure elemental".
+Syntax: cast 'conjure greater elemental' [mephit]
+Circle: 11
+
+Conjure Greater Elemental retains its ordinary random specialized
+variant selection. Fire Magus still randomly receives one of the
+original three Fire variants, with no selectable stronger variant.
+
+Fire Magus players may add the optional word mephit. The summon is
+the same original Fire elemental variant with the same stats, scaling,
+Infuse Life, elemental identity, protections, control, duration, cost
+and pet limits, except for mephit naming and no Fireshield. Plain casts
+retain the normal shielded elemental. No new power or extra slot is
+granted. For Fire Magus, malformed option text is rejected before
+spending casting resources; other callers keep their old arguments.
+
+Fireshield retaliates against each attacker. The mephit option omits
+that retaliation and its resulting owner-memory/hunter side effects
+when several mobs hit the pet. Other pet actions can still provoke
+mobs normally; this is no general protection from aggression.
 
 ==See also==
 
-Conjure Elemental
+* Conjure Elemental
+* Fire Magus
+* Fireshield
 
 #0
 
 Conjure Water
 Conjure Water - Last Edited: 2007-04-20 14:02:09 by Unknown
 ===========================================================
-Syntax:         inn conjure water
-This innate ability will allow the Water Magus to conjure a spring of
-water.
+Syntax: innate conjure water
+
+A Water Magus can summon a spring after 4 seconds, with matching action
+lag running at the same time. The spring lasts 15 minutes. A successful
+creation spends one innate use and starts a 5-minute cooldown.
+
+Only one summoned or pending spring is allowed per room. An existing
+spring, a pending summon or a repeat command adds no lag and spends no
+use. Leaving the room cancels the pending spring, even if you return
+before it would finish. Death, extraction and failed creation spend no
+use or cooldown. Time already spent preparing is not refunded.
+
+The caster, room and innate availability are checked again at creation.
+Success is reported only after the spring is actually placed.
+
+==See also==
+
+* Water Magus
+* Water to Life
+* Water Form
 
 #0
 
@@ -5459,6 +5526,15 @@ None.
 * Earth Magus
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
+
+At level 51, each Magus specialization gains its own native Planar
+Affinity. This limits ordinary mob aggression within that plane;
+provocation and mob memory still apply. See Planar Affinity for limits.
+
+Each Magus has a self-only circle-10 form lasting 8 affect-duration
+units: Air Form, Earth Form, Fire Form or Water Form. The three new
+forms need no terrain and grant their own elemental aura. Forms and
+elemental auras conflict; see each form for its effects and counters.
 
 ==See also==
 
@@ -6966,6 +7042,12 @@ and can only be used within a certain number of rooms dependant on the
 proficiency of the caster.
 	See also:spiritjump ,teleport
 
+Air Magus post-cast lag is 3 seconds; ordinary player lag remains
+9 seconds, and Shadow Sorcerer lag remains 1 second. This changes
+the wait after the attempt, not spell casting time. Existing target,
+PvP, combat and teleport restrictions still apply, including ocean
+destination restrictions. Failed attempts retain their normal lag.
+
 #0
 
 Directions
@@ -8067,15 +8149,19 @@ None beyond the base-class registrations.
 
 &+W7th Circle: &+cearthen maul&n
 &+W9th Circle: &+cacidimmolate&n
-&+W10th Circle: &+ctransmute rock to mud&n
+&+W10th Circle: &+cearth form, transmute rock to mud&n
 &+W12th Circle: &+cearthen tomb&n
 
 ==Innate additions==
 
 *&+cliving stone&n (obtained at level &+c30&n)
  &+cstone skin&n (obtained at level &+c30&n)
+*&+cearth affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+Stone Skin can supply up to three independent layers on the Earth Magus
+player, retaining one-layer charge consumption and normal shatter.
 
 ==See also==
 
@@ -8103,14 +8189,25 @@ the victim (preventing him from moving) and doing minor damage.
 Earthen Maul
 Earthen Maul - Last Edited: 2007-04-20 14:02:09 by Unknown
 ==========================================================
-* Area of effect: <victim>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Generic
-"Earthen Maul" invokes the earth to form and strike the victim, causing a
-good deal of damage and a possibility that the target may be knocked down.
-	See also:bash
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous
+Type of spell: Generic; fire for valid molten-lava terrain
+
+Earthen Maul conjures the earth needed to strike its victim. Every class
+already entitled to the spell, including Druids, may cast over water or
+ocean, while flying, in no-ground rooms and on elemental planes.
+
+Earthless locations and airborne casts use normal damage. A roof over
+an earthless room does not create an indoor debris bonus. Genuine
+indoor, mountain/landslide and lava modifiers remain when grounded,
+along with the normal saving throw.
+
+==See also==
+
+* Earth Magus
+* Druid
+* Terrain
 
 #0
 
@@ -9238,14 +9335,31 @@ zones, Astral Plane
 Ethereal Recharge
 Ethereal Recharge - Last Edited: 2007-04-20 14:02:09 by Unknown
 ===============================================================
-* Area of effect: <victim>
-* Aggressive:     No
-* Cumulative:     Yes
-* Duration:       Instantaneous
-* Type of spell:  Healing
-"Ethereal Recharge" is a spell that grants a recharge of hitpoints, it
-can only be use on beings composed of ethereal matter.
-	See also:heal
+Area of effect: Eligible ethereal victim; formed Air Magus self
+Aggressive: No
+Duration: Instantaneous
+Type: Healing
+
+The normal route heals up to 150 base HP (5 dice of caster level,
+limited to 150 before normal healing modifiers). Targets remain Air
+or Void elemental player pets, or eligible Phantasmal Form recipients.
+
+An Air Magus may also self-target while the Air Form spell is active.
+This exception restores at most 100 actual HP per cast after every
+healing modifier, and never above normal maximum HP. It does not heal
+another player merely because they have Air Form. A loose Air Aura
+alone is insufficient; no out-of-form self-target exception is added.
+The existing Greater Ethereal Recharge spell is unchanged.
+
+Cure Blind still applies, even when already at the HP cap. Memorised
+copies and normal casting resources remain required.
+
+==See also==
+
+* Air Magus
+* Air Form
+* Cure Blindness
+* Greater Ethereal Recharge
 
 #0
 
@@ -9789,13 +9903,22 @@ None beyond the base-class registrations.
 ==Spell changes==
 
 &+W9th Circle: &+cimmolate, magma burst&n
-&+W10th Circle: &+csolar flare, transmute rock to lava&n
+&+W10th Circle: &+cfire form, solar flare, transmute rock to lava&n
 
 ==Innate additions==
 
 *&+cprotection from fire&n (obtained at level &+c30&n)
+*&+cfire affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+At player level 51, Fireball passes through standard Globe at full
+normally calculated damage, retaining other fire defenses. Solar Flare
+gains 10% direct base damage for player spell casts only. The existing
+circle-5/11 elemental summons accept an optional mephit argument for
+the same original variant without Fireshield; normal casts keep it.
+Fire Form retains cold vulnerability and conditional fire absorption.
+There is no new castable self-heal or Magma Burst adjustment.
 
 ==See also==
 
@@ -9823,14 +9946,24 @@ general to the recipient.
 Fireball
 Fireball - Last Edited: 2022-10-08 22:07:14 by ashyel
 =====================================================
-* Area of effect: <victim> | <victim> <direction>
-* Aggressive:     Yes
-* Cumulative:     No
-* Duration:       Instantaneous
-* Type of spell:  Fire
-"Fireball" is a very potent spell that causes a small ball of flame to
-shoot forth from the caster"s fingertips. Upon contact with the victim, it
-explodes in a huge blast, burning the victim quite profoundly.
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous
+Type: Fire
+
+Fireball strikes its victim with a burst of flame. A Fire Magus player
+at level 51 or above delivers 100% of the normally calculated damage
+through standard Globe. The unlock uses player level, not spell or item
+power. Other casters retain their normal Globe interaction.
+
+Saving throws, applicable wards, Protection from Fire, Fireshield,
+absorption and the rest of the normal damage path still apply.
+
+==See also==
+
+* Fire Magus
+* Globe of Invulnerability
+* Fire Form
 
 #0
 
@@ -20081,8 +20214,8 @@ None beyond the base-class registrations.
 
 ==Innate additions==
 
-*&+castral affinity&n (obtained at level &+c30&n)
 *&+cspacial focus&n (obtained at level &+c46&n)
+*&+castral affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -21471,6 +21604,12 @@ Relocate - Last Edited: 2007-04-19 19:17:14 by Unknown
 "Relocate" creates an artery in the ether barely big enough to accomodate
 the caster and flings him all the way to the person he selected as his
 target, no matter how far away his target may be.
+
+Air Magus post-cast lag is 5 seconds; ordinary player lag remains
+20 seconds, and Shadow Sorcerer lag remains 1 second. This changes
+the wait after the attempt, not spell casting time. Existing target,
+PvP, combat and teleport restrictions still apply, including ocean
+destination restrictions. Failed attempts retain their normal lag.
 
 #0
 
@@ -24497,13 +24636,25 @@ society, guild, guildhall
 Solar Flare
 Solar Flare - Last Edited: 2007-04-20 14:02:09 by Unknown
 =========================================================
-* Area of effect: <victim>
-* Aggressive:     Yes
-* Cumulative:     Yes
-* Duration:       Dependent on proficiency of caster
-* Type of spell:  Fire
-This spell sends waves of white hot flames at the intended victim,
-causing considerable damage.
+Area of effect: Victim
+Aggressive: Yes
+Duration: Instantaneous direct damage
+Type: Fire
+
+Solar Flare sends white-hot flame at its target. Fire Magus player
+spell casts gain exactly 10% direct base damage, rounded down to an
+integer. Star Magus, NPC and item calls are unchanged. Standard Globe
+does not normally block this spell.
+
+Existing blindness and Immolate chances and effects remain unchanged,
+along with normal fire counterplay. Magma Burst receives no change.
+
+==See also==
+
+* Fire Magus
+* Star Magus
+* Immolate
+* Magma Burst
 
 #0
 
@@ -27656,7 +27807,7 @@ None beyond the base-class registrations.
 ==Spell changes==
 
 &+W7th Circle: &+cwater to life&n
-&+W10th Circle: &+cdread wave, transmute mud to water&n
+&+W10th Circle: &+cdread wave, transmute mud to water, water form&n
 
 ==Innate additions==
 
@@ -27665,8 +27816,19 @@ None beyond the base-class registrations.
 *&+cprotection from fire&n (obtained at level &+c30&n)
 *&+cwaterbreath&n (obtained at level &+c30&n)
 *&+cregeneration&n (obtained at level &+c36&n)
+*&+cwater affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+Conjure Water creates a 15-minute spring after 4 seconds and has a
+5-minute cooldown committed on successful placement. Water to Life
+retains its existing formula and external water-source requirement;
+Water Form supplies no automatic water or extra regeneration.
+
+Active Water Form grants directed shoreline travel with a 5-second
+preparation before either crossing and 25% lower ocean travel cost.
+Combat or form loss cancels preparation. This requires no extra
+level-51 gate; Water Affinity is a separate native-plane ability.
 
 ==See also==
 
@@ -28594,3 +28756,305 @@ Do not change back to old code while accepted rewards are unresolved.
 See also: BOON, DIVINE BOONS
 
 #0
+
+#0
+
+Air Affinity
+Air Affinity - Last Edited: 2026-10-25
+============================================================
+Air Affinity is a passive ability gained by Air Magus at level 51.
+On the native Air Plane (room VNUMs 24401-24525, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Air Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Water Affinity
+Water Affinity - Last Edited: 2026-10-25
+============================================================
+Water Affinity is a passive ability gained by Water Magus at level 51.
+On the native Water Plane (room VNUMs 23201-23325, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Water Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Fire Affinity
+Fire Affinity - Last Edited: 2026-10-25
+============================================================
+Fire Affinity is a passive ability gained by Fire Magus at level 51.
+On the native Fire Plane (room VNUMs 25401-25525, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Fire Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Earth Affinity
+Earth Affinity - Last Edited: 2026-10-25
+============================================================
+Earth Affinity is a passive ability gained by Earth Magus at level 51.
+On the native Earth Plane (room VNUMs 23801-23925, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Earth Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Planar Affinity
+Planar Affinity - Last Edited: 2026-10-25
+============================================================
+At level 51, Air, Water, Fire and Earth Magus gain their matching passive
+affinity. Psycheporter gains Astral Affinity at level 51. Each reduces
+ordinary mob aggression only within its own native plane:
+
+Air: 24401-24525       Water: 23201-23325       Fire: 25401-25525
+Earth: 23801-23925     Astral: 19701-19825
+
+A mob that remembers your provocation may attack you again. Ordinary
+retaliation and memory from pet/group combat remain. Protection is
+personal: groupmates, pets and charmies do not inherit it. Scripted
+attacks outside the supported exceptions may still occur.
+
+City of Brass, Charcoal Palace, Earth rooms 23926-23929 and Astral side
+rooms 19826-19886 are outside these limits. Water Affinity grants no
+ocean movement ability; Water Form travel is a separate mechanic.
+
+==See also==
+
+* Air Affinity
+* Water Affinity
+* Fire Affinity
+* Earth Affinity
+* Astral Affinity
+* Conjurer
+* Psycheporter
+
+#0
+
+Earth Form
+Earth Form - Last Edited: 2026-10-25
+============================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only an Earth Magus can assume Earth Form. Living stone grants the
+existing Earth Aura protection: a 1-in-6 chance to reject eligible
+physical damage. Earth Elemental attacks and attacks that bypass this
+protection still work. The form grants no extra Druid attribute bonuses
+and no additional mitigation roll.
+
+==See also==
+
+* Earth Magus
+* Elemental Aura
+* Stone Skin
+
+
+#0
+
+Fire Form
+Fire Form - Last Edited: 2026-10-25
+============================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only a Fire Magus can assume Fire Form. It always grants the full aura
+and Fireshield, without a random full-form save:
+
+Armor Class -15; maximum Strength +15, Dexterity -20, Agility -20,
+Constitution +25.
+
+Cold vulnerability remains. Qualifying incoming fire spells can be
+absorbed while both Fire Aura and Fireshield are active, recovering
+one-quarter of applicable fire damage up to the existing 110%-maximum-HP
+ceiling. This conditional recovery is not a castable self-heal.
+
+An independently supplied Fireshield keeps its own duration when this
+form ends. The form does not change other Fire spells.
+
+==See also==
+
+* Fire Magus
+* Fire Aura
+* Fireshield
+* Elemental Aura
+
+
+#0
+
+Water Form
+Water Form - Last Edited: 2026-10-25
+============================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only a Water Magus can assume Water Form. It always grants Water Aura
+and maximum Strength -20, Dexterity +50, Agility +25, Constitution -10,
+without a random full-form save.
+
+Your flowing body resists Capture and the existing selected mob-AI
+Maul, Bash and Springleap target choices. This does not promise blanket
+immunity to player Grapple or Bearhug.
+
+The form creates no usable water source, grants no extra regeneration,
+healing multiplier or separate damage reduction. Water to Life still
+needs external natural water or a suitable container on the ground.
+
+While the Water Form spell is active, a Water Magus player can cross
+between land and ocean through a valid normal exit. There is no extra
+level-51 gate: the circle-10 form is the unlock. Each shoreline
+crossing waits 5 seconds BEFORE moving, in either direction. Ocean to
+ocean movement has no new shoreline delay.
+
+Preparation cannot start in combat. If combat begins, it cancels even
+if fighting ends before the crossing. Leaving the origin, losing the
+form, death, extraction or aborting also cancels it; returning or
+recasting does not restore the old attempt. Route, form, position,
+vitality and normal movement checks are revalidated at completion.
+
+Eligible steps touching ocean cost 25% less base travel vitality:
+cost * 3 / 4, rounded down with a minimum of 1. Existing stance and
+injury surcharges remain. Land-to-land steps get no discount. Currents,
+walls, traps and other normal movement hazards still apply.
+
+The ocean-entry permission is personal. Mounts, riders, pets, group
+followers and cargo do not inherit it. Ships, fleeing and teleports
+gain no new ocean-entry bypass. If the form expires at sea, normal
+rules resume without a forced relocation. Water Affinity is separate.
+
+==See also==
+
+* Water Magus
+* Elemental Aura
+* Water to Life
+* Capture
+
+#0
+
+Stone Skin
+Stone Skin - Last Edited: 2026-10-25
+============================================================
+Area of effect: Victim (spell); self (Stone innate)
+Aggressive: No
+Cumulative: Up to three layers on an Earth Magus PC
+Duration: 4 affect-duration units per cast
+
+Stone Skin protects against eligible physical attacks using its normal
+damage reduction. Each cast retains its level-based charges and caster
+bonuses. An Earth Magus player may receive up to three independent
+layers, each with its own charges and expiration. The recipient must
+be the Earth Magus: an Earth caster cannot give this benefit to pets,
+ordinary groupmates or another class. A fourth layer is refused.
+
+Each eligible hit spends one charge from the newest layer only. Older
+layers are not refreshed or combined. Multiple layers do not multiply
+the damage reduction. Normal critical shatter and dispel remove every
+layer; other skin-spell conflicts remain. Earth Form retains its own
+single physical-mitigation roll alongside Stone Skin.
+
+==See also==
+
+* Earth Magus
+* Earth Form
+* Biofeedback
+* Group Stone Skin
+
+#0
+
+Water to Life
+Water to Life - Last Edited: 2026-10-25
+============================================================
+Area of effect: Self, Water elemental or water-formed victim
+Aggressive: No
+Duration: Instantaneous
+Type: Healing
+
+Water to Life restores 2*level + max(0, level-50)*20 base HP: 232 at
+level 56, before the normal healing modifiers and maximum-HP ceiling.
+It requires external natural water or a suitable water container on
+the ground in the caster's room. The water is not consumed.
+
+Water Form does not create a water source or increase this healing.
+The spell uses memorised copies and normal casting resources, with
+no new dedicated cooldown. Its existing target restrictions remain.
+
+==See also==
+
+* Water Magus
+* Water Form
+* Conjure Water

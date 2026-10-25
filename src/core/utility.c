@@ -2573,6 +2573,12 @@ int get_multicast_chars(P_char leader, int m_class, int min_level)
  * 'dir', returns -1 on error, else 0+ for moves needed.  -JAB
  */
 
+bool has_water_form_travel(P_char ch)
+{
+	return ch && IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_WATER) &&
+	       affected_by_spell(ch, SPELL_WATER_FORM);
+}
+
 int move_cost(P_char ch, int dir)
 {
 	int moves, a, b;
@@ -2632,7 +2638,10 @@ int move_cost(P_char ch, int dir)
 		moves /= 2;
 	}
 
-	return MAX(1, moves);
+	moves = MAX(1, moves);
+	if (has_water_form_travel(ch) && (sector_idx_a == SECT_OCEAN || sector_idx_b == SECT_OCEAN))
+		moves = MAX(1, moves * 3 / 4);
+	return moves;
 }
 
 /*
@@ -2866,6 +2875,18 @@ bool aggressive_to_class(P_char ch, P_char target)
 	return FALSE;
 }
 
+bool has_native_planar_affinity(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || ch->in_room < 0 || ch->in_room > top_of_world)
+		return false;
+
+	return (IS_AIR(ch->in_room) && has_innate(ch, INNATE_AIR_AFFINITY)) ||
+	       (IS_WATER(ch->in_room) && has_innate(ch, INNATE_WATER_AFFINITY)) ||
+	       (IS_FIRE(ch->in_room) && has_innate(ch, INNATE_FIRE_AFFINITY)) ||
+	       (IS_EARTH(ch->in_room) && has_innate(ch, INNATE_EARTH_AFFINITY)) ||
+	       (IS_ASTRAL(ch->in_room) && has_innate(ch, INNATE_ASTRAL_NATIVE));
+}
+
 bool aggressive_to(P_char ch, P_char target)
 {
 	int chance;
@@ -2945,10 +2966,7 @@ bool aggressive_to(P_char ch, P_char target)
 		if (IS_AGGROFLAG(ch, AGGR_DAY_ONLY) && !IS_DAY)
 			return FALSE;
 
-		if (has_innate(target, INNATE_ASTRAL_NATIVE) &&
-		    GET_LEVEL(target) >= GET_LEVEL(ch) &&
-		    world[target->in_room].number >= ASTRAL_VNUM_BEGIN &&
-		    world[target->in_room].number <= ASTRAL_VNUM_END)
+		if (has_native_planar_affinity(target) && !CheckFor_remember(ch, target))
 			return FALSE;
 
 		/* aggro to all?  how nice! */
@@ -5377,6 +5395,7 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 {
 	P_char tch, nch;
 	void (*spell_func)(int, P_char, char *, int, P_char, P_obj);
+	const int spell_type = spl == SPELL_SOLAR_FLARE ? SPELL_TYPE_STAFF : SPELL_TYPE_SPELL;
 
 	if (!ch)
 	{
@@ -5393,7 +5412,7 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 		appear(ch);
 		if (IS_SET(skills[spl].targets, TAR_AREA) ||
 		    IS_SET(skills[spl].targets, TAR_IGNORE))
-			((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, 0, 0));
+			((*spell_func)(level, ch, arg, spell_type, 0, 0));
 		else if (IS_SET(skills[spl].targets, TAR_CHAR_ROOM))
 		{
 			for (tch = world[ch->in_room].people; tch; tch = nch)
@@ -5401,14 +5420,14 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 				nch = tch->next_in_room;
 				if (ch != tch && (!ch->group || (ch->group != tch->group)))
 				{
-					((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, tch, 0));
+					((*spell_func)(level, ch, arg, spell_type, tch, 0));
 				}
 			}
 		}
 	}
 	else if (IS_SET(skills[spl].targets, TAR_AREA) || IS_SET(skills[spl].targets, TAR_IGNORE))
 	{
-		((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, 0, 0));
+		((*spell_func)(level, ch, arg, spell_type, 0, 0));
 	}
 	else
 	{
@@ -5421,11 +5440,11 @@ void cast_as_area(P_char ch, int spl, int level, char *arg)
 			}
 			if (IS_SET(skills[spl].targets, TAR_CHAR_ROOM))
 			{
-				((*spell_func)(level, ch, arg, SPELL_TYPE_SPELL, tch, 0));
+				((*spell_func)(level, ch, arg, spell_type, tch, 0));
 			}
 			else if (IS_SET(skills[spl].targets, TAR_SELF_ONLY))
 			{
-				((*spell_func)(level, tch, arg, SPELL_TYPE_SPELL, tch, 0));
+				((*spell_func)(level, tch, arg, spell_type, tch, 0));
 			}
 		}
 	}
