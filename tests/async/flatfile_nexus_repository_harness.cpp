@@ -2,6 +2,7 @@
 #include "economy/nexus_stones.h"
 
 #include <filesystem>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -110,9 +111,8 @@ int main(int argc, char **argv)
 				flatfile_nexus_result::ok &&
 			found.align == -3 && found.last_touched_at > 234567,
 		"live alignment update was not durable");
-	// Gameplay bonus calculations use the nexus cache populated by load_nexus_stones().
-	// tests/async/nexus_runtime_harness.cpp covers aligned/opposing-side and
-	// fractional bonuses after the real flat-file boot and capture paths.
+	// Bonus payouts require the boot-populated runtime cache. They are exercised
+	// through load_nexus_stones() in nexus_runtime_harness.cpp.
 	require(flatfile_nexus_update_state(state.string(), 2, 0, 0, &error) ==
 			flatfile_nexus_result::not_found,
 		"missing record update did not fail");

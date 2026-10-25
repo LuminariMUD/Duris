@@ -657,14 +657,15 @@ static void notify_level_advancement(P_char ch, int previous_level)
 
 void illithid_advance_level(P_char ch)
 {
-	int minlvl = get_property("exp.maxExpLevel", 46);
-	int i;
+	const int minlvl = get_property("exp.maxExpLevel", 46);
 	const int previous_level = GET_LEVEL(ch);
 
-	if (GET_LEVEL(ch) >= 56)
+	if (GET_LEVEL(ch) >= MAXLVLMORTAL)
 		return;
 
-	for (i = GET_LEVEL(ch) + 1; i > minlvl && (new_exp_table[i] <= GET_EXP(ch)); i++)
+	// Illithids gain these levels on frags, but must remain mortals.
+	for (int i = GET_LEVEL(ch) + 1;
+	     i > minlvl && i <= MAXLVLMORTAL && new_exp_table[i] <= GET_EXP(ch); ++i)
 	{
 		GET_EXP(ch) -= new_exp_table[i];
 		advance_level_impl(ch, false, true, static_cast<std::uint64_t>(new_exp_table[i]));
@@ -901,7 +902,7 @@ void display_gain(P_char ch, int gain, int type)
 		logexp("%s gained %d (%d) experience. points.curr_exp = %d, needed for level = %ld\n",
 		       GET_NAME(ch), gain, type, GET_EXP(ch), new_exp_table[GET_LEVEL(ch) + 1]);
 	}
-	if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_KILL)
+	if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_KILL && gain != 0)
 	{
 		snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d \r\n", gain);
 		send_to_char(buffer, ch);
@@ -1598,9 +1599,9 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		if (GET_LEVEL(ch) < MINLVLIMMORTAL)
 		{
 			logit(LOG_EXP,
-			      "W-QUEST EXP: %s - level %d: old exp: %d, new exp: %d, +exp: %d",
-			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch), GET_EXP(ch) + (int)XP,
-			      (int)XP);
+			      "W-QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
+			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
+			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
 		}
 		// debug("world quest 1 (%d)", (int)XP);
 	}
@@ -1610,9 +1611,9 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		if (GET_LEVEL(ch) < MINLVLIMMORTAL)
 		{
 			logit(LOG_EXP,
-			      "QUEST EXP: %s - level %d: old exp: %d, new exp: %d, +exp: %d",
-			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch), GET_EXP(ch) + (int)XP,
-			      (int)XP);
+			      "QUEST EXP: %s - level %d: old exp: %d, new exp: %lld, +exp: %d",
+			      GET_NAME(ch), GET_LEVEL(ch), GET_EXP(ch),
+			      static_cast<long long>(GET_EXP(ch)) + (int)XP, (int)XP);
 		}
 		// debug("quest 1 (%d)", (int)XP);
 	}
@@ -1644,24 +1645,30 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			progression_modifier_flags |= TELEMETRY_PROGRESSION_MODIFIER_FINAL_CAP;
 	}
 
-	// if(XP_final > 0 &&
-	// GET_EXP(ch) > (new_exp_table[GET_LEVEL(ch) + 1]));
-	// {
-	// XP_final = 1;
-	// send_to_char("&+LYour exps are capped and you must gain a level to accumulate more exps.\r\n", ch);
-	// }
-
-	// increase exp only to some limit (cumulative exp for mortals)
+	// XP may be banked while a frag cap prevents levelling. Keep only the global
+	// cumulative ceiling and the signed player-storage limit. A 64-bit intermediate
+	// makes the final award safe even when an existing balance is near INT_MAX.
 	const int before_exp = GET_EXP(ch);
-	if (divine && static_cast<int64_t>(before_exp) + XP_final > std::numeric_limits<int>::max())
-		return 0;
-	if (GET_LEVEL(ch) < MINLVLIMMORTAL &&
-	    (XP_final < 0 || ((GET_EXP(ch) < global_exp_limit) &&
-			      GET_EXP(ch) < (2 * new_exp_table[GET_LEVEL(ch) + 1]))))
+	std::int64_t next_exp = static_cast<std::int64_t>(before_exp) + XP_final;
+	if (XP_final > 0)
 	{
-		GET_EXP(ch) += (int)XP_final;
+		const int storage_limit = std::numeric_limits<int>::max();
+		const std::int64_t ceiling =
+			std::min<std::int64_t>(global_exp_limit, storage_limit);
+		next_exp = std::min(next_exp, std::max<std::int64_t>(before_exp, ceiling));
+	}
+	else
+	{
+		next_exp = std::max<std::int64_t>(next_exp, std::numeric_limits<int>::min());
+	}
+	int credited_xp = 0;
+	if (GET_LEVEL(ch) < MINLVLIMMORTAL)
+		credited_xp = static_cast<int>(next_exp - before_exp);
+	if (credited_xp != 0)
+	{
+		GET_EXP(ch) = static_cast<int>(next_exp);
 		player_component_mask_t components = PLAYER_COMPONENT_STATUS;
-		if (record_zone_trophy_award(ch, victim, XP_final, type))
+		if (record_zone_trophy_award(ch, victim, credited_xp, type))
 			components |= PLAYER_COMPONENT_TROPHIES;
 		mark_player_dirty_components(GET_PID(ch), components);
 	}
@@ -1674,14 +1681,8 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			static_cast<std::int64_t>(before_exp), static_cast<std::int64_t>(after_exp),
 			static_cast<std::uint16_t>(GET_LEVEL(ch)), progression_modifier_flags,
 			TELEMETRY_QUALITY_NONE));
-	// A mortal's quest line shows what was credited; an immortal is credited nothing, so its
-	// "would have gained" log keeps the award.
-	display_gain(ch,
-		     (type == EXP_WORLD_QUEST || type == EXP_QUEST) &&
-				     GET_LEVEL(ch) < MINLVLIMMORTAL ?
-			     after_exp - before_exp :
-			     (int)XP_final,
-		     type);
+	// Mortals see only XP actually credited; staff retain the hypothetical award log.
+	display_gain(ch, GET_LEVEL(ch) >= MINLVLIMMORTAL ? XP_final : credited_xp, type);
 	if (GET_LEVEL(ch) >= MINLVLIMMORTAL)
 	{
 		return 0;
@@ -1749,7 +1750,7 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 	gmcp_char_vitals(ch);
 
 	// debug("Gain exps final return (%d).", XP_final);
-	return type == EXP_QUEST ? after_exp - before_exp : XP_final;
+	return credited_xp;
 }
 
 int gain_exp_combat_share(P_char ch, P_char victim, double precise_share, int ordinary_share,
@@ -2065,5 +2066,5 @@ void update_exp_mods()
 	exp_mods[EXPMOD_PALADIN_VS_GOOD] = get_property("exp.factor.paladin.vsGood", 0.200);
 	exp_mods[EXPMOD_PALADIN_VS_EVIL] = get_property("exp.factor.paladin.vsEvil", 1.100);
 	exp_mods[EXPMOD_ANTIPALADIN_VS_GOOD] = get_property("exp.factor.antipaladin.vsGood", 1.050);
-	exp_mods[EXPMOD_OVER_LEVEL_CAP] = get_property("exp.factor.overCap", 0.550);
+	exp_mods[EXPMOD_OVER_LEVEL_CAP] = get_property("exp.factor.overCap", 0.700);
 }

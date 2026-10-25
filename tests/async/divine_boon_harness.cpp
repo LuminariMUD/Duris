@@ -123,6 +123,24 @@ void targets_and_categories()
 	assert(!divine_boon_rotate(&state, 5 * H, &choice) && state == unchanged);
 	assert(divine_boon_rotate(&state, 5 * H, nullptr)); // No eligible choice consumes hour.
 	assert(!divine_boon_rotate(&state, 5 * H + 1, &choice));
+	// One hour may start one objective from each pool together.
+	auto multi = activated();
+	divine_boon_slot pools[3] = { zone(divine_boon_category::epic, 10, 20), {}, {} };
+	pools[1].category = divine_boon_category::pvp;
+	pools[2] = choice; // A second PvP in the same hour is refused.
+	unchanged = multi;
+	assert(!divine_boon_rotate(&multi, H, pools, 3) && multi == unchanged);
+	pools[2].category = divine_boon_category::cargo;
+	pools[2].source_port = pools[2].cargo_commodity = pools[2].contraband_commodity = 0;
+	pools[2].destination_port = 2;
+	assert(divine_boon_rotate(&multi, H, pools, 3) && occupied(multi) == 3);
+	assert(multi.slots[0].starts_at == H && multi.slots[2].starts_at == H);
+	assert(multi.slots[2].id == 3 && multi.next_id == 4);
+	std::vector<uint8_t> bytes;
+	divine_boon_state decoded;
+	assert(divine_boon_state_encode(multi, &bytes) &&
+	       divine_boon_state_decode(bytes, &decoded) && decoded == multi);
+	assert(divine_boon_rotate(&multi, 2 * H, pools, 0)); // No choices consumes the hour.
 	assert(divine_boon_bonus_percent(divine_boon_category::experience) == 100);
 	assert(divine_boon_bonus_percent(divine_boon_category::epic) == 50);
 	assert(divine_boon_bonus_percent(divine_boon_category::pvp) == 50);

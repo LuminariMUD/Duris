@@ -45,7 +45,7 @@ other content) and one blank line after it. This includes `==Description==`,
 `==Syntax==`, `==See also==`, racial statistics, and class progression headings.
 Preserve topic delimiters (`#0` in parsed help; `#` in the index), title lines,
 existing paragraph breaks and any deliberate colours outside progression labels.
-Run `python3 scripts/format_help_topics.py --check` when modifying help content;
+Run `python3 scripts/format_help_topics.py` when modifying help content;
 use `--write` to normalise the two maintained sources without changing prose.
 
 ## Describe the actual rule

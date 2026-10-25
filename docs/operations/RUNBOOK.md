@@ -90,6 +90,15 @@ keeping player connections alive via `copyover.dat`.
 
 ### Executable rollback and callback labels
 
+Divine Boon releases supporting multiple objectives per hour can persist slots
+with the same start time. Older binaries reject that snapshot. Before rolling
+back to a binary that requires unique start times, run `divineboon pause` using
+the current binary, wait for its durable confirmation, and let all objectives
+expire (up to eight hours), or retire each with `divineboon replace <slot>`.
+Use `divineboon status` to confirm the published state has no active slots and
+no pending write before stopping the current binary. Keep rotation paused until
+the rollback is verified. Do not delete or hand-edit the persisted state.
+
 Before an authorized clean build or rollout, identify the actual supervisor,
 its system/user scope, and the executable behind the listener. A service name
 or port alone does not establish environment role. Preserve the executable
