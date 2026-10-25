@@ -926,7 +926,7 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 - Remaining owner work: code review, merge the dependency stack, choose any
   release tag/deployment and collect player balance feedback. The older-binary
   Fire pet-state holding limitation described above remains relevant to release
-  rollback. No release tag, merge, production operation or deployment was made.
+  rollback. No release tag, PR merge, production operation or deployment was made.
   Do not handle code reviews in this implementation task.
 - Qualification delivered as `dc1a8fa69bb813b287d7e7a6cf135b1ef99bdbdc`,
   [PR #390](https://github.com/LuminariMUD/Duris/pull/390), based on #389.
