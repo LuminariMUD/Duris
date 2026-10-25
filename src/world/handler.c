@@ -905,7 +905,13 @@ void poison_heart_toxin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	{
 		if (!(af = poison_common(victim, POISON_HEART_TOXIN)))
 			return;
-		;
+		/* Trap casters are extracted after dispatch. Keep the potency on the
+		 * affect and use environmental attribution instead of a caster link. */
+		if (ch && IS_SET(ch->runtime_flags, CHAR_RFLAG_TRAP_CASTER))
+		{
+			af->level = level;
+			ch = nullptr;
+		}
 		add_event(event_poison,
 			  IS_AFFECTED(victim, AFF_SLOW_POISON) ? 3 * PULSE_VIOLENCE :
 								 PULSE_VIOLENCE * 3 / 2,
@@ -914,7 +920,10 @@ void poison_heart_toxin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	else
 	{
 		if (!ch)
+		{
+			level = af->level;
 			ch = victim;
+		}
 		int dam_result = raw_damage(ch, victim, 3 * level + number(0, 40), RAWDAM_DEFAULT,
 					    &messages);
 		if (dam_result == DAM_NONEDEAD)
@@ -924,7 +933,8 @@ void poison_heart_toxin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 					  IS_AFFECTED(victim, AFF_SLOW_POISON) ?
 						  3 * PULSE_VIOLENCE :
 						  PULSE_VIOLENCE * 3 / 2,
-					  victim, ch, 0, 0, &af->type, sizeof(af->type));
+					  victim, af->level ? nullptr : ch, 0, 0, &af->type,
+					  sizeof(af->type));
 			else
 				affect_remove(victim, af);
 		}

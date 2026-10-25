@@ -367,6 +367,22 @@ static void recurrence() {
     auto *link = heart->cld;
     event_broken(link); delete link;
     advance(25); assert(damage_calls == 0);
+    // Trap Heart Toxin keeps its potency after the temporary caster disappears,
+    // including a repeat pulse; it never links the event back to that caster.
+    reset(); source.player.level = 60;
+    source.runtime_flags = CHAR_RFLAG_TRAP_CASTER;
+    poison(POISON_HEART_TOXIN);
+    heart = get_scheduled(&target, event_poison);
+    assert(heart && !heart->cld);
+    source = {}; minimum_roll = true;
+    advance(int(heart->due_tick - ne_event_tick + 1));
+    assert(damage_calls == 1 && last_damage == 180 && last_damage_source == &target);
+    heart = get_scheduled(&target, event_poison);
+    assert(heart && !heart->cld);
+    advance(int(heart->due_tick - ne_event_tick + 1));
+    assert(damage_calls == 2 && last_damage == 180 && last_damage_source == &target);
+    assert(poison_common_remove(&target));
+    advance(25); assert(damage_calls == 2 && !get_scheduled(&target, event_poison));
     // Victim extraction/disconnect cleanup cannot dispatch any retained timer.
     reset(); poison(POISON_NEUROTOXIN);
     disarm_char_nevents(&target, nullptr); advance(81); assert(waits == 0);

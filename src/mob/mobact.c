@@ -7767,23 +7767,38 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 			}
 		}
 
-		if (GET_MEMORY(ch) !=
-		    NULL) // guardcheck (no real action will happen in either function if mob has no memory) -Odorf
+		if (GET_MEMORY(ch) || ch->only.npc->trap_gate_target_runtime_id)
 		{
+			const uint64_t actor_id = ch->runtime_id;
+			auto removal_before = character_removal_generation;
 			PROFILE_START(mundane_track_3);
-			if (CheckForRemember(ch))
-				PROFILE_END(mundane_track_3);
-			//      if(/*!ch - no need -Odorf ||*/ !CAN_ACT(ch)) //  do we really need to check CAN_ACT here? -Odorf
+			const bool acted = CheckForRemember(ch);
+			PROFILE_END(mundane_track_3);
+			if (removal_before != character_removal_generation)
+				ch = find_character_by_runtime_id(actor_id);
+			if (!ch)
+			{
+				PROFILE_END(mundane_track);
+				return;
+			}
+			if (acted)
 			{
 				PROFILE_END(mundane_track);
 				goto normal;
 			}
 
 			PROFILE_START(mundane_track_4);
+			removal_before = character_removal_generation;
 			mobact_memoryHandle(ch);
 			PROFILE_END(mundane_track_4);
-			if (/*!ch - no need -Odorf ||*/ !CAN_ACT(
-				ch)) //  do we really need to check CAN_ACT here? -Odorf
+			if (removal_before != character_removal_generation)
+				ch = find_character_by_runtime_id(actor_id);
+			if (!ch)
+			{
+				PROFILE_END(mundane_track);
+				return;
+			}
+			if (!CAN_ACT(ch) || IS_FIGHTING(ch))
 			{
 				PROFILE_END(mundane_track);
 				goto normal;
