@@ -255,6 +255,8 @@ def run(binary, backend):
                     assert match, text
                     return int(match[1]) - 1  # stat creates and then extracts its own probe
 
+                home()
+                command(actor, "drop all")
                 caster_count = count(14)
                 for vnum in (6714, 6003, 32015, 3835):
                     home(); key = load(vnum); floor(key)
