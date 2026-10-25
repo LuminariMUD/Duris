@@ -119,19 +119,19 @@ def run(binary, backend):
                 for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
                     subprocess.run(["python3", "scripts/migration_runner.py", *arguments],
                                    cwd=ROOT, env=env, check=True, stdout=subprocess.DEVNULL)
-                redis_port = journey.available_ports()[0]
-                redis = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
-                                          "--save", "", "--appendonly", "no"],
-                                         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-                env.update(REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
-                           REDIS_NAMESPACE="duris:local:" + database, REDIS_WORLD_STATE="TRUE",
-                           REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_SECRET="local-legacy-trap-qualification-secret-368")
             else:
                 subprocess.run([sys.executable, "tests/async/test_flatfile_player_repository.py",
                                 "--build-inspector", str(journey.INSPECTOR)], cwd=ROOT, check=True,
                                stdout=subprocess.DEVNULL)
                 subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
                 env["FLATFILE_STATE_DIR"] = str(state)
+            redis_port = journey.available_ports()[0]
+            redis = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
+                                      "--save", "", "--appendonly", "no"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            env.update(REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
+                       REDIS_NAMESPACE="duris:local:" + (database or "legacy-traps-flatfile"), REDIS_WORLD_STATE="TRUE",
+                       REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_SECRET="local-legacy-trap-qualification-secret-368")
             journey.make_fixture(runtime)
             fixture(runtime)
             journey.generate_certificate(runtime)
@@ -371,12 +371,6 @@ def run(binary, backend):
                 home(); invalid=load(INVALID);floor(invalid)
                 command(actor,"get "+invalid)
                 inspect(invalid,(2,17,2,60))
-                for vnum, (_, _, final) in TRAPS.items():
-                    key = load(vnum, "golden")
-                    inspect(key, final or (0, 0, 0, 0))
-                    floor(key)
-                    command(builder, "purge " + key)
-                print(f"{backend}: all 61 loaded prototype states verified", flush=True)
                 actor.send("save");actor.expect("Save complete for Taverek.",timeout=45)
                 assert count(14)==caster_count
                 stop();boot()
@@ -389,6 +383,12 @@ def run(binary, backend):
                 inspect("probe800001",(2,17,2,60))
                 home()
                 assert "already open" in command(actor,"open probe142438").lower()
+                for vnum, (_, _, final) in TRAPS.items():
+                    key = load(vnum, "golden")
+                    inspect(key, final or (0, 0, 0, 0))
+                    floor(key)
+                    command(builder, "purge " + key)
+                print(f"{backend}: all 61 loaded prototype states verified", flush=True)
                 assert count(14)==caster_count
                 stop()
                 logs="\n".join(p.read_text(errors="replace") for p in (runtime/"logs/log").glob("*") if p.is_file())
