@@ -6817,17 +6817,10 @@ void MobStartFight(P_char ch, P_char vict)
 		return;
 	}
 
-	if (mob_index[GET_RNUM(ch)].virtual_number == 19870)
+	if (mob_index[GET_RNUM(ch)].virtual_number == 19870 ||
+	    mob_index[GET_RNUM(ch)].virtual_number == 19840)
 	{
-		if (has_innate(vict, INNATE_ASTRAL_NATIVE) && (GET_LEVEL(vict) > 50))
-		{
-			return;
-		}
-	}
-
-	if (mob_index[GET_RNUM(ch)].virtual_number == 19840)
-	{
-		if (has_innate(vict, INNATE_ASTRAL_NATIVE) && (GET_LEVEL(vict) > 40))
+		if (has_native_planar_affinity(vict) && !CheckFor_remember(ch, vict))
 		{
 			return;
 		}

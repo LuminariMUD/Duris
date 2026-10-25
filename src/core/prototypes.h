@@ -3017,6 +3017,7 @@ bool are_together(P_char ch1, P_char ch2);
 bool has_help(P_char);
 bool is_aggr_to(P_char, P_char);
 bool aggressive_to(P_char, P_char);
+bool has_native_planar_affinity(P_char);
 bool aggressive_to_basic(P_char, P_char);
 char *PERS(P_char, P_char, int);
 char *PERS(P_char, P_char, int, bool);

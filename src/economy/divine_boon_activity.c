@@ -267,11 +267,20 @@ try
 {
 	if (!input.runtime_id)
 		return;
-	P_char body = find_character_by_runtime_id(input.runtime_id);
-	divine_boon_actor actor;
-	if (live_actor(body, &actor) && actor.pid == input.pid &&
-	    fingerprint(body, input.inspect_inventory) != input.before)
-		observed.observe(actor, monotonic_seconds());
+	// Only a currently attached playing body can supply activity. Resolve it
+	// through live sessions, without walking every mobile in the world or
+	// retaining the pre-command pointer across extraction/body replacement.
+	for (P_desc descriptor = descriptor_list; descriptor; descriptor = descriptor->next)
+	{
+		P_char body = descriptor->character;
+		if (!body || body->runtime_id != input.runtime_id)
+			continue;
+		divine_boon_actor actor;
+		if (live_actor(body, &actor) && actor.pid == input.pid &&
+		    fingerprint(body, input.inspect_inventory) != input.before)
+			observed.observe(actor, monotonic_seconds());
+		return;
+	}
 }
 catch (const std::bad_alloc &)
 {

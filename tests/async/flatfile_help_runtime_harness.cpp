@@ -68,6 +68,17 @@ int main()
 	require(wiki_help("divineboon").find("unconsumed hourly opportunity") != string::npos,
 		"Staff help missing force timing");
 
+	for (const char *topic : { "air affinity", "water affinity", "fire affinity",
+				   "earth affinity", "astral affinity" })
+	{
+		const string affinity = wiki_help(topic);
+		for (const char *rule : { "level 51", "remember", "Groupmates, pets", "VNUMs" })
+			require(affinity.find(rule) != string::npos,
+				"Planar affinity lookup omitted its level, memory or personal limits");
+	}
+	require(wiki_help("planar affinity").find("19826-19886") != string::npos,
+		"Planar affinity overview omitted the excluded astral side rooms");
+
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }
