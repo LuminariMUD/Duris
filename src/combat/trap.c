@@ -21,12 +21,18 @@
 #include <sys/types.h>
 #include "combat/damage.h"
 #include "magic/spells.h"
+#include "combat/trap.h"
+#include <array>
+#include <algorithm>
+#include <new>
+#include <vector>
 
 extern P_desc descriptor_list;
 extern P_index mob_index;
 extern P_index obj_index;
 extern P_obj object_list;
 extern P_room world;
+extern int top_of_world;
 
 #define TRAP_DAM_SLEEP 0
 #define TRAP_DAM_TELEPORT 1
@@ -37,6 +43,14 @@ extern P_room world;
 #define TRAP_DAM_BLUNT 6
 #define TRAP_DAM_PIERCE 7
 #define TRAP_DAM_SLASH 8
+#define TRAP_DAM_DISPEL 9
+#define TRAP_DAM_GATE 10
+#define TRAP_DAM_SUMMON 11
+#define TRAP_DAM_WITHER 12
+#define TRAP_DAM_HARM 13
+#define TRAP_DAM_POISON 14
+#define TRAP_DAM_PARALYSIS 15
+#define TRAP_DAM_STUN 16
 
 #define TRAP_EFF_MOVE BIT_1 /* trigger on movement */
 #define TRAP_EFF_OBJECT BIT_2 /* trigger on get or put */
@@ -48,13 +62,45 @@ extern P_room world;
 #define TRAP_EFF_UP BIT_8
 #define TRAP_EFF_DOWN BIT_9
 #define TRAP_EFF_OPEN BIT_10 /* trigger on open */
+#define TRAP_EFF_MULTI BIT_11
+#define TRAP_EFF_GLYPH BIT_12
+
+struct trap_creature_profile
+{
+	int object, type, mobile, count, cap;
+};
+
+static const trap_creature_profile *trap_creature_for(int vnum, int type)
+{
+	static const trap_creature_profile profiles[] = {
+		{ 41361, TRAP_DAM_GATE, 200, 1, 1 },	 { 42290, TRAP_DAM_GATE, 200, 1, 1 },
+		{ 32820, TRAP_DAM_SUMMON, 32861, 3, 6 }, { 32870, TRAP_DAM_SUMMON, 32861, 3, 6 },
+		{ 32835, TRAP_DAM_SUMMON, 32861, 1, 6 }, { 32846, TRAP_DAM_SUMMON, 32871, 1, 1 },
+		{ 41927, TRAP_DAM_SUMMON, 200, 1, 1 },
+	};
+	for (const auto &profile : profiles)
+		if (profile.object == vnum && profile.type == type)
+			return &profile;
+	return nullptr;
+}
+
+bool trap_configuration_valid(int vnum, int type, int level)
+{
+	if (type >= TRAP_DAM_SLEEP && type <= TRAP_DAM_SLASH)
+		return true;
+	if (type < TRAP_DAM_DISPEL || type > TRAP_DAM_STUN || level < 0)
+		return false;
+	return (type != TRAP_DAM_GATE && type != TRAP_DAM_SUMMON) || trap_creature_for(vnum, type);
+}
 
 static bool trap_damage_supported(P_obj obj)
 {
-	if (obj->trap_dam >= TRAP_DAM_SLEEP && obj->trap_dam <= TRAP_DAM_SLASH)
+	if (trap_configuration_valid(OBJ_VNUM(obj), obj->trap_dam, obj->trap_level) &&
+	    (obj->trap_dam < TRAP_DAM_DISPEL || obj->trap_charge >= -1))
 		return true;
-	logit(LOG_WIZ, "Trap object %d has unsupported damage type %d; charge preserved.",
-	      OBJ_VNUM(obj), obj->trap_dam);
+	logit(LOG_WIZ,
+	      "Trap object %d has invalid configuration (type %d, level %d, charges %d); charge preserved.",
+	      OBJ_VNUM(obj), obj->trap_dam, obj->trap_level, obj->trap_charge);
 	return false;
 }
 
@@ -132,6 +178,24 @@ void do_trapstat(P_char ch, char *argument, int /*cmd*/)
 	case TRAP_DAM_SLASH:
 		send_to_char("Damage type is slash.\r\n", ch);
 		break;
+	case TRAP_DAM_DISPEL:
+	case TRAP_DAM_GATE:
+	case TRAP_DAM_SUMMON:
+	case TRAP_DAM_WITHER:
+	case TRAP_DAM_HARM:
+	case TRAP_DAM_POISON:
+	case TRAP_DAM_PARALYSIS:
+	case TRAP_DAM_STUN:
+	{
+		static const char *names[] = { "dispel", "gate",   "summon",	      "wither",
+					       "harm",	 "poison", "minor paralysis", "stun" };
+		send_to_char_f(ch, "Damage type is %s.\r\n",
+			       names[obj->trap_dam - TRAP_DAM_DISPEL]);
+		if (!trap_configuration_valid(OBJ_VNUM(obj), obj->trap_dam, obj->trap_level))
+			send_to_char("Invalid creature profile or level; this trap is inert.\r\n",
+				     ch);
+		break;
+	}
 	default:
 		send_to_char_f(ch,
 			       "Damage type %d is unsupported; this trap needs builder repair.\r\n",
@@ -166,6 +230,14 @@ void do_trapstat(P_char ch, char *argument, int /*cmd*/)
 			send_to_char("The trap is set off when opened.\r\n", ch);
 		if (IS_SET(obj->trap_eff, TRAP_EFF_ROOM))
 			send_to_char("The trap affects the whole room.\r\n", ch);
+		if (IS_SET(obj->trap_eff, TRAP_EFF_GLYPH))
+			send_to_char(
+				"GLYPH: effects 9-16 allow movement after safe revalidation.\r\n",
+				ch);
+		if (IS_SET(obj->trap_eff, TRAP_EFF_MULTI))
+			send_to_char(
+				"MULTI: effects 9-16 are unlimited while charges are nonzero.\r\n",
+				ch);
 	}
 	snprintf(buf, MAX_STRING_LENGTH, "Trap Charges left: %d.\r\n", obj->trap_charge);
 	send_to_char(buf, ch);
@@ -197,290 +269,323 @@ void do_traplist(P_char ch, char * /*argument*/, int /*cmd*/)
 
 void do_trapset(P_char ch, char *argument, int /*cmd*/)
 {
-	P_obj obj;
-	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH], arg3[MAX_INPUT_LENGTH];
-	int val = 0;
-	P_char dummy;
-	int bits;
-
-	argument = one_argument(argument, arg1);
-	argument = one_argument(argument, arg2);
-	argument = one_argument(argument, arg3);
-	if (arg1[0] == '\0' || arg2[0] == '\0')
+	static const char *names[] = { "sleep",	    "teleport", "fire",	  "cold",  "acid",
+				       "energy",    "blunt",	"pierce", "slash", "dispel",
+				       "gate",	    "summon",	"wither", "harm",  "poison",
+				       "paralysis", "stun" };
+	char item[MAX_INPUT_LENGTH], field[MAX_INPUT_LENGTH], value[MAX_INPUT_LENGTH];
+	argument = one_argument(argument, item);
+	argument = one_argument(argument, field);
+	one_argument(argument, value);
+	if (!*item || !*field)
 	{
-		send_to_char("Syntax: trapset <object> <field> <value>\r\n"
-			     "Field: move, object(get and put), room, open, damage, charge\r\n"
-			     "Values: Move> north, south, east, west, up, down, and all.\r\n"
-			     "        Damage> sleep, teleport, fire, cold, acid, energy,\r\n"
-			     "                blunt, pierce, slash.\r\n"
-			     "        Object, open, room> no values\r\n",
-			     ch);
+		send_to_char(
+			"Syntax: trapset <object> <field> <value>\r\n"
+			"Fields: move, object, room, open, multi, glyph, damage, charge, level\r\n"
+			"Move: north, east, south, west, up, down, all\r\n"
+			"Damage: sleep, teleport, fire, cold, acid, energy, blunt, pierce, slash,\r\n"
+			"        dispel, gate, summon, wither, harm, poison, paralysis, stun\r\n"
+			"Charge: -1..100 (0 disarms). Level: 0..32767 (0 defaults to 25).\r\n"
+			"Effects 9..16 cap positive levels at 100; gate/summon require a listed profile.\r\n"
+			"Object/room/open/multi/glyph set their flag without a value.\r\n",
+			ch);
 		return;
 	}
-	// Just not allowing tracks to be trapped. by anyone.
-	if (!(bits = generic_find(arg1, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_NO_TRACKS, ch, &dummy,
-				  &obj)))
+	P_obj obj;
+	P_char dummy;
+	if (!generic_find(item, FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_NO_TRACKS, ch, &dummy, &obj))
 	{
 		send_to_char("Nothing like that here!\r\n", ch);
 		return;
 	}
-	if (!obj->trap_eff)
-		obj->trap_eff = 1;
-
-	if (!str_cmp(arg2, "move"))
+	int effect = obj->trap_eff, type = obj->trap_dam;
+	int charge = obj->trap_charge, level = obj->trap_level;
+	if (!str_cmp(field, "move"))
 	{
-		if (arg3[0] == '\0')
+		static const char *directions[] = { "north", "east", "south", "west", "up", "down" };
+		int mask = 0;
+		for (int direction = 0; direction < 6; ++direction)
+			if (!str_cmp(value, directions[direction]) || !str_cmp(value, "all"))
+				mask |= TRAP_EFF_NORTH << direction;
+		if (!mask)
 		{
-			send_to_char(
-				"Syntax: trapset <object> <field> <value>\r\n"
-				"Field: move, object(get and put), room, open, damage\r\n"
-				"Values: Move> north, south, east, west, up, down, and all.\r\n"
-				"        Damage> sleep, teleport, fire, cold, acid, energy,\r\n"
-				"                blunt, pierce, slash.\r\n"
-				"        Object, open, room> no values\r\n",
-				ch);
+			send_to_char("Specify north, east, south, west, up, down or all.\r\n", ch);
 			return;
 		}
-		if (!str_cmp(arg3, "north"))
+		effect |= TRAP_EFF_MOVE | mask;
+	}
+	else if (!str_cmp(field, "object"))
+		effect |= TRAP_EFF_OBJECT;
+	else if (!str_cmp(field, "room"))
+		effect |= TRAP_EFF_ROOM;
+	else if (!str_cmp(field, "open"))
+		effect |= TRAP_EFF_OPEN;
+	else if (!str_cmp(field, "multi"))
+		effect |= TRAP_EFF_MULTI;
+	else if (!str_cmp(field, "glyph"))
+		effect |= TRAP_EFF_GLYPH;
+	else if (!str_cmp(field, "damage"))
+	{
+		type = -1;
+		for (int candidate = 0; candidate <= TRAP_DAM_STUN; ++candidate)
+			if (!str_cmp(value, names[candidate]))
+				type = candidate;
+		if (type < 0)
 		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_NORTH))
-				SET_BIT(obj->trap_eff, TRAP_EFF_NORTH);
-			send_to_char("You set a trap for northward movement!\r\n", ch);
+			send_to_char("That damage type is not supported.\r\n", ch);
 			return;
 		}
-		else if (!str_cmp(arg3, "south"))
+	}
+	else if (!str_cmp(field, "charge") || !str_cmp(field, "level"))
+	{
+		char *end;
+		const long number = strtol(value, &end, 10);
+		const bool changing_level = !str_cmp(field, "level");
+		if (!*value || *end || number < (changing_level ? 0 : -1) ||
+		    number > (changing_level ? 32767 : 100))
 		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_SOUTH))
-				SET_BIT(obj->trap_eff, TRAP_EFF_SOUTH);
-			send_to_char("You set a trap for southern movement!\r\n", ch);
+			send_to_char("Charge range is -1..100; level range is 0..32767.\r\n", ch);
 			return;
 		}
-		else if (!str_cmp(arg3, "east"))
-		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_EAST))
-				SET_BIT(obj->trap_eff, TRAP_EFF_EAST);
-			send_to_char("You set a trap for eastern movement!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "west"))
-		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_WEST))
-				SET_BIT(obj->trap_eff, TRAP_EFF_WEST);
-			send_to_char("You set a trap for western movement!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "up"))
-		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_UP))
-				SET_BIT(obj->trap_eff, TRAP_EFF_UP);
-			send_to_char("You set a trap for upward movement!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "down"))
-		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_DOWN))
-				SET_BIT(obj->trap_eff, TRAP_EFF_DOWN);
-			send_to_char("You set a trap for downward movement!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "all"))
-		{
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_MOVE))
-				SET_BIT(obj->trap_eff, TRAP_EFF_MOVE);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_DOWN))
-				SET_BIT(obj->trap_eff, TRAP_EFF_DOWN);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_UP))
-				SET_BIT(obj->trap_eff, TRAP_EFF_UP);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_EAST))
-				SET_BIT(obj->trap_eff, TRAP_EFF_EAST);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_WEST))
-				SET_BIT(obj->trap_eff, TRAP_EFF_WEST);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_NORTH))
-				SET_BIT(obj->trap_eff, TRAP_EFF_NORTH);
-			if (!IS_SET(obj->trap_eff, TRAP_EFF_SOUTH))
-				SET_BIT(obj->trap_eff, TRAP_EFF_SOUTH);
-			send_to_char("You set a trap for all movement!\r\n", ch);
-			return;
-		}
-		send_to_char("Value specified was not a valid option for move.\r\n", ch);
+		if (changing_level)
+			level = number;
+		else
+			charge = number;
+	}
+	else
+	{
+		send_to_char("That is not an allowed field.\r\n", ch);
 		return;
 	}
-	else if (!str_cmp(arg2, "object"))
+	if (!trap_configuration_valid(OBJ_VNUM(obj), type, level))
 	{
-		if (!IS_SET(obj->trap_eff, TRAP_EFF_OBJECT))
-			SET_BIT(obj->trap_eff, TRAP_EFF_OBJECT);
-		send_to_char("You have set an object(get or put) trap!\r\n", ch);
+		send_to_char("Invalid trap type, creature profile or level; nothing changed.\r\n",
+			     ch);
 		return;
 	}
-	else if (!str_cmp(arg2, "room"))
-	{
-		if (!IS_SET(obj->trap_eff, TRAP_EFF_ROOM))
-			SET_BIT(obj->trap_eff, TRAP_EFF_ROOM);
-		send_to_char("You have made the trap affect the whole room!\r\n", ch);
-		return;
-	}
-	else if (!str_cmp(arg2, "open"))
-	{
-		if (!IS_SET(obj->trap_eff, TRAP_EFF_OPEN))
-			SET_BIT(obj->trap_eff, TRAP_EFF_OPEN);
-		send_to_char("You have made the trap spring when opened!\r\n", ch);
-		return;
-	}
-	else if (!str_cmp(arg2, "damage"))
-	{
-		if (arg3[0] == '\0')
-		{
-			send_to_char("You need to specify a value!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "sleep"))
-		{
-			obj->trap_dam = TRAP_DAM_SLEEP;
-			send_to_char("You have made the trap put people to sleep!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "teleport"))
-		{
-			obj->trap_dam = TRAP_DAM_TELEPORT;
-			send_to_char("The trap will now teleport people!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "fire"))
-		{
-			obj->trap_dam = TRAP_DAM_FIRE;
-			send_to_char("The trap will now shoot fire!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "cold"))
-		{
-			obj->trap_dam = TRAP_DAM_COLD;
-			send_to_char("The trap will now freeze its victims!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "acid"))
-		{
-			obj->trap_dam = TRAP_DAM_ACID;
-			send_to_char("You carefully fill the trap with acid!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "energy"))
-		{
-			obj->trap_dam = TRAP_DAM_ENERGY;
-			send_to_char("The trap will now zap people with energy!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "blunt"))
-		{
-			obj->trap_dam = TRAP_DAM_BLUNT;
-			send_to_char("The trap will now bludgeon its victims!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "pierce"))
-		{
-			obj->trap_dam = TRAP_DAM_PIERCE;
-			send_to_char("The trap will now pierce its victims!\r\n", ch);
-			return;
-		}
-		else if (!str_cmp(arg3, "slash"))
-		{
-			obj->trap_dam = TRAP_DAM_SLASH;
-			send_to_char("The trap will now slash its victims!\r\n", ch);
-			return;
-		}
-		send_to_char("That is not an allowed value!\r\n", ch);
-		return;
-	}
-	else if (!str_cmp(arg2, "charge"))
-	{
-		if (arg3[0] == '\0')
-		{
-			send_to_char("You need to specify how many charges.\r\n", ch);
-			return;
-		}
-		else if ((val = atoi(arg3)) > 100 || val < -1)
-		{
-			send_to_char("Allowed range is -1 to 100. (0 disarms, -1 unlimited)\r\n",
-				     ch);
-			return;
-		}
-		obj->trap_charge = val;
-		send_to_char("Charge value set.\r\n", ch);
-		return;
-	}
-	send_to_char("That is not an allowed option!\r\n", ch);
-	return;
+	obj->trap_eff = effect;
+	obj->trap_dam = type;
+	obj->trap_charge = charge;
+	obj->trap_level = level;
+	send_to_char("Trap field set.\r\n", ch);
 }
 
-bool checkmovetrap(P_char ch, int dir)
+static bool trap_target_eligible(P_char ch)
 {
-	P_obj obj, obj_next;
-	bool found;
+	return IS_ALIVE(ch) && !IS_TRUSTED(ch) && (!IS_NPC(ch) || IS_PC_PET(ch)) &&
+	       !IS_SET(ch->runtime_flags, CHAR_RFLAG_TRAP_CASTER);
+}
 
-	if (!world[ch->in_room].contents || IS_TRUSTED(ch) || (IS_NPC(ch) && !IS_PC_PET(ch)))
-		return FALSE;
-
-	for (obj = world[ch->in_room].contents; obj; obj = obj_next)
+static void trap_restored_damage(P_char ch, P_obj obj)
+{
+	if (!trap_target_eligible(ch) || ch->in_room < 0 || ch->in_room > top_of_world)
+		return;
+	const uint64_t actor_id = ch->runtime_id, object_uid = obj->obj_uid;
+	const int room = ch->in_room, type = obj->trap_dam, effect = obj->trap_eff;
+	const int raw_level = obj->trap_level, charges = obj->trap_charge;
+	const int level = MIN(raw_level ? raw_level : 25, 100);
+	const auto ready = [&]()
 	{
-		obj_next = obj->next_content;
+		ch = find_character_by_runtime_id(actor_id);
+		P_obj live = find_live_object(obj, object_uid);
+		return ch && trap_target_eligible(ch) && ch->in_room == room && live &&
+		       live->trap_dam == type && live->trap_eff == effect &&
+		       live->trap_level == raw_level && live->trap_charge == charges;
+	};
+	const auto commit_charge = [&]()
+	{
+		if (charges > 0 && !IS_SET(effect, TRAP_EFF_MULTI))
+			--obj->trap_charge;
+	};
 
-		if (obj->trap_eff && IS_SET(obj->trap_eff, TRAP_EFF_MOVE) && obj->trap_charge &&
-		    trap_damage_supported(obj))
-			found = TRUE;
-		else
-			found = FALSE;
-
-		if (found)
+	if (const auto *profile = trap_creature_for(OBJ_VNUM(obj), type))
+	{
+		int population = 0;
+		for (P_char mob = world[room].people; mob; mob = mob->next_in_room)
+			if (IS_NPC(mob) && IS_ALIVE(mob) && GET_VNUM(mob) == profile->mobile)
+				++population;
+		if (population + profile->count > profile->cap)
+			return;
+		std::array<uint64_t, 3> created = {};
+		const auto rollback = [&]()
 		{
-			if (IS_SET(obj->trap_eff, TRAP_EFF_NORTH) && dir == 0)
+			for (uint64_t id : created)
+				if (P_char mob = find_character_by_runtime_id(id))
+					extract_char(mob);
+		};
+		// read_mobile registers, converts and schedules each ordinary NPC. Allocate
+		// the complete batch before any member is exposed in the source room.
+		for (int index = 0; index < profile->count; ++index)
+		{
+			P_char mob = read_mobile(profile->mobile, VIRTUAL);
+			if (mob)
+				created[index] = mob->runtime_id;
+			if (!mob || !ready())
 			{
-				trapdamage(ch, obj);
-				return TRUE;
-			}
-			else if (IS_SET(obj->trap_eff, TRAP_EFF_EAST) && dir == 1)
-			{
-				trapdamage(ch, obj);
-				return TRUE;
-			}
-			else if (IS_SET(obj->trap_eff, TRAP_EFF_SOUTH) && dir == 2)
-			{
-				trapdamage(ch, obj);
-				return TRUE;
-			}
-			else if (IS_SET(obj->trap_eff, TRAP_EFF_WEST) && dir == 3)
-			{
-				trapdamage(ch, obj);
-				return TRUE;
-			}
-			else if (IS_SET(obj->trap_eff, TRAP_EFF_UP) && dir == 4)
-			{
-				trapdamage(ch, obj);
-				return TRUE;
-			}
-			else if (IS_SET(obj->trap_eff, TRAP_EFF_DOWN) && dir == 5)
-			{
-				trapdamage(ch, obj);
-				return TRUE;
+				rollback();
+				return;
 			}
 		}
+		for (int index = 0; index < profile->count; ++index)
+		{
+			P_char mob = find_character_by_runtime_id(created[index]);
+			const bool placed = mob && char_to_room(mob, room, -2);
+			mob = find_character_by_runtime_id(created[index]);
+			if (!placed || !mob || mob->in_room != room || !ready())
+			{
+				rollback();
+				return;
+			}
+		}
+		for (uint64_t id : created)
+		{
+			P_char mob = find_character_by_runtime_id(id);
+			if (id && (!mob || !IS_ALIVE(mob) || mob->in_room != room))
+			{
+				rollback();
+				return;
+			}
+		}
+		commit_charge();
+		for (uint64_t id : created)
+		{
+			P_char mob = find_character_by_runtime_id(id);
+			ch = find_character_by_runtime_id(actor_id);
+			if (!mob || !ch || !trap_target_eligible(ch) || mob->in_room != room ||
+			    ch->in_room != room)
+				continue;
+			if (type == TRAP_DAM_GATE)
+			{
+				SET_BIT(mob->specials.act, ACT_MEMORY);
+				mob->only.npc->trap_gate_target_runtime_id = actor_id;
+				if (IS_PC(ch))
+					remember(mob, ch, false);
+			}
+			else
+				MobStartFight(mob, ch);
+		}
+		return;
 	}
-	return FALSE;
+
+	std::vector<uint64_t> targets;
+	try
+	{
+		if (IS_SET(effect, TRAP_EFF_ROOM))
+		{
+			for (P_char victim = world[room].people; victim;
+			     victim = victim->next_in_room)
+				if (trap_target_eligible(victim))
+					targets.push_back(victim->runtime_id);
+		}
+		else
+			targets.push_back(actor_id);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return;
+	}
+	P_char caster = read_mobile(14, VIRTUAL, false);
+	if (!caster)
+		return;
+	const uint64_t caster_id = caster->runtime_id;
+	caster->player.level = level;
+	SET_BIT(caster->runtime_flags, CHAR_RFLAG_TRAP_CASTER);
+	const bool placed = char_to_room(caster, room, -2);
+	caster = find_character_by_runtime_id(caster_id);
+	if (!placed || !caster || !IS_ALIVE(caster) || caster->in_room != room || !ready())
+	{
+		if (caster)
+			extract_char(caster);
+		return;
+	}
+	commit_charge();
+	for (uint64_t target : targets)
+	{
+		caster = find_character_by_runtime_id(caster_id);
+		P_char victim = find_character_by_runtime_id(target);
+		if (!caster || !IS_ALIVE(caster) || caster->in_room != room)
+			break;
+		if (!victim || victim->in_room != room || !trap_target_eligible(victim))
+			continue;
+		switch (type)
+		{
+		case TRAP_DAM_DISPEL:
+			spell_dispel_magic(level, caster, nullptr, SPELL_TYPE_SPELL, victim,
+					   nullptr);
+			break;
+		case TRAP_DAM_WITHER:
+			spell_wither(level, caster, nullptr, SPELL_TYPE_SPELL, victim, nullptr);
+			break;
+		case TRAP_DAM_HARM:
+			spell_harm(level, caster, nullptr, SPELL_TYPE_SPELL, victim, nullptr);
+			break;
+		case TRAP_DAM_POISON:
+			spell_poison(level, caster, nullptr, SPELL_TYPE_SPELL, victim, nullptr);
+			break;
+		case TRAP_DAM_PARALYSIS:
+			if (!IS_AFFECTED2(victim, AFF2_MINOR_PARALYSIS | AFF2_MAJOR_PARALYSIS))
+				spell_minor_paralysis(BOUNDED(4, level / 5, 16), caster, nullptr,
+						      SPELL_TYPE_SPELL, victim, nullptr);
+			break;
+		case TRAP_DAM_STUN:
+			if (!resists_spell(caster, victim))
+				Stun(victim, caster, BOUNDED(1, level / 20, 4) * WAIT_SEC, true);
+			break;
+		}
+	}
+	if ((caster = find_character_by_runtime_id(caster_id)))
+		extract_char(caster);
+}
+
+bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *sprung)
+{
+	if (dir < 0 || dir >= NUM_EXITS || !trap_target_eligible(ch) || ch->in_room < 0 ||
+	    ch->in_room > top_of_world)
+		return false;
+	const int room = ch->in_room;
+	const uint64_t actor_id = ch->runtime_id;
+	for (P_obj obj = world[room].contents; obj; obj = obj->next_content)
+	{
+		if (!obj->trap_charge || !IS_SET(obj->trap_eff, TRAP_EFF_MOVE) ||
+		    !IS_SET(obj->trap_eff, TRAP_EFF_NORTH << dir))
+			continue;
+		const std::pair<P_obj, uint64_t> identity = { obj, obj->obj_uid };
+		if (sprung && std::find(sprung->begin(), sprung->end(), identity) != sprung->end())
+			continue;
+		if (!trap_damage_supported(obj))
+			continue;
+		const bool glyph = sprung && obj->trap_dam >= TRAP_DAM_DISPEL &&
+				   IS_SET(obj->trap_eff, TRAP_EFF_GLYPH);
+		if (glyph)
+		{
+			try
+			{
+				sprung->push_back(identity);
+			}
+			catch (const std::bad_alloc &)
+			{
+				return true;
+			}
+		}
+		trapdamage(ch, obj);
+		if (!glyph)
+			return true;
+		// Return to the movement owner's entire preflight before scanning another
+		// trap. No cached character, mount, exit or next-content pointer survives.
+		ch = find_character_by_runtime_id(actor_id);
+		P_obj live = find_live_object(identity.first, identity.second);
+		return !ch || !IS_ALIVE(ch) || ch->in_room != room || !IS_AWAKE(ch) ||
+		       IS_IMMOBILE(ch) || IS_STUNNED(ch) || !CAN_ACT(ch) || !live ||
+		       !OBJ_ROOM(live) || live->loc.room != room;
+	}
+	return false;
 }
 
 bool checkgetput(P_char ch, P_obj obj)
 {
 	if (!obj->trap_charge)
+		return FALSE;
+	if (obj->trap_dam >= TRAP_DAM_DISPEL && !trap_target_eligible(ch))
 		return FALSE;
 
 	if (IS_SET(obj->trap_eff, TRAP_EFF_OBJECT) && trap_damage_supported(obj))
@@ -494,6 +599,8 @@ bool checkgetput(P_char ch, P_obj obj)
 bool checkopen(P_char ch, P_obj obj)
 {
 	if (!obj->trap_charge)
+		return FALSE;
+	if (obj->trap_dam >= TRAP_DAM_DISPEL && !trap_target_eligible(ch))
 		return FALSE;
 
 	if (IS_SET(obj->trap_eff, TRAP_EFF_OPEN) && trap_damage_supported(obj))
@@ -516,6 +623,11 @@ void trapdamage(P_char ch, P_obj obj)
 
 	if (!trap_damage_supported(obj))
 		return;
+	if (obj->trap_dam >= TRAP_DAM_DISPEL)
+	{
+		trap_restored_damage(ch, obj);
+		return;
+	}
 
 	if (IS_NPC(ch) && !IS_PC_PET(ch))
 		return;

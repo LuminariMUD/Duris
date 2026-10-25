@@ -328,7 +328,7 @@ chest iron heavy~
 &+LA h&+we&+Lavy ir&+wo&+Ln che&+ws&+Lt is bolted to the ground here.~
 ~
 15 15 3 0 7 0 8454152 0 0 0 0
-1000 17 142234 1000 0 0 0 0
+1000 21 142234 1000 0 0 0 0
 0 0 100
 T
 512 9 1 15
@@ -525,7 +525,7 @@ pile bones~
 &+wA &+Whuge &+wpile of b&+Wo&+wn&+We&+ws covers the ground.&N~
 ~
 15 10 3 0 7 0 8495112 0 0 0 0
-10000 0 0 10000 0 0 0 0
+10000 5 0 10000 0 0 0 0
 0 0 100
 T
 1536 12 -1 60

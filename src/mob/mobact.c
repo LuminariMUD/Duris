@@ -7128,7 +7128,15 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 		{
 			ob2 = ob->next_content;
 			if (!IS_CONTAINER(ob))
+			{
+				const bool trapped_item =
+					ob->trap_charge && ob->trap_dam >= 9 &&
+					ob->trap_dam <= 16 && IS_SET(ob->trap_eff, 2) &&
+					!IS_TRUSTED(ch) && (IS_PC(ch) || IS_PC_PET(ch));
 				put(ch, ob, obj, 1);
+				if (trapped_item)
+					return; // Trap effects may have extracted any participant or sibling.
+			}
 		}
 		return;
 	}
@@ -7153,10 +7161,17 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 	{
 		ob2 = ob->next_content;
 		if (ob->type == ITEM_CONTAINER)
+		{
+			const bool trapped_item = obj->trap_charge && obj->trap_dam >= 9 &&
+						  obj->trap_dam <= 16 && IS_SET(obj->trap_eff, 2) &&
+						  !IS_TRUSTED(ch) && (IS_PC(ch) || IS_PC_PET(ch));
 			if (put(ch, obj, ob, 1))
 				return; /*
 				         * problem solved, item in bag.
 				         */
+			if (trapped_item)
+				return;
+		}
 	}
 }
 
@@ -9217,33 +9232,39 @@ void mobact_memoryHandle(P_char mob)
 	/*  found = FALSE;*/
 	for (vict = world[mob->in_room].people; vict /*&& !found */; vict = vict->next_in_room)
 	{
-		if (IS_NPC(vict) || !CAN_SEE(mob, vict))
+		const bool gate_target = mob->only.npc->trap_gate_target_runtime_id &&
+					 mob->only.npc->trap_gate_target_runtime_id ==
+						 vict->runtime_id;
+		if ((IS_NPC(vict) && !(gate_target && IS_PC_PET(vict))) || !CAN_SEE(mob, vict))
 			continue;
 		if (vict == GET_MASTER(mob))
 			continue;
-		for (mem = mob->only.npc->memory; mem; mem = mem->next)
+		bool remembered = gate_target;
+		for (mem = mob->only.npc->memory; mem && !remembered; mem = mem->next)
 		{
-			if (mem->pcID == static_cast<unsigned int>(GET_PID(vict)))
+			if (IS_PC(vict) && mem->pcID == static_cast<unsigned int>(GET_PID(vict)))
+				remembered = true;
+		}
+		if (remembered)
+		{
+			if ((IS_ROOM(mob->in_room, ROOM_SINGLE_FILE) &&
+			     !AdjacentInRoom(mob, vict)) ||
+			    !is_aggr_to(mob, vict))
+				continue;
+			if (GET_HIT(mob) >= (GET_MAX_HIT(mob)) >> 2)
 			{
-				if ((IS_ROOM(mob->in_room, ROOM_SINGLE_FILE) &&
-				     !AdjacentInRoom(mob, vict)) ||
-				    !is_aggr_to(mob, vict))
-					continue;
-				if (GET_HIT(mob) >= (GET_MAX_HIT(mob)) >> 2)
-				{
-					act("$n recognizes $N, and charges to attack!", FALSE, mob,
-					    0, vict, TO_NOTVICT);
-					act("$n recognizes you, and charges to attack!", FALSE, mob,
-					    0, vict, TO_VICT);
+				act("$n recognizes $N, and charges to attack!", FALSE, mob, 0, vict,
+				    TO_NOTVICT);
+				act("$n recognizes you, and charges to attack!", FALSE, mob, 0,
+				    vict, TO_VICT);
 
-					MobStartFight(mob, vict);
-					return;
-				}
-				else if (!fear_check(mob))
-				{
-					do_flee(mob, 0, 0);
-					return;
-				}
+				MobStartFight(mob, vict);
+				return;
+			}
+			else if (!fear_check(mob))
+			{
+				do_flee(mob, 0, 0);
+				return;
 			}
 		}
 	}

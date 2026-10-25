@@ -189,6 +189,66 @@ codecs and loaders are retained. No data rewrite, schema change, new restoration
 or prototype-wide overwrite was added. Next: independent authored/generated content
 checks and shared runtime/load validation, then real effect execution and command hooks.
 
+### Runtime/content work in progress — 2026-10-25
+
+Compatibility is published in [PR #377](https://github.com/LuminariMUD/Duris/pull/377),
+head `26174bb1f`, stacked on #375. Current worktree branch is
+`branch/issue-368-trap-effects`, now based on focused fixture dependency
+[PR #383](https://github.com/LuminariMUD/Duris/pull/383), commit `8ed816523`, above #377.
+The runtime/content/command checkpoint is being published while the remaining loaded
+qualification is completed; it is not yet runtime acceptance.
+
+Implemented so far: shared definition validation, fixed seven-profile lookup, native
+spell dispatch, finite/MULTI charge boundaries, whole-batch allocation/placement rollback,
+identity snapshots and caster cleanup; atomic trapset edits and trapstat names/flags;
+17 authored tuple repairs, six retirements and four fresh container flags; item-on-put
+hooks after permission/capacity checks; identity-safe bulk puts and safe slip/equipment
+callers; and GLYPH continuation through the existing movement preflight before each next
+matching trap. The per-attempt identity list prevents unlimited glyphs from firing twice;
+ordinary 0-8 triggers keep their stopping behavior. Sneak learning is not repeated during
+the new preflight loop.
+
+Two traced lifecycle boundaries needed narrow support. `CHAR_RFLAG_TRAP_CASTER` is an
+existing runtime-flag slot; raw damage forces nonlethal/no-XP flags on the temporary
+caster so nominal prototype HP is not its safety mechanism. Gate memory has one runtime
+identity in `npc_only_data` because ordinary PID memory cannot represent a triggering
+pet; the normal memory update uses that identity with its existing safety/aggression
+checks, rather than starting combat synchronously or adding a scheduler.
+
+Passed: `test_legacy_trap_effects.py` executes the actual dispatcher, five native spells,
+Stun and the ordinary memory update with controlled RNG/saves; durations, defenses,
+duplicate controls, ROOM filtering, all seven profiles, capacity and batch failures,
+PC/pet deferred gate aggression, and actor/caster/object extraction pass ASan/UBSan.
+`test_put_trap_lifecycle.py` executes real single/bulk placement boundaries with denied
+permissions, rejection and extraction of participants/siblings, including persistence
+of earlier successful items. Existing unsupported/0-8, pickup lifecycle and empty-command
+checks pass. `make world` and independent authored/generated inventory checks pass for
+all 61 resolutions and four container flags. Current server builds have passed after
+the integration edits; final builds are still required after the latest source changes.
+
+Next required work: native movement/builder/special-procedure coverage, both-backend
+loaded gameplay/save/restart journeys, exact loaded prototype/boot-log evidence,
+retaliation/no-reward verification through the actual damage path, relevant regressions,
+final formatting/build/diff review, and publication of this focused dependent PR.
+Do not mark #368 resolved or the runtime slice review-ready from the native fixtures alone.
+
+Native movement/builder and retained special-procedure checks now pass in the effects
+fixture: unlimited glyph visitation, later blocking trap, control interruption, atomic
+invalid builder edits, three imps exactly once per chest marker, and the unchanged five
+combat-pulse tower wait with its staff exemption. Both loaded backends also verified all
+61 exact fresh trap states through `stat trap` after full generated-world startup.
+The first loaded fixture used the nonexistent `trapstat` alias, then a keyword collision
+with the builder's starter book; numeric-vnum stringing fixed those fixture errors.
+Room activity can emit unsolicited prompts, so the journey now uses an inventory response
+as a read-only command barrier. Full scenario/save/restart completion remains pending.
+
+The legacy flat-file lethal corpse journey now passes death, bystander damage, server
+survival, reconnect, custody and spent-state restart. Its stale automatic-boon reply was
+repaired independently in #383 (five expectations across four existing journeys); the
+server behavior was already correct. No full regression cycle was required for that
+literal fixture correction. Reuse this successful corpse evidence unless affected
+production paths change.
+
 ### 1. Content contract and shared validation
 
 - [ ] Add one focused content regression with an independent golden old/final manifest

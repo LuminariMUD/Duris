@@ -278,6 +278,7 @@ struct bulk_put_state
 
 bool item_get_ack_publication = false;
 bool item_get_rejected = false;
+static bool item_put_trap_rejected = false;
 static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		       const coin_get_submission_options &options);
 std::unordered_map<uint32_t, bulk_get_state> bulk_gets;
@@ -3422,9 +3423,10 @@ void report_bulk_put(P_char actor, const bulk_put_state &state, P_obj container)
 	}
 	char_light(actor);
 	room_light(actor->in_room, REAL);
-	mark_player_dirty_components(GET_PID(actor), PLAYER_COMPONENT_STATUS |
-							     PLAYER_COMPONENT_EQUIPMENT |
-							     PLAYER_COMPONENT_INVENTORY);
+	if (IS_PC(actor))
+		mark_player_dirty_components(GET_PID(actor), PLAYER_COMPONENT_STATUS |
+								     PLAYER_COMPONENT_EQUIPMENT |
+								     PLAYER_COMPONENT_INVENTORY);
 	save_filled_container(container);
 }
 
@@ -3492,19 +3494,52 @@ void start_bulk_put(P_char actor, P_obj container, const char *filter, bool alld
 		send_to_char("It is not an open container.\r\n", actor);
 		return;
 	}
-	bulk_put_state state = { filter ? filter : "", 0, false, alldot };
-	// Count only what landed: put() also returns TRUE for a candidate it refused.
-	// obj_to_obj() neither merges nor frees, so the object is still live to inspect.
-	for (P_obj object = actor->carrying, next = NULL; object; object = next)
+	const uint64_t actor_id = actor->runtime_id, container_uid = container->obj_uid;
+	const int room = actor->in_room;
+	const auto valid = [&]()
 	{
-		next = object->next_content;
-		if (object == container ||
+		return get_can_continue(actor, actor_id, room, nullptr, 0) &&
+		       find_live_object(container, container_uid) &&
+		       bulk_put_destination_available(actor, container);
+	};
+	std::vector<std::pair<P_obj, uint64_t>> candidates;
+	try
+	{
+		for (P_obj object = actor->carrying; object; object = object->next_content)
+			candidates.emplace_back(object, object->obj_uid);
+	}
+	catch (const std::bad_alloc &)
+	{
+		return;
+	}
+	bulk_put_state state = { filter ? filter : "", 0, false, alldot };
+	item_put_trap_rejected = false;
+	for (const auto &[expected, uid] : candidates)
+	{
+		if (!valid())
+			break;
+		P_obj object = find_live_object(expected, uid);
+		if (!object || !OBJ_CARRIED_BY(object, actor) || object == container ||
 		    (alldot && (!CAN_SEE_OBJ(actor, object) || !object->name ||
 				!isname(state.filter.c_str(), object->name))))
 			continue;
 		state.attempted = true;
-		if (put(actor, object, container, FALSE) && OBJ_INSIDE_OBJ(object, container))
+		const bool moved = put(actor, object, container, FALSE);
+		if (!valid())
+			break;
+		object = find_live_object(expected, uid);
+		if (moved && object && OBJ_INSIDE_OBJ(object, container))
 			++state.total;
+		if (item_put_trap_rejected)
+			break;
+	}
+	if (item_put_trap_rejected || !valid())
+	{
+		// Earlier successful items still need their destination save even if a later
+		// trap extracted/disabled the actor. The rejected candidate is never delivered.
+		if (state.total && find_live_object(container, container_uid))
+			save_filled_container(container);
+		return;
 	}
 	report_bulk_put(actor, state, container);
 }
@@ -3512,7 +3547,7 @@ void start_bulk_put(P_char actor, P_obj container, const char *filter, bool alld
 
 void do_put(P_char ch, char *argument, int /*cmd*/)
 {
-	P_obj o_obj = NULL, s_obj = NULL, next_obj;
+	P_obj o_obj = NULL, s_obj = NULL;
 	P_char t_ch;
 	int amount, ctype, count = 0, attempted = 0;
 	int plat = 0, gold = 0, silv = 0, copp = 0;
@@ -3700,27 +3735,9 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 		}
 		else
 		{
-			/* A durable container serialises the moves; ownership revisions make
-			 * concurrent submissions for one player unsafe. */
-			if (IS_PC(ch) && s_obj->obj_uid > 0)
-			{
-				start_bulk_put(ch, s_obj, type == PUT_ALLDOT ? obj_name : NULL,
-					       type == PUT_ALLDOT);
-				return;
-			}
-			for (o_obj = ch->carrying; o_obj; o_obj = next_obj)
-			{
-				next_obj = o_obj->next_content;
-				if (o_obj == s_obj)
-					continue;
-				if (!CAN_SEE_OBJ(ch, o_obj) && type != PUT_ALL)
-					continue;
-				if (type == PUT_ALLDOT && !isname(obj_name, o_obj->name))
-					continue;
-				attempted = 1;
-				if (put(ch, o_obj, s_obj, FALSE))
-					count++;
-			}
+			start_bulk_put(ch, s_obj, type == PUT_ALLDOT ? obj_name : NULL,
+				       type == PUT_ALLDOT);
+			return;
 		}
 	}
 	if (chaos_pouch_target && attempted == 0)
@@ -3732,51 +3749,11 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 	}
 	if (attempted == 0)
 	{
-		if (type != PUT_ITEM)
-		{
-			send_to_char("You don't have anything to put in it.\r\n", ch);
-		}
-		else
-		{
-			checked_snprintf(buf, MAX_STRING_LENGTH, "You don't have the %s.\r\n",
-					 obj_name);
-			send_to_char(buf, ch);
-		}
+		checked_snprintf(buf, MAX_STRING_LENGTH, "You don't have the %s.\r\n", obj_name);
+		send_to_char(buf, ch);
 	}
 	else if (count)
 	{
-		if (chaos_pouch_target)
-		{
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "You record %d collected material%s in $p's scoreboard.", count,
-				 count == 1 ? "" : "s");
-			act(buf, FALSE, ch, s_obj, 0, TO_CHAR);
-			act("$n records collected materials in $p's scoreboard.", TRUE, ch, s_obj,
-			    0, TO_ROOM);
-		}
-		else if (type == PUT_ALL)
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "You put %d items into $p.", count);
-			act(buf, FALSE, ch, s_obj, 0, TO_CHAR);
-			if (count < 6)
-				act("$n puts some stuff into $p.", TRUE, ch, s_obj, 0, TO_ROOM);
-			else
-				act("$n puts a bunch of stuff into $p.", TRUE, ch, s_obj, 0,
-				    TO_ROOM);
-		}
-		else if (type == PUT_ALLDOT)
-		{
-			checked_snprintf(buf, MAX_STRING_LENGTH, "You put %d %s(s) into $p.", count,
-					 obj_name);
-			act(buf, FALSE, ch, s_obj, 0, TO_CHAR);
-			if (count < 6)
-				checked_snprintf(buf, MAX_STRING_LENGTH,
-						 "$n puts some %s(s) into $p.", obj_name);
-			else
-				checked_snprintf(buf, MAX_STRING_LENGTH,
-						 "$n puts a bunch of %s(s) into $p.", obj_name);
-			act(buf, TRUE, ch, s_obj, 0, TO_ROOM);
-		}
 		char_light(ch);
 		room_light(ch->in_room, REAL);
 		if (IS_PC(ch))
@@ -3792,9 +3769,20 @@ void do_put(P_char ch, char *argument, int /*cmd*/)
 #undef PUT_ALLDOT
 #undef PUT_ITEM
 
+static bool reject_put_trap(P_char actor, P_obj item)
+{
+	if (item->trap_dam >= 9 && item->trap_dam <= 16 && checkgetput(actor, item))
+	{
+		item_put_trap_rejected = true;
+		return true;
+	}
+	return false;
+}
+
 bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 {
 	char Gbuf3[MAX_STRING_LENGTH];
+	item_put_trap_rejected = false;
 
 	if (IS_ARTIFACT(o_obj) && !IS_TRUSTED(ch))
 	{
@@ -3839,6 +3827,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 				}
 				if (s_obj->value[0] > s_obj->value[3])
 				{
+					if (reject_put_trap(ch, o_obj))
+						return FALSE;
 					if (showit)
 						send_to_char("Ok.\r\n", ch);
 					if (OBJ_CARRIED(o_obj))
@@ -3945,6 +3935,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 					      GET_ITEM_TYPE(s_obj) == ITEM_CONTAINER)))
 					{
 #endif
+						if (reject_put_trap(ch, o_obj))
+							return FALSE;
 						if (showit)
 							send_to_char("Ok.\r\n", ch);
 						if (OBJ_CARRIED(o_obj))

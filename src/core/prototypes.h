@@ -2935,7 +2935,7 @@ void do_trapremove(P_char ch, char *argument, int cmd);
 void do_trapstat(P_char ch, char *argument, int cmd);
 void do_traplist(P_char ch, char *argument, int cmd);
 void do_trapset(P_char ch, char *argument, int cmd);
-bool checkmovetrap(P_char ch, int dir);
+bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *sprung = nullptr);
 bool checkgetput(P_char ch, P_obj obj);
 bool checkopen(P_char ch, P_obj obj);
 void trapdamage(P_char ch, P_obj obj);
