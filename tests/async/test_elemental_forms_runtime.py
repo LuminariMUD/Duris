@@ -82,6 +82,8 @@ char *getString(char **) { assert(false); return nullptr; }
 void str_free(const char *) { assert(false); }
 void affect_to_char_with_messages(P_char, affected_type *, const char *, const char *) { assert(false); }
 void StopCasting(P_char) { output += "STOP"; }
+int IS_MORPH(P_char) { return false; }
+P_char un_morph(P_char) { assert(false); return nullptr; }
 '''
 
 prelude += re.search(r'(?m)^#define MACE_OF_EARTH_VNUM \d+', source('magic.c').read_text())[0] + '\n'
@@ -151,6 +153,16 @@ void restore_snapshot_affects(P_char ch, const player_snapshot &snapshot) {
 PRODUCTION_AFFECTS
 }
 '''.replace('PRODUCTION_AFFECTS', materialize[affect_start:affect_end])
+
+updates = extract_function('affects.c', 'void affect_update(')
+tick_start = updates.index('\t\t\tfor (af = i->affected;')
+tick_end = updates.index('\n\t\t\tif (morphed)', tick_start)
+tick = '''
+void tick_forms(P_char i) {
+    affected_type *af, *next_af_dude; P_char orig; int morphed = FALSE;
+PRODUCTION_DURATION_LOOP
+}
+'''.replace('PRODUCTION_DURATION_LOOP', updates[tick_start:tick_end])
 
 physical = extract_function('fight.c', 'int melee_damage(')
 skin_start = physical.index('\t// Earth elementals ignore earth aura.')
@@ -245,10 +257,9 @@ int main() {
             // Equal-duration components expire with exactly one final message.
             skills[form.type].spell_pointer(46, &caster, nullptr, 0, &caster, nullptr);
             output.clear();
-            while (caster.affected) {
-                wear_off_message(&caster, caster.affected);
-                affect_remove(&caster, caster.affected);
-            }
+            for (int unit = 0; unit < 8; ++unit) tick_forms(&caster);
+            assert(caster.affected && caster.affected->duration == 0);
+            tick_forms(&caster); assert(!caster.affected);
             assert(output == std::string(skills[form.type].wear_off_char[0]) + "\n");
             assert(caster.specials.affected_by2 == 0);
         }
@@ -410,7 +421,7 @@ int main() {
 build = ROOT / 'bin/tests/elemental-forms'
 build.mkdir(parents=True, exist_ok=True)
 cpp, binary = build / 'harness.cpp', build / 'harness'
-cpp.write_text(prelude + '\n'.join(extract_function(file, sig) for file, sig in functions) + gate + snapshot_restore + skin_path + driver)
+cpp.write_text(prelude + '\n'.join(extract_function(file, sig) for file, sig in functions) + gate + snapshot_restore + tick + skin_path + driver)
 subprocess.run(['g++', '-std=c++20', '-g', '-ffunction-sections', '-fdata-sections',
                 '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
                 '-I' + str(ROOT / 'src'), str(cpp), str(HARNESS_STUBS),

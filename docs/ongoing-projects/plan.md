@@ -1,8 +1,9 @@
 # Issue #215: Conjurer specialisation rebalance
 
-Updated 2026-10-25. **Status: implementation in progress; Planar Affinity is the
-first independent review chunk.** Work on branch
-`branch/issue-215-conjurer-rebalance`, in the existing worktree
+Updated 2026-10-25. **Status: implementation and functional qualification complete;
+final qualification PR publication in progress.** Root branch
+`branch/issue-215-conjurer-rebalance`; final qualification branch
+`branch/issue-215-combined-qualification`, in the existing worktree
 `/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`.
 
 Source baseline: `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`.
@@ -18,6 +19,10 @@ Owner scope clarification, 2026-10-25: **players will test the balance**.
 Our work covers implementation and functional qualification of the agreed
 mechanics, limits and compatibility. Comparative balance benchmarks, class
 scorecards and judgments about relative spec power are outside this task.
+
+Owner clarification during implementation: **do not handle code reviews**.
+Finish implementation and functional qualification; leave completed chunks ready
+for review. Do not fetch, triage or resolve further code-review activity.
 
 The owner's 2026-10-25 implementation request explicitly authorizes source changes,
 focused tests, commits, pushes and focused/stacked PRs. Leave delivered work ready
@@ -85,15 +90,15 @@ The order below is a working sequence, not a requirement for a PR stack.
 
 | Step | Deliverable | Dependency | Status |
 | --- | --- | --- | --- |
-| 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
+| 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | Complete; relevant baseline evidence recorded below |
 | 1 | New forms, registration, resource checks and cleanup | 0 | Review-ready [PR #378](https://github.com/LuminariMUD/Duris/pull/378), stacked on #376 |
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Review-ready [PR #379](https://github.com/LuminariMUD/Duris/pull/379), stacked on #378 |
 | 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
 | 4 | Reliable Conjure Water | 0 | Review-ready [PR #381](https://github.com/LuminariMUD/Duris/pull/381), stacked on #380 |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
-| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384); crash-state follow-up in progress |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384), with finite pet-state recovery in [PR #386](https://github.com/LuminariMUD/Duris/pull/386) |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
-| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
+| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Complete: 15-check isolated command/copyover/restart journey; final PR publication pending |
 
 ### 0. Establish the implementation baseline
 
@@ -463,18 +468,20 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 
 ## Completion checklist
 
-- [ ] All approved changes in steps 1-7 are implemented with no extra tuning.
-- [ ] Every per-step proof passes, including cancellation after a transient
-      combat/form/movement change and unchanged non-targeted callers.
-- [ ] Both help sources and actual help lookups agree on the final behavior.
-- [ ] Applicable local builds, focused regressions, persistence journeys and
+- [x] All approved changes in steps 1-7 are implemented with no extra tuning.
+- [x] Focused per-step behavior checks pass, including cancellation after a
+      transient combat/form/movement change and unchanged non-targeted callers;
+      component-fixture and full-world limits are recorded below.
+- [x] Both help sources and actual help lookups agree on the final behavior.
+- [x] Applicable local builds, focused regressions, persistence journeys and
       formatting checks pass; unavailable evidence is explicitly recorded.
-- [ ] Functional gameplay evidence and known limitations are recorded; help
+- [x] Functional gameplay evidence and known limitations are recorded; help
       provides the implemented mechanics for players' balance testing.
-- [ ] Final diff passes ablation review: every change supplies a requirement or
+- [x] Final diff passes the ablation check: every change supplies a requirement or
       a demonstrated dependency, and no unrelated work was discarded.
-- [ ] Implementation receives required code review; findings are resolved and
-      the plan records exact delivered commits and remaining release work.
+- [ ] Completed implementation is committed, pushed and left in focused PRs
+      ready for review. Per the owner's latest instruction, code-review handling
+      is outside this task; review, merge and release remain with the owner.
 
 ## Planning checkpoint
 
@@ -776,7 +783,7 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   and shield flags. Required owning files: `pet_restore_state.h/.c`,
   `pet_restore_runtime.c`, existing Fire summon paths/tests and this plan.
 - Next: implement this narrow crash-state repair, then complete
-  isolated gameplay/help/persistence journeys and final ablation/review audit.
+  isolated gameplay/help/persistence journeys and final ablation check.
 
 ### Fire recovery checkpoint, 2026-10-25
 
@@ -810,7 +817,7 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   their existing invalid-state holding path. Review/release must consider that
   normal rollback limitation; no production release or migration is performed.
 - Next: publish this repair PR, then run the isolated combined Conjurer journeys,
-  reconcile help/import evidence and review the complete stack. Do not rerun
+  reconcile help/import evidence and finish the implementation handoff. Do not rerun
   unrelated full regression suites.
 
 ### Review repair checkpoint, 2026-10-25
@@ -858,16 +865,76 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 - `branch/issue-215-phase-contract` is a separate test-only repair of that
   stale outbox assertion: require the recurring phase's actual helper call and
   the helper's actual auction call, retaining the cadence/boundary contract.
+  Delivered as `d7ce1af9a79166e12bf202c6b4493456e3790704`,
+  [PR #389](https://github.com/LuminariMUD/Duris/pull/389), based on #388.
 - Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
   review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
   #384. Combined socket/recovery qualification remains pending these repairs.
 
+### Combined functional qualification checkpoint, 2026-10-25
+
+- All approved production mechanics are implemented. Final branch
+  `branch/issue-215-combined-qualification` contains the complete implementation
+  through source/test base `d7ce1af9a`; it builds on #389. The original main
+  checkout and unrelated branch remain untouched.
+- `python3 tests/async/test_conjurer_gameplay_journey.py` uses the flat-file
+  binary, seven synthetic accounts, a temporary minimal world/state root and
+  loopback-only listeners. It uses real account creation, prepared mortal spells,
+  command routing, events, movement, help, save and recovery. No `.env`, existing
+  account/player state, production database or live server is used.
+- Actual socket evidence now includes all four mortal form casts, Air Recharge
+  feedback within 100 HP, three personal Earth layers and rejected fourth,
+  level-46 Water shoreline entry/exit and immediate ocean travel, socket abort,
+  mortal PvP cancellation, contested spring creation/cooldown ownership, the
+  mephit option and help lookup. A level-60 aggressive memory mob ignores native
+  level-56 Air and attacks the non-native level-50 Water control. Deterministic
+  native regressions provide the complete level/plane/variant/terrain matrices.
+- Extended `test_elemental_forms_runtime.py` now executes the actual per-affect
+  duration loop through eight duration decrements and ordinary expiration,
+  verifying one final message and complete component cleanup. ASan/UBSan pass.
+- Final `test_help_import_atomic.py` method
+  `AtomicImport.test_conjurer_sources_publish_with_parsed_precedence` passes
+  against disposable MariaDB with both complete help sources and parsed-source
+  precedence. Flat-file help catalog, combat movement feedback and all 14
+  documentation contracts pass. Existing MariaDB/flat-file builds and the
+  per-feature native evidence above remain valid; no production C/C++ changed
+  in this final qualification chunk.
+- Final socket run **passes all 15 checks**, including actual live copyover and
+  cold process restart/login. Inspect the saved snapshots after each transition:
+  retain every form component, three Stone Skin layers in the same charge order,
+  and exactly one VNUM-1100 mephit with kind 24, original keywords, no intrinsic
+  Fireshield and the same finite death deadline. Ordinary affect durations may
+  decrease with elapsed time; recovery does not refresh them.
+- Reproduce with the existing flat-file build command above, then
+  `python3 tests/async/test_conjurer_gameplay_journey.py`. Optional first argument
+  selects another flat-file server binary. The inspector dependency is built
+  automatically if absent. Compact successful evidence is written to ignored
+  `bin/qualification/issue215/gameplay-report.json`; run logs and binaries stay
+  under `bin/`. Final production-source revision is `d7ce1af9a` (subsequent
+  qualification commits change only tests/documentation).
+- Validation limits: exhaustive level/plane/greater-variant/terrain and damage
+  comparisons use the production-code native harnesses with the controlled
+  services identified in their checkpoints. The socket journey exercises a
+  synthetic minimal world on flat-file persistence; no MariaDB socket/copyover
+  journey, loaded production world, full burn-in or comparative balance campaign
+  is claimed. MariaDB compilation and disposable real help publication pass;
+  changed pet/affect materialization paths are shared and tested natively.
+- Final ablation retains existing affects, damage/healing paths, scheduler,
+  original summon VNUMs and portable pet codec. It adds no schema, balance
+  framework or new gameplay pet kind. Removed task-created authoring/baseline
+  scratch scripts; preserved qualification evidence and unrelated work.
+- Remaining owner work: code review, merge the dependency stack, choose any
+  release tag/deployment and collect player balance feedback. The older-binary
+  Fire pet-state holding limitation described above remains relevant to release
+  rollback. No release tag, merge, production operation or deployment was made.
+  Do not handle code reviews in this implementation task.
+
 ### Historical planning-only evidence
 
-The current change writes this plan and preserves the previous #264 document.
-Source inspection supports the proposed paths above. No proposed-feature tests,
-full build or gameplay session has been run for this
-documentation change. Implementation remains pending.
+The original planning-only change wrote this plan and preserved the previous
+#264 document. At that historical checkpoint source inspection supported the
+proposed paths, but implementation, builds and gameplay qualification were still
+pending. The later implementation checkpoints above supersede that status.
 
 Planning validation: `python3 tests/async/test_documentation_contract.py` passed
 all **14 tests**, including maintained document links and anchors. The preserved
