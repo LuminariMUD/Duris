@@ -14,6 +14,7 @@
 
 #include "core/prototypes.h"
 #include "account/account_reward_snapshot.h"
+#include "combat/trap_legacy.h"
 #include "world/db.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
@@ -430,6 +431,7 @@ bool account_reward_snapshot_apply(P_obj obj, const char *json, int template_ver
 				goto fail;
 		}
 	}
+	normalize_legacy_trap(obj, OBJ_VNUM(obj));
 	cJSON_Delete(root);
 	return true;
 fail:

@@ -40,6 +40,8 @@ HARNESS = r'''
 #include "world/world_recovery_codec.h"
 #include "world/world_singletons.h"
 #include "persistence/copyover.h"
+#include "persistence/persistence_mode.h"
+#include "flatfile/flatfile_shopkeeper_restore.h"
 #include "guild/artifact_population_repository.h"
 #include "item/item_ownership_runtime.h"
 #include <array>
@@ -103,7 +105,7 @@ int real_mobile(int vnum)
 
 int real_object(int vnum)
 {
-    return vnum == 1000 ? 0 : -1;
+    return vnum == object_indexes[0].virtual_number ? 0 : -1;
 }
 
 P_obj read_object(int vnum, int mode)
@@ -272,10 +274,14 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &) 
 void artifact_object_placed(P_obj) {}
 // Ordinary world objects in this fixture do not belong to shopkeepers.
 int singleton_shop_id(P_char) { return -1; }
+persistence_mode persistence_mode_get() { return PERSISTENCE_MODE_MARIADB_PRIMARY; }
+const char *persistence_mode_flatfile_root() { return nullptr; }
+bool flatfile_shopkeeper_bootstrap_new(const std::string &, std::string *) { std::abort(); }
+void fatal_boot_error(const char *, const char *, ...) { std::abort(); }
 P_obj read_object_for_recovery(const artifact_payload_projection &source)
 {
     assert(source.extra_flags_present && source.quantity == 1);
-    assert(source.payload_root_item_uid && source.item_uid && source.vnum == 1000);
+    assert(source.payload_root_item_uid && source.item_uid && source.vnum == object_indexes[0].virtual_number);
     P_obj object = read_object(source.vnum, VIRTUAL);
     if (object) { object->obj_uid = source.item_uid; object->extra_flags = source.extra_flags; }
     return object;
@@ -1041,6 +1047,34 @@ int main()
         extract_obj(restored, FALSE);
         assert(!object_list);
     }
+    reconcile_succeeds=true; hydrate_succeeds=true; lookup_succeeds=false;
+    owned_items.clear();
+    for (int vnum : {32820,32831,142251,142438}) {
+        object_indexes[0].virtual_number=vnum;
+        for (int charge : {-1,0,1,5}) {
+            auto saved=item(950,950,0); saved.vnum=vnum; saved.type=ITEM_CONTAINER;
+            saved.values[3]=7;
+            saved.trap_eff=vnum==32831 ? 516 : vnum==142438 ? 512 : 1536;
+            saved.trap_dam=vnum==142251 ? 12 : vnum==142438 ? 9 : 11;
+            saved.trap_level=vnum==142251 || vnum==142438 ? 60 : 50;
+            saved.trap_charge=charge;
+            for(int pass=0;pass<2;++pass) {
+                const auto generation=object_generation({{saved}});
+                assert(world_recovery_restore(generation.data(),generation.size(),300,77,nullptr));
+                auto *restored=object_list;
+                const int budget=vnum==32831 ? 0 : vnum==32820 && charge!=0 ? 1 : charge;
+                assert(restored && restored->trap_charge==budget && restored->value[3]==7);
+                assert(restored->trap_eff==(vnum==32831 ? 0 : vnum==32820 ? 512 : saved.trap_eff));
+                assert(restored->value[1]==(vnum==142251 || vnum==142438 ? 1 : 0));
+                saved.trap_eff=restored->trap_eff; saved.trap_dam=restored->trap_dam;
+                saved.trap_charge=restored->trap_charge; saved.trap_level=restored->trap_level;
+                saved.values[1]=restored->value[1];
+                extract_obj(restored,FALSE);
+                assert(!object_list);
+            }
+        }
+    }
+    object_indexes[0].virtual_number=1000;
     return 0;
 }
 '''
@@ -1187,6 +1221,7 @@ with tempfile.TemporaryDirectory(prefix="duris-world-recovery-") as temp_dir:
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
             "-ffunction-sections", "-fdata-sections", "-Isrc", str(source),
             rel("world_recovery_pipeline.c"), rel("world_recovery_codec.c"), rel("generated_npc_state.c"), rel("generated_npc_runtime.c"), rel("pet_restore_state.c"),
+            "src/combat/trap_legacy.c",
             rel("redis_command_observability.c"),
             "-Wl,--gc-sections", "-lz", "-pthread",
             str(HARNESS_STUBS), "-o", str(binary),
