@@ -25,11 +25,11 @@ INVALID = 800001
 
 
 def command(client, text, timeout=40):
-    # Inventory is a read-only causal barrier. Ambient room activity can print a
+    # TIME is a read-only causal barrier allowed during paralysis. Room activity can print a
     # prompt before the requested command runs, so a prompt alone is not an ACK.
     drain(client, .01)
     client.send(text)
-    client.send("inventory")
+    client.send("time")
     deadline = time.monotonic() + timeout
     pager_exited = False
     while time.monotonic() < deadline:
@@ -38,10 +38,10 @@ def command(client, text, timeout=40):
         if "[Return to continue" in output and not pager_exited:
             pager_exited = True
             client.send("q")
-            client.send("inventory")
-        if "You are carrying:" in output:
-            before, inventory = output.split("You are carrying:", 1)
-            if re.search(r"Pos:[^\r\n]*>", inventory):
+            client.send("time")
+        if "Current time is:" in output:
+            before, timestamp = output.split("Current time is:", 1)
+            if re.search(r"Pos:[^\r\n]*>", timestamp):
                 client.pending.clear()
                 return before
     raise AssertionError((text, bytes(client.pending).decode(errors="replace")[-5000:]))
@@ -265,6 +265,8 @@ def run(binary, backend):
                     inspect(key, (final[0], final[1], 0, final[3]))
                     assert count(14) == caster_count
                     command(builder, "purge " + key)
+                    if vnum == 32015:
+                        command(builder,"affectpurge "+journey.CHARACTER+" all")
                     if vnum == 1458:
                         time.sleep(4.2)
 
@@ -281,6 +283,8 @@ def run(binary, backend):
                     assert "Ok." in text and "already open" not in text,text
                     final=TRAPS[vnum][2]
                     inspect(key,(final[0],final[1],0 if final[2]>0 else final[2],final[3]))
+                    if vnum == 67803:
+                        command(builder,"affectpurge "+journey.CHARACTER+" all")
                     if vnum != 142233:
                         command(builder,"purge "+key)
 

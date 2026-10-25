@@ -239,8 +239,8 @@ combat-pulse tower wait with its staff exemption. Both loaded backends also veri
 61 exact fresh trap states through `stat trap` after full generated-world startup.
 The first loaded fixture used the nonexistent `trapstat` alias, then a keyword collision
 with the builder's starter book; numeric-vnum stringing fixed those fixture errors.
-Room activity can emit unsolicited prompts, so the journey now uses an inventory response
-as a read-only command barrier. Full scenario/save/restart completion remains pending.
+Room activity can emit unsolicited prompts, so the journey now uses a TIME response
+as a read-only command barrier (TIME remains allowed during paralysis). Full scenario/save/restart completion remains pending.
 Ordinary visibility/capacity refusals are also exercised: the mortal drops its starter
 inventory, hidden objects are searched for before opening, and a full urn must preserve
 the carried trap's budget before a valid put into the opened iron chest. Reflection uses
