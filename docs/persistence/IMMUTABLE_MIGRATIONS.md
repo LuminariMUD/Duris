@@ -11,6 +11,17 @@ Duris has two deliberately separate histories:
 
 ## Honest baseline adoption
 
+`run --online-pwipe-roster` accepts only the sealed 53-step manifest ending in
+`0052_pwipe_roster_checkpoint`, with all 52 earlier steps applied. It retains
+production target confirmation, allow-list, fresh backup, advisory lock, sealed
+checksums, ordered history and success-last verification. The October 25 live
+review found MariaDB 11.8.6 and an InnoDB/Dynamic `season_reset_state` singleton
+in active epoch 1, without `roster_recreated`. Existing writers name their
+columns; the nullable tail column preserves their behavior. Execution requires
+INSTANT DDL and LOCK=NONE, with one-second metadata and row-lock waits; failure
+leaves writers running. Coordinate schema-aware backup jobs across this DDL and
+verify the new runtime contract before installation. Immutable files are unchanged.
+
 `run --online-divine-trade` accepts only the sealed 52-step manifest ending in
 `0050_divine_trade_state` and `0051_divine_effect_delivery`, with the earlier
 50 steps already applied. It retains production target confirmation, allow-list,

@@ -23,6 +23,7 @@ struct divine_boon_population
 	std::array<unsigned, 4> brackets = {}; // 1-20, 21-35, 36-50, 51+
 	unsigned active_accounts = 0;
 	unsigned pvp_accounts = 0;
+	std::vector<uint16_t> levels; // One per eligible online account.
 };
 
 // In-memory only: process replacement warms from newly observed gameplay.

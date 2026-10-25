@@ -1692,10 +1692,10 @@ The Gods of Duris offer automatic bonuses. Your old toggle boon setting
 is preserved but does not control these benefits. There is no new boon
 shop or task-completion reward. Old earned balances remain recorded.
 
-Eight global slots share one rotation. At most one new boon starts at each
-fixed UTC hour; startup fills gradually. A vacant slot can stay empty.
-There is at most one cargo event and one PvP event at a time. Downtime
-skips missed opportunities. Absolute expiry times survive restart.
+Eight global slots: six for zone EXP and epic boons, one for cargo and one
+for PvP. Each fixed UTC hour can start one zone boon, plus cargo and PvP
+when their slots are free. A vacant slot can stay empty. Downtime skips
+missed opportunities. Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
 Damage, tanking, healing and kill shares qualify in your designated zone.
@@ -1709,8 +1709,10 @@ Good players receive Good-side objectives and PvP against Evil; Evil players
 receive Evil-side objectives and PvP against Good. Unaffiliated players can
 use global trade boons but receive no fabricated side objectives. EXP and
 epic targets exclude every hometown-flagged zone, safe, private, unfinished,
-inaccessible and unsuitable content. Targets reflect recent active accounts
-and suitable group levels. Selection brackets do not restrict zone entry.
+inaccessible and unsuitable content. A zone EXP target suits the level of
+a player online when it starts. Epic targets follow the side's average
+online level along the epic zone list, lower payouts for lower levels; with
+nobody online, any epic zone. Neither restricts zone entry.
 
 Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
 Buy at the displayed source after this boon starts, then sell at its distinct
