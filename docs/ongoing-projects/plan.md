@@ -1,153 +1,402 @@
-# Issue #264: supervised pwipe completion
+# Issue #368 — restore authored legacy object traps
 
-Updated 2026-10-24. Implementation and local qualification are complete for the supervised
-procedure below. Production operations are not authorized. PR integration is
-authorized separately by the oldest-first merge-queue task.
+Status: implementation plan only, 2026-10-25.
+Issue: [#368](https://github.com/LuminariMUD/Duris/issues/368).
+Target branch: `branch/issue-368-legacy-traps`.
+Code inspected: [`e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`](https://github.com/LuminariMUD/Duris/commit/e1efb9bc0779e8b6615353c5672e29f21c6bb7a8).
+This checkout is pinned to that revision; subsequent movement of master is not evidence
+that the implementation or qualification below has happened.
 
-## Scope and finish line
+The [selected design](https://github.com/LuminariMUD/Duris/issues/368#issuecomment-6398324337)
+records the owner's delegated behavior choices; the
+[earlier investigation](https://github.com/LuminariMUD/Duris/issues/368#issuecomment-6397485715)
+records historical evidence and its limits. Treat the selected values as requirements,
+but use the owning source and actual journeys to establish how they must be implemented.
+The previous contents of this pathname are preserved byte-for-byte in
+[plan-issue-264.md](plan-issue-264.md).
 
-One supervised MariaDB-primary wipe: drain accepted external work, stop external
-writers and competing service supervision, run the existing launcher as the game
-user, and explicitly start the new season only after durable completion.
-Incomplete resets remain fenced; use the existing same-epoch recovery or matched
-restore procedure. Never run checkout qualification scripts through sudo.
+## Outcome, boundaries, files and proof
 
-Reset every account-bank balance. Recreate only eligible exact level-62 Overlords
-with clean bodies and new PIDs; blocked/deleted characters remain excluded, even
-with stale account projections. Preserve accounts, bans, approved benefits,
-configuration and recovery/history evidence. Old seasonal state must not return;
-retries must not apply or decrement carryovers twice.
+- **Outcome:** resolve every one of the 61 active authored definitions: 55 generic
+  traps with defined effects, six retired T records with their retained behavior;
+  implement the seven local creature profiles, 17 T-field repairs and four container
+  flag repairs. Fresh instances and recognized saved copies must behave consistently
+  without restoring spent charges. Invalid configurations remain visible and inert.
+- **Non-goals:** no general trap framework, configurable target schema, new NPC
+  prototypes, global direction/data migration, changes to the existing 0–8 effect
+  balance, database schema migration, production operation, deployment or full burn-in.
+  This branch begins with a documentation-only commit; implementation is subsequent work.
+- **Files:** the owners in the evidence/phase sections below, the 31 authored object
+  inputs represented by the manifest (only files whose content changes need editing),
+  focused existing tests plus the explicitly proposed tests, and builder/regression
+  documentation. Preserve unrelated changes and the existing special procedures.
+- **Proof:** independent authored/generated/loaded inventories, real effect and command
+  execution, sanitizer lifecycle tests, round trips through actual restoration owners,
+  MariaDB and flat-file gameplay/restart journeys, and a qualified full generated-world
+  boot. A silent warning log, helper-only test or CI status is insufficient.
 
-No new PRs, privileged helper, unattended wipe service, flat-file wipe support,
-platform matrix, repository-wide burn-in, broad cleanup or optional hardening.
-The owner explicitly narrowed #264 to this supervised procedure.
+## What the current code actually establishes
 
-## Delivered changes
+| Finding | Owning source and consequence |
+| --- | --- |
+| The inventory is still 61, with type counts 9:13, 10:2, 11:6, 12:9, 13:2, 14:6, 15:13, 16:10. | Independently reparsed the files named by [areas/AREA](../../areas/AREA); all old tuples match the issue. Use [make_obj.c](../../areas/src/obj/make_obj.c)'s active-input selection, not a glob over alternate object files. |
+| Runtime and load diagnostics independently hard-code 0–8. | [trap.c](../../src/combat/trap.c), `trap_damage_supported`; [db.c](../../src/world/db.c), object T parser. Updating the switch alone leaves false boot diagnostics; widening the parser alone hides inert traps. |
+| Staff tools also stop at slash. | `do_trapstat` and `do_trapset` in trap.c require matching names, validation, flags and help. |
+| “get/put” is not currently a complete call path. | `checkgetput` is called by two pickup paths in [actobj.c](../../src/cmd/actobj.c). `put()` has an `if (o_obj) /* Trap check */` comment but no trap call. The selected OBJECT behavior needs an actual put hook for restored types, with single/bulk caller safety. Do not claim the existing test proves putting is covered. |
+| OPEN runs after opening; movement checks run before movement costs/publication. | [actmove.c](../../src/cmd/actmove.c), `do_open` and `do_simple_move`. Preserve that ordering. A glyph cannot simply return false after arbitrary spell side effects. |
+| Pointer presence is not proof of a live actor. | `IS_ALIVE` dereferences the pointer. Reuse `find_character_by_runtime_id`, `find_live_object(expected, uid)`, and the identity/room checks exemplified by `get_can_continue`. Snapshot identities, not saved linked-list next pointers, across effects. |
+| Allocating an NPC has side effects before room placement. | `read_mobile` registers the character, increments the prototype count, schedules events and calls [convertMob](../../src/mob/mobconv.c). `char_to_room` can refuse placement or extract an NPC on an invalid destination. Allocate/rollback a batch deliberately; raw .mob HP/damage are not final runtime stats. |
+| Spell reuse has important semantics. | [magic.c](../../src/magic/magic.c): low-level self-dispel returns early, high-level self-dispel bypasses saves; harm carries a nonlethal flag; minor paralysis uses its level argument for duration. [affects.c](../../src/magic/affects.c): Stun owns its racial/elite checks and two-stage fear save. Use an independent caster, not the victim. |
+| Prototype repair is insufficient for restored copies. | Stored fields overwrite prototypes in [player_load_items.c](../../src/player/player_load_items.c), [sql_player.c](../../src/sql/sql_player.c), both binary restore paths in [files.c](../../src/core/files.c), [world_recovery_pipeline.c](../../src/world/world_recovery_pipeline.c), and [account_reward_snapshot.c](../../src/account/account_reward_snapshot.c). Normalize after the final stored-field application, before use/publication. |
+| The legacy binary writer notices only charge differences. | files.c selects `O_U_TRAP` by comparing `trap_charge` alone, although its payload stores all four fields. Compare all four so a custom mask/type/level is not lost on a later save with unchanged charges. The existing wire format already accommodates this. |
+| Container state is also restored. | Player/world snapshots overwrite `value[]`. “Start closed” describes fresh prototypes, not permission to reclose an already-open saved container. See the restore rules below. |
+| Existing tests are useful but narrower than acceptance. | `test_unsupported_trap_damage.py` executes extracted dispatch/check functions with spell stubs. `test_get_trap_lifecycle.py` executes pickup finalizers with synthetic trap effects. They do not prove native spell defenses, put hooks, NPC conversion, full-world loading or the new saved-copy repair. |
 
-- Existing server [PR #363](https://github.com/LuminariMUD/Duris/pull/363) and
-  [DurisWeb #97](https://github.com/LuminariMUD/DurisWeb/pull/97) target master.
-  The existing stacks are consolidated into these candidates; this task created
-  no PRs and merged no PRs.
-- Removed root-required systemd qualification and the forced Git safe-directory
-  bypass. The removed mode rejects before resource creation. Existing production
-  service behavior is unchanged; historical systemd proof remains historical.
-- Restored-world assertions now check the frozen generation immediately after
-  first boot and a fresh generation independently after second boot. Each reads
-  the current boot's full log, because the launcher rotates logs at every boot.
-- DurisWeb probe waits for durable donation acknowledgement with its existing
-  bounded waiter. Literal loopback matching already passed on the published head.
-  Repair published as `efc9de3`; no player-visible release news is needed.
-- Security finding fixed in `da08e1812`: exclude blocked mappings by PID or name
-  from staff recreation. The existing native regression covers blocked current-name
-  and stale-name mappings, alongside missing/stale/wrong-owner eligible mappings.
-- Runbook and regression guidance describe the supported supervised procedure.
+The editor's south/west/east bit assignments differ from the runtime. Keep the runtime's
+N=8, E=16, S=32, W=64, U=128, D=256 convention. Correct the listed content and the editor's
+labels/constants consistently; do not rewrite unrelated area files.
 
-## Acceptance evidence
+## Behavior to implement
 
-1. **Contract/runbook:** lifecycle validator covers 200 SQL tables, 35 other stores
-   and 42 Redis surfaces. Fourteen lifecycle tests, thirteen reset-manifest checks
-   and SQL completion checks pass. The manifest, existing consumer proof and
-   runbook describe the same reset/preservation policy.
-2. **Actual new-season journey: passed.** Revision `1ca00c651`, production binary
-   SHA-256 `775c89a6637ad84b544bd41ac0f102754fa32080d7390d23c2ae4811ec90569b`.
-   The 301.44-second real countdown, launcher/filesystem cleanup, Redis isolation,
-   Overlord login, fresh mortal combat/loot, rewards, save, reconnect and second
-   boot passed. Command:
-   `python3 tests/async/run_pwipe_runtime_journey.py --redis --restore /home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production/server/dms_new`.
-3. **Recovery: passed.** The same run restored a frozen matched SQL/journal,
-   filesystem and authenticated Redis generation. First-boot generation,
-   original account/body/bank/reward/items, fresh checkpoint and independent
-   second-boot recovery passed; source SQL/files/Redis and generation hashes
-   remained unchanged. Session 91866 exited 0. Evidence:
-   `bin/analysis/pwipe-integrated-restore.log` and
-   `bin/analysis/pwipe-runtime-mariadb-redis-restore.json`.
-   An earlier assertion failed because it sliced an offset from rotated/bounded
-   diagnostics; its report is preserved as `pwipe-restore-first-attempt.json`.
-4. **Findings:** the blocked-roster repair passed the production build and actual
-   native MariaDB SQL/launcher/recovery suite, including unchanged missing/stale
-   projection repair and stable retry roster. Command:
-   `python3 tests/async/run_pwipe_handoff_mysql.py --server /home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production/server/dms_new`.
-   Logs: `bin/analysis/pwipe-blocked-{build,native,hook}.log`. Session 69736 exited 0.
-   The security thread is resolved. The eligibility-only change retains the
-   successful ordinary-staff gameplay/restore evidence.
+Effective level for restored types is 25 for zero, otherwise the positive value capped at
+100; reject negative levels without consuming charges. Legacy 0–8 encoded damage dice
+remain unchanged. Use the existing vnum-14 temporary trap-caster pattern, with effective
+caster level and ordinary converted prototype attributes, never player equipment or class
+bonuses. Its registration, events, retaliation, extraction and cleanup require real tests;
+its nominal HP is not a safety guarantee.
 
-Reuse the [published evidence record](https://github.com/LuminariMUD/Duris/blob/10acd11765059ec3f158da0b9665a45696bff91f/docs/ongoing-projects/plan.md)
-for completed both-engine native/failure matrices, writer/replay isolation,
-Redis off/on/failure/re-enable, reward preserve/discard/claims, flat-file rejection,
-telemetry manual cutover and paired website HTTP/WebSocket/donation proof.
-Final MariaDB/MySQL logs were rechecked and retain passing ambiguous-commit,
-same-epoch recovery, residual-store fencing and staff ownership/clock assertions.
-No fresh matrix is required for unchanged behavior.
+| Type | Contract |
+| --- | --- |
+| 9 | Existing character-targeted dispel: ordinary removable-affect iteration, saves, resistance and non-dispellable protections. |
+| 10 | A local hostile rift creates the specified NPC. No portal, player relocation or global character selection. It remembers the triggering character; normal later NPC updates decide aggression, rather than starting combat synchronously in the gate handler. |
+| 11 | Create the specified local NPC batch and start its normal attack on the triggering character. |
+| 12 | Existing wither at effective level, including saves, construct/undead behavior, stat effects and existing-affect exclusions. |
+| 13 | Existing harm: pre-mitigation 100 on a successful save, otherwise 200, with its nonlethal flag and no player Zealot bonus. |
+| 14 | Existing poison with positive level, including its normal random poison family, resistance, save, immunity and durations. |
+| 15 | Minor paralysis. Caster stays level L; pass duration-level `clamp(floor(L/5),4,16)` to the existing spell, yielding 3–12 seconds. Keep resistance, paralysis immunity, Freedom of Movement, save modifier 0 and break on external damage. Do not apply/extend it when either minor or major paralysis already exists. |
+| 16 | Ordinary magic resistance, then `Stun(..., true)` with full duration `clamp(floor(L/20),1,4) * WAIT_SEC`. Keep native immunities, existing-stun rejection, fear saves and half-duration outcome. |
 
-Website format, lint, type-check, build, two donation suites/nine tests, and actual
-compiled principal/delayed-ACK/timeout checks pass. Both review threads are resolved;
-code and security reviews completed without findings at `efc9de3`.
+Mortal PCs and PC pets are eligible; exclude staff, ordinary NPCs and the temporary caster.
+A ROOM spell snapshots eligible character identities in the source room and revalidates
+each before applying it. A valid spell activation spends one positive charge total even
+on a save, immunity or existing effect. Invalid configuration/caster creation failure does
+not spend a charge. Zero is always disarmed; -1 is unlimited. For restored types, MULTI
+means unlimited only while charge is nonzero; do not revive a disarmed MULTI trap.
 
-Known ancestor dispositions in the consolidated source:
-#309 consumers -> #361/original repair; #310 preflight reaper -> recorded child
-status; #311 reset SQL -> synchronous owning connection; #313 staff mapping/clocks
--> durable ownership and fresh clocks; #339/#352 recovery parents/access -> guarded
-preflight; #330 -> unsafe qualifier removed; #337 -> independent restored-boot
-proof above. Superseded intermediate heads are not individually repaired.
+### Creature profiles
 
-## Final integration checks
+Lookup by the explicit **(object vnum, type)** pair. Unlisted combinations are invalid,
+diagnosed and charge-preserving; there is no guessed fallback or reuse of object value
+slots as a target schema.
 
-Reconciled master through `c753a4806`, preserving the tested wipe source, launcher,
-runtime qualifier, blocked-roster regression and native handoff behavior. Removed
-the reintroduced systemd helper/mode from the candidate as required by this plan;
-the original paused drafts remain intact. Independent upstream changes are retained.
+| Object | Type | NPC | Batch | Initial charges | Room cap for NPC vnum |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 41361 | 10 | 200 | 1 | 1 | 1 |
+| 42290 | 10 | 200 | 1 | 1 | 1 |
+| 32820 | 11 | 32861 | 3 | 1 | 6 |
+| 32870 | 11 | 32861 | 3 | 1 | 6 |
+| 32835 | 11 | 32861 | 1 | 1 | 6 |
+| 32846 | 11 | 32871 | 1 | 1 | 1 |
+| 41927 | 11 | 200 | 1 | 2 | 1 |
 
-The final production build passes at `5943e287b` with:
-`make -C src -j8 PERSISTENCE_BACKEND=mariadb BUILD_PROFILE=production BIN_ROOT=/home/aiwithapex/projects/duris-issue264-finish/bin/qualification-production`.
-Log: `bin/analysis/pwipe-333-build.log`; session 99985 exited 0.
-Binary SHA-256: `b282e1d4cee26eab5c758f4317c5ec41acf835e1e70f3cba30b474082511b4bc`.
-Copied dependency records were relocated before this build; all affected headers
-and sources were rebuilt. The later reconciliation changes only a migration test
-and regression documentation: all 24 migration-runner tests pass, and production
-source/binary are unchanged. The incoming training-dummy regression also passed.
+Use ordinary converted mob instances and ordinary rewards/lifecycle, without trap-level
+rescaling, additional equipment resets, timers or a reward subsystem. Room caps include
+all living instances of the NPC vnum. ROOM does not multiply the batch by population.
+Preflight capacity for the entire batch, allocate before exposing the encounter, and clean
+up a failed batch with no charge consumption. Commit the charge once the complete batch
+has been placed; subsequent ordinary combat/death does not refund it. Revalidate identities
+after callback-capable operations. No new placements for 32835/32846.
 
-Formatting and commit hooks pass with Clang 18 and GCC 13 headers; no hook bypass.
-Both final PRs have zero unresolved findings. Server code and security review
-completed without findings at `6eb10fae6`; the subsequent upstream reconciliation
-preserves that wipe implementation byte-for-byte. Website review passed at
-`efc9de3`. A final source/diff review confirms the removed privilege workflow,
-separate restored-boot assertions, blocked-roster exclusion and preserved upstream
-changes. Later automated runs may inspect ancestry/documentation updates; they are
-not represented as already completed.
+### Retirements and retained procedures
 
-Technical qualification is complete at this candidate. The separate process that
-continues merging ancestors may create new base conflicts; those are subsequent
-integration work, not grounds to repeat unchanged runtime proof. No production
-acceptance or ongoing guarantee about a changing master tree is claimed.
-Do not add another PR, matrix, helper, full countdown or optional hardening phase.
+Remove only generic T data for 32831, 55022, 57567, 77721, 131215 and 131226.
 
-## Preserved work and limits
+- 32831 retains `pesky_imp_chest`: three imps once per chest instance, tracked by
+  `value[3]`. 32833 retains that procedure **and** its distinct one-charge poison trap.
+- 77721 retains `trap_tower1_para`, its upward trigger, existing exemptions and
+  1-in-3 chance of five combat pulses of wait. Do not retune it to the generic stun cap.
+- 55022 remains the decorative non-takeable display case.
+- 57567 retains its quest-switch and ghost-librarian reset behavior; no new portable
+  100-charge movement ward.
+- 131215/131226 retain weapon spell data, messages, affects and mob equipment resets.
 
-Implementation checkout: `/home/aiwithapex/projects/duris-issue264-finish`, existing
-branch `branch/issue-264-overlord-projection-repair`. Website checkout:
-`/home/aiwithapex/projects/durisweb-issue264-presence`.
-The primary checkout and paused `duris-issue264-plan` drafts, including the unused
-privileged-helper draft, remain untouched. The original plan-only worktree also
-remains available. The [stopped checkpoint](https://github.com/LuminariMUD/Duris/blob/2d8948bd3/docs/ongoing-projects/plan.md)
-records their exact paths and files.
+The special assignments are in [specs.assign.c](../../src/specs/specs.assign.c);
+implementations are in [specs.shabo.c](../../src/specs/specs.shabo.c) and
+[specs.hoa.c](../../src/specs/specs.hoa.c). Retiring T does not retire these procedures.
 
-This qualification does not claim production acceptance, unattended systemd
-qualification, flat-file wipe support or rendered-browser coverage. Production
-wipe/deployment and closing/merging superseded PRs remain separate authorized work.
+## Implementation sequence and proof gates
 
-## Sequential integration — 2026-10-24
+All boxes below are future work. Keep each step reviewable; no placeholder test should
+stand in for its stated behavior.
 
-The oldest-first merge queue integrated the open ancestor PRs through #362,
-reviewed missing passes, resolved findings and preserved unrelated worktrees.
-This final reconciliation retains the supervised qualifier, blocked-staff exclusion,
-and the independently qualified first/second boot generation checks. The earlier
-privileged-helper repair was removed as superseded by the supervised procedure.
-Independent #357 preserves durable pet custody before ordinary drops; #359 retains
-long target identity and repairs the stale character-deletion fixture counter.
+### 1. Content contract and shared validation
 
-The final SQL implementation and native/restore qualifier files match reviewed
-candidate `85c2adf18`; its qualified native reset/recovery evidence is reused.
-Focused filesystem, lifecycle, migration, reset, deletion, pet and Divine regressions
-plus integrated development/production builds qualify the combined changes. This
-record is integration evidence, not a production wipe/deployment or rendered client
-acceptance. No branches or unrelated worktrees were deleted or force-pushed.
+- [ ] Add one focused content regression with an independent golden old/final manifest
+  matching the appendix. Parse only AREA-selected inputs. Check the seven profiles,
+  all 17 changes, six removals and four container flag edits; reject duplicate/missing
+  vnums and remaining unsupported configurations.
+- [ ] Define supported types/profiles once for runtime and db.c load diagnostics.
+  Keep effect/profile validation separate from charge eligibility: a spent valid trap
+  is not an invalid definition. Keep implementation-local helpers in trap.c; add only
+  the small shared header/API required by the concrete loader/restoration consumers.
+- [ ] Extend trapstat/trapset with names 9–16, profile restrictions, meaningful GLYPH/
+  MULTI reporting and negative-level validation. Invalid builder edits must not leave
+  a half-modified trap.
+- [ ] Align editor direction definitions and flag-list ordering in
+  `areas/de/src/obj/traps.h` and `areas/de/src/flagdef.cpp`; check formatting through
+  `obj/objtypes.cpp`. Update `docs/content/area_writing.txt` and relevant command help.
+  Keep existing runtime constants and unrelated data intact.
+
+**Exit:** content contract fails on the present 61 definitions for the expected reasons;
+validation rejects real invalid types/profiles while recognizing every planned final row.
+
+### 2. Effect execution and bounded creature creation
+
+- [ ] Add types 9–16 in trap.c using the contracts above. Keep 0–8 behavior and charge
+  rules on their existing path.
+- [ ] Snapshot trap fields and victim identities before effects. Reuse
+  `find_character_by_runtime_id` and `find_live_object` rather than inventing another
+  entity registry. Never test IS_ALIVE through an already-freed pointer.
+- [ ] Implement temporary-caster cleanup and the explicit charge commit points.
+  Verify ordinary spell and helper behavior with production functions, not only counters.
+- [ ] Implement the seven profiles in a small fixed table/switch, including whole-batch
+  capacity, placement failure rollback, cap counting and distinct gate/summon aggression.
+
+**Exit:** native focused tests execute all eight effects, duration boundaries, defenses,
+duplicate-effect rejection, ROOM filtering, missing profile/caster, cap/full-batch failure,
+retaliation and target/actor/caster extraction. Sanitizers find no lifetime error; no caster,
+event, combat link, corpse or reward leaks from temporary casting.
+
+### 3. Real command integration and content edits
+
+- [ ] Repair the 17 T tuples and remove the six specified records; preserve all other
+  object/proc fields. Set container flags `value[1]`: 67803 1→5, 142233 17→21,
+  142251 0→5, 142438 0→5. Add no lock or key requirement.
+- [ ] Implement GLYPH continuation for restored types. After effects, revalidate actor,
+  source room, object identity and current movement eligibility/exit. Continue safely
+  to later matching traps, once per object; do not hide a subsequent blocking trap.
+  Preserve non-glyph stop-the-attempt behavior and legacy 0–8 semantics.
+- [ ] Preserve pickup rejection and OPEN-after-opening ordering. Wire OBJECT on the
+  **item being put** for restored types 9–16: after ordinary permission/capacity checks
+  but before acknowledgement, detachment, transfer or publication. An invalid put must
+  not spend charges. Do not introduce destination-container hazards by inference.
+- [ ] Adapt single/bulk put and any shared transfer callers reached by the hook so a
+  trap rejection or invalidated actor/item/container stops safely. Reuse the pickup
+  identity pattern; do not retain `next_content` across effects. Preserve ordinary
+  legacy 0–8 put behavior and unrelated coin transfer behavior.
+- [ ] Verify explicit directions (including the east-only royal equipment room,
+  west-only shrine and downward Barovia glyph), all-direction rows, special-procedure
+  overlap, disarming, and the four first-open container states.
+
+**Exit:** actual movement/get/put/open command paths show the chosen outcomes, one charge
+per activation and no delivery/publication after rejection. Existing bulk pickup and
+special procedures keep their prior guarantees.
+
+### 4. Saved-copy compatibility and round trips
+
+- [ ] Add one narrow, idempotent normalization function for the appendix's changed/
+  retired profiles. Match vnum plus the **old mask/type/level**, not vnum alone.
+  Preserve custom combinations, unrelated vnums and zero/disarmed state.
+- [ ] Preserve remaining positive charges, capped only where the new initial budget
+  is smaller. Convert -1→1 only for 32820, 32870, 32835, 32846 and 41361.
+  Clear generic trap fields on matching retired records. Normalize the two authored
+  levels without ever converting negative level into an unsavable spell.
+- [ ] Call normalization after stored fields are complete in each actual owner:
+  `materialize_item_graph/apply_extra_descriptions` (player_load_items.c);
+  legacy SQL extra-description loading (sql_player.c); `restoreObjects` and
+  `read_one_object` (files.c); world recovery materialization
+  (world_recovery_pipeline.c); and `account_reward_snapshot_apply`.
+  Respect existing snapshot verification and ownership/publication order.
+- [ ] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
+  fields; keep its existing encoding and other formats unchanged.
+- [ ] Preserve saved open/closed state. The four CLOSED changes initialize **fresh**
+  objects only. For recognized legacy 142251/142438 with the original non-closeable
+  container flags, add CLOSEABLE while leaving them open; other saved flag combinations
+  remain as stored. Do not reclose opened loot or reset a special procedure's value[3].
+- [ ] Prove each restore owner actually invokes normalization after its final overwrite;
+  a passing normalization helper alone is insufficient. Round-trip fresh, partial,
+  exhausted, disarmed MULTI, old unlimited→finite, retired and custom states. Repeat the
+  load/save cycle to prove idempotence and no rearming.
+
+**Exit:** both persistence authorities and each reachable legacy/recovery/reward materializer
+preserve the selected behavior and actual remaining budget. No broad data rewrite or schema
+change is necessary. Normal save/restart guarantees are not represented as a new
+crash-atomic spawn transaction.
+
+### 5. Focused tests, generated world and gameplay qualification
+
+Prefer extending existing tests before adding infrastructure:
+
+- `test_unsupported_trap_damage.py`: retain invalid/0–8 coverage; add new effect/profile/
+  level/charge cases. Its current effect stubs alone cannot verify native spell behavior.
+- `test_get_trap_lifecycle.py` and `test_bulk_get_publication.py`: lifetime/rejection
+  regression; extend the executable coverage to the new put/movement boundaries.
+- `test_player_load_items.py`, `test_item_extra_descr_codec.py`,
+  `test_player_item_snapshot_codec.py`, `test_world_recovery_pipeline.py` and relevant
+  reward/binary restoration harnesses: prove real restore boundaries and round trips.
+  Source-contract tests can supplement, not replace, executable evidence.
+- Proposed new `test_legacy_trap_content.py`: independent authored/generated manifest,
+  four containers and active-input selection. Proposed focused native
+  `test_legacy_trap_effects.py`: real effect/helper and lifecycle behavior with controlled
+  save/RNG inputs. Add a small restoration harness only where existing owners lack one.
+- Proposed `test_legacy_trap_journey.py [SERVER BACKEND]`: reuse the disposable runtime,
+  account/TCP and fixture machinery in `test_corpse_trap_restart_journey.py` and
+  `test_flatfile_combat_journey.py`. Exercise actual generated prototypes, every effect
+  and spawn profile, changed trigger classes, get/put/open, save/reconnect, spent
+  floor/corpse state and restart on both backends. Keep the existing lethal corpse-trap
+  journey as a legacy regression.
+- Register only the relevant new checks in `tests/run_regression_tests.py` /
+  `tests/run_db_tests.sh` where needed; document commands/evidence in
+  `docs/testing/REGRESSIONS.md`.
+
+Implementation commands (new test filenames above are proposed, not present yet):
+
+```sh
+./scripts/format.sh --check --rev origin/master
+make -C src -j8
+make -C src -j8 PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/issue368-flatfile"
+make world
+python3 tests/async/test_unsupported_trap_damage.py
+python3 tests/async/test_get_trap_lifecycle.py
+python3 tests/async/test_bulk_get_publication.py
+python3 tests/async/test_legacy_trap_content.py
+python3 tests/async/test_legacy_trap_effects.py
+python3 tests/async/test_player_load_items.py
+python3 tests/async/test_item_extra_descr_codec.py
+python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_world_recovery_pipeline.py
+python3 tests/async/test_corpse_trap_restart_journey.py "$PWD/bin/issue368-flatfile/server/dms_new" flatfile
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_corpse_trap_restart_journey.py "$PWD/bin/server/dms_new" mariadb
+python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/issue368-flatfile/server/dms_new" flatfile
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/server/dms_new" mariadb
+```
+
+Use isolated local environments and the disposable SQL wrapper; it does not source the
+checkout's .env. Keep generated worlds, binaries and evidence under the repository's
+ignored output locations. Do not commit area aggregates or runtime data.
+
+- [ ] Regenerate with the existing root `make world` target (`areas/m_slow` and the
+  area tools), then independently verify all 61 generated prototypes against the
+  appendix and four container flags. Source parsing alone is not this proof.
+- [ ] Boot the full generated world in an isolated local runtime, with normal floor/
+  corpse restoration enabled rather than debugger `-z` shortcuts. Inspect loaded
+  prototypes and complete startup logs from that exact binary/world generation.
+- [ ] Assert the 61 old unsupported-definition warnings are absent **and** valid
+  effects execute; inject an unrelated invalid configuration to prove warnings and
+  charge preservation still work. Check parser duplicates by vnum, not warning count.
+- [ ] Save evidence with source SHA, binary/world hashes, backend, commands, outcomes
+  and complete boot log paths. Qualify restored-world state before claiming clean boot.
+
+### 6. Final ablation and closeout
+
+- [ ] Reread the actual diff: every source/data/helper change must serve a listed
+  outcome; preserve spell balance outside the selected trap callers and existing
+  special procedures. Keep the single compatibility normalizer because multiple real
+  loaders require it; do not duplicate its policy.
+- [ ] Keep the existing serializers, world generator, mob templates, identity lookups
+  and test runtime. Drop speculative configuration, a generic effect plugin system,
+  entity registries, replacement persistence formats and new scheduler/reward layers.
+- [ ] Confirm each manifest row, profile, timing, save/defense, charge rule, continuation
+  rule, restoration owner and acceptance condition has direct evidence.
+- [ ] Record remaining implementation/qualification failures honestly; fix them before
+  calling #368 resolved. Follow normal review requirements, without waiting for CI as a
+  substitute for local evidence. Publishing/merging a future PR and production release
+  are separate actions from this plan-only publication.
+
+## Planning evidence and estimate
+
+Planning checks completed on the pinned base:
+
+- AREA-selected inventory: all 61 old tuples independently matched; 17 changed targets,
+  six removals, 38 retained tuples and seven explicit spawn profiles accounted for.
+- `python3 tests/async/test_unsupported_trap_damage.py` — passed.
+- `python3 tests/async/test_get_trap_lifecycle.py` — passed.
+- These establish the existing baseline only. No proposed new effect, generated-world
+  change, saved-copy repair, full build or gameplay qualification has been performed.
+
+Estimated implementation and qualification effort for one engineer: **32–48 hours,
+approximately 4–6 focused working days**.
+
+| Work | Hours |
+| --- | ---: |
+| Contract tests, validation and builder/documentation alignment | 3–5 |
+| Real spell execution, caster lifecycle and fixed spawn profiles | 8–12 |
+| Command continuation/put integration and authored content edits | 5–8 |
+| Six restoration owners, legacy writer and persistence tests | 6–9 |
+| Both-backend gameplay/restart and full-world qualification | 6–8 |
+| Final review, findings and evidence closeout | 4–6 |
+
+The main uncertainty is callback/lifetime behavior and the separate restoration paths,
+not editing the object files. The estimate includes a repair/review allowance but excludes
+external review latency and production scheduling. It is an effort estimate, not a
+promise that the unimplemented behavior has already been validated.
+
+## Complete old-to-final manifest
+
+Fields are effect mask, type, charges, level. Old fields below were read from the pinned
+checkout, not assumed from the issue. Remove T means retire generic trap state only.
+For rows retaining a T record, the effect contracts above supply the new runtime behavior.
+
+| Vnum | Active input | Observed old T | Required final T |
+| ---: | --- | --- | --- |
+| 1458 | [areas/obj/kobold.obj](../../areas/obj/kobold.obj) | `6 16 1 100` | `6 16 1 100` |
+| 3835 | [areas/obj/element.obj](../../areas/obj/element.obj) | `2 16 1 50` | `2 16 1 50` |
+| 6003 | [areas/obj/lizard.obj](../../areas/obj/lizard.obj) | `2 12 1 23` | `2 12 1 23` |
+| 6707 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 21` | `2 12 1 21` |
+| 6714 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 9 1 16` | `2 9 1 16` |
+| 6715 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 16` | `2 12 1 16` |
+| 6716 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 9 1 16` | `2 9 1 16` |
+| 6721 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 31` | `2 12 1 31` |
+| 6740 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 16 1 16` | `2 16 1 16` |
+| 22209 | [areas/obj/desolate.obj](../../areas/obj/desolate.obj) | `512 14 6 10` | `512 14 6 10` |
+| 32015 | [areas/obj/avernus.obj](../../areas/obj/avernus.obj) | `2 14 1 56` | `2 14 1 56` |
+| 32820 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `1536 11 -1 50` | `512 11 1 50` |
+| 32831 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `516 11 3 50` | Remove T |
+| 32833 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `516 14 1 50` | `516 14 1 50` |
+| 32835 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `32 11 -1 56` | `65 11 1 56` |
+| 32846 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `5 11 -1 56` | `509 11 1 56` |
+| 32870 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `1536 11 -1 50` | `512 11 1 50` |
+| 35506 | [areas/obj/lavcav.obj](../../areas/obj/lavcav.obj) | `2 15 2 100` | `2 15 2 100` |
+| 41353 | [areas/obj/highway.obj](../../areas/obj/highway.obj) | `516 9 1 50` | `516 9 1 50` |
+| 41361 | [areas/obj/highway.obj](../../areas/obj/highway.obj) | `3140 10 -1 100` | `2069 10 1 100` |
+| 41926 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `2304 9 2 100` | `2305 9 2 100` |
+| 41927 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 11 2 100` | `6 11 2 100` |
+| 41928 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 15 1 100` | `6 15 1 100` |
+| 42175 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 12 1 50` | `6 12 1 50` |
+| 42212 | [areas/obj/tribal.obj](../../areas/obj/tribal.obj) | `2 9 1 50` | `2 9 1 50` |
+| 42290 | [areas/obj/tribal.obj](../../areas/obj/tribal.obj) | `2 10 1 50` | `2 10 1 50` |
+| 43503 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `256 16 -1 50` | `257 16 -1 50` |
+| 43506 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `64 12 -1 50` | `17 12 -1 50` |
+| 43511 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `5 15 -1 75` | `509 15 -1 75` |
+| 44160 | [areas/obj/tikitt.obj](../../areas/obj/tikitt.obj) | `64 13 1 90` | `17 13 1 90` |
+| 44465 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `1057 16 -1 80` | `1089 16 -1 80` |
+| 44532 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `6 16 1 60` | `6 16 1 60` |
+| 44557 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `6 9 1 50` | `6 9 1 50` |
+| 55022 | [areas/obj/wh.obj](../../areas/obj/wh.obj) | `2 13 -1 50` | Remove T |
+| 57567 | [areas/obj/nexus.obj](../../areas/obj/nexus.obj) | `1 15 100 100` | Remove T |
+| 58404 | [areas/obj/ravenloft.obj](../../areas/obj/ravenloft.obj) | `509 12 2 0` | `509 12 2 25` |
+| 58406 | [areas/obj/ravenloft.obj](../../areas/obj/ravenloft.obj) | `389 14 3 61` | `389 14 3 61` |
+| 59045 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `512 15 1 60` | `512 15 1 60` |
+| 59047 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `6 15 1 200` | `6 15 1 100` |
+| 59124 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `2 15 1 60` | `2 15 1 60` |
+| 59203 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `2317 9 4 100` | `2317 9 4 100` |
+| 59231 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `6 9 1 60` | `6 9 1 60` |
+| 59239 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `260 16 1 100` | `261 16 1 100` |
+| 59258 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `8 15 3 60` | `9 15 3 60` |
+| 66212 | [areas/obj/cityruin.obj](../../areas/obj/cityruin.obj) | `516 15 1 20` | `516 15 1 20` |
+| 67803 | [areas/obj/shortb.obj](../../areas/obj/shortb.obj) | `516 14 1 60` | `516 14 1 60` |
+| 77721 | [areas/obj/hall.obj](../../areas/obj/hall.obj) | `2180 16 10000 60` | Remove T |
+| 82024 | [areas/obj/jin.obj](../../areas/obj/jin.obj) | `516 15 -1 35` | `516 15 -1 35` |
+| 82215 | [areas/obj/lylr.obj](../../areas/obj/lylr.obj) | `512 15 3 50` | `512 15 3 50` |
+| 83254 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `512 15 1 100` | `512 15 1 100` |
+| 83368 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `13 9 1 100` | `13 9 1 100` |
+| 83527 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `509 14 5 100` | `509 14 5 100` |
+| 91025 | [areas/obj/barovia.obj](../../areas/obj/barovia.obj) | `2308 9 5 60` | `2309 9 5 60` |
+| 98701 | [areas/obj/unoutpst.obj](../../areas/obj/unoutpst.obj) | `6 12 1 60` | `6 12 1 60` |
+| 130002 | [areas/obj/vecna.obj](../../areas/obj/vecna.obj) | `9 9 -1 60` | `2057 9 -1 60` |
+| 131215 | [areas/obj/earthp.obj](../../areas/obj/earthp.obj) | `509 16 1 99` | Remove T |
+| 131226 | [areas/obj/earthp.obj](../../areas/obj/earthp.obj) | `509 16 1 99` | Remove T |
+| 135129 | [areas/obj/firesworn_altar.obj](../../areas/obj/firesworn_altar.obj) | `2 15 1 51` | `2 15 1 51` |
+| 142233 | [areas/obj/blackpearl.obj](../../areas/obj/blackpearl.obj) | `512 9 1 15` | `512 9 1 15` |
+| 142251 | [areas/obj/blackpearl.obj](../../areas/obj/blackpearl.obj) | `1536 12 -1 60` | `1536 12 -1 60` |
+| 142438 | [areas/obj/Voluntown.obj](../../areas/obj/Voluntown.obj) | `512 9 1 60` | `512 9 1 60` |
