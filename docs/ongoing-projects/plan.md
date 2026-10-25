@@ -1,7 +1,7 @@
 # Issue #215: Conjurer specialisation rebalance
 
 Updated 2026-10-25. **Status: implementation and functional qualification complete;
-final qualification PR publication in progress.** Root branch
+all chunks pushed and ready for review.** Root branch
 `branch/issue-215-conjurer-rebalance`; final qualification branch
 `branch/issue-215-combined-qualification`, in the existing worktree
 `/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`.
@@ -98,7 +98,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384), with finite pet-state recovery in [PR #386](https://github.com/LuminariMUD/Duris/pull/386) |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
-| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Complete: 15-check isolated command/copyover/restart journey; final PR publication pending |
+| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Complete: 15-check isolated command/copyover/restart journey; review-ready [PR #390](https://github.com/LuminariMUD/Duris/pull/390), stacked on #389 |
 
 ### 0. Establish the implementation baseline
 
@@ -479,7 +479,7 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
       provides the implemented mechanics for players' balance testing.
 - [x] Final diff passes the ablation check: every change supplies a requirement or
       a demonstrated dependency, and no unrelated work was discarded.
-- [ ] Completed implementation is committed, pushed and left in focused PRs
+- [x] Completed implementation is committed, pushed and left in focused PRs
       ready for review. Per the owner's latest instruction, code-review handling
       is outside this task; review, merge and release remain with the owner.
 
@@ -910,8 +910,8 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   selects another flat-file server binary. The inspector dependency is built
   automatically if absent. Compact successful evidence is written to ignored
   `bin/qualification/issue215/gameplay-report.json`; run logs and binaries stay
-  under `bin/`. Final production-source revision is `d7ce1af9a` (subsequent
-  qualification commits change only tests/documentation).
+  under `bin/`. Socket-qualified production-source revision is `d7ce1af9a`;
+  the final parent reconciliation is described below.
 - Validation limits: exhaustive level/plane/greater-variant/terrain and damage
   comparisons use the production-code native harnesses with the controlled
   services identified in their checkpoints. The socket journey exercises a
@@ -928,6 +928,16 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   Fire pet-state holding limitation described above remains relevant to release
   rollback. No release tag, merge, production operation or deployment was made.
   Do not handle code reviews in this implementation task.
+- Qualification delivered as `dc1a8fa69bb813b287d7e7a6cf135b1ef99bdbdc`,
+  [PR #390](https://github.com/LuminariMUD/Duris/pull/390), based on #389.
+  Its parent advanced independently during the socket run. Merged parent
+  `d74fa28346a052594e18f2d988fed5305d6d6515` without rewriting either history
+  (merge `efecddd8ec12eb7572ace769cf0524aa903c9210`). The only additional
+  production change dispatches shoreline `abort` before environmental movement
+  can consume it. The extended shoreline harness and both casting input
+  gate/queue regressions pass on the reconciled source. Reuse the 15-check socket
+  evidence for unchanged mechanics rather than repeating the entire journey.
+  Final incremental MariaDB/flat-file builds pass with warnings treated as errors.
 
 ### Historical planning-only evidence
 
