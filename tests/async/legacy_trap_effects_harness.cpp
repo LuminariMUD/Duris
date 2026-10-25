@@ -1,4 +1,15 @@
-#include "core/prototypes.h"
+#include "world/new_events.c"
+#include "combat/training_dummy.h"
+#undef PROFILE_START
+#undef PROFILE_END
+#define PROFILE_START(name) \
+	do                  \
+	{                   \
+	} while (0)
+#define PROFILE_END(name) \
+	do                \
+	{                 \
+	} while (0)
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
@@ -20,10 +31,11 @@
 
 room_data rooms[2] = {};
 P_room world = rooms;
-int top_of_world = 1;
+extern const int top_of_world = 1;
 index_data indexes[4] = {};
 P_index obj_index = indexes, mob_index = indexes;
 P_char character_list;
+uint64_t character_removal_generation;
 P_obj object_list;
 P_desc descriptor_list;
 Skill skills[MAX_SKILLS];
@@ -42,6 +54,111 @@ static bool remove_first_placement;
 static std::vector<uint64_t> damaged;
 static P_char last_attacked;
 static int waits, last_wait;
+int pulse;
+bool after_events_call;
+static mm_ds event_pool{};
+static std::vector<char_link_data *> event_links;
+static bool native_heart, remove_attacker;
+static int heart_damage;
+static P_char heart_source;
+static void *remember_array[MAX_ZONES]{};
+bool nevent_periodic_begin(P_nevent)
+{
+	return false;
+}
+void nevent_periodic_complete(P_nevent) {}
+void nevent_periodic_watchdog() {}
+bool nevent_periodic_event_is_valid(P_nevent)
+{
+	return true;
+}
+long nevent_periodic_integrity_errors(bool)
+{
+	return 0;
+}
+void *__malloc(size_t size, const char *, const char *, int)
+{
+	return std::malloc(size);
+}
+void __free(void *pointer, const char *, int)
+{
+	std::free(pointer);
+}
+void *_mm_get(mm_ds *pool, const char *, int)
+{
+	++pool->objs_used;
+	return std::calloc(1, sizeof(nevent_data));
+}
+void mm_release(mm_ds *pool, void *memory)
+{
+	--pool->objs_used;
+	std::free(memory);
+}
+char_link_data *link_char(P_char ch, P_char victim, ush_int)
+{
+	auto *link = new char_link_data{};
+	link->linking = ch;
+	link->linked = victim;
+	event_links.push_back(link);
+	return link;
+}
+void remove_link(P_char, char_link_data *link)
+{
+	event_broken(link);
+	event_links.erase(std::find(event_links.begin(), event_links.end(), link));
+	delete link;
+}
+const char *event_name_registry_lookup(const void *)
+{
+	return nullptr;
+}
+void release_mob_mem(P_char, P_char, P_obj, void *) {}
+void event_hit_regen(P_char, P_char, P_obj, void *) {}
+void event_move_regen(P_char, P_char, P_obj, void *) {}
+void event_ward_regen(P_char, P_char, P_obj, void *) {}
+void event_spellcast(P_char, P_char, P_obj, void *) {}
+void event_item_action_active(P_char, P_char, P_obj, void *) {}
+void event_memorize(P_char, P_char, P_obj, void *) {}
+void event_reset_zone(P_char, P_char, P_obj, void *) {}
+void event_autosave(P_char, P_char, P_obj, void *) {}
+void event_wait(P_char, P_char, P_obj, void *) {}
+void event_balance_affects(P_char, P_char, P_obj, void *) {}
+bool training_dummy_is(P_char)
+{
+	return false;
+}
+bool execute_quest_routine(P_char, int)
+{
+	return false;
+}
+void check_for_wagon(P_char) {}
+void do_npc_commune(P_char) {}
+void do_wake(P_char, char *, int) {}
+void do_stand(P_char, char *, int) {}
+bool MobSpellUp(P_char)
+{
+	return false;
+}
+bool InitNewMobHunt(P_char)
+{
+	return false;
+}
+bool TryToGetHome(P_char)
+{
+	return false;
+}
+bool CheckForRemember(P_char)
+{
+	return false;
+}
+static void advance(int ticks)
+{
+	for (int i = 0; i < ticks; ++i)
+	{
+		ne_events();
+		nevent_advance_tick();
+	}
+}
 void CharWait(P_char, int duration)
 {
 	++waits;
@@ -115,6 +232,13 @@ bool char_to_room(P_char ch, int room, int)
 }
 void extract_char(P_char ch)
 {
+	++character_removal_generation;
+	for (size_t i = 0; i < event_links.size();)
+		if (event_links[i]->linked == ch || event_links[i]->linking == ch)
+			remove_link(ch, event_links[i]);
+		else
+			++i;
+	disarm_char_nevents(ch, nullptr);
 	for (auto **link = &character_list; *link; link = &(*link)->next)
 		if (*link == ch)
 		{
@@ -156,10 +280,12 @@ P_char read_mobile(int vnum, int mode)
 {
 	return read_mobile(vnum, mode, true);
 }
-void MobStartFight(P_char, P_char victim)
+void MobStartFight(P_char mob, P_char victim)
 {
 	++attacks;
 	last_attacked = victim;
+	if (remove_attacker)
+		extract_char(mob);
 }
 P_char get_linked_char(P_char ch, ush_int)
 {
@@ -212,8 +338,10 @@ int get_default_save_mod(P_char, P_char, int, int)
 {
 	return 0;
 }
-int number(int low, int)
+int number(int low, int high)
 {
+	if (native_heart && low == FIRST_POISON && high == LAST_POISON)
+		return POISON_HEART_TOXIN;
 	return low;
 }
 int dice(int, int)
@@ -288,6 +416,17 @@ void affect_from_char(P_char ch, int type)
 		else
 			link = &af->next;
 	}
+}
+void affect_remove(P_char ch, affected_type *af)
+{
+	affect_from_char(ch, af->type);
+}
+int raw_damage(P_char attacker, P_char victim, double amount, uint, damage_messages *, int *)
+{
+	assert(attacker == victim);
+	heart_source = attacker;
+	heart_damage += amount;
+	return DAM_NONEDEAD;
 }
 void add_tag_to_char(P_char, int, int, int, int)
 {
@@ -374,10 +513,16 @@ static void reset(int type, int level = 60, int vnum = 1458)
 	saves.clear();
 	save_mods.clear();
 	lifecycle = 0;
+	rooms[0].room_flags = 0;
+	native_heart = remove_attacker = false;
+	heart_damage = 0;
+	heart_source = nullptr;
 }
 
 int main()
 {
+	nevent_bind_game_thread();
+	ne_dead_event_pool = &event_pool;
 	for (int poison = FIRST_POISON; poison <= LAST_POISON; ++poison)
 		skills[poison].spell_pointer = poison_family;
 	for (int level : { 0, 1, 16, 19, 20, 25, 60, 80, 100, 200 })
@@ -490,6 +635,18 @@ int main()
 	resistant = true;
 	trapdamage(actor, trap);
 	assert(!poison_level && trap->trap_charge == 1);
+	// Execute actual trap -> poison -> event, after caster extraction. The
+	// scheduler link fixture invokes the real event_broken on extraction.
+	reset(14, 60);
+	native_heart = true;
+	skills[POISON_HEART_TOXIN].spell_pointer = reinterpret_cast<spell_func>(poison_heart_toxin);
+	trapdamage(actor, trap);
+	assert(created == 1 && discarded == 1 && trap->trap_charge == 1);
+	assert(get_scheduled(actor, event_poison));
+	advance(3 * PULSE_VIOLENCE / 2 + 1);
+	assert(heart_damage == 180 && heart_source == actor);
+	assert(get_scheduled(actor, event_poison));
+	skills[POISON_HEART_TOXIN].spell_pointer = poison_family;
 	reset(13);
 	P_char other = character();
 	char_to_room(other, 0, -2);
@@ -594,7 +751,8 @@ int main()
 	trapdamage(actor, trap);
 	assert(created == 1 && attacks == 0 && trap->trap_charge == 1);
 	assert(character_list->only.npc->trap_gate_target_runtime_id == actor->runtime_id);
-	mobact_memoryHandle(character_list);
+	add_event(event_mob_mundane, 0, character_list, nullptr, nullptr, 0, nullptr, 0);
+	advance(1);
 	assert(attacks == 1 && last_attacked == actor);
 	reset(10, 50, 42290);
 	pet = character(true);
@@ -602,8 +760,47 @@ int main()
 	trapdamage(pet, trap);
 	assert(attacks == 0 &&
 	       character_list->only.npc->trap_gate_target_runtime_id == pet->runtime_id);
-	mobact_memoryHandle(character_list);
+	add_event(event_mob_mundane, 0, character_list, nullptr, nullptr, 0, nullptr, 0);
+	advance(1);
 	assert(attacks == 1 && last_attacked == pet);
+	// Ordinary PID memory also reaches the handler when CheckForRemember did
+	// not take an action, rather than unconditionally skipping to rescheduling.
+	reset(10, 50, 42290);
+	trapdamage(actor, trap);
+	auto *shadow = character_list;
+	Memory memory{};
+	memory.pcID = GET_PID(actor);
+	shadow->only.npc->memory = &memory;
+	shadow->only.npc->trap_gate_target_runtime_id = 0;
+	add_event(event_mob_mundane, 0, shadow, nullptr, nullptr, 0, nullptr, 0);
+	advance(1);
+	assert(attacks == 1 && last_attacked == actor);
+	shadow->only.npc->memory = nullptr;
+	// Keep safe-room policy, ignore a removed target, and survive the attacking
+	// NPC being extracted by combat before the event tries to reschedule it.
+	for (int mode : { 0, 1, 2 })
+	{
+		reset(10, 50, 42290);
+		pet = character(true);
+		char_to_room(pet, 0, -2);
+		trapdamage(pet, trap);
+		shadow = character_list;
+		const uint64_t shadow_id = shadow->runtime_id;
+		if (mode == 0)
+			rooms[0].room_flags |= ROOM_SAFE;
+		if (mode == 1)
+		{
+			extract_char(pet);
+			pet = nullptr;
+		}
+		if (mode == 2)
+			remove_attacker = true;
+		add_event(event_mob_mundane, 0, shadow, nullptr, nullptr, 0, nullptr, 0);
+		advance(1);
+		assert(attacks == (mode == 2 ? 1 : 0));
+		if (mode == 2)
+			assert(!find_character_by_runtime_id(shadow_id));
+	}
 
 	// Only cardinal/vertical directions have trap bits. Diagonals must not
 	// alias the OPEN, MULTI or GLYPH flags.
@@ -687,4 +884,5 @@ int main()
 		extract_char(character_list);
 	delete trap;
 	trap = nullptr;
+	assert(event_pool.objs_used == 0 && event_links.empty());
 }

@@ -34,9 +34,12 @@ dispel/wither/harm/poison/minor-paralysis spells, Stun, and retained chest/tower
 with controlled saves and RNG. ASan/UBSan checks include duration boundaries, native
 defenses, duplicate control rejection, ROOM filtering, all seven creature profiles,
 whole-batch failure/cap handling, deferred gate memory for PCs/pets, and extraction during
-ROOM effects. Atomic builder edits and one-activation glyph visitation are also checked.
-The fixture controls the lower damage, allocation, placement and scheduling boundaries;
-loaded journeys exercise those actual server owners.
+ROOM effects. Atomic builder edits, one-activation glyph visitation, and all six encoded
+directions versus diagonal/control-bit overlap are also checked. The real scheduler runs
+Heart Toxin after temporary-caster extraction and the mundane NPC prefix through memory
+handling for PC/pet gate targets, safe rooms, missing targets and attacker extraction.
+The fixture controls lower damage, allocation, placement, character-link storage and
+unrelated NPC services; loaded journeys exercise those actual server owners.
 
 `python3 tests/async/test_put_trap_lifecycle.py` executes real single/bulk put paths.
 Invalid capacity/permission checks preserve charges. An armed restored trap rejects the

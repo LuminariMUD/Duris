@@ -230,6 +230,23 @@ Next required work: native movement/builder/special-procedure coverage, both-bac
 loaded gameplay/save/restart journeys, exact loaded prototype/boot-log evidence,
 retaliation/no-reward verification through the actual damage path, relevant regressions,
 final formatting/build/diff review, and publication of this focused dependent PR.
+
+### PR #385 review repairs, 2026-10-25
+
+- Movement traps now reject diagonals before shifting the six encoded direction bits;
+  OPEN/MULTI/GLYPH cannot masquerade as northwest/southwest/northeast triggers.
+- Heart Toxin from temporary trap casters stores its effective level in the existing
+  affect field and uses the existing environmental damage attribution. Initial and
+  repeated events retain no caster link, so cleanup cannot cancel the delayed effect.
+- The scheduled mundane memory block accepts gate runtime targets even without PID
+  memory and no longer unconditionally skips its memory handler. Actor revalidation
+  after combat runs only when the character-removal generation changed.
+- Extended native trap and poison lifecycle ASan/UBSan tests reproduce the prior
+  failures and pass the repairs, including actual scheduler dispatch, cure cancellation,
+  removed targets, safe rooms, ordinary PID memory and extraction during aggression.
+  Unsupported/0-8 trap, editor, NPC pickup contracts, MariaDB and flat-file development
+  builds, formatting and commit-hook checks are the focused review verification.
+  This does not complete the broader loaded gameplay/restart qualification above.
 Do not mark #368 resolved or the runtime slice review-ready from the native fixtures alone.
 
 Native movement/builder and retained special-procedure checks now pass in the effects
