@@ -137,7 +137,7 @@ bool valid(const pet_restore_state &s)
 		return !v.empty() && v.size() <= PET_RESTORE_STATE_MAX_TEXT &&
 		       v.find('\0') == std::string::npos;
 	};
-	return s.version == 1 && static_cast<uint32_t>(s.kind) <= 22 && s.charm_expires_at >= 0 &&
+	return s.version == 1 && static_cast<uint32_t>(s.kind) <= 24 && s.charm_expires_at >= 0 &&
 	       s.death_expires_at >= 0 && s.charm_expires_at <= INT64_MAX / 16 &&
 	       s.death_expires_at <= INT64_MAX / 16 && text_ok(s.name) &&
 	       text_ok(s.short_description) && text_ok(s.long_description) && s.level > 0 &&
@@ -232,5 +232,8 @@ bool summoned_pet_matches_prototype(summoned_pet_kind kind, int vnum)
 		return vnum >= 78 && vnum <= 81;
 	if (kind == summoned_pet_kind::avatar)
 		return vnum >= 82 && vnum <= 85;
+	if (kind == summoned_pet_kind::conjured_fire_elemental ||
+	    kind == summoned_pet_kind::conjured_fire_mephit)
+		return vnum == 1100 || (vnum >= 1110 && vnum <= 1112);
 	return false;
 }

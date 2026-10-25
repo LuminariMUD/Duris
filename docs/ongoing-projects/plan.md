@@ -91,7 +91,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
 | 4 | Reliable Conjure Water | 0 | Review-ready [PR #381](https://github.com/LuminariMUD/Duris/pull/381), stacked on #380 |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
-| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Implemented; focused checks pass; crash-state follow-up required |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384); crash-state follow-up in progress |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 
@@ -763,8 +763,55 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   focused chunk, then repair this through the existing pet-state codec in a
   separate dependent PR. Preserve both plain/mephit instance stats and finite
   lifetime; add no gameplay pet variant, slot, prototype or schema.
-- Next: record Fire PR, implement the narrow crash-state repair, then complete
+- Delivered Fire commit: `5b53d6617f235c047f15053c5c92c9ecdfd63c8a`, pushed;
+  [PR #384](https://github.com/LuminariMUD/Duris/pull/384) targets shoreline branch.
+- Crash-state repair on `branch/issue-215-fire-persistence`: append internal
+  creation-path labels for plain/mephit Fire summons to the existing portable
+  pet-state enum. These are transport labels for the already-approved choice,
+  not new gameplay pets, VNUMs, races, powers, slots or a new payload format.
+  Use existing intrinsic-state capture/apply and finite charm/death deadlines;
+  keep existing Conjurer capacity checks and zero legacy necromancy power cost.
+  Reconstruct only the mephit's constant full description on typed restoration;
+  the codec already carries its exact keywords, short/room descriptions, stats
+  and shield flags. Required owning files: `pet_restore_state.h/.c`,
+  `pet_restore_runtime.c`, existing Fire summon paths/tests and this plan.
+- Next: implement this narrow crash-state repair, then complete
   isolated gameplay/help/persistence journeys and final ablation/review audit.
+
+### Fire recovery checkpoint, 2026-10-25
+
+- `branch/issue-215-fire-persistence` adds internal state labels 23/24 for the
+  existing plain/mephit Fire creation paths, with unchanged original VNUMs.
+  Reuse portable state version 1, intrinsic flags and existing full NPC
+  materialization. There is no new database schema or gameplay pet/slot.
+  Existing elemental-count cap helpers still own capacity; the saved Fire pets
+  retain their previous zero necromancy-power cost.
+- Both original Fire summon paths mark final intrinsic state before control
+  handling. Their existing death schedules route through the maintained
+  `schedule_pet_death()` for marked summons so the exact finite deadline is
+  captured. Unmarked other-element summons keep their old event submission.
+  Restoration reconstructs the mephit's constant full description and retains
+  saved exact names/short/room descriptions, scaled stats, shield and deadlines.
+- Extended `test_conjurer_fire_runtime.py` passes ASan/UBSan through real
+  capture/encode/decode/apply/lifetime restoration for both choices and all
+  original variants, while retaining matched-RNG equivalence and string cleanup.
+  Extended `test_player_load_items.py` passes actual pet staging/materialization
+  for all eight plain/mephit original-VNUM cases and finite restoration.
+  `test_player_load_pets.py` contracts pass.
+- `test_pet_restore_state.py` passes new kind/prototype/cost boundaries and
+  legacy v1 compatibility. Its pre-existing v1 fixture failed unchanged on the
+  parent because it trimmed a current v12 checkpoint as if only v5/v7 additions
+  existed, retaining wallet/trade bytes. Replaced that brittle surgery with a
+  directly authored, fixed v1 wire fixture; no production checkpoint code changed.
+- MariaDB and flat-file builds pass with warnings treated as errors. Native
+  object/materialization services remain controlled in these component tests;
+  actual socket/recovery gameplay is the next combined qualification chunk.
+- Older binaries cannot decode labels 23/24 and will retain such pets through
+  their existing invalid-state holding path. Review/release must consider that
+  normal rollback limitation; no production release or migration is performed.
+- Next: publish this repair PR, then run the isolated combined Conjurer journeys,
+  reconcile help/import evidence and review the complete stack. Do not rerun
+  unrelated full regression suites.
 
 ### Historical planning-only evidence
 

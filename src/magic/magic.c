@@ -38,6 +38,7 @@
 #include "world/map.h"
 #include "core/mm.h"
 #include "classes/necromancy.h"
+#include "player/pet_restore_runtime.h"
 #include "persistence/persistence_checkpoint.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
@@ -2173,6 +2174,14 @@ static void make_fire_mephit(P_char mob)
 	SET_BIT(mob->only.npc->str_mask, STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2 | STRUNG_DESC3);
 }
 
+static void schedule_elemental_death(P_char mob, int delay)
+{
+	if (mob->only.npc->summon_kind)
+		schedule_pet_death(mob, delay);
+	else
+		add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
+}
+
 void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_char /*victim*/,
 			     P_obj /*obj*/)
 {
@@ -2343,6 +2352,10 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		mob->points.damsizedice = (int)(0.8 * mob->points.damsizedice);
 	}
 
+	if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_FIRE))
+		summoned_pet_mark(mob, mephit ? summoned_pet_kind::conjured_fire_mephit :
+						summoned_pet_kind::conjured_fire_elemental);
+
 	if (IS_PC(ch) && GET_LEVEL(mob) > GET_LEVEL(ch) &&
 	    charisma <
 		    number(10, (int)(get_property("summon.lesser.elemental.charisma", 140.000))) &&
@@ -2352,8 +2365,7 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		    mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		add_event(event_pet_death, (4 + number(1, 6)) * WAIT_SEC, mob, NULL, NULL, 0, NULL,
-			  0);
+		schedule_elemental_death(mob, (4 + number(1, 6)) * WAIT_SEC);
 		MobStartFight(mob, ch);
 	}
 	else
@@ -2367,8 +2379,7 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		if (duration >= 0)
 		{
 			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
 		}
 	}
 }
@@ -2862,6 +2873,10 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 		}
 	}
 
+	if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_FIRE))
+		summoned_pet_mark(mob, mephit ? summoned_pet_kind::conjured_fire_mephit :
+						summoned_pet_kind::conjured_fire_elemental);
+
 	if (IS_PC(ch) && !IS_TRUSTED(ch) && !(has_air_staff_arti(ch)) &&
 	    charisma <
 		    number(10, (int)(get_property("summon.greater.elemental.charisma", 140.000))))
@@ -2870,8 +2885,7 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 		    mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		add_event(event_pet_death, (4 + number(1, 6)) * WAIT_SEC, mob, NULL, NULL, 0, NULL,
-			  0);
+		schedule_elemental_death(mob, (4 + number(1, 6)) * WAIT_SEC);
 		MobStartFight(mob, ch);
 	}
 	else
@@ -2902,8 +2916,7 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 		if (duration >= 0)
 		{
 			duration += number(1, 10);
-			add_event(event_pet_death, (duration + 1) * 60 * 4, mob, NULL, NULL, 0,
-				  NULL, 0);
+			schedule_elemental_death(mob, (duration + 1) * 60 * 4);
 		}
 	}
 }
