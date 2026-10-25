@@ -27774,6 +27774,11 @@ Conjure Water creates a 15-minute spring after 4 seconds and has a
 retains its existing formula and external water-source requirement;
 Water Form supplies no automatic water or extra regeneration.
 
+Active Water Form grants directed shoreline travel with a 5-second
+preparation before either crossing and 25% lower ocean travel cost.
+Combat or form loss cancels preparation. This requires no extra
+level-51 gate; Water Affinity is a separate native-plane ability.
+
 ==See also==
 
 * Conjurer
@@ -28918,6 +28923,28 @@ immunity to player Grapple or Bearhug.
 The form creates no usable water source, grants no extra regeneration,
 healing multiplier or separate damage reduction. Water to Life still
 needs external natural water or a suitable container on the ground.
+
+While the Water Form spell is active, a Water Magus player can cross
+between land and ocean through a valid normal exit. There is no extra
+level-51 gate: the circle-10 form is the unlock. Each shoreline
+crossing waits 5 seconds BEFORE moving, in either direction. Ocean to
+ocean movement has no new shoreline delay.
+
+Preparation cannot start in combat. If combat begins, it cancels even
+if fighting ends before the crossing. Leaving the origin, losing the
+form, death, extraction or aborting also cancels it; returning or
+recasting does not restore the old attempt. Route, form, position,
+vitality and normal movement checks are revalidated at completion.
+
+Eligible steps touching ocean cost 25% less base travel vitality:
+cost * 3 / 4, rounded down with a minimum of 1. Existing stance and
+injury surcharges remain. Land-to-land steps get no discount. Currents,
+walls, traps and other normal movement hazards still apply.
+
+The ocean-entry permission is personal. Mounts, riders, pets, group
+followers and cargo do not inherit it. Ships, fleeing and teleports
+gain no new ocean-entry bypass. If the form expires at sea, normal
+rules resume without a forced relocation. Water Affinity is separate.
 
 ==See also==
 

@@ -2573,6 +2573,12 @@ int get_multicast_chars(P_char leader, int m_class, int min_level)
  * 'dir', returns -1 on error, else 0+ for moves needed.  -JAB
  */
 
+bool has_water_form_travel(P_char ch)
+{
+	return ch && IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_WATER) &&
+	       affected_by_spell(ch, SPELL_WATER_FORM);
+}
+
 int move_cost(P_char ch, int dir)
 {
 	int moves, a, b;
@@ -2632,7 +2638,10 @@ int move_cost(P_char ch, int dir)
 		moves /= 2;
 	}
 
-	return MAX(1, moves);
+	moves = MAX(1, moves);
+	if (has_water_form_travel(ch) && (sector_idx_a == SECT_OCEAN || sector_idx_b == SECT_OCEAN))
+		moves = MAX(1, moves * 3 / 4);
+	return moves;
 }
 
 /*

@@ -41,6 +41,8 @@ extern P_desc descriptor_list;
 extern P_index obj_index;
 extern P_index mob_index;
 extern P_room world;
+extern const int top_of_world;
+extern P_nevent current_nevent;
 extern struct time_info_data time_info;
 extern const char *command[];
 extern const char *dirs[];
@@ -732,10 +734,45 @@ int leave_by_exit(P_char ch, int exitnumb)
 	return TRUE;
 }
 
-/*
- * Needed this for teleports and such
- */
-int can_enter_room(P_char ch, int room, int show_msg)
+/* A shoreline permission belongs only to this actor's running directed event. */
+struct water_crossing_data
+{
+	int origin;
+	int direction;
+	int destination;
+};
+
+static bool water_crossing_valid(P_char ch, const water_crossing_data &crossing)
+{
+	return ch && IS_ALIVE(ch) && has_water_form_travel(ch) && !IS_FIGHTING(ch) &&
+	       GET_STAT(ch) >= STAT_RESTING && GET_POS(ch) != POS_SITTING && !IS_IMMOBILE(ch) &&
+	       !IS_AFFECTED(ch, AFF_BOUND) && ch->in_room == crossing.origin &&
+	       crossing.origin >= 0 && crossing.origin <= top_of_world &&
+	       crossing.destination >= 0 && crossing.destination <= top_of_world &&
+	       crossing.direction >= 0 && crossing.direction < NUM_EXITS &&
+	       EXIT(ch, crossing.direction) &&
+	       EXIT(ch, crossing.direction)->to_room == crossing.destination &&
+	       (!IS_SET(EXIT(ch, crossing.direction)->exit_info, EX_SECRET | EX_BLOCKED) ||
+		IS_TRUSTED(ch)) &&
+	       (!IS_SET(EXIT(ch, crossing.direction)->exit_info, EX_CLOSED) || IS_TRUSTED(ch) ||
+		(IS_AFFECTED2(ch, AFF2_PASSDOOR) &&
+		 (!IS_SET(EXIT(ch, crossing.direction)->exit_info, EX_LOCKED) ||
+		  !IS_SET(EXIT(ch, crossing.direction)->exit_info, EX_PICKPROOF)))) &&
+	       ((world[crossing.origin].sector_type == SECT_OCEAN) !=
+		(world[crossing.destination].sector_type == SECT_OCEAN));
+}
+
+static bool completing_water_crossing(P_char ch, int direction)
+{
+	if (!current_nevent || current_nevent->func != event_water_crossing ||
+	    current_nevent->ch != ch || !current_nevent->data ||
+	    !nevent_handle_is_active(nevent_handle_from_event(current_nevent)))
+		return false;
+	const auto &crossing = *static_cast<water_crossing_data *>(current_nevent->data);
+	return crossing.direction == direction && water_crossing_valid(ch, crossing);
+}
+
+static int can_enter_room_internal(P_char ch, int room, int show_msg, bool water_crossing)
 {
 	int i;
 	bool has_boat;
@@ -868,7 +905,8 @@ int can_enter_room(P_char ch, int room, int show_msg)
 	 */
 	if (world[room].sector_type == SECT_OCEAN &&
 	    !IS_TRUSTED(ch) && // !IS_ROOM(ch->in_room, ROOM_DOCKABLE) &&
-	    world[ch->in_room].sector_type != SECT_OCEAN && !IS_ROOM(room, ROOM_UNDERWATER))
+	    world[ch->in_room].sector_type != SECT_OCEAN && !IS_ROOM(room, ROOM_UNDERWATER) &&
+	    !water_crossing)
 	{
 		if (!is_ice(ch, room))
 		{
@@ -947,6 +985,55 @@ int can_enter_room(P_char ch, int room, int show_msg)
 	}
 	/* If we get this far, it's okay to go this way */
 	return (1);
+}
+
+int can_enter_room(P_char ch, int room, int show_msg)
+{
+	/* Teleports and other destination checks never inherit shoreline permission. */
+	return can_enter_room_internal(ch, room, show_msg, false);
+}
+
+void event_water_crossing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
+{
+	if (!data || !water_crossing_valid(ch, *static_cast<water_crossing_data *>(data)))
+		return;
+	const int direction = static_cast<water_crossing_data *>(data)->direction;
+	char argument[] = "";
+	do_move(ch, argument, exitnumb_to_cmd(direction));
+}
+
+static bool start_water_crossing(P_char ch, int direction)
+{
+	if (!has_water_form_travel(ch) || ch->in_room < 0 || ch->in_room > top_of_world ||
+	    direction < 0 || direction >= NUM_EXITS || !EXIT(ch, direction))
+		return false;
+	const int destination = EXIT(ch, direction)->to_room;
+	if (destination < 0 || destination > top_of_world ||
+	    ((world[ch->in_room].sector_type == SECT_OCEAN) ==
+	     (world[destination].sector_type == SECT_OCEAN)))
+		return false;
+	if (get_scheduled(ch, event_water_crossing))
+	{
+		send_to_char("You are already preparing to cross the shoreline.\n", ch);
+		return true;
+	}
+	const water_crossing_data crossing{ ch->in_room, direction, destination };
+	if (!water_crossing_valid(ch, crossing) ||
+	    !can_enter_room_internal(ch, destination, true,
+				     !IS_RIDING(ch) && !GET_RIDER(ch) && !ch->lobj))
+	{
+		send_to_char("You cannot prepare a shoreline crossing right now.\n", ch);
+		return true;
+	}
+	if (!add_event(event_water_crossing, 5 * WAIT_SEC, ch, 0, 0, 0, &crossing,
+		       sizeof(crossing)))
+	{
+		send_to_char("You cannot prepare a shoreline crossing right now.\n", ch);
+		return true;
+	}
+	send_to_char("You gather your flowing body to cross the shoreline.\n", ch);
+	CharWait(ch, 5 * WAIT_SEC);
+	return true;
 }
 
 char *enter_message(P_char ch, P_char people, int exitnumb, char *amsg, int was_in, int foo)
@@ -1238,6 +1325,11 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	struct follow_type *k, *next_dude;
 	P_char mount, rider, moving;
 	struct zone_data *zone;
+	const bool water_crossing_move = current_nevent &&
+					 current_nevent->func == event_water_crossing &&
+					 current_nevent->ch == ch;
+	if (water_crossing_move && !completing_water_crossing(ch, exitnumb))
+		return FALSE;
 
 	if (IS_IMMOBILE(ch))
 	{
@@ -1284,7 +1376,9 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 		return FALSE;
 	}
 
-	if (!can_enter_room(ch, EXIT(ch, exitnumb)->to_room, TRUE))
+	if (!can_enter_room_internal(ch, EXIT(ch, exitnumb)->to_room, TRUE,
+				     completing_water_crossing(ch, exitnumb) && !IS_RIDING(ch) &&
+					     !GET_RIDER(ch) && !ch->lobj))
 	{
 		return FALSE;
 	}
@@ -1537,6 +1631,8 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	{
 		return 0;
 	}
+	if (water_crossing_move && !completing_water_crossing(ch, exitnumb))
+		return FALSE;
 
 	// It takes 33% more moves to carry someone now.
 	if (mount && IS_NPC(mount))
@@ -2174,7 +2270,17 @@ int do_simple_move(P_char ch, int exitnumb, unsigned int flags)
 		return FALSE;
 
 	// Check for special routines
+	const auto removal_before_special = character_removal_generation;
+	const auto runtime_before_special = ch->runtime_id;
 	if (special(movement_special_actor(ch), exitnumb_to_cmd(exitnumb), 0))
+		return FALSE;
+	if (removal_before_special != character_removal_generation &&
+	    (!char_in_list(ch) || ch->runtime_id != runtime_before_special))
+		return FALSE;
+	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE)
+		return FALSE;
+	if (current_nevent && current_nevent->func == event_water_crossing &&
+	    current_nevent->ch == ch && !completing_water_crossing(ch, exitnumb))
 		return FALSE;
 
 	if (grease_check(ch))
@@ -2227,8 +2333,9 @@ void do_move(P_char ch, char *argument, int cmd)
 	int cmd2, attempts = 0;
 
 	cmd = cmd_to_exitnumb(cmd);
+	const bool completing = completing_water_crossing(ch, cmd);
 
-	if (affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
+	if (!completing && affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
 	{
 		cmd2 = number(1, 6);
 
@@ -2244,7 +2351,7 @@ void do_move(P_char ch, char *argument, int cmd)
 		}
 	}
 
-	if (!IS_TRUSTED(ch) &&
+	if (!completing && !IS_TRUSTED(ch) &&
 	    !(GET_CLASS(ch, CLASS_DRUID) ||
 	      (IS_MULTICLASS_PC(ch) && GET_SECONDARY_CLASS(ch, CLASS_DRUID))) &&
 	    get_spell_from_room(&world[ch->in_room], SPELL_WANDERING_WOODS))
@@ -2258,7 +2365,7 @@ void do_move(P_char ch, char *argument, int cmd)
 		}
 	}
 
-	if (IS_TRUSTED(ch) && IS_MAP_ROOM(ch->in_room))
+	if (!completing && IS_TRUSTED(ch) && IS_MAP_ROOM(ch->in_room))
 	{
 		char buff[10];
 		one_argument(argument, buff);
@@ -2290,6 +2397,9 @@ void do_move(P_char ch, char *argument, int cmd)
 			return;
 		}
 	}
+
+	if (!completing && start_water_crossing(ch, cmd))
+		return;
 
 	const auto removal_before = character_removal_generation;
 	const bool moved = do_simple_move(ch, cmd, MVFLG_DRAG_FOLLOWERS);

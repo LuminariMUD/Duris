@@ -1269,6 +1269,12 @@ void do_abort(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	if (!IS_ALIVE(ch))
 		return;
+	if (get_scheduled(ch, event_water_crossing))
+	{
+		disarm_char_nevents(ch, event_water_crossing);
+		send_to_char("You stop preparing to cross the shoreline.\n", ch);
+		return;
+	}
 	if (abort_item_action(ch))
 	{
 		send_to_char("You stop using the item.\r\n", ch);

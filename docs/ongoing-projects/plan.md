@@ -89,8 +89,8 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 1 | New forms, registration, resource checks and cleanup | 0 | Review-ready [PR #378](https://github.com/LuminariMUD/Duris/pull/378), stacked on #376 |
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Review-ready [PR #379](https://github.com/LuminariMUD/Duris/pull/379), stacked on #378 |
 | 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
-| 4 | Reliable Conjure Water | 0 | Implemented and locally qualified; PR publication next |
-| 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
+| 4 | Reliable Conjure Water | 0 | Review-ready [PR #381](https://github.com/LuminariMUD/Duris/pull/381), stacked on #380 |
+| 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Implemented and locally qualified; PR publication next |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
@@ -652,9 +652,57 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   liveness, class-help/layout and flat-file help runtime checks pass; the latter
   verifies Conjure Water and the new dedicated parsed Water to Life formula page.
   Format/diff checks pass. Water to Life implementation is untouched.
-- Next: publish spring PR, then shoreline traversal through the normal directed
-  movement pipeline with cancellation hooks, followed by Fire mechanics and
-  combined server gameplay. Existing core evidence need not be rerun unchanged.
+- Delivered spring commit: `6c1bdc787ae484dea9fedc100f53ed8b2a1aae49`, pushed;
+  [PR #381](https://github.com/LuminariMUD/Duris/pull/381) targets Air branch.
+- Next: shoreline traversal on `branch/issue-215-water-shoreline`, stacked on
+  #381. Use the running actor event's origin/direction/destination as the narrow
+  permission for directed entry; generic `can_enter_room()` stays restrictive.
+  Callback returns through `do_move()` and existing movement/proc/trap/cost paths.
+  Add only the needed combat/departure/form-removal cancellation hooks. `abort`
+  must also cancel this new preparation, requiring a narrow `sparser.c` edit.
+  Tests that isolate affect/abort code need a weak callback label in existing
+  `harness_stubs.cpp`. No new public movement flags or reservation state.
+
+### Shoreline checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-water-shoreline` builds on spring `6c1bdc787`. One
+  actor-owned event records origin/direction/destination. The running event is
+  the narrow authorization for that mover's directed ocean entry; the public
+  `can_enter_room()` always uses normal restrictions. Completion returns through
+  `do_move()`/ordinary procs, traps and movement checks, with route/form/combat
+  revalidation after specials and traps. No global bypass, new public movement
+  flags or general movement service was added.
+- Active Water Form + Water Magus PC is the only new gate, including level 46.
+  Shoreline delay is 5 seconds both ways; ocean-to-ocean has no new delay.
+  `move_cost()` applies `max(1, cost*3/4)` for steps touching ocean after its
+  existing modifiers and before the outer stance/injury surcharges. Entry
+  permission excludes mounts/riders/cargo; followers cannot inherit event ownership.
+- Departures, either participant entering combat, any Water Form removal and
+  explicit `abort` cancel preparation. Existing extraction cancellation owns the
+  payload. Guarded the ordinary dispatcher after `special()` against a freed or
+  replaced mover, needed when delayed completion invokes scripted movement.
+- New `test_water_shoreline_runtime.py` passes under ASan/UBSan with production
+  scheduler, command/dispatcher, entry checks, costs and ordinary movement prefix
+  through traps/exhaustion/deduction. Tests 46/50/51, timed both-way crossings,
+  immediate ocean-to-ocean, rounded minimum-one costs and exact exhaustion,
+  stance/flurry/injury placement, currents, transient combat/form/departure,
+  changed/closed exits, death/abort, form loss in movement special, trap
+  interruption, mount/rider/cargo/loose-aura/wrong-spec controls, real scheduling
+  refusal/retry and proc extraction returning false. Final placement, complete
+  follower/arrival behavior, and combat/form service calls are fixtures; hook
+  placement is asserted and full server/PvP journeys remain for step 8.
+- Existing Control Flee and movement-liveness sanitizer regressions pass;
+  updated the Control Flee fixture to include the restrictive entry wrapper and
+  to supply a neutral shoreline context. Forms/Earth and spring regressions pass.
+  Full and final incremental MariaDB builds passed with no warnings. Existing
+  `test_item_actions_runtime.py` also passes, including abort/wait isolation.
+  Both help sources now explain shoreline timing, discount, cancellation,
+  personal-only entry, separate affinity and normal rules after expiry at sea.
+- Class-help/layout, flat-file runtime help (including shoreline numbers),
+  documentation, check-only formatting and diff checks pass.
+- Next: publish shoreline PR, then
+  Fire damage/mephits and combined gameplay. Do not claim complete functional
+  qualification until the remaining journeys and Fire implementation pass.
 
 ### Historical planning-only evidence
 
