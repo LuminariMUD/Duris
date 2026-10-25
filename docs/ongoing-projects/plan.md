@@ -92,7 +92,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 4 | Reliable Conjure Water | 0 | Pending |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
-| 7 | Five level-51 affinities | 0 | Implemented and locally qualified; PR publication next |
+| 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
 | 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 
 ### 0. Establish the implementation baseline
@@ -517,9 +517,13 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   `bin/qualification/issue215/` (untracked). No full regression or hosted CI wait
   is needed for this independent slice. No affinity persistence format changed:
   passive grants are derived from existing class/spec/level, not stored timers.
-- Next: publish this focused PR, then continue forms/casting and remaining steps.
-  Update this checkpoint and the table with delivered commits and PR URLs. No
-  gameplay test server has been started and no production operations performed.
+- Delivered: `9c13feaac66e5bcc51e9c3ee8adb91b1395eaf6a`, pushed on
+  `branch/issue-215-conjurer-rebalance`; review-ready
+  [PR #376](https://github.com/LuminariMUD/Duris/pull/376) targets `master`.
+- Next: continue forms/casting on `branch/issue-215-elemental-forms`, stacked on
+  #376, and remaining steps. No gameplay test server has been started and no
+  production operations performed. Existing Git GC warnings about unreachable
+  loose objects predate this work; no logs or unrelated repository state removed.
 
 ### Historical planning-only evidence
 
