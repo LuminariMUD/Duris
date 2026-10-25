@@ -98,8 +98,12 @@ cleric_driver = r'''
                 assert(get_spell_circle(&cleric, SPELL_VITAL_INTERCESSION) == MAX_CIRCLE + 1);
                 assert(!knows_spell(&cleric, SPELL_VITAL_INTERCESSION));
             }
-            assert(get_spell_circle(&cleric, SPELL_HOLY_INTERCESSION) ==
-                   (spec == SPEC_HOLYMAN ? 10 : MAX_CIRCLE + 1));
+            saved.modifier = SPELL_HOLY_INTERCESSION;
+            for (int flags : {0u, MEMTYPE_FULL}) {
+                saved.flags = flags;
+                assert(get_spell_circle(&cleric, SPELL_HOLY_INTERCESSION) == MAX_CIRCLE + 1);
+                assert(!knows_spell(&cleric, SPELL_HOLY_INTERCESSION));
+            }
             assert(SKILL_DATA_ALL(&cleric, SKILL_KICK).maxlearn[spec] == (spec == SPEC_ZEALOT ? 90 : 40));
         }
     }
