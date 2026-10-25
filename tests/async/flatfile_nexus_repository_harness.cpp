@@ -2,7 +2,6 @@
 #include "economy/nexus_stones.h"
 
 #include <filesystem>
-#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <sys/stat.h>
@@ -111,19 +110,9 @@ int main(int argc, char **argv)
 				flatfile_nexus_result::ok &&
 			found.align == -3 && found.last_touched_at > 234567,
 		"live alignment update was not durable");
-	require(flatfile_nexus_update_state(state.string(), 1, 3, 234568, &error) ==
-			flatfile_nexus_result::ok,
-		"bonus stone setup failed");
-	char_data character = {};
-	character.player.racewar = RACEWAR_GOOD;
-	require(check_nexus_bonus(&character, 100, NEXUS_BONUS_EPICS) == 110,
-		"aligned flat nexus bonus was not applied");
-	require(std::abs(check_nexus_bonus_precise(&character, 100.5, NEXUS_BONUS_EPICS) - 110.55) <
-			0.0001,
-		"fractional flat nexus bonus was rounded before final payout");
-	character.player.racewar = RACEWAR_EVIL;
-	require(check_nexus_bonus(&character, 100, NEXUS_BONUS_EPICS) == 100,
-		"flat nexus bonus was applied to the opposing side");
+	// Gameplay bonus calculations use the nexus cache populated by load_nexus_stones().
+	// tests/async/nexus_runtime_harness.cpp covers aligned/opposing-side and
+	// fractional bonuses after the real flat-file boot and capture paths.
 	require(flatfile_nexus_update_state(state.string(), 2, 0, 0, &error) ==
 			flatfile_nexus_result::not_found,
 		"missing record update did not fail");
