@@ -343,6 +343,7 @@ def run(binary, backend):
                         (32820,32861,3,"open"),(32870,32861,3,"open"),
                         (32835,32861,1,"west"),(32846,32871,1,"north"),(41927,200,1,"get")):
                     home(); before=count(mob); key=load(vnum);floor(key)
+                    command(builder,"search")
                     if vnum in (32820,32870):
                         lock_key=load(32818)
                         command(builder,f"give {lock_key} {journey.CHARACTER}")
@@ -356,6 +357,15 @@ def run(binary, backend):
                     assert count(mob)==before
                     command(builder,"purge "+key)
                     print(f"{backend}: profile {vnum} placed {batch} NPC {mob}",flush=True)
+
+                # A builder glyph that creates combat must not bypass the normal
+                # movement gate; the movement owner retains its explicit flee exception.
+                home();before=count(32861);summoner=load(32835);floor(summoner)
+                command(builder,"trapset "+summoner+" glyph")
+                command(actor,"west")
+                assert "Guard Post" in command(actor,"look")
+                assert count(32861)==before+1
+                command(builder,"purge imp");command(builder,"purge "+summoner)
 
                 # Invalid types remain visible and inert through actual get.
                 home(); invalid=load(INVALID);floor(invalid)
