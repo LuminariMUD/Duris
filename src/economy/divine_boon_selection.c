@@ -8,7 +8,6 @@
 #include "world/map.h"
 #include "world/epic.h"
 #include "world/zone_touch_command.h"
-#include "world/epic_zone_defaults.h"
 #include "world/specs.prototypes.h"
 #include "item/objmisc.h"
 #include "sql/sql.h"
@@ -18,6 +17,8 @@
 #include "world/world_quest_policy.h"
 
 #include <algorithm>
+#include <cmath>
+#include <deque>
 #include <new>
 #include <optional>
 #include <set>
@@ -34,10 +35,6 @@ int inn(int, P_char, int, char *);
 
 namespace
 {
-// Bounded adventure pool from areas/zon and areas/wld.
-// Membership is only permission to validate, never proof of live eligibility.
-constexpr int reviewed_zones[] = { 18,	20,  40,  55,  109, 114, 148, 190,
-				   241, 358, 750, 886, 969, 974, 985 };
 constexpr ulong forbidden_rooms = ROOM_LOCKER | ROOM_PRIVATE | ROOM_ARENA | ROOM_GUILD | ROOM_JAIL |
 				  ROOM_ATRIUM;
 
@@ -59,6 +56,34 @@ std::vector<candidate> catalogue;
 std::array<std::array<std::vector<int>, NUM_PORTS>, NUM_PORTS> cargo_paths;
 std::array<std::vector<int>, 2> paths;
 std::optional<divine_boon_state> prepared_hour;
+// Ring of the last eight durably published hourly decisions (current boot only).
+constexpr size_t diagnostic_limit = 8;
+std::deque<divine_boon_selection_diagnostic> diagnostic_history;
+std::optional<divine_boon_selection_diagnostic> prepared_diagnostic;
+std::optional<divine_boon_selection_diagnostic> submitted_diagnostic;
+
+void confirm_diagnostic(const divine_boon_state &state, bool pending)
+{
+	if (!submitted_diagnostic || pending)
+		return;
+	if (state.revision == submitted_diagnostic->committed_revision &&
+	    state.last_opportunity == submitted_diagnostic->hour)
+	{
+		if (diagnostic_history.size() == diagnostic_limit)
+			diagnostic_history.pop_front();
+		try
+		{
+			diagnostic_history.push_back(*submitted_diagnostic);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return; // Retry recording this confirmed diagnostic on the next tick.
+		}
+	}
+	// Never report a refused, superseded or failed write as committed.
+	if (state.revision >= submitted_diagnostic->committed_revision)
+		submitted_diagnostic.reset();
+}
 std::array<std::array<int32_t, DIVINE_BOON_SLOTS>, 2> reward_zones = {};
 uint64_t reward_revision = 0;
 int64_t reward_checked_at = -1;
@@ -125,21 +150,26 @@ bool live_zone(const candidate &zone)
 	       current.hometown == 0;
 }
 
-bool path_valid(int room, unsigned side)
+bool path_valid(int room, unsigned side, std::vector<bool> *validated = nullptr)
 {
 	if (side > 1 || paths[side].size() != static_cast<size_t>(top_of_world) + 1)
 		return false;
+	const int start = room;
 	// A saved predecessor chain is acyclic; the bound also contains corruption.
 	for (size_t left = paths[side].size(); left; --left)
 	{
+		if (room >= 0 && room <= top_of_world && validated && (*validated)[room])
+			break;
 		if (!ordinary_room(room, side) || paths[side][room] < 0)
 			return false;
 		const int previous = paths[side][room];
 		if (previous == room)
 		{
 			const int home = zone_table[world[room].zone].hometown;
-			return home > 0 && IS_SET(hometowns[home - 1].flags,
-						  side ? JUSTICE_EVILHOME : JUSTICE_GOODHOME);
+			if (home <= 0 || !IS_SET(hometowns[home - 1].flags,
+						 side ? JUSTICE_EVILHOME : JUSTICE_GOODHOME))
+				return false;
+			break;
 		}
 		bool connected = false;
 		for (int direction = 0; direction < NUM_EXITS; ++direction)
@@ -150,8 +180,19 @@ bool path_valid(int room, unsigned side)
 		if (!connected)
 			return false;
 		room = previous;
+		if (left == 1)
+			return false;
 	}
-	return false;
+	// Share proved prefixes only within this eligibility call, so mutations to
+	// doors/rooms are still observed immediately by the next command or pulse.
+	if (validated)
+		for (int next = start; !(*validated)[next]; next = paths[side][next])
+		{
+			(*validated)[next] = true;
+			if (paths[side][next] == next)
+				break;
+		}
+	return true;
 }
 
 void refresh_paths()
@@ -194,17 +235,19 @@ void refresh_paths()
 
 double suitable_level(const candidate &zone, unsigned side)
 {
-	if (!live_zone(zone))
+	if (side >= paths.size() || !live_zone(zone))
 		return 0;
 	std::set<int> rooms;
 	std::set<int> prototypes;
 	double total = 0;
 	unsigned count = 0;
+	std::vector<bool> validated(paths[side].size());
 	for (const auto &mob : zone.encounters)
 		if (mob.room >= 0 && mob.room <= top_of_world &&
 		    world[mob.room].zone == zone.index &&
 		    !IS_SET(world[mob.room].room_flags, ROOM_SAFE | ROOM_NO_MOB) &&
-		    !IS_SURFACE_MAP(mob.room) && !IS_UD_MAP(mob.room) && path_valid(mob.room, side))
+		    !IS_SURFACE_MAP(mob.room) && !IS_UD_MAP(mob.room) &&
+		    path_valid(mob.room, side, &validated))
 		{
 			rooms.insert(mob.room);
 			prototypes.insert(mob.prototype);
@@ -229,6 +272,7 @@ bool epic_target(const candidate &zone, unsigned side)
 		       OBJ_MAGIC(obj) && obj->value[0] > 0 && obj->value[1] > 0 &&
 		       obj->value[2] == zone.number;
 	};
+	std::vector<bool> validated(paths[side].size());
 	const bool reachable = std::any_of(zone.stone_rooms.begin(), zone.stone_rooms.end(),
 					   [&](int room)
 					   {
@@ -236,7 +280,7 @@ bool epic_target(const candidate &zone, unsigned side)
 							  world[room].zone == zone.index &&
 							  !IS_SET(world[room].room_flags,
 								  ROOM_SAFE | ROOM_NO_MOB) &&
-							  path_valid(room, side);
+							  path_valid(room, side, &validated);
 					   });
 	if (!reachable)
 		return false;
@@ -267,9 +311,25 @@ bool assigned(const divine_boon_state &state, int zone, unsigned side, int64_t n
 			   { return divine_boon_active(slot, now) && slot.zones[side] == zone; });
 }
 
-unsigned bracket(double level)
+std::string category_list(unsigned categories)
 {
-	return level <= 20 ? 0 : level <= 35 ? 1 : level <= 50 ? 2 : 3;
+	constexpr const char *names[] = { "none", "experience", "epic", "cargo", "pvp" };
+	std::string text;
+	for (unsigned category = 1; category < std::size(names); ++category)
+		if (categories & (1u << category))
+			text += (text.empty() ? "" : "+") + std::string(names[category]);
+	return text.empty() ? "none" : text;
+}
+
+// Same side and zone ended within the repeat window.
+bool repeated(const divine_boon_state &state, int zone, unsigned side, int64_t now)
+{
+	return std::any_of(state.history.begin(), state.history.end(),
+			   [&](const auto &old)
+			   {
+				   return old.side == side && old.zone == zone &&
+					  now < old.expired_at + DIVINE_BOON_REPEAT_WINDOW;
+			   });
 }
 }
 
@@ -279,6 +339,9 @@ try
 	catalogue.clear();
 	cargo_paths = {};
 	prepared_hour.reset();
+	prepared_diagnostic.reset();
+	submitted_diagnostic.reset();
+	diagnostic_history.clear();
 	reward_revision = 0;
 	reward_checked_at = -1;
 	if (!world || !zone_table || top_of_world < 0 || top_of_zone_table < 0)
@@ -286,18 +349,12 @@ try
 #ifdef __NO_MYSQL__
 	sql_load_zones();
 #endif
-	std::set<int> numbers(std::begin(reviewed_zones), std::end(reviewed_zones));
-	for (const auto &zone : epic_zone_defaults)
-		numbers.insert(zone.number);
-	for (int number : numbers)
+	for (int index = 0; index <= top_of_zone_table; ++index)
 	{
-		const int index = real_zone0(number);
-		candidate zone{ number,
-				index,
-				{},
-				std::find(std::begin(reviewed_zones), std::end(reviewed_zones),
-					  number) != std::end(reviewed_zones),
-				{} };
+		// Exp uses the bartender-quest vetting (normal zone, not a town, not
+		// explicitly denied, valid average level). Epics need their live stone.
+		const int number = zone_table[index].number;
+		candidate zone{ number, index, {}, !world_quest_policy_zone_is_invalid(number), {} };
 		if (!live_zone(zone) || !zone_table[index].cmd)
 			continue;
 		int mob_room = -1;
@@ -412,119 +469,167 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &slot)
 
 bool divine_boon_select(const divine_boon_state &published, int64_t now,
 			const std::array<divine_boon_population, 2> &population,
-			divine_boon_slot *choice)
+			std::vector<divine_boon_slot> *choices,
+			divine_boon_selection_diagnostic *diagnostic)
 try
 {
-	if (!choice || published.mode != divine_boon_mode::divine || published.paused ||
+	if (!choices || published.mode != divine_boon_mode::divine || published.paused ||
 	    !divine_boon_state_valid(published) || top_of_world < 0)
 		return false;
+	choices->clear();
 	auto state = published;
 	divine_boon_reconcile(&state, now); // Newly expired objectives join repeat history.
 	refresh_paths();
-	std::array<divine_boon_slot, 2> choices;
-	choices[0].category = divine_boon_category::experience;
-	choices[1].category = divine_boon_category::epic;
-	for (auto &selected : choices)
+	if (diagnostic)
+		diagnostic->population = population;
+	unsigned zone_boons = 0;
+	bool has_cargo = false, has_pvp = false;
+	for (const auto &slot : state.slots)
+		if (divine_boon_active(slot, now))
+		{
+			has_cargo |= slot.category == divine_boon_category::cargo;
+			has_pvp |= slot.category == divine_boon_category::pvp;
+			zone_boons += slot.category == divine_boon_category::experience ||
+				      slot.category == divine_boon_category::epic;
+		}
+
+	const bool online = !population[0].levels.empty() || !population[1].levels.empty();
+	if (zone_boons < DIVINE_BOON_ZONE_SLOTS && (online || zone_boons == 0))
 	{
+		// The in-game epic zone list order: lowest payout first.
+		std::vector<std::pair<int, size_t>> ranked;
+		for (size_t index = 0; index < catalogue.size(); ++index)
+			if (zone_info info;
+			    get_zone_info(catalogue[index].number, &info) && info.epic_type > 0)
+				ranked.push_back({ info.epic_payout, index });
+		std::ranges::stable_sort(ranked, {}, &std::pair<int, size_t>::first);
+
+		std::array<divine_boon_slot, 2> pick;
+		pick[0].category = divine_boon_category::experience;
+		pick[1].category = divine_boon_category::epic;
 		for (unsigned side = 0; side < population.size(); ++side)
 		{
-			if (!population[side].active_accounts)
-				continue;
-			std::array<unsigned, 4> served = {};
-			for (const auto &slot : state.slots)
-				if (divine_boon_active(slot, now))
-					for (const auto &zone : catalogue)
-						if (zone.number == slot.zones[side])
-						{
-							const double level =
-								suitable_level(zone, side);
-							if (level > 0)
-								++served[bracket(level)];
-						}
-			for (unsigned relaxed = 0; relaxed < 2 && selected.zones[side] < 0;
-			     ++relaxed)
+			// Path walks and stone scans happen once per side, not per pass.
+			std::vector<double> fit(catalogue.size());
+			for (size_t index = 0; index < catalogue.size(); ++index)
+				fit[index] = suitable_level(catalogue[index], side);
+			auto open = [&](size_t index, bool relaxed)
 			{
-				double total = 0;
-				for (const auto &zone : catalogue)
+				const int zone = catalogue[index].number;
+				return fit[index] > 0 && !assigned(state, zone, side, now) &&
+				       (relaxed || !repeated(state, zone, side, now));
+			};
+			const auto &levels = population[side].levels;
+
+			// Exp: a zone around one online player's level (-5..+3), widening by
+			// up to 10 more each way; never a zone far outside their range.
+			if (!levels.empty())
+			{
+				const int level =
+					levels[number(0, static_cast<int>(levels.size()) - 1)];
+				for (int spread = 0; spread <= 10 && pick[0].zones[side] < 0;
+				     spread += 5)
+					for (unsigned relaxed = 0;
+					     relaxed < 2 && pick[0].zones[side] < 0; ++relaxed)
+					{
+						unsigned count = 0;
+						for (size_t index = 0; index < catalogue.size();
+						     ++index)
+							if (catalogue[index].experience &&
+							    open(index, relaxed) &&
+							    fit[index] >= level - 5 - spread &&
+							    fit[index] <= level + 3 + spread &&
+							    number(1, ++count) == 1)
+								pick[0].zones[side] =
+									catalogue[index].number;
+						if (diagnostic && count)
+						{
+							diagnostic->experience_candidates[side] =
+								count;
+							diagnostic->experience_relaxed[side] =
+								relaxed;
+						}
+					}
+			}
+
+			// Epic: a window over the payout-ranked list, centred by the side's
+			// average online level (top half under 30, bottom half above, the
+			// bottom quarter from 50). Nobody online: any zone, so one awaits login.
+			std::vector<bool> live(ranked.size());
+			for (size_t rank = 0; rank < ranked.size(); ++rank)
+			{
+				const auto &zone = catalogue[ranked[rank].second];
+				live[rank] = fit[ranked[rank].second] > 0 &&
+					     encounter_group(zone) <= ZONE_TOUCH_MAX_PARTICIPANTS &&
+					     epic_target(zone, side);
+			}
+			double centre = levels.empty() ? 0.5 : 0;
+			for (uint16_t level : levels)
+				centre += level;
+			if (!levels.empty())
+				centre = std::clamp((centre / levels.size() - 10) / 40, 0.0, 1.0);
+			for (unsigned expansion = 0; expansion <= 8 && pick[1].zones[side] < 0;
+			     ++expansion)
+			{
+				const double reach = 0.25 + 0.1 * expansion;
+				for (unsigned relaxed = 0; relaxed < 2 && pick[1].zones[side] < 0;
+				     ++relaxed)
 				{
-					if (assigned(state, zone.number, side, now) ||
-					    (selected.category == divine_boon_category::experience ?
-						     !zone.experience :
-						     (!epic_target(zone, side) ||
-						      encounter_group(zone) >
-							      population[side].active_accounts ||
-						      encounter_group(zone) >
-							      ZONE_TOUCH_MAX_PARTICIPANTS)))
-						continue;
-					if (!relaxed &&
-					    std::any_of(
-						    state.history.begin(), state.history.end(),
-						    [&](const auto &old)
-						    {
-							    return old.side == side &&
-								   old.zone == zone.number &&
-								   now < old.expired_at +
-										   DIVINE_BOON_REPEAT_WINDOW;
-						    }))
-						continue;
-					const double level = suitable_level(zone, side);
-					if (level <= 0)
-						continue;
-					// Accounts, rather than their levels, supply bracket weight. An
-					// isolated high-level alt cannot outweigh a populated low bracket.
-					const unsigned band = bracket(level);
-					if (selected.category == divine_boon_category::epic &&
-					    population[side].brackets[band] < encounter_group(zone))
-						continue;
-					const double weight =
-						static_cast<double>(
-							population[side].brackets[band]) /
-						(1 + served[band]);
-					if (weight <= 0)
-						continue;
-					total += weight;
-					if (number(0, 1000000) / 1000001.0 < weight / total)
-						selected.zones[side] = zone.number;
+					double total = 0;
+					unsigned count = 0;
+					for (size_t rank = 0; rank < ranked.size(); ++rank)
+					{
+						if (!live[rank] ||
+						    !open(ranked[rank].second, relaxed))
+							continue;
+						const double position =
+							ranked.size() > 1 ?
+								double(rank) / (ranked.size() - 1) :
+								0;
+						const double weight =
+							1 - std::abs(position - centre) / reach;
+						if (weight <= 0)
+							continue;
+						++count;
+						total += weight;
+						if (number(0, 1000000) / 1000001.0 < weight / total)
+							pick[1].zones[side] =
+								catalogue[ranked[rank].second]
+									.number;
+					}
+					if (diagnostic && count)
+					{
+						diagnostic->epic_candidates[side] = count;
+						diagnostic->epic_relaxed[side] = relaxed;
+					}
 				}
 			}
 		}
-	}
-	divine_boon_slot selected;
-	unsigned total = 0;
-	for (const auto &candidate : choices)
-		if (candidate.zones[0] >= 0 || candidate.zones[1] >= 0)
-		{
-			const unsigned weight =
-				candidate.category == divine_boon_category::experience ? 35 : 30;
-			total += weight;
-			if (number(1, total) <= static_cast<int>(weight))
-				selected = candidate;
-		}
-	const bool pvp = population[0].pvp_accounts && population[1].pvp_accounts &&
-			 !std::any_of(state.slots.begin(), state.slots.end(),
-				      [&](const auto &slot) {
-					      return slot.category == divine_boon_category::pvp &&
-						     divine_boon_active(slot, now);
-				      });
-	if (pvp)
-	{
-		const unsigned weight =
-			population[0].pvp_accounts >= 2 && population[1].pvp_accounts >= 2 ? 40 :
-											     20;
-		total += weight;
-		if (number(1, total) <= static_cast<int>(weight))
-		{
-			selected = {};
-			selected.category = divine_boon_category::pvp;
-		}
+		divine_boon_slot selected;
+		unsigned total = 0;
+		for (const auto &candidate : pick)
+			if (candidate.zones[0] >= 0 || candidate.zones[1] >= 0)
+			{
+				const unsigned weight =
+					candidate.category == divine_boon_category::experience ?
+						35 :
+						30;
+				total += weight;
+				if (number(1, total) <= static_cast<int>(weight))
+					selected = candidate;
+			}
+		if (total)
+			choices->push_back(selected);
 	}
 
-	const bool has_cargo = std::any_of(state.slots.begin(), state.slots.end(),
-					   [&](const auto &slot) {
-						   return slot.category ==
-								  divine_boon_category::cargo &&
-							  divine_boon_active(slot, now);
-					   });
+	const bool pvp = population[0].pvp_accounts && population[1].pvp_accounts && !has_pvp;
+	if (diagnostic)
+		diagnostic->pvp_eligible = pvp;
+	if (pvp)
+	{
+		choices->emplace_back();
+		choices->back().category = divine_boon_category::pvp;
+	}
 
 	if (!has_cargo)
 	{
@@ -566,19 +671,15 @@ try
 			if (number(1, ++count) == 1)
 				route = candidate;
 		}
+		if (diagnostic)
+			diagnostic->cargo_routes = count;
 		if (count)
-		{
-			total += 15;
-			if (number(1, total) <= 15)
-				selected = route;
-		}
+			choices->push_back(route);
 	}
 
-	if (!total)
-		return false;
-
-	*choice = selected;
-	return true;
+	if (diagnostic)
+		diagnostic->sampled = true;
+	return !choices->empty();
 }
 catch (const std::bad_alloc &)
 {
@@ -597,9 +698,6 @@ void divine_boon_selection_status(P_char ch)
 			if (suitable_level(zone, side) > 0)
 			{
 				exp += zone.experience;
-				if (zone.experience)
-					send_to_char_f(ch, "divine_exp side=%s zone=%d\r\n",
-						       side ? "evil" : "good", zone.number);
 				if (epic_target(zone, side))
 				{
 					++epic;
@@ -641,6 +739,65 @@ void divine_boon_selection_status(P_char ch)
 	send_to_char_f(ch,
 		       "divine_routes count=%u shared=%u first_source=%d first_destination=%d\r\n",
 		       routes, shared, first_source, first_destination);
+
+	const auto *published = divine_boon_runtime_state();
+	if (published)
+		confirm_diagnostic(*published, divine_boon_runtime_pending());
+	if (diagnostic_history.empty())
+		send_to_char_f(ch, "divine_diag history=empty scope=current-boot\r\n");
+	else
+	{
+		const auto &latest = diagnostic_history.back();
+		send_to_char_f(
+			ch, "divine_diag last_hour=%lld outcome=%s categories=%s revision=%llu\r\n",
+			static_cast<long long>(latest.hour), latest.reason,
+			category_list(latest.categories).c_str(),
+			static_cast<unsigned long long>(latest.committed_revision));
+		for (unsigned side = 0; side < latest.population.size(); ++side)
+		{
+			if (!latest.sampled)
+			{
+				send_to_char_f(
+					ch,
+					"divine_diag side=%s active=N/A online=N/A levels=N/A "
+					"pvp=N/A exp_candidates=N/A epic_candidates=N/A\r\n",
+					side ? "evil" : "good");
+				continue;
+			}
+			const auto &p = latest.population[side];
+			send_to_char_f(ch,
+				       "divine_diag side=%s active=%u online=%zu "
+				       "levels=1-20:%u,21-35:%u,36-50:%u,51+:%u\r\n",
+				       side ? "evil" : "good", p.active_accounts, p.levels.size(),
+				       p.brackets[0], p.brackets[1], p.brackets[2], p.brackets[3]);
+			send_to_char_f(
+				ch,
+				"divine_diag side=%s pvp=%u exp_candidates=%u epic_candidates=%u "
+				"exp_history=%s epic_history=%s\r\n",
+				side ? "evil" : "good", p.pvp_accounts,
+				latest.experience_candidates[side], latest.epic_candidates[side],
+				latest.experience_relaxed[side] ? "relaxed" : "strict",
+				latest.epic_relaxed[side] ? "relaxed" : "strict");
+		}
+		if (latest.sampled)
+			send_to_char_f(
+				ch, "divine_diag sampled=yes pvp_eligible=%s cargo_routes=%u\r\n",
+				latest.pvp_eligible ? "yes" : "no", latest.cargo_routes);
+		else
+			send_to_char_f(
+				ch, "divine_diag sampled=no pvp_eligible=N/A cargo_routes=N/A\r\n");
+		for (const auto &item : diagnostic_history)
+			send_to_char_f(ch,
+				       "divine_diag recent hour=%lld outcome=%s categories=%s\r\n",
+				       static_cast<long long>(item.hour), item.reason,
+				       category_list(item.categories).c_str());
+	}
+	if (submitted_diagnostic)
+		send_to_char_f(ch, "divine_diag hour=%lld status=pending-durable-write\r\n",
+			       static_cast<long long>(submitted_diagnostic->hour));
+	else if (prepared_diagnostic)
+		send_to_char_f(ch, "divine_diag hour=%lld status=queue-refused\r\n",
+			       static_cast<long long>(prepared_diagnostic->hour));
 }
 
 void divine_boon_selection_pulse(int64_t now)
@@ -672,60 +829,105 @@ try
 		reward_revision = state->revision;
 		reward_checked_at = now;
 	}
+	confirm_diagnostic(*state, divine_boon_runtime_pending());
 	if (divine_boon_runtime_pending())
 		return;
 	const int64_t hour = now - now % DIVINE_BOON_HOUR;
 	if (prepared_hour && prepared_hour->revision != state->revision + 1)
+	{
 		prepared_hour.reset(); // A staff mutation superseded this unsubmitted choice.
+		prepared_diagnostic.reset();
+	}
 	if (hour <= state->last_opportunity)
 		return;
 	if (!prepared_hour || hour > prepared_hour->last_opportunity)
 	{
 		auto next = *state;
-		divine_boon_slot choice;
-		bool selected = false;
+		std::vector<divine_boon_slot> choices;
+		divine_boon_selection_diagnostic report;
+		report.hour = hour;
 		// A refused queue retains the exact choice for this hour. Once the hour
 		// has passed, skip it and consume the present opportunity without RNG.
-		if (!prepared_hour && hour - state->last_opportunity == DIVINE_BOON_HOUR &&
-		    !state->paused)
+		if (prepared_hour || hour - state->last_opportunity != DIVINE_BOON_HOUR)
+			report.reason = "missed-hour";
+		else if (state->paused)
+			report.reason = "paused";
+		else
 		{
 			auto candidates = *state;
 			divine_boon_reconcile(&candidates,
 					      now); // Include just-expired repeat history.
 			if (std::any_of(candidates.slots.begin(), candidates.slots.end(),
 					[](const auto &slot) { return !slot.id; }))
-				selected = divine_boon_select(candidates, now,
-							      divine_boon_activity_population(),
-							      &choice);
+			{
+				const bool selected = divine_boon_select(
+					candidates, now, divine_boon_activity_population(),
+					&choices, &report);
+				report.reason = selected       ? "generated" :
+						report.sampled ? "no-eligible-category" :
+								 "selector-unavailable";
+			}
+			else
+				report.reason = "slots-full";
 		}
-		if (!divine_boon_rotate(&next, now, selected ? &choice : nullptr))
+		if (!divine_boon_rotate(&next, now, choices.data(), choices.size()))
 			return;
+		for (const auto &choice : choices)
+			report.categories |= 1u << static_cast<unsigned>(choice.category);
+		prepared_diagnostic = report;
 		prepared_hour = std::move(next);
 	}
-	bool targets_valid = true;
+	// New objectives carry IDs from the published next_id onward. Drop any whose
+	// target became invalid before admission, keeping the rest; never reroll.
+	std::vector<divine_boon_slot> valid;
+	bool invalidated = false;
 	for (const auto &slot : prepared_hour->slots)
-		if (slot.id == state->next_id && slot.category == divine_boon_category::cargo &&
-		    !divine_boon_cargo_eligible(slot))
-			targets_valid = false;
-		else if (slot.id == state->next_id)
-			for (unsigned side = 0; side < slot.zones.size(); ++side)
-				if (slot.zones[side] >= 0 &&
-				    !(slot.category == divine_boon_category::epic ?
-					      divine_boon_epic_zone_eligible(slot.zones[side],
-									     side) :
-					      divine_boon_zone_eligible(slot.zones[side], side)))
-				{
-					targets_valid = false;
-				}
-	if (!targets_valid)
 	{
-		auto empty = *state;
-		if (!divine_boon_rotate(&empty, now, nullptr))
+		if (!slot.id || slot.id < state->next_id)
+			continue;
+		bool targets_valid = slot.category != divine_boon_category::cargo ||
+				     divine_boon_cargo_eligible(slot);
+		for (unsigned side = 0; side < slot.zones.size(); ++side)
+			if (slot.zones[side] >= 0 &&
+			    !(slot.category == divine_boon_category::epic ?
+				      divine_boon_epic_zone_eligible(slot.zones[side], side) :
+				      divine_boon_zone_eligible(slot.zones[side], side)))
+				targets_valid = false;
+		if (!targets_valid)
+		{
+			invalidated = true;
+			continue;
+		}
+		auto choice = slot;
+		choice.id = 0;
+		choice.starts_at = choice.expires_at = 0;
+		valid.push_back(choice);
+	}
+	if (invalidated)
+	{
+		auto kept = *state;
+		if (!divine_boon_rotate(&kept, now, valid.data(), valid.size()))
 			return;
-		prepared_hour = std::move(empty); // Invalidate, never reroll.
+		prepared_hour = std::move(kept);
+		if (prepared_diagnostic)
+		{
+			prepared_diagnostic->reason = "target-invalidated";
+			prepared_diagnostic->categories = 0;
+			for (const auto &choice : valid)
+				prepared_diagnostic->categories |=
+					1u << static_cast<unsigned>(choice.category);
+		}
 	}
 	if (divine_boon_runtime_queue(*prepared_hour))
+	{
+		if (prepared_diagnostic)
+		{
+			prepared_diagnostic->committed_revision = prepared_hour->revision;
+			submitted_diagnostic = *prepared_diagnostic;
+		}
+		prepared_diagnostic.reset();
 		prepared_hour.reset();
+	}
 }
 catch (const std::bad_alloc &)
 {

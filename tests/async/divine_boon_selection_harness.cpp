@@ -9,6 +9,9 @@
 #include "world/graph.h"
 
 #include <cassert>
+#include <cstdarg>
+#include <cstdio>
+#include <string>
 #include <iostream>
 
 namespace
@@ -17,7 +20,7 @@ room_data rooms[11] = {};
 zone_data zones[5] = {};
 room_direction_data exits[11] = {};
 reset_com low_resets[7] = {};
-reset_com high_resets[6] = {};
+reset_com high_resets[7] = {};
 int levels[] = { 16, 18, 38, 42 };
 int random_value = 0;
 divine_boon_state authority, queued;
@@ -37,9 +40,9 @@ index_data stone_index[1] = {};
 P_index obj_index = nullptr;
 P_obj object_list = nullptr;
 int stone_zone = 2;
-int obj_zone_id(P_obj)
+int obj_zone_id(P_obj obj)
 {
-	return stone_zone;
+	return obj->value[2] == 20 ? 3 : stone_zone;
 }
 int top_of_objt = -1;
 const std::vector<zone_info> &sql_zones()
@@ -83,6 +86,10 @@ int world_quest_policy_combat_level(int mob)
 {
 	return mob >= 0 && mob < 4 ? levels[mob] : -1;
 }
+bool world_quest_policy_zone_is_invalid(int zone)
+{
+	return zone == 999; // Explicitly denied content, even if it looks like a valid dungeon.
+}
 int number(int low, int high)
 {
 	++random_calls;
@@ -97,7 +104,16 @@ int unsafe_room(int, P_char, int, char *)
 	return false;
 }
 void logit(const char *, const char *, ...) {}
-void send_to_char_f(P_char, const char *, ...) {}
+std::string diagnostic_output;
+void send_to_char_f(P_char, const char *format, ...)
+{
+	char line[512];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(line, sizeof(line), format, args);
+	va_end(args);
+	diagnostic_output += line;
+}
 
 const divine_boon_state *divine_boon_runtime_state()
 {
@@ -173,7 +189,7 @@ int main()
 	hometowns[1].flags = JUSTICE_EVILHOME;
 	zones[2].number = 18;
 	zones[3].number = 20;
-	zones[4].number = 999; // Unknown content, even if it looks like a valid dungeon.
+	zones[4].number = 999; // Denied by the world-quest zone vetting.
 	for (auto &zone : zones)
 		zone.reset_mode = 2;
 	for (int i = 0; i < 5; ++i)
@@ -181,7 +197,7 @@ int main()
 		low_resets[i] = { 'M', false, i % 2, 5, 2 + i % 3, 100 };
 		high_resets[i] = { 'M', false, 2 + i % 2, 5, 5 + i % 3, 100 };
 	}
-	low_resets[5].command = high_resets[5].command = 'S';
+	low_resets[5].command = high_resets[5].command = high_resets[6].command = 'S';
 	zones[2].cmd = low_resets;
 	zones[3].cmd = high_resets;
 	zones[4].cmd = high_resets;
@@ -249,35 +265,55 @@ int main()
 	assert(divine_boon_set_mode(&state, divine_boon_mode::draining, 0));
 	assert(divine_boon_set_mode(&state, divine_boon_mode::divine, 0));
 	std::array<divine_boon_population, 2> population = {};
-	population[0].active_accounts = population[0].brackets[0] = 1;
-	population[1].active_accounts = population[1].brackets[2] = 1;
+	population[0].levels = { 17 }; // Zone 18 averages 17, zone 20 averages 40.
+	population[1].levels = { 40 };
 	divine_boon_slot choice;
-	assert(divine_boon_select(state, 3600, population, &choice));
+	std::vector<divine_boon_slot> picks;
+	// The first new objective; Exp/Epic always precede PvP and Cargo.
+	auto select = [&](const divine_boon_state &from, int64_t now, const auto &players)
+	{
+		const bool selected = divine_boon_select(from, now, players, &picks);
+		assert(selected == !picks.empty());
+		choice = selected ? picks.front() : divine_boon_slot{};
+		return selected;
+	};
+	assert(select(state, 3600, population));
 	assert(choice.category == divine_boon_category::experience);
 	assert(choice.zones[0] == 18 && choice.zones[1] == 20);
 	assert(divine_boon_rotate(&state, 3600, &choice));
-	assert(!divine_boon_select(state, 7200, population, &choice)); // No same-side reuse.
+	assert(!select(state, 7200, population)); // No same-side reuse, no far-off level.
 
 	assert(divine_boon_replace(&state, 0, 7200));
-	assert(divine_boon_select(state, 10800, population, &choice)); // Thin pool relaxes history.
+	assert(select(state, 10800, population)); // Thin pool relaxes history.
 	assert(choice.zones[0] == 18 && choice.zones[1] == 20);
 	population[1] = {};
-	assert(divine_boon_select(state, 10800, population, &choice));
+	assert(select(state, 10800, population));
 	assert(choice.zones[0] == 18 && choice.zones[1] == -1);
 	levels[2] = levels[3] = 18;
 	assert(divine_boon_selection_bootstrap());
-	assert(divine_boon_select(state, 10800, population, &choice));
+	divine_boon_state unvisited;
+	assert(divine_boon_set_mode(&unvisited, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&unvisited, divine_boon_mode::divine, 0));
+	divine_boon_selection_diagnostic multi;
+	assert(divine_boon_select(unvisited, 3600, population, &picks, &multi));
+	assert(multi.experience_candidates[0] == 2 && !multi.experience_relaxed[0]);
+	assert(picks[0].zones[0] == 20);
+	random_value = 600000;
+	assert(divine_boon_select(unvisited, 3600, population, &picks, &multi));
+	assert(multi.experience_candidates[0] == 2 && picks[0].zones[0] == 18);
+	random_value = 0;
+	assert(select(state, 10800, population));
 	assert(choice.zones[0] ==
 	       20); // Prefer an unvisited safe alternative before relaxing history.
 	levels[2] = 38;
 	levels[3] = 42;
 	assert(divine_boon_selection_bootstrap());
 	population[0] = {};
-	assert(!divine_boon_select(state, 10800, population, &choice));
+	assert(!select(state, 10800, population)); // Nobody online: no Exp, no epic stone.
 	state.paused = true;
-	assert(!divine_boon_select(state, 10800, population, &choice));
+	assert(!select(state, 10800, population));
 	state.paused = false;
-	population[0].active_accounts = population[0].brackets[0] = 1;
+	population[0].levels = { 17 };
 	{
 		divine_boon_state pending;
 		assert(divine_boon_set_mode(&pending, divine_boon_mode::draining, 0));
@@ -294,18 +330,19 @@ int main()
 		zones[4].cmd = alternative;
 		zones[3].flags = ZONE_CLOSED;
 		assert(divine_boon_selection_bootstrap());
-		auto balanced = population;
-		balanced[0].brackets[2] = 1;
+		// Exp follows the chosen online player's own level, not the side's mix.
+		auto mixed = population;
+		mixed[0].levels = { 17, 40 };
+		assert(select(pending, 7200, mixed) && choice.zones[0] == 18); // Picks level 17.
 		random_value = 600000;
-		assert(divine_boon_select(pending, 7200, balanced, &choice));
-		assert(choice.zones[0] == 18); // Invalid high objective must not serve bracket 0.
+		assert(select(pending, 7200, mixed) && choice.zones[0] == 40); // Picks level 40.
 		random_value = 0;
 		zones[4].number = 999;
 		zones[4].cmd = high_resets;
 		zones[3].flags = 0;
 		levels[2] = levels[3] = 18;
 		assert(divine_boon_selection_bootstrap());
-		assert(divine_boon_select(pending, 9 * 3600, population, &choice));
+		assert(select(pending, 9 * 3600, population));
 		assert(choice.zones[0] == 18); // Expired zone 20 awaits core reconciliation.
 		levels[2] = 38;
 		levels[3] = 42;
@@ -329,20 +366,17 @@ int main()
 	}
 	low_resets[0].arg1 = 99; // Unknown profiles fail closed on catalogue rebuild.
 	assert(divine_boon_selection_bootstrap());
-	assert(!divine_boon_select(state, 10800, population, &choice));
+	assert(!select(state, 10800, population));
 
 	// Exercise the actual game-thread tick at the existing writer boundary.
-	std::array<divine_boon_population, 2> opposing = {};
-	opposing[0].active_accounts = opposing[1].active_accounts = 1;
-	opposing[0].brackets[0] = opposing[1].brackets[0] = 1;
+	std::array<divine_boon_population, 2> opposing = {}; // PvP evidence only.
 	opposing[0].pvp_accounts = 1;
-	assert(!divine_boon_select(state, 10800, opposing, &choice));
+	assert(!select(state, 10800, opposing));
 	opposing[1].pvp_accounts = 1;
-	assert(divine_boon_select(state, 10800, opposing, &choice) &&
-	       choice.category == divine_boon_category::pvp);
+	assert(select(state, 10800, opposing) && choice.category == divine_boon_category::pvp);
 	auto pvp_state = state;
 	assert(divine_boon_rotate(&pvp_state, 10800, &choice));
-	assert(!divine_boon_select(pvp_state, 14400, opposing, &choice)); // One global PvP slot.
+	assert(!select(pvp_state, 14400, opposing)); // One global PvP slot.
 
 	// Publication itself remains the real writer runtime's separate proof.
 	low_resets[0].arg1 = 0;
@@ -353,7 +387,7 @@ int main()
 		assert(divine_boon_set_mode(&authority, divine_boon_mode::draining, 0));
 		assert(divine_boon_set_mode(&authority, divine_boon_mode::divine, 0));
 		current_population = {};
-		current_population[0].active_accounts = current_population[0].brackets[0] = 1;
+		current_population[0].levels = { 17 };
 		queue_calls = random_calls = 0;
 		queue_accepts = write_pending = false;
 	};
@@ -464,12 +498,53 @@ int main()
 	assert(divine_boon_set_mode(&epic_state, divine_boon_mode::draining, 0));
 	assert(divine_boon_set_mode(&epic_state, divine_boon_mode::divine, 0));
 	std::array<divine_boon_population, 2> epic_population = {};
-	epic_population[0].active_accounts = epic_population[0].brackets[0] = 1;
-	assert(divine_boon_select(epic_state, 3600, epic_population, &choice));
-	assert(choice.category == divine_boon_category::experience); // Crowd requires two accounts.
-	epic_population[0].active_accounts = epic_population[0].brackets[0] = 2;
-	assert(divine_boon_select(epic_state, 3600, epic_population, &choice));
+	epic_population[0].levels = { 17 };
+	// A lone player qualifies; the reset crowd no longer gates the epic.
+	assert(select(epic_state, 3600, epic_population));
 	assert(choice.category == divine_boon_category::epic && choice.zones[0] == 18);
+	// A window over the payout-ranked list: zone 18 pays least, zone 20 most.
+	metadata.number = 20;
+	metadata.epic_payout = 900;
+	epic_metadata.push_back(metadata);
+	high_resets[5] = { 'O', false, 0, 1, 6, 100 };
+	obj_data high_stone = stone;
+	high_stone.obj_uid = 124;
+	high_stone.value[2] = 20;
+	stone.next = &high_stone;
+	assert(divine_boon_selection_bootstrap());
+	assert(divine_boon_epic_zone_eligible(20, 0));
+	assert(select(epic_state, 3600, epic_population) && choice.zones[0] == 18); // Under 30.
+	epic_population[0].levels = { 50 };
+	assert(select(epic_state, 3600, epic_population)); // 50+: the bottom of the list.
+	assert(choice.category == divine_boon_category::epic && choice.zones[0] == 20);
+	epic_population[0].levels = { 17, 50 }; // Average 33.5 leans to the bottom half.
+	assert(select(epic_state, 3600, epic_population) && choice.zones[0] == 20);
+	epic_population[0] = {}; // Nobody online: an epic still awaits login, any zone.
+	assert(select(epic_state, 3600, epic_population));
+	assert(choice.category == divine_boon_category::epic);
+	assert(choice.zones[0] >= 0 && choice.zones[1] >= 0);
+	divine_boon_selection_diagnostic epic_multi;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+	assert(epic_multi.epic_candidates[0] == 2 && !epic_multi.epic_relaxed[0]);
+	assert(picks[0].zones[0] == 20);
+	random_value = 1000000;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+	assert(epic_multi.epic_candidates[0] == 2 && picks[0].zones[0] == 18);
+	random_value = 0;
+	// An idle server must leave space for players who log in later, even while
+	// another eligible epic remains. Every quiet hour preserves just one boon.
+	auto quiet = epic_state;
+	for (int hour = 1; hour <= 6; ++hour)
+	{
+		divine_boon_select(quiet, hour * 3600, epic_population, &picks);
+		assert(divine_boon_rotate(&quiet, hour * 3600, picks.data(), picks.size()));
+		assert(std::count_if(quiet.slots.begin(), quiet.slots.end(),
+				     [](const auto &slot) { return slot.id != 0; }) == 1);
+	}
+	epic_metadata.pop_back();
+	stone.next = nullptr;
+	high_resets[5].command = 'S';
+	assert(divine_boon_selection_bootstrap());
 	divine_boon_slot route;
 	route.category = divine_boon_category::cargo;
 	route.source_port = route.cargo_commodity = route.contraband_commodity = 0;
@@ -511,5 +586,99 @@ int main()
 	zones[2].flags = ZONE_CLOSED;
 	assert(!divine_boon_cargo_eligible(route));
 
-	std::cout << "Divine candidate paths, flags, account brackets and thin pools passed\n";
+	zones[2].flags = 0; // Restore valid water-port access for the pool fixtures.
+
+	// Cargo and PvP keep their reserved slots while six Exp/Epic are active.
+	std::array<divine_boon_population, 2> everyone = {};
+	everyone[0].levels = { 17 };
+	everyone[0].pvp_accounts = everyone[1].pvp_accounts = 1;
+	divine_boon_state full;
+	assert(divine_boon_set_mode(&full, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&full, divine_boon_mode::divine, 0));
+	for (int index = 1; index <= static_cast<int>(DIVINE_BOON_ZONE_SLOTS); ++index)
+	{
+		divine_boon_slot active;
+		active.category = divine_boon_category::experience;
+		active.zones = { 100 + index, -1 };
+		assert(divine_boon_rotate(&full, index * 3600, &active));
+	}
+	assert(select(full, 7 * 3600, everyone) && picks.size() == 2);
+	assert(picks[0].category == divine_boon_category::pvp &&
+	       picks[1].category == divine_boon_category::cargo);
+	assert(divine_boon_replace(&full, 0, 7 * 3600));
+	assert(select(full, 8 * 3600, everyone) && picks.size() == 3);
+	assert(picks[0].category == divine_boon_category::epic); // The freed zone slot.
+
+	// One hour admits every pool together; a target that turns invalid before
+	// admission is dropped while the others stay, without rerolling.
+	reset_hour();
+	current_population = everyone;
+	divine_boon_selection_pulse(3600);
+	assert(queued.slots[0].category == divine_boon_category::epic &&
+	       queued.slots[1].category == divine_boon_category::pvp &&
+	       queued.slots[2].category == divine_boon_category::cargo);
+	object_list = nullptr; // The epic stone is gone before the writer accepts.
+	const auto before_drop = random_calls;
+	divine_boon_selection_pulse(3601);
+	assert(random_calls == before_drop);
+	assert(queued.slots[0].category == divine_boon_category::pvp &&
+	       queued.slots[1].category == divine_boon_category::cargo && !queued.slots[2].id);
+	queue_accepts = true;
+	divine_boon_selection_pulse(3602);
+	publish();
+	char_data staff = {};
+	staff.player.level = IMMORTAL;
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("outcome=target-invalidated categories=cargo+pvp") !=
+	       std::string::npos);
+	object_list = &stone;
+
+	// A zero-player server still offers an epic for players who log in, plus
+	// cargo, then records empty hours while both remain. No RNG from status.
+	reset_hour();
+	current_population = {};
+	divine_boon_selection_pulse(3600);
+	assert(queued.slots[0].category == divine_boon_category::epic &&
+	       queued.slots[1].category == divine_boon_category::cargo);
+	queue_accepts = true;
+	divine_boon_selection_pulse(3601);
+	publish();
+	divine_boon_selection_pulse(3602);
+	const unsigned after_grant_rng = random_calls;
+	divine_boon_selection_pulse(7200);
+	publish();
+	divine_boon_selection_pulse(7201);
+	assert(random_calls == after_grant_rng);
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("last_hour=7200 outcome=no-eligible-category") !=
+	       std::string::npos);
+	assert(diagnostic_output.find("side=good active=0") != std::string::npos);
+	assert(diagnostic_output.find("side=evil active=0") != std::string::npos);
+	assert(diagnostic_output.find("cargo_routes=0") != std::string::npos);
+	assert(diagnostic_output.find("side=good active=0 online=0") != std::string::npos);
+	assert(diagnostic_output.find("recent hour=3600 outcome=generated categories=epic+cargo") !=
+	       std::string::npos);
+	const auto before_status_rng = random_calls;
+	divine_boon_selection_status(&staff);
+	assert(random_calls == before_status_rng);
+	// Pausing with players online does not invent zero population/candidates.
+	current_population[0].levels = { 17 };
+	current_population[0].active_accounts = 1;
+	assert(divine_boon_set_paused(&authority, true, 7201));
+	divine_boon_selection_pulse(10800);
+	publish();
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("outcome=paused") != std::string::npos);
+	assert(diagnostic_output.find("side=good active=N/A online=N/A") != std::string::npos);
+	assert(diagnostic_output.find("sampled=no pvp_eligible=N/A cargo_routes=N/A") !=
+	       std::string::npos);
+	reset_hour();
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("history=empty") != std::string::npos);
+	std::cout
+		<< "Divine candidate paths, player levels, epic window and reserved pools passed\n";
 }

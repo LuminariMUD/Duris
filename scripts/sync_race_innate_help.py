@@ -88,6 +88,9 @@ def sync(check):
 		if title not in lists or "==Innate abilities==" not in lines:
 			continue
 		start = lines.index("==Innate abilities==") + 1
+		# The help layout keeps a blank line after the section heading.
+		if start < len(lines) and not lines[start]:
+			start += 1
 		end = start
 		while end < len(lines) and lines[end] not in (PASSIVE_NOTE, "None."):
 			end += 1

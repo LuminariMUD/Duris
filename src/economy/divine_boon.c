@@ -207,7 +207,8 @@ bool divine_boon_state_valid(const divine_boon_state &state)
 			const auto &other = state.slots[previous];
 			if (!other.id)
 				continue;
-			if (other.id == slot.id || other.starts_at == slot.starts_at ||
+			// One hour may start an Exp/Epic, a PvP and a Cargo objective together.
+			if (other.id == slot.id ||
 			    (other.category == slot.category && !pve(slot.category)))
 				return false;
 			if (pve(slot.category) && pve(other.category))
@@ -314,7 +315,8 @@ bool divine_boon_replace(divine_boon_state *state, size_t index, int64_t now)
 	return publish(state, std::move(next));
 }
 
-bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon_slot *choice)
+bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon_slot *choices,
+			size_t count)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
 	    state->mode != divine_boon_mode::divine || hour(now) <= state->last_opportunity)
@@ -323,15 +325,18 @@ bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon
 	expire(next, now);
 	const bool skipped_hours = hour(now) - next.last_opportunity > DIVINE_BOON_HOUR;
 	next.last_opportunity = hour(now);
-	auto empty = std::find_if(next.slots.begin(), next.slots.end(),
-				  [](const divine_boon_slot &slot) { return !slot.id; });
-	if (!next.paused && !skipped_hours && choice && empty != next.slots.end())
+	for (size_t index = 0; choices && !next.paused && !skipped_hours && index < count; ++index)
 	{
-		if (choice->id || choice->starts_at || choice->expires_at ||
-		    !valid_objective(*choice) ||
+		const auto &choice = choices[index];
+		auto empty = std::find_if(next.slots.begin(), next.slots.end(),
+					  [](const divine_boon_slot &slot) { return !slot.id; });
+		if (empty == next.slots.end())
+			break;
+		if (choice.id || choice.starts_at || choice.expires_at ||
+		    !valid_objective(choice) ||
 		    next.next_id == std::numeric_limits<uint64_t>::max())
 			return false;
-		*empty = *choice;
+		*empty = choice;
 		empty->id = next.next_id++;
 		empty->starts_at = hour(now);
 		empty->expires_at = empty->starts_at + divine_boon_duration(empty->category);
