@@ -125,7 +125,7 @@ class AtomicImport(ImportFixture):
         return (self.query('SELECT name, HEX(content) FROM mud_info ORDER BY name'),
                 self.query('SELECT * FROM pages ORDER BY title'))
 
-    def test_planar_affinity_sources_publish_with_parsed_precedence(self):
+    def test_conjurer_sources_publish_with_parsed_precedence(self):
         self.index.write_bytes((ROOT / 'lib/information/help_index').read_bytes())
         parsed = (self.root / 'help/duris_help_parsed.hlp')
         parsed.write_bytes((ROOT / 'help/duris_help_parsed.hlp').read_bytes())
@@ -142,6 +142,13 @@ class AtomicImport(ImportFixture):
                     self.assertIn(rule, body)
                 self.assertIn('==See also==', body)  # Parsed source wins over index wrappers.
         self.assertIn('19826-19886', self.query("SELECT text FROM pages WHERE title='Planar Affinity'"))
+        for element in ('Air', 'Earth', 'Fire', 'Water'):
+            title = element + ' Form'
+            with self.subTest(topic=title):
+                self.assertEqual(self.query(f"SELECT COUNT(*) FROM pages WHERE title='{title}'"), '1')
+                body = self.query(f"SELECT text FROM pages WHERE title='{title}'")
+                for rule in ('Self only', 'circle-10', '8 affect-duration units', 'Ice Aura'):
+                    self.assertIn(rule, body)
 
     def test_news_only_preserves_bytes_and_other_content(self):
         pages = self.query('SELECT * FROM pages ORDER BY title')

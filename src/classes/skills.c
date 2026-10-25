@@ -278,6 +278,18 @@ void initialize_skills()
 			 spell_air_form, "Your molecules return to normal.");
 	SPEC_SPELL_ADD(CLASS_CONJURER, 10, SPEC_AIR);
 
+	SPELL_CREATE_MSG("earth form", SPELL_EARTH_FORM, PULSE_SPELLCAST * 4, TAR_SELF_ONLY,
+			 spell_earth_form, "Your stone body returns to flesh.");
+	SPEC_SPELL_ADD(CLASS_CONJURER, 10, SPEC_EARTH);
+
+	SPELL_CREATE_MSG("fire form", SPELL_FIRE_FORM, PULSE_SPELLCAST * 4, TAR_SELF_ONLY,
+			 spell_fire_form, "Your fiery body returns to flesh.");
+	SPEC_SPELL_ADD(CLASS_CONJURER, 10, SPEC_FIRE);
+
+	SPELL_CREATE_MSG("water form", SPELL_WATER_FORM, PULSE_SPELLCAST * 4, TAR_SELF_ONLY,
+			 spell_water_form, "Your flowing body returns to flesh.");
+	SPEC_SPELL_ADD(CLASS_CONJURER, 10, SPEC_WATER);
+
 	SPELL_CREATE("ethereal grounds", SPELL_ETHEREAL_GROUNDS, PULSE_SPELLCAST * 4, TAR_IGNORE,
 		     spell_ethereal_grounds);
 	SPEC_SPELL_ADD(CLASS_CONJURER, 11, SPEC_AIR);

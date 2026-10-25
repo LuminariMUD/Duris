@@ -60,13 +60,35 @@ for block in re.split(r"\b(?:SPELL|SKILL)_CREATE(?:_MSG|_WITH_MESSAGES)?\(", cle
         continue
     statements = re.findall(r"^\s*((?:SPEC_)?(?:SPELL|SKILL)_ADD\([^;]+;)", block, re.M)
     if not any("CLASS_CLERIC" in line for line in statements) and match[1] not in (
-        "SPELL_VITAL_INTERCESSION", "SPELL_HOLY_INTERCESSION"
+        "SPELL_VITAL_INTERCESSION", "SPELL_HOLY_INTERCESSION",
+        "SPELL_EARTH_FORM", "SPELL_FIRE_FORM", "SPELL_WATER_FORM"
     ):
         continue
     grants.append(f"numSkills = {match[1]}; skills[numSkills].targets = TAR_SPELL;\n" + "\n".join(statements))
 
 cleric_driver = r'''
     REGISTER_CLERIC
+    // Dedicated forms remain subject to normal circle eligibility, even with a
+    // saved prepared copy and after changing specialization.
+    char_data magus{};
+    magus.player.m_class = CLASS_CONJURER;
+    magus.player.race = RACE_HUMAN;
+    affected_type prepared{};
+    prepared.type = TAG_MEMORIZE; prepared.flags = MEMTYPE_FULL;
+    magus.affected = &prepared;
+    for (const auto &form : {std::pair{SPELL_EARTH_FORM, SPEC_EARTH},
+                             std::pair{SPELL_FIRE_FORM, SPEC_FIRE},
+                             std::pair{SPELL_WATER_FORM, SPEC_WATER}}) {
+        prepared.modifier = form.first;
+        for (int spec : {0, SPEC_EARTH, SPEC_FIRE, SPEC_WATER, SPEC_AIR}) {
+            magus.player.spec = spec;
+            for (int level : {41, 45, 46, 50, 51, 56}) {
+                magus.player.level = level;
+                assert(bool(knows_spell(&magus, form.first)) ==
+                       (spec == form.second && level >= 46));
+            }
+        }
+    }
     // Keep removed spells registered so eligibility, not an absent spell ID, denies casts.
     assert(IS_SPELL(SPELL_HOLY_INTERCESSION));
     const int restored[][2] = {
