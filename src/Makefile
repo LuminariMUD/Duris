@@ -519,6 +519,7 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/track.o \
 				 economy/tradeskill.o \
 				 combat/trap.o \
+				 combat/trap_legacy.o \
 				 kingdom/kingdom.o \
 				 kingdom/kingdom_geometry.o \
 				 kingdom/kingdom_config.o \
@@ -640,11 +641,12 @@ $(DMS_BINARY): $(DMS_OBJS) $(BACKEND_STAMP)
 pfile: $(PFILE_BINARY)
 
 $(PFILE_BINARY): $(PFILE_OBJS) $(SHARED_PFILE_OBJS) $(OBJDIR)/core/mm.o $(OBJDIR)/core/common.o \
-		$(OBJDIR)/core/memory.o
+		$(OBJDIR)/core/memory.o $(OBJDIR)/combat/trap_legacy.o
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LDFLAGS) -g -o $@ \
 		$(PFILE_OBJS) $(SHARED_PFILE_OBJS) \
-		$(OBJDIR)/core/common.o $(OBJDIR)/core/mm.o $(OBJDIR)/core/memory.o $(LIBS)
+		$(OBJDIR)/core/common.o $(OBJDIR)/core/mm.o $(OBJDIR)/core/memory.o \
+		$(OBJDIR)/combat/trap_legacy.o $(LIBS)
 
 # Build any C object into OBJDIR, creating folders as needed.
 $(OBJDIR)/%.o: %.c

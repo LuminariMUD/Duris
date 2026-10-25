@@ -43,6 +43,7 @@ harness = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "core/files.h"
+#include "combat/trap_legacy.h"
 #include "item/storage_lockers.h"
 #include "sql/sql_work.h"
 #include <cassert>
@@ -325,7 +326,7 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
     subprocess.run([
         "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
-        "-I", str(ROOT / "src"), str(source), "-o", str(binary),
+        "-I", str(ROOT / "src"), str(source), str(ROOT / "src/combat/trap_legacy.c"), "-o", str(binary),
     ], check=True)
     failed = []
     for case in ("sorting", "insert", "append", "public-load", "private-load",

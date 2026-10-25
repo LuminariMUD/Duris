@@ -1,10 +1,47 @@
 # Issue #215: Conjurer specialisation rebalance
 
-Updated 2026-10-25. **Status: implementation and functional qualification complete;
-all chunks pushed and ready for review.** Root branch
-`branch/issue-215-conjurer-rebalance`; final qualification branch
-`branch/issue-215-combined-qualification`, in the existing worktree
-`/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`.
+> Issue #368 legacy trap implementation and qualification are maintained in
+> [plan-issue-368.md](plan-issue-368.md).
+
+Updated 2026-10-25. **Status: all approved production mechanics are implemented.**
+This closeout integrates the final test-contract slice #389 with master after #388.
+The implementation stack begins at #376. Earlier in-progress checkpoints below
+are historical; the following closeout supersedes their remaining-work statements.
+
+### Merge closeout and qualification
+
+- PRs #372–#389 are integrated sequentially with merge commits, preserving the
+  existing review tags and commit ancestry. The shared handoff collision is resolved
+  by keeping Conjurer work here and trap work in [plan-issue-368.md](plan-issue-368.md).
+- The only production conflict combined trap glyph revalidation with Water Form
+  shoreline cancellation in actmove.c. Both checks remain: a canceled crossing stops
+  before another trap or movement, and each glyph returns through movement preflight.
+  The existing shoreline fixture covers a visited trap canceling the crossing.
+- Fresh focused merge checks pass for publication cadence, Divine selection/activity,
+  trap editor/restoration/effects/content/puts/poison, affinity, forms/Earth persistence,
+  Air recovery/travel, spring creation, shoreline/input queues, Fire/device/Studio
+  dispatch and pet recovery. The complete production-source integration passes
+  `make -C src -j6`; later #387/#388 integrations have identical trees and #389
+  changes only this handoff and the phase test. All 14 documentation contracts pass.
+  Existing backend builds and unaffected gameplay/persistence evidence are reused.
+- Combined Conjurer qualification is recorded in [PR #390](https://github.com/LuminariMUD/Duris/pull/390)
+  and its branch, branch/issue-215-combined-qualification. Its 15-check flat-file
+  socket journey passed mortal forms, Air recovery, Earth layers, shoreline abort/PvP,
+  spring contention, mephits, native aggression, help, live copyover and cold restart.
+  Recovery retains form components, layer order, mephit identity/shield state and its
+  finite death deadline. Native matrices and disposable MariaDB help publication
+  supply the additional feature/backend evidence described in that handoff.
+- #390 remains a separate open qualification-publication PR outside the requested
+  #372–#389 merge range. Its test source and expanded handoff are not merged here.
+  The implementation issue can close on delivered mechanics and completed evidence.
+- No production operation, migration, release tag, full burn-in or comparative
+  balance campaign is part of this closeout. Older binaries cannot decode Fire pet
+  kinds 23/24 and use their existing invalid-state holding path; account for that
+  documented limitation when choosing a later deployment rollback.
+
+Final qualification branch `branch/issue-215-combined-qualification`, in
+`/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`, contains the
+completed gameplay evidence and expanded handoff below.
 
 Source baseline: `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`.
 The [issue](https://github.com/LuminariMUD/Duris/issues/215) and

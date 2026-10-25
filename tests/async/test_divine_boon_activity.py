@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="divine-boon-activity-", dir=output_root
         ["g++", "-std=c++20", "-g", "-Og", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
          "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
          "-ffunction-sections", "-fdata-sections", "-Isrc",
-         str(harness), "src/economy/divine_boon_activity.c",
+         str(harness), "src/economy/divine_boon_activity.c", "src/account/character_identity.c",
          str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", binary],
         cwd=ROOT, check=True,
     )

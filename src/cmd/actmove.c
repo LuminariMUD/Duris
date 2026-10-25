@@ -1325,12 +1325,15 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	struct follow_type *k, *next_dude;
 	P_char mount, rider, moving;
 	struct zone_data *zone;
+	std::vector<std::pair<P_obj, uint64_t>> sprung_traps;
+	size_t sprung_before;
 	const bool water_crossing_move = current_nevent &&
 					 current_nevent->func == event_water_crossing &&
 					 current_nevent->ch == ch;
 	if (water_crossing_move && !completing_water_crossing(ch, exitnumb))
 		return FALSE;
 
+revalidate_movement:
 	if (IS_IMMOBILE(ch))
 	{
 		return FALSE;
@@ -1558,7 +1561,7 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 		need_movement += 5;
 	}
 
-	if (IS_PC(ch) && GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 &&
+	if (sprung_traps.empty() && IS_PC(ch) && GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 &&
 	    affected_by_spell(ch, SKILL_SNEAK) && !mount && GET_VITALITY(ch) > need_movement)
 	{
 		notch_skill(ch, SKILL_SNEAK, 5);
@@ -1627,12 +1630,19 @@ int do_simple_move_skipping_procs(P_char ch, int exitnumb, unsigned int flags)
 	 } drannak - reenabling*/
 
 	/* Trap check */
-	if (checkmovetrap(ch, exitnumb))
+	sprung_before = sprung_traps.size();
+	if (checkmovetrap(ch, exitnumb, &sprung_traps))
 	{
 		return 0;
 	}
 	if (water_crossing_move && !completing_water_crossing(ch, exitnumb))
 		return FALSE;
+	if (sprung_traps.size() != sprung_before)
+	{
+		if (!(flags & MVFLG_FLEE) && IS_FIGHTING(ch))
+			return 0;
+		goto revalidate_movement;
+	}
 
 	// It takes 33% more moves to carry someone now.
 	if (mount && IS_NPC(mount))

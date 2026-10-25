@@ -109,7 +109,7 @@ def run(server, reset_coins=False, boons=False):
                     client = journey.MudClient(plain)
                     journey.create_character(client)
                     if not boons:
-                        client.send('toggle boon'); client.expect('You will no longer be affected by boons.')
+                        client.send('toggle boon'); client.expect('Divine Boons apply automatically. Your stored legacy setting is preserved.')
                     journey.complete_npc_combat_journey(client, reset_coins)
                     client.close(); client = journey.reconnect_character(plain)
                     # Recover the starter-kit roots dropped by the NPC fixture,

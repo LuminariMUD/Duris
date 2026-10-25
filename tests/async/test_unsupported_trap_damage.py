@@ -17,6 +17,10 @@ harness = r'''
 #include <cassert>
 #include <cstdarg>
 #include <string>
+#include <algorithm>
+int top_of_world=0;
+P_char find_character_by_runtime_id(uint64_t) { return nullptr; }
+P_obj find_live_object(P_obj,uint64_t) { return nullptr; }
 static room_data rooms[1];
 P_room world = rooms;
 static index_data indexes[1];
@@ -38,7 +42,9 @@ void stop_fighting(P_char) {}
 void spell_teleport(int, P_char, char *, int, P_char, P_obj) { ++effects; }
 int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) { ++effects; return 0; }
 bool damage(P_char, P_char, double, int) { ++effects; return true; }
-''' + defines + extract_function('trap.c', 'static bool trap_damage_supported(') + \
+''' + defines + 'static void trap_restored_damage(P_char, P_obj) { assert(false); }\n' + \
+    extract_function('trap.c', 'static bool trap_damage_supported(') + \
+    extract_function('trap.c', 'static bool trap_target_eligible(') + \
     extract_function('trap.c', 'void trapdamage(') + \
     extract_function('trap.c', 'bool checkmovetrap(') + \
     extract_function('trap.c', 'bool checkgetput(') + \
@@ -47,11 +53,15 @@ int main() {
     char_data actor = {};
     pc_only_data pc = {};
     actor.only.pc = &pc;
+    actor.specials.position=POS_STANDING|STAT_NORMAL;
     indexes[0].virtual_number = 131200;
     obj_data item = {};
     item.trap_eff = TRAP_EFF_MOVE | TRAP_EFF_NORTH | TRAP_EFF_OBJECT | TRAP_EFF_OPEN;
     rooms[0].contents = &item;
-    for (int type = -1; type <= 16; ++type) {
+    // New valid spells have real native coverage in test_legacy_trap_effects.py.
+    // Keep this fixture's invalid-type/profile and unchanged 0-8 controls isolated.
+    for (int type = -1; type <= 17; ++type) {
+        if (type == 9 || (type >= 12 && type <= 16)) continue;
         item.trap_dam = type; item.trap_charge = 2;
         effects = reports = 0; audit.clear();
         trapdamage(&actor, &item);

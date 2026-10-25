@@ -244,7 +244,7 @@ a heavy chest~
 1000 29 32818 0 0 0 0 0
 0 0 100
 T
-1536 11 -1 50
+512 11 1 50
 #32821
 iron flask~
 &+Lan iron flask&N~
@@ -361,8 +361,6 @@ a heavy chest~
 15 15 5 0 7 0 98304 0 64 0 0
 1000 29 32825 0 0 0 0 0
 0 1 100
-T
-516 11 3 50
 #32832
 chest iron~
 a heavy chest~
@@ -400,7 +398,7 @@ An imp summoner is here.~
 0 0 0 0 0 0 0 0
 0 0 100
 T
-32 11 -1 56
+65 11 1 56
 #32836
 totem mox unique~
 &+ythe totem of &+gMox&N~
@@ -498,7 +496,7 @@ A stalker summoner is here.~
 0 0 0 0 0 0 0 0
 0 0 100
 T
-5 11 -1 56
+509 11 1 56
 #32847
 key insubstantial~
 &+Lan insubstantial key&N~
@@ -737,4 +735,4 @@ a heavy chest~
 1000 29 32818 0 0 0 0 0
 0 0 100
 T
-1536 11 -1 50
+512 11 1 50

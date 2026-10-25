@@ -10,7 +10,7 @@ Linux g++, ASan/UBSan and the repository headers are required.
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import ROOT, extract_function
+from _paths import ROOT, SRC, extract_function
 from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
@@ -428,7 +428,9 @@ int main()
 
 
 def main() -> int:
+    trap = (SRC / "trap.c").read_text()
     functions = [
+        trap[trap.index("#define TRAP_DAM_SLEEP"):trap.index("static bool trap_damage_supported")],
         extract_function("specs/specs.library.c", "char *proclibobj_parse_default(char *)"),
         extract_function("db.c", "char *fread_string(FILE *fl)"),
         extract_function("core/utility.c", "int strn_cmp(const char *arg1, const char *arg2, uint n)"),
