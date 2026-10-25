@@ -68,6 +68,42 @@ int main()
 	require(wiki_help("divineboon").find("unconsumed hourly opportunity") != string::npos,
 		"Staff help missing force timing");
 
+	for (const char *topic : { "air affinity", "water affinity", "fire affinity",
+				   "earth affinity", "astral affinity" })
+	{
+		const string affinity = wiki_help(topic);
+		for (const char *rule : { "level 51", "remember", "Groupmates, pets", "VNUMs" })
+			require(affinity.find(rule) != string::npos,
+				"Planar affinity lookup omitted its level, memory or personal limits");
+	}
+	require(wiki_help("planar affinity").find("19826-19886") != string::npos,
+		"Planar affinity overview omitted the excluded astral side rooms");
+	for (const char *topic : { "air form", "earth form", "fire form", "water form" })
+	{
+		const string form = wiki_help(topic);
+		for (const char *rule : { "Self only", "circle-10", "8 affect-duration units",
+					  "Ice Aura", "dispelled" })
+			require(form.find(rule) != string::npos,
+				"Elemental form lookup omitted its duration, targets or conflicts");
+	}
+
+	require(wiki_help("stone skin").find("newest layer only") != string::npos,
+		"Stone Skin did not render the dedicated parsed layering topic");
+	require(wiki_help("earthen maul").find("including Druids") != string::npos,
+		"Earthen Maul did not render shared terrain-independent access");
+	require(wiki_help("ethereal recharge").find("100 actual HP") != string::npos,
+		"Ethereal Recharge omitted its final Air self-healing cap");
+	require(wiki_help("dimension door").find("3 seconds") != string::npos &&
+			wiki_help("relocate").find("5 seconds") != string::npos,
+		"Air travel help omitted its post-cast waits");
+	require(wiki_help("conjure water").find("5-minute cooldown") != string::npos,
+		"Conjure Water omitted its successful-use cooldown");
+	require(wiki_help("water to life").find("232 at") != string::npos,
+		"Water to Life did not render the dedicated parsed formula topic");
+	require(wiki_help("water form").find("5 seconds BEFORE") != string::npos &&
+			wiki_help("water form").find("25% less") != string::npos,
+		"Water Form omitted its shoreline timing and movement discount");
+
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }

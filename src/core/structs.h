@@ -453,8 +453,12 @@ struct edit_data
 #define INNATE_ARCANE_RUDIMENTS 177
 #define INNATE_WEB_SPRAY 178
 #define INNATE_REFLECTION 179
+#define INNATE_AIR_AFFINITY 180
+#define INNATE_WATER_AFFINITY 181
+#define INNATE_FIRE_AFFINITY 182
+#define INNATE_EARTH_AFFINITY 183
 
-#define LAST_INNATE INNATE_REFLECTION // LAST means last, not last + 1 or whatever
+#define LAST_INNATE INNATE_EARTH_AFFINITY // LAST means last, not last + 1 or whatever
 
 struct extra_descr_data
 {

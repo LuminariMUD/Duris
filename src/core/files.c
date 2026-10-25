@@ -2149,6 +2149,7 @@ int restoreStatus(char *buf, P_char ch)
 int restoreAffects(char *buf, P_char ch)
 {
 	struct affected_type af;
+	struct affected_type *previous_affects = ch->affected;
 	char *start = buf;
 	short count;
 	long short_duration;
@@ -2252,6 +2253,17 @@ int restoreAffects(char *buf, P_char ch)
 				  &af.type, sizeof(af.type));
 		}
 	}
+	/* affect_to_char prepends; restore the saved order within the new prefix. */
+	struct affected_type *restored = ch->affected;
+	struct affected_type *ordered = previous_affects;
+	while (restored != previous_affects)
+	{
+		struct affected_type *next = restored->next;
+		restored->next = ordered;
+		ordered = restored;
+		restored = next;
+	}
+	ch->affected = ordered;
 	affect_total(ch, FALSE);
 
 	/*

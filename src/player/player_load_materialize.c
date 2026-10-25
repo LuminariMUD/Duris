@@ -660,9 +660,11 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 		ch->only.pc->skills[entry.skill_id].learned = entry.learned;
 		ch->only.pc->skills[entry.skill_id].taught = entry.taught;
 	}
-	for (const player_affect_snapshot &entry : result.snapshot.affects)
+	for (auto affect_entry = result.snapshot.affects.rbegin();
+	     affect_entry != result.snapshot.affects.rend(); ++affect_entry)
 	{
 		affected_type affect = {};
+		const player_affect_snapshot &entry = *affect_entry;
 		affect.type = entry.type;
 		affect.duration = entry.duration;
 		affect.flags = entry.flags;

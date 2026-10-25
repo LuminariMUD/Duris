@@ -1402,7 +1402,8 @@ bool cmd_allowed_while_casting(P_char ch, int cmd)
 {
 	return cmd == CMD_PETITION || cmd == CMD_RETURN ||
 	       (cmd == CMD_ABORT && ch &&
-		(item_action_active(ch) || PLR3_FLAGGED(ch, PLR3_ABORT_CASTING)));
+		(item_action_active(ch) || get_scheduled(ch, event_water_crossing) ||
+		 PLR3_FLAGGED(ch, PLR3_ABORT_CASTING)));
 }
 
 static bool is_retired_command_spelling(const char *word, uint length)
@@ -1868,6 +1869,22 @@ void command_interpreter(P_char ch, char *argument)
 	 * falling and water-current checks below would otherwise roll the dice --
 	 * and even move the character out of the room -- on a command that is about
 	 * to be rejected anyway. */
+	if (get_scheduled(ch, event_water_crossing))
+	{
+		/* Cancel before a fall or current can consume the abort command. */
+		if (cmd == CMD_ABORT)
+		{
+			do_abort(ch, argument + begin + look_at, cmd);
+			return;
+		}
+		if (!cmd_allowed_while_casting(ch, cmd))
+		{
+			send_to_char(
+				"You're preparing to cross the shoreline! Try 'abort' to stop.\r\n",
+				ch);
+			return;
+		}
+	}
 	if (item_action_active(ch) && !cmd_allowed_while_casting(ch, cmd))
 	{
 		send_to_char("You're busy using an item! Try 'abort' to stop.\r\n", ch);

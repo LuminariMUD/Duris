@@ -3167,15 +3167,13 @@ void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	if ((dam_flag == 1) && !OUTSIDE(ch))
 		dam_flag = 3;
 
-	if (ch->specials.z_cord != 0)
-		dam_flag = 0;
+	/* Conjure the needed earth when terrain/altitude supplies none. Do this
+	 * after the indoor upgrade so earthless rooms keep the normal tier. */
+	if (ch->specials.z_cord != 0 || dam_flag == 0)
+		dam_flag = 1;
 
 	switch (dam_flag)
 	{
-	case 0:
-		send_to_char("No earth to move here, try a different spell.\n", ch);
-		return;
-		break;
 	case 1:
 		messages.attacker = "&+yYou cause the &+yEARTH to reach up and maul your opponent!";
 		messages.victim = messages.room =
@@ -4684,10 +4682,57 @@ void spell_siren_song(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_
 	}
 }
 
+const char *elemental_form_failure_message(P_char ch, P_char victim, int spell)
+{
+	int spec = 0;
+	switch (spell)
+	{
+	case SPELL_EARTH_FORM:
+		spec = SPEC_EARTH;
+		break;
+	case SPELL_FIRE_FORM:
+		spec = SPEC_FIRE;
+		break;
+	case SPELL_WATER_FORM:
+		spec = SPEC_WATER;
+		break;
+	case SPELL_AIR_FORM:
+	case SPELL_ELEMENTAL_AURA:
+	case SPELL_FIRE_AURA:
+		break;
+	default:
+		return NULL;
+	}
+
+	if (!ch || !victim)
+		return "You must target yourself to assume an elemental form.\n";
+	if (spec && (ch != victim || IS_NPC(ch) || !GET_SPEC(ch, CLASS_CONJURER, spec)))
+		return "Only the matching Magus can assume this form, and only on themselves.\n";
+
+	if (affected_by_spell(victim, SPELL_AIR_FORM) ||
+	    affected_by_spell(victim, SPELL_EARTH_FORM) ||
+	    affected_by_spell(victim, SPELL_FIRE_FORM) ||
+	    affected_by_spell(victim, SPELL_WATER_FORM))
+		return "An elemental form already surrounds you.\n";
+
+	if ((spec || spell == SPELL_AIR_FORM) &&
+	    (affected_by_spell(victim, SPELL_ELEMENTAL_AURA) ||
+	     affected_by_spell(victim, SPELL_FIRE_AURA) ||
+	     IS_AFFECTED2(victim,
+			  AFF2_EARTH_AURA | AFF2_WATER_AURA | AFF2_FIRE_AURA | AFF2_AIR_AURA) ||
+	     IS_AFFECTED4(victim, AFF4_ICE_AURA)))
+		return "An elemental aura already surrounds you.\n";
+
+	return NULL;
+}
+
 const char *elemental_aura_failure_message(P_char ch)
 {
 	if (!ch || ch->in_room < 0 || ch->in_room > top_of_world)
 		return "There is no elemental planar essence here to draw upon.\n";
+
+	if (const char *failure = elemental_form_failure_message(ch, ch, SPELL_ELEMENTAL_AURA))
+		return failure;
 
 	if (affected_by_spell(ch, SPELL_ELEMENTAL_AURA) || IS_AFFECTED2(ch, AFF2_EARTH_AURA) ||
 	    IS_AFFECTED2(ch, AFF2_WATER_AURA) || IS_AFFECTED2(ch, AFF2_FIRE_AURA) ||
@@ -5175,6 +5220,8 @@ void spell_dimension_door(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 
 	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
 		CharWait(ch, WAIT_SEC);
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		CharWait(ch, WAIT_SEC * 3);
 	else if (IS_PC(ch))
 		CharWait(ch, WAIT_SEC * 9);
 	else
@@ -5362,6 +5409,8 @@ void spell_relocate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_ch
 
 	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
 		CharWait(ch, 4);
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		CharWait(ch, WAIT_SEC * 5);
 	else if (IS_PC(ch))
 		CharWait(ch, 80);
 	else
@@ -8195,18 +8244,20 @@ void spell_group_haste(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 	}
 }
 
+static bool has_other_skin_spell(P_char ch)
+{
+	return affected_by_spell(ch, SPELL_SHADOW_SHIELD) ||
+	       affected_by_spell(ch, SPELL_BIOFEEDBACK) || IS_AFFECTED(ch, AFF_BIOFEEDBACK) ||
+	       affected_by_spell(ch, SPELL_IRONWOOD) || affected_by_spell(ch, SPELL_VINES) ||
+	       IS_AFFECTED5(ch, AFF5_VINES) || affected_by_spell(ch, SPELL_ICE_ARMOR) ||
+	       affected_by_spell(ch, SPELL_NEG_ARMOR) ||
+	       affected_by_spell(ch, SPELL_DRAKESCALE_AEGIS);
+}
+
 bool has_skin_spell(P_char ch)
 {
-	if (!affected_by_spell(ch, SPELL_STONE_SKIN) && !IS_AFFECTED(ch, AFF_STONE_SKIN) &&
-	    !affected_by_spell(ch, SPELL_SHADOW_SHIELD) &&
-	    !affected_by_spell(ch, SPELL_BIOFEEDBACK) && !IS_AFFECTED(ch, AFF_BIOFEEDBACK) &&
-	    !affected_by_spell(ch, SPELL_IRONWOOD) && !affected_by_spell(ch, SPELL_VINES) &&
-	    !IS_AFFECTED5(ch, AFF5_VINES) && !affected_by_spell(ch, SPELL_ICE_ARMOR) &&
-	    !affected_by_spell(ch, SPELL_NEG_ARMOR) &&
-	    !affected_by_spell(ch, SPELL_DRAKESCALE_AEGIS))
-		return false;
-	else
-		return true;
+	return affected_by_spell(ch, SPELL_STONE_SKIN) || IS_AFFECTED(ch, AFF_STONE_SKIN) ||
+	       has_other_skin_spell(ch);
 }
 #define MACE_OF_EARTH_VNUM 23805
 void spell_stone_skin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -8214,8 +8265,14 @@ void spell_stone_skin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 {
 	struct affected_type af;
 	int absorb = (level / 4) + number(1, 4);
+	int layers = 0;
 
-	if (!has_skin_spell(victim))
+	if (IS_PC(victim) && GET_SPEC(victim, CLASS_CONJURER, SPEC_EARTH))
+		for (struct affected_type *layer = victim->affected; layer; layer = layer->next)
+			if (layer->type == SPELL_STONE_SKIN)
+				layers++;
+
+	if (!has_skin_spell(victim) || (layers > 0 && layers < 3 && !has_other_skin_spell(victim)))
 	{
 		if (has_innate(ch, INNATE_LIVING_STONE) ||
 		    (victim->equipment[WIELD] &&
@@ -9989,10 +10046,99 @@ void spell_deflect(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	}
 }
 
-void spell_air_form(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
+void spell_earth_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
+		      P_obj /*obj*/)
+{
+	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_EARTH_FORM))
+	{
+		send_to_char(failure, ch);
+		return;
+	}
+
+	struct affected_type af = {};
+	af.type = SPELL_EARTH_FORM;
+	af.duration = 8;
+	af.bitvector2 = AFF2_EARTH_AURA;
+	affect_to_char(victim, &af);
+	act("Your body hardens into living stone.", FALSE, ch, 0, 0, TO_CHAR);
+	act("$n's body hardens into living stone.", FALSE, ch, 0, 0, TO_ROOM);
+}
+
+void spell_fire_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
+		     P_obj /*obj*/)
+{
+	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_FIRE_FORM))
+	{
+		send_to_char(failure, ch);
+		return;
+	}
+
+	struct affected_type af = {};
+	af.type = SPELL_FIRE_FORM;
+	af.duration = 8;
+	af.bitvector2 = AFF2_FIRE_AURA | AFF2_FIRESHIELD;
+	af.location = APPLY_AC;
+	af.modifier = -15;
+	affect_to_char(victim, &af);
+
+	af.bitvector2 = 0;
+	af.location = APPLY_STR_MAX;
+	af.modifier = 15;
+	affect_to_char(victim, &af);
+	af.location = APPLY_DEX_MAX;
+	af.modifier = -20;
+	affect_to_char(victim, &af);
+	af.location = APPLY_AGI_MAX;
+	af.modifier = -20;
+	affect_to_char(victim, &af);
+	af.location = APPLY_CON_MAX;
+	af.modifier = 25;
+	affect_to_char(victim, &af);
+	act("Your body bursts into living flame.", FALSE, ch, 0, 0, TO_CHAR);
+	act("$n's body bursts into living flame.", FALSE, ch, 0, 0, TO_ROOM);
+}
+
+void spell_water_form(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
+		      P_obj /*obj*/)
+{
+	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_WATER_FORM))
+	{
+		send_to_char(failure, ch);
+		return;
+	}
+
+	struct affected_type af = {};
+	af.type = SPELL_WATER_FORM;
+	af.duration = 8;
+	af.bitvector2 = AFF2_WATER_AURA;
+	af.location = APPLY_STR_MAX;
+	af.modifier = -20;
+	affect_to_char(victim, &af);
+
+	af.bitvector2 = 0;
+	af.location = APPLY_DEX_MAX;
+	af.modifier = 50;
+	affect_to_char(victim, &af);
+	af.location = APPLY_AGI_MAX;
+	af.modifier = 25;
+	affect_to_char(victim, &af);
+	af.location = APPLY_CON_MAX;
+	af.modifier = -10;
+	affect_to_char(victim, &af);
+	act("Your body dissolves into flowing water.", FALSE, ch, 0, 0, TO_CHAR);
+	act("$n's body dissolves into flowing water.", FALSE, ch, 0, 0, TO_ROOM);
+}
+
+void spell_air_form(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
+
+	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_AIR_FORM))
+	{
+		send_to_char(failure, ch);
+		return;
+	}
 
 	if (IS_AFFECTED2(victim, AFF2_AIR_AURA))
 		return;

@@ -2573,6 +2573,12 @@ int get_multicast_chars(P_char leader, int m_class, int min_level)
  * 'dir', returns -1 on error, else 0+ for moves needed.  -JAB
  */
 
+bool has_water_form_travel(P_char ch)
+{
+	return ch && IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_WATER) &&
+	       affected_by_spell(ch, SPELL_WATER_FORM);
+}
+
 int move_cost(P_char ch, int dir)
 {
 	int moves, a, b;
@@ -2632,7 +2638,10 @@ int move_cost(P_char ch, int dir)
 		moves /= 2;
 	}
 
-	return MAX(1, moves);
+	moves = MAX(1, moves);
+	if (has_water_form_travel(ch) && (sector_idx_a == SECT_OCEAN || sector_idx_b == SECT_OCEAN))
+		moves = MAX(1, moves * 3 / 4);
+	return moves;
 }
 
 /*
@@ -2866,6 +2875,18 @@ bool aggressive_to_class(P_char ch, P_char target)
 	return FALSE;
 }
 
+bool has_native_planar_affinity(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || ch->in_room < 0 || ch->in_room > top_of_world)
+		return false;
+
+	return (IS_AIR(ch->in_room) && has_innate(ch, INNATE_AIR_AFFINITY)) ||
+	       (IS_WATER(ch->in_room) && has_innate(ch, INNATE_WATER_AFFINITY)) ||
+	       (IS_FIRE(ch->in_room) && has_innate(ch, INNATE_FIRE_AFFINITY)) ||
+	       (IS_EARTH(ch->in_room) && has_innate(ch, INNATE_EARTH_AFFINITY)) ||
+	       (IS_ASTRAL(ch->in_room) && has_innate(ch, INNATE_ASTRAL_NATIVE));
+}
+
 bool aggressive_to(P_char ch, P_char target)
 {
 	int chance;
@@ -2945,10 +2966,7 @@ bool aggressive_to(P_char ch, P_char target)
 		if (IS_AGGROFLAG(ch, AGGR_DAY_ONLY) && !IS_DAY)
 			return FALSE;
 
-		if (has_innate(target, INNATE_ASTRAL_NATIVE) &&
-		    GET_LEVEL(target) >= GET_LEVEL(ch) &&
-		    world[target->in_room].number >= ASTRAL_VNUM_BEGIN &&
-		    world[target->in_room].number <= ASTRAL_VNUM_END)
+		if (has_native_planar_affinity(target) && !CheckFor_remember(ch, target))
 			return FALSE;
 
 		/* aggro to all?  how nice! */

@@ -52,10 +52,10 @@ def test_gnomes_and_kobolds_gain_reflection_at_31() -> None:
 
     structs = source("core/structs.h").read_text()
     assert re.search(r"#define INNATE_REFLECTION \d+", structs)
-    assert "#define LAST_INNATE INNATE_REFLECTION" in structs
+    assert "#define LAST_INNATE INNATE_EARTH_AFFINITY" in structs
 
     innates = source("classes/innates.c").read_text()
-    assert '{ "reflection", do_innate_reflection },\n};' in innates
+    assert '{ "reflection", do_innate_reflection },' in innates
     start = innates.index("void do_innate_reflection(P_char ch")
     body = innates[start:innates.index("\n}\n", start)]
     # The cooldown comes from innate.timer.secs.reflection, and the spell always lands on the user.

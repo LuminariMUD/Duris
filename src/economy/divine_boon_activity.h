@@ -56,7 +56,8 @@ struct divine_boon_input_activity
 };
 
 // Wrap only the real playing-input dispatcher. End resolves the runtime ID
-// afresh, so quit, extraction or body replacement cannot leave a stale pointer.
+// through current descriptors, so quit, extraction or body replacement cannot
+// leave a stale pointer or require a world-sized character-list traversal.
 divine_boon_input_activity divine_boon_activity_begin(char_data *body, int command);
 void divine_boon_activity_end(const divine_boon_input_activity &input);
 std::array<divine_boon_population, 2> divine_boon_activity_population();
