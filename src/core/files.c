@@ -2708,6 +2708,10 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 
 		if (o_f_flag & O_F_EOL)
 		{
+			/* All saved children of this container are now linked. Normalize
+			 * bottom-up before the parent or player is accounted for. */
+			if (!ignore && c_obj)
+				recalc_container_weight(c_obj);
 			if (!c_obj && !ignore)
 			{ /*
 			   * end of the whole list
@@ -3039,6 +3043,10 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			do
 			{
 				normalize_legacy_trap(obj, OBJ_VNUM(obj));
+				/* Leaf containers have no end-of-children marker to trigger
+				 * reconciliation. Repair the saved shell before attaching. */
+				if (!(o_f_flag & O_F_CONTAINS))
+					recalc_container_weight(obj);
 #ifdef _PFILE_
 				if (c_obj)
 				{
@@ -3057,7 +3065,9 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 
 				if (c_obj && (c_obj->type == ITEM_QUIVER || !ch))
 					obj_to_obj_at_end(obj, c_obj);
-				else if (c_obj && ((GET_OBJ_WEIGHT(obj) + GET_OBJ_WEIGHT(c_obj) <=
+				/* Use expected live weight, not the stale saved shell, to keep
+				 * children from being ejected during legacy restoration. */
+				else if (c_obj && ((GET_OBJ_WEIGHT(obj) + container_total_weight(c_obj) <=
 						    c_obj->value[0]) ||
 						   !ch))
 				{

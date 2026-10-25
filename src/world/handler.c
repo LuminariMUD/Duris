@@ -191,24 +191,27 @@ static void encumbrance_adjust(P_char ch, int weight)
 	GET_CARRYING_W(ch) += weight;
 }
 
+/* The weight a container should have, without changing its live state. */
+static int calculated_container_weight(P_obj cont)
+{
+	return obj_prototype_weight(cont) + sum_direct_contents_weight(cont);
+}
+
 /*
- * Recompute container weight from prototype shell + contents; repair carry_weight if wrong.
+ * Repair container weight and the holder's effective carried weight. This is a
+ * mutation and must be used at lifecycle boundaries, not by capacity queries.
  */
 void recalc_container_weight(P_obj cont)
 {
 	int delta;
 	int new_weight;
-	int shell;
-	int contents;
 
 	if (!obj_is_container_type(cont))
 	{
 		return;
 	}
 
-	shell = obj_prototype_weight(cont);
-	contents = sum_direct_contents_weight(cont);
-	new_weight = shell + contents;
+	new_weight = calculated_container_weight(cont);
 	delta = new_weight - cont->weight;
 	if (!delta)
 	{
@@ -218,32 +221,20 @@ void recalc_container_weight(P_obj cont)
 }
 
 /*
- * Keep a WEIGHT-REDUCING container honest the moment its load changes.
- *
- * obj_to_obj()/obj_from_obj() move an item's FULL weight into and out of the
- * container it lands in. That is right for the 1,251 containers that reduce
- * nothing, and wrong for a gathering bag: until something happened to call
- * container_total_weight() -- only capacity checks do -- the bag's carrier was
- * billed the whole load and the bag's reduction did nothing at all. The same
- * asymmetry runs the other way once a recalculation HAS happened: the bag then
- * holds the reduced figure, and taking an item out subtracts its full weight,
- * leaving the bag lighter than the truth.
- *
- * Neither error accumulates -- recalc_container_weight() recomputes from the
- * shell plus a fresh sum of the contents, not by incrementing, so it corrects
- * the figure in either direction -- but between the move and the next capacity
- * check the number a player is carrying is simply wrong. Calling it here makes
- * "wrong until something asks" into "right immediately", and
- * add_weight() carries the correction up to whoever is holding the bag.
- *
- * Gated on the reduction, not on being a container: this reads the prototype,
- * and every container that reduces nothing keeps the cheap incremental path it
- * has always had.
+ * A move first propagates the item's effective weight incrementally.
+ * Correct the changed container and its ancestors, inside-out, so an
+ * enclosing reducing bag uses the child's new effective weight. Also repairs
+ * stale saved shells on successful movement; capacity queries stay read-only.
  */
-static void resync_reducing_container(P_obj cont)
+static void reconcile_container_chain(P_obj cont)
 {
-	if (container_weight_reduction_pct(cont) > 0)
-		recalc_container_weight(cont);
+	int remaining = top_of_objt + 1;
+	for (P_obj current = cont; current && remaining-- > 0;)
+	{
+		P_obj parent = OBJ_INSIDE(current) ? current->loc.inside : NULL;
+		recalc_container_weight(current);
+		current = parent;
+	}
 }
 
 void container_reset_empty_weight(P_obj cont)
@@ -261,9 +252,12 @@ int container_total_weight(P_obj cont)
 	{
 		return 0;
 	}
+	/* A failed put must never adjust encumbrance just by checking capacity.
+	 * Keep the existing net-weight capacity rule, including negative shells. */
 	if (obj_is_container_type(cont))
 	{
-		recalc_container_weight(cont);
+		const int weight = calculated_container_weight(cont);
+		return weight > 0 ? weight : 0;
 	}
 	return GET_OBJ_WEIGHT(cont);
 }
@@ -2972,7 +2966,7 @@ void obj_to_obj(P_obj obj, P_obj obj_to)
 	}
 
 	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
-	resync_reducing_container(obj_to);
+	reconcile_container_chain(obj_to);
 	/* Broken out into a recursive function; neater and more correct for handling negative weights properly.
 	  wgt = GET_OBJ_WEIGHT(obj);
 	  for (tmp_obj = obj->loc.inside; wgt && tmp_obj;
@@ -3053,7 +3047,7 @@ void obj_to_obj_at_end(P_obj obj, P_obj obj_to)
 	append_obj_to_list(&obj_to->contains, obj);
 
 	add_weight(obj_to, GET_OBJ_WEIGHT(obj));
-	resync_reducing_container(obj_to);
+	reconcile_container_chain(obj_to);
 
 	mark_container_dirty(obj_to);
 	artifact_update_location_sql(obj);
@@ -3170,7 +3164,7 @@ void obj_from_obj(P_obj obj)
 
 	/* Safe here and nowhere earlier: `obj` has already been unlinked above,
 	 * so the fresh sum is of what actually remains inside. */
-	resync_reducing_container(obj_from);
+	reconcile_container_chain(obj_from);
 	/*    wgt = GET_OBJ_WEIGHT(obj);
 		    for( tmp = obj->loc.inside; wgt && tmp; tmp = OBJ_INSIDE(tmp) ? tmp->loc.inside : NULL )
 		    {

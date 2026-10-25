@@ -20,8 +20,10 @@ handler = "\n".join(extract_function("world/handler.c", signature) for signature
     "static int container_weight_reduction_pct(",
     "static int sum_direct_contents_weight(",
     "static void encumbrance_adjust(",
+    "static int calculated_container_weight(",
     "void recalc_container_weight(",
-    "static void resync_reducing_container(",
+    "int container_total_weight(",
+    "static void reconcile_container_chain(",
     "void add_weight(P_obj obj, int weight)\n{",
     "bool obj_can_nest(",
     "bool obj_is_in_container(",
@@ -57,11 +59,12 @@ harness = r'''
 int top_of_objt = 1000;
 static index_data indices[10] = {};
 P_index obj_index = indices;
-static int prototype_weights[] = {0, 5, -3000, 20, 10, 4};
+// Include the unmodified #96443 Illithid and #83185 Shield Dwarves bag shells.
+static int prototype_weights[] = {0, 5, -3000, 20, 10, 4, -300, -150};
 
 int real_object(const int vnum) { return vnum; }
 P_obj read_object(int rnum, int) {
-    assert(rnum >= 0 && rnum < 6);
+    assert(rnum >= 0 && rnum < 8);
     P_obj obj = new obj_data{};
     obj->R_num = rnum;
     obj->type = rnum == 3 ? ITEM_TREASURE : ITEM_CONTAINER;
@@ -235,6 +238,135 @@ static void weight_changes(bool worn) {
     assert(obj.weight == -3 && GET_CARRYING_W(&carrier) == 11);
 }
 
+static void nested_reducing_chain(bool append, bool worn) {
+    auto move = append ? obj_to_obj_at_end : obj_to_obj;
+    for (int cycle = 0; cycle < 50; ++cycle) {
+        char_data carrier = {};
+        P_obj outer = read_object(5, REAL);
+        outer->value[4] = 50;
+        outer->loc_p = worn ? LOC_WORN : LOC_CARRIED;
+        if (worn) outer->loc.wearing = &carrier;
+        else outer->loc.carrying = &carrier;
+        GET_CARRYING_W(&carrier) = 11 + (worn ? 2 : 4);
+
+        P_obj inner = read_object(1, REAL); // normal 5-weight bag
+        move(inner, outer);
+        assert(outer->weight == 7); // 4 + 5 - floor(5 * 0.5)
+        assert(GET_CARRYING_W(&carrier) == 11 + (worn ? 3 : 7));
+
+        P_obj item = read_object(3, REAL);
+        item->weight = 100;
+        move(item, inner);
+        assert(inner->weight == 105);
+        assert(outer->weight == 57); // 4 + 105 - floor(105 * 0.5)
+        assert(GET_CARRYING_W(&carrier) == 11 + (worn ? 28 : 57));
+
+        // The same effective reduction must work in the reverse direction.
+        obj_from_obj(item);
+        assert(inner->weight == 5 && outer->weight == 7);
+        assert(GET_CARRYING_W(&carrier) == 11 + (worn ? 3 : 7));
+        obj_from_obj(inner);
+        assert(outer->weight == 4);
+        assert(GET_CARRYING_W(&carrier) == 11 + (worn ? 2 : 4));
+        extract_obj(item, TRUE);
+        extract_obj(inner, TRUE);
+        extract_obj(outer, TRUE);
+    }
+}
+
+static void empty_style_transfer_repairs_stale_bag() {
+    for (int bag_vnum : {6, 7}) {
+        const int shell = prototype_weights[bag_vnum];
+        char_data carrier = {};
+        P_obj source = read_object(4, REAL); // ordinary 10-weight bag
+        P_obj target = read_object(bag_vnum, REAL);
+        source->loc_p = target->loc_p = LOC_CARRIED;
+        source->loc.carrying = target->loc.carrying = &carrier;
+        GET_CARRYING_W(&carrier) = 10;
+        P_obj contents = read_object(3, REAL);
+        contents->weight = 350;
+        obj_to_obj(contents, target);
+        assert(target->weight == shell + 350);
+        P_obj moving = read_object(3, REAL);
+        moving->weight = 80;
+        obj_to_obj(moving, source);
+        assert(GET_CARRYING_W(&carrier) == 10 + 80 + (shell + 350));
+
+        // Model stale persisted target with zero effective weight. The empty
+        // command performs these two shared movements, not the put() function.
+        target->weight = -3000;
+        GET_CARRYING_W(&carrier) = 90;
+        assert(container_total_weight(target) == shell + 350);
+        assert(target->weight == -3000 && GET_CARRYING_W(&carrier) == 90);
+        obj_from_obj(moving);
+        obj_to_obj(moving, target);
+        const int expected = shell + 350 + 80;
+        assert(source->weight == 10 && target->weight == expected);
+        assert(GET_CARRYING_W(&carrier) == 10 + expected);
+
+        obj_from_obj(moving);
+        obj_from_obj(contents);
+        assert(target->weight == shell && source->weight == 10);
+        assert(GET_CARRYING_W(&carrier) == 10);
+        extract_obj(moving, TRUE);
+        extract_obj(contents, TRUE);
+        extract_obj(source, TRUE);
+        extract_obj(target, TRUE);
+    }
+}
+
+static void stale_bag_capacity_reads() {
+    for (int vnum : {6, 7}) {
+        const int shell = prototype_weights[vnum];
+        const int limit = vnum == 6 ? 500 : 600;
+        char_data carrier = {};
+        P_obj bag = read_object(vnum, REAL);
+        bag->value[0] = limit;
+        bag->loc_p = LOC_CARRIED;
+        bag->loc.carrying = &carrier;
+        P_obj old_item = read_object(3, REAL);
+        old_item->weight = 350;
+        obj_to_obj(old_item, bag);
+        const int correct_weight = shell + 350;
+        assert(bag->weight == correct_weight);
+        assert(GET_CARRYING_W(&carrier) == correct_weight);
+
+        // Simulate an old persisted bag weight inconsistent with the prototype.
+        // The same predicate used by single and bulk put must not repair weight
+        // (or change encumbrance) when an oversized item is rejected.
+        bag->weight = -3000;
+        GET_CARRYING_W(&carrier) = 0;
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            assert(container_total_weight(bag) == correct_weight);
+            assert(container_total_weight(bag) + limit > bag->value[0]);
+            assert(bag->weight == -3000);
+            assert(GET_CARRYING_W(&carrier) == 0);
+        }
+
+        // A load/restore explicitly reconciles before inventory accounting.
+        recalc_container_weight(bag);
+        assert(bag->weight == correct_weight);
+        assert(GET_CARRYING_W(&carrier) == correct_weight);
+
+        // A successfully moved item repairs a live stale bag after transfer,
+        // not during the preceding eligibility check.
+        bag->weight = -3000;
+        GET_CARRYING_W(&carrier) = 0;
+        P_obj new_item = read_object(3, REAL);
+        new_item->weight = 80;
+        assert(container_total_weight(bag) + GET_OBJ_WEIGHT(new_item) <= limit);
+        assert(bag->weight == -3000 && GET_CARRYING_W(&carrier) == 0);
+        obj_to_obj(new_item, bag);
+        assert(bag->weight == correct_weight + 80);
+        assert(GET_CARRYING_W(&carrier) == correct_weight + 80);
+        obj_from_obj(new_item);
+        assert(bag->weight == correct_weight);
+        assert(GET_CARRYING_W(&carrier) == correct_weight);
+        extract_obj(new_item, TRUE);
+        extract_obj(bag, TRUE);
+    }
+}
+
 static void worn_recalculation() {
     char_data carrier = {};
     P_obj bag = read_object(5, REAL);
@@ -309,6 +441,12 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[1], "worn-weight-changes")) weight_changes(true);
     else if (!strcmp(argv[1], "carried-weight-changes")) weight_changes(false);
     else if (!strcmp(argv[1], "worn-recalculation")) worn_recalculation();
+    else if (!strcmp(argv[1], "stale-bag-capacity")) stale_bag_capacity_reads();
+    else if (!strcmp(argv[1], "nested-insert")) nested_reducing_chain(false, false);
+    else if (!strcmp(argv[1], "nested-append")) nested_reducing_chain(true, false);
+    else if (!strcmp(argv[1], "worn-nested-insert-chain")) nested_reducing_chain(false, true);
+    else if (!strcmp(argv[1], "worn-nested-append-chain")) nested_reducing_chain(true, true);
+    else if (!strcmp(argv[1], "empty-transfer")) empty_style_transfer_repairs_stale_bag();
     else if (!strcmp(argv[1], "public-load")) loading(false);
     else if (!strcmp(argv[1], "private-load")) loading(true);
     else std::abort();
@@ -331,7 +469,9 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
     failed = []
     for case in ("sorting", "insert", "append", "public-load", "private-load",
                  "worn-insert", "worn-append", "worn-nested-insert", "worn-nested-append",
-                 "worn-weight-changes", "carried-weight-changes", "worn-recalculation"):
+                 "worn-weight-changes", "carried-weight-changes", "worn-recalculation",
+                 "stale-bag-capacity", "nested-insert", "nested-append",
+                 "worn-nested-insert-chain", "worn-nested-append-chain", "empty-transfer"):
         result = subprocess.run([str(binary), case], timeout=20,
                                 env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
         if result.returncode:

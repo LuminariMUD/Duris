@@ -116,6 +116,10 @@ void obj_to_obj_at_end(P_obj, P_obj)
 {
 	std::abort();
 }
+// This fixture checks trap decoding, not live container accounting.
+// The dedicated container lifecycle harness verifies reconciliation.
+void recalc_container_weight(P_obj) {}
+int container_total_weight(P_obj obj) { return obj->weight > 0 ? obj->weight : 0; }
 void writeSavedItem(P_obj)
 {
 	std::abort();

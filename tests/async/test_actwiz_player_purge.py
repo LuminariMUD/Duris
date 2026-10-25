@@ -103,7 +103,7 @@ void obj_from_char(P_obj item) {
 }
 P_char training_dummy_item_owner(P_obj) { return nullptr; }
 void add_weight(P_obj, int) {}
-static void resync_reducing_container(P_obj) {}
+static void reconcile_container_chain(P_obj) {}
 static void mark_container_dirty(P_obj) {}
 void artifact_update_location_sql(P_obj) {}
 void writeSavedItem(P_obj) { abort(); }

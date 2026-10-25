@@ -1893,19 +1893,19 @@ def test_review_fixes_from_the_second_round_hold() -> None:
           f"{claim.count('kingdom_guard_class_ambiguous(')} call sites")
 
     # ------------------------------------------------------------------ #
-    # 2. a weight-reducing container is resynced the moment its load moves #
+    # 2. all enclosing containers are reconciled after load changes       #
     # ------------------------------------------------------------------ #
     handler = read("src/world/handler.c")
-    resync = function_bodies(handler, r"\bstatic\s+void\s+resync_reducing_container\s*\(")
-    check(len(resync) == 1, "resync_reducing_container is defined once", f"{len(resync)}")
+    resync = function_bodies(handler, r"\bstatic\s+void\s+reconcile_container_chain\s*\(")
+    check(len(resync) == 1, "reconcile_container_chain is defined once", f"{len(resync)}")
     if resync:
         code = strip_comments(resync[0])
-        check("container_weight_reduction_pct(cont) > 0" in code,
-              "the resync is gated on the reduction, so a container that reduces "
-              "nothing keeps its cheap incremental path")
-        check("recalc_container_weight(cont)" in code,
-              "the resync recomputes from the shell plus a fresh sum, so it corrects "
-              "the weight in either direction")
+        check("recalc_container_weight(current)" in code,
+              "each container is repaired from its direct contents")
+        check("OBJ_INSIDE(current)" in code and "current = parent" in code,
+              "repair continues through the enclosing container chain")
+        check("top_of_objt + 1" in code,
+              "container chain traversal is bounded")
 
     for signature, argument in ((r"\bvoid\s+obj_to_obj\s*\(", "obj_to"),
                                 (r"\bvoid\s+obj_to_obj_at_end\s*\(", "obj_to"),
@@ -1915,14 +1915,12 @@ def test_review_fixes_from_the_second_round_hold() -> None:
         if not bodies:
             continue
         code = strip_comments(bodies[0])
-        check(f"resync_reducing_container({argument})" in code,
-              f"{argument} is resynced after its load changes, so a gathering bag's "
-              "carrier is billed the reduced weight immediately")
+        check(f"reconcile_container_chain({argument})" in code,
+              f"{argument} and its ancestors are repaired after movement")
         moved = code.find(f"add_weight({argument}")
-        synced = code.find(f"resync_reducing_container({argument})")
+        synced = code.find(f"reconcile_container_chain({argument})")
         check(-1 < moved < synced,
-              f"the resync of {argument} runs after the item has finished moving, so "
-              "the fresh sum is of what is actually inside")
+              "chain is reconciled only after the contents change")
 
     # ------------------------------------------------------------------ #
     # 3. the area-cast depth cannot leak past a non-local exit             #
