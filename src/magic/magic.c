@@ -5220,6 +5220,8 @@ void spell_dimension_door(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 
 	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
 		CharWait(ch, WAIT_SEC);
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		CharWait(ch, WAIT_SEC * 3);
 	else if (IS_PC(ch))
 		CharWait(ch, WAIT_SEC * 9);
 	else
@@ -5407,6 +5409,8 @@ void spell_relocate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_ch
 
 	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
 		CharWait(ch, 4);
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		CharWait(ch, WAIT_SEC * 5);
 	else if (IS_PC(ch))
 		CharWait(ch, 80);
 	else

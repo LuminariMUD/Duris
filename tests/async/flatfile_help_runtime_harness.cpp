@@ -91,6 +91,11 @@ int main()
 		"Stone Skin did not render the dedicated parsed layering topic");
 	require(wiki_help("earthen maul").find("including Druids") != string::npos,
 		"Earthen Maul did not render shared terrain-independent access");
+	require(wiki_help("ethereal recharge").find("100 actual HP") != string::npos,
+		"Ethereal Recharge omitted its final Air self-healing cap");
+	require(wiki_help("dimension door").find("3 seconds") != string::npos &&
+			wiki_help("relocate").find("5 seconds") != string::npos,
+		"Air travel help omitted its post-cast waits");
 
 	cout << "flat-file help runtime passed\n";
 	return 0;

@@ -1181,15 +1181,17 @@ void spell_ethereal_recharge(int level, P_char ch, char * /*arg*/, int /*type*/,
 			     P_obj tar_obj)
 {
 	int healpoints;
+	const bool air_self = ch == victim && IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR) &&
+			      affected_by_spell(ch, SPELL_AIR_FORM);
 
-	if (IS_PC_PET(victim) && GET_RACE(victim) != RACE_A_ELEMENTAL &&
+	if (!air_self && IS_PC_PET(victim) && GET_RACE(victim) != RACE_A_ELEMENTAL &&
 	    GET_RACE(victim) != RACE_V_ELEMENTAL)
 	{
 		send_to_char("They are not composed of ethereal matter...\r\n", ch);
 		return;
 	}
 
-	if (!IS_PC_PET(victim) && !IS_AFFECTED4(victim, AFF4_PHANTASMAL_FORM))
+	if (!air_self && !IS_PC_PET(victim) && !IS_AFFECTED4(victim, AFF4_PHANTASMAL_FORM))
 	{
 		send_to_char("They are not composed of ethereal matter...\r\n", ch);
 		return;
@@ -1198,7 +1200,8 @@ void spell_ethereal_recharge(int level, P_char ch, char * /*arg*/, int /*type*/,
 	spell_cure_blind(level, ch, NULL, SPELL_TYPE_SPELL, victim, tar_obj);
 
 	healpoints = MIN(150, dice(5, level));
-	heal(victim, ch, healpoints, GET_MAX_HIT(victim));
+	heal(victim, ch, healpoints,
+	     air_self ? MIN(GET_MAX_HIT(victim), GET_HIT(victim) + 100) : GET_MAX_HIT(victim));
 
 	if (victim != ch)
 	{
