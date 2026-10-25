@@ -358,6 +358,9 @@ static void reset(int type, int level = 60, int vnum = 1458)
 	indexes[1].virtual_number = 200;
 	indexes[2].virtual_number = 32861;
 	indexes[3].virtual_number = 32871;
+	fail_creation = fail_placement = -1;
+	placement_calls = 0;
+	remove_first_placement = false;
 	actor = character();
 	char_to_room(actor, 0, -2);
 	pet = nullptr;
@@ -395,6 +398,9 @@ int main()
 		assert(actor->affected &&
 		       actor->affected->duration == std::clamp(effective / 20, 1, 4) * WAIT_SEC);
 		assert(discarded == 1);
+		auto *stun = actor->affected;
+		trapdamage(actor, trap);
+		assert(actor->affected == stun && trap->trap_charge == 0);
 	}
 	reset(16);
 	saves = { true, false };
@@ -420,6 +426,20 @@ int main()
 	trapdamage(actor, trap);
 	assert(!actor->affected);
 	reset(15);
+	pet = character(true);
+	pet->following = actor;
+	pet->specials.act |= ACT_IMMUNE_TO_PARA;
+	char_to_room(pet, 0, -2);
+	trapdamage(pet, trap);
+	assert(!pet->affected && trap->trap_charge == 1);
+	reset(16);
+	pet = character(true);
+	pet->following = actor;
+	pet->specials.act |= ACT_ELITE;
+	char_to_room(pet, 0, -2);
+	trapdamage(pet, trap);
+	assert(!pet->affected && trap->trap_charge == 1);
+	reset(15);
 	actor->specials.affected_by2 = AFF2_MAJOR_PARALYSIS;
 	trapdamage(actor, trap);
 	assert(!actor->affected);
@@ -432,6 +452,10 @@ int main()
 	actor->player.race = RACE_CONSTRUCT;
 	trapdamage(actor, trap);
 	assert(!actor->affected && !last_damage);
+	reset(12);
+	actor->player.race = RACE_SKELETON;
+	trapdamage(actor, trap);
+	assert(last_damage == 10 && (last_flags & SPLDAM_NOSHRUG));
 	reset(12);
 	actor->specials.apply_saving_throw[SAVING_SPELL] = 10;
 	trapdamage(actor, trap);
@@ -495,9 +519,13 @@ int main()
 	for (int mode : { 1, 2, 3 })
 	{
 		reset(13);
+		auto *bystander = character();
+		char_to_room(bystander, 0, -2);
+		trap->trap_eff |= 4;
 		lifecycle = mode;
 		trapdamage(actor, trap);
 		assert(created == discarded);
+		assert(damaged.size() == (mode == 2 ? 1U : 2U));
 	}
 	reset(13);
 	trap->trap_eff |= 1024;

@@ -29,6 +29,36 @@ must compare all four trap fields. `test_player_load_items.py` and
 materializers after the final stored-field application. These fixtures do not prove the
 future spell effects, live database journeys, generated-world boot or deployment.
 
+`python3 tests/async/test_legacy_trap_effects.py` executes the real trap dispatcher,
+dispel/wither/harm/poison/minor-paralysis spells, Stun, and retained chest/tower procedures
+with controlled saves and RNG. ASan/UBSan checks include duration boundaries, native
+defenses, duplicate control rejection, ROOM filtering, all seven creature profiles,
+whole-batch failure/cap handling, deferred gate memory for PCs/pets, and extraction during
+ROOM effects. Atomic builder edits and one-activation glyph visitation are also checked.
+The fixture controls the lower damage, allocation, placement and scheduling boundaries;
+loaded journeys exercise those actual server owners.
+
+`python3 tests/async/test_put_trap_lifecycle.py` executes real single/bulk put paths.
+Invalid capacity/permission checks preserve charges. An armed restored trap rejects the
+item before acknowledgement or transfer, and extraction of the actor, item, container
+or a later bulk candidate cannot publish a rejected delivery. Earlier successful items
+still reach their destination save. Legacy 0–8 puts and destination-container traps are
+not newly activated by this hook.
+
+`python3 tests/async/test_legacy_trap_content.py --generated areas/world.obj` compares
+AREA-selected authored inputs and an explicitly regenerated aggregate against the
+independent 61-row golden manifest, seven profiles and four first-open container flags.
+Run `make world` first; omitting `--generated` checks authored inputs only.
+
+`python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/issue368-flatfile/server/dms_new"
+flatfile` and `tests/async/with_disposable_mariadb.sh python3
+tests/async/test_legacy_trap_journey.py "$PWD/bin/server/dms_new" mariadb` use the full
+generated world with ordinary corpse/shopkeeper/floor restoration. They exercise real
+commands, loaded profiles, an unrelated invalid definition, remaining/spent budgets and
+open state across save/restart. Synthetic authorities/listeners are isolated; the test
+never sources `.env`. Evidence is retained under ignored `bin/issue368-evidence/`.
+Keep `test_corpse_trap_restart_journey.py` as the separate lethal legacy-effect control.
+
 ## Kjelgar crystal harp recipe
 
 Kjelgar (mobile 47124) accepts five moonstone crystals (400094), two gnomish

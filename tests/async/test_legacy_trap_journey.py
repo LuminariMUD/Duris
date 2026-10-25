@@ -269,13 +269,14 @@ def run(binary, backend):
                         time.sleep(4.2)
 
                 home(); hidden=load(3835);floor(hidden)
-                invisible_attempt=command(actor,"get "+hidden)
-                assert "do not see" in invisible_attempt,invisible_attempt
+                hidden_attempt=command(actor,"get "+hidden)
+                assert "do not see" in hidden_attempt,hidden_attempt
                 inspect(hidden,TRAPS[3835][2])
                 command(builder,"purge "+hidden)
 
                 for vnum in (67803,142233,142251):
                     home();key=load(vnum);floor(key)
+                    command(builder,"search")
                     text=command(actor,"open "+key)
                     assert "Ok." in text and "already open" not in text,text
                     final=TRAPS[vnum][2]
@@ -303,11 +304,12 @@ def run(binary, backend):
                 before_xp=command(builder,"stat mob "+journey.CHARACTER)
                 before_xp=re.search(r"Experience:\s*([\d,]+)",before_xp)[1]
                 cast=command(builder,"cast 'deflect' "+journey.CHARACTER)
-                effect=drain(actor,.08)
+                effect=actor.expect("translucent",timeout=20)+drain(actor,.08)
                 assert "translucent" in effect.lower(),(cast,effect)
                 reflected=command(actor, "east")
                 assert "deflect" in reflected.lower(),reflected
-                assert "Guard Post" in command(actor, "look")
+                room_text=command(actor,"look")
+                assert "Guard Post" in room_text and "corpse of a trap" not in room_text.lower()
                 inspect(key, (17, 13, 0, 90))
                 after_xp=command(builder,"stat mob "+journey.CHARACTER)
                 after_xp=re.search(r"Experience:\s*([\d,]+)",after_xp)[1]
