@@ -1,11 +1,12 @@
 # Issue #368 — restore authored legacy object traps
 
-Status: implementation plan only, 2026-10-25.
+Status: implementation in progress, 2026-10-25. Editor direction/formatting chunk
+implemented and locally qualified; runtime effects, content and restoration remain pending.
 Issue: [#368](https://github.com/LuminariMUD/Duris/issues/368).
 Target branch: `branch/issue-368-legacy-traps`.
 Code inspected: [`e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`](https://github.com/LuminariMUD/Duris/commit/e1efb9bc0779e8b6615353c5672e29f21c6bb7a8).
-This checkout is pinned to that revision; subsequent movement of master is not evidence
-that the implementation or qualification below has happened.
+The implementation starts from that revision plus plan commit `9b1f97509`.
+Subsequent movement of master is not evidence of implementation or qualification.
 
 The [selected design](https://github.com/LuminariMUD/Duris/issues/368#issuecomment-6398324337)
 records the owner's delegated behavior choices; the
@@ -25,7 +26,7 @@ The previous contents of this pathname are preserved byte-for-byte in
 - **Non-goals:** no general trap framework, configurable target schema, new NPC
   prototypes, global direction/data migration, changes to the existing 0–8 effect
   balance, database schema migration, production operation, deployment or full burn-in.
-  This branch begins with a documentation-only commit; implementation is subsequent work.
+  This branch begins with a documentation-only commit; implementation follows in focused PRs.
 - **Files:** the owners in the evidence/phase sections below, the 31 authored object
   inputs represented by the manifest (only files whose content changes need editing),
   focused existing tests plus the explicitly proposed tests, and builder/regression
@@ -126,8 +127,34 @@ implementations are in [specs.shabo.c](../../src/specs/specs.shabo.c) and
 
 ## Implementation sequence and proof gates
 
-All boxes below are future work. Keep each step reviewable; no placeholder test should
-stand in for its stated behavior.
+Unchecked boxes below remain future work. Keep each step reviewable; no placeholder test
+should stand in for its stated behavior.
+
+### Current handoff — 2026-10-25
+
+Worktree: `/home/aiwithapex/projects/duris-issue368`; branch
+`branch/issue-368-legacy-traps`. The primary checkout is unrelated and untouched.
+Current `origin/master` remains the inspected `e1efb9bc0` base.
+
+First chunk aligns editor EAST/SOUTH/WEST constants and flag-list indexes with runtime
+N/E/S/W/U/D bits 8/16/32/64/128/256, and corrects the same labels in the builder guide.
+Executing the actual `getObjTrapFlagsStrn` exposed an out-of-bounds read in its OPEN
+separator handling (`strlen(strn - 1)`); the same chunk fixes that expression.
+`test_legacy_trap_editor.py` executes all 4096 flag combinations under ASan/UBSan,
+including exact east/west/open display checks, and checks the editor flag-list order.
+The required formatting check exposed pre-existing whole-file formatting drift in
+the three touched editor files. They are mechanically formatted to satisfy that gate;
+behavior changes remain the three direction constants, flag-list order and OPEN index.
+
+Ablation: keep the existing constants, flag list and formatter; change their owning
+definitions rather than adding a translation layer or migrating unrelated authored data.
+No runtime effect is enabled and none of the 61 authored trap records has changed yet.
+
+Validation: `python3 tests/async/test_legacy_trap_editor.py` passed; `make -C src -j8`
+passed (log: ignored `bin/issue368-evidence/build-mariadb.log`). Remaining proof belongs
+to its affected implementation slice. Formatting and `git diff --check` pass.
+Next: independent golden content contract and
+shared runtime/load validation, followed by real effect execution; retain the other gates.
 
 ### 1. Content contract and shared validation
 

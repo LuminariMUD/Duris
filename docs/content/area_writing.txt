@@ -2003,9 +2003,9 @@ type items should be aligned, even then, that should be rare.
                 2 - Triggers on get/put
                 4 - Affects all in the room
                 8 - Affects all who leave the room NORTH
-               16 - Affects all who leave the room SOUTH
-               32 - Affects all who leave the room WEST
-               64 - Affects all who leave the room EAST
+               16 - Affects all who leave the room EAST
+               32 - Affects all who leave the room SOUTH
+               64 - Affects all who leave the room WEST
               128 - Affects all who leave the room UP
               256 - Affects all who leave the room DOWN
               512 - Triggers on being opened
