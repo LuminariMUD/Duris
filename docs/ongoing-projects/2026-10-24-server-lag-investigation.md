@@ -3,7 +3,7 @@
 ## Implementation handoff, October 25
 
 Issue: [#365](https://github.com/LuminariMUD/Duris/issues/365). The review stack starts
-at `investigate/365-server-lag`; current work is on `branch/issue-365-selection-scan`
+at `investigate/365-server-lag`; current work is on `branch/issue-365-activity-lookup`
 in `/home/aiwithapex/projects/duris-issue365`.
 The branch was fast-forwarded to `master` baseline `f31283e56` before editing;
 the original October 24 observations below remain historical evidence, not
@@ -67,13 +67,16 @@ evidence above applies to unchanged owners. No full-suite rerun is required.
 - General reported slowdown and the historical 47.759 ms callback: attribution
   is deferred per the owner clarification. Its old concrete identity remains
   unrecoverable; do not claim these measured improvements resolve that incident.
-- First-command polling/type-ahead: evaluate separately; preserve simulation
-  cadence and intentional action-rate gates. No input-throughput change yet.
-- Cargo: measure representative purchase/sale submit, commit, publication,
-  receipt, blocked-command and save timing. The writer/phase driver isolates
-  publication only; prompt output still has its separate next-pulse wait.
-- Eligible-mortal activity: address the demonstrated world-size-dependent
-  identity lookup without keeping a potentially extracted character pointer.
+- First-command polling/type-ahead: retain the existing simulation and command
+  cadence. Waking the whole loop on socket readiness would accelerate events
+  and gameplay; a separate input-dispatch loop is beyond the minimal measured
+  fixes. No type-ahead-throughput change is included.
+- Cargo: chunk 1 fixes the demonstrated alternating publication wait. Its real
+  trade/runtime and disposable database checks cover reservation, commit, retry,
+  replay, relog and save behavior. Production submit-to-receipt timing remains
+  unmeasured; next-pulse output is an explicit preserved compatibility boundary.
+- Eligible-mortal activity: chunk 3 below removes the demonstrated world-size
+  identity lookup without retaining a potentially extracted character pointer.
 - Divine selection: chunk 2 below removes repeated traversal in selection and
   status. Recurring active-EXP reward checks retain their existing behavior.
 - Outbox, network/GMCP and unmeasured telemetry hooks: no delayed delivery or
@@ -118,6 +121,35 @@ or persistence code changed, so the chunk 1 disposable trade evidence is reused.
 
 Review: [PR #373](https://github.com/LuminariMUD/Duris/pull/373), stacked on
 #372, code commit `d9b01e22c`, review tag `review/issue-365-selection-scan-r1`.
+
+### Chunk 3: resolve the activity observer through live sessions
+
+An eligible playing body must still be attached to a live descriptor when the
+command returns to count as activity. The end observer now matches the captured
+runtime ID against `descriptor_list`, then applies the same actor/PID and state
+fingerprint checks. It no longer calls the full-world character lookup. No raw
+pre-command pointer, character index, registration hook or new allocation was
+introduced. Quit, extraction, disconnect and replacement cannot credit a stale
+body; a morphed eligible player still qualifies.
+
+The activity executable now links the real character-identity implementation
+instead of a three-character lookup stub. A synthetic 57,608-character list
+places the eligible player behind 57,605 mobiles with three descriptors. Fifty
+`look` begin/end pairs averaged **1,496.34 µs before and 0.905 µs after** in
+`-Og` ASan/UBSan runs. The old implementation fails the added poisoned-world-list
+check in `find_character_by_runtime_id()`; the new one observes a changed body
+at the descriptor-list tail without touching that memory. Additional poisoned
+extraction, disconnect and replacement cases guard lifetime safety. Existing
+morph, container/device/resource/door, inventory-independent, AFK and staff-account
+exclusions remain covered. This is synthetic observer timing, not a live-player
+latency measurement.
+
+Passed: `test_divine_boon_activity.py`, `test_command_latency_runtime.py`,
+MariaDB and flat-file development builds, and `./scripts/format.sh --check`.
+The existing isolated socket session journey is running against the built
+flat-file binary; it checks character entry, queued FIFO/rendered prompts, save,
+quit and reconnect. Its output is `bin/tests/issue365-session-journey.log`; record
+its terminal result before treating that additional wire coverage as passed.
 
 ## October 24 observation record
 
