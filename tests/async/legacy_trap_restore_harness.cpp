@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 static int int_size = sizeof(int), short_size = sizeof(short), long_size = sizeof(long);
 static int save_count, obj_vers, corpse_room;
@@ -22,6 +23,7 @@ P_index obj_index = indexes;
 P_obj save_equip[MAX_WEAR] = {};
 unsigned long next_obj_uid = 1;
 static P_obj placed;
+static std::vector<P_obj> placed_objects;
 static bool sql_row_read;
 static char sql_trap[128];
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
@@ -104,6 +106,7 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, co
 void obj_to_room(P_obj object, int)
 {
 	placed = object;
+	placed_objects.push_back(object);
 }
 void obj_to_char_at_end(P_obj, P_char)
 {
@@ -184,10 +187,12 @@ static void round_trip(P_obj object, const std::array<int, 4> &expected)
 		assert(restored->value[3] == 7 && restored->value[1] == expected_flags);
 		extract_obj(restored, FALSE);
 		placed = nullptr;
+		placed_objects.clear();
 		assert(restoreObjects(bytes.data(), nullptr, 0));
 		assert(placed && fields(placed) == expected && placed->value[3] == 7 &&
 		       placed->value[1] == expected_flags);
 		extract_obj(placed, FALSE);
+		placed_objects.clear();
 		assert(sql_encode_item_trap_state(object->trap_eff, object->trap_dam,
 						  object->trap_charge, object->trap_level, sql_trap,
 						  sizeof(sql_trap)));
@@ -207,6 +212,31 @@ static void round_trip(P_obj object, const std::array<int, 4> &expected)
 		set(object, expected);
 		object->value[1] = expected_flags;
 	}
+}
+
+static void counted_round_trip(const row &entry, int charge)
+{
+	indexes[0].virtual_number = entry.vnum;
+	set(&prototype, entry.old);
+	prototype.trap_charge = charge;
+	std::array<char, SAV_MAXSIZE> bytes = {};
+	char *cursor = bytes.data();
+	ADD_BYTE(cursor, SAV_ITEMVERS);
+	ADD_INT(cursor, 2);
+	cursor += writeObject(&prototype, O_F_COUNT, 0, 2, 0, cursor);
+	ADD_BYTE(cursor, O_F_EOL);
+	placed_objects.clear();
+	assert(restoreObjects(bytes.data(), nullptr, 0));
+	assert(placed_objects.size() == 2);
+	auto expected = entry.final;
+	if (expected[0])
+		expected[2] = entry.finite && (charge == -1 || charge > 1) ? 1 : charge;
+	for (P_obj restored : placed_objects)
+	{
+		assert(fields(restored) == expected && restored->value[3] == 7);
+		extract_obj(restored, FALSE);
+	}
+	placed_objects.clear();
 }
 
 int main()
@@ -249,6 +279,9 @@ int main()
 			}
 		}
 	}
+	for (const auto &entry : manifest)
+		for (int charge : { -1, 0, 1, 2, 100 })
+			counted_round_trip(entry, charge);
 	// A single custom field must force a binary payload and prevent stock grouping.
 	for (int field = 0; field < 4; ++field)
 	{
