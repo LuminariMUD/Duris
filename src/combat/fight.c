@@ -7205,7 +7205,15 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 				      get_property("skill.notch.criticalAttack", 10)) ||
 			  (1 * GET_CHAR_SKILL(ch, SKILL_CRITICAL_ATTACK)) > number(1, 100)))
 	{
+		const attack_continuation continuation =
+			begin_attack_continuation(ch, victim, weapon);
 		critical_attack(ch, victim, msg);
+		const attack_continuation_result checked = check_attack_continuation(continuation);
+		if (!checked.can_continue())
+			return FALSE;
+		ch = checked.actor;
+		victim = checked.target;
+		weapon = checked.weapon;
 	}
 
 	if (has_innate(ch, INNATE_BATTLE_FRENZY) && !number(0, 20) && IS_HUMANOID(victim) &&

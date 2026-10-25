@@ -3,8 +3,123 @@
 &+W======================================================================&n
 &+WUpdated: October 25, 2026&n
 
-Welcome back! New paths for Evil, kinder early deaths, and brighter boons.
+Welcome back! Magi take new forms, and old traps have found their teeth.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/25/26&n &+L-&n &+YElements unleashed, ancient traps awakened&n
+&+W----------------------------------------------------------------------&n
+
+&+CChoose your elemental shape&n
+&+Y-&n Earth, Fire and Water Magi gain their own self-only &+Ycircle-10&n
+  forms alongside Air Form. Try &+C"cast 'earth form'"&n,
+  &+C"cast 'fire form'"&n or &+C"cast 'water form'"&n as the matching Magus.
+  You need no special terrain or plane. Forms expire and can be dispelled.
+  Conflicting forms and elemental auras refuse the cast without spending
+  mana or a prepared copy; remove the old effect before changing shape.
+&+Y-&n Earth Form grants Earth Aura's existing &+Y1-in-6&n chance to reject
+  eligible physical damage. Fire Form grants Fire Aura and Fireshield:
+  AC -15 and maximum STR +15, DEX -20, AGI -20, CON +25. Its cold
+  vulnerability remains. Water Form grants Water Aura and maximum
+  STR -20, DEX +50, AGI +25, CON -10, with its usual Capture resistance.
+  Read the individual form help for defenses, exceptions and counters.
+&+Y-&n At &+Ylevel 51&n, each elemental Magus gains a passive affinity for
+  their own native plane. Psycheporters now gain Astral Affinity at
+  &+Y51 instead of 30&n. Ordinary aggressive mobs there ignore you
+  regardless of level, unless they remember your provocation. Pet and
+  group combat can still provoke them. Protection is personal and limited
+  to the native rooms; neighboring areas and scripted attacks may differ.
+  See &+C'help planar affinity'&n for the boundaries.
+
+&+CEarth endures; Air catches its breath&n
+&+Y-&n An Earth Magus may receive up to &+Ythree Stone Skin layers&n, each
+  keeping its own charges and expiry. Each eligible hit spends a charge
+  from the newest layer only; layers do not multiply damage reduction.
+  A fourth layer is refused. Critical shatter and dispel remove all layers.
+  This benefit belongs to the recipient, not everyone an Earth Magus buffs.
+&+Y-&n Earthen Maul now conjures the earth it needs over water, while flying,
+  in rooms without ground and on elemental planes. This also benefits
+  Druids and other characters already entitled to the spell.
+&+Y-&n An Air Magus with active Air Form can cast Ethereal Recharge on
+  themselves for up to &+Y100 actual HP&n per cast, after healing modifiers
+  and within normal maximum HP. Cure Blind still works at full HP.
+  A loose Air Aura does not qualify. Air Magus post-cast travel waits are
+  now &+Y3 seconds&n for Dimension Door and &+Y5 seconds&n for Relocate;
+  normal travel restrictions remain.
+
+&+CWater takes the scenic route&n
+&+Y-&n Active Water Form lets a Water Magus cross a valid shoreline exit
+  after &+Y5 seconds of preparation&n in either direction. Use the normal
+  direction command; &+C'abort'&n cancels preparation. Combat, leaving the
+  starting room or losing the form cancels it too. Ocean-to-ocean steps
+  have no new delay. Steps touching ocean cost &+Y25% less base vitality&n,
+  rounded down with a minimum of 1; stance and injury costs still apply.
+&+Y-&n This passage is yours alone: mounts, riders, followers and cargo do
+  not inherit it. Currents, walls and traps still matter. Losing Water
+  Form at sea restores ordinary rules without moving you to safety.
+  Water Form supplies no water source or extra healing; Water to Life
+  still needs water nearby. Water Affinity is a separate level-51 benefit.
+&+Y-&n &+C'innate conjure water'&n makes a &+Y15-minute&n spring after
+  &+Y4 seconds&n, with action lag running at the same time. Its
+  &+Y5-minute cooldown&n and one innate use are spent only when the spring
+  appears. Existing or pending springs block duplicates without extra
+  cost. Leaving the room cancels preparation without spending the use.
+
+&+CFire brings a smaller, less prickly friend&n
+&+Y-&n A &+Ylevel-51 Fire Magus&n casts Fireball through standard Globe at
+  full normally calculated damage; other fire defenses still apply.
+  Fire Magus spell casts of Solar Flare gain &+Y10% direct base damage&n.
+  Scrolls, wands and other item casts keep their ordinary Solar Flare.
+&+Y-&n Fire Magi can use &+C"cast 'conjure elemental' mephit"&n or
+  &+C"cast 'conjure greater elemental' mephit"&n for the usual Fire summon
+  without Fireshield. Stats, costs, control, duration and pet limits stay
+  the same. Plain casts keep the shield. Without its retaliation, the pet
+  avoids that source of enemy memory; its other actions can still provoke
+  mobs. Fire elementals and mephits retain their state across recovery.
+
+&+CThe chest was not bluffing&n
+&+Y-&n Old authored traps now deliver their intended dispel, hostile rift,
+  creature summon, wither, harm, poison, minor paralysis and stun effects.
+  Taking or putting trapped objects, opening containers and crossing
+  trapped exits can set them off. Ordinary saves, resistance and relevant
+  immunities still apply; a valid activation can spend a charge even when
+  you resist it. Room effects can reach nearby adventurers and their pets.
+&+Y-&n Some old unlimited creature traps now have a finite encounter budget.
+  Recognized saved copies receive the same repairs without refilling spent
+  charges or reclosing open containers. Traps keep their remaining charges
+  and custom settings when saved. Existing special chest and tower tricks
+  retain their own rules. Minor paralysis lasts &+Y3-12 seconds&n; generic
+  stun traps have a &+Y1-4 second&n full duration before their normal saves.
+&+Y-&n Trap effects now stop interrupted item transfers and recheck movement
+  before letting you continue. The area editor also shows the corrected
+  direction and OPEN flags. Staff can inspect the restored effect names
+  with &+C'trapstat'&n; invalid definitions remain inert for repair.
+
+&+CMore useful blessings, more room for EXP&n
+&+Y-&n Divine Boons reserve &+Ysix slots&n for zone EXP/epic objectives and
+  one each for cargo and PvP. A fixed UTC hour can start one zone boon
+  plus cargo and PvP when their slots are free. Empty slots may remain.
+  EXP targets suit an eligible online player's level; epic targets follow
+  your side's average online level, with lower payouts for lower levels.
+  These choices do not restrict zone entry. Use &+C'boon'&n for your targets.
+&+Y-&n You can bank EXP beyond the old two-level allowance while a frag cap
+  blocks advancement, up to the overall EXP ceiling. Earning EXP while
+  above the unlocked level cap now takes a &+Y30% penalty instead of 45%&n.
+  Meeting frag requirements can then spend your banked EXP on advancement.
+  EXP messages show the amount actually credited; capped zero awards no
+  longer produce misleading combat EXP messages. Illithid frag advancement
+  also respects the maximum mortal level.
+&+Y-&n Accepted actions that need a save confirmation can report completion
+  sooner, reducing one source of command delay. This does not remove
+  network or database delays.
+
+&+CA few loose ends tied firmly&n
+&+Y-&n Holymen no longer receive Holy Intercession in their spell list.
+  Old memorized copies cannot bypass current spell eligibility.
+&+Y-&n Kjelgar's crystal-harp work now recognizes the intended &+Yfive&n
+  &+Ysmall moonstone crystals&n. His token and coin requirements still apply.
+&+Y-&n Help pages have clearer section spacing and brighter progression
+  headings. Restored spell effects keep their saved order, so layered
+  defenses still use the newest layer first after a return to the game.
 
 &+R10/24/26&n &+L-&n &+YWelcome to the dark side&n
 &+W----------------------------------------------------------------------&n
