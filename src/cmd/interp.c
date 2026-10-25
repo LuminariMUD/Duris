@@ -1869,11 +1869,21 @@ void command_interpreter(P_char ch, char *argument)
 	 * falling and water-current checks below would otherwise roll the dice --
 	 * and even move the character out of the room -- on a command that is about
 	 * to be rejected anyway. */
-	if (get_scheduled(ch, event_water_crossing) && !cmd_allowed_while_casting(ch, cmd))
+	if (get_scheduled(ch, event_water_crossing))
 	{
-		send_to_char("You're preparing to cross the shoreline! Try 'abort' to stop.\r\n",
-			     ch);
-		return;
+		/* Cancel before a fall or current can consume the abort command. */
+		if (cmd == CMD_ABORT)
+		{
+			do_abort(ch, argument + begin + look_at, cmd);
+			return;
+		}
+		if (!cmd_allowed_while_casting(ch, cmd))
+		{
+			send_to_char(
+				"You're preparing to cross the shoreline! Try 'abort' to stop.\r\n",
+				ch);
+			return;
+		}
 	}
 	if (item_action_active(ch) && !cmd_allowed_while_casting(ch, cmd))
 	{
