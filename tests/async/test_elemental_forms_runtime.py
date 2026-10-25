@@ -18,6 +18,7 @@ prelude = r'''
 #include "net/comm.h"
 #include "world/events.h"
 #include "combat/damage.h"
+#include "player/player_snapshot_codec.h"
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -140,6 +141,16 @@ PRODUCTION_PREFLIGHT
     return output.find("SPENT") != std::string::npos;
 }
 '''.replace('PRODUCTION_PREFLIGHT', preflight)
+
+materialize = source('player_load_materialize.c').read_text()
+affect_start = materialize.index('\tfor (auto affect_entry = result.snapshot.affects.rbegin();')
+affect_end = materialize.index('\n\tif (zone_trophies)', affect_start)
+snapshot_restore = '''
+void restore_snapshot_affects(P_char ch, const player_snapshot &snapshot) {
+    struct { const player_snapshot &snapshot; } result{snapshot};
+PRODUCTION_AFFECTS
+}
+'''.replace('PRODUCTION_AFFECTS', materialize[affect_start:affect_end])
 
 physical = extract_function('fight.c', 'int melee_damage(')
 skin_start = physical.index('\t// Earth elementals ignore earth aura.')
@@ -297,6 +308,40 @@ int main() {
     auto *newest = earth.affected;
     assert(newest->modifier == 19 && middle->modifier == 9 && oldest->modifier == 8);
     assert(newest->duration == 4 && middle->duration == 2 && oldest->duration == 1);
+    for (int recovery = 0; recovery < 2; ++recovery) {
+        char saved[4096]{};
+        int bytes = writeAffects(saved, earth.affected);
+        clear(&earth); assert(restoreAffects(saved, &earth) == bytes);
+        newest = earth.affected; middle = newest->next; oldest = middle->next;
+        assert(newest->modifier == 19 && middle->modifier == 9 && oldest->modifier == 8);
+        assert(newest->duration == 4 && middle->duration == 2 && oldest->duration == 1);
+    }
+    // The binary path must reverse only its restored prefix, retaining older affects.
+    char preserved[4096]{}; int preserved_bytes = writeAffects(preserved, earth.affected);
+    char_data extra{}; affected_type independent{}; independent.type = SPELL_FIRESHIELD;
+    auto *previous = affect_to_char(&extra, &independent);
+    assert(restoreAffects(preserved, &extra) == preserved_bytes);
+    assert(extra.affected->modifier == 19 && extra.affected->next->next->next == previous);
+    clear(&extra);
+    for (int recovery = 0; recovery < 2; ++recovery) {
+        player_snapshot snapshot{};
+        snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+        snapshot.pid = 215; snapshot.revision = 1; snapshot.components = PLAYER_COMPONENT_STATUS;
+        snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+        for (auto *af = earth.affected; af; af = af->next) {
+            player_affect_snapshot row{};
+            row.type = af->type; row.duration = af->duration; row.modifier = af->modifier;
+            row.location = af->location; row.flags = af->flags; row.level = af->level;
+            snapshot.affects.push_back(row);
+        }
+        std::vector<uint8_t> bytes; player_snapshot decoded{};
+        assert(player_snapshot_encode(snapshot, &bytes) == player_snapshot_codec_result::ok);
+        assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
+        clear(&earth); restore_snapshot_affects(&earth, decoded);
+        newest = earth.affected; middle = newest->next; oldest = middle->next;
+        assert(newest->modifier == 19 && middle->modifier == 9 && oldest->modifier == 8);
+        assert(newest->duration == 4 && middle->duration == 2 && oldest->duration == 1);
+    }
     int damage_with_three = physical_skin_path(&ordinary, &earth, 200);
     assert(newest->modifier == 18 && middle->modifier == 9 && oldest->modifier == 8);
     while (earth.affected == newest) decrease_skin_counter(&earth, SPELL_STONE_SKIN);
@@ -365,9 +410,10 @@ int main() {
 build = ROOT / 'bin/tests/elemental-forms'
 build.mkdir(parents=True, exist_ok=True)
 cpp, binary = build / 'harness.cpp', build / 'harness'
-cpp.write_text(prelude + '\n'.join(extract_function(file, sig) for file, sig in functions) + gate + skin_path + driver)
+cpp.write_text(prelude + '\n'.join(extract_function(file, sig) for file, sig in functions) + gate + snapshot_restore + skin_path + driver)
 subprocess.run(['g++', '-std=c++20', '-g', '-ffunction-sections', '-fdata-sections',
                 '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
                 '-I' + str(ROOT / 'src'), str(cpp), str(HARNESS_STUBS),
+                str(ROOT / 'src/player/player_snapshot_codec.c'),
                 '-Wl,--gc-sections', '-lbsd', '-o', str(binary)], check=True)
 subprocess.run([str(binary)], check=True)
