@@ -116,6 +116,9 @@ selection, quiet-hour, reserved-pool and diagnostics cases plus the new fixture)
 flat-file development builds, and `./scripts/format.sh --check`. No repository
 or persistence code changed, so the chunk 1 disposable trade evidence is reused.
 
+Review: [PR #373](https://github.com/LuminariMUD/Duris/pull/373), stacked on
+#372, code commit `d9b01e22c`, review tag `review/issue-365-selection-scan-r1`.
+
 ## October 24 observation record
 
 Scope of the observations below: **October 24, 2026 only**, from the production reboot at 10:37 UTC.
