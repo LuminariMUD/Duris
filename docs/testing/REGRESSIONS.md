@@ -19,6 +19,16 @@ the editor's flag indexes and constants match runtime N/E/S/W/U/D bits, verifies
 east/west/OPEN displays, and catches the former OPEN separator out-of-bounds read.
 It does not establish runtime support for effects 9–16 or the authored content repairs.
 
+`python3 tests/async/test_legacy_trap_restore.py` executes the binary writer and both
+binary restoration paths, legacy SQL extra-row loading, and reward JSON snapshots with
+the real shared normalizer. Its independent 61-row golden manifest covers retired traps,
+partial/spent/unlimited charges, custom mask/type/level fields, open container state and
+repeated load/save cycles under ASan/UBSan. Stock grouping and binary override detection
+must compare all four trap fields. `test_player_load_items.py` and
+`test_world_recovery_pipeline.py` also execute matching repairs through their complete
+materializers after the final stored-field application. These fixtures do not prove the
+future spell effects, live database journeys, generated-world boot or deployment.
+
 ## Kjelgar crystal harp recipe
 
 Kjelgar (mobile 47124) accepts five moonstone crystals (400094), two gnomish

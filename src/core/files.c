@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "combat/trap_legacy.h"
 #include "core/prototypes.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
@@ -312,7 +313,10 @@ void event_short_affect(P_char, P_char, P_obj, void *);
 	 ((obj)->timer[2] == (control)->timer[2]) && ((obj)->timer[3] == (control)->timer[3]) && \
 	 ((obj)->wear_flags == (control)->wear_flags) && ((obj)->weight == (control)->weight) && \
 	 ((obj)->material == (control)->material) && ((obj)->cost == (control)->cost) &&         \
-	 ((obj)->type == (control)->type))
+	 ((obj)->type == (control)->type) && ((obj)->trap_eff == (control)->trap_eff) &&         \
+	 ((obj)->trap_dam == (control)->trap_dam) &&                                             \
+	 ((obj)->trap_charge == (control)->trap_charge) &&                                       \
+	 ((obj)->trap_level == (control)->trap_level))
 
 /*
  * following are functions that write data to disk (or prepare data for
@@ -529,7 +533,8 @@ ulong ObjUniqueFlags(P_obj obj, P_obj control)
 	if (obj->type != control->type)
 		flag |= O_U_TYPE;
 
-	if (obj->trap_charge != control->trap_charge)
+	if (obj->trap_eff != control->trap_eff || obj->trap_dam != control->trap_dam ||
+	    obj->trap_charge != control->trap_charge || obj->trap_level != control->trap_level)
 		flag |= O_U_TRAP;
 
 	if (obj->wear_flags != control->wear_flags)
@@ -3021,6 +3026,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 		{
 			do
 			{
+				normalize_legacy_trap(obj, OBJ_VNUM(obj));
 #ifdef _PFILE_
 				if (c_obj)
 				{
@@ -3382,6 +3388,7 @@ P_obj read_one_object(char *read_buf)
 		}
 	}
 
+	normalize_legacy_trap(obj, OBJ_VNUM(obj));
 #ifndef _PFILE_
 	if (IS_SET(obj->extra_flags, ITEM_PROCLIB) &&
 	    (NULL == get_scheduled(obj, proclib_obj_event)))

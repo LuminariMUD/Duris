@@ -1,3 +1,4 @@
+#include "combat/trap_legacy.h"
 #include "economy/divine_trade_runtime.h"
 // sql_player.c
 // MariaDB storage for players, accounts, lockers, corpses, shopkeepers and saved items
@@ -925,6 +926,7 @@ static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const c
 	while ((row = mysql_fetch_row(result)))
 		sql_add_item_extra_descr(obj, row[0], row[1], table, item_id, &loaded_spellbook);
 	mysql_free_result(result);
+	normalize_legacy_trap(obj, OBJ_VNUM(obj));
 	return true;
 }
 
@@ -2034,6 +2036,7 @@ static P_obj locker_items_from_index(const locker_row_index &index, int locker_i
 							 "locker_item", item_id, &loaded_spellbook);
 		}
 
+		normalize_legacy_trap(obj, OBJ_VNUM(obj));
 		if (chest_obj)
 			obj_to_obj(obj, chest_obj);
 		obj->contains = locker_items_from_index(index, locker_id, chest_id, item_id,

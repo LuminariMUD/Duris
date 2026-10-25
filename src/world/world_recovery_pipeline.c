@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "combat/trap_legacy.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_population_repository.h"
 #include "world/world_recovery_pipeline.h"
@@ -1461,6 +1462,7 @@ P_obj materialize_object(const planned_object &planned)
 		object->weight = item.weight;
 		for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 			object->value[index] = item.values[index];
+		normalize_legacy_trap(object, item.vnum);
 	}
 	if (!planned.detached)
 		obj_to_room(root, planned.room_rnum);

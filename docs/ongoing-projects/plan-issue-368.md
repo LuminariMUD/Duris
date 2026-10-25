@@ -1,7 +1,9 @@
 # Issue #368 — restore authored legacy object traps
 
-Status: implementation in progress, 2026-10-25. Editor direction/formatting chunk
-implemented and locally qualified; runtime effects, content and restoration remain pending.
+Status: implementation in progress, 2026-10-25. Editor chunk published in
+[PR #375](https://github.com/LuminariMUD/Duris/pull/375). Saved-copy compatibility is
+implemented and locally qualified on its dependent branch; runtime effects, authored
+content changes and loaded gameplay qualification remain pending.
 Issue: [#368](https://github.com/LuminariMUD/Duris/issues/368).
 Target branch: `branch/issue-368-legacy-traps`.
 Code inspected: [`e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`](https://github.com/LuminariMUD/Duris/commit/e1efb9bc0779e8b6615353c5672e29f21c6bb7a8).
@@ -140,8 +142,9 @@ should stand in for its stated behavior.
 
 ### Current handoff — 2026-10-25
 
-Worktree: `/home/aiwithapex/projects/duris-issue368`; branch
-`branch/issue-368-legacy-traps`. The primary checkout is unrelated and untouched.
+Worktree: `/home/aiwithapex/projects/duris-issue368`; current branch
+`branch/issue-368-trap-compatibility`, based on editor commit `0f83475c2` / PR #375
+(`branch/issue-368-legacy-traps`). The primary checkout is unrelated and untouched.
 Current `origin/master` remains the inspected `e1efb9bc0` base.
 
 First chunk aligns editor EAST/SOUTH/WEST constants and flag-list indexes with runtime
@@ -161,8 +164,38 @@ No runtime effect is enabled and none of the 61 authored trap records has change
 Validation: `python3 tests/async/test_legacy_trap_editor.py` passed; `make -C src -j8`
 passed (log: ignored `bin/issue368-evidence/build-mariadb.log`). Remaining proof belongs
 to its affected implementation slice. Formatting and `git diff --check` pass.
-Next: independent golden content contract and
-shared runtime/load validation, followed by real effect execution; retain the other gates.
+Saved-copy chunk: `combat/trap_legacy.c/.h` owns the single 23-row compatibility policy
+used after stored fields by the six restoration owners. The explicit vnum argument keeps
+the policy independent of the global prototype registry; each owner supplies its validated
+snapshot or loaded-object vnum. It preserves partial/spent/custom traps and special-proc
+`value[3]`, limits only the five selected unlimited encounters, and adds CLOSEABLE without
+CLOSED only to matching bones/urn copies. World normalization runs after its final values[]
+overwrite. Binary unique-field detection **and stock grouping** now compare all four trap
+fields; inspecting the writer exposed the second potential state-loss path.
+
+`legacy_trap_manifest.py` freezes all 61 original/final tuples independently of runtime
+policy. `test_legacy_trap_restore.py` exercises both real binary readers, the real writer,
+SQL extra-row loading and actual reward JSON capture/application under ASan/UBSan for
+all 61 profiles, charges -2/-1/0/1/2/100, individual custom mask/type/level edits, and
+two load/save cycles. Container open/closed flags also round-trip through these owners.
+Player graph hydration and framed world recovery have executable representative repairs,
+including disarmed and retired state, final values[] ordering and preserved proc markers.
+The existing world harness needed current boot-boundary includes/stubs to compile; that
+fixture repair changes no server behavior.
+
+Additional validation passed: `make -C src -j8`, `make -C src -j8 pfile`, flat-file
+server build with `PERSISTENCE_BACKEND=flatfile BIN_ROOT=$PWD/bin/issue368-flatfile`,
+`test_player_load_items.py`, `test_world_recovery_pipeline.py`,
+`test_locker_container_weight_lifecycle.py`, `test_legacy_object_identity.py`,
+`test_item_extra_descr_codec.py`, `test_player_item_snapshot_codec.py`, and
+`test_spellbook_persistence_contract.py`. Build logs remain under
+`bin/issue368-evidence/`. These native/synthetic boundary tests do not replace the
+pending loaded gameplay/restart acceptance on both backends.
+
+Ablation: the one small normalizer is required by six real owners; existing wire formats,
+codecs and loaders are retained. No data rewrite, schema change, new restoration service,
+or prototype-wide overwrite was added. Next: independent authored/generated content
+checks and shared runtime/load validation, then real effect execution and command hooks.
 
 ### 1. Content contract and shared validation
 
@@ -229,26 +262,30 @@ special procedures keep their prior guarantees.
 
 ### 4. Saved-copy compatibility and round trips
 
-- [ ] Add one narrow, idempotent normalization function for the appendix's changed/
+- [x] Add one narrow, idempotent normalization function for the appendix's changed/
   retired profiles. Match vnum plus the **old mask/type/level**, not vnum alone.
   Preserve custom combinations, unrelated vnums and zero/disarmed state.
-- [ ] Preserve remaining positive charges, capped only where the new initial budget
+- [x] Preserve remaining positive charges, capped only where the new initial budget
   is smaller. Convert -1→1 only for 32820, 32870, 32835, 32846 and 41361.
   Clear generic trap fields on matching retired records. Normalize the two authored
   levels without ever converting negative level into an unsavable spell.
-- [ ] Call normalization after stored fields are complete in each actual owner:
+- [x] Call normalization after stored fields are complete in each actual owner:
   `materialize_item_graph/apply_extra_descriptions` (player_load_items.c);
   legacy SQL extra-description loading (sql_player.c); `restoreObjects` and
   `read_one_object` (files.c); world recovery materialization
   (world_recovery_pipeline.c); and `account_reward_snapshot_apply`.
   Respect existing snapshot verification and ownership/publication order.
-- [ ] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
+- [x] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
   fields; keep its existing encoding and other formats unchanged.
-- [ ] Preserve saved open/closed state. The four CLOSED changes initialize **fresh**
+  Review repair: counted stock records now normalize every expanded copy immediately
+  before placement. The native writer/reader regression expands two copies of every
+  golden profile with five charge states; later copies cannot retain an old unlimited
+  budget or a retired trap. Individual and counted ASan/UBSan round trips pass.
+- [x] Preserve saved open/closed state. The four CLOSED changes initialize **fresh**
   objects only. For recognized legacy 142251/142438 with the original non-closeable
   container flags, add CLOSEABLE while leaving them open; other saved flag combinations
   remain as stored. Do not reclose opened loot or reset a special procedure's value[3].
-- [ ] Prove each restore owner actually invokes normalization after its final overwrite;
+- [x] Prove each restore owner actually invokes normalization after its final overwrite;
   a passing normalization helper alone is insufficient. Round-trip fresh, partial,
   exhausted, disarmed MULTI, old unlimited→finite, retired and custom states. Repeat the
   load/save cycle to prove idempotence and no rearming.
