@@ -86,7 +86,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | Step | Deliverable | Dependency | Status |
 | --- | --- | --- | --- |
 | 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
-| 1 | New forms, registration, resource checks and cleanup | 0 | Pending |
+| 1 | New forms, registration, resource checks and cleanup | 0 | Implemented; focused checks pass on `branch/issue-215-elemental-forms` |
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Pending |
 | 3 | Air Recharge and travel lag | 1 | Pending |
 | 4 | Reliable Conjure Water | 0 | Pending |
@@ -524,6 +524,39 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   #376, and remaining steps. No gameplay test server has been started and no
   production operations performed. Existing Git GC warnings about unreachable
   loose objects predate this work; no logs or unrelated repository state removed.
+
+### Elemental forms checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-elemental-forms` is based on affinity handoff
+  `6a8ba49b4`. Append spell IDs 684-686; register Earth/Fire/Water Form for only
+  the matching Magus at circle 10, with Air's 4-pulse casting pattern and finite
+  8-unit affects. Keep the existing affect list/codec/expiry/dispel paths.
+- Add one shared preflight/handler conflict check. It rejects form/partial-aura
+  combinations before mana/prepared-spell consumption and at application. Keep
+  Druid/Pyro terrain rules, independent shields and existing Air effect intact.
+  No new affect flags, scheduler, schema or stat abstraction is required.
+- Corresponding help in both sources covers all four forms, spec spell lists
+  and Conjurer. Water travel/Air healing text will follow their actual behavior,
+  rather than advertising features before their slice lands.
+- `test_elemental_forms_runtime.py` passes under ASan/UBSan using production
+  registration, handlers, affect list operations, wear-off and binary PC affect
+  save/restore. Covers exact attribute records/flags/duration, spec/self/NPC
+  controls, all relevant terrains, paired form/aura conflict orders, partial
+  effects, recast rejection, independent Fireshield ownership and one wear-off
+  message. General stat recalculation and scheduler are fixtures; complete
+  parser/resource and combat journeys remain for step 8.
+- Extended `test_memorized_spell_eligibility.py` passes for saved new-form copies
+  at levels 41/45/46/50/51/56, including wrong-spec denial through production
+  circle/knowledge checks. Existing `test_elemental_aura_runtime.py`,
+  `test_affect_wear_off_message_contract.py`, `test_spell_affect_regressions.py`,
+  `test_spell_schedule_failure_runtime.py`, `test_spellbook_persistence_contract.py`,
+  `test_master_spellbook.py`, class-help/layout and flat-file runtime help checks
+  pass. These do not claim full server combat coverage.
+- `make -C src -j8` passed with no warnings. Format remains check-only; format and
+  diff checks pass. Logs and scratch harnesses remain under `bin/`.
+- Next: record forms PR, then Earth Stone Skin/Earthen Maul, Air recovery/travel,
+  reliable spring, shoreline movement, Fire pressure/mephits, and combined
+  gameplay qualification. The original no-extra-tuning boundaries remain.
 
 ### Historical planning-only evidence
 

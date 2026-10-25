@@ -2784,10 +2784,12 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		args[0] = '\0';
 	}
 
-	/* Reject elemental-aura no-ops before use_spell consumes mana or a slot. */
-	if (!weaving && arg->spell == SPELL_ELEMENTAL_AURA)
+	/* Reject conflicting auras/forms before use_spell consumes mana or a slot. */
+	if (!weaving)
 	{
-		const char *failure = elemental_aura_failure_message(ch);
+		const char *failure = elemental_form_failure_message(ch, tar_char, arg->spell);
+		if (!failure && arg->spell == SPELL_ELEMENTAL_AURA)
+			failure = elemental_aura_failure_message(ch);
 		if (failure)
 		{
 			send_to_char(failure, ch);

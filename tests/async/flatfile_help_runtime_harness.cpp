@@ -78,6 +78,14 @@ int main()
 	}
 	require(wiki_help("planar affinity").find("19826-19886") != string::npos,
 		"Planar affinity overview omitted the excluded astral side rooms");
+	for (const char *topic : { "air form", "earth form", "fire form", "water form" })
+	{
+		const string form = wiki_help(topic);
+		for (const char *rule : { "Self only", "circle-10", "8 affect-duration units",
+					  "Ice Aura", "dispelled" })
+			require(form.find(rule) != string::npos,
+				"Elemental form lookup omitted its duration, targets or conflicts");
+	}
 
 	cout << "flat-file help runtime passed\n";
 	return 0;

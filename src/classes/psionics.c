@@ -808,6 +808,12 @@ void spell_fire_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] 
 {
 	struct affected_type af;
 
+	if (const char *failure = elemental_form_failure_message(ch, victim, SPELL_FIRE_AURA))
+	{
+		send_to_char(failure, ch);
+		return;
+	}
+
 	if (!IS_ALIVE(ch))
 		return;
 

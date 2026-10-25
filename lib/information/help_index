@@ -219,17 +219,26 @@ afflict their victims as long.
 #
 "AIR FORM" (Spell)
 ===========================================================================
-Area of effect: <caster>
-Aggressive:     No
-Cumulative:     No
-Duration:       Dependent on proficiency of caster
-Type of spell:  Protection
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
 
-This spell transforms the caster's body into ethereal matter, causing him/
-her to be resilient to physical attacks and less prone to knockdown 
-attacks.
-===========================================================================
-See also: "ETHEREAL FORM"
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+An Air Magus assumes Air Form, keeping its established Air Aura
+resilience to physical attacks and reduced susceptibility to knockdown.
+The form has no new attribute bonuses or terrain requirement.
+
+==See also==
+
+* Air Magus
+* Ethereal Form
+* Elemental Aura
 
 #
 
@@ -3055,6 +3064,11 @@ At level 51, each Magus specialization gains its own native Planar
 Affinity. This limits ordinary mob aggression within that plane;
 provocation and mob memory still apply. See Planar Affinity for limits.
 
+Each Magus has a self-only circle-10 form lasting 8 affect-duration
+units: Air Form, Earth Form, Fire Form or Water Form. The three new
+forms need no terrain and grant their own elemental aura. Forms and
+elemental auras conflict; see each form for its effects and counters.
+
 ==See also==
 
 * Conjurer Skills
@@ -4933,7 +4947,7 @@ None beyond the base-class registrations.
 
 &+W7th Circle: &+cearthen maul&n
 &+W9th Circle: &+cacidimmolate&n
-&+W10th Circle: &+ctransmute rock to mud&n
+&+W10th Circle: &+cearth form, transmute rock to mud&n
 &+W12th Circle: &+cearthen tomb&n
 
 ==Innate additions==
@@ -6061,7 +6075,7 @@ None beyond the base-class registrations.
 ==Spell changes==
 
 &+W9th Circle: &+cimmolate, magma burst&n
-&+W10th Circle: &+csolar flare, transmute rock to lava&n
+&+W10th Circle: &+cfire form, solar flare, transmute rock to lava&n
 
 ==Innate additions==
 
@@ -19446,7 +19460,7 @@ None beyond the base-class registrations.
 ==Spell changes==
 
 &+W7th Circle: &+cwater to life&n
-&+W10th Circle: &+cdread wave, transmute mud to water&n
+&+W10th Circle: &+cdread wave, transmute mud to water, water form&n
 
 ==Innate additions==
 
@@ -26042,3 +26056,102 @@ ocean movement ability; Water Form travel is a separate mechanic.
 * Astral Affinity
 * Conjurer
 * Psycheporter
+
+#
+
+"EARTH FORM" (Spell)
+===========================================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only an Earth Magus can assume Earth Form. Living stone grants the
+existing Earth Aura protection: a 1-in-6 chance to reject eligible
+physical damage. Earth Elemental attacks and attacks that bypass this
+protection still work. The form grants no extra Druid attribute bonuses
+and no additional mitigation roll.
+
+==See also==
+
+* Earth Magus
+* Elemental Aura
+* Stone Skin
+
+
+#
+
+"FIRE FORM" (Spell)
+===========================================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only a Fire Magus can assume Fire Form. It always grants the full aura
+and Fireshield, without a random full-form save:
+
+Armor Class -15; maximum Strength +15, Dexterity -20, Agility -20,
+Constitution +25.
+
+Cold vulnerability remains. Qualifying incoming fire spells can be
+absorbed while both Fire Aura and Fireshield are active, recovering
+one-quarter of applicable fire damage up to the existing 110%-maximum-HP
+ceiling. This conditional recovery is not a castable self-heal.
+
+An independently supplied Fireshield keeps its own duration when this
+form ends. The form does not change other Fire spells.
+
+==See also==
+
+* Fire Magus
+* Fire Aura
+* Fireshield
+* Elemental Aura
+
+
+#
+
+"WATER FORM" (Spell)
+===========================================================================
+Area of effect: Self only
+Aggressive: No
+Cumulative: No
+Duration: 8 affect-duration units
+
+This circle-10 form needs no particular terrain or plane. It cannot
+coexist with another elemental form or aura, including Ice Aura or
+partial Elemental Aura/Fire Aura effects. Conflicting casts do not
+spend mana or a prepared copy. The form expires normally and can be
+dispelled; all its attributes and aura effects then end together.
+
+Only a Water Magus can assume Water Form. It always grants Water Aura
+and maximum Strength -20, Dexterity +50, Agility +25, Constitution -10,
+without a random full-form save.
+
+Your flowing body resists Capture and the existing selected mob-AI
+Maul, Bash and Springleap target choices. This does not promise blanket
+immunity to player Grapple or Bearhug.
+
+The form creates no usable water source, grants no extra regeneration,
+healing multiplier or separate damage reduction. Water to Life still
+needs external natural water or a suitable container on the ground.
+
+==See also==
+
+* Water Magus
+* Elemental Aura
+* Water to Life
+* Capture
