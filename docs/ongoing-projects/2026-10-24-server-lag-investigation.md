@@ -48,10 +48,16 @@ The trade runtime test covers held payment/save reservations, rejection, retry,
 relog and ordinary losses. The phase source test had a stale direct-auction
 call expectation; it now checks the existing outbox routing wrapper.
 
+Review: [PR #372](https://github.com/LuminariMUD/Duris/pull/372), initial code
+commit `aa4ea8a5a`; review tag `review/issue-365-critical-cadence-r1` identifies
+the complete handoff. Current `master` through `e1efb9bc0` was merged without
+conflicts after publication. The MariaDB build, phase contract and executable
+cadence regression passed again after that merge; the remaining focused
+evidence above applies to unchanged owners. No full-suite rerun is required.
+
 ### Remaining work and resumption boundaries
 
-- Finish chunk 1 validation and publish its focused review PR; record the PR,
-  commit/tag and final test evidence here. The change is not deployed.
+- Chunk 1 is published for review in PR #372. The change is not deployed.
 - General reported slowdown: obtain a representative slow action and UTC time
   or trace a recurrence. Staff and mortal reports are equally useful on shared
   paths. Do not declare the reports resolved from this cadence improvement.
