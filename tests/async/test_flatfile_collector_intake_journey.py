@@ -102,7 +102,7 @@ def run(binary: pathlib.Path) -> None:
                 client = journey.MudClient(plain_port)
                 journey.create_character(client)
                 client.send("toggle boon")
-                client.expect("You will no longer be affected by boons.")
+                client.expect("Divine Boons apply automatically. Your stored legacy setting is preserved.")
                 journey.complete_npc_combat_journey(client)
                 client.close()
                 journey.verify_npc_loot_and_die(plain_port)
