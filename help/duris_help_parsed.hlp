@@ -924,6 +924,7 @@ None beyond the base-class registrations.
 
 *&+cfly&n (obtained at level &+c30&n)
 *&+cspeedy&n (obtained at level &+c30&n)
+*&+cair affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -1894,12 +1895,23 @@ you as well.
 Astral Affinity
 Astral Affinity - Last Edited: 2007-04-20 14:02:09 by Unknown
 =============================================================
-As the Psycheporter progresses in power, the inhabitants of his native
-plane become enamoured with him, and therefore resist the urge to attack.
+Astral Affinity is a passive ability gained by Psycheporter at level 51.
+On the native Astral Plane (room VNUMs 19701-19825, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
 
 ==See also==
 
-psycheporter ,Plane Shift|plane shift
+* Psycheporter
+* Planar Affinity
+* Plane Shift
+
 
 #0
 
@@ -5460,6 +5472,10 @@ None.
 Specialization availability also depends on race, level, teacher, and current
 specialization/multiclass state. Type specialize to see personal choices.
 
+At level 51, each Magus specialization gains its own native Planar
+Affinity. This limits ordinary mob aggression within that plane;
+provocation and mob memory still apply. See Planar Affinity for limits.
+
 ==See also==
 
 * Conjurer Skills
@@ -8074,6 +8090,7 @@ None beyond the base-class registrations.
 
 *&+cliving stone&n (obtained at level &+c30&n)
  &+cstone skin&n (obtained at level &+c30&n)
+*&+cearth affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -9794,6 +9811,7 @@ None beyond the base-class registrations.
 ==Innate additions==
 
 *&+cprotection from fire&n (obtained at level &+c30&n)
+*&+cfire affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -20081,8 +20099,8 @@ None beyond the base-class registrations.
 
 ==Innate additions==
 
-*&+castral affinity&n (obtained at level &+c30&n)
 *&+cspacial focus&n (obtained at level &+c46&n)
+*&+castral affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -27665,6 +27683,7 @@ None beyond the base-class registrations.
 *&+cprotection from fire&n (obtained at level &+c30&n)
 *&+cwaterbreath&n (obtained at level &+c30&n)
 *&+cregeneration&n (obtained at level &+c36&n)
+*&+cwater affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
@@ -28594,3 +28613,126 @@ Do not change back to old code while accepted rewards are unresolved.
 See also: BOON, DIVINE BOONS
 
 #0
+
+#0
+
+Air Affinity
+Air Affinity - Last Edited: 2026-10-25
+============================================================
+Air Affinity is a passive ability gained by Air Magus at level 51.
+On the native Air Plane (room VNUMs 24401-24525, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Air Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Water Affinity
+Water Affinity - Last Edited: 2026-10-25
+============================================================
+Water Affinity is a passive ability gained by Water Magus at level 51.
+On the native Water Plane (room VNUMs 23201-23325, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Water Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Fire Affinity
+Fire Affinity - Last Edited: 2026-10-25
+============================================================
+Fire Affinity is a passive ability gained by Fire Magus at level 51.
+On the native Fire Plane (room VNUMs 25401-25525, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Fire Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Earth Affinity
+Earth Affinity - Last Edited: 2026-10-25
+============================================================
+Earth Affinity is a passive ability gained by Earth Magus at level 51.
+On the native Earth Plane (room VNUMs 23801-23925, inclusive),
+ordinary aggressive mobs ignore you regardless of their level, unless
+they remember your provocation. Attacking or provoking mobs, including
+through pets or group combat, can create or spread that memory.
+Remembered targets can be attacked again; ordinary retaliation remains.
+
+This protects only you, within the stated rooms. Groupmates, pets and
+charmies gain no protection. Other scripted attacks may still occur.
+There is no protection on other planes or adjacent out-of-range rooms.
+
+==See also==
+
+* Earth Magus
+* Planar Affinity
+* Plane Shift
+
+
+#0
+
+Planar Affinity
+Planar Affinity - Last Edited: 2026-10-25
+============================================================
+At level 51, Air, Water, Fire and Earth Magus gain their matching passive
+affinity. Psycheporter gains Astral Affinity at level 51. Each reduces
+ordinary mob aggression only within its own native plane:
+
+Air: 24401-24525       Water: 23201-23325       Fire: 25401-25525
+Earth: 23801-23925     Astral: 19701-19825
+
+A mob that remembers your provocation may attack you again. Ordinary
+retaliation and memory from pet/group combat remain. Protection is
+personal: groupmates, pets and charmies do not inherit it. Scripted
+attacks outside the supported exceptions may still occur.
+
+City of Brass, Charcoal Palace, Earth rooms 23926-23929 and Astral side
+rooms 19826-19886 are outside these limits. Water Affinity grants no
+ocean movement ability; Water Form travel is a separate mechanic.
+
+==See also==
+
+* Air Affinity
+* Water Affinity
+* Fire Affinity
+* Earth Affinity
+* Astral Affinity
+* Conjurer
+* Psycheporter

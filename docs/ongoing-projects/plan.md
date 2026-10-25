@@ -1,437 +1,538 @@
-# Issue #368 — restore authored legacy object traps
+# Issue #215: Conjurer specialisation rebalance
 
-Status: implementation in progress, 2026-10-25. Editor direction/formatting chunk
-implemented and locally qualified; runtime effects, content and restoration remain pending.
-Issue: [#368](https://github.com/LuminariMUD/Duris/issues/368).
-Target branch: `branch/issue-368-legacy-traps`.
-Code inspected: [`e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`](https://github.com/LuminariMUD/Duris/commit/e1efb9bc0779e8b6615353c5672e29f21c6bb7a8).
-The implementation starts from that revision plus plan commit `9b1f97509`.
-Subsequent movement of master is not evidence of implementation or qualification.
+Updated 2026-10-25. **Status: implementation in progress; Planar Affinity is the
+first independent review chunk.** Work on branch
+`branch/issue-215-conjurer-rebalance`, in the existing worktree
+`/home/aiwithapex/projects/duris-issue215-conjurer-rebalance`.
 
-The [selected design](https://github.com/LuminariMUD/Duris/issues/368#issuecomment-6398324337)
-records the owner's delegated behavior choices; the
-[earlier investigation](https://github.com/LuminariMUD/Duris/issues/368#issuecomment-6397485715)
-records historical evidence and its limits. Treat the selected values as requirements,
-but use the owning source and actual journeys to establish how they must be implemented.
-The previous contents of this pathname are preserved byte-for-byte in
-[plan-issue-264.md](plan-issue-264.md).
+Source baseline: `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`.
+The [issue](https://github.com/LuminariMUD/Duris/issues/215) and
+[owner's final decision of 2026-10-22](https://github.com/LuminariMUD/Duris/issues/215#issuecomment-6339124853)
+define the scope. The final decision supersedes preliminary percentages, cooldowns
+and level assumptions in earlier comments. The
+[technical review](https://github.com/LuminariMUD/Duris/issues/215#issuecomment-6286381197)
+and [pet investigation](https://github.com/LuminariMUD/Duris/issues/215#issuecomment-6318968624)
+supply the interaction regression cases.
 
-> **Stack continuation:** the originally requested `branch/issue-368-legacy-traps`
-> is the first review slice, [#375](https://github.com/LuminariMUD/Duris/pull/375).
-> Cumulative implementation and current qualification/handoff are on
-> [`branch/issue-368-trap-effects`](https://github.com/LuminariMUD/Duris/tree/branch/issue-368-trap-effects),
-> in that branch's [current plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-368-trap-effects/docs/ongoing-projects/plan.md).
-> Review order: #375 → #377 → #383 → #385. Consult the cumulative plan before
-> continuing implementation from an earlier slice.
+Owner scope clarification, 2026-10-25: **players will test the balance**.
+Our work covers implementation and functional qualification of the agreed
+mechanics, limits and compatibility. Comparative balance benchmarks, class
+scorecards and judgments about relative spec power are outside this task.
 
-## Outcome, boundaries, files and proof
+The owner's 2026-10-25 implementation request explicitly authorizes source changes,
+focused tests, commits, pushes and focused/stacked PRs. Leave delivered work ready
+for review. Merging and deployment are outside this request. The previous contents
+of this path are preserved verbatim in [the issue #264 plan](plan-issue-264.md).
 
-- **Outcome:** resolve every one of the 61 active authored definitions: 55 generic
-  traps with defined effects, six retired T records with their retained behavior;
-  implement the seven local creature profiles, 17 T-field repairs and four container
-  flag repairs. Fresh instances and recognized saved copies must behave consistently
-  without restoring spent charges. Invalid configurations remain visible and inert.
-- **Non-goals:** no general trap framework, configurable target schema, new NPC
-  prototypes, global direction/data migration, changes to the existing 0–8 effect
-  balance, database schema migration, production operation, deployment or full burn-in.
-  This branch begins with a documentation-only commit; implementation follows in focused PRs.
-- **Files:** the owners in the evidence/phase sections below, the 31 authored object
-  inputs represented by the manifest (only files whose content changes need editing),
-  focused existing tests plus the explicitly proposed tests, and builder/regression
-  documentation. Preserve unrelated changes and the existing special procedures.
-- **Proof:** independent authored/generated/loaded inventories, real effect and command
-  execution, sanitizer lifecycle tests, round trips through actual restoration owners,
-  MariaDB and flat-file gameplay/restart journeys, and a qualified full generated-world
-  boot. A silent warning log, helper-only test or CI status is insufficient.
+## Outcome and boundaries
 
-## What the current code actually establishes
+Deliver the complete approved first pass: Earth sustains physical protection;
+Air gains formed self-recovery and shorter travel lag; Water gains a reliable
+spring, its own form and controlled shoreline movement; Fire gains its approved
+spell pressure, full form and optional mephits. All four Magi and Psycheporter
+receive the specified level-51 affinity behavior. Player help and executable
+regressions ship with the corresponding behavior.
 
-| Finding | Owning source and consequence |
+Keep these boundaries throughout:
+
+- Water Form ocean access has **no additional level-51 gate**. Form availability
+  at circle 10 and level-51 Water Affinity are separate mechanics.
+- No Cyclone buff, Searing Heat/Scorched combo, Magma Burst adjustment, Solar Flare
+  increase beyond **10%**, Water regeneration repair, or extra healing/mitigation.
+  The fractional Water regeneration truncation remains a separate investigation.
+- No new immunity for player Grapple/Bearhug, new mephit abilities, additional pet
+  slots, selectable greater variants, or blanket protection for pets/groupmates.
+- No expansion of affinity geography or general scripted-aggro immunity.
+- No new balance framework, scheduler, general movement service, database schema,
+  or persistent reservation system. Reuse existing gameplay paths and test tools.
+  If an inspected consumer requires an additional file, document that dependency
+  here before widening the change.
+- Follow `AGENTS.md`. Formatting is **check-only** for this issue; make any
+  necessary edits deliberately. Do not run autofix or formatting rewrites.
+  Production operations require their own authorization.
+
+## Source map and implementation constraints
+
+These paths and behaviors were checked on the baseline above. Recheck the owning
+function after any base update; historical issue line numbers are not reliable.
+
+| Area | Owning source and observed constraint |
 | --- | --- |
-| The inventory is still 61, with type counts 9:13, 10:2, 11:6, 12:9, 13:2, 14:6, 15:13, 16:10. | Independently reparsed the files named by [areas/AREA](../../areas/AREA); all old tuples match the issue. Use [make_obj.c](../../areas/src/obj/make_obj.c)'s active-input selection, not a glob over alternate object files. |
-| Runtime and load diagnostics independently hard-code 0–8. | [trap.c](../../src/combat/trap.c), `trap_damage_supported`; [db.c](../../src/world/db.c), object T parser. Updating the switch alone leaves false boot diagnostics; widening the parser alone hides inert traps. |
-| Staff tools also stop at slash. | `do_trapstat` and `do_trapset` in trap.c require matching names, validation, flags and help. |
-| “get/put” is not currently a complete call path. | `checkgetput` is called by two pickup paths in [actobj.c](../../src/cmd/actobj.c). `put()` has an `if (o_obj) /* Trap check */` comment but no trap call. The selected OBJECT behavior needs an actual put hook for restored types, with single/bulk caller safety. Do not claim the existing test proves putting is covered. |
-| OPEN runs after opening; movement checks run before movement costs/publication. | [actmove.c](../../src/cmd/actmove.c), `do_open` and `do_simple_move`. Preserve that ordering. A glyph cannot simply return false after arbitrary spell side effects. |
-| Pointer presence is not proof of a live actor. | `IS_ALIVE` dereferences the pointer. Reuse `find_character_by_runtime_id`, `find_live_object(expected, uid)`, and the identity/room checks exemplified by `get_can_continue`. Snapshot identities, not saved linked-list next pointers, across effects. |
-| Allocating an NPC has side effects before room placement. | `read_mobile` registers the character, increments the prototype count, schedules events and calls [convertMob](../../src/mob/mobconv.c). `char_to_room` can refuse placement or extract an NPC on an invalid destination. Allocate/rollback a batch deliberately; raw .mob HP/damage are not final runtime stats. |
-| Spell reuse has important semantics. | [magic.c](../../src/magic/magic.c): low-level self-dispel returns early, high-level self-dispel bypasses saves; harm carries a nonlethal flag; minor paralysis uses its level argument for duration. [affects.c](../../src/magic/affects.c): Stun owns its racial/elite checks and two-stage fear save. Use an independent caster, not the victim. |
-| Prototype repair is insufficient for restored copies. | Stored fields overwrite prototypes in [player_load_items.c](../../src/player/player_load_items.c), [sql_player.c](../../src/sql/sql_player.c), both binary restore paths in [files.c](../../src/core/files.c), [world_recovery_pipeline.c](../../src/world/world_recovery_pipeline.c), and [account_reward_snapshot.c](../../src/account/account_reward_snapshot.c). Normalize after the final stored-field application, before use/publication. |
-| The legacy binary writer notices only charge differences. | files.c selects `O_U_TRAP` by comparing `trap_charge` alone, although its payload stores all four fields. Compare all four so a custom mask/type/level is not lost on a later save with unchanged charges. The existing wire format already accommodates this. |
-| Container state is also restored. | Player/world snapshots overwrite `value[]`. “Start closed” describes fresh prototypes, not permission to reclose an already-open saved container. See the restore rules below. |
-| Existing tests are useful but narrower than acceptance. | `test_unsupported_trap_damage.py` executes extracted dispatch/check functions with spell stubs. `test_get_trap_lifecycle.py` executes pickup finalizers with synthetic trap effects. They do not prove native spell defenses, put hooks, NPC conversion, full-world loading or the new saved-copy repair. |
+| IDs and registration | [spells.h](../../src/magic/spells.h), [structs.h](../../src/core/structs.h), [skills.c](../../src/classes/skills.c), [prototypes.h](../../src/core/prototypes.h). `LAST_SPELL` is currently `SPELL_BLOOD_TITHE` (683); `LAST_INNATE` is `INNATE_REFLECTION` (179). Append IDs without renumbering saved identifiers; recheck available IDs before implementation. |
+| Forms and aura conflicts | [magic.c](../../src/magic/magic.c): `spell_air_form()`, `elemental_aura_failure_message()`, `spell_elemental_aura()`; [psionics.c](../../src/classes/psionics.c): `spell_fire_aura()`; [affects.c](../../src/magic/affects.c). Aura priority clears competing bits, including Ice Aura, without being a safe whole-form rejection mechanism. |
+| Casting resources | [sparser.c](../../src/net/sparser.c) checks Elemental Aura eligibility before `use_spell()`. Extend this established preflight path and retain handler-side validity checks for other callers. |
+| Healing | [ethermancer.c](../../src/classes/ethermancer.c): `spell_ethereal_recharge()`; [fight.c](../../src/combat/fight.c): `heal()` / `vamp()`. Healing modifiers precede the final HP ceiling, so the existing cap can enforce a 100-HP actual increase without another healing API. |
+| Earth and direct spell changes | [magic.c](../../src/magic/magic.c): `spell_stone_skin()`, `has_skin_spell()`, `spell_earthen_maul()`, `spell_fireball()`, `spell_solar_flare()`, `spell_dimension_door()`, `spell_relocate()`. |
+| Damage and skin consumption | [fight.c](../../src/combat/fight.c): `decrease_skin_counter()` already consumes the first matching layer; Earth Aura mitigation, fire absorption and all-layer critical shatter already exist. [dam_mods.c](../../src/combat/dam_mods.c) owns elemental vulnerability modifiers. |
+| Water spring | [innates.c](../../src/classes/innates.c): `check_innate_time()` consumes a use; `do_conjure_water()` currently calls it before scheduling; `event_conjure_water()` creates VNUM 93300 in the caster's current room. [duris.properties](../../lib/duris.properties) has no Conjure Water timer override. |
+| Delayed actions | [new_events.c](../../src/world/new_events.c), [events.c](../../src/world/events.c), [prototypes.h](../../src/core/prototypes.h) provide scheduling results, actor ownership, event lookup, cancellation and owned-payload cleanup. The legacy `add_event()` flag argument is ignored; it cannot supply movement/combat cancellation. |
+| Movement and interruption | [actmove.c](../../src/cmd/actmove.c): `can_enter_room()`, `do_simple_move()`, `do_simple_move_skipping_procs()`; [utility.c](../../src/core/utility.c): `move_cost()`; [handler.c](../../src/world/handler.c): `char_from_room()` and extraction; [fight.c](../../src/combat/fight.c): `set_fighting()`. Room entry checks also serve teleports; only a validated directed crossing may get the new exception. |
+| Summons | [magic.c](../../src/magic/magic.c): `spell_conjour_elemental()`, `spell_conjour_greater_elemental()`, `conjure_specialized()` (these are the actual spellings). [heavens.mob](../../areas/mob/heavens.mob) contains Fire prototypes 1100 and 1110-1112; these remain reference data, not replacement prototypes. |
+| Affinity | [innates.c](../../src/classes/innates.c): registration/`has_innate()`; [utility.c](../../src/core/utility.c): `aggressive_to()`; [mobact.c](../../src/mob/mobact.c): `MobStartFight()` and memory; [map.h](../../src/world/map.h): existing plane ranges. |
+| Player help | [help_index](../../lib/information/help_index), [duris_help_parsed.hlp](../../help/duris_help_parsed.hlp), [importer](../../scripts/import_help_to_prod.sh). Parsed topics are imported last. A mention in another topic's See also section is not a dedicated help entry. |
 
-The editor's south/west/east bit assignments differ from the runtime. Keep the runtime's
-N=8, E=16, S=32, W=64, U=128, D=256 convention. Correct the listed content and the editor's
-labels/constants consistently; do not rewrite unrelated area files.
+Ablation decision: use the existing final healing cap, individual affect records,
+damage flags, summon selection and event lifecycle. Small shared checks are
+justified where the same rule has actual callers, such as casting preflight plus
+handlers or the two affinity entry points. Do not add parallel representations
+of the same state, duplicate elemental prototypes or a general policy layer.
 
-## Behavior to implement
+## Delivery sequence
 
-Effective level for restored types is 25 for zero, otherwise the positive value capped at
-100; reject negative levels without consuming charges. Legacy 0–8 encoded damage dice
-remain unchanged. Use the existing vnum-14 temporary trap-caster pattern, with effective
-caster level and ordinary converted prototype attributes, never player equipment or class
-bonuses. Its registration, events, retaliation, extraction and cleanup require real tests;
-its nominal HP is not a safety guarantee.
+Each implementation step includes its tests and corresponding help edits.
+Step 8 reconciles the complete package; it is not a reason to defer help.
+The order below is a working sequence, not a requirement for a PR stack.
 
-| Type | Contract |
+| Step | Deliverable | Dependency | Status |
+| --- | --- | --- | --- |
+| 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
+| 1 | New forms, registration, resource checks and cleanup | 0 | Pending |
+| 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Pending |
+| 3 | Air Recharge and travel lag | 1 | Pending |
+| 4 | Reliable Conjure Water | 0 | Pending |
+| 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
+| 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
+| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
+
+### 0. Establish the implementation baseline
+
+- Confirm the branch, clean/dirty state and current base. Preserve unrelated work.
+  Capture the baseline commit and relevant property values for regression checks.
+- Run the relevant existing aura, affect, casting, innate and help checks before
+  changing their paths. Record any existing failures separately.
+- Establish legal test characters at levels **46, 50, 51 and 56**, plus **30 and
+  41** for Psycheporter regression. Use actual circle eligibility, memorised
+  spells and resources. Use only the fixtures each functional check needs.
+- Capture current spell damage, HP changes, Stone Skin charge use, travel waits,
+  spring timing and plain summon variants. Use deterministic random inputs for
+  component comparisons and actual elapsed pulses for delayed-action journeys.
+- Record the deferred regeneration and affinity-boundary findings without
+  correcting them in this package.
+
+### 1. Add the three elemental forms and prevent conflicting casts
+
+**Files:** `src/magic/spells.h`, `src/classes/skills.c`,
+`src/core/prototypes.h`, `src/magic/magic.c`, `src/net/sparser.c`;
+touch `src/magic/affects.c` and competing aura handlers only where required for
+conflict/cleanup correctness.
+
+- Append Earth Form, Fire Form and Water Form spell IDs. Register each only for
+  the corresponding Conjurer specialisation, at **circle 10**, self-only, with
+  an expiration message. Use Air Form's existing casting pattern as the default;
+  do not introduce new terrain, combat or resource restrictions.
+- Every new form lasts **8 affect-duration units**, with no terrain check or
+  random full-form save. Keep Air Form's existing circle, duration and effects.
+  Affect units must not be described as seconds or permanent duration.
+- Earth Form supplies `AFF2_EARTH_AURA`: the existing **1-in-6** eligible physical
+  rejection, including Earth Elemental and `PHSDAM_NOREDUCE` exceptions.
+  Add neither Druid stat bonuses nor a second mitigation roll.
+- Fire Form supplies the existing full Pyrokinetic effect: **AC -15,
+  STR_MAX +15, DEX_MAX -20, AGI_MAX -20, CON_MAX +25**,
+  `AFF2_FIRE_AURA` and `AFF2_FIRESHIELD`. Preserve cold vulnerability and
+  the existing qualifying fire-absorption HP recovery, including its 110%-max-HP
+  ceiling. Add no castable heal or independent damage mechanic.
+- Water Form supplies **STR_MAX -20, DEX_MAX +50, AGI_MAX +25, CON_MAX -10**
+  and `AFF2_WATER_AURA`. Inherit Capture protection and the selected existing
+  mob AI Maul/Bash/Springleap exclusions. Add no universal player grapple immunity,
+  water source, regeneration, healing multiplier or separate damage reduction.
+- Give all components of each new form its own spell type and equal duration.
+  Use normal affect ownership/removal so expiry, dispel and recast clean up the
+  entire form while respecting independently supplied effects.
+- Reject new forms against existing mutually exclusive elemental auras/forms,
+  including Ice Aura and partial aura spell effects. Reject competing aura
+  casts while a form is active. Check before mana/prepared-spell consumption and
+  again at application; an aura may change during casting. Keep legacy
+  Druid/Pyro terrain rules and existing shield interactions.
+- Audit ID/table bounds and existing spellbook/affect save/load consumers. Append
+  identifiers and use their existing formats; add focused persistence coverage
+  for any changed consumer rather than assuming a schema migration.
+
+**Proof:** matching-spec-only acquisition and self-targeting; ordinary rooms,
+water, no-ground rooms and unrelated planes; paired conflict orders and mid-cast
+conflicts without resource loss; finite expiry/dispel/recast with exact stat/flag
+restoration; actual Earth rejection and Fire absorption/cold response; Water
+Capture versus player grapple behavior. Keep existing Air/Druid/Pyro behavior
+covered. Extend the existing elemental-aura and affect tests, with a command-path
+check as well as handler tests.
+
+### 2. Implement personal Earth layers and shared Earthen Maul access
+
+**Files:** `src/magic/magic.c`; `src/combat/fight.c` or affect code only if
+the existing layer handling needs a demonstrated adjustment.
+
+- Permit up to **three independent Stone Skin affects on an Earth Magus PC
+  recipient**. Gate on the recipient, not merely the caster: an Earth caster
+  cannot grant three layers to an ordinary groupmate or pet.
+- Preserve each cast's existing charge formula, caster bonuses and **4-unit**
+  duration. Do not refresh older layers, combine their charges or change other
+  skin-spell exclusions. Refuse a fourth layer without modifying the first three.
+- Retain the existing newest-first, single-layer charge decrement on each
+  eligible hit and ordinary all-layer critical shatter/dispel. Do not multiply
+  per-hit mitigation by the number of remaining layers or alter unrelated skins.
+- Remove Earthen Maul's ground/altitude rejection for **every existing eligible
+  caster**, including Druids. Use the normal damage tier for newly eligible
+  earthless situations. Preserve saves and real terrain-specific bonuses/maluses.
+  Keep earthless fallback distinct from the indoor/landslide upgrade so an
+  indoor no-ground room does not accidentally gain bonus damage.
+
+**Proof:** zero through three layers and rejected fourth; caster/recipient matrix;
+different charges and expiry times; newest-first depletion and last-layer
+messages; all-layer critical/dispel removal; no extra reduction with Earth Form.
+Exercise Maul on water/ocean, in flight, no-ground and elemental-plane rooms,
+alongside existing ordinary/indoor/mountain/lava cases and non-Earth casters.
+Use matched rolls to prove normal fallback damage and retained valid modifiers.
+
+### 3. Add the Air self-heal and travel lag reductions
+
+**Files:** `src/classes/ethermancer.c`, `src/magic/magic.c`; use the existing
+`heal()`/`vamp()` implementation.
+
+- Add the Air Magus **self-only, active Air Form** eligibility exception to
+  Ethereal Recharge. The generic Air Aura bit alone is insufficient.
+- Preserve Cure Blind and the existing healing calculation, but pass a final HP
+  ceiling equivalent to `min(maximum HP, HP before healing + 100)` for this
+  exception. The actual increase must never exceed **100 HP after modifiers**.
+  Do not heal first and subtract overflow: XP, achievements and feedback must
+  observe the amount actually restored.
+- Preserve the existing legitimate other-target route and its **150-base-HP**
+  behavior. Do not widen target classes or add an out-of-form self exception.
+- Set Air Magus Dimension Door lag to **3 seconds** and Relocate lag to
+  **5 seconds**, expressed using existing pulse constants. These are post-cast
+  waits, not spell casting-time reductions. Preserve the Shadow Sorcerer
+  **1-second** cases, other PC/NPC waits and all target/combat/PvP/teleport checks.
+
+**Proof:** active spell versus loose aura, self versus other target, no form,
+low/full/overfull HP; enhanced healing, hardcore and incoming healing modifiers,
+plus reduction effects and Cure Blind at the HP cap. Exercise the real
+`heal()`/`vamp()` chain, not a stub that omits modifiers. Measure waits for Air,
+ordinary PCs, NPCs and Shadow Sorcerers, including rejected travel attempts.
+
+### 4. Make Conjure Water reliable
+
+**Files:** `src/classes/innates.c`, `lib/duris.properties`, and narrow lifecycle
+integration in `src/world/handler.c` if needed.
+
+- Set `innate.timer.secs.conjureWater=300`: **5 minutes**. Schedule creation and
+  action lag for **one PULSE_VIOLENCE / 4 seconds**, concurrently. Keep spring
+  VNUM **93300** and **15-minute** decay.
+- Before starting, check innate availability without spending it and reject an
+  existing summoned spring or a pending summon for the same room. Rejection
+  adds no lag, innate use or cooldown. Prevent a caster queuing several summons.
+- Reuse actor-owned scheduled events for pending state, recording the origin
+  room. Detect the room's pending summons through existing event/character state;
+  cancel on leaving the room. Avoid a second persistent reservation registry.
+- On completion, revalidate origin, caster eligibility, innate availability and
+  room occupancy. Create/place the object successfully before committing the
+  innate use; report success only when a spring exists.
+- Handle scheduling refusal, missing prototype, failed object creation,
+  cancellation, death/extraction and movement without consuming a use.
+  Release pending state on every exit, including scheduler cleanup. If placement
+  or final eligibility fails, remove only the object created by this attempt.
+- Keep `check_innate_time()` semantics for other innates. Reuse an existing
+  read-only availability check if suitable; add only the narrow check this
+  delayed charge needs.
+
+**Proof:** two different players racing in one room; repeat command; spring
+already present; spring appears during the wait; move away and return; death,
+extraction and event scheduling failure; missing prototype/object failure;
+cancel then retry; successful expiry and resummon. Verify exactly one spring,
+one use committed on success, zero uses on failure, and no stale pending state.
+Time spent before an initiated summon is cancelled is not retroactively refunded.
+
+Water to Life remains unchanged: `2*level + max(0, level-50)*20` gives **232 base
+HP at level 56** before existing healing modifiers. It still requires external
+natural water or a suitable ground container in the caster's room, does not
+consume that water, uses prepared spell copies, and has no new dedicated cooldown.
+Keep self/water-elemental/water-formed target restrictions.
+
+### 5. Add Water Form shoreline movement
+
+**Files:** `src/cmd/actmove.c`, `src/core/utility.c`, narrow cancellation
+hooks in `src/world/handler.c`, `src/combat/fight.c` and form-removal code;
+declare only the needed callbacks/checks in existing headers.
+
+- Eligibility is a **Water Magus PC with active Water Form**, with no additional
+  level gate. Keep generic Water Aura, other classes and level-51 affinity from
+  implicitly granting access.
+- Land-to-ocean and ocean-to-land movement through a valid adjacent exit waits
+  **5 seconds before crossing**, in both directions. Ocean-to-ocean movement
+  does not acquire this shoreline preparation delay.
+- Use one actor-owned pending event with origin, direction and destination.
+  Prevent duplicate transitions. At initiation check the legal route, movement
+  state and absence of combat; at completion revalidate the same route, form,
+  position, resources and normal movement restrictions.
+- Cancel when combat begins, even if it ends before the callback. Likewise
+  invalidate on leaving the origin, death/extraction, loss of form or interruption;
+  leaving and returning or losing and recasting the form must not revive the
+  pending crossing. Use existing cancellation and ownership cleanup.
+- Route completion through the ordinary directed movement pipeline, including
+  exit/wall/proc/trap checks and safe handling if a proc extracts the mover.
+  Grant only the specific shoreline entry exception for that validated action.
+  Do not relax generic `can_enter_room()` behavior for teleport callers, or
+  implement the crossing by directly placing the character in the destination.
+- Apply a **25% reduction** to the existing computed travel cost for eligible
+  steps touching ocean, including ocean-to-ocean travel: truncate to an integer
+  with `max(1, cost * 3 / 4)`. Keep stance/injury surcharges in their existing
+  positions and use the same payable cost for exhaustion checking and deduction.
+  Ordinary land-to-land movement receives no discount; preserve existing
+  current/terrain hazards and unrelated cost modifiers.
+- Preserve independent checks for mounts, riders, pets, charmies and group
+  followers; the caster's exemption does not carry them across. Leave ships,
+  cargo, fleeing and teleport destinations without a new bypass.
+- When the form expires at sea, restore normal rules without forced relocation.
+
+**Proof:** form at level 46 and gates at 50/51; both shoreline directions and
+ocean-to-ocean movement; timed position before/after 5 seconds; combat starting
+and ending during preparation; form expiry/dispel/recast; leave-and-return;
+closed/blocked/changed exit, death/extraction, repeated commands and schedule
+refusal. Check actual vitality deductions at low costs and exhaustion boundaries,
+ordinary land movement, currents, followers/mounts/cargo and ocean-target
+Dimension Door/Relocate/random teleport. Include a PvP pursuit journey.
+
+### 6. Implement the approved Fire damage and mephit option
+
+**Files:** `src/magic/magic.c`, the existing casting preflight where argument
+validation requires it, and affected help/tests.
+
+- For a **Fire Magus at player level 51+**, let Fireball deliver **100% of its
+  ordinarily calculated damage through standard Globe**. Narrow the relevant
+  `SPLDAM_GLOBE` flag at the spell caller; preserve saves, applicable wards,
+  Protection from Fire, Fireshield, absorption and the rest of the damage path.
+  Spell/item strength must not substitute for the player's unlock level.
+- Increase Solar Flare's **direct base damage exactly 10% for Fire Magus** with
+  deterministic integer rounding. Do not apply this multiplier to Star Magus,
+  NPC/item callers, blindness, Immolate, or Magma Burst. Preserve random call
+  order and existing damage/counterplay behavior.
+- Accept the optional `mephit` argument on the existing **circle-5 Conjure
+  Elemental** and **circle-11 Conjure Greater Elemental** paths for Fire Magus.
+  Thread that choice into `conjure_specialized()` for the greater case.
+- Summon exactly the original Fire variant: **1100** or the existing random
+  choice among **1110-1112**. Adjust only the summoned instance's Fireshield and
+  mephit names/descriptions. Preserve race/elemental identity, other protections,
+  base and scaled stats, Infuse Life, costs, control, caps, duration and random
+  variant distribution. Verify affect recalculation cannot restore the removed
+  prototype shield during the pet's normal lifetime.
+- Plain casts retain the normal shielded elemental. Restrict recognition of the
+  new option to the eligible Fire path; reject malformed Fire option text
+  clearly, and preserve other callers' existing argument behavior.
+  Do not globally edit prototypes, create a separate summon spell or add a
+  selectable greater variant.
+
+**Proof:** Fireball at 50/51 and non-Fire controls, standard Globe with all normal
+mitigation combinations; Solar Flare with matched rolls for Fire/Star/NPC/item
+callers and unchanged secondary effects. Compare every plain/mephit variant
+under matched RNG and scaling, normal summon limits/failures and invalid args.
+Exercise pet combat, affect recalculation and normal lifecycle.
+
+Use a focused multi-mob pull regression to verify that the mephit omits
+Fireshield retaliation and its resulting owner-memory/hunter side effects.
+Fireshield retaliates against each attacker; it is not a room-wide attack.
+Retain normal provocation from other pet actions. Players will assess the
+damage/survivability trade-off and the complete Fire kit's balance.
+
+### 7. Implement five level-51 affinities
+
+**Files:** `src/core/structs.h`, `src/classes/innates.c`,
+`src/core/utility.c`, `src/core/prototypes.h`, `src/mob/mobact.c`.
+Use `src/world/map.h` ranges unchanged.
+
+- Append four passive innate IDs and names with null handlers: Air, Water, Fire
+  and Earth Affinity. Register each at **51** for its matching Conjurer spec.
+  Move Psycheporter Astral Affinity from **30 to 51**.
+- Use one shared PC/native-plane eligibility check and existing `has_innate()`
+  level enforcement. Reject invalid rooms/NPCs before reading room state.
+- Replace the existing Astral exemption in `aggressive_to()`, removing its
+  player-versus-mob-level comparison. Protection requires native-plane affinity
+  **and no `CheckFor_remember(mob, player)` result**.
+- Apply the same eligibility/memory rule to the existing special cases for
+  mobs **19840 and 19870** in `MobStartFight()`. Do not add a global exemption
+  to scripted attacks.
+- Preserve ordinary retaliation, memory creation/propagation and group/pet
+  ownership rules. A remembered player can be attacked again; memoryless mobs
+  may resume ignoring the player after combat ends, as the existing model allows.
+
+| Affinity | Covered VNUMs, inclusive |
 | --- | --- |
-| 9 | Existing character-targeted dispel: ordinary removable-affect iteration, saves, resistance and non-dispellable protections. |
-| 10 | A local hostile rift creates the specified NPC. No portal, player relocation or global character selection. It remembers the triggering character; normal later NPC updates decide aggression, rather than starting combat synchronously in the gate handler. |
-| 11 | Create the specified local NPC batch and start its normal attack on the triggering character. |
-| 12 | Existing wither at effective level, including saves, construct/undead behavior, stat effects and existing-affect exclusions. |
-| 13 | Existing harm: pre-mitigation 100 on a successful save, otherwise 200, with its nonlethal flag and no player Zealot bonus. |
-| 14 | Existing poison with positive level, including its normal random poison family, resistance, save, immunity and durations. |
-| 15 | Minor paralysis. Caster stays level L; pass duration-level `clamp(floor(L/5),4,16)` to the existing spell, yielding 3–12 seconds. Keep resistance, paralysis immunity, Freedom of Movement, save modifier 0 and break on external damage. Do not apply/extend it when either minor or major paralysis already exists. |
-| 16 | Ordinary magic resistance, then `Stun(..., true)` with full duration `clamp(floor(L/20),1,4) * WAIT_SEC`. Keep native immunities, existing-stun rejection, fear saves and half-duration outcome. |
+| Air | 24401-24525 |
+| Water | 23201-23325 |
+| Fire | 25401-25525 |
+| Earth | 23801-23925 |
+| Astral | 19701-19825 |
 
-Mortal PCs and PC pets are eligible; exclude staff, ordinary NPCs and the temporary caster.
-A ROOM spell snapshots eligible character identities in the source room and revalidates
-each before applying it. A valid spell activation spends one positive charge total even
-on a save, immunity or existing effect. Invalid configuration/caster creation failure does
-not spend a charge. Zero is always disarmed; -1 is unlimited. For restored types, MULTI
-means unlimited only while charge is nonzero; do not revive a disarmed MULTI trap.
+**Proof:** all five specialisations at 50/51 against lower/higher-level mobs;
+Psycheporter at 30/41; both astral bosses; native versus other plane; first/last
+and adjacent out-of-range rooms; invalid room/NPC/no-innate cases. Exercise actual
+entry aggro, provoke/flee/re-enter, group memory and pet provocation.
+City of Brass, Charcoal Palace, Earth rooms **23926-23929** and Astral side rooms
+**19826-19886** remain outside the exemption. Groupmates/pets/charmies do not
+inherit it. Retain the acknowledged other scripted-attack gaps.
 
-### Creature profiles
+Add the issue's focused `test_planar_affinity_runtime.py` using production
+registration/aggro paths, not only a helper mock. Update the
+`test_race_rebalance.py` assertion that Reflection is last while retaining its
+Reflection coverage. Check `innates` output for correct names and unlock levels.
 
-Lookup by the explicit **(object vnum, type)** pair. Unlisted combinations are invalid,
-diagnosed and charge-preserving; there is no guessed fallback or reuse of object value
-slots as a target schema.
+### 8. Complete help and qualify the combined package
 
-| Object | Type | NPC | Batch | Initial charges | Room cap for NPC vnum |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 41361 | 10 | 200 | 1 | 1 | 1 |
-| 42290 | 10 | 200 | 1 | 1 | 1 |
-| 32820 | 11 | 32861 | 3 | 1 | 6 |
-| 32870 | 11 | 32861 | 3 | 1 | 6 |
-| 32835 | 11 | 32861 | 1 | 1 | 6 |
-| 32846 | 11 | 32871 | 1 | 1 | 1 |
-| 41927 | 11 | 200 | 1 | 2 | 1 |
+Update both help sources alongside each step, then reconcile them together:
 
-Use ordinary converted mob instances and ordinary rewards/lifecycle, without trap-level
-rescaling, additional equipment resets, timers or a reward subsystem. Room caps include
-all living instances of the NPC vnum. ROOM does not multiply the batch by population.
-Preflight capacity for the entire batch, allocate before exposing the encounter, and clean
-up a failed batch with no charge consumption. Commit the charge once the complete batch
-has been placed; subsequent ordinary combat/death does not refund it. Revalidate identities
-after callback-capable operations. No new placements for 32835/32846.
+- **Conjurer**, all four **Magus** pages and their spell lists: roles, correct
+  circle-10 forms and level-51 affinities; cross-links and accurate availability.
+- Dedicated **Earth Form**, **Fire Form**, **Water Form** pages; update **Air
+  Form**. Include 8-unit duration, self-only/terrain rules, exact effects,
+  elemental conflicts, expiration and counterplay.
+- **Stone Skin**, **Earthen Maul**, **Ethereal Recharge**, **Dimension Door**,
+  **Relocate**, **Conjure Water**, **Water to Life**, **Fireball**, **Solar Flare**,
+  **Conjure Elemental** and **Conjure Greater Elemental**: all final numbers and
+  restrictions described in steps 2-6. Add missing dedicated parsed **Stone
+  Skin** and **Water to Life** topics; do not mistake See also mentions for pages.
+- **Psycheporter**, **Astral Affinity**, four new elemental affinity pages and
+  a **Planar Affinity** overview. Explain own-plane limits, provocation and
+  lack of inherited group/pet protection.
+- Distinguish 5-second shoreline preparation from Air post-cast lag, Water
+  Form travel from Water Affinity, 232 base Water to Life HP from modified
+  healing, and Fire absorption recovery from a castable self-heal.
 
-### Retirements and retained procedures
+Preserve the established help markup, title/alias conventions and line widths.
+Check duplicate titles, cross-links and exact body parity where required by
+existing tests. Use the importer's dry-run on an explicitly local/dev target,
+then verify real in-game help lookup in the isolated/staging environment;
+parsed-source precedence must show the new text.
 
-Remove only generic T data for 32831, 55022, 57567, 77721, 131215 and 131226.
+## Verification and evidence
 
-- 32831 retains `pesky_imp_chest`: three imps once per chest instance, tracked by
-  `value[3]`. 32833 retains that procedure **and** its distinct one-charge poison trap.
-- 77721 retains `trap_tower1_para`, its upward trigger, existing exemptions and
-  1-in-3 chance of five combat pulses of wait. Do not retune it to the generic stun cap.
-- 55022 remains the decorative non-takeable display case.
-- 57567 retains its quest-switch and ghost-librarian reset behavior; no new portable
-  100-charge movement ward.
-- 131215/131226 retain weapon spell data, messages, affects and mob equipment resets.
+### Focused executable checks
 
-The special assignments are in [specs.assign.c](../../src/specs/specs.assign.c);
-implementations are in [specs.shabo.c](../../src/specs/specs.shabo.c) and
-[specs.hoa.c](../../src/specs/specs.hoa.c). Retiring T does not retire these procedures.
+Extend existing tests before creating replacements. New behavior without a
+suitable existing harness needs a small production-code executable test under
+`tests/async/`, using existing `_paths`/harness conventions and outputs under
+`bin/`. Anticipated gaps are the combined Conjurer spell changes, water spring
+lifecycle, shoreline lifecycle, mephit equivalence and Planar Affinity.
+Record final test filenames/commands here as each is implemented.
 
-## Implementation sequence and proof gates
+Run the existing checks relevant to the slice being changed:
 
-Unchecked boxes below remain future work. Keep each step reviewable; no placeholder test
-should stand in for its stated behavior.
+- Forms/casting: `test_elemental_aura_runtime.py`,
+  `test_affect_wear_off_message_contract.py`, `test_spell_affect_regressions.py`,
+  `test_memorized_spell_eligibility.py`, `test_spell_schedule_failure_runtime.py`.
+- Healing compatibility: `test_healing_spell_precedence_runtime.py` and
+  `test_vampiric_overheal_regen.py`, plus actual Recharge cap proof through
+  the production healing functions.
+- Movement: `test_movement_liveness_runtime.py`,
+  `test_combat_movement_feedback.py`, `test_innate_plane_shift.py`,
+  plus both new water action lifecycles and ocean teleport controls.
+- Affinity: `test_innate_reflection.py`, updated `test_race_rebalance.py`,
+  new `test_planar_affinity_runtime.py`, and real plane-entry journeys.
+- Help: `test_help_import_live_parser.py`, `test_help_import_atomic.py`,
+  `test_class_helpfiles_contract.py`, `test_help_layout.py` and
+  `test_flatfile_help_catalog.py`; extend focused topic/parity coverage for
+  the new entries.
 
-### Current handoff — 2026-10-25
+For each named Python check, run `python3 tests/async/<filename>` directly.
+Use ASan/UBSan for the new affect/event lifecycle harnesses where the existing
+harness supports them. Verify real command/resource/persistence paths when those
+are the acceptance claim; source-string assertions or service stubs alone are
+not gameplay proof.
 
-Worktree: `/home/aiwithapex/projects/duris-issue368`; branch
-`branch/issue-368-legacy-traps`. The primary checkout is unrelated and untouched.
-Current `origin/master` remains the inspected `e1efb9bc0` base.
+After C/C++ changes run `make -C src`; the server is `bin/server/dms_new`.
+Run applicable MariaDB/flat-file spellbook, affect and help checks where changed
+IDs or consumers cross those boundaries. Keep generated artifacts under `bin/`.
+Run `./scripts/format.sh --check` and `git diff --check`; resolve formatting
+manually. Do not wait for hosted CI or substitute it for local proof, and do not
+bypass code-review requirements.
 
-First chunk aligns editor EAST/SOUTH/WEST constants and flag-list indexes with runtime
-N/E/S/W/U/D bits 8/16/32/64/128/256, and corrects the same labels in the builder guide.
-Executing the actual `getObjTrapFlagsStrn` exposed an out-of-bounds read in its OPEN
-separator handling (`strlen(strn - 1)`); the same chunk fixes that expression.
-`test_legacy_trap_editor.py` executes all 4096 flag combinations under ASan/UBSan,
-including exact east/west/open display checks, and checks the editor flag-list order.
-The required formatting check exposed pre-existing whole-file formatting drift in
-the three touched editor files. They are mechanically formatted to satisfy that gate;
-behavior changes remain the three direction constants, flag-list order and OPEN index.
+### Functional gameplay evidence and player handoff
 
-Ablation: keep the existing constants, flag list and formatter; change their owning
-definitions rather than adding a translation layer or migrating unrelated authored data.
-No runtime effect is enabled and none of the 61 authored trap records has changed yet.
+Run the per-step gameplay journeys needed to prove the agreed mechanics are
+reachable and correct: form/resource cleanup, Earth layer consumption, the Air
+healing cap, water cancellation/costs, Fire caller restrictions and summon
+equivalence, affinity boundaries, and actual help lookup. Test interactions
+together where one can break another, without evaluating relative class power.
 
-Validation: `python3 tests/async/test_legacy_trap_editor.py` passed; `make -C src -j8`
-passed (log: ignored `bin/issue368-evidence/build-mariadb.log`). Remaining proof belongs
-to its affected implementation slice. Formatting and `git diff --check` pass.
-Next: independent golden content contract and
-shared runtime/load validation, followed by real effect execution; retain the other gates.
+Retain compact, reproducible evidence with baseline/candidate SHAs, environment,
+commands, relevant inputs, expected versus actual results and known gaps. Store
+scratch binaries/logs under `bin/`; summarize acceptance in this plan or the
+repository's existing QA documentation without committing credentials, logs or
+player/account data.
 
-### 1. Content contract and shared validation
+Hand players the implemented mechanics and numbers through the updated help.
+Balance playtesting and any later tuning follow player feedback; they are not
+completion gates for this implementation. Do not add comparative PvE/PvP
+campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 
-- [ ] Add one focused content regression with an independent golden old/final manifest
-  matching the appendix. Parse only AREA-selected inputs. Check the seven profiles,
-  all 17 changes, six removals and four container flag edits; reject duplicate/missing
-  vnums and remaining unsupported configurations.
-- [ ] Define supported types/profiles once for runtime and db.c load diagnostics.
-  Keep effect/profile validation separate from charge eligibility: a spent valid trap
-  is not an invalid definition. Keep implementation-local helpers in trap.c; add only
-  the small shared header/API required by the concrete loader/restoration consumers.
-- [ ] Extend trapstat/trapset with names 9–16, profile restrictions, meaningful GLYPH/
-  MULTI reporting and negative-level validation. Invalid builder edits must not leave
-  a half-modified trap.
-- [ ] Align editor direction definitions and flag-list ordering in
-  `areas/de/src/obj/traps.h` and `areas/de/src/flagdef.cpp`; check formatting through
-  `obj/objtypes.cpp`. Update `docs/content/area_writing.txt` and relevant command help.
-  Keep existing runtime constants and unrelated data intact.
+## Completion checklist
 
-**Exit:** content contract fails on the present 61 definitions for the expected reasons;
-validation rejects real invalid types/profiles while recognizing every planned final row.
+- [ ] All approved changes in steps 1-7 are implemented with no extra tuning.
+- [ ] Every per-step proof passes, including cancellation after a transient
+      combat/form/movement change and unchanged non-targeted callers.
+- [ ] Both help sources and actual help lookups agree on the final behavior.
+- [ ] Applicable local builds, focused regressions, persistence journeys and
+      formatting checks pass; unavailable evidence is explicitly recorded.
+- [ ] Functional gameplay evidence and known limitations are recorded; help
+      provides the implemented mechanics for players' balance testing.
+- [ ] Final diff passes ablation review: every change supplies a requirement or
+      a demonstrated dependency, and no unrelated work was discarded.
+- [ ] Implementation receives required code review; findings are resolved and
+      the plan records exact delivered commits and remaining release work.
 
-### 2. Effect execution and bounded creature creation
+## Planning checkpoint
 
-- [ ] Add types 9–16 in trap.c using the contracts above. Keep 0–8 behavior and charge
-  rules on their existing path.
-- [ ] Snapshot trap fields and victim identities before effects. Reuse
-  `find_character_by_runtime_id` and `find_live_object` rather than inventing another
-  entity registry. Never test IS_ALIVE through an already-freed pointer.
-- [ ] Implement temporary-caster cleanup and the explicit charge commit points.
-  Verify ordinary spell and helper behavior with production functions, not only counters.
-- [ ] Implement the seven profiles in a small fixed table/switch, including whole-batch
-  capacity, placement failure rollback, cap counting and distinct gate/summon aggression.
+### Implementation checkpoint, 2026-10-25
 
-**Exit:** native focused tests execute all eight effects, duration boundaries, defenses,
-duplicate-effect rejection, ROOM filtering, missing profile/caster, cap/full-batch failure,
-retaliation and target/actor/caster extraction. Sanitizers find no lifetime error; no caster,
-event, combat link, corpse or reward leaks from temporary casting.
+- Baseline: clean branch at `9d226467f`; gameplay base and fetched `origin/master`
+  remain `e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`. The main checkout is on unrelated
+  `branch/contain-learning-feedback` and is untouched. The dedicated worktree has
+  no `.env`; the main checkout reports `ENVIRONMENT=local`.
+- Ablation: deliver affinity first because it is independent of forms/events.
+  Append four passive IDs (180-183), move Astral's grant to 51, and use one shared
+  PC/native-plane eligibility function at the two real aggression callers. Keep
+  existing memory creation, boundaries, scheduler and persistence formats.
+- Files: `structs.h`, `innates.c`, `prototypes.h`, `utility.c`, `mobact.c`, both help
+  sources, focused affinity test, Reflection contract adjustment and this plan.
+  No schema, prototype, balance benchmark or production change is required.
+- Pre-change checks passed: `test_innate_reflection.py`, `test_race_rebalance.py`,
+  `test_elemental_aura_runtime.py`, `test_class_helpfiles_contract.py`.
+- Candidate checks so far: `test_planar_affinity_runtime.py` passes with ASan/UBSan
+  through actual registration, innate listing, ordinary aggression and both boss
+  paths, levels 30/41/46/50/51/56, lower/higher mob levels, all boundary rooms,
+  invalid rooms, NPC/no-spec controls and remembered targets. The final harness
+  also executes actual memory lookup, group-memory creation and clearing, and
+  memoryless-mob behavior. Full server room-entry and pet-combat journeys remain
+  for combined functional qualification in step 8.
+- Passed: `python3 tests/async/test_innate_reflection.py`,
+  `python3 tests/async/test_race_rebalance.py`,
+  `python3 tests/async/test_planar_affinity_runtime.py`,
+  `python3 tests/async/test_class_helpfiles_contract.py`,
+  `python3 tests/async/test_help_layout.py` (3 tests),
+  `python3 tests/async/test_help_import_live_parser.py`, and
+  `python3 tests/async/test_flatfile_help_catalog.py` (including production
+  `wiki_help()` lookups of all five affinity topics and the overview).
+- `bash tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_help_import_atomic.py` passed **all 9 tests**, including a new
+  full-source dry-run/import into an isolated schema proving one page per affinity
+  and parsed-source precedence. No test uses the game database.
+- `make -C src -j8` passed with no warnings; `./scripts/format.sh --check` and
+  `git diff --check` pass. Build output is under
+  `bin/qualification/issue215/` (untracked). No full regression or hosted CI wait
+  is needed for this independent slice. No affinity persistence format changed:
+  passive grants are derived from existing class/spec/level, not stored timers.
+- Delivered: `9c13feaac66e5bcc51e9c3ee8adb91b1395eaf6a`, pushed on
+  `branch/issue-215-conjurer-rebalance`; review-ready
+  [PR #376](https://github.com/LuminariMUD/Duris/pull/376) targets `master`.
+- Next: continue forms/casting on `branch/issue-215-elemental-forms`, stacked on
+  #376, and remaining steps. No gameplay test server has been started and no
+  production operations performed. Existing Git GC warnings about unreachable
+  loose objects predate this work; no logs or unrelated repository state removed.
 
-### 3. Real command integration and content edits
+### Historical planning-only evidence
 
-- [ ] Repair the 17 T tuples and remove the six specified records; preserve all other
-  object/proc fields. Set container flags `value[1]`: 67803 1→5, 142233 17→21,
-  142251 0→5, 142438 0→5. Add no lock or key requirement.
-- [ ] Implement GLYPH continuation for restored types. After effects, revalidate actor,
-  source room, object identity and current movement eligibility/exit. Continue safely
-  to later matching traps, once per object; do not hide a subsequent blocking trap.
-  Preserve non-glyph stop-the-attempt behavior and legacy 0–8 semantics.
-- [ ] Preserve pickup rejection and OPEN-after-opening ordering. Wire OBJECT on the
-  **item being put** for restored types 9–16: after ordinary permission/capacity checks
-  but before acknowledgement, detachment, transfer or publication. An invalid put must
-  not spend charges. Do not introduce destination-container hazards by inference.
-- [ ] Adapt single/bulk put and any shared transfer callers reached by the hook so a
-  trap rejection or invalidated actor/item/container stops safely. Reuse the pickup
-  identity pattern; do not retain `next_content` across effects. Preserve ordinary
-  legacy 0–8 put behavior and unrelated coin transfer behavior.
-- [ ] Verify explicit directions (including the east-only royal equipment room,
-  west-only shrine and downward Barovia glyph), all-direction rows, special-procedure
-  overlap, disarming, and the four first-open container states.
+The current change writes this plan and preserves the previous #264 document.
+Source inspection supports the proposed paths above. No proposed-feature tests,
+full build or gameplay session has been run for this
+documentation change. Implementation remains pending.
 
-**Exit:** actual movement/get/put/open command paths show the chosen outcomes, one charge
-per activation and no delivery/publication after rejection. Existing bulk pickup and
-special procedures keep their prior guarantees.
-
-### 4. Saved-copy compatibility and round trips
-
-- [ ] Add one narrow, idempotent normalization function for the appendix's changed/
-  retired profiles. Match vnum plus the **old mask/type/level**, not vnum alone.
-  Preserve custom combinations, unrelated vnums and zero/disarmed state.
-- [ ] Preserve remaining positive charges, capped only where the new initial budget
-  is smaller. Convert -1→1 only for 32820, 32870, 32835, 32846 and 41361.
-  Clear generic trap fields on matching retired records. Normalize the two authored
-  levels without ever converting negative level into an unsavable spell.
-- [ ] Call normalization after stored fields are complete in each actual owner:
-  `materialize_item_graph/apply_extra_descriptions` (player_load_items.c);
-  legacy SQL extra-description loading (sql_player.c); `restoreObjects` and
-  `read_one_object` (files.c); world recovery materialization
-  (world_recovery_pipeline.c); and `account_reward_snapshot_apply`.
-  Respect existing snapshot verification and ownership/publication order.
-- [ ] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
-  fields; keep its existing encoding and other formats unchanged.
-- [ ] Preserve saved open/closed state. The four CLOSED changes initialize **fresh**
-  objects only. For recognized legacy 142251/142438 with the original non-closeable
-  container flags, add CLOSEABLE while leaving them open; other saved flag combinations
-  remain as stored. Do not reclose opened loot or reset a special procedure's value[3].
-- [ ] Prove each restore owner actually invokes normalization after its final overwrite;
-  a passing normalization helper alone is insufficient. Round-trip fresh, partial,
-  exhausted, disarmed MULTI, old unlimited→finite, retired and custom states. Repeat the
-  load/save cycle to prove idempotence and no rearming.
-
-**Exit:** both persistence authorities and each reachable legacy/recovery/reward materializer
-preserve the selected behavior and actual remaining budget. No broad data rewrite or schema
-change is necessary. Normal save/restart guarantees are not represented as a new
-crash-atomic spawn transaction.
-
-### 5. Focused tests, generated world and gameplay qualification
-
-Prefer extending existing tests before adding infrastructure:
-
-- `test_unsupported_trap_damage.py`: retain invalid/0–8 coverage; add new effect/profile/
-  level/charge cases. Its current effect stubs alone cannot verify native spell behavior.
-- `test_get_trap_lifecycle.py` and `test_bulk_get_publication.py`: lifetime/rejection
-  regression; extend the executable coverage to the new put/movement boundaries.
-- `test_player_load_items.py`, `test_item_extra_descr_codec.py`,
-  `test_player_item_snapshot_codec.py`, `test_world_recovery_pipeline.py` and relevant
-  reward/binary restoration harnesses: prove real restore boundaries and round trips.
-  Source-contract tests can supplement, not replace, executable evidence.
-- Proposed new `test_legacy_trap_content.py`: independent authored/generated manifest,
-  four containers and active-input selection. Proposed focused native
-  `test_legacy_trap_effects.py`: real effect/helper and lifecycle behavior with controlled
-  save/RNG inputs. Add a small restoration harness only where existing owners lack one.
-- Proposed `test_legacy_trap_journey.py [SERVER BACKEND]`: reuse the disposable runtime,
-  account/TCP and fixture machinery in `test_corpse_trap_restart_journey.py` and
-  `test_flatfile_combat_journey.py`. Exercise actual generated prototypes, every effect
-  and spawn profile, changed trigger classes, get/put/open, save/reconnect, spent
-  floor/corpse state and restart on both backends. Keep the existing lethal corpse-trap
-  journey as a legacy regression.
-- Register only the relevant new checks in `tests/run_regression_tests.py` /
-  `tests/run_db_tests.sh` where needed; document commands/evidence in
-  `docs/testing/REGRESSIONS.md`.
-
-Implementation commands (new test filenames above are proposed, not present yet):
-
-```sh
-./scripts/format.sh --check --rev origin/master
-make -C src -j8
-make -C src -j8 PERSISTENCE_BACKEND=flatfile BIN_ROOT="$PWD/bin/issue368-flatfile"
-make world
-python3 tests/async/test_unsupported_trap_damage.py
-python3 tests/async/test_get_trap_lifecycle.py
-python3 tests/async/test_bulk_get_publication.py
-python3 tests/async/test_legacy_trap_content.py
-python3 tests/async/test_legacy_trap_effects.py
-python3 tests/async/test_player_load_items.py
-python3 tests/async/test_item_extra_descr_codec.py
-python3 tests/async/test_player_item_snapshot_codec.py
-python3 tests/async/test_world_recovery_pipeline.py
-python3 tests/async/test_corpse_trap_restart_journey.py "$PWD/bin/issue368-flatfile/server/dms_new" flatfile
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_corpse_trap_restart_journey.py "$PWD/bin/server/dms_new" mariadb
-python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/issue368-flatfile/server/dms_new" flatfile
-tests/async/with_disposable_mariadb.sh python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/server/dms_new" mariadb
-```
-
-Use isolated local environments and the disposable SQL wrapper; it does not source the
-checkout's .env. Keep generated worlds, binaries and evidence under the repository's
-ignored output locations. Do not commit area aggregates or runtime data.
-
-- [ ] Regenerate with the existing root `make world` target (`areas/m_slow` and the
-  area tools), then independently verify all 61 generated prototypes against the
-  appendix and four container flags. Source parsing alone is not this proof.
-- [ ] Boot the full generated world in an isolated local runtime, with normal floor/
-  corpse restoration enabled rather than debugger `-z` shortcuts. Inspect loaded
-  prototypes and complete startup logs from that exact binary/world generation.
-- [ ] Assert the 61 old unsupported-definition warnings are absent **and** valid
-  effects execute; inject an unrelated invalid configuration to prove warnings and
-  charge preservation still work. Check parser duplicates by vnum, not warning count.
-- [ ] Save evidence with source SHA, binary/world hashes, backend, commands, outcomes
-  and complete boot log paths. Qualify restored-world state before claiming clean boot.
-
-### 6. Final ablation and closeout
-
-- [ ] Reread the actual diff: every source/data/helper change must serve a listed
-  outcome; preserve spell balance outside the selected trap callers and existing
-  special procedures. Keep the single compatibility normalizer because multiple real
-  loaders require it; do not duplicate its policy.
-- [ ] Keep the existing serializers, world generator, mob templates, identity lookups
-  and test runtime. Drop speculative configuration, a generic effect plugin system,
-  entity registries, replacement persistence formats and new scheduler/reward layers.
-- [ ] Confirm each manifest row, profile, timing, save/defense, charge rule, continuation
-  rule, restoration owner and acceptance condition has direct evidence.
-- [ ] Record remaining implementation/qualification failures honestly; fix them before
-  calling #368 resolved. Follow normal review requirements, without waiting for CI as a
-  substitute for local evidence. Publishing/merging a future PR and production release
-  are separate actions from this plan-only publication.
-
-## Planning evidence and estimate
-
-Planning checks completed on the pinned base:
-
-- AREA-selected inventory: all 61 old tuples independently matched; 17 changed targets,
-  six removals, 38 retained tuples and seven explicit spawn profiles accounted for.
-- `python3 tests/async/test_unsupported_trap_damage.py` — passed.
-- `python3 tests/async/test_get_trap_lifecycle.py` — passed.
-- These establish the existing baseline only. No proposed new effect, generated-world
-  change, saved-copy repair, full build or gameplay qualification has been performed.
-
-Estimated implementation and qualification effort for one engineer: **32–48 hours,
-approximately 4–6 focused working days**.
-
-| Work | Hours |
-| --- | ---: |
-| Contract tests, validation and builder/documentation alignment | 3–5 |
-| Real spell execution, caster lifecycle and fixed spawn profiles | 8–12 |
-| Command continuation/put integration and authored content edits | 5–8 |
-| Six restoration owners, legacy writer and persistence tests | 6–9 |
-| Both-backend gameplay/restart and full-world qualification | 6–8 |
-| Final review, findings and evidence closeout | 4–6 |
-
-The main uncertainty is callback/lifetime behavior and the separate restoration paths,
-not editing the object files. The estimate includes a repair/review allowance but excludes
-external review latency and production scheduling. It is an effort estimate, not a
-promise that the unimplemented behavior has already been validated.
-
-## Complete old-to-final manifest
-
-Fields are effect mask, type, charges, level. Old fields below were read from the pinned
-checkout, not assumed from the issue. Remove T means retire generic trap state only.
-For rows retaining a T record, the effect contracts above supply the new runtime behavior.
-
-| Vnum | Active input | Observed old T | Required final T |
-| ---: | --- | --- | --- |
-| 1458 | [areas/obj/kobold.obj](../../areas/obj/kobold.obj) | `6 16 1 100` | `6 16 1 100` |
-| 3835 | [areas/obj/element.obj](../../areas/obj/element.obj) | `2 16 1 50` | `2 16 1 50` |
-| 6003 | [areas/obj/lizard.obj](../../areas/obj/lizard.obj) | `2 12 1 23` | `2 12 1 23` |
-| 6707 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 21` | `2 12 1 21` |
-| 6714 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 9 1 16` | `2 9 1 16` |
-| 6715 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 16` | `2 12 1 16` |
-| 6716 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 9 1 16` | `2 9 1 16` |
-| 6721 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 12 1 31` | `2 12 1 31` |
-| 6740 | [areas/obj/court.obj](../../areas/obj/court.obj) | `2 16 1 16` | `2 16 1 16` |
-| 22209 | [areas/obj/desolate.obj](../../areas/obj/desolate.obj) | `512 14 6 10` | `512 14 6 10` |
-| 32015 | [areas/obj/avernus.obj](../../areas/obj/avernus.obj) | `2 14 1 56` | `2 14 1 56` |
-| 32820 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `1536 11 -1 50` | `512 11 1 50` |
-| 32831 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `516 11 3 50` | Remove T |
-| 32833 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `516 14 1 50` | `516 14 1 50` |
-| 32835 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `32 11 -1 56` | `65 11 1 56` |
-| 32846 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `5 11 -1 56` | `509 11 1 56` |
-| 32870 | [areas/obj/shabo.obj](../../areas/obj/shabo.obj) | `1536 11 -1 50` | `512 11 1 50` |
-| 35506 | [areas/obj/lavcav.obj](../../areas/obj/lavcav.obj) | `2 15 2 100` | `2 15 2 100` |
-| 41353 | [areas/obj/highway.obj](../../areas/obj/highway.obj) | `516 9 1 50` | `516 9 1 50` |
-| 41361 | [areas/obj/highway.obj](../../areas/obj/highway.obj) | `3140 10 -1 100` | `2069 10 1 100` |
-| 41926 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `2304 9 2 100` | `2305 9 2 100` |
-| 41927 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 11 2 100` | `6 11 2 100` |
-| 41928 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 15 1 100` | `6 15 1 100` |
-| 42175 | [areas/obj/mir.obj](../../areas/obj/mir.obj) | `6 12 1 50` | `6 12 1 50` |
-| 42212 | [areas/obj/tribal.obj](../../areas/obj/tribal.obj) | `2 9 1 50` | `2 9 1 50` |
-| 42290 | [areas/obj/tribal.obj](../../areas/obj/tribal.obj) | `2 10 1 50` | `2 10 1 50` |
-| 43503 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `256 16 -1 50` | `257 16 -1 50` |
-| 43506 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `64 12 -1 50` | `17 12 -1 50` |
-| 43511 | [areas/obj/earth.obj](../../areas/obj/earth.obj) | `5 15 -1 75` | `509 15 -1 75` |
-| 44160 | [areas/obj/tikitt.obj](../../areas/obj/tikitt.obj) | `64 13 1 90` | `17 13 1 90` |
-| 44465 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `1057 16 -1 80` | `1089 16 -1 80` |
-| 44532 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `6 16 1 60` | `6 16 1 60` |
-| 44557 | [areas/obj/githzer.obj](../../areas/obj/githzer.obj) | `6 9 1 50` | `6 9 1 50` |
-| 55022 | [areas/obj/wh.obj](../../areas/obj/wh.obj) | `2 13 -1 50` | Remove T |
-| 57567 | [areas/obj/nexus.obj](../../areas/obj/nexus.obj) | `1 15 100 100` | Remove T |
-| 58404 | [areas/obj/ravenloft.obj](../../areas/obj/ravenloft.obj) | `509 12 2 0` | `509 12 2 25` |
-| 58406 | [areas/obj/ravenloft.obj](../../areas/obj/ravenloft.obj) | `389 14 3 61` | `389 14 3 61` |
-| 59045 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `512 15 1 60` | `512 15 1 60` |
-| 59047 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `6 15 1 200` | `6 15 1 100` |
-| 59124 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `2 15 1 60` | `2 15 1 60` |
-| 59203 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `2317 9 4 100` | `2317 9 4 100` |
-| 59231 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `6 9 1 60` | `6 9 1 60` |
-| 59239 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `260 16 1 100` | `261 16 1 100` |
-| 59258 | [areas/obj/ravenloft2.obj](../../areas/obj/ravenloft2.obj) | `8 15 3 60` | `9 15 3 60` |
-| 66212 | [areas/obj/cityruin.obj](../../areas/obj/cityruin.obj) | `516 15 1 20` | `516 15 1 20` |
-| 67803 | [areas/obj/shortb.obj](../../areas/obj/shortb.obj) | `516 14 1 60` | `516 14 1 60` |
-| 77721 | [areas/obj/hall.obj](../../areas/obj/hall.obj) | `2180 16 10000 60` | Remove T |
-| 82024 | [areas/obj/jin.obj](../../areas/obj/jin.obj) | `516 15 -1 35` | `516 15 -1 35` |
-| 82215 | [areas/obj/lylr.obj](../../areas/obj/lylr.obj) | `512 15 3 50` | `512 15 3 50` |
-| 83254 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `512 15 1 100` | `512 15 1 100` |
-| 83368 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `13 9 1 100` | `13 9 1 100` |
-| 83527 | [areas/obj/alatorin.obj](../../areas/obj/alatorin.obj) | `509 14 5 100` | `509 14 5 100` |
-| 91025 | [areas/obj/barovia.obj](../../areas/obj/barovia.obj) | `2308 9 5 60` | `2309 9 5 60` |
-| 98701 | [areas/obj/unoutpst.obj](../../areas/obj/unoutpst.obj) | `6 12 1 60` | `6 12 1 60` |
-| 130002 | [areas/obj/vecna.obj](../../areas/obj/vecna.obj) | `9 9 -1 60` | `2057 9 -1 60` |
-| 131215 | [areas/obj/earthp.obj](../../areas/obj/earthp.obj) | `509 16 1 99` | Remove T |
-| 131226 | [areas/obj/earthp.obj](../../areas/obj/earthp.obj) | `509 16 1 99` | Remove T |
-| 135129 | [areas/obj/firesworn_altar.obj](../../areas/obj/firesworn_altar.obj) | `2 15 1 51` | `2 15 1 51` |
-| 142233 | [areas/obj/blackpearl.obj](../../areas/obj/blackpearl.obj) | `512 9 1 15` | `512 9 1 15` |
-| 142251 | [areas/obj/blackpearl.obj](../../areas/obj/blackpearl.obj) | `1536 12 -1 60` | `1536 12 -1 60` |
-| 142438 | [areas/obj/Voluntown.obj](../../areas/obj/Voluntown.obj) | `512 9 1 60` | `512 9 1 60` |
+Planning validation: `python3 tests/async/test_documentation_contract.py` passed
+all **14 tests**, including maintained document links and anchors. The preserved
+`plan-issue-264.md` matches the original file byte-for-byte; `git diff --check`
+passes. Gameplay/build evidence above is future work, not a result of this check.
