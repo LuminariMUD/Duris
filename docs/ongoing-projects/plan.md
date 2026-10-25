@@ -849,6 +849,15 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   This branch changes only the input predicate in `comm.c`, not that phase.
   Repair the test separately to follow both real calls; no game-loop change is
   required. Keep this outside the shoreline implementation patch.
+- Review repair delivered as `c722dd750c732ec74640deea0d141c431294f98f`,
+  review-ready [PR #388](https://github.com/LuminariMUD/Duris/pull/388), based on
+  #387. Also appended the proven repairs directly to their owning PR branches
+  without rewriting history: Earth #379 at `a8c31a305`, shoreline #382 at
+  `b7e5a3db0`. Reran each owning branch's relevant native regressions and pushed.
+  All three source-validated review threads are resolved on those updated heads.
+- `branch/issue-215-phase-contract` is a separate test-only repair of that
+  stale outbox assertion: require the recurring phase's actual helper call and
+  the helper's actual auction call, retaining the cadence/boundary contract.
 - Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
   review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
   #384. Combined socket/recovery qualification remains pending these repairs.
