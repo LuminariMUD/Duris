@@ -38,7 +38,9 @@ void windows_and_accounts()
 	divine_boon_activity_history history;
 	auto good = actor(1, "Alice", 0, 20);
 	auto evil = actor(2, "Bob", 1, 35);
-	assert(history.population({ good, evil }, 0)[0].active_accounts == 0);
+	auto online = history.population({ good, evil }, 0);
+	assert(online[0].active_accounts == 0); // No gameplay evidence yet...
+	assert(online[0].levels == std::vector<uint16_t>{ 20 } && online[1].levels[0] == 35);
 	assert(!history.observe(good, -1));
 	for (int now = 0; now < 60; ++now)
 		assert(history.observe(good, now));
@@ -56,6 +58,7 @@ void windows_and_accounts()
 	assert(history.observe(alt, 301));
 	population = history.population({ good, alt, evil, alt }, 301);
 	assert(population[0].active_accounts == 1 && population[0].brackets[3] == 1);
+	assert(population[0].levels == std::vector<uint16_t>{ 51 }); // Latest alt only.
 	assert(population[0].pvp_accounts == 1); // Account history follows its active alts.
 	assert(history.population({ alt }, 301)[0].pvp_accounts == 1); // Earlier alt logged out.
 	alt.eligible = false;
@@ -63,7 +66,9 @@ void windows_and_accounts()
 	assert(population[0].active_accounts == 1 && population[0].brackets[0] == 1);
 	assert(history.population({ good }, 1199)[0].active_accounts == 1);
 	assert(history.population({ good }, 1200)[0].active_accounts == 1);
-	assert(history.population({ good }, 1201)[0].active_accounts == 0);
+	population = history.population({ good }, 1201);
+	assert(population[0].active_accounts == 0); // Idle, yet still online for Exp/Epic.
+	assert(population[0].levels == std::vector<uint16_t>{ 20 });
 	assert(history.observe(good, 1201));
 	assert(history.population({ good }, 1201)[0].pvp_accounts == 1);
 	assert(history.observe(good, 4801)); // A full hour erases old qualification.
@@ -146,6 +151,7 @@ void real_input_boundary()
 	for (int spam = 0; spam < 10; ++spam)
 		divine_boon_activity_end(divine_boon_activity_begin(&bodies[0], CMD_LOOK));
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	assert(divine_boon_activity_population()[0].levels.size() == 3); // All online now.
 	// An automatically awarded combat tick has no playing-input capture.
 	GET_EXP(&bodies[1]) += 100;
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
@@ -168,6 +174,7 @@ void real_input_boundary()
 	descriptors[0].str = nullptr;
 	SET_BIT(bodies[0].specials.act, PLR_AFK);
 	assert(divine_boon_activity_population()[0].active_accounts == 0);
+	assert(divine_boon_activity_population()[0].levels.size() == 2); // AFK is not online.
 	REMOVE_BIT(bodies[0].specials.act, PLR_AFK);
 	assert(divine_boon_activity_population()[0].active_accounts == 1);
 	bodies[0].desc = nullptr;
