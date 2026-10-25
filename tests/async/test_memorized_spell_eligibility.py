@@ -105,7 +105,9 @@ cleric_driver = r'''
             saved.modifier = SPELL_HOLY_INTERCESSION;
             for (int flags : {0u, MEMTYPE_FULL}) {
                 saved.flags = flags;
-                assert(has_memorized(&cleric, SPELL_HOLY_INTERCESSION));
+                // Only full slots are considered memorized; pending ones still must not cast.
+                assert(bool(has_memorized(&cleric, SPELL_HOLY_INTERCESSION)) ==
+                       bool(flags & MEMTYPE_FULL));
                 assert(get_spell_circle(&cleric, SPELL_HOLY_INTERCESSION) == MAX_CIRCLE + 1);
                 assert(!knows_spell(&cleric, SPELL_HOLY_INTERCESSION));
             }
