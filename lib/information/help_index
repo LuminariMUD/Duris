@@ -8325,7 +8325,6 @@ These permissions apply to an existing character; they do not enable a forbidden
 &+b30th Level: &+cshield block (cap 90%)&n
 ==Spell changes==
 &+b8th Circle: &+cprotection from undead, virtue&n
-&+b10th Circle: &+choly intercession&n
 &+b11th Circle: &+clesser sanctuary&n
 &+b12th Circle: &+cprayer&n
 ==Innate additions==
@@ -23322,7 +23321,10 @@ Type of spell:  Protection
 
 "Holy intercession" wraps the caster and all companions in the room in watchful healing energies. While it lasts, any wound a protected soul suffers is partially closed the moment it is dealt, drawing from a divine reserve roughly six times the caster's experience. When the reserve is spent or its brief vigil ends, the blessing fades.
 ===========================================================================
-See also: vital intercession, cleric, holyman
+This spell is no longer available to ordinary Clerics, including Holymen.
+Previously applied effects continue until they expire.
+===========================================================================
+See also: vital intercession, cleric
 #
 "HOLY LIGHT" (Spell)
 ===========================================================================

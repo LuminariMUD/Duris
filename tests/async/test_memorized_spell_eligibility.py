@@ -59,12 +59,16 @@ for block in re.split(r"\b(?:SPELL|SKILL)_CREATE(?:_MSG|_WITH_MESSAGES)?\(", cle
     if not match:
         continue
     statements = re.findall(r"^\s*((?:SPEC_)?(?:SPELL|SKILL)_ADD\([^;]+;)", block, re.M)
-    if not any("CLASS_CLERIC" in line for line in statements) and match[1] != "SPELL_VITAL_INTERCESSION":
+    if not any("CLASS_CLERIC" in line for line in statements) and match[1] not in (
+        "SPELL_VITAL_INTERCESSION", "SPELL_HOLY_INTERCESSION"
+    ):
         continue
     grants.append(f"numSkills = {match[1]}; skills[numSkills].targets = TAR_SPELL;\n" + "\n".join(statements))
 
 cleric_driver = r'''
     REGISTER_CLERIC
+    // Keep removed spells registered so eligibility, not an absent spell ID, denies casts.
+    assert(IS_SPELL(SPELL_HOLY_INTERCESSION));
     const int restored[][2] = {
         {SPELL_CAUSE_LIGHT, 1}, {SPELL_CAUSE_SERIOUS, 2}, {SPELL_CAUSE_CRITICAL, 3},
         {SPELL_EARTHQUAKE, 3}, {SPELL_DISPEL_EVIL, 3}, {SPELL_DISPEL_GOOD, 3},
@@ -101,6 +105,7 @@ cleric_driver = r'''
             saved.modifier = SPELL_HOLY_INTERCESSION;
             for (int flags : {0u, MEMTYPE_FULL}) {
                 saved.flags = flags;
+                assert(has_memorized(&cleric, SPELL_HOLY_INTERCESSION));
                 assert(get_spell_circle(&cleric, SPELL_HOLY_INTERCESSION) == MAX_CIRCLE + 1);
                 assert(!knows_spell(&cleric, SPELL_HOLY_INTERCESSION));
             }
@@ -116,6 +121,9 @@ cleric_driver = r'''
     saved.modifier = SPELL_VITAL_INTERCESSION;
     saved.flags = MEMTYPE_FULL;
     assert(!knows_spell(&cleric, SPELL_VITAL_INTERCESSION));
+    saved.modifier = SPELL_HOLY_INTERCESSION;
+    assert(has_memorized(&cleric, SPELL_HOLY_INTERCESSION));
+    assert(!knows_spell(&cleric, SPELL_HOLY_INTERCESSION));
     cleric.affected = nullptr;
     puts("Cleric source grants: all restored offense, progression boundaries, saved full/pending spells, specs and multiclass passed");
 '''.replace("REGISTER_CLERIC", "\n".join(grants))

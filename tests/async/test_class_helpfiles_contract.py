@@ -239,6 +239,13 @@ for title in ("minstrel", "blademaster", "swashbuckler"):
     index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
     assert index_body == parsed_body, f"Divergent specialization help source body for {title}"
 
+# The removed Holy Intercession grant must not linger in either imported
+# Holyman specialization entry; they should describe only available spells.
+for entries in (parsed_map, index_map):
+    assert "holy intercession" not in entries["holyman"][1].lower(), (
+        "Retired Holy Intercession still advertised for Holyman"
+    )
+
 # Cleric spec help must reflect the currently registered defensive auras.
 spell_aura = re.search(r'\{\s*"([^"]+)",\s*do_aura_spell_protection\s*\}',
                        (SRC / "innates.c").read_text())
