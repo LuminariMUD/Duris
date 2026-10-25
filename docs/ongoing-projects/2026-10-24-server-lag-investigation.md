@@ -2,11 +2,17 @@
 
 ## Implementation handoff, October 25
 
-Issue: [#365](https://github.com/LuminariMUD/Duris/issues/365). Work continues on
-`investigate/365-server-lag` in `/home/aiwithapex/projects/duris-issue365`.
+Issue: [#365](https://github.com/LuminariMUD/Duris/issues/365). The review stack starts
+at `investigate/365-server-lag`; current work is on `branch/issue-365-selection-scan`
+in `/home/aiwithapex/projects/duris-issue365`.
 The branch was fast-forwarded to `master` baseline `f31283e56` before editing;
 the original October 24 observations below remain historical evidence, not
 measurements of the new implementation. General lag attribution is still open.
+
+**Owner scope clarification, October 25:** fix the measured costs already found;
+do not wait for specific player actions, command sequences or incident reports.
+Unreproduced hypotheses below remain documented limitations, not prerequisites
+or blockers for this implementation work. No production rollout is requested.
 
 ### Chunk 1: publish ready critical results every pulse
 
@@ -58,26 +64,21 @@ evidence above applies to unchanged owners. No full-suite rerun is required.
 ### Remaining work and resumption boundaries
 
 - Chunk 1 is published for review in PR #372. The change is not deployed.
-- General reported slowdown: obtain a representative slow action and UTC time
-  or trace a recurrence. Staff and mortal reports are equally useful on shared
-  paths. Do not declare the reports resolved from this cadence improvement.
-- Historical 47.759 ms callback: its identity remains unrecoverable. Capture a
-  new slow callback with concrete vnum/procedure and CPU/off-CPU/syscall timing.
+- General reported slowdown and the historical 47.759 ms callback: attribution
+  is deferred per the owner clarification. Its old concrete identity remains
+  unrecoverable; do not claim these measured improvements resolve that incident.
 - First-command polling/type-ahead: evaluate separately; preserve simulation
   cadence and intentional action-rate gates. No input-throughput change yet.
 - Cargo: measure representative purchase/sale submit, commit, publication,
   receipt, blocked-command and save timing. The writer/phase driver isolates
   publication only; prompt output still has its separate next-pulse wait.
-- Eligible-mortal activity: measure representative inventory/list position
-  before changing identity lookup. Current `master` changed Divine eligibility
-  and selection since the original fixture; inspect the owning source again.
-- Divine selection: evaluate repeated object traversal within current selection
-  and status passes, separating hourly work from recurring eligibility checks.
-- Outbox: correlate audit duration with delivery of newly arriving work.
-- Network/GMCP: extend to the reported client/gameplay path (movement, combat,
-  ships and state updates); read-only negotiation comparisons are insufficient.
-- Telemetry: extend hook comparisons only if a matching incident identifies an
-  unmeasured hook. Existing healthy queues do not prove hook execution cost.
+- Eligible-mortal activity: address the demonstrated world-size-dependent
+  identity lookup without keeping a potentially extracted character pointer.
+- Divine selection: chunk 2 below removes repeated traversal in selection and
+  status. Recurring active-EXP reward checks retain their existing behavior.
+- Outbox, network/GMCP and unmeasured telemetry hooks: no delayed delivery or
+  causal stall was demonstrated. Further incident-specific tracing is deferred;
+  healthy queues alone still do not establish execution cost.
 
 The local primary checkout is `ENVIRONMENT=local`; its separate worktree has no
 `.env`. A read-only remote check found `/home/staging/duris` marked production
@@ -87,6 +88,33 @@ production operation, tracing configuration, migration or restart was performed.
 The old ignored evidence was not found under that remote checkout; locate its
 actual owning checkout before relying on retained drivers. Keep new test/build
 artifacts ignored under this worktree's `bin/tests/`.
+
+### Chunk 2: share live-stone locations within each catalogue pass
+
+Current-source `epic_target()` still scanned `object_list` for every reachable
+zone on each side. Selection and diagnostic status now lazily build one local
+set of payable-stone `(home zone number, current zone index)` pairs, only after
+finding a reachable eligible target. Both sides and all candidate zones share
+it. Each call discards the snapshot, so changed magic/payment, extraction or
+container/carrier location is reconsidered on the next pass. Single-zone
+gameplay/admission queries retain their existing direct short-circuit scan.
+The shared payable-stone predicate keeps both consumers' rules identical; no
+persistent index or invalidation hooks were added.
+
+The existing selector executable was extended with 38,935 synthetic ordinary
+objects followed by two live stones, two candidate zones and both sides. The
+unchanged implementation resolves four stone locations per selection and fails
+the new once-per-stone regression. The new implementation resolves two, also
+for staff status; mutations between selection passes invalidate eligibility as
+before. In twenty `-Og` ASan/UBSan samples the mean selection duration changed
+from **2,214.92 µs to 552.76 µs**. This is a two-zone synthetic graph, not a
+repeat of the earlier full-world benchmark or a production latency measurement.
+
+Passed: `test_divine_boon_selection.py` (existing eligibility, path, weighted
+selection, quiet-hour, reserved-pool and diagnostics cases plus the new fixture),
+`test_divine_boon_commands.py`, `test_divine_boon_runtime.py`, MariaDB and
+flat-file development builds, and `./scripts/format.sh --check`. No repository
+or persistence code changed, so the chunk 1 disposable trade evidence is reused.
 
 ## October 24 observation record
 
