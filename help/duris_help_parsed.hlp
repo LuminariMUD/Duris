@@ -12297,7 +12297,7 @@ See also:Unholy Word
 #0
 
 Holyman
-Holyman - Last Edited: 2026-10-18
+Holyman - Last Edited: 2026-10-25
 ============================================================
 Holyman is a Cleric specialization. Selection requires level 30, an eligible race, an appropriate teacher, no existing specialization or secondary class, and an expired respecialization timer.
 ==Allowed races==
@@ -12308,7 +12308,6 @@ These permissions apply to an existing character; they do not enable a forbidden
 &+b30th Level: &+cshield block (cap 90%)&n
 ==Spell changes==
 &+b8th Circle: &+cprotection from undead, virtue&n
-&+b10th Circle: &+choly intercession&n
 &+b11th Circle: &+clesser sanctuary&n
 &+b12th Circle: &+cprayer&n
 ==Innate additions==
