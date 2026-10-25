@@ -168,6 +168,7 @@ int main() {
         trap=wall=grease=linked_mount=linked_rider=false; ch.lobj=nullptr;
         rooms[1].current_speed=0;
         exits[0].to_room=1; exits[0].exit_info=0;
+        exits[1].to_room=0; exits[1].exit_info=0;
     };
     for(int level : {46,50,51}) {
         reset(); ch.player.level=level;
@@ -206,18 +207,18 @@ int main() {
     }
     reset(); ch.in_room=1; rooms[1].current_speed=100; rooms[1].current_direction=2;
     walk(); advance(5*WAIT_SEC+1); assert(ch.in_room==1 && GET_VITALITY(&ch)==100);
-    for(int change : {0,1,2,3,4,5,6,7,8}) {
-        reset(); walk();
+    for(bool outbound : {false,true}) for(int change : {0,1,2,3,4,5,6,7,8}) {
+        reset(); const int origin=outbound?1:0; ch.in_room=origin; walk();
         if(change==0) { disarm_char_nevents(&ch,event_water_crossing); ch.specials.fighting=&mount; ch.specials.fighting=nullptr; }
         if(change==1) { affect_from_char(&ch,SPELL_WATER_FORM); ch.affected=&form; }
-        if(change==2) { char_from_room(&ch); ch.in_room=0; }
-        if(change==3) exits[0].exit_info=EX_CLOSED;
-        if(change==4) exits[0].to_room=2;
+        if(change==2) { char_from_room(&ch); ch.in_room=origin; }
+        if(change==3) exits[origin].exit_info=EX_CLOSED;
+        if(change==4) exits[origin].to_room=2;
         if(change==5) SET_POS(&ch,STAT_DEAD);
         if(change==6) do_abort(&ch,nullptr,0);
         if(change==7) mode=3; // form lost by an ordinary movement proc at completion
         if(change==8) trap_mode=1; // combat begins/ends in the normal trap check
-        advance(5*WAIT_SEC+1); assert(ch.in_room==0 && movements==0 && GET_VITALITY(&ch)==100);
+        advance(5*WAIT_SEC+1); assert(ch.in_room==origin && movements==0 && GET_VITALITY(&ch)==100);
         SET_POS(&ch,STAT_NORMAL+POS_STANDING);
     }
     reset(); linked_mount=true; walk(); assert(!get_scheduled(&ch,event_water_crossing));

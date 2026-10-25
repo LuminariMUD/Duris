@@ -831,6 +831,24 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   must admit `abort` during shoreline waits; movement must capture its crossing
   context before specials because cancellation clears callback/actor fields.
   Add outbound cancellation and real input-routing regressions before publishing.
+- Affect ordering repair delivered as `c7a6d009b99012dfd9c4273debc52553e58387eb`,
+  review-ready [PR #387](https://github.com/LuminariMUD/Duris/pull/387), based on
+  #386. Binary/snapshot regressions, Web Spray, player-load contracts, MariaDB
+  build and format checks pass.
+- `branch/issue-215-shoreline-interruption` now captures the crossing context
+  before `special()` and extends the existing restricted input predicate,
+  whitelist and interpreter gate to pending shoreline events. It grants abort
+  without the separate spell-abort toggle and preserves unrelated type-ahead.
+  Reproduced outbound cancellation failure before fixing it. Both-way transient
+  interruption tests, actual queue/predicate state-matrix tests, spell-abort
+  contracts, selective-queue compatibility, movement liveness and Control Flee
+  regressions pass. MariaDB/flat-file builds and check-only formatting pass.
+- Existing `test_game_loop_phase_contract.py` has a pre-existing stale direct
+  auction-outbox assertion: the recurring phase now calls the already-existing
+  `critical_gameplay_publish_outbox()` helper, which calls the auction publisher.
+  This branch changes only the input predicate in `comm.c`, not that phase.
+  Repair the test separately to follow both real calls; no game-loop change is
+  required. Keep this outside the shoreline implementation patch.
 - Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
   review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
   #384. Combined socket/recovery qualification remains pending these repairs.

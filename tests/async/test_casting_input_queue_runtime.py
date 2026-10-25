@@ -100,6 +100,8 @@ static void logit(int, const char *, ...) {}
 static const char *command[] = { "petition", "return", "abort", "kill", "look", "\n" };
 
 bool cmd_allowed_while_casting(P_char ch, int cmd);
+static void event_water_crossing() {}
+static void *get_scheduled(P_char, void (*)()) { return nullptr; }
 static bool item_action_active(P_char) { return false; }
 
 int old_search_block(const char *argument, const uint begin, uint length, const char **list,
