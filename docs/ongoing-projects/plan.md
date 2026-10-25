@@ -57,9 +57,10 @@ Our work covers implementation and functional qualification of the agreed
 mechanics, limits and compatibility. Comparative balance benchmarks, class
 scorecards and judgments about relative spec power are outside this task.
 
-Owner clarification during implementation: **do not handle code reviews**.
-Finish implementation and functional qualification; leave completed chunks ready
-for review. Do not fetch, triage or resolve further code-review activity.
+Historical implementation boundary: the owner requested implementation and
+functional qualification without further code-review handling. The later PR #390
+review request authorizes validating and addressing its feedback, reconciling Git
+with master and leaving that PR ready to merge. Deployment remains separate.
 
 The owner's 2026-10-25 implementation request explicitly authorizes source changes,
 focused tests, commits, pushes and focused/stacked PRs. Leave delivered work ready
@@ -135,7 +136,7 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Review-ready [PR #382](https://github.com/LuminariMUD/Duris/pull/382), stacked on #381 |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Review-ready [PR #384](https://github.com/LuminariMUD/Duris/pull/384), with finite pet-state recovery in [PR #386](https://github.com/LuminariMUD/Duris/pull/386) |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
-| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Complete: 15-check isolated command/copyover/restart journey; review-ready [PR #390](https://github.com/LuminariMUD/Duris/pull/390), stacked on #389 |
+| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Complete: 15-check isolated command/copyover/restart journey; [PR #390](https://github.com/LuminariMUD/Duris/pull/390) targets master with its dependencies merged |
 
 ### 0. Establish the implementation baseline
 
@@ -517,8 +518,8 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 - [x] Final diff passes the ablation check: every change supplies a requirement or
       a demonstrated dependency, and no unrelated work was discarded.
 - [x] Completed implementation is committed, pushed and left in focused PRs
-      ready for review. Per the owner's latest instruction, code-review handling
-      is outside this task; review, merge and release remain with the owner.
+      ready for review. The PR #390 follow-up addresses its review feedback;
+      merge and release remain with the owner.
 
 ## Planning checkpoint
 
@@ -942,10 +943,12 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   and exactly one VNUM-1100 mephit with kind 24, original keywords, no intrinsic
   Fireshield and the same finite death deadline. Ordinary affect durations may
   decrease with elapsed time; recovery does not refresh them.
-- Reproduce with the existing flat-file build command above, then
-  `python3 tests/async/test_conjurer_gameplay_journey.py`. Optional first argument
-  selects another flat-file server binary. The inspector dependency is built
-  automatically if absent. Compact successful evidence is written to ignored
+- Reproduce with `python3 tests/async/test_conjurer_gameplay_journey.py`; it builds
+  a flat-file server through the existing shared build helper in a temporary
+  directory under `bin/tests`, then removes the build after the journey. Optional
+  first argument selects an existing flat-file server binary and skips that build.
+  The inspector dependency is built automatically if absent. Compact successful
+  evidence is written to ignored
   `bin/qualification/issue215/gameplay-report.json`; run logs and binaries stay
   under `bin/`. Socket-qualified production-source revision is `d7ce1af9a`;
   the final parent reconciliation is described below.
@@ -960,11 +963,12 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   original summon VNUMs and portable pet codec. It adds no schema, balance
   framework or new gameplay pet kind. Removed task-created authoring/baseline
   scratch scripts; preserved qualification evidence and unrelated work.
-- Remaining owner work: code review, merge the dependency stack, choose any
-  release tag/deployment and collect player balance feedback. The older-binary
+- At this implementation checkpoint, remaining owner work was code review, merge
+  the dependency stack, choose any release tag/deployment and collect player
+  balance feedback. The later closeout and PR #390 review follow-up supersede
+  the review/dependency status. The older-binary
   Fire pet-state holding limitation described above remains relevant to release
   rollback. No release tag, PR merge, production operation or deployment was made.
-  Do not handle code reviews in this implementation task.
 - Qualification delivered as `dc1a8fa69bb813b287d7e7a6cf135b1ef99bdbdc`,
   [PR #390](https://github.com/LuminariMUD/Duris/pull/390), based on #389.
   Its parent advanced independently during the socket run. Merged parent
@@ -975,6 +979,33 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   gate/queue regressions pass on the reconciled source. Reuse the 15-check socket
   evidence for unchanged mechanics rather than repeating the entire journey.
   Final incremental MariaDB/flat-file builds pass with warnings treated as errors.
+
+### PR #390 review follow-up, 2026-10-25
+
+- Verified the one review finding: the default entry point selected a local-only
+  `dms_issue215_flatfile` artifact without producing it. It now uses the existing
+  `journey.build_flatfile_server` helper and a temporary build root under `bin/tests`.
+  An explicit binary argument retains its existing behavior and skips the build.
+  No new build target, configuration option or test infrastructure is needed.
+- Merged current master `855ba6e3ec1643acab9c8ad961b49f36ca03bad7` as
+  `6c4bbeb71`, preserving commit ancestry and existing tags. Resolved the only
+  conflict in this handoff by retaining master's merge closeout, the separate
+  trap handoff link and the complete Conjurer qualification record; removed the
+  duplicate, superseded review checkpoint. Dependencies through #389 are merged,
+  so #390 targets master directly. No squash, history rewrite or release tag is
+  needed for this qualification-only PR.
+- Fresh `python3 tests/async/test_conjurer_gameplay_journey.py` with no binary
+  argument built the flat-file server in 16.035 seconds and passed all 15 checks,
+  including help, live copyover and cold restart. The temporary build was removed
+  on completion. The report and command output remain ignored under
+  `bin/qualification/issue215/`.
+- `python3 tests/async/test_elemental_forms_runtime.py` passes with ASan/UBSan.
+  `python3 tests/async/test_documentation_contract.py` passes all 14 checks;
+  `python3 -m py_compile tests/async/test_conjurer_gameplay_journey.py`,
+  `./scripts/format.sh --check` and `git diff --check` pass. Reuse the existing
+  MariaDB build/help-publication and unaffected mechanics evidence above.
+  Full-world production acceptance and comparative balance playtesting remain
+  outside this qualification. PR #390 remains open for owner merge.
 
 ### Historical planning-only evidence
 

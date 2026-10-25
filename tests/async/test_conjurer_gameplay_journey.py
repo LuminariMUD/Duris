@@ -419,4 +419,9 @@ PH 0 0 -1
 
 
 if __name__ == '__main__':
-    run(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / 'bin/server/dms_issue215_flatfile')
+    if len(sys.argv) > 1:
+        run(Path(sys.argv[1]).resolve())
+    else:
+        (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='conjurer-gameplay-build-', dir=ROOT / 'bin/tests') as build:
+            run(journey.build_flatfile_server(Path(build)))
