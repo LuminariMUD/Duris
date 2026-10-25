@@ -72,6 +72,9 @@ for needle in ("if (!(pulse % 2))", "critical_command_coordinator_pulse(",
                "redis_world_recovery_pulse();", "maintenance_scheduler_pulse("):
     assert contains(recurring, needle)
 
+outbox = function_region("static void critical_gameplay_publish_outbox", "#ifndef __NO_MYSQL__")
+assert contains(outbox, "auction_transaction_publish_outbox();")
+
 for needle in ("ship_activity();", "short_affect_update();", "wimps_in_approve_queue();"):
     assert contains(activity, needle)
 for needle in ("perform_violence();", "display_map_room(", "map_look(t_ch, MAP_AUTOMAP);",
