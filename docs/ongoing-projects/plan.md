@@ -1,9 +1,9 @@
 # Issue #368 — restore authored legacy object traps
 
-Status: implementation in progress, 2026-10-25. Editor chunk published in
-[PR #375](https://github.com/LuminariMUD/Duris/pull/375). Saved-copy compatibility is
-implemented and locally qualified on its dependent branch; runtime effects, authored
-content changes and loaded gameplay qualification remain pending.
+Status: implementation and both-backend gameplay/restart qualification complete,
+2026-10-25. Four focused dependent PRs are published: #375 → #377 → #383 → #385.
+The final landed-parent integration build and publication closeout are in progress. No production action
+or merge is part of this implementation handoff.
 Issue: [#368](https://github.com/LuminariMUD/Duris/issues/368).
 Target branch: `branch/issue-368-legacy-traps`.
 Code inspected: [`e1efb9bc0779e8b6615353c5672e29f21c6bb7a8`](https://github.com/LuminariMUD/Duris/commit/e1efb9bc0779e8b6615353c5672e29f21c6bb7a8).
@@ -38,7 +38,7 @@ The previous contents of this pathname are preserved byte-for-byte in
   MariaDB and flat-file gameplay/restart journeys, and a qualified full generated-world
   boot. A silent warning log, helper-only test or CI status is insufficient.
 
-## What the current code actually establishes
+## Baseline findings that drove the implementation
 
 | Finding | Owning source and consequence |
 | --- | --- |
@@ -134,175 +134,162 @@ should stand in for its stated behavior.
 
 ### Current handoff — 2026-10-25
 
-Worktree: `/home/aiwithapex/projects/duris-issue368`; current branch
-`branch/issue-368-trap-compatibility`, based on editor commit `0f83475c2` / PR #375
-(`branch/issue-368-legacy-traps`). The primary checkout is unrelated and untouched.
-Current `origin/master` remains the inspected `e1efb9bc0` base.
+Worktree: `/home/aiwithapex/projects/duris-issue368`; cumulative implementation branch:
+`branch/issue-368-trap-effects`. The originally requested `branch/issue-368-legacy-traps`
+is the first slice. Its plan links here so a new session can find the cumulative work.
+The unrelated primary checkout and other active worktrees are preserved.
 
-First chunk aligns editor EAST/SOUTH/WEST constants and flag-list indexes with runtime
-N/E/S/W/U/D bits 8/16/32/64/128/256, and corrects the same labels in the builder guide.
-Executing the actual `getObjTrapFlagsStrn` exposed an out-of-bounds read in its OPEN
-separator handling (`strlen(strn - 1)`); the same chunk fixes that expression.
-`test_legacy_trap_editor.py` executes all 4096 flag combinations under ASan/UBSan,
-including exact east/west/open display checks, and checks the editor flag-list order.
-The required formatting check exposed pre-existing whole-file formatting drift in
-the three touched editor files. They are mechanically formatted to satisfy that gate;
-behavior changes remain the three direction constants, flag-list order and OPEN index.
+Published stack, in dependency order:
 
-Ablation: keep the existing constants, flag list and formatter; change their owning
-definitions rather than adding a translation layer or migrating unrelated authored data.
-No runtime effect is enabled and none of the 61 authored trap records has changed yet.
+1. [#375](https://github.com/LuminariMUD/Duris/pull/375),
+   `branch/issue-368-legacy-traps` → `master`: editor direction constants, flag indexes,
+   guide, and the formatter's actual OPEN separator out-of-bounds read.
+2. [#377](https://github.com/LuminariMUD/Duris/pull/377),
+   `branch/issue-368-trap-compatibility` → #375 branch: one shared saved-copy policy,
+   six restoration owners, all-field binary override/grouping detection, native round trips.
+3. [#383](https://github.com/LuminariMUD/Duris/pull/383),
+   `branch/issue-368-journey-boon-fixture` → #377 branch: five stale automatic-boon reply
+   expectations in four existing journey files. Actual handler behavior is unchanged.
+4. [#385](https://github.com/LuminariMUD/Duris/pull/385),
+   `branch/issue-368-trap-effects` → #383 branch: runtime, commands, authored content,
+   builder tools, native and real-server qualification. Both final journeys passed.
 
-Validation: `python3 tests/async/test_legacy_trap_editor.py` passed; `make -C src -j8`
-passed (log: ignored `bin/issue368-evidence/build-mariadb.log`). Remaining proof belongs
-to its affected implementation slice. Formatting and `git diff --check` pass.
-Saved-copy chunk: `combat/trap_legacy.c/.h` owns the single 23-row compatibility policy
-used after stored fields by the six restoration owners. The explicit vnum argument keeps
-the policy independent of the global prototype registry; each owner supplies its validated
-snapshot or loaded-object vnum. It preserves partial/spent/custom traps and special-proc
-`value[3]`, limits only the five selected unlimited encounters, and adds CLOSEABLE without
-CLOSED only to matching bones/urn copies. World normalization runs after its final values[]
-overwrite. Binary unique-field detection **and stock grouping** now compare all four trap
-fields; inspecting the writer exposed the second potential state-loss path.
+All selected runtime/content behavior is implemented. The shared scalar validator serves
+both the runtime and loader diagnostics. Native spell functions retain their defenses;
+minor paralysis/stun duration bounds apply only at trap callers. Temporary casters use
+ordinary converted prototype attributes and identity-based cleanup. A runtime flag forces
+nonlethal/no-XP damage against the caster; reflected damage cannot leave a caster corpse
+or grant player rewards. Delayed Heart Toxin retains effective level with environmental
+attribution after caster cleanup, with no dangling caster link.
 
-`legacy_trap_manifest.py` freezes all 61 original/final tuples independently of runtime
-policy. `test_legacy_trap_restore.py` exercises both real binary readers, the real writer,
-SQL extra-row loading and actual reward JSON capture/application under ASan/UBSan for
-all 61 profiles, charges -2/-1/0/1/2/100, individual custom mask/type/level edits, and
-two load/save cycles. Container open/closed flags also round-trip through these owners.
-Player graph hydration and framed world recovery have executable representative repairs,
-including disarmed and retired state, final values[] ordering and preserved proc markers.
-The existing world harness needed current boot-boundary includes/stubs to compile; that
-fixture repair changes no server behavior.
+The fixed seven-profile table allocates a complete batch before placement, rolls back
+failed batches, and commits one charge only after placement. Summons start normal combat;
+gates store one runtime identity for later ordinary NPC memory processing, including pet
+targets. The scheduled mundane update reaches that handler and revalidates after callback
+extraction. No replacement scheduler, reward service or configurable profile schema exists.
 
-Additional validation passed: `make -C src -j8`, `make -C src -j8 pfile`, flat-file
-server build with `PERSISTENCE_BACKEND=flatfile BIN_ROOT=$PWD/bin/issue368-flatfile`,
-`test_player_load_items.py`, `test_world_recovery_pipeline.py`,
-`test_locker_container_weight_lifecycle.py`, `test_legacy_object_identity.py`,
-`test_item_extra_descr_codec.py`, `test_player_item_snapshot_codec.py`, and
-`test_spellbook_persistence_contract.py`. Build logs remain under
-`bin/issue368-evidence/`. These native/synthetic boundary tests do not replace the
-pending loaded gameplay/restart acceptance on both backends.
+GLYPH runs each matching object once per movement attempt and returns through the existing
+movement preflight before another trap or actual movement. New combat blocks normal
+movement while preserving the owner's flee exception. Only the six axis directions can
+select trap bits; diagonal directions cannot alias OPEN/MULTI/GLYPH. Item-on-put activation
+occurs after permissions/capacity and before acknowledgement or transfer. An explicit
+optional rejection result preserves ordinary container search while keeping bulk/equipment
+callers safe. Bulk candidates use existing pointer/UID identities and preserve earlier
+successful destination saves after later participant extraction.
 
-Ablation: the one small normalizer is required by six real owners; existing wire formats,
-codecs and loaders are retained. No data rewrite, schema change, new restoration service,
-or prototype-wide overwrite was added. Next: independent authored/generated content
-checks and shared runtime/load validation, then real effect execution and command hooks.
+The single 23-row compatibility normalizer runs after final stored fields, including
+every copy expanded from counted binary records. It preserves partial/spent/custom state,
+only caps the five selected unlimited encounters, and adds CLOSEABLE without CLOSED to
+recognized old bones/urns. Both binary override selection and stock grouping compare all
+four trap fields. No wire-format/schema change or broad saved-data rewrite is required.
 
-### Runtime/content work in progress — 2026-10-25
+Authored changes are exactly 17 trap tuples, six retired T records and four fresh container
+flag repairs in 17 object files. Existing special procedures and proc markers remain.
+`make world` regenerates ignored aggregates; independent parsing checks all 61 definitions
+and four container flags. A pinned-original negative control independently matches every
+old tuple and fails the final-content contract for the expected repairs/retirements.
 
-Compatibility is published in [PR #377](https://github.com/LuminariMUD/Duris/pull/377),
-head `26174bb1f`, stacked on #375. Current worktree branch is
-`branch/issue-368-trap-effects`, now based on focused fixture dependency
-[PR #383](https://github.com/LuminariMUD/Duris/pull/383), commit `8ed816523`, above #377.
-The runtime/content/command checkpoint is being published while the remaining loaded
-qualification is completed; it is not yet runtime acceptance.
+Ablation decisions: reuse ordinary spells, converted mobs, identity lookups, serializers,
+world generation and existing isolated journey machinery. Keep the normalizer because six
+real owners need the same compatibility policy. Keep the two narrow runtime fields because
+caster reward suppression and PID-less pet memory cannot otherwise meet the selected
+behavior. No generic trap framework, entity registry, configurable targeting or replacement
+persistence was introduced. The three editor source files required mechanical whole-file
+formatting to satisfy the existing formatter; their behavior delta remains narrow.
 
-Implemented so far: shared definition validation, fixed seven-profile lookup, native
-spell dispatch, finite/MULTI charge boundaries, whole-batch allocation/placement rollback,
-identity snapshots and caster cleanup; atomic trapset edits and trapstat names/flags;
-17 authored tuple repairs, six retirements and four fresh container flags; item-on-put
-hooks after permission/capacity checks; identity-safe bulk puts and safe slip/equipment
-callers; and GLYPH continuation through the existing movement preflight before each next
-matching trap. The per-attempt identity list prevents unlimited glyphs from firing twice;
-ordinary 0-8 triggers keep their stopping behavior. Sneak learning is not repeated during
-the new preflight loop.
+### Qualification evidence and remaining closeout
 
-Two traced lifecycle boundaries needed narrow support. `CHAR_RFLAG_TRAP_CASTER` is an
-existing runtime-flag slot; raw damage forces nonlethal/no-XP flags on the temporary
-caster so nominal prototype HP is not its safety mechanism. Gate memory has one runtime
-identity in `npc_only_data` because ordinary PID memory cannot represent a triggering
-pet; the normal memory update uses that identity with its existing safety/aggression
-checks, rather than starting combat synchronously or adding a scheduler.
+Passing native ASan/UBSan checks: editor all 4096 masks; independent 61-profile restoration
+through actual binary/SQL-extra/reward owners (charges -2/-1/0/1/2/100, custom edits,
+two cycles, counted copies); real dispatcher/native spells, scheduled poison and NPC memory;
+atomic builder edits; six directions and diagonal exclusion; glyph continuation/later
+blocker/control interruption; retained three-imp chest and five-pulse tower procedures;
+actual single/bulk puts and callback extraction/publication boundaries.
 
-Passed: `test_legacy_trap_effects.py` executes the actual dispatcher, five native spells,
-Stun and the ordinary memory update with controlled RNG/saves; durations, defenses,
-duplicate controls, ROOM filtering, all seven profiles, capacity and batch failures,
-PC/pet deferred gate aggression, and actor/caster/object extraction pass ASan/UBSan.
-`test_put_trap_lifecycle.py` executes real single/bulk placement boundaries with denied
-permissions, rejection and extraction of participants/siblings, including persistence
-of earlier successful items. Existing unsupported/0-8, pickup lifecycle and empty-command
-checks pass. `make world` and independent authored/generated inventory checks pass for
-all 61 resolutions and four container flags. Current server builds have passed after
-the integration edits; final builds are still required after the latest source changes.
+Additional focused checks passed: unsupported/legacy 0–8 traps, get/bulk-get lifecycle,
+empty command, Freedom of Movement, poison lifecycle, control/flee, web spray, room-leave
+veto, newbie template, player graph hydration, framed world recovery, locker container
+weight, extra-description/item-snapshot codecs, legacy identity, spellbook and reward
+contracts. Native fixtures control lower services and do not claim full-server sanitizer
+coverage. All checked build and gameplay runtimes are local and disposable.
 
-Next required work: native movement/builder/special-procedure coverage, both-backend
-loaded gameplay/save/restart journeys, exact loaded prototype/boot-log evidence,
-retaliation/no-reward verification through the actual damage path, relevant regressions,
-final formatting/build/diff review, and publication of this focused dependent PR.
+MariaDB and flat-file development server builds, the pfile target, root world generation,
+changed-line/whole-file formatting, commit hooks and whitespace checks passed. Final
+source integration builds are `bin/issue368-evidence/build-integration-mariadb.log` and
+`build-integration-flatfile.log`. Both existing lethal corpse journeys passed with normal
+death, bystander damage, reconnect/custody and spent-state restart; evidence is
+`corpse-flatfile.log` and `corpse-mariadb.log` in the same directory. Those unaffected legacy
+paths reuse this evidence rather than rerunning a broad regression suite.
 
-### PR #385 review repairs, 2026-10-25
+An earlier complete MariaDB trap journey passed at `6a54efab2` (evidence
+`bin/issue368-evidence/mariadb-2c1032e7/result.json`). The final journeys at `287c64d34`
+passed and qualify the integrated delayed-poison/scheduled-memory repairs as well as all effects,
+seven native profiles, commands and saved budgets. Each boots the complete generated
+world with normal corpse/shopkeeper/ferry restoration, inspects all 61 fresh states,
+and tests unrelated invalid type 17 diagnostics/inertness. The TIME response is a causal
+command barrier because room activity can emit unsolicited prompts and inventory commands
+are blocked during paralysis.
 
-- Movement traps now reject diagonals before shifting the six encoded direction bits;
-  OPEN/MULTI/GLYPH cannot masquerade as northwest/southwest/northeast triggers.
-- Heart Toxin from temporary trap casters stores its effective level in the existing
-  affect field and uses the existing environmental damage attribution. Initial and
-  repeated events retain no caster link, so cleanup cannot cancel the delayed effect.
-- The scheduled mundane memory block accepts gate runtime targets even without PID
-  memory and no longer unconditionally skips its memory handler. Actor revalidation
-  after combat runs only when the character-removal generation changed.
-- Extended native trap and poison lifecycle ASan/UBSan tests reproduce the prior
-  failures and pass the repairs, including actual scheduler dispatch, cure cancellation,
-  removed targets, safe rooms, ordinary PID memory and extraction during aggression.
-  Unsupported/0-8 trap, editor, NPC pickup contracts, MariaDB and flat-file development
-  builds, formatting and commit-hook checks are the focused review verification.
-  This does not complete the broader loaded gameplay/restart qualification above.
-Do not mark #368 resolved or the runtime slice review-ready from the native fixtures alone.
+Flat-file world recovery intentionally uses the existing saved-container catalog for
+floor trap records: loose Redis snapshots require an active SQL season epoch and are
+unavailable on the flat-file authority. MariaDB uses a private Redis world snapshot cache.
+Player inventory and saved containers/corpses use their real existing authority on both
+backends. This fixture distinction adds no server persistence path. Restart checks cover
+partial and spent budgets and an already-open urn without rearming/reclosing.
 
-Native movement/builder and retained special-procedure checks now pass in the effects
-fixture: unlimited glyph visitation, later blocking trap, control interruption, atomic
-invalid builder edits, three imps exactly once per chest marker, and the unchanged five
-combat-pulse tower wait with its staff exemption. Both loaded backends also verified all
-61 exact fresh trap states through `stat trap` after full generated-world startup.
-The first loaded fixture used the nonexistent `trapstat` alias, then a keyword collision
-with the builder's starter book; numeric-vnum stringing fixed those fixture errors.
-Room activity can emit unsolicited prompts, so the journey now uses a TIME response
-as a read-only command barrier (TIME remains allowed during paralysis). Full scenario/save/restart completion remains pending.
-Ordinary visibility/capacity refusals are also exercised: the mortal drops its starter
-inventory, hidden objects are searched for before opening, and a full urn must preserve
-the carried trap's budget before a valid put into the opened iron chest. Reflection uses
-the authored deflect potion 38715 because the cast command correctly restricts deflect to
-self. `put()` reports an actual trap rejection to bulk/equipment callers explicitly;
-ordinary refused puts retain their earlier container-search behavior.
+Both final runs passed three full-world boots. Their evidence directories contain
+`result.json` (qualified source SHA, binary SHA-256, fixture `world.obj` SHA-256,
+backend and restoration path), complete `boot-1.out` through `boot-3.out`, `logs/`,
+and sanitized client transcripts:
 
-The legacy flat-file lethal corpse journey now passes death, bystander damage, server
-survival, reconnect, custody and spent-state restart. Its stale automatic-boon reply was
-repaired independently in #383 (five expectations across four existing journeys); the
-server behavior was already correct. No full regression cycle was required for that
-literal fixture correction. Reuse this successful corpse evidence unless affected
-production paths change.
+- Flat-file: `bin/issue368-evidence/flatfile-596e96d7/`; command output
+  `bin/issue368-evidence/journey-flatfile.log`.
+- MariaDB: `bin/issue368-evidence/mariadb-6d034219/`; command output
+  `bin/issue368-evidence/journey-mariadb-final.log`.
+
+The fixture `world.obj` hash is
+`a4d689d99968b39c7c62cace40eac6dc466ba99121e95a4f75cb3602b1ffaa2b`
+on both authorities; it includes the private invalid-definition control. Both source
+patch hashes are the empty-diff hash: the tested production tree was committed. Native
+fixtures use sanitizers; these complete development-server journeys do not. Normal
+save/restart is proven, without claiming production or crash-atomic spawn acceptance.
+
+Remaining closeout: integrate the landed compatibility parent, preserve both project
+handoff documents, run the affected native checks and builds, commit/push the final
+handoff and mark #385 ready. Do not perform code
+review work in this task; the user explicitly restricted it to implementation.
 
 ### 1. Content contract and shared validation
 
-- [ ] Add one focused content regression with an independent golden old/final manifest
+- [x] Add one focused content regression with an independent golden old/final manifest
   matching the appendix. Parse only AREA-selected inputs. Check the seven profiles,
   all 17 changes, six removals and four container flag edits; reject duplicate/missing
   vnums and remaining unsupported configurations.
-- [ ] Define supported types/profiles once for runtime and db.c load diagnostics.
+- [x] Define supported types/profiles once for runtime and db.c load diagnostics.
   Keep effect/profile validation separate from charge eligibility: a spent valid trap
   is not an invalid definition. Keep implementation-local helpers in trap.c; add only
   the small shared header/API required by the concrete loader/restoration consumers.
-- [ ] Extend trapstat/trapset with names 9–16, profile restrictions, meaningful GLYPH/
+- [x] Extend trapstat/trapset with names 9–16, profile restrictions, meaningful GLYPH/
   MULTI reporting and negative-level validation. Invalid builder edits must not leave
   a half-modified trap.
-- [ ] Align editor direction definitions and flag-list ordering in
+- [x] Align editor direction definitions and flag-list ordering in
   `areas/de/src/obj/traps.h` and `areas/de/src/flagdef.cpp`; check formatting through
   `obj/objtypes.cpp`. Update `docs/content/area_writing.txt` and relevant command help.
   Keep existing runtime constants and unrelated data intact.
 
-**Exit:** content contract fails on the present 61 definitions for the expected reasons;
+**Exit:** content contract fails on the pinned original definitions for the expected reasons;
 validation rejects real invalid types/profiles while recognizing every planned final row.
 
 ### 2. Effect execution and bounded creature creation
 
-- [ ] Add types 9–16 in trap.c using the contracts above. Keep 0–8 behavior and charge
+- [x] Add types 9–16 in trap.c using the contracts above. Keep 0–8 behavior and charge
   rules on their existing path.
-- [ ] Snapshot trap fields and victim identities before effects. Reuse
+- [x] Snapshot trap fields and victim identities before effects. Reuse
   `find_character_by_runtime_id` and `find_live_object` rather than inventing another
   entity registry. Never test IS_ALIVE through an already-freed pointer.
-- [ ] Implement temporary-caster cleanup and the explicit charge commit points.
+- [x] Implement temporary-caster cleanup and the explicit charge commit points.
   Verify ordinary spell and helper behavior with production functions, not only counters.
-- [ ] Implement the seven profiles in a small fixed table/switch, including whole-batch
+- [x] Implement the seven profiles in a small fixed table/switch, including whole-batch
   capacity, placement failure rollback, cap counting and distinct gate/summon aggression.
 
 **Exit:** native focused tests execute all eight effects, duration boundaries, defenses,
@@ -312,22 +299,22 @@ event, combat link, corpse or reward leaks from temporary casting.
 
 ### 3. Real command integration and content edits
 
-- [ ] Repair the 17 T tuples and remove the six specified records; preserve all other
+- [x] Repair the 17 T tuples and remove the six specified records; preserve all other
   object/proc fields. Set container flags `value[1]`: 67803 1→5, 142233 17→21,
   142251 0→5, 142438 0→5. Add no lock or key requirement.
-- [ ] Implement GLYPH continuation for restored types. After effects, revalidate actor,
+- [x] Implement GLYPH continuation for restored types. After effects, revalidate actor,
   source room, object identity and current movement eligibility/exit. Continue safely
   to later matching traps, once per object; do not hide a subsequent blocking trap.
   Preserve non-glyph stop-the-attempt behavior and legacy 0–8 semantics.
-- [ ] Preserve pickup rejection and OPEN-after-opening ordering. Wire OBJECT on the
+- [x] Preserve pickup rejection and OPEN-after-opening ordering. Wire OBJECT on the
   **item being put** for restored types 9–16: after ordinary permission/capacity checks
   but before acknowledgement, detachment, transfer or publication. An invalid put must
   not spend charges. Do not introduce destination-container hazards by inference.
-- [ ] Adapt single/bulk put and any shared transfer callers reached by the hook so a
+- [x] Adapt single/bulk put and any shared transfer callers reached by the hook so a
   trap rejection or invalidated actor/item/container stops safely. Reuse the pickup
   identity pattern; do not retain `next_content` across effects. Preserve ordinary
   legacy 0–8 put behavior and unrelated coin transfer behavior.
-- [ ] Verify explicit directions (including the east-only royal equipment room,
+- [x] Verify explicit directions (including the east-only royal equipment room,
   west-only shrine and downward Barovia glyph), all-direction rows, special-procedure
   overlap, disarming, and the four first-open container states.
 
@@ -352,7 +339,7 @@ special procedures keep their prior guarantees.
   Respect existing snapshot verification and ownership/publication order.
 - [x] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
   fields; keep its existing encoding and other formats unchanged.
-  Review repair: counted stock records now normalize every expanded copy immediately
+  Counted stock records now normalize every expanded copy immediately
   before placement. The native writer/reader regression expands two copies of every
   golden profile with five charge states; later copies cannot retain an old unlimited
   budget or a retired trap. Individual and counted ASan/UBSan round trips pass.
@@ -382,11 +369,11 @@ Prefer extending existing tests before adding infrastructure:
   `test_player_item_snapshot_codec.py`, `test_world_recovery_pipeline.py` and relevant
   reward/binary restoration harnesses: prove real restore boundaries and round trips.
   Source-contract tests can supplement, not replace, executable evidence.
-- Proposed new `test_legacy_trap_content.py`: independent authored/generated manifest,
-  four containers and active-input selection. Proposed focused native
+- `test_legacy_trap_content.py`: independent authored/generated manifest,
+  four containers and active-input selection. Focused native
   `test_legacy_trap_effects.py`: real effect/helper and lifecycle behavior with controlled
   save/RNG inputs. Add a small restoration harness only where existing owners lack one.
-- Proposed `test_legacy_trap_journey.py [SERVER BACKEND]`: reuse the disposable runtime,
+- `test_legacy_trap_journey.py [SERVER BACKEND]`: reuse the disposable runtime,
   account/TCP and fixture machinery in `test_corpse_trap_restart_journey.py` and
   `test_flatfile_combat_journey.py`. Exercise actual generated prototypes, every effect
   and spawn profile, changed trigger classes, get/put/open, save/reconnect, spent
@@ -396,7 +383,7 @@ Prefer extending existing tests before adding infrastructure:
   `tests/run_db_tests.sh` where needed; document commands/evidence in
   `docs/testing/REGRESSIONS.md`.
 
-Implementation commands (new test filenames above are proposed, not present yet):
+Implementation and qualification commands (all listed tests are now present):
 
 ```sh
 ./scripts/format.sh --check --rev origin/master
@@ -422,35 +409,35 @@ Use isolated local environments and the disposable SQL wrapper; it does not sour
 checkout's .env. Keep generated worlds, binaries and evidence under the repository's
 ignored output locations. Do not commit area aggregates or runtime data.
 
-- [ ] Regenerate with the existing root `make world` target (`areas/m_slow` and the
+- [x] Regenerate with the existing root `make world` target (`areas/m_slow` and the
   area tools), then independently verify all 61 generated prototypes against the
   appendix and four container flags. Source parsing alone is not this proof.
-- [ ] Boot the full generated world in an isolated local runtime, with normal floor/
+- [x] Boot the full generated world in an isolated local runtime, with normal floor/
   corpse restoration enabled rather than debugger `-z` shortcuts. Inspect loaded
   prototypes and complete startup logs from that exact binary/world generation.
-- [ ] Assert the 61 old unsupported-definition warnings are absent **and** valid
+- [x] Assert the 61 old unsupported-definition warnings are absent **and** valid
   effects execute; inject an unrelated invalid configuration to prove warnings and
   charge preservation still work. Check parser duplicates by vnum, not warning count.
-- [ ] Save evidence with source SHA, binary/world hashes, backend, commands, outcomes
+- [x] Save evidence with source SHA, binary/world hashes, backend, commands, outcomes
   and complete boot log paths. Qualify restored-world state before claiming clean boot.
 
 ### 6. Final ablation and closeout
 
-- [ ] Reread the actual diff: every source/data/helper change must serve a listed
+- [x] Reread the actual diff: every source/data/helper change must serve a listed
   outcome; preserve spell balance outside the selected trap callers and existing
   special procedures. Keep the single compatibility normalizer because multiple real
   loaders require it; do not duplicate its policy.
-- [ ] Keep the existing serializers, world generator, mob templates, identity lookups
+- [x] Keep the existing serializers, world generator, mob templates, identity lookups
   and test runtime. Drop speculative configuration, a generic effect plugin system,
   entity registries, replacement persistence formats and new scheduler/reward layers.
-- [ ] Confirm each manifest row, profile, timing, save/defense, charge rule, continuation
+- [x] Confirm each manifest row, profile, timing, save/defense, charge rule, continuation
   rule, restoration owner and acceptance condition has direct evidence.
 - [ ] Record remaining implementation/qualification failures honestly; fix them before
-  calling #368 resolved. Follow normal review requirements, without waiting for CI as a
-  substitute for local evidence. Publishing/merging a future PR and production release
-  are separate actions from this plan-only publication.
+  calling implementation complete. Publish all chunks ready for review, without waiting
+  for CI as a substitute for local evidence. PR review/merge and production release
+  remain separate from this implementation task.
 
-## Planning evidence and estimate
+## Historical planning evidence and estimate
 
 Planning checks completed on the pinned base:
 
@@ -458,8 +445,8 @@ Planning checks completed on the pinned base:
   six removals, 38 retained tuples and seven explicit spawn profiles accounted for.
 - `python3 tests/async/test_unsupported_trap_damage.py` — passed.
 - `python3 tests/async/test_get_trap_lifecycle.py` — passed.
-- These establish the existing baseline only. No proposed new effect, generated-world
-  change, saved-copy repair, full build or gameplay qualification has been performed.
+- These established the pinned baseline only; completed implementation/qualification
+  evidence is recorded in the current handoff above.
 
 Estimated implementation and qualification effort for one engineer: **32–48 hours,
 approximately 4–6 focused working days**.
