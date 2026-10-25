@@ -258,15 +258,21 @@ def run(binary, backend):
                 home()
                 command(actor, "drop all")
                 caster_count = count(14)
-                for vnum in (6714, 6003, 32015, 3835):
+                for vnum in (6714, 6003, 32015, 1458):
                     home(); key = load(vnum); floor(key)
                     command(actor, "get " + key)
                     final = TRAPS[vnum][2]
                     inspect(key, (final[0], final[1], 0, final[3]))
                     assert count(14) == caster_count
                     command(builder, "purge " + key)
-                    if vnum == 3835:
-                        time.sleep(2.2)
+                    if vnum == 1458:
+                        time.sleep(4.2)
+
+                home(); hidden=load(3835);floor(hidden)
+                invisible_attempt=command(actor,"get "+hidden)
+                assert "do not see" in invisible_attempt,invisible_attempt
+                inspect(hidden,TRAPS[3835][2])
+                command(builder,"purge "+hidden)
 
                 for vnum in (67803,142233,142251):
                     home();key=load(vnum);floor(key)
@@ -359,6 +365,8 @@ def run(binary, backend):
                 inspect("probe91025",(2309,9,3,60))
                 inspect("probe142438",(512,9,0,60))
                 inspect("probe800001",(2,17,2,60))
+                home()
+                assert "already open" in command(actor,"open probe142438").lower()
                 assert count(14)==caster_count
                 stop()
                 logs="\n".join(p.read_text(errors="replace") for p in (runtime/"logs/log").glob("*") if p.is_file())
