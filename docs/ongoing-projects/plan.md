@@ -1,5 +1,8 @@
 # Issue #215: Conjurer specialisation rebalance
 
+> Issue #368 legacy trap implementation and qualification are maintained in
+> [plan-issue-368.md](plan-issue-368.md).
+
 Updated 2026-10-25. **Status: implementation in progress; Planar Affinity is the
 first independent review chunk.** Work on branch
 `branch/issue-215-conjurer-rebalance`, in the existing worktree
