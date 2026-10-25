@@ -11,6 +11,26 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Kjelgar crystal harp recipe
+
+Kjelgar (mobile 47124) accepts five moonstone crystals (400094), two gnomish
+shopkeeper tokens (55033), and 100 platinum for the Vokstron harp (47096).
+The recipe previously required five copies of nonexistent object 400941.
+`python3 tests/async/test_kjelgar_crystal_quest.py` compiles the authored vehicle
+quests with the real area compiler in a temporary directory, resolves the named
+ingredients and reward from object definitions, and checks their quantities and
+the coin cost. It fails on the old recipe.
+
+`python3 tests/async/run_kjelgar_quest_journey.py --binary
+bin/server/dms_kjelgar_flat --output bin/analysis/kjelgar-turn-in.json` runs the
+real server with private world/player state and loopback listeners. It copies the
+authored captain, quest, ingredient and harp definitions into the fixture. A mortal
+pays 100 platinum and hands over the items with ordinary `give` commands.
+Incomplete turn-ins grant no harp; the full turn-in grants exactly
+one harp, which survives a save, server restart and reconnect. The same journey
+with `--baseline` reinstates 400941 only in its temporary quest file and proves
+the original recipe grants no harp despite receiving every advertised ingredient.
+
 ## Account email registry lookup
 
 With optional `REQUIRE_EMAIL_VERIFICATION` enabled, `is_email_taken` previously
