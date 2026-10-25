@@ -96,6 +96,10 @@ int main()
 	require(wiki_help("dimension door").find("3 seconds") != string::npos &&
 			wiki_help("relocate").find("5 seconds") != string::npos,
 		"Air travel help omitted its post-cast waits");
+	require(wiki_help("conjure water").find("5-minute cooldown") != string::npos,
+		"Conjure Water omitted its successful-use cooldown");
+	require(wiki_help("water to life").find("232 at") != string::npos,
+		"Water to Life did not render the dedicated parsed formula topic");
 
 	cout << "flat-file help runtime passed\n";
 	return 0;

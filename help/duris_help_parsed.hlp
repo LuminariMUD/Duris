@@ -5451,9 +5451,26 @@ Conjure Elemental
 Conjure Water
 Conjure Water - Last Edited: 2007-04-20 14:02:09 by Unknown
 ===========================================================
-Syntax:         inn conjure water
-This innate ability will allow the Water Magus to conjure a spring of
-water.
+Syntax: innate conjure water
+
+A Water Magus can summon a spring after 4 seconds, with matching action
+lag running at the same time. The spring lasts 15 minutes. A successful
+creation spends one innate use and starts a 5-minute cooldown.
+
+Only one summoned or pending spring is allowed per room. An existing
+spring, a pending summon or a repeat command adds no lag and spends no
+use. Leaving the room cancels the pending spring, even if you return
+before it would finish. Death, extraction and failed creation spend no
+use or cooldown. Time already spent preparing is not refunded.
+
+The caster, room and innate availability are checked again at creation.
+Success is reported only after the spring is actually placed.
+
+==See also==
+
+* Water Magus
+* Water to Life
+* Water Form
 
 #0
 
@@ -27752,6 +27769,11 @@ None beyond the base-class registrations.
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
+Conjure Water creates a 15-minute spring after 4 seconds and has a
+5-minute cooldown committed on successful placement. Water to Life
+retains its existing formula and external water-source requirement;
+Water Form supplies no automatic water or extra regeneration.
+
 ==See also==
 
 * Conjurer
@@ -28933,3 +28955,28 @@ single physical-mitigation roll alongside Stone Skin.
 * Earth Form
 * Biofeedback
 * Group Stone Skin
+
+#0
+
+Water to Life
+Water to Life - Last Edited: 2026-10-25
+============================================================
+Area of effect: Self, Water elemental or water-formed victim
+Aggressive: No
+Duration: Instantaneous
+Type: Healing
+
+Water to Life restores 2*level + max(0, level-50)*20 base HP: 232 at
+level 56, before the normal healing modifiers and maximum-HP ceiling.
+It requires external natural water or a suitable water container on
+the ground in the caster's room. The water is not consumed.
+
+Water Form does not create a water source or increase this healing.
+The spell uses memorised copies and normal casting resources, with
+no new dedicated cooldown. Its existing target restrictions remain.
+
+==See also==
+
+* Water Magus
+* Water Form
+* Conjure Water

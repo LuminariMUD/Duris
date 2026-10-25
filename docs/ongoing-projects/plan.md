@@ -88,8 +88,8 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
 | 1 | New forms, registration, resource checks and cleanup | 0 | Review-ready [PR #378](https://github.com/LuminariMUD/Duris/pull/378), stacked on #376 |
 | 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Review-ready [PR #379](https://github.com/LuminariMUD/Duris/pull/379), stacked on #378 |
-| 3 | Air Recharge and travel lag | 1 | Implemented; focused checks pass on `branch/issue-215-air-recovery` |
-| 4 | Reliable Conjure Water | 0 | Pending |
+| 3 | Air Recharge and travel lag | 1 | Review-ready [PR #380](https://github.com/LuminariMUD/Duris/pull/380), stacked on #379 |
+| 4 | Reliable Conjure Water | 0 | Implemented and locally qualified; PR publication next |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
 | 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
 | 7 | Five level-51 affinities | 0 | Review-ready [PR #376](https://github.com/LuminariMUD/Duris/pull/376) |
@@ -616,8 +616,45 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   initial patch-location mistake in the adjacent Greater Recharge handler;
   final diff leaves that handler unchanged. Class-help/layout, formatting and
   diff checks pass. Both sources describe the final cap and post-cast waits.
-- Next: publish Air PR and implement Conjure Water's delayed-use lifecycle, then
-  Water shoreline and Fire mechanics. Reuse existing healing/build evidence.
+- Delivered Air commit: `d1e42ef56f4eebe78b3cff1dcd9daa38cb00be70`, pushed;
+  [PR #380](https://github.com/LuminariMUD/Duris/pull/380) targets Earth branch.
+- Next: Conjure Water on `branch/issue-215-reliable-spring`, stacked on #380;
+  then Water shoreline and Fire mechanics. Reuse existing healing/build evidence.
+  Spring pending state is only its existing actor-owned event with copied origin
+  room, checked via room occupants/events and cancelled by actual room departure.
+  Reuse `can_use_innate()` for read-only availability and retain other innates'
+  `check_innate_time()` semantics. No reservation registry is needed.
+
+### Reliable spring checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-reliable-spring` builds on Air `d1e42ef56`. Changes:
+  `innates.c`, its callback declaration, one `char_from_room()` cancellation hook
+  after leave-veto checks, the 300-second property, both help sources, focused
+  runtime/help checks and this plan. Reuse `can_use_innate()` and actor-owned
+  copied event data; no global reservations or new timer semantics.
+- Creation and lag are one `PULSE_VIOLENCE` (4 seconds) concurrently. Check
+  spring/pending occupancy before scheduling, then check origin/eligibility/use
+  and occupancy on completion. Place VNUM 93300 before committing the use. A
+  failed placement/final eligibility check extracts only this attempt's object.
+  Normal extraction already cancels all actor events; departure now cancels the
+  spring specifically. The existing 15-minute decay remains.
+- New `python3 tests/async/test_conjure_water_runtime.py` passes ASan/UBSan on the
+  **production scheduler**, innate registration/availability/use functions and
+  short-affect expiry. Covers exact pre/post-4-second position in the event
+  timeline, two-player room race/repeat commands, existing/arriving spring,
+  5-minute cooldown and 15-minute decay/resummon, creation/placement/final
+  eligibility failure, leave/return cancellation, death, extracted/freed actor,
+  eligibility/cooldown changes during wait, real scheduler rejection, retry and
+  balanced event/payload cleanup. Object creation/placement/decay and room-leave
+  invocation are controlled fixtures; actual hook placement is also asserted.
+- Incremental `make -C src -j8` passes with no warnings after adding the missing
+  `top_of_world` declaration. Innate plane-shift dispatch/cooldown, movement
+  liveness, class-help/layout and flat-file help runtime checks pass; the latter
+  verifies Conjure Water and the new dedicated parsed Water to Life formula page.
+  Format/diff checks pass. Water to Life implementation is untouched.
+- Next: publish spring PR, then shoreline traversal through the normal directed
+  movement pipeline with cancellation hooks, followed by Fire mechanics and
+  combined server gameplay. Existing core evidence need not be rerun unchanged.
 
 ### Review repair checkpoint, 2026-10-25
 
