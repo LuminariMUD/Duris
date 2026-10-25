@@ -1,6 +1,90 @@
 # October 24: lag after today's deployment
 
-Scope: **October 24, 2026 only**, from today's production reboot at 10:37 UTC.
+## Implementation handoff, October 25
+
+Issue: [#365](https://github.com/LuminariMUD/Duris/issues/365). Work continues on
+`investigate/365-server-lag` in `/home/aiwithapex/projects/duris-issue365`.
+The branch was fast-forwarded to `master` baseline `f31283e56` before editing;
+the original October 24 observations below remain historical evidence, not
+measurements of the new implementation. General lag attribution is still open.
+
+### Chunk 1: publish ready critical results every pulse
+
+The coordinator poll and existing game-thread completion handlers now run each
+250 ms pulse, still after `ne_events()` and before player-save capture. Even-pulse
+GMCP/ship/locker work still precedes them; outbox publication, saves, load/recovery,
+Divine selection and caches keep their 500 ms cadence. The routing function's
+bounded locker-identify completion polling also runs each pulse. No new worker,
+configuration, database query, event budget or socket flush was added.
+
+Keeping the existing output phase means completion receipts still wait until
+the next pulse to drain. The change deliberately removes the extra alternating
+publication pulse without moving effects across the event scheduling boundary
+or changing the one-playing-command-per-pulse admission policy.
+
+`test_critical_publication_cadence.py` executes the extracted production recurring
+phase with the real coordinator and shared writer, using an immediate synthetic
+backend and a virtual pulse clock. It checks both submission parities,
+success/replay/terminal failure, fence release, exactly-once routing, and the
+other recurring owners' cadence/order. For a result ready just after pulse zero,
+baseline `f31283e56` publishes at 499 ms and drains simulated output at 749 ms;
+the new phase publishes at 249 ms and drains at 499 ms. Just after an odd pulse,
+both versions publish at 249 ms and drain at 499 ms. These are controlled
+phase waits, **not live cargo socket or database timings**. The new regression
+fails against the old phase's missing odd-pulse routing.
+
+Passed: `make -C src -j4` (MariaDB development),
+`make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=.../bin/server/dms_flatfile`,
+`python3 tests/async/test_critical_publication_cadence.py`,
+`test_critical_command_coordinator.py`, `test_critical_completion_capacity.py`,
+`test_divine_trade_runtime.py`, `test_divine_trade_outbox_versions.py`,
+`test_game_loop_phase_contract.py`, `test_command_latency_runtime.py`,
+`test_locker_identify.py`, `test_item_movement_prompt_runtime.py`,
+`bash tests/async/run_divine_trade_mysql.sh`, and `./scripts/format.sh --check`.
+Python test paths here are under `tests/async/`. The database test uses its own
+disposable MariaDB, checks receipts, ten rollback boundaries and atomic ordinary
+loss/deletion saves, and rechecks the migration without resetting trade state.
+The trade runtime test covers held payment/save reservations, rejection, retry,
+relog and ordinary losses. The phase source test had a stale direct-auction
+call expectation; it now checks the existing outbox routing wrapper.
+
+### Remaining work and resumption boundaries
+
+- Finish chunk 1 validation and publish its focused review PR; record the PR,
+  commit/tag and final test evidence here. The change is not deployed.
+- General reported slowdown: obtain a representative slow action and UTC time
+  or trace a recurrence. Staff and mortal reports are equally useful on shared
+  paths. Do not declare the reports resolved from this cadence improvement.
+- Historical 47.759 ms callback: its identity remains unrecoverable. Capture a
+  new slow callback with concrete vnum/procedure and CPU/off-CPU/syscall timing.
+- First-command polling/type-ahead: evaluate separately; preserve simulation
+  cadence and intentional action-rate gates. No input-throughput change yet.
+- Cargo: measure representative purchase/sale submit, commit, publication,
+  receipt, blocked-command and save timing. The writer/phase driver isolates
+  publication only; prompt output still has its separate next-pulse wait.
+- Eligible-mortal activity: measure representative inventory/list position
+  before changing identity lookup. Current `master` changed Divine eligibility
+  and selection since the original fixture; inspect the owning source again.
+- Divine selection: evaluate repeated object traversal within current selection
+  and status passes, separating hourly work from recurring eligibility checks.
+- Outbox: correlate audit duration with delivery of newly arriving work.
+- Network/GMCP: extend to the reported client/gameplay path (movement, combat,
+  ships and state updates); read-only negotiation comparisons are insufficient.
+- Telemetry: extend hook comparisons only if a matching incident identifies an
+  unmeasured hook. Existing healthy queues do not prove hook execution cost.
+
+The local primary checkout is `ENVIRONMENT=local`; its separate worktree has no
+`.env`. A read-only remote check found `/home/staging/duris` marked production
+and a different live game PID, **2235802**, started October 25 at 10:01:53 in the
+remote host's timezone. The old PID/ELF offsets below must not be reused. No
+production operation, tracing configuration, migration or restart was performed.
+The old ignored evidence was not found under that remote checkout; locate its
+actual owning checkout before relying on retained drivers. Keep new test/build
+artifacts ignored under this worktree's `bin/tests/`.
+
+## October 24 observation record
+
+Scope of the observations below: **October 24, 2026 only**, from the production reboot at 10:37 UTC.
 Initial live observations were collected around 12:43–12:56 UTC; follow-up
 observations were collected from 18:06 UTC and resumed at 18:21 UTC. A sudo
 follow-up ran from 20:38 UTC. All times below are UTC.
