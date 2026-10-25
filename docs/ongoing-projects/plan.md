@@ -16,6 +16,14 @@ but use the owning source and actual journeys to establish how they must be impl
 The previous contents of this pathname are preserved byte-for-byte in
 [plan-issue-264.md](plan-issue-264.md).
 
+> **Stack continuation:** the originally requested `branch/issue-368-legacy-traps`
+> is the first review slice, [#375](https://github.com/LuminariMUD/Duris/pull/375).
+> Cumulative implementation and current qualification/handoff are on
+> [`branch/issue-368-trap-effects`](https://github.com/LuminariMUD/Duris/tree/branch/issue-368-trap-effects),
+> in that branch's [current plan](https://github.com/LuminariMUD/Duris/blob/branch/issue-368-trap-effects/docs/ongoing-projects/plan.md).
+> Review order: #375 → #377 → #383 → #385. Consult the cumulative plan before
+> continuing implementation from an earlier slice.
+
 ## Outcome, boundaries, files and proof
 
 - **Outcome:** resolve every one of the 61 active authored definitions: 55 generic
