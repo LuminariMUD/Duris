@@ -86,8 +86,8 @@ The order below is a working sequence, not a requirement for a PR stack.
 | Step | Deliverable | Dependency | Status |
 | --- | --- | --- | --- |
 | 0 | Freeze baseline and capture focused pre-change behavior | Implementation authorization | In progress; relevant baselines pass |
-| 1 | New forms, registration, resource checks and cleanup | 0 | Implemented; focused checks pass on `branch/issue-215-elemental-forms` |
-| 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Pending |
+| 1 | New forms, registration, resource checks and cleanup | 0 | Review-ready [PR #378](https://github.com/LuminariMUD/Duris/pull/378), stacked on #376 |
+| 2 | Earth Stone Skin layers and shared Earthen Maul | 1 for combined mitigation proof | Implemented; focused checks pass on `branch/issue-215-earth-mechanics` |
 | 3 | Air Recharge and travel lag | 1 | Pending |
 | 4 | Reliable Conjure Water | 0 | Pending |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
@@ -554,9 +554,63 @@ campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
   pass. These do not claim full server combat coverage.
 - `make -C src -j8` passed with no warnings. Format remains check-only; format and
   diff checks pass. Logs and scratch harnesses remain under `bin/`.
-- Next: record forms PR, then Earth Stone Skin/Earthen Maul, Air recovery/travel,
+- Delivered forms commit: `53a7e1a2cbb95857f6af48f52cc32192ce9e75da`, pushed;
+  [PR #378](https://github.com/LuminariMUD/Duris/pull/378) targets
+  `branch/issue-215-conjurer-rebalance`. The isolated full-source importer test
+  now also proves all four form topics and passed (1 targeted MariaDB test).
+- Next: Earth Stone Skin/Earthen Maul on `branch/issue-215-earth-mechanics`,
+  stacked on forms; then Air recovery/travel,
   reliable spring, shoreline movement, Fire pressure/mephits, and combined
   gameplay qualification. The original no-extra-tuning boundaries remain.
+
+### Earth checkpoint, 2026-10-25
+
+- Branch `branch/issue-215-earth-mechanics` builds on forms commit `53a7e1a2c`.
+  Changes are limited to `magic.c`, existing form/runtime-help tests, both help
+  sources and this plan. Stone Skin counts existing layers only for Earth Magus
+  PC recipients; it never refreshes or combines them. A small internal
+  `has_other_skin_spell()` supplies the unchanged exclusion list to both the
+  existing general skin check and the layering exception, avoiding two lists.
+- Earthen Maul converts earthless/airborne situations to normal tier 1 **after**
+  the existing indoor upgrade. Valid grounded indoor/mountain/lava tiers and
+  saves remain. No `fight.c` or affect implementation change is needed.
+- Extended `test_elemental_forms_runtime.py` passes with ASan/UBSan: caster versus
+  recipient matrix including NPCs/ordinary recipients; 1-3 layers and rejected
+  fourth; distinct charges/durations; production single-layer decrement;
+  production Earth-aura/skin mitigation branches; Earth Elemental and NOREDUCE
+  controls; production critical all-layer shatter; other skin exclusions; and
+  actual Maul handlers for Druids/Earth Magi at 46/56, saved/unsaved, indoor versus
+  outdoor, grounded/airborne, water/ocean/no-ground/all four plane sectors,
+  ordinary/indoor/mountain/lava tiers with matched dice. Reuses the forms/codec
+  evidence; full server combat/expiry journeys still belong to step 8.
+- `make -C src -j8` passes with no warnings. Class-help/layout and check-only
+  formatting/diff checks pass. Added the missing dedicated parsed Stone Skin
+  page and aligned both sources' Earth Magus, Stone Skin and Earthen Maul text.
+- Next: publish Earth PR, then implement Air healing/travel on the next stacked
+  branch. Preserve the verified forms/affinity evidence and avoid full-suite
+  reruns for this local spell change.
+
+### Review repair checkpoint, 2026-10-25
+
+- Source-validated review finding on #379: snapshot affect hydration prepends
+  captured newest-first rows in forward order, reversing Stone Skin layers.
+  Legacy binary `restoreAffects()` has the same issue. Reproduced distinct
+  charge/duration reversal in the sanitizer harness before repair.
+- `branch/issue-215-affect-restore-order` fixes the owning consumers:
+  `player_load_materialize.c` replays snapshot rows in reverse; `files.c`
+  reverses only its new restored prefix, preserving any pre-existing affects.
+  No new saved fields or special Stone Skin representation is needed.
+- Extended `test_elemental_forms_runtime.py` exercises two repeated binary and
+  snapshot-codec/hydration round trips with charges 19/9/8 and durations 4/2/1,
+  then the actual newest-first decrement. Also checks a pre-existing independent
+  affect stays behind the restored prefix. General stat services stay fixtures.
+- Review findings on #382 still need their own focused repair: input routing
+  must admit `abort` during shoreline waits; movement must capture its crossing
+  context before specials because cancellation clears callback/actor fields.
+  Add outbound cancellation and real input-routing regressions before publishing.
+- Fire recovery was delivered as `53679b9f04e39f3a13bfba39b13b832268d209e5`,
+  review-ready [PR #386](https://github.com/LuminariMUD/Duris/pull/386), based on
+  #384. Combined socket/recovery qualification remains pending these repairs.
 
 ### Historical planning-only evidence
 

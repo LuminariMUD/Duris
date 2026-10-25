@@ -87,6 +87,11 @@ int main()
 				"Elemental form lookup omitted its duration, targets or conflicts");
 	}
 
+	require(wiki_help("stone skin").find("newest layer only") != string::npos,
+		"Stone Skin did not render the dedicated parsed layering topic");
+	require(wiki_help("earthen maul").find("including Druids") != string::npos,
+		"Earthen Maul did not render shared terrain-independent access");
+
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }
