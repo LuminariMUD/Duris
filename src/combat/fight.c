@@ -5572,6 +5572,8 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 
 	if (!victim)
 		return DAM_NONEDEAD;
+	if (IS_SET(victim->runtime_flags, CHAR_RFLAG_TRAP_CASTER))
+		flags |= RAWDAM_NOKILL | RAWDAM_NOEXP;
 	if (collector_presence_is_npc(ch) || collector_presence_is_npc(victim))
 		return DAM_NONEDEAD;
 	if (training_dummy_is(victim) && !training_dummy_target_allowed(ch, victim))

@@ -120,7 +120,8 @@ bool special(P_char ch, int, char *) {
     if(mode==4) disarm_char_nevents(ch,event_water_crossing); // transient combat during a proc
     return false;
 }
-bool checkmovetrap(P_char ch, int) {
+bool checkmovetrap(P_char ch, int, std::vector<std::pair<P_obj, uint64_t>> *sprung) {
+    if(trap_mode && sprung->empty()) sprung->emplace_back(nullptr, 1);
     if(trap_mode) disarm_char_nevents(ch,event_water_crossing);
     return trap;
 }

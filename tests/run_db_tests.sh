@@ -62,6 +62,7 @@ migration_runner_engines python3 tests/async/run_migration_runner_engines.py
 corpse_haul $DB python3 tests/async/run_corpse_haul_journey.py $SERVER
 corpse_haul_count_cap $DB python3 tests/async/run_corpse_haul_count_cap_journey.py $SERVER mariadb
 corpse_trap_restart $DB python3 tests/async/test_corpse_trap_restart_journey.py $SERVER mariadb
+legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py $SERVER mariadb
 information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server $SERVER
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
 stalled_writer tests/async/run_mysql_stalled_writer_journey.sh

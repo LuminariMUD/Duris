@@ -11,7 +11,7 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
-## Legacy trap editor directions (#368)
+## Legacy object trap restoration (#368)
 
 `python3 tests/async/test_legacy_trap_editor.py` compiles and executes the actual area
 editor trap formatter with ASan/UBSan for all 4096 flag combinations. It checks that
@@ -26,8 +26,44 @@ partial/spent/unlimited charges, custom mask/type/level fields, open container s
 repeated load/save cycles under ASan/UBSan. Stock grouping and binary override detection
 must compare all four trap fields. `test_player_load_items.py` and
 `test_world_recovery_pipeline.py` also execute matching repairs through their complete
-materializers after the final stored-field application. These fixtures do not prove the
-future spell effects, live database journeys, generated-world boot or deployment.
+materializers after the final stored-field application. These restoration fixtures do not
+establish spell effects, live database journeys, generated-world boot or deployment; the
+separate checks below cover runtime acceptance.
+
+`python3 tests/async/test_legacy_trap_effects.py` executes the real trap dispatcher,
+dispel/wither/harm/poison/minor-paralysis spells, Stun, and retained chest/tower procedures
+with controlled saves and RNG. ASan/UBSan checks include duration boundaries, native
+defenses, duplicate control rejection, ROOM filtering, all seven creature profiles,
+whole-batch failure/cap handling, deferred gate memory for PCs/pets, and extraction during
+ROOM effects. Atomic builder edits, one-activation glyph visitation, and all six encoded
+directions versus diagonal/control-bit overlap are also checked. The real scheduler runs
+Heart Toxin after temporary-caster extraction and the mundane NPC prefix through memory
+handling for PC/pet gate targets, safe rooms, missing targets and attacker extraction.
+The fixture controls lower damage, allocation, placement, character-link storage and
+unrelated NPC services; loaded journeys exercise those actual server owners.
+
+`python3 tests/async/test_put_trap_lifecycle.py` executes real single/bulk put paths.
+Invalid capacity/permission checks preserve charges. An armed restored trap rejects the
+item before acknowledgement or transfer, and extraction of the actor, item, container
+or a later bulk candidate cannot publish a rejected delivery. Earlier successful items
+still reach their destination save. Legacy 0–8 puts and destination-container traps are
+not newly activated by this hook.
+
+`python3 tests/async/test_legacy_trap_content.py --generated areas/world.obj` compares
+AREA-selected authored inputs and an explicitly regenerated aggregate against the
+independent 61-row golden manifest, seven profiles and four first-open container flags.
+Run `make world` first; omitting `--generated` checks authored inputs only.
+
+`python3 tests/async/test_legacy_trap_journey.py "$PWD/bin/issue368-flatfile/server/dms_new"
+flatfile` and `tests/async/with_disposable_mariadb.sh python3
+tests/async/test_legacy_trap_journey.py "$PWD/bin/server/dms_new" mariadb` use the full
+generated world with ordinary corpse/shopkeeper/floor restoration. They exercise real
+commands, loaded profiles, an unrelated invalid definition, remaining/spent budgets and
+open state across save/restart. MariaDB uses a private Redis world snapshot cache; the
+flat-file journey uses existing saved-container storage for floor records because loose
+Redis snapshots require a SQL season epoch. Synthetic authorities/listeners are isolated;
+the test never sources `.env`. Evidence is retained under ignored `bin/issue368-evidence/`.
+Keep `test_corpse_trap_restart_journey.py` as the separate lethal legacy-effect control.
 
 ## Kjelgar crystal harp recipe
 

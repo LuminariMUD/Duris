@@ -1377,6 +1377,7 @@ struct npc_only_data
 	int value[NUMB_CHAR_VALS];
 	sh_int attack_type; /* barehand attack                        */
 	Memory *memory; /* Used for memory system */
+	uint64_t trap_gate_target_runtime_id; /* local gate memory, including a triggering pet */
 	int home;
 	P_char orig_char; /* used instead of memory ptr to keep
 	                      track of who is controlling the mob */

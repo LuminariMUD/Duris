@@ -62,7 +62,7 @@ book red~
 &+rpushed back into place.&n
 ~
 T
-256 16 -1 50
+257 16 -1 50
 #43504
 sign wooden wood~
 &+La warning sign&n~
@@ -129,7 +129,7 @@ rune~
 &+ylong forgotten.&n
 ~
 T
-64 12 -1 50
+17 12 -1 50
 #43507
 golden plate~
 &+La &+Ygolden &+Lplate&n~
@@ -208,7 +208,7 @@ golem statue~
 &+ystatue reads "Gargaloth".&n
 ~
 T
-5 15 -1 75
+509 15 -1 75
 #43512
 desk~
 &+ya sturdy desk&n~

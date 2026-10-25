@@ -90,6 +90,7 @@ typedef unsigned int uint;
 #define CHAR_RFLAG_COLLECTOR_SAVE_FENCE BIT_6
 /* no in-memory purchase payload survived; only a cold player load can clear it */
 #define CHAR_RFLAG_COLLECTOR_SAVE_RELOAD BIT_7
+#define CHAR_RFLAG_TRAP_CASTER BIT_8 /* synchronous caster; retaliation cannot yield XP/death */
 
 /* object runtime flags (not saved to db) */
 #define OBJ_RFLAG_DIRTY_CONTAINER BIT_1
