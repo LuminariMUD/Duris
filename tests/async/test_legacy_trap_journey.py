@@ -125,13 +125,14 @@ def run(binary, backend):
                                stdout=subprocess.DEVNULL)
                 subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
                 env["FLATFILE_STATE_DIR"] = str(state)
-            redis_port = journey.available_ports()[0]
-            redis = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
-                                      "--save", "", "--appendonly", "no"],
-                                     stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-            env.update(REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
-                       REDIS_NAMESPACE="duris:local:" + (database or "legacy-traps-flatfile"), REDIS_WORLD_STATE="TRUE",
-                       REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_SECRET="local-legacy-trap-qualification-secret-368")
+            if sql:
+                redis_port = journey.available_ports()[0]
+                redis = subprocess.Popen(["redis-server", "--bind", "127.0.0.1", "--port", str(redis_port),
+                                          "--save", "", "--appendonly", "no"],
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+                env.update(REDIS="TRUE", REDIS_HOST="127.0.0.1", REDIS_PORT=str(redis_port),
+                           REDIS_NAMESPACE="duris:local:" + (database or "legacy-traps-flatfile"), REDIS_WORLD_STATE="TRUE",
+                           REDIS_WORLD_STATE_INTERVAL="5", REDIS_WORLD_STATE_SECRET="local-legacy-trap-qualification-secret-368")
             journey.make_fixture(runtime)
             fixture(runtime)
             journey.generate_certificate(runtime)
@@ -371,6 +372,17 @@ def run(binary, backend):
                 home(); invalid=load(INVALID);floor(invalid)
                 command(actor,"get "+invalid)
                 inspect(invalid,(2,17,2,60))
+                if backend == "flatfile":
+                    # Loose Redis world snapshots require a SQL season epoch. Use the
+                    # existing saved-container authority for flat-file floor records.
+                    created=command(builder,"storage new 3084")
+                    assert "now loads here" in created,created
+                    command(builder,"string obj 3084 name storageprobe")
+                    for saved_key in ("probe44160","probe91025","probe142438"):
+                        taken=command(builder,"get "+saved_key)
+                        assert "You get" in taken,(saved_key,taken)
+                        stored=command(builder,"put "+saved_key+" storageprobe")
+                        assert "Ok." in stored,(saved_key,stored)
                 actor.send("save");actor.expect("Save complete for Taverek.",timeout=45)
                 assert count(14)==caster_count
                 stop();boot()
@@ -381,6 +393,9 @@ def run(binary, backend):
                 inspect("probe91025",(2309,9,3,60))
                 inspect("probe142438",(512,9,0,60))
                 inspect("probe800001",(2,17,2,60))
+                if backend == "flatfile":
+                    command(builder,"get probe142438 storageprobe")
+                    command(builder,"drop probe142438")
                 home()
                 assert "already open" in command(actor,"open probe142438").lower()
                 for vnum, (_, _, final) in TRAPS.items():
@@ -399,7 +414,8 @@ def run(binary, backend):
                             source_patch_sha256=hashlib.sha256(subprocess.check_output(["git","diff","--binary","HEAD","--","src","areas/obj"],cwd=ROOT)).hexdigest(),
                             binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                             world_sha256=hashlib.sha256((runtime/"areas/world.obj").read_bytes()).hexdigest(),
-                            result="passed",loaded_definitions=61,boots=boot_number)
+                            result="passed",loaded_definitions=61,boots=boot_number,
+                            floor_restore="redis" if sql else "saved-container")
                 (evidence/"result.json").write_text(json.dumps(result,indent=2)+"\n")
                 print(f"PASS: {backend} loaded trap effects/commands, seven native profiles and saved budgets/restart; {evidence}",flush=True)
             finally:
