@@ -12,6 +12,8 @@ struct divine_boon_selection_diagnostic
 	std::array<divine_boon_population, 2> population = {};
 	std::array<unsigned, 2> experience_candidates = {};
 	std::array<unsigned, 2> epic_candidates = {};
+	std::array<bool, 2> experience_relaxed = {};
+	std::array<bool, 2> epic_relaxed = {};
 	unsigned cargo_routes = 0;
 	bool pvp_eligible = false;
 	bool sampled = false;

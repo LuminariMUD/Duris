@@ -150,21 +150,26 @@ bool live_zone(const candidate &zone)
 	       current.hometown == 0;
 }
 
-bool path_valid(int room, unsigned side)
+bool path_valid(int room, unsigned side, std::vector<bool> *validated = nullptr)
 {
 	if (side > 1 || paths[side].size() != static_cast<size_t>(top_of_world) + 1)
 		return false;
+	const int start = room;
 	// A saved predecessor chain is acyclic; the bound also contains corruption.
 	for (size_t left = paths[side].size(); left; --left)
 	{
+		if (room >= 0 && room <= top_of_world && validated && (*validated)[room])
+			break;
 		if (!ordinary_room(room, side) || paths[side][room] < 0)
 			return false;
 		const int previous = paths[side][room];
 		if (previous == room)
 		{
 			const int home = zone_table[world[room].zone].hometown;
-			return home > 0 && IS_SET(hometowns[home - 1].flags,
-						  side ? JUSTICE_EVILHOME : JUSTICE_GOODHOME);
+			if (home <= 0 || !IS_SET(hometowns[home - 1].flags,
+						 side ? JUSTICE_EVILHOME : JUSTICE_GOODHOME))
+				return false;
+			break;
 		}
 		bool connected = false;
 		for (int direction = 0; direction < NUM_EXITS; ++direction)
@@ -175,8 +180,19 @@ bool path_valid(int room, unsigned side)
 		if (!connected)
 			return false;
 		room = previous;
+		if (left == 1)
+			return false;
 	}
-	return false;
+	// Share proved prefixes only within this eligibility call, so mutations to
+	// doors/rooms are still observed immediately by the next command or pulse.
+	if (validated)
+		for (int next = start; !(*validated)[next]; next = paths[side][next])
+		{
+			(*validated)[next] = true;
+			if (paths[side][next] == next)
+				break;
+		}
+	return true;
 }
 
 void refresh_paths()
@@ -219,17 +235,19 @@ void refresh_paths()
 
 double suitable_level(const candidate &zone, unsigned side)
 {
-	if (!live_zone(zone))
+	if (side >= paths.size() || !live_zone(zone))
 		return 0;
 	std::set<int> rooms;
 	std::set<int> prototypes;
 	double total = 0;
 	unsigned count = 0;
+	std::vector<bool> validated(paths[side].size());
 	for (const auto &mob : zone.encounters)
 		if (mob.room >= 0 && mob.room <= top_of_world &&
 		    world[mob.room].zone == zone.index &&
 		    !IS_SET(world[mob.room].room_flags, ROOM_SAFE | ROOM_NO_MOB) &&
-		    !IS_SURFACE_MAP(mob.room) && !IS_UD_MAP(mob.room) && path_valid(mob.room, side))
+		    !IS_SURFACE_MAP(mob.room) && !IS_UD_MAP(mob.room) &&
+		    path_valid(mob.room, side, &validated))
 		{
 			rooms.insert(mob.room);
 			prototypes.insert(mob.prototype);
@@ -254,6 +272,7 @@ bool epic_target(const candidate &zone, unsigned side)
 		       OBJ_MAGIC(obj) && obj->value[0] > 0 && obj->value[1] > 0 &&
 		       obj->value[2] == zone.number;
 	};
+	std::vector<bool> validated(paths[side].size());
 	const bool reachable = std::any_of(zone.stone_rooms.begin(), zone.stone_rooms.end(),
 					   [&](int room)
 					   {
@@ -261,7 +280,7 @@ bool epic_target(const candidate &zone, unsigned side)
 							  world[room].zone == zone.index &&
 							  !IS_SET(world[room].room_flags,
 								  ROOM_SAFE | ROOM_NO_MOB) &&
-							  path_valid(room, side);
+							  path_valid(room, side, &validated);
 					   });
 	if (!reachable)
 		return false;
@@ -474,7 +493,8 @@ try
 				      slot.category == divine_boon_category::epic;
 		}
 
-	if (zone_boons < DIVINE_BOON_ZONE_SLOTS)
+	const bool online = !population[0].levels.empty() || !population[1].levels.empty();
+	if (zone_boons < DIVINE_BOON_ZONE_SLOTS && (online || zone_boons == 0))
 	{
 		// The in-game epic zone list order: lowest payout first.
 		std::vector<std::pair<int, size_t>> ranked;
@@ -523,8 +543,12 @@ try
 								pick[0].zones[side] =
 									catalogue[index].number;
 						if (diagnostic && count)
+						{
 							diagnostic->experience_candidates[side] =
 								count;
+							diagnostic->experience_relaxed[side] =
+								relaxed;
+						}
 					}
 			}
 
@@ -539,7 +563,7 @@ try
 					     encounter_group(zone) <= ZONE_TOUCH_MAX_PARTICIPANTS &&
 					     epic_target(zone, side);
 			}
-			double centre = 0;
+			double centre = levels.empty() ? 0.5 : 0;
 			for (uint16_t level : levels)
 				centre += level;
 			if (!levels.empty())
@@ -561,10 +585,7 @@ try
 								double(rank) / (ranked.size() - 1) :
 								0;
 						const double weight =
-							levels.empty() ?
-								1 :
-								1 - std::abs(position - centre) /
-										reach;
+							1 - std::abs(position - centre) / reach;
 						if (weight <= 0)
 							continue;
 						++count;
@@ -575,7 +596,10 @@ try
 									.number;
 					}
 					if (diagnostic && count)
+					{
 						diagnostic->epic_candidates[side] = count;
+						diagnostic->epic_relaxed[side] = relaxed;
+					}
 				}
 		}
 		divine_boon_slot selected;
@@ -671,9 +695,6 @@ void divine_boon_selection_status(P_char ch)
 			if (suitable_level(zone, side) > 0)
 			{
 				exp += zone.experience;
-				if (zone.experience)
-					send_to_char_f(ch, "divine_exp side=%s zone=%d\r\n",
-						       side ? "evil" : "good", zone.number);
 				if (epic_target(zone, side))
 				{
 					++epic;
@@ -731,6 +752,15 @@ void divine_boon_selection_status(P_char ch)
 			static_cast<unsigned long long>(latest.committed_revision));
 		for (unsigned side = 0; side < latest.population.size(); ++side)
 		{
+			if (!latest.sampled)
+			{
+				send_to_char_f(
+					ch,
+					"divine_diag side=%s active=N/A online=N/A levels=N/A "
+					"pvp=N/A exp_candidates=N/A epic_candidates=N/A\r\n",
+					side ? "evil" : "good");
+				continue;
+			}
 			const auto &p = latest.population[side];
 			send_to_char_f(ch,
 				       "divine_diag side=%s active=%u online=%zu "
@@ -739,13 +769,20 @@ void divine_boon_selection_status(P_char ch)
 				       p.brackets[0], p.brackets[1], p.brackets[2], p.brackets[3]);
 			send_to_char_f(
 				ch,
-				"divine_diag side=%s pvp=%u exp_candidates=%u epic_candidates=%u\r\n",
+				"divine_diag side=%s pvp=%u exp_candidates=%u epic_candidates=%u "
+				"exp_history=%s epic_history=%s\r\n",
 				side ? "evil" : "good", p.pvp_accounts,
-				latest.experience_candidates[side], latest.epic_candidates[side]);
+				latest.experience_candidates[side], latest.epic_candidates[side],
+				latest.experience_relaxed[side] ? "relaxed" : "strict",
+				latest.epic_relaxed[side] ? "relaxed" : "strict");
 		}
-		send_to_char_f(ch, "divine_diag sampled=%s pvp_eligible=%s cargo_routes=%u\r\n",
-			       latest.sampled ? "yes" : "no", latest.pvp_eligible ? "yes" : "no",
-			       latest.cargo_routes);
+		if (latest.sampled)
+			send_to_char_f(
+				ch, "divine_diag sampled=yes pvp_eligible=%s cargo_routes=%u\r\n",
+				latest.pvp_eligible ? "yes" : "no", latest.cargo_routes);
+		else
+			send_to_char_f(
+				ch, "divine_diag sampled=no pvp_eligible=N/A cargo_routes=N/A\r\n");
 		for (const auto &item : diagnostic_history)
 			send_to_char_f(ch,
 				       "divine_diag recent hour=%lld outcome=%s categories=%s\r\n",

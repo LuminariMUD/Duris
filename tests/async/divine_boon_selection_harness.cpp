@@ -291,6 +291,17 @@ int main()
 	assert(choice.zones[0] == 18 && choice.zones[1] == -1);
 	levels[2] = levels[3] = 18;
 	assert(divine_boon_selection_bootstrap());
+	divine_boon_state unvisited;
+	assert(divine_boon_set_mode(&unvisited, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&unvisited, divine_boon_mode::divine, 0));
+	divine_boon_selection_diagnostic multi;
+	assert(divine_boon_select(unvisited, 3600, population, &picks, &multi));
+	assert(multi.experience_candidates[0] == 2 && !multi.experience_relaxed[0]);
+	assert(picks[0].zones[0] == 20);
+	random_value = 600000;
+	assert(divine_boon_select(unvisited, 3600, population, &picks, &multi));
+	assert(multi.experience_candidates[0] == 2 && picks[0].zones[0] == 18);
+	random_value = 0;
 	assert(select(state, 10800, population));
 	assert(choice.zones[0] ==
 	       20); // Prefer an unvisited safe alternative before relaxing history.
@@ -512,6 +523,24 @@ int main()
 	assert(select(epic_state, 3600, epic_population));
 	assert(choice.category == divine_boon_category::epic);
 	assert(choice.zones[0] >= 0 && choice.zones[1] >= 0);
+	divine_boon_selection_diagnostic epic_multi;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+	assert(epic_multi.epic_candidates[0] == 2 && !epic_multi.epic_relaxed[0]);
+	assert(picks[0].zones[0] == 20);
+	random_value = 1000000;
+	assert(divine_boon_select(epic_state, 3600, epic_population, &picks, &epic_multi));
+	assert(epic_multi.epic_candidates[0] == 2 && picks[0].zones[0] == 18);
+	random_value = 0;
+	// An idle server must leave space for players who log in later, even while
+	// another eligible epic remains. Every quiet hour preserves just one boon.
+	auto quiet = epic_state;
+	for (int hour = 1; hour <= 6; ++hour)
+	{
+		divine_boon_select(quiet, hour * 3600, epic_population, &picks);
+		assert(divine_boon_rotate(&quiet, hour * 3600, picks.data(), picks.size()));
+		assert(std::count_if(quiet.slots.begin(), quiet.slots.end(),
+				     [](const auto &slot) { return slot.id != 0; }) == 1);
+	}
 	epic_metadata.pop_back();
 	stone.next = nullptr;
 	high_resets[5].command = 'S';
@@ -634,6 +663,18 @@ int main()
 	const auto before_status_rng = random_calls;
 	divine_boon_selection_status(&staff);
 	assert(random_calls == before_status_rng);
+	// Pausing with players online does not invent zero population/candidates.
+	current_population[0].levels = { 17 };
+	current_population[0].active_accounts = 1;
+	assert(divine_boon_set_paused(&authority, true, 7201));
+	divine_boon_selection_pulse(10800);
+	publish();
+	diagnostic_output.clear();
+	divine_boon_selection_status(&staff);
+	assert(diagnostic_output.find("outcome=paused") != std::string::npos);
+	assert(diagnostic_output.find("side=good active=N/A online=N/A") != std::string::npos);
+	assert(diagnostic_output.find("sampled=no pvp_eligible=N/A cargo_routes=N/A") !=
+	       std::string::npos);
 	reset_hour();
 	diagnostic_output.clear();
 	divine_boon_selection_status(&staff);
