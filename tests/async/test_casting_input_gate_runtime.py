@@ -141,6 +141,12 @@ static const char *command[] = {
 bool cmd_allowed_while_casting(P_char ch, int cmd);
 static bool active_item = false;
 static bool item_action_active(P_char) { return active_item; }
+static bool shoreline_pending = false;
+static void event_water_crossing() {}
+static void *get_scheduled(P_char, void (*)()) {
+    static int token;
+    return shoreline_pending ? &token : nullptr;
+}
 
 int old_search_block(const char *argument, const uint begin, uint length, const char **list,
 		     const int mode);
@@ -309,6 +315,19 @@ int main()
 		return 1;
 	expect_text(dest, "meditate", "post-abort second command");
 	assert(abort_queue.head == NULL && abort_queue.tail == NULL);
+
+	/* Shoreline wait admits abort behind type-ahead without the spell-abort toggle. */
+	struct txt_q shoreline_queue = {};
+	push(&shoreline_queue, "look");
+	push(&shoreline_queue, "abort");
+	push(&shoreline_queue, "rest");
+	shoreline_pending = true;
+	assert(select_one(false, false, false, &shoreline_queue, dest) == 1);
+	expect_text(dest, "abort", "shoreline abort bypasses the wait gate");
+	expect_queue(&shoreline_queue, "look", "rest", NULL, "shoreline preserves type-ahead");
+	shoreline_pending = false;
+	assert(select_one(false, false, false, &shoreline_queue, dest) == 0);
+	drain(&shoreline_queue);
 
 	/* Non-playing/pager/editor descriptors must not enter the casting path. */
 	struct descriptor_data non_playing = {CON_PLAYING + 1, 0, NULL};
