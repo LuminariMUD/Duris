@@ -3010,7 +3010,6 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			}
 		}
 
-		normalize_legacy_trap(obj, OBJ_VNUM(obj));
 		obj_count += i_count;
 
 		/* Auto-fix corrupted spellbooks: pages consumed but no spell data stored. */
@@ -3027,6 +3026,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 		{
 			do
 			{
+				normalize_legacy_trap(obj, OBJ_VNUM(obj));
 #ifdef _PFILE_
 				if (c_obj)
 				{

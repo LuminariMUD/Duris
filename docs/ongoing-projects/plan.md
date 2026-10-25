@@ -269,6 +269,10 @@ special procedures keep their prior guarantees.
   Respect existing snapshot verification and ownership/publication order.
 - [x] Update the legacy files.c `O_U_TRAP` difference predicate to include all four
   fields; keep its existing encoding and other formats unchanged.
+  Review repair: counted stock records now normalize every expanded copy immediately
+  before placement. The native writer/reader regression expands two copies of every
+  golden profile with five charge states; later copies cannot retain an old unlimited
+  budget or a retired trap. Individual and counted ASan/UBSan round trips pass.
 - [x] Preserve saved open/closed state. The four CLOSED changes initialize **fresh**
   objects only. For recognized legacy 142251/142438 with the original non-closeable
   container flags, add CLOSEABLE while leaving them open; other saved flag combinations
