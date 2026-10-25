@@ -10,7 +10,12 @@ define the scope. The final decision supersedes preliminary percentages, cooldow
 and level assumptions in earlier comments. The
 [technical review](https://github.com/LuminariMUD/Duris/issues/215#issuecomment-6286381197)
 and [pet investigation](https://github.com/LuminariMUD/Duris/issues/215#issuecomment-6318968624)
-supply the interaction and balance scenarios.
+supply the interaction regression cases.
+
+Owner scope clarification, 2026-10-25: **players will test the balance**.
+Our work covers implementation and functional qualification of the agreed
+mechanics, limits and compatibility. Comparative balance benchmarks, class
+scorecards and judgments about relative spec power are outside this task.
 
 This request covers the dedicated plan. Implementing gameplay, opening an
 implementation PR, merging and deploying remain subsequent work under the issue's
@@ -84,19 +89,19 @@ The order below is a working sequence, not a requirement for a PR stack.
 | 3 | Air Recharge and travel lag | 1 | Pending |
 | 4 | Reliable Conjure Water | 0 | Pending |
 | 5 | Water Form shoreline traversal and ocean cost | 1, event lifecycle established in 4 | Pending |
-| 6 | Fire damage and optional mephits | 1 for complete Fire kit proof | Pending |
+| 6 | Fire damage and optional mephits | 1 for combined Fire mechanics proof | Pending |
 | 7 | Five level-51 affinities | 0 | Pending |
-| 8 | Complete help, gameplay/balance evidence and review handoff | 1-7 | Pending |
+| 8 | Complete help, functional gameplay evidence and review handoff | 1-7 | Pending |
 
 ### 0. Establish the implementation baseline
 
 - Confirm the branch, clean/dirty state and current base. Preserve unrelated work.
-  Capture the baseline commit and property values used for paired measurements.
+  Capture the baseline commit and relevant property values for regression checks.
 - Run the relevant existing aura, affect, casting, innate and help checks before
   changing their paths. Record any existing failures separately.
 - Establish legal test characters at levels **46, 50, 51 and 56**, plus **30 and
   41** for Psycheporter regression. Use actual circle eligibility, memorised
-  spells, resources and lawful race/gear combinations.
+  spells and resources. Use only the fixtures each functional check needs.
 - Capture current spell damage, HP changes, Stone Skin charge use, travel waits,
   spring timing and plain summon variants. Use deterministic random inputs for
   component comparisons and actual elapsed pulses for delayed-action journeys.
@@ -318,11 +323,11 @@ callers and unchanged secondary effects. Compare every plain/mephit variant
 under matched RNG and scaling, normal summon limits/failures and invalid args.
 Exercise pet combat, affect recalculation and normal lifecycle.
 
-Use a representative multi-mob zone pull to compare owner memory/hunter pursuit.
+Use a focused multi-mob pull regression to verify that the mephit omits
+Fireshield retaliation and its resulting owner-memory/hunter side effects.
 Fireshield retaliates against each attacker; it is not a room-wide attack.
-Demonstrate the controlled-pull trade-off without promising that a mephit can
-never provoke a hunter through other actions. Include plain/mephit damage and
-survivability in the complete Fire Form/Fireball/Solar Flare measurements.
+Retain normal provocation from other pet actions. Players will assess the
+damage/survivability trade-off and the complete Fire kit's balance.
 
 ### 7. Implement five level-51 affinities
 
@@ -435,35 +440,24 @@ Run `./scripts/format.sh --check` and `git diff --check`; resolve formatting
 manually. Do not wait for hosted CI or substitute it for local proof, and do not
 bypass code-review requirements.
 
-### Matched gameplay and balance evidence
+### Functional gameplay evidence and player handoff
 
-Use [CLASS-POINTS.md](../reference/CLASS-POINTS.md) as the comparison protocol,
-not as proof that the package already fits a numeric budget.
-
-- Compare baseline, individual changes and the complete kit under matched legal
-  race, level, gear, epic budget, prepared spells, pets, opponents and terrain.
-  Measure each Magus and Psycheporter separately; do not copy Earth's estimate.
-- Cover solo/group PvE, small/group PvP, travel, scouting and recovery, using the
-  document's fixed party and scenario conventions. Include prepared and depleted
-  openings, single-target and three-target cases, and actual setup/recovery time.
-- Use **8-second burst**, **60-second sustained** and **five-minute recovery**
-  windows. Record HP restored/prevented, damage, deaths, control failures,
-  spell/innate use, vitality, travel waits, failed actions and counterplay.
-- Include Earth Form plus three skins; Air healing plus escape restrictions;
-  Water spring access, unchanged Water to Life and ocean pursuit; the full Fire
-  offensive/defensive kit and both pet choices; Psycheporter's lost 30-50
-  protection and its new 51+ protection against higher-level mobs.
-- Keep `M=84` and shared scoring weights fixed if producing scorecards. Unknown
-  scenarios remain unknown; do not fabricate a total or award double credit for
-  absorption, healing, pets or vulnerabilities. Record outcome differences
-  before proposing any additional tuning.
+Run the per-step gameplay journeys needed to prove the agreed mechanics are
+reachable and correct: form/resource cleanup, Earth layer consumption, the Air
+healing cap, water cancellation/costs, Fire caller restrictions and summon
+equivalence, affinity boundaries, and actual help lookup. Test interactions
+together where one can break another, without evaluating relative class power.
 
 Retain compact, reproducible evidence with baseline/candidate SHAs, environment,
-commands, seeds/loadouts, expected versus actual results and known gaps. Store
+commands, relevant inputs, expected versus actual results and known gaps. Store
 scratch binaries/logs under `bin/`; summarize acceptance in this plan or the
 repository's existing QA documentation without committing credentials, logs or
-player/account data. A passing component harness does not establish loaded-world
-balance or production acceptance.
+player/account data.
+
+Hand players the implemented mechanics and numbers through the updated help.
+Balance playtesting and any later tuning follow player feedback; they are not
+completion gates for this implementation. Do not add comparative PvE/PvP
+campaigns, burst/sustained/recovery benchmarks or CLASS-POINTS scorecards.
 
 ## Completion checklist
 
@@ -473,8 +467,8 @@ balance or production acceptance.
 - [ ] Both help sources and actual help lookups agree on the final behavior.
 - [ ] Applicable local builds, focused regressions, persistence journeys and
       formatting checks pass; unavailable evidence is explicitly recorded.
-- [ ] Combined gameplay/balance comparisons are recorded with honest coverage
-      and separate disposition for any proposed follow-up tuning.
+- [ ] Functional gameplay evidence and known limitations are recorded; help
+      provides the implemented mechanics for players' balance testing.
 - [ ] Final diff passes ablation review: every change supplies a requirement or
       a demonstrated dependency, and no unrelated work was discarded.
 - [ ] Implementation receives required code review; findings are resolved and
@@ -484,7 +478,7 @@ balance or production acceptance.
 
 The current change writes this plan and preserves the previous #264 document.
 Source inspection supports the proposed paths above. No proposed-feature tests,
-full build, gameplay session or balance benchmark has been run for this
+full build or gameplay session has been run for this
 documentation change. Implementation remains pending.
 
 Planning validation: `python3 tests/async/test_documentation_contract.py` passed
