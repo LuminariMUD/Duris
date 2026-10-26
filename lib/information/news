@@ -1,10 +1,33 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 25, 2026&n
+&+WUpdated: October 26, 2026&n
 
-Welcome back! Combat is steadier, Magi take new forms, and traps bite back.
+Welcome back! Fire Magi kindle new defenses, and magical bags travel lighter.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/26/26&n &+L-&n &+YFire in your veins, less weight in your bags&n
+&+W----------------------------------------------------------------------&n
+
+&+CA little fire of your own&n
+&+Y-&n Fire Magi gain innate Fireshield at &+Ylevel 30&n. Use
+  &+C'innate fireshield'&n without a memorized spell or mana. It grants
+  the usual temporary shield; innate uses and its normal cooldown apply.
+
+&+CYour bags should carry their share&n
+&+Y-&n Magical bags now keep your carried weight correct when you move
+  items through nested containers. Restoring older saved bags also counts
+  their contents correctly, and a failed put no longer changes your
+  carried weight merely by checking whether an item fits.
+
+&+CFewer fights with the whole world&n
+&+Y-&n Frost Beam now stops cleanly after lethal damage, fixing a cause of
+  game crashes. Reflection images also no longer cause a crash when
+  removed.
+&+Y-&n Active Divine EXP objectives now recognize alternate or reopened
+  routes to their target zones when deciding reward eligibility.
+&+Y-&n After a restart, ordinary items left on the floor no longer retain
+  stale claims from a former owner. Artifact ownership protections remain.
 
 &+R10/25/26&n &+L-&n &+YA killing blow should end the fight&n
 &+W----------------------------------------------------------------------&n
