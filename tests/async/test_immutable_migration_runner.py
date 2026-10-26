@@ -1019,7 +1019,7 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertIn("verified_legacy_adoption", adoption)
         self.assertIn("migration_runner.py\" run", adoption)
         self.assertIn("verify_runtime_compatibility.sh", adoption)
-        self.assertIn("TOTAL=146", legacy)
+        self.assertIn("TOTAL=147", legacy)
 
 
 if __name__ == "__main__":
