@@ -681,8 +681,6 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			continue;
 		}
 
-		image->only.npc->str_mask = (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
-
 		image->points.base_hit = GET_MAX_HIT(image) = GET_HIT(image) =
 			level * 4 + number(0, 50);
 
@@ -709,12 +707,18 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "image %s %s", GET_NAME(victim),
 			 race_names_table[GET_RACE(victim)].normal);
 
+		if (IS_SET(image->only.npc->str_mask, STRUNG_KEYS))
+		{
+			str_free(image->player.name);
+			REMOVE_BIT(image->only.npc->str_mask, STRUNG_KEYS);
+		}
 		image->player.name = str_dup(Gbuf1);
 		image->player.short_descr = str_dup(victim->player.name);
 
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "%s stands here.\r\n", victim->player.name);
 
 		image->player.long_descr = str_dup(Gbuf1);
+		SET_BIT(image->only.npc->str_mask, STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
 
 		if (GET_TITLE(victim))
 		{
