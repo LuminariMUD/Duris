@@ -222,7 +222,7 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		ch->player.secondary_class = loaded;
 		break;
 	case player_status_field::specialization:
-		ch->player.spec = loaded;
+		ch->player.spec = loaded >= 0 && loaded <= MAX_SPEC ? loaded : 0;
 		break;
 	case player_status_field::race:
 		GET_RACE(ch) = loaded;

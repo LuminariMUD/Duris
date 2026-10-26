@@ -1799,7 +1799,7 @@ int restoreStatus(char *buf, P_char ch)
 	if (stat_vers > 38)
 		ch->player.spec = GET_BYTE(buf);
 
-	if (IS_MULTICLASS_PC(ch))
+	if (IS_MULTICLASS_PC(ch) || ch->player.spec > MAX_SPEC)
 	{
 		ch->player.spec = 0;
 	}

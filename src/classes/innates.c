@@ -424,7 +424,8 @@ static int innate_unlock_level(P_char ch, int innate)
 					minlevel = req;
 				}
 			}
-			if (IS_SPECIALIZED(ch) && class_innates[innate][i][ch->player.spec])
+			if (IS_SPECIALIZED(ch) && ch->player.spec <= MAX_SPEC &&
+			    class_innates[innate][i][ch->player.spec])
 			{
 				req = class_innates[innate][i][ch->player.spec];
 				if (!minlevel || req < minlevel)
@@ -984,6 +985,7 @@ void assign_innates()
 	ADD_CLASS_INNATE(INNATE_FLY, CLASS_CONJURER, 30, SPEC_AIR);
 	ADD_CLASS_INNATE(INNATE_HASTE, CLASS_CONJURER, 30, SPEC_AIR);
 	ADD_CLASS_INNATE(INNATE_PROT_FIRE, CLASS_CONJURER, 30, SPEC_FIRE);
+	ADD_CLASS_INNATE(INNATE_FIRESHIELD, CLASS_CONJURER, 30, SPEC_FIRE);
 	ADD_CLASS_INNATE(INNATE_PROT_FIRE, CLASS_CONJURER, 30, SPEC_WATER);
 	ADD_CLASS_INNATE(INNATE_PROT_COLD, CLASS_CONJURER, 30, SPEC_WATER);
 	ADD_CLASS_INNATE(INNATE_WATERBREATH, CLASS_CONJURER, 30, SPEC_WATER);

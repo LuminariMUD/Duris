@@ -9907,10 +9907,15 @@ None beyond the base-class registrations.
 
 ==Innate additions==
 
+ &+cfireshield&n (obtained at level &+c30&n)
 *&+cprotection from fire&n (obtained at level &+c30&n)
 *&+cfire affinity&n (obtained at level &+c51&n)
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
+
+At level 30, Fire Magus can use innate fireshield without a memorized
+spell or mana. It applies the usual temporary Fireshield effect;
+expiration, dispelling and combat retaliation remain unchanged.
 
 At player level 51, Fireball passes through standard Globe at full
 normally calculated damage, retaining other fire defenses. Solar Flare
