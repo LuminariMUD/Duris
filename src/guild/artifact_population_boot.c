@@ -1,6 +1,7 @@
 #include "guild/artifact_population_boot.h"
 
 #include "guild/artifact_identity.h"
+#include "core/defines.h"
 #include "persistence/copyover.h"
 #include "persistence/persistence_mode.h"
 #include "redis/redis_world_runtime.h"
@@ -222,10 +223,24 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			staged.items = std::move(recovery);
 		}
 		apply_selected_custody(selected, &staged.items);
+		std::set<uint64_t> protected_roots;
+		for (const auto &row : staged.items)
+			if (row.custody_required || row.source_quarantined ||
+			    !row.extra_flags_present || (row.extra_flags & ITEM_ARTIFACT))
+				protected_roots.insert(row.payload_root_item_uid);
 		for (const auto &row : staged.items)
 			if (row.item_uid && (row.role == artifact_payload_role::stored ||
 					     row.role == artifact_payload_role::delivery))
-				staged.retained_uids.push_back(row.item_uid);
+			{
+				const bool recovery =
+					row.domain == artifact_payload_domain::redis_generation ||
+					row.domain == artifact_payload_domain::redis_floor ||
+					row.domain == artifact_payload_domain::copyover_ground;
+				// An ordinary unclaimed floor tree must not shelter its former
+				// player's stale claim. Keep artifact trees and explicit custody.
+				if (!recovery || protected_roots.count(row.payload_root_item_uid))
+					staged.retained_uids.push_back(row.item_uid);
+			}
 		std::sort(staged.retained_uids.begin(), staged.retained_uids.end());
 		staged.retained_uids.erase(std::unique(staged.retained_uids.begin(),
 						       staged.retained_uids.end()),

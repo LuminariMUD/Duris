@@ -258,7 +258,7 @@ unsigned int reap_unheld_player_items(MYSQL *connection, uint64_t *deleted,
 		"DELETE own FROM item_current_owner own "
 		"LEFT JOIN item_current_owner child ON child.parent_item_uid=own.item_uid "
 		"LEFT JOIN auction_item_custody auction ON auction.item_uid=own.item_uid "
-		"LEFT JOIN artifact_domain_state artifact ON artifact.item_uid=own.item_uid "
+		"LEFT JOIN artifact_domain_state artifact ON artifact.canonical_item_uid=own.item_uid "
 		"WHERE own.owner_type=" +
 		std::to_string(static_cast<unsigned>(item_owner_type::player)) +
 		" AND own.owner_context_id=0 AND own.state=" +

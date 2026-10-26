@@ -160,7 +160,7 @@ int main()
 		"INSERT INTO auction_item_custody (auction_id,slot,item_uid,"
 		"item_revision,vnum,obj_blob,claim_pid) VALUES (79,0,7006,1,606,'',2)");
 	execute(test_connection,
-		"INSERT INTO artifact_domain_state (vnum,item_uid) VALUES (607,7007)");
+		"INSERT INTO artifact_domain_state (vnum,canonical_item_uid,identity_state) VALUES (607,7007,1)");
 	execute(test_connection, "INSERT INTO player_items (pid,vnum,equip_slot,container_id,"
 				 "quantity,item_type,obj_uid) VALUES (1,613,0,NULL,1,0,7013)");
 	execute(test_connection,
