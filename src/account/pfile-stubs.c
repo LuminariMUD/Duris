@@ -60,6 +60,9 @@ P_obj read_object(int number, int)
 
 void obj_to_obj(void *, void *) {}
 
+// The offline scanner has no prototypes; retain the weights stored in the file.
+void recalc_container_weight(P_obj) {}
+
 void obj_to_char(P_obj obj, P_char ch)
 {
 	obj->next_content = ch->carrying;

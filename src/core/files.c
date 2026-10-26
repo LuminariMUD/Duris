@@ -2662,11 +2662,44 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 	::byte o_f_flag;
 	/* Deprecated item-format field; the read advances the cursor. */
 	[[maybe_unused]] ::byte dummy_byte;
-	int tmp, count, i, loc, obj_count = 0, V_num, i_count, ignore = 0;
+	int tmp, count, i, loc, obj_count = 0, V_num, i_count;
 	struct extra_descr_data *t_desc;
 	static struct obj_data d_obj; // dummy object
 	ulong o_u_flag;
 	P_obj root_obj = NULL;
+	// Each open list retains its container and nearest surviving parent.
+	std::vector<std::pair<P_obj, P_obj>> containers;
+
+	// Place only complete subtrees: cached saved weights must not decide nesting.
+	auto place_object = [&](P_obj item, P_obj parent)
+	{
+#ifdef _PFILE_
+		if (parent)
+		{
+			item->loc_p = LOC_INSIDE;
+			item->loc.inside = parent;
+		}
+		obj_to_char(item, ch);
+#else
+		if (IS_SET(item->extra_flags, ITEM_PROCLIB) &&
+		    (NULL == get_scheduled(item, proclib_obj_event)))
+			add_event(proclib_obj_event, PULSE_MOBILE + number(-4, 4), NULL, NULL, item,
+				  0, NULL, 0);
+
+		if (parent &&
+		    (parent->type == ITEM_QUIVER || !ch ||
+		     GET_OBJ_WEIGHT(item) + container_total_weight(parent) <= parent->value[0]))
+			obj_to_obj_at_end(item, parent);
+		else if (ch)
+			obj_to_char_at_end(item, ch);
+		else
+		{
+			obj_to_room(item, corpse_room);
+			if (not_room && item->type != ITEM_CORPSE)
+				writeSavedItem(item);
+		}
+#endif
+	};
 
 	obj_vers = (int)GET_BYTE(buf);
 	if (obj_vers > SAV_ITEMVERS)
@@ -2708,7 +2741,7 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 
 		if (o_f_flag & O_F_EOL)
 		{
-			if (!c_obj && !ignore)
+			if (containers.empty())
 			{ /*
 			   * end of the whole list
 			   */
@@ -2729,15 +2762,14 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 				}
 				return root_obj ? root_obj : (P_obj)1;
 			}
-			if (!ignore)
+			obj = containers.back().first;
+			c_obj = containers.back().second;
+			containers.pop_back();
+			if (obj)
 			{
-				if (OBJ_INSIDE(c_obj))
-					c_obj = c_obj->loc.inside;
-				else
-					c_obj = NULL;
+				recalc_container_weight(obj);
+				place_object(obj, c_obj);
 			}
-			else
-				ignore--;
 
 			continue;
 		}
@@ -2753,13 +2785,6 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			obj = &d_obj;
 			bzero(obj, sizeof(struct obj_data));
 			dummy_obj = TRUE;
-
-			/*
-			 * have to fudge, if we can't load a container, we have to
-			 * keep track or the list will end prematurely.
-			 */
-			if (o_f_flag & O_F_CONTAINS)
-				ignore++;
 		}
 
 		obj->g_key = 1;
@@ -3039,48 +3064,19 @@ P_obj restoreObjects(char *buf, P_char ch, int not_room)
 			do
 			{
 				normalize_legacy_trap(obj, OBJ_VNUM(obj));
-#ifdef _PFILE_
-				if (c_obj)
+				if (!(o_f_flag & O_F_CONTAINS))
 				{
-					obj->loc_p = LOC_INSIDE;
-					obj->loc.inside = c_obj;
+					recalc_container_weight(obj);
+					place_object(obj, c_obj);
 				}
-
-				obj_to_char(obj, ch);
-#else
-				if (IS_SET(obj->extra_flags, ITEM_PROCLIB) &&
-				    (NULL == get_scheduled(obj, proclib_obj_event)))
-				{
-					add_event(proclib_obj_event, PULSE_MOBILE + number(-4, 4),
-						  NULL, NULL, obj, 0, NULL, 0);
-				}
-
-				if (c_obj && (c_obj->type == ITEM_QUIVER || !ch))
-					obj_to_obj_at_end(obj, c_obj);
-				else if (c_obj && ((GET_OBJ_WEIGHT(obj) + GET_OBJ_WEIGHT(c_obj) <=
-						    c_obj->value[0]) ||
-						   !ch))
-				{
-					obj_to_obj_at_end(obj, c_obj);
-				}
-				else
-				{
-					if (ch)
-						obj_to_char_at_end(obj, ch);
-					else
-					{
-						obj_to_room(obj, corpse_room);
-						if (not_room)
-							if (obj->type != ITEM_CORPSE)
-								writeSavedItem(obj);
-					}
-				}
-#endif
 				if (--i_count)
 					obj = read_object(V_num, VIRTUAL);
 			} while (i_count);
-
-			if (o_f_flag & O_F_CONTAINS)
+		}
+		if (o_f_flag & O_F_CONTAINS)
+		{
+			containers.emplace_back(dummy_obj ? nullptr : obj, c_obj);
+			if (!dummy_obj)
 				c_obj = obj;
 		}
 	}

@@ -275,8 +275,7 @@ int main()
     write_record(8, "NOARG_PROC", ITEM_CONTAINER, 0, ITEM_TAKE, false,
                  "E\n_proclib_hummer~\n~\n");
     fflush(obj_f);
-    // Boot caches flagged prototypes, saved-flag promotions and previously
-    // tracked ordinary vnums, while leaving unrelated ordinary templates uncached.
+    // Boot caches artifact templates and every bag used by weight accounting.
     population.complete = true;
     artifact_payload_projection promoted = {};
     promoted.vnum = 101; promoted.extra_flags = ITEM_ARTIFACT; promoted.extra_flags_present = true;
@@ -292,7 +291,11 @@ int main()
     assert(find_object_template(101) && "saved-flag artifact promotion was not cached");
     assert(find_object_template(102) && "previous artifact identity was not cached");
     assert(find_object_template(103) && "unknown saved flags must retain the inferred identity template");
-    assert(!find_object_template(104) && object_templates.size() == 4);
+    for (int vnum = 104; vnum <= 108; ++vnum) {
+        assert(find_object_template(vnum) && "ordinary bag shell must be cached at boot");
+        assert(find_object_template(vnum)->weight == 17);
+    }
+    assert(object_templates.size() == 9);
     semantic_valid=false; expected_complete=false; population.complete=true;
     auto unknown=legacy; unknown.vnum=103; unknown.extra_flags_present=false;
     population.items={promoted,unknown,legacy};

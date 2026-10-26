@@ -9,13 +9,13 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 
 handler = "\n".join(extract_function("world/handler.c", signature) for signature in (
-    "static bool obj_is_container_type(",
-    "static int obj_prototype_weight(",
+    "static const object_template *container_prototype(",
     "static int container_weight_reduction_pct(",
     "static int sum_direct_contents_weight(",
     "static void encumbrance_adjust(",
+    "static int calculated_container_weight(",
     "void recalc_container_weight(",
-    "static void resync_reducing_container(",
+    "static void reconcile_container_chain(",
     "void add_weight(P_obj obj, int weight)\n{",
     "bool obj_can_nest(",
     "bool obj_is_in_container(",
@@ -31,6 +31,7 @@ harness = r'''
 #include "core/utils.h"
 #include "net/comm.h"
 #include "world/db.h"
+#include "world/object_template.h"
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "combat/damage.h"
@@ -98,6 +99,7 @@ void act(const char *message, int, P_char, P_obj, void *, int) {
     if (!strcmp(message, "You fire $p at $N and miss!")) ++fired;
 }
 P_obj read_object(int, int) { std::abort(); }
+const object_template *find_object_template(int) { std::abort(); }
 void extract_obj(P_obj, int) { std::abort(); }
 static void mark_container_dirty(P_obj) {}
 void artifact_update_location_sql(P_obj) {}
