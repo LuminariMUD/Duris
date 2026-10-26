@@ -10484,10 +10484,6 @@ D1
 ~
 ~
 0 0 708865
-D2
-~
-~
-0 0 709264
 D3
 ~
 ~
@@ -11523,9 +11519,9 @@ D3
 0 0 709232
 S
 #709264
-&+LThe Massive Mountain Walls of the &+mUnderdark&n~
+Caves of Mt. Skelenak~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -11559,10 +11555,6 @@ D2
 ~
 ~
 0 0 709665
-D3
-~
-~
-0 0 709264
 S
 #709266
 &+LThe Massive Mountain Walls of the &+mUnderdark&n~
@@ -12652,10 +12644,6 @@ S
 &+LA &+mNetwork &+Lof &+mTunnels &+LDug by the Giant &+mPurple Worm&n~
 ~
 7000 0 29 0
-D0
-~
-~
-0 0 709264
 D1
 ~
 ~
@@ -80734,6 +80722,11 @@ D3
 ~
 0 0 746074
 S
+#746083
+The Tunnels of Cyric the Destroyer~
+~
+7000 134250688 0 0
+S
 #746085
 &+LThe Massive Mountain Walls of the &+mUnderdark&n~
 ~
@@ -81743,10 +81736,6 @@ S
 &+LAbove a Rank Tunnel~
 ~
 7000 0 31 0
-D0
-~
-~
-0 0 746083
 D1
 ~
 ~
@@ -197703,10 +197692,6 @@ D0
 ~
 ~
 0 0 819487
-D1
-~
-~
-0 0 819888
 D2
 ~
 ~
@@ -197717,9 +197702,9 @@ D3
 0 0 819886
 S
 #819888
-&+LThe &+mMassive &+LStone Walls of the &+mUnderdark&n~
+Mushroom Caverns~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -197753,10 +197738,6 @@ D2
 ~
 ~
 0 0 820289
-D3
-~
-~
-0 0 819888
 S
 #819890
 &+LThe &+mMassive &+LStone Walls of the &+mUnderdark&n~
@@ -199001,10 +198982,6 @@ S
 &+LA &+mLong &+LTunnel Adorned with &+mMantol-Derith &+LScriptures&n~
 ~
 7000 0 29 0
-D0
-~
-~
-0 0 819888
 D1
 ~
 ~
@@ -204687,10 +204664,6 @@ D1
 ~
 ~
 0 0 821869
-D2
-~
-~
-0 0 822268
 D3
 ~
 ~
@@ -206082,10 +206055,6 @@ D0
 ~
 ~
 0 0 821867
-D1
-~
-~
-0 0 822268
 D2
 ~
 ~
@@ -206096,9 +206065,9 @@ D3
 0 0 822266
 S
 #822268
-&+LThe &+mMassive &+LStone Walls of the &+mUnderdark&n~
+Pragtog's Domain~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -206132,10 +206101,6 @@ D2
 ~
 ~
 0 0 822669
-D3
-~
-~
-0 0 822268
 S
 #822270
 &+LA &+mLong &+LTunnel Adorned with &+mMantol-Derith &+LScriptures&n~
@@ -207378,10 +207343,6 @@ S
 &+LA &+mLarge &+LCaverned Covered with &+mMoss &+Land &+mFungi&n~
 ~
 7000 0 13 0
-D0
-~
-~
-0 0 822268
 D1
 ~
 ~
@@ -212573,10 +212534,6 @@ D1
 ~
 ~
 0 0 824283
-D2
-~
-~
-0 0 824682
 D3
 ~
 ~
@@ -214210,10 +214167,6 @@ D0
 ~
 ~
 0 0 824281
-D1
-~
-~
-0 0 824682
 D2
 ~
 ~
@@ -214224,9 +214177,9 @@ D3
 0 0 824680
 S
 #824682
-&+LThe &+mMassive &+LStone Walls of the &+mUnderdark&n~
+Mushroom Caverns~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -214260,10 +214213,6 @@ D2
 ~
 ~
 0 0 825083
-D3
-~
-~
-0 0 824682
 S
 #824684
 &+LA &+mLong &+LTunnel Adorned with &+mMantol-Derith &+LScriptures&n~
@@ -215909,10 +215858,6 @@ S
 &+LA Dark, Feculent Pool~
 ~
 7000 0 17 0
-D0
-~
-~
-0 0 824682
 D1
 ~
 ~
@@ -239420,10 +239365,6 @@ D1
 ~
 ~
 0 0 833625
-D2
-~
-~
-0 0 834024
 D3
 ~
 ~
@@ -241132,10 +241073,6 @@ D0
 ~
 ~
 0 0 833623
-D1
-~
-~
-0 0 834024
 D2
 ~
 ~
@@ -241146,9 +241083,9 @@ D3
 0 0 834022
 S
 #834024
-&+LThe Massive Cavern Walls of the &+mUrusi&n~
+The Chasm of the Misty Vale~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -241184,10 +241121,6 @@ D2
 ~
 ~
 0 0 834425
-D3
-~
-~
-0 0 834024
 D4
    A long stair climbs toward a trail above the Chasm of the Misty Vale.
 ~
@@ -242598,10 +242531,6 @@ S
 &+LThe Massive Cavern Walls of the &+mUrusi&n~
 ~
 7000 0 27 0
-D0
-~
-~
-0 0 834024
 D1
 ~
 ~
@@ -261656,10 +261585,6 @@ D0
 ~
 ~
 0 0 844047
-D1
-~
-~
-0 0 844448
 D2
 ~
 ~
@@ -261670,9 +261595,9 @@ D3
 0 0 844446
 S
 #844448
-&+LThe Massive Cavern Walls of the &+mUrusi&n~
+The Underworld Shafts~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D1
 ~
 ~
@@ -261694,10 +261619,6 @@ D2
 ~
 ~
 0 0 844849
-D3
-~
-~
-0 0 844448
 S
 #844504
 &+LAn &+mIntricate &+LNetwork of &+mPurple Worm &+LTunnels&n~
@@ -262522,10 +262443,6 @@ S
 &+LAn &+mIntricate &+LNetwork of &+mPurple Worm &+LTunnels&n~
 ~
 7000 0 29 0
-D0
-~
-~
-0 0 844448
 D1
 ~
 ~
@@ -281916,10 +281833,6 @@ D0
 ~
 ~
 0 0 856418
-D1
-~
-~
-0 0 856819
 D2
 ~
 ~
@@ -281930,9 +281843,9 @@ D3
 0 0 856817
 S
 #856819
-&+LThe Massive Cavern Walls of the &+mUrusi&n~
+The Stone Tomb of Kelek~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -281966,10 +281879,6 @@ D2
 ~
 ~
 0 0 857220
-D3
-~
-~
-0 0 856819
 S
 #856857
 &+LThe Massive Cavern Walls of the &+mUrusi&n~
@@ -282248,10 +282157,6 @@ S
 &+LAn &+mIntricate &+LNetwork of &+mPurple Worm &+LTunnels&n~
 ~
 7000 0 29 0
-D0
-~
-~
-0 0 856819
 D1
 ~
 ~
