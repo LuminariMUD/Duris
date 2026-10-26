@@ -143,12 +143,21 @@ instead of `exit(1)`. A failed memory check consequently aborts at `delmem()` wi
 running static destruction and without converting the failure into a later
 joinable-thread `std::terminate()`.
 
-The focused regressions execute the real four-image Reflection loop and real
-`setup_pet()` for both player and NPC casters under ASan/UBSan, verify the prototype
-pointers and contents before and after image cleanup, and account for all private
-strings. A second process test triggers the real `delmem()` failure with a live
+The focused ownership regression executes real `spell_reflection()` and
+`setup_pet()` under ASan/UBSan with leak detection and fatal sanitizer findings.
+It covers 409 casts: eight repeated casts across eight image-count boundary levels,
+zero/one/four existing pets, combat and titles, plus NPC casters and casting on a
+second player who already has images. It also checks titan rejection. The fixture
+asserts prototype preservation, image replacement, surviving pets and links,
+combat redirection, and private-string cleanup. It uses real game headers with
+isolated room/link/cleanup dependencies; it is not a booted gameplay journey.
+A second process test triggers the real `delmem()` failure with a live
 static worker and verifies that the only diagnostic is the allocator panic before
 SIGABRT.
+
+Deploy with a fresh process restart. A process running the old code may already
+contain dangling cached prototype pointers; replacing the executable alone cannot
+repair that in-memory state.
 
 ## Investigation artifacts
 
