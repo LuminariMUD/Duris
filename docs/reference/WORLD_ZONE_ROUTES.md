@@ -142,12 +142,34 @@ restart, without new zcheck findings or one-way traps.
 - Verify ordinary surface-to-UD and return journeys still pass
 - Also verify diagnostics differ from baseline only by the intended new entrances
 
+## Underdark entrance markers
+
+The October 26 missing-marker report is covered by eight labeled footprints:
+
+- Mushroom Caverns: marker `819888` north of `820288 U <-> 24101 D`,
+  and marker `824682` north of `825082 U <-> 24237 D`.
+- Pragtog's Domain: reported footprint `822268` north of
+  `822668 D <-> 10649 U`.
+- The Tunnels of Cyric the Destroyer: marker `746083` north of
+  `746483 D <-> 54554 U`.
+- Caves of Mt. Skelenak: marker `709264` north of `709664 U <-> 4093 D`.
+- The Stone Tomb of Kelek: marker `856819` north of `857219 D <-> 87950 U`.
+- The Underworld Shafts: marker `844448` north of `844848 U <-> 10021 D`.
+- The Chasm of the Misty Vale: marker `834024` west of `834025 U <-> 15015 D`.
+
+These footprints use the existing zone glyph and marker flags, with no incoming
+exits. Cyric's footprint fills an unused grid square; the other seven replace
+mountain squares. The travel rooms keep their terrain and reciprocal zone exits,
+including the Mushroom Caverns pool and the falling Underworld Shafts passage.
+
 ## Verification commands and boundaries
 
 ```sh
 python3 tests/async/test_issue37_zone_routes.py
+python3 tests/async/test_ud_zone_markers.py
 make world
 python3 tests/async/test_issue37_zone_routes.py --generated
+python3 tests/async/test_ud_zone_markers.py --generated
 python3 tests/async/test_falling_world_exits.py
 python3 tests/async/test_documentation_contract.py
 ```
