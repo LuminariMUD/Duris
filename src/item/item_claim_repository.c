@@ -26,107 +26,105 @@
 
 namespace
 {
-	// Rows read per SELECT ... IN (...).
-	constexpr size_t CLAIM_LOOKUP_BATCH = 500;
+// Rows read per SELECT ... IN (...).
+constexpr size_t CLAIM_LOOKUP_BATCH = 500;
 
-	struct current_row
-	{
-		item_owner_identity owner;
-		uint64_t root_item_uid;
-		uint64_t parent_item_uid;
-		int32_t vnum;
-		unsigned int state;
-	};
+struct current_row
+{
+	item_owner_identity owner;
+	uint64_t root_item_uid;
+	uint64_t parent_item_uid;
+	int32_t vnum;
+	unsigned int state;
+};
 
-	unsigned int execute(MYSQL * connection, const std::string &sql)
-	{
-		const uint64_t started = persistence_observability_now_usec();
-		const int rc = mysql_real_query(connection, sql.data(), sql.size());
-		const uint64_t finished = persistence_observability_now_usec();
-		const unsigned int error_code = rc ? mysql_errno(connection) : 0;
-		persistence_query_record(PERSISTENCE_QUERY_SITE,
-					 PERSISTENCE_QUERY_CONTEXT_PLAYER_SAVE_WORKER,
-					 persistence_statement_kind_from_sql(sql.c_str()),
-					 finished - started, rc == 0, error_code,
-					 rc ? mysql_sqlstate(connection) : "00000");
-		return rc ? (error_code ? error_code : EIO) : 0;
-	}
+unsigned int execute(MYSQL *connection, const std::string &sql)
+{
+	const uint64_t started = persistence_observability_now_usec();
+	const int rc = mysql_real_query(connection, sql.data(), sql.size());
+	const uint64_t finished = persistence_observability_now_usec();
+	const unsigned int error_code = rc ? mysql_errno(connection) : 0;
+	persistence_query_record(PERSISTENCE_QUERY_SITE,
+				 PERSISTENCE_QUERY_CONTEXT_PLAYER_SAVE_WORKER,
+				 persistence_statement_kind_from_sql(sql.c_str()),
+				 finished - started, rc == 0, error_code,
+				 rc ? mysql_sqlstate(connection) : "00000");
+	return rc ? (error_code ? error_code : EIO) : 0;
+}
 
-	bool parse_u64(const char *text, uint64_t *value)
-	{
-		if (!text || !*text)
-			return false;
-		char *end = nullptr;
-		errno = 0;
-		const unsigned long long parsed = std::strtoull(text, &end, 10);
-		if (errno || !end || *end)
-			return false;
-		*value = static_cast<uint64_t>(parsed);
-		return true;
-	}
+bool parse_u64(const char *text, uint64_t *value)
+{
+	if (!text || !*text)
+		return false;
+	char *end = nullptr;
+	errno = 0;
+	const unsigned long long parsed = std::strtoull(text, &end, 10);
+	if (errno || !end || *end)
+		return false;
+	*value = static_cast<uint64_t>(parsed);
+	return true;
+}
 
-	std::string owner_values(const item_owner_identity &owner)
-	{
-		return std::to_string(static_cast<unsigned>(owner.type)) + ',' +
-		       std::to_string(owner.id) + ',' + std::to_string(owner.context_id);
-	}
+std::string owner_values(const item_owner_identity &owner)
+{
+	return std::to_string(static_cast<unsigned>(owner.type)) + ',' + std::to_string(owner.id) +
+	       ',' + std::to_string(owner.context_id);
+}
 
-	bool same_owner(const item_owner_identity &left, const item_owner_identity &right)
-	{
-		return left.type == right.type && left.id == right.id &&
-		       left.context_id == right.context_id;
-	}
+bool same_owner(const item_owner_identity &left, const item_owner_identity &right)
+{
+	return left.type == right.type && left.id == right.id &&
+	       left.context_id == right.context_id;
+}
 
-	unsigned int load_current_rows(MYSQL * connection,
-				       const std::vector<player_item_snapshot> &items,
-				       std::unordered_map<uint64_t, current_row> *rows)
+unsigned int load_current_rows(MYSQL *connection, const std::vector<player_item_snapshot> &items,
+			       std::unordered_map<uint64_t, current_row> *rows)
+{
+	for (size_t start = 0; start < items.size(); start += CLAIM_LOOKUP_BATCH)
 	{
-		for (size_t start = 0; start < items.size(); start += CLAIM_LOOKUP_BATCH)
-		{
-			std::ostringstream sql;
-			sql << "SELECT item_uid,owner_type,owner_id,owner_context_id,root_item_uid,"
-			       "COALESCE(parent_item_uid,0),vnum,state FROM item_current_owner WHERE "
-			       "item_uid IN (";
-			bool any = false;
-			for (size_t index = start;
-			     index < items.size() && index < start + CLAIM_LOOKUP_BATCH; ++index)
-				if (items[index].object_uid)
-				{
-					sql << (any ? "," : "") << items[index].object_uid;
-					any = true;
-				}
-			if (!any)
-				continue;
-			sql << ") FOR UPDATE";
-			if (const unsigned int failed = execute(connection, sql.str()))
-				return failed;
-			MYSQL_RES *result = mysql_store_result(connection);
-			if (!result)
-				return mysql_errno(connection) ? mysql_errno(connection) : EIO;
-			while (MYSQL_ROW row = mysql_fetch_row(result))
+		std::ostringstream sql;
+		sql << "SELECT item_uid,owner_type,owner_id,owner_context_id,root_item_uid,"
+		       "COALESCE(parent_item_uid,0),vnum,state FROM item_current_owner WHERE "
+		       "item_uid IN (";
+		bool any = false;
+		for (size_t index = start;
+		     index < items.size() && index < start + CLAIM_LOOKUP_BATCH; ++index)
+			if (items[index].object_uid)
 			{
-				uint64_t uid = 0, type = 0, id = 0, context = 0, root = 0,
-					 parent = 0, vnum = 0, state = 0;
-				if (!parse_u64(row[0], &uid) || !parse_u64(row[1], &type) ||
-				    !parse_u64(row[2], &id) || !parse_u64(row[3], &context) ||
-				    !parse_u64(row[4], &root) || !parse_u64(row[5], &parent) ||
-				    !row[6] || !parse_u64(row[7], &state))
-				{
-					mysql_free_result(result);
-					return EILSEQ;
-				}
-				vnum = static_cast<uint64_t>(std::strtoll(row[6], nullptr, 10));
-				(*rows)[uid] = { { static_cast<item_owner_type>(type), id,
-						   context },
-						 root,
-						 parent,
-						 static_cast<int32_t>(vnum),
-						 static_cast<unsigned int>(state) };
+				sql << (any ? "," : "") << items[index].object_uid;
+				any = true;
 			}
-			mysql_free_result(result);
+		if (!any)
+			continue;
+		sql << ") FOR UPDATE";
+		if (const unsigned int failed = execute(connection, sql.str()))
+			return failed;
+		MYSQL_RES *result = mysql_store_result(connection);
+		if (!result)
+			return mysql_errno(connection) ? mysql_errno(connection) : EIO;
+		while (MYSQL_ROW row = mysql_fetch_row(result))
+		{
+			uint64_t uid = 0, type = 0, id = 0, context = 0, root = 0, parent = 0,
+				 vnum = 0, state = 0;
+			if (!parse_u64(row[0], &uid) || !parse_u64(row[1], &type) ||
+			    !parse_u64(row[2], &id) || !parse_u64(row[3], &context) ||
+			    !parse_u64(row[4], &root) || !parse_u64(row[5], &parent) || !row[6] ||
+			    !parse_u64(row[7], &state))
+			{
+				mysql_free_result(result);
+				return EILSEQ;
+			}
+			vnum = static_cast<uint64_t>(std::strtoll(row[6], nullptr, 10));
+			(*rows)[uid] = { { static_cast<item_owner_type>(type), id, context },
+					 root,
+					 parent,
+					 static_cast<int32_t>(vnum),
+					 static_cast<unsigned int>(state) };
 		}
-		return 0;
+		mysql_free_result(result);
 	}
+	return 0;
+}
 } // namespace
 
 unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,

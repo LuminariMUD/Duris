@@ -633,8 +633,7 @@ int main()
 	sql_rows rows;
 	applied = sql_work_repository_apply(
 		test_connection,
-		[&](MYSQL *connection)
-		{
+		[&](MYSQL *connection) {
 			return sql_select(connection,
 					  "SELECT id,note FROM sql_job_probe ORDER BY id", &rows);
 		});
