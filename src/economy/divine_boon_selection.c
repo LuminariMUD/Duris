@@ -716,7 +716,13 @@ void divine_boon_selection_status(P_char ch)
 		for (const auto &zone : catalogue)
 			if (suitable_level(zone, side) > 0)
 			{
-				exp += zone.experience;
+				if (zone.experience)
+				{
+					++exp;
+					if (exp <= 2)
+						send_to_char_f(ch, "divine_exp side=%s zone=%d\r\n",
+							       side ? "evil" : "good", zone.number);
+				}
 				if (epic_target(zone, side, &stones))
 				{
 					++epic;
@@ -834,12 +840,20 @@ try
 	{
 		for (auto &side : reward_zones)
 			side.fill(-1);
+		bool paths_refreshed = false;
 		for (size_t index = 0; index < state->slots.size(); ++index)
 		{
 			const auto &slot = state->slots[index];
 			if (slot.category != divine_boon_category::experience ||
 			    !divine_boon_active(slot, now))
 				continue;
+			// Rebuild once for active Exp slots: a cached route may have closed
+			// while another opened. Per-hit lookups still use only reward_zones.
+			if (!paths_refreshed)
+			{
+				refresh_paths();
+				paths_refreshed = true;
+			}
 			for (unsigned side = 0; side < reward_zones.size(); ++side)
 				if (slot.zones[side] >= 0 &&
 				    divine_boon_zone_eligible(slot.zones[side], side))

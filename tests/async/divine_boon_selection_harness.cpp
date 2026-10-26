@@ -427,6 +427,29 @@ int main()
 	divine_boon_selection_pulse(3606);
 	assert(divine_boon_reward_zone_eligible(18, 0));
 	assert(!divine_boon_reward_zone_eligible(18, 2));
+	{
+		// Closing the cached shortcut must preserve an ordinary alternate route.
+		room_direction_data bypass = {};
+		bypass.to_room = 2;
+		rooms[5].dir_option[1] = &bypass;
+		exits[0].exit_info = EX_LOCKED;
+		divine_boon_selection_pulse(3607);
+		assert(divine_boon_reward_zone_eligible(18, 0));
+		char_data observer = {};
+		observer.player.level = IMMORTAL;
+		divine_boon_selection_status(&observer);
+		divine_boon_selection_pulse(3608);
+		assert(divine_boon_reward_zone_eligible(18, 0));
+
+		// Rebuild with no route, then reopen the entrance without a staff command.
+		rooms[5].dir_option[1] = nullptr;
+		divine_boon_selection_status(&observer);
+		divine_boon_selection_pulse(3609);
+		assert(!divine_boon_reward_zone_eligible(18, 0));
+		exits[0].exit_info = 0;
+		divine_boon_selection_pulse(3610);
+		assert(divine_boon_reward_zone_eligible(18, 0));
+	}
 	divine_boon_selection_pulse(10800); // Forward jump skips opportunities without RNG.
 	assert(random_calls == choices && queued.last_opportunity == 10800);
 	publish();
@@ -568,6 +591,10 @@ int main()
 		divine_boon_selection_status(&observer);
 		assert(stone_location_lookups == 2);
 		assert(diagnostic_output.find("side=good experience=2 epic=2") !=
+		       std::string::npos);
+		assert(diagnostic_output.find("divine_exp side=good zone=18\r\n") !=
+		       std::string::npos);
+		assert(diagnostic_output.find("divine_exp side=good zone=20\r\n") !=
 		       std::string::npos);
 		// Rebuild for each pass: paid/removed or relocated stones cannot remain
 		// eligible through a cached previous selection or status readback.
