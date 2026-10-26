@@ -681,7 +681,7 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			continue;
 		}
 
-		image->only.npc->str_mask = (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
+		// read_mobile() shares the prototype strings.  Do not mark them owned.
 
 		image->points.base_hit = GET_MAX_HIT(image) = GET_HIT(image) =
 			level * 4 + number(0, 50);
@@ -709,12 +709,24 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "image %s %s", GET_NAME(victim),
 			 race_names_table[GET_RACE(victim)].normal);
 
+		// setup_pet() gives the image an owned keyword string.  Replace only
+		// that allocation, never the read_mobile() prototype string.
+		if (IS_SET(image->only.npc->str_mask, STRUNG_KEYS))
+			str_free(image->player.name);
 		image->player.name = str_dup(Gbuf1);
+		SET_BIT(image->only.npc->str_mask, STRUNG_KEYS);
+
+		if (IS_SET(image->only.npc->str_mask, STRUNG_DESC2))
+			str_free(image->player.short_descr);
 		image->player.short_descr = str_dup(victim->player.name);
+		SET_BIT(image->only.npc->str_mask, STRUNG_DESC2);
 
 		snprintf(Gbuf1, MAX_STRING_LENGTH, "%s stands here.\r\n", victim->player.name);
 
+		if (IS_SET(image->only.npc->str_mask, STRUNG_DESC1))
+			str_free(image->player.long_descr);
 		image->player.long_descr = str_dup(Gbuf1);
+		SET_BIT(image->only.npc->str_mask, STRUNG_DESC1);
 
 		if (GET_TITLE(victim))
 		{
