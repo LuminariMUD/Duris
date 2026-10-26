@@ -145,7 +145,7 @@ def run(binary, backend):
                 actor = journey.MudClient(game_port)
                 journey.create_character(actor)
                 actor.send("toggle boon")
-                actor.expect("You will no longer be affected by boons.")
+                actor.expect("Divine Boons apply automatically.")
                 actor.send("wield mace")
                 actor.expect("You wield")
                 actor.send("drop all")

@@ -21,8 +21,10 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="nexus-loader-", dir=build) as temporary:
     directory = Path(temporary)
     path = directory / "nexus_loader.cpp"
-    path.write_text(fixture.replace("// PRODUCTION_CODE", production))
     for backend in ("mysql", "flatfile"):
+        selected = production if backend == "mysql" else production.replace(
+            extract_function("nexus_stones.c", "NexusStoneInfo *nexus_row("), "")
+        path.write_text(fixture.replace("// PRODUCTION_CODE", selected))
         binary = directory / backend
         flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else ["-I/usr/include/mysql"]
         subprocess.run([

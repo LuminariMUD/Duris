@@ -216,7 +216,7 @@ def run(backend, binary):
                 deadline = time.monotonic() + 15
                 while True:
                     rotated = command(god, 'boon')
-                    if 'Cargo & contraband' in rotated:
+                    if 'Cargo & Contraband' in rotated:
                         break
                     assert time.monotonic() < deadline, rotated
                     time.sleep(.2)
@@ -482,7 +482,14 @@ def run(backend, binary):
                         process.wait(timeout=10)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--backend', choices=['flatfile', 'mariadb'], required=True)
-    parser.add_argument('--server', type=Path, required=True)
+    parser.add_argument('--backend', choices=['flatfile', 'mariadb'], default='flatfile')
+    parser.add_argument('--server', type=Path)
     args = parser.parse_args()
-    run(args.backend, args.server.resolve())
+    (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='divine-zone-build-', dir=ROOT / 'bin/tests') as temporary:
+        if args.server:
+            binary = args.server.resolve()
+        else:
+            assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
+            binary = journey.build_flatfile_server(Path(temporary))
+        run(args.backend, binary)

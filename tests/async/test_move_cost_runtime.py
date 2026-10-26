@@ -16,6 +16,7 @@ from _paths import HARNESS_STUBS
 
 
 MOVE_COST = extract_function("utility.c", "int move_cost(P_char ch, int dir)")
+WATER_FORM_TRAVEL = extract_function("utility.c", "bool has_water_form_travel(")
 
 PRELUDE = r'''
 #include "core/prototypes.h"
@@ -37,6 +38,7 @@ extern const int movement_loss[NUM_SECT_TYPES] = {
 
 int load_modifier(P_char) { return 75; }
 int is_ice(P_char, int) { return ice ? 1 : 0; }
+bool affected_by_spell(P_char, int) { return false; }
 '''
 
 DRIVER = r'''
@@ -112,7 +114,7 @@ with tempfile.TemporaryDirectory(prefix="duris-move-cost-runtime-") as directory
     temporary = Path(directory)
     harness = temporary / "harness.cpp"
     binary = temporary / "harness"
-    harness.write_text("\n".join((PRELUDE, MOVE_COST, DRIVER)), encoding="utf-8")
+    harness.write_text("\n".join((PRELUDE, WATER_FORM_TRAVEL, MOVE_COST, DRIVER)), encoding="utf-8")
     subprocess.run(
         [
             "g++",

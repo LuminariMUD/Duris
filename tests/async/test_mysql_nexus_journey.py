@@ -126,6 +126,12 @@ def run(binary):
                     boon_ids[stone_id] = int(sql(
                         "INSERT INTO boons(time,duration,racewar,type,opt,criteria,bonus,author,active) "
                         f"VALUES(UNIX_TIMESTAMP(),-1,{side},10,9,{stone_id},7,'nexus-fixture',1); SELECT LAST_INSERT_ID()"))
+                    name = GOOD if side == 1 else EVIL
+                    sql("INSERT INTO boons_progress(boonid,pid,counter) "
+                        f"SELECT {boon_ids[stone_id]},pid,0.5 FROM player_data WHERE name='{name}'")
+                    sql("INSERT INTO boons_shop(pid,points,stats) "
+                        f"SELECT pid,7,3 FROM player_data WHERE name='{name}' "
+                        "ON DUPLICATE KEY UPDATE points=7,stats=3")
                 ship_room = boot()
                 god, good, evil = login(GOD), login(GOOD), login(EVIL)
                 command(good, 'remove all')
@@ -136,7 +142,7 @@ def run(binary):
                     command(god, f'setbit char {name} platinum 30000')
                     command(god, f'setbit char {name} align -1000')
                     enabled = command(client, 'toggle boon yes')
-                    assert 'now be affected by boons' in enabled, enabled
+                    assert 'Divine Boons apply automatically.' in enabled, enabled
                     bought = command(client, f'buy hull 3 {name} Trader')
                     assert 'committed hull purchase' in bought, bought
                     command(god, f'setbit ship {name} frags 1000')
@@ -190,15 +196,12 @@ def run(binary):
                             player.expect('starts to hum wildly!', timeout=60)
                     after = stats(command(player, 'score'))['epics']
                     assert after > before, 'capture did not award epics'
-                    deadline = time.monotonic() + 60
-                    completed = ("SELECT counter=-1 FROM boons_progress WHERE boonid="
-                                 f"{boon_ids[stone_id]} AND pid=(SELECT pid FROM player_data "
-                                 f"WHERE name='{player_name}')")
-                    while sql(completed) != '1':
-                        assert time.monotonic() < deadline, 'Nexus boon did not complete'
-                        time.sleep(.1)
-                    assert int(sql("SELECT points FROM boons_shop WHERE pid=(SELECT pid "
-                                   f"FROM player_data WHERE name='{player_name}')")) >= 7
+                    # Cutover retains legacy balances/progress and closes new awards.
+                    assert sql("SELECT counter=0.5 FROM boons_progress WHERE boonid="
+                               f"{boon_ids[stone_id]} AND pid=(SELECT pid FROM player_data "
+                               f"WHERE name='{player_name}')") == '1'
+                    assert sql("SELECT points,stats FROM boons_shop WHERE pid=(SELECT pid "
+                               f"FROM player_data WHERE name='{player_name}')") == '7\t3'
                     command(god, 'purge guardian')
                     same_side = command(player, 'touch stone')
                     assert 'The stone is indifferent to your touch.' in same_side, same_side

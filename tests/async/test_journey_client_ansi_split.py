@@ -12,6 +12,7 @@ for client_class in (journey.MudClient, recovery.MudClient):
     server, peer = socket.socketpair()
     client = client_class.__new__(client_class)
     client.socket, client.pending, client.transcript = peer, bytearray(), bytearray()
+    client.raw_transcript = bytearray()
     for part in (b"Cha:  87\x1b", b"[0;1;33m ( 87)\x1b[", b"0m done"):
         server.sendall(part)
         assert client._receive()

@@ -24,7 +24,7 @@ def source_contract() -> None:
     limits = LIMITS.read_text()
     gain = limits[limits.index("static int gain_exp_amount(") : limits.index("int gain_condition(")]
 
-    storage = gain.index("GET_EXP(ch) += (int)XP_final")
+    storage = gain.index("GET_EXP(ch) = static_cast<int>(next_exp)")
     capture = gain.index("telemetry_runtime_game_progression", storage)
     display = gain.index("display_gain(ch", capture)
     assert storage < capture < display

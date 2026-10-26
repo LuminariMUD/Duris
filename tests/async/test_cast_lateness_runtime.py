@@ -255,6 +255,8 @@ def main():
     build = ROOT / 'bin/tests'
     build.mkdir(parents=True, exist_ok=True)
     functions = [
+        ('magic.c', 'const char *elemental_form_failure_message('),
+        ('magic.c', 'const char *elemental_summon_failure_message('),
         ('sparser.c', 'static bool schedule_spellcast('),
         ('sparser.c', 'void event_spellcast(P_char ch,'),
         ('mobact.c', 'bool MobCastSpell(P_char ch,'),

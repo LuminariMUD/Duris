@@ -32,24 +32,35 @@ PROGRESS_SECONDS = 60
 RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     {
         "test_account_recovery_journey.py",
+        "test_assassin_combat_journey.py",
         "test_artifact_owner_restart_journey.py",
+        "test_character_stat_choice_journey.py",
+        "test_conjurer_gameplay_journey.py",
         "test_connection_limit_journey.py",
         "test_corpse_trap_restart_journey.py",
         "test_legacy_trap_journey.py",
         "test_creation_prompt_journey.py",
+        "test_divine_boon_zone_journey.py",
         "test_game_loop_session_journey.py",
         "test_area_coin_pickup.py",
         "test_flatfile_auction_coin_put_journey.py",
         "test_flatfile_boot_preflight.py",
         "test_flatfile_chaos_new_character_kit.py",
         "test_flatfile_combat_journey.py",
+        "test_flatfile_collector_intake_journey.py",
+        "test_flatfile_death_restart_journey.py",
+        "test_flatfile_locker_journey.py",
         "test_flatfile_newbie_regrant_journey.py",
         "test_flatfile_first_session_currency.py",
         "test_flatfile_full_world_boot.py",
         "test_flight_network_journey.py",
         "test_generated_npc_journey.py",
+        "test_gith_monk_journey.py",
+        "test_hostname_files_journey.py",
+        "test_log_hygiene_journey.py",
         "test_mob_gold_dial_runtime.py",
         "test_pet_restart_journey.py",
+        "test_studioproc_duplicate_record.py",
         "test_item_movement_prompt_runtime.py",
         "test_information_cache_journey.py",
         "test_mysql_combat_journey.py",
@@ -254,7 +265,7 @@ def main() -> int:
     completed_count = 0
     print(
         f"Running {len(tests)} Python regression tests with {jobs} worker(s), "
-        f"then {len(resource_intensive_tests)} journey(s) side by side"
+        f"then {len(resource_intensive_tests)} journey(s) with {jobs} worker(s)"
     )
 
     def report(result: TestResult) -> None:
@@ -301,8 +312,8 @@ def main() -> int:
                 raise
 
     run_all(parallel_tests, jobs, POOLED_DEADLINE_SECONDS)
-    # These wait on game time, not on the CPU, so they run together after the pool.
-    run_all(resource_intensive_tests, max(1, len(resource_intensive_tests)), JOURNEY_DEADLINE_SECONDS)
+    # Journeys also compile helpers, so keep their work inside the requested limit.
+    run_all(resource_intensive_tests, jobs, JOURNEY_DEADLINE_SECONDS)
 
     write_history(results, started_utc, args.match, jobs)
     if failures:

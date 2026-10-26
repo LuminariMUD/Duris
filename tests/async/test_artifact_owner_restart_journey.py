@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualified stale ownership -> login -> boon feed -> orderly shutdown, on either backend.
+"""Qualified stale ownership -> login -> elite reward feed -> orderly shutdown.
 
 Runs only private servers, synthetic accounts and disposable state; never reads .env.
 MariaDB requires the TEST_DB_* credentials for a disposable loopback instance.
@@ -50,7 +50,7 @@ def run(binary, backend, inspector, conflicts_only=False):
         properties = runtime / 'lib/duris.properties'
         text = properties.read_text()
         for key, value in {'camp.timer': 1, 'artifact.feeding.epic.point.seconds': 3600,
-                           'artifact.feeding.epic.typeMod.boon': .25,
+                           'artifact.feeding.epic.typeMod.eliteMob': .25,
                            'difficulty.dial.epic.gain': 5, 'difficulty.dial.artifact.feeding': 5,
                            'epic.gain.modifier.good': 1}.items():
             text, count = re.subn(r'^' + re.escape(key) + r'=.*$', key + '=' + str(value), text, flags=re.M)
@@ -175,9 +175,9 @@ def run(binary, backend, inspector, conflicts_only=False):
                     settle(lambda: artifact() == expected, f'restored tracking did not reconcile: expected={expected}')
                     repair_room(god)
                     command(god, 'restore ' + PLAYER)
-                    god.send('boon add all epic 4 mob 1 11 60')
-                    god.expect('Boon successfully created.', timeout=30)
                     command(god, 'load mob 11')
+                    command(god, 'setbit char raoul level 53')
+                    command(god, 'setbit char raoul npcact ELITE 1')
                     command(god, 'setbit char raoul hit 1')
                     player.send('kill raoul')
                     player.expect('You have gained 4 epic points.', timeout=60)

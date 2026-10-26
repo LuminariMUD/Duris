@@ -30,6 +30,7 @@ started=$SECONDS
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
 artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
+divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server $SERVER
 epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server $SERVER
 locker_grant_journey $DB python3 tests/async/test_mysql_locker_grant_journey.py --server $SERVER
 nexus_journey $DB python3 tests/async/test_mysql_nexus_journey.py --server $SERVER
@@ -44,6 +45,7 @@ world_capture $DB python3 tests/async/test_mysql_world_capture_journey.py --serv
 legacy_migration tests/async/run_legacy_migration_mysql.sh
 telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-fixture
 telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.py --server $SERVER
+telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py --backend mariadb
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server $SERVER
@@ -107,6 +109,7 @@ account_locker_conversion_check tests/async/run_account_locker_conversion_check_
 legacy_personal_locker_access_repair tests/async/run_legacy_personal_locker_access_repair_mysql.sh
 player_replacement_state tests/async/run_player_replacement_state_mysql.sh
 epic_transaction $DB tests/async/run_epic_transaction_schema_mysql.sh
+epic_stone_transaction $DB python3 tests/async/test_epic_stone_transaction.py
 auction_transaction $DB tests/async/run_auction_transaction_schema_mysql.sh
 auction_list $DB python3 tests/async/run_auction_list_journey.py --server $SERVER
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh

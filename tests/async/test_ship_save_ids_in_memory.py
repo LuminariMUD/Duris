@@ -16,7 +16,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 
-from _paths import ROOT, source
+from _paths import ROOT, HARNESS_STUBS, source
 
 SQL_PLAYER = source("sql_player.c").read_text(encoding="utf-8")
 START = SQL_PLAYER.index("static int ship_next_db_id = -1;")
@@ -41,6 +41,7 @@ void queue_ship_save(P_ship,const char *) {}
 #include "sql/sql_player.h"
 
 #include <cassert>
+#include <cmath>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -105,7 +106,9 @@ int main()
 	const std::vector<std::string> &first = queued[0];
 	assert((int)first.size() == 1 + 4 + 1 + MAXSLOTS);
 	assert(starts(first[0], "insert into ships (id, owner_name,"));
-	assert(first[0].find("values (8, 'Owner', 'Brine',") != std::string::npos);
+	assert(first[0].find("select 8, 'Owner', 'Brine',") != std::string::npos);
+	assert(first[0].find("where exists (select 1 from player_data where name='Owner')") !=
+	       std::string::npos);
 	assert(first[0].find("on duplicate key update owner_name=values(owner_name)") !=
 	       std::string::npos);
 	assert(starts(first[1], "insert into ship_armor") && starts(first[5], "insert into ship_crew") &&
@@ -136,6 +139,6 @@ with tempfile.TemporaryDirectory(prefix="duris-ship-save-") as directory:
     subprocess.run(
         ["g++", "-std=c++20", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
          "-Isrc", "-Itests/async", "-I/usr/include/mysql",
-         str(path / "test.cpp"), "-o", str(path / "test")],
+         str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(path / "test")],
         cwd=ROOT, check=True)
     subprocess.run([str(path / "test")], check=True)

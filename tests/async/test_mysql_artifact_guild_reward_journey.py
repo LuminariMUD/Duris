@@ -85,7 +85,7 @@ def run(binary, case):
         text = properties.read_text()
         for key, value in {
             'camp.timer': 1, 'artifact.feeding.epic.point.seconds': 3600,
-            'artifact.feeding.epic.typeMod.boon': .25, 'artifact.feeding.epic.typeMod.pvp': 2,
+            'artifact.feeding.epic.typeMod.eliteMob': .25, 'artifact.feeding.epic.typeMod.pvp': 2,
             'epic.frag.minimum.epics': 100, 'epic.frag.amount': 100,
             'epic.frag.maximum.epics': 100, 'prestige.gain.pvp': 20,
             'difficulty.dial.epic.gain': 5,
@@ -211,14 +211,14 @@ def run(binary, case):
                 def retained_source_intact():
                     return sql(f"SELECT COUNT(*) FROM player_items p JOIN player_items c ON c.container_id=p.id AND c.obj_uid=8888888 JOIN player_item_extra_descr d ON d.item_id=p.id AND d.keyword='retained' AND d.description='original source details' WHERE p.id={retained_root} AND p.obj_uid IS NULL AND p.quantity=7 AND p.weight=123 AND p.short_descr='held source evidence'") == '1' and sql("SELECT COUNT(*) FROM item_current_owner WHERE item_uid=8888888") == '0'
                 # A prepared spell is initial fixture state; casting, delayed events,
-                # kills, boon publication and rewards all use the real game path.
+                # kills and rewards all use the real game path.
                 sql(f"INSERT INTO player_skills(pid,skill_id,learned,taught) SELECT pid,571,100,100 FROM player_data WHERE name='{PLAYER}' ON DUPLICATE KEY UPDATE learned=100,taught=100")
                 sql(f"INSERT INTO player_affects(pid,type,duration,flags,modifier) SELECT pid,2005,-1,790,571 FROM player_data WHERE name='{PLAYER}'")
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
                 command(god, 'goto 1')
-                # Roaming world mobs must not join the three controlled boon targets.
+                # Roaming world mobs must not join the three controlled elite targets.
                 command(god, 'setbit room here flag NO_MOB 1')
                 command(god, 'purge')
                 command(god, 'setbit room here flag SAFE 0')
@@ -352,11 +352,12 @@ def run(binary, case):
                 assert 'stop all your attacks' in command(god, 'offensive off')
                 player.send('save'); player.expect('Save complete for ' + PLAYER + '.', timeout=60)
                 for _ in range(3):
-                    god.send('boon add all epic 4 mob 1 11 60')
-                    god.expect('Boon successfully created.', timeout=30)
                     command(god, 'load mob 11')
+                    command(god, 'setbit char raoul level 53')
+                    command(god, 'setbit char raoul npcact ELITE 1')
+                    command(god, 'setbit char raoul hit 1')
 
-                print('artifact journey: caster, worn artifact, guild threshold and three boon targets ready', flush=True)
+                print('artifact journey: caster, worn artifact, guild threshold and three elite targets ready', flush=True)
                 # Stop at exact persistence boundaries without changing game code.
                 if case == 'after_history':
                     barrier.touch()
@@ -471,9 +472,15 @@ def run(binary, case):
                 soul_before = sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
                 evidence['ground_state'] = ground_state
                 evidence['ground_custody'] = sql(f'SELECT c.item_uid,c.root_item_uid,c.parent_item_uid,c.owner_type,c.owner_id,c.owner_context_id,c.item_revision,c.state,r.revision FROM item_current_owner c LEFT JOIN item_owner_revision r ON r.owner_type=c.owner_type AND r.owner_id=c.owner_id AND r.owner_context_id=c.owner_context_id WHERE c.vnum={ARTIFACT}')
+                offset = output_path.stat().st_size
                 process.send_signal(signal.SIGUSR1)
                 player.expect('Copyover complete!', timeout=180)
                 god.expect('Copyover complete!', timeout=180)
+                # Descriptor restoration precedes the rest of world recovery.
+                deadline = time.monotonic() + 180
+                while b'Entering game loop.' not in output_path.read_bytes()[offset:]:
+                    assert process.poll() is None and time.monotonic() < deadline, 'copyover did not resume the game loop'
+                    time.sleep(.1)
                 assert saved_state() == ground_state, 'copyover changed persisted ground artifact/reward state'
                 assert sql(f'SELECT bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}') == soul_before
                 assert sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state FROM artifact_domain_state WHERE vnum={ARTIFACT}') == identity_before

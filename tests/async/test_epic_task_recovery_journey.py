@@ -140,7 +140,7 @@ def run(binary):
                 save(player)
                 assert task_rows() == '2128\t0', task_rows()
                 before = reward_rows()
-                assert before == '400\t400\t1\t14', before
+                assert before == '400\t400\t23\t14', before  # Compound Divine stone claim.
                 status = command(god, 'world persistence')
                 assert 'catalog_ready=0 zones=0 last_refresh=empty_task_flags' in status, status
                 assert 'pending=1 pending_reads_unavailable=0' in status, status

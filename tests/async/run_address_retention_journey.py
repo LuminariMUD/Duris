@@ -151,10 +151,11 @@ def run(server):
              '-ffunction-sections', '-fdata-sections',
              'tests/async/address_retention_mysql_harness.cpp',
              'src/persistence/maintenance_repository.c',
+             'src/economy/divine_boon.c', 'src/economy/divine_boon_repository.c',
              'src/economy/divine_trade.c', 'src/economy/divine_trade_command.c', 'src/economy/divine_trade_repository.c', 'src/economy/currency_command.c', 'src/persistence/critical_command.c',
              'src/persistence/persistence_observability.c', '-Wl,--gc-sections',
              *shlex.split(subprocess.check_output(['mysql_config', '--libs'], text=True)),
-             str(HARNESS_STUBS), '-o', str(harness)], cwd=ROOT, check=True)
+                 str(HARNESS_STUBS), '-lcrypto', '-o', str(harness)], cwd=ROOT, check=True)
 
         def prune(budget):
             # The job also expires log files under its working directory.

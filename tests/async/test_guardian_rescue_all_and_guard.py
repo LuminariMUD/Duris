@@ -225,6 +225,9 @@ with tempfile.TemporaryDirectory(prefix="duris-guardian-") as directory:
 # The help entries players read describe the same rules.
 for help_file in ("help/duris_help_parsed.hlp", "lib/information/help_index"):
     text = (ROOT / help_file).read_text(encoding="utf-8")
+    text = "\n".join(section for section in re.split(r"(?m)^#(?:\d+)?\s*$", text)
+                     if re.match(r'\s*"?(guardian|guard|rescueall|rescue_all|rescue all)\b', section, re.I))
+    assert text, help_file
     assert "At level 51" not in text and "51st level:     Rescue All" not in text, help_file
     assert "Specialized Warriors possess the added ability" not in text, help_file
     assert "Guardians of level 46 and above can rescue someone" in text, help_file

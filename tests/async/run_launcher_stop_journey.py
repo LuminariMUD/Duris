@@ -62,6 +62,7 @@ def run():
     sql('CREATE DATABASE ' + database, False)
     try:
         sql(create[:create.index(';') + 1])
+        sql((ROOT / 'migrations/immutable/0003_season_reset_state.sql').read_text())
         with tempfile.TemporaryDirectory(prefix='duris-launcher-stop-') as temporary:
             project = Path(temporary)
             (project / 'scripts').mkdir()
@@ -72,6 +73,8 @@ def run():
             verifier = project / 'migrations/verify_runtime_compatibility.sh'
             verifier.write_text('#!/bin/sh\nexit 0\n')
             verifier.chmod(0o755)
+            (project / 'scripts/event_names.sh').write_text('#!/bin/sh\nexit 0\n')
+            (project / 'scripts/event_names.sh').chmod(0o755)
             (project / 'areas_mini').mkdir()
             for name in ('mini.mob', 'mini.obj', 'mini.qst', 'mini.wld', 'mini.zon',
                          'world.shp', 'world.tab', 'world.weather'):
@@ -99,6 +102,8 @@ def run():
                     assert launcher.returncode == 0, launcher.returncode
                     # No relaunch, so none of the 10 s pause between runs either.
                     assert time.monotonic() - started < 8, 'the launcher paused after a stop'
+                except Exception as error:
+                    raise AssertionError(str(error) + '\n' + (project / 'launcher.out').read_text()) from error
                 finally:
                     if launcher.poll() is None:
                         os.killpg(launcher.pid, signal.SIGKILL)

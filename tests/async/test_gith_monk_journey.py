@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import time
-from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, ROOT, require
+from test_account_recovery_journey import IsolatedServer, OLD_PASSWORD, ROOT, require, build_flatfile_server
 import test_creation_prompt_journey as telnet
 from test_character_stat_choice_journey import WebSocketClient
 
@@ -70,7 +70,7 @@ def telnet_journey(binary, inspector, race, name, alignment):
             client.send('k')
             prompt, _ = client.expect_any(('Your stat rolling system [D]:', telnet.RACE_MENU))
             if prompt == telnet.RACE_MENU:
-                telnet.reply(client, 'p', 'Your stat rolling system [D]:')
+                telnet.reply(client, 'c' if alignment < 0 else 'p', 'Your stat rolling system [D]:')
             telnet.reply(client, 'd', 'first bonus')
             for stat, next_prompt in zip('sdal', ('second bonus', 'third bonus', 'fourth bonus', 'swap stats (Y/N):')):
                 telnet.reply(client, stat, next_prompt)
@@ -138,19 +138,20 @@ def websocket_journey(binary, inspector, race, name, alignment):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary', type=Path, required=True, help='Fresh flat-file server build')
+    parser.add_argument('--binary', type=Path, help='Fresh flat-file server build')
     args = parser.parse_args()
     build = ROOT / 'bin/tests'
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='gith-monk-journey-', dir=build) as directory:
+        binary = args.binary.resolve() if args.binary else build_flatfile_server(Path(directory) / 'server')
         cpp, inspector = Path(directory) / 'inspect.cpp', Path(directory) / 'inspect'
         cpp.write_text(INSPECTOR)
         subprocess.run(['g++', '-std=c++20', '-Isrc', str(cpp),
             'src/player/player_snapshot_codec.c', 'src/flatfile/flatfile_player_snapshot_file.c',
             'src/flatfile/flatfile_store.c', '-lcrypto', '-o', str(inspector)], cwd=ROOT, check=True)
         for race, name, alignment in ((16, 'Githyanki', -1000), (30, 'Githzerai', 1000)):
-            telnet_journey(args.binary.resolve(), inspector, race, name, alignment)
-            websocket_journey(args.binary.resolve(), inspector, race, name, alignment)
+            telnet_journey(binary, inspector, race, name, alignment)
+            websocket_journey(binary, inspector, race, name, alignment)
 
 
 if __name__ == '__main__':

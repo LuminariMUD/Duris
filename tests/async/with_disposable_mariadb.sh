@@ -19,9 +19,14 @@ docker run -d --name "$NAME" -p 127.0.0.1::3306 -e "$PASSWORD_VARIABLE=$PASSWORD
 mapping="$(docker port "$NAME" 3306/tcp)"
 export TEST_DB_HOST=127.0.0.1 TEST_DB_PORT="${mapping##*:}" TEST_DB_USER=root
 export TEST_DB_PASSWORD="$PASSWORD"
+if mysql --help 2>&1 | grep -- '--ssl-mode' >/dev/null; then
+    MYSQL_SSL=(--ssl-mode=DISABLED)
+else
+    MYSQL_SSL=(--skip-ssl)
+fi
 ready=0
 for _ in $(seq 1 90); do
-    if mysql --protocol=tcp -h 127.0.0.1 -P "$TEST_DB_PORT" -uroot -p"$PASSWORD" -e 'SELECT 1' \
+    if mysql "${MYSQL_SSL[@]}" --protocol=tcp -h 127.0.0.1 -P "$TEST_DB_PORT" -uroot -p"$PASSWORD" -e 'SELECT 1' \
         >/dev/null 2>&1; then ready=1; break; fi
     sleep 1
 done

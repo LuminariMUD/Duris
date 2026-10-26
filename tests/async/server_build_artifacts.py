@@ -143,10 +143,11 @@ def toolchain_key(environment):
 def compile_server(build_root, environment):
     binary = build_root / "server/dms_new"
     started = time.monotonic()
+    jobs = int(subprocess.check_output(['nproc'], env=environment, text=True))
     build = subprocess.run(
         ["make", "-C", "src", "PERSISTENCE_BACKEND=flatfile",
          f"BIN_ROOT={build_root}", f"OBJDIR={build_root / 'objects/server'}",
-         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{os.cpu_count()}"],
+         f"SERVER_BIN_DIR={binary.parent}", f"DMS_BINARY={binary}", f"-j{jobs}"],
         cwd=ROOT, env=environment, text=True, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, timeout=600,
     )

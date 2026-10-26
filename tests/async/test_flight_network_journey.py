@@ -64,6 +64,8 @@ def authority(backend, runtime):
                DB_USER=os.environ['TEST_DB_USER'], DB_PASSWD=os.environ['TEST_DB_PASSWORD'],
                DB_ALLOWED_TARGETS=host + '/' + database, MYSQL_PWD=os.environ['TEST_DB_PASSWORD'])
     mysql = ['mysql', '--protocol=tcp', '-h', host, '-P', env['DB_PORT'], '-u', env['DB_USER'], '-N', '-B']
+    mysql.append('--ssl-mode=DISABLED' if '--ssl-mode' in subprocess.check_output(
+        ['mysql', '--help'], text=True, stderr=subprocess.STDOUT) else '--skip-ssl')
 
     def sql(statement, selected=True):
         return subprocess.check_output(mysql + ([database] if selected else []),

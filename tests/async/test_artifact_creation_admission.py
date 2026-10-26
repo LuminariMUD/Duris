@@ -8,6 +8,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 
 HARNESS = r"""
 #include "guild/artifact.c"
+#include "combat/trap_legacy.h"
 #include "world/object_template.h"
 #include "cmd/interp.h"
 #include "mob/studioproc.h"
@@ -1756,6 +1757,6 @@ with tempfile.TemporaryDirectory(prefix="artifact-creation-",dir=output) as dire
   "-Isrc","-Isrc/no_mysql","-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
   "-fno-sanitize-recover=all","-fno-omit-frame-pointer",str(cpp),"src/guild/artifact_population.c",
   "src/item/item_transfer_command.c","src/item/item_ownership_runtime.c","src/guild/artifact_guild_state.c",
-  "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
+  "src/guild/artifact_guild_command.c","src/persistence/critical_command.c","src/core/safe_format.c","src/player/player_load_topology.c","src/combat/trap_legacy.c",str(HARNESS_STUBS),"-Wl,--gc-sections","-lcrypto","-pthread",
   "-o",str(binary)],cwd=ROOT,check=True)
  subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=30)

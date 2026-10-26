@@ -87,15 +87,17 @@ def boot_sql_missing(sql, log):
     """What the first boot queued before its writer started and did not write.
 
     The database began empty. Every artifact the zone resets load logs "Creating entry" and
-    queues its row and its domain-state row. Each outpost queues its building's hit points
+    queues its row and its domain-state row. Domain-only identities also retain artifacts
+    absent from this boot's resets. Each outpost queues its building's hit points
     over the 0 its row began with. The frag list read fills the cache on the first pulse.
     The six artifact lists are read once the world is final and cached on a later pulse.
     """
     created = sorted(set(map(int, re.findall(CREATED, log('artifact')))))
     missing = [] if created else ['any artifact']
-    for table in ('artifacts', 'artifact_domain_state'):
-        if sorted(map(int, sql(f'SELECT vnum FROM {table}').split())) != created:
-            missing.append(table + ' rows')
+    if sorted(map(int, sql('SELECT vnum FROM artifacts').split())) != created:
+        missing.append('artifacts rows')
+    if not set(created) <= set(map(int, sql('SELECT vnum FROM artifact_domain_state').split())):
+        missing.append('artifact_domain_state rows')
     if sql('SELECT MIN(hitpoints) > 0 FROM outposts') != '1':
         missing.append('outpost hit points')
     if 'redis: cached fraglist' not in log('sys'):
