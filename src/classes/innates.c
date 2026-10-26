@@ -424,7 +424,8 @@ static int innate_unlock_level(P_char ch, int innate)
 					minlevel = req;
 				}
 			}
-			if (IS_SPECIALIZED(ch) && class_innates[innate][i][ch->player.spec])
+			if (IS_SPECIALIZED(ch) && ch->player.spec <= MAX_SPEC &&
+			    class_innates[innate][i][ch->player.spec])
 			{
 				req = class_innates[innate][i][ch->player.spec];
 				if (!minlevel || req < minlevel)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute full-name innate dispatch and plane shift's cooldown on bad plane names."""
+"""Execute innate dispatch, Fire Magus eligibility and plane shift's cooldown."""
 import re
 import subprocess
 import tempfile
@@ -11,7 +11,7 @@ innates = source('innates.c').read_text()
 table = re.search(r'const struct innate_data innates_data\[LAST_INNATE \+ 1\] = .*?\n};', innates, re.S).group()
 table = re.sub(r'(\{ "[^"]+", )(\w+)( \})',
                lambda m: m[1] + (m[2] if m[2] in
-                                 ('do_plane_shift', 'do_summon_orc', 'do_summon_warg')
+                                 ('do_plane_shift', 'do_summon_orc', 'do_summon_warg', 'do_fireshield')
                                  else 'NULL') + m[3], table)
 macros = innates[innates.index('#define ADD_RACIAL_INNATE'):innates.index('float regen_factor')]
 arrays = innates[innates.index('char racial_innates['):innates.index('extern const struct race_names')]
@@ -27,6 +27,7 @@ prelude = r'''
 #include <string>
 Skill skills[MAX_SKILLS];
 static int casts;
+static int shield_casts, lag;
 static std::string output, cast_arg;
 static std::string summon_handler, summon_arg;
 static bool epic_handled;
@@ -37,16 +38,21 @@ int GET_CLASS(P_char ch, unsigned int cls) { return (ch->player.m_class & cls) !
 bool epic_summon(P_char, char *) { return epic_handled; }
 void do_list_innates(P_char, char *) {}
 void do_plane_shift(P_char, char *, int);
+void do_fireshield(P_char, char *, int);
 void do_summon_orc(P_char, char *arg, int) { summon_handler = "horde"; summon_arg = arg; }
 void do_summon_warg(P_char, char *arg, int) { summon_handler = "warg"; summon_arg = arg; }
 void send_to_char(const char *text, P_char) { output += text; }
-void CharWait(P_char, int) {}
+void CharWait(P_char, int pulses) { lag += pulses; }
 int get_property(const char *, int fallback) { return fallback; }
 affected_type *affect_to_char(P_char ch, affected_type *af) {
     auto *copy = new affected_type(*af);
     copy->next = ch->affected; ch->affected = copy; return copy;
 }
 void cast_plane_shift(int, P_char, char *arg, int, P_char, P_obj) { ++casts; cast_arg = arg ? arg : ""; }
+void spell_fireshield(int level, P_char ch, char *, int, P_char victim, P_obj) {
+    assert(ch == victim && level == GET_LEVEL(ch));
+    ++shield_casts;
+}
 '''
 functions = [
     ('utility.c', 'int flag2idx('), ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
@@ -59,6 +65,7 @@ functions = [
     ('innates.c', 'bool has_innate('), ('innates.c', 'void assign_innates('),
     ('innates.c', 'bool can_use_innate('), ('innates.c', 'bool check_innate_time('),
     ('innates.c', 'void do_plane_shift(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
+    ('innates.c', 'void do_fireshield(P_char ch'),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)
 driver = r'''
@@ -68,6 +75,23 @@ static void innate(P_char ch, const char *line, int command = CMD_INNATE) {
 }
 int main() {
     assign_innates();
+    char_data magus{};
+    SET_POS(&magus, STAT_NORMAL + POS_STANDING);
+    magus.player.race = RACE_HUMAN;
+    magus.player.m_class = CLASS_CONJURER;
+    magus.points.mana = 47;
+    for (int spec : {0, SPEC_EARTH, SPEC_AIR, SPEC_FIRE, SPEC_WATER, MAX_SPEC + 1, 255}) {
+        magus.player.spec = spec;
+        for (int level : {29, 30}) {
+            magus.player.level = level;
+            shield_casts = lag = 0;
+            innate(&magus, "fireshield");
+            const bool eligible = spec == SPEC_FIRE && level == 30;
+            assert(shield_casts == (eligible ? 1 : 0));
+            assert(lag == (eligible ? PULSE_VIOLENCE : 0));
+            assert(magus.points.mana == 47 && !magus.affected);
+        }
+    }
     char_data orc{};
     SET_POS(&orc, STAT_NORMAL + POS_STANDING);
     orc.player.race = RACE_ORC; orc.player.m_class = CLASS_WARRIOR; orc.player.level = 16;
@@ -141,7 +165,7 @@ int main() {
         delete ch.affected;
         ch.affected = nullptr;
     }
-    puts("Innates: full-name selection, abbreviation/summon fallback, ownership and plane cooldown passed.");
+    puts("Innates: Fire Magus dispatch/eligibility/lag, full-name selection, summon fallback and plane cooldown passed.");
 }
 '''
 build = ROOT / 'bin/tests'
