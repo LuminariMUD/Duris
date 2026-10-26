@@ -3108,8 +3108,9 @@ static void stage_artifact_population()
 			auto prototype = parse_object_template(index);
 			const int vnum = obj_index[index].virtual_number;
 			prototypes.push_back({ vnum, prototype.extra_flags });
-			// Reports need prototype values, never a temporary gameplay object.
-			if ((prototype.extra_flags & ITEM_ARTIFACT) ||
+			// Reports and bag accounting need immutable values, never temporary objects.
+			if (prototype.type == ITEM_CONTAINER ||
+			    (prototype.extra_flags & ITEM_ARTIFACT) ||
 			    saved_artifacts.count(vnum) || artifact_tracks_vnum(vnum))
 				object_templates.try_emplace(vnum, std::move(prototype));
 		}

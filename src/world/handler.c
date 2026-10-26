@@ -17,6 +17,7 @@
 #include "net/comm.h"
 #include "world/world_singletons.h"
 #include "world/db.h"
+#include "world/object_template.h"
 #include "world/events.h"
 #include "world/falling.h"
 #include "core/files.h"
@@ -111,33 +112,12 @@ int map_view_distance(P_char ch, int room);
 bool leave_safe_room(P_char ch);
 void add_weight(P_obj obj, int weight);
 
-static bool obj_is_container_type(P_obj obj)
+static const object_template *container_prototype(P_obj obj)
 {
-	if (!obj)
-	{
-		return FALSE;
-	}
-	return (obj->type == ITEM_CONTAINER || obj->type == ITEM_QUIVER ||
-		obj->type == ITEM_STORAGE || obj->type == ITEM_CORPSE);
-}
-
-static int obj_prototype_weight(P_obj obj)
-{
-	P_obj proto;
-	int w;
-
-	if (!obj || obj->R_num < 0)
-	{
-		return 0;
-	}
-	proto = read_object(obj->R_num, REAL);
-	if (!proto)
-	{
-		return 0;
-	}
-	w = proto->weight;
-	extract_obj(proto, TRUE);
-	return w;
+	// Corpses, quivers and storage objects can have instance-specific shells.
+	if (!obj || obj->type != ITEM_CONTAINER || obj->R_num < 0 || obj->R_num > top_of_objt)
+		return nullptr;
+	return find_object_template(OBJ_VNUM(obj));
 }
 
 /*
@@ -194,7 +174,8 @@ static void encumbrance_adjust(P_char ch, int weight)
 /* The weight a container should have, without changing its live state. */
 static int calculated_container_weight(P_obj cont)
 {
-	return obj_prototype_weight(cont) + sum_direct_contents_weight(cont);
+	const object_template *prototype = container_prototype(cont);
+	return prototype ? prototype->weight + sum_direct_contents_weight(cont) : cont->weight;
 }
 
 /*
@@ -206,7 +187,7 @@ void recalc_container_weight(P_obj cont)
 	int delta;
 	int new_weight;
 
-	if (!obj_is_container_type(cont))
+	if (!cont)
 	{
 		return;
 	}
@@ -232,18 +213,19 @@ static void reconcile_container_chain(P_obj cont)
 	for (P_obj current = cont; current && remaining-- > 0;)
 	{
 		P_obj parent = OBJ_INSIDE(current) ? current->loc.inside : NULL;
-		recalc_container_weight(current);
+		const object_template *prototype = container_prototype(current);
+		// Ordinary containers already received the exact incremental delta.
+		// Only magical bags need a contents scan at each movement boundary.
+		if (prototype && (prototype->weight < 0 || container_weight_reduction_pct(current)))
+			recalc_container_weight(current);
 		current = parent;
 	}
 }
 
 void container_reset_empty_weight(P_obj cont)
 {
-	if (!obj_is_container_type(cont))
-	{
-		return;
-	}
-	cont->weight = obj_prototype_weight(cont);
+	if (const object_template *prototype = container_prototype(cont))
+		cont->weight = prototype->weight;
 }
 
 int container_total_weight(P_obj cont)
@@ -254,12 +236,8 @@ int container_total_weight(P_obj cont)
 	}
 	/* A failed put must never adjust encumbrance just by checking capacity.
 	 * Keep the existing net-weight capacity rule, including negative shells. */
-	if (obj_is_container_type(cont))
-	{
-		const int weight = calculated_container_weight(cont);
-		return weight > 0 ? weight : 0;
-	}
-	return GET_OBJ_WEIGHT(cont);
+	const int weight = calculated_container_weight(cont);
+	return weight > 0 ? weight : 0;
 }
 
 /*
