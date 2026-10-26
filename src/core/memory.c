@@ -276,10 +276,7 @@ void delmem(void *p, const char *file, int line)
 	{
 		m = allocation_header_from_body(p);
 		if (m->tag[0] != 'M')
-		{
-			logit(LOG_EXIT, "delmem: memory failed check!");
-			exit(1);
-		}
+			panic_corruption("delmem", "memory failed check at %s:%d", file, line);
 
 #if MEMCHK > 1
 		fprintf(mem_log, "%p: Freed in file %s:%d\n", p, file, line);
@@ -305,8 +302,7 @@ void delmem(void *p, const char *file, int line)
 #if MEMCHK > 1
 		fprintf(mem_log, "Attempting to free non-alloced memory, file %s:%d\n", file, line);
 #endif
-		logit(LOG_EXIT, "FREE called, but memory not in allocation list!");
-		exit(1);
+		panic_corruption("delmem", "FREE called with null pointer at %s:%d", file, line);
 	}
 }
 
