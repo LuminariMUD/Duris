@@ -239,6 +239,26 @@ for title in ("minstrel", "blademaster", "swashbuckler"):
     index_body = "\n".join(index_map[title][1].strip().splitlines()[2:]).strip()
     assert index_body == parsed_body, f"Divergent specialization help source body for {title}"
 
+# Fire Magus gains the existing active Fireshield innate at specialization level 30.
+# Keep its registered level/spec and both published help entries in sync.
+fire_fireshield = re.findall(
+    r"ADD_CLASS_INNATE\(\s*INNATE_FIRESHIELD,\s*CLASS_CONJURER,\s*(\d+),\s*(SPEC_\w+)\s*\)",
+    (SRC / "innates.c").read_text(),
+)
+assert fire_fireshield == [("30", "SPEC_FIRE")], (
+    f"Incorrect Fire Magus innate fireshield registration: {fire_fireshield}"
+)
+for entries in (parsed_map, index_map):
+    fire_help = entries["fire magus"][1]
+    fire_innates = re.search(r"==Innate additions==\n(.*?)(?=\n==|\Z)", fire_help, re.S)
+    assert fire_innates and (
+        "\n &+cfireshield&n (obtained at level &+c30&n)\n" in fire_innates[1]
+    ), "Fire Magus help must show active level-30 innate fireshield"
+    assert "innate fireshield" in fire_help.lower(), (
+        "Fire Magus help must document the activation command"
+    )
+
+
 # The removed Holy Intercession grant must not linger in either imported
 # Holyman specialization entry; they should describe only available spells.
 for entries in (parsed_map, index_map):
