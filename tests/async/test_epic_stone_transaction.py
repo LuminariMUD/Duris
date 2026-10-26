@@ -170,7 +170,7 @@ SQL_SOURCES = [
     "economy/boon_reward_command.c", "economy/boon_reward_repository.c",
     "world/zone_touch_command.c", "world/zone_touch_repository.c",
     "account/session_audit_command.c", "account/session_audit_repository.c",
-    "player/player_snapshot_codec.c",
+    "player/player_snapshot_codec.c", "player/player_snapshot_repository.c",
     "economy/collector_command.c", "economy/collector_codec.c",
     "economy/collector_policy.c", "economy/collector_repository.c",
     "persistence/critical_command_repository.c",
@@ -204,6 +204,7 @@ class EpicStoneTransactionTests(unittest.TestCase):
     def test_codec_legacy_maximum_group_and_invalid_inputs(self):
         self.compile_and_run(CODEC, [
             "persistence/critical_command.c", "world/epic_command.c", "world/zone_touch_command.c",
+            "guild/artifact_guild_command.c",
         ])
 
     @unittest.skipUnless(os.environ.get("EPIC_STONE_MYSQL_TEST") == "1",

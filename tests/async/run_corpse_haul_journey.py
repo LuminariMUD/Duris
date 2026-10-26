@@ -85,7 +85,7 @@ def run(binary):
                 dest=journey.MudClient(port); clients.append(dest)
                 journey.create_character(dest,account='Destacct',character='Destmortal',email='dest@example.invalid')
                 dest.send('north'); dest.expect('The Observer Landing')
-                actor.send('toggle boon'); actor.expect('You will no longer be affected by boons.')
+                actor.send('toggle boon'); actor.expect('Divine Boons apply automatically.')
                 actor.send('wield mace'); actor.expect('You wield')
                 actor.send('drop all'); actor.expect('You drop a steel long sword.',timeout=20)
                 actor.send('kill raoul')

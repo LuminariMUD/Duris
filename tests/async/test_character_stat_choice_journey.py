@@ -108,7 +108,8 @@ def run(binary, inspector, method, *, legacy=False, full_world=False):
             warrior = next(c for c in race["classes"] if c["name"].lower() == "warrior")
             homes = client.command("get_hometowns", {"race": 1}, "hometowns")
             hometown = next(h for h in homes["options"] if "Plane" in h["name"])
-            single_home = client.command("get_hometowns", {"race": 6}, "hometowns")
+            minotaur = next(r for r in options["races"] if r["name"].lower() == "minotaur")
+            single_home = client.command("get_hometowns", {"race": minotaur["id"]}, "hometowns")
             require(single_home["count"] == 1 and single_home["hasChoice"] is False,
                     "single hometown was incorrectly advertised as a choice")
             creation = {"name": "Taverek", "race": 1, "class": warrior["id"], "sex": 1,

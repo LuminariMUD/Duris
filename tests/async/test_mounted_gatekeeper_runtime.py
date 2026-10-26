@@ -33,6 +33,11 @@ static int move_calls;
 static int special_command;
 static bool gatekeeper_blocks_players;
 static bool block_grease;
+P_nevent current_nevent = nullptr;
+uint64_t character_removal_generation = 0;
+void event_water_crossing(P_char, P_char, P_obj, void *) { assert(false); }
+static bool completing_water_crossing(P_char, int) { assert(false); return false; }
+int char_in_list(const P_char) { assert(false); return false; }
 
 P_char get_linking_char(P_char ch, ush_int type)
 {
@@ -94,6 +99,8 @@ int main()
     char_data autonomous_npc{};
 
     player.in_room = mount.in_room = npc_rider.in_room = autonomous_npc.in_room = 1;
+    player.specials.position = mount.specials.position = npc_rider.specials.position =
+        autonomous_npc.specials.position = POS_STANDING | STAT_NORMAL;
     mount.specials.act = ACT_ISNPC | ACT_MOUNT;
     npc_rider.specials.act = ACT_ISNPC;
     autonomous_npc.specials.act = ACT_ISNPC | ACT_MOUNT;

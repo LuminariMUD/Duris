@@ -13,7 +13,6 @@ import argparse
 import os
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 import uuid
@@ -227,7 +226,6 @@ if __name__=='__main__':
         if args.one or args.variant:
             run(server,**VARIANTS[args.variant or 'default'])
         else:
-            # Each variant has its own schema, fixture and ports: run them at once.
-            variants=[subprocess.Popen([sys.executable,__file__,'--server',str(server),'--variant',name],
-                                       cwd=ROOT) for name in VARIANTS]
-            assert not any([variant.wait() for variant in variants]),'a combat variant failed'
+            # The variants share a DB server and its instance-wide migration lock.
+            for options in VARIANTS.values():
+                run(server, **options)

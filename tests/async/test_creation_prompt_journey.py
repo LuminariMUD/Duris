@@ -338,7 +338,7 @@ def advanced_creation(client, server):
     reply(client, "save", "Save complete for Taverek.")
 
 
-def method_fixed_home(client, server, *, alignment):
+def method_home_routes(client, server, *, alignment):
     reach_race(client)
     reply(client, "k" if alignment else "u", "Male or Female")
     reply(client, "m", "H (for Hardcore), N (for Normal)")
@@ -347,10 +347,12 @@ def method_fixed_home(client, server, *, alignment):
     if alignment:
         reply(client, "w", "Alignment only affects")
         client.expect(RACE_MENU)
-        output = reply(client, "g", "Your stat rolling system [D]:")
+        menu = reply(client, "e", RACE_MENU)
     else:
-        output = reply(client, "w", "Your stat rolling system [D]:")
-    require("Very good" not in output, "fixed-home route rolled before choice")
+        menu = reply(client, "w", RACE_MENU)
+    require("Plane of Chaos" in menu, "character choices skipped the hometown choices")
+    output = reply(client, "c", "Your stat rolling system [D]:")
+    require("Very good" not in output, "character choices rolled before the stat method")
     reply(client, "d", "first bonus")
 
 
@@ -445,8 +447,8 @@ SCENARIOS = (
     ("invitation-only race rejection", invitation_rejection),
     ("invited evil-race creation", invitation_allowed),
     ("sexless race creation with Hardcore disabled in Chaos", sexless_chaos_menu),
-    ("class completion reaches method before rolling", lambda c, s: method_fixed_home(c, s, alignment=False)),
-    ("alignment completion reaches method before rolling", lambda c, s: method_fixed_home(c, s, alignment=True)),
+    ("class/hometown completion reaches method before rolling", lambda c, s: method_home_routes(c, s, alignment=False)),
+    ("alignment completion reaches method before rolling", lambda c, s: method_home_routes(c, s, alignment=True)),
     ("Advanced reroll, acceptance and save", advanced_creation),
     ("selection retries and final discard", keep_confirmation),
     ("final quit flushes its farewell without saving a character", quit_confirmation),

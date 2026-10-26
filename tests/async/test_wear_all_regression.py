@@ -65,7 +65,8 @@ if apply_affs_match:
     ))
     checks.append((
         "apply_affs bounds character race for stat_factor and combat_by_race",
-        contains(apply_body, "int ch_race = BOUNDED(0, (int)GET_RACE(ch), LAST_RACE);") and
+        contains(apply_body, "const int mechanics_race = tutorial_mobile_mechanics_race(ch);") and
+        contains(apply_body, "int ch_race = BOUNDED(0, mechanics_race, LAST_RACE);") and
         contains(apply_body, "combat_by_race[ch_race]") and
         contains(apply_body, "stat_factor[ch_race]")
     ))

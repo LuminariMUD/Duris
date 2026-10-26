@@ -44,7 +44,8 @@ for line in AREA.read_text().splitlines():
 
 assert len(stable_records) == 540, "existing durable shop IDs were renumbered"
 assert len(parse_records(HEAVENS)) == 1
-appended_records = parse_records(END)
+# Later shops may follow these four durable identities without renumbering them.
+appended_records = parse_records(END)[:4]
 assert len(appended_records) == 4
 
 # The runtime fallback uses a lexical glob rather than AREA order. It must also

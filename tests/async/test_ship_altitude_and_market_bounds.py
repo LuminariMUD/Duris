@@ -30,10 +30,13 @@ from _paths import HARNESS_STUBS
 
 FUNCTIONS = "\n\n".join(
     [
+        extract_function("ship_cargo.c", "const CargoData cargo_location_data[NUM_PORTS] =") + ";",
+        extract_function("ship_cargo.c", "const int cargo_location_mod[NUM_PORTS][NUM_PORTS] =") + ";",
         extract_function("ship_utils.c", "float range(float x1, float y1, float z1, float x2,"),
         extract_function("ship_base.c", "void fly_ship(P_ship ship)"),
         extract_function("ship_base.c", "void land_ship(P_ship ship)"),
         extract_function("ship_cargo.c", "static float bound_market_mod(bool contraband, float modifier)"),
+        extract_function("ship_cargo.c", "divine_trade_market_cell cargo_trade_prepare_cell("),
         extract_function("ship_cargo.c", "void adjust_ship_market(int transaction, int location,"),
     ]
 )
@@ -43,6 +46,7 @@ HARNESS = r'''
 #include "core/structs.h"
 #include "core/utils.h"
 #include "ships/ships.h"
+#include "ships/ship_cargo_transaction.h"
 
 #include <cassert>
 #include <cmath>

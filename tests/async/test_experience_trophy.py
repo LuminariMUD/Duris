@@ -176,8 +176,8 @@ with tempfile.TemporaryDirectory(prefix="duris-trophy-") as temporary:
 # acceptance branch and revision, never the intermediate pre-cap XP calculations.
 limits = (ROOT / "src/world/limits.c").read_text()
 assert limits.count("record_zone_trophy_award(") == 1
-credit = limits.index("GET_EXP(ch) += (int)XP_final;")
-observation = limits.index("record_zone_trophy_award(ch, victim, XP_final, type)")
+credit = limits.index("GET_EXP(ch) = static_cast<int>(next_exp);")
+observation = limits.index("record_zone_trophy_award(ch, victim, credited_xp, type)")
 dirty = limits.index("mark_player_dirty_components", observation)
 assert credit < observation < dirty < limits.index("display_gain(ch", dirty)
 assert "components |= PLAYER_COMPONENT_TROPHIES;" in limits

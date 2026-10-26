@@ -67,15 +67,11 @@ COMMANDS = (
     ('auction info 1', 'There is no auction with that id!'),
     ('auction pickup', 'You have no items or money to pickup!'),
     ('nexus', 'Nexus Stones'),
-    ('boon add all epic 10 level 50 60', 'Boon successfully created.'),
-    ('boon list', 'Displaying 1 result(s).'),
-    ('boon list u nobody', 'No results.'),
-    ('boon extend 1 30', 'Boon # 1 has been extended for 30 minutes.'),
-    ('boon remove 1', 'Successfully removed boon # 1.'),
-    ('boon shop', 'Stat points available: 0'),
-    ('boon shop stat str', "You don't have any stat points available."),
+    ('boon add all epic 10 level 50 60', 'Usage: boon [list].'),
+    ('boon list', 'The Gods of Duris have given you and your allies'),
+    ('divineboon status', 'Divine mode=divine'),
     ('ctf score', 'No data'),
-    # Artifacts are held in memory: the drops write their rows, clear deletes one.
+    # Drops write artifact rows; clear retains an identity with a physical body.
     ('load obj 900', 'Pos: standing >'),
     ('drop stone', 'You drop'),
     ('load obj 901', 'Pos: standing >'),
@@ -84,10 +80,10 @@ COMMANDS = (
     ('artifacts ioun all', '(#901)'),
     ('artifacts ioun mortal', 'No artifacts found.'),
     ('artifacts player ' + journey.CHARACTER, 'No artifacts found.'),
-    ('artifacts clear 901', 'cleared from the Immortal and Mortal lists'),
+    ('artifacts clear 901', 'cannot be cleared until its physical identity proves absence.'),
     ('artifacts reset 900', 'Artifact vnum 900 has a hungry soul.'),
     ('artifacts reset fixit', 'Empty set; no artifacts on PC'),
-    ('artifacts reset syncdb', 'Cleared 0, updated 0 artifact ownerships'),
+    ('artifacts reset syncdb', 'Artifact syncdb is unavailable: reconciliation requires a complete population audit.'),
     # an association: founded, saved, listed by prestige, its ledger read
     ('supervise found ' + journey.CHARACTER + ' n Journeyguild', 'new association is set up'),
     ('prestige', 'Prestigious Associations'),
@@ -206,6 +202,8 @@ def run(server):
         environment['LD_LIBRARY_PATH'] = os.environ['LD_LIBRARY_PATH']
     mysql = ['mysql', '--protocol=tcp', '-h', host, '-P', port, '-u', environment['DB_USER'],
              '-N', '-B']
+    mysql.append('--ssl-mode=DISABLED' if '--ssl-mode' in subprocess.check_output(
+        ['mysql', '--help'], text=True, stderr=subprocess.STDOUT) else '--skip-ssl')
     def sql(text):
         subprocess.run(mysql + [database], input=text, text=True, env=environment, check=True)
 

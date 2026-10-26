@@ -36,15 +36,17 @@ def main():
     binary = OUT / "statistics_mysql_harness"
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-pthread", "-Isrc",
+        "-ffunction-sections", "-fdata-sections",
         *shlex.split(subprocess.check_output(["mysql_config", "--cflags"], text=True)),
         "tests/async/statistics_mysql_harness.cpp",
         "src/persistence/maintenance_scheduler.c", "src/persistence/maintenance_repository.c",
-             "src/economy/divine_trade.c", "src/economy/divine_trade_command.c", "src/economy/divine_trade_repository.c", "src/economy/currency_command.c", "src/persistence/critical_command.c",
+        "src/economy/divine_boon.c", "src/economy/divine_boon_repository.c",
+        "src/economy/divine_trade.c", "src/economy/divine_trade_command.c", "src/economy/divine_trade_repository.c", "src/economy/currency_command.c", "src/persistence/critical_command.c",
         "src/persistence/persistence_observability.c", "src/combat/frag_cap_config.c",
         str(HARNESS_STUBS), "-Wl,--wrap=write", "-Wl,--wrap=fsync",
         "-Wl,--wrap=mysql_real_query",
         *shlex.split(subprocess.check_output(["mysql_config", "--libs"], text=True)),
-        "-o", str(binary)], cwd=ROOT, check=True)
+        "-lcrypto", "-Wl,--gc-sections", "-o", str(binary)], cwd=ROOT, check=True)
 
     def run(directory, mode="normal", captured=CAPTURED):
         result = subprocess.run([str(binary), mode, str(captured)], cwd=directory,

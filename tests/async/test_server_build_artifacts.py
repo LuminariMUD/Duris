@@ -41,6 +41,20 @@ with tempfile.TemporaryDirectory() as tmp:
         assert artifacts.compiler_configuration(environment).splitlines() == ["g++", "-O1"]
 
 
+# A container's CPU quota can be smaller than os.cpu_count(). GNU nproc accounts
+# for that quota; pass its limit through to the real child Make.
+with tempfile.TemporaryDirectory() as tmp:
+    root = Path(tmp)
+    (root / 'src').mkdir()
+    (root / 'src/Makefile').write_text(
+        'all:\n\t@mkdir -p $(SERVER_BIN_DIR)\n'
+        '\t@touch $(DMS_BINARY)\n\t@echo -D__NO_MYSQL__ $(MAKEFLAGS)\n')
+    with patch.object(artifacts, 'ROOT', root), \
+         patch.object(artifacts.subprocess, 'check_output', return_value='2\n'):
+        binary, output, _ = artifacts.compile_server(root / 'bin', dict(os.environ, MAKEFLAGS=''))
+    assert binary.is_file() and '-j2' in output, output
+
+
 with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
     root = Path(tmp)
     (root / "src").mkdir()

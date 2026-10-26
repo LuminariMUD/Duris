@@ -1988,7 +1988,7 @@
     {
       "vnum": 32836,
       "source": "areas/obj/shabo.obj",
-      "line": 404,
+      "line": 402,
       "name": "the totem of Mox",
       "keywords": "totem mox unique",
       "type": 34,
@@ -2201,7 +2201,7 @@
     {
       "vnum": 55306,
       "source": "areas/obj/wh.obj",
-      "line": 3779,
+      "line": 3777,
       "name": "the mystical longsword of Volo the Traveler",
       "keywords": "mystical longsword volo traveler _noquest_",
       "type": 5,
@@ -2232,7 +2232,7 @@
     {
       "vnum": 55377,
       "source": "areas/obj/wh.obj",
-      "line": 4552,
+      "line": 4550,
       "name": "a gladius called 'Backstabber'",
       "keywords": "gladius backstabber _noquest_",
       "type": 5,
@@ -4644,7 +4644,7 @@
     {
       "vnum": 77738,
       "source": "areas/obj/hall.obj",
-      "line": 652,
+      "line": 650,
       "name": "Illesarus, the Sword of Sharpness",
       "keywords": "sword blade giant humming",
       "type": 5,

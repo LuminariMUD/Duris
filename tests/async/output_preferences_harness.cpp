@@ -84,7 +84,8 @@ int main()
 	assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) ==
 	       player_snapshot_codec_result::ok);
 	assert(decode_output_preferences(decoded.output_preferences) == first.state());
-	bytes.resize(bytes.size() - snapshot.output_preferences.size() - 4);
+	bytes.resize(bytes.size() - snapshot.output_preferences.size() - sizeof(uint32_t) -
+		     sizeof(uint64_t) - sizeof(uint8_t));
 	for (uint8_t version : { 1, 3 })
 	{
 		bytes[0] = version;

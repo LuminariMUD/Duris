@@ -14,6 +14,10 @@ else
     ROOT_PASSWORD_ENV="MYSQL_ROOT_PASSWORD"
 fi
 docker run -d --name "$NAME" -e "$ROOT_PASSWORD_ENV=$PASSWORD" "$DB_IMAGE" >/dev/null
+if [[ "$DB_IMAGE" == mariadb:* ]]; then
+    # Every client here connects inside this disposable container over loopback.
+    docker exec "$NAME" sh -c 'printf "[client]\nssl=0\n" > /etc/mysql/conf.d/duris-fixture.cnf'
+fi
 # MariaDB 11 images name their client mariadb only; the leg and the verifiers call mysql.
 docker exec "$NAME" sh -c 'command -v mysql >/dev/null || ln -s "$(command -v mariadb)" /usr/local/bin/mysql'
 ready=0

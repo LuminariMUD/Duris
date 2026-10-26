@@ -122,7 +122,10 @@ class ToggleDispatchContractTest(unittest.TestCase):
             index: name for index, (name, _) in expected.items()
         })
         for index, (_, flag) in expected.items():
-            if index == 64:
+            if index == 55:
+                self.assertIn("Divine Boons apply automatically.", self.cases[index])
+                self.assertNotIn("PLR2_FLAGS", self.cases[index])
+            elif index == 64:
                 self.assertIn("gmcp_tog(PLR3_FLAGS(ch), arg)", self.cases[index])
                 self.assertIn(flag, self.source.split("static int gmcp_tog(", 1)[1])
             else:

@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from _paths import ROOT, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function
 
 
 ACTMOVE = ROOT / "src/cmd/actmove.c"
@@ -341,6 +341,7 @@ def main() -> None:
                 "-fno-omit-frame-pointer",
                 f"-I{ROOT / 'src'}",
                 str(harness),
+                str(HARNESS_STUBS),
                 "-o",
                 str(binary),
             ],
