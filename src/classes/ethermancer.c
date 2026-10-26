@@ -173,6 +173,12 @@ void spell_frost_beam(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			spell_damage(ch, victim, dam, SPLDAM_COLD, 0, NULL);
 	}
 
+	// Damage can extract either participant before the paralysis check.
+	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
+	{
+		return;
+	}
+
 	if (!NewSaves(victim, SAVING_PARA, 0))
 	{
 		bzero(&af, sizeof(af));
