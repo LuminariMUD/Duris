@@ -90,7 +90,6 @@ runtime_calls = [
     "sql_delete_ship_statement(deleted.name.c_str())",
     "DELETE FROM player_data WHERE pid=%d",
     "sql_read_work(",
-    "sql_delete_ship(deleted.name.c_str())",
     "done(forget_deleted_character(deleted));",
 ]
 forget_calls = [
