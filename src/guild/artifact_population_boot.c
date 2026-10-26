@@ -1,6 +1,7 @@
 #include "guild/artifact_population_boot.h"
 
 #include "guild/artifact_identity.h"
+#include "core/defines.h"
 #include "persistence/copyover.h"
 #include "persistence/persistence_mode.h"
 #include "redis/redis_world_runtime.h"
@@ -15,96 +16,102 @@
 
 namespace
 {
-bool prepared = false;
-artifact_population_boot_snapshot evidence;
+	bool prepared = false;
+	artifact_population_boot_snapshot evidence;
 
-bool append_recovery(artifact_recovery_population &source,
-		     std::vector<artifact_payload_projection> *items, bool retained)
-{
-	if (source.items.size() > ARTIFACT_IDENTITY_MAX_RECORDS - items->size())
-		return false;
-	if (retained)
-		for (auto &row : source.items)
-			row.source_quarantined = true; // inspected, but not selected for restore
-	items->insert(items->end(), source.items.begin(), source.items.end());
-	// Preserve the hints, but they cannot establish physical identity or absence.
-	return std::none_of(source.items.begin(), source.items.end(), [](const auto &row)
-			    { return row.role == artifact_payload_role::reconstruction; });
-}
+	bool append_recovery(artifact_recovery_population & source,
+			     std::vector<artifact_payload_projection> * items, bool retained)
+	{
+		if (source.items.size() > ARTIFACT_IDENTITY_MAX_RECORDS - items->size())
+			return false;
+		if (retained)
+			for (auto &row : source.items)
+				row.source_quarantined =
+					true; // inspected, but not selected for restore
+		items->insert(items->end(), source.items.begin(), source.items.end());
+		// Preserve the hints, but they cannot establish physical identity or absence.
+		return std::none_of(source.items.begin(), source.items.end(), [](const auto &row)
+				    { return row.role == artifact_payload_role::reconstruction; });
+	}
 
-bool inspect_native(const std::string &path, std::vector<artifact_payload_projection> *items)
-{
-	copyover_boot_snapshot image;
-	const auto read = copyover_read_file(path, &image);
-	if (read == copyover_boot_result::absent)
-		return true;
-	artifact_recovery_population population;
-	return read == copyover_boot_result::ready &&
-	       !artifact_population_read_copyover(image, &population) &&
-	       append_recovery(population, items, true);
-}
-
-// A selected native handoff captures live authority after writer drains. It may
-// be ahead of durable custody. Never overwrite a newer/terminal/quarantined
-// durable fact, or accept equal-revision disagreement as an ordinary lag.
-void apply_selected_custody(const std::map<uint64_t, item_ownership_runtime_entry> &selected,
+	bool inspect_native(const std::string &path,
 			    std::vector<artifact_payload_projection> *items)
-{
-	std::set<uint64_t> conflicts;
-	for (const auto &row : *items)
 	{
-		if (row.role == artifact_payload_role::history &&
-		    (row.domain == artifact_payload_domain::redis_generation ||
-		     row.domain == artifact_payload_domain::redis_floor))
-			continue; // Selected native authority supersedes these older Redis projections.
-		const auto found = selected.find(row.item_uid);
-		if (found == selected.end())
-			continue;
-		const auto &incoming = found->second;
-		const auto &stored = row.custody;
-		const bool same_owner = item_owner_identity_equal(incoming.owner, stored.owner);
-		if (row.source_quarantined ||
-		    (row.custody_found &&
-		     (!row.custody_owner_revision_found ||
-		      stored.state != item_custody_state::active || stored.vnum != incoming.vnum ||
-		      stored.item_revision > incoming.item_revision ||
-		      (stored.item_revision == incoming.item_revision &&
-		       (!same_owner || stored.root_item_uid != incoming.root_item_uid ||
-			stored.parent_item_uid != incoming.parent_item_uid)))))
-			conflicts.insert(row.item_uid);
+		copyover_boot_snapshot image;
+		const auto read = copyover_read_file(path, &image);
+		if (read == copyover_boot_result::absent)
+			return true;
+		artifact_recovery_population population;
+		return read == copyover_boot_result::ready &&
+		       !artifact_population_read_copyover(image, &population) &&
+		       append_recovery(population, items, true);
 	}
-	for (auto &row : *items)
+
+	// A selected native handoff captures live authority after writer drains. It may
+	// be ahead of durable custody. Never overwrite a newer/terminal/quarantined
+	// durable fact, or accept equal-revision disagreement as an ordinary lag.
+	void apply_selected_custody(
+		const std::map<uint64_t, item_ownership_runtime_entry> &selected,
+		std::vector<artifact_payload_projection> *items)
 	{
-		const auto found = selected.find(row.item_uid);
-		if (found == selected.end())
-			continue;
-		if (conflicts.count(row.item_uid))
-			row.source_quarantined = true;
-		else
+		std::set<uint64_t> conflicts;
+		for (const auto &row : *items)
 		{
-			// Owner-wide saves can advance without changing this item. Keep
-			// that newer fence while preserving the qualified per-item facts.
-			const uint64_t owner_revision =
-				item_owner_identity_equal(row.custody.owner, found->second.owner) ?
-					std::max(row.custody.owner_revision,
-						 found->second.owner_revision) :
-					found->second.owner_revision;
-			row.custody_examined = row.custody_found =
-				row.custody_owner_revision_found = true;
-			row.custody = found->second;
-			row.custody.owner_revision = owner_revision;
+			if (row.role == artifact_payload_role::history &&
+			    (row.domain == artifact_payload_domain::redis_generation ||
+			     row.domain == artifact_payload_domain::redis_floor))
+				continue; // Selected native authority supersedes these older Redis projections.
+			const auto found = selected.find(row.item_uid);
+			if (found == selected.end())
+				continue;
+			const auto &incoming = found->second;
+			const auto &stored = row.custody;
+			const bool same_owner =
+				item_owner_identity_equal(incoming.owner, stored.owner);
+			if (row.source_quarantined ||
+			    (row.custody_found &&
+			     (!row.custody_owner_revision_found ||
+			      stored.state != item_custody_state::active ||
+			      stored.vnum != incoming.vnum ||
+			      stored.item_revision > incoming.item_revision ||
+			      (stored.item_revision == incoming.item_revision &&
+			       (!same_owner || stored.root_item_uid != incoming.root_item_uid ||
+				stored.parent_item_uid != incoming.parent_item_uid)))))
+				conflicts.insert(row.item_uid);
 		}
+		for (auto &row : *items)
+		{
+			const auto found = selected.find(row.item_uid);
+			if (found == selected.end())
+				continue;
+			if (conflicts.count(row.item_uid))
+				row.source_quarantined = true;
+			else
+			{
+				// Owner-wide saves can advance without changing this item. Keep
+				// that newer fence while preserving the qualified per-item facts.
+				const uint64_t owner_revision =
+					item_owner_identity_equal(row.custody.owner,
+								  found->second.owner) ?
+						std::max(row.custody.owner_revision,
+							 found->second.owner_revision) :
+						found->second.owner_revision;
+				row.custody_examined = row.custody_found =
+					row.custody_owner_revision_found = true;
+				row.custody = found->second;
+				row.custody.owner_revision = owner_revision;
+			}
+		}
+		for (auto &row : *items)
+			if (row.domain == artifact_payload_domain::copyover_ground &&
+			    row.role == artifact_payload_role::stored && !row.source_quarantined &&
+			    !row.custody_required && row.custody_found)
+				// A legacy-created item can be durably claimed before its live
+				// custody cache is filled. The selected native handoff records its
+				// physical room; independent custody records its logical owner.
+				// Classification still verifies active state, UID/vnum and topology.
+				row.payload_owner = row.custody.owner;
 	}
-	for (auto &row : *items)
-		if (row.domain == artifact_payload_domain::copyover_ground &&
-		    row.role == artifact_payload_role::stored && !row.source_quarantined &&
-		    !row.custody_required && row.custody_found)
-			// A legacy-created item can be durably claimed before its live
-			// custody cache is filled. The selected native handoff records its
-			// physical room; independent custody records its logical owner.
-			// Classification still verifies active state, UID/vnum and topology.
-			row.payload_owner = row.custody.owner;
-}
 } // namespace
 
 const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool native_copyover)
@@ -222,10 +229,24 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			staged.items = std::move(recovery);
 		}
 		apply_selected_custody(selected, &staged.items);
+		std::set<uint64_t> protected_roots;
+		for (const auto &row : staged.items)
+			if (row.custody_required || row.source_quarantined ||
+			    !row.extra_flags_present || (row.extra_flags & ITEM_ARTIFACT))
+				protected_roots.insert(row.payload_root_item_uid);
 		for (const auto &row : staged.items)
 			if (row.item_uid && (row.role == artifact_payload_role::stored ||
 					     row.role == artifact_payload_role::delivery))
-				staged.retained_uids.push_back(row.item_uid);
+			{
+				const bool recovery =
+					row.domain == artifact_payload_domain::redis_generation ||
+					row.domain == artifact_payload_domain::redis_floor ||
+					row.domain == artifact_payload_domain::copyover_ground;
+				// An ordinary unclaimed floor tree must not shelter its former
+				// player's stale claim. Keep artifact trees and explicit custody.
+				if (!recovery || protected_roots.count(row.payload_root_item_uid))
+					staged.retained_uids.push_back(row.item_uid);
+			}
 		std::sort(staged.retained_uids.begin(), staged.retained_uids.end());
 		staged.retained_uids.erase(std::unique(staged.retained_uids.begin(),
 						       staged.retained_uids.end()),
@@ -233,7 +254,7 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 		staged.complete = complete;
 		evidence = std::move(staged);
 	}
-	catch (const std::bad_alloc &)
+	catch(const std::bad_alloc &)
 	{
 		evidence = {};
 	}

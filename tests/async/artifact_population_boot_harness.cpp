@@ -179,6 +179,22 @@ int main()
 	assert(artifact_population_prepare_boot(false).complete);
 	assert(classify(artifact_population_boot_evidence()).identity.canonical_item_uid == 555);
 
+	// Ordinary legacy floor payloads let the boot reap a former player's stale
+	// claim. Artifact trees, their ordinary contents, and explicit custody stay.
+	reset();
+	redis_result = redis_world_boot_result::ready;
+	redis_rows = { item(10, domain::redis_generation), item(11, domain::redis_generation),
+		       item(20, domain::redis_generation), item(21, domain::redis_generation),
+		       item(30, domain::redis_floor),	   item(40, domain::redis_floor) };
+	for (size_t index : { 0u, 1u, 3u, 4u, 5u })
+		redis_rows[index].extra_flags = 0;
+	redis_rows[1].payload_root_item_uid = 10;
+	redis_rows[3].payload_root_item_uid = 20;
+	redis_rows[4].custody_required = true;
+	redis_rows[5].extra_flags_present = false;
+	assert(artifact_population_prepare_boot(false).retained_uids ==
+	       (std::vector<uint64_t>{ 20, 21, 30, 40 }));
+
 	// A decoded Redis image rejected by the real restore cannot prove presence
 	// or absence. A selected native handoff may supersede that historical image.
 	for (bool has_candidate : { false, true })
