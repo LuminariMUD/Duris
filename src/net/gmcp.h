@@ -57,6 +57,10 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd);
 /* parse incoming gmcp data from telnet client */
 void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len);
 
+// Opt-in dequeue receipt, not proof of successful execution or completed casting.
+// NULL input announces support/current sequence; arguments are never transmitted.
+void gmcp_input_receipt(struct descriptor_data *d, const char *input);
+
 /* core send - handles both telnet (iac sb gmcp) and websocket (json) */
 void gmcp_send(struct descriptor_data *d, const char *package, const char *json);
 

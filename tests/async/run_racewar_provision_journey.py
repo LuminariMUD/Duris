@@ -22,7 +22,51 @@ sys.path.insert(0, str(journey.ROOT / "scripts"))
 import run_racewar_battle as battle
 
 
-async def provision(server, pool, directory, room=None, prepare=False, probe=False):
+async def verify_controls(staff, clients, rows, directory):
+    """Small real-socket control proof; this is not full-party acceptance."""
+    enemy, fighter, bystander, caster = [clients[row["name"]] for row in rows]
+    for player in clients.values():
+        hello = b'Core.Hello {"client":"racewar-controls","commandReceipts":true}'
+        player.writer.write(bytes((battle.IAC, battle.SB, battle.GMCP)) + hello + bytes((battle.IAC, battle.SE)))
+        await player.writer.drain()
+        await player.wait_for(lambda: player.gmcp.get("Char.Input") is not None, "negotiating receipts")
+        before = player.gmcp["Char.Input"]["sequence"]
+        await player.command("look")
+        await player.wait_for(lambda: player.gmcp["Char.Input"]["sequence"] == before + 1,
+                              "confirming look dequeue")
+        assert player.gmcp["Char.Input"]["command"] == "look"
+    selectors = {p.label: next(entry["target"] for entry in p.gmcp["Room.Info"]["players"]
+                              if entry["name"] == enemy.label) for p in (fighter, caster)}
+    assert all(selectors.values()), selectors
+    await caster.send(f"cast 'prismatic ray' {selectors[caster.label]}")
+    await caster.expect("You start chanting")
+    await fighter.send(f"kill {selectors[fighter.label]}")
+    await fighter.wait_for(lambda: fighter.gmcp.get("Char.Vitals", {}).get("fighting") == enemy.label,
+                           "starting native melee")
+    # Queue a second action behind native lag, then stop the exact participants.
+    await fighter.send(f"kill {selectors[fighter.label]}")
+    selected = " ".join(p.label for p in (enemy, fighter, caster))
+    stopped = await staff.command(f"battleprep stop {selected}", expected=f"{caster.label} quiet.")
+    assert all(f"{p.label} quiet.".casefold() in stopped.casefold() for p in (enemy, fighter, caster)), stopped
+    await caster.expect("You abort your spell")
+    await asyncio.sleep(6)
+    status = await staff.command(f"battleprep status {selected}", expected=f"{caster.label} quiet.")
+    assert all(f"{p.label} quiet.".casefold() in status.casefold() for p in (enemy, fighter, caster)), status
+    assert "You complete your spell" not in caster.pending
+    observed = await bystander.command("score", expected="Hit points:")
+    assert "Pos: standing" in observed, observed
+    for player in (enemy, fighter, caster):
+        await player.command("save", expected=f"Save complete for {player.label}.")
+    receipt = {"result": "passed", "selectors": selectors, "selected": selected.split(),
+               "bystander": bystander.label, "settle_seconds": 6,
+               "verified": ["opt-in dequeue receipts", "legal mortal racewar targets", "native melee",
+                            "cast abort", "queued action stop", "quiet settling", "bystander stays standing",
+                            "acknowledged saves"]}
+    (Path(directory) / "controls.json").write_text(json.dumps(receipt, indent=2))
+    print("Native battle controls passed", flush=True)
+
+
+async def provision(server, pool, directory, room=None, prepare=False, probe=False, controls=False):
     staff = await battle.Client.connect("127.0.0.1", server.port, "controller", directory)
     clients = {}
     try:
@@ -48,6 +92,8 @@ async def provision(server, pool, directory, room=None, prepare=False, probe=Fal
             await battle.place_groups(staff, clients, rows, caps, captured_room if room is None else room)
         if prepare:
             await battle.prepare_fighters(staff, clients, rows, directory)
+        if controls:
+            await verify_controls(staff, clients, rows, directory)
         groups = await battle.refresh_groups(clients, rows, caps)
         summary = {"caps": caps, "room": captured_room if room is None else room, "rows": rows,
                    "groups": groups, "probe": probe}
@@ -60,7 +106,7 @@ async def provision(server, pool, directory, room=None, prepare=False, probe=Fal
         await staff.close()
 
 
-def run(binary, output, prepare=False, probe=False):
+def run(binary, output, prepare=False, probe=False, controls=False):
     output.mkdir(parents=True, exist_ok=False)
     with tempfile.TemporaryDirectory(prefix="racewar-provision-", dir=journey.ROOT / "bin/tests") as directory:
         root = Path(directory)
@@ -89,7 +135,7 @@ def run(binary, output, prepare=False, probe=False):
                 server.start()
                 run_dir = output / f"match-{match}"
                 run_dir.mkdir()
-                summary = asyncio.run(provision(server, pool, run_dir, room, prepare, probe))
+                summary = asyncio.run(provision(server, pool, run_dir, room, prepare, probe, controls))
                 new_names = {row["name"] for row in summary["rows"]}
                 assert not names & new_names
                 names |= new_names
@@ -120,8 +166,10 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--prepare", action="store_true", help="Verify one fully equipped/spell-ready setup using real object prototypes")
     parser.add_argument("--probe", action="store_true", help="Short four-PC preparation diagnostic; not full-party acceptance")
+    parser.add_argument("--controls", action="store_true", help="Four-PC native targeting/receipts/stop proof")
     args = parser.parse_args()
     (journey.ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py", "--build-inspector",
                     str(journey.INSPECTOR)], cwd=journey.ROOT, check=True, timeout=180)
-    run(args.binary.resolve(), args.output.resolve(), args.prepare or args.probe, args.probe)
+    run(args.binary.resolve(), args.output.resolve(), args.prepare or args.probe or args.controls,
+        args.probe or args.controls, args.controls)

@@ -18,6 +18,12 @@
 
 static room_data rooms[3];
 P_room world = rooms;
+// Selector rules have their own native round-trip harness. This fixture checks
+// that Room.Info carries the result through its normal serializer/framing path.
+bool get_char_room_target(P_char, P_char target, char *out, size_t capacity)
+{
+	return snprintf(out, capacity, "1.%s", GET_NAME(target)) < static_cast<int>(capacity);
+}
 static zone_data zones[1];
 zone_data *zone_table = zones;
 const int top_of_world = 3;
