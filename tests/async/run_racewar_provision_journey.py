@@ -130,11 +130,11 @@ async def verify_controls(staff, clients, rows, directory):
     selectors = {p.label: next(entry["target"] for entry in p.gmcp["Room.Info"]["players"]
                               if entry["name"] == enemy.label) for p in (fighter, caster)}
     assert all(selectors.values()), selectors
-    await caster.send(f"cast 'prismatic ray' {selectors[caster.label]}")
-    await caster.expect("You start chanting")
     await fighter.send(f"kill {selectors[fighter.label]}")
     await fighter.wait_for(lambda: fighter.gmcp.get("Char.Vitals", {}).get("fighting") == enemy.label,
                            "starting native melee")
+    await caster.send(f"cast 'prismatic ray' {selectors[caster.label]}")
+    await caster.expect("You start chanting")
     # Queue a second action behind native lag, then stop the exact participants.
     await fighter.send(f"kill {selectors[fighter.label]}")
     selected = " ".join(p.label for p in (enemy, fighter, caster))
