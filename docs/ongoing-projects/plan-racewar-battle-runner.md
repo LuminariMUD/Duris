@@ -793,7 +793,7 @@ Two native defects found in the full fight are being repaired as separate chunks
    non-atomic awards. Publish this independently and rerun full acceptance with
    the repaired native binary.
 
-### Native finding: queued input crosses death into the account menu
+### Native finding: queued input crosses death into the account menu ([PR #412](https://github.com/LuminariMUD/Duris/pull/412), ready for review)
 
 The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
 gameplay input was then consumed by the account menu (`Invalid Selection` after
@@ -813,5 +813,57 @@ and partial input clearing, intact death/menu output, unrelated session isolatio
 idempotence and fresh menu input. A real-client regression sends benign type-ahead
 behind an ordinary attack on the existing disposable executioner fixture, then
 checks native death, the account menu and a fresh character-list selection.
-Both backend builds and before/after wire proof are being completed before PR
-publication. Full battle acceptance remains in the combat branch.
+Verified on 2026-10-27: both backend builds, the input-reset and battleprep
+ASan/UBSan tests, terminal saved-item extraction contracts, formatting and
+changed-line clang-tidy pass. The real-client journey fails on the prior binary
+with `queued gameplay reached the account menu` and passes on the fixed binary,
+including death/menu output and a fresh menu selection. No persistence
+implementation changed, so an unrelated database matrix was not run.
+
+Evidence in the combat worktree: `bin/racewar-battles/death-input-before/` and
+`bin/racewar-battles/death-input-after/`. Fixed binary SHA-256:
+`3606bc3b6d7fb39d68c3925a0d9b5df5644e1de6fa9880d49731a9fb97785ab3`.
+The tested complete `src` tree is `7b265f78e455a56f8afc34b91c9df829f89e3698`,
+identical on this focused branch and the integrated combat checkout. Full battle
+acceptance and the separately discovered 15-participant PvP outcome limit remain
+in progress; this chunk does not close #405.
+
+### Native finding: full-group PvP outcomes exceed the capture limit (in progress)
+
+Branch: `branch/issue-405-full-group-outcomes`, based on #412. Edit/qualification
+worktree: `/home/aiwithapex/projects/duris-battle-fixes`; the operator remains in
+`/home/aiwithapex/projects/duris-racewar-runner` on `branch/issue-405-racewar-combat`.
+The full fight's reward failure was traced to the 15-participant outcome bound:
+the native producer captures both groups, so 20/20 cannot reach the writer.
+
+Outcome: capture, persist and replay all 40 participants atomically, retaining
+the existing public snapshot limits and old records. Non-goals: no dropped
+participants, snapshot truncation, split kill transactions, general batching
+framework, group-rule changes or increase to the coordinator's total admission
+memory budget. The retained changes are the existing bounded codec/storage
+limits and the one required SQL widening.
+
+Implementation currently raises capture to 40, command payload capacity to 8 MiB,
+maximum combat/completion/SQL result buffers to 8,192 bytes and flat-file authority
+operations to 82. Small outcomes keep their old result sizes. Decoders accept old
+1,536/2,048-byte results with the original participant bound and validate row
+lengths before reading; native domain format 4 admits larger receipts while
+formats 1–3 retain their old bounds. Migration 0054 (sequence 55) widens only the
+known 4,096-byte SQL inbox to 8,192 with online DDL requirements. The baseline
+and sealed migrations stay unchanged.
+
+Proof so far: expanded native capture/codec tests, full-group flat-file prepared
+award/replay tests, and the disposable SQL outcome suite pass. SQL proof includes
+all 40 maximum-sized public snapshots, a failure at the last participant that
+rolls back the entire outcome, retry, exact replay, preserved prior result bytes,
+idempotent widening and refusal to narrow an unexpected column. New runtime
+metadata fingerprints were measured and cleanly verified on isolated MariaDB
+10.11 and MySQL 8.0; `scripts/validate_runtime_compatibility.py` passes.
+
+Local evidence in this fix worktree: `bin/combat-capacity-codec.log`,
+`bin/combat-capacity-flatfile.log`, `bin/combat-capacity-mysql.log`,
+`bin/full-group-schema.log` and `bin/full-group-schema-result.json`. The one-off
+metadata driver is ignored at `bin/measure_full_group_schema.py` and creates only
+network-isolated task containers, which it removes afterward. No production or
+primary local database was accessed. Both server builds and the final full battle
+runs still need to be completed before the whole issue is ready.

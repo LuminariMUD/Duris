@@ -40,11 +40,11 @@
 
 namespace
 {
-// Native formats 2 and 3 retain their 2048-byte receipt limit independently
-// of the larger in-memory completion buffer. No persistent format change.
+// Old native formats retain their bound. Version 4 admits full-group receipts.
 constexpr size_t FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES = 2048;
-static_assert(FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES <= CRITICAL_COMPLETION_RESULT_MAX_BYTES);
-constexpr uint32_t domain_format_version = 3;
+constexpr size_t FLATFILE_DOMAIN_RESULT_MAX_BYTES = 8192;
+static_assert(FLATFILE_DOMAIN_RESULT_MAX_BYTES <= CRITICAL_COMPLETION_RESULT_MAX_BYTES);
+constexpr uint32_t domain_format_version = 4;
 constexpr std::array<uint8_t, 8> player_magic = { 'D', 'U', 'R', 'P', 'D', 'O', 'M', 0 };
 constexpr std::array<uint8_t, 8> bank_magic = { 'D', 'U', 'R', 'B', 'A', 'N', 'K', 0 };
 constexpr std::array<uint8_t, 8> transaction_magic = { 'D', 'U', 'R', 'T', 'X', 'N', 0, 0 };
@@ -64,7 +64,7 @@ static_assert(ZONE_TOUCH_MAX_PARTICIPANTS * 2 + 4 <=
 constexpr size_t domain_maximum_operations = DIVINE_EPIC_RECOVERY_MAX + 1;
 // Accommodate the declared receipt count, including complete combat results.
 constexpr size_t domain_maximum_bytes =
-	(FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES + 64) * domain_maximum_operations + 64 * 1024;
+	(FLATFILE_DOMAIN_RESULT_MAX_BYTES + 64) * domain_maximum_operations + 64 * 1024;
 constexpr size_t transaction_maximum_records = COMBAT_OUTCOME_MAX_PARTICIPANTS * 2;
 constexpr size_t transaction_maximum_bytes =
 	domain_maximum_bytes * transaction_maximum_records + 4096;
@@ -86,7 +86,7 @@ struct domain_operation
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_digest;
 	unsigned int result_code = 0;
 	uint16_t result_size = 0;
-	std::array<uint8_t, FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES> result = {};
+	std::array<uint8_t, FLATFILE_DOMAIN_RESULT_MAX_BYTES> result = {};
 };
 
 struct player_authority
@@ -224,7 +224,7 @@ void encode_operation(encoder &payload, const domain_operation &operation)
 	payload.raw(operation.result.data(), operation.result_size);
 }
 
-bool decode_operation(decoder &payload, domain_operation *operation)
+bool decode_operation(decoder &payload, domain_operation *operation, uint32_t format_version)
 {
 	return operation &&
 	       payload.raw(operation->operation_id.bytes.data(),
@@ -232,6 +232,8 @@ bool decode_operation(decoder &payload, domain_operation *operation)
 	       payload.raw(operation->command_digest.data(), operation->command_digest.size()) &&
 	       payload.number(&operation->result_code) && payload.number(&operation->result_size) &&
 	       operation->result_size <= operation->result.size() &&
+	       (format_version >= 4 ||
+		operation->result_size <= FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES) &&
 	       payload.raw(operation->result.data(), operation->result_size) &&
 	       !critical_operation_id_is_zero(operation->operation_id);
 }
@@ -396,8 +398,8 @@ flatfile_player_domain_result load_receipt_file(const std::string &root,
 	uint32_t version = 0;
 	if (decode_envelope(bytes, receipt_magic, &payload, &revision, &version) !=
 		    flatfile_player_domain_result::ok ||
-	    revision != 1 || version != domain_format_version ||
-	    !decode_operation(payload, receipt) || payload.offset != payload.size)
+	    revision != 1 || version < 3 || !decode_operation(payload, receipt, version) ||
+	    payload.offset != payload.size)
 		return flatfile_player_domain_result::invalid;
 	return flatfile_player_domain_result::ok;
 }
@@ -484,7 +486,8 @@ bool operation_delivery(const domain_operation &operation, uint32_t pid,
 	*delivery = {};
 	if (operation.result_code)
 		return true;
-	if (operation.result_size == COMBAT_OUTCOME_RESULT_BYTES &&
+	if ((operation.result_size == COMBAT_OUTCOME_RESULT_BYTES ||
+	     operation.result_size == COMBAT_OUTCOME_PREPARED_RESULT_BYTES) &&
 	    !memcmp(operation.result.data(), "DBCOMB05", 8))
 	{
 		combat_outcome_result result;
@@ -829,7 +832,7 @@ flatfile_player_domain_result decode_player_authority(const std::vector<uint8_t>
 			return flatfile_player_domain_result::io_error;
 		}
 		for (domain_operation &operation : decoded.operations)
-			if (!decode_operation(payload, &operation))
+			if (!decode_operation(payload, &operation, format_version))
 				return flatfile_player_domain_result::invalid;
 	}
 	std::string canonical;
@@ -998,7 +1001,7 @@ load_artifact_pending(const std::string &root, artifact_guild_delivery_ids *ids,
 	uint16_t count = 0;
 	if (decode_envelope(bytes, artifact_pending_magic, &payload, &revision, &version) !=
 		    flatfile_player_domain_result::ok ||
-	    version != domain_format_version || revision != 1 || !payload.number(&count) ||
+	    version < 3 || revision != 1 || !payload.number(&count) ||
 	    count > ARTIFACT_GUILD_PENDING_MAX)
 		return flatfile_player_domain_result::invalid;
 	ids->resize(count);
@@ -1656,7 +1659,7 @@ critical_apply_result apply_epic_command(const std::string &root, const critical
 critical_apply_result apply_combat_outcome_command(const std::string &root,
 						   const critical_command &command)
 {
-	static_assert(COMBAT_OUTCOME_RESULT_BYTES <= FLATFILE_LEGACY_DOMAIN_RESULT_MAX_BYTES);
+	static_assert(COMBAT_OUTCOME_RESULT_BYTES <= FLATFILE_DOMAIN_RESULT_MAX_BYTES);
 	combat_outcome_payload payload = {};
 	std::vector<uint8_t> encoded_command;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};

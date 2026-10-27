@@ -346,11 +346,12 @@ int main(int argc, char **argv)
 		"legacy v2 player domain did not remain readable and snapshot-owned");
 
 	static_assert(CRITICAL_COMPLETION_RESULT_MAX_BYTES > 2048);
-	for (uint32_t version : { 2U, 3U })
+	for (uint32_t version : { 2U, 3U, 4U })
 	{
-		for (uint16_t result_size : { 2048, 2049 })
+		const uint16_t maximum = version < 4 ? 2048 : 8192;
+		for (uint16_t result_size : { maximum, static_cast<uint16_t>(maximum + 1) })
 		{
-			const int32_t pid = 100 + version * 2 + (result_size - 2048);
+			const int32_t pid = 100 + version * 2 + (result_size - maximum);
 			const std::string label = "v" + std::to_string(version) +
 						  " retained result " + std::to_string(result_size);
 			flatfile_player_domain_record receipt_fixture = baseline(pid);
@@ -363,13 +364,21 @@ int main(int argc, char **argv)
 				domains / ("player-" + std::to_string(pid) + ".domain");
 			if (version == 2)
 				convert_player_domain_to_v2(fixture);
+			else if (version == 3)
+			{
+				auto bytes = file_bytes(fixture);
+				write_u32(&bytes, 8, 3);
+				write_player_domain_fixture(fixture, bytes,
+							    { bytes.begin() + 56, bytes.end() });
+			}
 			append_retained_result(fixture, result_size);
-			const auto expected = result_size == 2048 ?
+			const auto expected = result_size == maximum ?
 						      flatfile_player_domain_result::ok :
 						      flatfile_player_domain_result::invalid;
 			require(flatfile_player_domain_load(root.string(), pid, "account-one", 1,
 							    &loaded, &error) == expected,
-				label + " did not preserve the native 2048-byte bound: " + error);
+				label + " did not enforce its native format's result bound: " +
+					error);
 		}
 	}
 
@@ -757,6 +766,70 @@ int main(int argc, char **argv)
 		require(replay.outcome == critical_apply_outcome::already_applied &&
 				replay.result_payload == result.result_payload,
 			"ordinary combat changed after full-history compaction");
+	}
+
+	// A full 20/20 result, including prepared awards, survives storage and replay.
+	{
+		combat_outcome_payload payload{};
+		payload.victim_pid = 1020;
+		payload.room_vnum = 22800;
+		payload.killer_allies = 20;
+		payload.prepared_at = 150;
+		payload.artifact_intents = true;
+		strcpy(payload.room_name.data(), "Full racewar groups");
+		payload.participant_count = 40;
+		for (size_t i = 0; i < 40; ++i)
+		{
+			auto record = baseline(1000 + i);
+			record.domains.bank = {};
+			record.racewar = i < 20 ? 1 : 2;
+			require(flatfile_player_domain_establish_initial_player(root.string(),
+										record, &error) ==
+					flatfile_player_domain_result::ok,
+				"full-group baseline failed");
+			auto &entry = payload.participants[i];
+			entry.pid = record.pid;
+			entry.role = i < 20 ? combat_participant_role::killer_group :
+					      combat_participant_role::victim_group;
+			entry.level = 56;
+			entry.racewar = record.racewar;
+			entry.flags = COMBAT_PARTICIPANT_IN_ROOM;
+			strcpy(entry.account_name.data(), "account-one");
+			if (i < 20)
+			{
+				entry.flags |= COMBAT_PARTICIPANT_DIVINE_EPIC;
+				entry.frag_delta = 5;
+				entry.epic_delta = 150;
+				entry.epic_boon_id = 7;
+				entry.epic_base = 100;
+			}
+		}
+		critical_operation_id id{};
+		id.bytes[0] = 120;
+		critical_command command;
+		require(combat_outcome_command_build(&command, id, payload),
+			"full-group build failed");
+		command.accepted_at_usec = 1;
+		const auto first = flatfile_player_domain_apply(root.string(), command);
+		combat_outcome_result result{};
+		require(first.outcome == critical_apply_outcome::applied &&
+				first.result_size == 8192 &&
+				combat_outcome_command_decode_result(first.result_payload.data(),
+								     first.result_size, &result) &&
+				result.participant_count == 40 &&
+				result.participants[39].pid == 1039,
+			"full-group result was not stored intact");
+		std::vector<divine_epic_delivery> deliveries;
+		require(flatfile_player_domain_pending_divine_epics(root.string(), 1019, 0,
+								    &deliveries, &error) ==
+					flatfile_player_domain_result::ok &&
+				deliveries.size() == 1 && deliveries[0].amount == 150,
+			"large retained result lost a prepared award");
+		const auto replay = flatfile_player_domain_apply(root.string(), command);
+		require(replay.outcome == critical_apply_outcome::already_applied &&
+				replay.result_size == first.result_size &&
+				replay.result_payload == first.result_payload,
+			"full-group replay changed its result");
 	}
 
 	const fs::path player = domains / "player-42.domain";
