@@ -568,7 +568,8 @@ P_obj get_pole(P_char ch)
 		    obj_index[t_obj->R_num].virtual_number == 93913 ||
 		    obj_index[t_obj->R_num].virtual_number == 29439 ||
 		    obj_index[t_obj->R_num].virtual_number == 35234 ||
-		    obj_index[t_obj->R_num].virtual_number == 88903)
+		    obj_index[t_obj->R_num].virtual_number == 88903 ||
+		    obj_index[t_obj->R_num].virtual_number == 300039)
 		{
 			return t_obj;
 		}

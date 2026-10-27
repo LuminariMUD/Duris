@@ -33,6 +33,7 @@
 #include <map>
 #include <climits>
 #include <cmath>
+#include <cerrno>
 #include "core/files.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
@@ -4075,8 +4076,16 @@ void arti_hunt_sql(P_char ch, const char *arg)
 	dir = opendir(dname);
 	if (!dir)
 	{
-		statuslog(56, "hunt_for_artis: could not open arti dir (%s)\r\n", ARTIFACT_DIR);
-		debug("hunt_for_artis: could not open arti dir (%s)\r\n", ARTIFACT_DIR);
+		if (errno == ENOENT)
+		{
+			send_to_char_f(ch, "No legacy player saves for initial '%c'.\r\n", initial);
+			return;
+		}
+		statuslog(56, "hunt_for_artis: could not open player saves (%s): %s", dname,
+			  strerror(errno));
+		send_to_char(
+			"Artifact hunt could not read saved players; check the server log.\r\n",
+			ch);
 		return;
 	}
 

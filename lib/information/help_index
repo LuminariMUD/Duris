@@ -21406,12 +21406,11 @@ None.
 #
 ACCOUNT (Immortal Command)
 ===========================================================================
-Syntax: account l | account i <player> | account r/a/c <player> [<email>]
+Syntax: account i <online player>
 
-Lesser God command (level 59). Account management front end. 'i' shows an online player's account
-information and character list; 'l' looks up accounts by name. The
-remove-char ('r'), add-char ('a') and change-email ('c') subcommands are
-not implemented yet.
+Lesser God command (level 59). 'i' shows an online player's account information
+and character list. Account lookup ('l'), remove-char ('r'), add-char ('a'), and
+change-email ('c') are not implemented yet.
 ===========================================================================
 #
 ADVANCE (Immortal Command)

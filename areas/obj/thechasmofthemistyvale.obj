@@ -1,0 +1,704 @@
+#300000
+vine-bar vine bar oak~
+&+wan &+yoak &+gv&+Gi&+gn&+Ge&+w-&+Lbar~
+&+LTwo long &+yoak &+Lsticks, linked by a length of &+gv&+Gi&+gn&+Ge&+L, have been left here.~
+~
+5 6 0 0 8 0 0 8193 0 0 0
+10 0 0 0 0 0 0 0
+1 11000 100
+E
+oak vine bar vine-bar~
+   &+LLinked by a &+gstrip &+Lof thick &+gv&+Gi&+gn&+Ge&+L, these two &+yoaken &+Lbranches have been carefully
+worked with stylized images of &+gfo&+Gr&+ge&+Gst &+Lcreatures and half-naked warriors. The
+unbound ends of the two &+yhafts &+Lhave been hollowed so that they could be weighted
+with &+wstones&+L.
+~
+#300001
+scale salamander small~
+&+wa small &+Lsalamander &+gs&+Gc&+ga&+Gl&+ge~
+&+LA small jade &+Gs&+gc&+Ga&+gl&+Ge &+Lrests on the &+yground&+L.~
+~
+12 35 0 0 11 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+scale small salamander~
+   &+LMeasuring a few inches in diameter, this &+Gs&+gc&+Ga&+gl&+Ge &+Lappears to come from one of
+the smaller &+gsalamanders &+Lthat inhabit the &+Gfo&+gr&+Ge&+gst &+Laround the &+Wm&+wi&+Ws&+wt&+Wy &+ychasm&+L.
+~
+#300002
+head severed skunk ape~
+&+wthe &+Rse&+rv&+Re&+rre&+Rd &+Mh&+me&+Ma&+md &+wof a &+Lskunk &+yape~
+&+LThe &+rse&+Rv&+re&+Rre&+rd &+mh&+Me&+ma&+Md &+Lof an &+yape &+Lhas been discarded here.~
+~
+12 2 0 0 15 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+#300003
+wineberries berries~
+&+wsome &+Rwi&+mn&+Re&+mbe&+Rr&+mr&+Rie&+ms~
+&+LSome &+Rwi&+mn&+Re&+mbe&+Rr&+mr&+Rie&+ms &+Llie scattered on the &+yground&+L.~
+~
+19 48 0 0 7 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+wineberries berries~
+   &+LThese &+Rwi&+mn&+Re&+mbe&+Rr&+mr&+Ry &+Ldrupes are about a centimeter in diameter and a red shade so
+deep it almost looks purple. Some of the &+mfruit &+Lis surrounded by a protective
+&+rcalyx &+Lcovered in short red &+rhairs&+L. The calyxes look like tiny mouths feasting on
+the flesh of the berries. &+RWi&+mn&+Re&+mbe&+Rr&+mr&+Rie&+ms &+Lare non-poisonous, having a sweet and
+sour taste that lingers on the tongue.
+~
+#300004
+heart mud dweller~
+&+wthe &+Rbl&+ro&+Ro&+rdy &+Mh&+me&+Ma&+mr&+Mt &+wof a &+ymud &+Ldweller~
+&+LThe &+Rbl&+ro&+Ro&+rdy &+Mh&+me&+Ma&+mr&+Mt &+Lof a &+ymud &+Ldweller lies here.~
+~
+12 2 0 0 11 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+heart mud dweller~
+   &+LRipped from the &+wchest &+Lof a large &+ymud &+Ldweller, this &+mh&+Me&+ma&+Mr&+mt &+Lis about the size
+of a small Tharnadian r&+Wa&+Lc&+Wc&+Lo&+Wo&+Ln. It has a six-chambered arrangement, divided
+equally between superior atria and inferior ventricles. The &+wpericardium &+Lis
+still intact, the &+Mh&+me&+Ma&+mr&+Mt &+Lhaving been severed at the arteries and not molested
+in any other way.
+~
+#300005
+mulberries berries~
+&+wsome &+Lmu&+ml&+Lb&+mer&+Lr&+mi&+Les~
+&+LSome &+mmu&+Ll&+mb&+Ler&+mr&+Li&+mes &+Llie scattered on the &+ggrass&+L.~
+~
+19 48 0 0 7 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+mulberries berries~
+   &+LSimilar to &+mbl&+La&+mc&+Lkb&+me&+Lr&+mri&+me&+Ls, these mu&+ml&+Lb&+mer&+Lr&+my &+Ldrupes are roughly two centimeters
+in diameter and have a deep black coloration. Like their more famous cousins,
+&+mmu&+Ll&+mb&+Ler&+mr&+Li&+mes &+Lare sweet when fully ripe; however, unlike &+mbl&+La&+mc&+Lkb&+me&+Lr&+mri&+Le&+ms&+L, they grow
+on the &+ybranches &+Lof lanky &+ytrees &+Linstead of the spiny &+Gvines &+Lof &+gbrambles&+L.
+~
+#300006
+brambles~
+&+wA cluster of &+ybrambles~
+&+wA cluster of &+ybrambles &+wis here.
+~
+~
+29 0 0 0 7 0 2 0 0 0 0
+340 300049 0 0 0 0 0 0
+1 0 100
+E
+brambles~
+   &+LA mass of &+ybrambles &+Lseems to have been purposefully used to block all &+gpassage
+&+Lto the west. While they appear to be the result of haphazard &+Ggrowth &+Lbrought to
+heel by the unforgiving abuse of &+yma&+Ll&+yn&+Lut&+yr&+Li&+yti&+Lo&+yn &+Lor some discriminating blight. A
+quick glance gives the impression that these &+ybrambles &+Lcan be &+cpulled&+L.
+~
+#300007
+kush pygmie blend~
+&+wsome &+Gpygmie&+L-blend &+wK&+gu&+ws&+gh~
+&+LSome &+Gpygmie&+L-blend &+wK&+gu&+ws&+gh &+Lhas been lost here.~
+~
+40 30 0 0 7 0 0 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+kush pygmie blend~
+   &+LThough commonly called &+wK&+gu&+ws&+gh&+L, this &+Gpygmie&+L-blend contains a mixture of three
+kinds of &+gherbs &+Lthat have been shredded and dried. Upon closer inspection, it
+&+is possible to differentiate &+mpurple&+L, &+cb&+Cl&+cu&+Ce&+L, and &+Gg&+gr&+Ge&+ge&+Gn &+Lplant matter. Potency is
+is possible to differentiate &+Rr&+re&+Rd&+L, &+Gg&+gr&+Ge&+ge&+Gn&+L, and &+ybrown &+Lplant matter. Potency is
+an issue with blends, which is why it is so rare to find them.
+~
+#300008
+well ancient~
+&+wan &+Lancient &+wwell~
+&+LAn ancient &+wwell &+Ljuts up through the remains of the &+wroad&+L.~
+~
+25 11 0 0 7 0 0 0 0 0 0
+300133 7 -1 0 0 0 0 0
+1 0 100
+E
+well ancient~
+   &+LMade from &+wgranite &+Lslabs, this &+wwell &+Lwas crafted ages ago by a people that
+are forgotten to the annuls of time. &+gW&+Ge&+ge&+Gd&+gs &+Lgrow from the &+wcracks &+Lbetween the
+&+wstones &+Land a &+yrope &+Land &+cbucket &+Ldescends deep into the &+wwell&+L's bowels. Drinking
+the &+cw&+Ca&+ct&+Ce&+cr &+Lor entering the &+wwell&+L, this &+wediface &+Lis multi-purpose.
+~
+#300009
+spring~
+&+wa small &+csp&+Cr&+ci&+Cng~
+&+LA small &+Csp&+cr&+Ci&+cng &+Lbubbles up here.~
+~
+17 40 0 0 7 0 0 0 0 0 0
+10 10 0 0 0 0 0 0
+1 0 100
+E
+spring~
+   &+cBu&+Cb&+cb&+Cli&+cn&+Cg &+Lup through a carved hole in the &+yfloor&+L, this &+Csp&+cr&+Ci&+cng &+Lempties into
+a &+wstone &+Lbasin which supplies &+cw&+Ca&+ct&+Ce&+cr &+Lto the well above.
+~
+#300010
+granite head~
+&+wa &+Lgranite &+whead~
+&+LAncient and long abandoned, a &+wstone &+Lhead towers above the &+Ggr&+ga&+Gs&+gse&+Gs&+L.~
+~
+29 37 0 0 15 0 0 0 0 0 0
+46 300051 5 0 0 0 0 0
+1 0 100
+E
+head granite~
+   &+LA fourteen-foot tall &+wgranite &+Lhead has been erected here. Its &+wstone &+Lvisage
+reminds you of the much smaller &+Gpygmies &+Lthat inhabit this area.  It has full
+&+wlips &+Land slightly slanted bulbous eyes.  The outlines of tribal &+ctattoos &+Lhave
+been carved upon its &+wface&+L, their &+cspiral &+Lpatterns lending to the primitive
+appearance of this ancient form. The &+whead &+Lappears as if it were asleep,
+waiting for someone to &+cwake &+Lit.
+~
+#300011
+robes lizardhide~
+&+wsome &+gli&+Gz&+ga&+Grd&+gh&+Gi&+gd&+Ge &+Lrobes~
+A new object lies here.~
+~
+12 0 0 0 7 0 0 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+#300012
+globule spider~
+&+wa &+Rspider &+Lglobule~
+&+LA round &+Rsack &+Lfilled with &+rli&+Rq&+ru&+Rid &+Lhas been dropped here.~
+~
+17 40 0 0 7 0 4096 1 0 0 0
+5 5 0 1 0 0 0 0
+1 0 100
+E
+spider globule~
+   &+LThe &+rflesh &+Lof this organic &+Rsack &+Lis transparent, revealing the luminous &+rli&+Rq&+ru&+Rid
+&+Lthat sloshes around inside it. The crimson substance is the &+rpoison &+Lheld in
+reserve by the large &+yspider &+Lfrom which this &+Rglobule &+Lwas removed.
+~
+#300013
+shirt misty vale hunter~
+&+wa &+c'Misty Vale &+C#1 &+cHunter' &+Lshirt~
+&+LA &+cshirt &+Lhas been tossed in the &+ydirt&+L.~
+~
+11 3 0 0 11 0 0 8388617 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+67143680 0 0 4096
+E
+shirt misty vale hunter~
+   &+LThis &+cshirt &+Lis made of a simple-weave, cotton &+Cfabric &+Lthat is been dyed a deep
+cyan hue. It has short &+csleeves &+Land a shallow neck, making it comfortable in
+comparison to a similar weight leather jerkin.  Embroidered into the front of
+the shirt are the words&+C: &+cMisty Vale &+C#1 &+cHunter&+L.
+~
+A
+26 5
+A
+18 1
+#300014
+sign weathered~
+&+wa weathered &+csign~
+&+LA weathered &+csign &+Lhas been posted to the side of the &+ytrail&+L.~
+~
+12 28 0 0 7 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+sign weathered~
+                       _____________    _______  ____
+&+W                      |             \/\/       \/    |
+&+w                      |                              |
+&+w                       >  &+cThe Misty Vale &+C#1 &+cHunter   &+w|
+&+w                      |         &+LC O N T E S T        &+w(
+&+w                      |                              |
+&+w                      |   &+LBring Me:                  &+w|
+&+w                      |   &+L- The Bloody Heart of a    &+w|
+&+w                      |     &+LMud-dweller             &+w<
+&+w                      |   &+L- A Pair of Bone-razored   &+w|
+&+w                      |     &+LTalons                   &+w|
+&+w                       )  &+L- A Spider Globule         &+w|
+&+w                      |   &+L- The Severed Head of a    &+w|
+&+w                      |     &+LSkunk Ape               &+w(
+&+w                      |  o                    &+Wo      &+w|
+&+w                      |   O                         <
+&+W                      |/\______________________/\/\__|
+~
+#300015
+sign crude~
+&+wa crude &+ysign~
+&+LA crude &+ysign &+Lhas been posted in the &+Gg&+gr&+Ga&+gs&+Gs &+Lhere.~
+~
+12 15 0 0 7 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+sign crude~
+                 &+L_       |&+y#&+L|
+                &+L|&+y#&+L|     &+y,----._
+              ,---.____/       `-.
+             /             &+r>&+R)(&+r<  &+y|
+             )  &+LBewAr3 ThE       &+y/
+             \                ,-'
+              \   &+LSiNuUk  &+y___(
+               }         /#|
+               `--------'|#|
+                |#|      |#|
+                |#|      |#|
+            &+g___,&+G"&+g'&+G"&+g',&+G,&+g___&+G,"&+g'&+G.&+g___
+~
+#300016
+waterfall~
+&+wa &+Cw&+cat&+Ce&+cr&+Cfa&+cl&+Cl~
+&+LA &+cwa&+Ct&+ce&+Crf&+ca&+Cl&+cl &+Lcascades down the eastern &+ywall &+Land over the ledge's &+yedge&+L.~
+~
+25 40 0 0 7 0 0 0 0 0 0
+300144 7 -1 0 0 0 0 0
+1 0 100
+E
+waterfall~
+   &+LCascading down the &+wgranite &+Lto the east, this &+Cw&+cat&+Ce&+cr&+Cfa&+cl&+Cl &+Lruns off the &+yledge &+Lto
+finish its fall into the &+ychasm &+Lbelow. A shadow behind the &+cwa&+Ct&+ce&+Crf&+ca&+Cl&+cl &+Lappears to
+indicate a &+ycave &+Llies just beyond it.
+~
+#300017
+bone talons bone-razored~
+&+wa pair of &+Wbone&+L-razored &+rta&+Rl&+ro&+Rns~
+&+LA pair of disembodied &+Rta&+rl&+Ro&+rns &+Lhave been discarded here.~
+~
+12 10 0 0 9 0 4096 129 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+talons bone bone-razored~
+   &+LCut off a &+ymud &+Ldweller from the &+csw&+ga&+cm&+gp&+cs &+Lof the &+Wm&+wi&+Ws&+wt&+Wy &+ychasm&+L, these &+wclaws &+Lhave
+been roughly cured and made into functional handwear. The &+Wbones &+Lthat once took
+residence inside the &+whands &+Lhave been worked sharp and lashed to the &+wflesh &+Lso as
+to form &+crazors &+Lthat extend down from the &+wwrists &+Lto just beyond the first set of
+&+wknuckles&+L.
+~
+#300018
+ruins~
+&+wsome &+Lruins~
+&+LDecaying &+wruins &+Lreach out from the &+ymurk&+L, long ravaged by time.~
+~
+12 11 0 0 7 0 8192 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+ruins~
+   &+LStone &+wcolumns &+Lpoke up through the surface of the &+cw&+Ca&+ct&+Ce&+cr&+L; some erect while
+others lean or lie down. Crumpled and in disarray, the remains of an &+warch
+&+Lhave fallen into the &+csw&+ga&+cm&+gp&+cy &+Lmurk below. This must have been a holy place at
+one time, as the artistry of the &+wstructure &+Lfar surpasses anything you have
+seen in this area yet.
+~
+#300019
+brambles~
+&+wA cluster of &+ybrambles~
+&+wA cluster of &+ybrambles &+wis here.
+~
+~
+29 0 0 0 7 0 2 0 0 0 0
+340 300061 2 0 0 0 0 0
+1 0 100
+E
+brambles~
+   &+LA mass of &+ybrambles &+Lseems to have been purposefully used to block all &+gpassage
+&+Lto the west. While they appear to be the result of haphazard &+Ggrowth &+Lbrought to
+heel by the unforgiving abuse of &+yma&+Ll&+yn&+Lut&+yr&+Li&+yti&+Lo&+yn &+Lor some discriminating blight. A
+quick glance gives the impression that these &+ybrambles &+Lcan be &+cpulled&+L.
+~
+#300020
+ladder vine~
+&+wa &+gv&+Gi&+gn&+Ge &+yladder~
+&+LA &+gv&+Gi&+gn&+Ge &+yladder &+Lleads up to a &+whouse &+Lin the &+gt&+Gr&+ge&+Ge&+gs&+L.~
+~
+25 43 0 0 9 0 0 0 0 0 0
+300151 556 -1 0 0 0 0 0
+1 0 100
+E
+ladder vine~
+   &+LThis &+yladder &+Lis woven from various &+Gvines &+Lthat reside in this &+gfo&+Gr&+ge&+Gst&+L, the &+cuse
+&+Lof which allows access through a hole in the bottom of the &+whouse &+Lmoored twenty-
+feet up in the &+Gfo&+gr&+Ge&+gst &+ycanopy&+L.
+~
+#300021
+rainbow eucalyptus tree~
+&+wa &+Lrainbow &+ceu&+yc&+ca&+yly&+cp&+yt&+cus~
+&+LA colorful &+ceu&+yc&+ca&+yly&+cp&+yt&+cus&+L grows before the &+yearthfall&+L.~
+~
+12 6 0 0 15 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+rainbow eucalyptus~
+   &+LRising nearly two-hundred feet into the air, this &+ytree &+Lhas a distinctive and
+unique multi-hued &+ybark&+L. Stretches of outer &+ybark &+Lfall away at periodically over
+the course of the year, revealing a bright lime-green inner &+Gbark&+L. With time,
+this patch darkens and matures from &+Cblue &+Lto &+Mpurple&+L, then &+yorange&+L, and finally to
+&+rre&+md&+rd&+mis&+rh-ma&+mr&+ro&+mon &+Ltones. In the north, the &+ytree &+Lis known as a rainbow &+ceu&+yc&+ca&+yly&+cp&+yt&+cus
+&+Lbecause of its colorful display. Being the only specimen of the &+ytree &+Lin this
+&+Gfo&+gr&+Ge&+gst&+L, the &+Gpygmies &+Lhave come to consider it the heart of their tribe. Over
+the years, the tribal &+gelders &+Lhave taken to holding their &+wcouncil &+Lunder its
+shade.
+~
+#300022
+ladder vine~
+&+wa &+gv&+Gi&+gn&+Ge &+yladder~
+&+LA &+gv&+Gi&+gn&+Ge &+yladder &+Lleads up to a &+whouse &+Lin the &+gt&+Gr&+ge&+Ge&+gs&+L.~
+~
+25 43 0 0 9 0 0 0 0 0 0
+300068 556 -1 0 0 0 0 0
+1 0 100
+E
+ladder vine~
+   &+LThis &+yladder &+Lis woven from various &+Gvines &+Lthat reside in this &+gfo&+Gr&+ge&+Gst&+L, the &+cuse
+&+Lof which allows access through a hole in the bottom of the &+whouse &+Lmoored twenty-
+feet up in the &+Gfo&+gr&+Ge&+gst &+ycanopy&+L.
+~
+#300023
+sleeves fur displacer~
+&+wa pair of &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Lsleeves~
+&+LA &+wfurry &+Lpair of &+wsleeves &+Lhave been tossed here.~
+~
+11 0 0 0 7 0 0 257 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+sleeves fur displacer-fur~
+   &+LThese sleeves were crafted from br&+baid&+Ls of f&+bur &+Lfrom the rare southern
+d&+bis&+Lp&+bl&+Lac&+be&+Lr beast. The stitching is of such high quality that the pattern of the
+feline's iridescent blue &+Bst&+br&+Bi&+bpe&+Bs &+Lflow naturally across both &+wsleeves&+L. &+wStraps &+Lof
+&+ygoatskin &+Lcriss-cross between the rear portion of the shoulder openings and lash
+across the chest, keeping the &+wsleeves &+Lproperly seated when worn.
+~
+A
+13 15
+A
+32 1
+#300024
+scale salamander large~
+&+wa large &+Lsalamander &+gs&+Gc&+ga&+Gl&+ge~
+&+LA large jade &+gs&+Gc&+ga&+Gl&+ge &+Llies abandoned in the &+ydirt&+L.~
+~
+12 35 0 0 11 0 4096 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+scale large salamander~
+   &+LMeasuring nearly six inches in diameter, this &+gs&+Gc&+ga&+Gl&+ge &+Lappears to come from one of
+the smaller &+gsalamanders &+Lthat inhabit the &+Gfo&+gr&+Ge&+gst &+Laround the &+Wm&+wi&+Ws&+wt&+Wy &+ychasm&+L.
+~
+#300025
+shield scale salamander~
+&+wa &+Lsalamander &+Gs&+gc&+Ga&+gl&+Ge &+Lshield~
+&+LA salamander &+gs&+Gc&+ga&+Gl&+ge &+Lshield lies forgotten on the &+yground&+L.~
+~
+37 0 0 0 7 0 0 513 0 0 0
+0 0 0 35 0 0 0 0
+3 0 100
+0 12288 0 0
+E
+shield scale salamander~
+   &+LThis shield has been expertly crafted from the &+Gs&+gc&+Ga&+gl&+Ge&+gs &+Lof the two species of
+&+gsalamander &+Lthat inhabit the &+Gfo&+gr&+Ge&+gst &+Labout the &+Wm&+wi&+Ws&+wt&+Wy &+ychasm&+L. Each &+gplate &+Lis lashed
+to its neighbor by &+ystrips &+Lof tanned lizardhide, and this armor is then secured
+to a round frame made of interlocking &+ybranches &+Lof &+Gte&+ca&+Gk&+cwo&+Go&+cd&+L. Though composed of
+just a few parts, the &+wshield &+Litself is quite strong and only moderately heavy.
+~
+A
+36 1
+A
+20 -2
+#300026
+sign shingle teakwood~
+&+wa &+cte&+Ga&+ck&+Gwo&+co&+Gd &+yshingle~
+&+LA &+Gte&+ca&+Gk&+cwo&+Go&+cd &+yshingle &+Lhangs off the &+wcottage&+L.~
+~
+12 6 0 0 7 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+sign shingle teakwood~
+&+y          ________&+w==&+y___________________________________&+w==&+y____________&+w|##
+ &+y        |________&+L||&+y___________________________________&+L||&+y____________&+w|##
+                  &+w==                                   &+w==            |##
+                  &+L||                                   ||            &+w|##
+                  ==          &+y,--._                    &+w==            |##
+&+y                ,-&+L||&+y-----.___; o . `-------------------&+L||&+y---.        &+w|##
+ &+y               | &+w==                                   ==   &+y|        &+w|##
+   &+y             |  &+G____ ____  &+c__  &+G__ _ &+c_  _  __   &+G__ &+c____   &+y|        &+w|##
+                &+G| (_  _|  __)&+c/ _\&+G(  / ) &+c)( \/  \ &+G/  &+c(    \  &+y|        &+w|##
+                &+y|   &+G)(  ) _)&+c/    \&+G)  (\ &+c/\ (  O &+G|  O &+c) D  ) &+y|        &+w|##
+                &+y|  &+G(__)(____)&+c_/\_&+G(__\_|&+c_/\_)\__/ &+G\__&+c(____/  &+y|        &+w|##
+&+y                |         &+g____ _  _ ___  _  _ _  _          &+y|        &+w|##
+&+y                |        &+g(  _ ( \/ ) __)( \/ | \/ )       &+yO |        &+w|##
+&+y                |         &+g) __/)  ( (_ \/ \/ \)  /    &+y_     |        &+w|##
+&+y                |        &+g(__) (__/ \___/\_)(_(__/    &+y(_)    |        &+w|##
+&+y                ) o   _                               o   _/         &+w|##
+&+y                \_   ( )           &+LI N N&+y                _/           &+w|##
+&+y                  '--` `-------------------------------'             &+w|##
+~
+#300027
+registry~
+&+wthe &+yregisty~
+&+LA leather-bound &+yregistry &+Llies upon the &+ycounter&+L.~
+~
+12 28 0 0 7 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+registry~
+&+y _________________________________________________________
+| &+W,-------------------------.&+y|&+W,-------------------------. &+y|
+|&+w|&+W|  &+LThe &+cTe&+Ga&+ck&+Gwo&+co&+Gd &+gPygmy &+LInn  &+W|     &+LRegistration Log     &+W|&+w|&+y|
+|&+w|&+W|  &+L----------------------  &+W|     &+L----------------     &+W|&+w|&+y|
+|&+w|&+W|  &+LSniktiorg Blackhaven    &+W|  &+LJudas Iscariot          &+W|&+w|&+y|
+|&+w|&+W|  &+LRailyn (Contributor)    &+W|  &+LJohn Henry Holliday     &+W|&+w|&+y|
+|&+w|&+W|                          |  &+LThomas Jefferson        &+W|&+w|&+y|
+|&+w|&+W|                          |  &+LChristopher Moore       &+W|&+w|&+y|
+|&+w|&+W|  &+R* &+LZone Designers and    &+W|  &+LCarlo Gambino           &+W|&+w|&+y|
+|&+w|&+W|    &+LSpecial Guests of     &+W|  &+LJim Morrison            &+W|&+w|&+y|
+|&+w|&+W|    &+Lthe House.            &+W|  &+LJack Parsons            &+W|&+w|&+y|
+|&+w|&+W|                          |  &+LArthur Conan Doyle      &+W|&+w|&+y|
+|&+w|&+W|__________________________|__________________________|&+w|&+y|
+|_________________________________________________________|
+~
+#300028
+pond~
+&+wa small &+cp&+Co&+cn&+Cd~
+&+LA small &+Cp&+co&+Cn&+cd &+Lstocked with &+cfish &+Loccupies the southern part of this &+Gclearing&+L.~
+~
+25 0 0 0 7 0 8192 0 0 0 0
+300152 7 -1 0 0 0 0 0
+1 0 100
+E
+pond small~
+   &+LThe &+Cp&+co&+Cn&+cd &+Lis comprised of a deep &+wbasin &+Lformed when this &+wgranite &+Lwas upthrust
+through geological action and time. The &+cwater &+Lis supplied from a tunnel that
+opens along the bottom of the &+wbasin &+Lin the &+wgranite &+Lof the western wall. If one
+were so inclined, they could probably enter the &+Cp&+co&+Cn&+cd &+Lto explore its source.
+~
+#300029
+lever~
+&+wa &+clever~
+&+LA &+clever &+Lis set in the western &+wwall&+L.~
+   &+LSet into the &+wstone &+Lof the western wall, the &+Csteel &+Lof this &+clever &+Lis strangely
+unaffected by the years it has spent &+Csu&+cb&+Cm&+cer&+Cg&+ce&+Cd &+Lin salt &+cwater&+L. Though the &+clever
+&+Llooks like it can be &+cpulled&+L, there is no indication as to what it will trigger.
+~
+29 15 0 0 7 0 0 0 0 0 0
+340 300159 3 0 0 0 0 0
+1 0 100
+#300030
+fireweed herb~
+&+wsome aquatic &+RFi&+rr&+Re&+rwe&+Re&+rd~
+&+LSome aquatic &+RFi&+rr&+Re&+rwe&+Re&+rd &+Llies here.~
+~
+40 30 0 0 7 0 0 1 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+fireweed herb~
+   &+LNamed because of its resemblance to the terrestrial &+rfi&+Rr&+re&+Rwe&+re&+Rd &+Lof &+WJotunheim&+L,
+this aquatic &+rplant &+Lis a deep reddish-brown in coloration with long, ribbon-like
+&+Rlamina &+Lextending upward from a deep purple &+mstipe &+Land &+Mho&+ml&+Md&+mfa&+Ms&+mt&+L. Aquatic &+RFi&+rr&+Re&+rwe&+Re&+rd
+&+Lis sometimes smoked through a &+ypipe &+Lby native populations in areas where the
+&+rplant &+Lis endemic.
+~
+#300031
+archway stone~
+&+wa &+Lstone &+warchway~
+&+LAn &+warchway &+Lstands in the center of the &+wchamber&+L.~
+~
+25 0 0 0 7 0 0 0 0 0 0
+96821 7 -1 0 0 0 0 0
+1 0 100
+E
+archway stone~
+   &+LThis &+warchway &+Lhas been erected using blocks of handworked &+csarsen &+Lbearing the
+distinctive coloration of &+wstone &+Lendemic to the &+BDirk'nspire &+Larea. The portal is
+almost twelve feet tall and another six feet wide, its entire surface covered
+with &+bimages &+Lof small &+Bhumanoids &+Lengaged in a variety of activities ranging from
+childbearing to waging war. Carved into the &+ckeystone &+Lin six-inch tall letters
+is the word &+C'&+cEnter&+C'&+L.
+~
+#300032
+face banshee pygmie~
+&+wthe &+rwa&+Ri&+rl&+Rin&+rg &+cface &+Lof a &+Gpygmie &+Cba&+cn&+Cs&+che&+Ce~
+&+LThe &+cface &+Lof a &+Gpygmie &+Lhas been dropped here.~
+~
+11 0 0 0 7 0 268435456 262145 64 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+0 32896 0 0
+E
+face pygmie banshee~
+   &+LCrafted from the skinned face of a female, &+Gpymie &+Cba&+cn&+Cs&+che&+Ce&+L. The &+cflesh &+Lof its
+lips have been stitched shut with a &+ylash &+Lof leather. A fringe of long white
+&+Whair &+Lmakes up the top portion of the mask, where the &+cba&+Cn&+cs&+Che&+ce&+L's own &+Whair &+Lmarked
+the beginning of the top of her &+chead&+L. The &+wskin &+Lof this mask is pale and faded
+of all color.
+~
+A
+33 3
+A
+24 -5
+#300033
+necklace drow~
+&+wa &+ynecklace &+Lof &+mDrow &+Mtesticles~
+&+LA &+yleather &+Lcord adorned by &+mDrow &+Mtesticles &+Lhas been lost here.~
+~
+11 2 0 0 10 0 0 5 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+~
+   &+LThis &+ynecklace &+Lis comprised of seven &+mdrow &+Mtesticles &+Lconnected by a &+yleather
+&+Lcord. Each &+Mtesticle &+Lis shriveled and tanned; some larger than others, but all
+equally without their former virility.
+~
+A
+13 15
+A
+24 -3
+#300034
+leggings fur displacer~
+&+wa pair of &+Gs&+gc&+Ga&+gl&+Ge&+gd &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Lleggings~
+&+LA &+wfurry &+Lpair of &+Gs&+gc&+Ga&+gl&+Ge&+gd &+wleggings &+Lhave been tossed here.~
+~
+11 0 0 0 7 0 0 33 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+0 4096 32 0
+E
+leggings fur displacer-fur scaled~
+   &+LThese leggings were crafted from sk&+bin&+Ls of f&+bur &+Lfrom the rare northern
+d&+bis&+Lp&+bl&+Lac&+be&+Lr beast. The stitching is of such high quality that the pattern of the
+feline's iridescent blue &+Bst&+br&+Bi&+bpe&+Bs &+Lflow naturally across both &+wleggings&+L. Salamander &+Gs&+gc&+Ga&+gl&+Ge&+gs &+Lline the greaves, shimmering &+Ggreen &+Lin the twilight, and &+wstraps &+Lof
+&+ygoatskin &+Llash about the waist, keeping the &+wleggings &+Lproperly fitting when worn.
+~
+A
+14 15
+A
+33 1
+#300035
+tunic fur displacer scaled~
+&+wa  &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Ltunic of interlockering &+Gs&+gc&+Ga&+gl&+Ge&+gs~
+&+LA &+wfurry  &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Ltunic of interlocking &+Gs&+gc&+Ga&+gl&+Ge&+gs &+Llies forgotten here.~
+~
+11 0 0 0 7 0 0 9 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+32 0 64 0
+E
+tunic fur displacer-fur scaled~
+   &+LThis &+wtunic &+Lwas crafted from sk&+bin&+Ls and br&+baid&+Ls of f&+bur &+Lfrom the rare northern and southern d&+bis&+Lp&+bl&+Lac&+be&+Lr beasts. The stitching is of such high quality that the pattern of the feline's iridescent blue &+Bst&+br&+Bi&+bpe&+Bs &+Lflow naturally across the &+wtunic&+L. Salamander &+Gs&+gc&+Ga&+gl&+Ge&+gs &+Lline the shoulders, shimmering &+Ggreen &+Lin the twilight, and strips of &+ygoatskin &+Lare threaded like &+Wlaces &+Lthrough f&+bur&+Lry eyelets.
+~
+A
+34 1
+A
+13 15
+#300036
+potion ebon~
+&+wa viscid &+Lebon &+mpo&+Mt&+mi&+Mon~
+&+LA dusty &+mv&+Mi&+mal &+Llies discarded in the &+ydirt&+L.~
+~
+10 7 0 0 10 0 67117056 1 64 0 0
+36 83 238 84 0 0 0 0
+1 0 100
+E
+~
+   &+LThis small &+mv&+Mi&+mal &+Lis made from sculpted and fired &+rpygg&+L. &+mPainted &+Lin a fine, if
+somewhat inscrutable, script, a line of &+Mrunes &+Lwraps about the widest portion of
+the &+mco&+Mn&+mt&+Mai&+mn&+Me&+mr&+L. Stoppered by a tightly bound bung of &+ysticks&+L, this &+mv&+Mi&+mal &+Lcontains
+a viscid black liquid that seems to pulse with its own inner determination.
+~
+#300037
+statue drow god~
+&+wa statue of &+LSniktiorg Blackhaven~
+&+LA &+wstatue &+Lof a &+mDrow &+Lgod stands in this &+Gclearing&+L.~
+~
+12 11 0 0 14 0 0 0 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+E
+statue drow god sniktiorg blackhaven~
+   &+LCarved out of the finest &+wma&+Wr&+wb&+Wl&+we &+Lfrom the Blackthorne &+ymountains&+L, this &+wstatue
+&+Ldepicts &+wSniktiorg Blackhaven&+L, the &+mDrow &+Lgod of &+cAn&+Cg&+cu&+Cis&+ch&+L. All but forgotten by
+the inhabitants of &+RDuris&+L, Sniktiorg was one of the first creator gods to walk
+these &+Glands &+Lbringing forth new creatures and &+Gla&+gn&+Gd&+gsc&+Ga&+gp&+Ges&+L. In later years, when
+he returned his countenance to the &+grealm&+L, he once again took part in the path
+of &+RDurian &+Levolution. His role, however, was small and he chose to remain hid
+from those he helped.  It was during these times that this &+wstatue &+Lwas hewn by
+master craftsmen from &+wTharnadia&+L, shipped across the &+cwh&+Ca&+cl&+Ce-&+cr&+Co&+cad &+Land erected in
+devotion to this ancient and dismissed god. The &+wstatue &+Linstills the urge to
+&+cpray &+Lin you.
+~
+#300038
+canoe sharkskin~
+&+wA &+Lsharkskin &+ycanoe~
+&+LA &+wsharkskin &+ycanoe &+Lwas abandoned here.~
+~
+22 0 0 0 7 0 8192 1 0 0 0
+0 0 0 0 0 0 0 0
+1 1000 100
+E
+canoe sharkskin~
+   &+LThis &+ycanoe &+Lwas crafted by stretching treated &+wsharkskin &+Lover a small &+Gte&+ca&+Gk&+cwo&+Go&+cd
+&+yframe&+L. This design makes for a light boat large enough for one.
+~
+#300039
+fishing rod teak~
+&+wa &+Gt&+ce&+Ga&+ck &+Lfishing &+yrod~
+&+wA &+ct&+Ge&+ca&+Gk &+Lfishing &+yrod &+whas been abandoned here.~
+~
+11 6 0 0 9 0 8192 1 0 0 0
+0 0 0 0 0 0 0 0
+0 1900 0
+E
+fishing rod teak~
+   &+wThis &+yrod &+whas been finally crafted from a solid &+ypole &+wof &+Gt&+ce&+Ga&+ck&+w. You have
+never seen its equal.
+~
+A
+30 6
+#300040
+boots fur displacer~
+&+wa &+Lpair of &+wfuzzy &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Lboots~
+&+LA pair of &+Lfu&+bzz&+Ly  &+Ldi&+bs&+Lp&+bla&+Lc&+be&+Lr&+w-fur &+Lboots have been left here.~
+~
+11 0 0 0 7 0 0 65 0 0 0
+0 0 0 0 0 0 0 0
+1 0 100
+0 12288 0 0
+E
+boots fur displacer-fur~
+   &+LThese &+wboots &+Lwere crafted from sk&+bin&+Ls and br&+baid&+Ls of f&+bur &+Lfrom the rare northern and southern d&+bis&+Lp&+bl&+Lac&+be&+Lr beasts. The stitching is of such high quality that the pattern of the feline's iridescent blue &+Bst&+br&+Bi&+bpe&+Bs &+Lflow naturally across the &+wcured &+Lh&+bi&+Ld&+be&+L. Strips of &+ygoatskin &+Lare threaded like &+Wlaces &+Lthrough f&+bur&+Lry eyelets.
+~
+A
+14 30
+A
+55 1
+#300041
+granite head~
+&+wa &+Lgranite &+whead~
+&+gV&+Gi&+gn&+Ge&+L-covered since antiquity, a granite &+whead &+Llooms here.~
+~
+29 37 0 0 15 0 0 0 0 0 0
+270 300105 1 0 0 0 0 0
+1 0 100
+E
+head granite~
+   &+LA monstrous &+wgranite &+Lhead pokes through the &+gv&+Gi&+gn&+Ge&+L-covered &+Gfo&+gr&+Ge&+gst &+yfloor&+L,
+its mouth wide in anger or fear, bearing many teeth and a deep throat.  &+gV&+Gi&+gn&+Ge&+gs
+&+Lhave securely lashed the huge cranium to the &+ysoil &+Lof the &+gfo&+Gr&+ge&+Gst &+yfloor&+L, making
+the &+whead &+Lappear to writhe in an attempt to escape. Etched upon its face are
+the outlines of tribal war &+ctattoos&+L, and you notice its eyes are devoid of
+markings for iris or pupil. You almost want to &+cpush &+Lthe &+whead &+Lover.
+~

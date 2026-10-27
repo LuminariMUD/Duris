@@ -25,6 +25,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import migration_runner as runner  # noqa: E402
+from test_misty_vale_shop_migration import check_shop_reindex
 
 IMAGES = ("mariadb:11.8", "mariadb:10.11", "mysql:8.0")
 
@@ -292,6 +293,8 @@ def check(image: str, expected_head: str) -> None:
             "TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER canonical_item_uid")
         check_nexus_seed(sql, migrate, environment)
         print(f'[PASS] {image}: Nexus preflight, empty/partial/played seed, replay, drift and legacy engine', flush=True)
+        check_shop_reindex(sql, migrate, environment)
+        print(f'[PASS] {image}: Misty Vale shop repair, custody, stock, replay and atomic refusal', flush=True)
         result = migrate("run")
         assert result.returncode == 0, f"{image} ({version}): {result.stderr}"
         head = sql("SELECT applied_count, LOWER(HEX(history_checksum)) FROM "

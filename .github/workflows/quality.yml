@@ -159,6 +159,7 @@ jobs:
         run: |
           python3 tests/async/test_newbie_grant_lifecycle.py
           python3 tests/async/test_newbie_kit_plan.py
+          python3 tests/async/test_newbie_kit_suitability.py
           python3 tests/async/test_newbie_kit_readiness_contract.py
           python3 tests/async/test_creation_grant_batch_submission.py
           python3 tests/async/test_creation_grant_reconciliation.py
