@@ -759,3 +759,61 @@ Commands/results for this chunk:
   DMS_BINARY=/home/aiwithapex/projects/duris-racewar-runner/bin/server/dms_battle_full_group_flatfile
   -j4` pass in the integrated combat checkout. Logs are under
   `bin/racewar-battles/implementation/full-group-build-*.log` there.
+
+### Early-stop finding: legacy acid pulses re-engage stopped participants ([PR #415](https://github.com/LuminariMUD/Duris/pull/415), ready for review)
+
+`battle-04` passed the repaired first 20/20 match (120.02 seconds, 14 deaths,
+26 survivor save acknowledgements, 204 completed spells, no capture failures,
+37 PCs receiving frag-award messages). The second fresh match correctly reused
+the 40 accounts in room 1200, but its 30-second operator stop exposed a remaining
+control gap: legacy `event_acidimmolate` kit pulses continued outside
+`item_actions` and restarted melee. Standing sleepers also suffered native
+collapse/stun damage. The runner reported the unconfirmed stop honestly.
+
+Fix branch: `branch/issue-405-stop-effects`, based on #414. `battleprep stop`
+cancels only acid events whose actor or target is a selected PC, using native
+event handles; status includes those incoming/outgoing events. Effects between
+other characters remain untouched. Successfully tranquilized standing sleepers
+settle into a sitting sleep posture, avoiding later collapse damage. The native
+command test covers both directions, unrelated events and the resulting posture.
+
+The operator chunk separately batches by the actual 1,023-byte input limit, so
+all 40 names are stopped in one native command; the earlier arbitrary batches of
+eight allowed spells to finish between batches. A focused client test verifies
+the full roster is sent atomically. No blanket event cancellation, room flags,
+general effect framework or normal-combat change is introduced.
+
+The existing four-PC `--controls` journey now seeds the actual legacy acid spell
+through the native staff command and proves incoming-pulse cancellation and
+stable health after stop. The old binary fails the stable-health check; the fixed
+binary passes it in `bin/racewar-battles/acid-stop-after-02` in the combat worktree.
+Both backend builds, native ASan/UBSan battleprep checks, formatting and commit
+hooks pass. The test now establishes melee before starting the abortable cast,
+so the cast cannot complete while the test is still waiting for melee to begin.
+Fixed binary SHA-256: `702d63df0285c3d0ef6c4828750450685afac036e907cf730596a98a34672f33`.
+Tested source tree: `8ddac7afe1fbf34ae680aa6f585e8fa206c20f00`, identical on the
+focused fix branch and combat checkout. The full pair is running as `battle-05`.
+Completed first-match combat,
+reward, persistence and performance evidence remains valid; no unrelated tests
+need repeating.
+
+Follow-up qualification found the Searing Fist hammer's packed `magma burst`
+still ticking after early stop. The audit of both supported kit profiles found
+17 packed weapon spells: the delayed damage paths are acid immolation, magma
+burst, and pythonsting's native poison callbacks. Targeted cancellation now covers
+those three callbacks and removes only their matching magma/poison markers; it
+does not clear unrelated effects or benign periodic checks. The focused native
+test covers incoming/outgoing references, inverted poison ownership, marker
+cleanup and unrelated-event preservation.
+
+The Paladin's periodic smite also lacked the awake/mobile guard used by its other
+automatic combat checks. It now skips attacks while asleep or immobilized while
+keeping the timer armed, so waking resumes ordinary behavior. A separate focused
+native test proves the inactive and resumed states.
+
+Both builds and the expanded four-PC runtime confirmation pass. The runtime check
+seeds acid and magma, verifies settled health and quiet status, and reapplies magma
+after cancellation to prove its marker was cleaned. Evidence:
+`bin/racewar-battles/all-effects-after/` in the combat worktree. Binary SHA-256:
+`43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
+The full pair is now running as `battle-07`; its completion is not yet claimed.
