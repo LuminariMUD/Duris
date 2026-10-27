@@ -601,6 +601,15 @@ static const char *chaos_kit_skip_reason(P_char ch, int slot)
 	return NULL;
 }
 
+static chaos_kit_item chaos_kit_item_for_character(P_char ch, const chaos_kit_item &item)
+{
+	// Centaurs have a foot slot, but wear() admits only horseshoes there.
+	// Golden horseshoes are portable and accepted by the enhance pool too.
+	if (IS_CENTAUR(ch) && item.slot == WEAR_FEET)
+		return { WEAR_FEET, 99061 };
+	return item;
+}
+
 static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *item,
 				  chaos_kit_objects &kit)
 {
@@ -610,6 +619,8 @@ static bool append_chaos_kit_item(P_char ch, P_obj bag, const chaos_kit_item *it
 		return false;
 	if (chaos_kit_skip_reason(ch, item->slot))
 		return true;
+	const chaos_kit_item compatible = chaos_kit_item_for_character(ch, *item);
+	item = &compatible;
 
 	P_obj obj = read_object(item->vnum, VIRTUAL);
 	if (!obj)
