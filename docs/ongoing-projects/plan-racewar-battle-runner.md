@@ -828,7 +828,7 @@ identical on this focused branch and the integrated combat checkout. Full battle
 acceptance and the separately discovered 15-participant PvP outcome limit remain
 in progress; this chunk does not close #405.
 
-### Native finding: full-group PvP outcomes exceed the capture limit (in progress)
+### Native finding: full-group PvP outcomes exceed the capture limit ([PR #414](https://github.com/LuminariMUD/Duris/pull/414), ready for review)
 
 Branch: `branch/issue-405-full-group-outcomes`, based on #412. Edit/qualification
 worktree: `/home/aiwithapex/projects/duris-battle-fixes`; the operator remains in
@@ -865,5 +865,61 @@ Local evidence in this fix worktree: `bin/combat-capacity-codec.log`,
 `bin/full-group-schema.log` and `bin/full-group-schema-result.json`. The one-off
 metadata driver is ignored at `bin/measure_full_group_schema.py` and creates only
 network-isolated task containers, which it removes afterward. No production or
-primary local database was accessed. Both server builds and the final full battle
-runs still need to be completed before the whole issue is ready.
+primary local database was accessed. Both server builds now pass. The tested native
+source tree is `f157a00977744d653e7d380cde1a13d773d51227`, identical on this branch
+and the integrated combat checkout. The flat-file binary SHA-256 is
+`be370f514e32f26c273f23928a77ef2646459afe474060b252c1a3fc56427b48`.
+The final two full battles are running as `bin/racewar-battles/battle-04` in the
+combat worktree; this PR's persistence proof does not claim their completion.
+
+Commands/results for this chunk:
+
+- `python3 tests/async/test_combat_outcome_transactional_cutover.py`: five tests pass,
+  including 40-PC native capture, full snapshot encode/decode and old receipt reads.
+- `python3 tests/async/test_flatfile_player_domain_repository.py`: full-group
+  prepared award storage/replay and old/new native format bounds pass.
+- `bash tests/async/run_combat_outcome_schema_mysql.sh`: disposable SQL suite passes,
+  including full-group late rollback/retry, replay, long snapshots and migration guards.
+- `python3 tests/async/test_critical_command_codec.py` and
+  `python3 tests/async/test_critical_completion_capacity.py`: bounded command codecs
+  and complete 8,192-byte fresh/replayed completion delivery pass.
+- `python3 tests/async/test_divine_boon_delivery.py` and
+  `python3 tests/async/test_reward_producer_replay.py`: prepared award recovery and
+  duplicate-delivery behavior pass.
+- `python3 tests/async/test_migration_runner_cli_safety.py`,
+  `python3 scripts/validate_runtime_compatibility.py` and all 14 documentation
+  checks pass. Formatting, whitespace and normal commit hooks pass.
+- `make -C src -j4` and `make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris-racewar-runner/bin/server/dms_battle_full_group_flatfile
+  -j4` pass in the integrated combat checkout. Logs are under
+  `bin/racewar-battles/implementation/full-group-build-*.log` there.
+
+### Early-stop finding: legacy acid pulses re-engage stopped participants
+
+`battle-04` passed the repaired first 20/20 match (120.02 seconds, 14 deaths,
+26 survivor save acknowledgements, 204 completed spells, no capture failures,
+37 PCs receiving frag-award messages). The second fresh match correctly reused
+the 40 accounts in room 1200, but its 30-second operator stop exposed a remaining
+control gap: legacy `event_acidimmolate` kit pulses continued outside
+`item_actions` and restarted melee. Standing sleepers also suffered native
+collapse/stun damage. The runner reported the unconfirmed stop honestly.
+
+Fix branch: `branch/issue-405-stop-effects`, based on #414. `battleprep stop`
+cancels only acid events whose actor or target is a selected PC, using native
+event handles; status includes those incoming/outgoing events. Effects between
+other characters remain untouched. Successfully tranquilized standing sleepers
+settle into a sitting sleep posture, avoiding later collapse damage. The native
+command test covers both directions, unrelated events and the resulting posture.
+
+The operator chunk separately batches by the actual 1,023-byte input limit, so
+all 40 names are stopped in one native command; the earlier arbitrary batches of
+eight allowed spells to finish between batches. A focused client test verifies
+the full roster is sent atomically. No blanket event cancellation, room flags,
+general effect framework or normal-combat change is introduced.
+
+The existing four-PC `--controls` journey now seeds the actual legacy acid spell
+through the native staff command and proves incoming-pulse cancellation and
+stable health after stop. Before/after runtime proof and both builds are being
+completed, then the final full pair will be rerun. Completed first-match combat,
+reward, persistence and performance evidence remains valid; no unrelated tests
+need repeating.

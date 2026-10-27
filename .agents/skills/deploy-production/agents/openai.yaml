@@ -1,4 +1,4 @@
 interface:
   display_name: "Deploy Production"
   short_description: "Pull, migrate, clean-build, reboot, and verify Duris"
-  default_prompt: "Use $deploy-production to pull master immediately, finish migrations and content updates, perform a full clean rebuild, schedule Veridian's reboot in 180 seconds with the message Zusuk has new code incoming, brace for impact!, and watch the logs until the rebuilt game is healthy."
+  default_prompt: "Use $deploy-production to pull master immediately, complete useful missing help before news, investigate bug reports and file untracked bugs, finish migrations and content updates, clean-build, schedule Veridian's reboot in 180 seconds with the message Zusuk has new code incoming, brace for impact!, retire processed feedback safely at the restart boundary, verify the rebuilt game, then commit and push its verified news directly to master."

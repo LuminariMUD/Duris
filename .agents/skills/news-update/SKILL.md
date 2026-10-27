@@ -67,6 +67,13 @@ differ, so unpublished local work cannot slip into announcements. If remote acce
 fails, continue useful local research but report the exact verified boundary.
 Do not claim GitHub is fully covered or substitute an unverified local HEAD.
 
+When an authorized deployment supplies newly authored and published help, include
+those specific additions as a separate content source alongside the GitHub history
+inventory. Verify their source diff and successful in-game lookup, and announce
+the useful topics/commands without calling local edits merged history. Keep the
+GitHub baseline/tip accounting unchanged. This exception does not include other
+unpublished local work or bug-report triage and issue creation.
+
 ## Account for the whole range
 
 Keep a working inventory keyed by commit SHA or PR, with the source, each distinct
@@ -259,5 +266,9 @@ be completed, report publication and verification separately with the missing
 check; do not claim the update is fully verified. Quit and close the session.
 
 Stop on errors and inspect the result before retrying. Do not restart the game,
-change unrelated data, commit/push, or send announcements as part of this workflow.
+change unrelated data, or send announcements as part of this workflow. A standalone
+news update does not commit/push. When invoked by an authorized
+[deployment](../deploy-production/SKILL.md#6-commit-and-push-the-verified-news-directly-to-master),
+return to its final step to commit the verified news file and push it directly to
+`master` after deployment verification.
 Details are in `docs/content/HELP_SYSTEM.md`, under "Publishing news only".
