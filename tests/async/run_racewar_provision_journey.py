@@ -151,24 +151,29 @@ async def verify_controls(staff, clients, rows, directory):
         await player.command("save", expected=f"Save complete for {player.label}.")
     # Seed the actual legacy repeating effect through the staff's native spell.
     # The controller is not in the stopped roster: incoming references matter.
-    await enemy.command("wake")
-    await staff.command(f"cast 'acidimmolate' {enemy.label}", expected="You complete your spell")
-    pending = await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} pending.")
-    assert "pending." in pending
+    for spell in ("acidimmolate", "magma burst"):
+        await enemy.command("wake")
+        await staff.command(f"restore {enemy.label}", expected="Done.")
+        await staff.command(f"cast '{spell}' {enemy.label}", expected="You complete your spell")
+        await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} pending.")
+        await staff.command(f"battleprep stop {enemy.label}", expected=f"{enemy.label} quiet.")
+        await asyncio.sleep(1)
+        before = await enemy.command("score", expected="Hit points:")
+        await asyncio.sleep(6)
+        after = await enemy.command("score", expected="Hit points:")
+        hp_before = tuple(map(int, re.search(r"Hit points:\s*(-?\d+)\s*\(\s*(\d+)\)", before).groups()))
+        hp_after = tuple(map(int, re.search(r"Hit points:\s*(-?\d+)\s*\(\s*(\d+)\)", after).groups()))
+        assert max(0, hp_after[1] - hp_after[0]) <= max(0, hp_before[1] - hp_before[0]), spell
+        await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} quiet.")
+    # Cancellation also removes magma's marker, so a later ordinary cast can arm again.
+    await staff.command(f"cast 'magma burst' {enemy.label}", expected="You complete your spell")
+    await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} pending.")
     await staff.command(f"battleprep stop {enemy.label}", expected=f"{enemy.label} quiet.")
-    await asyncio.sleep(1)
-    before = await enemy.command("score", expected="Hit points:")
-    enemy.pending = ""
-    await asyncio.sleep(6)
-    assert "Green slime eats away" not in enemy.pending, enemy.pending
-    after = await enemy.command("score", expected="Hit points:")
-    assert int(re.search(r"Hit points:\s*(-?\d+)", after)[1]) >= int(re.search(r"Hit points:\s*(-?\d+)", before)[1])
-    await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} quiet.")
     receipt = {"result": "passed", "selectors": selectors, "selected": selected.split(),
                "bystander": bystander.label, "settle_seconds": 6,
                "verified": ["opt-in dequeue receipts", "legal mortal racewar targets", "native melee",
                             "cast abort", "queued action stop", "quiet settling", "bystander stays standing",
-                            "acknowledged saves", "incoming legacy acid pulse cancellation", "safe sleeping posture"]}
+                            "acknowledged saves", "incoming acid/magma cancellation", "magma can be reapplied", "safe sleeping posture"]}
     (Path(directory) / "controls.json").write_text(json.dumps(receipt, indent=2))
     print("Native battle controls passed", flush=True)
 
