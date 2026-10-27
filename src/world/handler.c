@@ -3933,6 +3933,8 @@ void extract_char(P_char ch)
 
 		if (ch->desc && ch->desc->connected != CON_DELETE)
 		{
+			// Gameplay type-ahead must not become account/menu input after extraction.
+			flush_input_queue(ch->desc);
 #ifndef USE_ACCOUNT
 			ch->desc->connected = CON_MAIN_MENU;
 			SEND_TO_Q(MENU, ch->desc);

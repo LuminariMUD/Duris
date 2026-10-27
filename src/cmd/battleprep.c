@@ -44,14 +44,7 @@ static void battle_stop_status(P_char staff, char *argument, bool stop)
 		if (stop)
 		{
 			if (victim->desc)
-			{
-				char discarded[MAX_INPUT_LENGTH];
-				while (get_from_q(&victim->desc->input, discarded))
-				{
-				}
-				victim->desc->buflen = 0;
-				victim->desc->buf[0] = 0;
-			}
+				flush_input_queue(victim->desc);
 			StopCasting(victim);
 			disarm_char_nevents(victim, event_abort_spell);
 			stop_memorizing(victim, memorization_stop_reason::voluntary);

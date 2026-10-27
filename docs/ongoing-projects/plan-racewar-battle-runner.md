@@ -658,3 +658,38 @@ and ship focused repairs. Queue/cast elapsed time includes native gameplay lag a
 must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
+
+### Native finding: queued input crosses death into the account menu ([PR #412](https://github.com/LuminariMUD/Duris/pull/412), ready for review)
+
+The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
+gameplay input was then consumed by the account menu (`Invalid Selection` after
+the death/menu output). This is a game-session transition defect independent of
+the runner's conservative handling of absent dead PCs.
+
+Fix branch: `branch/issue-405-death-input`, based on #411. The ordinary extraction
+transition and direct hardcore-death transition now discard queued and partial
+input while preserving output. `flush_input_queue()` also replaces the same
+drain loop in targeted battle stop and is reused when closing a descriptor.
+There is no new state machine, gameplay rule or persistence mutation.
+
+Files: `src/net/comm.{c,h}`, `src/world/handler.c`, `src/combat/fight.c`,
+`src/cmd/battleprep.c`, focused native input-reset/battleprep tests, and
+`tests/async/run_death_input_journey.py`. The native sanitizer test proves complete
+and partial input clearing, intact death/menu output, unrelated session isolation,
+idempotence and fresh menu input. A real-client regression sends benign type-ahead
+behind an ordinary attack on the existing disposable executioner fixture, then
+checks native death, the account menu and a fresh character-list selection.
+Verified on 2026-10-27: both backend builds, the input-reset and battleprep
+ASan/UBSan tests, terminal saved-item extraction contracts, formatting and
+changed-line clang-tidy pass. The real-client journey fails on the prior binary
+with `queued gameplay reached the account menu` and passes on the fixed binary,
+including death/menu output and a fresh menu selection. No persistence
+implementation changed, so an unrelated database matrix was not run.
+
+Evidence in the combat worktree: `bin/racewar-battles/death-input-before/` and
+`bin/racewar-battles/death-input-after/`. Fixed binary SHA-256:
+`3606bc3b6d7fb39d68c3925a0d9b5df5644e1de6fa9880d49731a9fb97785ab3`.
+The tested complete `src` tree is `7b265f78e455a56f8afc34b91c9df829f89e3698`,
+identical on this focused branch and the integrated combat checkout. Full battle
+acceptance and the separately discovered 15-participant PvP outcome limit remain
+in progress; this chunk does not close #405.
