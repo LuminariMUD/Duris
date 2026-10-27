@@ -106,6 +106,7 @@ class Client:
         self.damage_events = 0
         self.observed_damage = 0
         self.dead = False
+        self.returned_to_menu = False
         self.healing_events = 0
         self.observed_healing = 0
         self.evidence_tail = ""
@@ -165,6 +166,8 @@ class Client:
                         self.pending = (self.pending + text)[-131072:]
                         if "Your wounds claim you at last. Your spirit slips free of your body" in evidence:
                             self.dead = True
+                        if self.dead and "ACCOUNT MENU" in evidence:
+                            self.returned_to_menu = True
                     elif kind == "gmcp":
                         package, message = value
                         self.gmcp[package] = message
@@ -206,6 +209,8 @@ class Client:
                 value = predicate()
                 if value:
                     return value
+                if self.returned_to_menu:
+                    raise BattleError(f"{self.label}: native death returned the connection to the account menu")
                 if self.error:
                     raise BattleError(f"{self.label}: disconnected while {description}") from self.error
                 await self.changed.wait()
@@ -744,7 +749,7 @@ PHYSICAL = {"warrior": "bash", "berserker": "berserk", "monk": "kick",
 DEPLETED = re.compile(r"don't have that spell memorized|must commune with nature more|"
                       r"don't have the energy left|lucidity is not sufficient enough|"
                       r"power reserves are not sufficient|illumination is not sufficient", re.I)
-REJECTED = re.compile(r"You (?:can't|cannot|don't|aren't|are unable)|not here|no one|"
+REJECTED = re.compile(r"You (?:failed|can't|cannot|don't|aren't|are unable)|not here|no one|"
                       r"Nobody|not permitted|not allowed|can't do|peaceful|harmful magic|"
                       r"haven't regained|Uh oh|lost your concentration|You abort", re.I)
 
@@ -816,6 +821,7 @@ async def fight_one(row, rows, clients, stop):
     player, cls = clients[row["name"]], normalized(row["class"])
     spent, turn = set(), 0
     row["actions"] = {"attempted": 0, "dequeued": 0, "spells_completed": 0, "rejected": 0}
+    row["starting_input_sequence"] = player.gmcp["Char.Input"]["sequence"]
     while not stop.is_set() and active(row, clients):
         enemy = choose_enemy(row, rows, clients)
         if not enemy:
@@ -858,7 +864,12 @@ async def fight_one(row, rows, clients, stop):
                 await asyncio.sleep(1)
                 continue
         row["actions"]["attempted"] += 1
-        output = await player.action(command)
+        try:
+            output = await player.action(command)
+        except BattleError:
+            if player.returned_to_menu:
+                return
+            raise
         row["actions"]["dequeued"] += 1
         if "You complete your spell" in output or "Your mental manipulations become a reality" in output:
             row["actions"]["spells_completed"] += 1
@@ -871,7 +882,7 @@ async def fight_one(row, rows, clients, stop):
         await asyncio.sleep(.5)
 
 
-async def stop_fighters(staff, rows):
+async def stop_fighters(staff, rows, dead_absent=()):
     """Stop exact identities and observe them again after native callbacks settle."""
     result = {"confirmed": False, "statuses": {}, "settle_seconds": 6}
     try:
@@ -887,8 +898,10 @@ async def stop_fighters(staff, rows):
                             re.findall(r"Battleprep status (\w+) (\w+)\.", output)}
                 for name in names:
                     state = statuses.get(name.casefold(), "unconfirmed")
+                    if state == "missing" and name in dead_absent:
+                        state = "dead_absent"
                     result["statuses"][name] = state
-                    if state != "quiet":
+                    if state not in ("quiet", "dead_absent"):
                         result.setdefault("unresolved", []).append({"name": name, "operation": operation, "state": state})
         result["confirmed"] = not result.get("unresolved")
     except Exception as error:
@@ -938,15 +951,24 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
             "max": max(response_times, default=None),
             "median": sorted(response_times)[len(response_times) // 2] if response_times else None,
             "measurement": "end-to-end staff stat-room response, includes network and scheduling"}
-        result["stop"] = await stop_fighters(staff, rows)
+        # Death already extracts the character and returns this connection to
+        # the account menu. Close those sessions before proving native absence;
+        # never issue a gameplay save to a menu or silently accept other missing PCs.
+        dead_absent = {name for name, player in clients.items() if player.dead and player.returned_to_menu}
+        await asyncio.gather(*(clients[name].close() for name in dead_absent), return_exceptions=True)
+        result["stop"] = await stop_fighters(staff, rows, dead_absent)
         for row in rows:
             player = clients[row["name"]]
+            row["actions"]["dequeued"] = player.gmcp["Char.Input"]["sequence"] - row["starting_input_sequence"]
             row.update(dead=player.dead, disconnected=bool(player.error),
-                       left_battlefield=room_identity(player) != row["battle_room"],
+                       returned_to_menu=player.returned_to_menu,
+                       left_battlefield=player.returned_to_menu or room_identity(player) != row["battle_room"],
                        damage_events=player.damage_events, observed_damage=player.observed_damage,
                        healing_events=player.healing_events, observed_healing=player.observed_healing)
             row["final_save"] = "not attempted: disconnected or stop unconfirmed"
-            if not player.error and result["stop"]["confirmed"]:
+            if row["name"] in dead_absent:
+                row["final_save"] = "native death terminal save; no individual completion acknowledgement"
+            elif not player.error and result["stop"]["confirmed"]:
                 try:
                     await player.command("save", expected=f"Save complete for {row['name']}.")
                     row["final_save"] = "acknowledged"

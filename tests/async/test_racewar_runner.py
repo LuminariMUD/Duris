@@ -132,6 +132,37 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             result = await battle.stop_fighters(Disconnected(), [{"name": "One"}])
         self.assertFalse(result["confirmed"])
         self.assertIn("disconnected", result["error"])
+        class Missing:
+            async def command(self, *args, **kwargs):
+                return "Battleprep status one missing."
+        with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+            unknown = await battle.stop_fighters(Missing(), [{"name": "One"}])
+            dead = await battle.stop_fighters(Missing(), [{"name": "One"}], {"One"})
+        self.assertFalse(unknown["confirmed"])
+        self.assertTrue(dead["confirmed"])
+        self.assertEqual(dead["statuses"], {"One": "dead_absent"})
+
+    async def test_native_death_menu_ends_a_pending_gameplay_wait(self):
+        async def serve(reader, writer):
+            await reader.readline()
+            writer.write(b"Your wounds claim you at last. Your spirit slips free of your body...\n")
+            await writer.drain()
+            await asyncio.sleep(.01)
+            writer.write(b"ACCOUNT MENU\nPlease select an option:")
+            await writer.drain()
+            await reader.read()
+            writer.close()
+            await writer.wait_closed()
+        with tempfile.TemporaryDirectory() as directory:
+            server = await asyncio.start_server(serve, "127.0.0.1", 0)
+            async with server:
+                client = await battle.Client.connect("127.0.0.1", server.sockets[0].getsockname()[1], "actor", directory)
+                try:
+                    with self.assertRaisesRegex(battle.BattleError, "native death returned"):
+                        await client.command("stand")
+                    self.assertTrue(client.dead and client.returned_to_menu)
+                finally:
+                    await client.close()
 
     async def test_combat_prompts_do_not_dequeue_input_or_complete_a_spell(self):
         seen, release = [], asyncio.Event()
