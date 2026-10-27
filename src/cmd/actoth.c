@@ -5660,17 +5660,16 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_NOTITLE);
 		break;
 	case 31:
-		if (PLR2_FLAGGED(ch, PLR2_BATTLEALERT))
-		{
-			REMOVE_BIT(ch->specials.act2, PLR2_BATTLEALERT);
-			result = 0;
-		}
-		else
-		{
-			SET_BIT(ch->specials.act2, PLR2_BATTLEALERT);
-			result = 1;
-		}
+	{
+		char *value = one_argument(arg, Gbuf3);
+		if (!str_cmp(Gbuf3, "alert"))
+			arg = value;
+		// The stored bit disables highlighting; report the effective enabled state.
+		result = plr_tog(PLR2_FLAGS(ch), PLR2_BATTLEALERT, arg, 1);
+		if (result != -1)
+			result = !PLR2_FLAGGED(ch, PLR2_BATTLEALERT);
 		break;
+	}
 	case 32:
 		result = PLR2_TOG(PLR2_SHIPMAP);
 		break;

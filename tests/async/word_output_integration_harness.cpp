@@ -177,10 +177,6 @@ void do_color_preferences(P_char, const char *)
 {
 	assert(false);
 }
-void show_toggles(P_char)
-{
-	assert(false);
-}
 void gmcp_send_initial_state(P_char)
 {
 	assert(false);

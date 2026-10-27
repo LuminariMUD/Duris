@@ -19,7 +19,7 @@ functions = [comm[globals_start:globals_end],
 for filename, signatures in [
     ("utility.c", ["int yes_no(", "int strn_cmp(", "bool is_ansi_char(", "void CAP(char *str)", "int BOUNDED(int a, int b, int c)"]),
     ("interp.c", ["int old_search_block(", "bool is_abbrev("]),
-    ("actoth.c", ["static const char *term_name(", "static int plr_tog(", "static int gmcp_tog(", "void do_toggle("]),
+    ("actoth.c", ["static const char *term_name(", "void show_toggles(", "static int plr_tog(", "static int gmcp_tog(", "void do_toggle("]),
     ("comm.c", ["int get_from_q(", "void write_to_q(", "void escape_act_dollars(", "void delete_doubledollar(",
                 "static void finalize_styled_command(", "void process_with_paging(",
                 "bool send_paged_text(", "void send_to_char_f(P_char ch, const char *fmt, ...)",
@@ -52,7 +52,7 @@ for filename, signatures in [
 
 actoth = (ROOT / "src/cmd/actoth.c").read_text()
 arrays = actoth[actoth.index("static const char *toggles_list[]"):actoth.index("void do_more(")]
-functions.insert(0, "#define TOG_OFF 0\n#define TOG_ON 1\n" + arrays)
+functions.insert(0, '#define ONOFF(a) ((a) ? "ON" : "OFF")\n#define TOG_OFF 0\n#define TOG_ON 1\n' + arrays)
 functions.insert(0, "#define PLR_TOG(flag) plr_tog(PLR_FLAGS(ch), flag, arg)\n#define PLR2_TOG(flag) plr_tog(PLR2_FLAGS(ch), flag, arg)\n#define PLR3_TOG(flag) plr_tog(PLR3_FLAGS(ch), flag, arg)")
 
 benchmark = os.environ.get("OUTPUT_BENCHMARK") == "1"
