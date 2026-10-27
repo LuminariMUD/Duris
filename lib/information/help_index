@@ -26306,3 +26306,182 @@ rules resume without a forced relocation. Water Affinity is separate.
 * Elemental Aura
 * Water to Life
 * Capture
+
+#
+Cleric Spells
+For the Cleric's base spells by circle and skills by level, use
+'help cleric skills'. Specializations change this list; read 'help zealot',
+'help healer' or 'help holyman' for their additions and removals. A listed
+spell still needs to be learned and prepared before you can cast it.
+#
+Sorcerer Spells
+Use 'help sorcerer skills' for the Sorcerer's base spell circles and
+skill levels. Read your specialization's help as well: it can add or remove
+grants. A listed spell still needs to be learned and prepared.
+#
+Paladin Spells
+Use 'help paladin skills' for base spell circles and skill levels.
+'help paladin auras' explains the aura system. Your specialization can
+change the base list; read its own help before planning your training.
+#
+Psionicist Spells
+Use 'help psionicist skills' for base spell circles and skill levels.
+Read your specialization's help for changes to the base progression.
+Learning, preparation and each ability's restrictions still apply.
+#
+Dragoon Spells
+Use 'help dragoon skills' for the Dragoon's base spell circles and
+skill levels. Read 'help dragon priest' for that specialization's changes.
+A listed grant does not replace learning or preparation.
+#
+Controller Skills
+Controller is a Summoner specialization. 'help controller' lists its
+innates and its skill and spell changes. Use 'help summoner skills' for
+the base progression; apply the specialization's additions and removals.
+Read 'help specialize' for selection requirements.
+#
+Mentalist Skills
+Mentalist is a Summoner specialization. 'help mentalist' lists its
+innates and its skill and spell changes. 'help summoner skills' lists the
+base progression; apply the specialization's additions and removals.
+Read 'help specialize' for selection requirements.
+#
+Zealot Skills
+Zealot is a Cleric specialization. 'help zealot' lists its innates and
+its skill and spell changes. 'help cleric skills' lists the base progression;
+apply the specialization's additions and removals.
+#
+Scourge Skills
+Scourge is a Blighter specialization. 'help scourge' lists its innates
+and its skill and spell changes. 'help blighter skills' lists the base
+progression; apply the specialization's additions and removals.
+#
+Antipaladin Skills
+Use 'help anti-paladin skills' for the Anti-Paladin's base spell circles
+and skill levels. Read your specialization's own help for changes to that
+progression. 'help anti-paladin' describes the class and its choices.
+#
+Soul Shield
+The spell's name is soulshield: cast 'soulshield'. It protects its caster
+and requires strongly good or evil alignment. Read 'help soulshield' for
+the spell's protections and alignment requirement. This is a spelling alias,
+not a separate shield or a second stackable spell.
+#
+Enhanced Strength
+The spell's name is enhance strength: cast 'enhance strength'.
+Use 'help enhance strength' for its effect, duration and restrictions.
+Enhanced strength is a description of that effect, not another spell.
+Spell preparation and the normal casting cost still apply.
+#
+Spider Body
+Driders have this passive racial innate from level 1. It supplies the
+spider-body equipment slot. Wear items made for that slot with
+'wear <item> spider_body', or use 'wear <item>' to choose a suitable slot.
+An ordinary body item does not become spider armor merely because you
+are a drider. Check 'equipment' to see what you are wearing.
+There is no active 'innate spider body' command or activation cost.
+#
+Giant Avoidance
+Mountain Dwarves have this passive racial innate from level 1. Against
+Troll, Ogre and Giant attackers, it increases the starting dodge calculation
+by 10 percent before the remaining dodge adjustments. This is not a flat
+10-percentage-point final dodge chance, and does not guarantee a dodge.
+It is automatic, with no activation command, mana cost or cooldown.
+#
+Melee Mastery
+Swordsmen gain this passive specialization innate. It increases the
+applicable melee-hit damage calculation by 10 percent under the current
+rules. It does not multiply every spell or other source of damage.
+There is no activation command, mana cost or cooldown. Read 'help swordsman'
+for the specialization's full progression.
+#
+Battle Frenzy
+Duergar gain Battle Frenzy at level 16; Dragoons also gain it at level 16.
+This passive innate can trigger an extra knee or elbow attack against a
+humanoid opponent during melee. The extra attack can miss; its damage
+depends on your level and damroll. It has no activation command or mana
+cost. Battle Frenzy is separate from the active Battlerage innate.
+#
+Battlerage
+Duergar gain this active racial innate at level 31. Use
+'innate battlerage' to cast haste on yourself. It costs two combat rounds
+of action delay and uses your innate allowance and cooldown. If the
+cooldown has not finished, the attempt is refused.
+Read 'help haste' for the effect and 'innate' for your available abilities.
+This is separate from the passive Battle Frenzy innate.
+#
+Entrapment
+Brigands gain Entrapment at level 45. This passive innate can prevent
+your opponent from fleeing. You must be standing, able to act, able to see
+the opponent, and neither stunned nor immobile. Immaterial or wraithform
+opponents bypass this check. Your level and grappler combat skill affect
+the chance; a successful interception adds a combat round of delay to
+the fleeing opponent. No activation command or mana cost is required.
+#
+Training Dummy
+A training dummy lets you practice attacks and inspect accumulated damage
+without retaliation. It stays at full health and is anchored in its room.
+It accepts no items or coins and cannot be charmed, followed or grouped.
+
+==Syntax==
+
+dummy report     Show the room's dummy profile, armor class, saves and damage.
+dummy reset      Clear that dummy's accumulated damage meter.
+dummy help       Show the command summary.
+
+The damage meter belongs to the dummy, so resetting it clears the shared
+tally. A dummy must be present for report/reset to operate on it.
+Only immortals can spawn or despawn a dummy.
+#
+Epics
+Epic points are a reward and training currency. Use 'score' to see your
+balance, total earned and current epic task. 'help epic' explains rewards
+and level advancement. 'epic skills' locates teachers; 'help epic skill cost'
+explains training costs. Epic skill training starts at level 30, with each
+skill's own prerequisites and epic-point and platinum costs still required.
+#
+Party
+The command for a party is 'group'. Read 'help group' for forming and
+managing your group, and 'help follow' for following another character.
+Following and group membership are separate: check 'group' before assuming
+you share group benefits. There is no separate 'party' command.
+#
+Nexus
+Use 'nexus' to list the Nexus Stones currently aligned to Good or Evil.
+Neutral stones are omitted from the ordinary player list. If none are
+aligned, the command says that all stones are neutral. This list is a
+status report, not a command to claim or teleport to a stone.
+Immortals receive a fuller list; resetting or reloading stones is
+restricted to staff.
+#
+Rapier and Dirk
+This passive innate belongs to Swashbucklers, Mercenaries and Thieves.
+Its weapon condition requires a sword in your primary hand and a dirk
+in your secondary hand. A sword alone does not satisfy it.
+Under the current rules, the condition increases applicable physical
+damage dealt by 10 percent and reduces applicable physical damage
+received by 10 percent. It can also allow an off-hand counterattack
+against your current non-dragon opponent while you are standing and
+able to fight. Counterattacks are chances, not guarantees.
+There is no activation command, mana cost or cooldown.
+#
+Deforest
+Use 'deforest' to restore spent spell slots as a Blighter. The command
+shows available slots and their recovery estimates, then begins recovery
+when you have missing slots and no recovery is already scheduled.
+It does not select or memorize a named spell. Read 'help blighter skills'
+for spell circles and 'help cast' for using an available spell.
+This recovery method also applies to eligible secondary Blighters whose
+primary class does not already use another caster or mana system.
+#
+Summoning
+Different summons use different commands. Read 'help summon' for the
+Summon spell, and 'help summoner' for the Summoner class.
+Summoners of level 21 or higher can use 'conjure' for the beings in
+their own book; type 'conjure' to inspect the available entries.
+Use 'conjure stat <number>' to inspect a being and
+'conjure summon <number>' to summon it. Safe rooms block conjuring.
+'conjure remove <number>' permanently removes an entry from the book;
+it is not a way to dismiss a living pet. Each summon still follows
+its own eligibility, resource and pet restrictions.
+#

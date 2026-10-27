@@ -268,7 +268,7 @@ check; do not claim the update is fully verified. Quit and close the session.
 Stop on errors and inspect the result before retrying. Do not restart the game,
 change unrelated data, or send announcements as part of this workflow. A standalone
 news update does not commit/push. When invoked by an authorized
-[deployment](../deploy-production/SKILL.md#6-commit-and-push-the-verified-news-directly-to-master),
-return to its final step to commit the verified news file and push it directly to
-`master` after deployment verification.
+[deployment](../deploy-production/SKILL.md#6-commit-and-push-verified-content-and-feedback-directly-to-master),
+return to its final step to commit the verified news alongside that deployment's
+verified help and feedback cleanup, and push directly to `master` after verification.
 Details are in `docs/content/HELP_SYSTEM.md`, under "Publishing news only".
