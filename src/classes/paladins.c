@@ -346,7 +346,7 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 {
 	P_char tch;
 
-	if (is_wielding_paladin_sword(ch))
+	if (IS_AWAKE(ch) && !IS_IMMOBILE(ch) && is_wielding_paladin_sword(ch))
 	{
 		for (tch = world[ch->in_room].people; tch; tch = tch->next_in_room)
 		{
