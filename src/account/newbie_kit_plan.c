@@ -1676,6 +1676,12 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 	}
 
 	class_kit = newbie_kits[input.race][flag2idx(input.main_class)];
+	// These normally playable classes lack race-specific legacy kit rows.
+	// Reuse their established class gear, without enabling the all-classes override.
+	if (!class_kit && input.main_class == CLASS_BERSERKER)
+		class_kit = newbie_kits[RACE_ORC][flag2idx(CLASS_BERSERKER)];
+	else if (!class_kit && input.main_class == CLASS_PSIONICIST)
+		class_kit = newbie_kits[RACE_PILLITHID][flag2idx(CLASS_PSIONICIST)];
 	if (!class_kit && input.all_classes)
 	{
 		int cls = flag2idx(input.main_class);
