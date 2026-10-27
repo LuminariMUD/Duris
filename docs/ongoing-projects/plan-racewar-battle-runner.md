@@ -1,11 +1,12 @@
 # Watchable racewar group battle runner — lean first version
 
-Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
+Status: implementation and local acceptance complete; review/merge pending for [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
 Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
-repair are merged. Full-group PvP persistence (#414) and legacy-effect stop (#415)
-are ready for review. The operator CLI is implemented; its final two-match
-acceptance is running as `battle-07` in the combat worktree below.
-Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
+repair are merged. Remaining review order: full-group PvP persistence [#414](https://github.com/LuminariMUD/Duris/pull/414),
+delayed-effect stop [#415](https://github.com/LuminariMUD/Duris/pull/415), then the
+operator on `branch/issue-405-racewar-combat`. Both full-party `battle-07` runs
+passed. No implementation or local acceptance work remains; no deployment occurred.
+Initial plan branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
 The issue and implementation PRs link here; partial PRs must not automatically close #405.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
 
@@ -92,7 +93,7 @@ full-group baseline exists.
   transfer, and targeted tranquilize. Restoring skills only restores taught
   values; tranquilize alone does not prove that a pending spell has stopped.
 
-These are inspected source facts. The proposed runner still needs runtime proof.
+These are inspected source facts; final runtime proof is recorded below.
 
 ## Implementation: one script and a small preparation helper
 
@@ -313,21 +314,21 @@ defect blocks the chosen flow. Unrelated game repairs are not secretly included.
 
 - [x] Both sides contain real mortal PCs at the actual full group caps, with
   verified equipped Chaos kits and ready selected spells/resources.
-- [ ] Explicit room selection and the default staff-room behavior work, with no
+- [x] Explicit room selection and the default staff-room behavior work, with no
   environment gate or global room/account/rules changes.
-- [ ] A normal client observes a full-size battle with melee, spell damage, and
+- [x] A normal client observes a full-size battle with melee, spell damage, and
   healing/support through actual player commands. Confirm useful execution from
   every selected role; a sent command alone is not proof.
-- [ ] Normal player timing, resource depletion, racewar targeting, group behavior,
+- [x] Normal player timing, resource depletion, racewar targeting, group behavior,
   equipment procs, deaths, and relevant saves are exercised. Record any category
   not reached instead of claiming it passed.
-- [ ] The script drains all participants' output, cannot accumulate an unbounded
+- [x] The script drains all participants' output, cannot accumulate an unbounded
   input queue, distinguishes rejection/disconnection from success, and retains
   enough timestamped evidence to investigate a failure.
-- [ ] Operator stop handles the selected participants and pending actions without
+- [x] Operator stop handles the selected participants and pending actions without
   disturbing uninvolved characters. Verify the stopped state, including observed
   kit effects; report interruption honestly when confirmation is impossible.
-- [ ] Run a second fresh full-group match using the same account pool and another
+- [x] Run a second fresh full-group match using the same account pool and another
   room to prove the tool is usable again without implementing automatic reset.
 
 Use focused helper tests for the actual eligibility/spell/stop changes, then
@@ -341,7 +342,90 @@ using existing diagnostics when available. State the party sizes, duration, and
 observed failures. One successful fight does not establish long-term stability,
 maximum capacity, or exhaustive combat coverage.
 
+## Final acceptance receipt — 2026-10-27
+
+`battle-07/result.json` reports **passed: 80 fresh PCs, 40 reused accounts**.
+The delivered CLI was exercised twice against a disposable native flat-file
+server, with a separate normal Telnet observer. Both groups were 20/20 real,
+level-56 PCs with verified gear/resources; each side covered 12 races. The live
+creation menu disables Dragoon, so the recorded good-side Warrior substitution
+leaves 17 good-side and 18 evil-side classes. No global rules were changed.
+
+- Captured staff-room default **22800**: 120.10 seconds, 13 deaths, no disconnects,
+  887 attempted / 877 dequeued actions, 227 completed spells, 22,773 observed
+  damage and 10,153 reported healing. All 40 PCs had damage/healing observations.
+  Stop confirmed 27 quiet survivors and 13 explicitly dead/absent PCs; all 27
+  survivor saves were acknowledged.
+- Explicit room **1200**, fresh PCs on the same accounts: operator stop at 30.20
+  seconds, no deaths/disconnects, 388 attempted / 376 dequeued actions, 127
+  completed spells, 8,127 observed damage and 4,513 reported healing. All 40
+  participants settled and their saves were acknowledged. The Druid had nine
+  completed spells but no damage/healing observation in this shorter run; the
+  summary flags that limitation instead of equating completion with effect.
+- Every PC had at most one attempted-but-not-dequeued input. The observer saw
+  ordinary melee, spell damage and Bard healing songs in both runs, plus native
+  equipment effects/destruction in the longer run. There were 42 and 34 recorded
+  resource-exhaustion events. Native logs contain no captured assertion, panic,
+  corruption, runtime/sanitizer error or PvP outcome capture failure; death
+  transcripts contain no queued gameplay leaking into menu selections.
+- Dead PCs use the native terminal save path, without an individual completion
+  acknowledgement; all **67 survivor saves** were acknowledged. Full-group
+  atomic persistence/replay and migration behavior have separate backend proof
+  in #414. No per-death save completion claim is made from socket output.
+
+Responsiveness: staff `stat room` round trips had median/max **248.99/369.35 ms**
+(54 samples) and **252.67/291.79 ms** (14 samples). These include scheduling and
+network time. Native process samples across combat, stop and saves recorded
+4.30 CPU seconds over 167.17 seconds / peak 76.05 MiB RSS for match 1, and 2.08
+CPU seconds over 97.12 seconds / peak 56.45 MiB for match 2. This is a miniature
+disposable world with real kit prototypes, **not a loaded-world production
+benchmark, maximum-capacity test or long-term stability claim**.
+
+Reproduce the complete acceptance (roughly 20 minutes of setup and gameplay):
+
+```sh
+python3 tests/async/run_racewar_provision_journey.py \
+  --binary bin/server/dms_battle_all_effects_flatfile \
+  --output bin/racewar-battles/<new-run-id> --battle --duration 120
+```
+
+The binary is built from native source tree
+`319e84a6a64536ee0510012c7a8fcfef2e288647`; SHA-256
+`43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
+Both maintained backend builds and the relevant native sanitizer/runtime/backend
+checks passed in their focused chunks and were reused. The complete operator
+qualification also passes `python3 tests/async/test_racewar_runner.py` (24 tests),
+`python3 tests/async/test_documentation_contract.py` (14 tests), whitespace and
+format checks. No full burn-in or CI wait was required.
+
+Evidence remains ignored under
+`/home/aiwithapex/projects/duris-racewar-runner/bin/racewar-battles/battle-07/`:
+`result.json`, both `match-*/summary.json` and preparation/ready/roster files,
+per-character JSONL, separate observer transcripts, server samples and retained
+native logs. The private controller configuration and account pool must not be
+published. The disposable server exited normally and its runtime was removed.
+Earlier failed runs remain useful regression evidence; do not overwrite them.
+
+Continuation/review: the active operator worktree is
+`/home/aiwithapex/projects/duris-racewar-runner`; the native corrections and SQL
+qualification evidence remain in `/home/aiwithapex/projects/duris-battle-fixes`.
+Keep unmerged worktrees. Review in dependency order #414 → #415 → operator;
+check live GitHub state because the user is merging independently. #414 requires
+migration 0054 (sequence 55) before its new SQL writer, and older binaries must
+not open stores containing its new native formats/results. This task performed
+no production migration, deployment, release or release tag.
+
+Final ablation: the operator diff contains one existing runner, its focused tests,
+the existing journey and this handoff. Keep the native fixes as focused separate
+PRs. There is no new framework, dependency, automatic recovery, pet automation or
+broad ability-coverage claim. The retained receipt/stop checks address reproduced
+failures, and existing passing evidence is reused.
+
 ## Implementation handoff
+
+The sections below are chronological evidence. Their earlier pending states and
+binary hashes describe those checkpoints; the final acceptance receipt above
+supersedes them for current status.
 
 ### Chunk 1: native preparation ([PR #406](https://github.com/LuminariMUD/Duris/pull/406), ready for review)
 
@@ -660,14 +744,13 @@ must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
 
-### Chunk 5: operator loop and full battle acceptance (in progress)
+### Chunk 5: operator loop and full battle acceptance (complete)
 
-Active branch: `branch/issue-405-racewar-combat`, fast-forwarded to #411 at
-`f3493efba`; work remains in `/home/aiwithapex/projects/duris-racewar-runner`.
-The operator implementation is being qualified in
-`scripts/run_racewar_battle.py`, with focused client tests and the existing
-provisioning journey extended to invoke the actual CLI. Do not publish it as
-complete until full runtime evidence supports the finish line.
+Active branch: `branch/issue-405-racewar-combat` in
+`/home/aiwithapex/projects/duris-racewar-runner`, with the native dependency stack
+through #415 integrated. `scripts/run_racewar_battle.py`, the focused client tests
+and the existing provisioning journey now pass the complete CLI acceptance
+recorded above.
 
 The script now has explicit `start`, `status`, `stop` controls, signal/EOF stop,
 small class/role choices, native pre-fight buffs, no in-fight refill, legal current
@@ -675,8 +758,7 @@ room selectors, one outstanding input guarded by native dequeue receipts,
 separate completed-spell evidence, healing-output observations, read-only staff
 response-time samples, exact participant stop with a six-second observation
 window, and acknowledged final saves. Death/room departure ends a character's
-participation; no re-entry/recovery is attempted. These are implementation claims
-awaiting the full run, not checked acceptance claims.
+participation; no re-entry/recovery is attempted. The complete acceptance above verifies these paths.
 
 Usage on Linux/WSL (all evidence stays under ignored `bin/`):
 
@@ -690,6 +772,31 @@ The private JSON contains `host`, `port`, `registration_email`, and `staff` with
 `account`, `password`, `character`. Keep it outside source and readable only to
 the operator. Account-pool files contain private credentials; rosters, gameplay
 logs and summaries do not. A human observer uses a different account.
+
+Example private configuration (replace every placeholder):
+
+```json
+{
+  "host": "your-mud-host",
+  "port": 7777,
+  "registration_email": "operator@example.net",
+  "staff": {
+    "account": "your-staff-account",
+    "password": "your-staff-password",
+    "character": "YourStaffCharacter"
+  }
+}
+```
+
+Use the normal Telnet port and an Overlord controller. The server must include
+the native preparation/receipt/stop dependencies; missing receipt support fails
+before provisioning the battle roster. After `READY`, enter `start`, `status`, or
+`stop`; Ctrl-C, Ctrl-D/EOF and SIGTERM also request stop. The duration limits the
+fight, not setup. Each invocation creates fresh PCs and leaves normal accounts,
+characters, corpses and saves in the chosen world; it does not reset or roll back
+the game. `summary.json` reports the outcome and stop/save verification, while
+`preparation.json`, `ready.json`, `roster.json` and per-character JSONL files retain
+the detailed evidence. Do not share the private configuration or account pool.
 
 Current focused validation: 24 runner tests pass, including a socket regression
 where unrelated combat prompts cannot dequeue input and a chanting prompt cannot
@@ -932,7 +1039,7 @@ Completed first-match combat,
 reward, persistence and performance evidence remains valid; no unrelated tests
 need repeating.
 
-### Latest operator qualification state
+### Later qualification findings (resolved before final acceptance)
 
 `battle-05` completed another full 120-second fight with 14 deaths, 224 completed
 spells and useful damage/healing from all 40 PCs. Native status stayed quiet and
@@ -979,4 +1086,4 @@ seeds acid and magma, verifies settled health and quiet status, and reapplies ma
 after cancellation to prove its marker was cleaned. Evidence:
 `bin/racewar-battles/all-effects-after/` in the combat worktree. Binary SHA-256:
 `43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
-The full pair is now running as `battle-07`; its completion is not yet claimed.
+The full `battle-07` pair subsequently passed; see the final acceptance receipt above.
