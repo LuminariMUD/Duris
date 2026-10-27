@@ -659,7 +659,7 @@ must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
 
-### Native finding: queued input crosses death into the account menu
+### Native finding: queued input crosses death into the account menu ([PR #412](https://github.com/LuminariMUD/Duris/pull/412), ready for review)
 
 The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
 gameplay input was then consumed by the account menu (`Invalid Selection` after
