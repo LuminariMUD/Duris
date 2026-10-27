@@ -52,6 +52,8 @@ def oracle(race, cls, align, all_classes, additions):
         if race == values['RACE_' + symbol]:
             items += extra[name + ('_good_eq' if align >= 0 else '_evil_eq')]
     class_items = tables.get((race, cls))
+    if class_items is None and cls in (values['CLASS_BERSERKER'], values['CLASS_PSIONICIST']):
+        class_items = tables.get(fallback[cls])
     if class_items is None and all_classes:
         class_items = tables.get((values['RACE_HUMAN'], cls))
         if class_items is None and cls in fallback:
@@ -136,6 +138,25 @@ int main() {
             hash = (hash ^ item.regular) * 1099511628211ULL;
         }
         std::cout << hash << '\n';
+    }
+    // The normal roster must receive class gear even without the all-classes flag.
+    const auto contains = [](const auto &plan, int vnum) {
+        return std::any_of(plan.begin(), plan.end(),
+            [vnum](const auto &item) { return item.vnum == vnum; });
+    };
+    for (int race : {RACE_GITHZERAI, RACE_GITHYANKI}) {
+        newbie_kit_input input{};
+        input.race = race;
+        input.main_class = CLASS_PSIONICIST;
+        const auto plan = make_newbie_kit_plan(input);
+        assert(contains(plan, 706) && contains(plan, 1131));
+    }
+    for (int race : {RACE_HUMAN, RACE_BARBARIAN, RACE_MOUNTAIN,
+                     RACE_DUERGAR, RACE_TROLL, RACE_MINOTAUR}) {
+        newbie_kit_input input{};
+        input.race = race;
+        input.main_class = CLASS_BERSERKER;
+        assert(contains(make_newbie_kit_plan(input), 1107));
     }
     std::vector<newbie_kit_item> selection{{1,true},{2,true},{3,true},{4,false},{2,true}};
     std::vector<newbie_item_facts> facts{{true,false,false},{true,true,true},
