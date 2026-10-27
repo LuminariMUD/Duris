@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -57,11 +58,26 @@ async def verify_controls(staff, clients, rows, directory):
     assert "Pos: standing" in observed, observed
     for player in (enemy, fighter, caster):
         await player.command("save", expected=f"Save complete for {player.label}.")
+    # Seed the actual legacy repeating effect through the staff's native spell.
+    # The controller is not in the stopped roster: incoming references matter.
+    await enemy.command("wake")
+    await staff.command(f"cast 'acidimmolate' {enemy.label}", expected="You complete your spell")
+    pending = await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} pending.")
+    assert "pending." in pending
+    await staff.command(f"battleprep stop {enemy.label}", expected=f"{enemy.label} quiet.")
+    await asyncio.sleep(1)
+    before = await enemy.command("score", expected="Hit points:")
+    enemy.pending = ""
+    await asyncio.sleep(6)
+    assert "Green slime eats away" not in enemy.pending, enemy.pending
+    after = await enemy.command("score", expected="Hit points:")
+    assert int(re.search(r"Hit points:\s*(-?\d+)", after)[1]) >= int(re.search(r"Hit points:\s*(-?\d+)", before)[1])
+    await staff.command(f"battleprep status {enemy.label}", expected=f"{enemy.label} quiet.")
     receipt = {"result": "passed", "selectors": selectors, "selected": selected.split(),
                "bystander": bystander.label, "settle_seconds": 6,
                "verified": ["opt-in dequeue receipts", "legal mortal racewar targets", "native melee",
                             "cast abort", "queued action stop", "quiet settling", "bystander stays standing",
-                            "acknowledged saves"]}
+                            "acknowledged saves", "incoming legacy acid pulse cancellation", "safe sleeping posture"]}
     (Path(directory) / "controls.json").write_text(json.dumps(receipt, indent=2))
     print("Native battle controls passed", flush=True)
 

@@ -759,3 +759,33 @@ Commands/results for this chunk:
   DMS_BINARY=/home/aiwithapex/projects/duris-racewar-runner/bin/server/dms_battle_full_group_flatfile
   -j4` pass in the integrated combat checkout. Logs are under
   `bin/racewar-battles/implementation/full-group-build-*.log` there.
+
+### Early-stop finding: legacy acid pulses re-engage stopped participants
+
+`battle-04` passed the repaired first 20/20 match (120.02 seconds, 14 deaths,
+26 survivor save acknowledgements, 204 completed spells, no capture failures,
+37 PCs receiving frag-award messages). The second fresh match correctly reused
+the 40 accounts in room 1200, but its 30-second operator stop exposed a remaining
+control gap: legacy `event_acidimmolate` kit pulses continued outside
+`item_actions` and restarted melee. Standing sleepers also suffered native
+collapse/stun damage. The runner reported the unconfirmed stop honestly.
+
+Fix branch: `branch/issue-405-stop-effects`, based on #414. `battleprep stop`
+cancels only acid events whose actor or target is a selected PC, using native
+event handles; status includes those incoming/outgoing events. Effects between
+other characters remain untouched. Successfully tranquilized standing sleepers
+settle into a sitting sleep posture, avoiding later collapse damage. The native
+command test covers both directions, unrelated events and the resulting posture.
+
+The operator chunk separately batches by the actual 1,023-byte input limit, so
+all 40 names are stopped in one native command; the earlier arbitrary batches of
+eight allowed spells to finish between batches. A focused client test verifies
+the full roster is sent atomically. No blanket event cancellation, room flags,
+general effect framework or normal-combat change is introduced.
+
+The existing four-PC `--controls` journey now seeds the actual legacy acid spell
+through the native staff command and proves incoming-pulse cancellation and
+stable health after stop. Before/after runtime proof and both builds are being
+completed, then the final full pair will be rerun. Completed first-match combat,
+reward, persistence and performance evidence remains valid; no unrelated tests
+need repeating.
