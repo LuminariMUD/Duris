@@ -694,7 +694,7 @@ identical on this focused branch and the integrated combat checkout. Full battle
 acceptance and the separately discovered 15-participant PvP outcome limit remain
 in progress; this chunk does not close #405.
 
-### Native finding: full-group PvP outcomes exceed the capture limit (ready for review)
+### Native finding: full-group PvP outcomes exceed the capture limit ([PR #414](https://github.com/LuminariMUD/Duris/pull/414), ready for review)
 
 Branch: `branch/issue-405-full-group-outcomes`, based on #412. Edit/qualification
 worktree: `/home/aiwithapex/projects/duris-battle-fixes`; the operator remains in
