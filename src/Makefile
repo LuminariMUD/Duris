@@ -563,6 +563,7 @@ OBJS =  $(SHIP_OBJS) \
 				 net/gmcp.o \
 				 net/ttype.o \
 				 account/wiz_newchar.o \
+				 cmd/battleprep.o \
 				 world/zcheck.o \
 				 telemetry/telemetry_activity.o \
 				 telemetry/telemetry_config.o \

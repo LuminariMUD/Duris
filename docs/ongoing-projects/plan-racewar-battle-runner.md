@@ -1,7 +1,8 @@
 # Watchable racewar group battle runner — lean first version
 
-Status: implementation plan only; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
-No runner or game changes implemented. Updated: 2026-10-27.
+Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
+Updated: 2026-10-27. The first chunk adds native preparation; the runner and
+full-party acceptance journey remain outstanding.
 Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan),
 also linked in the issue's Development section.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
@@ -17,7 +18,7 @@ death, and persistence.
 The user explicitly retained real characters when offered NPC teams. Keep the
 normal player input queue, lag, casting, resource use, and death paths. No NPC
 stand-ins, training dummies, staff-forced combat loop, or direct calls to damage
-functions. This is a plan revision, not authorization to implement or run it.
+functions. Implementation was authorized after the plan was published.
 
 The three non-negotiable deliverables are:
 
@@ -338,5 +339,63 @@ using existing diagnostics when available. State the party sizes, duration, and
 observed failures. One successful fight does not establish long-term stability,
 maximum capacity, or exhaustive combat coverage.
 
-For this plan revision, validate the document, links, and retained requirements.
-No characters, game processes, or implementation files are changed.
+## Implementation handoff
+
+### Chunk 1: native preparation (verified; publishing for review)
+
+`battleprep <exact-player-name> baseline|spells` is registered as an Overlord
+command, without environment or Chaos gates. `baseline` uses native advancement,
+sets base stats to 100, applies actual unspecialized skill/spell/song ceilings and
+the existing epic grant, and restores derived resources. It refuses non-mortals,
+disconnected/dead targets, specialization/multiclass, combat (including incoming
+attacks), casts, item windups, and active memorization.
+
+`spells` completes the player's existing memorize/pray queue after checking every
+entry against current eligibility, book availability and per-circle capacity.
+Validation is atomic: a bad entry leaves the whole queue unchanged. It does not
+create spells or replenish mana/slots. Changes use existing dirty-component
+tracking; the runner must issue ordinary `save` after final preparation.
+
+Ablation: retain existing `chaos kit`, staff load/give of master book VNUM 7,
+transfer, group, rank and restore commands. No new kit catalog, item deletion,
+book-grant service, or persistence path is needed. Starting inventory can be
+removed/dropped using ordinary character commands before the empty-inventory
+Chaos grant; confirm the selected setup's result in the full journey.
+
+Files: `src/cmd/battleprep.{c,h}`, normal command/Makefile/attribute wiring,
+`tests/async/test_battleprep_runtime.py`, `tests/async/run_battleprep_journey.py`,
+and this plan. Verified on 2026-10-27:
+
+- `python3 tests/async/test_battleprep_runtime.py`: ASan/UBSan command checks passed
+  for authority/exact target/busy guards, skill and song ceilings, native resource
+  models, and atomic eligibility/book/circle validation.
+- `python3 tests/async/test_epic_skill_grant.py`: existing eligibility harness passed.
+- `python3 tests/async/test_command_attributes_coverage.py` and
+  `python3 tests/async/test_spell_abort_command.py`: registration contracts passed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 checks passed.
+- `./scripts/format.sh --check`, `git diff --check`, and `make -C src -j4`: passed.
+- Flat-file build passed with `make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_battleprep_flatfile -j4`.
+- `python3 tests/async/run_battleprep_journey.py --binary
+  bin/server/dms_battleprep_flatfile`: passed real login/command dispatch, mortal
+  denial, native advancement, master-book load/give, cleric/sorcerer queued
+  preparation, acknowledged saves, server restart and reloaded prepared spells.
+  Executable SHA-256: `723ccd6862895aa8dd91446cc74bed8df90974151977692e2e9b71591632690c`.
+
+Local build/journey logs: `bin/racewar-battles/implementation/` (untracked).
+The journey uses disposable flat-file authority. No persistence implementation
+changed; MariaDB runtime behavior and full-party combat remain unverified.
+
+Next: publish this chunk's PR, then stack the concurrent client/provisioning
+runner and targeted stop/combat chunks on it.
+The seven finish-line requirements above remain unchecked until runtime evidence
+proves them. No release tag or deployment is needed for review-only chunks.
+
+Integration findings for the runner: use `rest` (sitting alone does not enter the
+resting state), and unquoted names for `pray full heal` / `memorize <spell>`;
+casting has its own syntax. Await `Save complete for <name>.`, since a normal
+prompt can follow `Save queued` before persistence finishes. For targeted stop,
+reuse `StopCasting()` (which also aborts item actions), `stop_singing()`,
+`stop_memorizing()` and targeted `tranquilize()`, with explicit participant input
+queue draining and observed settling. Their presence alone is not stop proof;
+the next chunk must exercise queued actions and actual kit effects.

@@ -20,6 +20,7 @@
 #include "world/events.h"
 #include "world/falling.h"
 #include "cmd/interp.h"
+#include "cmd/battleprep.h"
 #include "kingdom/kingdom.h"
 #include "core/utils.h"
 #include <arpa/telnet.h>
@@ -1278,7 +1279,8 @@ const char *command[MAX_CMD] = {
 	"hlqlist",
 	"qinfo",
 	"divineboon",
-	"\n" /* MAX_CMD = 872, MAX_CMD_LIST = 1000 */
+	"battleprep",
+	"\n" /* MAX_CMD = 873, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3501,6 +3503,7 @@ void assign_command_pointers(void)
 	CMD_Y(CMD_FLIGHTS, STAT_DEAD + POS_PRONE, do_flights, 0, FALSE);
 	CMD_N(CMD_POLL, STAT_NORMAL + POS_PRONE, do_poll, 30, FALSE);
 	CMD_GRT(CMD_NEWCHAR, STAT_DEAD + POS_PRONE, do_newchar, OVERLORD);
+	CMD_GRT(CMD_BATTLEPREP, STAT_DEAD + POS_PRONE, do_battleprep, OVERLORD);
 
 	/*
 	 * 'commands' which exist only to trigger specials
