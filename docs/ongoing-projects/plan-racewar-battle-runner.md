@@ -1,11 +1,13 @@
 # Watchable racewar group battle runner — lean first version
 
-Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
-Updated: 2026-10-27. Full-party provisioning and gear/spell preparation are in
-review. Native targeting, input receipts and targeted stop are the next chunk;
-the operator CLI, combat loop and full-battle acceptance remain outstanding.
-Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
-The issue and implementation PRs link here; partial PRs must not automatically close #405.
+Status: implementation and local acceptance complete for [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
+Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
+repair are merged. Final delivery order: full-group PvP persistence [#414](https://github.com/LuminariMUD/Duris/pull/414),
+delayed-effect stop [#415](https://github.com/LuminariMUD/Duris/pull/415), then the
+operator [#416](https://github.com/LuminariMUD/Duris/pull/416). Both full-party `battle-07` runs
+passed. No implementation or local acceptance work remains; no deployment occurred.
+Initial plan: [commit 4ff32f335](https://github.com/LuminariMUD/Duris/commit/4ff32f335c7d3f279b363a24eb0ccc17c9a34431).
+The complete delivery closes #405; production acceptance is not an outstanding requirement.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
 
 ## Outcome and scope
@@ -91,7 +93,7 @@ full-group baseline exists.
   transfer, and targeted tranquilize. Restoring skills only restores taught
   values; tranquilize alone does not prove that a pending spell has stopped.
 
-These are inspected source facts. The proposed runner still needs runtime proof.
+These are inspected source facts; final runtime proof is recorded below.
 
 ## Implementation: one script and a small preparation helper
 
@@ -312,21 +314,21 @@ defect blocks the chosen flow. Unrelated game repairs are not secretly included.
 
 - [x] Both sides contain real mortal PCs at the actual full group caps, with
   verified equipped Chaos kits and ready selected spells/resources.
-- [ ] Explicit room selection and the default staff-room behavior work, with no
+- [x] Explicit room selection and the default staff-room behavior work, with no
   environment gate or global room/account/rules changes.
-- [ ] A normal client observes a full-size battle with melee, spell damage, and
+- [x] A normal client observes a full-size battle with melee, spell damage, and
   healing/support through actual player commands. Confirm useful execution from
   every selected role; a sent command alone is not proof.
-- [ ] Normal player timing, resource depletion, racewar targeting, group behavior,
+- [x] Normal player timing, resource depletion, racewar targeting, group behavior,
   equipment procs, deaths, and relevant saves are exercised. Record any category
   not reached instead of claiming it passed.
-- [ ] The script drains all participants' output, cannot accumulate an unbounded
+- [x] The script drains all participants' output, cannot accumulate an unbounded
   input queue, distinguishes rejection/disconnection from success, and retains
   enough timestamped evidence to investigate a failure.
-- [ ] Operator stop handles the selected participants and pending actions without
+- [x] Operator stop handles the selected participants and pending actions without
   disturbing uninvolved characters. Verify the stopped state, including observed
   kit effects; report interruption honestly when confirmation is impossible.
-- [ ] Run a second fresh full-group match using the same account pool and another
+- [x] Run a second fresh full-group match using the same account pool and another
   room to prove the tool is usable again without implementing automatic reset.
 
 Use focused helper tests for the actual eligibility/spell/stop changes, then
@@ -340,7 +342,155 @@ using existing diagnostics when available. State the party sizes, duration, and
 observed failures. One successful fight does not establish long-term stability,
 maximum capacity, or exhaustive combat coverage.
 
+## Final acceptance receipt — 2026-10-27
+
+`battle-07/result.json` reports **passed: 80 fresh PCs, 40 reused accounts**.
+The delivered CLI was exercised twice against a disposable native flat-file
+server, with a separate normal Telnet observer. Both groups were 20/20 real,
+level-56 PCs with verified gear/resources; each side covered 12 races. The live
+creation menu disables Dragoon, so the recorded good-side Warrior substitution
+leaves 17 good-side and 18 evil-side classes. No global rules were changed.
+
+- Captured staff-room default **22800**: 120.10 seconds, 13 deaths, no disconnects,
+  887 attempted / 877 dequeued actions, 227 completed spells, 22,773 observed
+  damage and 10,153 reported healing. All 40 PCs had damage/healing observations.
+  Stop confirmed 27 quiet survivors and 13 explicitly dead/absent PCs; all 27
+  survivor saves were acknowledged.
+- Explicit room **1200**, fresh PCs on the same accounts: operator stop at 30.20
+  seconds, no deaths/disconnects, 388 attempted / 376 dequeued actions, 127
+  completed spells, 8,127 observed damage and 4,513 reported healing. All 40
+  participants settled and their saves were acknowledged. The Druid had nine
+  completed spells but no damage/healing observation in this shorter run; the
+  summary flags that limitation instead of equating completion with effect.
+- Every PC had at most one attempted-but-not-dequeued input. The observer saw
+  ordinary melee, spell damage and Bard healing songs in both runs, plus native
+  equipment effects/destruction in the longer run. There were 42 and 34 recorded
+  resource-exhaustion events. Native logs contain no captured assertion, panic,
+  corruption, runtime/sanitizer error or PvP outcome capture failure; death
+  transcripts contain no queued gameplay leaking into menu selections.
+- Dead PCs use the native terminal save path, without an individual completion
+  acknowledgement; all **67 survivor saves** were acknowledged. Full-group
+  atomic persistence/replay and migration behavior have separate backend proof
+  in #414. No per-death save completion claim is made from socket output.
+
+Responsiveness: staff `stat room` round trips had median/max **248.99/369.35 ms**
+(54 samples) and **252.67/291.79 ms** (14 samples). These include scheduling and
+network time. Native process samples across combat, stop and saves recorded
+4.30 CPU seconds over 167.17 seconds / peak 76.05 MiB RSS for match 1, and 2.08
+CPU seconds over 97.12 seconds / peak 56.45 MiB for match 2. This is a miniature
+disposable world with real kit prototypes, **not a loaded-world production
+benchmark, maximum-capacity test or long-term stability claim**.
+
+Reproduce the complete acceptance (roughly 20 minutes of setup and gameplay):
+
+```sh
+python3 tests/async/run_racewar_provision_journey.py \
+  --binary bin/server/dms_battle_all_effects_flatfile \
+  --output bin/racewar-battles/<new-run-id> --battle --duration 120
+```
+
+The binary is built from native source tree
+`319e84a6a64536ee0510012c7a8fcfef2e288647`; SHA-256
+`43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
+Both maintained backend builds and the relevant native sanitizer/runtime/backend
+checks passed in their focused chunks and were reused. The complete operator
+qualification also passes `python3 tests/async/test_racewar_runner.py` (24 tests),
+`python3 tests/async/test_documentation_contract.py` (14 tests), whitespace and
+format checks. No full burn-in or CI wait was required.
+
+Merge cleanup retains the original ignored evidence under
+`/home/aiwithapex/projects/duris/bin/merge-closeout-414-416/retained/duris-racewar-runner/bin/racewar-battles/battle-07/`:
+`result.json`, both `match-*/summary.json` and preparation/ready/roster files,
+per-character JSONL, separate observer transcripts, server samples and retained
+native logs. The private controller configuration and account pool must not be
+published. The disposable server exited normally and its runtime was removed.
+Earlier failed runs remain useful regression evidence; do not overwrite them.
+
+Continuation: use `master` in `/home/aiwithapex/projects/duris` after the final
+operator merge. The original native corrections and SQL qualification evidence
+are retained under `bin/merge-closeout-414-416/retained/duris-battle-fixes/` there.
+Earlier worktree paths below identify historical checkpoints; the retained
+directories preserve their evidence after safe branch/worktree cleanup. #414 requires
+migration 0054 (sequence 55) before its new SQL writer, and older binaries must
+not open stores containing its new native formats/results. This task performed
+no production migration, deployment, release or release tag.
+
+Final ablation: the operator diff contains one existing runner, its focused tests,
+the existing journey and this handoff. Keep the native fixes as focused separate
+PRs. There is no new framework, dependency, automatic recovery, pet automation or
+broad ability-coverage claim. The retained receipt/stop checks address reproduced
+failures, and existing passing evidence is reused.
+
 ## Implementation handoff
+
+### Sequential merge qualification — 2026-10-27
+
+The active repository rule requires linear history. #414 was squash-merged as
+`d0cf885b2`, then #415 as `d469e8f7d`; each resulting master tree exactly matched
+its locally qualified integration. Dependent branches received ordinary
+synchronization merges, without rewriting their history. The #415 handoff and
+#416 handoff/journey conflicts were squash-history collisions: upstream copies
+matched the already-incorporated dependency, so the later additions were retained.
+
+Fresh MariaDB and flat-file builds passed for both native integrations. #414's
+capture/codec, flat-file domain/player repository, critical codec/completion,
+prepared reward recovery/replay, migration CLI safety and runtime metadata checks
+passed, along with disposable MariaDB full-group rollback/retry/replay and
+migration preservation/guard tests. Its player-repository assertion was updated
+from native format 3 to 4; the executable repository test passed afterward.
+
+#415's battleprep/smite sanitizer tests and the integrated four-PC real-server
+`--controls` journey passed, including queued-input/cast stop, unaffected bystander,
+acknowledged saves, acid/magma settling and magma reapplication. Native source tree:
+`0e468bfe188b801aeb16d17cfe75f296d7856715`; flat-file binary SHA-256:
+`4659ede05291f5a736ae4040fa16c35913a7abf8c834f990e8bb29d5e3f6c31d`.
+The operator integration preserves that native tree and the reviewed runner/tests.
+The 26 operator tests, CLI help, 14 documentation checks, formatting and normal
+commit hooks pass. Logs and the new runtime receipt are retained in the primary
+checkout's `bin/merge-closeout-414-416/`.
+
+The earlier two full-party `battle-07` runs are reused, not repeated in this merge
+pass. The older broad CI run reported additional failures outside these focused
+checks; no complete regression-suite, loaded-world or production claim is made.
+No release tag, production migration or server deployment is part of this merge.
+
+### PR #416 review follow-up — 2026-10-27
+
+Both review findings were reproduced against the reviewed runner and repaired:
+
+- The controller responsiveness probe now exits cooperatively at battle end.
+  Cleanup waits for its bounded command to consume the pending native receipt
+  before issuing `battleprep stop` on the same connection. The socket regression
+  holds the probe receipt across operator stop and coalesces receipts if cleanup
+  sends too early. Before the repair it reported `unexpected input sequence` and
+  skipped survivor saves; afterward the real stop/status path confirms both
+  participants and requests their acknowledged saves, with no further probe.
+- The command waiter recognizes the native silent-casting start message from
+  `src/net/sparser.c`. The existing cast socket fixture now also verifies silent
+  completion and interruption, retaining the completion output and recording
+  `spell_completed` correctly before the next action. Both silent cases failed
+  before the repair; ordinary chanting remains covered.
+
+Validation: `python3 tests/async/test_racewar_runner.py` passes **26 tests**;
+`python3 tests/async/test_documentation_contract.py` passes **14 tests**;
+`./scripts/format.sh --check` and `git diff --check` pass. The native source tree
+and binary SHA-256 still exactly match the `battle-07` receipt above. Those two
+full-party journeys and native build/backend results are reused; this review
+follow-up adds deterministic socket proof rather than claiming another live
+battle, full burn-in or production run.
+
+Historical pre-merge Git check: the operator contains #415 head `6a45835f4`, which contains
+#414. Both dependencies remain open. Master `e0d01f4b9` is one commit beyond the
+stack's master baseline; a `git merge-tree --write-tree HEAD origin/master` trial
+succeeds without conflicts. Retain the #414 → #415 → #416 stack and the focused
+review-fix commit. Rebasing only the operator onto master would carry its open
+native dependencies into its review diff; rewriting the shared stack or adding a
+release tag is unnecessary. Recheck/retarget after the dependencies land, using
+their actual merge results. This PR does not itself merge or deploy them.
+
+The sections below are chronological evidence. Their earlier pending states and
+binary hashes describe those checkpoints; the final acceptance receipt above
+supersedes them for current status.
 
 ### Chunk 1: native preparation ([PR #406](https://github.com/LuminariMUD/Duris/pull/406), ready for review)
 
@@ -659,6 +809,163 @@ must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
 
+### Chunk 5: operator loop and full battle acceptance ([PR #416](https://github.com/LuminariMUD/Duris/pull/416), ready for review)
+
+Active branch: `branch/issue-405-racewar-combat` in
+`/home/aiwithapex/projects/duris-racewar-runner`, with the native dependency stack
+through #415 integrated. `scripts/run_racewar_battle.py`, the focused client tests
+and the existing provisioning journey now pass the complete CLI acceptance
+recorded above.
+
+The script now has explicit `start`, `status`, `stop` controls, signal/EOF stop,
+small class/role choices, native pre-fight buffs, no in-fight refill, legal current
+room selectors, one outstanding input guarded by native dequeue receipts,
+separate completed-spell evidence, healing-output observations, read-only staff
+response-time samples, exact participant stop with a six-second observation
+window, and acknowledged final saves. Death/room departure ends a character's
+participation; no re-entry/recovery is attempted. The complete acceptance above verifies these paths.
+
+Usage on Linux/WSL (all evidence stays under ignored `bin/`):
+
+```sh
+python3 scripts/run_racewar_battle.py --config /private/path/controller.json \
+  --accounts bin/racewar-battles/accounts.json --duration 180
+# Optional: --room <VNUM> --output bin/racewar-battles/<unique-run-id>
+```
+
+The private JSON contains `host`, `port`, `registration_email`, and `staff` with
+`account`, `password`, `character`. Keep it outside source and readable only to
+the operator. Account-pool files contain private credentials; rosters, gameplay
+logs and summaries do not. A human observer uses a different account.
+
+Example private configuration (replace every placeholder):
+
+```json
+{
+  "host": "your-mud-host",
+  "port": 7777,
+  "registration_email": "operator@example.net",
+  "staff": {
+    "account": "your-staff-account",
+    "password": "your-staff-password",
+    "character": "YourStaffCharacter"
+  }
+}
+```
+
+Use the normal Telnet port and an Overlord controller. The server must include
+the native preparation/receipt/stop dependencies; missing receipt support fails
+before provisioning the battle roster. After `READY`, enter `start`, `status`, or
+`stop`; Ctrl-C, Ctrl-D/EOF and SIGTERM also request stop. The duration limits the
+fight, not setup. Each invocation creates fresh PCs and leaves normal accounts,
+characters, corpses and saves in the chosen world; it does not reset or roll back
+the game. `summary.json` reports the outcome and stop/save verification, while
+`preparation.json`, `ready.json`, `roster.json` and per-character JSONL files retain
+the detailed evidence. Do not share the private configuration or account pool.
+
+Current focused validation: 24 runner tests pass, including a socket regression
+where unrelated combat prompts cannot dequeue input and a chanting prompt cannot
+complete a spell. Existing native binary evidence from #411 is reused because
+this chunk changes Python only. The first delivered-CLI probe is
+`bin/racewar-battles/battle-01`, launched with:
+
+```sh
+python3 tests/async/run_racewar_provision_journey.py \
+  --binary bin/server/dms_battle_combat_flatfile \
+  --output bin/racewar-battles/battle-01 --battle --runs 1
+```
+
+The fixture creates a separate observer account/client, uses real kit prototypes,
+and waits for `READY` before issuing `start` over the CLI's standard input. The
+final acceptance invocation must use the default two runs: captured room 22800
+then explicit room 1200, the same 40 accounts with fresh PCs, and operator stop
+on the second run if the match has not already ended. Inspect full transcripts,
+native server logs, per-role execution, healing, deaths, procs, pending actions
+and responsiveness; do not equate sent actions or spell completion with successful
+damage/healing. Fix failures and retain the diagnostic evidence.
+
+`battle-01` prepared all 40 PCs but stopped before combat: bard support items are
+inside the Chaos bag, and the standard lyre cannot be attached. The runner now
+uses ordinary `get lyre illithids`, removes the shield, holds the lyre and rechecks
+native equipment readiness, preserving the kit weapon and carried shield. All
+40 participants were confirmed quiet after the failed preparation. This was a
+runner integration defect, not a native grant defect. A four-build
+`--actions` diagnostic in `bin/racewar-battles/actions-01` verifies Paladin,
+Ranger, Druid buffs and the Bard's actual healing song before another full setup.
+The final harness also captures fixture-only server CPU/RSS/thread samples; the
+delivered runner uses remote-compatible command response observations.
+
+Live merge check: #406/#407/#409/#410 are merged. `origin/master` is `7a8c31067`
+after those squash merges and starter-kit #408. Integration merge `e1834b6df`
+brings that source into the combat branch without rewriting history. The add/add
+conflicts were squash-history artifacts: every upstream conflicted file exactly
+matched the earlier #410 base, so the task's extensions were retained. Both
+backend builds and the focused native control checks pass on this integration;
+unrelated qualification recorded by the merge task was reused. #411 remains open
+at the last check.
+
+`actions-01` exposed a setup synchronization error: an asynchronous prompt made
+`rest` appear complete before it was processed, so its output was read as the
+next `pray` response. The operator now negotiates receipts before placement and
+preparation too. Preparation and combat share one serialized command path;
+combat adds execution evidence without duplicating framing/dispatch logic.
+`actions-02` passed all four real builds, completed buffs, an actual Bard healing
+verse, and settled targeted stop. Its binary SHA-256 is
+`bfef2b10188357a25e66cdb5a1df6f03abc1a22a9cdd547696e6b798b3daf696`.
+
+The two-run acceptance invocation is now `bin/racewar-battles/battle-03`, using
+that integrated binary and `--battle --duration 120` (default two matches).
+Progress log: `bin/racewar-battles/implementation/battle-03.log`. Do not mark it
+passed until `result.json`, both summaries, observer logs, and relevant native
+diagnostics have been reviewed. No live MUD or production operation was performed.
+
+`battle-02` stopped during admission because a generated name contained a native
+filtered substring. The fresh-name alphabet now excludes the letter needed for
+that substring, retaining alternating pronounceable letters. Native name/admission
+refusals now report immediately instead of timing out. No server name or admission
+rule changed; the partial roster's connections closed normally before combat.
+
+#411 now targets `master` at head `1962cc0c7`. Combat merge `b46a3efd5` carries
+that synchronization and handoff forward. The temporary PR-sync worktree was
+removed cleanly. The active checkout remains the combat worktree above; no other
+worktrees, live server or user data were changed.
+
+`battle-03` reached a real 20/20 fight for 120.24 seconds. All 40 PCs produced
+damage events; totals were 833 dequeued battle actions, 218 completed spells,
+13 explicit native death messages, 22,539 observed damage and 10,016 reported
+healing. The separate observer saw spell effects and equipment procs/destruction.
+Controller round trips had median 249.53 ms and max 325.96 ms (54 samples).
+No assertion, panic, corruption or stuck-command-gate message was found in the
+retained native logs. This is one disposable fixture run, not capacity proof.
+
+The run's stop was conservatively reported unconfirmed because all 13 dead PCs
+were absent from the live world; the 27 survivors were quiet at every check.
+Native death returns the descriptor to the account menu, leaving cached GMCP
+room/vitals unchanged. The runner must recognize an explicit death plus observed
+account-menu return, close that session, and report it as dead/absent rather than
+attempt a gameplay save or count it as an unexplained missing target. Live
+survivor saves still need the final passing journey. `battle-03` is retained as
+combat/bug evidence but does not satisfy the two-run finish line.
+
+Two native defects found in the full fight are being repaired as separate chunks:
+
+1. Pending gameplay input crossed death/extraction into the account menu, producing
+   `Invalid Selection` after the death menu. The terminal transition in
+   `src/world/handler.c` leaves the descriptor input queue/partial line intact.
+   Reuse a narrow input-drain function at the actual transition, preserving output
+   and other descriptors; cover ordinary extraction and the direct hardcore-death
+   return path. Add focused native and real-session proof, then publish the fix.
+2. `COMBAT_OUTCOME_MAX_PARTICIPANTS` is 15, while `submit_pvp_outcome()` captures
+   both entire groups. The 20/20 fight therefore fails capture and reports
+   `The PvP outcome service is busy; no rewards were applied.` This is not merely
+   a flat-file limitation. Raise the bounded outcome capacity coherently for the
+   required 40 participants, preserving old payload/result reads and atomicity.
+   Trace payload/result limits, completion buffers, flat-file transaction bounds
+   and SQL storage before editing. Extend the existing codec, flat-file and
+   disposable-MySQL tests; do not truncate participants or split one kill into
+   non-atomic awards. Publish this independently and rerun full acceptance with
+   the repaired native binary.
+
 ### Native finding: queued input crosses death into the account menu ([PR #412](https://github.com/LuminariMUD/Duris/pull/412), ready for review)
 
 The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
@@ -797,6 +1104,34 @@ Completed first-match combat,
 reward, persistence and performance evidence remains valid; no unrelated tests
 need repeating.
 
+### Later qualification findings (resolved before final acceptance)
+
+`battle-05` completed another full 120-second fight with 14 deaths, 224 completed
+spells and useful damage/healing from all 40 PCs. Native status stayed quiet and
+there were no new attacks/heals after stop. Its checker nevertheless rejected
+three ordinary HP changes: one temporary maximum decreased, and two characters'
+over-max HP decayed. `hit_regen()` in `src/world/limits.c` explicitly decays excess
+HP, while `affect_total()` preserves missing HP during maximum recalculation.
+The checker now compares nonnegative missing health, alongside native status and
+new damage/healing events. Focused tests use the observed HP/max-HP pairs and
+retain the actual post-stop damage rejection. This was a verifier false alarm,
+not another native stop defect; survivor saves were conservatively withheld.
+
+The current full-pair invocation is `bin/racewar-battles/battle-07`, using
+native binary `dms_battle_all_effects_flatfile` (SHA-256 below), `--battle
+--duration 120`, and the default two fresh matches. Watch
+`bin/racewar-battles/implementation/battle-07.log`. The active branch is
+`branch/issue-405-racewar-combat`; `branch/issue-405-stop-effects` contains the
+separate #415 correction. All 24 focused runner tests pass. The checker correction required no native
+change; the subsequent magma/poison/smite correction is recorded below.
+
+The runner also omits `toggle wimpy 0`: the owning combat path disables player
+automatic fleeing, as clarified by merged #413. Paging and healing-output labels
+used by the runner are unchanged by that toggle cleanup. The native input byte
+limit is respected, and the current 40-PC roster fits one stop command. Final
+summaries include aggregate counts, bounded rejection examples, per-PC execution
+and save outcomes; detailed equipment remains in `preparation.json`.
+
 Follow-up qualification found the Searing Fist hammer's packed `magma burst`
 still ticking after early stop. The audit of both supported kit profiles found
 17 packed weapon spells: the delayed damage paths are acid immolation, magma
@@ -816,4 +1151,4 @@ seeds acid and magma, verifies settled health and quiet status, and reapplies ma
 after cancellation to prove its marker was cleaned. Evidence:
 `bin/racewar-battles/all-effects-after/` in the combat worktree. Binary SHA-256:
 `43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
-The full pair is now running as `battle-07`; its completion is not yet claimed.
+The full `battle-07` pair subsequently passed; see the final acceptance receipt above.
