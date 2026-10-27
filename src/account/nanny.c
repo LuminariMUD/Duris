@@ -867,24 +867,51 @@ static newbie_item_facts capture_newbie_item_facts(P_char ch, const newbie_kit_i
 	if (!prototype)
 		return {};
 	newbie_item_facts facts{ true, true, prototype->type == ITEM_SPELLBOOK };
-	if (item.regular && prototype->type == ITEM_WEAPON)
+	if (!item.regular)
+		return facts;
+
+	// Validate every ordinary starter object, not only weapons. Item admission
+	// follows the normal race/class rules before a durable UID is allocated.
+	obj_data view{};
+	view.R_num = prototype->R_num;
+	view.type = prototype->type;
+	view.value[0] = prototype->value[0];
+	view.extra_flags = prototype->extra_flags;
+	view.anti_flags = prototype->anti_flags;
+	view.anti2_flags = prototype->anti2_flags;
+	view.short_description = const_cast<char *>(prototype->short_description.c_str());
+	if (!can_char_use_item(ch, &view))
 	{
-		obj_data view{};
-		view.R_num = prototype->R_num;
-		view.type = prototype->type;
-		view.value[0] = prototype->value[0];
-		view.extra_flags = prototype->extra_flags;
-		view.anti_flags = prototype->anti_flags;
-		view.anti2_flags = prototype->anti2_flags;
-		// Only used for diagnostics by required_weapon_skill().
-		view.short_description = const_cast<char *>(prototype->short_description.c_str());
+		facts.available = false;
+		return facts;
+	}
+	if (prototype->type == ITEM_WEAPON)
+	{
 		const int skill_level = GET_LVL_FOR_SKILL(ch, required_weapon_skill(&view));
-		facts.weapon_admitted = skill_level && skill_level <= GET_LEVEL(ch) &&
-					can_char_use_item(ch, &view);
+		facts.weapon_admitted = skill_level && skill_level <= GET_LEVEL(ch);
+	}
+	else if (prototype->type == ITEM_ARMOR || prototype->type == ITEM_WORN ||
+		 prototype->type == ITEM_SHIELD)
+	{
+		// Reuse the equipment table and the character's actual body-slot rules.
+		// A single supported slot is sufficient for items with multiple wear flags.
+		bool has_wear_position = false;
+		bool has_usable_position = false;
+		for (const auto &position : equipment_pos_table)
+		{
+			if (!(prototype->wear_flags & position[0]))
+				continue;
+			has_wear_position = true;
+			if (has_eq_slot(ch, position[2]))
+			{
+				has_usable_position = true;
+				break;
+			}
+		}
+		facts.available = !has_wear_position || has_usable_position;
 	}
 	return facts;
 }
-
 /** Capture the finite legacy selection and spell decisions without live objects. */
 static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan(P_char ch)
 {
@@ -910,7 +937,22 @@ static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan(P_char ch)
 	for (int spell = FIRST_SPELL; spell <= LAST_SPELL; ++spell)
 		if (get_spell_circle(ch, spell) == 1)
 			first_circle.push_back(spell);
-	return prepare_newbie_kit_items(selection, facts, first_circle);
+	auto prepared = prepare_newbie_kit_items(selection, facts, first_circle);
+	// All normal starter kits need one durable container, but existing race
+	// containers (including Blighter's fallback bag) must not be duplicated.
+	bool has_container = false;
+	for (const auto &item : prepared)
+	{
+		const auto *prototype = find_object_template(item.item.vnum);
+		if (prototype && prototype->type == ITEM_CONTAINER)
+		{
+			has_container = true;
+			break;
+		}
+	}
+	if (!has_container)
+		prepared.push_back({ { 390, true }, {} }); // Small leather bag, boot-cached.
+	return prepared;
 }
 
 /** Materialize one detached legacy root; publication belongs to the grant coordinator. */
