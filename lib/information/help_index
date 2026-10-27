@@ -26485,3 +26485,230 @@ Use 'conjure stat <number>' to inspect a being and
 it is not a way to dismiss a living pet. Each summon still follows
 its own eligibility, resource and pet restrictions.
 #
+Toughen Up
+Toughen Up Princess is the achievement for reaching 100 in all eight
+base attributes: strength, agility, dexterity, constitution, power,
+wisdom, intelligence and charisma. Equipment and temporary bonuses
+do not satisfy this requirement. Use 'attributes' to inspect your stats.
+The reward is Deaths Door, used with 'deathsdoor door'.
+Read 'help deaths door' before using it to recover a corpse.
+#
+Deaths Door
+Syntax: deathsdoor door
+Deaths Door is the corpse-recovery reward from Toughen Up Princess.
+You must be alive and have earned the achievement by reaching 100
+in every base attribute. It brings your most recent available corpse
+to your room; it does not transport you to the corpse's location.
+The corpse must still exist and lie in a room, rather than be carried
+or stored inside another object.
+An attempt starts a non-dispellable cooldown and a five-second action
+delay even if no eligible corpse can be recovered. Wait for the
+Deaths Door cooldown to expire before trying again.
+See also: Toughen Up, Corpse Portal.
+#
+Serf
+Serf is the lowest feudal surname displayed with a character's name
+on 'who'. Feudal surnames advance with leaderboard points through
+Commoner, Knight, Noble, Lord and King. They are titles, not classes
+or skills, and do not grant an ability to activate.
+See also: Leaderboard, Title, Achievements.
+#
+Mystic Axe of the Dragonkind
+While wielding the mystic axe of the dragonkind in either weapon
+hand, use 'say protect me' to invoke its protective magic.
+It attempts Biofeedback, Globe, Fireshield and Vitality on the wielder
+at spell level 56. Each spell's normal restrictions still apply.
+The activation has a 60-second cooldown attached to that axe.
+Its combat magic can also release dragon breath against living
+creatures in the room other than the wielder and their groupmates;
+nearby creatures outside your group can be caught in the breath.
+See also: Biofeedback, Globe, Fireshield, Vitality.
+#
+Epic Parry
+The epic parry upgrade is named Expert Parry. Read 'help expert parry'
+for its effect and 'help parry' for the underlying defense.
+Use 'epic skills' to locate epic skill teachers. Training requires
+level 30 or higher and the skill's class, prerequisite, epic-point
+and platinum requirements; consult the teacher for your available
+training. Expert Parry is passive, with no separate activation command.
+#
+Castle
+For a guild's own base and fortifications, read 'help guildhall' and
+'help construct'. For the capturable outpost system, read 'help outpost'.
+These use their own commands; there is no 'castle' command.
+For an adventure area, search its full name: the word castle alone
+does not identify a particular zone.
+#
+Outpost
+Use 'outpost' to list outposts and 'outpost help' for command options.
+Guild leaders with construction permission can manage their outposts.
+'outpost repair' starts repairs at a damaged owned outpost, or claims
+and rebuilds an outpost from its rubble when you belong to a guild.
+An intact outpost cannot be repaired while under attack, and repairs
+stop if the guild lacks funds. Repairs use the guild treasury.
+'outpost drop <id>' relinquishes an outpost your guild owns.
+From inside an outpost, its management options include 'outpost portal',
+'outpost golem', 'outpost archers' and 'outpost meurtriere'. These upgrades
+draw on guild funds and are subject to the outpost's existing facilities.
+Outposts also incur upkeep. Check your guild finances before expanding.
+See also: Guildhall, Construct, Society.
+#
+Epic Tasks
+Use 'score' to read your current epic task. Tasks are assigned as you
+earn eligible epic rewards; while one remains unfinished, some further
+awards are reduced. Follow the objective shown on your score.
+'epic share' shares your task with consenting player groupmates in
+the same room who already have a replaceable task. Only the original
+owner can share it. A received task cannot be shared onward, and
+existing nexus-stone or player-combat tasks are not replaced this way.
+Read 'help epic' for epic rewards, training and advancement.
+#
+Aura of Healing
+The Paladin healing aura is named Aura of Improved Healing and is
+available from level 30. Use 'innate aura of improved healing'.
+Read 'help aura of improved healing' for its healing rules and
+'help paladin auras' for maintaining auras. The bonus is not available
+to Cleric Healers, and healing cast by a Cleric Healer does not gain
+the aura's multiplier. Multiple copies do not stack.
+#
+Arj Mudlet Panels
+The Duris Arjinius interface is a Mudlet package. Its panel commands
+run in the client with that package installed; they are not game commands.
+Use 'ui help' for its commands and 'ui layout' for panel IDs and states.
+'ui panel <id> show' restores a hidden panel. 'ui panel <id> restore'
+restores a minimized or maximized panel. 'ui layout unlock' allows
+moving and resizing panels; 'ui layout lock' locks them again.
+'ui layout reset' restores the default arrangement. 'ui off' returns
+to Mudlet's main output area; 'ui on' displays the interface again.
+If live data is missing, use 'ui debug', check GMCP is enabled, and
+reconnect into the game. For maps, use 'mapper status' and 'mapper debug'.
+Package instructions: https://github.com/LuminariMUD/duris-client
+#
+Enervate
+The spell is named Enervation. Syntax: cast 'enervation' <target>
+Your class must have learned and prepared it, and you must meet
+its casting costs.
+It is an aggressive spell. Read 'help enervation' for its effects and
+'help cast' for spellcasting syntax.
+#
+Summoners
+Read 'help summoner' for the Summoner class and 'help summoner skills'
+for its base spells and skills. Controller, Mentalist and Naturalist
+specializations change those grants.
+For calling beings from your book, read 'help conjure being'.
+For the distinction between summoning commands, read 'help summoning'.
+#
+Conjure Being
+Summoners of level 21 or higher use 'conjure' to list beings in their
+own book. Use 'conjure stat <number>' to inspect one and
+'conjure summon <number>' to summon it. Use the listed mob number.
+Safe rooms block conjuring. The being must be valid for your class,
+specialization and level, and must fit your remaining pet capacity.
+Charisma affects success and the resulting minion. A failed attempt
+can impose a cooldown; a successful summon also imposes a cooldown.
+Summoning a being above level 56 requires a greater orb of magic in
+your inventory and consumes one orb on success.
+'conjure remove <number>' permanently deletes that entry from your
+book. It does not dismiss a living pet.
+See also: Summoner, Summoning.
+#
+Setbit Char
+Syntax: setbit char <target> <flag> <value> [on|off]
+This is the character branch of Setbit, a Greater God staff command
+requiring level 60. It edits character fields and logs the operation.
+Use bare 'setbit' for the current per-type syntax and valid fields.
+Values depend on the selected field; this is not a player preference
+command. Read 'help setbit' for the other supported target types.
+#
+Mace of Mentality
+While wielding the mace of mentality, use 'say mentality' to invoke
+Reflection at spell level 50. Its normal summon and pet restrictions
+still apply. The activation starts a five-minute cooldown on the mace,
+including when Reflection cannot create an image.
+Trying again before the cooldown ends deals 100 damage to you; this
+backlash cannot kill you. The mace vibrates when it is ready again
+if you still have it equipped.
+Removing the mace dismisses your reflection images.
+See also: Reflection.
+#
+Speedy
+Speedy is passive innate haste. It is active automatically while you
+qualify, with no command, mana payment or cooldown to activate it.
+Air-specialized Conjurers and Controller Summoners gain it at level 30;
+some event races also have their own racial level requirement.
+It provides the haste effect rather than another separately stacking
+haste spell. Read 'help haste' for the effect and your class or race
+help for eligibility.
+#
+Vials
+A vial's name alone does not tell you how to use it. Inspect the item
+and identify it to distinguish a potion, poison dose or crafting item.
+Potions use 'quaff <item>'; read 'help quaff'. Poison doses use
+'apply <vial> <weapon>'; read 'help mixpoison' for poison crafting
+and its skill and ingredient requirements. An empty poison vial is
+an ingredient, not a dose ready to apply.
+Other named vials may have their own quest or item-specific purpose.
+#
+Ophidian Eyes
+Ophidian Eyes is a passive Dragoon innate, available from level 1.
+It grants heat vision without an activation command or resource cost.
+Above level 45 it also lets you see invisible creatures.
+Specializations add further senses: Dragon Hunters sense life,
+Dragon Lancers detect good and evil, and Dragon Priests detect
+magic and illusions. These senses do not remove every visibility
+restriction; blindness and other special concealment still matter.
+See also: Dragoon, Dragon Hunter, Dragon Lancer, Dragon Priest.
+#
+Dragon Knight
+There is no player class or specialization named Dragon Knight.
+For the dragon-riding class, read 'help dragoon'. Its specializations
+are Dragon Hunter, Dragon Lancer and Dragon Priest; read their help
+for the actual abilities and requirements.
+For casting while riding, read 'help mounted casting'.
+#
+Mounted Casting
+Use the normal 'cast' command while riding. The casting check requires
+either learned Mounted Combat or a mount recognized as your natural
+mount. Otherwise you are too busy staying mounted to cast.
+Mounted Casting is not a separate skill to train or command to use.
+Normal spell requirements, costs and other casting restrictions still
+apply. Read 'help mounted combat', 'help mount' and 'help cast'.
+#
+Named Equipment Sets
+Use 'namedreport' to list the spells granted by named equipment sets,
+grouped by zone, with the required number of pieces.
+Wearing more than the required number increases the granted spells'
+caster level. The report marks one-minute cooldown spells in green
+and five-minute cooldown spells in yellow. Sets from zones not listed
+can still grant hit points.
+The report describes set bonuses; it is not a list of living named
+monsters or their current locations.
+#
+Affects
+Use 'score' to inspect your character's visible ongoing effects,
+protections and senses. There is no separate 'affects' command.
+Detect Magic reveals additional magical effects and duration details.
+Some internal cooldowns and hidden effects are deliberately omitted,
+so an absent line does not prove that every restriction has expired.
+Effects can have different expiry rules; consult the named spell or
+ability's help rather than treating every timer as real-time minutes.
+#
+Wipe
+A player wipe begins a new season by resetting character progression
+and possessions. Account bank balances also reset. Accounts, login
+credentials and donation history survive; eligible account reward
+grants follow their own preservation and expiry rules.
+A routine reboot or maintenance restart is not a player wipe.
+Wipes are staff operations, not a player command. Read 'news' and
+staff announcements for any announced schedule; this help topic
+does not announce or schedule a wipe.
+#
+Anti-Evil
+Anti-Evil is a passive Paladin innate available from level 1.
+It grants protection from evil and detection of both good and evil.
+There is no activation command or mana payment.
+When entering combat against an evil opponent at an alignment of
+900 or higher, it also grants a temporary hit-point bonus based on
+that opponent's level. This combat bonus does not stack with itself.
+See also: Paladin, Protection from Evil, Alignment.
+#
