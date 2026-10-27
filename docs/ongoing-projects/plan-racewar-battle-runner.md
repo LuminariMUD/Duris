@@ -341,7 +341,12 @@ maximum capacity, or exhaustive combat coverage.
 
 ## Implementation handoff
 
-### Chunk 1: native preparation (verified; publishing for review)
+### Chunk 1: native preparation ([PR #406](https://github.com/LuminariMUD/Duris/pull/406), ready for review)
+
+Implementation commit: `ffd1463fd` on `branch/issue-405-racewar-battle-plan`.
+The PR targets `master`; dependent work should branch from its head and target
+this branch until #406 merges. The PR remains open; no merge or deployment has
+been performed.
 
 `battleprep <exact-player-name> baseline|spells` is registered as an Overlord
 command, without environment or Chaos gates. `baseline` uses native advancement,
@@ -386,8 +391,8 @@ Local build/journey logs: `bin/racewar-battles/implementation/` (untracked).
 The journey uses disposable flat-file authority. No persistence implementation
 changed; MariaDB runtime behavior and full-party combat remain unverified.
 
-Next: publish this chunk's PR, then stack the concurrent client/provisioning
-runner and targeted stop/combat chunks on it.
+Next: stack the concurrent client/provisioning runner and targeted stop/combat
+chunks on #406.
 The seven finish-line requirements above remain unchecked until runtime evidence
 proves them. No release tag or deployment is needed for review-only chunks.
 
