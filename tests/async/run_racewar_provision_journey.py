@@ -87,6 +87,15 @@ async def battle_cli(server, output, run_dir, room, duration, operator_stop):
         assert summary["stop"]["confirmed"], summary["stop"]
         assert sum(row["damage_events"] for row in summary["rows"]) > 0
         assert sum(row["actions"]["spells_completed"] for row in summary["rows"]) > 0
+        assert sum(row["healing_events"] for row in summary["rows"]) > 0
+        assert summary["controller_response_ms"]["samples"]
+        for row in summary["rows"]:
+            outstanding = row["actions"]["attempted"] - row["actions"]["dequeued"]
+            assert 0 <= outstanding <= 1, f"{row['name']}: input queue was not bounded"
+            transcript = (run_dir / f"{row['name']}.jsonl").read_text()
+            assert "PvP outcome service is busy" not in transcript, f"{row['name']}: native PvP outcome capture failed"
+            if not row["dead"]:
+                assert row["final_save"] == "acknowledged", row["final_save"]
         summary["groups"] = json.loads((run_dir / "ready.json").read_text())["groups"]
         return summary
     finally:

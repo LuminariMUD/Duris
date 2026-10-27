@@ -108,6 +108,38 @@ class ProtocolTests(unittest.TestCase):
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_full_roster_stop_is_one_native_command(self):
+        rows = [{"name": f"Battler{i:03}"} for i in range(40)]
+        calls = []
+        class Staff:
+            async def command(self, command, **kwargs):
+                calls.append(command)
+                return "\n".join(f"Battleprep status {row['name']} quiet." for row in rows)
+        with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+            result = await battle.stop_fighters(Staff(), rows)
+        self.assertTrue(result["confirmed"])
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(len(call.encode()) <= battle.MAX_INPUT_BYTES for call in calls))
+        self.assertTrue(all(row["name"] in calls[0] for row in rows))
+
+    async def test_immediate_operator_stop_has_zero_actions_and_saves_survivors(self):
+        room = {"num": 1200, "name": "Field", "coords": {"x": 0}}
+        rows = [{"name": name, "side": side, "index": 0, "class": "Warrior", "battle_room": room}
+                for name, side in (("One", "good"), ("Two", "evil"))]
+        clients = {row["name"]: SimpleNamespace(dead=False, returned_to_menu=False, error=None,
+                   gmcp={"Room.Info": room, "Char.Input": {"sequence": 4}},
+                   damage_events=0, observed_damage=0, healing_events=0, observed_healing=0,
+                   command=AsyncMock()) for row in rows}
+        stop = asyncio.Event(); stop.set()
+        with patch.object(battle, "stop_fighters", new_callable=AsyncMock, return_value={"confirmed": True}):
+            result = await battle.run_combat(None, clients, rows, {"good": 1, "evil": 1}, stop, 120)
+        self.assertEqual(result["outcome"], "operator_stop")
+        self.assertEqual(result["save_failures"], [])
+        self.assertEqual(result["totals"]["actions_attempted"], 0)
+        self.assertEqual(result["totals"]["participants"], 2)
+        self.assertTrue(all(row["actions"]["attempted"] == row["actions"]["dequeued"] == 0 for row in rows))
+        self.assertTrue(all(row["final_save"] == "acknowledged" for row in rows))
+
     async def test_native_name_refusal_is_reported_without_a_timeout(self):
         client = SimpleNamespace(send=AsyncMock(), expect=AsyncMock(side_effect=[
             ("Enter your new name", ""), ("Illegal character name", "")]))
@@ -141,6 +173,18 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(unknown["confirmed"])
         self.assertTrue(dead["confirmed"])
         self.assertEqual(dead["statuses"], {"One": "dead_absent"})
+        player = SimpleNamespace(gmcp={"Char.Vitals": {"hp": 10}}, damage_events=0, healing_events=0)
+        class ResidualEffect:
+            calls = 0
+            async def command(self, *args, **kwargs):
+                self.calls += 1
+                if self.calls == 3:
+                    player.gmcp["Char.Vitals"]["hp"] = 9
+                return "Battleprep status one quiet."
+        with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+            result = await battle.stop_fighters(ResidualEffect(), [{"name": "One"}], clients={"One": player})
+        self.assertFalse(result["confirmed"])
+        self.assertEqual(result["unresolved"][0]["state"], "activity_after_stop")
 
     async def test_native_death_menu_ends_a_pending_gameplay_wait(self):
         async def serve(reader, writer):

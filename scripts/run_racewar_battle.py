@@ -17,6 +17,7 @@ import sys
 
 
 IAC, DO, DONT, WILL, WONT, SB, SE, GMCP = 255, 253, 254, 251, 252, 250, 240, 201
+MAX_INPUT_BYTES = 1023  # Native MAX_INPUT_LENGTH includes the trailing NUL.
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 ANSI_TAIL = re.compile(r"\x1b(?:\[[0-?]*[ -/]*)?\Z")
 
@@ -198,8 +199,11 @@ class Client:
             raise BattleError("One input line is required")
         if self.error:
             raise BattleError(f"{self.label}: connection unavailable") from self.error
+        encoded = line.encode("utf-8")
+        if len(encoded) > MAX_INPUT_BYTES:
+            raise BattleError(f"{self.label}: command exceeds the native input limit")
         self.record("command", line)
-        self.writer.write(line.encode("utf-8") + b"\n")
+        self.writer.write(encoded + b"\n")
         await self.writer.drain()
 
     async def wait_for(self, predicate, description, timeout=30):
@@ -820,8 +824,6 @@ def choose_enemy(row, rows, clients):
 async def fight_one(row, rows, clients, stop):
     player, cls = clients[row["name"]], normalized(row["class"])
     spent, turn = set(), 0
-    row["actions"] = {"attempted": 0, "dequeued": 0, "spells_completed": 0, "rejected": 0}
-    row["starting_input_sequence"] = player.gmcp["Char.Input"]["sequence"]
     while not stop.is_set() and active(row, clients):
         enemy = choose_enemy(row, rows, clients)
         if not enemy:
@@ -875,6 +877,10 @@ async def fight_one(row, rows, clients, stop):
             row["actions"]["spells_completed"] += 1
         if REJECTED.search(output):
             row["actions"]["rejected"] += 1
+            examples = row.setdefault("rejection_examples", [])
+            for line in output.splitlines():
+                if REJECTED.search(line) and line not in examples and len(examples) < 3:
+                    examples.append(line[:240])
         if spell and DEPLETED.search(output):
             spent.add(spell)
             player.record("resource_exhausted", spell)
@@ -882,14 +888,20 @@ async def fight_one(row, rows, clients, stop):
         await asyncio.sleep(.5)
 
 
-async def stop_fighters(staff, rows, dead_absent=()):
+async def stop_fighters(staff, rows, dead_absent=(), clients=None):
     """Stop exact identities and observe them again after native callbacks settle."""
     result = {"confirmed": False, "statuses": {}, "settle_seconds": 6}
+    observed = None
+    batches = [[]]
+    for row in rows:
+        proposed = batches[-1] + [row["name"]]
+        if len(("battleprep status " + " ".join(proposed)).encode()) > MAX_INPUT_BYTES:
+            batches.append([])
+        batches[-1].append(row["name"])
     try:
         for operation, delay in (("stop", 0), ("status", 1), ("status", 5)):
             await asyncio.sleep(delay)
-            for offset in range(0, len(rows), 8):
-                names = [row["name"] for row in rows[offset:offset + 8]]
+            for names in batches:
                 if not names:
                     continue
                 output = await staff.command(f"battleprep {operation} {' '.join(names)}",
@@ -903,6 +915,21 @@ async def stop_fighters(staff, rows, dead_absent=()):
                     result["statuses"][name] = state
                     if state not in ("quiet", "dead_absent"):
                         result.setdefault("unresolved", []).append({"name": name, "operation": operation, "state": state})
+            if operation == "status" and clients is not None:
+                snapshot = {row["name"]: {"hp": clients[row["name"]].gmcp["Char.Vitals"]["hp"],
+                    "damage_events": clients[row["name"]].damage_events,
+                    "healing_events": clients[row["name"]].healing_events}
+                    for row in rows if row["name"] not in dead_absent}
+                if observed is not None:
+                    for name, current in snapshot.items():
+                        previous = observed[name]
+                        if (current["hp"] < previous["hp"] or
+                            current["damage_events"] > previous["damage_events"] or
+                            current["healing_events"] > previous["healing_events"]):
+                            result.setdefault("unresolved", []).append({"name": name,
+                                "state": "activity_after_stop", "before": previous, "after": current})
+                    result["settled_observations"] = snapshot
+                observed = snapshot
         result["confirmed"] = not result.get("unresolved")
     except Exception as error:
         result["error"] = str(error)
@@ -911,6 +938,9 @@ async def stop_fighters(staff, rows, dead_absent=()):
 
 async def run_combat(staff, clients, rows, caps, stop, duration):
     started = asyncio.get_running_loop().time()
+    for row in rows:
+        row["actions"] = {"attempted": 0, "dequeued": 0, "spells_completed": 0, "rejected": 0}
+        row["starting_input_sequence"] = clients[row["name"]].gmcp["Char.Input"]["sequence"]
     tasks = [asyncio.create_task(fight_one(row, rows, clients, stop)) for row in rows]
     result = {"outcome": "time_limit", "caps": caps}
     response_times = []
@@ -930,6 +960,9 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
             if stop.is_set():
                 result["outcome"] = "operator_stop"
                 break
+            disconnected = next((name for name, player in clients.items() if player.error), None)
+            if disconnected:
+                raise BattleError(f"{disconnected}: participant connection lost")
             for task in tasks:
                 if task.done() and not task.cancelled() and task.exception():
                     raise task.exception()
@@ -956,7 +989,7 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
         # never issue a gameplay save to a menu or silently accept other missing PCs.
         dead_absent = {name for name, player in clients.items() if player.dead and player.returned_to_menu}
         await asyncio.gather(*(clients[name].close() for name in dead_absent), return_exceptions=True)
-        result["stop"] = await stop_fighters(staff, rows, dead_absent)
+        result["stop"] = await stop_fighters(staff, rows, dead_absent, clients)
         for row in rows:
             player = clients[row["name"]]
             row["actions"]["dequeued"] = player.gmcp["Char.Input"]["sequence"] - row["starting_input_sequence"]
@@ -974,7 +1007,24 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
                     row["final_save"] = "acknowledged"
                 except Exception as error:
                     row["final_save"] = str(error)
-        result["rows"] = rows
+        result["save_failures"] = [row["name"] for row in rows
+                                   if row["name"] not in dead_absent and row["final_save"] != "acknowledged"]
+        result["totals"] = {"participants": len(rows), "deaths": sum(row["dead"] for row in rows),
+            "disconnects": sum(row["disconnected"] for row in rows),
+            "actions_attempted": sum(row["actions"]["attempted"] for row in rows),
+            "actions_dequeued": sum(row["actions"]["dequeued"] for row in rows),
+            "spells_completed": sum(row["actions"]["spells_completed"] for row in rows),
+            "obvious_rejections": sum(row["actions"]["rejected"] for row in rows),
+            "observed_damage": sum(row["observed_damage"] for row in rows),
+            "reported_healing": sum(row["observed_healing"] for row in rows)}
+        result["no_observed_damage_or_healing"] = [row["name"] for row in rows
+            if not row["damage_events"] and not row["healing_events"]]
+        # Detailed gear, spells and readiness are already in preparation.json.
+        fields = ("name", "account", "side", "index", "race", "class", "requested_race", "requested_class",
+                  "preparation", "level", "actions", "rejection_examples", "dead", "returned_to_menu",
+                  "disconnected", "left_battlefield", "damage_events", "observed_damage", "healing_events",
+                  "observed_healing", "final_save")
+        result["rows"] = [{key: row[key] for key in fields if key in row} for row in rows]
     return result
 
 
@@ -1054,6 +1104,8 @@ async def operate(config, accounts, directory, room, duration, commands):
         result.setdefault("rows", rows)
         (Path(directory) / "summary.json").write_text(json.dumps(result, indent=2))
         print(f"{result['outcome']}; stop confirmed: {result.get('stop', {}).get('confirmed', False)}. Evidence: {directory}", flush=True)
+        if "totals" in result:
+            print("Results: " + json.dumps(result["totals"]), flush=True)
         if rows and not result.get("stop", {}).get("confirmed"):
             print("STOP UNCONFIRMED: connect staff and use battleprep stop for the participant names in summary.json.", flush=True)
     return result
@@ -1078,7 +1130,8 @@ async def main(args):
         loop.add_signal_handler(sig, commands.put_nowait, "stop")
     try:
         result = await operate(config, args.accounts, directory, args.room, args.duration, commands)
-        return 0 if result.get("stop", {}).get("confirmed") and result["outcome"] not in ("preparation_failed", "interrupted") else 1
+        return 0 if (result.get("stop", {}).get("confirmed") and not result.get("save_failures")
+                     and result["outcome"] not in ("preparation_failed", "interrupted")) else 1
     finally:
         input_task.cancel()
         await asyncio.gather(input_task, return_exceptions=True)
