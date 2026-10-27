@@ -368,7 +368,9 @@ def choose_menu(menu, desired, *, race=False, alternatives=()):
 
 
 def fresh_name():
-    return "Ra" + "".join(secrets.choice("bdfgklmnprstv") + secrets.choice("aeiou") for _ in range(4))
+    # Alternating letters avoid doubled-consonant filter words; omitting p also
+    # prevents the remaining rude substring observed in a generated name.
+    return "Ra" + "".join(secrets.choice("bdfgklmnrstv") + secrets.choice("aeiou") for _ in range(4))
 
 
 class AccountPool:
@@ -412,7 +414,9 @@ async def account_login(client, account, *, create):
         await client.send("9")
         await client.expect("account name")
     await client.send(account["account"])
-    match, _ = await client.expect("is this correct?", "enter your password")
+    match, _ = await client.expect("is this correct?", "enter your password", "Illegal account name")
+    if match == "Illegal account name":
+        raise BattleError(f"{client.label}: server rejected the dedicated account name")
     if match == "is this correct?":
         if not create:
             raise BattleError("The configured staff account does not exist")
@@ -471,9 +475,13 @@ async def create_character(client, account, character, side, build):
     await client.send("2")
     await client.expect("Enter your new name")
     await client.send(character)
-    match, _ = await client.expect("Is this correct?", "maximum number of characters")
-    if match != "Is this correct?":
+    match, _ = await client.expect("Is this correct?", "maximum number of characters",
+        "Illegal character name", "name has been declined", "Name is in use already",
+        "not allowing creation", "New characters have been banned", "Game is temporarily full")
+    if match == "maximum number of characters":
         raise BattleError(f"Account {account['account']} is full; supply another dedicated account")
+    if match != "Is this correct?":
+        raise BattleError(f"{character}: character admission rejected: {match}")
     await client.send("y")
     await client.expect("meet these criteria?")
     await client.send("y")

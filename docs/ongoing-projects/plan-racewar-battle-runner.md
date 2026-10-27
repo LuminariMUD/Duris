@@ -690,7 +690,7 @@ The private JSON contains `host`, `port`, `registration_email`, and `staff` with
 the operator. Account-pool files contain private credentials; rosters, gameplay
 logs and summaries do not. A human observer uses a different account.
 
-Current focused validation: 19 runner tests pass, including a socket regression
+Current focused validation: 20 runner tests pass, including a socket regression
 where unrelated combat prompts cannot dequeue input and a chanting prompt cannot
 complete a spell. Existing native binary evidence from #411 is reused because
 this chunk changes Python only. The first delivered-CLI probe is
@@ -740,8 +740,55 @@ combat adds execution evidence without duplicating framing/dispatch logic.
 verse, and settled targeted stop. Its binary SHA-256 is
 `bfef2b10188357a25e66cdb5a1df6f03abc1a22a9cdd547696e6b798b3daf696`.
 
-The two-run acceptance invocation is now `bin/racewar-battles/battle-02`, using
+The two-run acceptance invocation is now `bin/racewar-battles/battle-03`, using
 that integrated binary and `--battle --duration 120` (default two matches).
-Progress log: `bin/racewar-battles/implementation/battle-02.log`. Do not mark it
+Progress log: `bin/racewar-battles/implementation/battle-03.log`. Do not mark it
 passed until `result.json`, both summaries, observer logs, and relevant native
 diagnostics have been reviewed. No live MUD or production operation was performed.
+
+`battle-02` stopped during admission because a generated name contained a native
+filtered substring. The fresh-name alphabet now excludes the letter needed for
+that substring, retaining alternating pronounceable letters. Native name/admission
+refusals now report immediately instead of timing out. No server name or admission
+rule changed; the partial roster's connections closed normally before combat.
+
+#411 now targets `master` at head `1962cc0c7`. Combat merge `b46a3efd5` carries
+that synchronization and handoff forward. The temporary PR-sync worktree was
+removed cleanly. The active checkout remains the combat worktree above; no other
+worktrees, live server or user data were changed.
+
+`battle-03` reached a real 20/20 fight for 120.24 seconds. All 40 PCs produced
+damage events; totals were 833 dequeued battle actions, 218 completed spells,
+13 explicit native death messages, 22,539 observed damage and 10,016 reported
+healing. The separate observer saw spell effects and equipment procs/destruction.
+Controller round trips had median 249.53 ms and max 325.96 ms (54 samples).
+No assertion, panic, corruption or stuck-command-gate message was found in the
+retained native logs. This is one disposable fixture run, not capacity proof.
+
+The run's stop was conservatively reported unconfirmed because all 13 dead PCs
+were absent from the live world; the 27 survivors were quiet at every check.
+Native death returns the descriptor to the account menu, leaving cached GMCP
+room/vitals unchanged. The runner must recognize an explicit death plus observed
+account-menu return, close that session, and report it as dead/absent rather than
+attempt a gameplay save or count it as an unexplained missing target. Live
+survivor saves still need the final passing journey. `battle-03` is retained as
+combat/bug evidence but does not satisfy the two-run finish line.
+
+Two native defects found in the full fight are being repaired as separate chunks:
+
+1. Pending gameplay input crossed death/extraction into the account menu, producing
+   `Invalid Selection` after the death menu. The terminal transition in
+   `src/world/handler.c` leaves the descriptor input queue/partial line intact.
+   Reuse a narrow input-drain function at the actual transition, preserving output
+   and other descriptors; cover ordinary extraction and the direct hardcore-death
+   return path. Add focused native and real-session proof, then publish the fix.
+2. `COMBAT_OUTCOME_MAX_PARTICIPANTS` is 15, while `submit_pvp_outcome()` captures
+   both entire groups. The 20/20 fight therefore fails capture and reports
+   `The PvP outcome service is busy; no rewards were applied.` This is not merely
+   a flat-file limitation. Raise the bounded outcome capacity coherently for the
+   required 40 participants, preserving old payload/result reads and atomicity.
+   Trace payload/result limits, completion buffers, flat-file transaction bounds
+   and SQL storage before editing. Extend the existing codec, flat-file and
+   disposable-MySQL tests; do not truncate participants or split one kill into
+   non-atomic awards. Publish this independently and rerun full acceptance with
+   the repaired native binary.

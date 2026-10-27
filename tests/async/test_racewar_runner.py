@@ -108,6 +108,13 @@ class ProtocolTests(unittest.TestCase):
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_native_name_refusal_is_reported_without_a_timeout(self):
+        client = SimpleNamespace(send=AsyncMock(), expect=AsyncMock(side_effect=[
+            ("Enter your new name", ""), ("Illegal character name", "")]))
+        with patch.object(battle, "account_login", new_callable=AsyncMock):
+            with self.assertRaisesRegex(battle.BattleError, "character admission rejected: Illegal character name"):
+                await battle.create_character(client, {"account": "Dedicated"}, "Rejected", "good", battle.Build("Human", "Warrior"))
+
     async def test_stop_requires_every_named_status_and_a_settling_recheck(self):
         calls = []
         class Staff:
