@@ -4203,6 +4203,7 @@ bool sql_verify_pwipe_manifest(void)
 		{ "player_data", "race" },
 		{ "player_data", "sex" },
 		{ "player_data", "hometown" },
+		{ "player_data", "last_room" },
 		{ "player_data", "birthplace" },
 		{ "player_data", "orig_birthplace" },
 		{ "player_data", "height" },
@@ -4428,6 +4429,29 @@ bool sql_verify_auction_engines(void)
 	return auction_engines_ok;
 }
 
+static bool sql_pwipe_pid_capacity_valid(void)
+{
+	// SQL permits unsigned PIDs, but native account/player identities are signed ints.
+	// Reserve room for the current Overlords and a usable next character identity.
+	// MySQL caches AUTO_INCREMENT in information_schema; safety needs the live value.
+	const char *server = mysql_get_server_info(DB);
+	if (!server ||
+	    (!strstr(server, "MariaDB") && !qry("SET SESSION information_schema_stats_expiry=0")))
+		return false;
+	MYSQL_RES *result =
+		db_query("SELECT AUTO_INCREMENT > 0 AND AUTO_INCREMENT + "
+			 "(SELECT COUNT(*) FROM player_data WHERE active=1 AND level=%d) * "
+			 "@@auto_increment_increment <= %d FROM information_schema.TABLES "
+			 "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_data'",
+			 OVERLORD, INT_MAX);
+	if (!result)
+		return false;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const bool valid = row && row[0] && !strcmp(row[0], "1");
+	mysql_free_result(result);
+	return valid;
+}
+
 bool sql_pwipe(int code_verify)
 {
 	pwipe_crossed_boundary = false;
@@ -4498,6 +4522,17 @@ bool sql_pwipe(int code_verify)
 		{
 			logit(LOG_STATUS,
 			      "sql_pwipe: Writer drain failed; old season remains active.");
+			return FALSE;
+		}
+
+		if (!sql_pwipe_pid_capacity_valid())
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Player PID capacity is outside the native range; reset work refused.");
+			send_to_all(
+				"Preflight FAILED: player PID allocator cannot create a playable new season.\n");
+			if (!pwipe_recovery_epoch)
+				pwipe_resume_writers();
 			return FALSE;
 		}
 
@@ -5127,10 +5162,10 @@ bool sql_pwipe(int code_verify)
 				    OVERLORD) &&
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
 				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
-				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
+				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,last_room,birthplace,orig_birthplace,"
 				    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
 				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
-				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
+				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,hometown,height,weight,"
 				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
 				    "FROM pwipe_overlords",
 				    OVERLORD, OVERLORD) &&
@@ -5334,19 +5369,19 @@ bool sql_pwipe(int code_verify)
 			/* Only clean, recreated Overlords may be active. */
 			MYSQL_RES *res = db_query(
 				"SELECT COUNT(*) FROM player_data WHERE learned_flight_stops <> 0 OR "
-				"(active=1 AND (level<>%d OR copper<>0 OR silver<>0 OR gold<>0 OR platinum<>0 "
+				"(active=1 AND (pid=0 OR pid>%d OR level<>%d OR copper<>0 OR silver<>0 OR gold<>0 OR platinum<>0 "
 				"OR bank_copper<>0 OR bank_silver<>0 OR bank_gold<>0 OR bank_platinum<>0 "
-				"OR exp<>0 OR epics<>0 OR frags<>0 OR assoc_id<>0 "
+				"OR exp<>0 OR epics<>0 OR frags<>0 OR assoc_id<>0 OR last_room<>hometown "
 				"OR NOT EXISTS(SELECT 1 FROM account_characters a WHERE a.pid=player_data.pid "
 				"AND a.deleted_at IS NULL AND a.account_name=player_data.account_name)))",
-				OVERLORD);
+				INT_MAX, OVERLORD);
 			if (res)
 			{
 				MYSQL_ROW row = mysql_fetch_row(res);
 				if (row && row[0] && atoi(row[0]) > 0)
 				{
 					logit(LOG_DEBUG,
-					      "sql_pwipe: Postflight FAILED: %d player_data rows retain active state or flight discoveries.",
+					      "sql_pwipe: Postflight FAILED: %d player_data rows have invalid identities, active state or flight discoveries.",
 					      atoi(row[0]));
 					postflight_ok = FALSE;
 				}
@@ -5379,6 +5414,12 @@ bool sql_pwipe(int code_verify)
 			{
 				logit(LOG_DEBUG,
 				      "sql_pwipe: Postflight FAILED: cannot query account_characters.");
+				postflight_ok = FALSE;
+			}
+			if (!sql_pwipe_pid_capacity_valid())
+			{
+				logit(LOG_STATUS,
+				      "sql_pwipe: Postflight FAILED: player PID capacity is outside the native range.");
 				postflight_ok = FALSE;
 			}
 			if (!postflight_ok)
