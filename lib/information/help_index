@@ -21673,7 +21673,37 @@ Avatar command (level 57). Shows a player's name, title, level, class, race, acc
 last save time, last known IP address with session info, and rent room.
 Works on offline players; you cannot finger higher-level characters.
 
-See also: WHOIS, USERS
+See also: LAST, WHOIS, USERS
+===========================================================================
+#
+LAST (Immortal Command)
+===========================================================================
+Syntax: last [<character> | unique] [<number>h | <number>d] [page <number>]
+
+Avatar command (level 57). Lists recorded character logins, newest first,
+with UTC time, current character name, account name at login, and player ID.
+Repeated logins appear separately. With no time filter, searches all retained
+history. Use a positive whole number of hours (24h) or days (7d) to limit it.
+
+Examples: last
+          last 24h
+          last Veridian 7d
+          last unique 7d
+          last 7d page 2
+
+A character lookup uses its current name and works while it is offline.
+'unique' shows the latest login per recorded account within the time window;
+alts share an account. Logins without an account snapshot are omitted only
+from this view. Other views label them '(unknown)'; missing characters are
+shown as '(deleted)' with their player ID.
+
+Each page contains up to 20 logins and prints the next/previous commands.
+Pages query live history, so new logins can shift results between requests.
+This records entering the game, not account-menu access or reconnects. It
+does not reconstruct history from before login auditing was enabled.
+Requires MariaDB; the flat-file build reports that history is unavailable.
+
+See also: FINGER, WHOIS, USERS
 ===========================================================================
 #
 "FLY (IMMORTAL)"

@@ -564,6 +564,7 @@ OBJS =  $(SHIP_OBJS) \
 				 net/ttype.o \
 				 account/wiz_newchar.o \
 				 cmd/battleprep.o \
+				 cmd/last.o \
 				 world/zcheck.o \
 				 telemetry/telemetry_activity.o \
 				 telemetry/telemetry_config.o \

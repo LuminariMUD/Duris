@@ -1,5 +1,34 @@
 # Daily account login statistics
 
+Staff can inspect individual login events in game with the Avatar-level `last`
+command. `last` searches all retained history; `last 24h`, `last Veridian 7d`,
+and `last unique 7d` filter by elapsed time, current character name, or latest
+login per account. Add `page 2` (and subsequent page numbers) to read all matches
+in batches of 20. The output includes UTC timestamps, current character names,
+account snapshots, and player IDs. New logins can shift these live pages.
+
+The command reads `session_audit_outcome` through the existing asynchronous SQL
+reader, including staff logins. It selects login events only, with deterministic
+ordering by event time and operation ID; unique-account selection uses that same
+ordering within the requested window. Accounts come from the event snapshot,
+never from current character ownership. Missing character rows retain their PID
+and display `(deleted)`. Unknown account snapshots display `(unknown)` and are
+omitted from the unique-account view. Character lookup uses the existing name
+index, so renamed characters must be requested under their current name. Account
+menu authentication and reconnect notices are not character-entry events.
+
+No schema change or new log is needed. Flat-file builds report that this command
+requires MariaDB. Publish the `LAST` topic from `lib/information/help_index` through
+the normal help import when deploying the command.
+
+Focused verification: `python3 tests/async/test_last_command.py`, and
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_last_command.py --mysql`.
+The latter executes the production command's queries on isolated tables, including
+repeated logins, time boundaries, ties, account transfers, and multiple pages.
+`tests/async/with_disposable_mariadb.sh python3 tests/async/run_last_command_journey.py`
+boots an isolated game to verify real staff dispatch, mortal denial, offline lookup,
+persisted logins, filters, paging, and the imported help topic.
+
 `scripts/login_stats_export.py` publishes `latest.json` for yesterday and
 `history.json` for up to 90 completed calendar days. Both files are replaced
 atomically. Days follow `--timezone` (UTC by default); today is excluded.
