@@ -5,6 +5,7 @@
  */
 
 #include "core/prototypes.h"
+#include "cmd/interp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -100,6 +101,26 @@ static void gmcp_durisweb_auth_failure(struct descriptor_data *d)
 		STATE(d) = CON_EXIT;
 }
 
+void gmcp_input_receipt(struct descriptor_data *d, const char *input)
+{
+	if (!d || !d->gmcp_enabled || !d->gmcp_command_receipts ||
+	    (input && STATE(d) != CON_PLAYING))
+		return;
+	if (input)
+		++d->gmcp_input_sequence;
+	cJSON *root = cJSON_CreateObject();
+	cJSON_AddNumberToObject(root, "sequence", d->gmcp_input_sequence);
+	if (input)
+		cJSON_AddStringToObject(root, "command", input_command_label(input));
+	char *json = cJSON_PrintUnformatted(root);
+	if (json)
+	{
+		gmcp_send(d, "Char.Input", json);
+		free(json);
+	}
+	cJSON_Delete(root);
+}
+
 /* handle incoming gmcp data from telnet client */
 void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len)
 {
@@ -120,6 +141,12 @@ void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len)
 			{
 				cJSON *client = cJSON_GetObjectItem(root, "client");
 				cJSON *version = cJSON_GetObjectItem(root, "version");
+				cJSON *receipts = cJSON_GetObjectItem(root, "commandReceipts");
+				if (cJSON_IsBool(receipts))
+				{
+					d->gmcp_command_receipts = cJSON_IsTrue(receipts);
+					gmcp_input_receipt(d, nullptr);
+				}
 				cJSON *sig = cJSON_GetObjectItem(root, "sig");
 				cJSON *challenge_request =
 					cJSON_GetObjectItem(root, "requestAuthChallenge");

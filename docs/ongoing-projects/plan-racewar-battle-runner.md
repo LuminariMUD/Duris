@@ -1,8 +1,9 @@
 # Watchable racewar group battle runner — lean first version
 
 Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
-Updated: 2026-10-27. The first chunk adds native preparation; the runner and
-full-party acceptance journey remain outstanding.
+Updated: 2026-10-27. Full-party provisioning and gear/spell preparation are in
+review. Native targeting, input receipts and targeted stop are the next chunk;
+the operator CLI, combat loop and full-battle acceptance remain outstanding.
 Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
 The issue and implementation PRs link here; partial PRs must not automatically close #405.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
@@ -573,3 +574,122 @@ Next: operator CLI, pre-fight buffs, normal-command combat, targeted stop, and t
 full battle journeys. The native input receipt extension is being developed in
 separate unstaged networking/descriptor files; it is not part of this preparation
 chunk. It acknowledges actual dequeue only, never successful combat execution.
+
+### Chunk 4: native battle controls ([PR #411](https://github.com/LuminariMUD/Duris/pull/411), ready for review)
+
+Branch: `branch/issue-405-battle-controls`, originally stacked on #410 at `ee90a711c`.
+Implementation commit: `ce7bf946a`. #406/#407/#409/#410 are now merged, and #411
+targets `master` after ordinary synchronization merge `0f808b50b`. Its native
+source tree exactly matches the combat checkout's integrated source tree
+`34c260e7765d97783f54df7d4285e4254b1b67e1`; the already-passed MariaDB/flat-file
+builds and focused native checks are reused. No history was rewritten.
+Worktree: `/home/aiwithapex/projects/duris-racewar-runner`. The reviewed #407
+prompt-ordering fix is included through #410's existing merge, without rewriting
+history. Operator work is on `branch/issue-405-racewar-combat`, which already
+contains this integrated source and retains its separate runner changes.
+
+Outcome: observe actual player input dequeue, obtain legal mortal room selectors,
+and stop only the selected participants and actions involving them. Non-goals:
+no combat dispatch, damage, lag, room-rule or resource shortcut; no new service,
+recovery subsystem or general action configuration. This is the minimum native
+support the one-script runner needs for bounded queues and reliable stop evidence.
+
+- `Core.Hello {"commandReceipts":true}` opts this connection into `Char.Input`.
+  The initial message has the current `sequence`; each playing-command dequeue
+  increments it and reports the canonical `command` verb. Arguments, credentials,
+  login, paging and editor input are not echoed. A receipt proves dequeue only,
+  not admission, completed casting or a successful effect. Renegotiation never
+  acknowledges queued input. Legacy clients do not opt in and receive no receipts.
+- `Room.Info.players[].target` is a normal keyword/ordinal selector, or null when
+  none is available. It shares the exact existing `get_char_room_vis()` matching
+  predicate, including racewar names, introduction, NPC collisions, visibility,
+  disguise and height. The normal command still resolves it at execution time;
+  it is not a stable identity and must be refreshed after movement/death.
+- `battleprep stop <exact-player-names>` drains selected descriptor queues and
+  partial input, aborts casting/memorizing/singing and pending item actions
+  involving those characters, then uses native targeted tranquilize. Linkdead
+  mortals can still be stopped. NPCs, staff and missing targets are reported.
+  `battleprep status <exact-player-names>` is read-only and reports quiet/pending,
+  including incoming melee. Quiet is a snapshot, so the runner must observe a
+  settling interval and must not claim success after a lost control connection.
+  Ongoing unrelated fights/actions remain untouched; incoming attacks involving
+  a selected participant necessarily stop with that participant.
+
+Files: `src/cmd/battleprep.c`, native descriptor/GMCP/room serializers and target
+lookup, `src/item/item_actions.{c,h}`, their focused tests, the existing provisioning
+journey's `--controls` diagnostic and this plan. Shared predicates avoid a second
+targeting or item-cancellation policy. No persistence path changed.
+
+Focused ASan/UBSan checks for input receipts, target selectors, battleprep and item
+actions pass, as do all 16 integrated runner tests and the GUI GMCP contract.
+Both backend builds pass. The four-PC native control journey passed with
+`--controls`; it is not a full-party battle acceptance run. Remaining work:
+operator CLI, pre-fight buffs, combat decisions and result classification,
+settled targeted stop, observer output, and two fresh 20/20 matches using the
+same accounts and different rooms. Do not mark #405 complete from control proof.
+
+Completed native proof on 2026-10-27:
+
+- `python3 tests/async/test_gmcp_input_receipts.py`,
+  `python3 tests/async/test_room_target_selectors.py`,
+  `python3 tests/async/test_battleprep_runtime.py` and
+  `python3 tests/async/test_item_actions_runtime.py`: sanitizer checks passed.
+- `python3 tests/async/test_gui_gmcp_contract.py`: serializer/wire checks passed.
+  All 16 existing runner checks and all 14 documentation checks passed.
+- `make -C src -j4` and the corresponding `PERSISTENCE_BACKEND=flatfile` build
+  passed. Formatting and diff whitespace checks passed.
+- `python3 tests/async/run_racewar_provision_journey.py --binary
+  bin/server/dms_battle_combat_flatfile --output bin/racewar-battles/controls-03
+  --controls`: four real geared PCs; opt-in look dequeue receipts, legal mortal
+  attack/spell selectors, native melee, active-cast abort, queued-attack stop,
+  quiet status after six seconds, an unaffected standing bystander and acknowledged
+  saves all passed. `controls-01`/`02` exposed test assumptions (case-normalized
+  status names and score not refreshing GMCP vitals); those assertions were fixed
+  to check native status and observed score/prompt output instead of cached data.
+- Binary SHA-256:
+  `890d4f9d7acd6949038fa8b7a4f6d9a9ee472d92a55d91a7d8fd5f3dd450910c`.
+  Evidence: `bin/racewar-battles/controls-03/result.json`,
+  `match-1/controls.json`, per-character transcripts and native server logs.
+
+The user reiterated that discovering game defects and observing load/performance
+are primary purposes. The full-battle chunk must retain failure evidence and
+sample controller responsiveness during combat; investigate reproducible findings
+and ship focused repairs. Queue/cast elapsed time includes native gameplay lag and
+must not be represented as server processing latency. A successful fight alone
+does not prove capacity or long-term stability. The user is merging ready PRs
+individually; check live dependency state before publishing/retargeting each chunk.
+
+### Native finding: queued input crosses death into the account menu ([PR #412](https://github.com/LuminariMUD/Duris/pull/412), ready for review)
+
+The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
+gameplay input was then consumed by the account menu (`Invalid Selection` after
+the death/menu output). This is a game-session transition defect independent of
+the runner's conservative handling of absent dead PCs.
+
+Fix branch: `branch/issue-405-death-input`, based on #411. The ordinary extraction
+transition and direct hardcore-death transition now discard queued and partial
+input while preserving output. `flush_input_queue()` also replaces the same
+drain loop in targeted battle stop and is reused when closing a descriptor.
+There is no new state machine, gameplay rule or persistence mutation.
+
+Files: `src/net/comm.{c,h}`, `src/world/handler.c`, `src/combat/fight.c`,
+`src/cmd/battleprep.c`, focused native input-reset/battleprep tests, and
+`tests/async/run_death_input_journey.py`. The native sanitizer test proves complete
+and partial input clearing, intact death/menu output, unrelated session isolation,
+idempotence and fresh menu input. A real-client regression sends benign type-ahead
+behind an ordinary attack on the existing disposable executioner fixture, then
+checks native death, the account menu and a fresh character-list selection.
+Verified on 2026-10-27: both backend builds, the input-reset and battleprep
+ASan/UBSan tests, terminal saved-item extraction contracts, formatting and
+changed-line clang-tidy pass. The real-client journey fails on the prior binary
+with `queued gameplay reached the account menu` and passes on the fixed binary,
+including death/menu output and a fresh menu selection. No persistence
+implementation changed, so an unrelated database matrix was not run.
+
+Evidence in the combat worktree: `bin/racewar-battles/death-input-before/` and
+`bin/racewar-battles/death-input-after/`. Fixed binary SHA-256:
+`3606bc3b6d7fb39d68c3925a0d9b5df5644e1de6fa9880d49731a9fb97785ab3`.
+The tested complete `src` tree is `7b265f78e455a56f8afc34b91c9df829f89e3698`,
+identical on this focused branch and the integrated combat checkout. Full battle
+acceptance and the separately discovered 15-participant PvP outcome limit remain
+in progress; this chunk does not close #405.

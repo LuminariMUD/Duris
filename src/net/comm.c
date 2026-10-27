@@ -1601,6 +1601,9 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
 		string_add(descriptor, input);
 		break;
 	case session_input_route::playing:
+		// Observe actual dequeue before the handler can extract its character
+		// or close the descriptor. No login, pager or editor input is exposed.
+		gmcp_input_receipt(descriptor, input);
 		dispatch_playing_command(character, input);
 		break;
 	case session_input_route::nanny:
@@ -3243,14 +3246,22 @@ struct timeval timediff(struct timeval *a, struct timeval *b)
  * Empty the queues before closing connection
  */
 
+void flush_input_queue(P_desc d)
+{
+	char discarded[MAX_STRING_LENGTH];
+	while (get_from_q(&d->input, discarded))
+		;
+	d->buflen = 0;
+	d->buf[0] = 0;
+}
+
 void flush_queues(P_desc d)
 {
 	char str[MAX_STRING_LENGTH];
 
 	while (get_from_q(&d->output, str))
 		;
-	while (get_from_q(&d->input, str))
-		;
+	flush_input_queue(d);
 }
 
 int wizconnectsite(char *name, char *player, int flag)

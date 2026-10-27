@@ -725,6 +725,11 @@ char *json_build_room_info(struct room_data *room, struct char_data *ch)
 			clean_name = json_game_string(GET_NAME(tch));
 			cJSON_AddStringToObject(player, "name", clean_name);
 			free(clean_name);
+			char selector[MAX_INPUT_LENGTH];
+			if (get_char_room_target(ch, tch, selector, sizeof(selector)))
+				cJSON_AddStringToObject(player, "target", selector);
+			else
+				cJSON_AddNullToObject(player, "target");
 			cJSON_AddItemToArray(players, player);
 		}
 	}

@@ -2793,6 +2793,7 @@ void die(P_char ch, P_char killer)
 				if (ch->desc && ch->desc->account)
 				{
 					P_desc d = ch->desc;
+					flush_input_queue(d);
 
 					if (hardcore_config_get()->death_messages_enabled)
 					{

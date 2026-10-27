@@ -9,6 +9,65 @@
 #include "world/db.h"
 
 extern Skill skills[];
+extern void tranquilize(P_char, P_char);
+extern void event_abort_spell(P_char, P_char, P_obj, void *);
+
+static void battle_stop_status(P_char staff, char *argument, bool stop)
+{
+	char name[MAX_INPUT_LENGTH];
+	if (!*argument)
+	{
+		send_to_char("Usage: battleprep stop|status <exact-player-names>\r\n", staff);
+		return;
+	}
+	for (;;)
+	{
+		argument = one_argument(argument, name);
+		if (!*name)
+			break;
+		P_char victim = get_char_vis(staff, name);
+		if (!victim || str_cmp(GET_NAME(victim), name))
+		{
+			send_to_char_f(staff, "Battleprep status %s missing.\r\n", name);
+			continue;
+		}
+		if (IS_NPC(victim) || GET_LEVEL(victim) > MAXLVLMORTAL)
+		{
+			send_to_char_f(staff, "Battleprep status %s refused.\r\n", name);
+			continue;
+		}
+		if (!IS_ALIVE(victim) || victim->in_room == NOWHERE)
+		{
+			send_to_char_f(staff, "Battleprep status %s unavailable.\r\n", name);
+			continue;
+		}
+		if (stop)
+		{
+			if (victim->desc)
+				flush_input_queue(victim->desc);
+			StopCasting(victim);
+			disarm_char_nevents(victim, event_abort_spell);
+			stop_memorizing(victim, memorization_stop_reason::voluntary);
+			stop_singing(victim);
+			item_actions_stop(victim);
+			tranquilize(staff, victim);
+			logit(LOG_WIZ, "%s stopped battle participant %s", GET_NAME(staff),
+			      GET_NAME(victim));
+		}
+		const bool queued = victim->desc &&
+				    (victim->desc->input.head || victim->desc->buflen);
+		bool incoming = false;
+		for (P_char other = world[victim->in_room].people; other;
+		     other = other->next_in_room)
+			if (GET_OPPONENT(other) == victim)
+				incoming = true;
+		const bool quiet = !queued && !incoming && !GET_OPPONENT(victim) &&
+				   !IS_CASTING(victim) && !IS_AFFECTED2(victim, AFF2_MEMORIZING) &&
+				   !SINGING(victim) && !item_actions_pending(victim);
+		send_to_char_f(staff, "Battleprep status %s %s.\r\n", name,
+			       quiet ? "quiet" : "pending");
+	}
+}
 
 // Use the live class tables even on Chaos, whose normal advancement deliberately
 // grants a blanket 100. Battle characters need the actual unspecialized ceilings.
@@ -106,6 +165,11 @@ void do_battleprep(P_char ch, char *argument, int /*cmd*/)
 		return;
 	char name[MAX_INPUT_LENGTH], operation[MAX_INPUT_LENGTH], extra[MAX_INPUT_LENGTH];
 	argument = one_argument(argument, name);
+	if (!str_cmp(name, "stop") || !str_cmp(name, "status"))
+	{
+		battle_stop_status(ch, argument, !str_cmp(name, "stop"));
+		return;
+	}
 	argument = one_argument(argument, operation);
 	one_argument(argument, extra);
 	if (!*name || *extra ||
@@ -113,7 +177,8 @@ void do_battleprep(P_char ch, char *argument, int /*cmd*/)
 	     str_cmp(operation, "equipment") && str_cmp(operation, "equip")))
 	{
 		send_to_char(
-			"Usage: battleprep <exact-player-name> baseline|spells|equip|equipment\r\n",
+			"Usage: battleprep <exact-player-name> baseline|spells|equip|equipment\r\n"
+			"       battleprep stop|status <exact-player-names>\r\n",
 			ch);
 		return;
 	}

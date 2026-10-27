@@ -3933,6 +3933,8 @@ void extract_char(P_char ch)
 
 		if (ch->desc && ch->desc->connected != CON_DELETE)
 		{
+			// Gameplay type-ahead must not become account/menu input after extraction.
+			flush_input_queue(ch->desc);
 #ifndef USE_ACCOUNT
 			ch->desc->connected = CON_MAIN_MENU;
 			SEND_TO_Q(MENU, ch->desc);
@@ -4031,6 +4033,63 @@ P_char get_char_ranged_vis(P_char ch, char *arg, int range)
 	return NULL;
 }
 
+static bool room_target_matches(P_char ch, P_char i, const char *tmp)
+{
+	return CAN_SEE(ch, i) && (ch->specials.z_cord == i->specials.z_cord) &&
+	       ((IS_TRUSTED(ch) && isname(tmp, GET_NAME(i))) || // Is imm looking at existing name
+		(isname(tmp, GET_NAME1(i)) &&
+		 (!racewar(ch,
+			   i) || // Is name of real or disguised? & is there racewar?(no if same faction)
+		  IS_ILLITHID(ch) ||
+		  IS_PILLITHID(ch) || IS_TRUSTED(ch))) ||
+		//(IS_DISGUISE(i) && IS_DISGUISE_PC(i) && isname(tmp, GET_DISGUISE_NAME(i))) ||
+		(IS_DISGUISE(i) && IS_DISGUISE_NPC(i) && isname(tmp, GET_DISGUISE_TITLE(i)) &&
+		 racewar(ch, i)) ||
+		((isname(tmp, race_names_table[GET_RACE1(i)].normal) &&
+		  /*  !IS_DISGUISE_NPC(i) && */ (
+			  !is_introd(i, ch) ||
+			  /* racewar(ch, i) || */ (IS_DISGUISE(i) && (i != ch))))) ||
+		(isname(tmp, GET_NAME(i)) && (IS_NPC(i))) ||
+		((i != ch) && !IS_TRUSTED(ch) && !CAN_DAYPEOPLE_SEE(ch->in_room) &&
+		 (IS_AFFECTED(ch, AFF_INFRAVISION) || has_innate(ch, INNATE_OPHIDIAN_EYES)) &&
+		 (isname(tmp, "shape") || isname(tmp, "outline"))));
+}
+
+// Return a selector that normal mortal commands resolve to this exact target.
+// Counting uses the same visibility, introduction, racewar and height rules.
+bool get_char_room_target(P_char viewer, P_char target, char *out, size_t capacity)
+{
+	if (!out || !capacity)
+		return false;
+	out[0] = 0;
+	if (!viewer || !target || viewer->in_room == NOWHERE || viewer->in_room != target->in_room)
+		return false;
+	char race_word[MAX_INPUT_LENGTH];
+	one_argument(race_names_table[GET_RACE1(target)].normal, race_word);
+	const char *words[] = { GET_NAME(target), race_word };
+	for (const char *word : words)
+	{
+		if (!room_target_matches(viewer, target, word))
+			continue;
+		int ordinal = 0;
+		for (P_char candidate = world[viewer->in_room].people; candidate;
+		     candidate = candidate->next_in_room)
+		{
+			if (room_target_matches(viewer, candidate, word))
+				++ordinal;
+			if (candidate == target)
+			{
+				const std::string selector = std::to_string(ordinal) + "." + word;
+				if (selector.size() >= capacity)
+					return false;
+				memcpy(out, selector.c_str(), selector.size() + 1);
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 P_char get_char_room_vis(P_char ch, const char *name)
 {
 	P_char i;
@@ -4055,25 +4114,7 @@ P_char get_char_room_vis(P_char ch, const char *name)
 
 	for (i = world[ch->in_room].people, j = 1; i && (j <= k); i = i->next_in_room)
 	{
-		if (CAN_SEE(ch, i) && (ch->specials.z_cord == i->specials.z_cord) &&
-		    ((IS_TRUSTED(ch) &&
-		      isname(tmp, GET_NAME(i))) || // Is imm looking at existing name
-		     (isname(tmp, GET_NAME1(i)) &&
-		      (!racewar(ch,
-				i) || // Is name of real or disguised? & is there racewar?(no if same faction)
-		       IS_ILLITHID(ch) ||
-		       IS_PILLITHID(ch) || IS_TRUSTED(ch))) ||
-		     //(IS_DISGUISE(i) && IS_DISGUISE_PC(i) && isname(tmp, GET_DISGUISE_NAME(i))) ||
-		     (IS_DISGUISE(i) && IS_DISGUISE_NPC(i) && isname(tmp, GET_DISGUISE_TITLE(i)) &&
-		      racewar(ch, i)) ||
-		     ((isname(tmp, race_names_table[GET_RACE1(i)].normal) &&
-		       /*  !IS_DISGUISE_NPC(i) && */ (
-			       !is_introd(i, ch) ||
-			       /* racewar(ch, i) || */ (IS_DISGUISE(i) && (i != ch))))) ||
-		     (isname(tmp, GET_NAME(i)) && (IS_NPC(i))) ||
-		     ((i != ch) && !IS_TRUSTED(ch) && !CAN_DAYPEOPLE_SEE(ch->in_room) &&
-		      (IS_AFFECTED(ch, AFF_INFRAVISION) || has_innate(ch, INNATE_OPHIDIAN_EYES)) &&
-		      (isname(tmp, "shape") || isname(tmp, "outline")))))
+		if (room_target_matches(ch, i, tmp))
 		{
 			if (j == k)
 				return (i);

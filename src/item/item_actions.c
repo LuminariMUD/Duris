@@ -173,6 +173,12 @@ void cancel_matching(Predicate predicate,
 		cancel_action(entry, reason);
 }
 
+bool references_character(const pending_item_action &entry, uint64_t id)
+{
+	return entry.identity.actor_id == id || entry.identity.target_id == id ||
+	       entry.selected->adapter->references_character(id);
+}
+
 // Never dereference the saved object pointer until it is found on the live actor.
 // Extraction also cancels synchronously, including reuse of the same item UID.
 P_obj live_source(const pending_item_action &entry, P_char actor)
@@ -650,6 +656,27 @@ size_t item_actions_pending()
 	return pending.size();
 }
 
+size_t item_actions_pending(P_char character)
+{
+	if (!character)
+		return 0;
+	size_t count = 0;
+	for (const auto &[id, entry] : pending)
+		if (references_character(*entry, character->runtime_id))
+			++count;
+	return count;
+}
+
+void item_actions_stop(P_char character)
+{
+	if (!character || !nevent_require_game_thread("item_actions_stop"))
+		return;
+	const uint64_t id = character->runtime_id;
+	cancel_matching([id](const pending_item_action &entry)
+			{ return references_character(entry, id); },
+			item_action_cancel_reason::abort);
+}
+
 bool item_action_pending(uint64_t id)
 {
 	return pending.contains(id);
@@ -743,8 +770,7 @@ void item_actions_character_leaving(P_char character)
 	const uint64_t id = character->runtime_id;
 	std::vector<std::shared_ptr<pending_item_action>> selected;
 	for (const auto &[token, entry] : pending)
-		if (entry->identity.actor_id == id || entry->identity.target_id == id ||
-		    entry->selected->adapter->references_character(id))
+		if (references_character(*entry, id))
 			selected.push_back(entry);
 	for (const auto &entry : selected)
 		cancel_action(entry, entry->identity.actor_id == id ?
