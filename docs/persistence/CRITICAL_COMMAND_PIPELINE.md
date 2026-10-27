@@ -33,7 +33,21 @@ owned SQL statements through `sql_async`.
 | Session audit | `session_audit_outcome` | player |
 
 Wallets and banks are not commands ([Money lives in memory](#money-lives-in-memory)).
-Fan-out is bounded at 15 participants or artifacts and 32 boon results per command.
+PvP fan-out is bounded at 40 participants, covering both configured 20-player
+groups. Artifact fan-out remains 15 and boon results remain 32 per command.
+The maximum encoded command payload is 8 MiB; coordinator admission still uses
+the existing total memory budget. Public equipment/log snapshots are not truncated.
+
+Full-group combat results use an 8,192-byte bounded buffer. Outcomes of up to 15
+participants retain their previous 1,536/2,048-byte result encodings, and both
+legacy sizes remain readable. Native player-domain/receipt format 4 admits the
+larger result; formats 1–3 remain readable with their old result bounds. A single
+flat-file authority transaction can carry 82 operations (40 player writes, up to
+40 prepared-delivery writes, the result receipt and delivery index). Its byte
+budget is unchanged. SQL installations require migration
+`0054_full_group_combat_results`, which widens the critical inbox result column.
+Older binaries cannot read the new large results/native format; do not roll back
+over stores that contain them.
 
 ## Acceptance and execution
 

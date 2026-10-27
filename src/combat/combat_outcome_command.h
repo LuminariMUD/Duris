@@ -24,13 +24,16 @@
 #include <string>
 
 constexpr uint16_t COMBAT_OUTCOME_PAYLOAD_VERSION = 6;
-constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 15;
+// Capture both configured full racewar groups in the same atomic outcome.
+constexpr size_t COMBAT_OUTCOME_MAX_PARTICIPANTS = 40;
+constexpr size_t COMBAT_OUTCOME_LEGACY_MAX_PARTICIPANTS = 15;
 constexpr size_t COMBAT_OUTCOME_ROOM_NAME_MAX_BYTES = 96;
 constexpr size_t COMBAT_OUTCOME_DESCRIPTION_MAX_BYTES = 255;
 constexpr size_t COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES = 65535;
 constexpr size_t COMBAT_OUTCOME_LOG_MAX_BYTES = 99999;
 constexpr size_t COMBAT_OUTCOME_LEGACY_RESULT_BYTES = 1536;
-constexpr size_t COMBAT_OUTCOME_RESULT_BYTES = 2048;
+constexpr size_t COMBAT_OUTCOME_PREPARED_RESULT_BYTES = 2048;
+constexpr size_t COMBAT_OUTCOME_RESULT_BYTES = 8192;
 // Every participant can retain the legacy snapshots without losing the outcome
 // when a full group has long logs. The coordinator still enforces its byte budget.
 static_assert(COMBAT_OUTCOME_MAX_PARTICIPANTS * (COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES +
@@ -133,7 +136,9 @@ struct combat_outcome_result
 
 inline size_t combat_outcome_result_size(const combat_outcome_result &result)
 {
-	return result.prepared_at ? COMBAT_OUTCOME_RESULT_BYTES :
+	if (result.participant_count > COMBAT_OUTCOME_LEGACY_MAX_PARTICIPANTS)
+		return COMBAT_OUTCOME_RESULT_BYTES;
+	return result.prepared_at ? COMBAT_OUTCOME_PREPARED_RESULT_BYTES :
 				    COMBAT_OUTCOME_LEGACY_RESULT_BYTES;
 }
 

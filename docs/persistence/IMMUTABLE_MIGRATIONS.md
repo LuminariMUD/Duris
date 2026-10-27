@@ -11,6 +11,15 @@ Duris has two deliberately separate histories:
 
 ## Honest baseline adoption
 
+`0054_full_group_combat_results` (sequence 55) widens
+`critical_operation_inbox.result_payload` from `VARBINARY(4096)` to
+`VARBINARY(8192)` for atomic 20/20 PvP outcomes. It changes no table count and
+preserves existing result bytes. The guarded apply only widens the known prior
+shape, uses `ALGORITHM=INPLACE, LOCK=NONE`, and is re-runnable. Unexpected shapes
+are left intact and rejected by the verifier. Apply through the normal migration
+runner before starting the new writer; production execution remains separately
+authorized. The sealed bootstrap and existing immutable migrations are unchanged.
+
 `0053_misty_vale_shop_indexes` (sequence 54) repairs the saved shop indexes
 shifted by the Misty Vale shop inserted at index 534. It covers all 18 following
 shop identities, including the appended secondary and Meadowbrook shops. Rows
