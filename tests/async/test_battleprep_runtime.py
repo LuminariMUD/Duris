@@ -36,6 +36,8 @@ char *one_argument(const char *text, char *word) {
     *word = 0; return const_cast<char *>(text);
 }
 bool item_action_active(P_char) { return item_pending; }
+bool chaos_kit_equipment_ready(P_char, P_char) { return false; }
+void equip_chaos_kit(P_char) {}
 char affect_total(P_char, int) { return 0; }
 int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void advance_to_level(P_char ch, int level) {

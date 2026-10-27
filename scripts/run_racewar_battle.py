@@ -212,7 +212,8 @@ class Client:
             await self.send(line)
             output = ""
             if expected:
-                _, output = await self.expect(expected, timeout=timeout)
+                needles = (expected,) if isinstance(expected, str) else expected
+                _, output = await self.expect(*needles, timeout=timeout)
             response_end = self.text_received - len(self.pending)
             await self.wait_for(lambda: self.prompts > before and self.prompt_end >= response_end,
                                 "waiting for a command prompt", timeout)
@@ -257,6 +258,30 @@ ROSTERS = {
         ("Githyanki", "Conjurer"), ("Goblin", "Illusionist"), ("Tiefling", "Ethermancer"),
         ("Drow Elf", "Summoner"), ("Minotaur", "Mercenary"))],
 }
+
+# Small explicit loadouts, validated by native memorize/pray admission. Resource
+# models that cast from mana or circle slots need no prepared-copy inventory.
+SPELL_LOADOUTS = {
+    "paladin": ("armor", "heal"),
+    "antipaladin": ("cause critical", "harm"),
+    "cleric": ("full heal", "harm"),
+    "shaman": ("greater mending", "scathing wind"),
+    "sorcerer": ("magic missile", "prismatic ray"),
+    "conjurer": ("magic missile", "fireball"),
+    "summoner": ("magic missile", "prismatic ray"),
+    "illusionist": ("magic missile", "stunning visions"),
+    "necromancer": ("slashing darkness", "energy drain"),
+    "reaver": ("magic missile", "chill touch"),
+    "psionicist": ("ego whip", "psychic crush"),
+    "druid": ("barkskin", "lightning bolt"),
+    "ranger": ("barkskin",),
+    "ethermancer": ("ice missile", "ice storm"),
+    "blighter": ("acid blast", "harm"),
+}
+BOOK_CLASSES = {"sorcerer", "conjurer", "necromancer", "illusionist", "bard", "summoner", "reaver"}
+PRAYING_CLASSES = {"cleric", "paladin", "antipaladin"}
+SLOT_RECOVERY = {"ranger": "commune", "druid": "commune", "dragoon": "commune",
+                 "blighter": "deforest", "ethermancer": "tupor"}
 
 
 def roster(side, count):
@@ -434,7 +459,7 @@ async def create_character(client, account, character, side, build):
     await client.send("y")
     await client.expect("PRESS RETURN")
     await client.send("")
-    await client.expect("Your starter kit is ready", timeout=60)
+    await client.expect("Your starter kit is ready", "Your Chaos Equipment has been prepared!!", timeout=60)
     await client.wait_for(lambda: client.gmcp.get("Char.Status", {}).get("name", "").lower() == character.lower()
                           and client.prompts > client.status_prompt,
                           "waiting for character entry")
@@ -528,17 +553,119 @@ async def place_groups(staff, clients, rows, caps, room):
         for row in party[1:]:
             await clients[row["name"]].command(f"consent {leader_name}")
             await leader.command(f"group {row['name']}", expected="is now a member of your group")
-        await leader.command("group")
-        expected_names = {row["name"].casefold() for row in party}
-
-        def complete():
-            group = leader.gmcp.get("Group.Status", {})
-            members = group.get("members", [])
-            return (group.get("size") == caps[side] and group.get("maxSize") == caps[side]
-                    and {m["name"].casefold() for m in members} == expected_names
-                    and all(not m["isNpc"] and m["inRoom"] for m in members))
-
-        await leader.wait_for(complete, f"verifying full {side} group")
         # Native rank commands currently return without changing ranks. Preserve
         # the server's default ranks; don't revive that disabled game mechanic.
+    await refresh_groups(clients, rows, caps)
     return room
+
+
+async def refresh_groups(clients, rows, caps):
+    """Read live membership; level changes alone do not refresh cached Group.Status."""
+    groups = {}
+    for side in caps:
+        party = [row for row in rows if row["side"] == side]
+        leader = clients[next(row["name"] for row in party if row["index"] == 0)]
+        leader.gmcp.pop("Group.Status", None)
+        await leader.command("group")
+        group = await leader.wait_for(lambda: leader.gmcp.get("Group.Status"), "reading live group membership")
+        members = group.get("members", [])
+        if (group.get("size") != caps[side] or group.get("maxSize") != caps[side] or
+            {m["name"].casefold() for m in members} != {row["name"].casefold() for row in party} or
+            not all(not m["isNpc"] and m["inRoom"] for m in members)):
+            raise BattleError(f"The {side} group is no longer full and present")
+        expected_levels = {row["name"].casefold(): row["level"] for row in party if "level" in row}
+        if any(m["name"].casefold() in expected_levels and m["level"] != expected_levels[m["name"].casefold()]
+               for m in members):
+            raise BattleError(f"The {side} group's live levels differ from preparation")
+        groups[side] = group
+    return groups
+
+
+async def prepare_fighters(staff, clients, rows, run_dir):
+    """Prepare fresh PCs using existing grant/equip/book/restoration commands."""
+    path = Path(run_dir) / "preparation.json"
+    for row in rows:
+        name = row["name"]
+        player = clients[name]
+        cls = normalized(row["class"])
+        row["preparation"] = "preparing"
+        try:
+            # Only these newly created identities are reconciled. Ordinary drops
+            # preserve native starter-item and ownership behavior; no purge/wipe.
+            # Grant before advancement: its asynchronous achievement rewards
+            # must not race the Chaos grant's empty-inventory admission check.
+            await player.command("remove all", expected=("You stop using", "You are quite naked"))
+            await player.command("drop all", expected=("You drop", "You do not seem to have anything", "You can't drop"))
+            deadline = asyncio.get_running_loop().time() + 30
+            while True:
+                inventory = await player.command("inventory", expected="You are carrying:")
+                count = re.search(r"You are carrying:\s*\((\d+)/", inventory)
+                if count and int(count[1]) == 0:
+                    break
+                if asyncio.get_running_loop().time() >= deadline:
+                    raise BattleError(f"{name}: starting inventory did not clear through normal drops")
+                await asyncio.sleep(.25)
+            player.pending = ""
+            grant = await staff.command(f"chaos kit {name}", expected=("Chaos equipment restoration queued.",
+                "Chaos equipment could not be restored", "That character has items", "already has equipment"))
+            if "Chaos equipment restoration queued." not in grant:
+                raise BattleError(f"{name}: CHAOS grant rejected: {grant.strip()}")
+            await player.expect("Your Chaos Equipment has been prepared!!", timeout=60)
+            baseline = await staff.command(f"battleprep {name} baseline", expected=f"{name} baseline ready")
+            cap = re.search(r"baseline ready at level (\d+)", baseline)
+            if not cap:
+                raise BattleError(f"{name}: native baseline did not report its level")
+            checked = await staff.command(f"battleprep {name} equip", expected=f"Battleprep: {name} equipment")
+            if f"{name} equipment ready." not in checked:
+                raise BattleError(f"{name}: CHAOS loadout incomplete: {checked.strip()}")
+            row["equipment"] = await player.command("equipment")
+            if cls in BOOK_CLASSES:
+                inventory = await player.command("inventory", expected="You are carrying:")
+                if "master spellbook" not in inventory:
+                    await staff.command("load obj 7", expected="master spellbook")
+                    await staff.command(f"give master {name}")
+                    inventory = await player.command("inventory", expected="master spellbook")
+                row["master_book"] = "master spellbook" in inventory
+            spells = SPELL_LOADOUTS.get(cls, ())
+            row["selected_spells"] = list(spells)
+            if spells and (cls in BOOK_CLASSES or cls == "shaman" or cls in PRAYING_CLASSES):
+                recovery = "pray" if cls in PRAYING_CLASSES else "memorize"
+                await player.command("rest")
+                for _ in range(2):
+                    for spell in spells:
+                        output = await player.command(f"{recovery} {spell}")
+                        if not re.search(rf"You are (?:memorizing|praying for) {re.escape(spell)}\b", output):
+                            raise BattleError(f"{name}: {spell} was not queued: {output.strip()}")
+                await staff.command(f"battleprep {name} spells", expected="newly prepared spells.")
+                listing = await player.command(recovery, expected="You have memorized")
+                if any(not re.search(rf"\b2 - {re.escape(spell)}\b", listing) for spell in spells):
+                    raise BattleError(f"{name}: selected prepared spell counts did not match")
+                row["prepared_spells"] = {spell: 2 for spell in spells}
+                await player.command("stand")
+            await player.command("toggle wimpy 0")
+            await staff.command(f"restore {name}", expected="Done.")
+            if cls in SLOT_RECOVERY:
+                listing = await player.command(SLOT_RECOVERY[cls], expected="spell slots available:")
+                slots = re.findall(r"(\d+)(?:st|nd|rd|th) circle:\s*(\d+) of\s*(\d+)", listing)
+                if len(slots) != 12 or any(current != maximum for _, current, maximum in slots):
+                    raise BattleError(f"{name}: native spell slots are not full")
+                row["spell_slots"] = {circle: int(current) for circle, current, _ in slots}
+            score = await player.command("score", expected="Hit points:")
+            level = re.search(r"Level:\s*(\d+)", score)
+            if not level or level[1] != cap[1]:
+                raise BattleError(f"{name}: score does not match the prepared level")
+            row["level"] = int(level[1])
+            resources = re.findall(r"(Hit points|Mana|Moves):\s*(\d+)\s*\(\s*(\d+)\)", score)
+            if not resources or any(current != maximum for _, current, maximum in resources):
+                raise BattleError(f"{name}: native score does not show full starting resources")
+            row["starting_resources"] = {resource: int(current) for resource, current, _ in resources}
+            row["vitals"] = player.gmcp["Char.Vitals"]
+            await player.command("save", expected=f"Save complete for {name}.")
+            row["preparation"] = "ready"
+            print(f"Prepared {row['side']} {row['index'] + 1}: {row['race']} {row['class']} ({name})", flush=True)
+        except Exception as error:
+            row["preparation"] = "failed"
+            row["error"] = str(error)
+            raise
+        finally:
+            path.write_text(json.dumps(rows, indent=2))
