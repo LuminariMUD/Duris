@@ -3,8 +3,8 @@
 Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
 Updated: 2026-10-27. The first chunk adds native preparation; the runner and
 full-party acceptance journey remain outstanding.
-Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan),
-also linked in the issue's Development section.
+Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
+The issue and implementation PRs link here; partial PRs must not automatically close #405.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
 
 ## Outcome and scope
@@ -347,6 +347,10 @@ Implementation commit: `ffd1463fd` on `branch/issue-405-racewar-battle-plan`.
 The PR targets `master`; dependent work should branch from its head and target
 this branch until #406 merges. The PR remains open; no merge or deployment has
 been performed.
+GitHub converted the original issue-linked branch into a closing PR link at PR
+creation. That link was removed; ordinary issue/PR/plan references remain. Check
+`closingIssuesReferences` before publishing other partial chunks so #405 stays
+open until all acceptance criteria pass.
 
 `battleprep <exact-player-name> baseline|spells` is registered as an Overlord
 command, without environment or Chaos gates. `baseline` uses native advancement,
