@@ -444,10 +444,10 @@ with tempfile.TemporaryDirectory(prefix="duris-player-save-pipeline-", dir=ROOT 
     production = "#define TOG_OFF 0\n#define TOG_ON 1\n"
     production += "#define PLR_TOG(flag) plr_tog(PLR_FLAGS(ch), flag, arg)\n#define PLR2_TOG(flag) plr_tog(PLR2_FLAGS(ch), flag, arg)\n#define PLR3_TOG(flag) plr_tog(PLR3_FLAGS(ch), flag, arg)\n"
     production += actoth[actoth.index("static const char *toggles_list[]"):actoth.index("void do_more(")]
-    for filename, signature in [("interp.c", "bool is_abbrev("), ("interp.c", "int old_search_block("),
+    for filename, signature in [("interp.c", "char *lohrr_chop("), ("interp.c", "bool is_abbrev("), ("interp.c", "int old_search_block("),
                                 ("utility.c", "int yes_no("), ("utility.c", "int strn_cmp("),
                                 ("actoth.c", "static const char *term_name("), ("actoth.c", "static int plr_tog("),
-                                ("actoth.c", "static int gmcp_tog("), ("actoth.c", "void do_toggle(")]:
+                                ("actoth.c", "void do_toggle(")]:
         production += "\n" + extract_function(filename, signature)
     capture = (SRC / "player_snapshot_capture.c").read_text()
     production += "\n" + capture[capture.index("struct capture_budget"):capture.index("template <typename T> bool add_index_value")]
