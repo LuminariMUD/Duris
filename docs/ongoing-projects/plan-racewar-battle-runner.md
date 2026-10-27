@@ -679,5 +679,17 @@ and partial input clearing, intact death/menu output, unrelated session isolatio
 idempotence and fresh menu input. A real-client regression sends benign type-ahead
 behind an ordinary attack on the existing disposable executioner fixture, then
 checks native death, the account menu and a fresh character-list selection.
-Both backend builds and before/after wire proof are being completed before PR
-publication. Full battle acceptance remains in the combat branch.
+Verified on 2026-10-27: both backend builds, the input-reset and battleprep
+ASan/UBSan tests, terminal saved-item extraction contracts, formatting and
+changed-line clang-tidy pass. The real-client journey fails on the prior binary
+with `queued gameplay reached the account menu` and passes on the fixed binary,
+including death/menu output and a fresh menu selection. No persistence
+implementation changed, so an unrelated database matrix was not run.
+
+Evidence in the combat worktree: `bin/racewar-battles/death-input-before/` and
+`bin/racewar-battles/death-input-after/`. Fixed binary SHA-256:
+`3606bc3b6d7fb39d68c3925a0d9b5df5644e1de6fa9880d49731a9fb97785ab3`.
+The tested complete `src` tree is `7b265f78e455a56f8afc34b91c9df829f89e3698`,
+identical on this focused branch and the integrated combat checkout. Full battle
+acceptance and the separately discovered 15-participant PvP outcome limit remain
+in progress; this chunk does not close #405.
