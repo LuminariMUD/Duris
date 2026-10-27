@@ -408,3 +408,71 @@ reuse `StopCasting()` (which also aborts item actions), `stop_singing()`,
 `stop_memorizing()` and targeted `tranquilize()`, with explicit participant input
 queue draining and observed settling. Their presence alone is not stop proof;
 the next chunk must exercise queued actions and actual kit effects.
+
+### Chunk 2: real connections and full-roster provisioning (verified; publishing for review)
+
+Working branch: `branch/issue-405-racewar-runner`, based on #406 at `ba32e7831`.
+The next PR targets `branch/issue-405-racewar-battle-plan` while #406 is open.
+Active worktree: `/home/aiwithapex/projects/duris-racewar-runner` (Windows:
+`\\wsl.localhost\Ubuntu\home\aiwithapex\projects\duris-racewar-runner`).
+The primary `/home/aiwithapex/projects/duris` was released clean for the separately
+authorized local master rebuild; do not run this task's builds or journeys there.
+The app worktree tool hit a Windows Git ownership check, so this is a native WSL
+Git worktree. Required ignored binaries, world files and evidence were copied
+before releasing primary; no credentials or player data from the local MUD were copied.
+
+`scripts/run_racewar_battle.py` now contains an asyncio client with incremental
+Telnet/GMCP framing, continuous socket draining, bounded retained text and
+timestamped gameplay logs that start after login. Preparation commands serialize
+per connection. A prompt is explicitly **not** proof of a combat action; the
+future combat loop still needs action-specific completion/rejection checks.
+
+Provisioning uses the normal registration and creation flow, four simultaneous
+admissions below the native eight-login limit, live race/class menus, separate
+accounts, and fresh characters. Credentials are kept in a reusable private
+account-pool file; run rosters contain only identities and preparation state.
+The two leaders supply independent `Group.Status.maxSize` values. Existing staff
+`stat room`, `goto` and named `transfer` commands support default/explicit location,
+including wilderness VNUMs hidden by `Room.Info`. Group formation uses ordinary
+consent and group commands, with actual PC membership and room presence checked.
+
+Source finding: both self and leader `group back/front` branches deliberately
+return without changing ranks. Preserve native default ranks; do not enable that
+disabled mechanic just for the runner. Native character creation sets neutral
+races' initial side through its alignment path; placement verifies actual racewar
+side from staff `stat char` instead of assuming alignment alone proves it.
+
+`python3 tests/async/test_racewar_runner.py`: eleven focused tests passed, including
+failure cancellation that closes every partial-roster connection and preserves
+credential-free roster evidence, unequal independent group caps, and native paging
+setup. `python3 tests/async/test_documentation_contract.py`: 14 checks passed.
+
+`python3 tests/async/run_racewar_provision_journey.py --binary
+bin/server/dms_battleprep_flatfile --output bin/racewar-battles/provision-03`
+passed on 2026-10-27 using the existing tested native binary, SHA-256
+`723ccd6862895aa8dd91446cc74bed8df90974151977692e2e9b71591632690c`:
+
+- First run: full good/evil 20/20 groups in captured staff room 22800.
+- Second run after normal server shutdown/restart: full 20/20 groups in explicit
+  room 1200, using the same 40 accounts and 40 different character identities.
+- Native GMCP membership has zero NPCs, exact expected names, actual size/cap 20,
+  and every member present in the selected room on both runs. All 80 characters
+  reached acknowledged ordinary saves.
+- Both sides retained 12 races. Good had 17 distinct classes, evil 18. The server's
+  checked-in `lib/creation_availability.cfg` disables Dragoon, so the requested
+  Tiefling Dragoon became a Tiefling Warrior; the run records that substitution.
+
+Receipts are `bin/racewar-battles/provision-03/result.json` and each match's
+`summary.json`, `roster.json`, and per-character JSONL transcripts. The private
+`accounts.json` is not a shareable receipt. There were no C/C++ changes in this
+chunk, so the valid native build evidence was reused. The operator CLI, gear/spell
+preparation, combat actions, stop and final acceptance journey remain outstanding.
+These provisioning-only runs do not satisfy either full-combat acceptance run.
+
+Runtime progress: `provision-01` created all 40 real characters but failed placement
+because the inherited `toggle page off` spelling was invalid; paged `stat` output
+consumed the next transfer. The runner now reads the actual toggle state and uses
+`toggle paging` only when needed, checking the native confirmation.
+`provision-02` was deliberately interrupted for the worktree move, with its server
+stopped. `provision-03` then passed from the new worktree, including grouping and
+account reuse. Do not repeat it merely for documentation or PR-link edits.
