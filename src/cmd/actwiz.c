@@ -1765,45 +1765,11 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 	}
 	else if ((*arg1 == 'w') || (*arg1 == 'W'))
 	{
-		send_to_char("broken, leave me alone.\n", ch);
+		send_to_char(
+			"World-wide exit statistics are unavailable. Use zlist, zcheck <zone>, "
+			"or rlist to inspect the world.\n",
+			ch);
 		return;
-
-		/*
-		    for (x = 0; x <= top_of_zone_table; x++)
-		    {
-		      zone = &zone_table[x];
-		      snprintf(o_buf, MAX_STRING_LENGTH, "&+YZone: (&N%d&+Y)  Name:&N %s\n",
-		              world[zone->real_bottom].zone, zone->name);
-
-		      for (i3 = 0, i = zone->real_bottom;
-		           (i != NOWHERE) && (i <= zone->real_top); i++)
-		        for (i2 = 0; i2 < NUM_EXITS; i2++)
-		          if(world[i].dir_option[i2])
-		          {
-		            if((world[i].dir_option[i2]->to_room == NOWHERE) ||
-		                (world[world[i].dir_option[i2]->to_room].zone !=
-		                 world[i].zone))
-		            {
-		              if(!i3)
-		                i3 = 1;
-		              if(world[i].dir_option[i2]->to_room == NOWHERE)
-		                snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
-		                        " &+Y[&n%5d&+Y](&n%5d&+Y)&n &+R%-5s&n to &+WNOWHERE\n",
-		                        world[i].number, i, dirs[i2]);
-		              else
-		                snprintf(o_buf + strlen(o_buf), MAX_STRING_LENGTH - strlen(o_buf),
-		                        " &+Y[&n%5d&+Y]&n &+R%-5s&n to &+Y[&+R%3d&n:&+Y%5d&+Y]&n %s\n",
-		                        world[i].number, dirs[i2],
-		                        zone_table[world[world[i].dir_option[i2]->to_room].zone].number,
-		                        world[world[i].dir_option[i2]->to_room].number,
-		                        world[world[i].dir_option[i2]->to_room].name);
-		            }
-		          }
-		      send_to_char(o_buf, ch);
-		    }
-		    return;
-		*/
-		/* stat on object  */
 	}
 	else if ((*arg1 == 'o') || (*arg1 == 'O') || (*arg1 == 'i') || (*arg1 == 'I'))
 	{
@@ -3348,49 +3314,11 @@ void do_stat(P_char ch, char *argument, int cmd, P_obj object)
 			send_to_char(buf, ch);
 			return;
 		}
-		qi = find_quester_id(GET_RNUM(mob));
-		struct quest_complete_data *qdata = quest_index[qi].quest_complete;
-		struct goal_data *goals;
-
-		if (!qdata)
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "'%s' is not a quest complete mob.\n",
-				 mob->player.short_descr);
-			send_to_char(buf, ch);
-		}
-		else
-		{
-			snprintf(buf, MAX_STRING_LENGTH, "'%s' has quest:\n",
-				 mob->player.short_descr);
-			send_to_char(buf, ch);
-
-			while (qdata)
-			{
-				snprintf(buf, MAX_STRING_LENGTH, "'%s'\n", qdata->message);
-				send_to_char(buf, ch);
-				if (qdata->receive)
-				{
-					for (goals = qdata->receive; goals; goals = goals->next)
-					{
-						snprintf(buf, MAX_STRING_LENGTH,
-							 "Receive: '%c' %d\n", goals->goal_type,
-							 goals->number);
-						send_to_char(buf, ch);
-					}
-				}
-				if (qdata->give)
-				{
-					for (goals = qdata->give; goals; goals = goals->next)
-					{
-						snprintf(buf, MAX_STRING_LENGTH, "Give: '%c' %d\n",
-							 goals->goal_type, goals->number);
-						send_to_char(buf, ch);
-					}
-				}
-
-				qdata = qdata->next;
-			}
-		}
+		// Use the same guarded quest renderer as qview. The old path indexed
+		// quest_index[-1] for ordinary mobs and printed numeric goal types as
+		// control characters.
+		snprintf(buf, sizeof buf, "%d", mob_index[GET_RNUM(mob)].virtual_number);
+		do_qview(ch, buf, CMD_QVIEW);
 	}
 	else
 		send_to_char(STAT_SYNTAX, ch);
@@ -8501,51 +8429,40 @@ void do_knock(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
-void do_ingame(P_char ch, char *args, int /*cmd*/)
+// Staff command templates accept only their named target token. All other
+// percent sequences are literal text, never printf conversions.
+static bool substitute_staff_target(char *output, size_t capacity, const char *text, char token,
+				    const char *name)
 {
-	char buf1[MAX_STRING_LENGTH], buf2[MAX_STRING_LENGTH], buf3[MAX_STRING_LENGTH];
-	char name[MAX_NAME_LENGTH + 1];
-	P_desc desc;
-	char *pIn, *pOut;
-	int count, i;
-	bool percent;
-
-	count = 0;
-	percent = FALSE;
-	pIn = args;
-	pOut = buf1;
-	while (*pIn != '\0')
+	size_t used = 0;
+	const size_t name_length = strlen(name);
+	for (const char *part = text; *part;)
 	{
-		// Leading %.
-		if (*pIn == '%')
+		if (part[0] == '%' && part[1] == token)
 		{
-			percent = TRUE;
-			*(pOut++) = '%';
-			pIn++;
+			if (name_length >= capacity - used)
+				return false;
+			memcpy(output + used, name, name_length);
+			used += name_length;
+			part += 2;
 		}
-		// %p -> substitute.
-		else if (percent && (*pIn == 'p'))
-		{
-			percent = FALSE;
-			// We have the first % from initial if.
-			// For each additional %p, we need to add %'s to total 2^count.
-			for (i = (1 << (count++)) - 1; i > 0; i--)
-			{
-				*(pOut++) = '%';
-			}
-			*(pOut++) = 's';
-			pIn++;
-		}
-		// Regular character.
 		else
 		{
-			percent = FALSE;
-			*(pOut++) = *(pIn++);
+			if (used + 1 >= capacity)
+				return false;
+			output[used++] = *part++;
 		}
 	}
-	*pOut = '\0';
+	output[used] = '\0';
+	return true;
+}
 
-	if (count == 0)
+void do_ingame(P_char ch, char *args, int /*cmd*/)
+{
+	char command_text[MAX_STRING_LENGTH];
+	char name[MAX_NAME_LENGTH + 1];
+	P_desc desc;
+	if (!strstr(args, "%p"))
 	{
 		send_to_char("Bleah. Try ingame <string>, and include a %p somewhere.\n", ch);
 		return;
@@ -8558,48 +8475,39 @@ void do_ingame(P_char ch, char *args, int /*cmd*/)
 		    CAN_SEE(ch, desc->character) && (GET_LEVEL(desc->character) < GET_LEVEL(ch)))
 		{
 			snprintf(name, sizeof name, "%s", GET_TRUE_NAME(desc->character));
-			// We know there's at least one %s in the string that needs substituting.
-			checked_snprintf_runtime(buf2, MAX_STRING_LENGTH, buf1, name);
-			i = 1;
-			// Substitute the rest if there are any.
-			while (i++ < count)
+			if (!substitute_staff_target(command_text, sizeof command_text, args, 'p',
+						     name))
 			{
-				// Swap back and forth between buffers.
-				if ((i % 2) == 0)
-					checked_snprintf_runtime(buf3, MAX_STRING_LENGTH, buf2,
-								 name);
-				else
-					checked_snprintf_runtime(buf2, MAX_STRING_LENGTH, buf3,
-								 name);
+				send_to_char("That command is too long.\n", ch);
+				return;
 			}
-			// count % 2 tells us which buffer we have the final string.
-			if ((count % 2) == 0)
-			{
-				command_interpreter(ch, buf3);
-			}
-			else
-			{
-				command_interpreter(ch, buf2);
-			}
+			command_interpreter(ch, command_text);
 		}
 	}
 }
 
 void do_inroom(P_char ch, char *args, int /*cmd*/)
 {
-	char buf1[MAX_STRING_LENGTH], buf2[MAX_STRING_LENGTH];
-	char *p;
+	char command_text[MAX_STRING_LENGTH];
 	P_char v, v_next;
 	int target;
+	char token;
 
-	strcpy(buf1, args); /* don't wanna change args directly */
-
-	if ((p = strstr(buf1, " %p")))
+	if (strstr(args, " %p"))
+	{
 		target = 1;
-	else if ((p = strstr(buf1, " %m")))
+		token = 'p';
+	}
+	else if (strstr(args, " %m"))
+	{
 		target = 2;
-	else if ((p = strstr(buf1, " %a")))
+		token = 'm';
+	}
+	else if (strstr(args, " %a"))
+	{
 		target = 3;
+		token = 'a';
+	}
 	else
 	{
 		/* error.. no token provided  */
@@ -8614,16 +8522,6 @@ void do_inroom(P_char ch, char *args, int /*cmd*/)
 		return;
 	}
 
-	/* okay... now we have p pointing to the space before the % token.
-	   move it forward two places, and replace the letter with an 's' for
-	   use in sprintf  */
-
-	p++;
-	p++;
-	*p = 's';
-
-	/* okay.. now buf1 is setup as an arguement for sprintf...   */
-
 	for (v = world[ch->in_room].people; v; v = v_next)
 	{
 		v_next = v->next_in_room;
@@ -8631,19 +8529,13 @@ void do_inroom(P_char ch, char *args, int /*cmd*/)
 		    (IS_NPC(v) && (target == 1)) || (ch == v))
 			continue;
 
-		/*
-		 * Serious flaw in this (and MANY other functions): if the users
-		 * does "inroom grin %pc %s" that extra %s is going to cause
-		 * problems... For now, I'm going to just "hope" that people
-		 * aren't that stupid (considering thats what the code does
-		 * everywhere else)
-		 */
-
-		checked_snprintf_runtime(buf2, MAX_STRING_LENGTH, buf1, FirstWord(GET_NAME(v)));
-
-		/* okay.. now just dump buf2 to the command interpretter  */
-
-		command_interpreter(ch, buf2);
+		if (!substitute_staff_target(command_text, sizeof command_text, args, token,
+					     FirstWord(GET_NAME(v))))
+		{
+			send_to_char("That command is too long.\n", ch);
+			return;
+		}
+		command_interpreter(ch, command_text);
 	}
 }
 
@@ -13240,7 +13132,7 @@ void lookup_account(P_char ch, const char * /*arguments*/)
 	send_to_char("Not supported yet.\n", ch);
 }
 
-#define ACCOUNT_SYNTAX ""
+#define ACCOUNT_SYNTAX "Usage: account i <online player> (account lookup/edit unavailable).\n"
 
 void do_account(P_char ch, char *arg, int /*cmd*/)
 {
