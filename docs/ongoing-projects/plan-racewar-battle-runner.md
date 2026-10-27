@@ -792,3 +792,26 @@ Two native defects found in the full fight are being repaired as separate chunks
    disposable-MySQL tests; do not truncate participants or split one kill into
    non-atomic awards. Publish this independently and rerun full acceptance with
    the repaired native binary.
+
+### Native finding: queued input crosses death into the account menu
+
+The full 20/20 `battle-03` run in the combat worktree produced 13 deaths. Queued
+gameplay input was then consumed by the account menu (`Invalid Selection` after
+the death/menu output). This is a game-session transition defect independent of
+the runner's conservative handling of absent dead PCs.
+
+Fix branch: `branch/issue-405-death-input`, based on #411. The ordinary extraction
+transition and direct hardcore-death transition now discard queued and partial
+input while preserving output. `flush_input_queue()` also replaces the same
+drain loop in targeted battle stop and is reused when closing a descriptor.
+There is no new state machine, gameplay rule or persistence mutation.
+
+Files: `src/net/comm.{c,h}`, `src/world/handler.c`, `src/combat/fight.c`,
+`src/cmd/battleprep.c`, focused native input-reset/battleprep tests, and
+`tests/async/run_death_input_journey.py`. The native sanitizer test proves complete
+and partial input clearing, intact death/menu output, unrelated session isolation,
+idempotence and fresh menu input. A real-client regression sends benign type-ahead
+behind an ordinary attack on the existing disposable executioner fixture, then
+checks native death, the account menu and a fresh character-list selection.
+Both backend builds and before/after wire proof are being completed before PR
+publication. Full battle acceptance remains in the combat branch.

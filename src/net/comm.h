@@ -27,6 +27,9 @@
 
 #define SEND_TO_Q(messg, desc) write_to_q((messg), &(desc)->output, 1)
 
+// Discard queued gameplay and an unfinished input line, preserving output.
+void flush_input_queue(P_desc descriptor);
+
 /* following was io.h, for asych I/O operations, not used currently.  If we
    ever use it, makes more sense for it to be here.  JAB */
 
