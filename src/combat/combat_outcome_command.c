@@ -446,12 +446,13 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 					  combat_outcome_result *result)
 {
 	if (!encoded || !result ||
-	    (size != COMBAT_OUTCOME_RESULT_BYTES && size != COMBAT_OUTCOME_LEGACY_RESULT_BYTES))
+	    (size != COMBAT_OUTCOME_RESULT_BYTES && size != COMBAT_OUTCOME_PREPARED_RESULT_BYTES &&
+	     size != COMBAT_OUTCOME_LEGACY_RESULT_BYTES))
 		return false;
 	const bool prepared =
-		size == COMBAT_OUTCOME_RESULT_BYTES &&
+		size != COMBAT_OUTCOME_LEGACY_RESULT_BYTES &&
 		std::equal(prepared_result_magic.begin(), prepared_result_magic.end(), encoded);
-	if (!prepared && size == COMBAT_OUTCOME_RESULT_BYTES &&
+	if (!prepared && size == COMBAT_OUTCOME_PREPARED_RESULT_BYTES &&
 	    !std::all_of(encoded + COMBAT_OUTCOME_LEGACY_RESULT_BYTES, encoded + size,
 			 [](uint8_t byte) { return byte == 0; }))
 		return false;
@@ -461,6 +462,9 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 	result->participant_count = encoded[count_offset] |
 				    static_cast<uint16_t>(encoded[count_offset + 1]) << 8;
 	if (result->participant_count > result->participants.size())
+		return false;
+	if (size != COMBAT_OUTCOME_RESULT_BYTES &&
+	    result->participant_count > COMBAT_OUTCOME_LEGACY_MAX_PARTICIPANTS)
 		return false;
 	if (prepared)
 	{
@@ -474,6 +478,8 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 	}
 	const size_t header = prepared ? prepared_header_size : 10;
 	const size_t stride = prepared ? prepared_entry_size : 92;
+	if (header + result->participant_count * stride > size)
+		return false;
 	for (size_t index = 0; index < result->participant_count; ++index)
 	{
 		const uint8_t *row = encoded + header + index * stride;
@@ -508,8 +514,9 @@ bool combat_outcome_command_decode_result(const uint8_t *encoded, size_t size,
 				return false;
 		}
 	}
-	return !prepared || std::all_of(encoded + header + result->participant_count * stride,
-					encoded + size, [](uint8_t byte) { return byte == 0; });
+	return (!prepared && size != COMBAT_OUTCOME_RESULT_BYTES) ||
+	       std::all_of(encoded + header + result->participant_count * stride, encoded + size,
+			   [](uint8_t byte) { return byte == 0; });
 }
 
 bool combat_outcome_command_build(critical_command *command, critical_operation_id operation_id,

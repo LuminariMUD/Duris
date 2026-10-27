@@ -129,7 +129,7 @@ with lock as publication:
         player_source = (SRC / "flatfile_player_repository.c").read_text()
         materialize_source = (SRC / "player_load_materialize.c").read_text()
         for token in (
-            "constexpr uint32_t domain_format_version = 3",
+            "constexpr uint32_t domain_format_version = 4",
             "base_stat_revision",
             "record.domains.base_stats",
             "format_version >= 3",

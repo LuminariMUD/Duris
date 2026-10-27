@@ -122,10 +122,11 @@ int main()
     broken.payload.push_back(0);
     assert(!combat_outcome_command_decode_payload(broken, &decoded));
 
-    // All 15 participants can retain the full legacy limits, without truncation
+    // Both full 20-player groups retain the legacy snapshot limits, without truncation
     // or rejecting their rewards just because their public logs are long.
     auto full = payload;
     full.participant_count = COMBAT_OUTCOME_MAX_PARTICIPANTS;
+    assert(full.participant_count >= 40);
     for (size_t i = 0; i < full.participant_count; ++i) {
         full.participants[i] = participant(static_cast<uint32_t>(i + 22), combat_participant_role::killer_group);
         full.participants[i].equipment.assign(COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES, 'e');
@@ -137,8 +138,8 @@ int main()
     assert(critical_command_encode(maximum, &serialized) == critical_command_codec_result::ok);
     assert(critical_command_decode(serialized.data(), serialized.size(), &restored) == critical_command_codec_result::ok);
     assert(combat_outcome_command_decode_payload(restored, &decoded));
-    assert(decoded.participants[14].equipment == full.participants[14].equipment);
-    assert(decoded.participants[14].log == full.participants[14].log);
+    assert(decoded.participants[39].equipment == full.participants[39].equipment);
+    assert(decoded.participants[39].log == full.participants[39].log);
     full.participants[0].log.push_back('x');
     assert(!combat_outcome_command_build(&maximum, id, full));
     full.participants[0].log = std::string("a\0b", 3);
@@ -172,6 +173,25 @@ int main()
     combat_outcome_result decoded_result = {};
     assert(combat_outcome_command_decode_result(bytes.data(), bytes.size(), &decoded_result));
     assert(decoded_result.participant_count == COMBAT_OUTCOME_MAX_PARTICIPANTS);
+    assert(combat_outcome_result_size(result) == COMBAT_OUTCOME_RESULT_BYTES);
+    result.victim_pid = 1; result.prepared_at = 10000;
+    assert(combat_outcome_command_encode_result(result, &bytes));
+    assert(combat_outcome_command_decode_result(bytes.data(), bytes.size(), &decoded_result));
+    assert(decoded_result.participants[39].pid == 40 && decoded_result.prepared_at == 10000);
+    // Previously stored prepared (2048) and ordinary (1536/2048) receipts remain readable.
+    result.participant_count = 2;
+    assert(combat_outcome_result_size(result) == 2048);
+    assert(combat_outcome_command_encode_result(result, &bytes));
+    assert(combat_outcome_command_decode_result(bytes.data(), 2048, &decoded_result));
+    bytes[28] = 40;
+    assert(!combat_outcome_command_decode_result(bytes.data(), 2048, &decoded_result));
+    result.prepared_at = 0;
+    assert(combat_outcome_result_size(result) == 1536);
+    assert(combat_outcome_command_encode_result(result, &bytes));
+    assert(combat_outcome_command_decode_result(bytes.data(), 1536, &decoded_result));
+    assert(combat_outcome_command_decode_result(bytes.data(), 2048, &decoded_result));
+    bytes[8] = 40;
+    assert(!combat_outcome_command_decode_result(bytes.data(), 1536, &decoded_result));
 }
 '''
 
@@ -269,6 +289,17 @@ int main(int argc, char **argv) {
     assert(combat_outcome_add_participant(&payload, &character, combat_participant_role::killer, true, false) == hidden);
     assert(hidden->webinfo_at_capture == combat_webinfo::off && hidden->log.empty());
     assert(equipment_reads == 1); // Neither private capture nor rediscovery reads equipment.
+    payload = {};
+    character.webinfo = false;
+    for (int i = 0; i < 40; ++i) {
+        character.pid = 100 + i;
+        assert(combat_outcome_add_participant(&payload, &character,
+            i < 20 ? combat_participant_role::killer_group : combat_participant_role::victim_group,
+            true, false));
+    }
+    assert(payload.participant_count == 40);
+    character.pid = 999;
+    assert(!combat_outcome_add_participant(&payload, &character, combat_participant_role::victim_group, true, false));
 }
 '''
         with tempfile.TemporaryDirectory(dir=ROOT / "bin/tests") as directory:

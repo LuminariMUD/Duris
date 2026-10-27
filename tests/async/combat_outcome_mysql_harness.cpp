@@ -123,6 +123,84 @@ int main()
 	const unsigned int port = port_text ? static_cast<unsigned int>(atoi(port_text)) : 3306;
 	assert(mysql_real_connect(db, getenv("DB_HOST"), getenv("DB_USER"), getenv("DB_PASSWD"),
 				  getenv("DB_NAME"), port, nullptr, 0));
+	if (getenv("PVP_FULL_GROUP_ONLY"))
+	{
+		assert(std::string(getenv("ENVIRONMENT")) == "test");
+		constexpr uint32_t first_pid = 4293000000U;
+		execute(db, "INSERT INTO accounts(account_name) VALUES('" + std::string(ACCOUNT) +
+				    "')");
+		combat_outcome_payload full{};
+		full.victim_pid = first_pid + 20;
+		full.killer_allies = 20;
+		full.room_vnum = 22800;
+		full.prepared_at = 150;
+		strcpy(full.room_name.data(), "Full racewar groups");
+		full.participant_count = 40;
+		for (size_t i = 0; i < 40; ++i)
+		{
+			const auto pid = first_pid + i;
+			execute(db,
+				"INSERT INTO player_data(pid,name,account_name,racewar) VALUES(" +
+					std::to_string(pid) + ",'Group" + std::to_string(i) +
+					"','" + ACCOUNT + "'," + (i < 20 ? "1" : "2") + ")");
+			auto &entry = full.participants[i];
+			entry = participant(pid, i < 20 ? combat_participant_role::killer_group :
+							  combat_participant_role::victim_group);
+			entry.racewar = i < 20 ? 1 : 2;
+			entry.equipment.assign(COMBAT_OUTCOME_EQUIPMENT_MAX_BYTES, 'e');
+			entry.log.assign(COMBAT_OUTCOME_LOG_MAX_BYTES, 'l');
+			if (i < 20)
+			{
+				entry.flags |= COMBAT_PARTICIPANT_DIVINE_EPIC;
+				entry.frag_delta = 5;
+				entry.epic_delta = 150;
+				entry.epic_boon_id = 7;
+				entry.epic_base = 100;
+			}
+		}
+		critical_operation_id id{};
+		assert(critical_operation_id_generate(&id));
+		critical_command command;
+		assert(combat_outcome_command_build(&command, id, full));
+		command.accepted_at_usec = 1;
+		execute(db,
+			"CREATE TRIGGER reject_full_group BEFORE INSERT ON combat_outcome_participant FOR EACH ROW "
+			"BEGIN IF NEW.pid=" +
+				std::to_string(first_pid + 39) +
+				" THEN SIGNAL SQLSTATE '40001' SET MYSQL_ERRNO=1213,MESSAGE_TEXT='fixture'; END IF; END");
+		assert(critical_command_repository_apply(db, command).outcome ==
+		       critical_apply_outcome::retryable_failure);
+		assert(scalar(db, "SELECT COUNT(*) FROM combat_outcome WHERE victim_pid=" +
+					  std::to_string(full.victim_pid)) == 0);
+		assert(scalar(db, "SELECT SUM(epic_revision) FROM player_data WHERE pid BETWEEN " +
+					  std::to_string(first_pid) + " AND " +
+					  std::to_string(first_pid + 39)) == 0);
+		execute(db, "DROP TRIGGER reject_full_group");
+		const auto first = critical_command_repository_apply(db, command);
+		combat_outcome_result result{};
+		assert(first.outcome == critical_apply_outcome::applied &&
+		       first.result_size == 8192);
+		assert(combat_outcome_command_decode_result(first.result_payload.data(),
+							    first.result_size, &result));
+		assert(result.participant_count == 40 &&
+		       result.participants[39].pid == first_pid + 39);
+		assert(result.participants[19].epic_delivery_delta == 150);
+		const auto event =
+			scalar(db, "SELECT pkill_event_id FROM combat_outcome WHERE victim_pid=" +
+					   std::to_string(full.victim_pid));
+		assert(scalar(db, "SELECT COUNT(*) FROM pkill_info WHERE event_id=" +
+					  std::to_string(event)) == 40);
+		assert(scalar(db, "SELECT MIN(OCTET_LENGTH(log)) FROM pkill_info WHERE event_id=" +
+					  std::to_string(event)) == COMBAT_OUTCOME_LOG_MAX_BYTES);
+		const auto replay = critical_command_repository_apply(db, command);
+		assert(replay.outcome == critical_apply_outcome::already_applied &&
+		       replay.result_size == first.result_size &&
+		       replay.result_payload == first.result_payload);
+		mysql_close(db);
+		std::cout
+			<< "full 20/20 SQL outcome: complete snapshots, rollback/retry and exact replay passed\n";
+		return 0;
+	}
 	if (const char *directory = getenv("PVP_CAPTURE_COMMAND_DIR"))
 	{
 		// This mode is used only on the disposable schema created by the wrapper.

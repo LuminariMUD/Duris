@@ -693,3 +693,69 @@ The tested complete `src` tree is `7b265f78e455a56f8afc34b91c9df829f89e3698`,
 identical on this focused branch and the integrated combat checkout. Full battle
 acceptance and the separately discovered 15-participant PvP outcome limit remain
 in progress; this chunk does not close #405.
+
+### Native finding: full-group PvP outcomes exceed the capture limit ([PR #414](https://github.com/LuminariMUD/Duris/pull/414), ready for review)
+
+Branch: `branch/issue-405-full-group-outcomes`, based on #412. Edit/qualification
+worktree: `/home/aiwithapex/projects/duris-battle-fixes`; the operator remains in
+`/home/aiwithapex/projects/duris-racewar-runner` on `branch/issue-405-racewar-combat`.
+The full fight's reward failure was traced to the 15-participant outcome bound:
+the native producer captures both groups, so 20/20 cannot reach the writer.
+
+Outcome: capture, persist and replay all 40 participants atomically, retaining
+the existing public snapshot limits and old records. Non-goals: no dropped
+participants, snapshot truncation, split kill transactions, general batching
+framework, group-rule changes or increase to the coordinator's total admission
+memory budget. The retained changes are the existing bounded codec/storage
+limits and the one required SQL widening.
+
+Implementation currently raises capture to 40, command payload capacity to 8 MiB,
+maximum combat/completion/SQL result buffers to 8,192 bytes and flat-file authority
+operations to 82. Small outcomes keep their old result sizes. Decoders accept old
+1,536/2,048-byte results with the original participant bound and validate row
+lengths before reading; native domain format 4 admits larger receipts while
+formats 1–3 retain their old bounds. Migration 0054 (sequence 55) widens only the
+known 4,096-byte SQL inbox to 8,192 with online DDL requirements. The baseline
+and sealed migrations stay unchanged.
+
+Proof so far: expanded native capture/codec tests, full-group flat-file prepared
+award/replay tests, and the disposable SQL outcome suite pass. SQL proof includes
+all 40 maximum-sized public snapshots, a failure at the last participant that
+rolls back the entire outcome, retry, exact replay, preserved prior result bytes,
+idempotent widening and refusal to narrow an unexpected column. New runtime
+metadata fingerprints were measured and cleanly verified on isolated MariaDB
+10.11 and MySQL 8.0; `scripts/validate_runtime_compatibility.py` passes.
+
+Local evidence in this fix worktree: `bin/combat-capacity-codec.log`,
+`bin/combat-capacity-flatfile.log`, `bin/combat-capacity-mysql.log`,
+`bin/full-group-schema.log` and `bin/full-group-schema-result.json`. The one-off
+metadata driver is ignored at `bin/measure_full_group_schema.py` and creates only
+network-isolated task containers, which it removes afterward. No production or
+primary local database was accessed. Both server builds now pass. The tested native
+source tree is `f157a00977744d653e7d380cde1a13d773d51227`, identical on this branch
+and the integrated combat checkout. The flat-file binary SHA-256 is
+`be370f514e32f26c273f23928a77ef2646459afe474060b252c1a3fc56427b48`.
+The final two full battles are running as `bin/racewar-battles/battle-04` in the
+combat worktree; this PR's persistence proof does not claim their completion.
+
+Commands/results for this chunk:
+
+- `python3 tests/async/test_combat_outcome_transactional_cutover.py`: five tests pass,
+  including 40-PC native capture, full snapshot encode/decode and old receipt reads.
+- `python3 tests/async/test_flatfile_player_domain_repository.py`: full-group
+  prepared award storage/replay and old/new native format bounds pass.
+- `bash tests/async/run_combat_outcome_schema_mysql.sh`: disposable SQL suite passes,
+  including full-group late rollback/retry, replay, long snapshots and migration guards.
+- `python3 tests/async/test_critical_command_codec.py` and
+  `python3 tests/async/test_critical_completion_capacity.py`: bounded command codecs
+  and complete 8,192-byte fresh/replayed completion delivery pass.
+- `python3 tests/async/test_divine_boon_delivery.py` and
+  `python3 tests/async/test_reward_producer_replay.py`: prepared award recovery and
+  duplicate-delivery behavior pass.
+- `python3 tests/async/test_migration_runner_cli_safety.py`,
+  `python3 scripts/validate_runtime_compatibility.py` and all 14 documentation
+  checks pass. Formatting, whitespace and normal commit hooks pass.
+- `make -C src -j4` and `make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris-racewar-runner/bin/server/dms_battle_full_group_flatfile
+  -j4` pass in the integrated combat checkout. Logs are under
+  `bin/racewar-battles/implementation/full-group-build-*.log` there.
