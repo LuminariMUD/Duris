@@ -5786,9 +5786,9 @@ static void do_start_impl(P_char ch, int nomsg, bool grant_newbie_kit)
 
 	clear_title(ch);
 
-	if (grant_newbie_kit && !(GET_CLASS(ch, CLASS_AVENGER | CLASS_DREADLORD)) &&
-	    !((GET_RACE(ch) == RACE_DUERGAR || GET_RACE(ch) == RACE_MOUNTAIN) &&
-	      GET_CLASS(ch, CLASS_BERSERKER)))
+	// Dwarf Berserkers are normal creation choices and receive the same kit
+	// here as in deferred creation and empty-inventory newbie regrants.
+	if (grant_newbie_kit && !(GET_CLASS(ch, CLASS_AVENGER | CLASS_DREADLORD)))
 	{
 		load_obj_to_newbies(ch);
 	}

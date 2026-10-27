@@ -37,11 +37,12 @@ static const int thrikreen_good_eq[] = { 677, 283, 285, 1112, 286,  288, 290,
 static const int thrikreen_evil_eq[] = { 677, 283, 285, 1112, 286, 288, 290, 613, 1170, 1173, -1 };
 
 /*Minotaur Basics*/
-static const int minotaur_good_eq[] = { 677,  283,  285,  1112, 286, 288, 290, 398, 398,
-					1176, 1167, 1182, 603,	108, 109, 111, -1 };
+// Shaman totems belong to the class kit, not the racial basics.
+static const int minotaur_good_eq[] = { 677, 283, 285,	1112, 286,  288, 290,
+					398, 398, 1176, 1167, 1182, 603, -1 };
 
-static const int minotaur_evil_eq[] = { 677,  283,  285, 1112, 286, 288, 290, 1170,
-					1173, 1182, 603, 108,  109, 111, -1 };
+static const int minotaur_evil_eq[] = { 677, 283,  285,	 1112, 286, 288,
+					290, 1170, 1173, 1182, 603, -1 };
 
 static const int blighter_stuff[] = { 1109, 1108, 1113, 1112, 1140, 677, 239, 618,
 				      679,  680,  729,	729,  452,  437, -1 };

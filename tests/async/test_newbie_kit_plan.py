@@ -35,7 +35,13 @@ def table_digest(tables, extra):
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 tables, extra = parse_tables(text)
-assert table_digest(tables, extra) == '8a5363de3c01471b06dd012039a4c4b688db8ab489826a03b288e47be76499c1', 'legacy kit data changed'
+# PR #408 removes the second set of Shaman-only totems from Minotaur basics.
+# Restore just that deliberate change when checking all other legacy data.
+legacy_extra = {name: list(items) for name, items in extra.items()}
+for name in ('minotaur_good_eq', 'minotaur_evil_eq'):
+    assert all(vnum not in extra[name] for vnum in (108, 109, 111))
+    legacy_extra[name] += [108, 109, 111]
+assert table_digest(tables, legacy_extra) == '8a5363de3c01471b06dd012039a4c4b688db8ab489826a03b288e47be76499c1', 'legacy kit data changed'
 
 fallback = {
     'PSIONICIST': ('PILLITHID', 'PSIONICIST'), 'MINDFLAYER': ('PILLITHID', 'PSIONICIST'),

@@ -860,7 +860,7 @@ void load_chaos_kit_bag(P_char staff, char *argument)
 
 // Main-thread capture adapter. This value-only view is never registered, given
 // an identity or passed to publication/worker code. Reuse the authoritative
-// weapon predicates instead of maintaining a second race/class policy.
+// item predicates instead of maintaining a second race/class policy.
 static newbie_item_facts capture_newbie_item_facts(P_char ch, const newbie_kit_item &item)
 {
 	const auto *prototype = find_object_template(item.vnum);
@@ -899,6 +899,10 @@ static newbie_item_facts capture_newbie_item_facts(P_char ch, const newbie_kit_i
 		bool has_usable_position = false;
 		for (const auto &position : equipment_pos_table)
 		{
+			// Ordinary armour also carries ITEM_HOLD. Holding a helmet or
+			// boots does not make their missing anatomical slot usable.
+			if (position[0] == ITEM_HOLD || position[0] == ITEM_WIELD)
+				continue;
 			if (!(prototype->wear_flags & position[0]))
 				continue;
 			has_wear_position = true;
@@ -912,6 +916,7 @@ static newbie_item_facts capture_newbie_item_facts(P_char ch, const newbie_kit_i
 	}
 	return facts;
 }
+
 /** Capture the finite legacy selection and spell decisions without live objects. */
 static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan(P_char ch)
 {
@@ -941,14 +946,20 @@ static std::vector<prepared_newbie_item> prepare_legacy_newbie_plan(P_char ch)
 	// All normal starter kits need one durable container, but existing race
 	// containers (including Blighter's fallback bag) must not be duplicated.
 	bool has_container = false;
-	for (const auto &item : prepared)
+	for (auto item = prepared.begin(); item != prepared.end();)
 	{
-		const auto *prototype = find_object_template(item.item.vnum);
+		const auto *prototype = find_object_template(item->item.vnum);
 		if (prototype && prototype->type == ITEM_CONTAINER)
 		{
+			// Racial basics precede class gear, so keep the racial container.
+			if (has_container)
+			{
+				item = prepared.erase(item);
+				continue;
+			}
 			has_container = true;
-			break;
 		}
+		++item;
 	}
 	if (!has_container)
 		prepared.push_back({ { 390, true }, {} }); // Small leather bag, boot-cached.
