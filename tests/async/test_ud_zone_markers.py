@@ -16,7 +16,7 @@ ENTRANCES = (
     (709264, 'Caves of Mt. Skelenak', 709664, 4, 4093, 29, 'caves_skelenak'),
     (856819, 'The Stone Tomb of Kelek', 857219, 5, 87950, 29, 'kelek'),
     (844448, 'The Underworld Shafts', 844848, 4, 10021, 29, 'shafts'),
-    (834024, 'The Chasm of the Misty Vale', 834025, 4, 15015, 29, 'mist_chasm'),
+    (834024, 'The Chasm of the Misty Vale', 834025, 4, 300019, 29, 'thechasmofthemistyvale'),
 )
 REVERSE = (2, 3, 0, 1, 5, 4)
 MARKER_FLAGS = 134250688  # Existing no-recall/magic/teleport/gate footprint flags.
