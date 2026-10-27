@@ -444,6 +444,35 @@ disabled mechanic just for the runner. Native character creation sets neutral
 races' initial side through its alignment path; placement verifies actual racewar
 side from staff `stat char` instead of assuming alignment alone proves it.
 
+PR #407 review follow-up (2026-10-27): the delayed-entry-prompt finding was valid.
+The local socket regression reproduced an incomplete `Paging` result and early
+paging commands during normal staff entry, reconnect, connection override and
+new-character entry. Telnet decoding now preserves text/GMCP/prompt order;
+command completion requires a prompt at or after its matched response, and both
+entry paths wait for a prompt after `Char.Status` before starting gameplay logs
+and paging setup. This reuses the existing parser and command lock without a new
+transport, retry, delay or command-queue layer.
+
+Review validation: `python3 tests/async/test_racewar_runner.py` passes all 13
+tests, including the two new socket regressions; `python3
+tests/async/test_documentation_contract.py` passes all 14 checks, and
+`git diff --check` passes. A disposable two-client native smoke check reused
+`configure()`/`Server` from the existing journey and the binary hash recorded
+below. Staff login, fresh character creation, paging OFF, room lookup and both
+asynchronous save acknowledgements passed. Its receipt and gameplay transcripts
+are under `/home/aiwithapex/projects/duris-pr407-review/bin/pr407-review/entry-smoke-02/`.
+An initial smoke assertion assumed a single space in the toggle table; correcting
+that assertion to accept the native column spacing required no application change.
+The earlier 80-character provisioning evidence remains applicable; no C/C++ or
+provisioning policy changed, so no rebuild or full-roster rerun was needed.
+
+Git review: the stack remains #406 -> #407 -> #409 -> #410. The prospective merge
+of #407 into `master` at `224f1824d` was conflict-free. Keep the dependency bases
+and carry this correction forward with merges; no rebase, squash, or release tag
+is needed. The active combat worktree has separate uncommitted work and must be
+preserved; once that work is committed, merge the updated
+`branch/issue-405-battle-preparation` into its combat branch.
+
 `python3 tests/async/test_racewar_runner.py`: eleven focused tests passed, including
 failure cancellation that closes every partial-roster connection and preserves
 credential-free roster evidence, unequal independent group caps, and native paging

@@ -34,12 +34,17 @@ class ProtocolTests(unittest.TestCase):
         for boundary in range(len(frame) + 1):
             decoder = battle.Telnet()
             chunks = [decoder.feed(frame[:boundary]), decoder.feed(frame[boundary:])]
-            self.assertEqual(b"".join(c[0] for c in chunks), b"hibye\xff")
+            events = [event for chunk in chunks for event in chunk[0]]
+            self.assertEqual(b"".join(value for kind, value in events if kind == "text"), b"hibye\xff")
             self.assertEqual(b"".join(c[1] for c in chunks), bytes((255,253,201,255,254,86,255,252,24)))
-            self.assertEqual([m for c in chunks for m in c[2]], [("Group.Status", {"maxSize":20,"members":[]})])
-            self.assertEqual(sum(c[3] for c in chunks), 1)
+            self.assertEqual([(kind, value) for kind, value in events if kind != "text"],
+                             [("gmcp", ("Group.Status", {"maxSize":20,"members":[]})), ("prompt", None)])
+            prompt = events.index(("prompt", None))
+            self.assertEqual(b"".join(value for kind, value in events[:prompt] if kind == "text"), b"hi")
+            self.assertEqual(b"".join(value for kind, value in events[prompt + 1:] if kind == "text"), b"bye\xff")
         decoder = battle.Telnet()
-        self.assertEqual(b"".join(decoder.feed(bytes((byte,)))[0] for byte in frame), b"hibye\xff")
+        events = [event for byte in frame for event in decoder.feed(bytes((byte,)))[0]]
+        self.assertEqual(b"".join(value for kind, value in events if kind == "text"), b"hibye\xff")
 
     def test_refusal_does_not_loop(self):
         self.assertEqual(battle.Telnet().feed(bytes((255, 252, 201, 255, 254, 24)))[1], b"")
@@ -126,6 +131,103 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             record = json.loads((Path(directory) / "preparation.json").read_text())[0]
             self.assertEqual(record["preparation"], "failed")
             self.assertNotIn("prepared_spells", record)
+
+    async def test_command_requires_a_prompt_after_its_expected_response(self):
+        async def serve(reader, writer):
+            try:
+                await reader.readline()
+                # A delayed earlier GA and the beginning of the new response
+                # can arrive in one read; that GA must not complete this reply.
+                writer.write(b"\xff\xf9\x1b[31mPaging")
+                await writer.drain()
+                await asyncio.sleep(.02)
+                writer.write(b" : OFF\x1b[0m\r\n>\xff\xef")
+                await writer.drain()
+                await reader.readline()
+                # The matching response and its prompt can also arrive together.
+                writer.write(b"Room: [1200]\r\n>\xff\xf9")
+                await writer.drain()
+                await reader.read()
+            finally:
+                writer.close()
+                await writer.wait_closed()
+        with tempfile.TemporaryDirectory() as directory:
+            server = await asyncio.start_server(serve, "127.0.0.1", 0)
+            async with server:
+                client = await battle.Client.connect("127.0.0.1", server.sockets[0].getsockname()[1], "actor", directory)
+                try:
+                    output = await client.command("toggle", expected="Paging", timeout=1)
+                    self.assertEqual(output, "Paging : OFF\n>")
+                    self.assertEqual(await client.command("stat room", expected="Room:", timeout=1), "Room: [1200]\n>")
+                finally:
+                    await client.close()
+
+    async def test_both_entry_paths_wait_for_the_game_prompt_before_paging(self):
+        account = {"account": "Controller", "password": "private", "character": "Actor"}
+        creation = [("2", "Enter your new name"), ("Actor", "Is this correct?"),
+                    ("y", "meet these criteria?"), ("y", "(h) Human (H for help)\nYour selection"),
+                    ("h", "Male or Female"), ("m", "Hardcore"),
+                    ("n", "w) Warrior (W for help)\nYour selection"),
+                    ("w", "Your stat rolling system [D]:"), ("", "first bonus"),
+                    ("s", "second bonus"), ("d", "third bonus"), ("a", "fourth bonus"),
+                    ("l", "swap stats"), ("n", "keep this character"), ("y", "PRESS RETURN")]
+        for entry in ("staff", "reconnect", "override", "create"):
+            with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
+                premature = []
+                finished = asyncio.get_running_loop().create_future()
+                async def serve(reader, writer):
+                    try:
+                        if entry == "create":
+                            dialogue, last = creation, ""
+                        else:
+                            response = {"staff": "Play as", "reconnect": "Reconnecting...",
+                                        "override": "Overriding old connection..."}[entry]
+                            dialogue = [("1", "Actor"), ("Actor", response)]
+                            last = "y" if entry == "staff" else None
+                        for command, response in dialogue:
+                            self.assertEqual((await reader.readline()).decode().strip(), command)
+                            writer.write(response.encode())
+                            await writer.drain()
+                        if last is not None:
+                            self.assertEqual((await reader.readline()).decode().strip(), last)
+                        # A menu GA before Char.Status cannot count as game entry.
+                        writer.write(b"\xff\xf9\xff\xfa\xc9Char.Status " +
+                                     json.dumps({"name": "Actor", "level": 65}).encode() + b"\xff\xf0" +
+                                     (b"Your starter kit is ready" if entry == "create" else b"PRIVATE entry banner"))
+                        await writer.drain()
+                        try:
+                            premature.append(await asyncio.wait_for(reader.readline(), .03))
+                        except asyncio.TimeoutError:
+                            pass
+                        writer.write(b"\r\n>\xff\xf9")
+                        await writer.drain()
+                        command = premature[0] if premature else await reader.readline()
+                        self.assertEqual(command, b"toggle\n")
+                        writer.write(b"Paging : OFF\r\n>\xff\xf9")
+                        await writer.drain()
+                        finished.set_result(None)
+                        await reader.read()
+                    except Exception as error:
+                        if not finished.done():
+                            finished.set_exception(error)
+                    finally:
+                        writer.close()
+                        await writer.wait_closed()
+                server = await asyncio.start_server(serve, "127.0.0.1", 0)
+                async with server:
+                    client = await battle.Client.connect("127.0.0.1", server.sockets[0].getsockname()[1], "actor", directory)
+                    try:
+                        with patch.object(battle, "account_login"):
+                            if entry == "create":
+                                await asyncio.wait_for(battle.create_character(client, account, "Actor", "good",
+                                                                               battle.Build("Human", "Warrior")), 2)
+                            else:
+                                await asyncio.wait_for(battle.staff_login(client, account), 2)
+                        await asyncio.wait_for(finished, 1)
+                        self.assertEqual(premature, [], "paging was sent before the entry prompt")
+                    finally:
+                        await client.close()
+                self.assertNotIn("PRIVATE", (Path(directory) / "actor.jsonl").read_text())
 
     async def test_paging_uses_native_toggle_and_preserves_an_already_disabled_setting(self):
         class FakeClient:

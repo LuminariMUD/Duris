@@ -35,10 +35,13 @@ class Telnet:
         self.subnegotiation = bytearray()
 
     def feed(self, chunk: bytes):
-        text, reply, messages, prompts = bytearray(), bytearray(), [], 0
+        text, reply, events = bytearray(), bytearray(), []
         for byte in chunk:
             if self.state == "data":
                 if byte == IAC:
+                    if text:
+                        events.append(("text", bytes(text)))
+                        text.clear()
                     self.state = "iac"
                 else:
                     text.append(byte)
@@ -52,7 +55,8 @@ class Telnet:
                     self.subnegotiation.clear()
                     self.state = "subnegotiation"
                 else:
-                    prompts += byte in (249, 239)  # GA / EOR
+                    if byte in (249, 239):  # GA / EOR
+                        events.append(("prompt", None))
                     self.state = "data"
             elif self.state == "option":
                 if self.option_command == WILL:
@@ -71,7 +75,7 @@ class Telnet:
                     if self.subnegotiation[:1] == bytes((GMCP,)):
                         payload = self.subnegotiation[1:].decode("utf-8")
                         package, _, value = payload.partition(" ")
-                        messages.append((package, json.loads(value) if value else None))
+                        events.append(("gmcp", (package, json.loads(value) if value else None)))
                     self.subnegotiation.clear()
                     self.state = "data"
                 elif byte == IAC:
@@ -81,7 +85,9 @@ class Telnet:
                     raise BattleError("Invalid Telnet subnegotiation")
             if len(self.subnegotiation) > 1024 * 1024:
                 raise BattleError("Oversized Telnet subnegotiation")
-        return bytes(text), bytes(reply), messages, prompts
+        if text:
+            events.append(("text", bytes(text)))
+        return events, bytes(reply)
 
 
 class Client:
@@ -96,6 +102,9 @@ class Client:
         self.pending = ""
         self.gmcp = {}
         self.prompts = 0
+        self.status_prompt = 0
+        self.text_received = 0
+        self.prompt_end = 0
         self.changed = asyncio.Event()
         self.command_lock = asyncio.Lock()
         self.error = None
@@ -123,22 +132,32 @@ class Client:
         try:
             while chunk := await self.reader.read(65536):
                 self.last_receive = asyncio.get_running_loop().time()
-                plain, reply, messages, prompts = self.telnet.feed(chunk)
+                events, reply = self.telnet.feed(chunk)
                 if reply:
                     self.writer.write(reply)
                     await self.writer.drain()
-                decoded = self.ansi_tail + self.decoder.decode(plain)
-                tail = ANSI_TAIL.search(decoded)
-                self.ansi_tail = decoded[tail.start():] if tail else ""
-                text = ANSI.sub("", decoded[:tail.start()] if tail else decoded).replace("\r", "")
-                if text:
-                    self.record("output", text)
-                # All output goes to disk; idle clients retain only a bounded tail.
-                self.pending = (self.pending + text)[-131072:]
-                for package, value in messages:
-                    self.gmcp[package] = value
-                    self.record(package, value)
-                self.prompts += prompts
+                # Preserve wire order even when a prompt, GMCP and response text
+                # share one read. Counters alone cannot associate a GA with text.
+                for kind, value in events:
+                    if kind == "text":
+                        decoded = self.ansi_tail + self.decoder.decode(value)
+                        tail = ANSI_TAIL.search(decoded)
+                        self.ansi_tail = decoded[tail.start():] if tail else ""
+                        text = ANSI.sub("", decoded[:tail.start()] if tail else decoded).replace("\r", "")
+                        if text:
+                            self.record("output", text)
+                        self.text_received += len(text)
+                        # All output goes to disk; idle clients retain only a bounded tail.
+                        self.pending = (self.pending + text)[-131072:]
+                    elif kind == "gmcp":
+                        package, message = value
+                        self.gmcp[package] = message
+                        if package == "Char.Status":
+                            self.status_prompt = self.prompts
+                        self.record(package, message)
+                    else:
+                        self.prompts += 1
+                        self.prompt_end = self.text_received
                 self.changed.set()
             raise BattleError(f"{self.label}: server closed the connection")
         except asyncio.CancelledError:
@@ -195,7 +214,9 @@ class Client:
             if expected:
                 needles = (expected,) if isinstance(expected, str) else expected
                 _, output = await self.expect(*needles, timeout=timeout)
-            await self.wait_for(lambda: self.prompts > before, "waiting for a command prompt", timeout)
+            response_end = self.text_received - len(self.pending)
+            await self.wait_for(lambda: self.prompts > before and self.prompt_end >= response_end,
+                                "waiting for a command prompt", timeout)
             output += self.pending
             self.pending = ""
             return output
@@ -369,7 +390,8 @@ async def staff_login(client, account):
     match, _ = await client.expect("Play as", "Reconnecting...", "Overriding old connection...")
     if match == "Play as":
         await client.send("y")
-    await client.wait_for(lambda: client.gmcp.get("Char.Status", {}).get("name", "").lower() == account["character"].lower(),
+    await client.wait_for(lambda: client.gmcp.get("Char.Status", {}).get("name", "").lower() == account["character"].lower()
+                          and client.prompts > client.status_prompt,
                           "waiting for staff entry")
     if client.gmcp["Char.Status"].get("level", 0) < 62:
         raise BattleError("The controller must be an Overlord for battleprep")
@@ -438,7 +460,8 @@ async def create_character(client, account, character, side, build):
     await client.expect("PRESS RETURN")
     await client.send("")
     await client.expect("Your starter kit is ready", "Your Chaos Equipment has been prepared!!", timeout=60)
-    await client.wait_for(lambda: client.gmcp.get("Char.Status", {}).get("name", "").lower() == character.lower(),
+    await client.wait_for(lambda: client.gmcp.get("Char.Status", {}).get("name", "").lower() == character.lower()
+                          and client.prompts > client.status_prompt,
                           "waiting for character entry")
     client.begin_gameplay_log()
     await disable_paging(client)
