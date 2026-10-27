@@ -163,6 +163,20 @@ int main()
         assert(chaos_kit_skill_available(&actor, SKILL_TRAP) == (level > 0 && level <= 56));
     }
     required_level = 1;
+    // A hoofed foot slot is not permission to wear the class's ordinary boots.
+    const chaos_kit_item boots = {WEAR_FEET, 83486};
+    const chaos_kit_item saddle = {WEAR_HORSE_BODY, 87585};
+    actor.player.race = RACE_CENTAUR;
+    for (bool profile : {false, true}) {
+        enhanceable = profile;
+        const auto footwear = chaos_kit_item_for_character(&actor, boots);
+        assert(footwear.slot == WEAR_FEET && footwear.vnum == 99061);
+        assert(chaos_kit_item_for_character(&actor, saddle).vnum == 87585);
+    }
+    actor.player.race = RACE_HUMAN;
+    assert(chaos_kit_item_for_character(&actor, boots).vnum == 83486);
+    assert(boots.vnum == 83486); // the shared catalog is unchanged
+    enhanceable = false;
     obj_data bag{};
     bag.type = ITEM_CONTAINER;
     loaded = {};
@@ -173,6 +187,16 @@ int main()
     equipment_pos_table[0][2] = WEAR_NECK_1;
     const chaos_kit_item wearable = {WEAR_NECK_1, 999};
     const chaos_kit_item support = {WEAR_NONE, 999};
+    equipment_pos_table[1][0] = ITEM_WEAR_FEET;
+    equipment_pos_table[1][2] = WEAR_FEET;
+    loaded.wear_flags = ITEM_WEAR_FEET;
+    actor.player.race = RACE_CENTAUR;
+    { chaos_kit_objects kit; assert(append_chaos_kit_item(&actor, &bag, &boots, kit));
+      assert(indexes[0].virtual_number == 99061 && kit.count == 1); kit.count = 0; }
+    actor.player.race = RACE_HUMAN;
+    { chaos_kit_objects kit; assert(append_chaos_kit_item(&actor, &bag, &boots, kit));
+      assert(indexes[0].virtual_number == 83486 && kit.count == 1); kit.count = 0; }
+    loaded.wear_flags = ITEM_WEAR_NECK;
     for (int cls : {CLASS_WARRIOR, CLASS_MONK, CLASS_THIEF, CLASS_SORCERER}) {
         actor.player.m_class = cls;
         loaded.bitvector2 = 0;
@@ -366,10 +390,21 @@ int main()
 
 
 def main():
+    # The authored replacement really is portable horseshoe footwear, not an
+    # ordinary boot with a convenient VNUM. These flags also pass enhance's
+    # pool admission (no prohibited flags, affects or excluded item type).
+    prototype = (ROOT / "areas/obj/moria.obj").read_text().split("#99061\n", 1)[1].split("\n#", 1)[0]
+    parts = prototype.split("~", 4)
+    assert "horseshoes" in parts[0].split()
+    fields = [list(map(int, line.split())) for line in parts[4].strip().splitlines()[:3]]
+    header = fields[0]
+    assert header[0] == 1 and header[6] == 0 and header[7] == 65 and header[9:] == [0, 0]
+    assert len(fields[2]) == 3  # no prohibited affect bitvectors
     functions = ["static void prepare_chaos_kit_item", "static bool chaos_kit_skill_available",
                  "static bool chaos_kit_has_eq_slot",
                  "static bool chaos_kit_weapon_slot", "static bool chaos_kit_fits_slot",
                  "static const char *chaos_kit_skip_reason",
+                 "static chaos_kit_item chaos_kit_item_for_character",
                  "static bool append_chaos_kit_item", "void restore_chaos_character_kit",
                  "void load_chaos_kit_bag"]
     harness = "\n".join([PRELUDE, extract_function("chaos.c", "bool chaos_command_allowed"),
