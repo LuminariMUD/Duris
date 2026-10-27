@@ -258,7 +258,9 @@ class Client:
             response_end = self.text_received - len(self.pending)
             await self.wait_for(lambda: self.prompts > before and self.prompt_end >= response_end,
                                 "waiting for a command prompt", timeout)
-            if sequence is not None and re.search(r"You start chanting|You begin to focus your will", output + self.pending):
+            if sequence is not None and re.search(
+                    r"You start chanting|You begin to focus your will|"
+                    r"With the absence of sound, you begin using your hands to channel the weave", output + self.pending):
                 await self.wait_for(lambda: re.search(
                     r"You complete your spell|Your mental manipulations become a reality|"
                     r"You abort your|You lost your concentration|gathers?, then fade|"
@@ -949,13 +951,16 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
     response_times = []
 
     async def responsiveness():
-        while True:
+        while not stop.is_set():
             before = asyncio.get_running_loop().time()
             await current_room(staff)
             elapsed = round(1000 * (asyncio.get_running_loop().time() - before), 2)
             response_times.append(elapsed)
             staff.record("controller_response_ms", elapsed)
-            await asyncio.sleep(2)
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=2)
+            except asyncio.TimeoutError:
+                pass
 
     probe = asyncio.create_task(responsiveness())
     try:
@@ -978,9 +983,11 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
     except Exception as error:
         result.update(outcome="interrupted", error=str(error))
     finally:
+        stop.set()
         for task in tasks:
             task.cancel()
-        probe.cancel()
+        # Let the controller consume its outstanding receipt before cleanup
+        # sends another command on this connection. Its command wait is bounded.
         await asyncio.gather(*tasks, probe, return_exceptions=True)
         result["duration_seconds"] = round(asyncio.get_running_loop().time() - started, 2)
         result["controller_response_ms"] = {"samples": response_times,

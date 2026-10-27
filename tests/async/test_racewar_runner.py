@@ -147,6 +147,73 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaisesRegex(battle.BattleError, "character admission rejected: Illegal character name"):
                 await battle.create_character(client, {"account": "Dedicated"}, "Rejected", "good", battle.Build("Human", "Warrior"))
 
+    async def test_operator_stop_drains_pending_controller_probe_and_saves_survivors(self):
+        room = {"num": 1200, "name": "Field", "coords": {"x": 0}}
+        rows = [{"name": name, "side": side, "index": 0, "class": "Warrior", "battle_room": room}
+                for name, side in (("One", "good"), ("Two", "evil"))]
+        clients = {row["name"]: SimpleNamespace(dead=False, returned_to_menu=False, error=None,
+                   gmcp={"Room.Info": room, "Char.Input": {"sequence": 4},
+                         "Char.Vitals": {"hp": 10, "maxHp": 10}},
+                   damage_events=0, observed_damage=0, healing_events=0, observed_healing=0,
+                   command=AsyncMock()) for row in rows}
+        stop = asyncio.Event()
+        seen = []
+        premature_stop = False
+
+        def receipt(sequence):
+            return b"\xff\xfa\xc9Char.Input " + json.dumps({"sequence": sequence}).encode() + b"\xff\xf0"
+
+        async def serve(reader, writer):
+            nonlocal premature_stop
+            try:
+                writer.write(receipt(0))
+                await writer.drain()
+                seen.append((await reader.readline()).decode().strip())
+                stop.set()
+                # Hold the probe receipt across the combat loop's stop check.
+                # A cancelled probe lets cleanup send early; coalesce both
+                # receipts exactly as a server processing queued inputs can.
+                try:
+                    command = await asyncio.wait_for(reader.readline(), .6)
+                    premature_stop = True
+                except asyncio.TimeoutError:
+                    command = None
+                writer.write(receipt(1) + b"Room: [1200]\xff\xf9")
+                if command is None:
+                    await writer.drain()
+                    command = await reader.readline()
+                for sequence in range(2, 5):
+                    seen.append(command.decode().strip())
+                    writer.write(receipt(sequence) +
+                                 b"Battleprep status One quiet.\nBattleprep status Two quiet.\xff\xf9")
+                    await writer.drain()
+                    command = await reader.readline()
+            finally:
+                writer.close()
+                await writer.wait_closed()
+
+        with tempfile.TemporaryDirectory() as directory:
+            server = await asyncio.start_server(serve, "127.0.0.1", 0)
+            async with server:
+                staff = await battle.Client.connect("127.0.0.1", server.sockets[0].getsockname()[1], "controller", directory)
+                try:
+                    await staff.wait_for(lambda: "Char.Input" in staff.gmcp, "initial receipt")
+                    result = await asyncio.wait_for(
+                        battle.run_combat(staff, clients, rows, {"good": 1, "evil": 1}, stop, 120), 15)
+                    self.assertTrue(result["stop"]["confirmed"], result["stop"])
+                    self.assertFalse(premature_stop)
+                    self.assertEqual(result["outcome"], "operator_stop")
+                    self.assertEqual(len(result["controller_response_ms"]["samples"]), 1)
+                    self.assertEqual(seen, ["stat room", "battleprep stop One Two",
+                                            "battleprep status One Two", "battleprep status One Two"])
+                    self.assertEqual(result["save_failures"], [])
+                    for row in rows:
+                        self.assertEqual(row["final_save"], "acknowledged")
+                        clients[row["name"]].command.assert_awaited_once_with(
+                            "save", expected=f"Save complete for {row['name']}.")
+                finally:
+                    await staff.close()
+
     async def test_stop_requires_every_named_status_and_a_settling_recheck(self):
         calls = []
         class Staff:
@@ -224,6 +291,17 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                     await client.close()
 
     async def test_combat_prompts_do_not_dequeue_input_or_complete_a_spell(self):
+        await self.check_cast_wait(b"You start chanting...", b"You complete your spell...", True)
+
+    async def test_silent_cast_waits_for_completion_or_interruption(self):
+        for ending, completed in ((b"You complete your spell...", True),
+                                  (b"You lost your concentration!", False)):
+            with self.subTest(ending=ending):
+                await self.check_cast_wait(
+                    b"With the absence of sound, you begin using your hands to channel the weave...",
+                    ending, completed)
+
+    async def check_cast_wait(self, beginning, ending, completed):
         seen, release = [], asyncio.Event()
         def receipt(sequence, command=None):
             body = {"sequence": sequence}
@@ -238,11 +316,11 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             writer.write(b"Old combat prompt\xff\xf9")
             await writer.drain()
             await release.wait()
-            writer.write(receipt(1, "cast") + b"You start chanting...\xff\xf9")
+            writer.write(receipt(1, "cast") + beginning + b"\xff\xf9")
             await writer.drain()
             await asyncio.sleep(.04)
             self.assertEqual(len(seen), 1)
-            writer.write(b"You complete your spell...\xff\xf9")
+            writer.write(ending + b"\xff\xf9")
             await writer.drain()
             second = await reader.readline()
             seen.append(second.decode().strip())
@@ -265,12 +343,12 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(seen, ["cast 'magic missile' 1.human"])
                     release.set()
                     output, followup = await asyncio.gather(cast, kick)
-                    self.assertIn("You complete your spell", output)
+                    self.assertIn(ending.decode(), output)
                     self.assertNotIn("Old combat prompt", output)
                     self.assertIn("You kick", followup)
                     records = [json.loads(line) for line in (Path(directory) / "actor.jsonl").read_text().splitlines()]
                     results = [r["value"] for r in records if r["kind"] == "action_result"]
-                    self.assertEqual([r["spell_completed"] for r in results], [True, False])
+                    self.assertEqual([r["spell_completed"] for r in results], [completed, False])
                 finally:
                     release.set()
                     await client.close()

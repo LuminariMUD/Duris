@@ -425,6 +425,40 @@ failures, and existing passing evidence is reused.
 
 ## Implementation handoff
 
+### PR #416 review follow-up — 2026-10-27
+
+Both review findings were reproduced against the reviewed runner and repaired:
+
+- The controller responsiveness probe now exits cooperatively at battle end.
+  Cleanup waits for its bounded command to consume the pending native receipt
+  before issuing `battleprep stop` on the same connection. The socket regression
+  holds the probe receipt across operator stop and coalesces receipts if cleanup
+  sends too early. Before the repair it reported `unexpected input sequence` and
+  skipped survivor saves; afterward the real stop/status path confirms both
+  participants and requests their acknowledged saves, with no further probe.
+- The command waiter recognizes the native silent-casting start message from
+  `src/net/sparser.c`. The existing cast socket fixture now also verifies silent
+  completion and interruption, retaining the completion output and recording
+  `spell_completed` correctly before the next action. Both silent cases failed
+  before the repair; ordinary chanting remains covered.
+
+Validation: `python3 tests/async/test_racewar_runner.py` passes **26 tests**;
+`python3 tests/async/test_documentation_contract.py` passes **14 tests**;
+`./scripts/format.sh --check` and `git diff --check` pass. The native source tree
+and binary SHA-256 still exactly match the `battle-07` receipt above. Those two
+full-party journeys and native build/backend results are reused; this review
+follow-up adds deterministic socket proof rather than claiming another live
+battle, full burn-in or production run.
+
+Git check: the operator contains the current #415 head `6a45835f4`, which contains
+#414. Both dependencies remain open. Master `e0d01f4b9` is one commit beyond the
+stack's master baseline; a `git merge-tree --write-tree HEAD origin/master` trial
+succeeds without conflicts. Retain the #414 → #415 → #416 stack and the focused
+review-fix commit. Rebasing only the operator onto master would carry its open
+native dependencies into its review diff; rewriting the shared stack or adding a
+release tag is unnecessary. Recheck/retarget after the dependencies land, using
+their actual merge results. This PR does not itself merge or deploy them.
+
 The sections below are chronological evidence. Their earlier pending states and
 binary hashes describe those checkpoints; the final acceptance receipt above
 supersedes them for current status.
