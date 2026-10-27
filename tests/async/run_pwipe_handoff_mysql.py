@@ -831,6 +831,7 @@ int main(int argc, char **argv) {
         assert new_god > 1004
         assert sql("SELECT last_save IS NOT NULL AND last_save=birth_time FROM player_data WHERE pid=" + str(new_god)) == "1"
         assert sql("SELECT hometown=1200 AND last_room=hometown FROM player_data WHERE pid=" + str(new_god)) == "1"
+        assert sql("SELECT prompt<>0 FROM player_data WHERE pid=" + str(new_god)) == "1"
         assert sql("SELECT CONCAT_WS(':',copper,epics,frags,learned_flight_stops,assoc_id) "
                    "FROM player_data WHERE pid=" + str(new_god)) == "0:0:0:0:0"
         assert sql("SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND pid=" + str(new_god)) == "1"

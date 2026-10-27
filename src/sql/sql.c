@@ -4204,6 +4204,7 @@ bool sql_verify_pwipe_manifest(void)
 		{ "player_data", "sex" },
 		{ "player_data", "hometown" },
 		{ "player_data", "last_room" },
+		{ "player_data", "prompt" },
 		{ "player_data", "birthplace" },
 		{ "player_data", "orig_birthplace" },
 		{ "player_data", "height" },
@@ -5163,12 +5164,17 @@ bool sql_pwipe(int code_verify)
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
 				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
 				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,last_room,birthplace,orig_birthplace,"
-				    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
+				    "height,weight,level,highest_level,birth_time,last_save,prompt,base_str,base_dex,base_agi,base_con,base_pow,"
 				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
 				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,hometown,height,weight,"
-				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
+				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),%u,100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
 				    "FROM pwipe_overlords",
-				    OVERLORD, OVERLORD) &&
+				    OVERLORD, OVERLORD,
+				    static_cast<unsigned>(PROMPT_HIT | PROMPT_MAX_HIT |
+							  PROMPT_MOVE | PROMPT_MAX_MOVE |
+							  PROMPT_TANK_NAME | PROMPT_TANK_COND |
+							  PROMPT_ENEMY | PROMPT_ENEMY_COND |
+							  PROMPT_TWOLINE | PROMPT_STATUS)) &&
 				qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
 				    "SELECT p.pid,0,0,0,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
 				qry("INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
