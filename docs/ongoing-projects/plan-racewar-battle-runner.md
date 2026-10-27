@@ -796,3 +796,24 @@ focused fix branch and combat checkout. The full pair is running as `battle-05`.
 Completed first-match combat,
 reward, persistence and performance evidence remains valid; no unrelated tests
 need repeating.
+
+Follow-up qualification found the Searing Fist hammer's packed `magma burst`
+still ticking after early stop. The audit of both supported kit profiles found
+17 packed weapon spells: the delayed damage paths are acid immolation, magma
+burst, and pythonsting's native poison callbacks. Targeted cancellation now covers
+those three callbacks and removes only their matching magma/poison markers; it
+does not clear unrelated effects or benign periodic checks. The focused native
+test covers incoming/outgoing references, inverted poison ownership, marker
+cleanup and unrelated-event preservation.
+
+The Paladin's periodic smite also lacked the awake/mobile guard used by its other
+automatic combat checks. It now skips attacks while asleep or immobilized while
+keeping the timer armed, so waking resumes ordinary behavior. A separate focused
+native test proves the inactive and resumed states.
+
+Both builds and the expanded four-PC runtime confirmation pass. The runtime check
+seeds acid and magma, verifies settled health and quiet status, and reapplies magma
+after cancellation to prove its marker was cleaned. Evidence:
+`bin/racewar-battles/all-effects-after/` in the combat worktree. Binary SHA-256:
+`43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
+The full pair is now running as `battle-07`; its completion is not yet claimed.
