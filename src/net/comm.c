@@ -3246,14 +3246,22 @@ struct timeval timediff(struct timeval *a, struct timeval *b)
  * Empty the queues before closing connection
  */
 
+void flush_input_queue(P_desc d)
+{
+	char discarded[MAX_STRING_LENGTH];
+	while (get_from_q(&d->input, discarded))
+		;
+	d->buflen = 0;
+	d->buf[0] = 0;
+}
+
 void flush_queues(P_desc d)
 {
 	char str[MAX_STRING_LENGTH];
 
 	while (get_from_q(&d->output, str))
 		;
-	while (get_from_q(&d->input, str))
-		;
+	flush_input_queue(d);
 }
 
 int wizconnectsite(char *name, char *player, int flag)

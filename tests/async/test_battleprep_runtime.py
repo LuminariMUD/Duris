@@ -49,6 +49,10 @@ int get_from_q(txt_q *queue, char *) {
     if (!queue->head) return 0;
     queue->head = queue->tail = nullptr; return 1;
 }
+void flush_input_queue(P_desc d) {
+    d->input.head = d->input.tail = nullptr;
+    d->buflen = 0; d->buf[0] = 0;
+}
 char affect_total(P_char, int) { return 0; }
 int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void advance_to_level(P_char ch, int level) {
