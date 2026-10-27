@@ -760,7 +760,7 @@ Commands/results for this chunk:
   -j4` pass in the integrated combat checkout. Logs are under
   `bin/racewar-battles/implementation/full-group-build-*.log` there.
 
-### Early-stop finding: legacy acid pulses re-engage stopped participants
+### Early-stop finding: legacy acid pulses re-engage stopped participants ([PR #415](https://github.com/LuminariMUD/Duris/pull/415), ready for review)
 
 `battle-04` passed the repaired first 20/20 match (120.02 seconds, 14 deaths,
 26 survivor save acknowledgements, 204 completed spells, no capture failures,
