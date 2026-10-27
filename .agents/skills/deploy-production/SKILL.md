@@ -9,10 +9,13 @@ description: >-
 
 # Deploy Production
 
-Execute the five steps below in the existing production checkout. An explicit
-request to deploy authorizes the production migrations, content publication,
-build, and scheduled in-game reboot described here. Do not stop at a handoff or
-ask again for those actions. Editing this skill does not execute a deployment.
+Execute the six steps below in the existing production checkout. An explicit
+request to deploy authorizes the production migrations, missing-help authoring
+and publication, bug-report investigation and necessary GitHub issue creation,
+clearing fully processed feedback, build, scheduled in-game reboot, and final
+commit/push of the verified news file directly to `master` described here. Do not
+stop at a handoff or ask again for those actions. Editing this skill does not
+execute a deployment, process live feedback, or commit/push repository changes.
 Keep the game and website running during preparation, compilation, world generation,
 content publication, and migrations that can safely run online. **An offline migration
 is a last resort, allowed only when evidence from the actual pending operation and
@@ -29,7 +32,9 @@ leave the game running. Do not bypass safeguards or claim an unproven outage is 
 Treat merged master as qualified. Do not create worktrees, temporary deployment
 environments, cloned databases, or containers. Do not run burn-in, regression
 suites, restore drills, broad audits, or CI gates. Validate the build and the
-actual restarted game. Preserve unrelated edits, secrets, and player data.
+actual restarted game. Newly authored help still needs source, format, import,
+and in-game verification as described below. Preserve unrelated edits, secrets,
+and player data.
 
 ## 1. Pull immediately
 
@@ -78,20 +83,36 @@ Consult subsystem documentation only for the operations that actually apply.
   Use [the migration guide](../../../docs/persistence/IMMUTABLE_MIGRATIONS.md) for
   mechanics, not as a requirement to create a test environment. Do not replay
   historical repair/wipe scripts as though they were pending migrations.
-- Update help when the release changes it.
-  The importer gives `help/duris_help_parsed.hlp` precedence over
-  `lib/information/help_index`; correct colliding stale entries. Run the innate
-  help generator only when relevant.
+- Before preparing news, follow
+  [player feedback](references/player-feedback.md) to snapshot `lib/etc/help`
+  and `lib/reports/bugs`, investigate missing-help requests, and author and
+  publish useful missing topics or aliases end to end. Also update help affected
+  by the release. Finish help publication and player-visible lookup verification
+  before writing its news coverage; retain unsuccessful requests for retry.
 - Follow [news-update](../news-update/SKILL.md) to prepare
   `lib/information/news` for missing player-facing changes in the release.
+  Record its existing staged and unstaged changes before editing so the final
+  news commit can distinguish this deployment's work from unrelated edits.
+  Supply the verified help additions from this deployment as an explicit extra
+  content source alongside the GitHub history inventory; they may be local source
+  edits, so do not describe them as merged commits. Include useful topics and
+  lookup commands, not feedback processing or issue-triage bookkeeping.
   Put the new release headline and main addition before the previous newest
   section, including for another release on the same day. Keep temporary
   deployment notices out of player news.
-- Preview and publish changed content using
-  `scripts/import_help_to_prod.sh --local --dry-run`, then `--local`.
-  Use `--news-only` for both commands when only news changed. Answer its normal
-  confirmation under the deployment authorization. Do not use `--clean`.
-  Verify the changed stored entries and news bytes; boot will refresh caches.
+- With help already published and verified, preview and publish news using
+  `scripts/import_help_to_prod.sh --local --news-only --dry-run`, then
+  `--local --news-only`. Answer its normal confirmation under the deployment
+  authorization. Do not use `--clean` or repeat a bulk help import to publish
+  news. Verify stored news bytes; boot will refresh its cache.
+- Process bug reports using [player feedback](references/player-feedback.md)
+  at any point after the pull, independently of help/news. Prefer online
+  preparation so completed entries are ready for cleanup at the scheduled
+  restart. Check existing issues and PRs and create verified issues for real
+  untracked bugs. Triage itself is not player news and does not authorize
+  implementing unrelated bug fixes during deployment. Unclear reports or GitHub
+  failures remain pending; they do not by themselves block an otherwise qualified
+  deployment. Report unfinished feedback work separately.
 - Complete other setup required by the pulled release before the build. An
   in-game reboot does not replace the existing launcher or systemd environment;
   account for an actual change to either, rather than assuming it takes effect.
@@ -179,8 +200,10 @@ The runner's quiescence check must pass; do not kill unknown sessions or weaken 
 Refresh the backup with writers stopped and the pre-migration runtime manifest.
 Apply the prepared migration with the production target/backup arguments and no
 online option, verify compatibility, and immediately install the already-built server
-as described below. Start the log observation in step 5 and restore recorded service
-states promptly. Do not schedule a second shutdown. If migration or compatibility
+as described below. Start the log observation in step 5, perform the prepared
+feedback cleanup while writers remain stopped, then restore recorded service
+states promptly. Skip failed cleanup rather than delaying restoration. Do not
+schedule a second shutdown. If migration or compatibility
 verification fails, keep incompatible writers stopped and report the actual state;
 never restart an incompatible old binary.
 
@@ -193,8 +216,22 @@ to `.dms-backend`, and generate `lib/misc/event_names` with
 `scripts/event_names.sh bin/server/dms`. Never truncate or copy over a running
 executable inode. Record the new hash and confirm the current process still
 uses its original executable when it is still running. For an offline migration,
-restore the recorded services immediately after installation; otherwise schedule
-the normal reboot below. Do not restart after a failed build.
+perform the prepared feedback cleanup before promptly restoring the recorded
+services; otherwise schedule the normal reboot below with cleanup coordinated at
+its restart boundary. Do not restart after a failed build.
+
+### Retire processed feedback at the existing restart boundary
+
+Prepare the [feedback cleanup](references/player-feedback.md#clear-processed-feedback)
+before announcing the reboot. Serialize it with the launcher so it runs only
+after the old child and its log writer have exited and before a new child can
+write reports. Use the already-required restart or proven offline-migration
+window; do not add a shutdown for housekeeping. Re-read the files, remove only
+successfully processed snapshot entries, and preserve later arrivals and pending
+work. Keep this operation short; research, issue creation, and help publication
+belong in step 2. Restore the launcher's normal operation promptly even if cleanup
+fails. If a safe handoff cannot be established, retain the files and report cleanup
+as pending instead of racing the running writers.
 
 ### Normal reboot as Veridian (no offline migration)
 
@@ -242,10 +279,53 @@ possible; do not blindly repeat reboots or roll old code onto an incompatible
 schema. Report unresolved failures with the actual service state. Completion
 means the rebuilt game is running and healthy, not merely that reboot was
 scheduled. Report the revision, migrations/content changed, build result, and
-restart/log/health result concisely.
+restart/log/health result concisely. Include help topics added, bug dispositions
+and created/existing issue or PR links, and whether each feedback file was cleared
+or retains new/unresolved entries. Do not call feedback processing complete when
+publication, issue creation, or cleanup remains pending.
 
 In case of disaster, use the preserved executable and stamp only when the current
 database passes that binary's matching runtime contract. After a migration advances
 the required head, keep the game stopped until a compatible binary is available or
 an authorized recovery restores the matching database backup. Do not blindly pair
 the old binary with the new migration history.
+
+## 6. Commit and push the verified news directly to master
+
+After the game is healthy and the changed news has passed database equality and
+in-game readback, commit `lib/information/news` and push it directly to `origin/master`.
+This is part of deployment completion, under the authorization above. Keep the
+deployed code revision/hash separate from this later news-only commit in the report.
+
+Confirm this checkout is still on `master`, inspect the full news diff against
+the recorded starting state, and run `git diff --check -- lib/information/news`.
+Commit only news that was included in the verified publication/readback. Preserve
+unrelated staged and unstaged work, including help sources, feedback, and generated
+files; do not use `git add -A` or an unrestricted commit. If unrelated edits share
+the news file, isolate the deployment's changes before committing; report the
+specific conflict if they cannot be separated safely.
+
+Fetch `origin master` and inspect the outgoing commit range before pushing. It
+must contain only the intended news update, not unrelated unpublished commits.
+For an isolated news-file diff, use:
+
+```bash
+git commit --only -m "docs: update player news after deployment" -- lib/information/news
+git push origin HEAD:master
+```
+
+Inspect the resulting commit before executing the push. Do not create an empty
+commit when news is unchanged. On a resumed run, reuse an existing verified news
+commit and finish its push rather than creating a duplicate.
+
+Never force-push or bypass branch protection. On a non-fast-forward rejection,
+fetch and inspect the new remote state; do not blindly pull unbuilt code into the
+verified production checkout or overwrite another news update. If safe reconciliation
+is not possible within this deployment, preserve the local commit and report the
+push as pending. Authentication or branch-policy failures likewise leave the healthy
+game running and the commit available for retry; do not claim a successful push.
+
+After pushing, refresh the remote ref and verify that `origin/master` contains the
+news commit and that its news file matches the verified published content. Report
+the commit SHA and push result. The news handoff is complete only when that remote
+verification succeeds, or when there was no news change or outstanding news commit.
