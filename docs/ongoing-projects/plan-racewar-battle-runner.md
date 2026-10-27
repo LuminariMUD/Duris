@@ -479,13 +479,15 @@ consumed the next transfer. The runner now reads the actual toggle state and use
 stopped. `provision-03` then passed from the new worktree, including grouping and
 account reuse. Do not repeat it merely for documentation or PR-link edits.
 
-### Chunk 3: gear and selected spell preparation (verified; publishing for review)
+### Chunk 3: gear and selected spell preparation ([PR #410](https://github.com/LuminariMUD/Duris/pull/410), ready for review)
 
 Working branch: `branch/issue-405-battle-preparation`, based on the small Centaur
 compatibility fix in [PR #409](https://github.com/LuminariMUD/Duris/pull/409) at
 `5b6318283`. #409 targets #407; this preparation PR targets
 `branch/issue-405-centaur-kit`. Continue exclusively in
 `/home/aiwithapex/projects/duris-racewar-runner`.
+Implementation commit: `5e0e359aa`. Stack the combat chunk on
+`branch/issue-405-battle-preparation` while #410 is open.
 
 `prepare_fighters()` clears only fresh starter inventories through normal
 remove/drop commands, observes empty inventory, and awaits the existing Chaos
