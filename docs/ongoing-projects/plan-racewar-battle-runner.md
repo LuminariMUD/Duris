@@ -1,0 +1,410 @@
+# Watchable racewar group battle runner — lean first version
+
+Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
+Updated: 2026-10-27. The first chunk adds native preparation; the runner and
+full-party acceptance journey remain outstanding.
+Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
+The issue and implementation PRs link here; partial PRs must not automatically close #405.
+Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
+
+## Outcome and scope
+
+Prepare two full, geared groups of **real mortal player characters**, place them
+in a chosen room, and drive a watchable fight through their normal game
+connections. The purpose is to put strain on the real game and expose bugs,
+including interactions between player combat, groups, equipment, spells, output,
+death, and persistence.
+
+The user explicitly retained real characters when offered NPC teams. Keep the
+normal player input queue, lag, casting, resource use, and death paths. No NPC
+stand-ins, training dummies, staff-forced combat loop, or direct calls to damage
+functions. Implementation was authorized after the plan was published.
+
+The three non-negotiable deliverables are:
+
+- Two full geared parties on opposing good/evil racewar sides. Read the running
+  server's independent caps; the checked-in properties currently specify
+  **20 versus 20**. Do not substitute a small demonstration fight.
+- Actual combat that someone can watch by logging in with a normal client.
+- A configurable battlefield VNUM, defaulting to the controlling staff
+  character's current room when preparation begins.
+
+Also retain the agreed absence of environment restrictions: no test-server,
+localhost, hostname, `ENVIRONMENT`, `TEST_MUD`, or Chaos-mode gate. Use existing
+staff authority and ordinary room rules; the operator chooses the setup.
+
+## What makes this version smaller
+
+Keep the diverse fixed roster below and its existing Chaos gear. Use a simple
+level-56 baseline, maximum eligible ordinary skills, the existing compatible
+unspecialized epic grant, full caster books, and a small ready spell loadout.
+There is no specialization-selection engine or perfect endgame-build optimizer.
+
+Use **two or three useful active choices per character**, chosen from a few
+shared role routines. Ordinary melee, passive skills, racial traits, and equipment
+procs continue naturally. Prepare only the spells those choices need. The
+characters can possess a broader toolkit without automating every part of it.
+
+Defer automatic rematches/reset, corpse recovery and re-gearing, pet control,
+specialization coverage, active racial-ability coverage, bench/ability rotation,
+cross-room pursuit, crash-resume machinery, a general action DSL, dashboards,
+and detailed damage/healing attribution. Keep a reliable stop and basic evidence.
+
+This removes automation work, not players from the fight. It tests fewer active
+ability combinations than the original plan, and does not claim exhaustive
+skill/spell/pet coverage. Pets and more actions can be added after a useful
+full-group baseline exists.
+
+## Source anchors
+
+- [Group admission](../../src/guild/group.c) enforces consent, sides, leadership,
+  and caps. [GMCP](../../src/net/gmcp.c), `gmcp_send_group_status()`, exposes
+  `maxSize`, member HP, rank, and room presence. The checked-in
+  [properties](../../lib/duris.properties) set both caps to 20; 13 is the fallback.
+- [Chaos kit preparation](../../src/account/nanny.c) already handles class/race
+  equipment, unavailable body slots, unarmed classes, and item ownership grants.
+  Existing `chaos kit <character>` requires an empty online mortal; existing
+  `chaos kitbag <class> <race>` supplies the same kit to staff.
+  [High-level staff access](../../src/combat/chaos.c) does not require enabling
+  Chaos globally. Wait for grant completion before issuing wear commands.
+- [Memorization](../../src/classes/memorize.c) supplies the master-book contents,
+  class/circle eligibility, and finite preparation limits. Master spellbook VNUM
+  7 is defined in [defines.h](../../src/core/defines.h). A full book is not an
+  unlimited supply of prepared casts.
+- [Epic skills](../../src/classes/epic_skills.c) already provide
+  `grant_epic_skills_without_specialization()`, including prerequisites and
+  exclusions. Reuse it on the unspecialized baseline.
+- [Accounts](../../src/account/account.c) disconnect duplicate logins to the
+  same account. Each simultaneously connected combatant therefore needs its own
+  account. [newchar](../../src/account/wiz_newchar.c) attaches a character to the
+  invoking account and is not a solution for 40 simultaneous clients.
+- [The combat journey](../../tests/async/test_flatfile_combat_journey.py) already
+  automates account/character creation and normal combat/death connections.
+  [The Paladin journey](../../tests/async/run_paladin_balance_journey.py) already
+  drives multiple clients and groups. Reuse those patterns without their fixed
+  passwords, localhost-only connection assumptions, or fixture-state edits.
+- [Visible target lookup](../../src/world/handler.c), `get_char_room_vis()`,
+  uses race keywords/ordinals for most opposing PCs. Their real names appearing
+  in GMCP does not make those names legal mortal command targets.
+- [Staff commands](../../src/cmd/actwiz.c) provide advancement, restoration,
+  transfer, and targeted tranquilize. Restoring skills only restores taught
+  values; tranquilize alone does not prove that a pending spell has stopped.
+
+These are inspected source facts. The proposed runner still needs runtime proof.
+
+## Implementation: one script and a small preparation helper
+
+### 1. Connect and create the full parties
+
+Use one Python process with concurrent normal player connections and a staff
+control connection. Read the host/port and staff login from explicit configuration;
+keep secrets outside source, command-line arguments, and gameplay transcripts.
+The human observer uses a separate account to avoid displacing the controller.
+
+Automate creation of the missing dedicated accounts and characters through the
+existing registration flow. A supplied set of existing dedicated accounts can be
+reused. Do not turn account provisioning into 40 manual chores or modify ordinary
+account admission rules. Handle the selected setup's normal confirmation prompts;
+report any unresolved admission step instead of calling a partial group ready.
+
+Log in the two leaders first and obtain the actual caps. Preserve the captured
+default room before moving staff. Fill each side independently from the fixed
+roster; for a smaller cap, retain frontline, healing, and damage roles. For a
+larger cap, repeat legal baseline builds. Validate server creation availability
+and report any necessary substitutions instead of enabling races/classes globally.
+
+Use fresh character identities for a fresh match. This avoids an automatic
+restore/recovery subsystem. Reuse accounts where practical, respecting their
+existing character capacity. Keep a simple untracked run record of the exact
+accounts/characters created and their results. Earlier characters and corpses
+retain ordinary game persistence; there is no automatic wipe, account deletion,
+or claim that the match rolls back the world. A full account is an explicit
+provisioning condition, not a reason to overwrite an earlier character.
+
+### 2. Prepare a consistent geared baseline
+
+A small staff helper should do only the missing per-character setup:
+
+- Advance through the existing progression path to the mortal cap, currently 56.
+  Use a documented base-stat profile of 100 before normal racial/equipment
+  calculations and recalculate normal resources. Do not inflate HP to prolong fights.
+- Keep characters unspecialized; maximize eligible ordinary skills/spells to their
+  actual ceilings, then use the existing compatible unspecialized epic grant.
+- Reconcile only the newly created character's starting items, grant the existing
+  Chaos kit, and verify usable equipment is worn, including weapons and unusual
+  racial slots. Use the server's selected kit profile without changing its mode.
+- Supply the master book to book casters and finish only valid queued
+  memorize/pray preparation for the short action list, within circle capacity.
+  Restore the appropriate mana/slot resources for other caster models.
+
+Use existing commands for gear grants, transfers, consent, grouping, and ranks.
+Use ordinary commands for a small selection of pre-fight buffs. Restore the
+agreed starting resources once before combat. No refills during the fight.
+
+The helper may also expose the narrow stop operation described below. It is not
+a second combat engine or a new control service, and needs no schema migration.
+
+### 3. Place, inspect, and start
+
+Resolve the requested room VNUM, or the captured staff room. Transfer named
+participants there, obtain consent, form the two groups, and set legal ranks.
+Read back the location, counts, and readiness. Fail preparation clearly if a
+required item, character, or group slot is missing.
+
+Wait for an explicit `start` in the runner's terminal. The observer can enter the
+room using existing staff movement/visibility controls. Normal room output makes
+the battle watchable; no custom spectator UI is required.
+
+The room retains its ordinary flags and movement rules. Explain a missing room
+or blocked combat rather than silently changing the world. Unrelated inhabitants
+continue normal behavior.
+
+### 4. Run simple combat through real player input
+
+Start ordinary attacks on legal opposing targets. Use a few shared routines:
+
+- Physical characters: maintain melee and try one suitable signature action.
+- Healers: heal an injured group member; otherwise use their selected attack.
+- Casters: alternate two prepared combat spells; fall back to an ordinary legal
+  action when resources run out.
+- Support characters: use one selected support ability and an attack.
+
+Each class gets a short explicit command selection, not a bespoke AI. Summoning
+classes use an eligible direct combat action in this version; do not quietly
+claim pet coverage. If a proposed command is unavailable to the unspecialized
+build, choose another eligible action and record that selection.
+
+Read the minimal existing GMCP state needed for health, group presence, and the
+current opponent; use command response text for the selected actions. Handle
+Telnet/GMCP framing correctly and drain all sockets continuously. Keep at most
+one pending action per character so casting/lag cannot build a runaway queue.
+
+Resolve enemy race keywords/ordinals again after deaths or movement. Prefer the
+current opponent where possible. Allies use their ordinary visible names.
+Continue to obey native targeting, wait, casting, posture, and resource gates;
+do not drive combat with staff `force` or direct effect calls.
+
+Begin with ordinary damage, healing, and a small set of control/support actions.
+Leave complex summon chains, item activations with separate windups, and lasting
+room hazards outside this first script. Normal equipment procs still apply and
+must be observed in the full match.
+
+### 5. Finish, stop, and preserve useful bug evidence
+
+A run ends on elimination, withdrawal, a visible time limit, or operator `stop`.
+There is no automated tournament or reset. Dead characters stay out of that
+match; no automatic relogging as reinforcements or teleporting withdrawn players
+back into combat.
+
+Keep only `start`, `status`, and `stop` as operator controls. Stop first ends new
+commands, then uses the targeted helper/existing cancellation paths to stop the
+selected participants' attacks and pending selected actions. Verify they settle;
+merely closing their sockets leaves automatic combat running. Handle the actual
+kit procs encountered, and report unresolved effects instead of claiming a clean
+stop. Never use room-wide purge, global restore, or `transfer all`.
+
+For bug finding, retain:
+
+- Timestamped per-character gameplay transcripts and commands, after login.
+- A short run summary: roster, classes/races, room, actual caps, preparation
+  failures, duration, outcome, deaths, disconnects, and obvious rejected actions.
+- Server log/crash evidence pointers when accessible. A disconnect is a symptom,
+  not proof of a server crash; report what was actually observed.
+
+Use an untracked `bin/racewar-battles/<run-id>/` directory. Distinguish attempts
+from confirmed executions in the few action checks; do not build a universal
+coverage/attribution system. Note any survivor/PC whose script never produced a
+confirmed useful action. If a participant disconnects unexpectedly or output
+stalls, stop/report an interrupted run rather than silently claiming victory.
+
+If the controller or server becomes unreachable, preserve the run record and
+say in-game stop is unconfirmed. A fresh run is deliberate; no automatic resume.
+The existing server's logs and diagnostics support investigation without adding
+a new telemetry subsystem.
+
+## Fixed starting roster
+
+Keep the previously checked 20-slot candidate roster: **12 races and 18 distinct
+classes per side**. All 40 base race/class pairs were checked against the current
+table; live availability and chosen actions still need verification. These are
+unspecialized baseline builds, so duplicate healers need no spec-selection work.
+Neutral races must explicitly join the intended racewar side.
+
+Good side:
+
+1. Mountain dwarf warrior — frontline leader.
+2. Barbarian berserker — physical damage.
+3. Human paladin — protection/support.
+4. Centaur ranger — weapon and ranged coverage.
+5. Thri-kreen warrior — racial combat variation.
+6. Human monk — unarmed combat.
+7. Halfling rogue — opening/positional actions.
+8. Minotaur mercenary — physical damage.
+9. Grey elf bard — group support.
+10. Githzerai psionicist — mental abilities.
+11. Mountain dwarf cleric — primary healing.
+12. Human cleric — additional healing.
+13. Firbolg shaman — healing and debuffs.
+14. Grey elf druid — nature magic.
+15. Gnome sorcerer — spell damage.
+16. Human conjurer — spell damage.
+17. Halfling illusionist — illusion/control abilities.
+18. Githzerai ethermancer — class-specific magic.
+19. Grey elf summoner — available direct combat spells.
+20. Tiefling dragoon — class-specific weapon actions.
+
+Evil side:
+
+1. Thri-kreen warrior — frontline leader.
+2. Duergar berserker — physical damage.
+3. Troll mercenary — racial combat variation.
+4. Orc anti-paladin — offensive support.
+5. Githyanki monk — unarmed/racial combat.
+6. Drow rogue — opening/positional actions.
+7. Goblin reaver — class-specific combat.
+8. Kobold bard — group support.
+9. Drow cleric — primary healing.
+10. Duergar cleric — additional healing.
+11. Ogre shaman — healing and debuffs.
+12. Githyanki psionicist — mental abilities.
+13. Drider blighter — racial anatomy and class magic.
+14. Kobold sorcerer — spell damage.
+15. Drow necromancer — necromancy.
+16. Githyanki conjurer — spell damage.
+17. Goblin illusionist — illusion/control abilities.
+18. Tiefling ethermancer — class-specific magic.
+19. Drow summoner — available direct combat spells.
+20. Minotaur mercenary — another physical/racial variation.
+
+## Files and work sequence
+
+Expected implementation footprint:
+
+- `scripts/run_racewar_battle.py`: concurrent clients, a small fixed roster/action
+  dictionary, preparation, simple combat loop, and transcripts. Start with one
+  script rather than a separate configuration language and framework.
+- `src/cmd/battleprep.c` and its header, with normal command/Makefile wiring:
+  only the missing preparation and targeted stop behavior.
+- Owning skill/kit/memorization functions only if a required existing function
+  needs exposing; do not copy their policy into a new subsystem.
+- A focused helper regression and a real-client full-group journey, extending
+  existing checks where practical. Keep usage instructions with this plan until
+  the runnable tool is delivered.
+
+Revised estimate: **10-16 hours of active engineering with Codex doing the work**,
+including implementation and focused full-group verification:
+
+1. Reuse the client/creation flow and connect the full roster: **2-3 hours**.
+2. Add the small baseline/kit/spell preparation helper: **2-4 hours**.
+3. Implement placement, short action lists, start/stop, and transcripts: **3-4 hours**.
+4. Build, watch full matches, reproduce/fix scoped findings, and document use:
+   **3-5 hours**.
+
+This replaces the earlier 24-36-hour estimate because automatic recovery,
+specialization/pet coverage, rotation, and extensive reporting are removed.
+The earlier plan had accumulated too much automation for the requested first
+version. These numbers are estimates, not a measured Codex throughput guarantee.
+Reassess after the first end-to-end setup if an existing account, item, or combat
+defect blocks the chosen flow. Unrelated game repairs are not secretly included.
+
+## Proof and finish line
+
+- [ ] Both sides contain real mortal PCs at the actual full group caps, with
+  verified equipped Chaos kits and ready selected spells/resources.
+- [ ] Explicit room selection and the default staff-room behavior work, with no
+  environment gate or global room/account/rules changes.
+- [ ] A normal client observes a full-size battle with melee, spell damage, and
+  healing/support through actual player commands. Confirm useful execution from
+  every selected role; a sent command alone is not proof.
+- [ ] Normal player timing, resource depletion, racewar targeting, group behavior,
+  equipment procs, deaths, and relevant saves are exercised. Record any category
+  not reached instead of claiming it passed.
+- [ ] The script drains all participants' output, cannot accumulate an unbounded
+  input queue, distinguishes rejection/disconnection from success, and retains
+  enough timestamped evidence to investigate a failure.
+- [ ] Operator stop handles the selected participants and pending actions without
+  disturbing uninvolved characters. Verify the stopped state, including observed
+  kit effects; report interruption honestly when confirmation is impossible.
+- [ ] Run a second fresh full-group match using the same account pool and another
+  room to prove the tool is usable again without implementing automatic reset.
+
+Use focused helper tests for the actual eligibility/spell/stop changes, then
+`./scripts/format.sh --check` and `make -C src` after C/C++ changes. Exercise the
+full real-client journey on the chosen setup. If an owning persistence path is
+changed, run its applicable backend tests; no unrelated broad test matrix or
+full burn-in is required. Do not wait for CI to finish the local work.
+
+During the full run, observe server responsiveness as well as combat correctness,
+using existing diagnostics when available. State the party sizes, duration, and
+observed failures. One successful fight does not establish long-term stability,
+maximum capacity, or exhaustive combat coverage.
+
+## Implementation handoff
+
+### Chunk 1: native preparation ([PR #406](https://github.com/LuminariMUD/Duris/pull/406), ready for review)
+
+Implementation commit: `ffd1463fd` on `branch/issue-405-racewar-battle-plan`.
+The PR targets `master`; dependent work should branch from its head and target
+this branch until #406 merges. The PR remains open; no merge or deployment has
+been performed.
+GitHub converted the original issue-linked branch into a closing PR link at PR
+creation. That link was removed; ordinary issue/PR/plan references remain. Check
+`closingIssuesReferences` before publishing other partial chunks so #405 stays
+open until all acceptance criteria pass.
+
+`battleprep <exact-player-name> baseline|spells` is registered as an Overlord
+command, without environment or Chaos gates. `baseline` uses native advancement,
+sets base stats to 100, applies actual unspecialized skill/spell/song ceilings and
+the existing epic grant, and restores derived resources. It refuses non-mortals,
+disconnected/dead targets, specialization/multiclass, combat (including incoming
+attacks), casts, item windups, and active memorization.
+
+`spells` completes the player's existing memorize/pray queue after checking every
+entry against current eligibility, book availability and per-circle capacity.
+Validation is atomic: a bad entry leaves the whole queue unchanged. It does not
+create spells or replenish mana/slots. Changes use existing dirty-component
+tracking; the runner must issue ordinary `save` after final preparation.
+
+Ablation: retain existing `chaos kit`, staff load/give of master book VNUM 7,
+transfer, group, rank and restore commands. No new kit catalog, item deletion,
+book-grant service, or persistence path is needed. Starting inventory can be
+removed/dropped using ordinary character commands before the empty-inventory
+Chaos grant; confirm the selected setup's result in the full journey.
+
+Files: `src/cmd/battleprep.{c,h}`, normal command/Makefile/attribute wiring,
+`tests/async/test_battleprep_runtime.py`, `tests/async/run_battleprep_journey.py`,
+and this plan. Verified on 2026-10-27:
+
+- `python3 tests/async/test_battleprep_runtime.py`: ASan/UBSan command checks passed
+  for authority/exact target/busy guards, skill and song ceilings, native resource
+  models, and atomic eligibility/book/circle validation.
+- `python3 tests/async/test_epic_skill_grant.py`: existing eligibility harness passed.
+- `python3 tests/async/test_command_attributes_coverage.py` and
+  `python3 tests/async/test_spell_abort_command.py`: registration contracts passed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 checks passed.
+- `./scripts/format.sh --check`, `git diff --check`, and `make -C src -j4`: passed.
+- Flat-file build passed with `make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_battleprep_flatfile -j4`.
+- `python3 tests/async/run_battleprep_journey.py --binary
+  bin/server/dms_battleprep_flatfile`: passed real login/command dispatch, mortal
+  denial, native advancement, master-book load/give, cleric/sorcerer queued
+  preparation, acknowledged saves, server restart and reloaded prepared spells.
+  Executable SHA-256: `723ccd6862895aa8dd91446cc74bed8df90974151977692e2e9b71591632690c`.
+
+Local build/journey logs: `bin/racewar-battles/implementation/` (untracked).
+The journey uses disposable flat-file authority. No persistence implementation
+changed; MariaDB runtime behavior and full-party combat remain unverified.
+
+Next: stack the concurrent client/provisioning runner and targeted stop/combat
+chunks on #406.
+The seven finish-line requirements above remain unchecked until runtime evidence
+proves them. No release tag or deployment is needed for review-only chunks.
+
+Integration findings for the runner: use `rest` (sitting alone does not enter the
+resting state), and unquoted names for `pray full heal` / `memorize <spell>`;
+casting has its own syntax. Await `Save complete for <name>.`, since a normal
+prompt can follow `Save queued` before persistence finishes. For targeted stop,
+reuse `StopCasting()` (which also aborts item actions), `stop_singing()`,
+`stop_memorizing()` and targeted `tranquilize()`, with explicit participant input
+queue draining and observed settling. Their presence alone is not stop proof;
+the next chunk must exercise queued actions and actual kit effects.

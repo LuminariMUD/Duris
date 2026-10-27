@@ -907,6 +907,7 @@ extern unsigned int game_locked_level;
 #define CMD_HLQLIST 869
 #define CMD_QINFO 870
 #define CMD_DIVINEBOON 871
+#define CMD_BATTLEPREP 872
 
 /* The CMD_s below are not real commands, they are used in item special procedures to identify
  * when wearer gets hit in melee or nuked and when an item is poofing on ground.
