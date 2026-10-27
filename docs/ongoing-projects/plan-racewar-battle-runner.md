@@ -577,12 +577,16 @@ chunk. It acknowledges actual dequeue only, never successful combat execution.
 
 ### Chunk 4: native battle controls ([PR #411](https://github.com/LuminariMUD/Duris/pull/411), ready for review)
 
-Branch: `branch/issue-405-battle-controls`, stacked on #410 at `ee90a711c`.
-Implementation commit: `ce7bf946a`. #411 targets `branch/issue-405-battle-preparation`.
+Branch: `branch/issue-405-battle-controls`, originally stacked on #410 at `ee90a711c`.
+Implementation commit: `ce7bf946a`. #406/#407/#409/#410 are now merged, and #411
+targets `master` after ordinary synchronization merge `0f808b50b`. Its native
+source tree exactly matches the combat checkout's integrated source tree
+`34c260e7765d97783f54df7d4285e4254b1b67e1`; the already-passed MariaDB/flat-file
+builds and focused native checks are reused. No history was rewritten.
 Worktree: `/home/aiwithapex/projects/duris-racewar-runner`. The reviewed #407
 prompt-ordering fix is included through #410's existing merge, without rewriting
-history. `branch/issue-405-racewar-combat` retains the earlier preparation head;
-fast-forward it to the controls branch before continuing the operator chunk.
+history. Operator work is on `branch/issue-405-racewar-combat`, which already
+contains this integrated source and retains its separate runner changes.
 
 Outcome: observe actual player input dequeue, obtain legal mortal room selectors,
 and stop only the selected participants and actions involving them. Non-goals:
