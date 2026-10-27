@@ -1886,7 +1886,7 @@ void enter_game(P_desc d)
 
 			if (opposite_racewar(ch, i->character) && !IS_TRUSTED(i->character))
 				continue;
-			if (!IS_SET(i->character->specials.act2, PLR_WHO))
+			if (!IS_SET(i->character->specials.act, PLR_WHO))
 				continue;
 
 			send_to_char(Gbuf1, i->character, LOG_PRIVATE);

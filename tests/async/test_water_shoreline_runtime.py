@@ -148,6 +148,8 @@ functions = [
     ('actmove.c', 'void do_move('),
     ('sparser.c', 'void do_abort(P_char ch,'),
     ('interp.c', 'int old_search_block(const char *argument'),
+    ('interp.c', 'static int input_command_number('),
+    ('interp.c', 'bool input_is_afk_toggle('),
     ('interp.c', 'bool cmd_allowed_while_casting('),
     ('interp.c', 'static bool is_retired_command_spelling('),
 ]

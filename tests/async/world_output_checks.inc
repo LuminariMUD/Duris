@@ -146,5 +146,11 @@ static void world_output_matrix()
 	assert(drain(&connection).empty());
 	descriptor_list = nullptr;
 	rooms[0].dir_option[0] = rooms[0].dir_option[1] = nullptr;
+	for (P_char player : { &ch })
+	{
+		delete GET_PLAYER_LOG(player);
+		GET_PLAYER_LOG(player) = nullptr;
+		drain(player->desc);
+	}
 	puts("World output: profile matrix, layout, exits, perception-gated item flags, auras and weather passed");
 }

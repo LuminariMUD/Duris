@@ -1,14 +1,13 @@
 # Watchable racewar group battle runner — lean first version
 
-Status: implementation and local acceptance complete; review/merge pending for [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
+Status: implementation and local acceptance complete for [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
 Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
-repair are merged. Remaining review order: full-group PvP persistence [#414](https://github.com/LuminariMUD/Duris/pull/414),
+repair are merged. Final delivery order: full-group PvP persistence [#414](https://github.com/LuminariMUD/Duris/pull/414),
 delayed-effect stop [#415](https://github.com/LuminariMUD/Duris/pull/415), then the
-operator [#416](https://github.com/LuminariMUD/Duris/pull/416) on
-`branch/issue-405-racewar-combat`. Both full-party `battle-07` runs
+operator [#416](https://github.com/LuminariMUD/Duris/pull/416). Both full-party `battle-07` runs
 passed. No implementation or local acceptance work remains; no deployment occurred.
-Initial plan branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
-The issue and implementation PRs link here; partial PRs must not automatically close #405.
+Initial plan: [commit 4ff32f335](https://github.com/LuminariMUD/Duris/commit/4ff32f335c7d3f279b363a24eb0ccc17c9a34431).
+The complete delivery closes #405; production acceptance is not an outstanding requirement.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
 
 ## Outcome and scope
@@ -399,20 +398,19 @@ qualification also passes `python3 tests/async/test_racewar_runner.py` (24 tests
 `python3 tests/async/test_documentation_contract.py` (14 tests), whitespace and
 format checks. No full burn-in or CI wait was required.
 
-Evidence remains ignored under
-`/home/aiwithapex/projects/duris-racewar-runner/bin/racewar-battles/battle-07/`:
+Merge cleanup retains the original ignored evidence under
+`/home/aiwithapex/projects/duris/bin/merge-closeout-414-416/retained/duris-racewar-runner/bin/racewar-battles/battle-07/`:
 `result.json`, both `match-*/summary.json` and preparation/ready/roster files,
 per-character JSONL, separate observer transcripts, server samples and retained
 native logs. The private controller configuration and account pool must not be
 published. The disposable server exited normally and its runtime was removed.
 Earlier failed runs remain useful regression evidence; do not overwrite them.
 
-Continuation/review: the active operator worktree is
-`/home/aiwithapex/projects/duris-racewar-runner`; the native corrections and SQL
-qualification evidence remain in `/home/aiwithapex/projects/duris-battle-fixes`.
-Keep unmerged worktrees. Review in dependency order #414 → #415 → operator;
-the operator PR is [#416](https://github.com/LuminariMUD/Duris/pull/416).
-Check live GitHub state because the user is merging independently. #414 requires
+Continuation: use `master` in `/home/aiwithapex/projects/duris` after the final
+operator merge. The original native corrections and SQL qualification evidence
+are retained under `bin/merge-closeout-414-416/retained/duris-battle-fixes/` there.
+Earlier worktree paths below identify historical checkpoints; the retained
+directories preserve their evidence after safe branch/worktree cleanup. #414 requires
 migration 0054 (sequence 55) before its new SQL writer, and older binaries must
 not open stores containing its new native formats/results. This task performed
 no production migration, deployment, release or release tag.
@@ -424,6 +422,37 @@ broad ability-coverage claim. The retained receipt/stop checks address reproduce
 failures, and existing passing evidence is reused.
 
 ## Implementation handoff
+
+### Sequential merge qualification — 2026-10-27
+
+The active repository rule requires linear history. #414 was squash-merged as
+`d0cf885b2`, then #415 as `d469e8f7d`; each resulting master tree exactly matched
+its locally qualified integration. Dependent branches received ordinary
+synchronization merges, without rewriting their history. The #415 handoff and
+#416 handoff/journey conflicts were squash-history collisions: upstream copies
+matched the already-incorporated dependency, so the later additions were retained.
+
+Fresh MariaDB and flat-file builds passed for both native integrations. #414's
+capture/codec, flat-file domain/player repository, critical codec/completion,
+prepared reward recovery/replay, migration CLI safety and runtime metadata checks
+passed, along with disposable MariaDB full-group rollback/retry/replay and
+migration preservation/guard tests. Its player-repository assertion was updated
+from native format 3 to 4; the executable repository test passed afterward.
+
+#415's battleprep/smite sanitizer tests and the integrated four-PC real-server
+`--controls` journey passed, including queued-input/cast stop, unaffected bystander,
+acknowledged saves, acid/magma settling and magma reapplication. Native source tree:
+`0e468bfe188b801aeb16d17cfe75f296d7856715`; flat-file binary SHA-256:
+`4659ede05291f5a736ae4040fa16c35913a7abf8c834f990e8bb29d5e3f6c31d`.
+The operator integration preserves that native tree and the reviewed runner/tests.
+The 26 operator tests, CLI help, 14 documentation checks, formatting and normal
+commit hooks pass. Logs and the new runtime receipt are retained in the primary
+checkout's `bin/merge-closeout-414-416/`.
+
+The earlier two full-party `battle-07` runs are reused, not repeated in this merge
+pass. The older broad CI run reported additional failures outside these focused
+checks; no complete regression-suite, loaded-world or production claim is made.
+No release tag, production migration or server deployment is part of this merge.
 
 ### PR #416 review follow-up — 2026-10-27
 
@@ -450,7 +479,7 @@ full-party journeys and native build/backend results are reused; this review
 follow-up adds deterministic socket proof rather than claiming another live
 battle, full burn-in or production run.
 
-Git check: the operator contains the current #415 head `6a45835f4`, which contains
+Historical pre-merge Git check: the operator contains #415 head `6a45835f4`, which contains
 #414. Both dependencies remain open. Master `e0d01f4b9` is one commit beyond the
 stack's master baseline; a `git merge-tree --write-tree HEAD origin/master` trial
 succeeds without conflicts. Retain the #414 → #415 → #416 stack and the focused

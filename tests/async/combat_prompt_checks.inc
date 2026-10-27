@@ -45,6 +45,61 @@ static void combat_prompt_matrix()
 				 "",
 				 DAMMSG_HIT,
 				 nullptr };
+	// The command's confirmation, status screen and actual combat brackets must
+	// agree for either recipient, including characters with either saved bit value.
+	for (P_char player : { &attacker, &victim })
+	{
+		P_char other = player == &attacker ? &victim : &attacker;
+		other->specials.act2 = PLR2_BATTLEALERT;
+		auto check_battle = [&](std::string argument, bool enabled)
+		{
+			do_toggle(player, argument.data(), 0);
+			assert(plain_text(drain(player->desc)) ==
+			       std::string("You turn your battle alert status ") +
+				       (enabled ? "on" : "off") + ".\n");
+			assert(player->specials.act2 ==
+			       (PLR2_SHIPMAP | (enabled ? 0u : PLR2_BATTLEALERT)));
+			char status[] = "";
+			do_toggle(player, status, 0);
+			assert(plain_text(drain(player->desc))
+				       .find(enabled ? "Battle Alert: ON" : "Battle Alert: OFF") !=
+			       std::string::npos);
+			dam_message(5., &attacker, &victim, &message);
+			const auto combat = plain_text(drain(player->desc));
+			assert((combat.find("-=[") != std::string::npos) == enabled);
+			assert((combat.find("]=-") != std::string::npos) == enabled);
+			assert(plain_text(drain(other->desc)).find("-=[") == std::string::npos);
+			assert(plain_text(drain(&observer_desc)).find("-=[") == std::string::npos);
+		};
+		for (unsigned initial : { 0u, PLR2_BATTLEALERT })
+		{
+			for (const char *name : { "battle", "battle alert", "batt" })
+			{
+				player->specials.act2 = PLR2_SHIPMAP | initial;
+				check_battle(name, initial != 0);
+				check_battle(name, initial == 0);
+				for (const char *value : { "on", "yes", "1", "true" })
+				{
+					player->specials.act2 = PLR2_SHIPMAP | initial;
+					check_battle(std::string(name) + " " + value, true);
+					check_battle(std::string(name) + " " + value, true);
+				}
+				for (const char *value : { "off", "no", "0", "false" })
+				{
+					player->specials.act2 = PLR2_SHIPMAP | initial;
+					check_battle(std::string(name) + " " + value, false);
+					check_battle(std::string(name) + " " + value, false);
+				}
+				player->specials.act2 = PLR2_SHIPMAP | initial;
+				std::string invalid = std::string(name) + " invalid";
+				do_toggle(player, invalid.data(), 0);
+				assert(drain(player->desc).find("boolean flag needed") !=
+				       std::string::npos);
+				assert(player->specials.act2 == (PLR2_SHIPMAP | initial));
+			}
+		}
+	}
+	attacker.specials.act2 = victim.specials.act2 = 0;
 	for (double damage : { 0., 5., 40. })
 	{
 		pc.output_preferences = {};
@@ -172,5 +227,11 @@ static void combat_prompt_matrix()
 	}
 	pc.output_preferences = {};
 	rooms[0].people = nullptr;
+	for (P_char player : { &attacker, &victim, &observer })
+	{
+		delete GET_PLAYER_LOG(player);
+		GET_PLAYER_LOG(player) = nullptr;
+		drain(player->desc);
+	}
 	puts("Combat and prompt: real damage recipients, unchanged RNG/text/state, resource thresholds and auxiliary prompts passed");
 }
