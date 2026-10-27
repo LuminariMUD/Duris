@@ -37,11 +37,12 @@ static const int thrikreen_good_eq[] = { 677, 283, 285, 1112, 286,  288, 290,
 static const int thrikreen_evil_eq[] = { 677, 283, 285, 1112, 286, 288, 290, 613, 1170, 1173, -1 };
 
 /*Minotaur Basics*/
-static const int minotaur_good_eq[] = { 677,  283,  285,  1112, 286, 288, 290, 398, 398,
-					1176, 1167, 1182, 603,	108, 109, 111, -1 };
+// Shaman totems belong to the class kit, not the racial basics.
+static const int minotaur_good_eq[] = { 677, 283, 285,	1112, 286,  288, 290,
+					398, 398, 1176, 1167, 1182, 603, -1 };
 
-static const int minotaur_evil_eq[] = { 677,  283,  285, 1112, 286, 288, 290, 1170,
-					1173, 1182, 603, 108,  109, 111, -1 };
+static const int minotaur_evil_eq[] = { 677, 283,  285,	 1112, 286, 288,
+					290, 1170, 1173, 1182, 603, -1 };
 
 static const int blighter_stuff[] = { 1109, 1108, 1113, 1112, 1140, 677, 239, 618,
 				      679,  680,  729,	729,  452,  437, -1 };
@@ -1676,6 +1677,12 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 	}
 
 	class_kit = newbie_kits[input.race][flag2idx(input.main_class)];
+	// These normally playable classes lack race-specific legacy kit rows.
+	// Reuse their established class gear, without enabling the all-classes override.
+	if (!class_kit && input.main_class == CLASS_BERSERKER)
+		class_kit = newbie_kits[RACE_ORC][flag2idx(CLASS_BERSERKER)];
+	else if (!class_kit && input.main_class == CLASS_PSIONICIST)
+		class_kit = newbie_kits[RACE_PILLITHID][flag2idx(CLASS_PSIONICIST)];
 	if (!class_kit && input.all_classes)
 	{
 		int cls = flag2idx(input.main_class);

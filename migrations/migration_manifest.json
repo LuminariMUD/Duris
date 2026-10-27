@@ -709,6 +709,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "497c7d9eb21f5fdad4dca04edf1289a1f61e7f022129dc612d73b5963b1161ef",
       "verify_checksum": "5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948201ed4c0f86f8e"
+    },
+    {
+      "id": "0053_misty_vale_shop_indexes",
+      "sequence": 54,
+      "description": "Reindex saved shops and current custody after the Misty Vale insertion",
+      "apply": "immutable/0053_misty_vale_shop_indexes.sql",
+      "verify": "immutable/0053_misty_vale_shop_indexes.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "82750b92a3c0b02044ead9ebc3eab8aba4586adeda802d7df8180f87901edb03",
+      "verify_checksum": "0b45ccd422cef694d36a231ef014dc7988ebcdf5a5b089c066ea96b000c60dc3"
     }
   ],
   "engine_verifiers": [

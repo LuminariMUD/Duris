@@ -1644,14 +1644,17 @@ void reset_nexus_stones(P_char ch)
 		delete_objs.pop_back();
 	}
 
+	bool complete = true;
 #ifdef __NO_MYSQL__
-	if (!load_nexus_stones())
-		send_to_char("Nexus reset is incomplete; check the server log.\r\n", ch);
+	complete = load_nexus_stones();
 #else
 	for (const NexusStoneInfo &row : nexus_rows)
 		if (!load_nexus_stone(row.id, row.name.c_str(), row.room_vnum, row.align))
-			send_to_char("Nexus reset is incomplete; check the server log.\r\n", ch);
+			complete = false;
 #endif
+	send_to_char(complete ? "Nexus stones reset.\r\n" :
+				"Nexus reset is incomplete; check the server log.\r\n",
+		     ch);
 }
 
 void reload_nexus_stone(P_char ch, int stone_id)
@@ -1663,11 +1666,17 @@ void reload_nexus_stone(P_char ch, int stone_id)
 	flatfile_nexus_record record;
 	std::string error;
 	if (!flat_nexus_record(stone_id, &record, &error))
+	{
+		send_to_char("Nexus stone not found or unavailable.\r\n", ch);
 		return;
+	}
 #else
 	const NexusStoneInfo *row = nexus_row(stone_id);
 	if (!row)
+	{
+		send_to_char("Nexus stone not found or unavailable.\r\n", ch);
 		return;
+	}
 #endif
 
 	vector<P_char> delete_chars;
@@ -1715,6 +1724,8 @@ void reload_nexus_stone(P_char ch, int stone_id)
 		nexus_rows.push_back(std::move(restored));
 	}
 #endif
+	if (loaded)
+		send_to_char("Nexus stone reloaded.\r\n", ch);
 }
 
 bool nexus_stone_expired(int stone_id)

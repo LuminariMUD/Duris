@@ -1,0 +1,637 @@
+#300000
+female pygmy girl~
+&+wA &+gfemale &+Gpygmy~
+&+LA &+gfemale &+Gpygmie &+Lscavenges the area for &+yfood&+L.
+~
+   &+LThis young &+gforager &+Lcarries a woven basket through the forest,
+searching for berries and edible roots. Her green eyes scan the undergrowth
+with a mixture of curiosity and caution.
+~
+2112 0 0 0 0 0 0 1000 S
+H 0 1 2
+22 0 10 22d47+220 3d5+5
+4.0.4.0 100
+8 8 2
+#300001
+male pygmie man~
+&+wA &+gmale &+Gpygmy~
+&+LWandering the &+gfo&+Gr&+ge&+Gst&+ga&+Gl &+Wm&+wi&+Ws&+wt&+Ws&+L, a &+gmale &+Gpygmie &+Lstands here.
+~
+   &+LCovered in &+Gta&+gt&+Gt&+goo&+Gs&+L, this primitive &+gman &+Lhas a elongated &+wskull&+L, which was
+unnaturally flattened. Completely nude, this &+Gpygmie &+Lhas dyed his body with
+&+ymuds &+Land &+Rfl&+ro&+Rw&+rer&+Rs&+L; making it hard to distinguish him from the environment.
+His eyes are a deep &+ybrown&+L, flaked with a deep &+Gem&+ge&+Gral&+gd &+Lhue.
+~
+64 0 0 0 0 0 0 500 S
+H 0 1 3
+27 0 10 27d60+324 3d6+4
+8.3.7.1 100
+8 8 2
+#300002
+young pygmie boy~
+&+wA &+gyoung &+Gpygmie~
+&+LWandering the &+gfo&+Gr&+ge&+Gst&+ga&+Gl &+Wm&+wi&+Ws&+wt&+Ws&+L, a &+gyoung &+Gpygmie &+Lstands here.
+~
+   &+LStill &+gyoung&+L, this primitive has only begun to get his tattoo-work applied to
+his shoulders.  It will be years before those &+Gta&+gt&+Gt&+goos &+Lextend up onto his face
+toward the pate of his unnaturally flattened and elongated &+wskull&+L.  This &+Gpygmie
+&+Lis so young he has yet to earn the right to wear a &+yloincloth&+L, instead he roams
+about totally in the nude.  Like most of the men in his tribe, this &+gyouth &+Lhas
+painted his body in crude dyes of crushed &+yclays&+L, &+Min&+msects&+L, and &+Rfl&+ro&+Rw&+rer &+Lpetals.
+His wheat-colored &+yeyes &+Lare limned with &+Gg&+gr&+Ge&+ge&+Gn &+Lflakes, much like most of his
+tribe.
+~
+2112 0 0 0 0 0 0 1000 S
+H 0 1 2
+23 0 10 27d60+324 3d6+4
+8.3.7.1 100
+8 8 0
+#300003
+pygmie warrior~
+&+wA &+Gpygmy &+Lwarrior~
+&+LCovered in &+Gwar&+cpaint&+L, a &+gmale &+Gpygmie &+Lprowls about the area.
+~
+   &+LThis &+gmale &+Lprimitive has the elongated, flattened, and sloping &+wskull &+Lfound in
+all members of this &+Gpygmie &+Ltribe.  The &+gman &+Lis completely nude and has intricate
+&+Gta&+gt&+Gt&+go&+Go&+gi&+Gng &+Lacross his face and upper shoulders.  The rest of his body has been
+dyed with pigments made of &+yclays&+L, ground &+rin&+Rsects&+L, and &+mf&+Ml&+mo&+Mw&+me&+Mr &+Links.  The irises
+of his eyes are the &+ybrown &+Lof aged &+ytimber &+Land are flaked with shards of &+Gem&+ge&+Gral&+gd
+&+Lgreen.  Judging by his frame and how he carries himself, this &+Gpygmie &+Lis easy to
+recognize as a proud &+wwarrior &+Lof his tribe.
+~
+67110976 0 0 524288 0 0 0 750 S
+H 0 1 3
+32 0 10 36d95+828 4d7+10
+0.1.2.2 100
+8 8 2
+#300004
+pygmie elder~
+&+wA &+Gpygmie &+gelder~
+&+LCovered in old &+Gwar&+cpaint&+L, an &+gelder &+Gpygmie &+Lprowls here.
+~
+   &+LBent and wrinkled with age, this primitive has outlived most of the other
+&+Gpygmies &+Lfrom his generation.  The &+gta&+Gt&+gt&+Goo&+gs &+Lthat were once a sign of his prowess
+and strength are now faded and sad reminders of past glories.  His pendulous
+&+ggonads &+Lare barely contained by his &+yloincloth&+L, age having had a hand in their
+slow descent as well.  All is not so bad, however, as his age automatically
+gives him a voice on the &+gvillage &+Gcouncil&+L.
+~
+2112 0 0 524288 0 0 0 750 S
+H 0 1 3
+36 0 -15 36d95+828 4d7+10
+0.1.2.2 46656
+8 8 1
+#300005
+pygmie mother woman~
+&+wA &+Gpygmie &+gmother~
+&+LA &+Gpygmie &+gmother &+Lsearches the area for her &+gchild&+L.
+~
+   &+LThis primitive &+gwoman &+Lhas full &+Glips&+L, the lower of the two which is filled
+with a &+wplate&+L. Her &+Gears &+Lare unnaturally pointed, having been cut like that by
+the tribe shaman upon her birth. Naked, with the exception of a flimsy &+Gg&+gr&+Ga&+gs&+Gs
+&+yloincloth&+L, this &+Gpygmie&+L's breasts sag nearly to her waist.  Her &+geyes &+Lare wide
+and round, slightly slanted at the corners.
+~
+2112 0 0 0 0 0 0 1000 S
+H 0 1 2
+25 0 29 22d47+220 3d5+3
+4.0.5.0 19602
+8 8 2
+#300006
+gynaeros pygmie shaman~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman~
+&+LArms flailing, &+yGynaeros &+Lthe &+Gpygmie &+gshaman &+Ldances to the &+csp&+Ci&+cr&+Cit&+cs &+Lhere.
+~
+   &+LLike the rest of her tribe, this primite woman wears a &+wplate &+Lin her lower
+lip and has had her &+gears &+Lpurposefully shaped to mimick those of an &+celf&+L. Unlike
+the other women of her clan, she has two long &+Gvi&+gn&+Ge&+wthorns &+Linserted through the
+meat of her distended &+gnipples&+L. Her traditional &+yloincloth &+Lis crafted of treated
+&+gli&+Gz&+ga&+Grd&+gs&+Gk&+gin&+L, the surface of which is painted with bizarre and foreign sigils.
+Her almond-shaped eyes appear more slanted with her advanced age, and what once
+were clear green &+Gp&+go&+Go&+gl&+Gs &+Lare now fogged with &+wglaucoma &+Land age. The various
+&+gpa&+ci&+Gn&+cts &+Lon her body mark her as the &+Gpygmie &+yshaman&+L. She is fiddling with a pile
+of &+gsc&+Ga&+gl&+Ges&+L.
+~
+2114 0 0 33554432 0 0 0 1000 S
+H 0 256 3
+51 0 -56 50d99+1804 6d6+17
+1.7.6.3 115500
+8 8 2
+#300007
+lion mountain~
+&+yA noble mountain &+Ylion~
+&+yA noble mountain &+Ylion &+ysniffs the air for prey.
+~
+&+yThis powerful, noble mountain &+Ylion &+yis a younger of its breed, but is
+developing nicely into a powerful alpha male.  Piercing hazel eyes stare from
+the proud face and a thick mane of a freshly-matured mountain &+Ylion&+L.
+~
+2114 0 0 16 0 0 0 0 S
+AC 0 1 4
+45 0 -69 45d107+2025 6d6+12
+0.0.0.0 109350
+8 8 1
+#300008
+small wyvern~
+&+yA small wyvern~
+&+yA small wyvern shrieks loudly to the sky above.
+~
+   &+yThis wyvern, although large in comparison to most humanoids, is quite small for
+the normally-massive full grown wyvern.  It does, however, bare a sharp beak and
+razor-sharp talons.
+~
+2114 0 0 16 0 0 0 0 S
+DK 0 1 3
+45 0 -69 45d107+2025 6d6+12
+0.0.0.0 100
+8 8 0
+#300009
+lizard small~
+&+wA &+Lsmall &+Yli&+Gz&+Ya&+Grd~
+&+LThis &+Yli&+Gz&+Ya&+Grd &+Lclimbs upon the &+ywalls&+L.
+~
+   &+LThis tiny &+Gcr&+Ye&+Ga&+Ytu&+Gr&+Ye &+Lscuttles about the area, climbing up &+ywalls &+Las if they
+were horizontal and leaping about at intervals twice its own &+Gbody &+Llength.  It
+has a mottled &+Ggreen &+Land &+Yyellow &+Lcoloration to its &+Gsc&+Ya&+Gl&+Yes&+L.  Some of the &+Gli&+Yz&+Ga&+Yrd&+Gs
+&+Lare markedly more of one color than the other, but whether this is of any
+significance is anyone's guess.
+~
+2112 0 0 0 8320 0 0 0 S
+R 0 1 1
+21 0 35 22d47+220 2d5+3
+0.0.0.0 15600
+8 8 0
+#300010
+salamander forest large~
+&+wA &+Gfo&+gr&+Ge&+gst &+Lsalamander~
+&+LA large &+Gsa&+gl&+Ga&+gma&+Gn&+gd&+Ger &+Lmoves about slowly amongst the &+wm&+Wi&+ws&+Wt&+L.
+~
+   &+LThis large, flat-headed &+gsa&+Gl&+ga&+Gma&+gn&+Gd&+ger &+Lhas dark jade &+Gsc&+ga&+Gl&+ges &+Lcrossed by deep
+ebon &+wstripes&+L. It stands about five feet high at the &+ghaunches &+Land is twelve
+feet in length. Its complanate, oblong &+Ghead &+Lis devoid of any eyes; however,
+large &+wteeth &+Lprotrude from its mouth over its leathern &+glips&+L.
+~
+2112 0 0 0 8320 0 0 1000 S
+AC 0 1 3
+45 0 -69 45d107+2025 6d6+12
+0.0.0.0 109350
+8 8 0
+#300011
+buck~
+&+wA &+ybuck~
+&+LA magnificent &+ybuck &+Lstruts through the &+Gfo&+gr&+Ge&+gst&+L.
+~
+   &+LStanding nearly forty inches at the withers, this majestic &+ydeer &+Lis a deep
+&+ymahogany &+Lcoloration with large white &+Wspots &+Lspread across its hind region. Its
+many pronged set of &+whorns &+Lare a deep charcoal hue and appear to be in the midst
+of shedding. The &+ybuck &+Lhas a thick mane that expands around the base of its
+&+yneck &+Land down the front of its &+Wchest&+L.
+~
+2112 0 0 0 0 0 0 0 S
+AE 0 1 4
+17 0 50 22d40+250 1d4+0
+0.0.0.0 13000
+8 8 1
+#300012
+golgotha~
+&+wGolgotha~
+&+wGolgotha (&+LVeld&+w) (medium) stands here.
+~
+   Standing nearly seven feet in height, this creature has a human-like
+appearance, with the exception of his four &+Larms &+Land extremely corded muscles.
+Two grey &+Leyes &+wpeer out from beneath boney eye ridges, and a long legacy &+ybraid
+&+wextends down the left side of his &+Lhead&+w.
+~
+2114 0 0 134217736 262144 262144 0 -1000 S
+H 0 16 -1
+51 0 10 50d80+2650 6d6+25
+5.10.25.10 121500
+8 8 1
+#300013
+mud dweller~
+&+wA &+ymud &+Ldweller~
+&+LSwimming just underneath the murky &+cwa&+Ct&+ce&+Crs&+L, this &+ymud &+Ldweller seeks its prey.
+~
+~
+1074006080 0 0 35127312 0 0 0 -1000 S
+H 0 1 2
+37 0 -18 37d80+777 4d7+10
+0.1.2.2 47952
+8 8 0
+#300014
+small mud dweller~
+&+wA small &+ymud &+Ldweller~
+&+LA small &+ymud &+Ldweller swims through the &+cs&+gw&+ca&+gm&+cp &+Lin search of food.
+~
+   &+LEach of this creature's hands ends in four webbed-&+yfingers &+Lcapped in sharp
+&+wclaws&+L. Two dull grey &+weyes &+Lstare through two sets of lids;  the heavy outer
+covering protects against light, while the transparent inner-lid guards against
+&+yparticles &+Ldamaging its bulbous orbs as it swims in the &+ymuck &+Lof the &+gs&+cw&+ga&+cm&+gp&+L. A
+dark, sienna-hued &+yhide &+Lstretches over the &+ymud &+Ldweller; through this, copious
+amounts of &+Wbony &+Lprojections extend all over its body.
+~
+1074006080 0 0 35127312 0 0 0 -450 S
+H 0 1 2
+33 0 -5 33d70+495 4d6+7
+7.8.0.2 42768
+8 8 1
+#300015
+large mud dweller~
+&+wA large &+ymud &+Ldweller~
+&+LStalking these &+Cwa&+ct&+Ce&+crs&+L, this large &+ymud &+Ldweller swims about purposefully.
+~
+   &+WBony &+Lprojections extend from the sienna-hued &+ysurface &+Lof the &+ymud &+Ldweller's
+hide. Its &+weyes&+L, bulbous and &+wm&+Wi&+wl&+Wk&+wy&+L, have two lids; a heavy outer covering to
+block light and a transparent inner-lid that keeps particles from the &+cs&+gw&+ca&+gm&+cp &+Lout
+of its eyes.  Sharp &+wclaws &+Ltip each of the four webbed-&+yfingers &+Lthat make up the
+creature's &+yhands&+L.
+~
+1074006080 0 0 35127312 0 0 0 -450 S
+H 0 1 2
+40 0 -28 40d80+840 4d7+10
+3.3.3.3 51840
+8 8 2
+#300016
+skeletal warrior~
+&+wA &+Wskeletal &+Lwarrior~
+&+LAn undead, &+Wskeletal &+Lwarrior shuffles about here.
+~
+   &+LThese animated remains are only distinguishable as having once been a &+Gpygmie
+&+Lby the rotting leather &+yloincloth &+Lthat hangs upon his hips.  Bits of &+gflesh &+Land
+&+Gmuscle &+Lstill cling to parts of this wretched creature, but for the most part it
+is little more than a walking &+Wskeleton&+L. The air about him reaks of old &+yearth
+&+Land the outgases of carrion &+mworms&+L. Whatever is keeping this poor &+cs&+Co&+cu&+Cl &+Lin the
+realm of the living, it can't have good intentions.
+~
+192 0 0 33554472 0 0 0 -1000 S
+SK 0 1 3
+44 0 10 28d65+364 3d6+4
+0.0.0.0 24948
+8 8 0
+#300017
+zombie cleric~
+&+wA &+Lzombie &+ccleric~
+&+LA zombie &+ccleric &+Lstaggers through the &+ypyramid&+L.
+~
+   &+LIts &+cflesh &+Lhanging loose upon his &+Wbones&+L, patches completely eaten through
+from its face, this &+wzombie &+Lshuffles around mindlessly. What's left of its &+Cmeat
+&+Lis rotted and slightly rancid, most of it infested with &+mworms &+Land various other
+carrion-eating &+wbugs&+L. Where its face once held eyes, now dead &+cnerves&+L, congealed
+&+rb&+Rl&+ro&+Ro&+rd&+L, and stripped &+mv&+Me&+mi&+Mn&+ms &+Ldangle and sway with the &+wzombie&+L's movement. It seems
+the creature is only conscious of its undead brethren.
+~
+1140850752 0 0 33554472 0 0 0 -1000 S
+ZO 0 32 3
+38 0 -15 36d88+792 4d7+10
+0.0.0.0 46656
+8 8 0
+#300018
+ghoul~
+&+wA &+ggh&+Go&+gu&+Gl~
+&+LA decaying &+gco&+Gr&+gp&+Gse &+Lstands here examining the &+warea&+L.
+~
+   &+LThis &+gmound &+Lof ambulatory &+Gflesh &+Lis in various stages of decay. Its eyes are
+lit with a fierce intelligence born long ago in a former life, a sentience that
+is tempered by a hunger to consume the &+mm&+Me&+ma&+Mt &+Lof living creatures. A rotting
+&+ylo&+wi&+yn&+wcl&+yo&+wth &+Ldrapes around its waist, one of its straps digging deep into the &+gskin
+&+Lof the hip.
+~
+2114 1 0 33554472 262144 0 0 -1000 S
+RE 0 1048576 6
+48 0 -79 45d99+1980 6d6+12
+0.0.0.0 109350
+8 8 0
+#300019
+skeletal warrior~
+&+wA &+Wskeletal &+Lwarrior~
+&+LAn undead, &+Wskeletal &+Lwarrior ambles about the area.
+~
+   &+LPieces of &+gskin &+Land &+Gmuscle &+Lstill hang from parts of this miserable creature,
+but on the whole it is little more than animated &+Wbones&+L. The musty smell of old
+&+ysoil&+L, along with the telltale odors of decomposition, seem to almost cling to
+this mobile &+gca&+Gr&+gc&+Gas&+gs&+L. These remains are only identifiable as a former &+Gpygmie
+&+Lwarrior by its rotting &+yloincloth &+Land some scant &+gta&+Gt&+gt&+Goo&+gs &+Lthat are still visible
+on what little &+gflesh &+Lit retains. Something has trapped this pitiful &+cs&+Co&+cu&+Cl &+Lin
+this world in defiance of &+WD&+we&+Wa&+wt&+Wh&+L's laws.
+~
+192 0 0 33554472 0 0 0 -1000 S
+SK 0 1 2
+40 0 10 28d65+364 3d6+4
+0.0.0.0 24948
+8 8 0
+#300020
+targul pygmie vampire~
+&+cTargul&+w, the &+Gpygmie &+gvampire~
+&+LA pale &+Gpygmie &+Lstands here, guarding the &+warchway&+L.
+~
+   &+LStanding nearly five-feet tall, this middle-aged &+Gpygmie &+Lhas a white &+Wponytail
+&+Lgrowing off the back of his elongated head. His &+Reyes &+Lare crimson flecked with
+gold, a stark contrast to his &+wpale&+L, almost &+cblue&+L, skin. His &+Wcanines &+Lare overly
+long for his species, resembling the fangs of dogs more than the teeth of man.
+His &+Gta&+ct&+Gt&+coo&+Gi&+cn&+Gg &+Lis reminiscent of the tribal &+cta&+Gt&+ct&+Goo&+cs &+Lworn by the warriors, but
+there is something more refined about them. The &+wloincloth &+Lthat decorates his
+waist is like nothing even &+yDokumaci &+Lcould make, appearing to be the result of
+a mechanized process more than a workman's hand.
+~
+133186 0 0 33620008 0 0 0 -1000 S
+UV 0 1024 3 3
+52 0 10 60d80+3000 6d6+25
+0.0.25.10 335000
+8 8 1
+#300021
+crypt devil~
+&+wA &+Lcrypt &+cdevil~
+&+LA towering &+cdevil &+Lscratches &+wsigils &+Linto the &+yground &+Lwith his &+wnail&+L.
+~
+   &+LThis &+ccreature &+Lstands nearly twelve-feet tall, a monstrosity of &+cmuscle &+Land
+&+wfur&+L. Its skin is a pallid &+Cblue&+L, except for around the eyes and mouth, which
+are stained a darker &+cshade&+L. Four arms extend off its &+cbody&+L, each terminating in
+hands capped with claw-like nails. Its feet look like the claws of a beastly
+raven, the skin a deep &+mburgandy &+Lbordering on black. These &+ccreatures &+Lare known
+to be summoned up to act as guardians to the &+wtombs &+Lof great kings.
+~
+98 1 0 570425400 262144 262144 64 -1000 S
+Y 0 1 6
+54 0 -105 45d99+1980 6d6+15
+0.0.0.0 400000
+8 8 0
+#300022
+wolf spider large~
+&+wA &+Llarge &+ywolf &+Lspider~
+&+LThis large &+yspider &+Lskitters about searching for prey to feed upon.
+~
+   &+LDenticulated &+ymandibles&+L, covered in brown &+yhairs&+L, protrude from under a face-
+plate comprised of eight eyes. The bottom row is comprised of four small &+we&+Wy&+wes
+&+Lpacked close together as if supporting the &+we&+Wy&+wes &+Labove them. The next row is
+made up of two giant &+we&+Wy&+wes &+Lspaced evenly above those below. The &+yspider&+L's final
+set of &+we&+Wy&+wes &+Lare almost completely atop its &+yhead &+Land are medium in size compared
+to the others. Coarse, umber-toned &+yhairs &+Lcover each of the &+ycreature&+L's eight
+&+ylegs&+L.
+~
+64 0 0 33554432 0 0 0 0 S
+AS 0 1 3
+30 0 16 26d65+338 3d6+4
+0.0.0.0 23166
+8 8 0
+#300023
+wolf spider large~
+&+wA &+Lhuge &+ywolf &+Lspider~
+&+LCovered in coarse &+yhairs&+L, this huge &+yspider &+Lchitters around here.
+~
+   &+LThis huge &+ycritter &+Lhas eight &+ylegs&+L, each covered with coarse, umber-colored
+&+yhairs&+L. Its thick &+ymandibles &+Lare denticulated and covered in a short, &+ysienna&+L-
+toned fuzz. It has eight crimson &+re&+Ry&+res &+Larranged in three rows at the front of
+its &+yhead&+L. The bottom row consists of four small &+re&+Ry&+res &+Lpacked close together.
+The middle row is comprised of two giant &+re&+Ry&+res &+Lspaced so they are balanced above
+the lower eyes. The &+ycreature&+L's final set of &+re&+Ry&+res &+Lare nearly completely on top
+of its head and are somewhere in size between the eyes of the other two rows.
+Small &+Rgl&+ro&+Rb&+rul&+Res &+Lfilled with a viscid fluid can be seen attached to its &+yabdomen&+L.
+~
+64 0 0 33554432 0 0 0 0 S
+AS 0 1 4
+35 0 16 30d65+338 4d6+4
+0.0.0.0 23166
+8 8 0
+#300024
+blewazten pygmie geologist~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist~
+&+LThis deranged, little &+Gpygmie &+Lappears to be talking to himself.
+~
+   &+LLike the rest of his tribe, this male primitive has undergone the process of
+having his skull flattened during his childhood.  His elongated head has been
+completely shorn of all hair, the sides of his sloping cranium decorated with
+&+Gta&+gt&+Gt&+go&+Go&+gi&+Gng &+Lnearly as intricate as that found on the face and upper shoulders of
+the &+Gpygmie &+Lwarriors. His arms and legs are wrapped in &+ytanned hides &+Lwhich are
+just as dirt-encrusted as his hands and feet. His sex organs, however, are on
+full display, having been dyed a bright &+Mma&+mg&+Me&+mnt&+Ma &+Lwith an equally bright, light
+&+cb&+Cl&+cu&+Ce &+Ltip. He seems quite agitated and is mumbling to himself.
+~
+2114 0 0 33554432 0 0 0 -1000 S
+H 0 1 3
+41 0 -56 41d99+1804 4d6+10
+1.7.6.3 100
+8 8 1
+#300025
+doe~
+&+wA &+ydoe~
+&+LThis skittish &+ydoe &+Lis cautiously eating some &+gg&+Gr&+ga&+Gs&+gs&+L.
+~
+   &+LNearly thirty-four inches at the whithers, this &+ydeer &+Lis nearly one-hundred
+pounds of ambulatory fear. Her light &+ymahogany &+Lpelage is mottled with dozens of
+&+Wspots&+L, the thickest grouping found toward the animal's &+yhind &+Lquarters. The &+ydoe
+&+Lis breathing quickly, her perpetual state of alert ramping her systems into
+high gear.
+~
+2112 0 0 0 0 0 0 0 S
+AE 0 1 3
+16 0 50 20d40+250 1d4+0
+0.0.0.0 12000
+8 8 1
+#300026
+ape skunk angry~
+&+wAn angry &+Lskunk &+yape~
+&+LA &+wskunk &+yape &+Lrampages through the &+yarea&+L.
+~
+   &+LNearly a meter tall at its shoulders, this &+yape &+Lis covered in a coat of deep
+black fur with a rust-colored patch across its front. The &+ycreature&+L's shoulders
+are set wide around a broad chest, supporting two powerfully muscled arms. Its
+&+wlegs &+Lare short and capped in small feet with divergent big toes, the balls of
+the feet turned out at roughly forty-five degrees to the perpendicular. The
+&+Wskull &+Lslopes back from the brow &+yridge&+L, giving the animal a pronounced forehead.
+In contrast to the &+yape&+L's overall robustness, its mouth looks gracile and almost
+childlike. It is not hard to understand where the &+wskunk &+yape &+Lgot its name, as
+the &+yprimate &+Lexudes a pungent odor in the oils released from its sebaceous
+glands.
+~
+2114 0 0 33554480 0 0 0 0 S
+AA 0 1048576 4
+45 0 -69 45d107+2025 6d6+12
+0.0.26.11 109350
+8 8 1
+#300027
+bat subterranean~
+&+wA subterranean &+Lbat~
+&+LA cave &+wbat &+Lflies about the &+yarea&+L.
+~
+   &+LWith a wingspan of just under a foot, this &+wbat &+Lis designed to handle sharp
+turns at speed. The &+wflesh &+Lof its wings is extremely thin, with small holes and
+tears visible in some spots. The &+wbat&+L's body is covered in a fine layer of &+yhair
+&+Lthat keeps it warm in the cool tunnels of the &+ycaves &+Lit evolved to inhabit.
+~
+133184 1 0 33554432 0 0 0 0 S
+B 0 1 1
+10 0 10 15d40+110 2d3+3
+0.0.0.0 12000
+8 8 0
+#300028
+viper cave~
+&+wA cave &+Gv&+gip&+Ge&+gr~
+&+LA large &+Gv&+gip&+Ge&+gr &+Lhunts these &+ytunnels &+Lfor warmth and food.
+~
+   &+LThis &+Gv&+gip&+Ge&+gr &+Lis about two-feet in overall length, with a slender body and a
+strongly prehensile &+gtail&+L. Its &+ghead &+Lis broad and triangular, being distinct
+from the neck of the animal. It has a wide &+Gcanthus &+Land an equally broad &+gsnout&+L.
+The &+weyes &+Lare oversized with elliptical pupils and strong tapeta lucida, all of
+which enables it to see excellently in the dark of the &+ycaves &+Lwhich they usually
+inhabit. The &+gbody &+Ltapers over its length, the muscles quite evident beneath
+the animal's &+Gs&+gca&+Gl&+ge&+Gs&+L.
+~
+264256 1 0 33556480 12288 0 0 0 S
+RS 0 1 1
+11 0 10 15d40+110 2d3+3
+0.0.0.0 100
+8 8 0
+#300029
+sinuuk~
+&+wThe &+RS&+min&+Ru&+mu&+Rk~
+&+wThe &+RS&+min&+Ru&+mu&+Rk &+wstands in mid-air here.
+~
+   &+LStanding nearly twenty-five feet tall at its &+mhaunches&+L, this colossus towers
+over the smaller creatures that wander the huge tunnel-cavern complex of this
+area. Its body is draconic in form, but devoid of any wings or the telltale
+&+rbrimstone &+Lstench of conventional dragons. At the base of its twelve-foot long
+tail, seven wicked &+rba&+Rr&+rb&+Rs &+Lprotrude through the thick &+Rsc&+ma&+Rl&+mes &+Lof the creature's
+flesh. Two slitted &+meyes &+Lpeer out from beneath gnarled &+wbone&+L-ridges, set back
+and above its large cavernous &+mmaw&+L.
+~
+655370 1 0 56 12288 0 2 0 S
+D 0 1 7
+56 0 10 50d95+2700 7d6+28
+0.0.0.0 500000
+8 8 0
+#300030
+bear black~
+&+LA black bear~
+&+LA black bear rummages in the bushes for berries.
+~
+   &+LThis black bear seems perfectly content to ignore you while
+he continues his search for tasty berries.
+~
+0 0 0 0 0 0 0 0 S
+A 0 1 -1
+21 0 10 1d10+10 1d4+0
+0.0.0.0 100
+8 8 0
+#300031
+banshee xtlpal woman~
+&+wThe &+cba&+Cn&+cs&+Che&+ce &+wof &+WXtlpal~
+&+LA ghastly and vaporous &+Cw&+co&+Cm&+ca&+Cn &+Lflies about wailing in agony.
+~
+   &+LThe wraithlike &+Cw&+co&+Cm&+ca&+Cn &+Lthat floats here has braided, vaporous &+whair &+Land large
+almond-shaped &+ceyes&+L. Her visage is suffuse with anger so intense that her face
+appears more animal than &+cw&+Co&+cm&+Ca&+cn&+L. She is dressed in an ancient, ivory &+Wdress &+Lof
+ragged lace and torn satin which seems to drape about her bare &+wfeet&+L. In her
+anguish, this &+Cw&+co&+Cm&+ca&+Cn &+Lhas a singular obsession with keening a &+ybowel&+L-loosening
+wail.
+~
+395330 1 0 33620008 274432 0 0 -1000 S
+SP 0 4 3
+53 0 -105 50d80+2650 6d6+25
+0.0.0.0 121500
+8 8 2
+#300032
+leader pygmie enuztet~
+&+yEnuztet&+w, the &+Gpygmie &+gelder~
+&+LThe &+yleader &+Lof the &+wcouncil &+Lof &+Gpygmie &+gelders &+Lstands here.
+~
+   &+LOverall, this &+Gpygmie &+Lgives the appearance of a third-rate huckster who has
+grown fat and content by preying on those more credulous than himself. While
+his skull has been traditionally flattened, it is covered in a mop of &+Yhair &+Lthat
+is so unruly and sparse that it obscures the actual shape of his head. Unlike
+the others, this &+Gpygmie &+Lis absolutely devoid of any &+Gta&+gt&+Gt&+go&+Go&+gi&+Gng&+L. His skin, which
+sags where it isn't stretched tight by subcutaneous deposits of fat, is a deep
+orange hue from dyeing with the powderized remains of the scarlet lily &+Rb&+ree&+Rtl&+re&+L.
+His two beady, brown &+yeyes &+Lare close set around a hawkish nose and set at the
+center of an overly fleshy face.
+~
+67110978 0 0 34078720 0 0 0 0 S
+H 0 1 -1
+49 0 10 25d45+1500 4d4+8
+0.0.0.0 100
+8 8 0
+#300033
+pygmie elder~
+&+wA &+Gpygmie &+gelder~
+&+wA &+Gpygmie &+gelder &+wsits here.
+~
+   &+LHaving aged out of the life of a warrior, this primitive is hunched and rife
+with arthritis. His &+gta&+Gt&+gt&+Goo&+gs &+Lhave faded to and shifted into the green spectrum,
+depressing reminders of younger days. His ears have grown huge in comparison
+to his &+ghead&+L, looking more like two hairless molerats than the apendages found
+on younger men. As with most of the males his age, this &+Gpygmie &+Lis a member of
+the &+wcouncil &+Lof &+Gtribal &+gelders &+Land, as such, he helps make the decisions which
+rule the lives of this tribe.
+~
+2112 0 0 524288 0 0 0 750 S
+H 0 1 3
+36 0 -15 36d95+828 4d7+10
+0.1.2.2 46656
+8 8 1
+#300034
+dokumaci pygmie weaver~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver~
+&+LThe &+Gpygmie &+gweaver &+Lstands here crafting some interesting &+wwares&+L.
+~
+   &+LThis middle-aged &+Gwoman &+Lhas heavily calloused hands which seem to be forever
+in motion. Unlike the other women of the tribe, this female has her breasts
+&+wbound &+Lback with a finely woven &+wspider&+Ws&+wi&+Wl&+wk &+Lstrip of cloth. Instead of a plate
+imbedded in her lower &+glip&+L, this &+gprimitive &+Lweaver has a solitary &+gv&+Gi&+gn&+Ge&+wthorn &+Lthat
+has been threaded through the &+Gflesh &+Lof her upper lip. While her ears have been
+cropped like the other women in the clan, the &+gweaver &+Lhas tucked them into a
+&+wheadband &+Lwoven from the same &+wspider&+Ws&+wi&+Wl&+wk &+Las her bindings. She has a small pile
+of &+gsc&+Ga&+gl&+Ges&+L, which she seems very protective of, at her feet.
+~
+2114 0 0 0 0 0 0 1000 S
+H 0 1 2
+40 0 29 22d47+220 3d5+3
+4.0.5.0 19602
+8 8 2
+#300035
+salamander forest small~
+&+wA &+gfo&+Gr&+ge&+Gst &+Lsalamander~
+&+LA small &+Gsa&+gl&+Ga&+gma&+Gn&+gd&+Ger &+Lambles through the &+gfo&+Gr&+ge&+Gst&+L.
+~
+   &+LThis small &+Gsa&+gl&+Ga&+gma&+Gn&+gd&+Ger &+Lhas a flattened, oblong &+Ghead &+Lwith nasty serrated &+wteeth
+&+Lthat protrude beyond its &+gmouth&+L. Two &+wbone &+Lplates are visible beneath its hide
+where its eyes should be located, leaving this creature devoid of any occular
+sense. Its &+ghide &+Lis comprised of rich jade &+Gsc&+ga&+Gl&+ges &+Lcrossed by pale ebon &+wstripes&+L.
+It stands about three feet high at the &+gwithers &+Land is ten feet in total length.
+~
+2112 0 0 0 8320 0 0 1000 S
+AC 0 1 2
+41 0 -69 45d107+2025 6d6+12
+0.0.0.0 109350
+8 8 0
+#300036
+fat pygmie~
+&+wA &+gfat &+Gpygmie~
+&+LA &+gfat &+Gpygmie &+Ltends a makeshift &+yshop&+L.
+~
+   &+LWhere most &+Gpygmies &+Lare tall and thin, this man is short and dumpy. Instead
+of the swooping curves of the tribe's traditional &+gta&+Gt&+gt&+Goo&+gs&+L, he has two sleeves
+composed entirely of &+caq&+Cu&+ca&+Cti&+cc &+Wlife and a &+wshark &+Lcaught on a fishing &+ypole &+Lon his
+left breast.About the only way he resembles his &+ytribesmen &+Lis that his skull
+has the elongated, slightly-conical shape that results from headbinding. It is
+hard to tell the color of his eyes as he keeps a &+chat &+Lpulled down extremely low.
+~
+2114 0 0 0 0 0 0 1000 S
+H 0 1 3
+35 0 25 15d45+150 3d4+3
+0.0.0.0 100
+8 8 1
+#300037
+lobster sea deep~
+&+wa &+Ldeep sea &+Clo&+cb&+Cs&+cte&+Cr~
+&+LA deep sea &+clo&+Cb&+cs&+Cte&+cr &+Lcrawls here snapping its &+cclaws&+L.
+~
+   &+LThis &+ccr&+Cu&+cs&+Cta&+cc&+Ce&+can &+Lis quite colorful for an animal that is almost never exposed
+to light. Its chitin is a deep teal toward the top of its &+cshell&+L, and turning
+a bright yellow as it moves toward the &+Clo&+cb&+Cs&+cte&+Cr&+L's belly. The left &+cpincer &+Lis
+noticeably larger than the right, being used by the animal to crush its victims
+while its right &+cclaw &+Lis used to cut.
+~
+0 0 0 0 0 0 0 0 S
+F 0 1 2
+15 0 10 15d25+105 2d4+2
+0.0.0.0 100
+8 8 0

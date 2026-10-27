@@ -11,6 +11,32 @@ Duris has two deliberately separate histories:
 
 ## Honest baseline adoption
 
+`0053_misty_vale_shop_indexes` (sequence 54) repairs the saved shop indexes
+shifted by the Misty Vale shop inserted at index 534. It covers all 18 following
+shop identities, including the appended secondary and Meadowbrook shops. Rows
+are matched by mobile and room, except the two roaming library keepers whose
+current room is preserved. Missing shops stay missing; the migration does not
+create keepers or stock. Old and already repaired rows may coexist, and a retry
+after the data commit but before history publication performs no further moves.
+
+This is an offline data migration. Stop and drain game writers, retain a fresh
+backup, then use the ordinary `migration_runner.py run` path with its production
+target confirmation and backup arguments. Do not use an online override or start
+the old world catalogue afterward: running processes and copyover images still
+carry positional shop indexes. Rebuild the world and binary, verify runtime
+compatibility, and cold-start the new process after migration. Production
+execution requires separate owner authorization.
+
+The repair requires InnoDB and moves `shopkeepers.shop_id`, shopkeeper
+`item_current_owner.owner_id`, and `item_owner_revision.owner_id` atomically.
+Custody IDs are the shop index plus one. It preserves primary keys, stock and
+affect children, item and owner revisions, and save/update timestamps. Historical
+ownership baselines, ledgers and audits retain their original observations; the
+sealed migration mapping records how their old shop indexes correspond to the
+new catalogue. Conflicting identities, duplicate keepers or occupied custody
+destinations abort and roll back the entire repair. Inspect those records rather
+than deleting stock or merging ownership to force the migration through.
+
 `run --online-pwipe-roster` accepts only the sealed 53-step manifest ending in
 `0052_pwipe_roster_checkpoint`, with all 52 earlier steps applied. It retains
 production target confirmation, allow-list, fresh backup, advisory lock, sealed

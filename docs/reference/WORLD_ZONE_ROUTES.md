@@ -104,43 +104,26 @@ resets and interior exits, and Lizizania's internal routes, resets, and quests.
 
 ## Misty Chasm and the Underdark
 
-Provide ordinary two-way travel between Misty Chasm and the Underdark while
-preserving its surface entrance and existing area progression.
+Issue #403 replaces playable zone 150 with the supplied expanded zone 3000.
+The surface approach remains `638825 W <-> 300000 E`; the ordinary Underdark
+stairs now connect `300019 D <-> 834025 U`. Marker 834024 remains in place.
+The retired mobile/object prototypes remain available for existing saved data;
+zone 150 no longer has rooms, resets, or quest givers.
 
-### Ordinary two-way Underdark passage
+### Ordinary two-way passage
 
-Misty Chasm must connect `15015 D -> 834025` and `834025 U -> 15015` through
-an open stair passage requiring no key, flight, swim, or staff movement bypass.
-The existing low-ceiling tunnel's ordinary terrain constraints must remain.
-
-#### Verification: Surface to tunnel and back
-
-- When a human on foot enters from 638825, follows the forest trail to 15015,
-  descends to 834025, walks the adjoining UD tunnel network, and returns
-- Verify each intended room is reached, and the player can return to 638825
-- Also verify the route needs no fall, secret door, locked door, or staff-only movement
-
-### Preserve existing entrances and progression
-
-The change must retain `638825 W <-> 15000 E`, both existing exits of 15015,
-all room identities, bridge and shaft falls, pyramid locks, resets, and quests.
-
-#### Verification: Existing area remains intact
-
-- When the authored and generated world are checked
-- Verify only the new reciprocal passage and its descriptions differ in the two endpoint records
-- Also verify no existing exit is replaced or removed
+A human on foot must be able to follow the forest trail from 638825 to 300019,
+descend to 834025, walk the adjoining Underdark tunnels, and return to 638825.
+This route needs no key, flight, swim, falling, secret door, or staff bypass.
+The low-ceiling tunnel's ordinary terrain constraints remain unchanged.
 
 ### Durable loaded routes
 
-The new passage must remain loaded and traversable after zone reset and clean
-restart, without new zcheck findings or one-way traps.
-
-#### Verification: Reset and restart
-
-- When zones 150 and 7000 reset and the world restarts
-- Verify ordinary surface-to-UD and return journeys still pass
-- Also verify diagnostics differ from baseline only by the intended new entrances
+The surface and Underdark pairs must survive resets of zones 3000 and 7000 and
+a clean world restart. The expanded area's authored portals and one-way chasm
+falls are tested separately; exit-only diagnostics do not model portal travel.
+See `docs/records/2026-10-27-misty-vale-installation.md` for the replacement's
+fixes, compatibility handling, native qualification, and rollout boundaries.
 
 ## Underdark entrance markers
 
@@ -155,7 +138,7 @@ The October 26 missing-marker report is covered by eight labeled footprints:
 - Caves of Mt. Skelenak: marker `709264` north of `709664 U <-> 4093 D`.
 - The Stone Tomb of Kelek: marker `856819` north of `857219 D <-> 87950 U`.
 - The Underworld Shafts: marker `844448` north of `844848 U <-> 10021 D`.
-- The Chasm of the Misty Vale: marker `834024` west of `834025 U <-> 15015 D`.
+- The Chasm of the Misty Vale: marker `834024` west of `834025 U <-> 300019 D`.
 
 These footprints use the existing zone glyph and marker flags, with no incoming
 exits. Cyric's footprint fills an unused grid square; the other seven replace
