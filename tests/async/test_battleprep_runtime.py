@@ -42,6 +42,10 @@ void equip_chaos_kit(P_char) {}
 void StopCasting(P_char ch) { REMOVE_BIT(ch->specials.affected_by2, AFF2_CASTING); }
 void event_abort_spell(P_char, P_char, P_obj, void *) {}
 void event_acidimmolate(P_char, P_char, P_obj, void *) {}
+void event_magma_burst(P_char, P_char, P_obj, void *) {}
+void event_poison(P_char, P_char, P_obj, void *) {}
+static int cleared_effects;
+void affect_from_char(P_char, int effect) { assert(effect == SPELL_MAGMA_BURST || effect == FIRST_POISON); ++cleared_effects; }
 void gmcp_char_vitals(P_char) {}
 nevent_handle nevent_handle_from_event(P_nevent event) { return {event, event->sequence}; }
 nevent_cancel_result nevent_cancel(nevent_handle handle) {
@@ -222,11 +226,14 @@ int main() {
     victim.desc = nullptr;
     command(&staff,"stop Battler");
     assert(output.find("Battler quiet") != std::string::npos); // linkdead actors can still be stopped
-    nevent_data outgoing{}, incoming{}, unrelated{};
+    nevent_data outgoing{}, incoming{}, poison{}, unrelated{};
     outgoing.ch = &victim; outgoing.victim = &attacker; outgoing.func = event_acidimmolate;
-    incoming.ch = &attacker; incoming.victim = &victim; incoming.func = event_acidimmolate;
+    incoming.ch = &attacker; incoming.victim = &victim; incoming.func = event_magma_burst;
+    short poison_type = FIRST_POISON;
+    poison.ch = &victim; poison.victim = &attacker; poison.func = event_poison; poison.data = &poison_type;
     unrelated.ch = &attacker; unrelated.victim = &staff; unrelated.func = event_acidimmolate;
-    victim.nevents = &outgoing; attacker.nevents = &incoming; incoming.next_char_nev = &unrelated;
+    victim.nevents = &outgoing; outgoing.next_char_nev = &poison;
+    attacker.nevents = &incoming; incoming.next_char_nev = &unrelated;
     character_list = &victim; victim.next = &attacker;
     SET_POS(&victim, STAT_NORMAL + POS_STANDING);
     command(&staff,"status Battler");
@@ -234,6 +241,7 @@ int main() {
     command(&staff,"stop Battler");
     assert(output.find("Battler quiet") != std::string::npos);
     assert(!victim.nevents && attacker.nevents == &unrelated);
+    assert(cleared_effects == 2);
     assert(GET_STAT(&victim) == STAT_SLEEPING && GET_POS(&victim) == POS_SITTING);
     character_list = nullptr;
     puts("battleprep: native command guards, skill ceilings, resource baseline and atomic spell preparation passed");

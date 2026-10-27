@@ -14,22 +14,38 @@ extern P_char character_list;
 extern void tranquilize(P_char, P_char);
 extern void event_abort_spell(P_char, P_char, P_obj, void *);
 extern void event_acidimmolate(P_char, P_char, P_obj, void *);
+extern void event_magma_burst(P_char, P_char, P_obj, void *);
 
-// Legacy kit acid pulses are scheduled outside item_actions. Include incoming
+// Legacy kit damage pulses are scheduled outside item_actions. Include incoming
 // references, but leave other actors' effects on unrelated targets intact.
-static bool battle_acid_events(P_char target, bool cancel)
+static bool battle_damage_events(P_char target, bool cancel)
 {
 	bool pending = false;
 	for (P_char actor = character_list; actor; actor = actor->next)
 		for (P_nevent event = actor->nevents, next; event; event = next)
 		{
 			next = event->next_char_nev;
-			if (event->func != event_acidimmolate ||
+			if ((event->func != event_acidimmolate &&
+			     event->func != event_magma_burst && event->func != event_poison) ||
 			    (event->ch != target && event->victim != target))
 				continue;
 			pending = true;
 			if (cancel)
+			{
+				P_char affected = event->func == event_poison ? event->ch :
+										event->victim;
+				int effect = event->func == event_magma_burst ? SPELL_MAGMA_BURST :
+										0;
+				if (event->func == event_poison && event->data)
+				{
+					const int poison = *static_cast<short *>(event->data);
+					if (poison >= FIRST_POISON && poison <= LAST_POISON)
+						effect = poison;
+				}
 				nevent_cancel(nevent_handle_from_event(event));
+				if (effect && affected && IS_ALIVE(affected))
+					affect_from_char(affected, effect);
+			}
 		}
 	return pending;
 }
@@ -72,7 +88,7 @@ static void battle_stop_status(P_char staff, char *argument, bool stop)
 			stop_memorizing(victim, memorization_stop_reason::voluntary);
 			stop_singing(victim);
 			item_actions_stop(victim);
-			battle_acid_events(victim, true);
+			battle_damage_events(victim, true);
 			tranquilize(staff, victim);
 			// Normal sleep permits standing, whose later collapse can hurt and
 			// wake the participant. Settle only a successfully sleeping target.
@@ -94,7 +110,7 @@ static void battle_stop_status(P_char staff, char *argument, bool stop)
 		const bool quiet = !queued && !incoming && !GET_OPPONENT(victim) &&
 				   !IS_CASTING(victim) && !IS_AFFECTED2(victim, AFF2_MEMORIZING) &&
 				   !SINGING(victim) && !item_actions_pending(victim) &&
-				   !battle_acid_events(victim, false);
+				   !battle_damage_events(victim, false);
 		send_to_char_f(staff, "Battleprep status %s %s.\r\n", name,
 			       quiet ? "quiet" : "pending");
 	}
