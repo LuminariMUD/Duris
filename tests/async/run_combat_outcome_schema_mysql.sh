@@ -126,3 +126,27 @@ for definition in 'MEDIUMTEXT NOT NULL' \
     "$ROOT/migrations/immutable/0041_pkill_log_capacity.sh"
 done
 echo 'legacy combat log capacity, data preservation, strict limits and replay: ok'
+
+# Upgrade the exact prior inbox shape, preserve its results, and replay safely.
+[[ "$("${MYSQL[@]}" -e 'SELECT COALESCE(MAX(OCTET_LENGTH(result_payload)),0) FROM critical_operation_inbox;')" -le 4096 ]]
+"${MYSQL[@]}" -e 'ALTER TABLE critical_operation_inbox MODIFY COLUMN result_payload VARBINARY(4096) NOT NULL;'
+if "$ROOT/migrations/immutable/0054_full_group_combat_results.sh"; then
+    echo 'full-group verifier accepted the old 4096-byte inbox' >&2; exit 1
+fi
+before=$("${MYSQL[@]}" -e 'SELECT HEX(result_payload) FROM critical_operation_inbox ORDER BY operation_id LIMIT 1;')
+for _ in 1 2; do
+    "${MYSQL[@]}" < "$ROOT/migrations/immutable/0054_full_group_combat_results.sql"
+    "$ROOT/migrations/immutable/0054_full_group_combat_results.sh"
+done
+[[ "$before" == "$("${MYSQL[@]}" -e 'SELECT HEX(result_payload) FROM critical_operation_inbox ORDER BY operation_id LIMIT 1;')" ]]
+PVP_FULL_GROUP_ONLY=1 "$ROOT/bin/tests/combat_outcome_mysql_harness"
+[[ "$("${MYSQL[@]}" -e 'SELECT MAX(OCTET_LENGTH(result_payload)) FROM critical_operation_inbox;')" == 8192 ]]
+"${MYSQL[@]}" < "$ROOT/migrations/immutable/0054_full_group_combat_results.sql"
+"$ROOT/migrations/immutable/0054_full_group_combat_results.sh"
+"${MYSQL[@]}" -e 'ALTER TABLE critical_operation_inbox MODIFY COLUMN result_payload VARBINARY(16384) NOT NULL;'
+"${MYSQL[@]}" < "$ROOT/migrations/immutable/0054_full_group_combat_results.sql"
+if "$ROOT/migrations/immutable/0054_full_group_combat_results.sh"; then
+    echo 'full-group verifier accepted an unexpected wider inbox' >&2; exit 1
+fi
+[[ "$("${MYSQL[@]}" -e "SELECT character_octet_length FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='critical_operation_inbox' AND column_name='result_payload';")" == 16384 ]]
+echo 'full-group result migration, data preservation, rollback and replay: ok'

@@ -20,7 +20,7 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0053_misty_vale_shop_indexes` (sequence 54), and the contract
+The current head is `0054_full_group_combat_results` (sequence 55), and the contract
 describes 200 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
@@ -28,6 +28,9 @@ NULL DEFAULT 0` immediately after `result_code`; it creates no table. A legacy c
 may already contain that column from the earlier compatibility DDL. The immutable
 step is guarded and re-runnable: it verifies the existing shape, preserves all rows,
 and records sequence 29 rather than trying to alter the old immutable history.
+Migration 0054 widens the critical inbox result column to `VARBINARY(8192)` for
+full-group combat results. Its guarded widening preserves prior results; the
+runtime metadata fingerprints were measured on MariaDB 10.11 and MySQL 8.0.
 Migration 0030 adds the protected `telemetry_quarantine` table used to isolate and
 replay record-specific telemetry storage failures without blocking the stream.
 Migration 0033 adds `item_owner_audit`, one row each time a save takes an item from

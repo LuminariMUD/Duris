@@ -25,7 +25,7 @@
 
 constexpr size_t CRITICAL_COORDINATOR_MAX_RESULTS = 2048;
 // Match the durable inbox result bound; boon rewards already encode 2080 bytes.
-constexpr size_t CRITICAL_COMPLETION_RESULT_MAX_BYTES = 4096;
+constexpr size_t CRITICAL_COMPLETION_RESULT_MAX_BYTES = 8192;
 
 enum class critical_apply_outcome : uint8_t
 {

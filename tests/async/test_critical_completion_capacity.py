@@ -45,8 +45,8 @@ static critical_apply_result apply(const critical_command &cmd, void *) {
     if (cmd.payload[0] == 200 || cmd.payload[0] == 202) {
         critical_apply_result result = {cmd.payload[0] == 200 ? critical_apply_outcome::applied :
                                        critical_apply_outcome::already_applied, 73, 0};
-        result.result_size = 4096;
-        static_assert(CRITICAL_COMPLETION_RESULT_MAX_BYTES >= 4096);
+        result.result_size = 8192;
+        static_assert(CRITICAL_COMPLETION_RESULT_MAX_BYTES >= 8192);
         for (size_t n = 0; n < result.result_size; ++n)
             result.result_payload[n] = static_cast<uint8_t>((n * 7 + 3) % 251);
         return result;
@@ -117,12 +117,12 @@ static void large_result_case() {
         assert(critical_operation_id_equal(delivered.operation_id, large.operation_id));
         assert(delivered.outcome == (tag == 200 ? critical_apply_outcome::applied :
                                     critical_apply_outcome::already_applied));
-        assert(delivered.result_size == 4096 && delivered.durable_revision == 73);
+        assert(delivered.result_size == 8192 && delivered.durable_revision == 73);
         for (size_t n = 0; n < delivered.result_size; ++n)
             assert(delivered.result_payload[n] == static_cast<uint8_t>((n * 7 + 3) % 251));
     }
     critical_command_coordinator_shutdown();
-    puts("4096-byte fresh and replay completions survive delivery and retained lookup");
+    puts("8192-byte fresh and replay completions survive delivery and retained lookup");
 }
 int main() {
     assert(player_save_worker_init(apply_save, nullptr));
