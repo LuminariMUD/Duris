@@ -4,7 +4,8 @@ Status: implementation and local acceptance complete; review/merge pending for [
 Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
 repair are merged. Remaining review order: full-group PvP persistence [#414](https://github.com/LuminariMUD/Duris/pull/414),
 delayed-effect stop [#415](https://github.com/LuminariMUD/Duris/pull/415), then the
-operator on `branch/issue-405-racewar-combat`. Both full-party `battle-07` runs
+operator [#416](https://github.com/LuminariMUD/Duris/pull/416) on
+`branch/issue-405-racewar-combat`. Both full-party `battle-07` runs
 passed. No implementation or local acceptance work remains; no deployment occurred.
 Initial plan branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
 The issue and implementation PRs link here; partial PRs must not automatically close #405.
@@ -410,7 +411,8 @@ Continuation/review: the active operator worktree is
 `/home/aiwithapex/projects/duris-racewar-runner`; the native corrections and SQL
 qualification evidence remain in `/home/aiwithapex/projects/duris-battle-fixes`.
 Keep unmerged worktrees. Review in dependency order #414 → #415 → operator;
-check live GitHub state because the user is merging independently. #414 requires
+the operator PR is [#416](https://github.com/LuminariMUD/Duris/pull/416).
+Check live GitHub state because the user is merging independently. #414 requires
 migration 0054 (sequence 55) before its new SQL writer, and older binaries must
 not open stores containing its new native formats/results. This task performed
 no production migration, deployment, release or release tag.
@@ -744,7 +746,7 @@ must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
 
-### Chunk 5: operator loop and full battle acceptance (complete)
+### Chunk 5: operator loop and full battle acceptance ([PR #416](https://github.com/LuminariMUD/Duris/pull/416), ready for review)
 
 Active branch: `branch/issue-405-racewar-combat` in
 `/home/aiwithapex/projects/duris-racewar-runner`, with the native dependency stack
