@@ -717,7 +717,6 @@ async def prepare_fighters(staff, clients, rows, run_dir):
                     raise BattleError(f"{name}: selected prepared spell counts did not match")
                 row["prepared_spells"] = {spell: 2 for spell in spells}
                 await player.command("stand")
-            await player.command("toggle wimpy 0")
             await staff.command(f"restore {name}", expected="Done.")
             if cls in SLOT_RECOVERY:
                 listing = await player.command(SLOT_RECOVERY[cls], expected="spell slots available:")
@@ -917,13 +916,17 @@ async def stop_fighters(staff, rows, dead_absent=(), clients=None):
                         result.setdefault("unresolved", []).append({"name": name, "operation": operation, "state": state})
             if operation == "status" and clients is not None:
                 snapshot = {row["name"]: {"hp": clients[row["name"]].gmcp["Char.Vitals"]["hp"],
+                    "max_hp": clients[row["name"]].gmcp["Char.Vitals"]["maxHp"],
                     "damage_events": clients[row["name"]].damage_events,
                     "healing_events": clients[row["name"]].healing_events}
                     for row in rows if row["name"] not in dead_absent}
                 if observed is not None:
                     for name, current in snapshot.items():
                         previous = observed[name]
-                        if (current["hp"] < previous["hp"] or
+                        # Native regen decays over-max HP, while affect_total
+                        # preserves missing HP when a temporary maximum changes.
+                        if (max(0, current["max_hp"] - current["hp"]) >
+                            max(0, previous["max_hp"] - previous["hp"]) or
                             current["damage_events"] > previous["damage_events"] or
                             current["healing_events"] > previous["healing_events"]):
                             result.setdefault("unresolved", []).append({"name": name,

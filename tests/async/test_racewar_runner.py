@@ -173,7 +173,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(unknown["confirmed"])
         self.assertTrue(dead["confirmed"])
         self.assertEqual(dead["statuses"], {"One": "dead_absent"})
-        player = SimpleNamespace(gmcp={"Char.Vitals": {"hp": 10}}, damage_events=0, healing_events=0)
+        player = SimpleNamespace(gmcp={"Char.Vitals": {"hp": 10, "maxHp": 10}}, damage_events=0, healing_events=0)
         class ResidualEffect:
             calls = 0
             async def command(self, *args, **kwargs):
@@ -185,6 +185,21 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
             result = await battle.stop_fighters(ResidualEffect(), [{"name": "One"}], clients={"One": player})
         self.assertFalse(result["confirmed"])
         self.assertEqual(result["unresolved"][0]["state"], "activity_after_stop")
+
+    async def test_stop_allows_native_maximum_changes_and_overheal_decay(self):
+        for before, after in (({"hp": 233, "maxHp": 847}, {"hp": 230, "maxHp": 841}),
+                              ({"hp": 943, "maxHp": 738}, {"hp": 941, "maxHp": 738})):
+            player = SimpleNamespace(gmcp={"Char.Vitals": before}, damage_events=0, healing_events=0)
+            class Staff:
+                calls = 0
+                async def command(self, *args, **kwargs):
+                    self.calls += 1
+                    if self.calls == 3:
+                        player.gmcp["Char.Vitals"] = after
+                    return "Battleprep status one quiet."
+            with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+                result = await battle.stop_fighters(Staff(), [{"name": "One"}], clients={"One": player})
+            self.assertTrue(result["confirmed"], result)
 
     async def test_native_death_menu_ends_a_pending_gameplay_wait(self):
         async def serve(reader, writer):

@@ -1,9 +1,10 @@
 # Watchable racewar group battle runner — lean first version
 
 Status: implementation in progress; tracked in [GitHub issue #405](https://github.com/LuminariMUD/Duris/issues/405).
-Updated: 2026-10-27. Full-party provisioning and gear/spell preparation are in
-review. Native targeting, input receipts and targeted stop are the next chunk;
-the operator CLI, combat loop and full-battle acceptance remain outstanding.
+Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
+repair are merged. Full-group PvP persistence (#414) and legacy-effect stop (#415)
+are ready for review. The operator CLI is implemented; its final two-match
+acceptance is running as `battle-06` in the combat worktree below.
 Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
 The issue and implementation PRs link here; partial PRs must not automatically close #405.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
@@ -690,7 +691,7 @@ The private JSON contains `host`, `port`, `registration_email`, and `staff` with
 the operator. Account-pool files contain private credentials; rosters, gameplay
 logs and summaries do not. A human observer uses a different account.
 
-Current focused validation: 20 runner tests pass, including a socket regression
+Current focused validation: 24 runner tests pass, including a socket regression
 where unrelated combat prompts cannot dequeue input and a chanting prompt cannot
 complete a spell. Existing native binary evidence from #411 is reused because
 this chunk changes Python only. The first delivered-CLI probe is
@@ -930,3 +931,31 @@ focused fix branch and combat checkout. The full pair is running as `battle-05`.
 Completed first-match combat,
 reward, persistence and performance evidence remains valid; no unrelated tests
 need repeating.
+
+### Latest operator qualification state
+
+`battle-05` completed another full 120-second fight with 14 deaths, 224 completed
+spells and useful damage/healing from all 40 PCs. Native status stayed quiet and
+there were no new attacks/heals after stop. Its checker nevertheless rejected
+three ordinary HP changes: one temporary maximum decreased, and two characters'
+over-max HP decayed. `hit_regen()` in `src/world/limits.c` explicitly decays excess
+HP, while `affect_total()` preserves missing HP during maximum recalculation.
+The checker now compares nonnegative missing health, alongside native status and
+new damage/healing events. Focused tests use the observed HP/max-HP pairs and
+retain the actual post-stop damage rejection. This was a verifier false alarm,
+not another native stop defect; survivor saves were conservatively withheld.
+
+The current full-pair invocation is `bin/racewar-battles/battle-06`, using unchanged
+native binary `dms_battle_stop_effects_flatfile` (SHA-256 above), `--battle
+--duration 120`, and the default two fresh matches. Watch
+`bin/racewar-battles/implementation/battle-06.log`. The active branch is
+`branch/issue-405-racewar-combat`; `branch/issue-405-stop-effects` contains the
+separate #415 correction. All 24 focused runner tests pass. No further native
+change was needed for the checker correction.
+
+The runner also omits `toggle wimpy 0`: the owning combat path disables player
+automatic fleeing, as clarified by merged #413. Paging and healing-output labels
+used by the runner are unchanged by that toggle cleanup. The native input byte
+limit is respected, and the current 40-PC roster fits one stop command. Final
+summaries include aggregate counts, bounded rejection examples, per-PC execution
+and save outcomes; detailed equipment remains in `preparation.json`.
