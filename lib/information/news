@@ -1,10 +1,95 @@
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
-&+WUpdated: October 26, 2026&n
+&+WUpdated: October 27, 2026&n
 
-Welcome back! Fire Magi kindle new defenses, and magical bags travel lighter.
+Welcome back! Explore the expanded Misty Vale and outfit your next adventurer.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/27/26&n &+L-&n &+YA wider Vale, a better start&n
+&+W----------------------------------------------------------------------&n
+
+&+CThe mists have more to hide&n
+&+Y-&n The Chasm of the Misty Vale expands into a &+Y167-room&n adventure,
+  replacing the old Misty Chasm. Its surface and Underdark approaches
+  remain connected, with a new archway and return well linking Dirkn.
+&+Y-&n Explore its quests, switch puzzles and five weaver recipes. The
+  warrior's small- and large-scale exchanges now work independently;
+  Gynaeros answers to her name or shaman role. Quest-givers can still
+  depart after their hand-ins, so do not expect endless exchanges.
+&+Y-&n The new shop's canoe works as a boat, its rod works for fishing,
+  and the pond entrance stays visible and fixed in place. The shop
+  repair keeps existing stock attached to the right keepers.
+&+Y-&n Existing Misty Chasm gear and pet types remain usable. Winterhaven's
+  old necklace is still obtainable, and the surface hermit accepts either
+  the old potion or its replacement. The Dirkn well is now a passage,
+  rather than a source of drinking water.
+&+Y-&n Eight Underdark map markers now label their nearby entrances:
+  both Mushroom Caverns routes, Pragtog's Domain, Cyric's tunnels,
+  Mt. Skelenak, Kelek's tomb, the Underworld Shafts and Misty Vale.
+  The actual entrances and their routes retain their normal terrain.
+
+&+CStart with equipment you can use&n
+&+Y-&n Ordinary starter kits now provide one bag, retaining an eligible
+  racial bag or supplying a fallback. Berserkers and Psionicists whose
+  race lacked a kit now receive their established class equipment.
+&+Y-&n Starter selection respects class, race and body-slot restrictions.
+  Paladin and Anti-Paladin gloves and bracers, and Psionicist slippers,
+  now admit their intended classes. Minotaur Shamans receive one set of
+  totems; other Minotaur classes no longer receive Shaman-only totems.
+&+Y-&n Centaurs receive usable horseshoes in their Chaos equipment kits.
+
+&+CYour toggles should mean what they say&n
+&+Y-&n Tell, Shout, Titles, Take, Beep, Battle Alert, Jchat and staff
+  Wizmessages now agree with their on/off confirmations. Explicit values
+  and bare toggles use the same meaning. Invalid extra words leave your
+  preferences alone. GMCP follows the same on/off rule.
+&+Y-&n &+C'toggle afk on'&n and &+C'toggle afk off'&n now honor your choice.
+  Other ordinary input still clears AFK. Who login notices follow your
+  Who preference, independently of whether you display quest messages.
+&+Y-&n The displayed multiword options work as written, including
+  &+C'toggle save notify'&n, &+C'toggle ship map'&n,
+  &+C'toggle show titles'&n and &+C'toggle hint channel'&n.
+&+Y-&n &+C'toggle screensize <12-48>'&n accepts a valid whole number;
+  &+C'default'&n, &+C'off'&n or &+C'0'&n restore its default.
+  Your status display includes Experience and more channel settings.
+  Inherited restricted settings can be turned off even when you are
+  no longer eligible to enable them. Anonymous still resets at login.
+&+Y-&n Automatic Wimpy fleeing remains unavailable; its toggle now says so.
+  Retired placeholder options explain their status, and paging help
+  describes the actual on/off behavior. Read &+C'help toggle'&n.
+
+&+CBig fights, fewer loose ends&n
+&+Y-&n PvP results now support two full &+Y20-character groups&n, retaining
+  every participant's equipment and combat log. Group size alone no
+  longer makes these kills fail with a busy-service message. Normal
+  combat-log privacy rules still apply.
+&+Y-&n Staff can prepare watchable full-party racewar battles through real
+  player connections, using ordinary combat, resources and death rules.
+  Their targeted stop also settles delayed acid, magma and poison kit
+  effects. These tools do not schedule a public battle by themselves.
+&+Y-&n Visible opponents sharing the same race description can be selected
+  with numbered race targets, such as &+C'2.orc'&n. Visibility and normal
+  racewar targeting restrictions still apply.
+&+Y-&n Death now discards queued gameplay before returning you to the
+  account menu. Sleeping or immobilized Paladins no longer launch their
+  automatic sword smite; its normal checks resume when they can act.
+&+Y-&n A crash affecting newly raised undead has been fixed.
+
+&+CMore answers in the library&n
+&+Y-&n New help explains &+C'help spider body'&n, &+C'help giant avoidance'&n,
+  &+C'help melee mastery'&n, &+C'help battle frenzy'&n,
+  &+C'help battlerage'&n, &+C'help entrapment'&n and &+C'help rapier and dirk'&n.
+&+Y-&n Find spell-list guidance with &+C'help cleric spells'&n,
+  &+C'help sorcerer spells'&n, &+C'help paladin spells'&n,
+  &+C'help psionicist spells'&n and &+C'help dragoon spells'&n.
+  Controller, Mentalist, Zealot, Scourge and Antipaladin skill lookups
+  also point you to the base and specialization progressions.
+&+Y-&n Try &+C'help training dummy'&n for the shared damage meter and reset,
+  &+C'help nexus'&n for the stone listing, and &+C'help summoning'&n for the
+  different summoning commands. &+C'help deforest'&n explains Blighter
+  slot recovery. Party, Epics, Soul Shield and Enhanced Strength now
+  have lookup guidance too.
 
 &+R10/26/26&n &+L-&n &+YFire in your veins, less weight in your bags&n
 &+W----------------------------------------------------------------------&n
