@@ -409,10 +409,12 @@ reuse `StopCasting()` (which also aborts item actions), `stop_singing()`,
 queue draining and observed settling. Their presence alone is not stop proof;
 the next chunk must exercise queued actions and actual kit effects.
 
-### Chunk 2: real connections and full-roster provisioning (verified; publishing for review)
+### Chunk 2: real connections and full-roster provisioning ([PR #407](https://github.com/LuminariMUD/Duris/pull/407), ready for review)
 
 Working branch: `branch/issue-405-racewar-runner`, based on #406 at `ba32e7831`.
-The next PR targets `branch/issue-405-racewar-battle-plan` while #406 is open.
+PR #407 targets `branch/issue-405-racewar-battle-plan` while #406 is open.
+Implementation commit: `e9173a282`. Next dependent work should branch from #407's
+head and target `branch/issue-405-racewar-runner`; neither PR closes #405.
 Active worktree: `/home/aiwithapex/projects/duris-racewar-runner` (Windows:
 `\\wsl.localhost\Ubuntu\home\aiwithapex\projects\duris-racewar-runner`).
 The primary `/home/aiwithapex/projects/duris` was released clean for the separately
