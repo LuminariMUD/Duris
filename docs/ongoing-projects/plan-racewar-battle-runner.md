@@ -4,7 +4,7 @@ Status: implementation in progress; tracked in [GitHub issue #405](https://githu
 Updated: 2026-10-27. Provisioning, preparation, native controls and the death-input
 repair are merged. Full-group PvP persistence (#414) and legacy-effect stop (#415)
 are ready for review. The operator CLI is implemented; its final two-match
-acceptance is running as `battle-06` in the combat worktree below.
+acceptance is running as `battle-07` in the combat worktree below.
 Dedicated branch: [branch/issue-405-racewar-battle-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-405-racewar-battle-plan).
 The issue and implementation PRs link here; partial PRs must not automatically close #405.
 Source baseline: [master at f0264a484](https://github.com/LuminariMUD/Duris/commit/f0264a48452dbf3dc76079e59eaf85b99ecdeff9).
@@ -945,13 +945,13 @@ new damage/healing events. Focused tests use the observed HP/max-HP pairs and
 retain the actual post-stop damage rejection. This was a verifier false alarm,
 not another native stop defect; survivor saves were conservatively withheld.
 
-The current full-pair invocation is `bin/racewar-battles/battle-06`, using unchanged
-native binary `dms_battle_stop_effects_flatfile` (SHA-256 above), `--battle
+The current full-pair invocation is `bin/racewar-battles/battle-07`, using
+native binary `dms_battle_all_effects_flatfile` (SHA-256 below), `--battle
 --duration 120`, and the default two fresh matches. Watch
-`bin/racewar-battles/implementation/battle-06.log`. The active branch is
+`bin/racewar-battles/implementation/battle-07.log`. The active branch is
 `branch/issue-405-racewar-combat`; `branch/issue-405-stop-effects` contains the
-separate #415 correction. All 24 focused runner tests pass. No further native
-change was needed for the checker correction.
+separate #415 correction. All 24 focused runner tests pass. The checker correction required no native
+change; the subsequent magma/poison/smite correction is recorded below.
 
 The runner also omits `toggle wimpy 0`: the owning combat path disables player
 automatic fleeing, as clarified by merged #413. Paging and healing-output labels
@@ -959,3 +959,24 @@ used by the runner are unchanged by that toggle cleanup. The native input byte
 limit is respected, and the current 40-PC roster fits one stop command. Final
 summaries include aggregate counts, bounded rejection examples, per-PC execution
 and save outcomes; detailed equipment remains in `preparation.json`.
+
+Follow-up qualification found the Searing Fist hammer's packed `magma burst`
+still ticking after early stop. The audit of both supported kit profiles found
+17 packed weapon spells: the delayed damage paths are acid immolation, magma
+burst, and pythonsting's native poison callbacks. Targeted cancellation now covers
+those three callbacks and removes only their matching magma/poison markers; it
+does not clear unrelated effects or benign periodic checks. The focused native
+test covers incoming/outgoing references, inverted poison ownership, marker
+cleanup and unrelated-event preservation.
+
+The Paladin's periodic smite also lacked the awake/mobile guard used by its other
+automatic combat checks. It now skips attacks while asleep or immobilized while
+keeping the timer armed, so waking resumes ordinary behavior. A separate focused
+native test proves the inactive and resumed states.
+
+Both builds and the expanded four-PC runtime confirmation pass. The runtime check
+seeds acid and magma, verifies settled health and quiet status, and reapplies magma
+after cancellation to prove its marker was cleaned. Evidence:
+`bin/racewar-battles/all-effects-after/` in the combat worktree. Binary SHA-256:
+`43666a47948ebd0062cd223a2ff7f7c29ad55d3324819003f5c3dbe42ec04fbc`.
+The full pair is now running as `battle-07`; its completion is not yet claimed.
