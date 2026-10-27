@@ -108,9 +108,13 @@ void do_battleprep(P_char ch, char *argument, int /*cmd*/)
 	argument = one_argument(argument, name);
 	argument = one_argument(argument, operation);
 	one_argument(argument, extra);
-	if (!*name || *extra || (str_cmp(operation, "baseline") && str_cmp(operation, "spells")))
+	if (!*name || *extra ||
+	    (str_cmp(operation, "baseline") && str_cmp(operation, "spells") &&
+	     str_cmp(operation, "equipment") && str_cmp(operation, "equip")))
 	{
-		send_to_char("Usage: battleprep <exact-player-name> baseline|spells\r\n", ch);
+		send_to_char(
+			"Usage: battleprep <exact-player-name> baseline|spells|equip|equipment\r\n",
+			ch);
 		return;
 	}
 	P_char victim = get_char_vis(ch, name);
@@ -147,6 +151,14 @@ void do_battleprep(P_char ch, char *argument, int /*cmd*/)
 		prepare_battle_baseline(victim);
 		send_to_char_f(ch, "Battleprep: %s baseline ready at level %d.\r\n",
 			       GET_NAME(victim), GET_LEVEL(victim));
+	}
+	else if (!str_cmp(operation, "equipment") || !str_cmp(operation, "equip"))
+	{
+		if (!str_cmp(operation, "equip"))
+			equip_chaos_kit(victim);
+		send_to_char_f(ch, "Battleprep: %s equipment %s.\r\n", GET_NAME(victim),
+			       chaos_kit_equipment_ready(victim, ch) ? "ready" : "incomplete");
+		return;
 	}
 	else if (!prepare_battle_spells(ch, victim))
 		return;

@@ -3,6 +3,7 @@
 import asyncio
 import json
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,19 @@ import run_racewar_battle as battle
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_selected_spells_have_unspecialized_native_grants(self):
+        source = (Path(__file__).resolve().parents[2] / "src/classes/skills.c").read_text()
+        blocks = {}
+        for block in re.split(r"\bSPELL_CREATE(?:_MSG|_WITH_MESSAGES)?\(", source)[1:]:
+            match = re.match(r'"([^\"]+)"', block)
+            if match:
+                blocks[match[1]] = block
+        for cls, spells in battle.SPELL_LOADOUTS.items():
+            for spell in spells:
+                grant = re.search(r"(?m)^\s*SPELL_ADD\(CLASS_" + cls.upper() + r",\s*(\d+)\)", blocks[spell])
+                self.assertIsNotNone(grant, (cls, spell))
+                self.assertLessEqual(int(grant[1]), 12, (cls, spell))
+
     def test_every_byte_boundary(self):
         frame = (b"hi" + bytes((255, 251, 201, 255, 251, 86, 255, 253, 24)) +
                  bytes((255, 250, 201)) + b'Group.Status {"maxSize":20,"members":[]}' +
@@ -72,6 +86,47 @@ class ProtocolTests(unittest.TestCase):
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_readiness_refreshes_group_levels_and_rejects_missing_members(self):
+        rows = [{"name": "Lead", "side": "good", "index": 0, "level": 56},
+                {"name": "Mate", "side": "good", "index": 1, "level": 56}]
+        members = [{"name": row["name"], "level": 56, "isNpc": False, "inRoom": True} for row in rows]
+        class Leader:
+            def __init__(self):
+                self.gmcp = {"Group.Status": {"members": [{"name": "Lead", "level": 1}]}}
+                self.live = {"size": 2, "maxSize": 2, "members": members}
+            async def command(self, line):
+                assert line == "group" and "Group.Status" not in self.gmcp
+                self.gmcp["Group.Status"] = self.live
+            async def wait_for(self, predicate, description):
+                return predicate()
+        leader = Leader()
+        groups = await battle.refresh_groups({"Lead": leader}, rows, {"good": 2})
+        self.assertEqual([m["level"] for m in groups["good"]["members"]], [56, 56])
+        leader.live = {"size": 2, "maxSize": 2, "members": members[:1]}
+        with self.assertRaisesRegex(battle.BattleError, "no longer full"):
+            await battle.refresh_groups({"Lead": leader}, rows, {"good": 2})
+
+    async def test_incomplete_gear_cannot_become_ready(self):
+        class Staff:
+            async def command(self, line, **kwargs):
+                if line.startswith("chaos kit"):
+                    return "Chaos equipment restoration queued."
+                if line.endswith(" baseline"):
+                    return "Battleprep: Actor baseline ready at level 56."
+                return "Battleprep: Actor equipment incomplete." if line.endswith(" equip") else ""
+        class Player:
+            async def command(self, line, **kwargs):
+                return "You are carrying: (0/20)" if line == "inventory" else ""
+            async def expect(self, *args, **kwargs):
+                return "Your starter kit is ready", ""
+        rows = [{"name": "Actor", "class": "Warrior", "side": "good", "index": 0}]
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(battle.BattleError, "loadout incomplete"):
+                await battle.prepare_fighters(Staff(), {"Actor": Player()}, rows, directory)
+            record = json.loads((Path(directory) / "preparation.json").read_text())[0]
+            self.assertEqual(record["preparation"], "failed")
+            self.assertNotIn("prepared_spells", record)
+
     async def test_paging_uses_native_toggle_and_preserves_an_already_disabled_setting(self):
         class FakeClient:
             def __init__(self, state):
@@ -167,7 +222,7 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                     await client.expect("PRIVATE login echo")
                     await client.wait_for(lambda: client.prompts, "first prompt")
                     client.begin_gameplay_log()
-                    outputs = await asyncio.gather(client.command("one"), client.command("two"))
+                    outputs = await asyncio.gather(client.command("one", expected=("réply one", "rejected")), client.command("two"))
                     self.assertEqual(seen, ["one", "two"])
                     self.assertIn("réply one", outputs[0])
                     self.assertIn("réply two", outputs[1])

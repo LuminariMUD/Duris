@@ -309,7 +309,7 @@ defect blocks the chosen flow. Unrelated game repairs are not secretly included.
 
 ## Proof and finish line
 
-- [ ] Both sides contain real mortal PCs at the actual full group caps, with
+- [x] Both sides contain real mortal PCs at the actual full group caps, with
   verified equipped Chaos kits and ready selected spells/resources.
 - [ ] Explicit room selection and the default staff-room behavior work, with no
   environment gate or global room/account/rules changes.
@@ -478,3 +478,67 @@ consumed the next transfer. The runner now reads the actual toggle state and use
 `provision-02` was deliberately interrupted for the worktree move, with its server
 stopped. `provision-03` then passed from the new worktree, including grouping and
 account reuse. Do not repeat it merely for documentation or PR-link edits.
+
+### Chunk 3: gear and selected spell preparation (verified; publishing for review)
+
+Working branch: `branch/issue-405-battle-preparation`, based on the small Centaur
+compatibility fix in [PR #409](https://github.com/LuminariMUD/Duris/pull/409) at
+`5b6318283`. #409 targets #407; this preparation PR targets
+`branch/issue-405-centaur-kit`. Continue exclusively in
+`/home/aiwithapex/projects/duris-racewar-runner`.
+
+`prepare_fighters()` clears only fresh starter inventories through normal
+remove/drop commands, observes empty inventory, and awaits the existing Chaos
+kit grant. It then advances the character, outfits the catalog, supplies a full
+master book when missing, queues two copies of each selected memorize/pray spell,
+restores resources and saves. The grant precedes advancement because asynchronous
+achievement rewards can otherwise race its empty-inventory admission check.
+
+`battleprep <name> equip` uses existing `wear()` with the catalog's intended
+categories. Generic `wear all` can strand kit armor when multi-slot items occupy
+its intended slots. Binding, anatomy and hand limits remain native. Read-only
+`equipment` verifies actual armor counts, a worn kit weapon, retained hand-item
+alternatives and occupied usable hand capacity. Books stay carried; monks keep
+hands/shields free for normal unarmed mechanics. No second catalog or direct
+`equip_char()` bypass was added.
+
+Mana and slot casters retain native resource models. The runner verifies current
+score/level/resources, and native commune/tupor/deforest slot listings. A final
+`group` query refreshes membership and levels: cached `Group.Status` alone can
+retain pre-advancement levels. Exact full membership, levels and room presence
+must match the prepared roster before it is reported ready.
+
+The full setup exposed a Centaur kit defect: boots 83486 are unusable on hoofed
+feet, while horseshoes are valid. PR #409 supplies portable golden horseshoes
+99061 through normal grant validation; the full run below verifies them worn.
+
+Verification on 2026-10-27:
+
+- `python3 tests/async/test_chaos_equipment_ready.py`: ASan/UBSan checks passed for
+  native catalog-directed placement, duplicate counts, anatomy, unarmed monks,
+  retained alternatives, hand capacity and current profile selection.
+- `python3 tests/async/test_battleprep_runtime.py` and
+  `python3 tests/async/test_chaos_kit_runtime.py`: focused native checks passed.
+- `python3 tests/async/test_racewar_runner.py`: 14 focused checks, including fresh
+  readiness snapshots and incomplete-gear rejection.
+- Both MariaDB and flat-file builds passed; formatting/diff checks passed.
+- `python3 tests/async/run_racewar_provision_journey.py --binary
+  bin/server/dms_battle_ready_flatfile --output bin/racewar-battles/preparation-full-08
+  --prepare`: passed with 40 fully prepared PCs and 40 acknowledged saves. Both
+  live groups contain 20/20 PCs, every member is level 56 and present in room 22800.
+  Native spell preparation covered 18 PCs; five slot casters had full native slots;
+  12 book-class PCs had full master books. Full resources are recorded per PC.
+- Binary SHA-256: `e57074e91bd75a539cf7a9b7fa8923b5d2caa0a46690d7863ff99e9c45da17f9`.
+  Receipts: `bin/racewar-battles/preparation-full-08/result.json`,
+  `match-1/summary.json`, `match-1/preparation.json`, and gameplay/native logs.
+  The fixture uses real item prototypes with disposable flat-file authority.
+
+Earlier probes remain local diagnostic evidence. `preparation-full-07` also
+completed setup, but its cached group snapshots were superseded by the explicit
+live refresh in `preparation-full-08`. Do not repeat either run for documentation
+or PR-link changes. No live MUD operation or deployment was performed.
+
+Next: operator CLI, pre-fight buffs, normal-command combat, targeted stop, and two
+full battle journeys. The native input receipt extension is being developed in
+separate unstaged networking/descriptor files; it is not part of this preparation
+chunk. It acknowledges actual dequeue only, never successful combat execution.

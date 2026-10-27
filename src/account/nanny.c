@@ -51,6 +51,7 @@
 #include "economy/currency_transaction.h"
 #include "economy/crafting.h"
 #include <array>
+#include <map>
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
@@ -724,6 +725,143 @@ static bool build_chaos_kit(P_char ch, chaos_kit_objects &kit)
 			item_failure = true;
 	}
 	return !item_failure;
+}
+
+// Place each catalog item in its intended native wear category. Greedy "wear all"
+// can spend a cloak/wrist slot on another kit item with multiple wear flags.
+// Use wear(), including its binding, anatomy and hand-budget checks; never equip_char().
+void equip_chaos_kit(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || GET_LEVEL(ch) != MAXLVLMORTAL)
+		return;
+	const int class_id = flag2idx(ch->player.m_class);
+	if (class_id < 1 || class_id > CLASS_COUNT)
+		return;
+	const int profile_id = chaos_eq_use_enhanceable_profile() ? 1 : 0;
+	const chaos_kit_item *optional = profile_id ? chaos_eq_enhanceable_optional_slots :
+						      chaos_eq_standard_optional_slots;
+	for (int pass = 0; pass < 3; ++pass)
+		for (const chaos_kit_item *list :
+		     { chaos_eq_profiles[class_id][profile_id].items, optional })
+			for (const chaos_kit_item *item = list; item && item->vnum; ++item)
+			{
+				if (item->slot < 0 || item->slot == HOLD ||
+				    chaos_kit_skip_reason(ch, item->slot))
+					continue;
+				const bool weapon = chaos_kit_weapon_slot(item->slot);
+				const bool shield = item->slot == WEAR_SHIELD;
+				const int vnum = chaos_kit_item_for_character(ch, *item).vnum;
+				if ((pass == 0 && (weapon || shield)) || (pass == 1 && !weapon) ||
+				    (pass == 2 && (!shield || GET_CLASS(ch, CLASS_MONK))))
+					continue;
+				for (P_obj object = ch->carrying; object;
+				     object = object->next_content)
+				{
+					if (OBJ_VNUM(object) != vnum)
+						continue;
+					if ((weapon || shield) &&
+					    get_numb_free_hands(ch) < wield_item_size(ch, object))
+						break;
+					for (const auto &position : equipment_pos_table)
+						if (position[2] == item->slot)
+						{
+							wear(ch, object, position[1], true);
+							break;
+						}
+					break;
+				}
+			}
+	char_light(ch);
+	room_light(ch->in_room, REAL);
+}
+
+// Read-only verification for the battle runner. Armor must be worn; hand items
+// are alternatives within the native hand budget, and books can stay carried.
+// Keep the same catalog and anatomy exclusions as the grant.
+bool chaos_kit_equipment_ready(P_char ch, P_char report_to)
+{
+	if (!ch || IS_NPC(ch) || GET_LEVEL(ch) != MAXLVLMORTAL)
+		return false;
+	const int class_id = flag2idx(ch->player.m_class);
+	if (class_id < 1 || class_id > CLASS_COUNT)
+		return false;
+	const int profile_id = chaos_eq_use_enhanceable_profile() ? 1 : 0;
+	const chaos_kit_item *optional = profile_id ? chaos_eq_enhanceable_optional_slots :
+						      chaos_eq_standard_optional_slots;
+	std::map<int, int> required, hand_items;
+	for (const chaos_kit_item *list :
+	     { chaos_eq_profiles[class_id][profile_id].items, optional })
+		for (const chaos_kit_item *item = list; item && item->vnum; ++item)
+			if (item->slot >= 0 && !chaos_kit_skip_reason(ch, item->slot))
+			{
+				const int vnum = chaos_kit_item_for_character(ch, *item).vnum;
+				if (chaos_kit_weapon_slot(item->slot) || item->slot == HOLD ||
+				    item->slot == WEAR_SHIELD)
+					++hand_items[vnum];
+				else
+					++required[vnum];
+			}
+	bool ready = !required.empty();
+	for (const auto &[vnum, count] : required)
+	{
+		int worn = 0;
+		for (P_obj object : ch->equipment)
+			if (object && OBJ_VNUM(object) == vnum)
+				++worn;
+		if (worn < count)
+		{
+			ready = false;
+			send_to_char_f(report_to, "Battleprep: %s CHAOS item %d worn %d/%d.\r\n",
+				       GET_NAME(ch), vnum, worn, count);
+		}
+	}
+	const bool monk = GET_CLASS(ch, CLASS_MONK);
+	bool weapon_worn = false;
+	for (int slot :
+	     { PRIMARY_WEAPON, SECONDARY_WEAPON, THIRD_WEAPON, FOURTH_WEAPON, WEAR_SHIELD, HOLD })
+	{
+		P_obj object = ch->equipment[slot];
+		if (object && monk)
+			ready = false; // The baseline monk fights without shield/held item penalties.
+		if (object && object->type == ITEM_WEAPON && hand_items.count(OBJ_VNUM(object)))
+			weapon_worn = true;
+	}
+	if (!monk && !weapon_worn)
+	{
+		send_to_char_f(report_to, "Battleprep: %s has no CHAOS weapon equipped.\r\n",
+			       GET_NAME(ch));
+		ready = false;
+	}
+	for (const auto &[vnum, count] : hand_items)
+	{
+		int owned = 0;
+		for (P_obj object : ch->equipment)
+			if (object && OBJ_VNUM(object) == vnum)
+				++owned;
+		for (P_obj object = ch->carrying; object; object = object->next_content)
+		{
+			if (OBJ_VNUM(object) != vnum)
+				continue;
+			++owned;
+			if (!monk && object->type != ITEM_SPELLBOOK &&
+			    get_numb_free_hands(ch) >= wield_item_size(ch, object))
+			{
+				send_to_char_f(
+					report_to,
+					"Battleprep: %s has room to equip CHAOS hand item %d.\r\n",
+					GET_NAME(ch), vnum);
+				ready = false;
+			}
+		}
+		if (owned < count)
+		{
+			send_to_char_f(report_to,
+				       "Battleprep: %s CHAOS hand item %d owned %d/%d.\r\n",
+				       GET_NAME(ch), vnum, owned, count);
+			ready = false;
+		}
+	}
+	return ready;
 }
 
 static void load_chaos_new_character_kit(P_char ch)
