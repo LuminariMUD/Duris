@@ -7,13 +7,30 @@ import re
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import run_racewar_battle as battle
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_enemy_selection_refreshes_ordinals_and_keeps_deaths_out(self):
+        room = {"num": 1200, "name": "Field", "coords": {"x": 0}}
+        rows = [{"name": name, "side": side, "index": 0, "battle_room": room}
+                for name, side in (("Ally", "good"), ("Enemy", "evil"), ("Other", "evil"))]
+        clients = {r["name"]: SimpleNamespace(dead=False, error=None,
+                   gmcp={"Room.Info": dict(room), "Char.Vitals": {"fighting": None}}) for r in rows}
+        view = clients["Ally"].gmcp["Room.Info"]
+        view["players"] = [{"name": "Enemy", "target": "3.human"}, {"name": "Other", "target": "4.human"}]
+        self.assertEqual(battle.choose_enemy(rows[0], rows, clients)[1], "3.human")
+        clients["Enemy"].dead = True
+        # The dead PC may have respawned in the same room; it stays out.
+        view["players"][1]["target"] = "2.human"
+        self.assertEqual(battle.choose_enemy(rows[0], rows, clients)[1], "2.human")
+        clients["Other"].gmcp["Room.Info"]["num"] = 1201
+        self.assertIsNone(battle.choose_enemy(rows[0], rows, clients))
+
     def test_selected_spells_have_unspecialized_native_grants(self):
         source = (Path(__file__).resolve().parents[2] / "src/classes/skills.c").read_text()
         blocks = {}
@@ -91,6 +108,76 @@ class ProtocolTests(unittest.TestCase):
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stop_requires_every_named_status_and_a_settling_recheck(self):
+        calls = []
+        class Staff:
+            async def command(self, command, **kwargs):
+                calls.append(command)
+                return "Battleprep status one quiet.\nBattleprep status two quiet."
+        with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+            result = await battle.stop_fighters(Staff(), [{"name": "One"}, {"name": "Two"}])
+        self.assertTrue(result["confirmed"])
+        self.assertEqual(calls, ["battleprep stop One Two", "battleprep status One Two", "battleprep status One Two"])
+        class Disconnected:
+            async def command(self, *args, **kwargs):
+                raise battle.BattleError("controller disconnected")
+        with patch.object(battle.asyncio, "sleep", new_callable=AsyncMock):
+            result = await battle.stop_fighters(Disconnected(), [{"name": "One"}])
+        self.assertFalse(result["confirmed"])
+        self.assertIn("disconnected", result["error"])
+
+    async def test_combat_prompts_do_not_dequeue_input_or_complete_a_spell(self):
+        seen, release = [], asyncio.Event()
+        def receipt(sequence, command=None):
+            body = {"sequence": sequence}
+            if command:
+                body["command"] = command
+            return b"\xff\xfa\xc9Char.Input " + json.dumps(body).encode() + b"\xff\xf0"
+        async def serve(reader, writer):
+            writer.write(receipt(0))
+            await writer.drain()
+            first = await reader.readline()
+            seen.append(first.decode().strip())
+            writer.write(b"Old combat prompt\xff\xf9")
+            await writer.drain()
+            await release.wait()
+            writer.write(receipt(1, "cast") + b"You start chanting...\xff\xf9")
+            await writer.drain()
+            await asyncio.sleep(.04)
+            self.assertEqual(len(seen), 1)
+            writer.write(b"You complete your spell...\xff\xf9")
+            await writer.drain()
+            second = await reader.readline()
+            seen.append(second.decode().strip())
+            writer.write(receipt(2, "kick") + b"You kick your opponent.\xff\xf9")
+            await writer.drain()
+            await reader.read()
+            writer.close()
+            await writer.wait_closed()
+        with tempfile.TemporaryDirectory() as directory:
+            server = await asyncio.start_server(serve, "127.0.0.1", 0)
+            async with server:
+                client = await battle.Client.connect("127.0.0.1", server.sockets[0].getsockname()[1], "actor", directory)
+                try:
+                    await client.wait_for(lambda: "Char.Input" in client.gmcp, "initial receipt")
+                    client.begin_gameplay_log()
+                    cast = asyncio.create_task(client.action("cast 'magic missile' 1.human"))
+                    kick = asyncio.create_task(client.action("kick 1.human"))
+                    await asyncio.sleep(.04)
+                    self.assertFalse(cast.done())
+                    self.assertEqual(seen, ["cast 'magic missile' 1.human"])
+                    release.set()
+                    output, followup = await asyncio.gather(cast, kick)
+                    self.assertIn("You complete your spell", output)
+                    self.assertNotIn("Old combat prompt", output)
+                    self.assertIn("You kick", followup)
+                    records = [json.loads(line) for line in (Path(directory) / "actor.jsonl").read_text().splitlines()]
+                    results = [r["value"] for r in records if r["kind"] == "action_result"]
+                    self.assertEqual([r["spell_completed"] for r in results], [True, False])
+                finally:
+                    release.set()
+                    await client.close()
+
     async def test_readiness_refreshes_group_levels_and_rejects_missing_members(self):
         rows = [{"name": "Lead", "side": "good", "index": 0, "level": 56},
                 {"name": "Mate", "side": "good", "index": 1, "level": 56}]

@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Real-player racewar runner. Connection/provisioning foundation for issue #405.
-
-The operator entry point and combat loop are the next dependent chunk. Nothing
-in this module connects or creates accounts merely by importing it.
-"""
+"""Prepare and drive one watchable racewar battle through real player connections."""
 from __future__ import annotations
 
 import asyncio
+import argparse
 import codecs
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -15,6 +12,8 @@ import os
 from pathlib import Path
 import re
 import secrets
+import signal
+import sys
 
 
 IAC, DO, DONT, WILL, WONT, SB, SE, GMCP = 255, 253, 254, 251, 252, 250, 240, 201
@@ -101,6 +100,15 @@ class Client:
         self.ansi_tail = ""
         self.pending = ""
         self.gmcp = {}
+        self.versions = {}
+        self.receipt_text = 0
+        self.receipt_prompt = 0
+        self.damage_events = 0
+        self.observed_damage = 0
+        self.dead = False
+        self.healing_events = 0
+        self.observed_healing = 0
+        self.evidence_tail = ""
         self.prompts = 0
         self.status_prompt = 0
         self.text_received = 0
@@ -146,12 +154,27 @@ class Client:
                         text = ANSI.sub("", decoded[:tail.start()] if tail else decoded).replace("\r", "")
                         if text:
                             self.record("output", text)
+                        evidence = self.evidence_tail + text
+                        for healing in re.finditer(r"\[Heal:\s*(\d+)\s*\]", evidence):
+                            if healing.end() > len(self.evidence_tail):
+                                self.healing_events += 1
+                                self.observed_healing += int(healing[1])
+                        self.evidence_tail = evidence[-256:]
                         self.text_received += len(text)
                         # All output goes to disk; idle clients retain only a bounded tail.
                         self.pending = (self.pending + text)[-131072:]
+                        if "Your wounds claim you at last. Your spirit slips free of your body" in evidence:
+                            self.dead = True
                     elif kind == "gmcp":
                         package, message = value
                         self.gmcp[package] = message
+                        self.versions[package] = self.versions.get(package, 0) + 1
+                        if package == "Char.Input":
+                            self.receipt_text = self.text_received
+                            self.receipt_prompt = self.prompts
+                        if package == "Combat.Update" and message.get("round", {}).get("damage", 0) > 0:
+                            self.damage_events += 1
+                            self.observed_damage += message["round"]["damage"]
                         if package == "Char.Status":
                             self.status_prompt = self.prompts
                         self.record(package, message)
@@ -232,6 +255,45 @@ class Client:
         if self.log:
             self.log.close()
             self.log = None
+
+    async def enable_receipts(self):
+        before = self.versions.get("Char.Input", 0)
+        payload = b'Core.Hello {"client":"racewar-runner","commandReceipts":true}'
+        self.writer.write(bytes((IAC, SB, GMCP)) + payload + bytes((IAC, SE)))
+        await self.writer.drain()
+        await self.wait_for(lambda: self.versions.get("Char.Input", 0) > before,
+                            "negotiating native input receipts", timeout=10)
+
+    async def action(self, line):
+        """One outstanding input; native receipts, not combat prompts, bound the queue."""
+        async with self.command_lock:
+            if "Char.Input" not in self.gmcp:
+                raise BattleError(f"{self.label}: native input receipts are required")
+            self.pending = ""
+            before = self.gmcp["Char.Input"]["sequence"]
+            started = asyncio.get_running_loop().time()
+            await self.send(line)
+            await self.wait_for(lambda: self.gmcp["Char.Input"]["sequence"] > before,
+                                "waiting for input dequeue", timeout=90)
+            if self.gmcp["Char.Input"]["sequence"] != before + 1:
+                raise BattleError(f"{self.label}: unexpected input sequence; stopping this connection")
+            # Discard asynchronous combat text that preceded this input's receipt.
+            keep = self.text_received - self.receipt_text
+            self.pending = self.pending[-keep:] if keep else ""
+            await self.wait_for(lambda: self.prompts > self.receipt_prompt,
+                                "waiting for dispatched input output", timeout=90)
+            if re.search(r"You start chanting|You begin to focus your will", self.pending):
+                await self.wait_for(lambda: re.search(
+                    r"You complete your spell|Your mental manipulations become a reality|"
+                    r"You abort your|You lost your concentration|gathers?, then fade|"
+                    r"lose your concentration|You don't have a valid target", self.pending),
+                    "waiting for native cast completion or interruption", timeout=60)
+            output, self.pending = self.pending, ""
+            completed = bool(re.search(r"You complete your spell|Your mental manipulations become a reality", output))
+            self.record("action_result", {"command": line, "dequeued": True,
+                "spell_completed": completed, "elapsed_seconds": round(asyncio.get_running_loop().time() - started, 3),
+                "response_tail": output[-2000:]})
+            return output
 
 
 @dataclass(frozen=True)
@@ -669,3 +731,338 @@ async def prepare_fighters(staff, clients, rows, run_dir):
             raise
         finally:
             path.write_text(json.dumps(rows, indent=2))
+
+
+HEALS = {"cleric": "full heal", "shaman": "greater mending", "paladin": "heal"}
+BUFFS = {"paladin": "armor", "ranger": "barkskin", "druid": "barkskin"}
+PHYSICAL = {"warrior": "bash", "berserker": "berserk", "monk": "kick",
+            "mercenary": "kick", "rogue": "circle", "ranger": "kick", "dragoon": "kick"}
+DEPLETED = re.compile(r"don't have that spell memorized|must commune with nature more|"
+                      r"don't have the energy left|lucidity is not sufficient enough|"
+                      r"power reserves are not sufficient|illumination is not sufficient", re.I)
+REJECTED = re.compile(r"You (?:can't|cannot|don't|aren't|are unable)|not here|no one|"
+                      r"Nobody|not permitted|not allowed|can't do|peaceful|harmful magic|"
+                      r"haven't regained|Uh oh|lost your concentration|You abort", re.I)
+
+
+def room_identity(player):
+    info = player.gmcp.get("Room.Info", {})
+    # Wilderness VNUMs can be hidden; coordinates still identify the location.
+    return {key: info.get(key) for key in ("num", "name", "coords")}
+
+
+async def prepare_actions(staff, clients, rows, directory):
+    for player in clients.values():
+        await player.enable_receipts()
+    for row in rows:
+        player, cls = clients[row["name"]], normalized(row["class"])
+        if cls in HEALS or cls == "bard":
+            settings = await player.action("toggle")
+            state = re.search(r"\bHeal\s*:\s*(ON|OFF)", settings)
+            if not state:
+                raise BattleError(f"{player.label}: cannot read healing-output setting")
+            if state[1] == "OFF":
+                await player.action("toggle heal")
+        if cls == "bard":
+            # Support items are inside the native Chaos bag. Both profiles' lyres
+            # can be held; the standard one cannot be attached to a belt.
+            result = await player.action("get lyre illithids")
+            if "You get" not in result:
+                raise BattleError(f"{player.label}: could not retrieve the kit's healing lyre")
+            await player.action("remove shield")
+            result = await player.action("hold lyre")
+            if "You hold" not in result:
+                raise BattleError(f"{player.label}: could not hold the kit's healing lyre")
+            checked = await staff.command(f"battleprep {player.label} equipment", expected=f"{player.label} equipment")
+            if "equipment ready." not in checked:
+                raise BattleError(f"{player.label}: instrument setup left the kit incomplete")
+            row["equipment"] = await player.action("equipment")
+            row["support"] = "play healing"
+        if cls in BUFFS:
+            result = await player.action(f"cast '{BUFFS[cls]}' {player.label}")
+            if "You complete your spell" not in result:
+                raise BattleError(f"{player.label}: pre-fight {BUFFS[cls]} did not complete")
+            row["buff"] = BUFFS[cls]
+        row["battle_room"] = room_identity(player)
+    # One agreed restoration after buffs, never during combat. Prepared copies
+    # retain native consumption; the attack/healing loadout was not spent here.
+    for row in rows:
+        await staff.command(f"restore {row['name']}", expected="Done.")
+        await clients[row["name"]].command("save", expected=f"Save complete for {row['name']}.")
+    (Path(directory) / "preparation.json").write_text(json.dumps(rows, indent=2))
+
+
+def active(row, clients):
+    player = clients[row["name"]]
+    return not player.dead and not player.error and room_identity(player) == row["battle_room"]
+
+
+def choose_enemy(row, rows, clients):
+    player = clients[row["name"]]
+    available = {entry["name"].casefold(): entry.get("target")
+                 for entry in player.gmcp.get("Room.Info", {}).get("players", [])}
+    enemies = [r for r in rows if r["side"] != row["side"] and active(r, clients)
+               and available.get(r["name"].casefold())]
+    current = player.gmcp.get("Char.Vitals", {}).get("fighting")
+    if not enemies:
+        return None
+    target = next((r for r in enemies if r["name"] == current), enemies[row["index"] % len(enemies)])
+    return target, available[target["name"].casefold()]
+
+
+async def fight_one(row, rows, clients, stop):
+    player, cls = clients[row["name"]], normalized(row["class"])
+    spent, turn = set(), 0
+    row["actions"] = {"attempted": 0, "dequeued": 0, "spells_completed": 0, "rejected": 0}
+    while not stop.is_set() and active(row, clients):
+        enemy = choose_enemy(row, rows, clients)
+        if not enemy:
+            await asyncio.sleep(.25)
+            continue
+        _, selector = enemy
+        vitals = player.gmcp.get("Char.Vitals", {})
+        if vitals.get("hp", 0) <= 0:
+            await asyncio.sleep(.5)
+            continue
+        heal = HEALS.get(cls)
+        injured = [r for r in rows if r["side"] == row["side"] and active(r, clients)
+                   and 0 < clients[r["name"]].gmcp.get("Char.Vitals", {}).get("hp", 0)
+                   < .85 * clients[r["name"]].gmcp.get("Char.Vitals", {}).get("maxHp", 0)]
+        spell = None
+        if vitals.get("position") != "standing":
+            command = "stand"
+        elif heal and heal not in spent and injured:
+            target = min(injured, key=lambda r: clients[r["name"]].gmcp["Char.Vitals"]["hp"] /
+                         max(1, clients[r["name"]].gmcp["Char.Vitals"]["maxHp"]))
+            spell = heal
+            command = f"cast '{heal}' {target['name']}"
+        elif cls == "bard" and turn % 3 == 0:
+            command = "play healing"
+        else:
+            attacks = [s for s in SPELL_LOADOUTS.get(cls, ())
+                       if s not in spent and s != heal and s != BUFFS.get(cls)]
+            if attacks:
+                spell = attacks[turn % len(attacks)]
+                verb = "will" if cls == "psionicist" else "cast"
+                command = f"{verb} '{spell}' {selector}"
+            elif not vitals.get("fighting"):
+                command = f"kill {selector}"
+            elif cls in PHYSICAL or cls == "bard":
+                skill = PHYSICAL.get(cls, "kick")
+                command = skill if skill == "berserk" else f"{skill} {selector}"
+            else:
+                # The third caster choice is native melee after exhaustion;
+                # don't grow an extra ability rotation beyond the small loadout.
+                await asyncio.sleep(1)
+                continue
+        row["actions"]["attempted"] += 1
+        output = await player.action(command)
+        row["actions"]["dequeued"] += 1
+        if "You complete your spell" in output or "Your mental manipulations become a reality" in output:
+            row["actions"]["spells_completed"] += 1
+        if REJECTED.search(output):
+            row["actions"]["rejected"] += 1
+        if spell and DEPLETED.search(output):
+            spent.add(spell)
+            player.record("resource_exhausted", spell)
+        turn += 1
+        await asyncio.sleep(.5)
+
+
+async def stop_fighters(staff, rows):
+    """Stop exact identities and observe them again after native callbacks settle."""
+    result = {"confirmed": False, "statuses": {}, "settle_seconds": 6}
+    try:
+        for operation, delay in (("stop", 0), ("status", 1), ("status", 5)):
+            await asyncio.sleep(delay)
+            for offset in range(0, len(rows), 8):
+                names = [row["name"] for row in rows[offset:offset + 8]]
+                if not names:
+                    continue
+                output = await staff.command(f"battleprep {operation} {' '.join(names)}",
+                                             expected=f"Battleprep status {names[-1]}")
+                statuses = {name.casefold(): state for name, state in
+                            re.findall(r"Battleprep status (\w+) (\w+)\.", output)}
+                for name in names:
+                    state = statuses.get(name.casefold(), "unconfirmed")
+                    result["statuses"][name] = state
+                    if state != "quiet":
+                        result.setdefault("unresolved", []).append({"name": name, "operation": operation, "state": state})
+        result["confirmed"] = not result.get("unresolved")
+    except Exception as error:
+        result["error"] = str(error)
+    return result
+
+
+async def run_combat(staff, clients, rows, caps, stop, duration):
+    started = asyncio.get_running_loop().time()
+    tasks = [asyncio.create_task(fight_one(row, rows, clients, stop)) for row in rows]
+    result = {"outcome": "time_limit", "caps": caps}
+    response_times = []
+
+    async def responsiveness():
+        while True:
+            before = asyncio.get_running_loop().time()
+            await current_room(staff)
+            elapsed = round(1000 * (asyncio.get_running_loop().time() - before), 2)
+            response_times.append(elapsed)
+            staff.record("controller_response_ms", elapsed)
+            await asyncio.sleep(2)
+
+    probe = asyncio.create_task(responsiveness())
+    try:
+        while asyncio.get_running_loop().time() - started < duration:
+            if stop.is_set():
+                result["outcome"] = "operator_stop"
+                break
+            for task in tasks:
+                if task.done() and not task.cancelled() and task.exception():
+                    raise task.exception()
+            if probe.done() and probe.exception():
+                raise probe.exception()
+            if any(not any(r["side"] == side and active(r, clients) for r in rows) for side in caps):
+                result["outcome"] = "side_eliminated_or_withdrawn"
+                break
+            await asyncio.sleep(.25)
+    except Exception as error:
+        result.update(outcome="interrupted", error=str(error))
+    finally:
+        for task in tasks:
+            task.cancel()
+        probe.cancel()
+        await asyncio.gather(*tasks, probe, return_exceptions=True)
+        result["duration_seconds"] = round(asyncio.get_running_loop().time() - started, 2)
+        result["controller_response_ms"] = {"samples": response_times,
+            "max": max(response_times, default=None),
+            "median": sorted(response_times)[len(response_times) // 2] if response_times else None,
+            "measurement": "end-to-end staff stat-room response, includes network and scheduling"}
+        result["stop"] = await stop_fighters(staff, rows)
+        for row in rows:
+            player = clients[row["name"]]
+            row.update(dead=player.dead, disconnected=bool(player.error),
+                       left_battlefield=room_identity(player) != row["battle_room"],
+                       damage_events=player.damage_events, observed_damage=player.observed_damage,
+                       healing_events=player.healing_events, observed_healing=player.observed_healing)
+            if not player.error:
+                try:
+                    await player.command("save", expected=f"Save complete for {row['name']}.")
+                    row["final_save"] = "acknowledged"
+                except Exception as error:
+                    row["final_save"] = str(error)
+        result["rows"] = rows
+    return result
+
+
+async def operate(config, accounts, directory, room, duration, commands):
+    """One invocation, one fresh roster, explicit start, then a verified stop."""
+    staff = await Client.connect(config["host"], config["port"], "controller", directory)
+    clients, rows, caps = {}, [], {}
+    stop, start = asyncio.Event(), asyncio.Event()
+    phase = "connecting"
+    result = {"outcome": "preparation_failed"}
+
+    async def control():
+        while True:
+            command = (await commands.get()).strip().lower()
+            if command == "start":
+                start.set()
+            elif command == "stop":
+                stop.set()
+                return
+            elif command == "status":
+                print(json.dumps({"phase": phase, "caps": caps, "connected": len(clients),
+                                  "dead": sum(p.dead for p in clients.values())}), flush=True)
+            else:
+                print("Controls: start, status, stop", flush=True)
+
+    controls = asyncio.create_task(control())
+    stopping = asyncio.create_task(stop.wait())
+
+    async def until_stop(work):
+        task = asyncio.create_task(work)
+        try:
+            done, _ = await asyncio.wait((task, stopping), return_when=asyncio.FIRST_COMPLETED)
+            if task in done:
+                # Retain ownership of a roster that finished at the same moment
+                # as stop, so the outer cleanup can stop and close its clients.
+                return await task
+            raise BattleError("Operator stopped before combat")
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    try:
+        await until_stop(staff_login(staff, config["staff"]))
+        captured_room = await current_room(staff)
+        selected_room = captured_room if room is None else room
+        phase = "provisioning"
+        pool = AccountPool(accounts, config["registration_email"])
+        clients, rows, caps = await until_stop(connect_roster(config["host"], config["port"], pool, directory))
+        phase = "preparing"
+        await until_stop(place_groups(staff, clients, rows, caps, selected_room))
+        await until_stop(prepare_fighters(staff, clients, rows, directory))
+        await until_stop(prepare_actions(staff, clients, rows, directory))
+        groups = await until_stop(refresh_groups(clients, rows, caps))
+        phase = "ready"
+        (Path(directory) / "ready.json").write_text(json.dumps({"room": selected_room, "caps": caps,
+                                                                 "groups": groups}, indent=2))
+        print(f"READY: {caps}, room {selected_room}. Log in on a separate observer account. Type start to fight.", flush=True)
+        await until_stop(start.wait())
+        phase = "fighting"
+        print(f"STARTED: maximum {duration:g} seconds. Type status or stop at any time.", flush=True)
+        result = await run_combat(staff, clients, rows, caps, stop, duration)
+        result["room"] = selected_room
+    except Exception as error:
+        result["error"] = str(error)
+    finally:
+        phase = "stopping"
+        controls.cancel(); stopping.cancel()
+        await asyncio.gather(controls, stopping, return_exceptions=True)
+        if rows and "stop" not in result:
+            result["stop"] = await stop_fighters(staff, rows)
+        await asyncio.gather(*(p.close() for p in clients.values()), return_exceptions=True)
+        await staff.close()
+        result.setdefault("rows", rows)
+        (Path(directory) / "summary.json").write_text(json.dumps(result, indent=2))
+        print(f"{result['outcome']}; stop confirmed: {result.get('stop', {}).get('confirmed', False)}. Evidence: {directory}", flush=True)
+    return result
+
+
+async def main(args):
+    config = json.loads(args.config.read_text())
+    directory = args.output
+    directory.mkdir(parents=True, mode=0o700, exist_ok=False)
+    commands = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    reader = asyncio.StreamReader()
+    transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+
+    async def read_commands():
+        while line := await reader.readline():
+            await commands.put(line.decode().strip())
+        await commands.put("stop")
+
+    input_task = asyncio.create_task(read_commands())
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, commands.put_nowait, "stop")
+    try:
+        result = await operate(config, args.accounts, directory, args.room, args.duration, commands)
+        return 0 if result.get("stop", {}).get("confirmed") and result["outcome"] not in ("preparation_failed", "interrupted") else 1
+    finally:
+        input_task.cancel()
+        await asyncio.gather(input_task, return_exceptions=True)
+        transport.close()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, required=True, help="Private JSON: host, port, staff (account/password/character), registration_email")
+    parser.add_argument("--accounts", type=Path, default=Path("bin/racewar-battles/accounts.json"))
+    parser.add_argument("--output", type=Path, default=Path("bin/racewar-battles") / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--room", type=int, help="Battlefield VNUM; defaults to the controller's captured room")
+    parser.add_argument("--duration", type=float, default=180, help="Visible maximum combat seconds (default 180)")
+    options = parser.parse_args()
+    if options.duration <= 0:
+        parser.error("--duration must be positive")
+    sys.exit(asyncio.run(main(options)))

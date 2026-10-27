@@ -654,3 +654,71 @@ and ship focused repairs. Queue/cast elapsed time includes native gameplay lag a
 must not be represented as server processing latency. A successful fight alone
 does not prove capacity or long-term stability. The user is merging ready PRs
 individually; check live dependency state before publishing/retargeting each chunk.
+
+### Chunk 5: operator loop and full battle acceptance (in progress)
+
+Active branch: `branch/issue-405-racewar-combat`, fast-forwarded to #411 at
+`f3493efba`; work remains in `/home/aiwithapex/projects/duris-racewar-runner`.
+The operator implementation is being qualified in
+`scripts/run_racewar_battle.py`, with focused client tests and the existing
+provisioning journey extended to invoke the actual CLI. Do not publish it as
+complete until full runtime evidence supports the finish line.
+
+The script now has explicit `start`, `status`, `stop` controls, signal/EOF stop,
+small class/role choices, native pre-fight buffs, no in-fight refill, legal current
+room selectors, one outstanding input guarded by native dequeue receipts,
+separate completed-spell evidence, healing-output observations, read-only staff
+response-time samples, exact participant stop with a six-second observation
+window, and acknowledged final saves. Death/room departure ends a character's
+participation; no re-entry/recovery is attempted. These are implementation claims
+awaiting the full run, not checked acceptance claims.
+
+Usage on Linux/WSL (all evidence stays under ignored `bin/`):
+
+```sh
+python3 scripts/run_racewar_battle.py --config /private/path/controller.json \
+  --accounts bin/racewar-battles/accounts.json --duration 180
+# Optional: --room <VNUM> --output bin/racewar-battles/<unique-run-id>
+```
+
+The private JSON contains `host`, `port`, `registration_email`, and `staff` with
+`account`, `password`, `character`. Keep it outside source and readable only to
+the operator. Account-pool files contain private credentials; rosters, gameplay
+logs and summaries do not. A human observer uses a different account.
+
+Current focused validation: 19 runner tests pass, including a socket regression
+where unrelated combat prompts cannot dequeue input and a chanting prompt cannot
+complete a spell. Existing native binary evidence from #411 is reused because
+this chunk changes Python only. The first delivered-CLI probe is
+`bin/racewar-battles/battle-01`, launched with:
+
+```sh
+python3 tests/async/run_racewar_provision_journey.py \
+  --binary bin/server/dms_battle_combat_flatfile \
+  --output bin/racewar-battles/battle-01 --battle --runs 1
+```
+
+The fixture creates a separate observer account/client, uses real kit prototypes,
+and waits for `READY` before issuing `start` over the CLI's standard input. The
+final acceptance invocation must use the default two runs: captured room 22800
+then explicit room 1200, the same 40 accounts with fresh PCs, and operator stop
+on the second run if the match has not already ended. Inspect full transcripts,
+native server logs, per-role execution, healing, deaths, procs, pending actions
+and responsiveness; do not equate sent actions or spell completion with successful
+damage/healing. Fix failures and retain the diagnostic evidence.
+
+`battle-01` prepared all 40 PCs but stopped before combat: bard support items are
+inside the Chaos bag, and the standard lyre cannot be attached. The runner now
+uses ordinary `get lyre illithids`, removes the shield, holds the lyre and rechecks
+native equipment readiness, preserving the kit weapon and carried shield. All
+40 participants were confirmed quiet after the failed preparation. This was a
+runner integration defect, not a native grant defect. A four-build
+`--actions` diagnostic in `bin/racewar-battles/actions-01` verifies Paladin,
+Ranger, Druid buffs and the Bard's actual healing song before another full setup.
+The final harness also captures fixture-only server CPU/RSS/thread samples; the
+delivered runner uses remote-compatible command response observations.
+
+Live merge check: #406/#407/#409/#410 are merged. `origin/master` is `7a8c31067`
+after those squash merges and starter-kit #408. Synchronize that integrated source
+before final acceptance; no need to repeat the valid unrelated qualification
+recorded by the merge task. #411 remains open at the last check.
