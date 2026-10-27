@@ -79,7 +79,7 @@ realm                     *140-142
 crypt                     *143-145
 wildland_trails           *146-147
 banditca                  *148,149
-mist_chasm                *150 
+mist_chasm                *150 RETIRED: legacy mob/obj prototypes only; do not reuse
 new_cavecity              *151            
 faang                     *152-158
 dracopit                  *159
@@ -405,7 +405,9 @@ magma                     *1420-1421
 blackpearl                *1422
 *OPEN 1423
 Voluntown                 *1424-1425
-*OPEN 1426-3999
+*OPEN 1426-2999
+thechasmofthemistyvale     *3000-3001
+*OPEN 3002-3999
 tradeskills	          *4000-4009
 *RETIRED 4010 (siege; do not reuse)
 *OPEN 4011-4019

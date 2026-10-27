@@ -94,8 +94,8 @@ def run(binary, baseline, evidence_path):
             def checks(phase):
                 print('Checking ' + phase, flush=True)
                 evidence['commands'].append({'phase': phase})
-                for zone in ((113, 300, 358, 71, 530, 857, 92, 150, 7000)
-                             if phase == 'first' else (150, 7000)):
+                for zone in ((113, 300, 358, 71, 530, 857, 92, 3000, 7000)
+                             if phase == 'first' else (3000, 7000)):
                     cmd(god, 'toggle paging yes')
                     report = paged(god, f'zcheck {zone}', 'ZCHECK')
                     evidence['commands'].append({'who': 'staff', 'command': f'zcheck {zone}',
@@ -162,10 +162,10 @@ def run(binary, baseline, evidence_path):
                     walk(names[direction], target)
                     return_path.append((names[REVERSE[direction]], current))
                     current = target
-                assert 'A Trail Along a Misty Chasm' in cmd(player, 'look')
+                assert 'An Intersection along the Misty Chasm' in cmd(player, 'look')
                 if baseline:
                     cmd(player, 'down')
-                    assert location() == 15015, 'baseline unexpectedly has a down route'
+                    assert location() == 300019, 'baseline unexpectedly has a down route'
                     visit(834025)
                     cmd(player, 'up')
                     assert location() == 834025, 'baseline unexpectedly has an up route'
@@ -176,9 +176,9 @@ def run(binary, baseline, evidence_path):
                                           ('east', 834026), ('west', 834025)):
                     walk(direction, target)
                 if baseline:
-                    visit(15015)
+                    visit(300019)
                 else:
-                    walk('up', 15015)
+                    walk('up', 300019)
                 for direction, target in reversed(return_path):
                     walk(direction, target)
 
@@ -203,8 +203,8 @@ def run(binary, baseline, evidence_path):
                     cmd(god, f'setbit char {PLAYER} mxvit 30000')
                     cmd(god, f'restore {PLAYER}')
                     checks(phase)
-                    for room in ((15000, 834025) if baseline else
-                                 (85700, 35800, 7102, 11300, 9288, 15000, 834025)):
+                    for room in ((300000, 834025) if baseline else
+                                 (85700, 35800, 7102, 11300, 9288, 300000, 834025)):
                         inspect(room)
                         response = cmd(god, 'zreset ok')
                         assert 'has been reset.' in response, response
