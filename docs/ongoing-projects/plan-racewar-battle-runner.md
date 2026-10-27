@@ -785,7 +785,14 @@ general effect framework or normal-combat change is introduced.
 
 The existing four-PC `--controls` journey now seeds the actual legacy acid spell
 through the native staff command and proves incoming-pulse cancellation and
-stable health after stop. Before/after runtime proof and both builds are being
-completed, then the final full pair will be rerun. Completed first-match combat,
+stable health after stop. The old binary fails the stable-health check; the fixed
+binary passes it in `bin/racewar-battles/acid-stop-after-02` in the combat worktree.
+Both backend builds, native ASan/UBSan battleprep checks, formatting and commit
+hooks pass. The test now establishes melee before starting the abortable cast,
+so the cast cannot complete while the test is still waiting for melee to begin.
+Fixed binary SHA-256: `702d63df0285c3d0ef6c4828750450685afac036e907cf730596a98a34672f33`.
+Tested source tree: `8ddac7afe1fbf34ae680aa6f585e8fa206c20f00`, identical on the
+focused fix branch and combat checkout. The full pair is running as `battle-05`.
+Completed first-match combat,
 reward, persistence and performance evidence remains valid; no unrelated tests
 need repeating.
