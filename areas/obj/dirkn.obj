@@ -376,15 +376,15 @@ well water bucket~
 a &+gsli&+Gme cov&+gered &+Lwell&n~
 Covered in &+gs&+Gl&+gi&+Gm&+ge&n this &+Lwell&n looks almost uninviting.~
 ~
-17 40 0 0 7 0 0 0 0 0 0
--1 -1 9 0 0 0 0 0
+25 40 0 0 7 0 0 0 0 0 0
+300166 7 -1 0 0 0 0 0
 0 0 100
 E
 well water bucket~
    A small stone &+Lwell&n sticks out of the ground here, a rope and bucket
 dangle down into its depths.  A thick layer of &+Gs&+gl&+Gi&+gm&+Ge&n covers the well's lip and
-most of its shaft, making your stomach turn as you contemplate drinking out of
-it.
+most of its shaft. A strange draft rises from its depths, inviting you to enter
+the dark shaft despite the revolting smell.
 ~
 #96825
 moss mask~

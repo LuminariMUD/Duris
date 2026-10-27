@@ -5926,6 +5926,9 @@ bool IS_TWILIGHT_ROOM(int r)
 //   it's not outdoors, ok?
 bool IS_OUTDOORS(int r)
 {
+	if (r < 0 || r > top_of_world)
+		return FALSE;
+
 	int sect = world[r].sector_type;
 	int flags = world[r].room_flags;
 

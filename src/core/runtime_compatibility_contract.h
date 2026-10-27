@@ -107,14 +107,14 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0050 stores exact Divine trade manifests and the market generation.
  * Migration 0051 saves prepared artifact/guild delivery proof with entity snapshots.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0052_pwipe_roster_checkpoint";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 53;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0053_misty_vale_shop_indexes";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 54;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"497c7d9eb21f5fdad4dca04edf1289a1f61e7f022129dc612d73b5963b1161ef";
+	"82750b92a3c0b02044ead9ebc3eab8aba4586adeda802d7df8180f87901edb03";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948201ed4c0f86f8e";
+	"0b45ccd422cef694d36a231ef014dc7988ebcdf5a5b089c066ea96b000c60dc3";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"8ba95d24dba36b69dea929c895985b95e00d6bce1eb8aea5a1907ef2df4abfca";
+	"6b911a36d3c684fb25cc5d81a1411c4bb8f3058e40f4b8862bfbb5f86e2182ec";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

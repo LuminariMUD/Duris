@@ -1,0 +1,298 @@
+#3000
+&+LThe &+yChasm &+Lof the &+WM&+wi&+Ws&+wt&+Wy &+GVale~
+300199 2 0 10 20 1
+*
+* Zone created with Duris Studio
+*
+D 0 300017 0 1 100 0 0 0 	* north door, room 300017
+D 0 300016 2 1 100 0 0 0 	* south door, room 300016
+D 0 300102 4 5 100 0 0 0 	* up door, room 300102
+D 0 300105 5 1 100 0 0 0 	* down door, room 300105
+O 0 300008 1 300132 100 0 0 0 	* an ancient well
+O 0 300009 1 300134 100 0 0 0 	* a small spring
+M 0 300023 3 300133 100 0 0 0 	* A huge wolf spider
+G 1 300012 3 0 100 0 0 0 	* a spider globule
+M 0 300024 1 300133 100 0 0 0 	* Blewazten, the pygmie geologist
+D 0 300051 5 8 100 0 0 0 	* down door, room 300051
+O 0 300010 1 300051 100 0 0 0 	* a granite head
+O 0 300006 1 300049 100 0 0 0 	* A cluster of brambles
+D 0 300049 0 8 100 0 0 0 	* north door, room 300049
+O 0 300019 1 300061 100 0 0 0 	* A cluster of brambles
+D 0 300061 2 8 100 0 0 0 	* south door, room 300061
+O 0 300020 1 300068 100 0 0 0 	* a vine ladder
+O 0 300021 1 300072 100 0 0 0 	* a rainbow eucalyptus
+* GROUP: 300032 300033
+M 0 300032 1 300072 100 0 0 0 	* Enuztet, the pygmie elder
+F 0 300033 1 300072 100 0 0 0 	* A pygmie elder
+O 0 300005 1 300076 100 0 0 0 	* some mulberries
+O 0 300022 1 300151 100 0 0 0 	* a vine ladder
+M 0 300034 1 300151 100 0 0 0 	* Dokumaci, the pygmie weaver
+O 0 300026 1 300016 100 0 0 0 	* a teakwood shingle
+M 0 300012 1 300018 100 0 0 0 	* Golgotha
+O 0 300027 1 300017 100 0 0 0 	* the registy
+O 0 300003 1 300055 100 0 0 0 	* some wineberries
+M 0 300017 2 300104 100 0 0 0 	* A zombie cleric
+M 0 300017 2 300102 100 0 0 0 	* A zombie cleric
+M 0 300018 1 300103 100 0 0 0 	* A ghoul
+M 0 300020 1 300105 100 0 0 0 	* Targul, the pygmie vampire
+M 0 300021 1 300106 100 0 0 0 	* A crypt devil
+O 0 300018 1 300109 100 0 0 0 	* some ruins
+M 0 300013 2 300111 100 0 0 0 	* A mud dweller
+M 0 300013 2 300111 100 0 0 0 	* A mud dweller
+M 0 300015 1 300118 100 0 0 0 	* A large mud dweller
+G 1 300004 1 0 100 0 0 0 	* the bloody heart of a mud dweller
+M 0 300016 4 300116 100 0 0 0 	* A skeletal warrior
+M 0 300022 6 300124 100 0 0 0 	* A large wolf spider
+M 0 300022 6 300125 100 0 0 0 	* A large wolf spider
+M 0 300022 6 300126 100 0 0 0 	* A large wolf spider
+M 0 300022 6 300127 100 0 0 0 	* A large wolf spider
+M 0 300022 6 300131 100 0 0 0 	* A large wolf spider
+M 0 300022 6 300130 100 0 0 0 	* A large wolf spider
+M 0 300035 9 300063 100 0 0 0 	* A forest salamander
+G 1 300001 6 0 100 0 0 0 	* a small salamander scale
+M 0 300035 9 300063 100 0 0 0 	* A forest salamander
+M 0 300035 9 300070 100 0 0 0 	* A forest salamander
+G 1 300001 6 0 100 0 0 0 	* a small salamander scale
+M 0 300035 9 300070 100 0 0 0 	* A forest salamander
+M 0 300035 9 300078 100 0 0 0 	* A forest salamander
+G 1 300001 6 0 100 0 0 0 	* a small salamander scale
+M 0 300035 9 300078 100 0 0 0 	* A forest salamander
+M 0 300035 9 300066 100 0 0 0 	* A forest salamander
+G 1 300001 6 0 100 0 0 0 	* a small salamander scale
+M 0 300035 9 300066 100 0 0 0 	* A forest salamander
+M 0 300002 24 300069 100 0 0 0 	* A young pygmie
+M 0 300002 24 300069 100 0 0 0 	* A young pygmie
+M 0 300002 24 300065 100 0 0 0 	* A young pygmie
+M 0 300002 24 300065 100 0 0 0 	* A young pygmie
+M 0 300002 24 300074 100 0 0 0 	* A young pygmie
+M 0 300002 24 300074 100 0 0 0 	* A young pygmie
+M 0 300002 24 300077 100 0 0 0 	* A young pygmie
+M 0 300002 24 300077 100 0 0 0 	* A young pygmie
+M 0 300002 24 300067 100 0 0 0 	* A young pygmie
+M 0 300002 24 300067 100 0 0 0 	* A young pygmie
+M 0 300001 19 300062 100 0 0 0 	* A male pygmy
+M 0 300001 19 300062 100 0 0 0 	* A male pygmy
+M 0 300001 19 300064 100 0 0 0 	* A male pygmy
+M 0 300001 19 300064 100 0 0 0 	* A male pygmy
+M 0 300001 19 300073 100 0 0 0 	* A male pygmy
+M 0 300001 19 300073 100 0 0 0 	* A male pygmy
+M 0 300001 19 300075 100 0 0 0 	* A male pygmy
+M 0 300001 19 300075 100 0 0 0 	* A male pygmy
+M 0 300004 14 300072 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300072 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300071 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300071 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300068 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300068 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300076 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300076 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300079 100 0 0 0 	* A pygmie elder
+M 0 300005 18 300079 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300078 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300077 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300066 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300073 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300063 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300064 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300069 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300070 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300075 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300076 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300067 100 0 0 0 	* A pygmie mother
+M 0 300000 19 300078 100 0 0 0 	* A female pygmy
+M 0 300000 19 300078 100 0 0 0 	* A female pygmy
+M 0 300000 19 300063 100 0 0 0 	* A female pygmy
+M 0 300000 19 300063 100 0 0 0 	* A female pygmy
+M 0 300000 19 300070 100 0 0 0 	* A female pygmy
+M 0 300000 19 300070 100 0 0 0 	* A female pygmy
+M 0 300003 11 300070 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300063 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300075 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300079 100 0 0 0 	* A pygmy warrior
+M 0 300011 8 300077 100 0 0 0 	* A buck
+M 0 300011 8 300074 100 0 0 0 	* A buck
+M 0 300011 8 300062 100 0 0 0 	* A buck
+M 0 300011 8 300068 100 0 0 0 	* A buck
+* GROUP: 300006 300007
+* GROUP: 300006 300007
+* GROUP: 300006 300008
+* GROUP: 300006 300007
+* GROUP: 300006 300008
+* GROUP: 300006 300007
+* GROUP: 300006 300007 300007
+* GROUP: 300006 300007 300007 300007 300008 300008
+M 0 300006 1 300024 100 0 0 0 	* Gynaeros, the pygmie shaman
+F 0 300007 3 300024 100 0 0 0 	* A noble mountain lion
+F 0 300007 3 300024 100 0 0 0 	* A noble mountain lion
+F 0 300007 3 300024 100 0 0 0 	* A noble mountain lion
+F 0 300008 2 300024 100 0 0 0 	* A small wyvern
+F 0 300008 2 300024 100 0 0 0 	* A small wyvern
+M 0 300036 1 300056 100 0 0 0 	* A fat pygmie
+O 0 300029 1 300165 100 0 0 0 	* a lever
+O 0 300030 3 300164 100 0 0 0 	* some aquatic Fireweed
+M 0 300037 6 300163 100 0 0 0 	* a deep sea lobster
+M 0 300037 6 300163 100 0 0 0 	* a deep sea lobster
+M 0 300037 6 300161 100 0 0 0 	* a deep sea lobster
+O 0 300030 3 300161 100 0 0 0 	* some aquatic Fireweed
+M 0 300037 6 300157 100 0 0 0 	* a deep sea lobster
+M 0 300037 6 300155 100 0 0 0 	* a deep sea lobster
+M 0 300037 6 300154 100 0 0 0 	* a deep sea lobster
+O 0 300030 3 300154 100 0 0 0 	* some aquatic Fireweed
+D 0 300159 3 8 100 0 0 0 	* west door, room 300159
+M 0 300027 8 300166 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300166 100 0 0 0 	* A subterranean bat
+O 0 300031 1 300166 100 0 0 0 	* a stone archway
+O 0 300028 1 300059 100 0 0 0 	* a small pond
+M 0 300026 1 300043 100 0 0 0 	* An angry skunk ape
+G 1 300002 1 0 100 0 0 0 	* the severed head of a skunk ape
+O 0 300001 6 300042 100 0 0 0 	* a small salamander scale
+O 0 300016 1 300039 100 0 0 0 	* a waterfall
+M 0 300027 8 300144 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300144 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300147 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300147 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300150 100 0 0 0 	* A subterranean bat
+M 0 300027 8 300150 100 0 0 0 	* A subterranean bat
+M 0 300028 6 300148 100 0 0 0 	* A cave viper
+M 0 300028 6 300148 100 0 0 0 	* A cave viper
+M 0 300028 6 300149 100 0 0 0 	* A cave viper
+M 0 300028 6 300149 100 0 0 0 	* A cave viper
+M 0 300028 6 300145 100 0 0 0 	* A cave viper
+M 0 300028 6 300145 100 0 0 0 	* A cave viper
+M 0 300009 11 300146 100 0 0 0 	* A small lizard
+M 0 300009 11 300146 100 0 0 0 	* A small lizard
+M 0 300029 1 300149 100 0 0 0 	* The Sinuuk
+O 0 300014 1 300024 100 0 0 0 	* a weathered sign
+O 0 300037 1 300011 100 0 0 0 	* a statue of Sniktiorg Blackhaven
+M 0 300014 2 300112 100 0 0 0 	* A small mud dweller
+G 1 300017 2 0 100 0 0 0 	* a pair of bone-razored talons
+M 0 300014 2 300113 100 0 0 0 	* A small mud dweller
+G 1 300017 2 0 100 0 0 0 	* a pair of bone-razored talons
+M 0 300031 1 300109 100 0 0 0 	* The banshee of Xtlpal
+E 1 300032 999 20 100 0 0 0 	* the wailing face of a pygmie banshee
+E 1 300033 999 3 100 0 0 0 	* a necklace of Drow testicles
+M 0 300019 3 300104 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300016 4 300104 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300019 3 300100 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300016 4 300100 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300019 3 300102 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300016 4 300102 100 0 0 0 	* A skeletal warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300023 3 300136 100 0 0 0 	* A huge wolf spider
+G 1 300012 3 0 100 0 0 0 	* a spider globule
+M 0 300023 3 300135 100 0 0 0 	* A huge wolf spider
+G 1 300012 3 0 100 0 0 0 	* a spider globule
+O 0 300015 1 300029 100 0 0 0 	* a crude sign
+M 0 300000 19 300001 100 0 0 0 	* A female pygmy
+M 0 300000 19 300001 100 0 0 0 	* A female pygmy
+M 0 300000 19 300038 100 0 0 0 	* A female pygmy
+M 0 300000 19 300038 100 0 0 0 	* A female pygmy
+M 0 300000 19 300035 100 0 0 0 	* A female pygmy
+M 0 300000 19 300035 100 0 0 0 	* A female pygmy
+M 0 300000 19 300012 100 0 0 0 	* A female pygmy
+M 0 300000 19 300012 100 0 0 0 	* A female pygmy
+M 0 300000 19 300008 100 0 0 0 	* A female pygmy
+M 0 300000 19 300008 100 0 0 0 	* A female pygmy
+M 0 300001 19 300005 100 0 0 0 	* A male pygmy
+M 0 300001 19 300005 100 0 0 0 	* A male pygmy
+M 0 300001 19 300007 100 0 0 0 	* A male pygmy
+M 0 300001 19 300007 100 0 0 0 	* A male pygmy
+M 0 300001 19 300009 100 0 0 0 	* A male pygmy
+M 0 300001 19 300009 100 0 0 0 	* A male pygmy
+M 0 300001 19 300019 100 0 0 0 	* A male pygmy
+M 0 300001 19 300019 100 0 0 0 	* A male pygmy
+M 0 300001 19 300026 100 0 0 0 	* A male pygmy
+M 0 300001 19 300026 100 0 0 0 	* A male pygmy
+M 0 300003 11 300033 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300036 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300031 100 0 0 0 	* A pygmy warrior
+M 0 300003 11 300004 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300010 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300003 11 300027 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300002 24 300002 100 0 0 0 	* A young pygmie
+M 0 300002 24 300002 100 0 0 0 	* A young pygmie
+M 0 300002 24 300013 100 0 0 0 	* A young pygmie
+M 0 300002 24 300013 100 0 0 0 	* A young pygmie
+M 0 300002 24 300021 100 0 0 0 	* A young pygmie
+M 0 300002 24 300021 100 0 0 0 	* A young pygmie
+M 0 300002 24 300034 100 0 0 0 	* A young pygmie
+M 0 300002 24 300034 100 0 0 0 	* A young pygmie
+M 0 300002 24 300037 100 0 0 0 	* A young pygmie
+M 0 300002 24 300037 100 0 0 0 	* A young pygmie
+M 0 300004 14 300036 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300033 100 0 0 0 	* A pygmie elder
+M 0 300004 14 300020 100 0 0 0 	* A pygmie elder
+M 0 300005 18 300015 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300008 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300006 100 0 0 0 	* A pygmie mother
+M 0 300010 14 300005 100 0 0 0 	* A forest salamander
+G 1 300024 4 0 100 0 0 0 	* a large salamander scale
+M 0 300010 14 300001 100 0 0 0 	* A forest salamander
+G 1 300024 4 0 100 0 0 0 	* a large salamander scale
+M 0 300010 14 300007 100 0 0 0 	* A forest salamander
+M 0 300010 14 300031 100 0 0 0 	* A forest salamander
+M 0 300010 14 300027 100 0 0 0 	* A forest salamander
+M 0 300010 14 300036 100 0 0 0 	* A forest salamander
+M 0 300010 14 300034 100 0 0 0 	* A forest salamander
+G 1 300024 4 0 100 0 0 0 	* a large salamander scale
+M 0 300010 14 300025 100 0 0 0 	* A forest salamander
+M 0 300010 14 300032 100 0 0 0 	* A forest salamander
+M 0 300010 14 300014 100 0 0 0 	* A forest salamander
+G 1 300024 4 0 100 0 0 0 	* a large salamander scale
+M 0 300011 8 300006 100 0 0 0 	* A buck
+M 0 300011 8 300038 100 0 0 0 	* A buck
+M 0 300011 8 300019 100 0 0 0 	* A buck
+M 0 300025 4 300032 100 0 0 0 	* A doe
+M 0 300025 4 300034 100 0 0 0 	* A doe
+M 0 300025 4 300008 100 0 0 0 	* A doe
+M 0 300009 11 300002 100 0 0 0 	* A small lizard
+M 0 300009 11 300006 100 0 0 0 	* A small lizard
+M 0 300009 11 300009 100 0 0 0 	* A small lizard
+M 0 300009 11 300020 100 0 0 0 	* A small lizard
+M 0 300009 11 300026 100 0 0 0 	* A small lizard
+M 0 300009 11 300033 100 0 0 0 	* A small lizard
+M 0 300030 1 300032 100 0 0 0 	* A black bear
+M 0 300009 11 300040 100 0 0 0 	* A small lizard
+M 0 300000 19 300041 100 0 0 0 	* A female pygmy
+M 0 300035 9 300042 100 0 0 0 	* A forest salamander
+G 1 300001 6 0 100 0 0 0 	* a small salamander scale
+M 0 300010 14 300048 100 0 0 0 	* A forest salamander
+M 0 300010 14 300050 100 0 0 0 	* A forest salamander
+M 0 300010 14 300060 100 0 0 0 	* A forest salamander
+M 0 300010 14 300058 100 0 0 0 	* A forest salamander
+M 0 300004 14 300047 100 0 0 0 	* A pygmie elder
+M 0 300005 18 300050 100 0 0 0 	* A pygmie mother
+M 0 300005 18 300054 100 0 0 0 	* A pygmie mother
+M 0 300003 11 300054 100 0 0 0 	* A pygmy warrior
+E 1 300000 999 16 100 0 0 0 	* an oak vine-bar
+M 0 300004 14 300058 100 0 0 0 	* A pygmie elder
+M 0 300002 24 300057 100 0 0 0 	* A young pygmie
+M 0 300002 24 300047 100 0 0 0 	* A young pygmie
+M 0 300000 19 300047 100 0 0 0 	* A female pygmy
+M 0 300001 19 300050 100 0 0 0 	* A male pygmy
+M 0 300002 24 300058 100 0 0 0 	* A young pygmie
+M 0 300002 24 300050 100 0 0 0 	* A young pygmie
+M 0 300000 19 300049 100 0 0 0 	* A female pygmy
+M 0 300005 18 300049 100 0 0 0 	* A pygmie mother
+M 0 300009 11 300053 100 0 0 0 	* A small lizard
+M 0 300009 11 300057 100 0 0 0 	* A small lizard
+M 0 300011 8 300056 100 0 0 0 	* A buck
+M 0 300025 4 300054 100 0 0 0 	* A doe
+O 0 300041 1 300121 100 0 0 0 	* a granite head
+D 0 300105 1 8 100 0 0 0 	* east door, room 300105
+O 0 15010 1 300106 100 0 0 0 * retained burial casket
+P 1 15012 1 15010 100 0 0 0 * live snake necklace for Winterhaven
+S

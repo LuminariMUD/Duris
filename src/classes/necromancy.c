@@ -685,7 +685,6 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	// 5 at 56.
 	undead->points.damsizedice = (level - 1) / 11;
 
-	StartRegen(undead, regen_resource::mana);
 	balance_affects(undead);
 	undead->only.npc->str_mask = (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
 
@@ -779,6 +778,8 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 
 	extract_obj(obj);
 	char_to_room(undead, ch->in_room, 0);
+	// Sunlight-sensitive mana regeneration reads the pet's room.
+	StartRegen(undead, regen_resource::mana);
 
 	int duration = setup_pet(undead, ch, MAX(4, timeToDecay), PET_NOCASH);
 	add_follower(undead, ch);

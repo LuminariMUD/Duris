@@ -828,6 +828,8 @@ void do_mine(P_char ch, char *arg, int /*cmd*/)
 				logit(LOG_WIZ, "%s loaded mines in %s", GET_NAME(ch),
 				      mine_data[i].name);
 				load_mines(FALSE, TRUE, i);
+				send_to_char_f(ch, "Mine reset requested in %s.\r\n",
+					       mine_data[i].name);
 				return;
 			}
 		}
@@ -846,6 +848,8 @@ void do_mine(P_char ch, char *arg, int /*cmd*/)
 				logit(LOG_WIZ, "%s loaded mine in %s", GET_NAME(ch),
 				      mine_data[i].name);
 				load_one_mine(i);
+				send_to_char_f(ch, "Mine load requested in %s.\r\n",
+					       mine_data[i].name);
 				return;
 			}
 		}
@@ -929,11 +933,13 @@ void do_mine(P_char ch, char *arg, int /*cmd*/)
 		{
 			wizlog(56, "%s purged all mines.", GET_NAME(ch));
 			logit(LOG_WIZ, "%s purged all mines.", GET_NAME(ch));
+			send_to_char("Mine purge completed for all regions.\r\n", ch);
 			return;
 		}
 
 		wizlog(56, "%s purged %s mines.", GET_NAME(ch), mine_data[region].name);
 		logit(LOG_WIZ, "%s purged %s mines.", GET_NAME(ch), mine_data[region].name);
+		send_to_char_f(ch, "Mine purge completed in %s.\r\n", mine_data[region].name);
 		return;
 	}
 	send_to_char("You can't mine here!\n", ch);
