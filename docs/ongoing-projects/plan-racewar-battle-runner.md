@@ -575,9 +575,10 @@ full battle journeys. The native input receipt extension is being developed in
 separate unstaged networking/descriptor files; it is not part of this preparation
 chunk. It acknowledges actual dequeue only, never successful combat execution.
 
-### Chunk 4: native battle controls (ready for review)
+### Chunk 4: native battle controls ([PR #411](https://github.com/LuminariMUD/Duris/pull/411), ready for review)
 
 Branch: `branch/issue-405-battle-controls`, stacked on #410 at `ee90a711c`.
+Implementation commit: `ce7bf946a`. #411 targets `branch/issue-405-battle-preparation`.
 Worktree: `/home/aiwithapex/projects/duris-racewar-runner`. The reviewed #407
 prompt-ordering fix is included through #410's existing merge, without rewriting
 history. `branch/issue-405-racewar-combat` retains the earlier preparation head;
@@ -617,8 +618,8 @@ targeting or item-cancellation policy. No persistence path changed.
 
 Focused ASan/UBSan checks for input receipts, target selectors, battleprep and item
 actions pass, as do all 16 integrated runner tests and the GUI GMCP contract.
-Both backend builds pass. The four-PC native control journey is being checked
-with `--controls`; it is not a full-party battle acceptance run. Remaining work:
+Both backend builds pass. The four-PC native control journey passed with
+`--controls`; it is not a full-party battle acceptance run. Remaining work:
 operator CLI, pre-fight buffs, combat decisions and result classification,
 settled targeted stop, observer output, and two fresh 20/20 matches using the
 same accounts and different rooms. Do not mark #405 complete from control proof.
