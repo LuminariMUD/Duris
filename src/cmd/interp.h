@@ -18,6 +18,7 @@
 
 const char *input_command_label(const char *input);
 int ordered_command_number(const char *input);
+bool input_is_afk_toggle(const char *input);
 
 extern unsigned int game_locked;
 extern unsigned int game_locked_players;

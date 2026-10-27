@@ -27,4 +27,7 @@ assert contains(helper, "|| !*input")
 assert contains(helper, "t->character->specials.timer = 0;")
 assert contains(helper, "REMOVE_BIT(t->character->specials.act, PLR_AFK);")
 
-print("AFK input-activity reset ordering: ok")
+assert contains(helper, "if (!input_is_afk_toggle(input))")
+interp = (SRC / "interp.c").read_text()
+assert contains(interp, "IS_SET(ch->specials.act, PLR_AFK) && !input_is_afk_toggle(argument)")
+print("AFK input-activity reset ordering and toggle preservation: ok")

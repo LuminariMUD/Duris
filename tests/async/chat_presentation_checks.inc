@@ -252,5 +252,11 @@ static void chat_presentation_matrix()
 		std::free(json);
 	}
 	cJSON_Delete(fixtures);
+	for (P_char player : { &alice, &bob })
+	{
+		delete GET_PLAYER_LOG(player);
+		GET_PLAYER_LOG(player) = nullptr;
+		drain(player->desc);
+	}
 	puts("Structured chat: real say/tell/guild, transformed privacy, authored runs, reset, connection state and no duplicate deliveries passed");
 }
