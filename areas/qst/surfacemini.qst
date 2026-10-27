@@ -31,6 +31,13 @@ QA
 R I 97930
 G I 15008
 QA
+&+yA &+ghumble &+Yhermit &+Wsays to you, 'Wonderful! Please take this a small
+&+Wtoken of my appreciation. This potion will provide you with a good
+&+Wboost of energy. Don't mind the smell though!'&n
+~
+R I 97930
+G I 300036
+QA
 &+yA &+ghumble &+Yhermit &+Wsays to you, 'Thank you for your assistance. I've held
 &+Wthis recipe a secret for a long time. I believe you will find this
 &+Wwell worth it once assembled. You will find a frail man who resides

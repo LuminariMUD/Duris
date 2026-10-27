@@ -352,6 +352,7 @@ void do_test(P_char ch, char *arg, int cmd)
 	if (isname("oceanpvp", buff))
 	{
 		send_to_char_f(ch, "Ocean PvP state: %s.\n", YESNO(ocean_pvp_state()));
+		return;
 	}
 	if (isname("weapondice", buff))
 	{

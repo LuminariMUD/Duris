@@ -27,6 +27,7 @@ class ObserverClient(journey.MudClient):
         self.socket.settimeout(0.25)
         self.pending = bytearray()
         self.transcript = bytearray()
+        self.raw_transcript = bytearray()
 
 
 def install_legacy_objects(run_root):

@@ -20,8 +20,8 @@ python3 scripts/migration_runner.py run
 ./migrations/verify_runtime_compatibility.sh
 ```
 
-The current head is `0050_critical_outbox_expectations`, and the contract
-describes 199 current tables: the 170-table baseline plus the post-baseline runtime tables created
+The current head is `0053_misty_vale_shop_indexes` (sequence 54), and the contract
+describes 200 current tables: the 170-table baseline plus the post-baseline runtime tables created
 by immutable migrations. Migration 0029 adds the replay-safe
 `critical_operation_inbox.failure_stage` receipt field as `SMALLINT UNSIGNED NOT
 NULL DEFAULT 0` immediately after `result_code`; it creates no table. A legacy clone

@@ -10,11 +10,11 @@
     "mariadb10_11": "fd697ef0099fbfcf5dffc9abfd6b34da6b11d4aaa14fc5f5254ea678c55edb8c"
   },
   "migration_head": {
-    "id": "0052_pwipe_roster_checkpoint",
-    "sequence": 53,
-    "apply_checksum": "497c7d9eb21f5fdad4dca04edf1289a1f61e7f022129dc612d73b5963b1161ef",
-    "verify_checksum": "5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948201ed4c0f86f8e",
-    "history_checksum": "8ba95d24dba36b69dea929c895985b95e00d6bce1eb8aea5a1907ef2df4abfca"
+    "id": "0053_misty_vale_shop_indexes",
+    "sequence": 54,
+    "apply_checksum": "82750b92a3c0b02044ead9ebc3eab8aba4586adeda802d7df8180f87901edb03",
+    "verify_checksum": "0b45ccd422cef694d36a231ef014dc7988ebcdf5a5b089c066ea96b000c60dc3",
+    "history_checksum": "6b911a36d3c684fb25cc5d81a1411c4bb8f3058e40f4b8862bfbb5f86e2182ec"
   },
   "connection": {
     "character_set": "utf8mb4",

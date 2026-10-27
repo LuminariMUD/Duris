@@ -1,0 +1,625 @@
+#300003
+QA
+&+wA &+Gpygmie &+Lwarrior &+wsighs.
+&+wHe says, 'You don't happen to have any scales, do you?'
+~
+G I 300001
+R C 25000
+D
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'I must go and bring this to the shaman. She will help make me stronger for the hunt.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'The elders better fall in line.  Only Enuztet can make the pygmies great again.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'One day, I'll become a far-ranger and I'll finally get Dokumaci to make a pair of her boots for me.'
+He sighs in contentment.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+wlooks you over.
+He chuckles and flashes you a smile.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'I almost fell into the chasm the other day.'
+He shivers.
+&+wA &+Gpygmie &+Lwarrior &+wcontinues, 'I don't believe the myths about the undead in the pyramid, but I wouldn't want to have to fight my way back through those giant spiders.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+cs&+Cp&+ci&+Ct&+cs &+won the ground.
+He scans the &+gfo&+Gr&+ge&+Gst &+ycanopy &+wlooking for something.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+Lwarrior &+wsearches the &+gun&+Gd&+ge&+Grg&+gro&+Gw&+gth &+wfor small prey &+yanimals&+w.
+~
+MA
+scales~
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'If you give me a scale, large or small, I will give you some shiny metal.'
+~
+QA
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'Thank you for this, outlander. Here is the metal I had promised you.'
+~
+G I 300024
+D
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'Thank you for this, outlander. Here is the metal I had promised you.'
+~
+R C 50000
+D
+&+wA &+Gpygmie &+Lwarrior &+wsays, 'I must go and bring this to the shaman. She will help make me stronger for the hunt.'
+~
+S
+#300006
+M
+qc_action 70~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'Sometimes, at night, you can see Xtlpal in the swamp from here.'
+She continues, 'Her body glows in the darkness of the chasm's bottom.'
+~
+M
+qc_action 70~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'We were once a great people. Not the wild things you now see.'
+She sighs.
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'My people built pyramids and drained swamp waters to have land to grow their crops.'
+~
+M
+qc_action 70~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wchants unintelligibly.
+She pulls a colorful &+Cp&+car&+Crot &+wfrom a &+ywicker cage&+w.
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wchants, 'Oh, great gods, return us to our place in this world.  Raise us up from our degradation!'
+She snaps the &+Cp&+car&+Crot&+w's neck and tosses it into the &+ychasm&+w.
+~
+M
+qc_action 70~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wdances wildly upon the &+Gpr&+go&+Gm&+gon&+Gt&+go&+Gry&+w.
+She woops and hollers over the &+ychasm&+w.
+~
+Q
+~
+G I 300004
+G I 300002
+G I 300012
+G I 300017
+D
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'Wow!  You actually killed them all.'
+She shakes her head in disbelief.
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'Congratulations, my friend.  You earned this.'
+~
+R I 300013
+MA
+scales~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wtilts her head.
+She says, 'If you bring me both a small and large scale of the salamanders, I shall reward you with a powerful potion.'
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'It will help lift your spirits and make it easier to navigate the old bridge.'
+~
+QA
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'I could really use the scales of the jade salamanders that wander here.'
+~
+MA
+scales~
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wtilts her head.
+She says, 'If you bring me both a small and large scale of the salamanders, I shall reward you with a powerful potion.'
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'It will help lift your spirits and make it easier to navigate the old bridge.'
+~
+G I 300001
+G I 300024
+D
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'Very well done!  These scales will help me create armor and other useful things for my tribe.'
+~
+R I 300036
+D
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wsays, 'I must go now and prepare these scales while they are still in good condition.'
+She turns to leave, but stops.
+&+yGynaeros&+w, the &+Gpygmie &+gshaman &+wcontinues, 'Remember to drink that potion before you try to cross the bridge over the mighty chasm.'
+~
+S
+#300009
+M
+qc_action 70~
+&+wA &+Lsmall &+Yli&+Gz&+Ya&+Grd &+wlicks one of its &+Geyes&+L.
+~
+M
+qc_action 70~
+&+wA &+Lsmall &+Yli&+Gz&+Ya&+Grd &+wsnaps an &+Cin&+csect &+wout of the air.
+~
+S
+#300010
+M
+qc_action 70~
+&+wA &+Gfo&+gr&+Ge&+gst &+Lsalamander &+wsnarls and snaps its teeth at your approach.
+~
+M
+qc_action 70~
+&+wA &+Gfo&+gr&+Ge&+gst &+Lsalamander &+yurinates &+win the &+gun&+Gd&+ge&+Grg&+gro&+Gw&+gth&+w.
+~
+M
+qc_action 70~
+&+wA &+Gfo&+gr&+Ge&+gst &+Lsalamander &+wchews on a low lying &+gleaf &+wfrom the top of a &+Gbush&+w.
+~
+S
+#300011
+M
+qc_action 70~
+&+wA &+ybuck &+wscrapes his &+Lhorns &+wagainst a &+Gt&+gr&+Ge&+ge&+L.
+~
+M
+qc_action 70~
+&+wA &+ybuck &+wlowers his head to chew some &+Gg&+gr&+Ga&+gs&+Gs&+L.
+~
+S
+#300012
+M
+qc_action 70~
+&+wGolgotha says, 'A lot of the local pygmies will pay you in some way for the scales of the indigenous salamanders. Keep an ear out while wandering their tribal lands.'
+~
+M
+qc_action 70~
+&+wGolgotha says, 'Fishermen will be pleased to know that the fishing in this forest is quite good. One of the pygmies even runs a makeshift tackle shop.'
+~
+M
+qc_action 70~
+&+wGolgotha adjusts his legacy &+ybraid&+L.
+~
+M
+qc_action 70~
+&+wGolgotha looks about the &+yinn&+L.
+~
+S
+#300017
+M
+qc_action 70~
+&+wA &+Lzombie &+ccleric &+wmoans quietly.
+~
+M
+qc_action 70~
+&+wA &+cswath &+wof &+Cflesh &+wslides off a zombie cleric and slaps the &+yground&+w.
+~
+M
+qc_action 70~
+&+wA &+cchunk &+wof &+Cmeat &+wdrops off a &+Lzombie &+ccleric&+w.
+~
+S
+#300020
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wuses his &+ctongue &+wto play with a &+Wfang&+w.
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wflips his &+Wponytail &+wover his shoulder.
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wadjusts his &+Lloincloth&+w.
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wlooks you over.
+He says, 'Even if I were not fasting, I don't think you would make much more
+than a quick snack.'
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wsays, 'It isn't like I don't appreciate the company,
+but do you think you can head home soon?  I am beginning to miss my solitude.'
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wsays, 'Capodicapi, my Lord King, had me... Changed
+into a nightwalker so that I could guard his corpse through the afterlife.'
+~
+M
+qc_action 70~
+&+cTargul&+w, the &+Gpygmie &+gvampire &+wsays, 'I have stood guard over this chamber for five thousand years. Do you think I will let you pass?'
+~
+S
+#300022
+M
+qc_action 70~
+&+wA &+Llarge &+ywolf &+Lspider &+wscrapes the &+yground &+wmenacingly with its &+ymandibles&+w.
+~
+M
+qc_action 70~
+&+wA &+Llarge &+ywolf &+Lspider &+wscuttles low and &+Yurinates&+w.
+~
+M
+qc_action 70~
+&+wA &+Llarge &+ywolf &+Lspider &+wcrouches down and lets out a low clicking sound.
+~
+S
+#300023
+M
+qc_action 70~
+&+wA &+Lhuge &+ywolf &+Lspider &+wpounces on a small &+Lmouse&+w.
+It devours the &+Lrodent &+win one bite.
+~
+M
+qc_action 70~
+&+wA &+Lhuge &+ywolf &+Lspider &+wrubs its &+yforefeet &+wtogether.
+~
+M
+qc_action 70~
+&+wA &+Lhuge &+ywolf &+Lspider &+wclacks its &+ymandibles&+w.
+~
+S
+#300024
+QA
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wmoans.
+He says, 'I'm so hungry.  Do you have berries?  Please?  Just a few berries.'
+~
+MA
+berries~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wsays, 'They chased me off. All my supplies, my food. I'm so, so hungry. I...'
+He cocks his head and looks at you.
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wshouts, 'Who are you?! Did they send you? Are you after my work? Well, the laugh is on them. They already have it. I lost it. I lost it.'
+He groans miserably.
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wsays, 'Do you have any wineberries? Perhaps some mulberries? When I was a child, my mother and I used to harvest them in the forest.'
+He considers you for a long time.
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wsays, 'If you bring me some wineberries and some mulberries, I swear on on my testicles to reward you greatly.'
+~
+G I 300003
+G I 300005
+D
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wsays, 'Thank you! My tongue was beginning to crack from lack of moisture.'
+~
+R E 5000
+R I 300007
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wsays, 'I can't believe Dokumaci won't help me.'
+He &+Wspits &+win the &+csp&+Cr&+ci&+Cng&+w.
+~
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wdrinks from the &+csp&+Cr&+ci&+Cng&+w.
+He bangs his head against the northern &+Lwall&+w.
+~
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wpicks &+ydirt &+wfrom under his fingernails.
+~
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+Yurinates &+win the southern corner of the &+Lpassage&+w.
+~
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wrocks back and forth while humming to himself.
+He glares at you and tucks a &+Lstone &+winto his &+yarm wraps&+w.
+~
+M
+qc_action 70~
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wcries, 'Lost!  Lost!  All my notes, all of my work.'
+He claws at his head.
+&+yBlewazten&+w, the &+Gpygmie &+ggeologist &+wmutters, 'I have to get past those zombies to my campsite for my notes.'
+~
+S
+#300025
+M
+qc_action 70~
+&+wA &+ydoe &+wquickly raises her head and looks about.
+~
+S
+#300027
+M
+qc_action 70~
+&+wA subterranean &+Lbat &+wflies in a loop.
+~
+M
+qc_action 70~
+&+wA subterranean &+Lbat &+wswoops after a large &+Rin&+rsect&+w.
+~
+M
+qc_action 70~
+&+wA subterranean &+Lbat &+wlets out a piercing screech.
+~
+S
+#300028
+M
+qc_action 70~
+&+wA cave &+Gv&+gip&+Ge&+gr &+wcoils up as if preparing to strike.
+~
+M
+qc_action 70~
+&+wA cave &+Gv&+gi&+Gp&+ge&+Gr &+wtastes the air with its forked &+Mto&+mn&+Mg&+mue&+w.
+~
+M
+qc_action 70~
+&+wA cave &+Gv&+gi&+Gp&+ge&+Gr &+wflicks the air with its &+Mto&+mn&+Mg&+mue&+w.
+~
+S
+#300029
+M
+qc_action 70~
+&+wA thin &+gcloud &+wof &+Gs&+gm&+Go&+gk&+Ge &+wwafts from the &+RS&+min&+Ru&+mu&+Rk&+w's nose.
+~
+M
+qc_action 70~
+The &+RS&+min&+Ru&+mu&+Rk &+wlets out a nerve-wracking sneeze.
+~
+M
+qc_action 70~
+The &+RS&+min&+Ru&+mu&+Rk &+wevacuates its &+ybowels&+w.
+~
+M
+qc_action 70~
+&+wThe &+RS&+min&+Ru&+mu&+Rk &+wsniffs the air for prey.
+~
+M
+qc_action 70~
+&+wThe &+RS&+min&+Ru&+mu&+Rk &+wrakes its back &+Rc&+ml&+Ra&+mw &+wagainst the &+yground&+w.
+~
+M
+qc_action 70~
+&+wThe &+RS&+min&+Ru&+mu&+Rk &+wsquats slightly and &+Yurinates&+w.
+~
+M
+qc_action 70~
+&+wThe &+yground &+wseems to shake as the &+RS&+min&+Ru&+mu&+Rk &+wroars!
+~
+S
+#300031
+M
+qc_action 70~
+&+wThe &+cba&+Cn&+cs&+Che&+ce &+wof &+WXtlpal &+wmoans.
+~
+M
+qc_action 70~
+&+wThe &+cba&+Cn&+cs&+Che&+ce &+wof &+WXtlpal &+wrages through the &+cs&+gw&+ca&+gm&+cp&+w.
+She lets out an ear curdling wail.
+~
+M
+qc_action 70~
+&+wThe &+cba&+Cn&+cs&+Che&+ce &+wof &+WXtlpal &+wrakes her &+chands &+wthrough her &+Whair&+w.
+~
+S
+#300032
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wtucks his arms behind his back and grins.
+He stares directly into the &+Ysun &+wfor over a minute.
+~
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wasks, 'Who has the best ideas?'
+A &+Gpygmie &+gelder &+wreplies, 'Enuztet has the best ideas.  Nobody has better ideas.'
+~
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'Do you think it's true... About the mummy in the pyramid?'
+&+wA &+Gpygmie &+gelder &+wsays, 'Might be. Mightn't. Hard to know.'
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'If the wrong people get their hands on a mummy from that pyramid... I want you to get the word out we will reward anyone who brings us that corpse. If we destroy it, it can't be used to prove the tribe has any relation to that pyramid, despite the silly legends.'
+~
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'I miss the days when you could just punch an uppity thri-kreen right in the jaw. You would just sock 'em. Nobody cared. Now all the liberal cucks make that impossible.'
+He sighs.
+~
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wslaps the &+Lrainbow &+ceu&+yc&+ca&+yly&+cp&+yt&+cus&+w.
+He says, 'Perhaps it is time to cut you down and have you turned into a throne. There are too many traditions I need to memorize that involve you. It would be so much easier to be rid of you.'
+~
+M
+qc_action 70~
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wmumbles, 'My hands are not small.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wasks, 'What do you do with impertinent but sexy women?'
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'Just kiss. I don't even wait. When you're a star, they let you do it. You can do anything... Grab 'em by the pussy. You can do anything.'
+~
+S
+#300033
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wsays, 'The shaman has been talking about seeing Xtlpal from the promontory again.'
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsighs.
+He says, 'She would believe fake news. I mean, look at her. She is barely a six. No wonder she lives alone at the chasm edge.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wcoughs violently.
+He hawks a &+Wlo&+Yo&+Wg&+Yie &+wat the &+Lrainbow &+ceu&+yc&+ca&+yly&+cp&+yt&+cus&+w.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wasks, 'What are we going to do about all the foreigners?'
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'We will build a wall. The best wall. I know walls, believe me. And we will make the minotaurs pay for it.'
+His &+Yhair &+wflaps in the wind.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wsquints at you.
+He reaches under his &+yloincloth &+wand scratches.
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wasks, 'How much longer must we subsidize the shaman?  Shouldn't it be up to the individual to take care of their own health?'
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wreplies, 'Which is why I implore you to convince your fellow elders to pass the Tribal Care Reconciliation Act.'
+He grins slyly.
+&+yEnuztet&+w, the &+Gpygmie &+gelder &+wsays, 'The tribe will learn they deserve less.'
+~
+M
+qc_action 70~
+&+wA &+Gpygmie &+gelder &+wjerks upright as he catches himself falling asleep.
+~
+S
+#300034
+M
+qc_action 70~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wstretches a &+Lpelt &+won a &+yrack&+w.
+She rubs an &+gh&+Ge&+gr&+Gb &+wand &+coil &+wmixture into the back of the &+Lhide&+w.
+~
+M
+qc_action 70~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wscrapes some &+mm&+Me&+ma&+Mt &+wfrom a &+Lsalamander &+gs&+Gc&+ga&+Gl&+ge&+w.
+She tosses the &+Gs&+gc&+Ga&+gl&+Ge &+winto a &+Lbucket &+wof &+cw&+Ca&+ct&+Ce&+cr&+w.
+~
+M
+qc_action 70~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wretrieves a &+gs&+Gc&+ga&+Gl&+ge &+wfrom a &+Lbucket of &+cw&+Ca&+ct&+Ce&+cr&+w.
+She whittles the &+Lsalamander &+Gs&+gc&+Ga&+gl&+Ge &+wwith a large &+cmachete&+w.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsings a little tune to herself.
+~
+M
+qc_action 70~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wmutters, 'Where did I put the cat foreskins?'
+She rumages through the &+Litems &+win the southern portion of the &+yroom&+w.
+
+She looks unhappy as she returns to her &+yworkspace&+w.
+~
+M
+qc_action 70~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wrocks back and forth while humming to herself.
+She smiles at you and continues to work.
+~
+MA
+craft crafting~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'I can craft some special items for you.'
+She continues, 'Ask me about my wares and I will tell you what you need.'
+~
+QA
+&+yDokumaci&+w, the &+Gpygmie &+Gweaver &+wsays, 'Do you know about displacer beasts?  I have gathered a little lore about them over the years.'
+She fiddles with a thick &+Wbone &+wneedle threaded with &+Wcatgut&+w.
+~
+MA
+displacer~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'The hunters and far-rangers speak of two species of displacer beast.'
+She looks about as if searching for something.
+
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'There is the southern displacer beast of Khonami-Khan, which is said to den in the deep ravine of passage.'
+She says, 'Its connective tissue is extraordinarily strong and so the skin can only be removed in long, furred braids.'
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wgoes on, 'There is a northern species of displacer beast that roams the forests of the Goodie Continent.'
+She says, 'Its skin comes off much easier than its southern relative, and as a result, I can use it to craft more items.'
+~
+G I 94701
+G C 120000
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wexamines the &+Lp&+be&+Ll&+ba&+Lg&+be &+wbefore setting to work.
+She hums as she sews.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'These should serve you well.'
+~
+R I 300023
+QA
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wglances up from her work to look at you.
+She says, 'Got any scales on you?'
+~
+MA
+scales~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'Yes, if you kill the jade salamanders here, I can craft you a shield the like of which you have never seen before.  All I need is two small scales and two large and I shall reward you greatly.'
+She mumbles, 'Saves me from collecting them, and more than pays for the work.'
+~
+G I 300001
+G I 300001
+G I 300024
+G I 300024
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'These scales will do nicely. I will craft these into a shield you will be proud of.'
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wlooks about conspiratorially.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'This process is known only to me, there is not a single soul I have shared it with. Not even the shaman knows it. She only gives you a potion for some scales, while I give the best prize of all.'
+~
+R I 300025
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsighs.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'I must go now and rest.  I am exhausted from crafting you that shield.'
+~
+MA
+wares~
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'If you bring me certain items, I will make you some of my wares for a small fee.'
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'Bring me the skin of a southern displacer beast and 120 platinum and I will craft you a set of sleeves befitting a mighty huntsman.'
+
+She smiles, 'Bring me two skins of a northern displacer beast and I can craft one of two items for you.'
+She says, 'For 100 platinum and two large salamander scales, I'll make you a pair of leggings any mage would be proud to wear.'
+She continues, 'For 75 platinum and three small salamander scales, I'll make you a tunic as light as hide, but as strong as chainmail.'
+She sings, 'Quite good for the clerically minded.'
+
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'If you bring me the hides of both species of displacer beast and 300 platinum, I will craft you a pair of boots that we usually reserve for the best of our warriors.'
+She mumbles, 'The quality is too good for most of these heretics.'
+~
+QA
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'These hides and scales will make a fine pair of leggings.'
+~
+G I 35237
+G I 35237
+G I 300024
+G I 300024
+G C 100000
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wexamines the &+Lh&+bi&+Ld&+be&+Ls &+wbefore setting to work.
+She hums as she sews.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'These should serve you well.'
+~
+R I 300034
+QA
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'I can stitch those skins and scales into a fine tunic.'
+~
+G I 35237
+G I 35237
+G I 300001
+G I 300001
+G I 300001
+G C 75000
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wexamines the &+Lh&+bi&+Ld&+be&+Ls &+wbefore setting to work.
+She hums as she sews.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'This should serve you well.'
+~
+R I 300035
+QA
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'I will make boots worthy of our best warriors from these displacer hides.'
+~
+G I 35237
+G I 94701
+G C 300000
+D
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wexamines the &+Lp&+be&+Ll&+ba&+Lg&+be &+wbefore setting to work.
+She hums as she sews.
+&+yDokumaci&+w, the &+Gpygmie &+gweaver &+wsays, 'These should serve you well.'
+~
+R I 300040
+S
+#300035
+M
+qc_action 70~
+&+wA &+gfo&+Gr&+ge&+Gst &+Lsalamander &+wchews on a &+gv&+Gi&+gn&+Ge &+wcreeping up the side of a &+ytree&+w.
+~
+M
+qc_action 70~
+&+wA &+gfo&+Gr&+ge&+Gst &+Lsalamander &+wrumages for food in the &+gun&+Gd&+ge&+Grg&+gro&+Gw&+gth&+w.
+~
+S
+#300036
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wcarves some details into a &+ypiece &+wof &+Gte&+ca&+Gk&+cwo&+Go&+cd&+w.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wbrushes the &+ywood &+wchips off of his lap.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wwhittles a &+ypiece &+wof &+Gte&+ca&+Gk&+cwo&+Go&+cd&+w.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wbrushes the &+ywood &+wchips off of his belly.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wattaches a &+cfishing &+wline to a &+ypiece &+wof &+Gte&+ca&+Gk&+cwo&+Go&+cd&+w.
+He secures a &+Lhook &+wto the &+cline&+w.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+whums as he whittles.
+~
+M
+qc_action 70~
+&+wA &+gfat &+Gpygmie &+wscratches his ass.
+~
+S
