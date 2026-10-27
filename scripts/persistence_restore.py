@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import secrets
 import shutil
 import signal
@@ -118,6 +119,13 @@ def database_import(generation, env):
                     continue
                 if line.strip() == ("USE " + chr(96) + database + chr(96) + ";").encode():
                     line = b"USE duris_restore;\n"
+                # The isolated schema belongs to the restore account, not a source-host
+                # principal. Keep the view/security mode without requiring SET USER.
+                if line.startswith(b"/*!50013 DEFINER="):
+                    line = re.sub(
+                        rb"^(/\*!50013 )DEFINER=`(?:``|[^`])+`@`(?:``|[^`])+`"
+                        rb"(?= SQL SECURITY (?:DEFINER|INVOKER) \*/)",
+                        rb"\1DEFINER=CURRENT_USER", line)
                 process.stdin.write(line)
         process.stdin.close()
 
