@@ -4817,7 +4817,8 @@ static void note_player_input_activity(P_desc t, const char *input)
 		return;
 
 	t->character->specials.timer = 0;
-	REMOVE_BIT(t->character->specials.act, PLR_AFK);
+	if (!input_is_afk_toggle(input))
+		REMOVE_BIT(t->character->specials.act, PLR_AFK);
 }
 
 static void process_line(P_desc t, char *in)

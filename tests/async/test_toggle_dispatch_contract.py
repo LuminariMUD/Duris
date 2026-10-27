@@ -66,24 +66,22 @@ class ToggleDispatchContractTest(unittest.TestCase):
                     self.assertEqual(arguments[0], self.names[index])
                     self.assertEqual(arguments[1:], [value] if value else [])
 
-        parser = self.source.split("arg = one_argument(arg, Gbuf1);", 1)[1].split(
-            "number = atoi(arg);", 1
-        )[0]
-        for alias, canonical in {
-            "no-locate": "nolocate",
-            "group-needed": "groupneeded",
-            "no-level": "nolevel",
-        }.items():
-            self.assertIn(f'!str_cmp(Gbuf1, "{alias}")', parser)
-            self.assertIn(f'strcpy(Gbuf1, "{canonical}");', parser)
-        for second_word, canonical in {
-            "locate": "nolocate",
-            "level": "nolevel",
-            "needed": "groupneeded",
-        }.items():
-            self.assertIn(f'!str_cmp(Gbuf3, "{second_word}")', parser)
-            self.assertIn(f'strcpy(Gbuf1, "{canonical}");', parser)
-        self.assertEqual(parser.count("arg = value;"), 3)
+        aliases = re.findall(r'\{\s*"([^"\n]+)",\s*"([^"\n]*)",\s*"([^"\n]+)"\s*\}', self.source)
+        for spelling in [
+            ("no-locate", "", "nolocate"), ("group-needed", "", "groupneeded"),
+            ("no-level", "", "nolevel"), ("no", "locate", "nolocate"),
+            ("no", "level", "nolevel"), ("group", "needed", "groupneeded"),
+            ("save", "notify", "savenotify"), ("ship", "map", "shipmap"),
+            ("show", "titles", "titles"), ("hint", "channel", "hint"),
+        ]:
+            self.assertIn(spelling, aliases)
+
+    def test_runtime_matrix_covers_active_boolean_toggles(self) -> None:
+        runtime = (ROOT / "tests/async/toggle_checks.inc").read_text()
+        covered = set(re.findall(r'\{\s*"([^"\n]+)",\s*[012],\s*PLR', runtime))
+        special = {"?", "wimpy", "terminal", "screensize", "smartprompt", "zzxyzz",
+                   "spec1", "spec2", "spec3", "spec4", "spec_timer", "webinfo", "boon"}
+        self.assertEqual(covered, set(self.names[:-1]) - special)
 
     def test_post_retirement_dispatch_indexes(self) -> None:
         """Keep active dispatch indexes stable after retired toggle slots."""
@@ -94,7 +92,6 @@ class ToggleDispatchContractTest(unittest.TestCase):
             35: ("quickchant", "PLR2_QUICKCHANT"),
             36: ("rwc", "PLR2_RWC"),
             37: ("project", "PLR2_PROJECT"),
-            38: ("zzxyzz", "PLR2_NPC_HOG"),
             39: ("afk", "PLR_AFK"),
             40: ("nchat", "PLR2_NCHAT"),
             41: ("damage", "PLR2_DAMAGE"),
@@ -126,13 +123,14 @@ class ToggleDispatchContractTest(unittest.TestCase):
                 self.assertIn("Divine Boons apply automatically.", self.cases[index])
                 self.assertNotIn("PLR2_FLAGS", self.cases[index])
             elif index == 64:
-                self.assertIn("gmcp_tog(PLR3_FLAGS(ch), arg)", self.cases[index])
-                self.assertIn(flag, self.source.split("static int gmcp_tog(", 1)[1])
+                self.assertIn("plr_tog(PLR3_FLAGS(ch), PLR3_NOGMCP, arg, 1)", self.cases[index])
             else:
                 self.assertIn(flag, self.cases[index], f"toggle index {index}")
 
-        for inactive_index in range(42, 47):
-            self.assertNotIn(inactive_index, self.cases)
+        for inactive_index in (38, *range(42, 47)):
+            self.assertIn(inactive_index, self.cases)
+            self.assertNotIn("_TOG(", self.cases[inactive_index])
+        self.assertIn("no longer available", self.cases[46])
 
 
 if __name__ == "__main__":

@@ -10442,7 +10442,6 @@ Follow - Last Edited: 2008-12-19 00:39:54 by Blaize
 ===================================================
 Syntax:  follow <character>
          follow stop
-         toggle follow
 If two or more players decide to travel in the same direction, why not
 have one of them lead and the rest follow?
 For example:
@@ -15542,8 +15541,8 @@ en route to this one lags, you will be put in a dangerous position and your
 character could die.
 If the network looks shaky, don't put your character in a dangerous
 position, as we will NOT reimburse you for losses.
-If your WIMPY toggle is enabled, you will automatically flee when your hit
-points reach the wimpy level.
+Player automatic fleeing is disabled. A wimpy setting will not protect you
+from a lost connection during combat.
 
 ==See also==
 
@@ -15566,8 +15565,8 @@ en route to this one lags, you will be put in a dangerous position and your
 character could die.
 If the network looks shaky, don't put your character in a dangerous
 position, as we will NOT reimburse you for losses.
-If your WIMPY toggle is enabled, you will automatically flee when your hit
-points reach the wimpy level.
+Player automatic fleeing is disabled. A wimpy setting will not protect you
+from a lost connection during combat.
 
 ==See also==
 
@@ -18642,12 +18641,9 @@ Paging
 Paging - Last Edited: 2007-04-22 22:12:53 by Unknown
 ====================================================
 Syntax:         toggle paging
-When this option is OFF, you will have the ability to scroll larger text
-files down your screen by hitting the enter key. When this option is ON,
-if the text being displayed is small enough or you have set your screen
-size large enough, you will be able to see the entire text in one
-continuous stream. You may set your screen size by using the
-"toggle screensize" option.
+When paging is ON, long output pauses at page boundaries so you can read it
+and press enter to continue. OFF sends the output continuously. Use
+"toggle screensize" to set the number of lines per page.
 	See also:togglescreensize
 
 #0

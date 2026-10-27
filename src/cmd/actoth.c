@@ -4918,7 +4918,7 @@ void show_toggles(P_char ch)
 {
 	send_to_char("Channel colors and motion: toggle color\r\n", ch);
 	char Gbuf1[MAX_STRING_LENGTH];
-	char Gbuf2[MAX_INPUT_LENGTH], Gbuf3[MAX_INPUT_LENGTH];
+	char Gbuf3[MAX_INPUT_LENGTH];
 	P_char send_ch = ch;
 
 	if (IS_NPC(ch))
@@ -4933,14 +4933,6 @@ void show_toggles(P_char ch)
 		}
 	}
 
-	if (GET_WIMPY(ch) == 0)
-	{
-		strcpy(Gbuf2, "OFF");
-	}
-	else
-	{
-		snprintf(Gbuf2, MAX_INPUT_LENGTH, "%4d", GET_WIMPY(ch));
-	}
 	if (IS_PC(ch) && (ch->only.pc->screen_length > 0))
 	{
 		snprintf(Gbuf3, MAX_INPUT_LENGTH, "%3d", ch->only.pc->screen_length);
@@ -4960,9 +4952,9 @@ void show_toggles(P_char ch)
 		 "&+r   Tell        :&+g %-3s    &+y|&N"
 		 "&+r     Brief Mode  :&+g %-3s    &+y|&N"
 		 "&+r     No Locate   :&+g %-3s    &+y|&N\r\n"
-		 "&+r   SmartPrompt :&+g %-3s    &+y|&N"
+		 "&+r   Anonymous   :&+g %-3s    &+y|&N"
 		 "&+r     Compact Mode:&+g %-3s    &+y|&N"
-		 "&+r     Wimpy Level :&+g %-4s   &+y|&N\r\n"
+		 "&+r     Guild Chat  :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Shout       :&+g %-3s    &+y|&N"
 		 "&+r     Echo        :&+g %-3s    &+y|&N"
 		 "&+r     Vicious     :&+g %-3s    &+y|&N\r\n"
@@ -4977,7 +4969,7 @@ void show_toggles(P_char ch)
 		 "&+r     Show Titles :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Battle Alert:&+g %-3s    &+y|&N"
 		 "&+r     Ship Map    :&+g %-3s    &+y|&N"
-		 "&+r                 :&+g        &+y|&N\r\n"
+		 "&+r     Racewar Chat:&+g %-3s    &+y|&N\r\n"
 		 "&+r   Take        :&+g %-3s    &+y|&N"
 		 "&+r     Terse Battle:&+g %-3s    &+y|&N"
 		 "&+r     QuickChant  :&+g %-3s    &+y|&N\r\n"
@@ -4991,7 +4983,7 @@ void show_toggles(P_char ch)
 		 "&+r     Show Quests :&+g %-3s    &+y|&N"
 		 "&+r     Boons(auto) :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Newbie EQ   :&+g %-3s    &+y|&N"
-		 "&+r     No Beep     :&+g %-3s    &+y|&n"
+		 "&+r     Beep        :&+g %-3s    &+y|&n"
 		 "&+r     Underline   :&+g %-3s    &+y|&N\r\n"
 		 "&+r   Surname     :&+g %-3s    &+y|"
 		 "&+r     Damage      :&+g %-3s    &+y|&n"
@@ -5002,30 +4994,34 @@ void show_toggles(P_char ch)
 		 "&+r   Heal        :&+g %-3s    &+y|"
 		 "&+r     Jchat       :&+g %-3s    &+y|"
 		 "&+r     Abort Cast  :&+g %-3s    &+y|&n\r\n"
+		 "&+r   Experience  :&+g %-3s    &+y|&N"
+		 "&+r     AllianceChat:&+g %-3s    &+y|&N\r\n"
 		 "&+y-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-="
 		 "-=-=-=-=-=-=-=-=-=-=-=-=-=-&N\r\n",
 		 ONOFF(!PLR_FLAGGED(ch, PLR_NOTELL)), ONOFF(PLR_FLAGGED(ch, PLR_BRIEF)),
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_NOLOCATE)), ONOFF(PLR_FLAGGED(ch, PLR_SMARTPROMPT)),
-		 ONOFF(PLR_FLAGGED(ch, PLR_COMPACT)), Gbuf2, ONOFF(!PLR_FLAGGED(ch, PLR_NOSHOUT)),
-		 ONOFF(PLR_FLAGGED(ch, PLR_ECHO)), ONOFF(PLR_FLAGGED(ch, PLR_VICIOUS)),
-		 ONOFF(PLR_FLAGGED(ch, PLR_PETITION)), ONOFF(PLR_FLAGGED(ch, PLR_PAGING_ON)),
-		 ONOFF(PLR_FLAGGED(ch, PLR_SNOTIFY)), ONOFF(PLR_FLAGGED(ch, PLR_WHO)), Gbuf3,
-		 term_name(send_ch), ONOFF(PLR_FLAGGED(ch, PLR_MAP)),
-		 ONOFF(PLR_FLAGGED(ch, PLR_OLDSMARTP)), ONOFF(!PLR2_FLAGGED(ch, PLR2_NOTITLE)),
-		 ONOFF(!PLR2_FLAGGED(ch, PLR2_BATTLEALERT)), ONOFF(PLR2_FLAGGED(ch, PLR2_SHIPMAP)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_NOLOCATE)), ONOFF(PLR_FLAGGED(ch, PLR_ANONYMOUS)),
+		 ONOFF(PLR_FLAGGED(ch, PLR_COMPACT)), ONOFF(PLR_FLAGGED(ch, PLR_GCC)),
+		 ONOFF(!PLR_FLAGGED(ch, PLR_NOSHOUT)), ONOFF(PLR_FLAGGED(ch, PLR_ECHO)),
+		 ONOFF(PLR_FLAGGED(ch, PLR_VICIOUS)), ONOFF(PLR_FLAGGED(ch, PLR_PETITION)),
+		 ONOFF(PLR_FLAGGED(ch, PLR_PAGING_ON)), ONOFF(PLR_FLAGGED(ch, PLR_SNOTIFY)),
+		 ONOFF(PLR_FLAGGED(ch, PLR_WHO)), Gbuf3, term_name(send_ch),
+		 ONOFF(PLR_FLAGGED(ch, PLR_MAP)), ONOFF(PLR_FLAGGED(ch, PLR_OLDSMARTP)),
+		 ONOFF(!PLR2_FLAGGED(ch, PLR2_NOTITLE)), ONOFF(!PLR2_FLAGGED(ch, PLR2_BATTLEALERT)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHIPMAP)), ONOFF(PLR2_FLAGGED(ch, PLR2_RWC)),
 		 ONOFF(!PLR2_FLAGGED(ch, PLR2_NOTAKE)), ONOFF(PLR2_FLAGGED(ch, PLR2_TERSE)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_QUICKCHANT)), ONOFF(PLR2_FLAGGED(ch, PLR2_PROJECT)),
 		 ONOFF(PLR_FLAGGED(ch, PLR_AFK)), ONOFF(PLR2_FLAGGED(ch, PLR2_NCHAT)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_HINT_CHANNEL)), ONOFF(PLR2_FLAGGED(ch, PLR2_LGROUP)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_SPEC)), ONOFF(PLR2_FLAGGED(ch, PLR2_WEBINFO)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_SHOW_QUEST)), "ON",
-		 ONOFF(PLR2_FLAGGED(ch, PLR2_NEWBIEEQ)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOBEEP)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_NEWBIEEQ)), ONOFF(!PLR3_FLAGGED(ch, PLR3_NOBEEP)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_UNDERLINE)), ONOFF(PLR3_FLAGGED(ch, PLR3_SURNAMES)),
 		 ONOFF(PLR2_FLAGGED(ch, PLR2_DAMAGE)), ONOFF(PLR3_FLAGGED(ch, PLR3_NOLEVEL)),
 		 ONOFF(PLR3_FLAGGED(ch, PLR3_PET_DAMAGE)), ONOFF(PLR3_FLAGGED(ch, PLR3_GUILDNAME)),
 		 ONOFF(!PLR3_FLAGGED(ch, PLR3_NOGMCP)), ONOFF(PLR2_FLAGGED(ch, PLR2_HEAL)),
 		 ONOFF(!PLR3_FLAGGED(ch, PLR3_JESTROS)),
-		 ONOFF(PLR3_FLAGGED(ch, PLR3_ABORT_CASTING)));
+		 ONOFF(PLR3_FLAGGED(ch, PLR3_ABORT_CASTING)), ONOFF(PLR2_FLAGGED(ch, PLR2_EXP)),
+		 ONOFF(PLR2_FLAGGED(ch, PLR2_ACC)));
 	send_to_char(Gbuf1, send_ch);
 
 	if (GET_LEVEL(ch) >= AVATAR)
@@ -5130,17 +5126,18 @@ static const char *tog_messages[][2] = {
 	{ "Help.", "Help!" },
 	{ "&+WBrief&N mode off.\r\n", "&+WBrief&N mode on.\r\n" },
 	{ "&+WCompact&N mode off.\r\n", "&+WCompact&N mode on.\r\n" },
-	{ "You will no longer see &+WWho&N logs on.\r\n",
-	  "You will now see &+WWho&n logs on.\r\n" },
+	{ "You will no longer see player login notices.\r\n",
+	  "You will now see player login notices.\r\n" },
 	{ "You feel nice and turn &+WVicious&N mode off.\r\n",
 	  "You are now &+WVicious&N and will kill mortally wounded victims.\r\n" },
-	{ "You can now hear &+WTells&N.\r\n", "You are now deaf to &+WTells&N.\r\n" },
+	{ "You are now deaf to &+WTells&N.\r\n", "You can now hear &+WTells&N.\r\n" },
 	{ "You are now blind to &+WNames&N.\r\n", "You are now spammed by &+WNames&N.\r\n" },
 	{ "You are now deaf to &+Cguild chatter&N.\r\n",
 	  "You can now hear &+Cguild chatter&N.\r\n" },
-	{ "You can now hear &+WGlobal Shouts&N.\r\n",
-	  "You are now deaf to &+WGlobal Shouts&N.\r\n" },
-	{ "You are no longer &+WAnonymous&N.\r\n", "You are now &+WAnonymous&N.\r\n" },
+	{ "You are now deaf to &+WGlobal Shouts&N.\r\n",
+	  "You can now hear &+WGlobal Shouts&N.\r\n" },
+	{ "You are no longer &+WAnonymous&N.\r\n",
+	  "You are now &+WAnonymous&N until your next login.\r\n" },
 	{ "You are now deaf to &+WPetition&N.\r\n", "You can now hear &+WPetition&N.\r\n" },
 	{ "You have now turned &+WPaging&N mode off.\r\n",
 	  "You are now into &+WPaging&N mode.\r\n" },
@@ -5152,8 +5149,8 @@ static const char *tog_messages[][2] = {
 	{ "Your Terminal mode is now: &+W%s&N.\r\n", "Your Terminal mode is now: &+W%s&N.\r\n" },
 	{ "You will no longer get notification from saving.\r\n",
 	  "You will now get a notification when saved.\r\n" },
-	{ "You tune into the &+WWizmessages&N.\r\n",
-	  "You will now not here any &+WWizmessages&N.\r\n" },
+	{ "You will no longer hear &+WWizmessages&N.\r\n",
+	  "You tune into the &+WWizmessages&N.\r\n" },
 	{ "You turn off the &+WWizlog&N.\r\n", "You tune into the &+WWizlog&N.\r\n" },
 	{ "You turn off the &+WStatus&N messages.\r\n",
 	  "You tune into the &+WStatus&N messages.\r\n" },
@@ -5169,13 +5166,13 @@ static const char *tog_messages[][2] = {
 	{ "You turn off login/logout messages.\r\n", "You turn on login/logout messages.\r\n" },
 	{ "You turn your &+Wno-locate&n status off.\r\n",
 	  "You turn your &+Wno-locate&n status on.\r\n" },
-	{ "You will now see player titles.\r\n", "You will no longer see player titles.\r\n" },
+	{ "You will no longer see player titles.\r\n", "You will now see player titles.\r\n" },
 	{ "You turn your battle alert status off.\r\n",
 	  "You turn your battle alert status on.\r\n" },
 	{ "You will no longer see maps as ships move.\r\n",
 	  "You will now see maps as ships move.\r\n" },
-	{ "You will now accept items from people.\r\n",
-	  "You will no longer accept items from people.\r\n" },
+	{ "You will no longer accept items from people.\r\n",
+	  "You will now accept items from people.\r\n" },
 	{ "Terse battle mode disabled.\r\n", "Terse battle mode enabled.\r\n" },
 	{ "Quickchant is disabled.\r\n", "Quickchant is enabled.\r\n" },
 	{ "You will now not hear RaceWar Chatter.\r\n",
@@ -5204,7 +5201,7 @@ static const char *tog_messages[][2] = {
 	{ "Divine Boons apply automatically.\r\n", "Divine Boons apply automatically.\r\n" },
 	{ "You will not load with newbie EQ when you die.\r\n",
 	  "You will now load with newbie EQ when you die.\r\n" },
-	{ "You can be beeped.\r\n", "You can not be beeped.\r\n" },
+	{ "You can not be beeped.\r\n", "You can be beeped.\r\n" },
 	{ "You will receive blinking instead of underlined text.\r\n",
 	  "You will receive underlined instead of blinking text.\r\n" },
 	{ "You will not see surnames.\n", "You will see surnames.\n" },
@@ -5231,13 +5228,19 @@ void do_more(P_char ch, char *arg, int /*cmd*/)
 		command_interpreter(ch, arg);
 }
 
-/** Toggle a player flag or apply a parsed yes/no value, honoring reversed flags. */
+/** Apply a boolean preference and return its effective state, not its stored bit. */
 static int plr_tog(unsigned int &var, unsigned int flag, const char *arg, int reverse = 0)
 {
-	if (!*arg)
-		return !!((var ^= flag) & flag);
+	char value[MAX_INPUT_LENGTH];
+	char *rest = lohrr_chop(const_cast<char *>(arg), value);
+	while (isspace(static_cast<unsigned char>(*rest)))
+		++rest;
+	if (*rest)
+		return -1;
+	if (!*value)
+		return !!((var ^= flag) & flag) ^ reverse;
 
-	int res = yes_no(arg);
+	const int res = yes_no(value);
 	if (res != -1)
 	{
 		if (res ^ reverse)
@@ -5246,13 +5249,6 @@ static int plr_tog(unsigned int &var, unsigned int flag, const char *arg, int re
 			var &= ~flag;
 	}
 	return res;
-}
-
-/* GMCP stores an opt-out bit, so return the effective enabled state for display. */
-static int gmcp_tog(unsigned int &flags, const char *arg)
-{
-	const int requested = plr_tog(flags, PLR3_NOGMCP, arg, 1);
-	return requested == -1 ? -1 : !(flags & PLR3_NOGMCP);
 }
 
 #define PLR_TOG(flag) plr_tog(PLR_FLAGS(ch), flag, arg)
@@ -5267,7 +5263,7 @@ static int gmcp_tog(unsigned int &flags, const char *arg)
  */
 void do_toggle(P_char ch, char *arg, int /*cmd*/)
 {
-	int i, j, tog_nr = -1, result = -1, number;
+	int i, j, tog_nr = -1, result = -1;
 	char Gbuf1[MAX_STRING_LENGTH], Gbuf3[MAX_STRING_LENGTH];
 	P_char send_ch = ch;
 	// Resolve color ownership through the shared preference service, including
@@ -5301,32 +5297,27 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	}
 
 	arg = one_argument(arg, Gbuf1);
-	if (!str_cmp(Gbuf1, "no-locate"))
-		strcpy(Gbuf1, "nolocate");
-	else if (!str_cmp(Gbuf1, "group-needed"))
-		strcpy(Gbuf1, "groupneeded");
-	else if (!str_cmp(Gbuf1, "no-level"))
-		strcpy(Gbuf1, "nolevel");
-	else if (!str_cmp(Gbuf1, "no") || !str_cmp(Gbuf1, "group"))
+	// Keep the spellings printed in help usable without consuming an on/off value.
+	static const struct
 	{
-		char *value = one_argument(arg, Gbuf3);
-		if (!str_cmp(Gbuf1, "no") && !str_cmp(Gbuf3, "locate"))
+		const char *first, *second, *canonical;
+	} aliases[] = {
+		{ "no-locate", "", "nolocate" },    { "group-needed", "", "groupneeded" },
+		{ "no-level", "", "nolevel" },	    { "no", "locate", "nolocate" },
+		{ "no", "level", "nolevel" },	    { "group", "needed", "groupneeded" },
+		{ "save", "notify", "savenotify" }, { "ship", "map", "shipmap" },
+		{ "show", "titles", "titles" },	    { "hint", "channel", "hint" },
+	};
+	char *value = lohrr_chop(arg, Gbuf3);
+	for (const auto &alias : aliases)
+		if (!str_cmp(Gbuf1, alias.first) &&
+		    (!*alias.second || !str_cmp(Gbuf3, alias.second)))
 		{
-			strcpy(Gbuf1, "nolocate");
-			arg = value;
+			strcpy(Gbuf1, alias.canonical);
+			if (*alias.second)
+				arg = value;
+			break;
 		}
-		else if (!str_cmp(Gbuf1, "no") && !str_cmp(Gbuf3, "level"))
-		{
-			strcpy(Gbuf1, "nolevel");
-			arg = value;
-		}
-		else if (!str_cmp(Gbuf1, "group") && !str_cmp(Gbuf3, "needed"))
-		{
-			strcpy(Gbuf1, "groupneeded");
-			arg = value;
-		}
-	}
-	number = atoi(arg);
 	tog_nr = (old_search_block(Gbuf1, 0, strlen(Gbuf1), toggles_list, 0) - 1);
 
 	if (tog_nr < 0)
@@ -5341,32 +5332,22 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		strcpy(Gbuf1, "Toggle options:\r\n");
 		for (j = 0, i = 0; *toggles_list[i] != '\n'; i++)
 		{
-			if ((!strn_cmp(toggles_list[i], "wizlog", 6) ||
-			     !strn_cmp(toggles_list[i], "wizmessage", 10) ||
-			     !strn_cmp(toggles_list[i], "aggimmunity", 11) ||
-			     !strn_cmp(toggles_list[i], "vnum", 4) ||
-			     !strn_cmp(toggles_list[i], "status", 6) ||
-			     !strn_cmp(toggles_list[i], "names", 5) ||
-			     !strn_cmp(toggles_list[i], "debug", 5) ||
-			     !strn_cmp(toggles_list[i], "ban", 3) ||
-			     !strn_cmp(toggles_list[i], "fog", 3) ||
-			     !strn_cmp(toggles_list[i], "logmsg", 6) ||
-			     // Damage is now a mortal command.
-			     //           !strn_cmp(toggles_list[i], "damage", 6) ||
-			     !strn_cmp(toggles_list[i], "epic", 4) ||
-			     !strn_cmp(toggles_list[i], "experience", 10)) &&
-			    GET_LEVEL(ch) < MINLVLIMMORTAL)
-			{
+			// Retired placeholders are accepted only to explain their status.
+			if (i == 13 || i == 22 || i == 38 || (i >= 42 && i <= 46))
 				continue;
-			}
-			else
-			{
-				checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "%s[%2d] %-15s%s", Gbuf1,
-						 i + 1, toggles_list[i],
-						 (!(++j % 3) ? "\r\n" : ""));
-			}
+			if (i == 6 && GET_LEVEL(ch) < FORGER)
+				continue;
+			if ((i == 14 || (i >= 17 && i <= 20) || i == 25 || i == 27 || i == 28 ||
+			     i == 61) &&
+			    !IS_TRUSTED(ch))
+				continue;
+			if (i == 23 && GET_LEVEL(ch) < MINLVLIMMORTAL)
+				continue;
+			const size_t length = strlen(Gbuf1);
+			checked_snprintf(Gbuf1 + length, sizeof Gbuf1 - length, "%-15s%s",
+					 toggles_list[i], !(++j % 3) ? "\r\n" : "");
 		}
-		strcat(Gbuf1, "\r\n");
+		strcat(Gbuf1, "\r\nColor preferences: toggle color\r\n");
 		send_to_char(Gbuf1, send_ch);
 		return;
 		break;
@@ -5380,39 +5361,43 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		         */
 		result = PLR_TOG(PLR_COMPACT);
 		break;
-	case 3: /*
-		         * who
-		         */
-		if (GET_LEVEL(ch) <= 29 && !IS_SET(ch->specials.act, PLR_WHO))
+	case 3:
+	{
+		const auto before = PLR_FLAGS(ch);
+		result = PLR_TOG(PLR_WHO);
+		if (result == 1 && GET_LEVEL(ch) < 30)
 		{
+			PLR_FLAGS(ch) = before;
 			send_to_char("Sorry, you must be at least level 30 to toggle who!\r\n",
 				     send_ch);
 			return;
 		}
-		result = PLR_TOG(PLR_WHO);
 		break;
-	case 4: /*
-		         * vicious
-		         */
-		if (GET_CLASS(ch, CLASS_PALADIN) && !IS_SET(ch->specials.act, PLR_VICIOUS))
+	}
+	case 4:
+	{
+		const auto before = PLR_FLAGS(ch);
+		result = PLR_TOG(PLR_VICIOUS);
+		if (result == 1 && GET_CLASS(ch, CLASS_PALADIN))
 		{
+			PLR_FLAGS(ch) = before;
 			send_to_char("Now that wouldn't be very nice, would it?\r\n", send_ch);
 			return;
 		}
-		else
-			result = PLR_TOG(PLR_VICIOUS);
 		break;
+	}
 	case 5: /*
 		         * tell
 		         */
-		result = PLR_TOG(PLR_NOTELL);
+		result = plr_tog(PLR_FLAGS(ch), PLR_NOTELL, arg, 1);
 		break;
 	case 6: /*
 		         * name accept
 		         */
 		if (GET_LEVEL(ch) < FORGER)
 		{
-			send_to_char("Watching for bad names is part of your job :P\r\n", ch);
+			send_to_char("Only forgers and higher can toggle new-name notices.\r\n",
+				     ch);
 			return;
 		}
 		result = PLR_TOG(PLR_NAMES);
@@ -5425,21 +5410,20 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	case 8: /*
 		         * shout
 		         */
-		result = PLR_TOG(PLR_NOSHOUT);
+		result = plr_tog(PLR_FLAGS(ch), PLR_NOSHOUT, arg, 1);
 		break;
-	case 9: /*
-		         * anonymous
-		         */
-		if (IS_TRUSTED(ch))
+	case 9:
+	{
+		const auto before = PLR_FLAGS(ch);
+		result = PLR_TOG(PLR_ANONYMOUS);
+		if (result == 1 && IS_TRUSTED(ch))
 		{
+			PLR_FLAGS(ch) = before;
 			send_to_char("Sorry, Immortals cannot be anonymous.\r\n", send_ch);
-			result = 0; /*
-				             * in case some slipped through
-				             */
+			return;
 		}
-		else
-			result = PLR_TOG(PLR_ANONYMOUS);
 		break;
+	}
 	case 10: /*
 		          * petition
 		          */
@@ -5455,29 +5439,9 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		          */
 		result = PLR_TOG(PLR_ECHO);
 		break;
-	case 13: // wimpy level
-		if (number < 0)
-		{
-			send_to_char("Hehe... We are jolly funny today, eh?\r\n", send_ch);
-			return;
-		}
-		if (number > GET_MAX_HIT(ch))
-		{
-			send_to_char("That doesn't make much sense, now does it?\r\n", send_ch);
-			return;
-		}
-		GET_WIMPY(ch) = number;
-		if (number == 0)
-		{
-			result = FALSE;
-			strcpy(Gbuf3, "Off");
-		}
-		else
-		{
-			result = TRUE;
-			snprintf(Gbuf3, MAX_STRING_LENGTH, "%d", number);
-		}
-		break;
+	case 13: // Player automatic fleeing is disabled; do not promise a threshold.
+		send_to_char("Automatic fleeing (wimpy) is disabled.\r\n", send_ch);
+		return;
 	case 14: /*
 		          * aggimmune
 		          */
@@ -5492,8 +5456,16 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	case 15: /*
 		          * term
 		          */
-		while (*arg == ' ')
-			arg++;
+	{
+		char *rest = lohrr_chop(arg, Gbuf3);
+		while (isspace(static_cast<unsigned char>(*rest)))
+			++rest;
+		if (*rest)
+		{
+			send_to_char("USAGE: TOGGLE terminal [ansi|gen|msp]\r\n", send_ch);
+			return;
+		}
+		arg = Gbuf3;
 		if (!*arg)
 		{
 			if (send_ch->desc->term_type == 2)
@@ -5516,6 +5488,7 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		strcpy(Gbuf3, term_name(send_ch));
 		result = TRUE;
 		break;
+	}
 	case 16: /*
 		          * savenotify
 		          */
@@ -5525,7 +5498,7 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		          * wizmessages
 		          */
 		if (IS_TRUSTED(ch))
-			result = PLR_TOG(PLR_WIZMUFFED);
+			result = plr_tog(PLR_FLAGS(ch), PLR_WIZMUFFED, arg, 1);
 		else
 		{
 			send_to_char("Humf?!\r\n", send_ch);
@@ -5566,41 +5539,39 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		}
 		break;
 	case 21: // Screen length
-		if (number == 0)
+	{
+		char setting[MAX_INPUT_LENGTH];
+		char *rest = lohrr_chop(arg, setting);
+		while (isspace(static_cast<unsigned char>(*rest)))
+			++rest;
+		char *end;
+		errno = 0;
+		const long number = strtol(setting, &end, 10);
+		const bool reset = !*setting || !str_cmp(setting, "default") ||
+				   !str_cmp(setting, "off") ||
+				   (!errno && end != setting && !*end && number == 0);
+		if (*rest ||
+		    (!reset && (errno || end == setting || *end || number < 12 || number > 48)))
 		{
-			result = FALSE;
-			ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;
-			snprintf(Gbuf3, MAX_STRING_LENGTH, "%d", DEFAULT_SCREEN_LENGTH);
-		}
-		else if ((number < 12) || (number > 48))
-		{
-			send_to_char("Screen length must be between 12 and 48 lines\r\n", send_ch);
+			send_to_char("Use toggle screensize <12-48|default|off|0>.\r\n", send_ch);
 			return;
 		}
-		else
-		{
-			ch->only.pc->screen_length = number;
-			result = TRUE;
-			snprintf(Gbuf3, MAX_STRING_LENGTH, "%d", number);
-		}
+		ch->only.pc->screen_length = reset ? DEFAULT_SCREEN_LENGTH : number;
+		result = !reset;
+		snprintf(Gbuf3, sizeof Gbuf3, "%d", ch->only.pc->screen_length);
 		break;
+	}
 	case 22:
-		send_to_char("Smartprompt was never fully implemented.  Sorry.\n\r", send_ch);
+		send_to_char(
+			"Smartprompt is unavailable. Use toggle oldsmartprompt for prompt timing.\r\n",
+			send_ch);
 		return;
-		// result = PLR_TOG(PLR_SMARTPROMPT);
-		// if (!IS_SET(ch->specials.act, PLR_SMARTPROMPT))
-		// {
-		// snprintf(buf, MAX_STRING_LENGTH, VT_HOMECLR);
-		// send_to_char(buf, ch);
-		// snprintf(buf, MAX_STRING_LENGTH, VT_MARGSET, 0, ch->only.pc->screen_length);
-		// send_to_char(buf, ch);
-		// }
-		// else
-		// InitScreen(ch);
-		break;
 	case 23:
 		if (IS_MORPH(send_ch))
+		{
+			send_to_char("Return to your own body before changing fog.\r\n", send_ch);
 			return;
+		}
 		if (GET_LEVEL(ch) >= MINLVLIMMORTAL)
 			result = PLR_TOG(PLR_MORTAL);
 		else
@@ -5614,7 +5585,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		break;
 	case 25:
 		if (IS_MORPH(send_ch))
+		{
+			send_to_char("Return to your own body before changing debug.\r\n", send_ch);
 			return;
+		}
 		if (IS_TRUSTED(ch))
 			result = PLR_TOG(PLR_DEBUG);
 		else
@@ -5648,33 +5622,33 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		break;
 
 	case 29:
-		if (IS_RACEWAR_EVIL(ch) || IS_RACEWAR_UNDEAD(ch))
+	{
+		const auto before = PLR2_FLAGS(ch);
+		result = PLR2_TOG(PLR2_NOLOCATE);
+		if (result == 1 && (IS_RACEWAR_EVIL(ch) || IS_RACEWAR_UNDEAD(ch)))
 		{
+			PLR2_FLAGS(ch) = before;
 			send_to_char("You wish life were that easy.\r\n", send_ch);
 			return;
 		}
-		else
-			result = PLR2_TOG(PLR2_NOLOCATE);
 		break;
+	}
 	case 30:
-		result = PLR2_TOG(PLR2_NOTITLE);
+		result = plr_tog(PLR2_FLAGS(ch), PLR2_NOTITLE, arg, 1);
 		break;
 	case 31:
 	{
-		char *value = one_argument(arg, Gbuf3);
+		char *battle_value = lohrr_chop(arg, Gbuf3);
 		if (!str_cmp(Gbuf3, "alert"))
-			arg = value;
-		// The stored bit disables highlighting; report the effective enabled state.
+			arg = battle_value;
 		result = plr_tog(PLR2_FLAGS(ch), PLR2_BATTLEALERT, arg, 1);
-		if (result != -1)
-			result = !PLR2_FLAGGED(ch, PLR2_BATTLEALERT);
 		break;
 	}
 	case 32:
 		result = PLR2_TOG(PLR2_SHIPMAP);
 		break;
 	case 33:
-		result = PLR2_TOG(PLR2_NOTAKE);
+		result = plr_tog(PLR2_FLAGS(ch), PLR2_NOTAKE, arg, 1);
 		break;
 	case 34:
 		result = PLR2_TOG(PLR2_TERSE);
@@ -5689,10 +5663,17 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_PROJECT);
 		break;
 	case 38:
-		result = PLR2_TOG(PLR2_NPC_HOG);
-		break;
+	case 42:
+	case 43:
+	case 44:
+	case 45:
+	case 46:
+		send_to_char(
+			"That legacy toggle is no longer available. Use toggle ? for current options.\r\n",
+			send_ch);
+		return;
 	case 39:
-		result = TOGGLE_BIT(ch->specials.act, PLR_AFK) & (PLR_AFK);
+		result = PLR_TOG(PLR_AFK);
 		break;
 	case 40:
 		/* if((GET_LEVEL(ch) > 31) &&
@@ -5714,13 +5695,17 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_HEAL);
 		break;
 	case 48:
-		if ((GET_LEVEL(ch) > 50) && !IS_SET(PLR2_FLAGS(ch), PLR2_LGROUP))
+	{
+		const auto before = PLR2_FLAGS(ch);
+		result = PLR2_TOG(PLR2_LGROUP);
+		if (result == 1 && GET_LEVEL(ch) > 50)
 		{
-			send_to_char("You don't need to find a group.\r\n", ch);
+			PLR2_FLAGS(ch) = before;
+			send_to_char("You don't need to find a group.\r\n", send_ch);
 			return;
 		}
-		result = PLR2_TOG(PLR2_LGROUP);
 		break;
+	}
 	case 49:
 		result = PLR2_TOG(PLR2_EXP);
 		break;
@@ -5781,7 +5766,7 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR2_TOG(PLR2_NEWBIEEQ);
 		break;
 	case 57:
-		result = PLR3_TOG(PLR3_NOBEEP);
+		result = plr_tog(PLR3_FLAGS(ch), PLR3_NOBEEP, arg, 1);
 		break;
 	case 58:
 		result = PLR3_TOG(PLR3_UNDERLINE);
@@ -5810,7 +5795,7 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 		result = PLR3_TOG(PLR3_GUILDNAME);
 		break;
 	case 64: /* gmcp */
-		result = gmcp_tog(PLR3_FLAGS(ch), arg);
+		result = plr_tog(PLR3_FLAGS(ch), PLR3_NOGMCP, arg, 1);
 		if (result == 1)
 			gmcp_send_initial_state(send_ch);
 		break;
@@ -5825,7 +5810,7 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	}
 
 	if (result == -1)
-		return send_to_char("A boolean flag needed: yes/no/1/0/on/off\n", ch);
+		return send_to_char("A boolean flag needed: yes/no/1/0/on/off\r\n", send_ch);
 	if (result)
 	{
 		checked_snprintf_runtime(Gbuf1, MAX_STRING_LENGTH, tog_messages[tog_nr][TOG_ON],

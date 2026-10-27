@@ -227,5 +227,11 @@ static void combat_prompt_matrix()
 	}
 	pc.output_preferences = {};
 	rooms[0].people = nullptr;
+	for (P_char player : { &attacker, &victim, &observer })
+	{
+		delete GET_PLAYER_LOG(player);
+		GET_PLAYER_LOG(player) = nullptr;
+		drain(player->desc);
+	}
 	puts("Combat and prompt: real damage recipients, unchanged RNG/text/state, resource thresholds and auxiliary prompts passed");
 }

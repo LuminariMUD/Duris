@@ -18329,40 +18329,40 @@ See also: GUILD
 #
 TOGGLE (Command)
 ===========================================================================
-Syntax:         toggle            (displays current toggle status)
-                toggle <option>   (change current toggle status for option)
+Syntax:         toggle
+                toggle ?
+                toggle <option> [on|off]
+                toggle color
 
-This command is used to change the current state of the options your
-character may use. The default for all new characters is to have the 
-majority of these options set to OFF. More comprehensive help may be found 
-by typing "help <toggle_optionname>". The following options may be set:
+With no option, toggle displays your current preferences. Toggle ? lists the
+available options for your character. A boolean option without a value flips
+its current setting; on and off set it explicitly, even if it is already set
+that way. Yes/no, true/false and 1/0 also work.
 
--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-                           STATUS of toggles.                               
--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
-Tell        : ON     |     Brief Mode  : ON     |     No Locate   : OFF    
-SmartPrompt : OFF    |     Compact Mode: OFF    |     Wimpy Level : OFF    
-Shout       : ON     |     Echo        : ON     |     Vicious     : OFF    
-Petition    : ON     |     Paging      : OFF    |     Save Notify : ON     
-Anonymous   : OFF    |     Screen Size :  24    |     Terminal    : ANSI   
-Map         : ON     |     Old SmartP  : OFF    |     Show Titles : ON     
-Battle Alert: OFF    |     Ship Map    : OFF
-Take        : ON     |     Terse Battle: OFF    |     QuickChant  : ON     
-Project     : OFF    |     AFK         : OFF    |     NChat       : ON     
-Hint Channel: OFF    |     Group Needed: OFF    |     Showspec    : ON
-Web Info    : ON     |
--=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+ON enables the named feature: for example, tell on allows tells, take on
+accepts gifts, and beep on allows beeps. No Locate and No Level are named
+restrictions, so ON enables those restrictions.
 
+Spaces in these help spellings are accepted: battle alert, group needed,
+no locate, no level, save notify, ship map, show titles, and hint channel.
+Their single-word commands remain available.
+
+Terminal uses ansi, gen, or msp. Screensize uses 12-48, default, off, or 0;
+no value resets the default. Color has its own channel and motion settings.
+Automatic fleeing (wimpy), smartprompt and retired specialization placeholders
+are unavailable. Use oldsmartprompt for prompt timing. Divine Boons apply
+automatically. Anonymous is cleared at your next login; AFK is cleared by
+ordinary input.
 ===========================================================================
 
 #
 TOGGLE_AFK (Command)
 ===========================================================================
-Syntax:         toggle afk
+Syntax:         toggle afk [on|off]
 
-Setting this option to ON will automatically mark you as AFK. Any action
-you perform will remove the AFK marker. Be warned, if you remain AFK for
-too long, you will "Void". It is always best to be certain you are in a
+ON marks you as AFK; OFF clears the marker. Without a value, this command
+flips the marker. Other input clears AFK as soon as it is accepted. Be warned,
+if you remain AFK for too long, you will "Void". Be certain you are in a
 safe place (i.e. your guildhall) before you AFK.
 ===========================================================================
 See also: TOGGLE, AFK, IDLE
@@ -18375,7 +18375,7 @@ Syntax:         toggle anonymous
 This toggle allows you to hide your level and class from all other mortal
 players, which gives the MUD a more realistic feel. After all, how would
 someone on the street know what class or level you were unless you revealed
-it? Evils do not have the option of togging this.
+it? Immortals cannot enable this option. Anonymous resets at your next login.
 ===========================================================================
 See also: TOGGLE, WHO
 
@@ -18465,12 +18465,7 @@ Setting this option ON will allow you to hear and converse on the "Newbie"
 chat channel. This is a useful feature for those first starting out on Duris 
 or those that are new to mudding in general. 
 
-NOTE: After achieving a specified number of levels, "Nchat" will no longer
-      be available to you. 
-NOTE: If you are a higher level player with an interest in helping new
-      players to the game by providing useful information and answering
-      questions on nchat, please contact a god and have this channel 
-      activated for you.
+Higher-level players can also use this channel to help new players.
 ===========================================================================
 See also: TOGGLE, NCHAT, NEWBIE
 
@@ -18496,12 +18491,9 @@ PAGING TOGGLE_PAGING (Command)
 ===========================================================================
 Syntax:         toggle paging
 
-When this option is OFF, you will have the ability to scroll larger text 
-files down your screen by hitting the enter key. When this option is ON,
-if the text being displayed is small enough or you have set your screen
-size large enough, you will be able to see the entire text in one
-continuous stream. You may set your screen size by using the 
-"toggle screensize" option.
+When paging is ON, long output pauses at page boundaries so you can read it
+and press enter to continue. OFF sends the output continuously. Use
+"toggle screensize" to set the number of lines per page.
 ===========================================================================
 See also: "TOGGLE_SCREEN SIZE", TOGGLE
 
@@ -18533,8 +18525,8 @@ Syntax:         toggle screensize <size>
                 toggle screensize default
                 toggle screensize off
 
-This lets you determine the size of the MUD's output to you (for use with 
-the paging option), or turn it off entirely. The default is 24 lines.
+This sets the page length to 12-48 lines. No value, default, off, or 0 resets
+it to the default of 24 lines. To disable paging, use "toggle paging off".
 ===========================================================================
 See also: PAGING, TOGGLE
 
@@ -18584,10 +18576,8 @@ TOGGLE_SMARTPROMPT (Command)
 ===========================================================================
 Syntax:         toggle smartprompt
 
-This option allows you to select whether your prompt displays after any
-new output (OFF), or just when you input a new command (ON).  The ON
-setting is to reduce spam (i.e. screen roll that makes it difficult to 
-absorb the MUD's output).
+Smartprompt is unavailable. Use "toggle oldsmartprompt" to adjust prompt
+timing instead.
 ===========================================================================
 See also: TOGGLE
 
@@ -18596,8 +18586,8 @@ TOGGLE_TAKE (Command)
 ===========================================================================
 Syntax:         toggle take
  
-This option allows you to automatically refuse to be given items from other
-people.
+ON allows gifts from other players. OFF refuses them, except for staff
+overrides.
 ===========================================================================
 See also: TOGGLE, TAKE
 
@@ -18624,11 +18614,11 @@ See also: TOGGLE
 #
 TOGGLE_WIMPY (Command)
 ===========================================================================
-&+RThis command is currently disabled&n
-Syntax:         toggle wimpy <number of hitpoints>
+&+RPlayer automatic fleeing is disabled.&n
 
-This is an auto-flee option. If your hitpoints drop below the specified
-level in your wimpy toggle, you will attempt to flee.
+Toggle wimpy reports that it is unavailable. Use FLEE to attempt to leave
+combat yourself; there is no player HP threshold that triggers automatic
+fleeing.
 ===========================================================================
 See also: TOGGLE, FLEE, WIMPY
 
@@ -19899,11 +19889,8 @@ strike others in the room, whether they are friend or foe.
 #
 WIMPY (Disabled)
 ===========================================================================
-Syntax:         toggle wimpy <number_of_hit_points>
-
-Toggling this on makes you flee automatically when you fall below the 
-hitpoint limit while fighting. You must specify a hitpoint value for "Wimpy"
-to be activated. Typing "toggle wimpy 0" will deactivate it.
+Player automatic fleeing is disabled. Toggle wimpy does not enable an
+auto-flee threshold. Use FLEE to attempt to leave combat yourself.
 ===========================================================================
 See also: TOGGLE, TOGGLE_WIMPY
 

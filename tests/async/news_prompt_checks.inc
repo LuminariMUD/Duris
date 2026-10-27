@@ -187,4 +187,7 @@ static void news_prompt_matrix()
 		       (value == std::string(64, 'a') ? value : ""));
 	}
 	command_action = {};
+	delete GET_PLAYER_LOG(&actor);
+	delete GET_PLAYER_LOG(&other);
+	GET_PLAYER_LOG(&actor) = GET_PLAYER_LOG(&other) = nullptr;
 }

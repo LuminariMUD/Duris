@@ -1574,6 +1574,18 @@ static int input_command_number(const char *input)
 	return old_search_block(word, 0, len, command, 2);
 }
 
+/* Preserve the old state until the AFK toggle can apply its value. "a" resolves
+ * to anonymous, while "af" and "afk" resolve to afk in the toggle table. */
+bool input_is_afk_toggle(const char *input)
+{
+	if (input_command_number(input) != CMD_TOGGLE)
+		return false;
+	char word[MAX_INPUT_LENGTH];
+	const char *arguments = one_argument(input, word);
+	one_argument(arguments, word);
+	return !strcmp(word, "af") || !strcmp(word, "afk");
+}
+
 /** Return whether a speech line is a stateful blackjack continuation of OFFER. */
 static bool input_is_currency_dependent_speech(const char *input)
 {
@@ -1859,7 +1871,7 @@ void command_interpreter(P_char ch, char *argument)
 		}
 	}
 
-	if (IS_PC(ch) && IS_SET(ch->specials.act, PLR_AFK))
+	if (IS_PC(ch) && IS_SET(ch->specials.act, PLR_AFK) && !input_is_afk_toggle(argument))
 	{
 		REMOVE_BIT(ch->specials.act, PLR_AFK);
 		if (ch->desc && ch->desc->connected == CON_PLAYING)

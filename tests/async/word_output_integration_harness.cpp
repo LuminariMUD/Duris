@@ -24,6 +24,7 @@
 #include <tuple>
 #include <fstream>
 #include <filesystem>
+#include <sstream>
 
 #ifdef COLORIZATION_BENCHMARK
 #include "colorization_benchmark_support.inc"
@@ -100,16 +101,6 @@ char *str_dup(const char *input)
 {
 	return strdup(input);
 }
-char *one_argument(const char *input, char *out)
-{
-	while (*input == ' ')
-		++input;
-	while (*input && *input != ' ')
-		*out++ = *input++;
-	*out = 0;
-	return const_cast<char *>(input);
-}
-
 // Keep the real tell/reply command and its recipient gates. Language and GMCP
 // are controlled boundaries, so transformation is deterministic in this test.
 P_desc descriptor_list = nullptr;
@@ -126,6 +117,10 @@ bool is_silent(P_char, bool)
 bool racewar(P_char, P_char)
 {
 	return false;
+}
+bool opposite_racewar(P_char a, P_char b)
+{
+	return GET_RACEWAR(a) != GET_RACEWAR(b);
 }
 bool isname(const char *name, const char *candidate)
 {
@@ -172,14 +167,14 @@ const auto race_names_table = []
 		name = { "Human", "Human", "Human", "H" };
 	return names;
 }();
-const char *command[] = { "\n" };
 void do_color_preferences(P_char, const char *)
 {
 	assert(false);
 }
+static int gmcp_initial_states;
 void gmcp_send_initial_state(P_char)
 {
-	assert(false);
+	++gmcp_initial_states;
 }
 void quest_ask(P_char, P_char) {}
 int nq_action_check(P_char, P_char, char *)
@@ -240,6 +235,7 @@ static std::string drain(P_desc d)
 
 #include "world_output_checks.inc"
 #include "combat_prompt_checks.inc"
+#include "toggle_checks.inc"
 #include "chat_presentation_checks.inc"
 #include "artifact_activation_checks.inc"
 #include "news_prompt_checks.inc"
@@ -630,6 +626,9 @@ static void tell_command_matrix()
 	assert(drain(&alice_connection) == "&+WYou tell Bob 'hello &+gforest&n'\r\n");
 	assert(drain(&bob_connection) == "&+WAlice&+W tells you 'hello &+gforest&n'&N\r\n");
 	descriptor_list = nullptr;
+	delete GET_PLAYER_LOG(&alice);
+	delete GET_PLAYER_LOG(&bob);
+	GET_PLAYER_LOG(&alice) = GET_PLAYER_LOG(&bob) = nullptr;
 }
 
 static void begin_paging(P_char ch)
@@ -665,6 +664,7 @@ int main()
 #endif
 	privacy_delivery_matrix();
 	privacy_toggle_matrix();
+	toggle_matrix();
 	chat_presentation_matrix();
 	char_data actor{}, viewer{}, observer{};
 	pc_only_data pc{}, pc2{}, pc3{};
@@ -1106,5 +1106,11 @@ int main()
 	combat_prompt_matrix();
 	artifact_activation_matrix();
 	news_prompt_matrix();
+	for (P_char player : { &actor, &viewer, &observer })
+	{
+		delete GET_PLAYER_LOG(player);
+		GET_PLAYER_LOG(player) = nullptr;
+		drain(player->desc);
+	}
 	puts("Output integration: tell/reply, recipient profiles, sends, act, queue merging, privacy, paging and snoop passed");
 }
