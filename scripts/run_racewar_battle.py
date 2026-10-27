@@ -228,11 +228,20 @@ class Client:
         return await self.wait_for(match, f"waiting for {needles!r}", timeout)
 
     async def command(self, line, *, expected=None, timeout=30):
-        """Preparation commands only; a prompt alone does not confirm a combat action."""
+        """Serialize input; opt-in receipts bind gameplay output to actual dequeue."""
         async with self.command_lock:
             self.pending = ""
             before = self.prompts
+            sequence = self.gmcp.get("Char.Input", {}).get("sequence")
             await self.send(line)
+            if sequence is not None:
+                await self.wait_for(lambda: self.gmcp["Char.Input"]["sequence"] > sequence,
+                                    "waiting for input dequeue", timeout)
+                if self.gmcp["Char.Input"]["sequence"] != sequence + 1:
+                    raise BattleError(f"{self.label}: unexpected input sequence")
+                keep = self.text_received - self.receipt_text
+                self.pending = self.pending[-keep:] if keep else ""
+                before = self.receipt_prompt
             output = ""
             if expected:
                 needles = (expected,) if isinstance(expected, str) else expected
@@ -240,6 +249,12 @@ class Client:
             response_end = self.text_received - len(self.pending)
             await self.wait_for(lambda: self.prompts > before and self.prompt_end >= response_end,
                                 "waiting for a command prompt", timeout)
+            if sequence is not None and re.search(r"You start chanting|You begin to focus your will", output + self.pending):
+                await self.wait_for(lambda: re.search(
+                    r"You complete your spell|Your mental manipulations become a reality|"
+                    r"You abort your|You lost your concentration|gathers?, then fade|"
+                    r"lose your concentration|You don't have a valid target", output + self.pending),
+                    "waiting for native cast completion or interruption", timeout=60)
             output += self.pending
             self.pending = ""
             return output
@@ -266,34 +281,15 @@ class Client:
 
     async def action(self, line):
         """One outstanding input; native receipts, not combat prompts, bound the queue."""
-        async with self.command_lock:
-            if "Char.Input" not in self.gmcp:
-                raise BattleError(f"{self.label}: native input receipts are required")
-            self.pending = ""
-            before = self.gmcp["Char.Input"]["sequence"]
-            started = asyncio.get_running_loop().time()
-            await self.send(line)
-            await self.wait_for(lambda: self.gmcp["Char.Input"]["sequence"] > before,
-                                "waiting for input dequeue", timeout=90)
-            if self.gmcp["Char.Input"]["sequence"] != before + 1:
-                raise BattleError(f"{self.label}: unexpected input sequence; stopping this connection")
-            # Discard asynchronous combat text that preceded this input's receipt.
-            keep = self.text_received - self.receipt_text
-            self.pending = self.pending[-keep:] if keep else ""
-            await self.wait_for(lambda: self.prompts > self.receipt_prompt,
-                                "waiting for dispatched input output", timeout=90)
-            if re.search(r"You start chanting|You begin to focus your will", self.pending):
-                await self.wait_for(lambda: re.search(
-                    r"You complete your spell|Your mental manipulations become a reality|"
-                    r"You abort your|You lost your concentration|gathers?, then fade|"
-                    r"lose your concentration|You don't have a valid target", self.pending),
-                    "waiting for native cast completion or interruption", timeout=60)
-            output, self.pending = self.pending, ""
-            completed = bool(re.search(r"You complete your spell|Your mental manipulations become a reality", output))
-            self.record("action_result", {"command": line, "dequeued": True,
-                "spell_completed": completed, "elapsed_seconds": round(asyncio.get_running_loop().time() - started, 3),
-                "response_tail": output[-2000:]})
-            return output
+        if "Char.Input" not in self.gmcp:
+            raise BattleError(f"{self.label}: native input receipts are required")
+        started = asyncio.get_running_loop().time()
+        output = await self.command(line, timeout=90)
+        completed = bool(re.search(r"You complete your spell|Your mental manipulations become a reality", output))
+        self.record("action_result", {"command": line, "dequeued": True,
+            "spell_completed": completed, "elapsed_seconds": round(asyncio.get_running_loop().time() - started, 3),
+            "response_tail": output[-2000:]})
+        return output
 
 
 @dataclass(frozen=True)
@@ -752,8 +748,6 @@ def room_identity(player):
 
 
 async def prepare_actions(staff, clients, rows, directory):
-    for player in clients.values():
-        await player.enable_receipts()
     for row in rows:
         player, cls = clients[row["name"]], normalized(row["class"])
         if cls in HEALS or cls == "bard":
@@ -943,7 +937,8 @@ async def run_combat(staff, clients, rows, caps, stop, duration):
                        left_battlefield=room_identity(player) != row["battle_room"],
                        damage_events=player.damage_events, observed_damage=player.observed_damage,
                        healing_events=player.healing_events, observed_healing=player.observed_healing)
-            if not player.error:
+            row["final_save"] = "not attempted: disconnected or stop unconfirmed"
+            if not player.error and result["stop"]["confirmed"]:
                 try:
                     await player.command("save", expected=f"Save complete for {row['name']}.")
                     row["final_save"] = "acknowledged"
@@ -994,11 +989,14 @@ async def operate(config, accounts, directory, room, duration, commands):
 
     try:
         await until_stop(staff_login(staff, config["staff"]))
+        await until_stop(staff.enable_receipts())
         captured_room = await current_room(staff)
         selected_room = captured_room if room is None else room
         phase = "provisioning"
         pool = AccountPool(accounts, config["registration_email"])
         clients, rows, caps = await until_stop(connect_roster(config["host"], config["port"], pool, directory))
+        for player in clients.values():
+            await until_stop(player.enable_receipts())
         phase = "preparing"
         await until_stop(place_groups(staff, clients, rows, caps, selected_room))
         await until_stop(prepare_fighters(staff, clients, rows, directory))
@@ -1026,6 +1024,8 @@ async def operate(config, accounts, directory, room, duration, commands):
         result.setdefault("rows", rows)
         (Path(directory) / "summary.json").write_text(json.dumps(result, indent=2))
         print(f"{result['outcome']}; stop confirmed: {result.get('stop', {}).get('confirmed', False)}. Evidence: {directory}", flush=True)
+        if rows and not result.get("stop", {}).get("confirmed"):
+            print("STOP UNCONFIRMED: connect staff and use battleprep stop for the participant names in summary.json.", flush=True)
     return result
 
 

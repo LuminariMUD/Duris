@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Create two full real-PC groups, place them, then reuse the account pool.
+"""Qualify real-PC provisioning, preparation and optional full battle CLI runs.
 
-This tests provisioning on a disposable native server. Gear and combat belong
-to the later end-to-end battle journey; they are not claimed by this test.
+Use --battle for two full matches, account reuse and a separate observer on a
+disposable native server. Smaller --controls/--actions diagnostics do not count
+as full-party battle acceptance.
 """
 import argparse
 import asyncio
@@ -175,6 +176,10 @@ async def provision(server, pool, directory, room=None, prepare=False, probe=Fal
             print(f"Connected full rosters: {caps}", flush=True)
             await battle.place_groups(staff, clients, rows, caps, captured_room if room is None else room)
         if prepare:
+            if actions or controls:
+                await staff.enable_receipts()
+                for player in clients.values():
+                    await player.enable_receipts()
             await battle.prepare_fighters(staff, clients, rows, directory)
         if controls:
             await verify_controls(staff, clients, rows, directory)

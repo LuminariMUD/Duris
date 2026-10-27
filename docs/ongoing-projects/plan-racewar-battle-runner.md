@@ -719,6 +719,25 @@ The final harness also captures fixture-only server CPU/RSS/thread samples; the
 delivered runner uses remote-compatible command response observations.
 
 Live merge check: #406/#407/#409/#410 are merged. `origin/master` is `7a8c31067`
-after those squash merges and starter-kit #408. Synchronize that integrated source
-before final acceptance; no need to repeat the valid unrelated qualification
-recorded by the merge task. #411 remains open at the last check.
+after those squash merges and starter-kit #408. Integration merge `e1834b6df`
+brings that source into the combat branch without rewriting history. The add/add
+conflicts were squash-history artifacts: every upstream conflicted file exactly
+matched the earlier #410 base, so the task's extensions were retained. Both
+backend builds and the focused native control checks pass on this integration;
+unrelated qualification recorded by the merge task was reused. #411 remains open
+at the last check.
+
+`actions-01` exposed a setup synchronization error: an asynchronous prompt made
+`rest` appear complete before it was processed, so its output was read as the
+next `pray` response. The operator now negotiates receipts before placement and
+preparation too. Preparation and combat share one serialized command path;
+combat adds execution evidence without duplicating framing/dispatch logic.
+`actions-02` passed all four real builds, completed buffs, an actual Bard healing
+verse, and settled targeted stop. Its binary SHA-256 is
+`bfef2b10188357a25e66cdb5a1df6f03abc1a22a9cdd547696e6b798b3daf696`.
+
+The two-run acceptance invocation is now `bin/racewar-battles/battle-02`, using
+that integrated binary and `--battle --duration 120` (default two matches).
+Progress log: `bin/racewar-battles/implementation/battle-02.log`. Do not mark it
+passed until `result.json`, both summaries, observer logs, and relevant native
+diagnostics have been reviewed. No live MUD or production operation was performed.
