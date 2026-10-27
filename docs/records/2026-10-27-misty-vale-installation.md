@@ -37,6 +37,9 @@ Connections:
 - The warrior advertised either scale, but only one `Q` block collected both
   scales and both payments. A second recipe delimiter makes the alternatives
   independent, retaining their original 25/50 platinum rewards.
+- Gynaeros (mobile 300006) had only the placeholder keywords `new mob`, so her
+  displayed name and role could not target either quest. Her keywords are now
+  `gynaeros pygmie shaman`, allowing ordinary `ask` and `give` commands.
 - Winterhaven still requires old necklace 15012. The existing casket and
   necklace reset now reside in the replacement burial chamber. The surface
   hermit accepts both legacy potion 15008 and replacement potion 300036.
@@ -103,6 +106,27 @@ authored warriors roam. It does not qualify
 encounter balance or the difficulty of gathering ingredients. Ordinary route
 acceptance is covered separately by the route journey above. MariaDB was built;
 the gameplay journeys use isolated flat-file authority.
+
+### PR #404 review follow-up
+
+The Gynaeros keyword regression failed against the original `new mob` record
+and passed after the keyword repair. The native journey now asks about scales
+and completes both shaman quests using `shaman` and `gynaeros`, checking each
+reward, incomplete hand-ins, and the authored departure.
+
+Passed again after this data-only fix:
+
+- `python3 tests/async/test_misty_vale_zone.py`.
+- `make world`.
+- `python3 tests/async/run_misty_vale_journey.py --server bin/server/dms_new --evidence bin/issue403/pr404-journey.json`:
+  all 15 checks, including the two added shaman quests and the existing zone
+  mechanics/restart checks.
+- `python3 -m py_compile tests/async/test_misty_vale_zone.py tests/async/run_misty_vale_journey.py`.
+- `./scripts/format.sh --check` and `git diff --check`.
+
+The server binary matches the SHA-256 in the original passing journey evidence.
+The existing flat-file/MariaDB builds and route qualification remain applicable;
+no C/C++, routes, reset definitions, or quest recipes changed in this follow-up.
 
 ## Rollout boundary
 

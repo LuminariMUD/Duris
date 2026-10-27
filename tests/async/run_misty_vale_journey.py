@@ -145,6 +145,26 @@ def run(binary, evidence_path):
                 assert '<missing' not in listing, listing
                 check('native zone diagnostics and quest listing loaded')
 
+                for target, reward, ingredients in (
+                    ('shaman', 300013, [300004, 300002, 300012, 300017]),
+                    ('gynaeros', 300036, [300001, 300024]),
+                ):
+                    reset()
+                    visit(300024)
+                    cmd(player, f'wake {target}')
+                    response = cmd(player, f'ask {target} scales')
+                    assert 'bring me both a small and large scale' in response, response
+                    label = re.sub(r'&[+=].|&[nN]', '', object_records[reward].split('~')[1].strip())
+                    for ingredient in ingredients[:-1]:
+                        keyword = give_item(ingredient)
+                        cmd(player, f'give {keyword} {target}')
+                    assert label not in cmd(player, 'inventory'), ('premature reward', reward)
+                    keyword = give_item(ingredients[-1])
+                    completion = cmd(player, f'give {keyword} {target}')
+                    assert label in cmd(player, 'inventory'), (reward, completion)
+                    assert 'Gynaeros' not in cmd(player, 'look'), completion
+                    check(f'shaman recipe {reward}: ask and hand-ins work via {target}')
+
                 for start, action, end, back in (
                     (300132, 'enter well', 300133, 'up'),
                     (300039, 'enter waterfall', 300144, 'west'),

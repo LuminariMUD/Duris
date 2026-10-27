@@ -27,6 +27,8 @@ def check():
     objs = objects(areas / f'obj/{NAME}.obj')
     assert set(rooms) == set(range(300000, 300167))
     assert set(mobs) == set(range(300000, 300038))
+    assert {'gynaeros', 'shaman'} <= set(mobs[300006].split('~')[0].split()), (
+        'Gynaeros must be targetable by her displayed name and role')
     assert set(objs) == set(range(300000, 300042))
     for ext in ('wld', 'zon', 'qst'):
         assert not (areas / ext / f'mist_chasm.{ext}').read_text().strip()
