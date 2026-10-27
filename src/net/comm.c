@@ -1601,6 +1601,9 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
 		string_add(descriptor, input);
 		break;
 	case session_input_route::playing:
+		// Observe actual dequeue before the handler can extract its character
+		// or close the descriptor. No login, pager or editor input is exposed.
+		gmcp_input_receipt(descriptor, input);
 		dispatch_playing_command(character, input);
 		break;
 	case session_input_route::nanny:

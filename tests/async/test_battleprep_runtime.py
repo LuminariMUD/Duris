@@ -38,6 +38,17 @@ char *one_argument(const char *text, char *word) {
 bool item_action_active(P_char) { return item_pending; }
 bool chaos_kit_equipment_ready(P_char, P_char) { return false; }
 void equip_chaos_kit(P_char) {}
+void StopCasting(P_char ch) { REMOVE_BIT(ch->specials.affected_by2, AFF2_CASTING); }
+void event_abort_spell(P_char, P_char, P_obj, void *) {}
+void disarm_char_nevents(P_char, event_func_type) {}
+void stop_singing(P_char ch) { REMOVE_BIT(ch->specials.affected_by3, AFF3_SINGING); }
+size_t item_actions_pending(P_char) { return item_pending ? 1 : 0; }
+void item_actions_stop(P_char) { item_pending = false; }
+void tranquilize(P_char, P_char victim) { victim->specials.fighting = nullptr; SET_POS(victim, STAT_SLEEPING + POS_PRONE); }
+int get_from_q(txt_q *queue, char *) {
+    if (!queue->head) return 0;
+    queue->head = queue->tail = nullptr; return 1;
+}
 char affect_total(P_char, int) { return 0; }
 int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void advance_to_level(P_char ch, int level) {
@@ -178,6 +189,24 @@ int main() {
     skills[SONG_HEALING].m_class[bard].maxlearn[0] = 75;
     command(&staff, "Battler baseline");
     assert(pc.skills[INSTRUMENT_HARP].learned == 90 && pc.skills[SONG_HEALING].learned == 75);
+    txt_block queued{};
+    connection.input.head = connection.input.tail = &queued;
+    connection.buflen = 4; strcpy(connection.buf,"cast");
+    victim.specials.fighting = &attacker;
+    attacker.specials.fighting = &staff; // unrelated fight must remain untouched
+    SET_BIT(victim.specials.affected_by2, AFF2_CASTING | AFF2_MEMORIZING);
+    SET_BIT(victim.specials.affected_by3, AFF3_SINGING);
+    item_pending = true;
+    command(&staff,"status Battler");
+    assert(output.find("Battler pending") != std::string::npos && item_pending && connection.input.head);
+    command(&staff,"stop Battler Missing");
+    assert(output.find("Battler quiet") != std::string::npos && output.find("Missing missing") != std::string::npos);
+    assert(!connection.input.head && !connection.buflen && !connection.buf[0]);
+    assert(!IS_CASTING(&victim) && !SINGING(&victim) && !item_pending && !victim.specials.fighting);
+    assert(attacker.specials.fighting == &staff);
+    victim.desc = nullptr;
+    command(&staff,"stop Battler");
+    assert(output.find("Battler quiet") != std::string::npos); // linkdead actors can still be stopped
     puts("battleprep: native command guards, skill ceilings, resource baseline and atomic spell preparation passed");
 }
 '''

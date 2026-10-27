@@ -186,6 +186,9 @@ bool resolve_item_interception(const item_action_definition &, std::unique_ptr<i
 bool item_action_active(P_char actor);
 bool abort_item_action(P_char actor);
 size_t item_actions_pending();
+// Targeted staff stop: include passive windups and incoming references too.
+size_t item_actions_pending(P_char character);
+void item_actions_stop(P_char character);
 bool item_action_pending(uint64_t action_id);
 
 // Fixed process counters; game thread only. No UID, vnum, player or target labels.

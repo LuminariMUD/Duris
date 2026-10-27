@@ -1804,6 +1804,8 @@ struct descriptor_data
 	size_t ws_control_output_offset;
 	int gmcp_enabled;
 	bool gmcp_initial_state_pending;
+	bool gmcp_command_receipts; // Opt-in, session-local input dequeue observation.
+	uint64_t gmcp_input_sequence;
 	int mssp_sent;
 	int sga_disabled;
 	int write_failed;

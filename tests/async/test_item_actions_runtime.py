@@ -560,6 +560,34 @@ static void test_bounded_telemetry() {
       } }
 }
 
+static void test_targeted_staff_stop() {
+    evidence other_report;
+    scene s;
+    auto *other = new char_data{};
+    other->runtime_id = allocate_character_runtime_id();
+    other->player.name = const_cast<char *>("Other");
+    other->only.pc = &s.actor_pc;
+    other->in_room = 0;
+    SET_POS(other, STAT_NORMAL + POS_STANDING);
+    other->next = character_list; character_list = other;
+    auto *other_source = new obj_data{};
+    other_source->obj_uid = 101;
+    other_source->loc_p = LOC_WORN; other_source->loc.wearing = other;
+    other_source->next = object_list; object_list = other_source;
+    other->equipment[WIELD] = other_source;
+    assert(item_actions_publish(definition(2, true), std::make_unique<probe_adapter>(other_report)));
+    assert(s.start() == item_action_start::scheduled); // passive, targets selected PC
+    assert(start_item_action(2, other, other, other_source) == item_action_start::scheduled);
+    assert(item_actions_pending(s.target) == 1 && item_actions_pending(other) == 1);
+    item_actions_stop(s.target);
+    assert(item_actions_pending(s.actor) == 0 && item_actions_pending(s.target) == 0);
+    assert(item_actions_pending(other) == 1 && s.report.finishes == 1 && !s.report.effects);
+    advance();
+    assert(other_report.effects == 1 && other_report.finishes == 1);
+    item_actions_stop(s.target); // idempotent
+    assert(!item_actions_pending() && !item_actions_pending(nullptr));
+}
+
 int main() {
     nevent_bind_game_thread();
     ne_dead_event_pool = &test_pool;
@@ -576,6 +604,7 @@ int main() {
     test_effect_transitions();
     test_carry_self_reload_and_rearm_rejection();
     test_bounded_telemetry();
+    test_targeted_staff_stop();
     std::puts("Item actions: scheduler, identities, costs, cancellation, timing and effect lifetime passed");
 }
 '''

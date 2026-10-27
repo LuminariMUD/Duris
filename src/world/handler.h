@@ -13,3 +13,4 @@
  ****************************************************************************/
 
 int can_prime_class_use_item(P_char, P_obj);
+bool get_char_room_target(P_char viewer, P_char target, char *out, size_t capacity);
