@@ -228,13 +228,20 @@ static void toggle_matrix()
 	for (const auto &[value, type] : std::vector<std::pair<const char *, int>>{
 		     { "GEN", 1 }, { "ansi  ", 2 }, { "msp\t", 3 } })
 	{
+		desc.msp_group_output = str_dup("previous group display");
+		desc.last_group_update = 0;
 		run(std::string("terminal ") + value);
 		assert(desc.term_type == type);
+		assert(!desc.msp_group_output);
+		assert(desc.last_group_update == (type == TERM_MSP));
 	}
 	for (const char *invalid : { "invalid", "ansi extra" })
 	{
+		desc.msp_group_output = str_dup("previous group display");
 		assert(run(std::string("terminal ") + invalid).find("USAGE") != std::string::npos);
 		assert(desc.term_type == 3);
+		assert(std::string(desc.msp_group_output) == "previous group display");
+		FREE(desc.msp_group_output);
 	}
 	run("terminal");
 	assert(desc.term_type == 2);

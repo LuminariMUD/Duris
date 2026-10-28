@@ -1535,6 +1535,8 @@ void enter_game(P_desc d)
 	bool nobonus = FALSE;
 	P_char ch = d->character;
 	const bool new_character = ch && GET_LEVEL(ch) == 0;
+	if (d->msp_group_output)
+		FREE(d->msp_group_output);
 	P_desc i;
 	P_nevent evp;
 	P_Guild guild;
@@ -2236,19 +2238,21 @@ void enter_game(P_desc d)
 
 void select_terminal(P_desc d, const char *arg)
 {
-	int term;
+	long term;
 	int temp = 1;
-	char temp_buf[200];
+	char *end;
 
-	if ((term = (int)strtol(arg, NULL, 0)) == 0)
-	{
-		if (*arg == '?')
-			term = TERM_HELP;
-		else if (!*arg) /* carriage return */
-			term = TERM_ANSI;
-		else
-			term = TERM_UNDEFINED;
-	}
+	while (isspace(static_cast<unsigned char>(*arg)))
+		++arg;
+	term = strtol(arg, &end, 10);
+	if (!*arg) /* carriage return */
+		term = TERM_ANSI;
+	else if (*arg == '?')
+		term = TERM_HELP;
+	else if (end == arg || (*end && !isspace(static_cast<unsigned char>(*end))))
+		term = TERM_UNDEFINED;
+	while (isspace(static_cast<unsigned char>(*end)))
+		++end;
 	switch (term)
 	{
 	case TERM_GENERIC:
@@ -2259,16 +2263,14 @@ void select_terminal(P_desc d, const char *arg)
 		break;
 	case TERM_MSP:
 		d->term_type = TERM_MSP;
-		arg = one_argument(arg, temp_buf);
-		strcpy(d->client_str, arg);
+		strlcpy(d->client_str, end, sizeof d->client_str);
 		SEND_TO_Q(pwipe_launch_closed_at(time(NULL)) ? pwipe_launch_screen(true).c_str() :
 							       greetinga,
 			  d);
 		break;
 	case TERM_ANSI:
 		d->term_type = TERM_ANSI;
-		arg = one_argument(arg, temp_buf);
-		strcpy(d->client_str, arg);
+		strlcpy(d->client_str, end, sizeof d->client_str);
 		if (pwipe_launch_closed_at(time(NULL)))
 		{
 			SEND_TO_Q(pwipe_launch_screen(true).c_str(), d);

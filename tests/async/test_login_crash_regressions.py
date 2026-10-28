@@ -48,8 +48,16 @@ def check(name, ok):
 # display_account_menu has many such callers, including the post-MOTD login path.
 menu = account[account.index("void display_account_menu("):]
 menu = menu[:menu.index("\n}\n")]
+menu_body = menu[menu.index("{") + 1:]
+# Admission checks may precede the display path. NULL must still display the
+# menu and return before any argument dereference or numeric parsing.
+null_display = re.search(r"^\tif \(!arg\)\s*\{.*?^\t\}", menu_body, re.M | re.S)
+argument_read = re.search(r"\*arg\b|\bstrtol\s*\(\s*arg\b", menu_body)
 check("account menu preserves its NULL display sentinel",
-      re.search(r"void display_account_menu\([^)]*\)\s*\{\s*if \(!arg\)", menu) is not None)
+      null_display is not None and argument_read is not None
+      and null_display.end() < argument_read.start()
+      and "Please select an option:" in null_display.group()
+      and re.search(r"\breturn;\s*\}$", null_display.group()) is not None)
 
 login = account[account.index("void get_account_password("):account.index("static void finish_account_password(")]
 ws_login = ws_handlers[ws_handlers.index("void ws_cmd_login("):ws_handlers.index("void ws_finish_login(")]
