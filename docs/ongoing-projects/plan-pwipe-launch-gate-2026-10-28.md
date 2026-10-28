@@ -1,6 +1,6 @@
 # October 28 pwipe: account allowlist and launch screen
 
-Status: **planned; not implemented or deployed**. Prepared October 28, 2026.
+Status: **implementation in progress; not deployed**. Updated October 28, 2026.
 Public opening: **2026-10-28 at 18:00:00 UTC** (`2026-10-28T18:00:00Z`, Unix
 timestamp `1793210400`). Initial approved account: **`mosheh`**.
 
@@ -21,8 +21,9 @@ character creation and game entry resume without another wipe or restart.
   ANSI/ASCII screen; persistent configuration; exact UTC opening behavior.
 - **Non-goals:** changing the wipe/reset policy, changing credentials or character
   privileges, pausing world simulation, a general maintenance framework, a waiting
-  room, a scheduler service, or a new database schema. This task produces the plan
-  only. Implementation, deployment and the production wipe are separate work.
+  room, a scheduler service, or a new database schema. Implementation and disposable
+  local qualification are authorized; deployment and the production wipe remain
+  separate work.
 - **Files:** the account/network entry owners listed below, one small shared gate
   module, one configuration file, one text-art asset, focused tests and the
   operational runbook. No live `.env`, credentials or player/account data edits.
@@ -306,9 +307,32 @@ contract is a visible launch notice; a custom browser splash is separate UI work
    armed gate. Reverting to a binary without the feature before launch would remove
    the restriction; keep the game stopped if such a rollback is required.
 
-## Planning validation
+## Implementation handoff
 
-This change contains documentation only. Account/password completion, character
+- Started from clean `671adfb24` on the requested branch. Merged `origin/master`
+  (`1a1a6262d`) without rewriting history, retaining the already merged staff-login
+  and burn-in commits and both pre-existing planning documents. In particular,
+  `plan-missing-help-requests.md` belongs to earlier work and is preserved.
+- Ablation: retain one loaded policy and the existing drain/cleanup paths. No
+  scheduler, live reload, waiting state, new persistence schema or auth mechanism.
+- First chunk: strict required config and UTC policy, disabled shipped default,
+  startup validation after SQL-only recovery and before normal/minimal listeners
+  or copyover. Tests pass explicit policy times; no production clock override.
+- First-chunk validation passed: `python3 tests/async/test_pwipe_launch_gate.py`,
+  `./scripts/format.sh --check` and `make -C src -j2` (MariaDB development build,
+  log `bin/analysis/pwipe-launch-build.log`). No full regression rerun is needed
+  for this inactive policy/config foundation.
+- Existing identity grammars differ: Telnet permits 2..12 letters, native WS
+  permits 3..14 letters/underscores. Config permits their union (2..14 ASCII
+  letters/underscores); admission still compares the loaded full identity,
+  case-insensitively. This introduces no account-registration rule change.
+- Next: complete admission integration and presentation, then real socket/restart/
+  copyover journeys for both backends and the existing disposable wipe journey.
+  Do not treat the policy/config chunk alone as an armed admission gate.
+
+## Original planning validation
+
+The original planning commit contained documentation only. Account/password completion, character
 entry, WebSocket reconnect, copyover, output draining, configuration, SQL reset and
 launcher owners were inspected directly. The UTC timestamp was independently
 converted to `1793210400`. Relative document links, Markdown fence balance,
