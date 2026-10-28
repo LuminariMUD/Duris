@@ -19,9 +19,46 @@ ROOT = journey.ROOT
 PROMPT = "Pos: standing >"
 
 
-def command(client, text):
+def command(client, text, responses):
+    """Keep unsolicited output in the transcript; return this response and its prompt."""
     client.send(text)
-    return client.expect(PROMPT, timeout=20)
+    if isinstance(responses, str):
+        responses = (responses,)
+    matched, _ = client.expect_any(responses, timeout=20)
+    return matched + client.expect(PROMPT, timeout=20)
+
+
+def synchronization_control():
+    """A buffered or arriving notification prompt cannot finish a new command."""
+    import socket
+    import threading
+
+    for buffered in (False, True):
+        connection, server = socket.socketpair()
+        client = journey.MudClient.__new__(journey.MudClient)
+        client.socket = connection
+        connection.settimeout(0.25)
+        client.pending = bytearray(("old " + PROMPT).encode() if buffered else b"")
+        client.transcript = bytearray(client.pending)
+        client.raw_transcript = bytearray()
+
+        def respond():
+            with server:
+                journey.require(server.recv(1024) == b"fire Torven\n", "wrong fixture command")
+                server.sendall(("Torven arrives.\n" + PROMPT + "\nYou fire ").encode())
+                server.sendall(("an arrow at Torven and miss!\n" + PROMPT).encode())
+
+        worker = threading.Thread(target=respond)
+        worker.start()
+        try:
+            output = command(client, "fire Torven", "You fire ")
+            journey.require("and miss!" in output and "Torven arrives" not in output,
+                            f"command accepted a notification prompt: {output}")
+            journey.require(b"Torven arrives" in client.transcript, "notification was lost")
+        finally:
+            client.close()
+            worker.join(timeout=5)
+    print("command synchronization: buffered and arriving prompts passed", flush=True)
 
 
 def build_inspector(root):
@@ -51,9 +88,7 @@ int main(int argc, char **argv) {
 
 
 def saved(client, inspector, state):
-    client.send("save")
-    client.expect(f"Save complete for {journey.CHARACTER}.", timeout=20)
-    client.expect(PROMPT)
+    command(client, "save", f"Save complete for {journey.CHARACTER}.")
     return [list(map(int, line.split())) for line in subprocess.check_output(
         [str(inspector), str(state)], text=True).splitlines()]
 
@@ -114,43 +149,45 @@ def run(binary, inspector, race):
                 client = journey.MudClient(plain)
                 journey.create_character(client, expected_room=None, race_name=race, class_name="ranger")
                 client.expect(PROMPT)
-                location = command(client, "look")
+                location = command(client, "look", ("The Regression Arena", "Cage of Smoke"))
                 if "Cage of Smoke" in location:
-                    location = command(client, "east")
+                    location = command(client, "east", "The Regression Arena")
                 journey.require("The Regression Arena" in location, "Ranger did not reach the archery range")
                 initial = saved(client, inspector, state)
                 arrows = [item for item in initial if item[1] == 1117]
                 journey.require(len(arrows) == 10, f"fresh {race} Ranger has no ten-arrow kit: {initial}")
                 journey.require(all(item[2] == 100 and not item[6] & (1 << 19)
                                     and item[8] == 1 for item in arrows), "bad fresh missile flags/cost/condition")
-                command(client, "remove all")
-                command(client, "wield bow")
-                command(client, "put all.arrow quiver")
-                command(client, "wear quiver")
+                command(client, "remove all", ("You stop using ", "You are quite naked"))
+                command(client, "wield bow", "You wield ")
+                command(client, "put all.arrow quiver", "You put ")
+                command(client, "wear quiver", "You strap ")
                 target = journey.MudClient(plain, source_host="127.0.0.2")
                 journey.create_character(target, account="Targetacct", character="Torven",
                                          email="target@example.invalid")
                 target.expect(PROMPT)
-                command(target, "introduce")
+                command(target, "introduce", ("Introduce yourself to whom?", "Pardon?"))
                 result = {"race": race, "fresh_arrow_uids": [item[0] for item in arrows], "cases": []}
                 for adjacent in (False, True):
                     if adjacent:
-                        command(target, "north")
+                        command(target, "north", "The Arrow Landing Room")
                     # Accuracy is real RNG. Require an observed miss; account for
                     # successful shots as consumed ammunition rather than retrying a server.
                     for attempt in range(8):
                         before = saved(client, inspector, state)
                         before_arrows = {item[0]: item for item in before if item[1] == 1117}
                         quiver_before = next(item for item in before if item[1] == 1116)
-                        shot = command(client, "fire Torven north" if adjacent else "fire Torven")
+                        shot = command(client, "fire Torven north" if adjacent else "fire Torven",
+                                       ("You fire ", "hit strikes "))
                         missed = "and miss!" in shot
                         journey.require("fire" in shot.lower() or "hit strikes" in shot,
                                         f"fire did not execute:\n{shot}")
                         time.sleep(1.25)  # five real server pulses, beyond zero-delay decay
                         if adjacent:
-                            command(client, "north")
-                        floor = command(client, "look")
-                        gather = command(client, "gather")
+                            command(client, "north", "The Arrow Landing Room")
+                        floor = command(client, "look", "The Arrow Landing Room" if adjacent
+                                        else "The Regression Arena")
+                        gather = command(client, "gather", ("You gathered ", "There are no arrows"))
                         after = saved(client, inspector, state)
                         after_arrows = {item[0]: item for item in after if item[1] == 1117}
                         journey.require(set(after_arrows) <= set(before_arrows), "fire/gather changed missile identities")
@@ -165,7 +202,7 @@ def run(binary, inspector, race):
                                         sum(before_arrows[uid][3] for uid in before_arrows.keys() - after_arrows.keys()),
                                         "quiver weight changed beyond hit consumption")
                         if adjacent:
-                            command(client, "south")
+                            command(client, "south", "The Regression Arena")
                         if missed:
                             journey.require("thin arrow" in floor, "missed missile absent from landing room")
                             journey.require("gather" in gather.lower(), "gather did not report recovery")
@@ -195,6 +232,7 @@ def run(binary, inspector, race):
 
 
 if __name__ == "__main__":
+    synchronization_control()
     build_root = ROOT / "bin/tests"
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="starter-arrow-build-", dir=build_root) as temp:

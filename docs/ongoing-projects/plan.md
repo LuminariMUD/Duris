@@ -281,3 +281,72 @@ host's default Clang search path and failed to parse them (`__builtin_popcountg`
 The unchanged staged C++ check passes with Clang 18 explicitly selecting the
 installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
 remain enabled; no source suppression or hook bypass is used.
+
+## PR #445 review follow-up, 2026-10-28
+
+The owner's review follow-up explicitly includes all seven findings, including
+the six existing archery defects. This expands the original production scope to
+`src/combat/range.c`; the original kit access, counts, flags and old-instance
+compatibility decisions still apply. The clean branch was rebased from
+`8e95eb5dd` onto current master `b7498fb6b` without conflicts. The unrelated pager
+checkout and character-mechanics worktree were preserved.
+
+All seven findings were verified against the reviewed source and executable
+controls. The fixes reuse existing paths:
+
+1. Hold a detached broken missile through damage messages and enchantments,
+   then scrap it. If the victim died and cannot supply a room for `MakeScrap`,
+   extract the broken missile before leaving the shot. Surviving missiles retain
+   their existing inventory placement. The retirement decision is captured before
+   damage, avoiding a later read of an object that death handling may retire.
+2. Use the existing owning keyword/short-description setters for both marking
+   and restoration, so replacing custom strings frees them and never adopts a
+   borrowed prototype pointer with owning flags.
+3. Restore directly from `obj_index` strings instead of materializing a live
+   object to obtain text. No new template cache or string-ownership layer is needed.
+4. Stop gathering at the existing capacity before detaching another arrow.
+5. Skip incompatible ammunition before moving it from either floor or corpse.
+6. Reset block state and message selection inside the shot loop.
+7. Wait for a command-specific response before its following prompt. Preserve
+   unsolicited output in the full transcript, outside the returned command result.
+
+The existing native harness now executes production mark creation/expiry, string
+setters and `free_obj`. Controlled pool release deletes heap objects, so ASan sees
+actual retirement rather than a counter-only scrap operation. It passes 384
+fire/gather scenarios repeated 50 times, four decay controls, ten hit/return/wear
+and retirement cases (including melee and enchantment death), 100 mark-expiry
+cycles, room/corpse gather capacity/family controls, and same/adjacent-room
+blocked-then-unblocked volleys. Allocation, event dispatch, combat effects and
+unrelated services remain controlled boundaries.
+
+Temporary in-memory negative controls substituted the reviewed implementations,
+without changing tracked source. Each of the seven corresponding checks rejected
+the old behavior: actual retirement exposed a sanitizer failure; borrowed-string
+ownership, expiry allocation, full gathering, ammunition-family selection, volley
+state and stale-prompt acceptance failed their targeted controls. Evidence is
+ignored under `bin/qualification/issue428/`; temporary control code was removed.
+
+Completed local validation:
+
+- `python3 tests/async/test_fired_missile_encumbrance.py`: all expanded ASan/UBSan
+  controls passed, including real owned-string teardown and heap retirement.
+- `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile -j6`: passed
+  the existing warnings-as-errors profiles.
+- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_new`: passed
+  buffered/arriving-prompt controls and both real Ranger journeys in both room
+  arrangements. Half-Elf consumed two successful hits before its observed miss,
+  then retained eight original missiles at quiver count 8/weight 9. Wood-Elf
+  retained ten at count 10/weight 11. Miss trials preserve exact UIDs/condition.
+  The rebuilt flat-file binary SHA-256 is
+  `d999684ac6f9a6e5501a29a74a1dff1ee5afd6b3b0798c9fa37531ce9c89fa38`.
+- Python syntax, all 14 documentation contracts, changed-line formatting,
+  clang-tidy with the established Clang 18/GCC 13 header selection, and
+  `git diff --check`: passed.
+
+The original kit-selection, suitability and grant-lifecycle evidence above is
+reused because those implementations and inputs did not change. Runtime proof
+remains disposable minimal-world flat-file state; production and full-world
+acceptance remain release work. No migration, dependency, setting, parallel
+implementation, extra production helper or CI wait is required. Keep the review
+repair as a focused follow-up commit; this standalone PR needs no stacking or
+release tag and can be squashed when merged.

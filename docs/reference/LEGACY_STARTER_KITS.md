@@ -52,6 +52,14 @@ granted arrows retain their saved flags, and destroyed arrows are not recovered.
 There is no save migration or load-time rewrite. An explicitly transient missile
 prototype also retains its authored behavior.
 
+Gathering respects the quiver's existing capacity and ammunition family before
+moving an owned missile from the floor or a corpse. Excess or incompatible
+missiles stay at their source. Each shot makes an independent shield-block
+decision. Broken missiles remain valid through damage messages and enchantments,
+then are scrapped; if the victim has died, the detached broken missile is extracted.
+Mark creation and expiry use owning string setters; expiry reads the shared index
+text without creating another live arrow.
+
 Snapshots retain eligible transient UIDs, flags, equipment slots, and container
 relationships. The loaders apply the ownership filtering described in
 [PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md#what-a-load-reads).
@@ -81,10 +89,16 @@ Focused tests are automatically discovered by the normal regression runner:
   dispatch under ASan/UBSan. Covers both Ranger kit selections, starter/ordinary
   missiles, same/adjacent-room misses, PID ownership, weight/count restoration,
   authored transience, bow/quiver decay, successful-hit wear and returning shots.
+  Exercises real string setters/freeing and heap retirement, melee/enchantment
+  death cleanup, repeated mark expiry, room/corpse capacity and family checks,
+  and blocked-then-unblocked volleys in both room arrangements.
 - `test_starter_arrow_journey.py`: fresh legacy Ranger grants and actual
   fire/event/gather commands through Telnet on a disposable minimal flat-file
   server, with saved UID, condition, quiver count and weight checks. The fixture
   explicitly enables historical races/classes; it is not a live roster claim.
+  Commands wait for their own response before accepting a prompt. A socket-pair
+  control checks buffered and arriving notification prompts; notifications remain
+  in the complete transcript rather than becoming command results.
 
 Run those focused checks against the current tree. They use synthetic fixtures;
 they are not a live latency benchmark or production database test. Replay
