@@ -9301,17 +9301,20 @@ amounts of damage to those affected by it.
 
 #
 INDEX (General Information)
-===========================================================================
-The Duris help files have been indexed into the following six categories.
-Please note that the POLICIES section is a &+RMUST READ&n for every player.
+Use 'help <topic>' to search topic titles. Try a command, class, race,
+spell or ability name. A partial name can list several matching topics.
 
-POLICIES                          WARFARE
-DURIS INFORMATION                 MYSTICS
-COMMUNICATIONS UTILITIES          MUNDANE LIFE
+==Starting points==
 
-For more information on each one, type HELP <category>.
-===========================================================================
-See also: COMMANDS
+* 'help policies' for the policies index; 'help rules' for current rules.
+* 'help duris information' for general game information.
+* 'help communications utilities' for channels and communication.
+* 'help warfare' for combat topics.
+* 'help mystics' for magic topics.
+* 'help mundane life' for everyday activities.
+
+'help commands' offers a command overview. For a class progression,
+use its full name followed by skills, such as 'help psionicist skills'.
 
 #
 INDOMITABILITY (Spell)
@@ -26799,4 +26802,60 @@ When entering combat against an evil opponent at an alignment of
 900 or higher, it also grants a temporary hit-point bonus based on
 that opponent's level. This combat bonus does not stack with itself.
 See also: Paladin, Protection from Evil, Alignment.
+#
+Pulse
+A pulse is one step of the game's clock, normally one quarter of a
+second. Combat rounds, spellcasting stages and world ticks use different
+numbers of pulses; they are not interchangeable units.
+'help combat pulse' explains melee timing. 'help spell pulse' explains
+casting speed. Race-help ratings describe the race's starting tendencies,
+not the final timing of every character or ability.
+#
+Combat Pulse
+Combat pulse describes the time between your ordinary melee rounds.
+A shorter interval means faster rounds. Your race, class, equipment and
+active effects can change it; a race-help rating is only a starting guide.
+It does not set how many attacks you make in a round. Haste, weapon skills
+and particular attacks have their own rules. A skill's action delay can
+also differ from your ordinary round length.
+See also: Pulse, Haste, Skills.
+#
+Spell Pulse
+Spell pulse modifies how long a spell takes to cast. A better (faster)
+racial rating means shorter casting time, not a higher spell level or
+more damage. Your spell, race and active effects can all affect timing.
+A spell-pulse modifier below zero speeds casting; one above zero slows it.
+Each modifier point changes the timing multiplier by three percent before
+other casting rules and rounding. It does not change memorization time,
+spell costs or an ability's separate cooldown.
+See also: Pulse, Cast, Memorize.
+#
+Quick Thinker
+Quick Thinker is a passive racial innate: Halflings receive it at level 1
+and Half-Elves at level 30. It needs no activation, mana or innate use.
+If an ordinary spell saving throw fails, it grants one more roll against
+the same threshold. It also gives a 15 percent automatic-success chance
+on Intelligence and Power attribute saves before their ordinary checks.
+During combat it increases your calculated potion-drinking success chance
+by one quarter, helping avoid spills. This bonus does not stack with
+Combat Mind's equivalent benefit. It does not shorten spellcasting time.
+See also: Innate, Quaff, Combat Mind.
+#
+Longsword Mastery
+The innate list calls this passive ability 'longsword master'. Grey Elves,
+Wood Elves, Drow Elves and Half-Elves receive it at level 11.
+While a longsword occupies your primary weapon slot, it adds one hitroll
+per eight character levels and one damroll per twelve character levels,
+rounding each down. Normal hitroll and damroll caps still apply.
+There is no activation command, mana payment or cooldown. A longsword
+only in your secondary slot does not activate this bonus. It does not
+replace learning the weapon skill or waive equipment restrictions.
+See also: Innate, Wield.
+#
+Psionic Spells
+For Psionicist spells by circle and skills by level, use
+'help psionicist skills'. 'help psionicist' describes the base class;
+your specialization's own help lists its additions and removals.
+A listed spell still needs to be learned and prepared. Type 'spells'
+to inspect your character's spell list and 'help cast' for casting syntax.
 #

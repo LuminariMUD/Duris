@@ -14517,10 +14517,22 @@ amounts of damage to those affected by it.
 #0
 
 Index
-Index - Last Edited: 2007-04-22 22:12:53 by Unknown
-===================================================
-The Duris help files have been indexed into the following six categories.
-Please note that the POLICIES section is a See also:commands
+Index - Last Edited: 2026-10-28
+============================================================
+Use 'help <topic>' to search topic titles. Try a command, class, race,
+spell or ability name. A partial name can list several matching topics.
+
+==Starting points==
+
+* 'help policies' for the policies index; 'help rules' for current rules.
+* 'help duris information' for general game information.
+* 'help communications utilities' for channels and communication.
+* 'help warfare' for combat topics.
+* 'help mystics' for magic topics.
+* 'help mundane life' for everyday activities.
+
+'help commands' offers a command overview. For a class progression,
+use its full name followed by skills, such as 'help psionicist skills'.
 
 #0
 

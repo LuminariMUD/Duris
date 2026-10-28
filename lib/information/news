@@ -3,6 +3,68 @@
 &+W======================================================================&n
 &+WUpdated: October 28, 2026&n
 
+Welcome back! Find clearer paths through the world and answers in the library.
+Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/28/26&n &+L-&n &+YQuicker answers, clearer paths&n
+&+W----------------------------------------------------------------------&n
+
+&+CKnow what your character can do&n
+&+Y-&n New guides explain melee and casting speed: try &+C'help combat pulse'&n,
+  &+C'help spell pulse'&n and &+C'help pulse'&n. Learn the passive benefits of
+  &+C'help quick thinker'&n and &+C'help longsword mastery'&n.
+&+Y-&n &+C'help psionic spells'&n points to the Psionicist's progression.
+  &+C'help index'&n now gives usable starting topics and search examples.
+
+&+CFollow the path, mind the pond&n
+&+Y-&n Misty Vale's Underdark approaches now lead into its bloody cavern
+  from the north and east. The old cliff stair is removed; the map marker
+  has moved to the matching entrance. Three spots again keep wandering
+  creatures out, including the waterfall ledge and tidal pond.
+&+Y-&n Newly loaded teak fishing rods from Misty Vale start in full condition.
+&+Y-&n At Mt. Skelenak, &+C'climb rock'&n reaches the blind monk's quest path
+  again. Carrying another item named rock no longer hides that entrance.
+&+Y-&n A corpse's own body weight no longer uses up its item capacity.
+  Recovering the world after a restart now handles saved ship hatches
+  before ships are ready, fixing a startup failure involving those doors.
+&+Y-&n Character creation now stops cleanly if no valid character identity
+  can be assigned. Staff characters recreated for a new season start
+  at home with a usable default prompt.
+
+&+CMore pages for the road&n
+&+Y-&n Read &+C'help toughen up'&n and &+C'help deaths door'&n for the achievement
+  and its corpse-recovery reward. &+C'help serf'&n explains feudal titles;
+  &+C'help epic parry'&n points to Expert Parry, and &+C'help epic tasks'&n
+  explains task objectives and sharing.
+&+Y-&n &+C'help castle'&n and &+C'help outpost'&n explain guild bases and outposts.
+  &+C'help aura of healing'&n points Paladins to their healing aura;
+  &+C'help anti-evil'&n explains their passive protection.
+&+Y-&n Find item activation guidance in &+C'help mystic axe of the dragonkind'&n
+  and &+C'help mace of mentality'&n. &+C'help vials'&n distinguishes potions,
+  poison doses and other vials. &+C'help named equipment sets'&n explains
+  the set-bonus report.
+&+Y-&n &+C'help speedy'&n explains innate haste. &+C'help ophidian eyes'&n covers
+  Dragoon senses; &+C'help dragon knight'&n points to the actual Dragoon
+  specializations, and &+C'help mounted casting'&n explains casting while
+  riding. &+C'help affects'&n helps you read ongoing effects in your score.
+&+Y-&n Summoners can use &+C'help summoners'&n and &+C'help conjure being'&n for
+  their book and summoning commands. &+C'help enervate'&n points to
+  Enervation. &+C'help arj mudlet panels'&n explains client panel controls.
+&+Y-&n &+C'help create greater dracolich'&n now names the greater spell
+  correctly when comparing it with Create Dracolich.
+&+Y-&n &+C'help wipe'&n explains what a new season resets and preserves.
+  A routine reboot is not a player wipe.
+
+&+CA clearer view for staff&n
+&+Y-&n Avatars and higher can use &+C'last'&n for recorded character logins,
+  &+C'last 24h'&n for a time window, or &+C'last unique 7d'&n for the latest
+  login per account. Results have UTC times and pages of 20; use
+  &+C'help last'&n for character filters and paging.
+&+Y-&n Staff quest inspection, target substitution and mine/Nexus feedback
+  have clearer results and safer handling. The zone listing counts all
+  loaded zones. Content refresh with &+C'page'&n requires Greater God rank.
+  &+C'help setbit char'&n explains that staff command's character branch.
+
 &+R10/28/26&n &+L-&n &+YShared racewar Divine Boons&n
 &+W----------------------------------------------------------------------&n
 &+Y-&n Good and Evil now share the same Experience and Epic boon destinations.
@@ -11,9 +73,6 @@
 &+Y-&n Cargo keeps its existing profitable-route selection without an activity
   requirement. PvP still requires genuine recent activity on both sides.
   Type &+C'boon'&n or &+C'help divine boons'&n for the rules.
-
-Welcome back! Explore the expanded Misty Vale and outfit your next adventurer.
-Newest first; later updates replace older rules. Archive back to 12/14/25.
 
 &+R10/27/26&n &+L-&n &+YA wider Vale, a better start&n
 &+W----------------------------------------------------------------------&n
