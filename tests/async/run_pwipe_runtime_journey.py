@@ -572,6 +572,20 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     client.send("get sword"); client.expect("You do not see a sword here.")
                 client.send("score"); client.expect("Level")
                 save(STAFF)
+                if discard_rewards:
+                    # Deleted grants must not make their IDs available again after boot.
+                    # Use a separate account so the original claimant still proves refusal.
+                    sql("INSERT INTO accounts(account_name,password,email,confirmed) "
+                        "VALUES('Postwipegrant','fixture-password','grant@example.invalid',1)")
+                    client.send("load obj 1108")
+                    client.send("divineclaim sword Postwipegrant permanent")
+                    client.expect("The source item remains in your inventory.")
+                    save(STAFF)
+                    fresh_grant = int(sql("SELECT id FROM account_bound_rewards "
+                                          "WHERE account_name='Postwipegrant'"))
+                    assert fresh_grant > max(grant["id"] for grant in grants)
+                    report["post_discard_new_grant_id"] = fresh_grant
+                    print("Fresh post-discard grant uses an ID beyond every deleted grant", flush=True)
                 if with_redis:
                     # Staff login applies wizard invisibility; public presence
                     # must not reveal that body. Check a visible mortal below.

@@ -432,9 +432,10 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     client.send(race_name)
     client.expect("Male or Female")
     client.send("m")
-    client.expect("Hardcore")
-    client.send("n")
-    client.expect("Class Selection")
+    prompt, _ = client.expect_any(("Hardcore", "Class Selection"))
+    if prompt == "Hardcore":
+        client.send("n")
+        client.expect("Class Selection")
     client.send(class_name)
     stat_prompt_seen = False
     prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))
@@ -468,7 +469,8 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     client.send("")
     if expected_room:
         client.expect(expected_room, timeout=30)
-    client.expect("Your starter kit is ready", timeout=30)
+    client.expect_any(("Your starter kit is ready", "Your Chaos Equipment has been prepared"),
+                      timeout=30)
 
 
 def complete_npc_combat_journey(client: MudClient, reset_coins: bool = False) -> None:
