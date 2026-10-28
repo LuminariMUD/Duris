@@ -254,18 +254,17 @@ int main()
 		divine_boon_slot legacy_target;
 		legacy_target.category = divine_boon_category::experience;
 		legacy_target.zones = { 18, 20 };
-		assert(divine_boon_zone_eligible(20, 0) &&
-		       divine_boon_zone_eligible(20, 1));
+		assert(divine_boon_zone_eligible(20, 0) && divine_boon_zone_eligible(20, 1));
 		assert(divine_boon_shared_target_zone(legacy_target) == 20);
 	}
 	exits[0].exit_info = EX_CLOSED; // An ordinary door can be opened.
 	assert(divine_boon_zone_eligible(18, 0));
-	divine_boon_slot old;
-	old.category = divine_boon_category::experience;
-	old.zones = { 18, 20 };
-	assert(divine_boon_shared_target_zone(old) == 18);
-	old.zones = { 999, 18 };
-	assert(divine_boon_shared_target_zone(old) == 18);
+	divine_boon_slot old_target;
+	old_target.category = divine_boon_category::experience;
+	old_target.zones = { 18, 20 };
+	assert(divine_boon_shared_target_zone(old_target) == 18);
+	old_target.zones = { 999, 18 };
+	assert(divine_boon_shared_target_zone(old_target) == 18);
 	exits[0].exit_info = 0;
 	for (int sector : { SECT_OCEAN, SECT_NO_GROUND, SECT_UNDERWATER, SECT_FIREPLANE })
 	{
@@ -275,7 +274,6 @@ int main()
 	rooms[3].sector_type = SECT_FIELD;
 	rooms[0].room_flags = ROOM_SAFE; // A safe hometown may lead to normal encounters.
 	assert(divine_boon_zone_eligible(18, 0));
-
 
 	// Experience objectives are one globally shared zone, even if only one
 	// racewar side is online or the sides play at very different levels.
@@ -308,6 +306,45 @@ int main()
 	divine_boon_state recovered;
 	assert(divine_boon_state_decode(bytes, &recovered) && recovered == legacy);
 
+	// World-aware reconciliation preserves raw audit fields while resolving
+	// crossed legacy targets to the same reachable destination.
+	zones[2].flags = ZONE_CLOSED;
+	auto crossed = legacy;
+	crossed.slots[1] = crossed.slots[0];
+	crossed.slots[1].id = crossed.next_id++;
+	crossed.slots[1].zones = { 20, 18 };
+	assert(divine_boon_state_valid(crossed));
+	const auto duplicate = crossed.slots[1];
+	auto replace_duplicate = crossed;
+	assert(divine_boon_reconcile(&crossed, 3601, divine_boon_shared_target_zone));
+	assert(crossed.slots[0].id && !crossed.slots[1].id);
+	assert(crossed.recent.size() == 1 && crossed.recent[0].objective == duplicate);
+	assert(crossed.history.size() == 2);
+	for (const auto &entry : crossed.history)
+		assert(entry.zone == 20);
+	assert(divine_boon_state_encode(crossed, &bytes));
+	assert(divine_boon_state_decode(bytes, &recovered) && recovered == crossed);
+	assert(divine_boon_replace(&replace_duplicate, 1, 3601, divine_boon_shared_target_zone));
+	assert(replace_duplicate == crossed); // Already retired by reconciliation, exactly once.
+	zones[2].flags = 0;
+
+	for (bool replace : { false, true })
+	{
+		auto retirement = legacy;
+		retirement.slots[0].zones = { 999, 18 };
+		const auto original = retirement.slots[0];
+		assert(replace ? divine_boon_replace(&retirement, 0, 3601,
+						     divine_boon_shared_target_zone) :
+				 divine_boon_reconcile(&retirement, 9 * 3600,
+						       divine_boon_shared_target_zone));
+		assert(retirement.recent[0].objective == original);
+		assert(retirement.history.size() == 2);
+		for (const auto &entry : retirement.history)
+			assert(entry.zone == 18);
+		assert(divine_boon_state_encode(retirement, &bytes));
+		assert(divine_boon_state_decode(bytes, &recovered) && recovered == retirement);
+	}
+
 	// A closed Good approach must never make a newly selected hotspot
 	// faction-specific, even though older saved boons remain shared.
 	exits[0].exit_info = EX_BLOCKED;
@@ -319,8 +356,7 @@ int main()
 	divine_boon_select(fresh, 3600, population, &picks);
 	for (const auto &choice : picks)
 		if (choice.category == divine_boon_category::experience)
-			assert(choice.zones[0] == choice.zones[1] &&
-			       choice.zones[0] != 18);
+			assert(choice.zones[0] == choice.zones[1] && choice.zones[0] != 18);
 	exits[0].exit_info = 0;
 	population[0] = {};
 	population[1].levels = { 40 };
@@ -381,6 +417,29 @@ int main()
 	high_stone.value[2] = 20;
 	stone.next = &high_stone;
 	assert(divine_boon_selection_bootstrap());
+	// The legacy Epic pays in 20; its unused first field must not veto the
+	// selector's Experience choice in 18 or prevent the whole hour publishing.
+	stone.extra2_flags = 0;
+	auto alternate = legacy;
+	alternate.slots[0].category = divine_boon_category::epic;
+	assert(divine_boon_shared_target_zone(alternate.slots[0]) == 20);
+	std::array<divine_boon_population, 2> alternate_population = {};
+	alternate_population[0].levels = { 17 };
+	assert(divine_boon_select(alternate, 7200, alternate_population, &picks));
+	assert(picks.size() == 1 && picks[0].zones == (std::array<int32_t, 2>{ 18, 18 }));
+	authority = alternate;
+	current_population = alternate_population;
+	queue_accepts = true;
+	const auto prior_queues = queue_calls;
+	divine_boon_selection_pulse(7200);
+	assert(queue_calls == prior_queues + 1 && queued.slots[1].zones[0] == 18);
+	assert(divine_boon_state_valid(queued));
+	assert(divine_boon_state_encode(queued, &bytes));
+	assert(divine_boon_state_decode(bytes, &recovered) && recovered == queued);
+	write_pending = false;
+	queue_accepts = false;
+	authority = {};
+	stone.extra2_flags = ITEM2_MAGIC;
 	std::array<divine_boon_population, 2> online = {};
 	online[0].levels = { 17 };
 	assert(divine_boon_select(fresh, 7200, online, &picks));
@@ -396,8 +455,8 @@ int main()
 		for (size_t index = 0; index < ordinary.size(); ++index)
 		{
 			ordinary[index].R_num = -1;
-			ordinary[index].next = index + 1 < ordinary.size() ?
-							 &ordinary[index + 1] : &stone;
+			ordinary[index].next = index + 1 < ordinary.size() ? &ordinary[index + 1] :
+									     &stone;
 		}
 		object_list = ordinary.data();
 		const auto started = std::chrono::steady_clock::now();
@@ -442,9 +501,9 @@ int main()
 	assert(!divine_boon_rotate(&full, 7 * 3600, overflow, 2));
 	assert(full == capped);
 	assert(std::count_if(full.slots.begin(), full.slots.end(), [](const auto &slot)
-				    { return slot.category == divine_boon_category::experience; }) == 3);
+			     { return slot.category == divine_boon_category::experience; }) == 3);
 	assert(std::count_if(full.slots.begin(), full.slots.end(), [](const auto &slot)
-				    { return slot.category == divine_boon_category::epic; }) == 3);
+			     { return slot.category == divine_boon_category::epic; }) == 3);
 	bytes.clear();
 	assert(divine_boon_state_encode(full, &bytes));
 	assert(divine_boon_state_decode(bytes, &recovered) && recovered == full);
@@ -456,6 +515,7 @@ int main()
 	opposing[1].pvp_accounts = 1;
 	assert(divine_boon_select(full, 7 * 3600, opposing, &picks));
 	assert(picks.size() == 1 && picks[0].category == divine_boon_category::pvp);
+	assert(divine_boon_rotate(&full, 7 * 3600, nullptr, 0));
 	assert(divine_boon_rotate(&full, 8 * 3600, picks.data(), picks.size()));
 	assert(!divine_boon_select(full, 8 * 3600, opposing, &picks));
 
@@ -505,7 +565,7 @@ int main()
 	assert(picks.size() == 1 && picks[0].category == divine_boon_category::cargo);
 	assert(divine_boon_rotate(&full, 9 * 3600, picks.data(), picks.size()));
 	assert(std::count_if(full.slots.begin(), full.slots.end(), [](const auto &slot)
-				    { return slot.category == divine_boon_category::cargo; }) == 1);
+			     { return slot.category == divine_boon_category::cargo; }) == 1);
 
 	// Real game-thread tick must preserve the original prepared choice while
 	// a writer is refusing admission, then publish exactly once.
@@ -569,5 +629,6 @@ int main()
 	diagnostic_output.clear();
 	divine_boon_selection_status(&staff);
 	assert(diagnostic_output.find("divine_diag") != std::string::npos);
-	std::cout << "Divine selection: shared zones, 3+3 reserved pools, unchanged cargo/PvP gating, durable rotation and cached rewards passed\n";
+	std::cout
+		<< "Divine selection: shared zones, 3+3 reserved pools, unchanged cargo/PvP gating, durable rotation and cached rewards passed\n";
 }

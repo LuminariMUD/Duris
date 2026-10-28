@@ -130,7 +130,8 @@ void target(P_char ch, const divine_boon_slot &slot, int side, bool history = fa
 		send_to_char(side == 0 ? "    Good defeats qualifying Evil opponents.\r\n" :
 					 "    Evil defeats qualifying Good opponents.\r\n",
 			     ch);
-	else if (side >= 0 && (history ? slot.zones[side] : divine_boon_shared_target_zone(slot)) >= 0)
+	else if (side >= 0 &&
+		 (history ? slot.zones[side] : divine_boon_shared_target_zone(slot)) >= 0)
 	{
 		const int zone = history ? slot.zones[side] : divine_boon_shared_target_zone(slot);
 		if (!history && !(slot.category == divine_boon_category::epic ?
@@ -166,8 +167,7 @@ bool visible(const divine_boon_slot &slot, int side, int64_t now)
 	return slot.category == divine_boon_category::epic ?
 		       (divine_boon_epic_zone_eligible(zone, 0) ||
 			divine_boon_epic_zone_eligible(zone, 1)) :
-		       (divine_boon_zone_eligible(zone, 0) ||
-			divine_boon_zone_eligible(zone, 1));
+		       (divine_boon_zone_eligible(zone, 0) || divine_boon_zone_eligible(zone, 1));
 }
 void next_hour(P_char ch, const divine_boon_state &state, int64_t now)
 {
@@ -234,7 +234,8 @@ void do_divine_boon(P_char ch, char *argument, int /*cmd*/)
 		    strip_ansi(objective.c_str()).size() > objective_width)
 		{
 			const std::string identity =
-				"&n... [" + std::to_string(divine_boon_shared_target_zone(slot)) + "]";
+				"&n... [" + std::to_string(divine_boon_shared_target_zone(slot)) +
+				"]";
 			objective = pad_ansi(objective.c_str(),
 					     objective_width -
 						     static_cast<int>(
@@ -336,13 +337,15 @@ void do_divineboon(P_char ch, char *argument, int /*cmd*/)
 	bool changed = false;
 	auto next = *state;
 	if ((!strcmp(verb, "pause") || !strcmp(verb, "resume")) && !*value)
-		changed = divine_boon_set_paused(&next, !strcmp(verb, "pause"), now);
+		changed = divine_boon_set_paused(&next, !strcmp(verb, "pause"), now,
+						 divine_boon_shared_target_zone);
 	else if (!strcmp(verb, "replace") && *value && !*extra)
 	{
 		char *end = nullptr;
 		const long index = strtol(value, &end, 10);
 		if (end && !*end && index >= 1 && index <= static_cast<long>(DIVINE_BOON_SLOTS))
-			changed = divine_boon_replace(&next, static_cast<size_t>(index - 1), now);
+			changed = divine_boon_replace(&next, static_cast<size_t>(index - 1), now,
+						      divine_boon_shared_target_zone);
 	}
 	else if (!strcmp(verb, "force") && !*value)
 	{
@@ -424,10 +427,9 @@ void announce_divine_event(const divine_boon_slot &slot, bool granted)
 	if (zone == "Unavailable")
 		return;
 	const std::string message =
-		prefix +
-		(granted ? "have blessed " + zone + "&n with " + reward +
-			   "! Type BOON for details.&n\r\n" :
-			   "have withdrawn " + reward + " from " + zone + "&n.&n\r\n");
+		prefix + (granted ? "have blessed " + zone + "&n with " + reward +
+					    "! Type BOON for details.&n\r\n" :
+				    "have withdrawn " + reward + " from " + zone + "&n.&n\r\n");
 	send_to_all(message.c_str());
 }
 } // namespace

@@ -44,7 +44,8 @@ bool valid_objective(const divine_boon_slot &slot)
 	return slot.zones == std::array<int32_t, 2>{ -1, -1 };
 }
 
-void remember(divine_boon_state &state, const divine_boon_slot &slot, int64_t expired_at)
+void remember(divine_boon_state &state, const divine_boon_slot &slot, int64_t expired_at,
+	      divine_boon_target_resolver target_zone = divine_boon_target_zone)
 {
 	state.recent.push_back({ slot, expired_at });
 	if (state.recent.size() > DIVINE_BOON_RECENT_MAX)
@@ -53,28 +54,27 @@ void remember(divine_boon_state &state, const divine_boon_slot &slot, int64_t ex
 		return;
 	// Persist only the shared hotspot in repeat history; the unused
 	// faction-specific legacy target must not block future picks.
-	const int32_t zone = divine_boon_target_zone(slot);
+	const int32_t zone = target_zone(slot);
 	for (size_t side = 0; side < slot.zones.size(); ++side)
 	{
 		auto found = std::find_if(state.history.begin(), state.history.end(),
-					  [&](const divine_boon_zone_history &entry) {
-						  return entry.side == side && entry.zone == zone;
-					  });
+					  [&](const divine_boon_zone_history &entry)
+					  { return entry.side == side && entry.zone == zone; });
 		if (found == state.history.end())
-			state.history.push_back(
-				{ zone, static_cast<uint8_t>(side), expired_at });
+			state.history.push_back({ zone, static_cast<uint8_t>(side), expired_at });
 		else
 			found->expired_at = std::max(found->expired_at, expired_at);
 	}
 }
 
-void expire(divine_boon_state &state, int64_t now)
+void expire(divine_boon_state &state, int64_t now,
+	    divine_boon_target_resolver target_zone = divine_boon_target_zone)
 {
 	for (auto &slot : state.slots)
 	{
 		if (slot.id && now >= slot.expires_at)
 		{
-			remember(state, slot, slot.expires_at);
+			remember(state, slot, slot.expires_at, target_zone);
 			slot = {};
 		}
 	}
@@ -85,10 +85,10 @@ void expire(divine_boon_state &state, int64_t now)
 	{
 		if (!slot.id || !pve(slot.category))
 			continue;
-		const int32_t zone = divine_boon_target_zone(slot);
+		const int32_t zone = target_zone(slot);
 		if (std::find(active_zones.begin(), active_zones.end(), zone) != active_zones.end())
 		{
-			remember(state, slot, now);
+			remember(state, slot, now, target_zone);
 			slot = {};
 		}
 		else
@@ -239,8 +239,9 @@ bool divine_boon_state_valid(const divine_boon_state &state)
 						    slot.zones[side] == other.zones[side])
 							return false;
 				}
-				else if (divine_boon_target_zone(slot) ==
-					 divine_boon_target_zone(other))
+				else if (!legacy && !other_legacy &&
+					 divine_boon_target_zone(slot) ==
+						 divine_boon_target_zone(other))
 					return false;
 			}
 		}
@@ -287,12 +288,13 @@ bool divine_boon_set_mode(divine_boon_state *state, divine_boon_mode mode, int64
 	return publish(state, std::move(next));
 }
 
-bool divine_boon_reconcile(divine_boon_state *state, int64_t now)
+bool divine_boon_reconcile(divine_boon_state *state, int64_t now,
+			   divine_boon_target_resolver target_zone)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state))
 		return false;
 	auto next = *state;
-	expire(next, now);
+	expire(next, now, target_zone);
 	next.last_opportunity = std::max(next.last_opportunity, hour(now));
 	return publish(state, std::move(next));
 }
@@ -317,39 +319,44 @@ bool divine_boon_reset_season(divine_boon_state *state, int64_t now)
 	return next == *state || publish(state, std::move(next));
 }
 
-bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now)
+bool divine_boon_set_paused(divine_boon_state *state, bool paused, int64_t now,
+			    divine_boon_target_resolver target_zone)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
 	    state->mode != divine_boon_mode::divine || state->paused == paused)
 		return false;
 	auto next = *state;
-	expire(next, now);
+	expire(next, now, target_zone);
 	next.paused = paused;
 	next.last_opportunity = std::max(next.last_opportunity, hour(now));
 	return publish(state, std::move(next));
 }
 
-bool divine_boon_replace(divine_boon_state *state, size_t index, int64_t now)
+bool divine_boon_replace(divine_boon_state *state, size_t index, int64_t now,
+			 divine_boon_target_resolver target_zone)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
 	    index >= state->slots.size() || !divine_boon_active(state->slots[index], now))
 		return false;
 	auto next = *state;
-	expire(next, now);
-	remember(next, next.slots[index], now);
-	next.slots[index] = {};
+	expire(next, now, target_zone);
+	if (next.slots[index].id)
+	{
+		remember(next, next.slots[index], now, target_zone);
+		next.slots[index] = {};
+	}
 	next.last_opportunity = std::max(next.last_opportunity, hour(now));
 	return publish(state, std::move(next));
 }
 
 bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon_slot *choices,
-			size_t count)
+			size_t count, divine_boon_target_resolver target_zone)
 {
 	if (!state || !valid_time(now) || !divine_boon_state_valid(*state) ||
 	    state->mode != divine_boon_mode::divine || hour(now) <= state->last_opportunity)
 		return false;
 	auto next = *state;
-	expire(next, now);
+	expire(next, now, target_zone);
 	const bool skipped_hours = hour(now) - next.last_opportunity > DIVINE_BOON_HOUR;
 	next.last_opportunity = hour(now);
 	// Old snapshots can already hold more than three of one PvE type. Preserve
@@ -372,14 +379,15 @@ bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon
 		const size_t category = static_cast<size_t>(choice.category);
 		const size_t cap = choice.category == divine_boon_category::experience ?
 					   DIVINE_BOON_EXPERIENCE_SLOTS :
-					   choice.category == divine_boon_category::epic ?
-						   DIVINE_BOON_EPIC_SLOTS : 1;
+				   choice.category == divine_boon_category::epic ?
+					   DIVINE_BOON_EPIC_SLOTS :
+					   1;
 		if (category_counts[category] >= cap)
 			return false; // Do not silently accept an over-cap proposal.
 		if (pve(choice.category))
 			for (const auto &active : next.slots)
 				if (active.id && pve(active.category) &&
-				    divine_boon_target_zone(active) == divine_boon_target_zone(choice))
+				    target_zone(active) == target_zone(choice))
 					return false;
 		*empty = choice;
 		++category_counts[category];
