@@ -705,7 +705,16 @@ bool sql_player_names_load(void)
 	{
 		if (!row[0] || !row[1])
 			continue;
-		const int pid = atoi(row[0]);
+		char *end = NULL;
+		errno = 0;
+		const unsigned long loaded_pid = strtoul(row[0], &end, 10);
+		if (errno || !end || *end || loaded_pid == 0 || loaded_pid > INT_MAX)
+		{
+			logit(LOG_FILE, "player name index refused: invalid native player ID");
+			mysql_free_result(result);
+			return false;
+		}
+		const int pid = static_cast<int>(loaded_pid);
 		const bool active = row[2] && atoi(row[2]);
 		names_by_pid[pid] = { row[1], active };
 		highest_pid = std::max(highest_pid, pid);
@@ -715,8 +724,12 @@ bool sql_player_names_load(void)
 	}
 	mysql_free_result(result);
 	// Never a deleted character's pid again: rows keyed by pid outlive the character.
-	highest_pid =
-		std::max(highest_pid, static_cast<int>(sql_next_auto_increment("player_data")) - 1);
+	const unsigned long long allocated_next = sql_next_auto_increment("player_data");
+	if (!allocated_next)
+		return false;
+	highest_pid = std::max(highest_pid, allocated_next - 1 >= INT_MAX ?
+						    INT_MAX :
+						    static_cast<int>(allocated_next - 1));
 	return true;
 }
 

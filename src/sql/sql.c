@@ -900,6 +900,17 @@ static bool sql_connection_execute_affected(MYSQL *conn, const char *statement,
 	return *affected != (my_ulonglong)-1 && mysql_next_result(conn) == -1;
 }
 
+static bool sql_use_live_table_statistics(MYSQL *connection)
+{
+	if (!connection)
+		return false;
+	const char *server = mysql_get_server_info(connection);
+	// MySQL's cached AUTO_INCREMENT can predate rows that have since been deleted.
+	return server && (strstr(server, "MariaDB") ||
+			  sql_connection_execute(connection,
+						 "SET SESSION information_schema_stats_expiry=0"));
+}
+
 static uint64_t pwipe_recovery_epoch = 0;
 static bool pwipe_roster_already_recreated = false;
 
@@ -1685,11 +1696,22 @@ MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, .
  * it never gives a deleted row's id out again. */
 unsigned long long sql_next_auto_increment(const char *table)
 {
-	MYSQL_RES *result = db_query("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
-				     "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='%s'",
-				     table);
+	if (!sql_use_live_table_statistics(DB))
+		return 0;
+	// A fresh MySQL AUTO_INCREMENT table reports NULL until its first allocation.
+	MYSQL_RES *result =
+		db_query("SELECT COALESCE(t.AUTO_INCREMENT,1) FROM information_schema.TABLES t "
+			 "JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA=t.TABLE_SCHEMA "
+			 "AND c.TABLE_NAME=t.TABLE_NAME AND c.EXTRA LIKE '%%auto_increment%%' "
+			 "WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME='%s'",
+			 table);
 	if (!result)
 		return 0;
+	if (mysql_warning_count(DB))
+	{
+		mysql_free_result(result);
+		return 0;
+	}
 	MYSQL_ROW row = mysql_fetch_row(result);
 	const unsigned long long next = row && row[0] ? strtoull(row[0], NULL, 10) : 0;
 	mysql_free_result(result);
@@ -4434,10 +4456,7 @@ static bool sql_pwipe_pid_capacity_valid(void)
 {
 	// SQL permits unsigned PIDs, but native account/player identities are signed ints.
 	// Reserve room for the current Overlords and a usable next character identity.
-	// MySQL caches AUTO_INCREMENT in information_schema; safety needs the live value.
-	const char *server = mysql_get_server_info(DB);
-	if (!server ||
-	    (!strstr(server, "MariaDB") && !qry("SET SESSION information_schema_stats_expiry=0")))
+	if (!sql_use_live_table_statistics(DB))
 		return false;
 	MYSQL_RES *result =
 		db_query("SELECT AUTO_INCREMENT > 0 AND AUTO_INCREMENT + "
