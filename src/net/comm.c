@@ -106,6 +106,7 @@
 #include "cmd/help_cache.h"
 #include "account/password_hash.h"
 #include "account/account_reward_config.h"
+#include "account/pwipe_launch.h"
 #include "combat/frag_cap_config.h"
 #include "world/hardcore_config.h"
 #include "item/random_equipment_config.h"
@@ -815,6 +816,10 @@ int main(int argc, char **argv)
 		(void)persistence_log_drain(2000);
 		return ready ? 55 : 58;
 	}
+	std::string launch_error;
+	if (!pwipe_launch_load("lib/pwipe_launch.cfg", launch_error))
+		fatal_boot_error("pwipe-launch", launch_error.c_str());
+	logit(LOG_STATUS, "%s", pwipe_launch_status(time(NULL)).c_str());
 
 	if (persistence_mode_requires_mysql() && initialize_mysql() < 0)
 	{
