@@ -1,6 +1,7 @@
 # October 28 pwipe: account allowlist and launch screen
 
-Status: **implemented and locally qualified; PR closeout in progress; not deployed**.
+Status: **implemented, locally qualified, committed/pushed and ready for review;
+not deployed**.
 Updated October 28, 2026.
 Public opening: **2026-10-28 at 18:00:00 UTC** (`2026-10-28T18:00:00Z`, Unix
 timestamp `1793210400`). Initial approved account: **`mosheh`**.
@@ -348,7 +349,8 @@ contract is a visible launch notice; a custom browser splash is separate UI work
   and the MariaDB development build. Build log:
   `bin/analysis/pwipe-launch-admission-build.log`.
 - Qualification continues on `branch/pwipe-launch-qualification-2026-10-28`,
-  based on #434. Review found the deletion-confirmation continuation preceded
+  based on #434, implementation/qualification commit `828c4f8ec`, review-ready in
+  [PR #435](https://github.com/LuminariMUD/Duris/pull/435). Review found the deletion-confirmation continuation preceded
   the launch check; it now follows it, so an unlisted deletion-fenced account
   still gets the launch denial. Approved deletion fences remain intact. Existing
   deletion contract/menu/runtime tests pass. Final ablation removed an unused
@@ -437,9 +439,16 @@ python3 tests/async/run_pwipe_launch_browser_journey.py \
   `759ce97` plus `ac3ab5f`, with a local Vite server and unrelated HTTP shell/API
   fixtures; registration and denial used a real MUD WebSocket. This is not live
   website/backend acceptance.
-- Remaining closeout: finish the corrected flat-file probe, commit/push/open the
-  qualification PR stacked on #434 and record its link/revision here. The corrected
-  flat-file probe has passed. Deployment and live launch/wipe acceptance remain separate.
+- Implementation closeout is complete. Review/land the server stack in order
+  **#433 → #434 → #435**; retain all three changes when qualifying a deployment.
+  DurisWeb **#118** is the independently reviewable browser prerequisite. Current
+  worktrees are clean after the committed handoff update; the server checkout is
+  left on the qualification branch and the companion on its focused fix branch.
+  No release tag, merge or deployment was performed. The next operational work is
+  the separately authorized deployment/live-wipe/launch acceptance sequence above,
+  including verifying the actual runtime config, existing intended `mosheh` account,
+  production clock, reset readiness and all enabled transports. Local qualification
+  does not establish any of those live facts.
 
 ## Original planning validation
 
