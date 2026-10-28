@@ -184,12 +184,22 @@ at most 78 where practical, counting color tokens as zero width. Shorten or wrap
 headlines too. Never split a color token; keep command syntax together where it
 fits. Read a color-stripped preview as well as the source to catch awkward wraps.
 
+Keep the current season's completed PWIPE announcement pinned immediately below
+the `DURIS PLAYER NEWS` title and its rule, above `Updated:`, the introduction and
+all dated news. Preserve its confirmed date/time and short celebratory wording
+when adding later updates; newest-first ordering applies to the dated sections
+below it. Replace the pinned announcement only for a confirmed later wipe or an
+explicit user request. Keep it compact so the newest release still fits on the
+first page. Adding or restyling this banner does not advance the history coverage
+boundary.
+
 Use this shape, adapting dates, headline and topics to the evidence:
 
 ```text
 &+W======================================================================&n
 &+Y                           DURIS PLAYER NEWS&n
 &+W======================================================================&n
+[Preserve the current season's colored PWIPE announcement and closing rule.]
 &+WUpdated: Month DD, YYYY&n
 
 Welcome back! [Brief, accurate summary of the period and its highlights.]
@@ -231,7 +241,8 @@ Before calling the file fully up to date:
   source prevents a complete audit, report the precise outstanding range.
 - Read the full new text for tone, practical detail and nontechnical clarity.
   Inspect visible widths, complete/reset color tokens, date order, blank lines,
-  final newline and the diff. Keep unrelated edits and the archive intact.
+  final newline and the diff. Confirm the current PWIPE announcement remains
+  pinned above all dated updates. Keep unrelated edits and the archive intact.
 - Run `git diff --check -- lib/information/news` and
   `bash -n scripts/import_help_to_prod.sh`, then always run
   `./scripts/import_help_to_prod.sh --news-only --dry-run` before publication in
