@@ -1142,7 +1142,7 @@ static P_obj materialize_legacy_newbie_item(P_char ch, const prepared_newbie_ite
 		if (obj->type != ITEM_FOOD && obj->type != ITEM_WEAPON &&
 		    obj->type != ITEM_CONTAINER && obj->type != ITEM_QUIVER &&
 		    obj->type != ITEM_SPELLBOOK && obj->type != ITEM_LIGHT &&
-		    obj->type != ITEM_TOTEM && IS_PC(ch))
+		    obj->type != ITEM_TOTEM && obj->type != ITEM_MISSILE && IS_PC(ch))
 			SET_BIT(obj->extra_flags, ITEM_TRANSIENT);
 		if (obj->type == ITEM_SPELLBOOK)
 			for (int spell : prepared.spells)

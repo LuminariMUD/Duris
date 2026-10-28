@@ -1,6 +1,6 @@
 # Issue #428: keep missed starter arrows recoverable
 
-Status: **planned; implementation has not started**. Updated 2026-10-28.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-28.
 Issue: [Duris #428](https://github.com/LuminariMUD/Duris/issues/428).
 Owner: `moshehbenavraham`.
 Branch: `branch/issue-428-starter-arrow-decay`, based on `master` at
@@ -82,8 +82,9 @@ arrows, other transient gear and existing starter-grant publication/ownership.
   add load-time normalization, or perform a production inventory migration.
 - No global decay exception, firing-time flag rewrite, schema, setting, new
   service, generic policy helper or grant-coordinator refactor is needed.
-- This task publishes the plan only. Implementation, PR review/merge and
-  production deployment are subsequent work.
+- The owner's follow-up authorizes implementation, local qualification,
+  documentation, commit/push and a PR on this branch. Merge and production
+  deployment remain subsequent work.
 
 ## Source evidence and files
 
@@ -182,7 +183,7 @@ artifacts under `bin/`; use synthetic accounts and private state, never existing
 player files or production. A full burn-in, live-world acceptance and CI waiting
 are not completion gates for this focused repair. Report any unavailable check.
 
-## Estimate and planning validation
+## Original estimate and planning validation
 
 Estimated **2-3 hours of my active implementation time**, including the focused
 regressions, isolated command/event journey, required build, documentation and
@@ -191,8 +192,8 @@ real decay boundary and preserved hit/returning behavior. Allow up to 4 hours if
 the existing journey fixtures require additional setup. This excludes external
 review, merge scheduling, deployment and any separately requested old-item repair.
 
-Planning validation is recorded below before publication. No implementation or
-post-fix runtime result is claimed by this document.
+The following records the original planning checkpoint. Implementation results
+are recorded separately below.
 
 Planning checks on the baseline (2026-10-28):
 
@@ -205,3 +206,78 @@ Planning checks on the baseline (2026-10-28):
 - `git diff --check`: passed. The prior plan's SHA-256 is unchanged after the move.
 - Only planning documents changed. No production C/C++ change or full server
   build was required for this planning commit; implementation checks remain open.
+
+## Implementation and qualification, 2026-10-28
+
+The production change adds only `ITEM_MISSILE` to the existing grant-added
+transient exemption in `materialize_legacy_newbie_item()`. The starter reference
+now documents missile recovery, unchanged bow/quiver dropping behavior,
+prototype-authored flags and the limitation for already granted arrows.
+
+The expanded existing native regression first failed against the unmodified
+production code at its post-dispatch survival assertion: the real decay path
+had removed a starter arrow. With the one-condition correction it passes all
+384 starter/ordinary, same/adjacent, returning/non-returning and weight/count
+scenarios, each repeated 50 times (19,200 cycles), plus four transient decay
+controls and eight hit/wear/scrapping/returning cases under ASan/UBSan. Both
+legacy Ranger selections still contain ten arrows. Wrong-PID gathering is
+rejected, and UID/condition/encumbrance checks remain exact. Controlled services
+cover allocation, RNG, event dispatch and unrelated combat/ownership I/O; the
+materializer, commands, room placement, decay callback and decay body are real.
+
+The separate `test_starter_arrow_journey.py` reuses the existing minimal-world,
+legacy-object installer, socket client and flat-file build helpers. Keeping it
+separate avoids adding archery setup to the unrelated regrant/latency journey.
+It creates fresh Half-Elf and Wood-Elf Rangers and a second synthetic player as
+the target, then drives real grant, wield/put/wear, fire, event pulses, travel,
+look, gather and save commands. Historical races/classes are explicitly enabled
+only in the fixture. The minimal-world fallback room for Wood Elf has a fixture
+exit to the range. This makes no change to normal character availability or
+hometown rules. Debugging confirmed that sentinel mobs intentionally gain cover
+and are inappropriate targets for this journey; no targeting change was needed.
+
+Both real same-room and adjacent-room cases pass for both Rangers. Half-Elf
+retains all ten original UIDs, full condition, quiver count 10 and weight 11.
+Wood-Elf first lands one ordinary hit, consuming one arrow normally; its nine
+remaining original UIDs then survive both observed misses and gathering, with
+full condition, quiver count 9 and weight 10. The assertion compares each
+successful miss trial's exact before/after UID sets; it does not infer survival
+from missing text. Actual pulses run before the landing-room inspection.
+
+Completed commands and results:
+
+- `python3 tests/async/test_fired_missile_encumbrance.py`: passed, including the
+  expanded ASan/UBSan cases described above.
+- `python3 tests/async/test_newbie_kit_plan.py`: passed 36,360 selections,
+  471 legacy table cells and pure preparation.
+- `python3 tests/async/test_newbie_kit_suitability.py`: passed 603 normal
+  race/class/alignment cases and four existing review regressions.
+- `python3 tests/async/test_newbie_grant_lifecycle.py`: passed under ASan/UBSan.
+- `make -C src -j6`: full MariaDB development build passed with warnings as
+  errors. The existing journey build helper also built the flat-file server.
+- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_issue428_flatfile`:
+  passed both races and both room cases. Omitting the binary argument uses the
+  existing build helper; no pre-existing local binary is required.
+- Python syntax checks, `./scripts/format.sh --check`, all 14 documentation
+  contracts and `git diff --check` passed.
+
+The ignored evidence file is `bin/qualification/issue428/gameplay-report.json`.
+Its qualified flat-file binary SHA-256 is
+`48ebded67a20bc7102d82b629d70ea60b4af22355d7accf0e9ee9c79c5bce9b3`.
+Runtime evidence covers disposable minimal-world flat-file sessions; native
+controls supply deterministic hits, returns, ownership marks and decay checks.
+No MariaDB socket journey, full-world acceptance, migration or production
+operation is claimed. Previously granted arrows keep their saved flags.
+
+Final ablation retains one production condition, an extension of the existing
+native regression and one focused socket journey using current helpers. No
+new production abstraction, flag rewrite at firing time, global decay exception,
+kit expansion, persistence change or migration was added. Task-created debugger
+instrumentation and build scripts were removed; binaries and reports remain
+ignored under `bin/`. The original checkout's unrelated work was preserved.
+
+The initial commit hook selected GCC 16's standard-library headers through the
+host's default Clang search path and failed to parse them (`__builtin_popcountg`).
+The unchanged staged C++ check passes with Clang 18 explicitly selecting the
+installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
+remain enabled; no source suppression or hook bypass is used.
