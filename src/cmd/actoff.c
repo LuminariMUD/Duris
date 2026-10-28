@@ -48,6 +48,7 @@
 #include <string.h>
 #include "world/buildings.h"
 #include "combat/damage.h"
+#include "combat/forced_movement.h"
 #include "combat/grapple.h"
 #include "combat/guard.h"
 #include "guild/guildhall.h"
@@ -3658,15 +3659,67 @@ int chance_kick(P_char ch, P_char victim)
 	return percent_chance;
 }
 
+static void forced_rebound_messages(P_char ch, P_char victim, forced_block reason, bool tackle)
+{
+	const char *attacker, *target, *room;
+	switch (reason)
+	{
+	case forced_block::mountain:
+		attacker =
+			"The mountainside sends $N bouncing back down. So much for the scenic route!";
+		target =
+			"You go flying up the mountainside, almost glimpse the peak, then bounce all the way back down!";
+		room = "$N sails up the mountainside, then tumbles back down in a decidedly undignified heap.";
+		break;
+	case forced_block::cavern_wall:
+		attacker = "$N ricochets off the cavern wall. The rock seems unimpressed.";
+		target =
+			"You meet the cavern wall with a thud and bounce back. The rock wins this round!";
+		room = "$N ricochets off the cavern wall and lands in a heap. The rock remains undefeated.";
+		break;
+	case forced_block::door:
+		attacker = "$N bounces off the firmly shut door. It declines to become a doorway.";
+		target =
+			"You bounce off the firmly shut door. Apparently it is not accepting visitors!";
+		room = "$N bounces off a firmly shut door and lands in a heap.";
+		break;
+	case forced_block::private_room:
+		attacker =
+			"$N tumbles back when there is no room to land. Reservations apparently matter!";
+		target =
+			"There is no room to land, so you tumble back. Next time, make a reservation!";
+		room = "$N finds no room to land and tumbles back into a heap.";
+		break;
+	case forced_block::invalid_room:
+		attacker =
+			"$N starts an impressive flight, but the route goes nowhere. The landing is less impressive.";
+		target =
+			"Your flight plan goes nowhere, so you land right where you started. Gracefully? Hardly.";
+		room = "$N starts an impressive flight and lands right where $E started.";
+		break;
+	default:
+		attacker =
+			"$N meets an uncooperative obstacle and bounces straight back into a heap!";
+		target =
+			"An uncooperative obstacle ends your flight early. You bounce back into a heap!";
+		room = "$N meets an uncooperative obstacle and bounces straight back into a heap.";
+		break;
+	}
+	act(attacker, FALSE, ch, 0, victim, TO_CHAR);
+	act(target, FALSE, ch, 0, victim, TO_VICT);
+	act(room, FALSE, ch, 0, victim, TO_NOTVICT);
+	if (tackle)
+		send_to_char("Your tackle ends here with a less-than-triumphant tumble.\n", ch);
+}
+
 void kick(P_char ch, P_char victim)
 {
 	struct damage_messages messages;
-	int takedown_chance, dam = 0, door, target_room;
+	int takedown_chance, dam = 0, door;
 	int random_number = number(1, 100);
 	int vsize = get_takedown_size(victim);
 	int csize = get_takedown_size(ch);
 	int percent_chance = 0;
-	char buf[512];
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 	{
@@ -3701,8 +3754,20 @@ void kick(P_char ch, P_char victim)
 
 	// debug("&+gKick&n (%s) chance (%d) at (%s).", GET_NAME(ch), percent_chance, GET_NAME(victim));
 
+	if (IS_IMMATERIAL(victim))
+	{
+		act("Your foot passes through $N. Even your best kick needs something solid to meet!",
+		    FALSE, ch, 0, victim, TO_CHAR);
+		act("$n's foot passes harmlessly through you. Being mist has its moments!", FALSE,
+		    ch, 0, victim, TO_VICT);
+		act("$n's kick passes through $N, rearranging absolutely nothing.", FALSE, ch, 0,
+		    victim, TO_NOTVICT);
+		engage(ch, victim);
+		return;
+	}
+
 	if (!notch_skill(ch, SKILL_KICK, get_property("skill.notch.offensive", 7)) &&
-	    (percent_chance < number(1, 100) || IS_IMMATERIAL(victim)))
+	    percent_chance < number(1, 100))
 	{
 		kick_messages(ch, victim, FALSE, &messages);
 		act(messages.attacker, FALSE, ch, 0, victim, TO_CHAR);
@@ -3773,48 +3838,31 @@ void kick(P_char ch, P_char victim)
 			door = number(0, 3);
 		}
 
-		if (CAN_GO(victim, door) && (!check_wall(victim->in_room, door)))
-		{
-			snprintf(buf, sizeof buf,
-				 "Your mighty kick sends $N flying out of the room to the %s!&n",
-				 dirs[door]);
-			act(buf, FALSE, ch, 0, victim, TO_CHAR);
-			snprintf(buf, sizeof buf,
-				 "$n's mighty kick sends $N flying out of the room to the %s!&n",
-				 dirs[door]);
-			act(buf, FALSE, ch, 0, victim, TO_NOTVICT);
-			act("$n's mighty kick sends you flying out of the room!", FALSE, ch, 0,
-			    victim, TO_VICT);
-			target_room = world[victim->in_room].dir_option[door]->to_room;
-			char_from_room(victim);
-
-			if (char_to_room(victim, target_room, -1))
+		const auto movement = move_forced(
+			ch, victim, door,
+			[&]()
 			{
-				act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0,
-				    TO_ROOM);
-				SET_POS(victim, POS_PRONE + GET_STAT(victim));
-				stop_fighting(victim);
-
-				CharWait(victim,
-					 (int)(PULSE_VIOLENCE *
-					       get_property("kick.roomkick.victimlag", 1.000)));
-			}
-		}
-		else
+				send_to_char(
+					"Your mighty kick sends your opponent flying out of the room!\n",
+					ch);
+				act("$n's mighty kick sends an opponent flying out of the room!",
+				    FALSE, ch, 0, nullptr, TO_ROOM);
+				send_to_char("A mighty kick sends you flying out of the room!\n",
+					     victim);
+			});
+		if (movement.status == forced_move_status::arrived)
 		{
-			act("Your mighty kick sends $N crashing onto the ground!", FALSE, ch, 0,
-			    victim, TO_CHAR);
-			act("$n's mighty kick sends you crashing onto the ground!", FALSE, ch, 0,
-			    victim, TO_VICT);
-			act("$n's mighty kick sends $N crashing onto the ground!", FALSE, ch, 0,
-			    victim, TO_NOTVICT);
+			act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0, TO_ROOM);
 			SET_POS(victim, POS_PRONE + GET_STAT(victim));
-
+			CharWait(victim, (int)(PULSE_VIOLENCE *
+					       get_property("kick.roomkick.victimlag", 1.000)));
+		}
+		else if (movement.status == forced_move_status::blocked)
+		{
+			forced_rebound_messages(ch, victim, movement.reason, false);
+			SET_POS(victim, POS_PRONE + GET_STAT(victim));
 			if (!number(0, 24) && !IS_STUNNED(victim))
-			{
-				// Added a little more play in the stun time (from 1 pulse vio. to 2 1/4 pulse vio's).
 				Stun(victim, ch, (PULSE_VIOLENCE * number(4, 9)) / 4, TRUE);
-			}
 			stop_fighting(victim);
 			CharWait(victim, (int)(PULSE_VIOLENCE *
 					       get_property("kick.wallkick.victimlag", 1.5)));
@@ -4841,6 +4889,9 @@ void do_kick(P_char ch, char *argument, int cmd)
 		return;
 	}
 
+	if (!CanDoFightMove(ch, victim))
+		return;
+
 	victim = guard_check(ch, victim);
 
 	if (GET_RACE(ch) == RACE_PLANT)
@@ -4887,21 +4938,24 @@ int chance_roundkick(P_char ch, P_char victim)
 		return 0;
 	}
 
+	if (!CanDoFightMove(ch, victim))
+		return TAKEDOWN_CANCELLED;
+
 	if (IS_IMMATERIAL(victim))
 	{
-		send_to_char("That thing has mist for a body!\n", ch);
-		CharWait(victim, (int)(PULSE_VIOLENCE * 0.250));
-		return 0;
+		act("Your sweeping kick passes through $N. A fine breeze, but a poor impact!",
+		    FALSE, ch, 0, victim, TO_CHAR);
+		act("$n's sweeping kick passes harmlessly through you. Being mist has its moments!",
+		    FALSE, ch, 0, victim, TO_VICT);
+		act("$n's sweeping kick passes through $N, rearranging absolutely nothing.", FALSE,
+		    ch, 0, victim, TO_NOTVICT);
+		CharWait(ch, (int)(PULSE_VIOLENCE * 0.250));
+		return TAKEDOWN_CANCELLED;
 	}
 
 	if (!on_front_line(ch) || !on_front_line(victim))
 	{
 		send_to_char("You can't reach them!\n", ch);
-		return 0;
-	}
-
-	if (!CanDoFightMove(ch, victim))
-	{
 		return 0;
 	}
 
@@ -4969,6 +5023,9 @@ bool roundkick(P_char ch, P_char victim)
 	{
 		return false;
 	}
+
+	if (!CanDoFightMove(ch, victim))
+		return false;
 
 	victim = guard_check(ch, victim);
 	percent_chance = chance_roundkick(ch, victim);
@@ -5051,7 +5108,6 @@ void do_roundkick(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	victim = ParseTarget(ch, argument);
-	victim = guard_check(ch, victim);
 
 	if (!victim)
 	{
@@ -7342,7 +7398,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 {
 	P_char vict = NULL, mount;
 	struct affected_type af;
-	int door, target_room, percent_chance;
+	int door, percent_chance;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -7494,24 +7550,30 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		{
 			door = number(0, NUM_EXITS - 1);
 
-			if (CAN_GO(ch, door) && !check_wall(ch->in_room, door) &&
-			    !IS_OCEAN_ROOM(target_room =
-						   world[ch->in_room].dir_option[door]->to_room))
-			{
-				act("You &+ctackle&N $N &+RHARD&N in the chest and go &+Wflying&N out of the room with $m.",
-				    FALSE, ch, 0, vict, TO_CHAR);
-				act("$n &+ctackles&N you &+RHARD&N and sends you &+Wflying&N out of the room with $M.",
-				    FALSE, ch, 0, vict, TO_VICT);
-				act("$n &+ctackles&N $N &+RHARD&N sending them both &+Wflying&N out of the room!",
-				    FALSE, ch, 0, vict, TO_NOTVICT);
-				//      target_room = world[ch->in_room].dir_option[door]->to_room;
-				if ((mount = get_linked_char(vict, LNK_RIDING)))
-					unlink_char(vict, mount, LNK_RIDING);
-				char_from_room(ch);
-				char_from_room(vict);
-				char_to_room(ch, target_room, -1);
-				char_to_room(vict, target_room, -1);
-			}
+			const int source_room = ch->in_room;
+			const auto movement = move_forced_pair(
+				ch, vict, door,
+				[&]()
+				{
+					send_to_char(
+						"Your mighty tackle sends you both flying out of the room!\n",
+						ch);
+					send_to_char(
+						"A mighty tackle sends you both flying out of the room!\n",
+						vict);
+					for (P_char observer = world[source_room].people; observer;
+					     observer = observer->next_in_room)
+						if (observer->desc && IS_AWAKE(observer) &&
+						    observer->specials.z_cord ==
+							    ch->specials.z_cord)
+							send_to_char(
+								"A mighty tackle sends two combatants tumbling out of the room!\n",
+								observer);
+				});
+			if (movement.status == forced_move_status::interrupted)
+				return;
+			if (movement.status == forced_move_status::blocked)
+				forced_rebound_messages(ch, vict, movement.reason, true);
 		}
 
 		SET_POS(vict, POS_SITTING + GET_STAT(vict));
@@ -8869,10 +8931,9 @@ void do_sweeping_thrust(P_char ch, char *argument, int /*cmd*/)
 
 void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 {
-	int door, target_room, takedown_chance, dam, ch_size, vict_size;
+	int door, takedown_chance, dam, ch_size, vict_size;
 	P_char victim;
 	double percent_chance;
-	char buf[512];
 	struct damage_messages messages = {
 		"You shift your weight and viciously slam your rear hooves into $N with a &+Wstunning&n force!",
 		"$n shifts $s weight and viciously slams $s rear hooves into you with a &+Wstunning&n force!",
@@ -8924,6 +8985,19 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
+	if (IS_IMMATERIAL(victim))
+	{
+		act("Your hooves pass through $N. All that horsepower, and nothing solid to kick!",
+		    FALSE, ch, 0, victim, TO_CHAR);
+		act("$n's hooves pass harmlessly through you. Being mist has its moments!", FALSE,
+		    ch, 0, victim, TO_VICT);
+		act("$n's hooves pass through $N, stirring up more embarrassment than damage.",
+		    FALSE, ch, 0, victim, TO_NOTVICT);
+		CharWait(ch, PULSE_VIOLENCE * 2);
+		engage(ch, victim);
+		return;
+	}
+
 	vict_size = get_takedown_size(victim);
 	ch_size = get_takedown_size(ch);
 
@@ -8956,7 +9030,8 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages);
+	if (melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages) != DAM_NONEDEAD)
+		return;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 		return;
@@ -8990,41 +9065,29 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 		if ((door == DIR_UP) || (door == DIR_DOWN))
 			door = number(0, 3);
 
-		if ((CAN_GO(victim, door)) && (!check_wall(victim->in_room, door)))
-		{
-			snprintf(
-				buf, sizeof buf,
-				"&+LYour mighty rearkick sends&n $N &+Lflying out of the room to the %s!&n",
-				dirs[door]);
-			act(buf, FALSE, ch, 0, victim, TO_CHAR);
-			snprintf(
-				buf, sizeof buf,
-				"$n's &+Lmighty rearkick sends&n $N &+Lflying out of the room to the %s!&n",
-				dirs[door]);
-			act(buf, FALSE, ch, 0, victim, TO_NOTVICT);
-			act("$n's &+Lmighty rearkick sends you flying out of the room!&n", FALSE,
-			    ch, 0, victim, TO_VICT);
-			target_room = world[victim->in_room].dir_option[door]->to_room;
-			char_from_room(victim);
-			if (char_to_room(victim, target_room, -1))
+		const auto movement = move_forced(
+			ch, victim, door,
+			[&]()
 			{
-				act("$n &+Lflies in, crashing on the floor!&n", TRUE, victim, 0, 0,
-				    TO_ROOM);
-				CharWait(victim,
-					 (int)(PULSE_VIOLENCE *
-					       get_property("kick.roomkick.victimlag", 1.000)));
-				SET_POS(victim, POS_PRONE + GET_STAT(victim));
-				stop_fighting(victim);
-			}
-		}
-		else
+				send_to_char(
+					"Your mighty rearkick sends your opponent flying out of the room!\n",
+					ch);
+				act("$n's mighty rearkick sends an opponent flying out of the room!",
+				    FALSE, ch, 0, nullptr, TO_ROOM);
+				send_to_char(
+					"A mighty rearkick sends you flying out of the room!\n",
+					victim);
+			});
+		if (movement.status == forced_move_status::arrived)
 		{
-			act("&+rYour mighty rearkick sends&n $N &+rcrashing onto the ground!&n",
-			    FALSE, ch, 0, victim, TO_CHAR);
-			act("$n's &+rmighty kick sends you crashing onto the ground!&n", FALSE, ch,
-			    0, victim, TO_VICT);
-			act("$n's &+rmighty kick sends&n $N &+rcrashing onto the ground!&n", FALSE,
-			    ch, 0, victim, TO_NOTVICT);
+			act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0, TO_ROOM);
+			CharWait(victim, (int)(PULSE_VIOLENCE *
+					       get_property("kick.roomkick.victimlag", 1.000)));
+			SET_POS(victim, POS_PRONE + GET_STAT(victim));
+		}
+		else if (movement.status == forced_move_status::blocked)
+		{
+			forced_rebound_messages(ch, victim, movement.reason, false);
 			CharWait(victim, (int)(PULSE_VIOLENCE *
 					       get_property("kick.wallkick.victimlag", 1.5)));
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));

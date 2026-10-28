@@ -1162,8 +1162,18 @@ void char_from_room(P_char ch)
 	 * block removal. */
 	if (world[ch->in_room].funct)
 	{
-		if ((*world[ch->in_room].funct)(ch->in_room, ch, CMD_FROMROOM, NULL) ==
-		    ROOM_PROC_LEAVE_VETO)
+		const int source_room = ch->in_room;
+		const uint64_t runtime_id = ch->runtime_id;
+		const uint64_t removal_before = character_removal_generation;
+		const bool was_alive = IS_ALIVE(ch);
+		const int result = (*world[source_room].funct)(source_room, ch, CMD_FROMROOM, NULL);
+		if (result == ROOM_PROC_LEAVE_VETO)
+			return;
+		/* A hook may relocate, remove or replace the character. Check membership
+		 * before touching possibly released storage, then preserve its outcome. */
+		if ((removal_before != character_removal_generation && !char_in_list(ch)) ||
+		    ch->runtime_id != runtime_id || ch->in_room != source_room ||
+		    (was_alive && !IS_ALIVE(ch)))
 			return;
 	}
 
