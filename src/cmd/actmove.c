@@ -22,6 +22,7 @@
 #include "net/gmcp.h"
 #include "world/graph.h"
 #include "combat/justice.h"
+#include "combat/forced_movement.h"
 #include "combat/training_dummy.h"
 #include "world/map.h"
 #include "world/specs.prototypes.h"
@@ -797,31 +798,17 @@ static int can_enter_room_internal(P_char ch, int room, int show_msg, bool water
 		return FALSE;
 	}
 
-	if (world[room].sector_type == SECT_UNDRWLD_MOUNTAIN && IS_MAP_ROOM(ch->in_room) &&
-	    IS_MAP_ROOM(room))
+	const forced_block map_barrier = map_entry_barrier(ch, ch->in_room, room);
+	if (map_barrier != forced_block::none)
 	{
-		if (!IS_TRUSTED(ch))
-		{
-			if (show_msg)
-				send_to_char("The cavern wall is too steep to climb!\n", ch);
-
-			return FALSE;
-		}
-	}
-
-	if (world[room].sector_type == SECT_MOUNTAIN && IS_MAP_ROOM(ch->in_room) &&
-	    IS_MAP_ROOM(room))
-	{
-		if (!IS_TRUSTED(ch))
-		{
-			if (show_msg)
-				send_to_char(
+		if (show_msg)
+			send_to_char(
+				map_barrier == forced_block::cavern_wall ?
+					"The cavern wall is too steep to climb!\n" :
 					"The mountains are too treacherous to be scaled.  Find another way to pass them.\n",
-					ch);
-			return FALSE;
-		}
+				ch);
+		return FALSE;
 	}
-
 	if (IS_ROOM(room, ROOM_PRIVATE))
 	{
 		for (i = 0, pers = world[room].people; pers; pers = pers->next_in_room, i++)

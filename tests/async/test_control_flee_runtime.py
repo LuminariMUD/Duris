@@ -11,7 +11,7 @@ import os
 import subprocess
 import tempfile
 
-from _paths import ROOT, HARNESS_STUBS, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 PRELUDE = r'''
@@ -23,6 +23,7 @@ PRELUDE = r'''
 #include "world/db.h"
 #include "cmd/interp.h"
 #include "combat/grapple.h"
+#include "combat/forced_movement.h"
 #include "telemetry/telemetry_runtime.h"
 #include <cassert>
 #include <cstdio>
@@ -37,6 +38,7 @@ static room_data rooms[NUM_EXITS + 2]{};
 static room_direction_data exits[NUM_EXITS]{};
 static index_data indices[1]{};
 P_room world = rooms;
+extern const int top_of_world = NUM_EXITS + 1;
 P_index obj_index = indices, mob_index = indices;
 static zone_data zones[1]{};
 zone_data *zone_table = zones;
@@ -254,7 +256,7 @@ int main() {
 
 
 def main():
-    build = ROOT / "bin/tests"
+    build = Path(os.environ.get("BIN_ROOT", ROOT / "bin")) / "tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="control-flee-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
@@ -264,7 +266,7 @@ def main():
             "-Wno-unused-parameter", "-fsanitize=address,undefined",
             "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
             "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-            "-I" + str(ROOT / "src"), str(cpp), str(HARNESS_STUBS), "-o", str(binary),
+            "-I" + str(ROOT / "src"), str(cpp), str(source("combat/forced_movement.c")), str(HARNESS_STUBS), "-o", str(binary),
         ], check=True)
         subprocess.run([str(binary)], check=True, env={**os.environ,
             "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",

@@ -34,6 +34,7 @@ index_data indexes[4] = {};
 index_data mob_indexes[1] = {};
 P_index mob_index=mob_indexes;
 P_char character_list=nullptr;
+uint64_t character_removal_generation=0;
 int real_room(int vnum) { return vnum==2300 ? 0 : -1; }
 room_data rooms[2] = {};
 const char *equipment_types[CUR_MAX_WEAR+1] = {};
@@ -584,9 +585,8 @@ source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static 
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
  "P_obj read_object_for_creation(","P_obj read_object_for_recovery(","P_obj read_object_for_creation_repair(","P_obj read_object(int nr, int type)")))
-terminal_extract=extract_function("handler.c","void extract_char(P_char ch)")
-terminal_cleanup=terminal_extract[terminal_extract.index("\t/* clear equipment_list */"):terminal_extract.index("\n\ttraining_dummy_begin_removal(ch);")]
-source=source.replace("// TERMINAL_EXTRACTION", r"""
+terminal_cleanup=extract_function("handler.c","static void extract_char_items(")
+source=source.replace("// TERMINAL_EXTRACTION", terminal_cleanup+"\n"+r"""
 static player_save_pipeline_result terminal_admission=player_save_pipeline_result::queued;
 int calculate_save_room(P_char,int,int room) { return room; }
 void locker_post_save_hook(P_char) {}
@@ -599,9 +599,10 @@ deferred_save_slot *find_deferred_save_slot(int) { return nullptr; }
 void clear_manual_save_status(int) {}
 telemetry_capture_result telemetry_runtime_game_session_exit(P_char,P_desc,telemetry_session_end_reason) { return {}; }
 void terminal_item_cleanup(P_char ch) {
- P_obj obj; int l;
  const bool terminal_items_saved=IS_PC(ch) && IS_SET(ch->runtime_flags,CHAR_RFLAG_TERMINAL_ITEMS_SAVED);
-"""+terminal_cleanup+"\n}\n"+
+ extract_char_items(ch,terminal_items_saved);
+}
+"""+
 extract_function("handler.c","void extract_char_after_terminal_save(P_char ch)")+"\n"+
 extract_function("actoth.c","bool persistence_save_character_terminal(P_char ch, int type)")+"\n"+
 extract_function("actoth.c","bool persistence_save_all_characters_terminal(int type)"))
@@ -1595,10 +1596,16 @@ void monolith_cases() {
 """)
 studio=(ROOT/"src/mob/studioproc.c").read_text()
 studio_actions=studio[studio.index("case SP_A_OLOAD:"):studio.index("case SP_A_TRANSFER:")]
-source=source.replace("// STUDIO_CASES", r"""
+studio_actor_context=(extract_function("studioproc.c","struct sp_ctx")+";\n"+
+ extract_function("utility.c","int char_in_list(const P_char ch)")+"\n"+
+ extract_function("studioproc.c","static void sp_revalidate_actor("))
+source=source.replace("// STUDIO_CASES", studio_actor_context+"\n"+r"""
 void run_studio_factory(bool give,int vnum,P_char actor) {
  struct { int num; } action={vnum}; auto *a=&action;
  P_obj o=nullptr; const int room=actor->in_room;
+ sp_ctx context={}; context.actor=actor; auto *cx=&context;
+ const uint64_t actor_id=actor->runtime_id, removal_before=character_removal_generation;
+ const bool actor_was_alive=IS_ALIVE(actor);
  switch(give ? SP_A_GIVE : SP_A_OLOAD) {
 """+studio_actions+r"""
  }

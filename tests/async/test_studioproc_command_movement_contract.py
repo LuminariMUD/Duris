@@ -20,9 +20,11 @@ goto_start = index(source, "case SP_A_GOTO:", transfer_start)
 damage_start = index(source, "case SP_A_DAMAGE:", goto_start)
 transfer = source[transfer_start:goto_start]
 goto = source[goto_start:damage_start]
-assert contains(transfer, "if (char_to_room(actor, rr, -1))")
+assert contains(transfer, "sp_revalidate_actor(cx, actor, actor_id, removal_before, actor_was_alive);")
+assert contains(transfer, "if (actor->in_room != NOWHERE) { cx->actor = NULL; break; }")
+assert contains(transfer, "const bool entered = char_to_room(actor, rr, -1);")
+assert contains(transfer, "if (entered && actor->in_room == rr)")
 assert contains(transfer, "else cx->actor = NULL;")
-assert not contains(transfer, "if (!char_to_room(actor, rr, -1))")
 assert contains(goto, "if (char_to_room(self, rr, -1))")
 assert contains(goto, "cx->self_ch = NULL;")
 assert contains(goto, "return ret | SP_X_SELFGONE;")

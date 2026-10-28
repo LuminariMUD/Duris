@@ -11,6 +11,24 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Combat callbacks and terminal locker departure (#430)
+
+`python3 tests/async/test_combat_edge_cases_runtime.py` runs the production combat
+handlers and forced movement under ASan/UBSan. Delayed snake bites recheck the
+selected target and combat permission before damage or poison, without another
+guard selection or innate charge. Controls cover safe-room and permission changes,
+target departure/death/removal, attacker removal, and a successful guarded bite.
+
+`python3 tests/async/test_char_from_room_callbacks.py` exercises production room
+departure, locker leave, extraction admission, and item cleanup under ASan/UBSan.
+Busy item movement, a missing locker character, and failed snapshot preparation
+retain the occupant, inventory, group, events, and locker contents. Retrying can
+finish through the writer or its existing deferred-save path; saved inventory is
+retired and unsaved drops remain outside the released locker. Persistence capture
+and writer admission are controlled boundaries, not a live database fault test.
+`test_locker_leave_during_save.py` separately verifies that an older in-flight save
+cannot retire the locker character before the newer terminal contents are written.
+
 ## Legacy object trap restoration (#368)
 
 `python3 tests/async/test_legacy_trap_editor.py` compiles and executes the actual area

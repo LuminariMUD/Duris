@@ -1684,8 +1684,9 @@ bool ac_can_see(P_char sub, P_char obj, bool /*check_z*/)
 		return FALSE;
 	}
 
-	// No idea what happened, but let's hack this until we figure it out.
-	if (sub->in_room == NOWHERE)
+	// Departure cleanup can render messages after either character has left the world.
+	if (!obj || sub->in_room < 0 || sub->in_room > top_of_world || obj->in_room < 0 ||
+	    obj->in_room > top_of_world)
 		return FALSE;
 
 	/* minor detail, sleeping chars can't see squat! */

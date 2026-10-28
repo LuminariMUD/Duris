@@ -275,6 +275,7 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/interp.o \
 				 combat/justice.o \
 				 combat/kick.o \
+				 combat/forced_movement.o \
 				 classes/language.o \
 				 world/limits.o \
 				 item/linked_objects.o\

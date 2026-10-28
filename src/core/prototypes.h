@@ -565,6 +565,7 @@ void do_blood_scent(P_char, char *, int);
 void do_branch(P_char, char *, int);
 void branch(P_char, P_char);
 void bite(P_char, P_char);
+void do_bite_target(P_char, P_char);
 void webwrap(P_char, P_char);
 void web_spray_move_check(P_char);
 void event_web_spray(P_char, P_char, P_obj, void *);
@@ -1127,6 +1128,7 @@ void perform_violence(void);
 void set_fighting(P_char, P_char);
 bool set_fighting(P_char, P_char, bool);
 void stop_fighting(P_char);
+void stop_fighting_for_extraction(P_char);
 void engage(P_char, P_char);
 void soul_taking_check(P_char, P_char);
 struct affected_type *get_ward_from_char(P_char ch);
@@ -2052,6 +2054,7 @@ void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
 
+bool locker_leave_for_extraction(P_char ch);
 bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);
 

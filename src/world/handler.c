@@ -1139,6 +1139,10 @@ bool isname(const char *str, const char *namelist)
  * move a player out of a room
  */
 
+// Terminal extraction must finish unlinking even if a leave hook redirects or vetoes it.
+// The game thread saves and restores this character-specific override around that retry.
+static P_char terminal_departure_override = nullptr;
+
 void char_from_room(P_char ch)
 {
 	P_char i;
@@ -1163,10 +1167,20 @@ void char_from_room(P_char ch)
 	/* Notify room hooks before state changes.  Legacy hooks commonly return
 	 * TRUE for handled synthetic events, so only the explicit veto result may
 	 * block removal. */
-	if (world[ch->in_room].funct)
+	if (world[ch->in_room].funct && terminal_departure_override != ch)
 	{
-		if ((*world[ch->in_room].funct)(ch->in_room, ch, CMD_FROMROOM, NULL) ==
-		    ROOM_PROC_LEAVE_VETO)
+		const int source_room = ch->in_room;
+		const uint64_t runtime_id = ch->runtime_id;
+		const uint64_t removal_before = character_removal_generation;
+		const bool was_alive = IS_ALIVE(ch);
+		const int result = (*world[source_room].funct)(source_room, ch, CMD_FROMROOM, NULL);
+		if (result == ROOM_PROC_LEAVE_VETO)
+			return;
+		/* A hook may relocate, remove or replace the character. Check membership
+		 * before touching possibly released storage, then preserve its outcome. */
+		if ((removal_before != character_removal_generation && !char_in_list(ch)) ||
+		    ch->runtime_id != runtime_id || ch->in_room != source_room ||
+		    (was_alive && !IS_ALIVE(ch)))
 			return;
 	}
 
@@ -3680,12 +3694,63 @@ void hold_durable_pet_items(P_char ch)
 	}
 }
 
-void extract_char(P_char ch)
+static void extract_char_items(P_char ch, bool terminal_items_saved)
 {
 	P_obj obj;
+	int l;
+
+	/* clear equipment_list */
+	for (l = 0; l < MAX_WEAR; l++)
+		if (ch->equipment[l])
+		{
+			// debug: log extract_char equipment cleanup for artifact 58424
+			if (OBJ_VNUM(ch->equipment[l]) == 58424)
+			{
+				logit(LOG_DEBUG,
+				      "[handler.c:extract_char] cleaning up artifact 58424 from '%s' slot=%d in_room=%d",
+				      GET_NAME(ch), l, ch->in_room);
+			}
+			obj = unequip_char(ch, l);
+			/* Added pet check */
+			if (terminal_items_saved || ch->in_room == NOWHERE ||
+			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) || IS_SHOPKEEPER(ch) ||
+			    (IS_NPC(ch) && IS_RANDOM_MOB(ch)))
+			{
+				extract_obj(obj);
+				obj = NULL;
+			}
+			else
+				obj_to_room(obj, ch->in_room);
+		}
+	if (ch && ch->carrying)
+	{
+		P_obj next_obj;
+
+		for (obj = ch->carrying; obj != NULL; obj = next_obj)
+		{
+			next_obj = obj->next_content;
+
+			if (terminal_items_saved || ch->in_room == NOWHERE || IS_SHOPKEEPER(ch) ||
+			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) ||
+			    (IS_NPC(ch) && mob_index[GET_RNUM(ch)].virtual_number >= 100000 &&
+			     mob_index[GET_RNUM(ch)].virtual_number < 110000))
+			{
+				extract_obj(obj);
+				obj = NULL;
+			}
+			else
+			{
+				obj_from_char(obj);
+				obj_to_room(obj, ch->in_room);
+			}
+		}
+	}
+}
+
+void extract_char(P_char ch)
+{
 	P_char k;
 	P_desc t_desc;
-	int l;
 	struct affected_type *af, *nextaf;
 
 	if (!ch)
@@ -3693,6 +3758,10 @@ void extract_char(P_char ch)
 		logit(LOG_EXIT, "No ch in extract_char");
 		return;
 	}
+	// A locker departure can fail before it owns a coherent terminal snapshot.
+	// Leave the occupant and its inventory/relationships intact for a later retry.
+	if (!locker_leave_for_extraction(ch))
+		return;
 	++character_removal_generation;
 	item_actions_character_leaving(ch);
 	world_recovery_capture_forget_character(ch);
@@ -3841,56 +3910,68 @@ void extract_char(P_char ch)
 
 	disarm_char_nevents(ch, NULL);
 
-	/* clear equipment_list */
-	for (l = 0; l < MAX_WEAR; l++)
-		if (ch->equipment[l])
-		{
-			// debug: log extract_char equipment cleanup for artifact 58424
-			if (OBJ_VNUM(ch->equipment[l]) == 58424)
-			{
-				logit(LOG_DEBUG,
-				      "[handler.c:extract_char] cleaning up artifact 58424 from '%s' slot=%d in_room=%d",
-				      GET_NAME(ch), l, ch->in_room);
-			}
-			obj = unequip_char(ch, l);
-			/* Added pet check */
-			if (terminal_items_saved || ch->in_room == NOWHERE ||
-			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) || IS_SHOPKEEPER(ch) ||
-			    (IS_NPC(ch) && IS_RANDOM_MOB(ch)))
-			{
-				extract_obj(obj);
-				obj = NULL;
-			}
-			else
-				obj_to_room(obj, ch->in_room);
-		}
-	if (ch && ch->carrying)
-	{
-		P_obj next_obj;
+	extract_char_items(ch, terminal_items_saved);
 
-		for (obj = ch->carrying; obj != NULL; obj = next_obj)
-		{
-			next_obj = obj->next_content;
-
-			if (terminal_items_saved || ch->in_room == NOWHERE || IS_SHOPKEEPER(ch) ||
-			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) ||
-			    (IS_NPC(ch) && mob_index[GET_RNUM(ch)].virtual_number >= 100000 &&
-			     mob_index[GET_RNUM(ch)].virtual_number < 110000))
-			{
-				extract_obj(obj);
-				obj = NULL;
-			}
-			else
-			{
-				obj_from_char(obj);
-				obj_to_room(obj, ch->in_room);
-			}
-		}
-	}
-
+	const uint64_t room_removal_before = character_removal_generation;
+	const uint64_t room_removal_id = ch->runtime_id;
 	training_dummy_begin_removal(ch);
 	char_from_room(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	// A departure hook can create fresh relationships after the initial teardown.
+	if (ch->followers || ch->following)
+		die_follower(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	if (ch->group)
+		group_remove_member(ch);
+	if (ch->linking || ch->linked)
+		clear_all_links(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	stop_fighting_for_extraction(ch);
+	if (ch->nevents)
+		disarm_char_nevents(ch, NULL);
+	if (ch->lobj)
+		remove_all_linked_objects(ch);
+	extract_char_items(ch, terminal_items_saved);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	if (ch->in_room != NOWHERE)
+	{
+		// A nested dummy extraction may have replaced the original override.
+		training_dummy_begin_removal(ch);
+		P_char previous_override = terminal_departure_override;
+		terminal_departure_override = ch;
+		char_from_room(ch);
+		terminal_departure_override = previous_override;
+	}
 	training_dummy_end_removal(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+		return;
+	if (ch->in_room != NOWHERE)
+	{
+		logit(LOG_DEBUG, "extract_char: could not unlink character %llu from room %d",
+		      static_cast<unsigned long long>(room_removal_id), ch->in_room);
+		return;
+	}
 
 	if (IS_NPC(ch))
 		shopkeeper_mob_extracted(ch);

@@ -956,6 +956,18 @@ static void sp_execute_item_ability(struct sp_trig *t, struct sp_ctx *cx, struct
 		cx->blocked = TRUE;
 }
 
+// An action can extract or replace its actor while the same trigger continues.
+// Compare membership before touching storage after a removal, then verify identity.
+static void sp_revalidate_actor(struct sp_ctx *cx, P_char expected, uint64_t actor_id,
+				uint64_t removal_before, bool was_alive)
+{
+	if (!expected || cx->actor != expected)
+		return;
+	if ((removal_before != character_removal_generation && !char_in_list(expected)) ||
+	    expected->runtime_id != actor_id || (was_alive && !IS_ALIVE(expected)))
+		cx->actor = nullptr;
+}
+
 static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 {
 	int i, room, rr, dam, cap, pick, n;
@@ -972,6 +984,9 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 
 		self = (cx->targ == SP_T_MOB) ? cx->self_ch : NULL;
 		actor = cx->actor;
+		const uint64_t actor_id = actor ? actor->runtime_id : 0;
+		const bool actor_was_alive = actor && IS_ALIVE(actor);
+		const uint64_t removal_before = character_removal_generation;
 		room = sp_room_of(cx);
 
 		/* self validity: never touch a dead / extracted target */
@@ -1003,7 +1018,10 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 				one.num_actions = 1;
 				one.actions[0] = *b;
 				one.chance = 100;
-				if (sp_execute(&one, cx) & SP_X_SELFGONE)
+				const int result = sp_execute(&one, cx);
+				sp_revalidate_actor(cx, actor, actor_id, removal_before,
+						    actor_was_alive);
+				if (result & SP_X_SELFGONE)
 					return ret | SP_X_SELFGONE;
 			}
 			i += n;
@@ -1113,6 +1131,9 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 			{
 				const uint64_t uid = o->obj_uid;
 				obj_to_char(o, actor);
+				sp_revalidate_actor(cx, actor, actor_id, removal_before,
+						    actor_was_alive);
+				actor = cx->actor;
 				o = find_live_object(o, uid);
 				if (!o)
 					break;
@@ -1121,7 +1142,7 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 					extract_obj(o, FALSE);
 					break;
 				}
-				if (OBJ_CARRIED(o) && o->loc.carrying == actor)
+				if (actor && OBJ_CARRIED(o) && o->loc.carrying == actor)
 				{
 					act("$p materializes in your hands.", FALSE, actor, o, 0,
 					    TO_CHAR);
@@ -1137,7 +1158,21 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 			{
 				act("$n vanishes in a swirl of mist.", TRUE, actor, 0, 0, TO_ROOM);
 				char_from_room(actor);
-				if (char_to_room(actor, rr, -1))
+				sp_revalidate_actor(cx, actor, actor_id, removal_before,
+						    actor_was_alive);
+				if (!cx->actor)
+					break;
+				if (actor->in_room != NOWHERE)
+				{
+					cx->actor = NULL;
+					break;
+				}
+				const bool entered = char_to_room(actor, rr, -1);
+				sp_revalidate_actor(cx, actor, actor_id, removal_before,
+						    actor_was_alive);
+				if (!cx->actor)
+					break;
+				if (entered && actor->in_room == rr)
 				{
 					act("$n arrives in a swirl of mist.", TRUE, actor, 0, 0,
 					    TO_ROOM);
@@ -1148,8 +1183,7 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 					}
 				}
 				else
-					cx->actor =
-						NULL; /* freed or displaced: never touch again */
+					cx->actor = NULL;
 			}
 			break;
 
@@ -1333,11 +1367,13 @@ static int sp_execute(struct sp_trig *t, struct sp_ctx *cx)
 				cx->self_obj = NULL;
 				ret |= SP_X_SELFGONE;
 			}
+			sp_revalidate_actor(cx, actor, actor_id, removal_before, actor_was_alive);
 			return ret;
 
 		default:
 			break;
 		}
+		sp_revalidate_actor(cx, actor, actor_id, removal_before, actor_was_alive);
 	}
 	return ret;
 }
@@ -1475,15 +1511,18 @@ static int sp_run(struct sp_rec *rec, int ev, struct sp_ctx *cx, const char *low
 			break;
 		}
 
+		P_char actor = cx->actor;
+		const uint64_t actor_id = actor ? actor->runtime_id : 0;
+		const uint64_t removal_before = character_removal_generation;
 		one = sp_fire(t, cx);
+		// Preserve the existing rule that dead actors do not carry into later triggers.
+		sp_revalidate_actor(cx, actor, actor_id, removal_before, true);
 		r |= one;
 		if (one & SP_X_SELFGONE)
 			break;
 		if (cx->targ == SP_T_MOB &&
 		    (!cx->self_ch || (!cx->self_dead_ok && !IS_ALIVE(cx->self_ch))))
 			break;
-		if (cx->actor && !IS_ALIVE(cx->actor))
-			cx->actor = NULL;
 	}
 	return r;
 }
@@ -1705,8 +1744,27 @@ int studioproc_room(int room, P_char actor, int cmd, char *arg)
 			return FALSE;
 	}
 
-	if (rec->prev_room && (*rec->prev_room)(room, actor, cmd, arg))
-		return TRUE;
+	const bool directional_arrival = cmd >= -50 && cmd < -50 + NUM_EXITS;
+	const uint64_t actor_id = directional_arrival && actor ? actor->runtime_id : 0;
+	if (rec->prev_room)
+	{
+		const int result = (*rec->prev_room)(room, actor, cmd, arg);
+		if (cmd == CMD_FROMROOM && result == ROOM_PROC_LEAVE_VETO)
+			return result;
+		if (result)
+			return TRUE;
+		// Arrival procs may extract, replace, kill or redirect the entrant.
+		// Do not dispatch Studio actions against stale or relocated storage.
+		if (directional_arrival && actor &&
+		    (find_character_by_runtime_id(actor_id) != actor || !IS_ALIVE(actor) ||
+		     actor->in_room != room))
+			return FALSE;
+	}
+
+	/* char_to_room sends directional room arrivals as -50 + direction.
+	 * Keep that value for the previous C proc, then dispatch Studio ENTER. */
+	if (directional_arrival)
+		cmd = CMD_TOROOM;
 
 	memset(&cx, 0, sizeof(cx));
 	cx.targ = SP_T_ROOM;

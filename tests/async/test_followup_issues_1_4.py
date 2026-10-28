@@ -3,6 +3,7 @@
 from _paths import SRC
 from pathlib import Path
 from contract_text import contains
+from _source_contract import function_body
 
 root = Path(__file__).resolve().parents[2]
 locker = (SRC / "storage_lockers.c").read_text()
@@ -51,7 +52,9 @@ assert contains(shutdown_body, 'panic_corruption("shutdown_ships", "write_ship f
 
 # Room-exit callbacks may veto only with the explicit sentinel; ordinary legacy
 # TRUE results must remain notifications rather than removal vetoes.
-assert contains(handler, "CMD_FROMROOM, NULL) == ROOM_PROC_LEAVE_VETO")
+char_from = function_body(handler, r"void\s+char_from_room\s*\(\s*P_char\s+ch")
+assert char_from.index("CMD_FROMROOM, NULL)") < char_from.index("ROOM_PROC_LEAVE_VETO")
+assert char_from.index("ROOM_PROC_LEAVE_VETO") < char_from.index("item_actions_character_leaving(ch)")
 assert contains(locker, "static bool locker_handle_leave")
 assert contains(locker, "if (!locker_handle_leave(ch, pLocker, room, troom))\n\t\t\treturn ROOM_PROC_LEAVE_VETO;")
 

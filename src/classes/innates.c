@@ -1645,10 +1645,10 @@ void event_snakebite(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	};
 	int i;
 
-	if (GET_STAT(ch) <= STAT_INCAP)
+	if (!ch || !char_in_list(ch) || GET_STAT(ch) <= STAT_INCAP || ch->in_room < 0)
 		return;
 
-	if (!is_char_in_room(victim, ch->in_room))
+	if (!is_char_in_room(victim, ch->in_room) || !CanDoFightMove(ch, victim))
 		return;
 
 	if ((GET_LEVEL(ch) + STAT_INDEX(GET_C_AGI(ch))) <
@@ -1835,23 +1835,38 @@ void bite(P_char ch, P_char victim)
 	insectbite(ch, victim);
 }
 
-void do_bite(P_char ch, char *arg, int /*cmd*/)
+void do_bite_target(P_char ch, P_char victim)
 {
-	P_char victim;
-
-	if (!(victim = parse_victim(ch, arg, 0)))
-	{
-		send_to_char("Target who?\n", ch);
+	if (!CanDoFightMove(ch, victim))
 		return;
-	}
 
-	if (!check_innate_time(ch, INNATE_BITE, get_property("innate.timer.bite", 12)))
+	if (!can_use_innate(ch, INNATE_BITE))
 	{
 		send_to_char("You have no &+gvenom&N left!\n", ch);
 		return;
 	}
 
+	victim = guard_check(ch, victim);
+	if (!CanDoFightMove(ch, victim))
+		return;
+	if (!check_innate_time(ch, INNATE_BITE, get_property("innate.timer.bite", 12)))
+	{
+		send_to_char("You have no &+gvenom&N left!\n", ch);
+		return;
+	}
 	bite(ch, victim);
+}
+
+void do_bite(P_char ch, char *arg, int /*cmd*/)
+{
+	P_char victim = parse_victim(ch, arg, 0);
+	if (!victim)
+	{
+		send_to_char("Target who?\n", ch);
+		return;
+	}
+
+	do_bite_target(ch, victim);
 }
 
 void innate_gaze(P_char ch, P_char victim)
@@ -3993,10 +4008,13 @@ void branch(P_char ch, P_char victim)
 		"$n lifts you lightly and &+rsmashes&n you against the &+yground!&n",
 		"$n lifts $N lightly and &+rsmashes&n $M against the &+yground!&n",
 	};
-	if (!IS_ALIVE(ch) || !IS_ALIVE(victim) || ch->in_room != victim->in_room)
+	if (!IS_ALIVE(ch) || !IS_ALIVE(victim) || ch->in_room != victim->in_room ||
+	    !CanDoFightMove(ch, victim))
 		return;
 
 	victim = guard_check(ch, victim);
+	if (!CanDoFightMove(ch, victim))
+		return;
 
 	act("One of your branches reaches towards $N.", FALSE, ch, 0, victim, TO_CHAR);
 	act("One of $n's branches reaches towards $N.", FALSE, ch, 0, victim, TO_NOTVICT);

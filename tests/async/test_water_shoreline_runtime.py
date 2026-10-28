@@ -9,6 +9,7 @@ combat initiation and general effect services are controlled fixtures.
 import os
 import re
 import subprocess
+from pathlib import Path
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
@@ -17,6 +18,7 @@ prelude = r'''
 #include "world/weather.h"
 #include "world/graph.h"
 #include "combat/grapple.h"
+#include "combat/forced_movement.h"
 #include "world/falling.h"
 #include "telemetry/telemetry_runtime.h"
 #include <cassert>
@@ -289,12 +291,12 @@ int main() {
 }
 '''
 
-build = ROOT / 'bin/tests/water-shoreline'
+build = Path(os.environ.get('BIN_ROOT', ROOT / 'bin')) / 'tests/water-shoreline'
 build.mkdir(parents=True,exist_ok=True)
 cpp,binary=build/'harness.cpp',build/'harness'
 cpp.write_text(prelude+commands+structure+'\n'+'\n'.join(extract_function(file,sig) for file,sig in functions)+core+interpreter+driver)
 subprocess.run(['g++','-std=c++20','-O1','-g','-ffunction-sections','-fdata-sections',
                 '-fsanitize=address,undefined','-fno-omit-frame-pointer','-fno-pie','-no-pie','-pthread',
-                '-I'+str(ROOT/'src'),str(cpp),str(ROOT/'src/persistence/latency_trace.c'),
+                '-I'+str(ROOT/'src'),str(cpp),str(source('combat/forced_movement.c')),str(ROOT/'src/persistence/latency_trace.c'),
                 str(HARNESS_STUBS),'-Wl,--gc-sections','-lbsd','-o',str(binary)],check=True)
 subprocess.run([str(binary)],env=dict(os.environ,DURIS_NEVENT_BUDGET_USEC='0',DURIS_NEVENT_MAX_CALLBACKS='0'),check=True)
