@@ -551,11 +551,13 @@ equipment recovery below the maximum still drains normally. The native sanitizer
 regression covers both cases at recovery dials 1, 5 and 10.
 
 The same native test executes real `affect_update()`, `StartRegen()`, policy and
-callbacks after combat and sunlight suppression. It covers Human/Pillithid/Illithid
+callbacks after sunlight suppression while combat remains active. It covers Human/Pillithid/Illithid
 PSP users, including racial warriors and sorcerers, missing/full/over-cap PSP,
 negative recovery at full, fresh elapsed credit and duplicate suppression. An
 ordinary human warrior remains excluded. The full-world combat case uses a
-Pillithid warrior to verify the periodic restart beyond psionic classes.
+Pillithid warrior to verify ordinary recovery through combat entry and exit beyond
+psionic classes, then verifies fresh in-combat casting restarts for Psionicist and
+MindFlayer from full reserves.
 Its disposable runtime creates the launcher's `logs/log/.since` marker so log
 retention does not archive the callback trace as an unknown-age log set.
 
@@ -564,15 +566,16 @@ functions, PSP callback, `StartRegen()`, difficulty module and `use_spell()` und
 ASan/UBSan. It checks the POW+INT base and truncation, recovery dials 1/5/10,
 PC/NPC behavior, signed equipment modifiers, feeblemind, sunlight exemptions,
 all six statuses crossed with all four postures and meditation, combat entry with
-fractional credit, delayed callbacks, full/zero/over-cap bounds, one completion
+preserved fractional credit, delayed callbacks, full/zero/over-cap bounds, one completion
 message, psionicist/mindflayer casting restarts, duplicate starts and NPC cadence.
 One- and four-pulse recovery agrees with the rate within one point of float credit.
 
 The fixture queue and ordinary engine dependencies are stubs. Meditation flags and
 combat state are seeded. The existing `test_nevent_scheduler_runtime.py` now also
 executes the real PSP callback and admission on the production queue, with a controlled
-rate: duplicate suppression, NPC first/recurring cadence, delayed events, combat
-termination, fresh restart payload and full termination pass under ASan/UBSan.
+rate: duplicate suppression, NPC first/recurring cadence, delayed events, continued
+combat recovery, incapacitation termination, fresh restart payload during combat and
+full termination pass under ASan/UBSan.
 Every queued callback asserts its elapsed interval: one/four pulses for PCs and
 four initially then five for NPCs. Four-pulse delays use the previous callback tick,
 so advancing the heartbeat cannot introduce a three- or five-pulse interval.
@@ -589,6 +592,9 @@ rest command, rate and callback are actual source functions.
 `run_psp_regen_journey.py --binary bin/server/dms_issue57_flatfile --output
 bin/analysis/issue57-plan/journey.json` drives a fresh flat-file full-world server via
 Telnet; run `make world` first to generate the authored world in a clean checkout.
+As of 2026-10-28, the journey expects ordinary combat recovery, including fresh casting
+restarts, and asserts an active training-dummy opponent throughout its combat samples.
+The following measurements describe the earlier combat-suppression policy.
 Against production sources `0b245add9223f12bd483cd451a15d805a37733a6`,
 current POW=INT=100, no equipment/boons/rested bonus, dials 5/1/10 display 80/160/40
 and gain 33/65/17 PSP over 123 traced callbacks each (staff snapshots bound elapsed

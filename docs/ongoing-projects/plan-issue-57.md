@@ -3,6 +3,13 @@
 Status: RG-01/02/03 implemented and locally qualified; delivery is #201 → #202 → #203.
 Prepared 2026-10-18 for [issue #57](https://github.com/LuminariMUD/Duris/issues/57).
 Delivery branch: `branch/issue-57-regen-consistency`.
+
+**Policy update, 2026-10-28:** combat now permits ordinary PSP regeneration through
+the shared policy, including fresh casting restarts and pending fractional credit.
+This supersedes the combat-suppression requirement and combat-exit restart behavior
+recorded below. Status and sunlight gates, modifiers, bounds and scheduler accounting
+remain in force; the current contract is in [CODEBASE](../reference/CODEBASE.md#psp-regeneration).
+
 Original base for publication: `43046a57b63f1065aca03ba4a2fc0fb58297f454`.
 Review stack rebased onto master `2378b49162ecf04d81366d3863355f93889da27a`.
 All five original commits have identical patches after rebasing; the added master
