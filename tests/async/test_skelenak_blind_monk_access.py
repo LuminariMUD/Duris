@@ -3,6 +3,8 @@
 
 from pathlib import Path
 import re
+import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 AREAS = ROOT / "areas"
@@ -13,6 +15,88 @@ def record(path: Path, vnum: int) -> str:
     match = re.search(rf"(?ms)^#{vnum}\n(.*?)(?=^#\d+\n|\Z)", text)
     assert match, f"missing VNUM {vnum} in {path}"
     return match[1]
+
+
+
+def check_climb_targeting(teleport: str) -> None:
+    """Compile the production lookup branch with isolated object-targeting stubs."""
+    selection = re.search(
+        r"(?s)bool check_item_teleport\(P_char ch, char \*arg, int cmd\).*?"
+        r"\n\troom = ch->in_room;\n(.*?)\n\tif \(!obj\)", teleport,
+    )
+    assert selection, "cannot extract actual item teleport lookup branch"
+    harness = r"""
+#include <cassert>
+#include <cstring>
+
+struct Object {
+    const char *name;
+    int type;
+    int value[8];
+    Object *next_content;
+};
+struct Character { int in_room; Object *carrying; };
+struct Room { Object *contents; };
+using P_obj = Object *;
+using P_char = Character *;
+Room world[1] = {};
+enum {
+    CMD_NORTH = 1, CMD_DOWN = 6, CMD_NORTHWEST = 541, CMD_SE = 548,
+    CMD_CLIMB = 556, ITEM_TELEPORT = 25,
+    FIND_OBJ_INV = 1, FIND_OBJ_EQUIP = 2, FIND_OBJ_ROOM = 4
+};
+
+// Model the documented inventory-first generic_find selection order.
+void generic_find(char *arg, int flags, P_char ch, P_char *target, P_obj *obj) {
+    *target = nullptr;
+    *obj = nullptr;
+    if (!arg || !*arg) return;
+    if ((flags & FIND_OBJ_INV) && ch->carrying &&
+        std::strcmp(arg, ch->carrying->name) == 0) {
+        *obj = ch->carrying;
+        return;
+    }
+    if ((flags & FIND_OBJ_ROOM) && world[ch->in_room].contents &&
+        std::strcmp(arg, world[ch->in_room].contents->name) == 0)
+        *obj = world[ch->in_room].contents;
+}
+
+P_obj select_climb_target(P_char ch, char *arg, int cmd) {
+    P_obj obj = nullptr, obj_next;
+    P_char dummy = nullptr;
+    int room = ch->in_room;
+    (void)room;
+    /* PRODUCTION_LOOKUP */
+    return obj;
+}
+
+int main() {
+    Object roomRock = {"rock", ITEM_TELEPORT, {4153, CMD_CLIMB, -1}, nullptr};
+    Object carriedRing = {"rock", 11, {}, nullptr};
+    Object carriedPortal = {"rock", ITEM_TELEPORT, {9999, CMD_CLIMB, -1}, nullptr};
+    Character player = {0, &carriedRing};
+    world[0].contents = &roomRock;
+    char rock[] = "rock";
+    char empty[] = "";
+    // A non-portal ring cannot shadow the quest entrance.
+    assert(select_climb_target(&player, rock, CMD_CLIMB) == &roomRock);
+    assert(roomRock.value[0] == 4153);
+    // Bare climb stays with do_climb; it must not select the portal.
+    assert(select_climb_target(&player, empty, CMD_CLIMB) == nullptr);
+    // Preserve legitimate carried-portal precedence.
+    player.carrying = &carriedPortal;
+    assert(select_climb_target(&player, rock, CMD_CLIMB) == &carriedPortal);
+    player.carrying = nullptr;
+    assert(select_climb_target(&player, rock, CMD_CLIMB) == &roomRock);
+}
+""".replace("/* PRODUCTION_LOOKUP */", selection[1])
+    with tempfile.TemporaryDirectory(prefix="skelenak-climb-") as tmp:
+        source = Path(tmp) / "lookup.cpp"
+        binary = Path(tmp) / "lookup"
+        source.write_text(harness)
+        subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+                        str(source), "-o", str(binary)], check=True)
+        subprocess.run([str(binary)], check=True)
 
 
 def check() -> None:
@@ -64,7 +148,8 @@ def check() -> None:
     assert re.search(r"(?m)^R I 4029$", quest), "icy leggings reward missing"
     assert "leggings frozen icy" in record(AREAS / "obj/caves_skelenak.obj", 4029)
 
-    print("PASS: climb rock reaches the blind monk, returns, and retains icy leggings quest")
+    check_climb_targeting(teleport)
+    print("PASS: blind monk portal content and climb object-selection regression")
 
 
 if __name__ == "__main__":
