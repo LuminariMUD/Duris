@@ -1840,7 +1840,7 @@ void do_bite_target(P_char ch, P_char victim)
 	if (!CanDoFightMove(ch, victim))
 		return;
 
-	if (!check_innate_time(ch, INNATE_BITE, get_property("innate.timer.bite", 12)))
+	if (!can_use_innate(ch, INNATE_BITE))
 	{
 		send_to_char("You have no &+gvenom&N left!\n", ch);
 		return;
@@ -1849,6 +1849,11 @@ void do_bite_target(P_char ch, P_char victim)
 	victim = guard_check(ch, victim);
 	if (!CanDoFightMove(ch, victim))
 		return;
+	if (!check_innate_time(ch, INNATE_BITE, get_property("innate.timer.bite", 12)))
+	{
+		send_to_char("You have no &+gvenom&N left!\n", ch);
+		return;
+	}
 	bite(ch, victim);
 }
 

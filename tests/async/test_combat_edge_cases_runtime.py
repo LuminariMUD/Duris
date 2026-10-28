@@ -51,10 +51,11 @@ struct Delivered { P_char recipient; std::string text; };
 static std::vector<Delivered> delivered;
 static P_char parsed_target, lookup_target, guard_target, guard_checked_target;
 static P_char forbidden_target, bitten_target, damage_target;
-static bool fight_allowed, improved, magical_wall, castle_wall, innate_available;
+static affected_type innate_timer{};
+static bool fight_allowed, improved, magical_wall, castle_wall;
 static bool hide_victim_from_stranger, actor_front, victim_front;
 static int damage_calls, guard_calls, victim_waits, actor_waits, stops, actor_lag;
-static int notch_calls, total_waits, kick_skill, roundkick_skill, appear_calls, innate_checks;
+static int notch_calls, total_waits, kick_skill, roundkick_skill, appear_calls;
 static int callback_calls, arrivals, departure_calls, arrival_direction, engaged;
 static P_char riding, rider;
 enum class Leave { ordinary, veto, redirect, kill, extract, replace, retarget, seal,
@@ -217,6 +218,7 @@ void debug(const char *, ...) {}
 void send_to_room_except_two(const char *text, int, P_char, P_char) { fixture_messages.emplace_back(text); }
 float get_property(const char *, double value) { return value; }
 int get_property(const char *, int value) { return value; }
+int get_innate_property(int, const char *, int value) { return value; }
 int number(int minimum, int maximum)
 {
     // Every actual launch roll succeeds and selects the fixture's north exit.
@@ -241,12 +243,6 @@ P_char guard_check(P_char, P_char target)
 }
 P_char ParseTarget(P_char, char *) { return parsed_target; }
 P_char get_char_room_vis(P_char, const char *) { return lookup_target; }
-bool check_innate_time(P_char, int innate, int)
-{
-    assert(innate == INNATE_BITE);
-    ++innate_checks;
-    return innate_available;
-}
 int on_front_line(P_char ch) { return ch == &actor ? actor_front : ch == &victim ? victim_front : true; }
 bool has_innate(P_char ch, int innate)
 {
@@ -265,7 +261,13 @@ void engage(P_char, P_char) { ++engaged; }
 void set_fighting(P_char ch, P_char target) { ch->specials.fighting = target; }
 void stop_fighting(P_char ch) { ++stops; ch->specials.fighting = nullptr; }
 void set_short_affected_by(P_char, int, int) {}
-struct affected_type *affect_to_char(P_char, struct affected_type *effect) { return effect; }
+struct affected_type *affect_to_char(P_char ch, struct affected_type *effect)
+{
+    innate_timer = *effect;
+    innate_timer.next = ch->affected;
+    ch->affected = &innate_timer;
+    return &innate_timer;
+}
 int melee_damage(P_char, P_char target, double, int, struct damage_messages *, int *)
 {
     damage_target = target;
@@ -322,13 +324,14 @@ static void reset()
     place(&stranger, 4);
     parsed_target = lookup_target = &victim;
     guard_target = guard_checked_target = forbidden_target = bitten_target = damage_target = nullptr;
-    fight_allowed = innate_available = true;
+    fight_allowed = true;
+    innate_timer = affected_type{};
     hide_victim_from_stranger = false;
     actor_front = victim_front = true;
     improved = true;
     magical_wall = castle_wall = false;
     damage_calls = guard_calls = actor_waits = victim_waits = stops = actor_lag = 0;
-    notch_calls = total_waits = appear_calls = innate_checks = 0;
+    notch_calls = total_waits = appear_calls = 0;
     kick_skill = roundkick_skill = 100;
     callback_calls = arrivals = departure_calls = engaged = 0;
     arrival_direction = -9;
@@ -599,34 +602,61 @@ static void racial_routing_cases()
         reset(); actor.player.race = race; kick_skill = 0;
         guard_target = &witness; place(&witness, 0);
         do_kick(&actor, const_cast<char *>("fixture"), 0);
-        assert(innate_checks == 1 && guard_calls == 1 && bitten_target == &witness);
+        assert(actor.affected && actor.affected->type == TAG_INNATE_TIMER);
+        assert(actor.affected->location == INNATE_BITE && actor.affected->modifier == 1);
+        assert(actor.affected->duration == 12 * WAIT_SEC);
+        assert(guard_calls == 1 && bitten_target == &witness);
         assert(damage_calls == 0 && victim_waits == 0);
         // ParseTarget may resolve a different target than the original name (for example, taunt).
         reset(); actor.player.race = race;
         parsed_target = &witness; lookup_target = &victim; place(&witness, 0);
         do_kick(&actor, const_cast<char *>("fixture"), 0);
-        assert(innate_checks == 1 && guard_calls == 1);
+        assert(actor.affected && guard_calls == 1);
         assert(guard_checked_target == &witness && bitten_target == &witness);
-        reset(); actor.player.race = race; innate_available = false;
+        reset(); actor.player.race = race;
+        innate_timer.type = TAG_INNATE_TIMER; innate_timer.location = INNATE_BITE;
+        innate_timer.modifier = 1; actor.affected = &innate_timer;
         do_kick(&actor, const_cast<char *>("fixture"), 0);
-        assert(innate_checks == 1 && guard_calls == 0 && !bitten_target);
+        assert(innate_timer.modifier == 1 && guard_calls == 0 && !bitten_target);
         reset(); actor.player.race = race; fight_allowed = false;
         do_kick(&actor, const_cast<char *>("fixture"), 0);
-        assert(innate_checks == 0 && guard_calls == 0 && !bitten_target);
+        assert(!actor.affected && guard_calls == 0 && !bitten_target);
         reset(); actor.player.race = race; guard_target = forbidden_target = &witness;
         place(&witness, 0);
         do_kick(&actor, const_cast<char *>("fixture"), 0);
-        assert(innate_checks == 1 && guard_calls == 1 && !bitten_target);
+        assert(!actor.affected && guard_calls == 1 && !bitten_target);
+        innate_timer.type = TAG_INNATE_TIMER; innate_timer.location = INNATE_BITE;
+        innate_timer.modifier = 3; innate_timer.duration = 77; actor.affected = &innate_timer;
+        guard_calls = 0;
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(guard_calls == 1 && !bitten_target && innate_timer.modifier == 3);
+        assert(innate_timer.duration == 77);
+        forbidden_target = nullptr; guard_calls = 0;
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(guard_calls == 1 && bitten_target == &witness && innate_timer.modifier == 2);
+        assert(innate_timer.duration == 77);
     }
     // The string command shares the same target admission/interception path.
     reset(); actor.player.race = RACE_INSECT; guard_target = &witness; place(&witness, 0);
     do_bite(&actor, const_cast<char *>("fixture"), 0);
-    assert(innate_checks == 1 && guard_calls == 1 && bitten_target == &witness);
+    assert(actor.affected && guard_calls == 1 && bitten_target == &witness);
     reset(); actor.player.race = RACE_INSECT;
     parsed_target = &witness; lookup_target = &victim; place(&witness, 0);
     do_bite(&actor, const_cast<char *>("fixture"), 0);
-    assert(innate_checks == 1 && guard_calls == 1);
+    assert(actor.affected && guard_calls == 1);
     assert(guard_checked_target == &victim && bitten_target == &victim);
+    for (int kind : {0, 1, 2})
+    {
+        reset();
+        if (kind == 1) SET_BIT(actor.specials.act, ACT_ISNPC);
+        if (kind == 2) actor.player.level = OVERLORD;
+        do_bite_target(&actor, &victim);
+        assert(actor.affected && actor.affected->duration == 12 * WAIT_SEC);
+        assert(actor.affected->modifier == 1 && bitten_target == &victim);
+        guard_calls = 0; bitten_target = nullptr;
+        do_bite_target(&actor, &victim);
+        assert(guard_calls == 0 && !bitten_target && actor.affected->modifier == 1);
+    }
 }
 
 static void concealed_feedback_cases()
@@ -808,6 +838,8 @@ functions = [
     extract_function("comm.c", "void act_convert("),
     "using forced_departure_message = std::pair<uint64_t, std::string>;",
     extract_function("innates.c", "P_char parse_victim("),
+    extract_function("innates.c", "bool can_use_innate("),
+    extract_function("innates.c", "bool check_innate_time("),
     extract_function("innates.c", "void do_bite_target("),
     extract_function("innates.c", "void do_bite(P_char ch, char *arg, int /*cmd*/)"),
     extract_function("innates.c", "void branch("),
