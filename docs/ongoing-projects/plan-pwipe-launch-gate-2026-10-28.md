@@ -404,6 +404,30 @@ contract is a visible launch notice; a custom browser splash is separate UI work
 - No production configuration, credentials, player data, wipe or deployment touched.
   Release tags are intentionally absent: these are review candidates, not releases.
 
+### PR #435 review follow-up
+
+- Confirmed the WebSocket drain finding: the original broad `OSError` handler
+  accepted `socket.timeout` as disconnection. A real idle socket regression failed
+  against the original loop (`TimeoutError not raised`) before the fix.
+- The journey now accepts only the client's close-frame/EOF reports or a connection
+  termination. Timeouts, unrelated socket errors and unexpected assertions propagate;
+  late-frame sending also no longer suppresses unrelated socket errors. The existing
+  drain loop is shared with the focused regression, without changing the game server.
+- `python3 tests/async/test_pwipe_launch_gate.py` passed, including real socket-pair
+  close/EOF, refusal-without-close and partial-frame timeout cases, connection reset,
+  invalid responses and forbidden admission statuses. Both backend socket journeys
+  listed below passed again with the corrected check and the final binary hashes
+  above. Their refreshed JSON records identify parent `1464a7e76`; the review fix was
+  present but uncommitted during these runs. MariaDB now also uses the final
+  `33ed1ebe...` binary, superseding its earlier socket result above.
+- Python compilation, `git diff --check`, and
+  `./scripts/format.sh --rev origin/branch/pwipe-launch-admission-2026-10-28 --check`
+  passed. Existing build, wipe, browser and unrelated regression evidence is reused:
+  this follow-up changes only the qualification scripts and this handoff.
+- Fresh Git inspection found no missing `master` commits or stack conflicts.
+  Preserve **#433 → #434 → #435** and add the review fix to #435; no rebase, squash,
+  carry-forward or release tag is needed for this follow-up.
+
 ### Reproduce and locate evidence
 
 All server journeys use private synthetic accounts, state, ports and disposable

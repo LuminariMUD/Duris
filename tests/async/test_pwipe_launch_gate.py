@@ -6,8 +6,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import re
+import socket
+import unittest
+from unittest.mock import Mock
 
 from _paths import HARNESS_STUBS, extract_function
+from run_pwipe_launch_gate_journey import WebSocketClient, websocket_drained
 
 ROOT = Path(__file__).resolve().parents[2]
 OPEN = 1793210400
@@ -113,7 +117,43 @@ int main(int argc, char **argv)
 '''
 
 
+def check_websocket_drain():
+    checks = unittest.TestCase()
+    # Exercise the journey's real frame reader without booting a game server.
+    for payload, eof, failure in (
+        (b"", False, socket.timeout),
+        (b"", True, None),
+        (b"\x88\x00", False, None),
+        (b'\x81\x13{"status":"failed"}\x88\x00', False, None),
+        (b'\x81\x13{"status":"failed"}', False, socket.timeout),
+        (b"\x81\x00", False, ValueError),
+        (b"\x81\x7e\x00", False, socket.timeout),
+    ):
+        receiver, sender = socket.socketpair()
+        with receiver, sender:
+            receiver.settimeout(.05)
+            client = WebSocketClient.__new__(WebSocketClient)
+            client.socket, client.buffer, client.messages = receiver, bytearray(), []
+            sender.sendall(payload)
+            if eof:
+                sender.shutdown(socket.SHUT_WR)
+            if failure:
+                with checks.assertRaises(failure):
+                    websocket_drained(client)
+            else:
+                websocket_drained(client)
+    for status in ("success", "created", "reconnected"):
+        with checks.assertRaises(AssertionError):
+            websocket_drained(Mock(receive=Mock(side_effect=[{"status": status}, ConnectionResetError()])))
+    websocket_drained(Mock(receive=Mock(side_effect=ConnectionResetError())))
+    for error in (OSError("unexpected socket failure"), AssertionError("WebSocket not closed")):
+        with checks.assertRaises(type(error)):
+            websocket_drained(Mock(receive=Mock(side_effect=error)))
+    print("PASS: WebSocket drain requires close/EOF/reset; idle/partial-frame timeouts and invalid responses fail")
+
+
 def run():
+    check_websocket_drain()
     build_root = ROOT / "bin/tests"
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="pwipe-launch-policy-", dir=build_root) as temporary:

@@ -82,6 +82,19 @@ def drained(client, marker="Reconnect at"):
     raise AssertionError("denied connection did not close after its screen drained")
 
 
+def websocket_drained(client):
+    while True:
+        try:
+            message = client.receive()
+        except AssertionError as error:
+            assert str(error).startswith(("WebSocket closed before its response",
+                                          "server closed WebSocket:")), str(error)
+            return
+        except ConnectionError:
+            return
+        assert message.get("status") not in ("success", "created", "reconnected"), message
+
+
 def launch_config(path, deadline, approved=APPROVED):
     timestamp = datetime.fromtimestamp(deadline, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     path.write_text("enabled=true\nopens_at_utc=" + timestamp + "\nallowed_accounts=" + approved + "\n")
@@ -242,17 +255,9 @@ def run(binary, backend):
                     # Later frames may not regain admission while the denial drains.
                     try:
                         client.send_frame(1, b'{"cmd":"register","data":{"account":"Lateaccount"}}')
-                    except (ConnectionError, OSError):
+                    except ConnectionError:
                         pass
-                    while True:
-                        try:
-                            message = client.receive()
-                        except AssertionError as error:
-                            assert "closed" in str(error), str(error)
-                            break
-                        except (ConnectionError, OSError):
-                            break
-                        assert message.get("status") not in ("success", "created", "reconnected"), message
+                    websocket_drained(client)
                 client = websocket()
                 wrong = client.command("login", {"account": APPROVED, "password": "Wrong-password!"}, "auth")
                 assert wrong["status"] == "failed" and "Reconnect at" not in wrong["error"]
