@@ -136,3 +136,31 @@ Before a live replacement, operators must account for saved locations and
 floor/corpse custody referring to retired rooms 15000–15099. Keeping legacy
 prototypes preserves identities; it is not a migration of those room references.
 The original zone remains recoverable from Git history.
+
+## October 28 follow-up: relocated Underdark entrances and shop rod
+
+The preceding connection descriptions and test evidence are historical.
+Current contracts are in `docs/reference/WORLD_ZONE_ROUTES.md`.
+
+The replacement ZIP remains a pre-integration source candidate; the active six
+zone files contain previously validated gameplay fixes. Reconciliation retains
+those fixes rather than overwriting them with the ZIP's older reset/quest/item
+definitions. Only the intended new route descriptions and endpoints change.
+
+- `300149 N <-> 766414 S`, `300149 E <-> 766815 W`.
+- New inert Underdark map marker at 766814. Clear inward grid edges to it.
+- Remove `300019 D <-> 834025 U`; restore old marker 834024 to nonwalkable
+  mountain terrain and reciprocal neighbouring grid references.
+- Restore uploaded `ROOM_NO_MOB` protection (bit 4) for rooms 300011,
+  300039 (waterfall entrance), and 300152 (pond interior). These are authored
+  restrictions, not new resets or a change to zone population ceilings.
+- Set the teak fishing rod 300039 prototype condition from 0 to 100; ordinary
+  new shop purchases are undamaged, without mutating saved inventories.
+  The native journey now stats the purchased instance before fishing and
+  again after persistence/restart, rather than inferring from inventory text.
+- Extend source, route and native-journey checks for both approaches, waterfall
+  passage, old route removal, shop purchases and clean restart.
+
+This record documents source changes, not production deployment. Build,
+generated-world and in-game journey evidence must be recorded against the PR;
+historical issue #403 results do not qualify the new route.

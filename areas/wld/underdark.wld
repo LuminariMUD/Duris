@@ -113873,9 +113873,10 @@ D1
 ~
 0 0 766415
 D2
+A passage to the south enters the bloody cavern of Misty Vale.
 ~
 ~
-0 0 766814
+0 0 300149
 D3
 ~
 ~
@@ -113973,10 +113974,6 @@ D0
 ~
 ~
 0 0 766413
-D1
-~
-~
-0 0 766814
 D2
 ~
 ~
@@ -113987,9 +113984,9 @@ D3
 0 0 766812
 S
 #766814
-&+LSteep Walls of a &+mDark &+LChamber, Deep Within the &+mUnderdark&n~
+The Chasm of the Misty Vale~
 ~
-7000 0 27 0
+7000 134250688 0 0
 D0
 ~
 ~
@@ -114024,9 +114021,10 @@ D2
 ~
 0 0 767215
 D3
+A passage west leads into the bloody cavern of Misty Vale.
 ~
 ~
-0 0 766814
+0 0 300149
 S
 #766816
 &+LSteep Walls of a &+mDark &+LChamber, Deep Within the &+mUnderdark&n~
@@ -114074,10 +114072,6 @@ S
 &+LSteep Walls of a &+mDark &+LChamber, Deep Within the &+mUnderdark&n~
 ~
 7000 0 27 0
-D0
-~
-~
-0 0 766814
 D1
 ~
 ~
@@ -239369,6 +239363,10 @@ D3
 ~
 ~
 0 0 833623
+D2
+~
+~
+0 0 834024
 S
 #833625
 &+LA &+mNarrow &+LTunnel in the &+mUnderdark&n~
@@ -241081,11 +241079,15 @@ D3
 ~
 ~
 0 0 834022
+D1
+~
+~
+0 0 834024
 S
 #834024
-The Chasm of the Misty Vale~
+&+LThe Massive Cavern Walls of the &+mUrusi&n~
 ~
-7000 134250688 0 0
+7000 0 27 0
 D0
 ~
 ~
@@ -241105,8 +241107,6 @@ D3
 S
 #834025
 &+LA &+mNarrow &+LTunnel in the &+mUnderdark&n~
-   Rough steps wind up through the bedrock toward a mist-shrouded cliff
-trail. Damp air drifts down from the surface into this narrow passage.
 ~
 7000 0 29 0
 D0
@@ -241121,11 +241121,10 @@ D2
 ~
 ~
 0 0 834425
-D4
-   A long stair climbs toward a trail above the Chasm of the Misty Vale.
+D3
 ~
 ~
-0 0 300019
+0 0 834024
 S
 #834026
 &+LA &+mNarrow &+LTunnel in the &+mUnderdark&n~
@@ -242543,6 +242542,10 @@ D3
 ~
 ~
 0 0 834423
+D0
+~
+~
+0 0 834024
 S
 #834425
 &+LThe Massive Cavern Walls of the &+mUrusi&n~

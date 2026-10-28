@@ -63,7 +63,13 @@ def check_routes(rooms):
         pair(*route)
     pair(11348, 0, 30172, 2)
     pair(7123, 3, 53000, 1)
-    pair(300019, 5, 834025, 4)
+    pair(300149, 0, 766414, 2)
+    pair(300149, 1, 766815, 3)
+    assert 5 not in rooms[300019][2], 'retired Misty Chasm stairs'
+    assert 4 not in rooms[834025][2], 'retired Underdark stairs'
+    assert rooms[766814][:2] == (0, 0), 'new marker is not inert'
+    assert rooms[834024][:2] == (27, 0), 'old marker was not restored to mountain'
+    assert 1 not in rooms[766813][2] and 0 not in rooms[767214][2], 'new marker is walkable'
     current = 638825
     for direction, target in MISTY_TRAIL:
         pair(current, direction, target, REVERSE[direction])
@@ -97,7 +103,7 @@ if __name__ == '__main__':
     rooms = load_rooms(args.areas, args.generated)
     check_routes(rooms)
     # Disposable in-memory fixture proves the return edge is an independent gate.
-    for room, direction in [(target, reverse) for _, _, target, reverse in SURFACE_ROUTES] + [(834025, 4)]:
+    for room, direction in [(target, reverse) for _, _, target, reverse in SURFACE_ROUTES] + [(766414, 2), (766815, 3)]:
         original = rooms[room]
         sector, fall, exits = original
         rooms[room] = (sector, fall, {d: v for d, v in exits.items() if d != direction})

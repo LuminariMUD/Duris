@@ -95,6 +95,15 @@ def run(binary, evidence_path):
                 evidence['checks'].append(label)
                 print(label, flush=True)
 
+            def assert_owned_rod_pristine():
+                # The rod must be in staff inventory: stat obj by keyword otherwise
+                # falls back to scanning the world and might select another copy.
+                report = cmd(god, 'stat obj rod')
+                # Staff stat inserts colour escapes between the labels and numbers.
+                plain = re.sub(r'\x1b\[[0-9;]*m', '', report)
+                assert re.search(r'Number:\s*\[300039\]', plain), report
+                assert re.search(r'Condition:\s*100\b', plain), report
+
             def reset():
                 cmd(god, 'goto 300000')
                 assert 'has been reset.' in cmd(god, 'zreset ok')
@@ -256,15 +265,21 @@ def run(binary, evidence_path):
                         player.expect('You now have ', timeout=30)
                         player.expect_any(('Pos: standing >', '<>'), timeout=30)
                     assert item in cmd(player, 'inventory')
-                check('authored tackle shop sells its canoe and fishing rod')
+                # Inspect the actual purchased rod, not the pristine prototype
+                # nor inventory display (which hides conditions above 90%).
+                assert 'Ok.' in cmd(player, f'give rod {GOD}')
+                assert_owned_rod_pristine()
+                check('tackle shop sells canoe and a 100%-condition teak rod')
                 # Fishing requires a learned skill; staff's restore initializes it without
                 # changing the mortal recipe/movement fixture's progression.
-                cmd(player, f'give rod {GOD}')
                 cmd(god, 'restore self')
                 cmd(god, 'goto 300059')
                 fishing = cmd(god, 'fish')
                 assert 'cast your pole' in fishing, fishing
                 check('the new fishing rod starts native fishing')
+                cmd(god, 'goto 300056')
+                cmd(god, f'give rod {PLAYER}')
+                assert 'rod' in cmd(player, 'inventory'), 'rod not returned after fishing'
 
                 visit(300000)
                 player.send('save')
@@ -273,8 +288,12 @@ def run(binary, evidence_path):
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 inventory = cmd(player, 'inventory')
-                assert all(item in inventory for item in ('sleeves', 'shield', 'leggings', 'tunic', 'boots', 'canoe')), inventory
-                check('all five crafting rewards and purchased canoe survive clean restart')
+                assert all(item in inventory for item in ('sleeves', 'shield', 'leggings', 'tunic', 'boots', 'canoe', 'rod')), inventory
+                # Confirm the persisted instance, not a newly loaded object template.
+                cmd(god, f'goto {PLAYER}')
+                assert 'Ok.' in cmd(player, f'give rod {GOD}')
+                assert_owned_rod_pristine()
+                check('crafting rewards, purchased canoe and 100%-condition rod survive restart')
                 evidence['passed'] = True
                 stop()
             finally:
