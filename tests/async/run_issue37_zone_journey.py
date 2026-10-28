@@ -88,14 +88,24 @@ def run(binary, baseline, evidence_path):
                 return int(match[1])
 
             def walk(direction, expected):
-                # Mobs can wake or wander back during the long reset tour.
-                # Stop combat before walking without changing the mortal's
-                # movement permissions, exits or authored room flags.
-                cmd(god, f'goto {PLAYER}')
-                cmd(god, 'tranquilize')
-                cmd(player, 'wake')
-                cmd(player, 'stand')
+                # Destination mobs can force movement (the Sinuuk's roar), so
+                # isolate them before the mortal walks the actual authored edge.
+                cmd(god, f'goto {expected}')
+                cmd(god, 'purge')
                 response = cmd(player, direction)
+                if ('You cannot move normally while fighting' in response or
+                        "Sorry, you can't do that while laying around" in response):
+                    # Isolate ambient combat only when it blocks the route check.
+                    # Native purge preserves fixed portals; exits, room flags and
+                    # the mortal's movement permissions stay unchanged.
+                    cmd(god, f'goto {PLAYER}')
+                    cmd(god, 'tranquilize')
+                    cmd(god, 'purge')
+                    cmd(player, 'wake')
+                    # Falling asleep on one's feet can itself cause a short stun.
+                    cmd(god, f'affectpurge {PLAYER} all')
+                    cmd(player, 'stand')
+                    response = cmd(player, direction)
                 assert location() == expected, (direction, expected, response)
 
             def checks(phase):
