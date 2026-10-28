@@ -259,8 +259,22 @@ opening baselines. Other characters and staff are retired. Their rows remain ina
 under reserved `~pwipe-PID` names, releasing ordinary names for the new season.
 The roster change is one transaction: failure rolls back name/account/body changes
 and retains the incomplete-reset fence. Old summon links are cleared every reset,
-independently of the 28-day grant-decrement policy. Staff login/gameplay and selected replay paths are qualified locally; the remaining
-store/writer inventory and final reconciliation are tracked in issue #417.
+independently of the 28-day grant-decrement policy. The completed local full-world
+journeys, store inventory, failure/replay cases and integration variants are recorded
+in the [issue #417 findings](../ongoing-projects/issue-417-pwipe-qualification-findings.md).
+That record names the tested revision and remaining rollout conditions.
+
+The native player identity is a positive signed integer. Pwipe checks the live
+`player_data` allocator before crossing the boundary and checks recreated PIDs and
+remaining capacity before publishing SQL-ready. An oversized allocator must be
+repaired or migrated before a wipe can proceed. Do not reset it to the largest
+active PID: retained ledgers, baselines and recovery evidence may reference higher
+identities. Establish a non-aliasing allocation range from the retained history.
+If an older build already committed an unplayable roster, or an external allocator
+change caused a fenced postflight failure, ordinary same-epoch resume does not
+repair those identities. Use the verified matched pre-wipe restore rather than
+forcing the season active. Recreated staff now start at their preserved hometown
+with a standard visible prompt.
 
 Eligible Overlords are selected from active durable character/account ownership,
 independent of whether the account-character projection has already been repaired
@@ -343,8 +357,9 @@ Before the boundary, the server checks `wipe_it_all --check` along with its exis
 schema/Redis checks. Missing artifacts, unexpected store symlinks/types and denied
 access abort before SQL reset. Cleanup revalidates the same fixed paths. Backups,
 accounts and configuration are preserved; symlinks within a wiped store are removed
-as links. This check covers the legacy stores handled by this script, not yet every
-modern recovery store; the remaining inventory/isolation work is a readiness gate.
+as links. This filesystem check covers the legacy stores handled by this script.
+Modern SQL/Redis/checkpoint stores have separate lifecycle and isolation contracts;
+the issue #417 findings record the inventory and tested recovery scope.
 
 SQL-ready publication requires an independent empty-row check for every one of
 the 103 canonical delete/reset tables, including account lockers and all payload
@@ -608,7 +623,8 @@ operator control for that case. Never infer a checkpoint or change the row to
 `active` merely to bypass the fence. MariaDB generations made by
 `persistence_backup.py` contain SQL and journals; filesystem and Redis recovery
 evidence must be verified separately for a matched wipe restore. Full matched-restore,
-carryover and integration qualification remain tracked in #264. Production reset,
+carryover and integration results are recorded in the issue #417 findings; #264 is
+historical qualification. Production reset,
 recovery or restore requires owner authorization. Once the complete workflow is
 qualified and the row is active, start the new season explicitly.
 

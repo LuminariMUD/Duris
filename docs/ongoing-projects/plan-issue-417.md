@@ -15,6 +15,14 @@ Related work: [wipe readiness #97](https://github.com/LuminariMUD/Duris/issues/9
 [Overlord recreation checkpoints #334](https://github.com/LuminariMUD/Duris/pull/334),
 and [maintenance checkpoint archival #352](https://github.com/LuminariMUD/Duris/pull/352).
 
+## Current qualification
+
+The destructive full-world pass, discovered defects, fixes and final evidence are
+recorded in [the qualification findings](issue-417-pwipe-qualification-findings.md).
+The setup values below are the original baseline; the tested runtime now serves
+season 4. Read the findings for the exact tested revision and remaining rollout
+conditions.
+
 ## Workspace and custody
 
 Prepared on 2026-10-27 from freshly fetched `origin/master` at
@@ -112,10 +120,11 @@ counts, the SQL snapshot, build/world/migration/compatibility logs,
 `runtime-summary.json`, and `login-summary.json` plus the private transcript
 under `tmp/issue417-setup/`.
 
-## Remaining issue work
+## Qualification scope
 
-The issue's live checklist is authoritative. None of these qualification items
-is marked complete by preparing this workspace:
+The issue's live checklist is authoritative. The initial setup did not establish
+the items below; the linked findings now record their executed scenarios, fixes,
+evidence and rollout limitations:
 
 - Reconcile reset/preservation coverage against current SQL, files, Redis and workers.
 - Build synthetic old-season fixtures and prove an independent matched restore.
@@ -128,11 +137,12 @@ is marked complete by preparing this workspace:
 - Review operator messages, runbooks, timing and capacity.
 - Publish revision-specific scenario evidence, defect dispositions and a readiness conclusion.
 
-Before any destructive qualifier, create disposable synthetic data and an
-isolated Redis instance/namespace as #417 requires. The copied account data and
-shared Redis configuration in this setup are for continuity and login validation;
-they are not the disposable destructive-test fixture. Existing qualifiers and
-supported combinations are linked in #417 and the
-[runbook](../operations/RUNBOOK.md),
+The user subsequently explicitly authorized destructive testing of this prepared
+full-world worktree. Four real wipes used its cloned database and copied runtime;
+controlled Redis/recovery variants and separate synthetic fixtures provided
+additional coverage. The initial setup-only scope was
+superseded by that authorization. The primary database was queried only as a
+comparison reference. See the findings for actual tested revisions and scope,
+and the [runbook](../operations/RUNBOOK.md),
 [regression guidance](../testing/REGRESSIONS.md), and
-[prior qualification plan](plan-issue-264.md).
+[prior qualification plan](plan-issue-264.md) for supporting procedures.
