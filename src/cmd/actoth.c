@@ -5485,6 +5485,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 			send_to_char("USAGE: TOGGLE terminal [ansi|gen|msp]\r\n", send_ch);
 			return;
 		}
+		if (send_ch->desc->msp_group_output)
+			FREE(send_ch->desc->msp_group_output);
+		if (send_ch->desc->term_type == TERM_MSP)
+			send_ch->desc->last_group_update = 1;
 		strcpy(Gbuf3, term_name(send_ch));
 		result = TRUE;
 		break;

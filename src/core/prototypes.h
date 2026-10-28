@@ -1251,6 +1251,7 @@ signed char line_of_sight_dir(int, int);
 int on_front_line(P_char);
 int get_numb_chars_in_group(struct group_list *);
 void do_group(P_char, char *, int);
+void send_msp_group(P_char, bool force);
 void do_appoint(P_char, char *, int);
 void do_disband(P_char, char *, int);
 void update_groupies(P_char, bool only_in_room = false);

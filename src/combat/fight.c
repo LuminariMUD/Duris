@@ -2817,7 +2817,6 @@ void die(P_char ch, P_char killer)
 
 					// Return to account menu
 					d->character = NULL;
-					d->term_type = TERM_ANSI; // Preserve ANSI mode
 					SEND_TO_Q(
 						"&+RYour character has been permanently deleted.&n\r\n\r\n",
 						d);

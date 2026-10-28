@@ -380,6 +380,54 @@ void do_appoint(P_char ch, char *argument, int /*cmd*/)
 	update_groupies(ch);
 }
 
+/* Automatic updates compare the recipient's displayed rows. Explicit group
+ * commands always send, including an empty frame to clear the client panel. */
+void send_msp_group(P_char ch, bool force)
+{
+	char body[MAX_STRING_LENGTH] = "";
+	char row[MAX_STRING_LENGTH];
+	for (struct group_list *gl = ch->group; gl; gl = gl->next)
+	{
+		const char *name = IS_NPC(gl->ch)      ? gl->ch->player.short_descr :
+				   racewar(ch, gl->ch) ? race_names_table[GET_RACE(gl->ch)].ansi :
+							 GET_NAME(gl->ch);
+		if (!CAN_SEE_Z_CORD(ch, gl->ch))
+			name = "Someone";
+		if (gl == ch->group)
+			snprintf(row, sizeof row, "( Head) %s\n", name);
+		else
+			snprintf(row, sizeof row, "\n(%-5s)  %s\n",
+				 IS_BACKRANKED(gl->ch) ? "Back" : "Front", name);
+		if (ch->in_room == gl->ch->in_room)
+		{
+			displayH(gl->ch, row);
+			displayM(gl->ch, row);
+		}
+		else
+			strlcat(row, "\n", sizeof row);
+		strlcat(body, row, sizeof body);
+	}
+
+	P_desc d = ch->desc;
+	const bool changed = !d->msp_group_output || strcmp(d->msp_group_output, body);
+	if (!force && !changed)
+		return;
+	if (changed)
+	{
+		if (d->msp_group_output)
+			FREE(d->msp_group_output);
+		d->msp_group_output = str_dup(body);
+	}
+	if (!ch->group)
+		send_to_char("<group>\n</group>\n", ch);
+	else
+	{
+		send_to_char("<group>\n", ch, LOG_NONE);
+		send_to_char(body, ch, LOG_NONE);
+		send_to_char("\n</group>\n", ch, LOG_NONE);
+	}
+}
+
 void do_group(P_char ch, char *argument, int /*cmd*/)
 {
 	char name[MAX_INPUT_LENGTH], rank[MAX_INPUT_LENGTH];
@@ -407,17 +455,17 @@ void do_group(P_char ch, char *argument, int /*cmd*/)
 		if (GMCP_ENABLED(ch))
 		{
 			gmcp_send_group_status(ch);
-			if (ch->desc->websocket)
+			if (ch->desc->websocket && ch->desc->term_type != TERM_MSP)
 				return;
+		}
+		if (ch->desc && ch->desc->term_type == TERM_MSP)
+		{
+			send_msp_group(ch, true);
+			return;
 		}
 		if (!ch->group)
 		{
-			if (ch && ch->desc && ch->desc->term_type == TERM_MSP)
-			{
-				send_to_char("<group>\n</group>\n", ch);
-			}
-			else
-				send_to_char("But you are a member of no group?!\n", ch);
+			send_to_char("But you are a member of no group?!\n", ch);
 
 			return;
 		}
@@ -430,72 +478,6 @@ void do_group(P_char ch, char *argument, int /*cmd*/)
 			   return;
 			 }*/
 
-			if (ch && ch->desc && ch->desc->term_type == TERM_MSP)
-			{
-				send_to_char("<group>\n", ch, LOG_NONE);
-
-				gl = ch->group;
-				if (IS_NPC(gl->ch))
-					snprintf(Gbuf3, MAX_STRING_LENGTH, "%s",
-						 gl->ch->player.short_descr);
-				else
-				{
-					if (racewar(ch, gl->ch))
-						strcpy(Gbuf3,
-						       race_names_table[GET_RACE(gl->ch)].ansi);
-					else
-						snprintf(Gbuf3, MAX_STRING_LENGTH, "%s",
-							 GET_NAME(gl->ch));
-				}
-				checked_snprintf(Gbuf1, MAX_STRING_LENGTH, "( Head) %-s\n",
-						 (!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3);
-
-				if (ch->in_room == gl->ch->in_room)
-				{
-					displayH(gl->ch, Gbuf1);
-					displayM(gl->ch, Gbuf1);
-				}
-				else
-				{
-					strcat(Gbuf1, "\n");
-				}
-
-				for (gl = gl->next; gl; gl = gl->next)
-				{
-					if (IS_NPC(gl->ch))
-						snprintf(Gbuf3, MAX_STRING_LENGTH, "%s",
-							 gl->ch->player.short_descr);
-					else
-					{
-						if (racewar(ch, gl->ch))
-							strcpy(Gbuf3,
-							       race_names_table[GET_RACE(gl->ch)]
-								       .ansi);
-						else
-							snprintf(Gbuf3, MAX_STRING_LENGTH, "%s",
-								 GET_NAME(gl->ch));
-					}
-
-					checked_snprintf(
-						Gbuf2, MAX_STRING_LENGTH, "\n(%-5s)  %-s\n",
-						(!IS_BACKRANKED(gl->ch) ? "Front" : "Back"),
-						(!CAN_SEE_Z_CORD(ch, gl->ch)) ? "Someone" : Gbuf3);
-
-					if (ch->in_room == gl->ch->in_room)
-					{
-						displayH(gl->ch, Gbuf2);
-						displayM(gl->ch, Gbuf2);
-					}
-					else
-					{
-						strcat(Gbuf2, "\n");
-					}
-					strcat(Gbuf1, Gbuf2);
-				}
-				send_to_char(Gbuf1, ch, LOG_NONE);
-				send_to_char("\n</group>\n", ch, LOG_NONE);
-				return;
-			}
 			for (gl = ch->group, counter = 0; gl; gl = gl->next)
 			{
 				counter++;

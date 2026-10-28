@@ -842,9 +842,10 @@ void display_map_room(P_char ch, int from_room, int n, int show_map_regardless, 
 	/* Skip text output for GMCP auto-updates (unless MSP terminal) or if toggle map is off */
 	bool toggle_map_off = IS_PC(GET_TRUE_CHAR(ch)) &&
 			      !IS_SET(GET_TRUE_CHAR(ch)->specials.act, PLR_MAP);
-	bool skip_text_output = (GMCP_ENABLED(ch) && (show_map_regardless == MAP_AUTOMAP) &&
-				 (ch->desc->term_type != TERM_MSP)) ||
-				(GMCP_ENABLED(ch) && toggle_map_off);
+	bool skip_text_output =
+		(GMCP_ENABLED(ch) && (show_map_regardless == MAP_AUTOMAP) &&
+		 (ch->desc->term_type != TERM_MSP)) ||
+		(GMCP_ENABLED(ch) && toggle_map_off && show_map_regardless != MAP_IGNORE_TOGGLE);
 
 	if (!skip_text_output)
 	{

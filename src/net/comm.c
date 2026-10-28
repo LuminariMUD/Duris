@@ -2480,15 +2480,13 @@ static void run_combat_phase(game_loop_pulse_context &ctx)
 			}
 			if (t_ch->desc && t_ch->desc->last_group_update)
 			{
-				/* For GMCP clients, send structured data to group panel */
 				if (GMCP_ENABLED(t_ch))
 				{
 					gmcp_send_group_status(t_ch);
 				}
-				/* For MSP clients, display text group output */
 				if (t_ch->desc->term_type == TERM_MSP)
 				{
-					do_group(t_ch, writable_arg(""), 0);
+					send_msp_group(t_ch, false);
 				}
 				t_ch->desc->last_group_update = 0;
 			}
@@ -3737,6 +3735,8 @@ void close_socket(struct descriptor_data *d)
 	/* Free WebSocket fragment buffer if any */
 	websocket_free(d);
 	telnet_free_output(d);
+	if (d->msp_group_output)
+		FREE(d->msp_group_output);
 
 	if (d)
 	{
@@ -4668,6 +4668,8 @@ int process_output(P_desc t)
 		}
 
 		AnsiString abuf(buf);
+		if (t->term_type == TERM_GENERIC)
+			abuf.colorize(0);
 		abuf.term(buf, t->character && PLR3_FLAGGED(t->character, PLR3_UNDERLINE) ?
 				       TL_UNDERLINE :
 				       TL_BLINK);

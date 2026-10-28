@@ -283,6 +283,41 @@ static std::string run(bool delayed, bool websocket, int flags, bool two_line,
     }
     return bytes;
 }
+static void terminal_output_matrix()
+{
+    for (bool websocket : {false, true})
+    for (bool playing : {false, true})
+    for (int terminal : {TERM_GENERIC, TERM_ANSI, TERM_MSP})
+    {
+        descriptor_data d{};
+        char_data actor{};
+        pc_only_data pc{};
+        actor.only.pc = &pc;
+        actor.desc = &d;
+        actor.specials.position = POS_STANDING | STAT_NORMAL;
+        actor.points.hit = actor.points.max_hit = 100;
+        pc.prompt = PROMPT_HIT;
+        d.character = playing ? &actor : nullptr;
+        d.connected = playing ? CON_PLAYING : CON_GET_ACCT_NAME;
+        d.term_type = terminal;
+        d.websocket = websocket;
+        d.prompt_mode = true;
+        delivered.clear(); frames.clear(); ga_count = 0;
+        write_to_q("plain &+Rred&n &-Wflash&n café\n", &d.output, 1);
+        assert(process_output(&d) == 1);
+        const auto bytes = output_bytes(websocket);
+        const auto escape = websocket ? "\\u001b" : "\x1b";
+        assert((bytes.find(escape) == std::string::npos) == (terminal == TERM_GENERIC));
+        if (!playing && terminal == TERM_GENERIC)
+            assert(bytes == text_bytes(websocket, "plain red flash café\r\n") +
+                            (websocket ? "" : "\xff\xf9"));
+        assert((bytes.find("<prompt>") != std::string::npos) ==
+               (playing && terminal == TERM_MSP));
+        assert((bytes.find("</prompt>") != std::string::npos) ==
+               (playing && terminal == TERM_MSP));
+        assert(ga_count == (websocket ? 0 : 1));
+    }
+}
 int main()
 {
     assert(publish_news("transport news\n"));
@@ -318,7 +353,8 @@ int main()
         const auto colored = run(false, ws, 0, two, false, "You get item.\r\n");
         assert(run(true, ws, 0, two, false, "You get item.\r\n") == colored);
     }
-    puts("Deferred item/collector output, ambient bytes, auxiliary prompts, and switched descriptors passed");
+    terminal_output_matrix();
+    puts("Deferred output, auxiliary prompts, switched descriptors, and terminal serialization passed");
 }
 '''
 

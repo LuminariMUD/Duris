@@ -1633,9 +1633,6 @@ void display_delete_character_list(P_desc d)
 	int count = 0, i, j;
 	struct acct_chars *temp;
 
-	// Enable ANSI terminal mode for color display
-	d->term_type = TERM_ANSI;
-
 	if (!c)
 	{
 		snprintf(buf, 256, "You currently don't have any characters to delete.\r\n");

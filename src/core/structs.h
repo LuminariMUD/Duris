@@ -1783,6 +1783,7 @@ struct descriptor_data
 	char client_str[MAX_INPUT_LENGTH]; /* CLIENT SPECIFIC STRING */
 	int last_map_update; /* CLIENT SPECIFIC INT */
 	int last_group_update; /* CLIENT SPECIFIC INT */
+	char *msp_group_output; /* Last displayed group body; owned by this connection. */
 
 	/* WebSocket support */
 	int websocket;
