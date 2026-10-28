@@ -12037,6 +12037,12 @@ bool check_item_teleport(P_char ch, char *arg, int cmd)
 	else
 	{
 		generic_find(arg, FIND_OBJ_INV | FIND_OBJ_EQUIP | FIND_OBJ_ROOM, ch, &dummy, &obj);
+		// A carried item named "rock" must not hide a matching room climb portal.
+		if (cmd == CMD_CLIMB &&
+		    (!obj || obj->type != ITEM_TELEPORT || obj->value[1] != cmd))
+		{
+			generic_find(arg, FIND_OBJ_ROOM, ch, &dummy, &obj);
+		}
 	}
 	if (!obj)
 		return FALSE;

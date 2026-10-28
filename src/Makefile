@@ -129,6 +129,7 @@ OBJS =  $(SHIP_OBJS) \
 				 world/hardcore_config.o \
 				 account/creation_availability_config.o \
 				 account/login_mode_banner.o \
+				 account/pwipe_launch.o \
 				 combat/frag_cap_config.o \
 				 cmd/actcomm.o \
 				 cmd/actinf.o \
@@ -564,6 +565,7 @@ OBJS =  $(SHIP_OBJS) \
 				 net/ttype.o \
 				 account/wiz_newchar.o \
 				 cmd/battleprep.o \
+				 cmd/last.o \
 				 world/zcheck.o \
 				 telemetry/telemetry_activity.o \
 				 telemetry/telemetry_config.o \

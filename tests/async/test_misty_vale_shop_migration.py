@@ -31,8 +31,8 @@ def catalogue():
 
 def check_catalogue():
     shops = catalogue()
-    step = runner.load_manifest().migrations[-1]
-    assert step.migration_id == '0053_misty_vale_shop_indexes'
+    step = next(step for step in runner.load_manifest().migrations
+                if step.migration_id == '0053_misty_vale_shop_indexes')
     actual = [tuple(map(int, row)) for row in re.findall(
         r'\((\d+),(\d+),(\d+)\)', step.apply_path.read_text())]
     assert actual == [(i, *identity) for i, identity in enumerate(shops) if i > 534], (
@@ -44,7 +44,8 @@ def check_shop_reindex(sql, migrate, environment):
     """Exercise real SQL, verifier, rollback and success-last history on each engine."""
     mapping = check_catalogue()
     manifest = runner.load_manifest()
-    step = manifest.migrations[-1]
+    step = next(step for step in manifest.migrations
+                if step.migration_id == '0053_misty_vale_shop_indexes')
     tables = ('shopkeepers', 'shopkeeper_items', 'shopkeeper_affects',
               'shopkeeper_item_affects', 'shopkeeper_item_extra_descr',
               'item_current_owner', 'item_owner_revision', 'item_ownership_baseline',

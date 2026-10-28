@@ -133,7 +133,16 @@ double check_nexus_bonus_precise(P_char, double xp, int, bool) { return xp * (1 
 divine_boon_state divine_state;
 bool divine_enabled = false, target_eligible = true;
 const divine_boon_state *divine_boon_runtime_state() { return divine_enabled ? &divine_state : nullptr; }
-bool divine_boon_reward_zone_eligible(int, unsigned) { return target_eligible; }
+bool divine_boon_reward_zone_eligible(int zone, unsigned side) {
+    // Simulate the pulse-validated shared cache at this boundary. The separate
+    // selection harness executes the real cache and proves no per-hit graph walk.
+    if (!target_eligible || side > 1) return false;
+    for (const auto &slot : divine_state.slots)
+        if (slot.category == divine_boon_category::experience &&
+            divine_boon_active(slot, time(nullptr)) && divine_boon_target_zone(slot) == zone)
+            return true;
+    return false;
+}
 bool aggressive_to_basic(P_char, P_char) { return false; }
 float get_epic_bonus(P_char, int) { return epic_percent; }
 double get_epic_bonus_precise(P_char, int) { return epic_percent; }
@@ -842,7 +851,7 @@ int main() {
         assert(player.points.curr_exp == (enabled ? 3 : 1)); // Retain the 1.99 share.
     }
 
-    for (int scenario = 0; scenario < 11; ++scenario) {
+    for (int scenario = 0; scenario < 10; ++scenario) {
         reset_divine();
         if (scenario == 0) divine_enabled = false;
         if (scenario == 1) target_eligible = false;
@@ -854,9 +863,11 @@ int main() {
         if (scenario == 7) divine_state.slots[0].category = divine_boon_category::epic;
         if (scenario == 8) mob.in_room = 1;
         if (scenario == 9) zones[0].flags = ZONE_TOWN; // Hometown remains zero.
-        if (scenario == 10) player.player.racewar = RACEWAR_EVIL;
         assert(gain_exp(&player, &mob, 100, EXP_KILL) == 100);
     }
+    reset_divine();
+    player.player.racewar = RACEWAR_EVIL;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 200);
     reset_divine();
     rooms[0].room_flags = ROOM_SAFE;
     assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);

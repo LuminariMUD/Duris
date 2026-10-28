@@ -1190,12 +1190,9 @@ static bool divine_experience_active(P_char ch, P_char encounter)
 		return false;
 	const int zone = ROOM_ZONE_NUMBER(ch->in_room);
 	const unsigned side = IS_RACEWAR_GOOD(ch) ? 0 : 1;
-	const int64_t now = time(nullptr);
-	for (const auto &slot : state->slots)
-		if (slot.category == divine_boon_category::experience && slot.zones[side] == zone &&
-		    divine_boon_active(slot, now))
-			return divine_boon_reward_zone_eligible(zone, side);
-	return false;
+	// The game-thread pulse has already validated and cached each shared
+	// target. Never rewalk the world graph on NPC damage/heal/tank XP hits.
+	return divine_boon_reward_zone_eligible(zone, side);
 }
 
 template <typename Amount>

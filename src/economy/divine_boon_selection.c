@@ -322,12 +322,6 @@ unsigned encounter_group(const candidate &zone)
 	return group;
 }
 
-bool assigned(const divine_boon_state &state, int zone, unsigned side, int64_t now)
-{
-	return std::any_of(state.slots.begin(), state.slots.end(), [&](const auto &slot)
-			   { return divine_boon_active(slot, now) && slot.zones[side] == zone; });
-}
-
 std::string category_list(unsigned categories)
 {
 	constexpr const char *names[] = { "none", "experience", "epic", "cargo", "pvp" };
@@ -338,15 +332,12 @@ std::string category_list(unsigned categories)
 	return text.empty() ? "none" : text;
 }
 
-// Same side and zone ended within the repeat window.
-bool repeated(const divine_boon_state &state, int zone, unsigned side, int64_t now)
+// Either side's recent use makes the shared hotspot less desirable.
+bool repeated(const divine_boon_state &state, int zone, int64_t now)
 {
-	return std::any_of(state.history.begin(), state.history.end(),
-			   [&](const auto &old)
-			   {
-				   return old.side == side && old.zone == zone &&
-					  now < old.expired_at + DIVINE_BOON_REPEAT_WINDOW;
-			   });
+	return std::any_of(
+		state.history.begin(), state.history.end(), [&](const auto &old)
+		{ return old.zone == zone && now < old.expired_at + DIVINE_BOON_REPEAT_WINDOW; });
 }
 }
 
@@ -417,6 +408,32 @@ catch (const std::bad_alloc &)
 	catalogue.clear();
 	paths = {};
 	return false;
+}
+
+int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot)
+{
+	if (slot.category != divine_boon_category::experience &&
+	    slot.category != divine_boon_category::epic)
+		return -1;
+	// Normal shared slots and old one-sided slots need no world lookup.
+	if (slot.zones[0] == slot.zones[1] || slot.zones[0] < 0 || slot.zones[1] < 0)
+		return divine_boon_target_zone(slot);
+	// Older state may contain different Good/Evil zones. Prefer a target that
+	// is actually reachable/payable for BOTH sides; otherwise advertise one
+	// consistent target to both rather than silently hiding the active boon.
+	auto eligible = [&](int32_t zone, unsigned side)
+	{
+		return zone >= 0 && (slot.category == divine_boon_category::epic ?
+					     divine_boon_epic_zone_eligible(zone, side) :
+					     divine_boon_zone_eligible(zone, side));
+	};
+	for (int32_t zone : slot.zones)
+		if (eligible(zone, 0) && eligible(zone, 1))
+			return zone;
+	for (int32_t zone : slot.zones)
+		if (eligible(zone, 0) || eligible(zone, 1))
+			return zone;
+	return divine_boon_target_zone(slot);
 }
 
 bool divine_boon_zone_eligible(int zone_number, unsigned side)
@@ -495,103 +512,125 @@ try
 		return false;
 	choices->clear();
 	auto state = published;
-	divine_boon_reconcile(&state, now); // Newly expired objectives join repeat history.
+	divine_boon_reconcile(
+		&state, now,
+		divine_boon_shared_target_zone); // Newly expired objectives join repeat history.
 	refresh_paths();
 	if (diagnostic)
 		diagnostic->population = population;
-	unsigned zone_boons = 0;
+	unsigned experience_boons = 0, epic_boons = 0;
 	bool has_cargo = false, has_pvp = false;
 	for (const auto &slot : state.slots)
 		if (divine_boon_active(slot, now))
 		{
 			has_cargo |= slot.category == divine_boon_category::cargo;
 			has_pvp |= slot.category == divine_boon_category::pvp;
-			zone_boons += slot.category == divine_boon_category::experience ||
-				      slot.category == divine_boon_category::epic;
+			experience_boons += slot.category == divine_boon_category::experience;
+			epic_boons += slot.category == divine_boon_category::epic;
 		}
 
-	const bool online = !population[0].levels.empty() || !population[1].levels.empty();
-	if (zone_boons < DIVINE_BOON_ZONE_SLOTS && (online || zone_boons == 0))
+	// Each type has three reserved allocations, independent of the other type.
+	// Activity on either side influences the shared objective level.
+	std::vector<uint16_t> levels;
+	for (const auto &side : population)
+		levels.insert(levels.end(), side.levels.begin(), side.levels.end());
+	const bool online = !levels.empty();
+	if (experience_boons < DIVINE_BOON_EXPERIENCE_SLOTS || epic_boons < DIVINE_BOON_EPIC_SLOTS)
 	{
-		// The in-game epic zone list order: lowest payout first.
-		std::vector<std::pair<int, size_t>> ranked;
+		// Both factions must be able to reach each newly selected hotspot.
+		// Compute each side's navigation/level suitability once per zone.
+		std::vector<std::array<double, 2>> fit(catalogue.size());
 		for (size_t index = 0; index < catalogue.size(); ++index)
-			if (zone_info info;
-			    get_zone_info(catalogue[index].number, &info) && info.epic_type > 0)
-				ranked.push_back({ info.epic_payout, index });
-		std::ranges::stable_sort(ranked, {}, &std::pair<int, size_t>::first);
-
-		std::array<divine_boon_slot, 2> pick;
-		pick[0].category = divine_boon_category::experience;
-		pick[1].category = divine_boon_category::epic;
-		std::optional<epic_stone_locations> stones;
-		for (unsigned side = 0; side < population.size(); ++side)
+			for (unsigned side = 0; side < 2; ++side)
+				fit[index][side] = suitable_level(catalogue[index], side);
+		std::set<int32_t> occupied_targets;
+		for (const auto &slot : state.slots)
+			if (divine_boon_active(slot, now) &&
+			    (slot.category == divine_boon_category::experience ||
+			     slot.category == divine_boon_category::epic))
+				occupied_targets.insert(divine_boon_shared_target_zone(slot));
+		int new_experience_zone = -1;
+		auto open = [&](size_t index, bool relaxed)
 		{
-			// Path walks happen once per side; both sides share the stone scan.
-			std::vector<double> fit(catalogue.size());
-			for (size_t index = 0; index < catalogue.size(); ++index)
-				fit[index] = suitable_level(catalogue[index], side);
-			auto open = [&](size_t index, bool relaxed)
-			{
-				const int zone = catalogue[index].number;
-				return fit[index] > 0 && !assigned(state, zone, side, now) &&
-				       (relaxed || !repeated(state, zone, side, now));
-			};
-			const auto &levels = population[side].levels;
+			const int zone = catalogue[index].number;
+			return fit[index][0] > 0 && fit[index][1] > 0 &&
+			       zone != new_experience_zone && !occupied_targets.contains(zone) &&
+			       (relaxed || !repeated(state, zone, now));
+		};
 
-			// Exp: a zone around one online player's level (-5..+3), widening by
-			// up to 10 more each way; never a zone far outside their range.
-			if (!levels.empty())
-			{
-				const int level =
-					levels[number(0, static_cast<int>(levels.size()) - 1)];
-				for (int spread = 0; spread <= 10 && pick[0].zones[side] < 0;
-				     spread += 5)
-					for (unsigned relaxed = 0;
-					     relaxed < 2 && pick[0].zones[side] < 0; ++relaxed)
+		if (experience_boons < DIVINE_BOON_EXPERIENCE_SLOTS && online)
+		{
+			// Pick an eligible online player's level from either side. Keep
+			// the existing -5/+3 range, widening at most ten levels.
+			const int level = levels[number(0, static_cast<int>(levels.size()) - 1)];
+			for (int spread = 0; spread <= 10 && new_experience_zone < 0; spread += 5)
+				for (unsigned relaxed = 0; relaxed < 2 && new_experience_zone < 0;
+				     ++relaxed)
+				{
+					unsigned count = 0;
+					for (size_t index = 0; index < catalogue.size(); ++index)
 					{
-						unsigned count = 0;
-						for (size_t index = 0; index < catalogue.size();
-						     ++index)
-							if (catalogue[index].experience &&
-							    open(index, relaxed) &&
-							    fit[index] >= level - 5 - spread &&
-							    fit[index] <= level + 3 + spread &&
-							    number(1, ++count) == 1)
-								pick[0].zones[side] =
-									catalogue[index].number;
-						if (diagnostic && count)
+						// Match the chosen player's side-independent zone level
+						// without requiring opposing players to be online.
+						const double typical =
+							(fit[index][0] + fit[index][1]) / 2;
+						if (catalogue[index].experience &&
+						    open(index, relaxed) &&
+						    typical >= level - 5 - spread &&
+						    typical <= level + 3 + spread &&
+						    number(1, ++count) == 1)
+							new_experience_zone =
+								catalogue[index].number;
+					}
+					if (diagnostic && count)
+						for (unsigned side = 0; side < 2; ++side)
 						{
 							diagnostic->experience_candidates[side] =
 								count;
 							diagnostic->experience_relaxed[side] =
 								relaxed;
 						}
-					}
+				}
+			if (new_experience_zone >= 0)
+			{
+				divine_boon_slot exp;
+				exp.category = divine_boon_category::experience;
+				exp.zones = { new_experience_zone, new_experience_zone };
+				choices->push_back(exp);
 			}
+		}
 
-			// Epic: a window over the payout-ranked list, centred by the side's
-			// average online level (top half under 30, bottom half above, the
-			// bottom quarter from 50). Nobody online: any zone, so one awaits login.
+		// On a quiet server retain at most one waiting Epic objective, as
+		// before. Otherwise replenish its own reserved capacity each hour.
+		if (epic_boons < DIVINE_BOON_EPIC_SLOTS && (online || epic_boons == 0))
+		{
+			std::vector<std::pair<int, size_t>> ranked;
+			for (size_t index = 0; index < catalogue.size(); ++index)
+				if (zone_info info; get_zone_info(catalogue[index].number, &info) &&
+						    info.epic_type > 0)
+					ranked.push_back({ info.epic_payout, index });
+			std::ranges::stable_sort(ranked, {}, &std::pair<int, size_t>::first);
+			std::optional<epic_stone_locations> stones;
 			std::vector<bool> live(ranked.size());
 			for (size_t rank = 0; rank < ranked.size(); ++rank)
 			{
-				const auto &zone = catalogue[ranked[rank].second];
-				live[rank] = fit[ranked[rank].second] > 0 &&
+				const size_t index = ranked[rank].second;
+				const auto &zone = catalogue[index];
+				live[rank] = fit[index][0] > 0 && fit[index][1] > 0 &&
 					     encounter_group(zone) <= ZONE_TOUCH_MAX_PARTICIPANTS &&
-					     epic_target(zone, side, &stones);
+					     epic_target(zone, 0, &stones) &&
+					     epic_target(zone, 1, &stones);
 			}
-			double centre = levels.empty() ? 0.5 : 0;
+			double centre = online ? 0 : 0.5;
 			for (uint16_t level : levels)
 				centre += level;
-			if (!levels.empty())
+			if (online)
 				centre = std::clamp((centre / levels.size() - 10) / 40, 0.0, 1.0);
-			for (unsigned expansion = 0; expansion <= 8 && pick[1].zones[side] < 0;
-			     ++expansion)
+			int selected = -1;
+			for (unsigned expansion = 0; expansion <= 8 && selected < 0; ++expansion)
 			{
 				const double reach = 0.25 + 0.1 * expansion;
-				for (unsigned relaxed = 0; relaxed < 2 && pick[1].zones[side] < 0;
-				     ++relaxed)
+				for (unsigned relaxed = 0; relaxed < 2 && selected < 0; ++relaxed)
 				{
 					double total = 0;
 					unsigned count = 0;
@@ -611,33 +650,25 @@ try
 						++count;
 						total += weight;
 						if (number(0, 1000000) / 1000001.0 < weight / total)
-							pick[1].zones[side] =
-								catalogue[ranked[rank].second]
-									.number;
+							selected = catalogue[ranked[rank].second]
+									   .number;
 					}
 					if (diagnostic && count)
-					{
-						diagnostic->epic_candidates[side] = count;
-						diagnostic->epic_relaxed[side] = relaxed;
-					}
+						for (unsigned side = 0; side < 2; ++side)
+						{
+							diagnostic->epic_candidates[side] = count;
+							diagnostic->epic_relaxed[side] = relaxed;
+						}
 				}
 			}
-		}
-		divine_boon_slot selected;
-		unsigned total = 0;
-		for (const auto &candidate : pick)
-			if (candidate.zones[0] >= 0 || candidate.zones[1] >= 0)
+			if (selected >= 0)
 			{
-				const unsigned weight =
-					candidate.category == divine_boon_category::experience ?
-						35 :
-						30;
-				total += weight;
-				if (number(1, total) <= static_cast<int>(weight))
-					selected = candidate;
+				divine_boon_slot epic;
+				epic.category = divine_boon_category::epic;
+				epic.zones = { selected, selected };
+				choices->push_back(epic);
 			}
-		if (total)
-			choices->push_back(selected);
+		}
 	}
 
 	const bool pvp = population[0].pvp_accounts && population[1].pvp_accounts && !has_pvp;
@@ -854,10 +885,11 @@ try
 				refresh_paths();
 				paths_refreshed = true;
 			}
-			for (unsigned side = 0; side < reward_zones.size(); ++side)
-				if (slot.zones[side] >= 0 &&
-				    divine_boon_zone_eligible(slot.zones[side], side))
-					reward_zones[side][index] = slot.zones[side];
+			const int zone = divine_boon_shared_target_zone(slot);
+			if (zone >= 0 && (divine_boon_zone_eligible(zone, 0) ||
+					  divine_boon_zone_eligible(zone, 1)))
+				for (auto &side : reward_zones)
+					side[index] = zone;
 		}
 		reward_revision = state->revision;
 		reward_checked_at = now;
@@ -888,8 +920,9 @@ try
 		else
 		{
 			auto candidates = *state;
-			divine_boon_reconcile(&candidates,
-					      now); // Include just-expired repeat history.
+			divine_boon_reconcile(
+				&candidates, now,
+				divine_boon_shared_target_zone); // Include just-expired repeat history.
 			if (std::any_of(candidates.slots.begin(), candidates.slots.end(),
 					[](const auto &slot) { return !slot.id; }))
 			{
@@ -903,7 +936,8 @@ try
 			else
 				report.reason = "slots-full";
 		}
-		if (!divine_boon_rotate(&next, now, choices.data(), choices.size()))
+		if (!divine_boon_rotate(&next, now, choices.data(), choices.size(),
+					divine_boon_shared_target_zone))
 			return;
 		for (const auto &choice : choices)
 			report.categories |= 1u << static_cast<unsigned>(choice.category);
@@ -920,12 +954,17 @@ try
 			continue;
 		bool targets_valid = slot.category != divine_boon_category::cargo ||
 				     divine_boon_cargo_eligible(slot);
-		for (unsigned side = 0; side < slot.zones.size(); ++side)
-			if (slot.zones[side] >= 0 &&
-			    !(slot.category == divine_boon_category::epic ?
-				      divine_boon_epic_zone_eligible(slot.zones[side], side) :
-				      divine_boon_zone_eligible(slot.zones[side], side)))
-				targets_valid = false;
+		if (slot.category == divine_boon_category::experience ||
+		    slot.category == divine_boon_category::epic)
+		{
+			const int zone = divine_boon_target_zone(slot);
+			// Reject a half-shared or inaccessible candidate before publication.
+			targets_valid = zone >= 0 && slot.zones[0] == slot.zones[1];
+			for (unsigned side = 0; side < 2 && targets_valid; ++side)
+				targets_valid = slot.category == divine_boon_category::epic ?
+							divine_boon_epic_zone_eligible(zone, side) :
+							divine_boon_zone_eligible(zone, side);
+		}
 		if (!targets_valid)
 		{
 			invalidated = true;
@@ -939,7 +978,8 @@ try
 	if (invalidated)
 	{
 		auto kept = *state;
-		if (!divine_boon_rotate(&kept, now, valid.data(), valid.size()))
+		if (!divine_boon_rotate(&kept, now, valid.data(), valid.size(),
+					divine_boon_shared_target_zone))
 			return;
 		prepared_hour = std::move(kept);
 		if (prepared_diagnostic)

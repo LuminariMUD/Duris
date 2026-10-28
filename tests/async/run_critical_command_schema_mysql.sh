@@ -45,8 +45,11 @@ VALUES(UNHEX(REPEAT('ff',16)),UNHEX(REPEAT('11',32)),UNHEX(REPEAT('22',32)),1,1,
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sql"
 [[ "$("${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e 'SELECT COUNT(*) FROM critical_operation_inbox WHERE expected_outbox_events IS NULL')" == 1 ]]
 "${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" -e "DELETE FROM critical_operation_inbox WHERE operation_id=UNHEX(REPEAT('ff',16));"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0054_full_group_combat_results.sql"
+"${MYSQL[@]}" "$CRITICAL_TEST_DB_NAME" < "$ROOT/migrations/immutable/0054_full_group_combat_results.sql"
 DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/verify_critical_command_schema.sh"
 DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/immutable/0050_critical_outbox_expectations.sh"
+DB_NAME="$CRITICAL_TEST_DB_NAME" "$ROOT/migrations/immutable/0054_full_group_combat_results.sh"
 
 mkdir -p "$ROOT/bin/tests"
 read -r -a MYSQL_CFLAGS <<< "$(mysql_config --cflags)"

@@ -70,6 +70,7 @@ information_cache $DB python3 tests/async/test_information_cache_journey.py --ba
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
 stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
 game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server $SERVER
+last_command_journey $DB python3 tests/async/run_last_command_journey.py --server $SERVER
 bank_restart $DB python3 tests/async/run_mysql_bank_restart_journey.py $SERVER
 idle_timeout $DB python3 tests/async/run_mysql_idle_timeout_journey.py $SERVER
 address_retention $DB python3 tests/async/run_address_retention_journey.py $SERVER
@@ -116,6 +117,7 @@ auction_list $DB python3 tests/async/run_auction_list_journey.py --server $SERVE
 artifact_guild $DB tests/async/run_artifact_guild_schema_mysql.sh
 statistics $DB bash tests/async/run_statistics_mysql.sh
 session_audit $DB tests/async/run_session_audit_schema_mysql.sh
+last_command $DB python3 tests/async/test_last_command.py --mysql
 artifact_mana tests/async/run_artifact_mana_mysql.sh
 player_load_repository $DB tests/async/run_player_load_repository_mysql.sh
 character_rename_references $DB tests/async/run_character_rename_references_mysql.sh

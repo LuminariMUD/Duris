@@ -225,7 +225,7 @@ S
 at the center of the &+Gclearing &+Land the &+ypath &+Lleads back, into the claustrophobic
 embrace of the &+Gfo&+gr&+Ge&+gst&+L, to the west.
 ~
-3000 1107427456 2
+3000 1107427460 2
 D3
 ~
 ~
@@ -379,7 +379,6 @@ the &+ycliff &+Land over the depths of the &+gvalley &+Lbelow, the pellucid &+wb
 as if of its own volition. Strange and throaty cries reverbate through the
 area, seeming to emanate from all directions. The &+ytrail &+Lcontinues to the
 north, east, and south.
-A stone stair winds down into the deep tunnels of the Underdark.
 ~
 3000 33554432 4
 D0
@@ -390,11 +389,6 @@ D1
 ~
 ~
 0 0 300015
-D5
-   Stone steps descend through the cliff into the Underdark.
-~
-~
-0 0 834025
 D2
 ~
 ~
@@ -809,7 +803,7 @@ of a &+wcave &+Lcan be seen in the &+ycliffside &+Ljust beyond the veil of &+cw&
 &+Lbelow. While the &+Cw&+cat&+Ce&+cr&+Cfa&+cl&+Cl&+L's stream is constant, it is not so strong as to
 prohibit the occupation of this &+wledge&+L.
 ~
-3000 33554432 4
+3000 33554436 4
 D0
 ~
 ~
@@ -2935,13 +2929,23 @@ the size of an elven child's tooth. Unlike the &+ytunnels &+Lto the west, this
 section has seen the &+ysoil &+Ltotally supplanted by &+wgranite &+Land &+Wlimestone&+L. A
 rather large area against the southern &+ywall&+L, roughly thirty-feet in diameter,
 has had all of the bones that once covered it pulverized into a fine &+wdust&+L. The
-&+ytunnel &+Lenters from the west and leaves into the deep &+munderdark &+Lto the east.
+&+ytunnel &+Lenters from the west, with passages north and east leading into the deep &+munderdark&+L.
 ~
 3000 1 13
 D3
 ~
 ~
 0 0 300147
+D0
+A tunnel runs north into the Underdark.
+~
+~
+0 0 766414
+D1
+A passage leads east into the Underdark.
+~
+~
+0 0 766815
 S
 #300150
 &+LA &+yDeadend &+Lin a &+CD&+ca&+Cm&+cp &+yTunnel~
@@ -2983,7 +2987,7 @@ far inland. On the &+yfloor &+Lof the &+cp&+Co&+cn&+Cd&+L, a strange mixture of 
 &+Lhave taken hold. There is no current to speak of, just the rhythmic surging of
 a remnant &+Ct&+ci&+Cd&+ce &+Lfrom whatever body of &+cwater &+Lultimately supplies this &+wbasin&+L.
 ~
-3000 33554432 10
+3000 33554436 10
 D3
 ~
 ~

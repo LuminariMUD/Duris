@@ -1106,6 +1106,17 @@ snapshots, today exclusion and UTC/Sydney boundaries. The temporary user-unit
 journey `run_login_stats_service.py` checks ordering, first-run directory creation
 and recovery after the first query fails. No test changes the live deployment.
 
+`test_last_command.py` links the production staff handler for argument validation,
+staff/fog/NPC access, deferred output, admission failure, and the flat-file response.
+Its `--mysql` leg runs the generated SQL against disposable tables with strict
+grouping enabled: exact time boundaries, non-UTC connection settings, repeated
+logins, tied timestamps, account snapshots after transfers, missing characters,
+unknown accounts, and every page of normal and unique results. The real-socket
+`run_last_command_journey.py` verifies mortal denial, Avatar command dispatch,
+persisted login events, offline character lookup, filters, paging and imported help.
+Both database legs are registered in `make test-db`; neither uses the checkout's
+environment or player data.
+
 ## Monster shrug and Rrakkma
 
 The seven restored monster shrug values leave playable vampires at 40 through a

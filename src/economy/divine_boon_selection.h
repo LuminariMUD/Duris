@@ -24,12 +24,15 @@ struct divine_boon_selection_diagnostic
 // Uses the existing boot mobile profiles and actual reset locations. Exp zones
 // pass the world-quest zone vetting. No item rewards or quest level gate.
 bool divine_boon_selection_bootstrap();
-// Up to one new objective per pool: Exp or Epic (while fewer than
-// DIVINE_BOON_ZONE_SLOTS are active), PvP and Cargo (each while none is active).
+// Up to one new Experience and one new Epic objective per UTC hour, each
+// capped at three concurrent slots; Cargo and PvP retain one slot each.
 bool divine_boon_select(const divine_boon_state &state, int64_t now,
 			const std::array<divine_boon_population, 2> &population,
 			std::vector<divine_boon_slot> *choices,
 			divine_boon_selection_diagnostic *diagnostic = nullptr);
+// Pick one shared live zone from an older one-sided/two-target snapshot;
+// new boons always have identical target fields.
+int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot);
 // Rechecks runtime flags and the proved ordinary path for display/admission.
 bool divine_boon_zone_eligible(int zone_number, unsigned side);
 // Bounded reward lookup; the game-thread tick refreshes paths once per second.

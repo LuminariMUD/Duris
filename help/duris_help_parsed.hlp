@@ -5968,16 +5968,16 @@ depending on the type of golem raised.
 #0
 
 Create greater dracolich
-Create greater dracolich - Last Edited: 2010-08-08 19:16:50 by kitsero
+Create greater dracolich - Last Edited: 2026-10-28
 ======================================================================
 * Area of effect: <corpse>
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Animation lasts until undead follower dies (again)
 * Type of spell:  Summoning
-If the Necromancer has a suitable corpse at his feet, "Create Dracolich"
-will transform the corpse into a powerful winged dragon more powerful than
-its counterpart, "Create Dracolich".
+If the Necromancer has a suitable corpse at his feet, "Create Greater
+Dracolich" will transform the corpse into a powerful winged dragon more
+powerful than its counterpart, "Create Dracolich".
 	See also:masspreserve ,order ,pets ,preserve
 
 #0
@@ -28625,10 +28625,11 @@ The Gods of Duris offer automatic bonuses. Your old toggle boon setting
 is preserved but does not control these benefits. There is no new boon
 shop or task-completion reward. Old earned balances remain recorded.
 
-Eight global slots: six for zone EXP and epic boons, one for cargo and one
-for PvP. Each fixed UTC hour can start one zone boon, plus cargo and PvP
-when their slots are free. A vacant slot can stay empty. Downtime skips
-missed opportunities. Absolute expiry times survive restart.
+Eight global slots are reserved: three Experience, three Epic, one cargo
+and one PvP. Each fixed UTC hour can start one shared Experience and one
+shared Epic boon when those slots have vacancies; cargo and PvP follow
+their existing independent eligibility rules. Downtime skips missed hours.
+Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
 Damage, tanking, healing and kill shares qualify in your designated zone.
@@ -28638,14 +28639,14 @@ PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
 The separate 500-epic Spill Blood reward is never increased by this boon.
 
-Good players receive Good-side objectives and PvP against Evil; Evil players
-receive Evil-side objectives and PvP against Good. Unaffiliated players can
-use global trade boons but receive no fabricated side objectives. EXP and
-epic targets exclude every hometown-flagged zone, safe, private, unfinished,
-inaccessible and unsuitable content. A zone EXP target suits the level of
-a player online when it starts. Epic targets follow the side's average
-online level along the epic zone list, lower payouts for lower levels; with
-nobody online, any epic zone. Neither restricts zone entry.
+Good and Evil players see the same Experience and Epic destinations,
+durations and reward multipliers, creating shared racewar hotspots.
+Unaffiliated players may use trade boons but have no racewar objectives.
+New Experience and Epic targets must be accessible to both racewar sides
+and exclude hometown, safe, private, unfinished or unsuitable zones.
+Experience zones fit online levels across both factions; Epic selections
+consider those levels and eligible live Epic stones. A server with no
+players may maintain one waiting Epic objective. Neither restricts entry.
 
 Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
 Buy at the displayed source after this boon starts, then sell at its distinct
@@ -28679,10 +28680,11 @@ The Gods of Duris offer automatic bonuses. Your old toggle boon setting
 is preserved but does not control these benefits. There is no new boon
 shop or task-completion reward. Old earned balances remain recorded.
 
-Eight global slots: six for zone EXP and epic boons, one for cargo and one
-for PvP. Each fixed UTC hour can start one zone boon, plus cargo and PvP
-when their slots are free. A vacant slot can stay empty. Downtime skips
-missed opportunities. Absolute expiry times survive restart.
+Eight global slots are reserved: three Experience, three Epic, one cargo
+and one PvP. Each fixed UTC hour can start one shared Experience and one
+shared Epic boon when those slots have vacancies; cargo and PvP follow
+their existing independent eligibility rules. Downtime skips missed hours.
+Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
 Damage, tanking, healing and kill shares qualify in your designated zone.
@@ -28692,14 +28694,14 @@ PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
 The separate 500-epic Spill Blood reward is never increased by this boon.
 
-Good players receive Good-side objectives and PvP against Evil; Evil players
-receive Evil-side objectives and PvP against Good. Unaffiliated players can
-use global trade boons but receive no fabricated side objectives. EXP and
-epic targets exclude every hometown-flagged zone, safe, private, unfinished,
-inaccessible and unsuitable content. A zone EXP target suits the level of
-a player online when it starts. Epic targets follow the side's average
-online level along the epic zone list, lower payouts for lower levels; with
-nobody online, any epic zone. Neither restricts zone entry.
+Good and Evil players see the same Experience and Epic destinations,
+durations and reward multipliers, creating shared racewar hotspots.
+Unaffiliated players may use trade boons but have no racewar objectives.
+New Experience and Epic targets must be accessible to both racewar sides
+and exclude hometown, safe, private, unfinished or unsuitable zones.
+Experience zones fit online levels across both factions; Epic selections
+consider those levels and eligible live Epic stones. A server with no
+players may maintain one waiting Epic objective. Neither restricts entry.
 
 Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
 Buy at the displayed source after this boon starts, then sell at its distinct
@@ -28730,8 +28732,10 @@ Divineboon - Last Edited: 2026-10-23 00:30:00 by Duris
 Staff command: divineboon status | pause | resume | replace <slot> | force |
                history
 
-Status shows committed memory state, pending writes, stable boon IDs, both
-side targets, next UTC opportunity and validated candidate counts. History
+Status shows committed memory state, pending writes, stable boon IDs, saved
+side targets, next UTC opportunity and validated candidate counts. Live
+Experience/Epic objectives are shared; old side targets remain available
+in staff history. History
 shows the last sixteen retired boons, including replaced and expired events;
 older snapshots begin this staff history empty.
 

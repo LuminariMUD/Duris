@@ -4,7 +4,8 @@ description: >-
   Deploy native Duris production from master while keeping players online during
   preparation and the full clean build. Apply migrations online whenever safe;
   stop writers only when live evidence proves it is absolutely necessary. Reboot
-  as Veridian after a 180-second warning and verify the running game.
+  as Veridian with a full 180-second countdown, finish player feedback, verify
+  the running game, and commit/push the deployment's content and feedback changes.
 ---
 
 # Deploy Production
@@ -12,8 +13,9 @@ description: >-
 Execute the six steps below in the existing production checkout. An explicit
 request to deploy authorizes the production migrations, missing-help authoring
 and publication, bug-report investigation and necessary GitHub issue creation,
-clearing fully processed feedback, build, scheduled in-game reboot, and final
-commit/push of the verified news file directly to `master` described here. Do not
+clearing processed feedback (including unclear requests rejected after investigation),
+build, scheduled in-game reboot, and final commit/push of verified news, help sources,
+and feedback cleanup directly to `master` described here. Do not
 stop at a handoff or ask again for those actions. Editing this skill does not
 execute a deployment, process live feedback, or commit/push repository changes.
 Keep the game and website running during preparation, compilation, world generation,
@@ -83,16 +85,19 @@ Consult subsystem documentation only for the operations that actually apply.
   Use [the migration guide](../../../docs/persistence/IMMUTABLE_MIGRATIONS.md) for
   mechanics, not as a requirement to create a test environment. Do not replay
   historical repair/wipe scripts as though they were pending migrations.
+- Record existing staged and unstaged changes in news, help sources (including
+  `lib/information/help_index`), and feedback paths before editing. Step 6 commits
+  this deployment's verified changes to all of them, preserving unrelated work.
 - Before preparing news, follow
   [player feedback](references/player-feedback.md) to snapshot `lib/etc/help`
   and `lib/reports/bugs`, investigate missing-help requests, and author and
   publish useful missing topics or aliases end to end. Also update help affected
   by the release. Finish help publication and player-visible lookup verification
-  before writing its news coverage; retain unsuccessful requests for retry.
+  before writing its news coverage. Give every captured query a final disposition;
+  reject and clear unclear input after investigation. Finish source research instead
+  of treating it as an external blocker.
 - Follow [news-update](../news-update/SKILL.md) to prepare
   `lib/information/news` for missing player-facing changes in the release.
-  Record its existing staged and unstaged changes before editing so the final
-  news commit can distinguish this deployment's work from unrelated edits.
   Supply the verified help additions from this deployment as an explicit extra
   content source alongside the GitHub history inventory; they may be local source
   edits, so do not describe them as merged commits. Include useful topics and
@@ -106,19 +111,23 @@ Consult subsystem documentation only for the operations that actually apply.
   authorization. Do not use `--clean` or repeat a bulk help import to publish
   news. Verify stored news bytes; boot will refresh its cache.
 - Process bug reports using [player feedback](references/player-feedback.md)
-  at any point after the pull, independently of help/news. Prefer online
-  preparation so completed entries are ready for cleanup at the scheduled
-  restart. Check existing issues and PRs and create verified issues for real
-  untracked bugs. Triage itself is not player news and does not authorize
-  implementing unrelated bug fixes during deployment. Unclear reports or GitHub
-  failures remain pending; they do not by themselves block an otherwise qualified
-  deployment. Report unfinished feedback work separately.
+  after the pull, independently of help/news. Finish every captured report's
+  disposition and required GitHub issue creation before announcing the restart.
+  Search existing issues and PRs, verify coverage or file actionable untracked
+  defects, and reject unclear reports after investigation. A missing
+  reproduction or uncertain root cause alone does not justify discarding an
+  actionable report. Triage is a required deliverable, not optional follow-up;
+  it does not authorize unrelated bug fixes or belong in player news.
 - Complete other setup required by the pulled release before the build. An
   in-game reboot does not replace the existing launcher or systemd environment;
   account for an actual change to either, rather than assuming it takes effect.
 
-A preparation failure leaves the current game running. Resolve or report the
-concrete error; do not stop services to work around it or reboot an incompatible release.
+A preparation failure leaves the current game running. Resolve concrete import,
+lookup, or GitHub failures before the routine cutover; if an external failure cannot
+be resolved, report the exact blocked action and leave the deployment incomplete.
+Do not substitute an issue draft for a verified issue or call unfinished investigation
+"unclear" to skip it. Do not stop services to work around a preparation failure or
+reboot an incompatible release.
 
 ## 3. Complete the full clean rebuild while the game stays online
 
@@ -173,6 +182,25 @@ Use the offline procedure below only after satisfying that requirement. Otherwis
 keep services running through migration and installation, then use the normal
 scheduled reboot below.
 
+### Player countdown for every cutover
+
+Always use the game's timed reboot/shutdown when it can safely perform the required
+cutover. The offline path must meet the same three-minute player warning requirement.
+Check `time` before scheduling and do not replace another operator's countdown.
+Keep Veridian in play and connected: manual timers cancel if their issuer leaves
+play, disconnects, or loses permission. Observe the warnings, using `time` for
+status rather than resending `shutdown`.
+
+If the native timer cannot safely perform this cutover, explain the concrete reason
+and use repeated `echoa` broadcasts. Announce 180 seconds, then the actual remaining
+time at 120, 60, 45, 30, 15, 10, and 5 seconds, followed by a maintenance-begins-now
+message before stopping. Use one recorded deadline; wait the full 180 seconds and
+do not send stale countdown values after a delay. Keep the session responsive and
+capture the returned broadcasts. One announcement followed by a silent wait is
+never sufficient. If a native timer's warning updates fail, supply these broadcasts
+for the remaining interval after checking its deadline. If the schedule is cancelled
+or delayed, tell players and establish a new announced deadline before stopping.
+
 ### Offline migration only when proven unavoidable
 
 Before announcing any outage, require the completed build, generated world, checked
@@ -182,18 +210,28 @@ Identify the game child, launcher, website workers and scheduled jobs using this
 database, and record their service states. Confirm the user-scope MUD service sends
 SIGTERM to the launcher (`KillMode=mixed`) and allows the child enough time to drain.
 
-Log in as Veridian using the account/menu guidance below and check `time` for
-another operator's schedule. Broadcast exactly:
+Log in as Veridian using the account/menu guidance below and follow
+[the countdown requirement](#player-countdown-for-every-cutover). Prefer a timed
+`shutdown ok 3 Zusuk has new code incoming, brace for impact!` only when an established
+launcher/service handoff prevents automatic restart until migration and installation
+finish. Inspect the actual launcher: the current `cycle_mud.sh` restarts even after
+child exit 0, so `shutdown ok` alone does not hold writers down. Its ten-second sleep
+is not a safe maintenance window. Do not arm a timer that can restart incompatible
+writers or improvise a race against their exit.
+
+When that safe timed handoff is unavailable, explain this limitation and use the
+repeated-broadcast fallback, starting with:
 
 ```text
 echoa Maintenance begins in 180 seconds: Zusuk has new code incoming, brace for impact!
 ```
 
-Keep Veridian connected for the full warning. Then stop the configured user-scope
-MUD service, targeting the launcher while its child is running. The launcher forwards
-SIGTERM, waits for graceful exit, and leaves its restart loop. Do not use child-only
-`shutdown ok`, which lets the launcher restart after ten seconds. Stop only the other
-writers the migration actually requires, prevent their automatic restart, and verify
+Keep Veridian connected through all countdown updates. At the announced deadline,
+stop the configured user-scope MUD service, targeting the launcher while its child
+is running. The launcher forwards SIGTERM, waits for graceful exit, and leaves its
+restart loop. With a verified timed handoff, let the timer complete and keep the
+launcher stopped instead. Stop only the other writers the migration actually
+requires, prevent their automatic restart, and verify
 their processes and database sessions have ended. Keep the database and Redis up.
 The runner's quiescence check must pass; do not kill unknown sessions or weaken it.
 
@@ -227,8 +265,8 @@ before announcing the reboot. Serialize it with the launcher so it runs only
 after the old child and its log writer have exited and before a new child can
 write reports. Use the already-required restart or proven offline-migration
 window; do not add a shutdown for housekeeping. Re-read the files, remove only
-successfully processed snapshot entries, and preserve later arrivals and pending
-work. Keep this operation short; research, issue creation, and help publication
+processed snapshot entries, including rejected unclear reports, and preserve later
+arrivals. Keep this operation short; research, issue creation, and help publication
 belong in step 2. Restore the launcher's normal operation promptly even if cleanup
 fails. If a safe handoff cannot be established, retain the files and report cleanup
 as pending instead of racing the running writers.
@@ -247,9 +285,8 @@ shutdown reboot 3 Zusuk has new code incoming, brace for impact!
 ```
 
 The numeric argument is **minutes**: `3` means the requested **180 seconds**.
-Confirm the game's countdown/message. Keep Veridian connected and observe the
-countdown until the server disconnects for reboot. Do not resend `shutdown` to
-check progress; it can cancel or replace a pending shutdown. Use `time` instead.
+Confirm the game's countdown/message and follow
+[the countdown requirement](#player-countdown-for-every-cutover) until disconnect.
 
 Keep Veridian logged in through the reboot. Answer any questions asked to you
 on any of the channels to the best of your ability, but add a little note
@@ -276,13 +313,15 @@ another minute of normal operation for crashes, restart loops, or recurring erro
 
 Diagnose any failure from the logs and fix direct deployment mistakes where
 possible; do not blindly repeat reboots or roll old code onto an incompatible
-schema. Report unresolved failures with the actual service state. Completion
-means the rebuilt game is running and healthy, not merely that reboot was
-scheduled. Report the revision, migrations/content changed, build result, and
-restart/log/health result concisely. Include help topics added, bug dispositions
+schema. Report unresolved failures with the actual service state. Deployment
+completion requires a healthy rebuilt game, finished feedback dispositions and
+cleanup, verified content, and the commit/push in step 6. Report the revision,
+migrations/content changed, build result, and restart/log/health result concisely.
+Include help topics added, bug dispositions
 and created/existing issue or PR links, and whether each feedback file was cleared
-or retains new/unresolved entries. Do not call feedback processing complete when
-publication, issue creation, or cleanup remains pending.
+or retains new arrivals or entries blocked by a concrete failed operation. Count
+rejected unclear entries as processed, not pending. Do not call the deployment
+complete when publication, issue creation, cleanup, or required push remains pending.
 
 In case of disaster, use the preserved executable and stamp only when the current
 database passes that binary's matching runtime contract. After a migration advances
@@ -290,42 +329,58 @@ the required head, keep the game stopped until a compatible binary is available 
 an authorized recovery restores the matching database backup. Do not blindly pair
 the old binary with the new migration history.
 
-## 6. Commit and push the verified news directly to master
+## 6. Commit and push verified content and feedback directly to master
 
-After the game is healthy and the changed news has passed database equality and
-in-game readback, commit `lib/information/news` and push it directly to `origin/master`.
-This is part of deployment completion, under the authorization above. Keep the
-deployed code revision/hash separate from this later news-only commit in the report.
+After the game is healthy, commit and push all of this deployment's verified
+changes directly to `origin/master`: `lib/information/news`,
+`lib/information/help_index`, any other maintained help source actually changed,
+and the processed cleanup of `lib/etc/help` and `lib/reports/bugs`. News requires
+database equality and in-game readback; help requires the publication/lookup
+checks in step 2; feedback requires verified cleanup at the restart boundary.
+Do not leave help or report changes for a separate handoff. This step still applies
+when news is unchanged. Keep the deployed code revision/hash separate from these
+later content/cleanup commits in the report.
 
-Confirm this checkout is still on `master`, inspect the full news diff against
-the recorded starting state, and run `git diff --check -- lib/information/news`.
-Commit only news that was included in the verified publication/readback. Preserve
-unrelated staged and unstaged work, including help sources, feedback, and generated
-files; do not use `git add -A` or an unrestricted commit. If unrelated edits share
-the news file, isolate the deployment's changes before committing; report the
-specific conflict if they cannot be separated safely.
+Confirm the checkout is still on `master`. Review each diff against its recorded
+starting state and run `git diff --check` and `git diff --cached --check` on the
+exact intended paths. Isolate only the verified deployment changes, preserving
+unrelated staged and unstaged work.
+Use an isolated Git index when needed; do not use `git add -A` or an unrestricted
+commit. If shared-file changes cannot be separated safely, report the specific
+conflict rather than including unrelated work.
 
-Fetch `origin master` and inspect the outgoing commit range before pushing. It
-must contain only the intended news update, not unrelated unpublished commits.
-For an isolated news-file diff, use:
+The two runtime feedback files are currently ignored. Do not silently omit their
+cleanup or broadly unignore runtime directories. For each feedback file whose
+captured batch was fully retired and cleanup verified, record an empty baseline
+using an explicit path-scoped index entry even if the path was ignored/untracked.
+New arrivals stay byte-for-byte in the live files and out of
+the commit; stage the verified cleared baseline without overwriting the live file.
+Do not use `git commit --only` on those paths, since it rereads the live contents.
+Keep raw reports, identities, and recovery snapshots private. If HEAD already has
+the same empty baseline, no new feedback-file diff is needed; explain any remaining
+worktree differences as new arrivals. Never record a cleared baseline for failed
+cleanup or a batch with unfinished dispositions.
 
-```bash
-git commit --only -m "docs: update player news after deployment" -- lib/information/news
-git push origin HEAD:master
-```
+Fetch `origin master` and inspect the outgoing commit range. It must contain only
+the intended content/cleanup updates, not unrelated unpublished commits. Commit
+the reviewed index with an appropriate message, inspect the resulting commit(s),
+then run `git push origin HEAD:master`. Do not create an empty commit. On a resumed
+run, reuse verified unpublished commits and finish their push; include any remaining
+verified help/cleanup changes without duplicating earlier content.
 
-Inspect the resulting commit before executing the push. Do not create an empty
-commit when news is unchanged. On a resumed run, reuse an existing verified news
-commit and finish its push rather than creating a duplicate.
+After committing with an isolated index, reconcile only the committed changes in
+the regular index while preserving unrelated staged hunks and all live file bytes;
+do not leave the old index staging reversals of the new commit.
 
 Never force-push or bypass branch protection. On a non-fast-forward rejection,
 fetch and inspect the new remote state; do not blindly pull unbuilt code into the
-verified production checkout or overwrite another news update. If safe reconciliation
+verified production checkout or overwrite another content update. If safe reconciliation
 is not possible within this deployment, preserve the local commit and report the
 push as pending. Authentication or branch-policy failures likewise leave the healthy
 game running and the commit available for retry; do not claim a successful push.
 
-After pushing, refresh the remote ref and verify that `origin/master` contains the
-news commit and that its news file matches the verified published content. Report
-the commit SHA and push result. The news handoff is complete only when that remote
-verification succeeds, or when there was no news change or outstanding news commit.
+After pushing, refresh the remote ref and verify that `origin/master` contains every
+intended commit, its news/help bytes match the verified publication, and its feedback
+baselines match the verified cleanup. Report commit SHAs and push results. The handoff
+is complete only after this verification, or when there are no deployment changes
+or outstanding deployment commits.

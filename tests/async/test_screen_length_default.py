@@ -11,8 +11,8 @@ sql_player = (SRC / "sql_player.c").read_text()
 assert "constexpr int DEFAULT_SCREEN_LENGTH = 40;" in structs
 
 assert "ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;" in nanny
-assert actoth.count("ch->only.pc->screen_length = DEFAULT_SCREEN_LENGTH;") == 1
-assert 'snprintf(Gbuf3, MAX_STRING_LENGTH, "%d", DEFAULT_SCREEN_LENGTH);' in actoth
+assert "ch->only.pc->screen_length = reset ? DEFAULT_SCREEN_LENGTH : number;" in actoth
+assert 'snprintf(Gbuf3, sizeof Gbuf3, "%d", ch->only.pc->screen_length);' in actoth
 assert 'snprintf(Gbuf3, MAX_INPUT_LENGTH, "%3d", DEFAULT_SCREEN_LENGTH);' in actoth
 assert "Screen length set to default %s lines." in actoth
 

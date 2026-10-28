@@ -206,6 +206,42 @@ stopped through any same-epoch recovery. Only after durable completion, explicit
 start the normal service and perform the integration cutover below. Never run
 checkout qualification scripts as root or through sudo.
 
+### Account gate for a prepared new season
+
+The shipped `lib/pwipe_launch.cfg` is required at every player-serving boot and
+defaults to `enabled=false`. After a separately authorized wipe has durably
+completed, with the game stopped, arm `enabled=true`, set the exact UTC
+`opens_at_utc=YYYY-MM-DDTHH:MM:SSZ` and list approved **existing account names** in
+`allowed_accounts` (comma separated, exact and case-insensitive). The October 28
+plan uses `2026-10-28T18:00:00Z` and `mosheh`. A missing/invalid config refuses boot;
+do not remove it to troubleshoot. SQL-only `--resume-pwipe` remains independent.
+
+The gate allows approved accounts through normal password and admission checks.
+Public logins receive the launch notice and disconnect after output drains;
+registration and character preparation are deferred. It applies to Telnet, TLS,
+native WebSocket login and restored copyover connections. Config and artwork
+(`lib/information/pwipe_launch`) live outside the wiped stores. Missing artwork
+falls back to a plain notice. Changes to the time/allowlist require a restart.
+
+Browser clients must retain the received refusal after the server closes the
+socket. DurisWeb's companion [PR #118](https://github.com/LuminariMUD/DurisWeb/pull/118)
+fixes the previous generic-dialog replacement. Verify the actual deployed client
+with `run_pwipe_launch_browser_journey.py` against a disposable gate before relying
+on its opening-time display. The socket journey
+`run_pwipe_launch_gate_journey.py` covers both maintained admission backends;
+`run_pwipe_runtime_journey.py` includes the armed launcher-cleanup/new-season case.
+
+Before opening, verify approved entry, public refusal and restart persistence on
+every enabled transport. The world continues ticking. At `now >= opens_at_utc`,
+fresh public connections use ordinary login/creation automatically, without a
+restart or another wipe. This deadline is not a readiness detector: if preparation
+cannot finish, stop before the deadline and obtain the owner's revised opening
+time. An older binary removes the restriction, so keep the game stopped during a
+rollback before launch. After launch verification, explicitly disable the expired
+gate in the next controlled config update. The gate does not fence external writers
+or replace any season-reset barrier. Qualification and current limitations are in
+the [launch-gate handoff](../ongoing-projects/plan-pwipe-launch-gate-2026-10-28.md).
+
 Do not use `pwipe` for ordinary restarts. Fresh current-master qualification is
 tracked in issue #417; closed #264 contains prior evidence. A handoff repair alone
 is not wipe readiness.
