@@ -6,8 +6,12 @@ from pathlib import Path
 import subprocess
 import tempfile
 import re
+import socket
+import unittest
+from unittest.mock import Mock
 
 from _paths import HARNESS_STUBS, extract_function
+from run_pwipe_launch_gate_journey import WebSocketClient, websocket_drained
 
 ROOT = Path(__file__).resolve().parents[2]
 OPEN = 1793210400
@@ -18,6 +22,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "account/password_async.h"
 #include "net/ansi.h"
+#include "net/comm.h"
 #include "player/player_load_pipeline.h"
 #include <cassert>
 #include <cstdio>
@@ -34,6 +39,13 @@ void free_char(P_char) { ++released; }
 void echo_on(P_desc) {}
 void write_to_q(const char *text, struct txt_q *, const int) { output += text; }
 void ws_send_auth_failed(P_desc, const char *text) { output += text; }
+char greeting_text[] = "ordinary greeting";
+char *greetings = greeting_text, *greetinga = greeting_text, *greetinga1 = greeting_text,
+     *greetinga2 = greeting_text, *greetinga3 = greeting_text, *greetinga4 = greeting_text;
+char valid_term_list[] = "terminal help";
+int number(int, int) { return 1; }
+char *one_argument(const char *text, char *) { return const_cast<char *>(text); }
+void send_account_name_prompt(P_desc) { output += "Account name: "; }
 
 int main(int argc, char **argv)
 {
@@ -70,6 +82,26 @@ int main(int argc, char **argv)
             assert(!pwipe_launch_admit(&d));
             assert(output == once && output.find("Reconnect at") != std::string::npos);
             puts("denial cancelled pending work and released only its pre-entry body");
+        } else if (!strcmp(argv[3], "terminals")) {
+            for (const char *choice : {"1", "", "9"}) {
+                descriptor_data d = {};
+                output.clear();
+                select_terminal(&d, choice);
+                assert(d.connected == CON_GET_ACCT_NAME);
+                assert(output.find("Account name:") != std::string::npos);
+                assert(output.find("ordinary greeting") == std::string::npos);
+                if (!strcmp(choice, "9"))
+                    assert(output.find("THE WORLD REFORGED") == std::string::npos);
+                else
+                    assert(output.find("THE WORLD REFORGED") != std::string::npos);
+                if (!strcmp(choice, "1"))
+                    assert(output.find("&+") == std::string::npos);
+                output.clear();
+                pwipe_launch_deny(&d);
+                assert(output.find("THE WORLD REFORGED") != std::string::npos);
+                assert(output.find("Reconnect at") != std::string::npos);
+            }
+            puts("real generic, ANSI and Quick terminal selection/denial passed");
         } else {
             const std::string screen = pwipe_launch_screen(strcmp(argv[3], "plain") != 0);
             char rendered[MAX_STRING_LENGTH];
@@ -80,18 +112,54 @@ int main(int argc, char **argv)
     }
     for (const char *name : {"mosheh", "MoShEh", "test_STAFF", "mos", "moshehmore", "staff", "", static_cast<const char *>(nullptr)})
         printf("%d", pwipe_launch_allows_at(name, now));
-    printf("\n%s\n%s\n", pwipe_launch_opens_utc().c_str(), pwipe_launch_status(now).c_str());
+    printf("\n%s\n", pwipe_launch_status(now).c_str());
 }
 '''
 
 
+def check_websocket_drain():
+    checks = unittest.TestCase()
+    # Exercise the journey's real frame reader without booting a game server.
+    for payload, eof, failure in (
+        (b"", False, socket.timeout),
+        (b"", True, None),
+        (b"\x88\x00", False, None),
+        (b'\x81\x13{"status":"failed"}\x88\x00', False, None),
+        (b'\x81\x13{"status":"failed"}', False, socket.timeout),
+        (b"\x81\x00", False, ValueError),
+        (b"\x81\x7e\x00", False, socket.timeout),
+    ):
+        receiver, sender = socket.socketpair()
+        with receiver, sender:
+            receiver.settimeout(.05)
+            client = WebSocketClient.__new__(WebSocketClient)
+            client.socket, client.buffer, client.messages = receiver, bytearray(), []
+            sender.sendall(payload)
+            if eof:
+                sender.shutdown(socket.SHUT_WR)
+            if failure:
+                with checks.assertRaises(failure):
+                    websocket_drained(client)
+            else:
+                websocket_drained(client)
+    for status in ("success", "created", "reconnected"):
+        with checks.assertRaises(AssertionError):
+            websocket_drained(Mock(receive=Mock(side_effect=[{"status": status}, ConnectionResetError()])))
+    websocket_drained(Mock(receive=Mock(side_effect=ConnectionResetError())))
+    for error in (OSError("unexpected socket failure"), AssertionError("WebSocket not closed")):
+        with checks.assertRaises(type(error)):
+            websocket_drained(Mock(receive=Mock(side_effect=error)))
+    print("PASS: WebSocket drain requires close/EOF/reset; idle/partial-frame timeouts and invalid responses fail")
+
+
 def run():
+    check_websocket_drain()
     build_root = ROOT / "bin/tests"
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="pwipe-launch-policy-", dir=build_root) as temporary:
         root = Path(temporary)
         harness, binary, config = root / "harness.cpp", root / "policy", root / "launch.cfg"
-        harness.write_text(HARNESS)
+        harness.write_text(HARNESS + "\n" + extract_function("nanny.c", "void select_terminal("))
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
                         "-Isrc", str(harness), "src/account/pwipe_launch.c", "src/net/ansi.c",
@@ -124,6 +192,7 @@ def run():
             CONFIG.replace("mosheh, Test_staff", "mosheh,MOSHEH"),
             CONFIG.replace("mosheh, Test_staff", "abcdefghijklmnop"),
             CONFIG.replace("mosheh, Test_staff", "mosheh\0hidden"),
+            CONFIG.replace("mosheh, Test_staff", "a_"),
         ):
             check(invalid, valid=False)
         for date in ("2026-02-29T18:00:00Z", "2026-10-32T18:00:00Z", "2026-13-28T18:00:00Z",
@@ -137,6 +206,7 @@ def run():
         print("PASS: fail-closed config, exact identities, disabled mode, UTC dates and launch boundary")
         config.write_text(CONFIG.replace("2026-10-28", "2099-10-28"))
         subprocess.run([str(binary), str(config), str(OPEN), "session"], check=True, cwd=ROOT)
+        subprocess.run([str(binary), str(config), str(OPEN), "terminals"], check=True, cwd=ROOT)
         for mode in ("plain", "ansi"):
             result = subprocess.check_output([str(binary), str(config), str(OPEN), mode], cwd=ROOT)
             assert b"2099-10-28 18:00:00 UTC" in result
@@ -158,6 +228,7 @@ def run():
     account = (ROOT / "src/account/account.c").read_text()
     password = extract_function("account.c", "static void finish_account_password(")
     assert password.index("if (!password_valid)") < password.index("pwipe_launch_admit(d)")
+    assert password.index("pwipe_launch_admit(d)") < password.index("ACCOUNT_BLOCK_DELETION")
     assert password.index("pwipe_launch_admit(d)") < password.index("// Check for duplicate")
     for signature in ("void display_account_menu(", "void account_select_char(",
                       "void account_confirm_char(", "void account_player_load_complete(",

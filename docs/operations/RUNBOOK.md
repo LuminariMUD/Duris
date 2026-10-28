@@ -223,6 +223,14 @@ native WebSocket login and restored copyover connections. Config and artwork
 (`lib/information/pwipe_launch`) live outside the wiped stores. Missing artwork
 falls back to a plain notice. Changes to the time/allowlist require a restart.
 
+Browser clients must retain the received refusal after the server closes the
+socket. DurisWeb's companion [PR #118](https://github.com/LuminariMUD/DurisWeb/pull/118)
+fixes the previous generic-dialog replacement. Verify the actual deployed client
+with `run_pwipe_launch_browser_journey.py` against a disposable gate before relying
+on its opening-time display. The socket journey
+`run_pwipe_launch_gate_journey.py` covers both maintained admission backends;
+`run_pwipe_runtime_journey.py` includes the armed launcher-cleanup/new-season case.
+
 Before opening, verify approved entry, public refusal and restart persistence on
 every enabled transport. The world continues ticking. At `now >= opens_at_utc`,
 fresh public connections use ordinary login/creation automatically, without a

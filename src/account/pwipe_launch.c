@@ -121,6 +121,7 @@ bool pwipe_launch_load(const char *path, std::string &error)
 				const std::string name = trim(value.substr(start, end - start));
 				// Telnet accepts 2..12 letters; native WS also accepts '_' and 14.
 				if (name.size() < 2 || name.size() > 14 ||
+				    (name.size() == 2 && name.find('_') != std::string::npos) ||
 				    name.find_first_not_of(
 					    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_") !=
 					    std::string::npos)
@@ -174,11 +175,6 @@ bool pwipe_launch_allows_at(const char *account_name, time_t now)
 			if (!strcasecmp(account_name, name.c_str()))
 				return true;
 	return false;
-}
-
-const std::string &pwipe_launch_opens_utc()
-{
-	return opens_utc;
 }
 
 std::string pwipe_launch_status(time_t now)

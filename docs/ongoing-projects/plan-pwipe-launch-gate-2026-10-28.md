@@ -1,10 +1,12 @@
 # October 28 pwipe: account allowlist and launch screen
 
-Status: **implementation in progress; not deployed**. Updated October 28, 2026.
+Status: **implemented, locally qualified, committed/pushed and ready for review;
+not deployed**.
+Updated October 28, 2026.
 Public opening: **2026-10-28 at 18:00:00 UTC** (`2026-10-28T18:00:00Z`, Unix
 timestamp `1793210400`). Initial approved account: **`mosheh`**.
 
-Source inspected: local checkout `58ed0c42b` on
+Original planning source: local checkout `58ed0c42b` on
 `branch/local-dev-burnin-fixes`, with `ENVIRONMENT=local`. These findings describe
 that checkout, not the current production executable or database.
 
@@ -323,21 +325,19 @@ contract is a visible launch notice; a custom browser splash is separate UI work
   log `bin/analysis/pwipe-launch-build.log`). No full regression rerun is needed
   for this inactive policy/config foundation.
 - Existing identity grammars differ: Telnet permits 2..12 letters, native WS
-  permits 3..14 letters/underscores. Config permits their union (2..14 ASCII
-  letters/underscores); admission still compares the loaded full identity,
+  permits 3..14 letters/underscores. Config permits their union (2-letter names
+  contain letters only; 3..14 may also contain underscores). Admission compares the loaded full identity,
   case-insensitively. This introduces no account-registration rule change.
-- Next: complete admission integration and presentation, then real socket/restart/
-  copyover journeys for both backends and the existing disposable wipe journey.
-  Do not treat the policy/config chunk alone as an armed admission gate.
 - Foundation is committed as `9109292ba`, pushed, and review-ready in
   [PR #433](https://github.com/LuminariMUD/Duris/pull/433) against `master`.
 - Admission/presentation chunk is on `branch/pwipe-launch-admission-2026-10-28`,
+  commit `773eb2b99`, review-ready in [PR #434](https://github.com/LuminariMUD/Duris/pull/434),
   stacked on #433. The shared denial cancels password/load/writer continuations,
   discards queued input, releases its pre-entry body and uses `CON_FLUSH` for all
   transports. Native WS rejects further commands while draining. Copyover checks
   the repository's account identity before materializing a restored body/items.
   A registration callback was reordered so it cannot replace a denial's state.
-- Original 60-column terminal art is implemented and its plain transcript reviewed.
+- Original fortress terminal art is implemented and its plain transcript reviewed.
   Tests verify ANSI/plain parity, ASCII/76-column bounds, CRLF, final reset, parsed
   date and missing-art fallback. Generic output is explicitly stripped through
   `AnsiString::plain`; the general queue otherwise emits ANSI during login.
@@ -348,10 +348,131 @@ contract is a visible launch notice; a custom browser splash is separate UI work
   `test_websocket_backpressure_contract.py`, `test_websocket_runtime.py`, formatting,
   and the MariaDB development build. Build log:
   `bin/analysis/pwipe-launch-admission-build.log`.
-- Runtime qualification is still outstanding: both-backend socket/restart/copyover
-  and auto-opening journeys, actual browser notice, and armed disposable wipe.
-  An isolated flat-file build is running under `bin/pwipe-launch-flatfile/`.
-  No production configuration, credentials, player data, wipe or deployment touched.
+- Qualification continues on `branch/pwipe-launch-qualification-2026-10-28`,
+  based on #434, implementation/qualification commit `828c4f8ec`, review-ready in
+  [PR #435](https://github.com/LuminariMUD/Duris/pull/435). Review found the deletion-confirmation continuation preceded
+  the launch check; it now follows it, so an unlisted deletion-fenced account
+  still gets the launch denial. Approved deletion fences remain intact. Existing
+  deletion contract/menu/runtime tests pass. Final ablation removed an unused
+  timestamp accessor and rejects two-character underscore names that neither
+  account-registration grammar accepts.
+- The actual `greet()` calls `select_terminal(d, "")` directly. Real Telnet/TLS
+  sockets therefore exercise ANSI; generic/Quick are proven by executing the real
+  `select_terminal` and denial functions in the focused harness. No extra terminal
+  selector or login option was added. These claims must not be conflated.
+- MariaDB real socket qualification passed, including missing/malformed config
+  refusal before listeners in **normal and minimal** boot modes, approved existing
+  character loading/reconnect/creation, public and unlisted-staff refusal,
+  deferred registration of an absent allowlisted name, continued-frame refusal,
+  armed copyover, restart persistence and public Telnet/TLS/WS entry after the
+  real deadline without a restart. New public registration/creation/starter kit,
+  gameplay and save also passed. SQL row counts did not change during refusals.
+- The flat-file equivalent **passed**, including the final strengthened probe
+  after the deletion-order repair: it checks the
+  actual `identities/accounts` directory and hashes every refused account/body.
+  The admitted body is allowed to keep saving while the world ticks. An earlier
+  all-body hash comparison correctly observed that admitted body's save; refused
+  account/body bytes remained unchanged. This was a probe correction, not a
+  reason to pause simulation or weaken admission.
+- Final maintained development builds passed for both backends. Current binary
+  SHA256s: MariaDB `33ed1ebe37293f204238c1bce40d6ead7d1ddf2a200a7cebb45436ffcfb063d4`;
+  isolated flat-file `9a1f2ede225ce5a7f24b36a7fcb0aeeec63e4af97f96f9708e0d496913f64127`.
+  The final flat socket journey used that exact binary. The MariaDB socket journey
+  used `a0f1092965d80fcc1161a80429fbe8c290dee8adf4135b693d67d427e9362491`,
+  including the deletion-order fix; its later two-character-name validation and
+  unused-accessor removal were verified by focused policy tests and both builds.
+  Runtime identities do not use the rejected spelling; those valid socket results
+  are reused rather than repeating deadline waits for an unrelated parser boundary.
+- The real disposable MariaDB pwipe journey **passed** on `773eb2b99` / binary
+  SHA256 `c3b86e5e4881e7f019b3f9fe4ef083d6328ba1a79d692123dabe758bd1cd7f34`.
+  Its actual five-minute countdown was 301.39 wall-clock seconds. Config/art and
+  passwords survived launcher cleanup; the recreated approved Overlord entered;
+  an ordinary surviving account was refused; the same post-wipe process opened at
+  the deadline and completed fresh creation/combat/loot/save/reconnect/another boot.
+  Reuse this evidence: subsequent source changes only move a non-allowlisted
+  deletion continuation behind the gate, reject an invalid allowlist spelling and
+  remove an unused accessor. None changes the wipe or this journey's identities.
+- Real Chromium found that DurisWeb erased the received authentication error on
+  socket close. The separate companion fix is committed as `ac3ab5f` and review-ready
+  in [DurisWeb PR #118](https://github.com/LuminariMUD/DurisWeb/pull/118). It retains
+  the existing error in the reconnect dialog, with the ordinary generic fallback.
+  The real MUD refusal is now visible after close at 375/768/1280px. 105 focused
+  frontend tests plus formatting/lint/type-check/build passed. No page errors;
+  existing Vue Router `next()` deprecation and build bundle-size warnings remain.
+  Its PR contains an unpublished Website Changelog draft, prepared using that
+  repository's news-update skill. Deploy the companion fix for browser acceptance.
+- No production configuration, credentials, player data, wipe or deployment touched.
+  Release tags are intentionally absent: these are review candidates, not releases.
+
+### PR #435 review follow-up
+
+- Confirmed the WebSocket drain finding: the original broad `OSError` handler
+  accepted `socket.timeout` as disconnection. A real idle socket regression failed
+  against the original loop (`TimeoutError not raised`) before the fix.
+- The journey now accepts only the client's close-frame/EOF reports or a connection
+  termination. Timeouts, unrelated socket errors and unexpected assertions propagate;
+  late-frame sending also no longer suppresses unrelated socket errors. The existing
+  drain loop is shared with the focused regression, without changing the game server.
+- `python3 tests/async/test_pwipe_launch_gate.py` passed, including real socket-pair
+  close/EOF, refusal-without-close and partial-frame timeout cases, connection reset,
+  invalid responses and forbidden admission statuses. Both backend socket journeys
+  listed below passed again with the corrected check and the final binary hashes
+  above. Their refreshed JSON records identify parent `1464a7e76`; the review fix was
+  present but uncommitted during these runs. MariaDB now also uses the final
+  `33ed1ebe...` binary, superseding its earlier socket result above.
+- Python compilation, `git diff --check`, and
+  `./scripts/format.sh --rev origin/branch/pwipe-launch-admission-2026-10-28 --check`
+  passed. Existing build, wipe, browser and unrelated regression evidence is reused:
+  this follow-up changes only the qualification scripts and this handoff.
+- Fresh Git inspection found no missing `master` commits or stack conflicts.
+  Preserve **#433 → #434 → #435** and add the review fix to #435; no rebase, squash,
+  carry-forward or release tag is needed for this follow-up.
+
+### Reproduce and locate evidence
+
+All server journeys use private synthetic accounts, state, ports and disposable
+databases; they do not read checkout `.env`. Generated evidence stays under `bin/`.
+
+```bash
+./scripts/format.sh --check
+make -C src -j2
+make -C src PERSISTENCE_BACKEND=flatfile \
+  BIN_ROOT="$PWD/bin/pwipe-launch-flatfile" -j2
+python3 tests/async/test_pwipe_launch_gate.py
+python3 tests/async/run_pwipe_launch_gate_journey.py --backend flatfile \
+  --server bin/pwipe-launch-flatfile/server/dms_new
+tests/async/with_disposable_mariadb.sh python3 \
+  tests/async/run_pwipe_launch_gate_journey.py --backend mariadb \
+  --server bin/server/dms_new
+python3 tests/async/run_pwipe_runtime_journey.py bin/server/dms_new
+python3 tests/async/run_pwipe_launch_browser_journey.py \
+  --server bin/pwipe-launch-flatfile/server/dms_new \
+  --frontend-url http://127.0.0.1:31991 \
+  --browser-executable /path/to/installed/chrome-headless-shell
+```
+
+- `bin/analysis/pwipe-launch/{mariadb,flatfile}.json`, socket transcripts and
+  `*-runtime.log` hold both-backend admission evidence. Build logs are
+  `pwipe-launch-final-build.log` and `pwipe-launch-flatfile-build.log`.
+- `bin/analysis/pwipe-runtime-mariadb.json` and `pwipe-launch-wipe-journey.log`
+  hold the real armed-wipe evidence. Redis/website/matched-restore variants were
+  not rerun for this gate; the reset procedure itself is unchanged.
+- `bin/analysis/pwipe-launch/browser.json` and `browser-denial-{375,768,1280}.png`
+  hold browser proof. Browser plugin was unavailable; regular Playwright used an
+  already installed Chromium. The frontend was the companion source based on
+  `759ce97` plus `ac3ab5f`, with a local Vite server and unrelated HTTP shell/API
+  fixtures; registration and denial used a real MUD WebSocket. This is not live
+  website/backend acceptance.
+- Implementation closeout is complete. Review/land the server stack in order
+  **#433 → #434 → #435**; retain all three changes when qualifying a deployment.
+  DurisWeb **#118** is the independently reviewable browser prerequisite. Current
+  worktrees are clean after the committed handoff update; the server checkout is
+  left on the qualification branch and the companion on its focused fix branch.
+  No release tag, merge or deployment was performed. The next operational work is
+  the separately authorized deployment/live-wipe/launch acceptance sequence above,
+  including verifying the actual runtime config, existing intended `mosheh` account,
+  production clock, reset readiness and all enabled transports. Local qualification
+  does not establish any of those live facts.
 
 ## Original planning validation
 
