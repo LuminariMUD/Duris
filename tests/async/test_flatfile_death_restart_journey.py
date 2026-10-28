@@ -56,21 +56,8 @@ def run(binary: pathlib.Path) -> None:
         run_root = pathlib.Path(run_tmp)
         state_root.chmod(0o700)
         (run_root / "logs/log").mkdir(parents=True)
-        for directory in ("areas_mini", "docs"):
+        for directory in ("areas", "areas_mini", "docs"):
             (run_root / directory).symlink_to(ROOT / directory, target_is_directory=True)
-        # A player corpse holds the weight its player carried, and its shell (object 2,
-        # weight 200) counts against that, so a new character could put nothing back into
-        # its corpse. This run's world gives the shell no weight.
-        (run_root / "areas").mkdir()
-        for entry in (ROOT / "areas").iterdir():
-            if entry.name != "world.obj":
-                (run_root / "areas" / entry.name).symlink_to(entry)
-        world = (ROOT / "areas/world.obj").read_bytes()
-        shell = b"#2\ncorpse~\n&+La corpse&N~\n&+LA corpse is here.&N~\n~\n" \
-                b"24 2 3 30 7 0 73728 0 0 0 0\n0 0 0 0 0 0 0 0\n200 0 100\n"
-        journey.require(world.count(shell) == 1, "corpse prototype fixture changed")
-        (run_root / "areas/world.obj").write_bytes(
-            world.replace(shell, shell.replace(b"\n200 0 100\n", b"\n0 0 100\n")))
         shutil.copytree(ROOT / "lib", run_root / "lib")
         # Quitting outside an inn camps; keep the camp short.
         properties = run_root / "lib/duris.properties"

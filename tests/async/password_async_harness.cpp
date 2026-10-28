@@ -7,12 +7,14 @@
 #include <openssl/crypto.h>
 #include <cassert>
 #include <chrono>
+#include <cstdarg>
 #include <thread>
 #include <time.h>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <openssl/sha.h>
+#include <sys/resource.h>
 
 P_acct account_list = nullptr;
 static std::string output;
@@ -104,6 +106,8 @@ static void no_slow(const char *line, void *)
 }
 int main(int argc, char **)
 {
+	const rlimit no_core{ 0, 0 };
+	setrlimit(RLIMIT_CORE, &no_core);
 	// Verify the linked production allocator rejects NULL, unlike libc free.
 	if (argc > 1)
 	{

@@ -56,6 +56,8 @@ def active_zone_numbers(source_root):
         text = (source_root / "areas" / "zon" / f"{name}.zon").read_text(
             encoding="utf-8", errors="replace"
         )
+        if not text.strip():
+            continue  # Retired areas may retain prototypes without a live zone.
         numbers.append(int(re.search(r"^#(-?\d+)", text, re.MULTILINE).group(1)))
     return numbers
 

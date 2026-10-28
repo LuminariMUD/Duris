@@ -627,7 +627,8 @@ static void instance_weight_restore() {
             obj_from_obj(item);
             assert(corpse->weight == 160 && GET_CARRYING_W(&carrier) == 160);
             recalc_container_weight(corpse);
-            assert(container_total_weight(corpse) == 160 && corpse->weight == 160);
+            assert(container_total_weight(corpse) == (type == ITEM_CORPSE ? 0 : 160));
+            assert(corpse->weight == 160);
             obj_to_obj(item, corpse);
             assert(corpse->weight == 180 && GET_CARRYING_W(&carrier) == 180);
             saved_shell = corpse->weight - GET_OBJ_WEIGHT(item);
@@ -657,11 +658,18 @@ static void corpse_creation_and_loot() {
         P_obj corpse = make_corpse(&victim, 0);
         const int expected = npc ? 40 : 180;
         assert(corpse && corpse->weight == expected && corpse->contains == item);
+        assert(container_total_weight(corpse) == 20);
+        assert(corpse->value[CORPSE_WEIGHT] == 20);
         assert(!victim.carrying && GET_CARRYING_W(&victim) == 0);
         obj_from_obj(item);
         assert(corpse->weight == expected - 20 && !corpse->contains);
+        int64_t weight = container_total_weight(corpse), space = 0, quiver_count = 0;
+        assert(weight == 0);
+        assert(bulk_put_permitted(&victim, item, corpse, weight, space, quiver_count));
+        assert(weight == 20);
         obj_to_obj(item, corpse);
         assert(corpse->weight == expected && corpse->contains == item);
+        assert(!bulk_put_permitted(&victim, item, corpse, weight, space, quiver_count));
         extract_obj(corpse, TRUE);
     }
 }

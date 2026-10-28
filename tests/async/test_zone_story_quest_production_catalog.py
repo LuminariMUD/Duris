@@ -73,4 +73,13 @@ with tempfile.TemporaryDirectory(prefix="duris-zone-story-production-catalog-") 
     assert written["source"]["fingerprint_sha256"] == catalog["source"]["fingerprint_sha256"]
     assert len(written["definitions"]) == len(catalog["definitions"])
 
+    # A retired area can keep legacy mob/obj prototypes in AREA while its zone
+    # file is empty, as Misty Chasm does after the Misty Vale replacement.
+    fixture = pathlib.Path(temporary) / "source"
+    (fixture / "areas" / "zon").mkdir(parents=True)
+    (fixture / "areas" / "AREA").write_text("active\nretired\n")
+    (fixture / "areas" / "zon" / "active.zon").write_text("#14\nActive~\n")
+    (fixture / "areas" / "zon" / "retired.zon").write_text("")
+    assert catalog_module.active_zone_numbers(fixture) == [14]
+
 print("zone-story production catalog coverage regression passed")
