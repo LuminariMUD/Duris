@@ -1215,6 +1215,8 @@ knock
 ~
 lag
 ~
+last
+~
 laugh
 ~
 layhand
