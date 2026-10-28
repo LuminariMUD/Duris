@@ -98,7 +98,8 @@ void rotation()
 		{
 			choice = {};
 			choice.category = divine_boon_category::cargo;
-			choice.source_port = choice.cargo_commodity = choice.contraband_commodity = 0;
+			choice.source_port = choice.cargo_commodity = choice.contraband_commodity =
+				0;
 			choice.destination_port = 1;
 		}
 		assert(divine_boon_rotate(&state, index * H, &choice));
@@ -284,17 +285,14 @@ void doubled_pve_history_capacity()
 	for (int64_t hour = 1; hour <= 12; ++hour)
 	{
 		divine_boon_slot choices[2] = {
-			zone(divine_boon_category::experience, 1000 + 2 * hour,
-			     1000 + 2 * hour),
-			zone(divine_boon_category::epic, 1001 + 2 * hour,
-			     1001 + 2 * hour)
+			zone(divine_boon_category::experience, 1000 + 2 * hour, 1000 + 2 * hour),
+			zone(divine_boon_category::epic, 1001 + 2 * hour, 1001 + 2 * hour)
 		};
 		assert(divine_boon_rotate(&state, hour * H, choices, 2));
 		assert(divine_boon_replace(&state, 0, hour * H + 1));
 		assert(divine_boon_replace(&state, 1, hour * H + 1));
 	}
-	assert(state.history.size() == 48 &&
-	       state.history.size() <= DIVINE_BOON_HISTORY_MAX);
+	assert(state.history.size() == 48 && state.history.size() <= DIVINE_BOON_HISTORY_MAX);
 	std::vector<uint8_t> bytes;
 	divine_boon_state restored;
 	assert(divine_boon_state_encode(state, &bytes));

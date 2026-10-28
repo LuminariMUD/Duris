@@ -1,5 +1,11 @@
 # Issue #417: full pwipe qualification and findings
 
+The completed local test environment was retired at the owner's request on
+2026-10-28. Its database and working files were archived before removal; the
+[workspace handoff](plan-issue-417.md#retirement-2026-10-28) records custody and
+recovery details. Runtime states and paths in this report describe the historical
+qualification runs, not a currently running #417 server.
+
 ## Pre-merge review follow-up, 2026-10-28
 
 Three additional review findings were corrected after the full-world run recorded
