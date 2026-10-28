@@ -5968,16 +5968,16 @@ depending on the type of golem raised.
 #0
 
 Create greater dracolich
-Create greater dracolich - Last Edited: 2010-08-08 19:16:50 by kitsero
+Create greater dracolich - Last Edited: 2026-10-28
 ======================================================================
 * Area of effect: <corpse>
 * Aggressive:     No
 * Cumulative:     No
 * Duration:       Animation lasts until undead follower dies (again)
 * Type of spell:  Summoning
-If the Necromancer has a suitable corpse at his feet, "Create Dracolich"
-will transform the corpse into a powerful winged dragon more powerful than
-its counterpart, "Create Dracolich".
+If the Necromancer has a suitable corpse at his feet, "Create Greater
+Dracolich" will transform the corpse into a powerful winged dragon more
+powerful than its counterpart, "Create Dracolich".
 	See also:masspreserve ,order ,pets ,preserve
 
 #0

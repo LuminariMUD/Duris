@@ -3541,9 +3541,9 @@ Cumulative:     No
 Duration:       Animation lasts until undead follower dies (again)
 Type of spell:  Summoning
 
-If the Necromancer has a suitable corpse at his feet, "Create Dracolich"
-will transform the corpse into a powerful winged dragon more powerful than 
-its counterpart, "Create Dracolich". 
+If the Necromancer has a suitable corpse at his feet, "Create Greater
+Dracolich" will transform the corpse into a powerful winged dragon more
+powerful than its counterpart, "Create Dracolich".
 ===========================================================================
 See also: ORDER, PETS, PRESERVE, "MASS PRESERVE", EMBALM, 
           "CREATE DRACOLICH"
