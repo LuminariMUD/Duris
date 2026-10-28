@@ -201,6 +201,22 @@ with tempfile.TemporaryDirectory(prefix="duris-runner-") as scratch:
                  "SIGKILL tests/async/test_crashes.py"):
         assert f"    {line}\n" in text, text
 
+    # A child Make cannot use the runner's inherited jobserver descriptors, but
+    # its command-line compiler overrides must survive the subprocess boundary.
+    (tests_dir / "probe.mk").write_text("all:\n\t@echo $(CC)\n")
+    probe = tests_dir / "test_makeflags.py"
+    probe.write_text(
+        "import pathlib, subprocess\n"
+        "result = subprocess.run(['make', '-s', '-f', str(pathlib.Path(__file__).with_name('probe.mk'))], "
+        "capture_output=True, text=True)\n"
+        "assert result.returncode == 0 and not result.stderr, result.stderr\n"
+        "assert 'clang++' in result.stdout, result.stdout\n")
+    with mock.patch.dict(os.environ, {
+        "MAKEFLAGS": "w -j16 --jobserver-auth=9998,9999 -- CC=clang++",
+    }):
+        result = runner.run_test(probe, 5)
+    assert result.status == "PASS", result.output
+
     # The requested worker limit also applies to journeys that compile helpers.
     for name in ("test_flatfile_combat_journey.py", "test_pet_restart_journey.py"):
         (tests_dir / name).write_text(

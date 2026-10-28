@@ -153,12 +153,18 @@ def run_test(path: Path, deadline: float) -> TestResult:
     started = time.monotonic()
     # A file, not a pipe: reading it does not wait on a process that outlives the test.
     with tempfile.TemporaryFile() as output:
+        environment = dict(os.environ)
+        # subprocess closes Make's jobserver descriptors. Keep compiler overrides,
+        # but let each test's independent Make own its parallelism.
+        environment["MAKEFLAGS"] = re.sub(r"--jobserver-(?:auth|fds)=\S+", "",
+                                          environment.get("MAKEFLAGS", ""))
         process = subprocess.Popen(
             [sys.executable, str(path)],
             cwd=ROOT,
             stdout=output,
             stderr=subprocess.STDOUT,
             start_new_session=True,
+            env=environment,
         )
         with running_lock:
             running.add(process)

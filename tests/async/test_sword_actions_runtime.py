@@ -308,11 +308,13 @@ signatures = ('int good_evil_stoneOrSoulshield(', 'void good_evil_procDrain(',
     'void good_evil_poofSword(', 'void good_evil_configSword(', 'int good_evil_sword(')
 callbacks='\n'.join(function(specs,s) for s in signatures)
 callbacks+='\n'+function(ROOT/'src/combat/fight.c','bool weapon_proc(')
+callbacks+='\n'+function(ROOT/'src/magic/magic.c','void spell_vitality(').replace(
+    'void spell_vitality(', 'static void real_spell_vitality(', 1)
 with tempfile.TemporaryDirectory(prefix='duris-swords-') as directory:
     source=Path(directory)/'harness.cpp'; binary=Path(directory)/'harness'
     source.write_text(scope['platform']+scope['fixture']+scope['boundary']+
         native_boundary.replace('// INSERT_AFFECTS',affects)+HARNESS.replace('// INSERT_CALLBACKS',callbacks))
-    subprocess.run(['g++','-std=c++20','-O1','-g','-ffunction-sections','-fdata-sections',
+    subprocess.run(['g++','-std=c++20','-Werror','-O1','-g','-ffunction-sections','-fdata-sections',
         '-fsanitize=address,undefined','-fno-omit-frame-pointer','-pthread','-I'+str(ROOT/'src'),
         str(source),str(ROOT/'src/persistence/latency_trace.c'),'-Wl,--gc-sections',str(HARNESS_STUBS), '-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True,env=dict(os.environ,

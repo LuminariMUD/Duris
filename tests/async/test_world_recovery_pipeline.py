@@ -95,6 +95,7 @@ P_char get_linked_char(P_char ch, ush_int type)
 
 int real_room(int vnum)
 {
+    if (vnum == 60005 && rooms[1].number == vnum) return 1;
     return vnum == 100 ? 0 : vnum == 200 ? 1 : -1;
 }
 
@@ -517,6 +518,26 @@ int main()
     const auto before_semantic_reads=objects_read;
     assert(!world_recovery_validate_with_floor(blob.data(),blob.size(),300,42,nullptr,nullptr,0));
     assert(objects_read==before_semantic_reads); // the saved door no longer exists
+
+    // Ship hatches do not exist at artifact preflight, but must exist at restore.
+    rooms[1].number = 60005;
+    copyover_room ship_door = {60005, 5, EX_ISDOOR | EX_CLOSED};
+    auto ship_record = frame(world_recovery_record_type::door,
+                            reinterpret_cast<const unsigned char *>(&ship_door), sizeof(ship_door));
+    std::vector<unsigned char> ship_blob(WORLD_RECOVERY_WIRE_HEADER_BYTES + ship_record.size());
+    memcpy(ship_blob.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES, ship_record.data(), ship_record.size());
+    finish(ship_blob, header);
+    assert(world_recovery_validate_with_floor(ship_blob.data(),ship_blob.size(),300,42,nullptr,nullptr,0));
+    assert(!world_recovery_restore(ship_blob.data(),ship_blob.size(),300,42,nullptr));
+    assert(objects_read == before_semantic_reads);
+    room_direction_data hatch = {};
+    hatch.exit_info = EX_ISDOOR;
+    rooms[1].dir_option[5] = &hatch;
+    assert(world_recovery_restore(ship_blob.data(),ship_blob.size(),300,42,nullptr));
+    assert(hatch.exit_info == (EX_ISDOOR | EX_CLOSED));
+    rooms[1].dir_option[5] = nullptr;
+    rooms[1].number = 200;
+
     zone_age_entry missing_zone={}; missing_zone.zone_rnum=42;
     const auto zone_record=frame(world_recovery_record_type::zone,reinterpret_cast<const unsigned char *>(&missing_zone),sizeof(missing_zone));
     auto zone_header=header; zone_header.door_count=0; zone_header.zone_count=1;

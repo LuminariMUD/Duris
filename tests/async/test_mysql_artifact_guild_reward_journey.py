@@ -229,7 +229,10 @@ def run(binary, case):
                 command(god, f"setbit char {PLAYER} taught 'summon ghasts' 100")
                 command(god, 'setbit char ' + PLAYER + ' basehit 100000')
                 command(god, 'restore ' + PLAYER)
+                # Keep independent luck-based random epics out of the elite feed totals.
+                command(god, 'setbit char ' + PLAYER + ' luck -1000')
                 assert 'Class: Necromancer' in command(player, 'score')
+                assert re.search(r'\bLuk:\s+1\b', command(player, 'attributes'))
                 assert 'new association is set up' in command(god, 'supervise found ' + PLAYER + ' n Rewardguild')
                 settle(lambda: sql("SELECT COUNT(*) FROM guilds WHERE TRIM(name)='Rewardguild'") == '1', 'guild snapshot missing')
                 gid = int(sql("SELECT id FROM guilds WHERE TRIM(name)='Rewardguild'"))
