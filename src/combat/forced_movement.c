@@ -47,12 +47,12 @@ forced_block plan_exit(P_char ch, int source, int direction, forced_exit &plan)
 		return forced_block::invalid_room;
 	if (exit->to_room == source)
 		return forced_block::barrier;
-	const forced_block terrain = map_entry_barrier(ch, source, exit->to_room);
-	if (terrain != forced_block::none)
-		return terrain;
 	if (IS_SET(exit->exit_info, EX_SECRET | EX_BLOCKED) ||
 	    check_castle_walls(source, exit->to_room) || check_wall(source, direction))
 		return forced_block::barrier;
+	const forced_block terrain = map_entry_barrier(ch, source, exit->to_room);
+	if (terrain != forced_block::none)
+		return terrain;
 	const bool passdoor =
 		IS_AFFECTED2(ch, AFF2_PASSDOOR) &&
 		(!IS_SET(exit->exit_info, EX_LOCKED) || !IS_SET(exit->exit_info, EX_PICKPROOF));

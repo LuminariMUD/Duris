@@ -3691,12 +3691,63 @@ void hold_durable_pet_items(P_char ch)
 	}
 }
 
-void extract_char(P_char ch)
+static void extract_char_items(P_char ch, bool terminal_items_saved)
 {
 	P_obj obj;
+	int l;
+
+	/* clear equipment_list */
+	for (l = 0; l < MAX_WEAR; l++)
+		if (ch->equipment[l])
+		{
+			// debug: log extract_char equipment cleanup for artifact 58424
+			if (OBJ_VNUM(ch->equipment[l]) == 58424)
+			{
+				logit(LOG_DEBUG,
+				      "[handler.c:extract_char] cleaning up artifact 58424 from '%s' slot=%d in_room=%d",
+				      GET_NAME(ch), l, ch->in_room);
+			}
+			obj = unequip_char(ch, l);
+			/* Added pet check */
+			if (terminal_items_saved || ch->in_room == NOWHERE ||
+			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) || IS_SHOPKEEPER(ch) ||
+			    (IS_NPC(ch) && IS_RANDOM_MOB(ch)))
+			{
+				extract_obj(obj);
+				obj = NULL;
+			}
+			else
+				obj_to_room(obj, ch->in_room);
+		}
+	if (ch && ch->carrying)
+	{
+		P_obj next_obj;
+
+		for (obj = ch->carrying; obj != NULL; obj = next_obj)
+		{
+			next_obj = obj->next_content;
+
+			if (terminal_items_saved || ch->in_room == NOWHERE || IS_SHOPKEEPER(ch) ||
+			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) ||
+			    (IS_NPC(ch) && mob_index[GET_RNUM(ch)].virtual_number >= 100000 &&
+			     mob_index[GET_RNUM(ch)].virtual_number < 110000))
+			{
+				extract_obj(obj);
+				obj = NULL;
+			}
+			else
+			{
+				obj_from_char(obj);
+				obj_to_room(obj, ch->in_room);
+			}
+		}
+	}
+}
+
+void extract_char(P_char ch)
+{
 	P_char k;
 	P_desc t_desc;
-	int l;
 	struct affected_type *af, *nextaf;
 
 	if (!ch)
@@ -3852,57 +3903,43 @@ void extract_char(P_char ch)
 
 	disarm_char_nevents(ch, NULL);
 
-	/* clear equipment_list */
-	for (l = 0; l < MAX_WEAR; l++)
-		if (ch->equipment[l])
-		{
-			// debug: log extract_char equipment cleanup for artifact 58424
-			if (OBJ_VNUM(ch->equipment[l]) == 58424)
-			{
-				logit(LOG_DEBUG,
-				      "[handler.c:extract_char] cleaning up artifact 58424 from '%s' slot=%d in_room=%d",
-				      GET_NAME(ch), l, ch->in_room);
-			}
-			obj = unequip_char(ch, l);
-			/* Added pet check */
-			if (terminal_items_saved || ch->in_room == NOWHERE ||
-			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) || IS_SHOPKEEPER(ch) ||
-			    (IS_NPC(ch) && IS_RANDOM_MOB(ch)))
-			{
-				extract_obj(obj);
-				obj = NULL;
-			}
-			else
-				obj_to_room(obj, ch->in_room);
-		}
-	if (ch && ch->carrying)
-	{
-		P_obj next_obj;
-
-		for (obj = ch->carrying; obj != NULL; obj = next_obj)
-		{
-			next_obj = obj->next_content;
-
-			if (terminal_items_saved || ch->in_room == NOWHERE || IS_SHOPKEEPER(ch) ||
-			    IS_SET(obj->extra_flags, ITEM_TRANSIENT) ||
-			    (IS_NPC(ch) && mob_index[GET_RNUM(ch)].virtual_number >= 100000 &&
-			     mob_index[GET_RNUM(ch)].virtual_number < 110000))
-			{
-				extract_obj(obj);
-				obj = NULL;
-			}
-			else
-			{
-				obj_from_char(obj);
-				obj_to_room(obj, ch->in_room);
-			}
-		}
-	}
+	extract_char_items(ch, terminal_items_saved);
 
 	const uint64_t room_removal_before = character_removal_generation;
 	const uint64_t room_removal_id = ch->runtime_id;
 	training_dummy_begin_removal(ch);
 	char_from_room(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	// A departure hook can create fresh relationships after the initial teardown.
+	if (ch->followers || ch->following)
+		die_follower(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	if (ch->group)
+		group_remove_member(ch);
+	if (ch->linking || ch->linked)
+		clear_all_links(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	stop_fighting_for_extraction(ch);
+	if (ch->nevents)
+		disarm_char_nevents(ch, NULL);
+	if (ch->lobj)
+		remove_all_linked_objects(ch);
+	extract_char_items(ch, terminal_items_saved);
 	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
 	    ch->runtime_id != room_removal_id)
 	{

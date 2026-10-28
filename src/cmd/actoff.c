@@ -3583,47 +3583,50 @@ void do_restrain(P_char ch, char *argument, int /*cmd*/)
 	restrain(ch, victim);
 }
 
-int chance_kick(P_char ch, P_char victim)
+static bool kick_admitted(P_char ch, P_char victim)
 {
-	int percent_chance;
-
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
-		return 0;
+		return false;
 
-	if ((percent_chance = GET_CHAR_SKILL(ch, SKILL_KICK)) == 0)
+	if (GET_CHAR_SKILL(ch, SKILL_KICK) == 0)
 	{
 		send_to_char("You don't know how to kick.\n", ch);
-		return 0;
+		return false;
 	}
 
 	if (IS_IMMOBILE(ch))
 	{
 		send_to_char("Wait a sec, you can't kick anyone right now.\n", ch);
-		return 0;
+		return false;
 	}
 
 	if (LEGLESS(ch))
 	{
 		send_to_char("You haven't the necessary body parts to do that.\n", ch);
-		return 0;
+		return false;
 	}
 
 	if (!on_front_line(ch))
 	{
 		send_to_char("You can't seem to break the ranks!\n", ch);
-		return 0;
+		return false;
 	}
 
 	if ((IS_PC(ch) || IS_PC_PET(ch)) && !on_front_line(victim))
 	{
 		send_to_char("You can't quite seem to reach them...\n", ch);
-		return 0;
+		return false;
 	}
 
-	if (!CanDoFightMove(ch, victim))
-	{
+	return CanDoFightMove(ch, victim);
+}
+
+int chance_kick(P_char ch, P_char victim)
+{
+	if (!kick_admitted(ch, victim))
 		return 0;
-	}
+
+	int percent_chance = GET_CHAR_SKILL(ch, SKILL_KICK);
 
 	if (GET_RACE(ch) == RACE_CENTAUR)
 		percent_chance *= 2;
@@ -4957,11 +4960,6 @@ void do_kick(P_char ch, char *argument, int cmd)
 		return;
 	}
 
-	if (!CanDoFightMove(ch, victim))
-		return;
-
-	victim = guard_check(ch, victim);
-
 	if (GET_RACE(ch) == RACE_PLANT)
 	{
 		branch(ch, victim);
@@ -4969,18 +4967,19 @@ void do_kick(P_char ch, char *argument, int cmd)
 	else if ((GET_RACE(ch) == RACE_SNAKE) || (GET_RACE(ch) == RACE_INSECT) ||
 		 (GET_RACE(ch) == RACE_PARASITE))
 	{
-		do_bite(ch, argument, cmd);
+		do_bite_target(ch, victim);
 	}
 	else
 	{
+		if (!kick_admitted(ch, victim))
+			return;
+		victim = guard_check(ch, victim);
 		kick(ch, victim);
 	}
 }
 
-int chance_roundkick(P_char ch, P_char victim)
+static int roundkick_admission(P_char ch, P_char victim)
 {
-	int percent_chance;
-
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 	{
 		return 0;
@@ -5009,18 +5008,6 @@ int chance_roundkick(P_char ch, P_char victim)
 	if (!CanDoFightMove(ch, victim))
 		return TAKEDOWN_CANCELLED;
 
-	if (IS_IMMATERIAL(victim))
-	{
-		act("Your sweeping kick passes through $N. A fine breeze, but a poor impact!",
-		    FALSE, ch, 0, victim, TO_CHAR);
-		act("$n's sweeping kick passes harmlessly through you. Being mist has its moments!",
-		    FALSE, ch, 0, victim, TO_VICT);
-		act("$n's sweeping kick passes through $N, rearranging absolutely nothing.", FALSE,
-		    ch, 0, victim, TO_NOTVICT);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.250));
-		return TAKEDOWN_CANCELLED;
-	}
-
 	if (!on_front_line(ch) || !on_front_line(victim))
 	{
 		send_to_char("You can't reach them!\n", ch);
@@ -5033,6 +5020,29 @@ int chance_roundkick(P_char ch, P_char victim)
 		send_to_char("You can't figure out how to kick them!\n", ch);
 		return 0;
 	}
+
+	return 1;
+}
+
+int chance_roundkick(P_char ch, P_char victim)
+{
+	const int admission = roundkick_admission(ch, victim);
+	if (admission != 1)
+		return admission;
+
+	if (IS_IMMATERIAL(victim))
+	{
+		act("Your sweeping kick passes through $N. A fine breeze, but a poor impact!",
+		    FALSE, ch, 0, victim, TO_CHAR);
+		act("$n's sweeping kick passes harmlessly through you. Being mist has its moments!",
+		    FALSE, ch, 0, victim, TO_VICT);
+		act("$n's sweeping kick passes through $N, rearranging absolutely nothing.", FALSE,
+		    ch, 0, victim, TO_NOTVICT);
+		CharWait(ch, (int)(PULSE_VIOLENCE * 0.250));
+		return TAKEDOWN_CANCELLED;
+	}
+
+	int percent_chance;
 
 	if (IS_TRUSTED(ch))
 	{
@@ -5087,12 +5097,7 @@ bool roundkick(P_char ch, P_char victim)
 		0
 	};
 
-	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
-	{
-		return false;
-	}
-
-	if (!CanDoFightMove(ch, victim))
+	if (roundkick_admission(ch, victim) != 1)
 		return false;
 
 	victim = guard_check(ch, victim);
@@ -7506,6 +7511,9 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
+	if (!CanDoFightMove(ch, vict))
+		return;
+
 	appear(ch);
 
 	if ((has_innate(vict, INNATE_HORSE_BODY) || has_innate(vict, INNATE_SPIDER_BODY) ||
@@ -7541,9 +7549,6 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
 		return;
 	}
-
-	if (!CanDoFightMove(ch, vict))
-		return;
 
 	if (affected_by_spell(ch, SKILL_BASH))
 	{
@@ -9028,7 +9033,7 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (!CanDoFightMove(ch, victim))
+	if (!kick_admitted(ch, victim))
 	{
 		return;
 	}

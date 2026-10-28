@@ -214,7 +214,7 @@ int main()
 """
 
 extract = extract_function("handler.c", "void extract_char(P_char ch)")
-assert extract.index("die_follower(ch)") < extract.index("/* clear equipment_list */")
+assert extract.index("die_follower(ch)") < extract.index("extract_char_items(ch, terminal_items_saved)")
 
 build = ROOT / "bin/tests/pet-control-drop"
 build.mkdir(parents=True, exist_ok=True)

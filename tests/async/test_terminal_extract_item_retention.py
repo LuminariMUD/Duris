@@ -38,8 +38,10 @@ assert saved_extract.index("CHAR_RFLAG_TERMINAL_ITEMS_SAVED") < saved_extract.in
 
 extract = body(handler, "void extract_char(P_char ch)")
 assert contains(extract, "terminal_items_saved")
-assert extract.count("terminal_items_saved || ch->in_room == NOWHERE") == 2
-assert extract.index("terminal_items_saved || ch->in_room == NOWHERE") < extract.index(
+assert extract.count("extract_char_items(ch, terminal_items_saved)") == 2
+items = body(handler, "static void extract_char_items(P_char ch, bool terminal_items_saved)")
+assert items.count("terminal_items_saved || ch->in_room == NOWHERE") == 2
+assert items.index("terminal_items_saved || ch->in_room == NOWHERE") < items.index(
     "obj_to_room(obj, ch->in_room)"
 )
 

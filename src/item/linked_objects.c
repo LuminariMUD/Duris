@@ -80,6 +80,7 @@ void remove_linked_object(P_obj o)
 			{
 				p->next = l->next;
 			}
+			o->hitched_to = NULL;
 			delete l;
 			break;
 		}

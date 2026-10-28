@@ -8737,15 +8737,10 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 	*/
 /* remove a char from the list of fighting chars */
 
-void stop_fighting(P_char ch)
+// Terminal removal also accepts characters already detached or killed by a room hook.
+static void unlink_fighting(P_char ch)
 {
 	P_char tmp;
-
-	if (!SanityCheck(ch, "stop_fighting") || !IS_FIGHTING(ch))
-		return;
-
-	if (IS_SET(ch->specials.affected_by3, AFF3_TRACKING)) // needed for new track *Alv*
-		REMOVE_BIT(ch->specials.affected_by3, AFF3_TRACKING);
 
 	ch->specials.was_fighting = GET_OPPONENT(ch);
 
@@ -8769,6 +8764,24 @@ void stop_fighting(P_char ch)
 
 	ch->specials.next_fighting = NULL;
 	GET_OPPONENT(ch) = NULL;
+}
+
+void stop_fighting_for_extraction(P_char ch)
+{
+	if (GET_OPPONENT(ch))
+		unlink_fighting(ch);
+	StopAllAttackers(ch);
+}
+
+void stop_fighting(P_char ch)
+{
+	if (!SanityCheck(ch, "stop_fighting") || !IS_FIGHTING(ch))
+		return;
+
+	if (IS_SET(ch->specials.affected_by3, AFF3_TRACKING)) // needed for new track *Alv*
+		REMOVE_BIT(ch->specials.affected_by3, AFF3_TRACKING);
+
+	unlink_fighting(ch);
 	telemetry_combat_context_changed(ch);
 
 	if (affected_by_spell(ch, SPELL_CEGILUNE_BLADE))

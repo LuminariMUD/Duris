@@ -49,11 +49,12 @@ static std::vector<P_char> live;
 static std::vector<std::string> fixture_messages;
 struct Delivered { P_char recipient; std::string text; };
 static std::vector<Delivered> delivered;
-static P_char parsed_target, guard_target, forbidden_target;
-static bool fight_allowed, improved, magical_wall, castle_wall;
-static bool hide_victim_from_stranger;
+static P_char parsed_target, lookup_target, guard_target, guard_checked_target;
+static P_char forbidden_target, bitten_target, damage_target;
+static bool fight_allowed, improved, magical_wall, castle_wall, innate_available;
+static bool hide_victim_from_stranger, actor_front, victim_front;
 static int damage_calls, guard_calls, victim_waits, actor_waits, stops, actor_lag;
-static int notch_calls, total_waits;
+static int notch_calls, total_waits, kick_skill, roundkick_skill, appear_calls, innate_checks;
 static int callback_calls, arrivals, departure_calls, arrival_direction, engaged;
 static P_char riding, rider;
 enum class Leave { ordinary, veto, redirect, kill, extract, replace, retarget, seal,
@@ -225,20 +226,34 @@ int number(int minimum, int maximum)
     return minimum;
 }
 int get_takedown_size(P_char ch) { return ch->player.size; }
-int GET_CHAR_SKILL_P(P_char, int) { return 100; }
-int chance_kick(P_char, P_char) { return fight_allowed ? 200 : 0; }
+int GET_CHAR_SKILL_P(P_char, int skill)
+{
+    return skill == SKILL_KICK ? kick_skill : skill == SKILL_ROUNDKICK ? roundkick_skill : 100;
+}
 float takedown_check(P_char, P_char, float, int, ulong) { return 200; }
 bool notch_skill(P_char, int, float) { ++notch_calls; return improved; }
 int CanDoFightMove(P_char, P_char target) { return fight_allowed && target != forbidden_target; }
-P_char guard_check(P_char, P_char target) { ++guard_calls; return guard_target ? guard_target : target; }
+P_char guard_check(P_char, P_char target)
+{
+    ++guard_calls;
+    guard_checked_target = target;
+    return guard_target ? guard_target : target;
+}
 P_char ParseTarget(P_char, char *) { return parsed_target; }
-int on_front_line(P_char) { return true; }
+P_char get_char_room_vis(P_char, const char *) { return lookup_target; }
+bool check_innate_time(P_char, int innate, int)
+{
+    assert(innate == INNATE_BITE);
+    ++innate_checks;
+    return innate_available;
+}
+int on_front_line(P_char ch) { return ch == &actor ? actor_front : ch == &victim ? victim_front : true; }
 bool has_innate(P_char ch, int innate)
 {
     return innate == INNATE_HORSE_BODY && ch->player.race == RACE_CENTAUR;
 }
 bool affected_by_spell(P_char, int) { return false; }
-void appear(P_char, bool) {}
+void appear(P_char, bool) { ++appear_calls; }
 void CharWait(P_char ch, int wait)
 {
     ++total_waits;
@@ -251,8 +266,9 @@ void set_fighting(P_char ch, P_char target) { ch->specials.fighting = target; }
 void stop_fighting(P_char ch) { ++stops; ch->specials.fighting = nullptr; }
 void set_short_affected_by(P_char, int, int) {}
 struct affected_type *affect_to_char(P_char, struct affected_type *effect) { return effect; }
-int melee_damage(P_char, P_char, double, int, struct damage_messages *, int *)
+int melee_damage(P_char, P_char target, double, int, struct damage_messages *, int *)
 {
+    damage_target = target;
     ++damage_calls;
     return DAM_NONEDEAD;
 }
@@ -262,8 +278,7 @@ void kick_messages(P_char, P_char, bool, struct damage_messages *out)
     out->victim = const_cast<char *>("kick hit");
     out->room = const_cast<char *>("kick hit");
 }
-void branch(P_char, P_char) {}
-void do_bite(P_char, char *, int) {}
+void bite(P_char, P_char target) { bitten_target = target; }
 '''
 
 DRIVER = r'''
@@ -305,14 +320,16 @@ static void reset()
     place(&victim, 0);
     place(&witness, 4);
     place(&stranger, 4);
-    parsed_target = &victim;
-    guard_target = forbidden_target = nullptr;
-    fight_allowed = true;
+    parsed_target = lookup_target = &victim;
+    guard_target = guard_checked_target = forbidden_target = bitten_target = damage_target = nullptr;
+    fight_allowed = innate_available = true;
     hide_victim_from_stranger = false;
+    actor_front = victim_front = true;
     improved = true;
     magical_wall = castle_wall = false;
     damage_calls = guard_calls = actor_waits = victim_waits = stops = actor_lag = 0;
-    notch_calls = total_waits = 0;
+    notch_calls = total_waits = appear_calls = innate_checks = 0;
+    kick_skill = roundkick_skill = 100;
     callback_calls = arrivals = departure_calls = engaged = 0;
     arrival_direction = -9;
     riding = rider = nullptr;
@@ -362,6 +379,14 @@ static void admission_cases()
     reset(); north.to_room = 0; require_block(forced_block::barrier);
     reset(); north.exit_info = EX_SECRET; require_block(forced_block::barrier);
     reset(); north.exit_info = EX_BLOCKED; require_block(forced_block::barrier);
+    for (const int concealed : {EX_SECRET, EX_BLOCKED, EX_SECRET | EX_BLOCKED})
+        for (const int sector : {SECT_MOUNTAIN, SECT_UNDRWLD_MOUNTAIN})
+        {
+            reset(); north.exit_info = concealed; rooms[1].sector_type = sector;
+            require_block(forced_block::barrier);
+            assert(run_pair().reason == forced_block::barrier);
+            assert(departure_calls == 0 && callback_calls == 0 && arrivals == 0);
+        }
     reset(); magical_wall = true; require_block(forced_block::barrier);
     reset(); castle_wall = true; require_block(forced_block::barrier);
     reset(); north.exit_info = EX_CLOSED; require_block(forced_block::door);
@@ -488,17 +513,18 @@ static void handler_cases()
     do_roundkick(&actor, const_cast<char *>("fixture"), 0);
     assert(guard_calls == 0 && victim_waits == 0 && damage_calls == 0);
     reset(); guard_target = forbidden_target = &witness;
+    actor.player.size = victim.player.size;
     place(&witness, 0);
     do_roundkick(&actor, const_cast<char *>("fixture"), 0);
     assert(guard_calls == 1 && total_waits == 0 && damage_calls == 0 && notch_calls == 0);
     reset(); actor.player.size = victim.player.size;
     do_roundkick(&actor, const_cast<char *>("fixture"), 0);
     assert(guard_calls == 1 && damage_calls == 1);
-    reset(); victim.player.race = RACE_GHOST;
+    reset(); victim.player.race = RACE_GHOST; actor.player.size = victim.player.size;
     roundkick(&actor, &victim);
     assert(victim_waits == 0 && damage_calls == 0);
     assert(actor_waits == 1 && actor_lag == (int)(PULSE_VIOLENCE * 0.250));
-    reset(); victim.player.race = RACE_GHOST;
+    reset(); victim.player.race = RACE_GHOST; actor.player.size = victim.player.size;
     assert(chance_roundkick(&actor, &victim) == TAKEDOWN_CANCELLED);
     assert(actor_waits == 1 && actor_lag == (int)(PULSE_VIOLENCE * 0.250));
     assert(victim_waits == 0 && damage_calls == 0);
@@ -516,6 +542,116 @@ static void handler_cases()
     rooms[1].sector_type = SECT_OCEAN;
     do_tackle(&actor, const_cast<char *>("fixture"), 0);
     assert(actor.in_room == 0 && victim.in_room == 0 && arrivals == 0);
+}
+
+static void precondition_cases()
+{
+    // Rejected commands must not intercept a guard, reveal the actor, or alter combat.
+    for (const bool rear : {false, true})
+        for (const int refusal : {0, 1, 2, 3})
+        {
+            reset(); guard_target = &witness; place(&witness, 0);
+            if (rear) actor.player.race = RACE_CENTAUR;
+            if (refusal == 0) kick_skill = 0;
+            if (refusal == 1) actor.specials.affected_by4 |= AFF4_PHANTASMAL_FORM;
+            if (refusal == 2) actor_front = false;
+            if (refusal == 3) victim_front = false;
+            if (rear) do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+            else do_kick(&actor, const_cast<char *>("fixture"), 0);
+            assert(guard_calls == 0 && total_waits == 0 && damage_calls == 0);
+            assert(appear_calls == 0 && !actor.specials.fighting);
+            assert(GET_POS(&actor) == POS_STANDING && GET_POS(&victim) == POS_STANDING);
+        }
+    reset(); actor.player.size = victim.player.size; roundkick_skill = 0;
+    guard_target = &witness; place(&witness, 0);
+    do_roundkick(&actor, const_cast<char *>("fixture"), 0);
+    assert(guard_calls == 0 && total_waits == 0 && damage_calls == 0);
+    reset(); guard_target = &witness; place(&witness, 0); // target outside size range
+    do_roundkick(&actor, const_cast<char *>("fixture"), 0);
+    assert(guard_calls == 0 && total_waits == 0 && damage_calls == 0);
+    for (const int target_race : {RACE_CENTAUR, RACE_HUMAN})
+    {
+        reset(); fight_allowed = false;
+        actor.player.size = victim.player.size;
+        victim.player.race = target_race;
+        do_tackle(&actor, const_cast<char *>("fixture"), 0);
+        assert(appear_calls == 0 && total_waits == 0 && damage_calls == 0);
+        assert(!actor.specials.fighting && !victim.specials.fighting);
+        assert(GET_POS(&actor) == POS_STANDING && GET_POS(&victim) == POS_STANDING);
+        assert(actor.in_room == 0 && victim.in_room == 0 && arrivals == 0);
+    }
+}
+
+static void racial_routing_cases()
+{
+    // Plant attacks use branch admission, without normal kick body/skill checks.
+    reset(); actor.player.race = RACE_PLANT; kick_skill = 0;
+    guard_target = &witness; place(&witness, 0);
+    do_kick(&actor, const_cast<char *>("fixture"), 0);
+    assert(guard_calls == 1 && damage_calls == 1 && damage_target == &witness);
+    assert(GET_POS(&witness) == POS_PRONE && GET_POS(&victim) == POS_STANDING);
+    reset(); actor.player.race = RACE_PLANT; fight_allowed = false;
+    do_kick(&actor, const_cast<char *>("fixture"), 0);
+    assert(guard_calls == 0 && total_waits == 0 && damage_calls == 0);
+
+    for (const int race : {RACE_SNAKE, RACE_INSECT, RACE_PARASITE})
+    {
+        reset(); actor.player.race = race; kick_skill = 0;
+        guard_target = &witness; place(&witness, 0);
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(innate_checks == 1 && guard_calls == 1 && bitten_target == &witness);
+        assert(damage_calls == 0 && victim_waits == 0);
+        // ParseTarget may resolve a different target than the original name (for example, taunt).
+        reset(); actor.player.race = race;
+        parsed_target = &witness; lookup_target = &victim; place(&witness, 0);
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(innate_checks == 1 && guard_calls == 1);
+        assert(guard_checked_target == &witness && bitten_target == &witness);
+        reset(); actor.player.race = race; innate_available = false;
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(innate_checks == 1 && guard_calls == 0 && !bitten_target);
+        reset(); actor.player.race = race; fight_allowed = false;
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(innate_checks == 0 && guard_calls == 0 && !bitten_target);
+        reset(); actor.player.race = race; guard_target = forbidden_target = &witness;
+        place(&witness, 0);
+        do_kick(&actor, const_cast<char *>("fixture"), 0);
+        assert(innate_checks == 1 && guard_calls == 1 && !bitten_target);
+    }
+    // The string command shares the same target admission/interception path.
+    reset(); actor.player.race = RACE_INSECT; guard_target = &witness; place(&witness, 0);
+    do_bite(&actor, const_cast<char *>("fixture"), 0);
+    assert(innate_checks == 1 && guard_calls == 1 && bitten_target == &witness);
+    reset(); actor.player.race = RACE_INSECT;
+    parsed_target = &witness; lookup_target = &victim; place(&witness, 0);
+    do_bite(&actor, const_cast<char *>("fixture"), 0);
+    assert(innate_checks == 1 && guard_calls == 1);
+    assert(guard_checked_target == &victim && bitten_target == &victim);
+}
+
+static void concealed_feedback_cases()
+{
+    for (const int concealed : {EX_SECRET, EX_BLOCKED, EX_SECRET | EX_BLOCKED})
+        for (const int sector : {SECT_MOUNTAIN, SECT_UNDRWLD_MOUNTAIN})
+            for (const int command : {0, 1, 2})
+            {
+                reset(); north.exit_info = concealed; rooms[1].sector_type = sector;
+                if (command == 0) kick(&actor, &victim);
+                else if (command == 1)
+                {
+                    actor.player.race = RACE_CENTAUR;
+                    do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+                }
+                else
+                {
+                    actor.player.size = victim.player.size;
+                    do_tackle(&actor, const_cast<char *>("fixture"), 0);
+                }
+                assert(actor.in_room == 0 && victim.in_room == 0);
+                assert(departure_calls == 0 && arrivals == 0);
+                assert(said("uncooperative obstacle"));
+                assert(!said("mountain") && !said("cavern"));
+            }
 }
 
 static bool launch_to(P_char recipient, const std::string &part)
@@ -658,6 +794,9 @@ int main()
     admission_cases();
     script_cases();
     handler_cases();
+    precondition_cases();
+    concealed_feedback_cases();
+    racial_routing_cases();
     std::puts("combat edge cases: admission, scripted transfers, kick/rearkick/tackle, immunity and guards passed");
 }
 '''
@@ -668,14 +807,21 @@ functions = [
     extract_function("utility.c", "void CAP("),
     extract_function("comm.c", "void act_convert("),
     "using forced_departure_message = std::pair<uint64_t, std::string>;",
+    extract_function("innates.c", "P_char parse_victim("),
+    extract_function("innates.c", "void do_bite_target("),
+    extract_function("innates.c", "void do_bite(P_char ch, char *arg, int /*cmd*/)"),
+    extract_function("innates.c", "void branch("),
 ] + [
     extract_function("actoff.c", signature)
     for signature in (
+        "static bool kick_admitted(",
+        "int chance_kick(",
         "static bool can_receive_forced_departure(",
         "static std::vector<forced_departure_message>\nsnapshot_forced_departure(",
         "static void deliver_forced_departure(",
         "static void forced_rebound_messages(",
         "void kick(",
+        "static int roundkick_admission(",
         "int chance_roundkick(",
         "bool roundkick(",
         "void do_roundkick(",
