@@ -38,6 +38,23 @@ def check() -> None:
     assert "generic_find(arg, FIND_OBJ_INV | FIND_OBJ_EQUIP | FIND_OBJ_ROOM" in teleport
     assert "obj->value[1] != cmd" in teleport
 
+    # A carried non-teleport named 'rock' must not shadow the room entrance.
+    # generic_find checks inventory before room objects; retry room-only after a
+    # nonmatching carried item, without overriding a matching carried portal.
+    handler = (ROOT / "src/world/handler.c").read_text()
+    find = handler[handler.index("int generic_find("):]
+    assert find.index("FIND_OBJ_INV") < find.index("FIND_OBJ_ROOM"), (
+        "expected inventory-first targeting, regression scenario no longer applies"
+    )
+    climb_fallback = re.search(
+        r"(?s)if\s*\(cmd\s*==\s*CMD_CLIMB\s*&&\s*"
+        r"\(!obj\s*\|\|\s*obj->type\s*!=\s*ITEM_TELEPORT\s*\|\|\s*"
+        r"obj->value\[1\]\s*!=\s*cmd\)\)\s*"
+        r"\{\s*generic_find\(arg,\s*FIND_OBJ_ROOM,\s*ch,\s*&dummy,\s*&obj\);",
+        teleport,
+    )
+    assert climb_fallback, "a carried ordinary 'rock' must not block climb rock"
+
     resets = (AREAS / "zon/caves_skelenak.zon").read_text(encoding="latin-1")
     assert re.search(r"(?m)^O 0 4027 1 4110\b", resets), "rock must load beside the path"
     assert re.search(r"(?m)^M 0 4038 1 4153\b", resets), "monk must load atop the rock"
