@@ -1,5 +1,28 @@
 # Issue #417: local pwipe qualification workspace
 
+## Retirement, 2026-10-28
+
+The owner retired this completed local test environment. The
+`duris-issue417.service` launcher stopped cleanly with exit status 0, its listeners
+on 4000/4001/4050 closed, and the dedicated local `duris_issue417` database was
+removed after a successful SQL dump. The dump includes all 281 base tables and the
+view; its completion marker, gzip integrity and uncompressed SHA-256 were checked.
+A new restore drill was not run for this cleanup.
+
+The pre-retirement checkout, local news overlay, credentials, runtime, server
+binaries and qualification evidence are preserved in a private, hash-verified
+archive under
+`/home/aiwithapex/.local/state/duris/setup-archives/2026-10-28-issue417-closeout/`.
+Compiler objects and dependency caches are omitted. The archive's `RESTORE.txt`
+records recovery instructions; its source is retained by the local
+`archive/issue417-closeout-2026-10-28` Git reference. Do not publish the archive.
+
+The main local server and `duris_dev` database remain in use. Redis database 0 and
+the `duris:local:default` namespace are shared with the unfinished
+character-mechanics checkout and were preserved. No production service or data
+was changed by this retirement. The setup and execution details below are
+historical, not instructions to recreate an active #417 environment automatically.
+
 ## Scope
 
 [Issue #417](https://github.com/LuminariMUD/Duris/issues/417) owns the fresh,
