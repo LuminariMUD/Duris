@@ -1,4 +1,12 @@
 #include "account/pwipe_launch.h"
+#include "core/prototypes.h"
+#include "core/utils.h"
+#include "account/password_async.h"
+#include "net/comm.h"
+#include "net/ws_handlers.h"
+#include "net/ansi.h"
+#include "player/player_load_pipeline.h"
+#include "item/item_movement_transaction.h"
 
 #include <cerrno>
 #include <cstdio>
@@ -11,6 +19,7 @@ static bool enabled;
 static time_t opens_at;
 static std::string opens_utc;
 static std::vector<std::string> allowed_accounts;
+static std::string launch_art;
 
 static std::string trim(const std::string &text)
 {
@@ -138,6 +147,14 @@ bool pwipe_launch_load(const char *path, std::string &error)
 		return false;
 	}
 	loaded = true;
+	launch_art.clear();
+	std::ifstream art("lib/information/pwipe_launch");
+	while (std::getline(art, line))
+	{
+		if (!line.empty() && line.back() == '\r')
+			line.pop_back();
+		launch_art += line + "\r\n";
+	}
 	return true;
 }
 
@@ -170,4 +187,69 @@ std::string pwipe_launch_status(time_t now)
 	       " opens_at_utc=" + opens_utc +
 	       " state=" + (pwipe_launch_closed_at(now) ? "closed" : "open") +
 	       " allowed_accounts=" + std::to_string(allowed_accounts.size());
+}
+
+std::string pwipe_launch_notice()
+{
+	const std::string date = opens_utc.substr(0, 10) + " " + opens_utc.substr(11, 8) + " UTC";
+	return "The new season is being prepared.\r\nReconnect at " + date + ".\r\n";
+}
+
+std::string pwipe_launch_screen(bool color)
+{
+	const std::string screen =
+		"\r\n" + (launch_art.empty() ? "&+RDURIS - THE WORLD REFORGED&n\r\n" : launch_art) +
+		"\r\n&+WGates open: " + opens_utc.substr(0, 10) + " " + opens_utc.substr(11, 8) +
+		" UTC&n\r\n" +
+		"&+YSharpen your blades. Gather your allies.\r\n&+YYour next legend begins here.&n\r\n\r\n";
+	if (color)
+		return screen;
+	std::vector<char> plain(screen.size() + 1);
+	AnsiString(screen.c_str()).plain(plain.data());
+	return plain.data();
+}
+
+void pwipe_launch_deny(descriptor_data *d)
+{
+	if (STATE(d) == CON_FLUSH)
+		return;
+	password_async_cancel(d);
+	password_login_release(d->login_password_job);
+	d->login_password_job = nullptr;
+	d->writer_wait_id = 0; // Existing writer continuations will discard their replies.
+	if (d->player_load_request_id)
+		player_load_pipeline_cancel(d->player_load_request_id);
+	d->player_load_request_id = 0;
+	d->player_load_pid = 0;
+	d->player_load_mode = PLAYER_LOAD_MODE_NONE;
+	flush_input_queue(d);
+	if (d->character)
+	{
+		// Only unattached/pre-entry bodies belong to a denied admission.
+		P_char ch = d->character;
+		item_creation_grant_cancel_batch_before_entry(ch);
+		d->character = nullptr;
+		ch->desc = nullptr;
+		free_char(ch);
+	}
+	if (d->websocket)
+		ws_send_auth_failed(d, pwipe_launch_notice().c_str());
+	else
+	{
+		echo_on(d);
+		SEND_TO_Q(pwipe_launch_screen(d->term_type != TERM_GENERIC).c_str(), d);
+		SEND_TO_Q(pwipe_launch_notice().c_str(), d);
+	}
+	d->prompt_mode = TRUE;
+	STATE(d) = CON_FLUSH; // Existing output processing drains every transport before close.
+}
+
+bool pwipe_launch_admit(descriptor_data *d)
+{
+	if (STATE(d) == CON_FLUSH)
+		return false;
+	if (pwipe_launch_allows_at(d->account ? d->account->acct_name : nullptr, time(nullptr)))
+		return true;
+	pwipe_launch_deny(d);
+	return false;
 }
