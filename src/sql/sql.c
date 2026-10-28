@@ -4452,18 +4452,22 @@ bool sql_verify_auction_engines(void)
 	return auction_engines_ok;
 }
 
-static bool sql_pwipe_pid_capacity_valid(void)
+static bool sql_pwipe_pid_capacity_valid(bool reserve_roster)
 {
 	// SQL permits unsigned PIDs, but native account/player identities are signed ints.
-	// Reserve room for the current Overlords and a usable next character identity.
+	// Reserve staff allocations only before recreation; completed rosters need only
+	// one usable next identity, including same-epoch recovery before sql_begin_pwipe_epoch.
 	if (!sql_use_live_table_statistics(DB))
 		return false;
-	MYSQL_RES *result =
-		db_query("SELECT AUTO_INCREMENT > 0 AND AUTO_INCREMENT + "
-			 "(SELECT COUNT(*) FROM player_data WHERE active=1 AND level=%d) * "
-			 "@@auto_increment_increment <= %d FROM information_schema.TABLES "
-			 "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_data'",
-			 OVERLORD, INT_MAX);
+	MYSQL_RES *result = db_query(
+		"SELECT AUTO_INCREMENT > 0 AND AUTO_INCREMENT + "
+		"IF(%d AND NOT EXISTS (SELECT 1 FROM season_reset_state WHERE state_id=1 "
+		"AND season_epoch=%llu AND reset_status='resetting' AND roster_recreated=1), "
+		"(SELECT COUNT(*) FROM player_data WHERE active=1 AND level=%d), 0) * "
+		"@@auto_increment_increment <= %d FROM information_schema.TABLES "
+		"WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_data'",
+		reserve_roster ? 1 : 0, static_cast<unsigned long long>(pwipe_recovery_epoch),
+		OVERLORD, INT_MAX);
 	if (!result)
 		return false;
 	MYSQL_ROW row = mysql_fetch_row(result);
@@ -4545,7 +4549,7 @@ bool sql_pwipe(int code_verify)
 			return FALSE;
 		}
 
-		if (!sql_pwipe_pid_capacity_valid())
+		if (!sql_pwipe_pid_capacity_valid(true))
 		{
 			logit(LOG_STATUS,
 			      "sql_pwipe: Player PID capacity is outside the native range; reset work refused.");
@@ -5163,6 +5167,11 @@ bool sql_pwipe(int code_verify)
 		// but release their unique names; never attach a new body to an old ledger.
 		if (!pwipe_roster_already_recreated)
 		{
+			// Explicit identities avoid InnoDB's extra INSERT ... SELECT reservations.
+			// Writers are quiesced, so the live watermark stays owned by this reset.
+			const auto roster_next_pid = sql_next_auto_increment("player_data");
+			if (!roster_next_pid || roster_next_pid > INT_MAX)
+				return FALSE;
 			if (!qry("START TRANSACTION"))
 				return FALSE;
 			char roster_checkpoint[384];
@@ -5182,13 +5191,14 @@ bool sql_pwipe(int code_verify)
 				    OVERLORD) &&
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
 				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
-				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,last_room,birthplace,orig_birthplace,"
+				qry("INSERT INTO player_data(pid,name,account_name,m_class,race,sex,hometown,last_room,birthplace,orig_birthplace,"
 				    "height,weight,level,highest_level,birth_time,last_save,prompt,base_str,base_dex,base_agi,base_con,base_pow,"
 				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
-				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,hometown,height,weight,"
+				    "SELECT %llu+(ROW_NUMBER() OVER (ORDER BY name)-1)*@@auto_increment_increment,"
+				    "name,account_name,m_class,race,sex,hometown,hometown,hometown,hometown,height,weight,"
 				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),%u,100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
 				    "FROM pwipe_overlords",
-				    OVERLORD, OVERLORD,
+				    roster_next_pid, OVERLORD, OVERLORD,
 				    static_cast<unsigned>(PROMPT_HIT | PROMPT_MAX_HIT |
 							  PROMPT_MOVE | PROMPT_MAX_MOVE |
 							  PROMPT_TANK_NAME | PROMPT_TANK_COND |
@@ -5441,7 +5451,7 @@ bool sql_pwipe(int code_verify)
 				      "sql_pwipe: Postflight FAILED: cannot query account_characters.");
 				postflight_ok = FALSE;
 			}
-			if (!sql_pwipe_pid_capacity_valid())
+			if (!sql_pwipe_pid_capacity_valid(false))
 			{
 				logit(LOG_STATUS,
 				      "sql_pwipe: Postflight FAILED: player PID capacity is outside the native range.");

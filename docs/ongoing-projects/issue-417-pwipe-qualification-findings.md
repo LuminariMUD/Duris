@@ -1,5 +1,37 @@
 # Issue #417: full pwipe qualification and findings
 
+## Pre-merge review follow-up, 2026-10-28
+
+Three additional review findings were corrected after the full-world run recorded
+below. Postflight now checks remaining PID capacity without reserving the recreated
+staff again; same-epoch recovery recognizes its committed roster checkpoint.
+Roster insertion uses explicit IDs from the live allocator watermark, avoiding
+MySQL's extra reservations for `INSERT ... SELECT`. WebSocket creation now refuses
+an invalid allocated PID before account linking, starter items or gameplay, clears
+the attempt and returns to the account menu. The staff `newchar` path already
+checked failed allocation before saving/linking and was verified unchanged.
+
+Focused verification of these corrections passed:
+
+- MariaDB and flat-file `make -C src -j12` builds, changed-line formatting, player
+  name-index sanitizer regression, staff creation-link and hometown validation.
+- `run_sql_auto_increment_mysql.py` on disposable MariaDB 10.11 and MySQL 8.0:
+  preflight, postflight, matching/incomplete recovery and exhausted capacities.
+- `run_pwipe_handoff_mysql.py --server bin/server/dms_new` on both engines, including
+  a four-Overlord wipe starting at PID 2,147,483,643, two native recovery attempts,
+  launcher activation and a subsequent mortal allocated PID 2,147,483,647. Existing
+  failure, rollback, fencing and late-allocator-jump scenarios also passed.
+- `run_player_pid_exhaustion_journey.py` on disposable MariaDB: two real WebSocket
+  creation attempts fail cleanly without player/account mappings or items; after
+  repairing only that unused synthetic allocator, creation persists and the same
+  character enters after a full restart. Registered in `make test-db`.
+- `test_persistence_backup.py` passed; no restore implementation changed in this
+  follow-up.
+
+The original full-world qualification below remains evidence for its stated
+revision. This follow-up uses isolated synthetic databases and does not claim a
+new full-world five-minute wipe, primary-data repair or production acceptance.
+
 Status: **completed local qualification after fixes**.
 Four real full-world wipes were performed against the prepared local copy on
 2026-10-28. The first exposed an unplayable recreated roster. Subsequent runs

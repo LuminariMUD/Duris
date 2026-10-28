@@ -37,25 +37,34 @@ def main():
                       source.index("static uint64_t pwipe_recovery_epoch")]
         reader = source[source.index("unsigned long long sql_next_auto_increment("):
                         source.index("/* Fail boot unless")]
+        capacity_start = source.index("static bool sql_pwipe_pid_capacity_valid(")
+        capacity = source[capacity_start:source.index("bool sql_pwipe(int code_verify)", capacity_start)]
         program = r'''
 #include <mysql/mysql.h>
+#include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cstdarg>
 #include <string>
 MYSQL *DB;
+static uint64_t pwipe_recovery_epoch;
+constexpr int OVERLORD = 62;
 MYSQL_RES *db_query(const char *format, ...) {
     char query[4096]; va_list args; va_start(args, format);
     vsnprintf(query, sizeof query, format, args); va_end(args);
     return mysql_real_query(DB, query, strlen(query)) ? nullptr : mysql_store_result(DB);
 }
-''' + execute + live + reader + r'''
+''' + execute + live + reader + capacity + r'''
 int main(int argc, char **argv) {
-    if (argc != 2 || (strcmp(argv[1], "player_data") &&
+    if (argc < 2) return 2;
+    const bool check_capacity = !strcmp(argv[1], "capacity");
+    if (!check_capacity && (argc != 2 || (strcmp(argv[1], "player_data") &&
                      strcmp(argv[1], "account_bound_rewards") &&
                      strcmp(argv[1], "ordinary_table") &&
-                     strcmp(argv[1], "missing_table") && strcmp(argv[1], "disconnect"))) return 2;
+                     strcmp(argv[1], "missing_table") && strcmp(argv[1], "disconnect")))) return 2;
+    if (check_capacity && argc != 4) return 2;
     DB = mysql_init(nullptr);
     bool reconnect = false;
     mysql_options(DB, MYSQL_OPT_RECONNECT, &reconnect);
@@ -66,7 +75,11 @@ int main(int argc, char **argv) {
         const std::string kill = "KILL " + std::to_string(mysql_thread_id(DB));
         mysql_real_query(DB, kill.data(), kill.size());
     }
-    printf("%llu\n", sql_next_auto_increment(argv[1]));
+    if (check_capacity) {
+        pwipe_recovery_epoch = strtoull(argv[3], nullptr, 10);
+        printf("%d\n", sql_pwipe_pid_capacity_valid(atoi(argv[2]) != 0));
+    } else
+        printf("%llu\n", sql_next_auto_increment(argv[1]));
     mysql_close(DB);
 }
 '''
@@ -96,6 +109,30 @@ int main(int argc, char **argv) {
             assert read("missing_table") == 0
             assert read("ordinary_table") == 0
             assert read("disconnect") == 0
+            sql(f"ALTER TABLE {database}.player_data ADD active INT DEFAULT 1, ADD level INT DEFAULT 62")
+            sql(f"CREATE TABLE {database}.season_reset_state (state_id INT PRIMARY KEY, "
+                "season_epoch BIGINT, reset_status VARCHAR(20), roster_recreated INT)")
+            sql(f"INSERT INTO {database}.season_reset_state VALUES(1,7,'active',NULL)")
+
+            def valid(reserve, epoch=0):
+                return int(subprocess.check_output(
+                    [str(binary), 'capacity', str(int(reserve)), str(epoch)], env=env, text=True))
+
+            sql(f"ALTER TABLE {database}.player_data AUTO_INCREMENT=2147483646")
+            assert valid(True) == 1, 'one staff allocation and one mortal must fit'
+            sql(f"UPDATE {database}.player_data SET active=0; "
+                f"INSERT INTO {database}.player_data(active,level) VALUES(1,62)")
+            assert read('player_data') == 2147483647
+            assert valid(False) == 1, 'postflight must not reserve the recreated staff again'
+            assert valid(True) == 0, 'another fresh wipe would exhaust the remaining identity'
+            sql(f"UPDATE {database}.season_reset_state SET reset_status='resetting',roster_recreated=1")
+            assert valid(True, 7) == 1, 'same-epoch recovery must use the committed roster'
+            assert valid(True, 8) == 0, 'a different epoch must not reuse that checkpoint'
+            sql(f"UPDATE {database}.season_reset_state SET roster_recreated=0")
+            assert valid(True, 7) == 0, 'an incomplete roster still needs its allocations'
+            sql(f"ALTER TABLE {database}.player_data AUTO_INCREMENT=2147483648")
+            assert valid(False) == 0, 'postflight still refuses an unusable next identity'
+            print('PID capacity: preflight, postflight, matching/incomplete recovery and exhaustion passed')
         print("Live player/reward allocator counters survive cached metadata and deletion; missing/lost SQL refuses")
     finally:
         sql("DROP DATABASE " + database)

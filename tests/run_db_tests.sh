@@ -28,6 +28,7 @@ started=$SECONDS
 
 # Longest first.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
+player_pid_exhaustion $DB python3 tests/async/run_player_pid_exhaustion_journey.py --server $SERVER
 artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
 divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server $SERVER
