@@ -104,30 +104,29 @@ resets and interior exits, and Lizizania's internal routes, resets, and quests.
 
 ## Misty Chasm and the Underdark
 
-Issue #403 replaces playable zone 150 with the supplied expanded zone 3000.
-The surface approach remains `638825 W <-> 300000 E`; the ordinary Underdark
-stairs now connect `300019 D <-> 834025 U`. Marker 834024 remains in place.
-The retired mobile/object prototypes remain available for existing saved data;
-zone 150 no longer has rooms, resets, or quest givers.
+Issue #403 installed the expanded zone 3000 and retained its surface approach
+`638825 W <-> 300000 E`. The October 28 follow-up relocates the Underdark
+route from `300019 D <-> 834025 U` to **two reciprocal walking routes**:
+`300149 N <-> 766414 S` and `300149 E <-> 766815 W`.
+The retired stair exits and descriptions are removed.
 
-### Ordinary two-way passage
+From the surface, the ordinary route continues through Misty Chasm to room
+300039, then `enter waterfall` reaches 300144; interior tunnels lead to
+300149. Both new exits work without flight, keys, doors or staff teleport.
+Unlike the old stair, this is deliberately deeper in the zone.
+Both UD destinations remain connected by ordinary east/south travel through
+766415. The restored 834024 footprint is a nontraversable mountain, while
+766814 is the inert named map marker: no ordinary incoming exits reach it.
+The routes survive resets of zones 3000 and 7000 and a clean server restart.
 
-A human on foot must be able to follow the forest trail from 638825 to 300019,
-descend to 834025, walk the adjoining Underdark tunnels, and return to 638825.
-This route needs no key, flight, swim, falling, secret door, or staff bypass.
-The low-ceiling tunnel's ordinary terrain constraints remain unchanged.
-
-### Durable loaded routes
-
-The surface and Underdark pairs must survive resets of zones 3000 and 7000 and
-a clean world restart. The expanded area's authored portals and one-way chasm
-falls are tested separately; exit-only diagnostics do not model portal travel.
-See `docs/records/2026-10-27-misty-vale-installation.md` for the replacement's
-fixes, compatibility handling, native qualification, and rollout boundaries.
+The authored-zone fixes from issue #403 remain intact, including quest hand-ins,
+reset population caps, portal destinations, boating and fishing. The new
+teak fishing rod (object 300039) is sold at 100% condition. Existing saved
+damaged items are not silently repaired. Legacy zone 150 remains retired.
 
 ## Underdark entrance markers
 
-The October 26 missing-marker report is covered by eight labeled footprints:
+The October 26 missing-marker report, amended for the October 28 relocation, is covered by eight labeled footprints:
 
 - Mushroom Caverns: marker `819888` north of `820288 U <-> 24101 D`,
   and marker `824682` north of `825082 U <-> 24237 D`.
@@ -138,11 +137,12 @@ The October 26 missing-marker report is covered by eight labeled footprints:
 - Caves of Mt. Skelenak: marker `709264` north of `709664 U <-> 4093 D`.
 - The Stone Tomb of Kelek: marker `856819` north of `857219 D <-> 87950 U`.
 - The Underworld Shafts: marker `844448` north of `844848 U <-> 10021 D`.
-- The Chasm of the Misty Vale: marker `834024` west of `834025 U <-> 300019 D`.
+- The Chasm of the Misty Vale: marker `766814` south of `766414 S <-> 300149 N`
+  and west of `766815 W <-> 300149 E`. Former marker 834024 is restored mountain.
 
 These footprints use the existing zone glyph and marker flags, with no incoming
 exits. Cyric's footprint fills an unused grid square; the other seven replace
-mountain squares. The travel rooms keep their terrain and reciprocal zone exits,
+mountain squares. All seven unrelated markers retain their original routes. The travel rooms keep their terrain and reciprocal zone exits,
 including the Mushroom Caverns pool and the falling Underworld Shafts passage.
 
 ## Verification commands and boundaries

@@ -70,6 +70,8 @@ def run(server=None):
                                     source.index("static bool sql_load_active_season_state"))]
     metadata = source[source.index("static bool sql_verify_metadata_fingerprint(void)\n{"):
                       source.index("/* Store core player data", source.index("static bool sql_verify_metadata_fingerprint(void)\n{"))]
+    allocator = source[source.index("unsigned long long sql_next_auto_increment("):
+                       source.index("/* Fail boot unless")]
     native = ROOT / "bin/tests/pwipe_epoch_mysql.cpp"
     native.parent.mkdir(parents=True, exist_ok=True)
     signals = (ROOT / "src/core/signals.c").read_text()
@@ -141,6 +143,11 @@ extern "C" int __wrap_mysql_real_query(MYSQL *connection, const char *statement,
         return 1;
     }
     const int result = __real_mysql_real_query(connection,statement,length);
+    if (!result && getenv("PWIPE_TEST_PID_ALLOCATION_JUMP") &&
+        query.starts_with("CREATE TEMPORARY TABLE pwipe_overlords AS ")) {
+        const char jump[] = "ALTER TABLE player_data AUTO_INCREMENT=4294000104";
+        if (__real_mysql_real_query(connection,jump,sizeof(jump)-1)) return 1;
+    }
     if (!result && getenv("PWIPE_TEST_POSTFLIGHT_RESIDUE") && !residual_inserted &&
         query.starts_with("UPDATE level_cap SET")) {
         const char insert[] = "INSERT INTO account_lockers(id,account_name,racewar) VALUES(910001,'fixturebank',1)";
@@ -192,7 +199,7 @@ bool qry(const char *format, ...) {
     MYSQL_RES *result = mysql_store_result(DB); if (result) mysql_free_result(result);
     return true;
 }
-''' + metadata + functions + '''
+''' + metadata + functions + allocator + '''
 unsigned long next_obj_uid = 1;
 uint64_t sql_season_epoch() { return current_season_epoch; }
 bool sql_begin_transaction() { return qry("START TRANSACTION"); }
@@ -623,8 +630,8 @@ int main(int argc, char **argv) {
         for pid, name, level in ((1001, "Freshgod", 62), (1002, "Lesserstaff", 61),
                                  (1003, "Outofrange", 63), (1004, "Oldmortal", 56)):
             sql("INSERT INTO player_data(pid,name,account_name,level,highest_level,m_class,race,sex,"
-                "copper,epics,frags,learned_flight_stops) VALUES(" + str(pid) + ",'" + name +
-                "','fixturebank'," + str(level) + "," + str(level) + ",1,1,1,999,888,777,63)")
+                "hometown,copper,epics,frags,learned_flight_stops) VALUES(" + str(pid) + ",'" + name +
+                "','fixturebank'," + str(level) + "," + str(level) + ",1,1,1,1200,999,888,777,63)")
             sql("INSERT INTO account_characters(account_name,pid,char_name) VALUES('fixturebank'," +
                 str(pid) + ",'" + name + "')")
         def cover_baselines():
@@ -698,6 +705,16 @@ int main(int argc, char **argv) {
         assert [sql(query) for query in old_queries] == old_values
         assert recovery_canary.read_bytes() == canary
         print("Actual SQL connection killed before preflight: wipe refuses before boundary, no readiness/writer resume, old epoch/roster/account/bank/payload/files unchanged", flush=True)
+        next_player_pid = sql("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
+                              "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_data'")
+        for exhausted in (2147483647, 2147483648, 4294000104):
+            sql("ALTER TABLE player_data AUTO_INCREMENT=" + str(exhausted))
+            refused = epoch_call("wipe", 1, 1, cwd=root)
+            assert "Player PID capacity is outside the native range" in refused.stderr
+            assert [sql(query) for query in old_queries] == old_values
+            assert recovery_canary.read_bytes() == canary
+            sql("ALTER TABLE player_data AUTO_INCREMENT=" + next_player_pid)
+        print("Native PID exhaustion refuses before the season boundary; old roster, accounts, banks, items and files unchanged", flush=True)
         ships_path = root / "Ships"; ships_path.mkdir(exist_ok=True)
         original_wiper_mode = wiper.stat().st_mode & 0o777
         original_ships_mode = ships_path.stat().st_mode & 0o777
@@ -815,6 +832,8 @@ int main(int argc, char **argv) {
         new_god = int(sql("SELECT pid FROM player_data WHERE name='Freshgod' AND active=1 AND level=62"))
         assert new_god > 1004
         assert sql("SELECT last_save IS NOT NULL AND last_save=birth_time FROM player_data WHERE pid=" + str(new_god)) == "1"
+        assert sql("SELECT hometown=1200 AND last_room=hometown FROM player_data WHERE pid=" + str(new_god)) == "1"
+        assert sql("SELECT prompt<>0 FROM player_data WHERE pid=" + str(new_god)) == "1"
         assert sql("SELECT CONCAT_WS(':',copper,epics,frags,learned_flight_stops,assoc_id) "
                    "FROM player_data WHERE pid=" + str(new_god)) == "0:0:0:0:0"
         assert sql("SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND pid=" + str(new_god)) == "1"
@@ -1475,8 +1494,48 @@ int main(int argc, char **argv) {
             launch(epoch=5, expected=55)
             assert status() == "5:active"
             print("Durable staff ownership: missing/stale/wrong-account projections repaired on fresh PIDs; blocked/tombstone/orphan excluded; newborn save/birth clocks and retry roster stable", flush=True)
+            env["PWIPE_TEST_PID_ALLOCATION_JUMP"] = "1"
+            try:
+                invalid_pids = epoch_call("wipe", 5, 1, cwd=root)
+            finally:
+                del env["PWIPE_TEST_PID_ALLOCATION_JUMP"]
+            assert "player PID capacity is outside the native range" in invalid_pids.stderr
+            assert status() == "6:resetting"
+            assert sql("SELECT reset_completed_at IS NULL FROM season_reset_state") == "1"
+            assert int(sql("SELECT MAX(pid) FROM player_data WHERE active=1")) <= 2147483647
+            launch(epoch=6)
+            assert status() == "6:resetting"
+            print("A late allocator jump cannot publish success: explicit staff IDs stay valid and capacity postflight keeps SQL and launcher fenced", flush=True)
         else:
             print("Epoch COMMIT unknown before/after application: no writer resume/readiness, preserved old state and fenced launcher; actual server recovery not requested", flush=True)
+
+        # A separate fresh synthetic schema exercises the last usable range after
+        # the failure cases. MySQL bulk inserts previously reserved seven IDs for
+        # these four staff and crossed INT_MAX after passing preflight.
+        sql("DROP DATABASE duris_test; CREATE DATABASE duris_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", False)
+        subprocess.run(mysql + ["duris_test"], input=(ROOT / "migrations/bootstrap_multithread_safe.sql").read_bytes(),
+                       env=env, check=True, stdout=subprocess.DEVNULL)
+        for arguments in (("adopt", "--kind", "fresh_bootstrap"), ("run",)):
+            subprocess.run([sys.executable, str(ROOT / "scripts/migration_runner.py"), *arguments],
+                           env=env, cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
+        sql("INSERT INTO accounts(account_name,password,email,confirmed) VALUES('boundary','fixture','boundary@example.invalid',1)")
+        for index in range(4):
+            sql("INSERT INTO player_data(name,account_name,level,highest_level,m_class,race,sex,hometown) "
+                f"VALUES('Boundary{index}','boundary',62,62,1,1,1,1200)")
+        cover_baselines()
+        sql("ALTER TABLE player_data AUTO_INCREMENT=2147483643")
+        recovery_canary.write_text("SQL recovery must not clear files")
+        epoch_call("wipe", 1, 0, cwd=root)
+        assert sql("SELECT GROUP_CONCAT(pid ORDER BY pid) FROM player_data WHERE active=1") == "2147483643,2147483644,2147483645,2147483646"
+        assert sql("SELECT CONCAT(roster_recreated,':',reset_completed_at IS NOT NULL) FROM season_reset_state") == "1:1"
+        if server:
+            recover(2, 55)
+            recover(2, 55)
+            launch(epoch=2, expected=55)
+            assert status() == "2:active"
+        sql("INSERT INTO player_data(name,account_name,level,m_class,race,sex) VALUES('Lastmortal','boundary',1,1,1,1)")
+        assert sql("SELECT pid FROM player_data WHERE name='Lastmortal'") == "2147483647"
+        print("Four-staff boundary wipe uses exactly four IDs; postflight/repeated recovery preserve INT_MAX for the next mortal", flush=True)
 
 
 if __name__ == "__main__":

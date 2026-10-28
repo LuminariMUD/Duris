@@ -76,15 +76,37 @@ void rotation()
 	const auto committed = state;
 	assert(!divine_boon_rotate(&state, H + 30, &choice) && state == committed);
 	assert(!divine_boon_rotate(&state, 0, &choice) && state == committed);
-	// No three-per-PvE limit, and never more than eight total slots.
+	// Three reserved Experience, three Epic, one Cargo and one PvP.
 	for (int32_t index = 2; index <= 8; ++index)
 	{
-		choice.zones = { 10 + index, 20 + index };
+		if (index <= 3)
+		{
+			choice.category = divine_boon_category::experience;
+			choice.zones = { 10 + index, 20 + index };
+		}
+		else if (index <= 6)
+		{
+			choice.category = divine_boon_category::epic;
+			choice.zones = { 10 + index, 20 + index };
+		}
+		else if (index == 7)
+		{
+			choice = {};
+			choice.category = divine_boon_category::pvp;
+		}
+		else
+		{
+			choice = {};
+			choice.category = divine_boon_category::cargo;
+			choice.source_port = choice.cargo_commodity = choice.contraband_commodity =
+				0;
+			choice.destination_port = 1;
+		}
 		assert(divine_boon_rotate(&state, index * H, &choice));
 		assert(occupied(state) == static_cast<size_t>(index));
 	}
 	assert(occupied(state) == DIVINE_BOON_SLOTS);
-	choice.zones = { 50, 60 };
+	choice = zone(divine_boon_category::experience, 50, 60);
 	assert(divine_boon_rotate(&state, 9 * H, &choice));
 	assert(occupied(state) == DIVINE_BOON_SLOTS && state.slots[0].id == 9);
 	assert(state.history.size() == 2 && state.history[0].expired_at == 9 * H);
@@ -217,6 +239,76 @@ void bounded_retired_history()
 	       divine_boon_state_decode(bytes, &restored) && state == restored);
 }
 
+void legacy_shared_slot_reconciliation()
+{
+	auto state = activated();
+	auto original = zone(divine_boon_category::experience, 18, -1);
+	assert(divine_boon_rotate(&state, H, &original));
+	// Recreate a VALID old persisted snapshot: the opposite faction's
+	// second slot also targeted zone 18 but shared no same-side field.
+	divine_boon_slot other = zone(divine_boon_category::experience, -1, 18);
+	other.id = state.next_id++;
+	other.starts_at = 2 * H;
+	other.expires_at = 10 * H;
+	state.slots[1] = other;
+	state.last_opportunity = 2 * H;
+	assert(divine_boon_state_valid(state) && occupied(state) == 2);
+	assert(divine_boon_reconcile(&state, 2 * H + 1));
+	assert(occupied(state) == 1 && state.slots[0].id);
+	assert(state.recent.size() == 1 && state.recent[0].objective.id == other.id);
+	assert(state.history.size() == 2);
+	for (const auto &entry : state.history)
+		assert(entry.zone == 18);
+	std::vector<uint8_t> bytes;
+	divine_boon_state restored;
+	assert(divine_boon_state_encode(state, &bytes));
+	assert(divine_boon_state_decode(bytes, &restored) && restored == state);
+
+	// The old Evil-only target is NOT reserved by the new shared system.
+	auto legacy = activated();
+	original.zones = { 18, 20 };
+	assert(divine_boon_rotate(&legacy, H, &original));
+	auto fresh = zone(divine_boon_category::epic, 20, 20);
+	assert(divine_boon_rotate(&legacy, 2 * H, &fresh));
+	assert(occupied(legacy) == 2);
+	assert(divine_boon_replace(&legacy, 0, 2 * H + 1));
+	assert(legacy.history.size() == 2);
+	for (const auto &entry : legacy.history)
+		assert(entry.zone == 18); // Not the stale Evil target 20.
+}
+
+void doubled_pve_history_capacity()
+{
+	auto state = activated();
+	// Generate and replace one of each PvE category every hour throughout
+	// the 12-hour repeat window. Each retirement records two side entries.
+	for (int64_t hour = 1; hour <= 12; ++hour)
+	{
+		divine_boon_slot choices[2] = {
+			zone(divine_boon_category::experience, 1000 + 2 * hour, 1000 + 2 * hour),
+			zone(divine_boon_category::epic, 1001 + 2 * hour, 1001 + 2 * hour)
+		};
+		assert(divine_boon_rotate(&state, hour * H, choices, 2));
+		assert(divine_boon_replace(&state, 0, hour * H + 1));
+		assert(divine_boon_replace(&state, 1, hour * H + 1));
+	}
+	assert(state.history.size() == 48 && state.history.size() <= DIVINE_BOON_HISTORY_MAX);
+	std::vector<uint8_t> bytes;
+	divine_boon_state restored;
+	assert(divine_boon_state_encode(state, &bytes));
+	assert(bytes.size() <= 4096);
+	assert(divine_boon_state_decode(bytes, &restored) && restored == state);
+
+	// All 64 entries still fit within the unchanged v2 wire payload bound.
+	for (int index = 0; index < 16; ++index)
+		state.history.push_back({ 3000 + index, 0, 12 * H + 1 });
+	assert(state.history.size() == DIVINE_BOON_HISTORY_MAX);
+	assert(divine_boon_state_valid(state));
+	assert(divine_boon_state_encode(state, &bytes));
+	assert(bytes.size() <= 4096);
+	assert(divine_boon_state_decode(bytes, &restored) && restored == state);
+}
+
 void snapshots_and_invalid_state()
 {
 	auto state = activated();
@@ -286,5 +378,7 @@ int main()
 	pause_restart_and_clock();
 	snapshots_and_invalid_state();
 	bounded_retired_history();
+	legacy_shared_slot_reconciliation();
+	doubled_pve_history_capacity();
 	std::cout << "Divine Boon rotation, limits, expiry, clock and snapshot contracts passed\n";
 }

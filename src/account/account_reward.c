@@ -472,7 +472,10 @@ bool account_rewards_load(void)
 	}
 	mysql_free_result(res);
 	// Never a revoked or purged grant's id again: its reward items still carry it.
-	next_grant_id = std::max(next_grant_id, sql_next_auto_increment("account_bound_rewards"));
+	const unsigned long long allocated_next = sql_next_auto_increment("account_bound_rewards");
+	if (!allocated_next)
+		return false;
+	next_grant_id = std::max(next_grant_id, allocated_next);
 
 	res = db_query("SELECT grant_id,pid,UNIX_TIMESTAMP(last_summoned_at),recovery_ready "
 		       "FROM account_bound_reward_summons");

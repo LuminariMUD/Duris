@@ -26,6 +26,11 @@ def check():
     mobs = records(areas / f'mob/{NAME}.mob')
     objs = objects(areas / f'obj/{NAME}.obj')
     assert set(rooms) == set(range(300000, 300167))
+    # Reconciled author flags: these rooms must not accept wandering mobiles.
+    authored = records(areas / f'wld/{NAME}.wld')
+    for vnum in (300011, 300039, 300152):
+        flags = re.search(r'(?m)^3000 (\d+) \d+', authored[vnum])
+        assert flags and int(flags[1]) & 4, (vnum, 'ROOM_NO_MOB flag lost')
     assert set(mobs) == set(range(300000, 300038))
     assert {'gynaeros', 'shaman'} <= set(mobs[300006].split('~')[0].split()), (
         'Gynaeros must be targetable by her displayed name and role')
@@ -100,6 +105,7 @@ def check():
     assert objs[300028][0][6] & 8192, 'pond entrance must not sink out of sight'
     assert objs[300035][0][7] == 9, 'tunic must fit the torso'
     assert objs[300038][0][0] == 22, 'canoe must provide ordinary boat travel'
+    assert objs[300039][2][2] == 100, 'tackle shop fishing rod must be sold undamaged'
     well = objects(areas / 'obj/dirkn.obj')[96824]
     assert well[0][0] == 25 and well[1][:3] == [300166, 7, -1]
     quests = records(areas / f'qst/{NAME}.qst')

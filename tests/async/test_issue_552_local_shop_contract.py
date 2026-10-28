@@ -28,8 +28,9 @@ def parse_records(path: Path) -> list[list[str]]:
     return records
 
 
-# Shop identity is positional and durable. Keep the existing catalog at IDs
-# 0..539, then append the new instances in the final sentinel file.
+# Shop identity is positional and durable. Migration 0053 explicitly reindexes
+# shops after the Misty Vale insertion; the catalog before end.shp is now 0..540.
+# test_misty_vale_shop_migration.py checks the complete migration mapping.
 stable_records = []
 for line in AREA.read_text().splitlines():
     stripped = line.strip()
@@ -42,7 +43,7 @@ for line in AREA.read_text().splitlines():
     if path.exists():
         stable_records.extend(parse_records(path))
 
-assert len(stable_records) == 540, "existing durable shop IDs were renumbered"
+assert len(stable_records) == 541, "existing durable shop IDs were renumbered"
 assert len(parse_records(HEAVENS)) == 1
 # Later shops may follow these four durable identities without renumbering them.
 appended_records = parse_records(END)[:4]
@@ -55,10 +56,10 @@ for path in sorted((ROOT / "areas/shp").glob("*.shp")):
     if path != END:
         fallback_records.extend(parse_records(path))
 # The legacy glob includes orphaned source files that AREA intentionally omits,
-# so its catalog is larger; the invariant here is that its old 0..719 IDs stay
-# ahead of the four appended records just as canonical 0..539 do.
-assert len(fallback_records) == 720
-assert list(range(len(fallback_records), len(fallback_records) + 4)) == [720, 721, 722, 723]
+# so its catalog is larger; with Misty Vale its 0..720 IDs stay ahead of the
+# four appended records just as canonical 0..540 do.
+assert len(fallback_records) == 721
+assert list(range(len(fallback_records), len(fallback_records) + 4)) == [721, 722, 723, 724]
 assert [record[0] for record in appended_records] == [
     "#101-room-36329~",
     "#101-room-37718~",
@@ -68,7 +69,7 @@ assert [record[0] for record in appended_records] == [
 
 records = [parse_records(HEAVENS)[0], *appended_records]
 local_shop_ids = [0, *range(len(stable_records), len(stable_records) + 4)]
-assert local_shop_ids == [0, 540, 541, 542, 543]
+assert local_shop_ids == [0, 541, 542, 543, 544]
 
 assert len(records) == 5, f"expected five local dealer records, found {len(records)}"
 rooms = ["23", "36329", "37718", "97685", "132767"]

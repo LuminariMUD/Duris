@@ -1,4 +1,5 @@
 #include "economy/divine_boon_runtime.h"
+#include "economy/divine_boon_selection.h"
 #include "economy/divine_trade_runtime.h"
 
 #include "economy/divine_boon_repository.h"
@@ -181,7 +182,7 @@ bool divine_boon_runtime_boot(int64_t now)
 			return false;
 		return stage(loaded, published.revision);
 	}
-	if (divine_boon_reconcile(&loaded, now))
+	if (divine_boon_reconcile(&loaded, now, divine_boon_shared_target_zone))
 		return stage(loaded, published.revision);
 	ready = true;
 	return true;

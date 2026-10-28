@@ -1826,10 +1826,11 @@ The Gods of Duris offer automatic bonuses. Your old toggle boon setting
 is preserved but does not control these benefits. There is no new boon
 shop or task-completion reward. Old earned balances remain recorded.
 
-Eight global slots: six for zone EXP and epic boons, one for cargo and one
-for PvP. Each fixed UTC hour can start one zone boon, plus cargo and PvP
-when their slots are free. A vacant slot can stay empty. Downtime skips
-missed opportunities. Absolute expiry times survive restart.
+Eight global slots are reserved: THREE Experience, THREE Epic, one cargo
+and one PvP. Each fixed UTC hour can start one Experience and one Epic
+boon, plus cargo and PvP when eligible and their slots are vacant.
+Categories cannot borrow each other's slots. A vacant slot can stay empty.
+Downtime skips missed opportunities. Expiry times survive restarts.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
 Damage, tanking, healing and kill shares qualify in your designated zone.
@@ -1839,14 +1840,16 @@ PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
 The separate 500-epic Spill Blood reward is never increased by this boon.
 
-Good players receive Good-side objectives and PvP against Evil; Evil players
-receive Evil-side objectives and PvP against Good. Unaffiliated players can
-use global trade boons but receive no fabricated side objectives. EXP and
-epic targets exclude every hometown-flagged zone, safe, private, unfinished,
-inaccessible and unsuitable content. A zone EXP target suits the level of
-a player online when it starts. Epic targets follow the side's average
-online level along the epic zone list, lower payouts for lower levels; with
-nobody online, any epic zone. Neither restricts zone entry.
+Good and Evil players see the SAME Experience and Epic boon zones, expiry
+times and reward multipliers. These shared objectives create racewar
+hotspots: both factions can travel there and compete. PvP awards still
+require legitimate opposing-faction kills. Unaffiliated players may use
+the global trade boon but receive no fabricated racewar objectives.
+EXP and Epic targets must be reachable by both factions and exclude
+hometowns, safe, private, unfinished and unsuitable zones. Experience
+targets use eligible online player levels across both factions. Epic
+targets consider online levels and zone payouts; with nobody online,
+one Epic objective may await future players. Neither restricts entry.
 
 Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
 Buy at the displayed source after this boon starts, then sell at its distinct
@@ -1870,6 +1873,61 @@ Type boon for your applicable targets, time remaining and next opportunity.
 See also: EXPERIENCE, EPIC, FRAG, SHIP CARGO, DIVINEBOON
 ===========================================================================
 See also: DIVINE BOONS, EXPERIENCE, EPIC, FRAGS, SHIP
+
+#
+"DIVINE BOONS"
+===========================================================================
+Syntax:         boon [list]
+
+Divine Boons are automatic rewards shared by both racewar factions.
+Three slots are reserved for 200% Experience zones (8 hours), three for
++50% Epic zones (8 hours), one for +25% cargo and contraband base-sale
+revenue (4 hours), and one for +50% legitimate opposing racewar PvP
+Epic rewards (4 hours).
+
+Good and Evil see the same Experience and Epic destinations, enabling
+both factions to compete at shared hotspots. One new Experience and one
+new Epic objective can start each fixed UTC hour while their own slots
+are vacant and valid zones are available. Categories cannot borrow slots.
+Experience zones follow eligible online player levels across both sides.
+Epic zones require real Epic objectives accessible to both sides. With
+no players online, at most one Epic objective waits for a future login.
+
+Cargo uses a randomly chosen valid, profitable shipping route; no player
+activity is required to create it. Buy eligible cargo or contraband at
+the named source after boon activation and sell it at the destination
+before it expires. The allowance for both goods is three times the hold
+capacity of the FIRST qualifying ship for the account. Old stock and
+unverifiable transfers do not qualify.
+
+PvP boon generation requires recent legitimate activity by distinct
+accounts on both racewar sides. Existing PvP eligibility and reward limits
+continue to apply. Pausing stops new objectives, not active rewards.
+Type BOON to see shared active zones, route and time remaining.
+See also: BOON, EPIC, EXPERIENCE, SHIP CARGO, DIVINEBOON
+===========================================================================
+
+#
+"DIVINEBOON" (Immortal Command)
+===========================================================================
+Syntax:         divineboon status
+                divineboon history
+                divineboon pause | resume
+                divineboon replace <slot>
+                divineboon force
+
+Inspect the eight-slot global rotation (three Experience, three Epic,
+one cargo, one PvP) and recent objective history. Both factions share
+Experience and Epic zone targets. A saved older two-target zone boon is
+shown to both sides using its canonical target until expiry.
+
+Pause or resume the next hourly generation. Replace retires one numbered
+slot; the slot can only refill at a later eligible opportunity. Force
+attempts the due, unconsumed hourly opportunity: it does not bypass the
+hourly clock or paused state. Updates become visible only after durable
+confirmation. Status also includes selection diagnostics.
+See also: BOON, DIVINE BOONS
+===========================================================================
 
 #
 "BOULDER" (Spell)
@@ -3483,9 +3541,9 @@ Cumulative:     No
 Duration:       Animation lasts until undead follower dies (again)
 Type of spell:  Summoning
 
-If the Necromancer has a suitable corpse at his feet, "Create Dracolich"
-will transform the corpse into a powerful winged dragon more powerful than 
-its counterpart, "Create Dracolich". 
+If the Necromancer has a suitable corpse at his feet, "Create Greater
+Dracolich" will transform the corpse into a powerful winged dragon more
+powerful than its counterpart, "Create Dracolich".
 ===========================================================================
 See also: ORDER, PETS, PRESERVE, "MASS PRESERVE", EMBALM, 
           "CREATE DRACOLICH"
@@ -9243,17 +9301,20 @@ amounts of damage to those affected by it.
 
 #
 INDEX (General Information)
-===========================================================================
-The Duris help files have been indexed into the following six categories.
-Please note that the POLICIES section is a &+RMUST READ&n for every player.
+Use 'help <topic>' to search topic titles. Try a command, class, race,
+spell or ability name. A partial name can list several matching topics.
 
-POLICIES                          WARFARE
-DURIS INFORMATION                 MYSTICS
-COMMUNICATIONS UTILITIES          MUNDANE LIFE
+==Starting points==
 
-For more information on each one, type HELP <category>.
-===========================================================================
-See also: COMMANDS
+* 'help policies' for the policies index; 'help rules' for current rules.
+* 'help duris information' for general game information.
+* 'help communications utilities' for channels and communication.
+* 'help warfare' for combat topics.
+* 'help mystics' for magic topics.
+* 'help mundane life' for everyday activities.
+
+'help commands' offers a command overview. For a class progression,
+use its full name followed by skills, such as 'help psionicist skills'.
 
 #
 INDOMITABILITY (Spell)
@@ -21673,7 +21734,37 @@ Avatar command (level 57). Shows a player's name, title, level, class, race, acc
 last save time, last known IP address with session info, and rent room.
 Works on offline players; you cannot finger higher-level characters.
 
-See also: WHOIS, USERS
+See also: LAST, WHOIS, USERS
+===========================================================================
+#
+LAST (Immortal Command)
+===========================================================================
+Syntax: last [<character> | unique] [<number>h | <number>d] [page <number>]
+
+Avatar command (level 57). Lists recorded character logins, newest first,
+with UTC time, current character name, account name at login, and player ID.
+Repeated logins appear separately. With no time filter, searches all retained
+history. Use a positive whole number of hours (24h) or days (7d) to limit it.
+
+Examples: last
+          last 24h
+          last Veridian 7d
+          last unique 7d
+          last 7d page 2
+
+A character lookup uses its current name and works while it is offline.
+'unique' shows the latest login per recorded account within the time window;
+alts share an account. Logins without an account snapshot are omitted only
+from this view. Other views label them '(unknown)'; missing characters are
+shown as '(deleted)' with their player ID.
+
+Each page contains up to 20 logins and prints the next/previous commands.
+Pages query live history, so new logins can shift results between requests.
+This records entering the game, not account-menu access or reconnects. It
+does not reconstruct history from before login auditing was enabled.
+Requires MariaDB; the flat-file build reports that history is unavailable.
+
+See also: FINGER, WHOIS, USERS
 ===========================================================================
 #
 "FLY (IMMORTAL)"
@@ -26711,4 +26802,60 @@ When entering combat against an evil opponent at an alignment of
 900 or higher, it also grants a temporary hit-point bonus based on
 that opponent's level. This combat bonus does not stack with itself.
 See also: Paladin, Protection from Evil, Alignment.
+#
+Pulse
+A pulse is one step of the game's clock, normally one quarter of a
+second. Combat rounds, spellcasting stages and world ticks use different
+numbers of pulses; they are not interchangeable units.
+'help combat pulse' explains melee timing. 'help spell pulse' explains
+casting speed. Race-help ratings describe the race's starting tendencies,
+not the final timing of every character or ability.
+#
+Combat Pulse
+Combat pulse describes the time between your ordinary melee rounds.
+A shorter interval means faster rounds. Your race, class, equipment and
+active effects can change it; a race-help rating is only a starting guide.
+It does not set how many attacks you make in a round. Haste, weapon skills
+and particular attacks have their own rules. A skill's action delay can
+also differ from your ordinary round length.
+See also: Pulse, Haste, Skills.
+#
+Spell Pulse
+Spell pulse modifies how long a spell takes to cast. A better (faster)
+racial rating means shorter casting time, not a higher spell level or
+more damage. Your spell, race and active effects can all affect timing.
+A spell-pulse modifier below zero speeds casting; one above zero slows it.
+Each modifier point changes the timing multiplier by three percent before
+other casting rules and rounding. It does not change memorization time,
+spell costs or an ability's separate cooldown.
+See also: Pulse, Cast, Memorize.
+#
+Quick Thinker
+Quick Thinker is a passive racial innate: Halflings receive it at level 1
+and Half-Elves at level 30. It needs no activation, mana or innate use.
+If an ordinary spell saving throw fails, it grants one more roll against
+the same threshold. It also gives a 15 percent automatic-success chance
+on Intelligence and Power attribute saves before their ordinary checks.
+During combat it increases your calculated potion-drinking success chance
+by one quarter, helping avoid spills. This bonus does not stack with
+Combat Mind's equivalent benefit. It does not shorten spellcasting time.
+See also: Innate, Quaff, Combat Mind.
+#
+Longsword Mastery
+The innate list calls this passive ability 'longsword master'. Grey Elves,
+Wood Elves, Drow Elves and Half-Elves receive it at level 11.
+While a longsword occupies your primary weapon slot, it adds one hitroll
+per eight character levels and one damroll per twelve character levels,
+rounding each down. Normal hitroll and damroll caps still apply.
+There is no activation command, mana payment or cooldown. A longsword
+only in your secondary slot does not activate this bonus. It does not
+replace learning the weapon skill or waive equipment restrictions.
+See also: Innate, Wield.
+#
+Psionic Spells
+For Psionicist spells by circle and skills by level, use
+'help psionicist skills'. 'help psionicist' describes the base class;
+your specialization's own help lists its additions and removals.
+A listed spell still needs to be learned and prepared. Type 'spells'
+to inspect your character's spell list and 'help cast' for casting syntax.
 #

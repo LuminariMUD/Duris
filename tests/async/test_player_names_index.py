@@ -21,6 +21,7 @@ mysql = source[source.index("\n// globals\n"):]
 start = mysql.index("namespace\n{\n// Every player_data row's pid, name and active flag")
 end = mysql.index("\nbool sql_player_names_load(void)", start)
 index = mysql[start:end]
+load = mysql[end:mysql.index("\nvoid sql_player_names_set(int pid, const char *name)", end)]
 functions = mysql[mysql.index("\nvoid sql_player_names_set(int pid, const char *name)"):]
 functions = functions[:functions.index("\nbool sql_player_exists(const char *name)")]
 exists = mysql[mysql.index("\nbool sql_player_exists(const char *name)\n{"):]
@@ -28,38 +29,73 @@ exists = exists[:exists.index("\n}\n") + 3]
 get_pid = mysql[mysql.index("\nint sql_get_player_pid(const char *name)\n{"):]
 get_pid = get_pid[:get_pid.index("\n}\n") + 3]
 nanny = (SRC / "nanny.c").read_text()
+allocation = nanny[nanny.index("int getNewPCidNumb(void)\n{"):]
+allocation = allocation[:allocation.index("\nvoid setNewPCidNumbfromFile(void)")]
+refusal = nanny[nanny.index("\t\t\tif (GET_PID(d->character) <= 0)"):
+                nanny.index('\n\t\t\tlogit(LOG_NEW,', nanny.index("\t\t\tif (GET_PID(d->character) <= 0)"))]
 keepchar = nanny[nanny.index("void select_keepchar(P_desc d, char *arg)\n{"):]
 keepchar = keepchar[:keepchar.index("\n}\n") + 3]
 
 harness = f'''
 #include <cassert>
+#include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <limits.h>
 #include <string>
 #include <unordered_map>
 
 #define LOWER(c) ((char)std::tolower((unsigned char)(c)))
 void sql_player_names_forget(int pid);
+#define LOG_FILE "file"
+void logit(const char *, const char *, ...) {{}}
+struct MYSQL_RES {{ unsigned int position = 0; }};
+using MYSQL_ROW = char **;
+static unsigned long long allocated_next = 1;
+static unsigned long long stored_pid = 5;
+MYSQL_RES *db_query(const char *) {{ static MYSQL_RES result; result.position=0; return &result; }}
+MYSQL_ROW mysql_fetch_row(MYSQL_RES *result) {{
+    static char pid[32], name[]="Loaded", active[]="1";
+    snprintf(pid,sizeof pid,"%llu",stored_pid);
+    static char *row[]={{pid,name,active}};
+    return result->position++ == 0 ? row : nullptr;
+}}
+void mysql_free_result(MYSQL_RES *) {{}}
+unsigned long long sql_next_auto_increment(const char *) {{ return allocated_next; }}
 
 {index}
+{load}
 {functions}
 {exists}
 {get_pid}
+static long highestPCidNumb;
+{allocation}
 
 // The end of character creation, on the account menu.
 #define USE_ACCOUNT
 enum {{ CON_DISPLAY_ACCT_MENU = 1, CON_FLUSH, CON_RMOTD }};
-struct Character {{ const char *name; }};
+struct Character {{ const char *name; int pid = 0; }};
 using P_char = Character *;
 struct Descriptor {{ P_char character; int state; std::string output; }};
 using P_desc = Descriptor *;
 #define GET_NAME(ch) ((ch)->name)
+#define GET_PID(ch) ((ch)->pid)
 #define STATE(d) ((d)->state)
 #define SEND_TO_Q(text, d) ((d)->output += (text))
 static const char keepchar[] = "Keep this character? ";
 void free_char(P_char ch) {{ delete ch; }}
 void display_account_menu(P_desc, char *) {{}}
 {keepchar}
+bool publish_creation(P_desc d) {{
+    switch (0) {{ case 0:
+        {refusal}
+        return true;
+    }}
+    return false;
+}}
 
 int main()
 {{
@@ -109,6 +145,35 @@ int main()
     select_keepchar(&fresh, yes);
     assert(STATE(&fresh) == CON_RMOTD && fresh.character);
     delete fresh.character;
+
+    // The durable allocator, not only surviving rows, prevents old-ID reuse.
+    highest_pid = 0; allocated_next = 100;
+    assert(sql_player_names_load() && sql_highest_player_pid() == 99);
+    assert(getNewPCidNumb() == 100);
+    highest_pid = 0; allocated_next = 0;
+    assert(!sql_player_names_load());
+    highest_pid = 0; allocated_next = 2147483647ULL;
+    assert(sql_player_names_load() && getNewPCidNumb() == INT_MAX);
+    sql_player_names_set(INT_MAX, "Lastnative");
+    assert(getNewPCidNumb() == -1);
+    highest_pid = 0; allocated_next = 4294000104ULL;
+    assert(sql_player_names_load() && sql_highest_player_pid() == INT_MAX);
+    assert(getNewPCidNumb() == -1);
+
+    allocated_next = 100;
+    stored_pid = 0;
+    assert(!sql_player_names_load());
+    stored_pid = 4294000104ULL;
+    assert(!sql_player_names_load());
+    stored_pid = 5;
+
+    Descriptor unavailable{{new Character{{"Unavailable", -1}}, CON_RMOTD, ""}};
+    assert(!publish_creation(&unavailable));
+    assert(!unavailable.character && unavailable.state == CON_DISPLAY_ACCT_MENU);
+    assert(unavailable.output.find("Character creation is unavailable") != std::string::npos);
+    Descriptor allocated{{new Character{{"Allocated", 100}}, CON_RMOTD, ""}};
+    assert(publish_creation(&allocated) && allocated.character);
+    delete allocated.character;
     return 0;
 }}
 '''

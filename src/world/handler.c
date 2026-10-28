@@ -234,6 +234,9 @@ int container_total_weight(P_obj cont)
 	{
 		return 0;
 	}
+	// A corpse's capacity records its carried items, independently of body weight.
+	if (cont->type == ITEM_CORPSE)
+		return sum_direct_contents_weight(cont);
 	/* A failed put must never adjust encumbrance just by checking capacity.
 	 * Keep the existing net-weight capacity rule, including negative shells. */
 	const int weight = calculated_container_weight(cont);

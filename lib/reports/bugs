@@ -1,10 +1,6 @@
-Wed Oct 28 06:57:37 2026
- **Fle[16127]: when typing area, give the info on reset stats of the zone. like if everyone leaves the zone it will reset so we will know. or it reset every hour regardless if there people
-Wed Oct 28 06:41:00 2026
- **Fle[16633]: so before bartender quest. under level 30 was same cont. now at low level it sends you to all different conts can we fix it to before so we not just burning plats
-Wed Oct 28 06:32:02 2026
- **Fle[69255]: rogue needs starter bow and quiver/arrows like ranger. also make them load more arrows then so less. also make them not crumble when used or land on floor
-Wed Oct 28 01:49:14 2026
- **Seurimas[19479]: HELP SKILLS shows `The following character attributes are used in the execution of this ability (if any):` at the end.
-Wed Oct 28 01:21:45 2026
- **Seurimas[19445]: HELP INDEX just says that the help files have been indexed, not what those categories actually are.
+Wed Oct 28 20:11:42 2026
+ **Beakon[93654]: The (news) tag bleeds into the combat/health indicator if you enter combat with the news tag visible. 
+Wed Oct 28 19:48:43 2026
+ **Ryl[558468]: Bartender quests cant be shared
+Wed Oct 28 17:12:06 2026
+ **Fle[16128]: mob looting things on the ground village hag in pine hollow, it didn't show it pick up but wore it instantly. not sure if it a bug for this alone or in general

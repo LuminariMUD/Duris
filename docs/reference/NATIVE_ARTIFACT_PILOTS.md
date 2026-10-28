@@ -200,7 +200,7 @@ categories remain off in shipped configuration.
 [source inventory](artifact_source_inventory.json). It follows tracked `areas/AREA`,
 parses the actual extra-flags field, excludes the index sentinel and resolves
 literal chained callback assignments with the compiler's active configuration.
-It reproduces 169 templates, 78 literal bindings, 67 distinct callbacks and 91
+It reproduces 171 templates, 80 literal bindings, 69 distinct callbacks and 91
 without literal bindings. There are 29 golden-token placeholders, including the
 short-description typo “Ttken” whose keywords identify a token.
 

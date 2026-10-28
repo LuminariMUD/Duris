@@ -21,6 +21,7 @@
 #include "world/falling.h"
 #include "cmd/interp.h"
 #include "cmd/battleprep.h"
+#include "cmd/last.h"
 #include "kingdom/kingdom.h"
 #include "core/utils.h"
 #include <arpa/telnet.h>
@@ -1280,7 +1281,8 @@ const char *command[MAX_CMD] = {
 	"qinfo",
 	"divineboon",
 	"battleprep",
-	"\n" /* MAX_CMD = 873, MAX_CMD_LIST = 1000 */
+	"last",
+	"\n" /* MAX_CMD = 874, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3022,6 +3024,7 @@ void assign_command_pointers(void)
 	CMD_GRT(CMD_ECHOG, STAT_DEAD + POS_PRONE, do_echog, LESSER_G);
 	CMD_GRT(CMD_ECHOZ, STAT_DEAD + POS_PRONE, do_echoz, LESSER_G);
 	CMD_GRT(CMD_FINGER, STAT_DEAD + POS_PRONE, do_finger, AVATAR);
+	CMD_GRT(CMD_LAST, STAT_DEAD + POS_PRONE, do_last, AVATAR);
 	CMD_GRT(CMD_FORCE, STAT_DEAD + POS_PRONE, do_force, GREATER_G);
 	CMD_GRT(CMD_FREEZE, STAT_DEAD + POS_PRONE, do_freeze, LESSER_G);
 	CMD_GRT(CMD_GRANT, STAT_DEAD + POS_PRONE, do_grant, 0);

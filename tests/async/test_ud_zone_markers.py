@@ -16,7 +16,7 @@ ENTRANCES = (
     (709264, 'Caves of Mt. Skelenak', 709664, 4, 4093, 29, 'caves_skelenak'),
     (856819, 'The Stone Tomb of Kelek', 857219, 5, 87950, 29, 'kelek'),
     (844448, 'The Underworld Shafts', 844848, 4, 10021, 29, 'shafts'),
-    (834024, 'The Chasm of the Misty Vale', 834025, 4, 300019, 29, 'thechasmofthemistyvale'),
+    (766814, 'The Chasm of the Misty Vale', 766815, 3, 300149, 13, 'thechasmofthemistyvale'),
 )
 REVERSE = (2, 3, 0, 1, 5, 4)
 MARKER_FLAGS = 134250688  # Existing no-recall/magic/teleport/gate footprint flags.
@@ -50,6 +50,14 @@ def check_markers(areas, generated=False):
         assert rooms[entrance][2].get(direction) == target, (entrance, 'zone entrance')
         assert rooms[target][2].get(REVERSE[direction]) == entrance, (target, 'return route')
         assert marker in (entrance - 400, entrance - 1), (marker, 'adjacent footprint')
+    # The vacated marker returns to its original mountain grid footprint.
+    assert rooms[834024][:2] == (27, 0)
+    assert records[834024].startswith('&+LThe Massive Cavern Walls of the &+mUrusi&n~\n')
+    assert not re.search(rf'^7000 {MARKER_FLAGS} 0(?: 0)?$', records[834024], re.M)
+    for neighbor, direction in ((833624, 2), (834025, 3), (834424, 0), (834023, 1)):
+        assert rooms[neighbor][2].get(direction) == 834024, (neighbor, 'retired marker grid return')
+    assert rooms[766814][2].get(1) == 766815
+    assert rooms[766814][2].get(0) == 766414
     incoming = [(vnum, direction, target)
                 for vnum, (_, _, exits) in rooms.items()
                 for direction, target in exits.items() if target in markers]

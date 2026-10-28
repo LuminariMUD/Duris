@@ -180,6 +180,9 @@ def run(binary, backend):
                 if create:
                     journey.create_character(client, expected_room=None, account=account,
                                              character=name, email=name.lower() + "@example.invalid")
+                else:
+                    # Other clients cannot inspect this player's items until login completes.
+                    client.expect("Welcome to Duris", timeout=60)
                 client.socket.settimeout(.05)
                 return client
 

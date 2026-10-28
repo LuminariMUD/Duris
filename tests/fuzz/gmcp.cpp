@@ -91,6 +91,10 @@ int write_to_descriptor_binary(P_desc, const unsigned char *, size_t)
 {
 	return 0;
 }
+const char *input_command_label(const char *)
+{
+	return "";
+}
 void display_map_room(struct char_data *, int, int, int, int) {}
 int flag2idx(int)
 {

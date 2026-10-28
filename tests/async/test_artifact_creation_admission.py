@@ -694,7 +694,7 @@ bool world_recovery_read_copyover_object_record(const char *,size_t,world_recove
  return native_fixture;
 }
 P_obj last_materialized=nullptr;
-bool build_recovery_plan(const unsigned char *,size_t,int,uint64_t,recovery_plan *plan) { plan->header.sequence=123; return true; }
+bool build_recovery_plan(const unsigned char *,size_t,int,uint64_t,recovery_plan *plan,bool) { plan->header.sequence=123; return true; }
 bool floor_record_repeats(const recovery_plan &,const std::vector<unsigned char> &) { return false; }
 bool add_object_record(recovery_plan *plan,const unsigned char *,size_t,artifact_payload_domain,uint64_t) {
  if(!native_fixture) return false;

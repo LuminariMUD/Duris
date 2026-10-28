@@ -22,6 +22,7 @@ import uuid
 import urllib.request
 
 import test_flatfile_combat_journey as journey
+from run_pwipe_launch_gate_journey import launch_config, login as launch_login, drained as launch_drained
 
 ROOT = Path(__file__).resolve().parents[2]
 STAFF = "Wipekeeper"
@@ -509,6 +510,14 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 began = time.monotonic()
                 wall_began = time.time()
                 report["schedule_wall_time"] = wall_began
+                # Arm only the private next-boot config. The old process retains its
+                # disabled policy while the real five-minute reset runs.
+                launch_at = int(wall_began) + 345
+                launch_path = root / "lib/pwipe_launch.cfg"
+                launch_timestamp = launch_config(launch_path, launch_at, journey.ACCOUNT)
+                launch_bytes = launch_path.read_bytes()
+                launch_art = (root / "lib/information/pwipe_launch").read_bytes()
+                preserved_credentials = sql("SELECT account_name,password FROM accounts ORDER BY account_name")
                 client.send("shutdown pwipe confirm yes"); client.expect("five")
                 next_progress = began + 60
                 assert int(sql("SELECT COUNT(*) FROM account_bound_reward_summons WHERE pid=" + str(observer_pid))) > 0
@@ -563,6 +572,10 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                 assert (root / "Players/Backup/preserve").read_text() == "archive"
                 report.update(countdown_seconds=round(wall_elapsed, 2), old_pid=old_pid, new_staff_pid=new_pid)
                 print("Real command/launcher/filesystem reset passed; booting the new season", flush=True)
+                assert launch_path.read_bytes() == launch_bytes
+                assert (root / "lib/information/pwipe_launch").read_bytes() == launch_art
+                assert time.time() < launch_at, "new-season boot must still be closed"
+                assert sql("SELECT account_name,password FROM accounts ORDER BY account_name") == preserved_credentials
                 boot()
                 if redis_reenable:
                     assert "restored world recovery generation" not in journey.runtime_logs(root)
@@ -572,6 +585,31 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     client.send("get sword"); client.expect("You do not see a sword here.")
                 client.send("score"); client.expect("Level")
                 save(STAFF)
+                player_count = sql("SELECT COUNT(*) FROM player_data")
+                denied = journey.MudClient(plain)
+                try:
+                    launch_login(denied, OBSERVER_ACCOUNT)
+                    notice = launch_drained(denied)
+                    assert launch_timestamp[:10].encode() in notice
+                finally:
+                    denied.close()
+                assert sql("SELECT COUNT(*) FROM player_data") == player_count
+                report["launch_gate_closed"] = "config/art survived launcher cleanup; unchanged credentials; recreated approved Overlord enters; ordinary surviving account refused without body creation"
+                print("Armed launch gate preserved config/art and credentials; approved Overlord entered; ordinary account refused", flush=True)
+                if discard_rewards:
+                    # Deleted grants must not make their IDs available again after boot.
+                    # Use a separate account so the original claimant still proves refusal.
+                    sql("INSERT INTO accounts(account_name,password,email,confirmed) "
+                        "VALUES('Postwipegrant','fixture-password','grant@example.invalid',1)")
+                    client.send("load obj 1108")
+                    client.send("divineclaim sword Postwipegrant permanent")
+                    client.expect("The source item remains in your inventory.")
+                    save(STAFF)
+                    fresh_grant = int(sql("SELECT id FROM account_bound_rewards "
+                                          "WHERE account_name='Postwipegrant'"))
+                    assert fresh_grant > max(grant["id"] for grant in grants)
+                    report["post_discard_new_grant_id"] = fresh_grant
+                    print("Fresh post-discard grant uses an ID beyond every deleted grant", flush=True)
                 if with_redis:
                     # Staff login applies wizard invisibility; public presence
                     # must not reveal that body. Check a visible mortal below.
@@ -579,6 +617,12 @@ def run(binary, with_redis=False, matched_restore=False, redis_reenable=False, d
                     assert redis("EXISTS", *old_keys) == expected_old_keys
                 client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
                 client.close(); client = None
+                launch_process = process.pid
+                while time.time() < launch_at:
+                    assert running(), "prepared season stopped before opening"
+                    time.sleep(.2)
+                assert process.pid == launch_process
+                report["launch_gate_open"] = "same post-wipe process permits normal creation/gameplay at " + launch_timestamp
                 client = journey.MudClient(plain)
                 journey.create_character(client, existing_account=True)
                 if with_redis:

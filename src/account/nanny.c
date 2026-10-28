@@ -26,6 +26,7 @@
 #include "account/newbie_kit_plan.h"
 #include "world/object_template.h"
 #include "account/creation_availability_config.h"
+#include "account/pwipe_launch.h"
 #include "combat/chaos_config.h"
 #include "combat/training_dummy.h"
 #include "account/chaos_eq_data.h"
@@ -38,6 +39,7 @@
 #include "core/utils.h"
 #include <arpa/telnet.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -264,7 +266,13 @@ int getNewPCidNumb(void)
 #else
 	// Every character's pid is in memory (sql_player_names_load()). init_char() records
 	// the new one there at once, so the next allocation is past it.
-	highestPCidNumb = sql_highest_player_pid() + 1;
+	const int highest = sql_highest_player_pid();
+	if (highest == INT_MAX)
+	{
+		logit(LOG_FILE, "could not allocate player id: native identity range exhausted");
+		return -1;
+	}
+	highestPCidNumb = highest + 1;
 	return highestPCidNumb;
 #endif
 }
@@ -2245,18 +2253,27 @@ void select_terminal(P_desc d, const char *arg)
 	{
 	case TERM_GENERIC:
 		d->term_type = TERM_GENERIC;
-		SEND_TO_Q(greetings, d);
+		SEND_TO_Q(pwipe_launch_closed_at(time(NULL)) ? pwipe_launch_screen(false).c_str() :
+							       greetings,
+			  d);
 		break;
 	case TERM_MSP:
 		d->term_type = TERM_MSP;
 		arg = one_argument(arg, temp_buf);
 		strcpy(d->client_str, arg);
-		SEND_TO_Q(greetinga, d);
+		SEND_TO_Q(pwipe_launch_closed_at(time(NULL)) ? pwipe_launch_screen(true).c_str() :
+							       greetinga,
+			  d);
 		break;
 	case TERM_ANSI:
 		d->term_type = TERM_ANSI;
 		arg = one_argument(arg, temp_buf);
 		strcpy(d->client_str, arg);
+		if (pwipe_launch_closed_at(time(NULL)))
+		{
+			SEND_TO_Q(pwipe_launch_screen(true).c_str(), d);
+			break;
+		}
 
 		temp = number(1, NUM_ANSI_LOGINS);
 		switch (temp)
@@ -4074,6 +4091,11 @@ void wimps_in_approve_queue(void)
 
 void nanny(P_desc d, char *arg)
 {
+	if (STATE(d) == CON_FLUSH)
+		return;
+	// Recheck every chargen continuation before it can reserve, save or enter a body.
+	if (d->character && d->character->in_room == NOWHERE && !pwipe_launch_admit(d))
+		return;
 	switch (STATE(d))
 	{
 		/* Character deleted by a Forger */
@@ -4349,10 +4371,21 @@ void nanny(P_desc d, char *arg)
 		select_keepchar(d, arg);
 		if (STATE(d) == CON_RMOTD)
 		{
+			init_char(d->character);
+			if (GET_PID(d->character) <= 0)
+			{
+				SEND_TO_Q(
+					"Character creation is unavailable. Please contact staff.\r\n",
+					d);
+				free_char(d->character);
+				d->character = NULL;
+				STATE(d) = CON_DISPLAY_ACCT_MENU;
+				display_account_menu(d, NULL);
+				break;
+			}
 			logit(LOG_NEW, "%s [%s] new player.", GET_NAME(d->character), d->host);
 			statuslog(d->character->player.level, "%s [%s] new player.",
 				  GET_NAME(d->character), d->host);
-			init_char(d->character);
 			add_char_to_account(d);
 			SEND_TO_Q(motd.c_str(), d);
 			/*
@@ -4417,6 +4450,8 @@ void nanny(P_desc d, char *arg)
 		break;
 
 	case CON_RMOTD:
+		if (!pwipe_launch_admit(d))
+			break;
 		// For new character creation, enter the game directly
 		if (d->character)
 		{

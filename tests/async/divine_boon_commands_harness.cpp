@@ -53,6 +53,21 @@ bool divine_boon_epic_zone_eligible(int zone, unsigned side)
 {
 	return divine_boon_zone_eligible(zone, side);
 }
+int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot)
+{
+	if (slot.category != divine_boon_category::experience &&
+	    slot.category != divine_boon_category::epic)
+		return -1;
+	for (int zone : slot.zones)
+		if (zone >= 0 && divine_boon_zone_eligible(zone, 0) &&
+		    divine_boon_zone_eligible(zone, 1))
+			return zone;
+	for (int zone : slot.zones)
+		if (zone >= 0 &&
+		    (divine_boon_zone_eligible(zone, 0) || divine_boon_zone_eligible(zone, 1)))
+			return zone;
+	return divine_boon_target_zone(slot);
+}
 bool divine_boon_cargo_eligible(const divine_boon_slot &)
 {
 	return eligible;
@@ -178,6 +193,11 @@ int main()
 	shown = invoke(&player, "");
 	assert(shown.find("&+M[2] +50% Epic Points&n") != string::npos);
 	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
+	player.player.racewar = RACEWAR_EVIL;
+	const auto evil_epic = invoke(&player, "list");
+	assert(evil_epic.find("&+M[2] +50% Epic Points&n") != string::npos);
+	assert(evil_epic.find("&+RNative coloured dungeon&n") != string::npos);
+	player.player.racewar = RACEWAR_GOOD;
 	// Truncated real targets retain an explicit identity within the same row width.
 	char *original_name = zones[0].name;
 	for (const auto &[id, name] :
@@ -201,7 +221,8 @@ int main()
 	player.player.racewar = RACEWAR_EVIL;
 	shown = invoke(&player, "list");
 	assert(shown.find("Frags against Good racewar") != string::npos &&
-	       shown.find("&+Gxxx") != string::npos);
+	       shown.find("&+RNative coloured dungeon&n") != string::npos);
+	assert(shown.find("&+Gxxx") == string::npos); // Legacy Good target is shared.
 	player.player.racewar = RACEWAR_NEUTRAL;
 	shown = invoke(&player, "");
 	assert(shown.find("PvP Epic Points") == string::npos &&
@@ -250,8 +271,8 @@ int main()
 	invoke(&player, "pause", true);
 	assert(!pending && authority == previous);
 	assert(invoke(&player, "status", true).find("revision=") != string::npos);
-	// Ensure actual world messages are coloured, faction-specific and correctly
-	// suppressed for unchanged states, staff replacement and unaffiliated players.
+	// Experience and Epic announcements disclose the same hotspot to both sides;
+	// saved one-sided objectives are also announced globally.
 	char_data good = {}, evil = {}, neutral = {};
 	good.player.racewar = RACEWAR_GOOD;
 	evil.player.racewar = RACEWAR_EVIL;
@@ -271,14 +292,13 @@ int main()
 	exp.expires_at = hour + 8 * DIVINE_BOON_HOUR;
 	after[0] = exp;
 	divine_boon_announce_changes(before, after, now);
-	assert(recipient_echoes[&good].find("&+G200% Experience&n") != string::npos);
-	assert(recipient_echoes[&good].find("&+RNative coloured dungeon&n") != string::npos);
-	assert(recipient_echoes[&evil].find("&+G200% Experience&n") != string::npos);
-	assert(recipient_echoes[&evil].find("Native coloured dungeon") == string::npos);
-	assert(recipient_echoes[&neutral].empty() && all_echoes.empty());
-	const auto one = recipient_echoes[&good];
+	assert(all_echoes.find("&+G200% Experience&n") != string::npos);
+	assert(all_echoes.find("&+RNative coloured dungeon&n") != string::npos);
+	assert(recipient_echoes.empty());
+	const auto one = all_echoes;
 	divine_boon_announce_changes(after, after, now);
-	assert(recipient_echoes[&good] == one && all_echoes.empty());
+	assert(all_echoes == one); // Unchanged snapshot never re-announces.
+
 	before = after;
 	cargo.id = 102;
 	cargo.starts_at = hour;
@@ -309,14 +329,14 @@ int main()
 	epic.expires_at = hour + 8 * DIVINE_BOON_HOUR;
 	after[3] = epic;
 	divine_boon_announce_changes(before, after, now);
-	assert(recipient_echoes[&good].find("&+M+50% Epic Points&n") != string::npos);
-	assert(recipient_echoes[&evil].find("&+M+50% Epic Points&n") == string::npos);
+	assert(all_echoes.find("&+M+50% Epic Points&n") != string::npos);
+	assert(all_echoes.find("&+RNative coloured dungeon&n") != string::npos);
 	before = after;
 	after[0] = {};
 	divine_boon_announce_changes(before, after, exp.expires_at);
-	assert(recipient_echoes[&good].find("have withdrawn") != string::npos);
+	assert(all_echoes.find("have withdrawn") != string::npos);
 	capturing_echo = false;
 	descriptor_list = nullptr;
 	std::cout
-		<< "Divine commands: native ANSI/80 columns, sides, invalid targets, automatic benefits, durable staff controls and history passed\n";
+		<< "Divine commands: native ANSI/80 columns, shared faction targets, global world echoes, durable staff controls and history passed\n";
 }

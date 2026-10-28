@@ -25,6 +25,11 @@ bool divine_trade_runtime_boot(uint64_t)
 #include <thread>
 
 unsigned long long ne_event_tick = 0;
+int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot)
+{
+	// Controlled world boundary: the old first target is no longer eligible.
+	return slot.zones[0] == 999 ? slot.zones[1] : divine_boon_target_zone(slot);
+}
 static uint64_t pending_rewards = 0;
 static unsigned grants = 0, expiries = 0;
 void divine_boon_announce_changes(const std::array<divine_boon_slot, DIVINE_BOON_SLOTS> &before,
@@ -245,6 +250,42 @@ int main(int argc, char **argv)
 	assert(divine_boon_runtime_state()->mode == divine_boon_mode::divine);
 	assert(grants == 1 && expiries == 0);
 	assert(!divine_boon_legacy_admissions_allowed());
+
+	// The runtime boot must use the same resolved destination as live rewards,
+	// and persist both deduplication and the original retired audit fields.
+	root += "-shared";
+	std::filesystem::create_directories(root + "/domains");
+	for (const auto &directory : { root, root + "/domains" })
+		std::filesystem::permissions(directory, std::filesystem::perms::owner_all,
+					     std::filesystem::perm_options::replace);
+	divine_boon_state crossed;
+	assert(divine_boon_set_mode(&crossed, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&crossed, divine_boon_mode::divine, 0));
+	divine_boon_slot first;
+	first.category = divine_boon_category::experience;
+	first.zones = { 999, 18 };
+	assert(divine_boon_rotate(&crossed, DIVINE_BOON_HOUR, &first));
+	crossed.slots[1] = crossed.slots[0];
+	crossed.slots[1].id = crossed.next_id++;
+	crossed.slots[1].zones = { 18, 999 };
+	const auto duplicate = crossed.slots[1];
+	crossed.revision = 1; // First authority record in this independent fixture.
+	assert(divine_boon_flatfile_save(root, 0, crossed) == divine_boon_store_result::ok);
+	assert(divine_boon_runtime_boot(DIVINE_BOON_HOUR + 1));
+	finish();
+	assert(divine_boon_flatfile_load(root, &recovered) == divine_boon_store_result::ok);
+	assert(recovered == *divine_boon_runtime_state());
+	assert(recovered.slots[0].zones == first.zones && !recovered.slots[1].id);
+	assert(recovered.recent.size() == 1 && recovered.recent[0].objective == duplicate);
+	for (const auto &entry : recovered.history)
+		assert(entry.zone == 18);
+	assert(divine_boon_runtime_boot(9 * DIVINE_BOON_HOUR));
+	finish();
+	assert(divine_boon_flatfile_load(root, &recovered) == divine_boon_store_result::ok);
+	assert(recovered == *divine_boon_runtime_state() && !recovered.slots[0].id);
+	assert(recovered.recent.back().objective.zones == first.zones);
+	for (const auto &entry : recovered.history)
+		assert(entry.zone == 18);
 
 	player_save_worker_shutdown();
 	std::cout

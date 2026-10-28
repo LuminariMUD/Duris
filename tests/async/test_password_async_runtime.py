@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Exercise the real shared worker/session adapter and #191 latency recorder."""
 from pathlib import Path
+import signal
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -41,7 +42,9 @@ with tempfile.TemporaryDirectory(prefix="duris-password-async-") as tmp:
                            ("clear_account", "void"), ("check_and_clear", "char *"),
                            ("free_account", "P_acct"), ("allocate_account", "P_acct"),
                            ("add_account_to_list", "void"),
-                           ("remove_account_from_list", "void"))))
+                           ("remove_account_from_list", "void"))) + "\n" +
+                       extract_function("common.c", "static void fatal_message_v(") + "\n" +
+                       extract_function("common.c", "void panic_corruption("))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-O1",
         "-fsanitize=address,undefined", "-I", str(SRC), "-I/usr/include/mysql",
@@ -51,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix="duris-password-async-") as tmp:
         str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     allocator = subprocess.run([str(binary), "--free-null"], capture_output=True, text=True)
-    assert allocator.returncode == 1, allocator.stderr
-    assert "FREE called, but memory not in allocation list!" in allocator.stderr
+    assert allocator.returncode == -signal.SIGABRT, allocator
+    assert "delmem: FREE called with null pointer" in allocator.stderr
     subprocess.run([str(binary)], check=True)
 print("password async runtime and interactive-path contracts passed")

@@ -3,10 +3,10 @@
   "liveAvailabilityVerified": false,
   "configuration": "Compiler defaults; THARKUN_ARTIS enabled",
   "counts": {
-    "templates": 170,
+    "templates": 171,
     "literalBindings": 80,
     "callbacks": 69,
-    "withoutLiteralBinding": 90,
+    "withoutLiteralBinding": 91,
     "goldenTokenPlaceholders": 29
   },
   "templates": [
@@ -5064,6 +5064,35 @@
         "Studio trigger/proc-library dynamic assignment",
         "weapon_proc: positive value[5] and value[7] select packed spell path",
         "effective native callback and helper continuations"
+      ],
+      "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
+    },
+    {
+      "vnum": 300032,
+      "source": "areas/obj/thechasmofthemistyvale.obj",
+      "line": 531,
+      "name": "the wailing face of a pygmie banshee",
+      "keywords": "face banshee pygmie",
+      "type": 11,
+      "extraFlags": 268435456,
+      "wearFlags": 262145,
+      "extra2Flags": 64,
+      "values": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "literalCallback": null,
+      "placeholder": false,
+      "reviewPaths": [
+        "base stats/affect bitvectors",
+        "equipment enchantments",
+        "Studio trigger/proc-library dynamic assignment"
       ],
       "disposition": "retain legacy; outside initial migration wave; requires individual contract and measured budget"
     }
