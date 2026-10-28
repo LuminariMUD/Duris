@@ -47,6 +47,7 @@ static obj_data initial_carried, initial_equipped, initial_linked;
 static obj_data callback_carried, callback_extra_carried, callback_equipped, callback_linked;
 static std::vector<P_obj> extracted_items;
 static bool transient_items;
+static bool locker_test;
 
 P_char combat_list = nullptr;
 P_char combat_next_ch = nullptr;
@@ -61,7 +62,7 @@ bool training_dummy_can_leave_room(P_char ch) { return !dummy_guard || dummy_ove
 void training_dummy_begin_removal(P_char ch) { ++begin_calls; if (dummy_guard) dummy_override = ch; }
 void training_dummy_end_removal(P_char ch) { ++end_calls; if (dummy_override == ch) dummy_override = nullptr; }
 void shopkeeper_mob_extracted(P_char) { ++shopkeeper_calls; }
-void logit(const char *, const char *, ...) { assert(false); }
+void logit(const char *, const char *, ...) { assert(locker_test); }
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 void event_conjure_water(P_char, P_char, P_obj, void *) {}
 void event_water_crossing(P_char, P_char, P_obj, void *) {}
@@ -275,6 +276,76 @@ static int room_hook(int room, P_char ch, int cmd, char *)
         return false;
     }
     std::abort();
+}
+'''
+
+LOCKER_FIXTURE = r'''
+// Inject snapshot/queue failures at the persistence boundary; execute the real
+// locker leave handler, room departure, extraction admission and item cleanup.
+#define IS_TOWN_RAIDED(ch) false
+static bool snapshot_ok, movement_busy, writer_available;
+static int snapshot_calls, terminal_saves, deferred_saves, locker_releases;
+static char_data locker_character;
+struct StorageLocker {
+    P_char user, character;
+    P_char GetLockerUser() { return user; }
+    P_char GetLockerChar() { return character; }
+    int GetLockerId() { return 1; }
+    bool LockerToPFile() {
+        ++snapshot_calls;
+        if (!snapshot_ok) return false;
+        while (rooms[0].contents) {
+            P_obj object = rooms[0].contents;
+            rooms[0].contents = object->next_content;
+            give_item(character, object);
+        }
+        return true;
+    }
+};
+static StorageLocker locker;
+static StorageLocker *retained_locker;
+static bool locker_handle_leave(P_char, StorageLocker *, int, int);
+static int locker_hook(int room, P_char ch, int cmd, char *) {
+    assert(cmd == CMD_FROMROOM);
+    return locker_handle_leave(ch, retained_locker, room, 1) ? FALSE : ROOM_PROC_LEAVE_VETO;
+}
+static int locker_exit_room(P_char, int) { return 1; }
+static const char *locker_room_name(int) { return "fixture locker"; }
+static void locker_log_save_failure(StorageLocker *, P_char, P_char, const char *, const char *) {}
+bool item_movement_transaction_player_busy(P_char) { return movement_busy; }
+void persistence_alert(int, const char *, const char *, const char *, const char *,
+                       const char *, const char *, ...) {}
+void send_to_char(const char *, P_char) {}
+int locker_async_mark_dirty(P_char ch, P_char user, int terminal, const char *) {
+    assert(ch == &locker_character && user == locker.user && terminal == 1);
+    if (writer_available) ++terminal_saves;
+    return writer_available;
+}
+static void event_deferredTerminalSave(P_char, P_char, P_obj, void *) {}
+P_nevent get_scheduled(P_char, event_func_type) { return nullptr; }
+nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) {
+    ++deferred_saves;
+    return {};
+}
+void obj_from_room(P_obj object) {
+    assert(rooms[0].contents == object);
+    rooms[0].contents = object->next_content;
+    object->next_content = nullptr;
+    object->loc_p = LOC_NOWHERE;
+}
+static void free_locker(int) {
+    assert(terminal_saves || deferred_saves);
+    ++locker_releases;
+    retained_locker = nullptr;
+    locker.user = nullptr;
+    rooms[0].funct = nullptr;
+}
+bool char_to_room(P_char ch, int room, int direction) {
+    assert(ch->in_room == NOWHERE && room == 1 && direction == -2);
+    ch->in_room = room;
+    ch->next_in_room = rooms[room].people;
+    rooms[room].people = ch;
+    return true;
 }
 '''
 
@@ -514,6 +585,53 @@ static void run_inventory_cleanup(Scenario selected, bool npc, bool saved, int p
     assert(!initial_linked.hitched_to && !callback_linked.hitched_to);
 }
 
+static void run_locker_extraction(int failure, bool saved)
+{
+    locker_test = true;
+    rooms[0] = {}; rooms[1] = {}; locker_character = {};
+    rooms[0].room_flags = ROOM_LOCKER; rooms[0].funct = locker_hook;
+    rooms[0].number = 100; rooms[1].number = 200;
+    auto *ch = new char_data{};
+    ch->runtime_id = 1; ch->in_room = 0;
+    SET_POS(ch, STAT_NORMAL + POS_STANDING);
+    if (saved) ch->runtime_flags = CHAR_RFLAG_TERMINAL_ITEMS_SAVED;
+    character_list = rooms[0].people = ch;
+    obj_data contents{}, inventory{};
+    contents.loc_p = LOC_ROOM; contents.loc.room = 0;
+    rooms[0].contents = &contents;
+    give_item(ch, &inventory);
+    ch->group = &recreated_group; ch->nevents = &recreated_event;
+    locker = {ch, failure == 1 ? nullptr : &locker_character};
+    retained_locker = &locker;
+    movement_busy = failure == 0;
+    snapshot_ok = failure != 2;
+    writer_available = failure != 3;
+    snapshot_calls = terminal_saves = deferred_saves = locker_releases = 0;
+    cleanup_calls = event_cleanup_calls = group_cleanup_calls = 0;
+    terminal_departure_override = dummy_override = nullptr;
+    combat_list = combat_next_ch = nullptr; dummy_guard = false;
+    extracted_items.clear();
+    extraction_unlink_fixture(ch);
+    if (failure < 3) {
+        assert(character_list == ch && rooms[0].people == ch && ch->in_room == 0);
+        assert(retained_locker == &locker && locker.user == ch);
+        assert(rooms[0].contents == &contents && ch->carrying == &inventory);
+        assert(ch->group == &recreated_group && ch->nevents == &recreated_event);
+        assert(cleanup_calls == 0 && event_cleanup_calls == 0 && group_cleanup_calls == 0);
+        assert(extracted_items.empty() && !terminal_saves && !deferred_saves && !locker_releases);
+        // The intact occupant and contents can retry successfully.
+        movement_busy = false; snapshot_ok = true; locker.character = &locker_character;
+        extraction_unlink_fixture(ch);
+    }
+    assert(character_list == nullptr && ch->in_room == NOWHERE);
+    assert(retained_locker == nullptr && locker.user == nullptr && locker_releases == 1);
+    assert(terminal_saves + deferred_saves == 1);
+    assert(locker_character.carrying == &contents && OBJ_CARRIED(&contents));
+    assert_item_cleanup(&inventory, saved, 1);
+    delete ch;
+    locker_test = false;
+}
+
 int main()
 {
     for (bool npc : {false, true})
@@ -542,6 +660,8 @@ int main()
     char_data detached_character{};
     detached_character.in_room = NOWHERE;
     char_from_room(&detached_character);
+    for (int failure = 0; failure < 5; ++failure)
+        for (bool saved : {false, true}) run_locker_extraction(failure, saved);
     std::puts("Room departure and terminal extraction: callback lifetime, relationships and item ownership cases passed");
 }
 '''
@@ -557,12 +677,17 @@ with tempfile.TemporaryDirectory(prefix="char-from-room-", dir=build_root) as di
     # Exercise the real extraction teardown and global-list unlink, with unrelated
     # network and persistence services outside the focused fixture.
     unlink = ("void extraction_unlink_fixture(P_char ch) {\nP_char k;\n"
+              + extraction[extraction.index("\t// A locker departure"):extraction.index("\t++character_removal_generation;")]
+              +
               "const bool terminal_items_saved = IS_PC(ch) && IS_SET(ch->runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED);\n"
               "remove_all_linked_objects(ch);\nextract_char_items(ch, terminal_items_saved);\n"
               + extraction[start:end] + "\n}")
     harness.write_text("\n".join((
         PRELUDE,
+        LOCKER_FIXTURE,
         extract_function("utility.c", "int char_in_list(const P_char ch)"),
+        extract_function("storage_lockers.c", "static bool locker_handle_leave("),
+        extract_function("storage_lockers.c", "bool locker_leave_for_extraction("),
         "void char_from_room(P_char ch)\n" + function_body(
             source("handler.c").read_text(encoding="utf-8"),
             r"void\s+char_from_room\s*\(\s*P_char\s+ch\s*\)",

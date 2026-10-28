@@ -3758,6 +3758,10 @@ void extract_char(P_char ch)
 		logit(LOG_EXIT, "No ch in extract_char");
 		return;
 	}
+	// A locker departure can fail before it owns a coherent terminal snapshot.
+	// Leave the occupant and its inventory/relationships intact for a later retry.
+	if (!locker_leave_for_extraction(ch))
+		return;
 	++character_removal_generation;
 	item_actions_character_leaving(ch);
 	world_recovery_capture_forget_character(ch);

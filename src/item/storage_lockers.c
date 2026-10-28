@@ -340,6 +340,23 @@ static void locker_eject_to_exit(P_char ch, int room)
 	char_to_room(ch, exit_room, 0);
 }
 
+bool locker_leave_for_extraction(P_char ch)
+{
+	if (ch->in_room == NOWHERE || !IS_ROOM(ch->in_room, ROOM_LOCKER))
+		return true;
+
+	const int exit_room = locker_exit_room(ch, ch->in_room);
+	const uint64_t runtime_id = ch->runtime_id;
+	char_from_room(ch);
+	if (!char_in_list(ch) || ch->runtime_id != runtime_id || ch->in_room != NOWHERE)
+		return false;
+
+	// Keep unsaved extraction drops outside the released locker. No entry scripts
+	// or combat should run while preparing terminal removal.
+	char_to_room(ch, exit_room, -2);
+	return char_in_list(ch) && ch->runtime_id == runtime_id;
+}
+
 static bool locker_handle_leave(P_char ch, StorageLocker *pLocker, int room, int troom)
 {
 	P_char tmpChar = NULL;

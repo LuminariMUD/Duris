@@ -2054,6 +2054,7 @@ void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
 
+bool locker_leave_for_extraction(P_char ch);
 bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);
 

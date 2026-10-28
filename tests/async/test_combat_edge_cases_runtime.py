@@ -55,6 +55,7 @@ static affected_type innate_timer{};
 static bool fight_allowed, improved, magical_wall, castle_wall;
 static bool hide_victim_from_stranger, actor_front, victim_front;
 static int damage_calls, guard_calls, victim_waits, actor_waits, stops, actor_lag;
+static int poison_calls;
 static int notch_calls, total_waits, kick_skill, roundkick_skill, appear_calls;
 static int callback_calls, arrivals, departure_calls, arrival_direction, engaged;
 static P_char riding, rider;
@@ -228,13 +229,17 @@ int number(int minimum, int maximum)
     return minimum;
 }
 int get_takedown_size(P_char ch) { return ch->player.size; }
+int STAT_INDEX(int) { return 10; }
 int GET_CHAR_SKILL_P(P_char, int skill)
 {
     return skill == SKILL_KICK ? kick_skill : skill == SKILL_ROUNDKICK ? roundkick_skill : 100;
 }
 float takedown_check(P_char, P_char, float, int, ulong) { return 200; }
 bool notch_skill(P_char, int, float) { ++notch_calls; return improved; }
-int CanDoFightMove(P_char, P_char target) { return fight_allowed && target != forbidden_target; }
+int CanDoFightMove(P_char ch, P_char target) {
+    return fight_allowed && target != forbidden_target && IS_ALIVE(target) &&
+           !IS_ROOM(ch->in_room, ROOM_SAFE);
+}
 P_char guard_check(P_char, P_char target)
 {
     ++guard_calls;
@@ -281,6 +286,13 @@ void kick_messages(P_char, P_char, bool, struct damage_messages *out)
     out->room = const_cast<char *>("kick hit");
 }
 void bite(P_char, P_char target) { bitten_target = target; }
+int raw_damage(P_char, P_char target, double, uint, struct damage_messages *, int *)
+{
+    damage_target = target;
+    ++damage_calls;
+    return DAM_NONEDEAD;
+}
+int bite_poison(P_char, P_char, int) { ++poison_calls; return TRUE; }
 '''
 
 DRIVER = r'''
@@ -331,6 +343,7 @@ static void reset()
     improved = true;
     magical_wall = castle_wall = false;
     damage_calls = guard_calls = actor_waits = victim_waits = stops = actor_lag = 0;
+    poison_calls = 0;
     notch_calls = total_waits = appear_calls = 0;
     kick_skill = roundkick_skill = 100;
     callback_calls = arrivals = departure_calls = engaged = 0;
@@ -659,6 +672,30 @@ static void racial_routing_cases()
     }
 }
 
+static void delayed_bite_cases()
+{
+    for (int change = 0; change < 7; ++change)
+    {
+        reset(); actor.player.race = RACE_SNAKE;
+        place(&actor, 1); place(&victim, 1); place(&witness, 1);
+        guard_target = &witness;
+        do_bite_target(&actor, &victim);
+        assert(bitten_target == &witness && guard_calls == 1 && actor.affected);
+        const int spent = innate_timer.modifier;
+        if (change == 1) rooms[1].room_flags |= ROOM_SAFE;
+        if (change == 2) fight_allowed = false;
+        if (change == 3) place(&witness, 2);
+        if (change == 4) forget(&witness);
+        if (change == 5) SET_POS((&witness), STAT_DEAD);
+        if (change == 6) forget(&actor);
+        event_snakebite(&actor, bitten_target, nullptr, nullptr);
+        assert(damage_calls == (change == 0 ? 1 : 0));
+        assert(poison_calls == (change == 0 ? 1 : 0));
+        assert(guard_calls == 1 && innate_timer.modifier == spent);
+        if (change == 0) assert(damage_target == &witness);
+    }
+}
+
 static void concealed_feedback_cases()
 {
     for (const int concealed : {EX_SECRET, EX_BLOCKED, EX_SECRET | EX_BLOCKED})
@@ -827,11 +864,14 @@ int main()
     precondition_cases();
     concealed_feedback_cases();
     racial_routing_cases();
+    delayed_bite_cases();
     std::puts("combat edge cases: admission, scripted transfers, kick/rearkick/tackle, immunity and guards passed");
 }
 '''
 
 functions = [
+    extract_function("utility.c", "int is_char_in_room("),
+    extract_function("innates.c", "void event_snakebite("),
     extract_function("utility.c", "int BOUNDED("),
     extract_function("utility.c", "bool is_ansi_char("),
     extract_function("utility.c", "void CAP("),

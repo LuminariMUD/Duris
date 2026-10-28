@@ -1645,10 +1645,10 @@ void event_snakebite(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	};
 	int i;
 
-	if (GET_STAT(ch) <= STAT_INCAP)
+	if (!ch || !char_in_list(ch) || GET_STAT(ch) <= STAT_INCAP || ch->in_room < 0)
 		return;
 
-	if (!is_char_in_room(victim, ch->in_room))
+	if (!is_char_in_room(victim, ch->in_room) || !CanDoFightMove(ch, victim))
 		return;
 
 	if ((GET_LEVEL(ch) + STAT_INDEX(GET_C_AGI(ch))) <
