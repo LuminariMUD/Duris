@@ -329,6 +329,29 @@ contract is a visible launch notice; a custom browser splash is separate UI work
 - Next: complete admission integration and presentation, then real socket/restart/
   copyover journeys for both backends and the existing disposable wipe journey.
   Do not treat the policy/config chunk alone as an armed admission gate.
+- Foundation is committed as `9109292ba`, pushed, and review-ready in
+  [PR #433](https://github.com/LuminariMUD/Duris/pull/433) against `master`.
+- Admission/presentation chunk is on `branch/pwipe-launch-admission-2026-10-28`,
+  stacked on #433. The shared denial cancels password/load/writer continuations,
+  discards queued input, releases its pre-entry body and uses `CON_FLUSH` for all
+  transports. Native WS rejects further commands while draining. Copyover checks
+  the repository's account identity before materializing a restored body/items.
+  A registration callback was reordered so it cannot replace a denial's state.
+- Original 60-column terminal art is implemented and its plain transcript reviewed.
+  Tests verify ANSI/plain parity, ASCII/76-column bounds, CRLF, final reset, parsed
+  date and missing-art fallback. Generic output is explicitly stripped through
+  `AnsiString::plain`; the general queue otherwise emits ANSI during login.
+- Admission-chunk checks passed: `test_pwipe_launch_gate.py` (policy, real shared
+  denial cleanup and entry ordering), `test_password_async_runtime.py` (ASan/UBSan),
+  `test_login_mode_banner.py`, `test_account_login_news.py`,
+  `test_racewar_admission.py`, `test_websocket_protocol_contract.py`,
+  `test_websocket_backpressure_contract.py`, `test_websocket_runtime.py`, formatting,
+  and the MariaDB development build. Build log:
+  `bin/analysis/pwipe-launch-admission-build.log`.
+- Runtime qualification is still outstanding: both-backend socket/restart/copyover
+  and auto-opening journeys, actual browser notice, and armed disposable wipe.
+  An isolated flat-file build is running under `bin/pwipe-launch-flatfile/`.
+  No production configuration, credentials, player data, wipe or deployment touched.
 
 ## Original planning validation
 

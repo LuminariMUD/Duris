@@ -26,6 +26,7 @@
 #include "account/newbie_kit_plan.h"
 #include "world/object_template.h"
 #include "account/creation_availability_config.h"
+#include "account/pwipe_launch.h"
 #include "combat/chaos_config.h"
 #include "combat/training_dummy.h"
 #include "account/chaos_eq_data.h"
@@ -2252,18 +2253,27 @@ void select_terminal(P_desc d, const char *arg)
 	{
 	case TERM_GENERIC:
 		d->term_type = TERM_GENERIC;
-		SEND_TO_Q(greetings, d);
+		SEND_TO_Q(pwipe_launch_closed_at(time(NULL)) ? pwipe_launch_screen(false).c_str() :
+							       greetings,
+			  d);
 		break;
 	case TERM_MSP:
 		d->term_type = TERM_MSP;
 		arg = one_argument(arg, temp_buf);
 		strcpy(d->client_str, arg);
-		SEND_TO_Q(greetinga, d);
+		SEND_TO_Q(pwipe_launch_closed_at(time(NULL)) ? pwipe_launch_screen(true).c_str() :
+							       greetinga,
+			  d);
 		break;
 	case TERM_ANSI:
 		d->term_type = TERM_ANSI;
 		arg = one_argument(arg, temp_buf);
 		strcpy(d->client_str, arg);
+		if (pwipe_launch_closed_at(time(NULL)))
+		{
+			SEND_TO_Q(pwipe_launch_screen(true).c_str(), d);
+			break;
+		}
 
 		temp = number(1, NUM_ANSI_LOGINS);
 		switch (temp)
@@ -4081,6 +4091,11 @@ void wimps_in_approve_queue(void)
 
 void nanny(P_desc d, char *arg)
 {
+	if (STATE(d) == CON_FLUSH)
+		return;
+	// Recheck every chargen continuation before it can reserve, save or enter a body.
+	if (d->character && d->character->in_room == NOWHERE && !pwipe_launch_admit(d))
+		return;
 	switch (STATE(d))
 	{
 		/* Character deleted by a Forger */
@@ -4435,6 +4450,8 @@ void nanny(P_desc d, char *arg)
 		break;
 
 	case CON_RMOTD:
+		if (!pwipe_launch_admit(d))
+			break;
 		// For new character creation, enter the game directly
 		if (d->character)
 		{

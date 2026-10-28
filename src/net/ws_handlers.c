@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "account/password_async.h"
+#include "account/pwipe_launch.h"
 #include <string>
 #include <memory>
 /*
@@ -1233,6 +1234,11 @@ void ws_finish_login(struct descriptor_data *d, int password_valid)
 		d->account = free_account(d->account);
 		return;
 	}
+	if (!pwipe_launch_admit(d))
+		return;
+	if (pwipe_launch_closed_at(time(NULL)))
+		ws_send_system(d, "info",
+			       "Preparation access approved. The public gates are still closed.");
 	char tmp_name[MAX_INPUT_LENGTH];
 	strlcpy(tmp_name, d->account->acct_name, sizeof(tmp_name));
 
@@ -1355,6 +1361,8 @@ void ws_cmd_enter(struct descriptor_data *d, cJSON *data)
 	{
 		return;
 	}
+	if (!pwipe_launch_admit(d))
+		return;
 
 	if (!data)
 	{
@@ -1513,6 +1521,11 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 		ws_send_auth_failed(d, "Already authenticated");
 		return;
 	}
+	if (pwipe_launch_closed_at(time(NULL)))
+	{
+		pwipe_launch_deny(d);
+		return;
+	}
 	if (!ws_player_auth_attempt(d, 1))
 	{
 		ws_send_auth_failed(d, "Too many registration attempts; try again later");
@@ -1638,6 +1651,11 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 							    "Unable to create account with those details");
 						    completed_desc->account =
 							    free_account(completed_desc->account);
+						    return;
+					    }
+					    if (pwipe_launch_closed_at(time(NULL)))
+					    {
+						    pwipe_launch_deny(completed_desc);
 						    return;
 					    }
 					    completed_desc->account->acct_password =
@@ -1831,7 +1849,7 @@ static bool ws_chargen_allowed(struct descriptor_data *d)
 		ws_send_system(d, "error", "Character creation requires the account menu");
 		return false;
 	}
-	return true;
+	return pwipe_launch_admit(d);
 }
 
 static void add_chargen_state(cJSON *response, struct descriptor_data *d)
@@ -3849,8 +3867,13 @@ void ws_cmd_poll_vote(struct descriptor_data *d, cJSON *data)
 /* dispatch */
 void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 {
+	if (!d || STATE(d) == CON_FLUSH)
+		return;
 	/* No account mutation or entry may overtake password verification. */
 	if (d && (d->login_password_job || d->password_request || d->writer_wait_id))
+		return;
+	if ((STATE(d) == CON_ACCT_SELECT_CHAR || STATE(d) == CON_DISPLAY_ACCT_MENU) &&
+	    !pwipe_launch_admit(d))
 		return;
 	static const struct
 	{
