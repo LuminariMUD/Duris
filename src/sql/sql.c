@@ -900,6 +900,17 @@ static bool sql_connection_execute_affected(MYSQL *conn, const char *statement,
 	return *affected != (my_ulonglong)-1 && mysql_next_result(conn) == -1;
 }
 
+static bool sql_use_live_table_statistics(MYSQL *connection)
+{
+	if (!connection)
+		return false;
+	const char *server = mysql_get_server_info(connection);
+	// MySQL's cached AUTO_INCREMENT can predate rows that have since been deleted.
+	return server && (strstr(server, "MariaDB") ||
+			  sql_connection_execute(connection,
+						 "SET SESSION information_schema_stats_expiry=0"));
+}
+
 static uint64_t pwipe_recovery_epoch = 0;
 static bool pwipe_roster_already_recreated = false;
 
@@ -1685,11 +1696,22 @@ MYSQL_RES *db_query_at(struct persistence_query_site site, const char *format, .
  * it never gives a deleted row's id out again. */
 unsigned long long sql_next_auto_increment(const char *table)
 {
-	MYSQL_RES *result = db_query("SELECT AUTO_INCREMENT FROM information_schema.TABLES "
-				     "WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='%s'",
-				     table);
+	if (!sql_use_live_table_statistics(DB))
+		return 0;
+	// A fresh MySQL AUTO_INCREMENT table reports NULL until its first allocation.
+	MYSQL_RES *result =
+		db_query("SELECT COALESCE(t.AUTO_INCREMENT,1) FROM information_schema.TABLES t "
+			 "JOIN information_schema.COLUMNS c ON c.TABLE_SCHEMA=t.TABLE_SCHEMA "
+			 "AND c.TABLE_NAME=t.TABLE_NAME AND c.EXTRA LIKE '%%auto_increment%%' "
+			 "WHERE t.TABLE_SCHEMA=DATABASE() AND t.TABLE_NAME='%s'",
+			 table);
 	if (!result)
 		return 0;
+	if (mysql_warning_count(DB))
+	{
+		mysql_free_result(result);
+		return 0;
+	}
 	MYSQL_ROW row = mysql_fetch_row(result);
 	const unsigned long long next = row && row[0] ? strtoull(row[0], NULL, 10) : 0;
 	mysql_free_result(result);
@@ -4203,6 +4225,8 @@ bool sql_verify_pwipe_manifest(void)
 		{ "player_data", "race" },
 		{ "player_data", "sex" },
 		{ "player_data", "hometown" },
+		{ "player_data", "last_room" },
+		{ "player_data", "prompt" },
 		{ "player_data", "birthplace" },
 		{ "player_data", "orig_birthplace" },
 		{ "player_data", "height" },
@@ -4428,6 +4452,30 @@ bool sql_verify_auction_engines(void)
 	return auction_engines_ok;
 }
 
+static bool sql_pwipe_pid_capacity_valid(bool reserve_roster)
+{
+	// SQL permits unsigned PIDs, but native account/player identities are signed ints.
+	// Reserve staff allocations only before recreation; completed rosters need only
+	// one usable next identity, including same-epoch recovery before sql_begin_pwipe_epoch.
+	if (!sql_use_live_table_statistics(DB))
+		return false;
+	MYSQL_RES *result = db_query(
+		"SELECT AUTO_INCREMENT > 0 AND AUTO_INCREMENT + "
+		"IF(%d AND NOT EXISTS (SELECT 1 FROM season_reset_state WHERE state_id=1 "
+		"AND season_epoch=%llu AND reset_status='resetting' AND roster_recreated=1), "
+		"(SELECT COUNT(*) FROM player_data WHERE active=1 AND level=%d), 0) * "
+		"@@auto_increment_increment <= %d FROM information_schema.TABLES "
+		"WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='player_data'",
+		reserve_roster ? 1 : 0, static_cast<unsigned long long>(pwipe_recovery_epoch),
+		OVERLORD, INT_MAX);
+	if (!result)
+		return false;
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const bool valid = row && row[0] && !strcmp(row[0], "1");
+	mysql_free_result(result);
+	return valid;
+}
+
 bool sql_pwipe(int code_verify)
 {
 	pwipe_crossed_boundary = false;
@@ -4498,6 +4546,17 @@ bool sql_pwipe(int code_verify)
 		{
 			logit(LOG_STATUS,
 			      "sql_pwipe: Writer drain failed; old season remains active.");
+			return FALSE;
+		}
+
+		if (!sql_pwipe_pid_capacity_valid(true))
+		{
+			logit(LOG_STATUS,
+			      "sql_pwipe: Player PID capacity is outside the native range; reset work refused.");
+			send_to_all(
+				"Preflight FAILED: player PID allocator cannot create a playable new season.\n");
+			if (!pwipe_recovery_epoch)
+				pwipe_resume_writers();
 			return FALSE;
 		}
 
@@ -5108,6 +5167,11 @@ bool sql_pwipe(int code_verify)
 		// but release their unique names; never attach a new body to an old ledger.
 		if (!pwipe_roster_already_recreated)
 		{
+			// Explicit identities avoid InnoDB's extra INSERT ... SELECT reservations.
+			// Writers are quiesced, so the live watermark stays owned by this reset.
+			const auto roster_next_pid = sql_next_auto_increment("player_data");
+			if (!roster_next_pid || roster_next_pid > INT_MAX)
+				return FALSE;
 			if (!qry("START TRANSACTION"))
 				return FALSE;
 			char roster_checkpoint[384];
@@ -5127,13 +5191,19 @@ bool sql_pwipe(int code_verify)
 				    OVERLORD) &&
 				qry("UPDATE account_characters SET deleted_at = COALESCE(deleted_at, NOW()) WHERE deleted_at IS NULL") &&
 				qry("UPDATE player_data SET active = 0, learned_flight_stops = 0, name=CONCAT('~pwipe-',pid)") &&
-				qry("INSERT INTO player_data(name,account_name,m_class,race,sex,hometown,birthplace,orig_birthplace,"
-				    "height,weight,level,highest_level,birth_time,last_save,base_str,base_dex,base_agi,base_con,base_pow,"
+				qry("INSERT INTO player_data(pid,name,account_name,m_class,race,sex,hometown,last_room,birthplace,orig_birthplace,"
+				    "height,weight,level,highest_level,birth_time,last_save,prompt,base_str,base_dex,base_agi,base_con,base_pow,"
 				    "base_int,base_wis,base_cha,base_kar,base_luk,mana,base_mana,base_hit,vitality) "
-				    "SELECT name,account_name,m_class,race,sex,hometown,hometown,hometown,height,weight,"
-				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
+				    "SELECT %llu+(ROW_NUMBER() OVER (ORDER BY name)-1)*@@auto_increment_increment,"
+				    "name,account_name,m_class,race,sex,hometown,hometown,hometown,hometown,height,weight,"
+				    "%d,%d,UTC_TIMESTAMP(),UTC_TIMESTAMP(),%u,100,100,100,100,100,100,100,100,100,100,100,100,100,100 "
 				    "FROM pwipe_overlords",
-				    OVERLORD, OVERLORD) &&
+				    roster_next_pid, OVERLORD, OVERLORD,
+				    static_cast<unsigned>(PROMPT_HIT | PROMPT_MAX_HIT |
+							  PROMPT_MOVE | PROMPT_MAX_MOVE |
+							  PROMPT_TANK_NAME | PROMPT_TANK_COND |
+							  PROMPT_ENEMY | PROMPT_ENEMY_COND |
+							  PROMPT_TWOLINE | PROMPT_STATUS)) &&
 				qry("INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,opening_gold,opening_platinum,opening_revision) "
 				    "SELECT p.pid,0,0,0,0,0 FROM player_data p JOIN pwipe_overlords o ON o.name=p.name WHERE p.active=1") &&
 				qry("INSERT INTO epic_balance_baseline(pid,opening_balance,opening_revision) "
@@ -5334,19 +5404,19 @@ bool sql_pwipe(int code_verify)
 			/* Only clean, recreated Overlords may be active. */
 			MYSQL_RES *res = db_query(
 				"SELECT COUNT(*) FROM player_data WHERE learned_flight_stops <> 0 OR "
-				"(active=1 AND (level<>%d OR copper<>0 OR silver<>0 OR gold<>0 OR platinum<>0 "
+				"(active=1 AND (pid=0 OR pid>%d OR level<>%d OR copper<>0 OR silver<>0 OR gold<>0 OR platinum<>0 "
 				"OR bank_copper<>0 OR bank_silver<>0 OR bank_gold<>0 OR bank_platinum<>0 "
-				"OR exp<>0 OR epics<>0 OR frags<>0 OR assoc_id<>0 "
+				"OR exp<>0 OR epics<>0 OR frags<>0 OR assoc_id<>0 OR last_room<>hometown "
 				"OR NOT EXISTS(SELECT 1 FROM account_characters a WHERE a.pid=player_data.pid "
 				"AND a.deleted_at IS NULL AND a.account_name=player_data.account_name)))",
-				OVERLORD);
+				INT_MAX, OVERLORD);
 			if (res)
 			{
 				MYSQL_ROW row = mysql_fetch_row(res);
 				if (row && row[0] && atoi(row[0]) > 0)
 				{
 					logit(LOG_DEBUG,
-					      "sql_pwipe: Postflight FAILED: %d player_data rows retain active state or flight discoveries.",
+					      "sql_pwipe: Postflight FAILED: %d player_data rows have invalid identities, active state or flight discoveries.",
 					      atoi(row[0]));
 					postflight_ok = FALSE;
 				}
@@ -5379,6 +5449,12 @@ bool sql_pwipe(int code_verify)
 			{
 				logit(LOG_DEBUG,
 				      "sql_pwipe: Postflight FAILED: cannot query account_characters.");
+				postflight_ok = FALSE;
+			}
+			if (!sql_pwipe_pid_capacity_valid(false))
+			{
+				logit(LOG_STATUS,
+				      "sql_pwipe: Postflight FAILED: player PID capacity is outside the native range.");
 				postflight_ok = FALSE;
 			}
 			if (!postflight_ok)

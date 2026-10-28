@@ -38,6 +38,7 @@
 #include "core/utils.h"
 #include <arpa/telnet.h>
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -264,7 +265,13 @@ int getNewPCidNumb(void)
 #else
 	// Every character's pid is in memory (sql_player_names_load()). init_char() records
 	// the new one there at once, so the next allocation is past it.
-	highestPCidNumb = sql_highest_player_pid() + 1;
+	const int highest = sql_highest_player_pid();
+	if (highest == INT_MAX)
+	{
+		logit(LOG_FILE, "could not allocate player id: native identity range exhausted");
+		return -1;
+	}
+	highestPCidNumb = highest + 1;
 	return highestPCidNumb;
 #endif
 }
@@ -4349,10 +4356,21 @@ void nanny(P_desc d, char *arg)
 		select_keepchar(d, arg);
 		if (STATE(d) == CON_RMOTD)
 		{
+			init_char(d->character);
+			if (GET_PID(d->character) <= 0)
+			{
+				SEND_TO_Q(
+					"Character creation is unavailable. Please contact staff.\r\n",
+					d);
+				free_char(d->character);
+				d->character = NULL;
+				STATE(d) = CON_DISPLAY_ACCT_MENU;
+				display_account_menu(d, NULL);
+				break;
+			}
 			logit(LOG_NEW, "%s [%s] new player.", GET_NAME(d->character), d->host);
 			statuslog(d->character->player.level, "%s [%s] new player.",
 				  GET_NAME(d->character), d->host);
-			init_char(d->character);
 			add_char_to_account(d);
 			SEND_TO_Q(motd.c_str(), d);
 			/*

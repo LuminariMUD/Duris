@@ -2379,6 +2379,18 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 
 	/* initialize character (sets pid, skills, hp/mana/vitality, etc.) */
 	init_char(ch);
+	if (GET_PID(ch) <= 0)
+	{
+		ws_send_system(d, "error",
+			       "Character creation is unavailable. Please contact staff.");
+		d->character = NULL;
+		ch->desc = NULL;
+		free_char(ch);
+		ws_reset_chargen(d);
+		STATE(d) = CON_ACCT_SELECT_CHAR;
+		ws_send_auth_success(d, d->account->acct_name);
+		return;
+	}
 
 	/* copy account password to character */
 	strlcpy(ch->only.pc->pwd, d->account->acct_password, sizeof ch->only.pc->pwd);

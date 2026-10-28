@@ -566,6 +566,29 @@ class CapacityAndInputTests(Fixture):
                                                    "phase": "dump", "exit_status": None,
                                                    "stderr": ""}))
 
+    def test_restore_rebinds_view_definers_without_rewriting_row_data(self):
+        bin_dir = self.base / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "mysql").write_text('#!/bin/sh\ncat > "$RESTORE_CAPTURE"\n')
+        (bin_dir / "mysql").chmod(0o700)
+        generation = self.base / "generation"
+        generation.mkdir()
+        (generation / "manifest.json").write_text(json.dumps({"database": "synthetic"}))
+        row = b"INSERT INTO t VALUES ('DEFINER=`source`@`localhost`');\n"
+        source = (b"CREATE DATABASE `synthetic`;\nUSE `synthetic`;\n"
+                  b"/*!50013 DEFINER=`source``owner`@`localhost` SQL SECURITY DEFINER */\n"
+                  b"/*!50013 DEFINER=`source`@`127.0.0.1` SQL SECURITY INVOKER */\n" + row)
+        with gzip.open(generation / "database.sql.gz", "wb") as dump:
+            dump.write(source)
+        captured = self.base / "import.sql"
+        env = dict(os.environ, DB_SOCKET="/nonexistent.sock", RESTORE_CAPTURE=str(captured),
+                   PATH=f"{bin_dir}:{os.environ['PATH']}")
+        restore.database_import(generation, env)
+        self.assertEqual(captured.read_bytes(),
+                         b"USE duris_restore;\n"
+                         b"/*!50013 DEFINER=CURRENT_USER SQL SECURITY DEFINER */\n"
+                         b"/*!50013 DEFINER=CURRENT_USER SQL SECURITY INVOKER */\n" + row)
+
     def test_an_import_that_stops_reading_reports_its_status(self):
         # mysql in batch mode exits at the first statement it rejects, and the import's next
         # write meets a closed pipe.

@@ -88,7 +88,24 @@ def run(binary, baseline, evidence_path):
                 return int(match[1])
 
             def walk(direction, expected):
+                # Destination mobs can force movement (the Sinuuk's roar), so
+                # isolate them before the mortal walks the actual authored edge.
+                cmd(god, f'goto {expected}')
+                cmd(god, 'purge')
                 response = cmd(player, direction)
+                if ('You cannot move normally while fighting' in response or
+                        "Sorry, you can't do that while laying around" in response):
+                    # Isolate ambient combat only when it blocks the route check.
+                    # Native purge preserves fixed portals; exits, room flags and
+                    # the mortal's movement permissions stay unchanged.
+                    cmd(god, f'goto {PLAYER}')
+                    cmd(god, 'tranquilize')
+                    cmd(god, 'purge')
+                    cmd(player, 'wake')
+                    # Falling asleep on one's feet can itself cause a short stun.
+                    cmd(god, f'affectpurge {PLAYER} all')
+                    cmd(player, 'stand')
+                    response = cmd(player, direction)
                 assert location() == expected, (direction, expected, response)
 
             def checks(phase):
@@ -151,7 +168,7 @@ def run(binary, baseline, evidence_path):
                             assert location() == footprint
 
                 assert 'Khomani-Khan' in inspect(638825)
-                assert 'Zone: 7000' in inspect(834025)
+                assert 'Zone: 7000' in inspect(834025 if baseline else 766815)
                 view = cmd(god, 'map 9')
                 assert 'Invalid map size' not in view and 'not a map room' not in view, view
                 visit(638825)
@@ -162,23 +179,52 @@ def run(binary, baseline, evidence_path):
                     walk(names[direction], target)
                     return_path.append((names[REVERSE[direction]], current))
                     current = target
-                assert 'An Intersection along the Misty Chasm' in cmd(player, 'look')
+                assert location() == 300019, 'surface trail did not reach the chasm'
                 if baseline:
                     cmd(player, 'down')
                     assert location() == 300019, 'baseline unexpectedly has a down route'
                     visit(834025)
                     cmd(player, 'up')
                     assert location() == 834025, 'baseline unexpectedly has an up route'
-                else:
-                    walk('down', 834025)
-                assert 'A Narrow Tunnel in the Underdark' in cmd(player, 'look')
-                for direction, target in (('north', 833625), ('south', 834025),
-                                          ('east', 834026), ('west', 834025)):
-                    walk(direction, target)
-                if baseline:
+                    walk('north', 833625)
+                    walk('south', 834025)
+                    walk('east', 834026)
+                    walk('west', 834025)
                     visit(300019)
                 else:
-                    walk('up', 300019)
+                    cmd(player, 'down')
+                    assert location() == 300019, 'retired stairs remain usable'
+                    # Reach the new deep entrance through the waterfall without staff goto.
+                    for direction, target in (
+                        ('south', 300020), ('west', 300024),
+                        ('down', 300028), ('down', 300029),
+                        ('south', 300030), ('south', 300039),
+                        ('enter waterfall', 300144), ('south', 300146),
+                        ('east', 300147), ('east', 300149),
+                    ):
+                        walk(direction, target)
+                    # Both entrances and their returns are independent acceptance gates.
+                    walk('north', 766414)
+                    walk('south', 300149)
+                    walk('east', 766815)
+                    walk('west', 300149)
+                    # The surrounding Underdark tunnels remain connected.
+                    walk('north', 766414)
+                    walk('east', 766415)
+                    walk('south', 766815)
+                    walk('west', 300149)
+                    for direction, target in (
+                        ('west', 300147), ('west', 300146),
+                        ('north', 300144), ('west', 300039),
+                        ('north', 300030), ('north', 300029),
+                        ('up', 300028), ('up', 300024),
+                        ('east', 300020), ('north', 300019),
+                    ):
+                        walk(direction, target)
+                    visit(834025)
+                    cmd(player, 'up')
+                    assert location() == 834025, 'old Underdark stairs remain usable'
+                    visit(300019)
                 for direction, target in reversed(return_path):
                     walk(direction, target)
 
@@ -204,7 +250,7 @@ def run(binary, baseline, evidence_path):
                     cmd(god, f'restore {PLAYER}')
                     checks(phase)
                     for room in ((300000, 834025) if baseline else
-                                 (85700, 35800, 7102, 11300, 9288, 300000, 834025)):
+                                 (85700, 35800, 7102, 11300, 9288, 300000, 766815, 766414)):
                         inspect(room)
                         response = cmd(god, 'zreset ok')
                         assert 'has been reset.' in response, response

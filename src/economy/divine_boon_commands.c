@@ -85,10 +85,11 @@ std::string player_objective(const divine_boon_slot &slot, int side)
 	}
 	if (slot.category == divine_boon_category::pvp)
 		return side == 0 ? "Frags against Evil racewar" : "Frags against Good racewar";
-	if (side < 0 || side >= 2 || slot.zones[side] < 0)
+	const int zone = divine_boon_shared_target_zone(slot);
+	if (zone < 0)
 		return "Unavailable";
 	for (int index = 0; index <= top_of_zone_table; ++index)
-		if (zone_table[index].number == slot.zones[side] && zone_table[index].name)
+		if (zone_table[index].number == zone && zone_table[index].name)
 			return zone_table[index].name; // Original zone ANSI must be kept.
 	return "Unavailable";
 }
@@ -129,14 +130,18 @@ void target(P_char ch, const divine_boon_slot &slot, int side, bool history = fa
 		send_to_char(side == 0 ? "    Good defeats qualifying Evil opponents.\r\n" :
 					 "    Evil defeats qualifying Good opponents.\r\n",
 			     ch);
-	else if (side >= 0 && slot.zones[side] >= 0)
+	else if (side >= 0 &&
+		 (history ? slot.zones[side] : divine_boon_shared_target_zone(slot)) >= 0)
 	{
+		const int zone = history ? slot.zones[side] : divine_boon_shared_target_zone(slot);
 		if (!history && !(slot.category == divine_boon_category::epic ?
-					  divine_boon_epic_zone_eligible(slot.zones[side], side) :
-					  divine_boon_zone_eligible(slot.zones[side], side)))
+					  (divine_boon_epic_zone_eligible(zone, 0) ||
+					   divine_boon_epic_zone_eligible(zone, 1)) :
+					  (divine_boon_zone_eligible(zone, 0) ||
+					   divine_boon_zone_eligible(zone, 1))))
 			return;
 		for (int index = 0; index <= top_of_zone_table; ++index)
-			if (zone_table[index].number == slot.zones[side])
+			if (zone_table[index].number == zone)
 			{
 				send_to_char_f(ch, "    %s target: %s&n\r\n",
 					       side ? "Evil" : "Good",
@@ -155,9 +160,14 @@ bool visible(const divine_boon_slot &slot, int side, int64_t now)
 		return false;
 	if (slot.category == divine_boon_category::pvp)
 		return true;
+	const int zone = divine_boon_shared_target_zone(slot);
+	if (zone < 0)
+		return false;
+	// Legacy one-sided saved objectives must be visible to both factions.
 	return slot.category == divine_boon_category::epic ?
-		       divine_boon_epic_zone_eligible(slot.zones[side], side) :
-		       divine_boon_zone_eligible(slot.zones[side], side);
+		       (divine_boon_epic_zone_eligible(zone, 0) ||
+			divine_boon_epic_zone_eligible(zone, 1)) :
+		       (divine_boon_zone_eligible(zone, 0) || divine_boon_zone_eligible(zone, 1));
 }
 void next_hour(P_char ch, const divine_boon_state &state, int64_t now)
 {
@@ -224,7 +234,8 @@ void do_divine_boon(P_char ch, char *argument, int /*cmd*/)
 		    strip_ansi(objective.c_str()).size() > objective_width)
 		{
 			const std::string identity =
-				"&n... [" + std::to_string(slot.zones[side]) + "]";
+				"&n... [" + std::to_string(divine_boon_shared_target_zone(slot)) +
+				"]";
 			objective = pad_ansi(objective.c_str(),
 					     objective_width -
 						     static_cast<int>(
@@ -292,6 +303,8 @@ void do_divineboon(P_char ch, char *argument, int /*cmd*/)
 				       category_name(slot.category),
 				       static_cast<long long>(slot.starts_at),
 				       static_cast<long long>(slot.expires_at));
+			// Staff inspect exact persisted targets, even when temporarily
+			// ineligible. Player BOON output resolves a single shared target.
 			target(ch, slot, 0, true);
 			if (slot.category != divine_boon_category::cargo)
 				target(ch, slot, 1, true);
@@ -324,13 +337,15 @@ void do_divineboon(P_char ch, char *argument, int /*cmd*/)
 	bool changed = false;
 	auto next = *state;
 	if ((!strcmp(verb, "pause") || !strcmp(verb, "resume")) && !*value)
-		changed = divine_boon_set_paused(&next, !strcmp(verb, "pause"), now);
+		changed = divine_boon_set_paused(&next, !strcmp(verb, "pause"), now,
+						 divine_boon_shared_target_zone);
 	else if (!strcmp(verb, "replace") && *value && !*extra)
 	{
 		char *end = nullptr;
 		const long index = strtol(value, &end, 10);
 		if (end && !*end && index >= 1 && index <= static_cast<long>(DIVINE_BOON_SLOTS))
-			changed = divine_boon_replace(&next, static_cast<size_t>(index - 1), now);
+			changed = divine_boon_replace(&next, static_cast<size_t>(index - 1), now,
+						      divine_boon_shared_target_zone);
 	}
 	else if (!strcmp(verb, "force") && !*value)
 	{
@@ -407,27 +422,15 @@ void announce_divine_event(const divine_boon_slot &slot, bool granted)
 		send_to_all(message.c_str());
 		return;
 	}
-	// Broadcast each side's own objective, without disclosing the other side's.
-	for (P_desc descriptor = descriptor_list; descriptor; descriptor = descriptor->next)
-	{
-		if (descriptor->connected != CON_PLAYING || !descriptor->character ||
-		    IS_NPC(descriptor->character))
-			continue;
-		const int side = IS_RACEWAR_GOOD(descriptor->character) ? 0 :
-				 IS_RACEWAR_EVIL(descriptor->character) ? 1 :
-									  -1;
-		if (side < 0 || slot.zones[side] < 0)
-			continue;
-		const std::string zone = player_objective(slot, side);
-		if (zone == "Unavailable")
-			continue;
-		const std::string message =
-			prefix +
-			(granted ? "have blessed " + zone + "&n with " + reward +
-					   "! Type BOON for details.&n\r\n" :
-				   "have withdrawn " + reward + " from " + zone + "&n.&n\r\n");
-		send_to_char(message.c_str(), descriptor->character);
-	}
+	// Zone boons are shared racewar hotspots. Announce the same objective to all.
+	const std::string zone = player_objective(slot, 0);
+	if (zone == "Unavailable")
+		return;
+	const std::string message =
+		prefix + (granted ? "have blessed " + zone + "&n with " + reward +
+					    "! Type BOON for details.&n\r\n" :
+				    "have withdrawn " + reward + " from " + zone + "&n.&n\r\n");
+	send_to_all(message.c_str());
 }
 } // namespace
 
