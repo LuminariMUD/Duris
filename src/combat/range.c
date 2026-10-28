@@ -125,13 +125,16 @@ void do_gather(P_char ch, char *argument, int /*cmd*/)
 		type = 2;
 	}
 
-	for (j = 0, g = 0; tobj; tobj = next_obj)
+	full = quiver->value[3] >= quiver->value[0];
+	for (j = 0, g = 0; tobj && !full; tobj = next_obj)
 	{
 		next_obj = tobj->next_content;
 
 		if (tobj->type != ITEM_MISSILE)
 			continue;
 		if (tobj->timer[0] != GET_PID(ch))
+			continue;
+		if (quiver->value[2] != tobj->value[3])
 			continue;
 
 		if (type == 1)
@@ -145,11 +148,7 @@ void do_gather(P_char ch, char *argument, int /*cmd*/)
 		weight += GET_OBJ_WEIGHT(tobj);
 		g = TRUE;
 
-		if (quiver->value[3] + 1 > quiver->value[0])
-		{
-			full = TRUE;
-			break;
-		}
+		full = quiver->value[3] >= quiver->value[0];
 	}
 
 	// GET_CARRYING_W(ch) += (int)(weight/2);
@@ -256,19 +255,15 @@ int arrow_spell_acid(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 
 void event_enchant_arrow(P_char /*ch*/, P_char /*victim*/, P_obj obj, void * /*data*/)
 {
-	P_obj arrow;
-
-	arrow = read_object(obj->R_num, REAL);
-
-	obj->name = arrow->name;
-	obj->short_description = arrow->short_description;
+	set_keywords(obj, obj_index[obj->R_num].keys);
+	set_short_description(obj, obj_index[obj->R_num].desc2);
 	obj->timer[5] = ARROW_NONE;
 }
 
 int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
 {
 	int duration;
-	char buf[256], buf2[256];
+	char buf[256];
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(vict) || !arrow)
 	{
@@ -291,13 +286,12 @@ int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
 		{
 			return DAM_NONEDEAD;
 		}
-		snprintf(buf2, 256, "&n of &+L%s&n", GET_NAME(ch));
-		snprintf(buf, 256, "%s", arrow->short_description);
-		strcat(buf, buf2);
-		arrow->short_description = str_dup(buf);
+		snprintf(buf, sizeof buf, "%s&n of &+L%s&n", arrow->short_description,
+			 GET_NAME(ch));
+		set_short_description(arrow, buf);
 
 		snprintf(buf, 256, "%s a%s", arrow->name, GET_NAME(ch));
-		arrow->name = str_dup(buf);
+		set_keywords(arrow, buf);
 
 		arrow->timer[5] = ARROW_MARK;
 		duration = WAIT_SEC * (int)get_property("archery.enchantArrows.mark.duration", 300);
@@ -365,7 +359,6 @@ void do_fire(P_char ch, char *argument, int cmd)
 	P_char victim, mount;
 	P_obj weapon, quiver, missile, shield;
 	bool should_retaliate = FALSE, is_fighting_check = FALSE;
-	bool shield_blocked = FALSE;
 	int i, j, dir = -1, to_hit, room, range, result;
 	int shots, speed_per_shot;
 	double dam = 0;
@@ -693,6 +686,8 @@ void do_fire(P_char ch, char *argument, int cmd)
 	// and finally shooting begins
 	for (i = 0; i < shots; i++)
 	{
+		bool shield_blocked = FALSE;
+		messages = &room_messages;
 		if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 		{
 			break;
@@ -896,21 +891,15 @@ void do_fire(P_char ch, char *argument, int cmd)
 			}
 
 			// Cursed arrows don't take damage and auto-return.
+			bool scrap_missile = FALSE;
 			if (!carrow)
 			{
 				if (number(0, 1))
 				{
 					missile->condition -= number(1, 5);
-					if (missile->condition <= 0)
-					{
-						MakeScrap(victim, missile);
-					}
-					else
-					{
-						obj_to_char(missile, victim);
-					}
 				}
-				else
+				scrap_missile = missile->condition <= 0;
+				if (!scrap_missile)
 				{
 					obj_to_char(missile, victim);
 				}
@@ -967,6 +956,15 @@ void do_fire(P_char ch, char *argument, int cmd)
 						ch, victim, missile,
 						number(2, (GET_LEVEL(ch) >= MAXLVLMORTAL) ? 6 : 5));
 				}
+			}
+
+			// Damage messages and enchantments still need the broken missile's strings.
+			if (scrap_missile)
+			{
+				if (IS_ALIVE(victim))
+					MakeScrap(victim, missile);
+				else
+					extract_obj(missile);
 			}
 
 			if (result != DAM_NONEDEAD)

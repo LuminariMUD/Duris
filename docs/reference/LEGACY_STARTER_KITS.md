@@ -37,8 +37,28 @@ active durable-custody row: authoritative items are serialized until an explicit
 destruction transition retires that custody. Eligible transient gear, including
 flags inherited from prototypes, must acquire active player custody through
 `obj_to_char()` before publication. Containers and quivers are exempt from the
-standard kit's added transient flag, but that exemption does not erase prototype
-flags or replace ownership admission.
+standard kit's added transient flag, as are missiles. Those exemptions do not
+erase prototype flags or replace ownership admission.
+
+New regular legacy starter arrows therefore follow normal ammunition behavior:
+a missed shot in a dry room leaves the arrow available for its owner to
+gather, including after moving to an adjacent landing room. Successful-hit
+wear/scrapping and returning arrows keep their existing behavior. The starter
+bow still receives the added transient flag, and the small quiver retains its
+prototype flag; deliberately dropping either still dissolves it.
+
+The missile exemption applies when a new item is materialized. Previously
+granted arrows retain their saved flags, and destroyed arrows are not recovered.
+There is no save migration or load-time rewrite. An explicitly transient missile
+prototype also retains its authored behavior.
+
+Gathering respects the quiver's existing capacity and ammunition family before
+moving an owned missile from the floor or a corpse. Excess or incompatible
+missiles stay at their source. Each shot makes an independent shield-block
+decision. Broken missiles remain valid through damage messages and enchantments,
+then are scrapped; if the victim has died, the detached broken missile is extracted.
+Mark creation and expiry use owning string setters; expiry reads the shared index
+text without creating another live arrow.
 
 Snapshots retain eligible transient UIDs, flags, equipment slots, and container
 relationships. The loaders apply the ownership filtering described in
@@ -64,6 +84,21 @@ Focused tests are automatically discovered by the normal regression runner:
 - `test_newbie_grant_lifecycle.py`: held completion, unrelated actor dispatch,
   linkdead and replacement-character publication, duplicate completion,
   rejection cleanup, refused admission/retry and pre-entry grants, with ASan/UBSan.
+- `test_fired_missile_encumbrance.py`: production materialization, fire/gather,
+  room placement and decay callback, with controlled allocation, RNG and event
+  dispatch under ASan/UBSan. Covers both Ranger kit selections, starter/ordinary
+  missiles, same/adjacent-room misses, PID ownership, weight/count restoration,
+  authored transience, bow/quiver decay, successful-hit wear and returning shots.
+  Exercises real string setters/freeing and heap retirement, melee/enchantment
+  death cleanup, repeated mark expiry, room/corpse capacity and family checks,
+  and blocked-then-unblocked volleys in both room arrangements.
+- `test_starter_arrow_journey.py`: fresh legacy Ranger grants and actual
+  fire/event/gather commands through Telnet on a disposable minimal flat-file
+  server, with saved UID, condition, quiver count and weight checks. The fixture
+  explicitly enables historical races/classes; it is not a live roster claim.
+  Commands wait for their own response before accepting a prompt. A socket-pair
+  control checks buffered and arriving notification prompts; notifications remain
+  in the complete transcript rather than becoming command results.
 
 Run those focused checks against the current tree. They use synthetic fixtures;
 they are not a live latency benchmark or production database test. Replay
