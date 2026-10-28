@@ -1938,6 +1938,36 @@ python3 tests/async/test_websocket_runtime.py
 The harness runs the real `websocket_parse_handshake()` over a socket pair. No test sends
 these through the tunnel.
 
+## WebSocket blank input advances the pager
+
+An authenticated playing character's `game` command accepts both `data: ""` and
+`data: {"command": ""}` as one intentional input line. The former nonempty-string
+check dropped those requests before they reached the pager (Duris #443).
+
+```sh
+python3 tests/async/test_pager_contract.py
+SANITIZE=1 python3 tests/async/test_pager_contract.py
+```
+
+The native harness compiles the production WebSocket dispatcher, game handler,
+input queue, session routing and pager bodies with real descriptor types and cJSON.
+It checks both blank payload forms, separate FIFO continuations through the last
+page, pager-state release, page numbers, q/r/b, ordinary commands, malformed or
+missing payloads, non-playing/missing-character rejection and pending-authentication
+guards. World gates, non-game WebSocket handlers, command execution, output delivery
+and telemetry are controlled boundaries. The regression fails before the fix when
+the first blank request produces no queue entry. Sanitizer mode checks address and
+undefined behavior errors with leak detection enabled.
+
+Browser acceptance depends on [DurisWeb #119](https://github.com/LuminariMUD/DurisWeb/issues/119):
+the client must send a blank continuation instead of repeating the selected help
+command or dropping an empty submission. After the paired revisions are available,
+record the actual server and client revisions used in the browser; check a multi-page
+help topic and another paged output with Enter and empty Send through the final page,
+then q/r/b/page numbers and the next ordinary command. Each request must advance only
+once. This isolated harness does not establish browser behavior or deployment state;
+paired browser verification remains outstanding.
+
 ## Player save decoding refuses what it cannot read
 
 `player_snapshot_decode()` and `player_item_snapshot_list_decode()` returned the decoder's
