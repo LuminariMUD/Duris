@@ -9,7 +9,11 @@
 &+gA: Hell yes!  Duris is a FULL pkill MUD, this includes all of those things.&n 
 
 &+RQ: Are we allowed to multiplay or create robot characters?&n
-&+gA: No, and you will be subject to punishment when you are caught.
+&+gA: You may only have one character logged in at a time. Scripts and
+&+g   triggers are permitted, including unattended skill training and
+&+g   temporary automation during real-life interruptions. Continuously
+&+g   autonomous characters with little or no real player involvement are
+&+g   prohibited. Read help rules, help multi-playing and help robots.&n
 
 &+RQ: What is a "Mob"?&n
 &+gA: "Mob" is short for "Mobile", which refers to any monster or NPC (non 
