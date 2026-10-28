@@ -1962,6 +1962,52 @@ python3 tests/async/test_websocket_runtime.py
 The harness runs the real `websocket_parse_handshake()` over a socket pair. No test sends
 these through the tunnel.
 
+## WebSocket blank input advances the pager
+
+An authenticated playing character's `game` command accepts both `data: ""` and
+`data: {"command": ""}` as one intentional input line. The former nonempty-string
+check dropped those requests before they reached the pager (Duris #443).
+
+```sh
+python3 tests/async/test_pager_contract.py
+SANITIZE=1 python3 tests/async/test_pager_contract.py
+```
+
+The native harness compiles the production WebSocket dispatcher, game handler,
+input queue, session routing and pager bodies with real descriptor types and cJSON.
+It checks both blank payload forms, separate FIFO continuations through the last
+page, pager-state release, page numbers, q/r/b, ordinary commands, malformed or
+missing payloads, non-playing/missing-character rejection and pending-authentication
+guards. World gates, non-game WebSocket handlers, command execution, output delivery
+and telemetry are controlled boundaries. The regression fails before the fix when
+the first blank request produces no queue entry. Sanitizer mode checks address and
+undefined behavior errors with leak detection enabled.
+
+The client also needs [DurisWeb #120](https://github.com/LuminariMUD/DurisWeb/pull/120)
+for [DurisWeb #119](https://github.com/LuminariMUD/DurisWeb/issues/119): it must send a
+blank continuation instead of repeating the selected help command or dropping an
+empty submission.
+
+Paired local browser verification on 2026-10-28 used Duris source revision
+`ff3a6ff19872c2c3513ca61e537b034436f18198` and DurisWeb revision
+`7bae8f35d9196a3f2785d10d341d640d15e0ad48`. Installed Chromium at 1280x900 opened the
+actual `/play` frontend, authenticated a synthetic account and entered a disposable
+minimal-world MUD backed by an isolated migrated MariaDB. Website HTTP shell/config
+and map responses were fixtures; MUD authentication, WebSocket transport, command
+input, paging and rendered output were real.
+
+With `toggle screensize 12` and paging enabled, `help new-combat` traversed seven
+pages and `score` traversed four, alternating empty Enter and empty Send through
+completion. Every submission sent exactly one game frame, with ordered page numbers
+and no duplicate pages. Numeric selection, r, b and q also worked, and `look` worked
+after each completed/cancelled report. Page identity, rendering, absence of framework
+overlays and screenshots were checked. The existing Vue Router `next()` deprecation
+warning was recorded; there were no other console errors or warnings.
+
+These are local test revisions, not deployed revisions. No shared MUD or production
+service was changed. Deployment and live acceptance remain separate release work;
+repeat both paged-output journeys against the actual paired deployed revisions.
+
 ## Player save decoding refuses what it cannot read
 
 `player_snapshot_decode()` and `player_item_snapshot_list_decode()` returned the decoder's

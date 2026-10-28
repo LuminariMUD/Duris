@@ -1503,7 +1503,8 @@ void ws_cmd_game(struct descriptor_data *d, cJSON *data)
 		}
 	}
 
-	if (cmd && *cmd)
+	/* An empty line is intentional input, including pager continuation. */
+	if (cmd)
 	{
 		write_to_q(cmd, &d->input, 0);
 	}
