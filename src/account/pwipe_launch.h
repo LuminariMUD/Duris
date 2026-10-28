@@ -8,7 +8,6 @@
 bool pwipe_launch_load(const char *path, std::string &error);
 bool pwipe_launch_closed_at(time_t now);
 bool pwipe_launch_allows_at(const char *account_name, time_t now);
-const std::string &pwipe_launch_opens_utc();
 std::string pwipe_launch_status(time_t now);
 
 struct descriptor_data;

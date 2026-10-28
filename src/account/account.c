@@ -678,6 +678,11 @@ static void finish_account_password(P_desc d, int password_valid, const char *ne
 		return;
 	}
 
+	if (!pwipe_launch_admit(d))
+		return;
+	if (pwipe_launch_closed_at(time(NULL)))
+		SEND_TO_Q("Preparation access approved. The public gates are still closed.\r\n", d);
+
 	if (d->account->acct_blocked == ACCOUNT_BLOCK_DELETION)
 	{
 		echo_on(d);
@@ -685,11 +690,6 @@ static void finish_account_password(P_desc d, int password_valid, const char *ne
 		display_account_deletion_confirmation(d, true);
 		return;
 	}
-	if (!pwipe_launch_admit(d))
-		return;
-	if (pwipe_launch_closed_at(time(NULL)))
-		SEND_TO_Q("Preparation access approved. The public gates are still closed.\r\n", d);
-
 	// Auto-upgrade MD5 passwords to bcrypt
 	if (new_hash)
 	{
