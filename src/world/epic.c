@@ -640,10 +640,12 @@ static bool prepare_stone_award(P_char ch, int zone, int ordinary_base, double b
 	const divine_boon_slot *boon = nullptr;
 	const int side = IS_RACEWAR_GOOD(ch) ? 0 : IS_RACEWAR_EVIL(ch) ? 1 : -1;
 	if (state && state->mode == divine_boon_mode::divine && side >= 0 &&
-	    GET_LEVEL(ch) <= MAXLVLMORTAL && divine_boon_epic_zone_eligible(zone, side))
+	    GET_LEVEL(ch) <= MAXLVLMORTAL &&
+	    (divine_boon_epic_zone_eligible(zone, 0) ||
+	     divine_boon_epic_zone_eligible(zone, 1)))
 		for (const auto &slot : state->slots)
 			if (slot.category == divine_boon_category::epic &&
-			    slot.zones[side] == zone && divine_boon_active(slot, now))
+			    divine_boon_shared_target_zone(slot) == zone && divine_boon_active(slot, now))
 			{
 				boon = &slot;
 				break;

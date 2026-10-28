@@ -51,18 +51,18 @@ void remember(divine_boon_state &state, const divine_boon_slot &slot, int64_t ex
 		state.recent.erase(state.recent.begin());
 	if (!pve(slot.category))
 		return;
+	// Persist only the shared hotspot in repeat history; the unused
+	// faction-specific legacy target must not block future picks.
+	const int32_t zone = divine_boon_target_zone(slot);
 	for (size_t side = 0; side < slot.zones.size(); ++side)
 	{
-		if (slot.zones[side] < 0)
-			continue;
 		auto found = std::find_if(state.history.begin(), state.history.end(),
 					  [&](const divine_boon_zone_history &entry) {
-						  return entry.side == side &&
-							 entry.zone == slot.zones[side];
+						  return entry.side == side && entry.zone == zone;
 					  });
 		if (found == state.history.end())
 			state.history.push_back(
-				{ slot.zones[side], static_cast<uint8_t>(side), expired_at });
+				{ zone, static_cast<uint8_t>(side), expired_at });
 		else
 			found->expired_at = std::max(found->expired_at, expired_at);
 	}
@@ -77,6 +77,22 @@ void expire(divine_boon_state &state, int64_t now)
 			remember(state, slot, slot.expires_at);
 			slot = {};
 		}
+	}
+	// Two valid pre-upgrade one-sided slots can become the same shared
+	// hotspot. Retire the duplicate rather than wasting a reserved allocation.
+	std::vector<int32_t> active_zones;
+	for (auto &slot : state.slots)
+	{
+		if (!slot.id || !pve(slot.category))
+			continue;
+		const int32_t zone = divine_boon_target_zone(slot);
+		if (std::find(active_zones.begin(), active_zones.end(), zone) != active_zones.end())
+		{
+			remember(state, slot, now);
+			slot = {};
+		}
+		else
+			active_zones.push_back(zone);
 	}
 	std::erase_if(state.history,
 		      [now](const divine_boon_zone_history &entry) {
@@ -212,10 +228,21 @@ bool divine_boon_state_valid(const divine_boon_state &state)
 			    (other.category == slot.category && !pve(slot.category)))
 				return false;
 			if (pve(slot.category) && pve(other.category))
-				for (size_t side = 0; side < slot.zones.size(); ++side)
-					if (slot.zones[side] >= 0 &&
-					    slot.zones[side] == other.zones[side])
-						return false;
+			{
+				const bool legacy = slot.zones[0] != slot.zones[1];
+				const bool other_legacy = other.zones[0] != other.zones[1];
+				if (legacy && other_legacy)
+				{
+					// Preserve the original validity contract for old snapshots.
+					for (size_t side = 0; side < slot.zones.size(); ++side)
+						if (slot.zones[side] >= 0 &&
+						    slot.zones[side] == other.zones[side])
+							return false;
+				}
+				else if (divine_boon_target_zone(slot) ==
+					 divine_boon_target_zone(other))
+					return false;
+			}
 		}
 	}
 	for (size_t index = 0; index < state.history.size(); ++index)
@@ -325,6 +352,12 @@ bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon
 	expire(next, now);
 	const bool skipped_hours = hour(now) - next.last_opportunity > DIVINE_BOON_HOUR;
 	next.last_opportunity = hour(now);
+	// Old snapshots can already hold more than three of one PvE type. Preserve
+	// those objectives through expiry, but never admit another over the new cap.
+	std::array<size_t, 5> category_counts = {};
+	for (const auto &slot : next.slots)
+		if (slot.id)
+			++category_counts[static_cast<size_t>(slot.category)];
 	for (size_t index = 0; choices && !next.paused && !skipped_hours && index < count; ++index)
 	{
 		const auto &choice = choices[index];
@@ -336,7 +369,20 @@ bool divine_boon_rotate(divine_boon_state *state, int64_t now, const divine_boon
 		    !valid_objective(choice) ||
 		    next.next_id == std::numeric_limits<uint64_t>::max())
 			return false;
+		const size_t category = static_cast<size_t>(choice.category);
+		const size_t cap = choice.category == divine_boon_category::experience ?
+					   DIVINE_BOON_EXPERIENCE_SLOTS :
+					   choice.category == divine_boon_category::epic ?
+						   DIVINE_BOON_EPIC_SLOTS : 1;
+		if (category_counts[category] >= cap)
+			return false; // Do not silently accept an over-cap proposal.
+		if (pve(choice.category))
+			for (const auto &active : next.slots)
+				if (active.id && pve(active.category) &&
+				    divine_boon_target_zone(active) == divine_boon_target_zone(choice))
+					return false;
 		*empty = choice;
+		++category_counts[category];
 		empty->id = next.next_id++;
 		empty->starts_at = hour(now);
 		empty->expires_at = empty->starts_at + divine_boon_duration(empty->category);

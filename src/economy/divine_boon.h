@@ -7,12 +7,15 @@
 #include <vector>
 
 constexpr size_t DIVINE_BOON_SLOTS = 8;
-// One slot each stays reserved for Cargo and PvP; Exp and Epic share the rest.
-constexpr size_t DIVINE_BOON_ZONE_SLOTS = DIVINE_BOON_SLOTS - 2;
+// Three dedicated Experience and three dedicated Epic slots, plus one each for Cargo and PvP.
+constexpr size_t DIVINE_BOON_EXPERIENCE_SLOTS = 3;
+constexpr size_t DIVINE_BOON_EPIC_SLOTS = 3;
+constexpr size_t DIVINE_BOON_ZONE_SLOTS = DIVINE_BOON_EXPERIENCE_SLOTS + DIVINE_BOON_EPIC_SLOTS;
 constexpr int64_t DIVINE_BOON_HOUR = 3600;
 constexpr int64_t DIVINE_BOON_REPEAT_WINDOW = 12 * DIVINE_BOON_HOUR;
-// Two sides for at most eight existing plus twelve newly expired hourly slots.
-constexpr size_t DIVINE_BOON_HISTORY_MAX = 40;
+// Each hour can retire two PvE objectives, each recorded for both sides;
+// allow twelve hours of turnover plus the already active objectives.
+constexpr size_t DIVINE_BOON_HISTORY_MAX = 64;
 
 enum class divine_boon_category : uint8_t
 {
@@ -36,7 +39,8 @@ struct divine_boon_slot
 	divine_boon_category category = divine_boon_category::none;
 	int64_t starts_at = 0;
 	int64_t expires_at = 0;
-	// Good, Evil. Zone numbers, not runtime indexes; -1 means no side objective.
+	// Persisted Good/Evil zone fields. New PvE boons assign the same zone to both.
+	// Legacy snapshots may contain distinct or missing side-specific targets.
 	std::array<int32_t, 2> zones = { -1, -1 };
 	int32_t source_port = -1;
 	int32_t destination_port = -1;
@@ -44,6 +48,13 @@ struct divine_boon_slot
 	int32_t contraband_commodity = -1;
 	bool operator==(const divine_boon_slot &) const = default;
 };
+
+// Resolve legacy two-target snapshots to one shared hotspot until they expire.
+// No saved-state migration, format change, or duration/ID reset is required.
+inline int32_t divine_boon_target_zone(const divine_boon_slot &slot)
+{
+	return slot.zones[0] >= 0 ? slot.zones[0] : slot.zones[1];
+}
 
 struct divine_boon_zone_history
 {
