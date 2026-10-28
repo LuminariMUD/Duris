@@ -64,16 +64,16 @@ int main()
 				"Divine help omitted a required rule");
 		require(boons.find("boon shop stat") == string::npos,
 			"Legacy shop directions survived");
-		for (const char *rule : { "three Experience", "three Epic",
-					"Good and Evil", "one", "shared" })
+		for (const char *rule :
+		     { "three Experience", "three Epic", "Good and Evil", "one", "shared" })
 			require(boons.find(rule) != string::npos,
 				"Canonical Divine help still describes faction-specific targets");
 		require(boons.find("six for zone EXP") == string::npos &&
-			boons.find("Good-side objectives") == string::npos,
+				boons.find("Good-side objectives") == string::npos,
 			"Overridden Divine Boon help still describes the old rotation");
 	}
 	require(wiki_help("divineboon").find("unconsumed hourly opportunity") != string::npos &&
-		wiki_help("divineboon").find("shared") != string::npos,
+			wiki_help("divineboon").find("shared") != string::npos,
 		"Canonical staff help missing the shared rotation or force timing");
 
 	for (const char *topic : { "air affinity", "water affinity", "fire affinity",

@@ -63,8 +63,8 @@ int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot)
 		    divine_boon_zone_eligible(zone, 1))
 			return zone;
 	for (int zone : slot.zones)
-		if (zone >= 0 && (divine_boon_zone_eligible(zone, 0) ||
-			divine_boon_zone_eligible(zone, 1)))
+		if (zone >= 0 &&
+		    (divine_boon_zone_eligible(zone, 0) || divine_boon_zone_eligible(zone, 1)))
 			return zone;
 	return divine_boon_target_zone(slot);
 }
