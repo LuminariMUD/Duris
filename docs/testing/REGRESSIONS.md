@@ -1959,14 +1959,30 @@ and telemetry are controlled boundaries. The regression fails before the fix whe
 the first blank request produces no queue entry. Sanitizer mode checks address and
 undefined behavior errors with leak detection enabled.
 
-Browser acceptance depends on [DurisWeb #119](https://github.com/LuminariMUD/DurisWeb/issues/119):
-the client must send a blank continuation instead of repeating the selected help
-command or dropping an empty submission. After the paired revisions are available,
-record the actual server and client revisions used in the browser; check a multi-page
-help topic and another paged output with Enter and empty Send through the final page,
-then q/r/b/page numbers and the next ordinary command. Each request must advance only
-once. This isolated harness does not establish browser behavior or deployment state;
-paired browser verification remains outstanding.
+The client also needs [DurisWeb #120](https://github.com/LuminariMUD/DurisWeb/pull/120)
+for [DurisWeb #119](https://github.com/LuminariMUD/DurisWeb/issues/119): it must send a
+blank continuation instead of repeating the selected help command or dropping an
+empty submission.
+
+Paired local browser verification on 2026-10-28 used Duris source revision
+`ff3a6ff19872c2c3513ca61e537b034436f18198` and DurisWeb revision
+`7bae8f35d9196a3f2785d10d341d640d15e0ad48`. Installed Chromium at 1280x900 opened the
+actual `/play` frontend, authenticated a synthetic account and entered a disposable
+minimal-world MUD backed by an isolated migrated MariaDB. Website HTTP shell/config
+and map responses were fixtures; MUD authentication, WebSocket transport, command
+input, paging and rendered output were real.
+
+With `toggle screensize 12` and paging enabled, `help new-combat` traversed seven
+pages and `score` traversed four, alternating empty Enter and empty Send through
+completion. Every submission sent exactly one game frame, with ordered page numbers
+and no duplicate pages. Numeric selection, r, b and q also worked, and `look` worked
+after each completed/cancelled report. Page identity, rendering, absence of framework
+overlays and screenshots were checked. The existing Vue Router `next()` deprecation
+warning was recorded; there were no other console errors or warnings.
+
+These are local test revisions, not deployed revisions. No shared MUD or production
+service was changed. Deployment and live acceptance remain separate release work;
+repeat both paged-output journeys against the actual paired deployed revisions.
 
 ## Player save decoding refuses what it cannot read
 
