@@ -287,6 +287,7 @@ def run(binary, evidence_path):
                 stop()
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
+                cmd(god, 'vis 0')
                 inventory = cmd(player, 'inventory')
                 assert all(item in inventory for item in ('sleeves', 'shield', 'leggings', 'tunic', 'boots', 'canoe', 'rod')), inventory
                 # Confirm the persisted instance, not a newly loaded object template.

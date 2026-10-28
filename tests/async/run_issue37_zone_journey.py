@@ -88,6 +88,13 @@ def run(binary, baseline, evidence_path):
                 return int(match[1])
 
             def walk(direction, expected):
+                # Mobs can wake or wander back during the long reset tour.
+                # Stop combat before walking without changing the mortal's
+                # movement permissions, exits or authored room flags.
+                cmd(god, f'goto {PLAYER}')
+                cmd(god, 'tranquilize')
+                cmd(player, 'wake')
+                cmd(player, 'stand')
                 response = cmd(player, direction)
                 assert location() == expected, (direction, expected, response)
 
