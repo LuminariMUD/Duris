@@ -46,6 +46,9 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <string>
+#include <utility>
+#include <vector>
 #include "world/buildings.h"
 #include "combat/damage.h"
 #include "combat/forced_movement.h"
@@ -70,6 +73,7 @@ extern P_desc descriptor_list;
 extern P_room world;
 extern const char *command[];
 extern const char *dirs[];
+extern void act_convert(char *, const char *, P_char, P_char, P_obj, void *, int);
 extern const struct stat_data stat_factor[];
 extern struct str_app_type str_app[];
 extern struct zone_data *zone_table;
@@ -3659,6 +3663,77 @@ int chance_kick(P_char ch, P_char victim)
 	return percent_chance;
 }
 
+using forced_departure_message = std::pair<uint64_t, std::string>;
+
+static bool can_receive_forced_departure(P_char recipient, P_char attacker)
+{
+	return recipient->desc && IS_AWAKE(recipient) &&
+	       recipient->specials.z_cord == attacker->specials.z_cord &&
+	       (IS_NPC(recipient) || !recipient->only.pc || !recipient->only.pc->ignored ||
+		recipient->only.pc->ignored != attacker);
+}
+
+// Capture recipient-specific names while both combatants still have valid rooms.
+// The caller sends these only after departure scripts have allowed the move.
+static std::vector<forced_departure_message>
+snapshot_forced_departure(P_char ch, P_char victim, int direction, bool tackle, bool rear)
+{
+	char actor_text[512], room_text[512];
+	const char *target_text;
+	if (tackle)
+	{
+		snprintf(actor_text, sizeof actor_text,
+			 "You tackle $N HARD and go flying out of the room together!");
+		snprintf(room_text, sizeof room_text,
+			 "$n tackles $N HARD, sending them both flying out of the room!");
+		target_text = "$n tackles you HARD and sends you both flying out of the room!";
+	}
+	else
+	{
+		const char *skill = rear ? "rearkick" : "kick";
+		snprintf(actor_text, sizeof actor_text,
+			 "Your mighty %s sends $N flying out of the room to the %s!&n", skill,
+			 dirs[direction]);
+		snprintf(room_text, sizeof room_text,
+			 "$n's mighty %s sends $N flying out of the room to the %s!&n", skill,
+			 dirs[direction]);
+		target_text = rear ? "$n's mighty rearkick sends you flying out of the room!" :
+				     "$n's mighty kick sends you flying out of the room!";
+	}
+	std::vector<forced_departure_message> messages;
+	for (P_char recipient = world[ch->in_room].people; recipient;
+	     recipient = recipient->next_in_room)
+	{
+		if (!can_receive_forced_departure(recipient, ch))
+			continue;
+		const int type = recipient == ch     ? TO_CHAR :
+				 recipient == victim ? TO_VICT :
+						       TO_NOTVICT;
+		const char *message = recipient == ch	  ? actor_text :
+				      recipient == victim ? target_text :
+							    room_text;
+		char rendered[3 * MAX_STRING_LENGTH];
+		act_convert(rendered, message, ch, recipient, nullptr, victim, type);
+		messages.emplace_back(recipient->runtime_id, rendered);
+	}
+	return messages;
+}
+
+static void deliver_forced_departure(const std::vector<forced_departure_message> &messages,
+				     P_char ch, P_char victim, int source, bool paired)
+{
+	for (const auto &message : messages)
+	{
+		P_char recipient = find_character_by_runtime_id(message.first);
+		if (!recipient || !can_receive_forced_departure(recipient, ch))
+			continue;
+		const int expected_room =
+			recipient == victim || (paired && recipient == ch) ? NOWHERE : source;
+		if (recipient->in_room == expected_room)
+			send_to_char(message.second.c_str(), recipient);
+	}
+}
+
 static void forced_rebound_messages(P_char ch, P_char victim, forced_block reason, bool tackle)
 {
 	const char *attacker, *target, *room;
@@ -3838,18 +3913,11 @@ void kick(P_char ch, P_char victim)
 			door = number(0, 3);
 		}
 
+		const int source_room = ch->in_room;
+		const auto messages = snapshot_forced_departure(ch, victim, door, false, false);
 		const auto movement = move_forced(
-			ch, victim, door,
-			[&]()
-			{
-				send_to_char(
-					"Your mighty kick sends your opponent flying out of the room!\n",
-					ch);
-				act("$n's mighty kick sends an opponent flying out of the room!",
-				    FALSE, ch, 0, nullptr, TO_ROOM);
-				send_to_char("A mighty kick sends you flying out of the room!\n",
-					     victim);
-			});
+			ch, victim, door, [&]()
+			{ deliver_forced_departure(messages, ch, victim, source_room, false); });
 		if (movement.status == forced_move_status::arrived)
 		{
 			act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0, TO_ROOM);
@@ -7551,25 +7619,14 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 			door = number(0, NUM_EXITS - 1);
 
 			const int source_room = ch->in_room;
-			const auto movement = move_forced_pair(
-				ch, vict, door,
-				[&]()
-				{
-					send_to_char(
-						"Your mighty tackle sends you both flying out of the room!\n",
-						ch);
-					send_to_char(
-						"A mighty tackle sends you both flying out of the room!\n",
-						vict);
-					for (P_char observer = world[source_room].people; observer;
-					     observer = observer->next_in_room)
-						if (observer->desc && IS_AWAKE(observer) &&
-						    observer->specials.z_cord ==
-							    ch->specials.z_cord)
-							send_to_char(
-								"A mighty tackle sends two combatants tumbling out of the room!\n",
-								observer);
-				});
+			const auto messages =
+				snapshot_forced_departure(ch, vict, door, true, false);
+			const auto movement = move_forced_pair(ch, vict, door,
+							       [&]() {
+								       deliver_forced_departure(
+									       messages, ch, vict,
+									       source_room, true);
+							       });
 			if (movement.status == forced_move_status::interrupted)
 				return;
 			if (movement.status == forced_move_status::blocked)
@@ -9065,19 +9122,11 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 		if ((door == DIR_UP) || (door == DIR_DOWN))
 			door = number(0, 3);
 
+		const int source_room = ch->in_room;
+		const auto messages = snapshot_forced_departure(ch, victim, door, false, true);
 		const auto movement = move_forced(
-			ch, victim, door,
-			[&]()
-			{
-				send_to_char(
-					"Your mighty rearkick sends your opponent flying out of the room!\n",
-					ch);
-				act("$n's mighty rearkick sends an opponent flying out of the room!",
-				    FALSE, ch, 0, nullptr, TO_ROOM);
-				send_to_char(
-					"A mighty rearkick sends you flying out of the room!\n",
-					victim);
-			});
+			ch, victim, door, [&]()
+			{ deliver_forced_departure(messages, ch, victim, source_room, false); });
 		if (movement.status == forced_move_status::arrived)
 		{
 			act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0, TO_ROOM);

@@ -1136,6 +1136,10 @@ bool isname(const char *str, const char *namelist)
  * move a player out of a room
  */
 
+// Terminal extraction must finish unlinking even if a leave hook redirects or vetoes it.
+// The game thread saves and restores this character-specific override around that retry.
+static P_char terminal_departure_override = nullptr;
+
 void char_from_room(P_char ch)
 {
 	P_char i;
@@ -1160,7 +1164,7 @@ void char_from_room(P_char ch)
 	/* Notify room hooks before state changes.  Legacy hooks commonly return
 	 * TRUE for handled synthetic events, so only the explicit veto result may
 	 * block removal. */
-	if (world[ch->in_room].funct)
+	if (world[ch->in_room].funct && terminal_departure_override != ch)
 	{
 		const int source_room = ch->in_room;
 		const uint64_t runtime_id = ch->runtime_id;
@@ -3895,9 +3899,35 @@ void extract_char(P_char ch)
 		}
 	}
 
+	const uint64_t room_removal_before = character_removal_generation;
+	const uint64_t room_removal_id = ch->runtime_id;
 	training_dummy_begin_removal(ch);
 	char_from_room(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+	{
+		training_dummy_end_removal(ch);
+		return;
+	}
+	if (ch->in_room != NOWHERE)
+	{
+		// A nested dummy extraction may have replaced the original override.
+		training_dummy_begin_removal(ch);
+		P_char previous_override = terminal_departure_override;
+		terminal_departure_override = ch;
+		char_from_room(ch);
+		terminal_departure_override = previous_override;
+	}
 	training_dummy_end_removal(ch);
+	if ((room_removal_before != character_removal_generation && !char_in_list(ch)) ||
+	    ch->runtime_id != room_removal_id)
+		return;
+	if (ch->in_room != NOWHERE)
+	{
+		logit(LOG_DEBUG, "extract_char: could not unlink character %llu from room %d",
+		      static_cast<unsigned long long>(room_removal_id), ch->in_room);
+		return;
+	}
 
 	if (IS_NPC(ch))
 		shopkeeper_mob_extracted(ch);

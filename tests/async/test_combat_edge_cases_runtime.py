@@ -51,12 +51,14 @@ struct Delivered { P_char recipient; std::string text; };
 static std::vector<Delivered> delivered;
 static P_char parsed_target, guard_target, forbidden_target;
 static bool fight_allowed, improved, magical_wall, castle_wall;
+static bool hide_victim_from_stranger;
 static int damage_calls, guard_calls, victim_waits, actor_waits, stops, actor_lag;
 static int notch_calls, total_waits;
 static int callback_calls, arrivals, departure_calls, arrival_direction, engaged;
 static P_char riding, rider;
 enum class Leave { ordinary, veto, redirect, kill, extract, replace, retarget, seal,
-                   move_actor, second_veto, second_redirect, second_extract };
+                   move_actor, move_witness, extract_witness, replace_witness, ignore_witness,
+                   second_veto, second_redirect, second_extract };
 enum class Enter { ordinary, redirect, kill, extract, combat };
 static Leave leave;
 static Enter enter;
@@ -135,6 +137,14 @@ void char_from_room(P_char ch)
         north.exit_info |= EX_BLOCKED;
     if (leave == Leave::move_actor)
         place(&actor, 3);
+    if (leave == Leave::move_witness)
+        place(&witness, 3);
+    if (leave == Leave::extract_witness)
+        forget(&witness);
+    if (leave == Leave::replace_witness)
+        ++witness.runtime_id;
+    if (leave == Leave::ignore_witness)
+        witness.only.pc->ignored = &actor;
 }
 
 bool char_to_room(P_char ch, int room, int direction)
@@ -190,6 +200,18 @@ void send_to_char(const char *message, P_char recipient)
     fixture_messages.emplace_back(message);
     delivered.push_back({recipient, message});
 }
+// Run production act_convert with deterministic recipient-specific visibility.
+// Both characters must still be linked to real rooms during rendering.
+char *PERS(P_char subject, P_char viewer, int)
+{
+    assert(subject->in_room >= 0 && subject->in_room <= top_of_world);
+    assert(viewer->in_room >= 0 && viewer->in_room <= top_of_world);
+    if (hide_victim_from_stranger && subject == &victim && viewer == &stranger)
+        return const_cast<char *>("someone");
+    return subject->player.name;
+}
+bool ac_can_see_obj(P_char, P_obj, int) { return true; }
+char *FirstWord(char *text) { return text; }
 void debug(const char *, ...) {}
 void send_to_room_except_two(const char *text, int, P_char, P_char) { fixture_messages.emplace_back(text); }
 float get_property(const char *, double value) { return value; }
@@ -286,6 +308,7 @@ static void reset()
     parsed_target = &victim;
     guard_target = forbidden_target = nullptr;
     fight_allowed = true;
+    hide_victim_from_stranger = false;
     improved = true;
     magical_wall = castle_wall = false;
     damage_calls = guard_calls = actor_waits = victim_waits = stops = actor_lag = 0;
@@ -495,44 +518,143 @@ static void handler_cases()
     assert(actor.in_room == 0 && victim.in_room == 0 && arrivals == 0);
 }
 
+static bool launch_to(P_char recipient, const std::string &part)
+{
+    return std::any_of(delivered.begin(), delivered.end(), [&](const Delivered &message) {
+        return message.recipient == recipient && message.text.find(part) != std::string::npos;
+    });
+}
+
+static void launch_message_cases()
+{
+    for (const bool rear : {false, true})
+    {
+        reset();
+        descriptor_data descriptor{};
+        pc_only_data ignored_pc{};
+        actor.desc = victim.desc = witness.desc = stranger.desc = &descriptor;
+        actor.player.name = const_cast<char *>("attacker");
+        victim.player.name = const_cast<char *>("victim");
+        witness.only.pc = &ignored_pc;
+        ignored_pc.ignored = &actor;
+        place(&witness, 0);
+        place(&stranger, 0);
+        hide_victim_from_stranger = true;
+        if (rear) actor.player.race = RACE_CENTAUR;
+        if (rear) do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+        else kick(&actor, &victim);
+        assert(victim.in_room == 1);
+        assert(launch_to(&actor, "victim flying out of the room to the north"));
+        assert(launch_to(&stranger, "someone flying out of the room to the north"));
+        assert(launch_to(&victim, "Attacker's mighty"));
+        assert(!launch_to(&witness, "flying out")); // ignores attacker
+
+        reset();
+        actor.desc = victim.desc = &descriptor;
+        actor.player.name = const_cast<char *>("attacker");
+        victim.player.name = const_cast<char *>("victim");
+        pc_only_data victim_pc{};
+        victim.only.pc = &victim_pc;
+        victim_pc.ignored = &actor;
+        if (rear) actor.player.race = RACE_CENTAUR;
+        if (rear) do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+        else kick(&actor, &victim);
+        assert(victim.in_room == 1);
+        assert(!launch_to(&victim, "flying out")); // victim ignores attacker
+
+        reset();
+        actor.desc = victim.desc = &descriptor;
+        actor.player.name = const_cast<char *>("attacker");
+        victim.player.name = const_cast<char *>("victim");
+        SET_POS(&victim, STAT_SLEEPING + POS_PRONE);
+        if (rear)
+        {
+            // Rearkick requires a standing victim; test the visibility predicate directly.
+            assert(!can_receive_forced_departure(&victim, &actor));
+        }
+        else
+        {
+            kick(&actor, &victim);
+            assert(victim.in_room == 1);
+            assert(!launch_to(&victim, "flying out"));
+        }
+
+        for (const auto effect : {Leave::move_witness, Leave::extract_witness,
+                                  Leave::replace_witness, Leave::ignore_witness})
+        {
+            reset();
+            actor.desc = victim.desc = witness.desc = &descriptor;
+            pc_only_data witness_pc{};
+            witness.only.pc = &witness_pc;
+            place(&witness, 0);
+            leave = effect;
+            if (rear) actor.player.race = RACE_CENTAUR;
+            if (rear) do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+            else kick(&actor, &victim);
+            assert(victim.in_room == 1);
+            assert(!launch_to(&witness, "flying out"));
+        }
+
+        reset();
+        actor.desc = victim.desc = &descriptor;
+        leave = Leave::redirect;
+        if (rear) actor.player.race = RACE_CENTAUR;
+        if (rear) do_rearkick(&actor, const_cast<char *>("fixture"), 0);
+        else kick(&actor, &victim);
+        assert(victim.in_room == 3 && arrivals == 0);
+        assert(!launch_to(&actor, "flying out"));
+        assert(!launch_to(&victim, "flying out"));
+    }
+}
+
 static void observer_case()
 {
     reset();
     actor.player.size = victim.player.size;
     descriptor_data descriptor{};
-    witness.desc = stranger.desc = &descriptor;
+    actor.desc = victim.desc = witness.desc = stranger.desc = &descriptor;
+    actor.player.name = const_cast<char *>("attacker");
+    victim.player.name = const_cast<char *>("victim");
     witness.specials.z_cord = 0;
     stranger.specials.z_cord = 1;
     place(&witness, 0);
     place(&stranger, 0);
-    char_data sleeping{}, disconnected{};
+    char_data sleeping{}, disconnected{}, ignored{};
+    pc_only_data ignored_pc{};
     sleeping.runtime_id = 50;
     disconnected.runtime_id = 51;
-    sleeping.in_room = disconnected.in_room = NOWHERE;
-    sleeping.desc = &descriptor;
+    ignored.runtime_id = 52;
+    sleeping.in_room = disconnected.in_room = ignored.in_room = NOWHERE;
+    sleeping.desc = ignored.desc = &descriptor;
+    ignored.only.pc = &ignored_pc;
+    ignored_pc.ignored = &actor;
     SET_POS(&sleeping, STAT_SLEEPING + POS_PRONE);
     SET_POS(&disconnected, STAT_NORMAL + POS_STANDING);
+    SET_POS(&ignored, STAT_NORMAL + POS_STANDING);
     live.push_back(&sleeping);
     live.push_back(&disconnected);
+    live.push_back(&ignored);
     place(&sleeping, 0);
     place(&disconnected, 0);
+    place(&ignored, 0);
     do_tackle(&actor, const_cast<char *>("fixture"), 0);
     assert(actor.in_room == 1 && victim.in_room == 1 && arrivals == 2);
-    int launch_deliveries = 0;
-    for (const auto &message : delivered)
-        if (message.text.find("two combatants") != std::string::npos)
-        {
-            assert(message.recipient == &witness);
-            ++launch_deliveries;
-        }
-    assert(launch_deliveries == 1);
+    assert(launch_to(&actor, "tackle victim HARD"));
+    assert(launch_to(&victim, "Attacker tackles you HARD"));
+    assert(launch_to(&witness, "Attacker tackles victim HARD"));
+    assert(!launch_to(&stranger, "flying out")); // different altitude
+    assert(!launch_to(&sleeping, "flying out"));
+    assert(!launch_to(&disconnected, "flying out"));
+    assert(!launch_to(&ignored, "flying out"));
     forget(&sleeping);
     forget(&disconnected);
+    forget(&ignored);
 }
 
 int main()
 {
     observer_case();
+    launch_message_cases();
     admission_cases();
     script_cases();
     handler_cases();
@@ -540,9 +662,18 @@ int main()
 }
 '''
 
-functions = [extract_function("utility.c", "int BOUNDED(")] + [
+functions = [
+    extract_function("utility.c", "int BOUNDED("),
+    extract_function("utility.c", "bool is_ansi_char("),
+    extract_function("utility.c", "void CAP("),
+    extract_function("comm.c", "void act_convert("),
+    "using forced_departure_message = std::pair<uint64_t, std::string>;",
+] + [
     extract_function("actoff.c", signature)
     for signature in (
+        "static bool can_receive_forced_departure(",
+        "static std::vector<forced_departure_message>\nsnapshot_forced_departure(",
+        "static void deliver_forced_departure(",
         "static void forced_rebound_messages(",
         "void kick(",
         "int chance_roundkick(",
