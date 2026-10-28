@@ -126,7 +126,7 @@ int vitality_limit(P_char ch)
 
 int mana_regen(P_char ch, bool display_only)
 {
-	if (GET_STAT(ch) <= STAT_INCAP || IS_FIGHTING(ch))
+	if (GET_STAT(ch) <= STAT_INCAP)
 		return 0;
 
 	if (has_innate(ch, INNATE_VULN_SUN) && IS_SUNLIT(ch->in_room) &&

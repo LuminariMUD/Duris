@@ -219,7 +219,7 @@ DEFINE_LABEL_CALLBACK(event_autosave)
 // Actual PSP callback/admission, with a controlled rate. Rate policy and
 // producer behavior are covered by test_psp_move_regen.py; this mode proves the queue.
 int mana_regen(P_char ch, bool) {
-    return IS_FIGHTING(ch) || GET_MANA(ch) == GET_MAX_MANA(ch) ? 0 : 80;
+    return GET_STAT(ch) <= STAT_INCAP || GET_MANA(ch) == GET_MAX_MANA(ch) ? 0 : 80;
 }
 int move_regen(P_char, bool) { return 0; }
 int hit_regen(P_char, bool) { return 0; }
@@ -1328,12 +1328,17 @@ static void test_regen_lifecycle()
             // NPC's last five-pulse callback is at 2999; float credit costs at most one.
             require(std::abs(GET_MANA(&owner) - 900) <= 1, 334);
             owner.specials.fighting = &opponent;
+            const int combat_mana = GET_MANA(&owner);
+            for (int pulse = 0; pulse < 300; ++pulse) run_one_heartbeat();
+            require(std::abs(GET_MANA(&owner) - combat_mana - 80) <= 1 &&
+                    ne_event_counter == 1, 341);
+            owner.specials.position = STAT_INCAP | POS_PRONE;
             for (int pulse = 0; pulse < 10; ++pulse) run_one_heartbeat();
             require(ne_event_counter == 0 && !owner.nevents, 335);
             const int blocked_mana = GET_MANA(&owner);
             for (int pulse = 0; pulse < 300; ++pulse) run_one_heartbeat();
             require(GET_MANA(&owner) == blocked_mana, 336);
-            owner.specials.fighting = nullptr;
+            owner.specials.position = STAT_NORMAL | POS_STANDING;
             GET_MAX_MANA(&owner) = GET_MANA(&owner) + 1;
             StartRegen(&owner, regen_resource::mana);
             auto *event = get_scheduled(&owner, event_mana_regen);

@@ -201,8 +201,11 @@ static void check_rate(int expected) {
 static void rates() {
     for (int dial : {1, 5, 10}) {
         for (bool mob : {false, true}) {
-            reset(dial, mob);
-            check_rate(mob ? 80 : dial == 1 ? 160 : dial == 5 ? 80 : 40);
+            for (bool fighting : {false, true}) {
+                reset(dial, mob);
+                if (fighting) ch.specials.fighting = &enemy;
+                check_rate(mob ? 80 : dial == 1 ? 160 : dial == 5 ? 80 : 40);
+            }
         }
         for (int interval : {1, 4}) {
             reset(dial);
@@ -235,7 +238,11 @@ static void rates() {
         }
     }
     for (int mod : {10, -30, -80, -100}) {
-        reset(); ch.points.mana_reg = mod; check_rate(80 + mod);
+        for (bool fighting : {false, true}) {
+            reset(); ch.points.mana_reg = mod;
+            if (fighting) ch.specials.fighting = &enemy;
+            check_rate(80 + mod);
+        }
     }
     reset(); ch.curr_stats.Pow = 99; ch.curr_stats.Int = 100; check_rate(79);
     reset(); ch.curr_stats.Pow = 99; ch.curr_stats.Int = 100;
@@ -256,17 +263,21 @@ static void rates() {
 }
 
 static void transitions() {
-    reset(); ch.specials.fighting = &enemy; check_rate(0);
-    reset(); StartRegen(&ch, regen_resource::mana); advance(3);
-    assert(GET_MANA(&ch) == 100 && queue[0].state.accumulated > .7f);
-    ch.specials.fighting = &enemy;
-    advance(600, 4);
-    assert(GET_MANA(&ch) == 100 && queue.empty() && mana_regen(&ch, true) == 0);
-    ch.specials.fighting = nullptr;
-    StartRegen(&ch, regen_resource::mana);
-    assert(queue[0].state.accumulated == 0 && queue[0].state.last_tick == ne_event_tick);
-    advance(3); assert(GET_MANA(&ch) == 100);
-    advance(1); assert(GET_MANA(&ch) == 101);
+    for (int interval : {1, 4}) {
+        reset(); StartRegen(&ch, regen_resource::mana); advance(3);
+        assert(GET_MANA(&ch) == 100 && queue[0].state.accumulated > .7f);
+        ch.specials.fighting = &enemy;
+        StartRegen(&ch, regen_resource::mana);
+        assert(queue.size() == 1 && queue[0].state.last_tick == 3);
+        advance(1); assert(GET_MANA(&ch) == 101);
+        advance(296, interval);
+        assert(GET_MANA(&ch) == 180 && queue.size() == 1);
+        ch.specials.fighting = nullptr;
+        StartRegen(&ch, regen_resource::mana);
+        assert(queue.size() == 1 && queue[0].state.last_tick == 300);
+        advance(300, interval);
+        assert(GET_MANA(&ch) == 260 && queue.size() == 1);
+    }
 
     reset(); StartRegen(&ch, regen_resource::mana);
     advance(300); assert(GET_MANA(&ch) == 180);
@@ -277,6 +288,7 @@ static void transitions() {
     assert(std::abs(GET_MANA(&ch) - before - 80) <= 1);
 
     reset(); vulnerable = true; StartRegen(&ch, regen_resource::mana); advance(3);
+    ch.specials.fighting = &enemy;
     sun = true; advance(300); assert(GET_MANA(&ch) == 100 && queue.empty());
     sun = false; StartRegen(&ch, regen_resource::mana); advance(300);
     assert(GET_MANA(&ch) == 180);
@@ -292,6 +304,7 @@ static void bounds_and_spending() {
     }
     for (int dial : {1, 5, 10}) {
         reset(dial); GET_MAX_MANA(&ch) = 100; ch.points.mana_reg = -100;
+        ch.specials.fighting = &enemy;
         assert(mana_regen(&ch, false) == -20);
         StartRegen(&ch, regen_resource::mana); advance(300);
         assert(std::abs(GET_MANA(&ch) - 80) <= 1);
@@ -299,6 +312,7 @@ static void bounds_and_spending() {
         assert(GET_MANA(&ch) == 0 && queue.empty() && mana_regen(&ch, true) == 0);
         StartRegen(&ch, regen_resource::mana); assert(queue.empty());
         reset(dial); GET_MANA(&ch) = 120; GET_MAX_MANA(&ch) = 100;
+        ch.specials.fighting = &enemy;
         assert(mana_regen(&ch, false) == -4);
         StartRegen(&ch, regen_resource::mana);
         while (GET_MANA(&ch) == 120) advance(1);
@@ -313,13 +327,16 @@ static void bounds_and_spending() {
     advance(300); assert(completion_messages == 1);
 
     for (bool mindflayer : {false, true}) {
-        reset(); GET_MAX_MANA(&ch) = GET_MANA(&ch);
-        if (mindflayer) { ch.player.race = RACE_PILLITHID; ch.player.m_class = CLASS_MINDFLAYER; }
-        StartRegen(&ch, regen_resource::mana); assert(queue.empty());
-        use_spell(&ch, SPELL_MAGIC_MISSILE);
-        assert(GET_MANA(&ch) == 100 - 2 * MANA_PER_CIRCLE && queue.size() == 1);
-        StartRegen(&ch, regen_resource::mana); assert(queue.size() == 1);
-        advance(300); assert(GET_MANA(&ch) == 100 && queue.empty());
+        for (bool fighting : {false, true}) {
+            reset(); GET_MAX_MANA(&ch) = GET_MANA(&ch);
+            if (mindflayer) { ch.player.race = RACE_PILLITHID; ch.player.m_class = CLASS_MINDFLAYER; }
+            if (fighting) ch.specials.fighting = &enemy;
+            StartRegen(&ch, regen_resource::mana); assert(queue.empty());
+            use_spell(&ch, SPELL_MAGIC_MISSILE);
+            assert(GET_MANA(&ch) == 100 - 2 * MANA_PER_CIRCLE && queue.size() == 1);
+            StartRegen(&ch, regen_resource::mana); assert(queue.size() == 1);
+            advance(300); assert(GET_MANA(&ch) == 100 && queue.empty());
+        }
     }
     reset(5, true); StartRegen(&ch, regen_resource::mana);
     assert(queue.size() == 1 && queue[0].due == 4);
@@ -330,30 +347,28 @@ static void bounds_and_spending() {
 static void periodic_restart() {
     for (int race : {RACE_HUMAN, RACE_PILLITHID, RACE_ILLITHID}) {
         for (uint cls : {CLASS_WARRIOR, CLASS_SORCERER, CLASS_PSIONICIST, CLASS_MINDFLAYER}) {
-            for (bool sunlight : {false, true}) {
-                for (int resource : {90, 100, 120}) {
-                    reset(); ch.player.race = race; ch.player.m_class = cls;
-                    ch.player.level = 60; // trusted; the fixture racial ages are zero
-                    character_list = &ch;
-                    GET_MANA(&ch) = resource; GET_MAX_MANA(&ch) = 100;
-                    GET_MAX_VITALITY(&ch) = GET_VITALITY(&ch);
-                    if (resource == 100) ch.points.mana_reg = -100;
-                    if (!USES_MANA(character_list)) continue;
-                    StartRegen(&ch, regen_resource::mana); advance(3);
-                    if (sunlight) vulnerable = sun = true;
-                    else ch.specials.fighting = &enemy;
-                    advance(1); assert(queue.empty());
-                    affect_update(0); assert(queue.empty());
-                    ch.specials.fighting = nullptr; sun = false;
-                    affect_update(0);
-                    assert(queue.size() == 1 && queue[0].func == event_mana_regen);
-                    assert(queue[0].state.accumulated == 0 &&
-                           queue[0].state.last_tick == ne_event_tick);
-                    affect_update(0); assert(queue.size() == 1);
-                    advance(300);
-                    assert(resource < 100 ? GET_MANA(&ch) > resource :
-                                           GET_MANA(&ch) < resource);
-                }
+            for (int resource : {90, 100, 120}) {
+                reset(); ch.player.race = race; ch.player.m_class = cls;
+                ch.player.level = 60; // trusted; the fixture racial ages are zero
+                character_list = &ch;
+                GET_MANA(&ch) = resource; GET_MAX_MANA(&ch) = 100;
+                GET_MAX_VITALITY(&ch) = GET_VITALITY(&ch);
+                if (resource == 100) ch.points.mana_reg = -100;
+                if (!USES_MANA(character_list)) continue;
+                ch.specials.fighting = &enemy;
+                StartRegen(&ch, regen_resource::mana); advance(3);
+                vulnerable = sun = true;
+                advance(1); assert(queue.empty());
+                affect_update(0); assert(queue.empty());
+                sun = false;
+                affect_update(0);
+                assert(queue.size() == 1 && queue[0].func == event_mana_regen);
+                assert(queue[0].state.accumulated == 0 &&
+                       queue[0].state.last_tick == ne_event_tick);
+                affect_update(0); assert(queue.size() == 1);
+                advance(300);
+                assert(resource < 100 ? GET_MANA(&ch) > resource :
+                                       GET_MANA(&ch) < resource);
             }
         }
     }
@@ -361,7 +376,7 @@ static void periodic_restart() {
     GET_MAX_VITALITY(&ch) = GET_VITALITY(&ch); character_list = &ch;
     affect_update(0); assert(queue.empty());
     character_list = nullptr;
-    puts("Periodic PSP restart after combat/sunlight covers racial users and signed/full rates");
+    puts("Periodic PSP restart after sunlight during combat covers racial users and signed/full rates");
 }
 
 static void movement() {

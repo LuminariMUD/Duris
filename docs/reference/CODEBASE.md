@@ -385,9 +385,12 @@ feeding in
 
 `mana_regen(ch, display_only)` supplies PSP admission, each recovery callback and staff
 `stat`. Rates are points per game tick (300 pulses, nominally 75 seconds). Dead, dying,
-incapacitated, fighting and sun-vulnerable characters in the existing suppressing light
+incapacitated and sun-vulnerable characters in the existing suppressing light
 conditions have zero recovery, including with meditation or equipment bonuses. Twilight
 rooms and Globe of Darkness retain their existing sunlight exemptions.
+Combat permits normal recovery for players and NPCs: it uses the same rate and
+modifiers, can start after expenditure during a fight, and preserves pending fractional
+credit across combat entry and exit. No item, buff or innate is required.
 
 Eligible characters above maximum decay at `min(-1, (maximum - current) / 5)`. Otherwise
 the base is the integer conversion of `(POW + INT) / 2.5`, or `/ 0.2` while meditating,
@@ -395,7 +398,7 @@ for both players and NPCs. Feeblemind quarters that base; sleeping doubles it an
 adds half. Posture does not change PSP. The signed flat `mana_reg` modifier is added once,
 then the recovery dial scales positive player gains only. There is no final square and
 no extra meditation-skill bonus. At POW=INT=100, neutral normal/resting/sleeping rates
-are 80/120/160; normal meditation is 1,000. Combat/sun suppression, status bonuses,
+are 80/120/160; normal meditation is 1,000. Sun suppression, status bonuses,
 feeblemind, equipment and difficulty now affect the callback as well as the displayed
 rate.
 
@@ -405,8 +408,7 @@ maximum; negative increments preserve gradual over-cap decay and clamp at zero. 
 existing fractional accumulator, elapsed-pulse catch-up, duplicate suppression and NPC
 cadence remain. Blocked callbacks terminate and discard fractional credit; a later start
 begins with fresh elapsed accounting. Existing casting, meditation, rest, affect changes
-and periodic player affect updates supply restarts. Combat exit relies on the next
-eligible player affect tick, nominally within 75 seconds. That restart covers every
+and periodic player affect updates supply restarts. The periodic restart covers every
 `USES_MANA` character, including racial PSP users without a psionic class, and lets
 `StartRegen()` check the current rate at full or above-maximum PSP too. Negative
 equipment recovery therefore resumes after suppression even from full PSP.

@@ -92,7 +92,10 @@ def run(binary):
                 assert m, text
                 stats = [int(re.search(rf"{label}:\s*(\d+)", text)[1]) for label in ("Pow", "Int")]
                 assert stats == [100, 100], stats
+                opponent = re.search(r"Fighting: *([^\r\n]+?)\s+Timer:", text)
+                assert opponent, text
                 return {"mana": int(m[1]), "maximum": int(m[2]), "rate": int(m[3]),
+                        "opponent": opponent[1].strip(),
                         "tick_low": before[-1][2] if before else 0,
                         "tick_high": after[-1][2] if after else 0,
                         "callbacks": len(after)}
@@ -155,7 +158,7 @@ def run(binary):
                 assert cast["mana"] < cast["maximum"] and cast["callbacks"] > idle["callbacks"], cast
                 result[cls + "_casting"] = cast
             print("Psionicist and mindflayer casting restarts passed", flush=True)
-            # Racial PSP users must also recover after their pending event is suppressed.
+            # Racial PSP users keep their existing recovery chain through combat.
             # Pillithid's 1.25 POW/1.20 INT multipliers round these bases to 100.
             for field, value in (("race", "'Planetbound Illithid'"), ("class", "Warrior"),
                                  ("pow", "80"), ("int", "83")):
@@ -169,25 +172,43 @@ def run(binary):
             assert pending["rate"] == 80
             response = player_command(player, "hit dummy", 2)
             fighting = sample()
-            assert fighting["rate"] == 0, (response, fighting)
+            assert fighting["rate"] == 80 and "dummy" in fighting["opponent"], (response, fighting)
             time.sleep(5)
             still = sample()
-            assert still["mana"] == fighting["mana"] and still["rate"] == 0, (fighting, still)
-            assert still["callbacks"] == fighting["callbacks"], (fighting, still)
+            assert still["mana"] > fighting["mana"] and still["rate"] == 80, (fighting, still)
+            assert "dummy" in still["opponent"] and still["callbacks"] > fighting["callbacks"], still
+            result["combat"] = {"race": "Pillithid", "class": "Warrior",
+                                "entry": fighting, "ongoing": still}
+
+            # Full reserve in combat -> real casting expenditure -> fresh recovery.
+            for cls in ("Psionicist", "MindFlayer"):
+                command(staff, f"setbit char {NAME} class {cls}")
+                set_mana(full["maximum"])
+                time.sleep(1)
+                idle = sample()
+                time.sleep(.6)
+                assert sample()["callbacks"] == idle["callbacks"]
+                player.send("will 'adrenaline control'")
+                player.expect("Your mental manipulations become a reality", timeout=30)
+                cast = sample()
+                assert "dummy" in cast["opponent"] and cast["rate"] == 80, cast
+                assert cast["mana"] < cast["maximum"] and cast["callbacks"] > idle["callbacks"], cast
+                time.sleep(2)
+                recovering = sample()
+                assert "dummy" in recovering["opponent"] and recovering["mana"] > cast["mana"], recovering
+                result[cls + "_combat_casting"] = {"cast": cast, "recovering": recovering}
+            command(staff, f"setbit char {NAME} class Warrior")
+            set_mana(1000)
+            leaving = sample()
             command(staff, f"tranquilize {NAME}")
             player_command(player, "wake")
             player_command(player, "stand")
-            start = time.monotonic()
-            while True:
-                recovered = sample()
-                if recovered["mana"] > still["mana"]:
-                    break
-                assert time.monotonic() - start < 77, "periodic combat-exit restart failed"
-                time.sleep(.5)
-            result["combat"] = {"race": "Pillithid", "class": "Warrior",
-                                "entry": fighting, "blocked": still, "recovered": recovered,
-                                "restart_seconds": round(time.monotonic() - start, 3)}
-            print("Combat suppression and periodic restart passed", flush=True)
+            time.sleep(2)
+            recovered = sample()
+            assert recovered["opponent"] == "---" and recovered["rate"] == 80, recovered
+            assert recovered["mana"] > leaving["mana"], (leaving, recovered)
+            result["combat"]["exit"] = recovered
+            print("Combat entry, casting recovery and exit passed", flush=True)
 
             # Use the just-cast affect as a disposable signed-modifier fixture. A normal
             # staff character edit runs balance_affects/affect_total, the real restart path.
