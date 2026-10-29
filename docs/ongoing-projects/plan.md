@@ -817,8 +817,9 @@ restart journeys above remain open.
 
 ### Completion credit checkpoint (2026-10-29)
 
-Working branch: `branch/issue-437-quest-credit-boundaries`, based on #465 head
-`27c5ff704`. Source tracing found that `fight.c` calls `quest_kill` for every
+Review-ready PR: [#466](https://github.com/LuminariMUD/Duris/pull/466),
+implementation commit `64fb0b322`, branch `branch/issue-437-quest-credit-boundaries`,
+based on #465 head `27c5ff704`. Source tracing found that `fight.c` calls `quest_kill` for every
 matching player/group death, while the credit function omitted a quest-type
 check. Killing an ASK singleton could therefore rewrite its zero kill quota,
 pay XP and manufacture a KILL completion. Both completion functions also
