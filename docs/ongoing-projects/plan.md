@@ -998,7 +998,9 @@ The fixture now links production `isname` and ASK's actual parser. It reproduced
 the failure before the fix (`bin/tests/issue437-room-selector-before.log`).
 The helper now extracts the first name keyword before calculating the ordinal;
 racewar/visibility/height/disguise predicates remain shared and unchanged.
-This is a separate focused fix stacked on #467, discovered while preparing real
+Review-ready PR: [#468](https://github.com/LuminariMUD/Duris/pull/468), commit
+`d85f60a57`. The focused ASan/UBSan suite, server build, format/tidy/diff checks
+passed. This is a separate focused fix stacked on #467, discovered while preparing real
 quest interaction. The gameplay qualification plan is preserved in task-owned
 stash `aeb4a5d792af549a10794f035342141cd1333ef0` pending return to
 `branch/issue-437-gameplay-qualification`; apply it only after this fix is merged
