@@ -90,6 +90,8 @@ static void toggle_matrix()
 						  !strcmp(preference.name, "groupneeded") ?
 					  40 :
 					  FORGER;
+		if (!strcmp(preference.name, "who"))
+			ch.player.level = 2;
 		for (bool initial : { false, true })
 			for (const char *value : { "", "on", "off", "yes", "no", "1", "0", "true",
 						   "false", "ON", "OFF", "  on  ", "off\t", "   " })
@@ -251,7 +253,7 @@ static void toggle_matrix()
 	// Restricted characters can still switch off or recover an inherited setting.
 	for (const auto &restriction :
 	     std::vector<std::tuple<const char *, int, unsigned, int, unsigned, int>>{
-		     { "who", 0, PLR_WHO, 29, 0, RACEWAR_GOOD },
+		     { "who", 0, PLR_WHO, 1, 0, RACEWAR_GOOD },
 		     { "vicious", 0, PLR_VICIOUS, 40, CLASS_PALADIN, RACEWAR_GOOD },
 		     { "anonymous", 0, PLR_ANONYMOUS, FORGER, 0, RACEWAR_GOOD },
 		     { "nolocate", 1, PLR2_NOLOCATE, 40, 0, RACEWAR_EVIL },
@@ -321,6 +323,7 @@ static void toggle_matrix()
 	joining.player.name = joining_name;
 	joining.player.racewar = RACEWAR_GOOD;
 	joining.player.level = 40;
+	ch.player.level = 2;
 	descriptor_list = &desc;
 	for (bool who : { false, true })
 		for (bool quests : { false, true })
