@@ -81,6 +81,15 @@ int quester(P_char, P_char, int, char *)
 {
 	std::abort();
 }
+int tracks(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+int blood_stains(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+
 int board(P_obj, P_char, int, char *)
 {
 	std::abort();
@@ -643,6 +652,17 @@ int main(int argc, char **argv)
 			return actual;
 		};
 		assert(check(status::valid).map_room == 5);
+		obj_data trace{};
+		trace.R_num = 0;
+		rooms[5].contents = &trace;
+		for (auto procedure : { tracks, blood_stains })
+		{
+			objects[0].func.obj = procedure;
+			check(status::valid);
+		}
+		rooms[5].contents = nullptr;
+		objects[0].func.obj = nullptr;
+
 		check(status::needs_origin, 1, 0);
 		check(status::unavailable, 1, 999999);
 		move(&player, 2);
