@@ -377,7 +377,7 @@ void gmcp_send_quest_map(struct char_data *ch, const char *map_buf)
 		return;
 	if (!GMCP_ENABLED(ch))
 		return;
-	if (!map_buf || !*map_buf)
+	if (!map_buf)
 		return;
 	struct char_data *player = GET_PLYR(ch);
 	if (IS_NPC(player))
@@ -388,7 +388,8 @@ void gmcp_send_quest_map(struct char_data *ch, const char *map_buf)
 		return;
 
 	cJSON_AddStringToObject(json, "map", map_buf);
-	cJSON_AddNumberToObject(json, "zoneNumber", player->only.pc->quest_zone_number);
+	cJSON_AddNumberToObject(json, "zoneNumber",
+				*map_buf ? player->only.pc->quest_zone_number : 0);
 
 	json_str = cJSON_PrintUnformatted(json);
 	cJSON_Delete(json);
@@ -1173,6 +1174,16 @@ void gmcp_broadcast_channel(const char *channel, const char *sender, const char 
 /* send quest.status for bartender quests */
 void gmcp_quest_status(struct char_data *ch)
 {
+	if (!ch || !ch->desc || !GMCP_ENABLED(ch))
+		return;
+	P_char player = GET_PLYR(ch);
+	if (IS_NPC(player))
+		return;
+	gmcp_quest_status(ch, world_quest_refresh(player));
+}
+
+void gmcp_quest_status(struct char_data *ch, world_quest_target_status status)
+{
 	char *json;
 
 	if (!ch || !ch->desc)
@@ -1183,7 +1194,7 @@ void gmcp_quest_status(struct char_data *ch)
 	struct char_data *player = GET_PLYR(ch);
 	if (IS_NPC(player))
 		return;
-	json = json_build_quest_status(player);
+	json = json_build_quest_status(player, status);
 
 	if (json)
 	{
@@ -1191,16 +1202,23 @@ void gmcp_quest_status(struct char_data *ch)
 		free(json);
 	}
 
-	/* send quest map once per session if player has one purchased */
-	if (player->only.pc->quest_map_bought == 1 && !ch->desc->gmcp_quest_map_sent)
+	// Clear previously advertised directions when they are no longer proved.
+	if (status != world_quest_target_status::valid || !player->only.pc->quest_active ||
+	    player->only.pc->quest_accomplished)
 	{
-		gmcp_quest_map(ch);
+		gmcp_send_quest_map(ch, "");
+		ch->desc->gmcp_quest_map_sent = 0;
+	}
+	else if (player->only.pc->quest_map_bought == 1 && !ch->desc->gmcp_quest_map_sent)
+	{
+		gmcp_quest_map(ch, status);
 		ch->desc->gmcp_quest_map_sent = 1;
 	}
 }
 
 /* generate and send quest.map for bartender quests */
-void gmcp_quest_map(struct char_data *ch)
+
+void gmcp_quest_map(struct char_data *ch, world_quest_target_status status)
 {
 	int old_room, map_room;
 
@@ -1209,7 +1227,9 @@ void gmcp_quest_map(struct char_data *ch)
 	if (!GMCP_ENABLED(ch))
 		return;
 	struct char_data *player = GET_PLYR(ch);
-	if (IS_NPC(player) || player->only.pc->quest_map_bought != 1)
+	if (IS_NPC(player) || status != world_quest_target_status::valid ||
+	    !player->only.pc->quest_active || player->only.pc->quest_replacement_due ||
+	    player->only.pc->quest_accomplished || player->only.pc->quest_map_bought != 1)
 		return;
 
 	map_room = real_room(player->only.pc->quest_map_room);

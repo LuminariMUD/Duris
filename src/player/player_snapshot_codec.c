@@ -686,7 +686,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		const uint32_t wire_version = snapshot.schema_version;
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
 		    wire_version == 7 || wire_version == 8 || wire_version == 9 ||
-		    wire_version == 10 || wire_version == 11)
+		    wire_version == 10 || wire_version == 11 || wire_version == 12)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -700,7 +700,8 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		const auto last_status_field =
 			wire_version < 8  ? player_status_field::last_ip :
 			wire_version < 10 ? player_status_field::learned_flight_stops :
-					    player_status_field::divine_boon_delivery_seq;
+			wire_version < 13 ? player_status_field::divine_boon_delivery_seq :
+					    player_status_field::quest_replacement_due;
 		const auto last_string_field =
 			wire_version < 9 ? player_status_string_field::poof_out :
 					   player_status_string_field::last_read_news_hash;
@@ -853,6 +854,15 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 				return player_snapshot_codec_result::limit_exceeded;
 			snapshot.status_integers.push_back(
 				{ player_status_field::divine_boon_delivery_seq, 0, 0, true });
+		}
+		if (wire_version < 13 && (snapshot.components & PLAYER_COMPONENT_STATUS))
+		{
+			if (snapshot.status_integers.size() > PLAYER_SNAPSHOT_MAX_ROWS - 2)
+				return player_snapshot_codec_result::limit_exceeded;
+			snapshot.status_integers.push_back(
+				{ player_status_field::quest_origin_room, 0, 0, false });
+			snapshot.status_integers.push_back(
+				{ player_status_field::quest_replacement_due, 0, 0, false });
 		}
 		*snapshot_out = std::move(snapshot);
 	}

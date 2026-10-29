@@ -24,12 +24,7 @@ bool ac_can_see(P_char, P_char target, bool) { return target!=hidden; }
 int is_introd(P_char target, P_char) { return target==introduced; }
 bool has_innate(P_char, int) { return false; }
 bool racewar(P_char a, P_char b) { return a->player.racewar!=b->player.racewar; }
-bool isname(const char *word, const char *names) {
-    if (!word || !names) return 0;
-    std::istringstream input(names); std::string token;
-    while(input>>token) if(!strcasecmp(word,token.c_str())) return 1;
-    return 0;
-}
+void logit(const char *, const char *, ...) {}
 char *one_argument(const char *text, char *word) {
     while(*text==' ') ++text;
     while(*text && *text!=' ') *word++=*text++;
@@ -82,11 +77,29 @@ int main() {
     enemy.in_room=1;
     assert(!get_char_room_target(&viewer,&enemy,selector,sizeof(selector)));
     assert(!get_char_room_target(&viewer,&ally,selector,2));
+    // A selector is sent through an ordinary command: ASK separates the
+    // target from its message at the first space, not at the alias-list end.
+    char_data captain{}, patrol{};
+    for (P_char guard : {&captain, &patrol}) {
+        guard->player.level=56; guard->player.race=RACE_HUMAN;
+        guard->player.racewar=RACEWAR_EVIL;
+        SET_BIT(guard->specials.act,ACT_ISNPC);
+    }
+    captain.player.name=const_cast<char *>("guard captain");
+    patrol.player.name=const_cast<char *>("guard patrol");
+    patrol.next_in_room=&captain; captain.next_in_room=&viewer; viewer.next_in_room=nullptr;
+    rooms[0].people=&patrol;
+    assert(get_char_room_target(&viewer,&captain,selector,sizeof(selector)));
+    char command[256], who[128], message[256];
+    snprintf(command,sizeof(command),"%s message",selector);
+    half_chop(command,who,message);
+    assert(!strcmp(message,"message"));
+    assert(!strcmp(who,"2.guard") && get_char_room_vis(&viewer,who)==&captain);
     puts("native room selectors: racewar, same-side names, NPC/PC ordinal collisions, movement, visibility, height and disguise passed");
 }
 '''
-native = "\n".join(extract_function("handler.c", signature) for signature in
-                    ("static bool room_target_matches(", "bool get_char_room_target(", "P_char get_char_room_vis("))
+native = extract_function("interp.c", "void half_chop(") + "\n" + "\n".join(extract_function("handler.c", signature) for signature in
+                    ("bool isname(const char *str, const char *namelist)", "static bool room_target_matches(", "bool get_char_room_target(", "P_char get_char_room_vis("))
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="room-selectors-", dir=ROOT / "bin/tests") as directory:
     path, binary = Path(directory) / "test.cpp", Path(directory) / "test"

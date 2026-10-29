@@ -28,9 +28,18 @@ done
 [[ "$ready" == 1 ]]
 "${MYSQL[@]}" -e "CREATE DATABASE $DB_NAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/bootstrap_multithread_safe.sql"
+"${MYSQL[@]}" "$DB_NAME" -e "INSERT INTO player_data(pid,name) VALUES(99,'LegacyQuest');"
 for migration in "$ROOT"/migrations/immutable/*.sql; do
     "${MYSQL[@]}" "$DB_NAME" < "$migration"
 done
+# Legacy defaults and replay preserve a partially completed replacement entitlement.
+"$ROOT/migrations/immutable/0055_world_quest_recovery.sh"
+[[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT CONCAT(quest_origin_room,':',quest_replacement_due) FROM player_data WHERE pid=99") == 0:0 ]]
+"${MYSQL[@]}" "$DB_NAME" -e "UPDATE player_data SET quest_origin_room=16633,quest_replacement_due=1,quest_kill_how_many=4,quest_kill_original=7 WHERE pid=99;"
+"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0055_world_quest_recovery.sql"
+"$ROOT/migrations/immutable/0055_world_quest_recovery.sh"
+[[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT CONCAT(quest_origin_room,':',quest_replacement_due,':',quest_kill_how_many,':',quest_kill_original) FROM player_data WHERE pid=99") == 16633:1:4:7 ]]
+"${MYSQL[@]}" "$DB_NAME" -e "DELETE FROM player_data WHERE pid=99;"
 # The audit migration is additive and rerunnable, and its verifier checks it.
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0033_item_owner_audit.sql"
 "$ROOT/migrations/immutable/0033_item_owner_audit.sh"
