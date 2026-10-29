@@ -29,6 +29,26 @@ or the remaining queue. Existing ownership revisions, operation IDs, retries,
 replay receipts, command/prompt gates, and snapshot save ordering remain authority.
 No new worker, persistence format, database migration or recovery queue is added.
 
+## Ranger and Rogue archery
+
+Every normal Ranger and Rogue receives one reed longbow (1118), one small
+quiver (1116), and ten thin arrows (1117), independent of race and creation
+availability overrides. The shared class addition replaces the old half-elf and
+wood-elf Ranger entries, so those kits contain one package. Quiver and arrow
+allowances include Rogue alongside their existing Ranger/Reaver allowance;
+the bow, quiver and arrows all use ammunition family 1. Melee gear and lockpicks
+are preserved. Separate-class Thieves and Assassins keep their existing kits.
+
+Ordinary empty-inventory re-grants use this same normal package, including
+ordinary re-grants during Chaos. Initial Chaos creation and explicit `chaos kit`
+restores use both generated profiles' level-56 package: longbow 25753, quiver
+25757, and ten arrows 25758. The bow and arrows start in the bag; the usable
+quiver replaces the sheath in the quiver slot. Players can switch from their
+retained melee weapons to archery. The Chaos quiver starts closed; remove and
+open it before loading arrows from the bag, then wear it again. These grants retain existing save and
+ownership handling. No retroactive items, flag rewrites or skill changes apply
+to characters who already have equipment.
+
 ## Transient gear and ownership
 
 `ITEM_TRANSIENT` controls dissolution after dropping. `ITEM_NORENT` remains a
@@ -92,9 +112,13 @@ Focused tests are automatically discovered by the normal regression runner:
   Exercises real string setters/freeing and heap retirement, melee/enchantment
   death cleanup, repeated mark expiry, room/corpse capacity and family checks,
   and blocked-then-unblocked volleys in both room arrangements.
-- `test_starter_arrow_journey.py`: fresh legacy Ranger grants and actual
+- `test_newbie_kit_suitability.py`: actual normal preparation and Chaos archery
+  admission/placement for every race ID, both classes, three alignments and both
+  Chaos profiles under ASan/UBSan; checks family, quantity and wear slots.
+- `test_starter_arrow_journey.py`: fresh Ranger/Rogue grants and actual
   fire/event/gather commands through Telnet on a disposable minimal flat-file
-  server, with saved UID, condition, quiver count and weight checks. The fixture
+  server, with saved UID, condition, quiver count and weight checks, plus
+  save/restart/relogin. Includes both Chaos profiles and normal Human kits. The fixture
   explicitly enables historical races/classes; it is not a live roster claim.
   Commands wait for their own response before accepting a prompt. A socket-pair
   control checks buffered and arriving notification prompts; notifications remain

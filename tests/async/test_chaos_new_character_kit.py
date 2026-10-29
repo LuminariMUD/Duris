@@ -141,7 +141,7 @@ for body in optional_matches:
 # explicitly allowed quest/no-sell markers, but never artifact/Ioun/unique or
 # race restrictions.
 allowed_fundamental_exclusions = {"item_transient", "item_norent", "item_noshow", "item_nosell", "quest_item"}
-fundamental_vnums = {7, 83336, 88315, 138533, 138534, 138535, 138536, 138537, 138538, 1734, 1736, 1737, 1738, 28971, 33705}
+fundamental_vnums = {25753, 25758, 7, 83336, 88315, 138533, 138534, 138535, 138536, 138537, 138538, 1734, 1736, 1737, 1738, 28971, 33705}
 for array_name, pairs in parsed_arrays.items():
     profile = "standard" if "_standard_" in array_name else "enhanceable"
     class_key = array_name.split(f"chaos_eq_{profile}_", 1)[1]
@@ -159,6 +159,17 @@ for array_name, pairs in parsed_arrays.items():
         else:
             assert vnum in fundamental_vnums, (array_name, vnum)
             assert not [reason for reason in reasons if reason not in allowed_fundamental_exclusions], (array_name, vnum, reasons)
+
+# Keep the real archery family, quantity and melee weapons in both profiles.
+for profile in ("standard", "enhanceable"):
+    for role in ("ranger", "rogue"):
+        items = parsed_arrays[f"chaos_eq_{profile}_{role}"]
+        assert items.count((23, 25757)) == 1
+        assert items.count((-1, 25753)) == 1
+        assert items.count((-1, 25758)) == 10
+        assert all(any(slot == weapon_slot for slot, _ in items) for weapon_slot in (16, 17))
+        assert objects[25753].values[3] == objects[25757].values[2] == objects[25758].values[3]
+        assert objects[25757].values[0] >= 10
 
 # Profile table contains the unused zero row plus one row per class.
 profiles = DATA.split("static const chaos_eq_profile chaos_eq_profiles[CLASS_COUNT + 1][2] = {", 1)[1].split("};", 1)[0]

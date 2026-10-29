@@ -264,11 +264,11 @@ def assert_saved_kit(inspector: pathlib.Path, state_root: pathlib.Path, class_na
     return books
 
 
-def class_kit_vnums(class_name: str) -> set[int]:
+def class_kit_vnums(class_name: str, profile: str = "standard") -> set[int]:
     """Return the class profile plus shared support fixture prototypes."""
     data = DATA_HEADER.read_text(encoding="utf-8", errors="replace")
-    values: set[int] = {96443}
-    for array_name in (f"chaos_eq_standard_{class_name.lower()}", "chaos_eq_standard_optional_slots", "chaos_eq_support_consumables"):
+    values: set[int] = {96443, 99061}  # Centaur footwear selected by the runtime.
+    for array_name in (f"chaos_eq_{profile}_{class_name.lower()}", f"chaos_eq_{profile}_optional_slots", "chaos_eq_support_consumables"):
         body = re.search(
             rf"static const chaos_kit_item {array_name}\[\] = \{{(.*?)\}};", data, re.S
         )
@@ -289,7 +289,7 @@ def class_kit_vnums(class_name: str) -> set[int]:
     return values
 
 
-def install_chaos_objects(run_root: pathlib.Path, class_name: str) -> None:
+def install_chaos_objects(run_root: pathlib.Path, class_name: str, profile: str = "standard") -> None:
     """Install the selected Chaos kit into a disposable minimal world."""
     world_objects = world_object_text()
     mini_path = run_root / "areas_mini/mini.obj"
@@ -324,7 +324,7 @@ A
 """,
         }
     )
-    for vnum in sorted(class_kit_vnums(class_name)):
+    for vnum in sorted(class_kit_vnums(class_name, profile)):
         if vnum in entries:
             continue
         entry = re.search(
@@ -342,7 +342,7 @@ A
     mini_path.write_text("".join(entries[vnum] for vnum in sorted(entries)) + "$~\n")
 
 
-def create_chaos_character(client: MudClient, class_name: str = "Warrior") -> None:
+def create_chaos_character(client: MudClient, class_name: str = "Warrior", alignment: str = "g") -> None:
     """Drive synthetic character creation through the selected standard kit."""
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
@@ -379,7 +379,7 @@ def create_chaos_character(client: MudClient, class_name: str = "Warrior") -> No
     client.send(class_name.lower())
     selection, _ = client.expect_any(("Alignment only affects", "Hometown Selection"))
     if selection == "Alignment only affects":
-        client.send("g")
+        client.send(alignment)
         client.expect("Hometown Selection")
     client.expect("Your selection")
     client.send("p")

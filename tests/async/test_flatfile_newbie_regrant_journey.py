@@ -8,6 +8,7 @@ import re
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -165,9 +166,10 @@ def run(binary, chaos, class_name="Warrior"):
             try:
                 actor = journey.MudClient(plain)
                 if chaos:
-                    chaos_kit.create_chaos_character(actor, class_name)
+                    chaos_kit.create_chaos_character(actor, class_name, "n" if class_name == "Rogue" else "g")
                 else:
-                    journey.create_character(actor, expected_room=None, class_name=class_name.lower())
+                    journey.create_character(actor, expected_room=None, class_name=class_name.lower(),
+                                             alignment="n" if class_name == "Rogue" else "g")
                 actor.expect("Pos: standing >")
                 initial = owned(state)
                 journey.require(len(initial) > 10, "fixture did not grant a representative kit")
@@ -243,6 +245,9 @@ def run(binary, chaos, class_name="Warrior"):
                         expected = composition
                     if not chaos:
                         journey.require(composition == Counter(initial.values()), "regrant changed first-login contents")
+                    if class_name in ("Ranger", "Rogue"):
+                        journey.require(composition[1116] == 1 and composition[1117] == 10 and
+                                        composition[1118] == 1, f"incomplete ordinary archery regrant: {composition}")
                     journey.require(composition == expected, "repeated grant changed kit contents")
                     saved = saved_items(inspector, state)
                     journey.require(sum(line.startswith("ITEM ") for line in saved) == len(complete),
@@ -297,7 +302,8 @@ def run(binary, chaos, class_name="Warrior"):
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="newbie-regrant-build-") as build:
-        executable = journey.build_flatfile_server(Path(build))
+        executable = (Path(sys.argv[1]).resolve() if len(sys.argv) > 1
+                      else journey.build_flatfile_server(Path(build)))
         for chaos_mode in (False, True):
-            for role in ("Warrior", "Sorcerer"):
+            for role in (sys.argv[2:] or ("Warrior", "Sorcerer", "Ranger", "Rogue")):
                 run(executable, chaos_mode, role)

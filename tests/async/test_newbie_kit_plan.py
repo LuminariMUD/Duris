@@ -41,7 +41,11 @@ legacy_extra = {name: list(items) for name, items in extra.items()}
 for name in ('minotaur_good_eq', 'minotaur_evil_eq'):
     assert all(vnum not in extra[name] for vnum in (108, 109, 111))
     legacy_extra[name] += [108, 109, 111]
-assert table_digest(tables, legacy_extra) == '8a5363de3c01471b06dd012039a4c4b688db8ab489826a03b288e47be76499c1', 'legacy kit data changed'
+legacy_tables = {key: list(items) for key, items in tables.items()}
+for race in ('HALFELF', 'WOODELF'):
+    key = (values['RACE_' + race], values['CLASS_RANGER'])
+    legacy_tables[key] += [1116] + [1117] * 10 + [1118]
+assert table_digest(legacy_tables, legacy_extra) == '8a5363de3c01471b06dd012039a4c4b688db8ab489826a03b288e47be76499c1', 'legacy kit data changed'
 
 fallback = {
     'PSIONICIST': ('PILLITHID', 'PSIONICIST'), 'MINDFLAYER': ('PILLITHID', 'PSIONICIST'),
@@ -68,6 +72,8 @@ def oracle(race, cls, align, all_classes, additions):
         items += class_items
     elif cls == values['CLASS_BLIGHTER']:
         items += extra['blighter_stuff']
+    if cls in (values['CLASS_RANGER'], values['CLASS_ROGUE']):
+        items += [1116] + [1117] * 10 + [1118]
     result = [(v, 1) for v in items]
     if additions:
         result += [(29319, 0)] + [(393, 0)] * 4 + [(458, 0)]
