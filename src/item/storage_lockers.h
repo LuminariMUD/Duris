@@ -124,7 +124,7 @@ class LockerChest
 		: m_chestKeyword(keyword)
 		, m_chestDescText(prettyDesc)
 		, m_pNextInChain(NULL)
-		, m_pChestObject(NULL) {};
+		, m_pChestObject(NULL){};
 
 	P_obj CreateChestObject(void);
 
@@ -149,7 +149,7 @@ class UnsortedChest : public LockerChest
 
     protected:
 	UnsortedChest(void)
-		: LockerChest("unsorted", "that are unsorted") {};
+		: LockerChest("unsorted", "that are unsorted"){};
 };
 
 class EqSlotChest : public LockerChest
@@ -167,7 +167,7 @@ class EqSlotChest : public LockerChest
     protected:
 	EqSlotChest(unsigned int eqSlotBit, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_eqBit(eqSlotBit) {};
+		, m_eqBit(eqSlotBit){};
 
     private:
 	unsigned int m_eqBit;
@@ -190,7 +190,7 @@ class EqWearChest : public LockerChest
     protected:
 	EqWearChest(unsigned wearClass, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_wearClass(wearClass) {};
+		, m_wearClass(wearClass){};
 
     private:
 	unsigned m_wearClass;
@@ -206,7 +206,7 @@ class EqTypeChest : public LockerChest
     protected:
 	EqTypeChest(::byte eqType, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_eqType(eqType) {};
+		, m_eqType(eqType){};
 
     private:
 	::byte m_eqType;
@@ -222,7 +222,7 @@ class EqApplyChest : public LockerChest
     protected:
 	EqApplyChest(::byte applyType, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
-		, m_applyType(applyType) {};
+		, m_applyType(applyType){};
 
     private:
 	::byte m_applyType;
@@ -239,7 +239,7 @@ class EqAffectChest : public LockerChest
 	EqAffectChest(int b, int bv, const char *keyword, const char *prettyDesc)
 		: LockerChest(keyword, prettyDesc)
 		, m_bitVector(bv)
-		, m_bit(b) {};
+		, m_bit(b){};
 
     private:
 	int m_bitVector;
@@ -287,7 +287,7 @@ class ComboChest : public LockerChest
     protected:
 	ComboChest(LockerChest *pChestList)
 		: LockerChest("custom", "that you custom specified")
-		, m_LockerChests(pChestList) {};
+		, m_LockerChests(pChestList){};
 	~ComboChest(void);
 
 	LockerChest *m_LockerChests;
