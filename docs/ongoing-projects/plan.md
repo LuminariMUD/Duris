@@ -1,12 +1,18 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **implementation and local qualification complete; final review PR preparation in progress**. Updated 2026-10-29.
+Status: **implementation and local qualification complete; review-ready [PR #470](https://github.com/LuminariMUD/Duris/pull/470)**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Stack root:
 `branch/issue-437-bartender-quest-routes`. Current continuation branch:
 `branch/issue-437-gameplay-qualification` (based on #469 / `95a6077bd`).
 Source baseline: `master` / `origin/master` at
 `9632f29804687ccf049ddf7a59a5ae16878e0583`.
+
+All five steps are complete. The [final qualification record](#complete-gameplay-and-loaded-world-qualification-2026-10-29)
+is the current handoff; earlier component checkpoints are historical and their
+remaining-work notes are superseded by it. PR #470 is stacked on #469, with
+implementation commit `f5ebb5d3d`. The stack remains open for external review.
+
 
 The planning baseline publishes the plan and links the branch. Implementation
 progress and review boundaries are recorded below. The prior #428 plan and
@@ -981,7 +987,7 @@ The branch is linked to #437 through GitHub's Development association, verified
 with `gh issue develop 437 --repo LuminariMUD/Duris --list`. #448 is an already
 landed reference, and #4/#37 are outside this branch's scope.
 
-## Estimate for me to implement
+## Original planning estimate
 
 **12-18 hours of my active implementation and local validation time**, broken
 down in the five steps above. Most effort is in truthful route/target checks,
@@ -1048,9 +1054,10 @@ selector/recovery/command scenarios, server build, format and diff checks.
 ### Complete gameplay and loaded-world qualification (2026-10-29)
 
 All five implementation steps and the proof/acceptance groups above now have
-local evidence. The only remaining workflow work is publishing the final
-qualification PR on `branch/issue-437-gameplay-qualification`, stacked on #469.
-External review and production deployment remain outside this implementation.
+local evidence. [PR #470](https://github.com/LuminariMUD/Duris/pull/470) is
+review-ready on `branch/issue-437-gameplay-qualification`, stacked on #469;
+implementation commit `f5ebb5d3d` is pushed. No required implementation work
+remains. External review and production deployment remain outside this implementation.
 
 The maintained dual-backend runner now follows production route links with
 ordinary directions, unlocked-door opening and posture changes. It uses the
