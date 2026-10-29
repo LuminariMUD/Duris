@@ -15,6 +15,7 @@
 #include "player/player_snapshot_repository.h"
 
 #include "core/defines.h"
+#include "core/files.h"
 #include "economy/collector_eligibility.h"
 #include "economy/collector_repository.h"
 #include "economy/divine_trade_result.h"
@@ -574,11 +575,12 @@ struct claimed_graph
 query_result claim_graph(MYSQL *connection, const item_owner_identity &owner,
 			 const std::vector<player_item_snapshot> &items,
 			 std::vector<claimed_graph> *claims,
-			 std::vector<player_item_snapshot> *written)
+			 std::vector<player_item_snapshot> *written, bool rent_keys = false)
 {
 	claimed_graph claim;
 	claim.owner = owner;
-	const unsigned int failed = claim_items(connection, owner, items, &claim.outcome);
+	const unsigned int failed =
+		claim_items(connection, owner, items, &claim.outcome, rent_keys);
 	if (failed)
 		return { false, failed };
 	*written = item_claim_written_items(items, claim.outcome.left_out);
@@ -651,7 +653,8 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 	if (!result.ok)
 		return result;
 	std::vector<player_item_snapshot> written;
-	result = claim_graph(connection, owner, snapshot.items, claims, &written);
+	result = claim_graph(connection, owner, snapshot.items, claims, &written,
+			     snapshot.save_intent == RENT_INN);
 	if (!result.ok)
 		return result;
 	// Replace active roots while retained source components keep their original IDs.

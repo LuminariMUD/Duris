@@ -1430,6 +1430,50 @@ int main(int argc, char **argv)
 		std::cout << item.object_uid << '\n';
 		return 0;
 	}
+	if (argc == 4 && std::string(argv[2]) == "norent-inspect")
+	{
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_load(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			"rent snapshot: " + error);
+		std::vector<flatfile_item_ownership_record> records;
+		require(flatfile_item_repository_read_population(argv[1], &records, &error) ==
+				flatfile_item_repository_result::ok,
+			"rent custody: " + error);
+		std::cout << "{\"revision\":" << snapshot.revision
+			  << ",\"intent\":" << snapshot.save_intent << ",\"items\":[";
+		bool first = true;
+		for (const auto &entry : snapshot.items)
+		{
+			if (!first)
+				std::cout << ',';
+			first = false;
+			const uint64_t parent =
+				entry.parent_index >= 0 ?
+					snapshot.items[entry.parent_index].object_uid :
+					0;
+			std::cout << '[' << entry.object_uid << ',' << entry.vnum << ','
+				  << entry.extra_flags << ',' << entry.equipment_slot << ','
+				  << parent << ']';
+		}
+		std::cout << "],\"keys\":[";
+		first = true;
+		for (const auto &entry : records)
+			if (entry.vnum == 40401)
+			{
+				if (!first)
+					std::cout << ',';
+				first = false;
+				std::cout << '[' << entry.item_uid << ','
+					  << static_cast<unsigned>(entry.state) << ','
+					  << static_cast<unsigned>(entry.owner.type) << ','
+					  << entry.owner.id << ',' << entry.root_item_uid << ','
+					  << entry.parent_item_uid << ']';
+			}
+		std::cout << "]}\n";
+		return 0;
+	}
 	if (argc == 4 && std::string(argv[2]) == "inspect")
 	{
 		inspect_authority(argv[1], std::stoi(argv[3]));

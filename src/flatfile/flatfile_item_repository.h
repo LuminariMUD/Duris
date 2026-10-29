@@ -115,6 +115,8 @@ struct flatfile_item_claim
 	item_claim_outcome outcome;
 	// A new player's first save records the owner even when it holds nothing.
 	bool establish = false;
+	// Set only by an incoming player RENT_INN item component.
+	bool rent_keys = false;
 };
 
 struct flatfile_item_claim_audit
