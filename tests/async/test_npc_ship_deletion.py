@@ -40,7 +40,9 @@ FUNCTIONS = "\n\n".join(
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
         ("ship_npc_ai.c", ("NPCShipAI::NPCShipAI(P_ship s, P_char ch)",
                            "void NPCShipAI::escort_attacked_by(P_ship attacker)",)),
-        ("ship_shop.c", ("int list_hulls(P_char ch, P_ship ship, int owned)",)),
+        ("ship_shop.c", ("int list_hulls(P_char ch, P_ship ship, int owned)",
+                         "static int summon_ship_cost(P_ship ship)",
+                         "int summon_ship(P_char ch, P_ship ship, bool time_only)")),
         ("actwiz.c", ("static void purge_drop_item(", "void do_purge(P_char ch, char *argument, int /*cmd*/)")),
     )
     for signature in signatures
@@ -107,6 +109,7 @@ P_index obj_index = objects;
 ShipObjHash shipObjHash;
 P_ship cyrics_revenge = nullptr;
 int davy_jones_locker_rnum = 1;
+int ship_transit_rnum = 31;
 const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._hull = 100, ._mxsail = 100, ._mxspeed = 20, ._speedgain = 1 }};
 const ShipArcProperties ship_arc_properties[MAXSHIPCLASS] = {};
 const WeaponData weapon_data[MAXWEAPON] = {{ .max_range = 50, .reload_time = 2, .volley_time = 3 }};
@@ -236,12 +239,27 @@ int damage_hull(P_ship, P_ship, int, int, int) { return TRUE; }
 int damage_sail(P_ship, P_ship, int) { return TRUE; }
 void stun_all_in_ship(P_ship, int) {}
 static VolleyData scheduled_volley;
+static int scheduled_summons;
+void summon_ship_event(P_char, P_char, P_obj, void *) { abort(); }
 nevent_schedule_result add_event(event_func callback, int, P_char, P_char, P_obj, int,
                                   const void *data, int size) {
-    assert(callback == volley_hit_event && size == sizeof(scheduled_volley));
-    memcpy(&scheduled_volley, data, size);
+    if (callback == summon_ship_event) {
+        assert(!strcmp(static_cast<const char *>(data), "Captain 5"));
+        ++scheduled_summons;
+    } else {
+        assert(callback == volley_hit_event && size == sizeof(scheduled_volley));
+        memcpy(&scheduled_volley, data, size);
+    }
     return {nevent_schedule_status::scheduled, {}};
 }
+int is_Raidable(P_char, char *, int) { return TRUE; }
+void command_interpreter(P_char, char *) { abort(); }
+int SUB_MONEY(P_char ch, int amount, int) { GET_COPPER(ch) -= amount; return 0; }
+bool ocean_pvp_state() { return false; }
+int get_maxspeed_without_cargo(P_ship) { return 20; }
+void clear_cargo(P_ship) {}
+void kick_everyone_off(P_ship) {}
+int ne_event_time(P_nevent) { return 0; }
 void land_ship(P_ship) { abort(); }
 void crash_land(P_ship) { abort(); }
 int dice(int, int) { return 0; }
@@ -349,7 +367,11 @@ static void check_target_recovery() {
     target->flags = LOADED; same_map = true;
     // With no captain aboard, a nearby idle lock must eventually stand down.
     char_data captain{};
+    pc_only_data captain_pc{};
+    captain.only.pc = &captain_pc;
     captain.player.name = const_cast<char *>("Captain");
+    captain.in_room = 5; // Recovered captain is ashore, without bridge access.
+    GET_COPPER(&captain) = 10000;
     map_zone[0].flags = ZONE_MAP;
     contact_count = 1;
     ship->target = nullptr;
@@ -383,6 +405,16 @@ static void check_target_recovery() {
     assert(escort->target == target);
     ship_activity();
     assert(escort->target == target && escort->timer[T_BSTATION] == BSTATION);
+    while (ship->timer[T_BSTATION] > 1) ship_activity();
+    output_text.clear();
+    assert(summon_ship(&captain, ship, false));
+    assert(output_text.find("too busy") != std::string::npos && scheduled_summons == 0 &&
+           GET_MONEY(&captain) == 10000);
+    ship_activity();
+    assert(ship->timer[T_BSTATION] == 0);
+    assert(summon_ship(&captain, ship, false));
+    assert(scheduled_summons == 1 && IS_SET(ship->flags, SUMMONED) &&
+           ship->shipobj->loc.room == ship_transit_rnum && GET_MONEY(&captain) == 5000);
     remove_runtime(escort); remove_runtime(ship); remove_runtime(target);
     puts("PASS target contact boundaries, idle recovery, cooldown and NPC acquisition");
 }
