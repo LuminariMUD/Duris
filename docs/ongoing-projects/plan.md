@@ -1,352 +1,291 @@
-# Issue #428: keep missed starter arrows recoverable
+# Issue #444: preserve denominations in physical coin transfers
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-28.
-Issue: [Duris #428](https://github.com/LuminariMUD/Duris/issues/428).
-Owner: `moshehbenavraham`.
-Branch: `branch/issue-428-starter-arrow-decay`, based on `master` at
-`8e95eb5dddfb6c9dddd7765921ded420696369f6`.
+Status: **planned; implementation not started**. Updated 2026-10-30.
+Issue: [Duris #444](https://github.com/LuminariMUD/Duris/issues/444).
+Branch: [`branch/issue-444-coin-denominations`](https://github.com/LuminariMUD/Duris/tree/branch/issue-444-coin-denominations).
+Source baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-444-coin-denominations`.
 
-The prior Conjurer plan is preserved byte-for-byte in
-[plan-issue-215.md](plan-issue-215.md). The earlier telemetry delivery plan is
-[plan-issue-59.md](plan-issue-59.md).
-
-## Selection and availability
-
-Reviewed the complete open issue lists for this project on 2026-10-28:
-16 GitHub issues in `LuminariMUD/Duris`, 16 GitLab issues/work items in the
-`max757/duris` mirror, and no additional open GitLab tasks. Cross-checked four
-open GitHub pull requests and zero open GitLab merge requests. No matching
-arrow-fix PR or existing development branch was found for #428 before pickup.
-The mirror's open records date from October 3-8 and require comparison with
-current GitHub master; an open mirror record alone does not establish unfinished
-implementation.
-
-Choose #428 for confirmed player impact, a directly traced cause, no existing
-assignee or competing PR, a small production change, and concrete executable
-acceptance criteria. It also removes a defect that would otherwise be spread by
-starter-kit enhancement #429, without taking on that enhancement.
-
-Other GitHub candidates were considered:
-
-- #439 is a more serious potential locker-state/lifetime failure, already
-  assigned and investigated. It needs coordinated extraction, idle, descriptor,
-  save/retry and shutdown work. #428 is the more bounded immediately deliverable
-  repair; this does not downgrade #439's importance.
-- #421 is a confirmed pet/group-output bug, but overlaps active terminal/group
-  edits in the original checkout. Do not duplicate that work.
-- #419 needs intentional key disposal coordinated with durable custody and
-  backend recovery. #418 needs a consistent key/relocking policy. #420 explicitly
-  awaits the intended Reflection-versus-summon-capacity rule.
-- #438 is a small help-display defect, currently labelled enhancement; losing
-  usable starter ammunition has greater direct gameplay impact.
-- #429, #436, #437 and #214 are enhancements or gameplay policy/balance work.
-  #97 is a broad readiness checklist. #38, #52, #65 and #185 are future-labelled
-  or broader efforts; #52 also has its own assigned worktree.
-
-All 16 GitLab records were screened: #8, #9, #12, #15, #16, #19, #20, #21,
-#22, #23, #24, #25, #26, #27, #28 and #29. They cover older display/shop fixes,
-connection limits, flight/quantity-purchase features, capacity and lifecycle
-qualification, security/site maintenance, telemetry, trophies and builder work.
-For the bug-labelled alternatives, current source already has the deadlines and
-bounded subprocess diagnostics described as missing in #22; the reporting URL
-and libcurl baseline have advanced since #21; README repository links have
-advanced since #25. Other visible drift includes newer DOMPurify in #9 and
-reserved Studio tags in #28. These observations are not a claim that every
-acceptance criterion on those records is complete. No mirror item was changed
-or closed, and no matching mirror arrow issue was found to link.
+This plan follows the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
+The previous shared plan, including its #428/#445 qualification and review record,
+is preserved byte-for-byte as [plan-issue-428.md](plan-issue-428.md).
+The authorized deliverable for this branch checkpoint is this committed/pushed
+plan and issue association; the implementation steps below remain future work.
 
 ## Outcome
 
-A newly granted regular legacy starter missile that misses in an ordinary dry
-room must survive scheduled event processing and remain recoverable through its
-owner's normal `gather` command. Cover both a same-room miss and a miss landing
-in the adjacent room. Preserve arrow identity, condition, quiver count and
-encumbrance across fire/gather cycles.
+Physical coins retain their copper, silver, gold and platinum counts through
+pickup, explicit give, put, drop and rejected-transfer refunds. A player with
+40 gold can retrieve those coins from a bag and give 10 gold four times without
+an intervening exchange. Each successful transfer removes exactly the selected
+coins, leaves unrelated denominations unchanged and delivers exactly those
+coins to the recipient or pile. Failed transfers leave the source intact or
+restore the exact debited vector, with no duplicate credit or success message.
 
-Preserve ordinary ammunition, successful-hit wear/scrapping, returning/cursed
-arrows, other transient gear and existing starter-grant publication/ownership.
+Preserve the existing command restrictions, NPC behavior except denomination
+conversion, staff minting exception, overflow refusals, wallet revision/dirty
+state, client feedback and save ordering. Rewards carrying an explicit coin
+vector use the same semantics; value-only rewards retain their existing meaning.
+Saved wallets and persistent containers must retain their exact counts after
+relog and server restart.
 
-## Non-goals and explicit compatibility decisions
+## Source findings and limits
 
-- Do not implement #429, change class/race kit access, counts, admission masks,
-  Chaos kits, damage, accuracy, terrain rules or quiver capacity.
-- Keep the starter bow's added transient flag and the quiver's prototype
-  transient flag. Deliberately dropping either retains today's dissolution
-  behavior; neither must land on the floor for an ordinary missed shot.
-- Exempt missiles only from the flag added by this grant path. Do not clear a
-  transient flag authored on a prototype or supplied by another legitimate path.
-- Previously granted arrows retain their saved flags. This fix applies to new
-  materializations, including later grants through the same legacy path; it does
-  not repair old instances or resurrect arrows already destroyed. Document that
-  limit. Do not infer origin from VNUM or the `newbie` keyword, rewrite saves,
-  add load-time normalization, or perform a production inventory migration.
-- No global decay exception, firing-time flag rewrite, schema, setting, new
-  service, generic policy helper or grant-coordinator refactor is needed.
-- The owner's follow-up authorizes implementation, local qualification,
-  documentation, commit/push and a PR on this branch. Merge and production
-  deployment remain subsequent work.
+These findings were checked in the worktree above, rather than accepted from
+issue #444's older `8e95eb5dd` source links. Line numbers refer to this baseline.
 
-## Source evidence and files
+- `src/cmd/actobj.c:310-366`: `credit_coins()` accepts a copper-equivalent value;
+  PCs use `currency_transaction_submit_wallet_value()` and NPC/no-PID fallbacks
+  use `ADD_MONEY()`. `take_coins()` has the exact selected four-element `got`
+  array but reduces it to value before credit. Its source-pile subtraction,
+  relabelling, messages and corpse write happen only after credit succeeds.
+- `src/cmd/actobj.c:569-605`: ordinary `get()` has a second money route which
+  also discards the vector. Both routes must change; fixing `take_coins()` alone
+  misses direct pickup. Keep its 64-bit total for logging, not as wallet input.
+- `src/cmd/actobj.c:2600-2972`: `coin_debit_context.amount` already holds the
+  exact vector, and put/drop already publish that vector. The loss happens in
+  `submit_coin_debit()` through `SUB_MONEY()`, in `begin_coin_give_credit()`
+  through value credit, and in `refund_committed_coin_debit()` through value
+  refund. No new transfer context or durable transaction system is needed.
+- `src/economy/currency_value.h:7-45` and `src/core/utility.c:2247-2300,2363-2379`:
+  positive value credit canonicalizes only the incoming amount. Thus 35 existing
+  gold plus 5 gold worth stays 40 gold, while 40 gold worth credited to an empty
+  purse becomes 4 platinum. Negative PC value spending canonicalizes the entire
+  remainder: 40 gold minus 10 gold worth becomes 3 platinum. These are source
+  conclusions; the historical executable probe in the issue was not rerun here.
+- `src/economy/currency_transaction.c:140-233` and its header: vector submission
+  already validates every resulting denomination before mutation, advances the
+  wallet revision, marks status dirty and updates GMCP. Completion is synchronous.
+  **Submission returning true does not prove commitment:** insufficient balance,
+  overflow or a reserved trade can call completion with `committed=false` and
+  still return true. Pickup's revision check is intentional. The current debit
+  wrapper calls publication manually after `SUB_MONEY()` returns success; replace
+  that assumption with the actual transaction completion when switching to vectors.
+- `src/cmd/actoth.c:2530-2624`: deposits and withdrawals already use exact wallet
+  and bank vectors. Reuse that API; no bank implementation change is indicated.
+- `src/cmd/actobj.c:2744-2752,2778-2782,2812-2820`: PC give saves the sender before
+  recipient credit; storage/corpse put saves the sender before destination save.
+  Keep these boundaries. The currency header explicitly describes a save-order
+  model that favors avoiding duplication over crash-atomic transfers; do not
+  promise stronger durability than this patch provides.
+- `src/cmd/actobj.c:4088-4144`: ordinary `give` checks the selected denomination,
+  while `MAXLVL` PCs intentionally skip debit. Preserve both. NPCs and no-PID
+  actors cannot simply be passed to the PC transaction API, which rejects them.
+- `src/world/quest.c:120-171,260-278,728-813`: the legacy quester calls `do_give()`
+  before checking completion. Coin goals compare `GET_MONEY(mob)` and consume
+  value; coin rewards use value-only `ADD_MONEY()`. A quest saying "gold" does
+  not establish a denomination-specific reward or completion rule.
+- `src/world/world_quest.c:253-262,370` also pays mercenaries by value. The zone
+  story production/runtime files catalogue and track legacy completions; they
+  are not evidence of a separate gold-paying reward implementation. Legacy item
+  rewards use object creation/grant, preserving authored money-object fields
+  until the pickup boundary. Do not convert every quest reward into gold.
+- Other inspected value callers include shop settlement in
+  `src/economy/shop.c:2664-2684`, world-quest fee refunds in
+  `src/specs/specs.mobile.c:10876-10882`, and denomination-labelled wagers in
+  `src/economy/cardgames.c:581-583` / `src/specs/specs.gellz.c:391,768`.
+  They do not go through the physical give/put/drop adapter. This inspection
+  supports keeping the global value API unchanged; it does not qualify those
+  separate gameplay systems or expand #444 into an economy-wide rewrite.
+- `src/player/player_snapshot_capture.c:174-177`,
+  `src/player/player_load_materialize.c:594-597`, and
+  `src/flatfile/flatfile_player_repository.c:629-634` already save/load four
+  separate counts. There is no evidence that a schema or data migration is needed.
+- `tests/async/test_take_coins.py` replaces production `credit_coins()` with a
+  one-integer purse. `test_coin_command_transaction_contract.py` explicitly
+  expects the value-based calls. Their current green results cannot establish
+  denomination preservation. `test_currency_in_memory.py` already links real
+  production transactions and covers synchronous refusal, revisions and trade
+  reservations; reuse its setup and service stubs.
 
-Inspected the following on the baseline above; line numbers may move:
+Emp's exact NPC/quest and live build remain unidentified in the issue and its
+empty comment thread. Do not choose a quest from similar wording or claim to
+have reproduced that player's route. Before changing a particular value-only
+reward, identify its NPC/VNUM, definition and intended currency from the report
+or owner, then trace its actual handler. This uncertainty does not prevent the
+shared transfer fix or a synthetic quest journey; it remains explicit in the
+implementation handoff and prevents claiming that specific reward verified.
 
-- `src/account/nanny.c:1127`: `materialize_legacy_newbie_item()` instantiates a
-  detached object. For regular PC grants it sets cost to one and adds
-  `ITEM_TRANSIENT` unless the type is exempt. Missiles are missing from that
-  list. `load_obj_to_newbies()` supplies the existing bounded grant coordinator.
-- `src/account/newbie_kit_plan.c:537` and `:1604`: half-elf and wood-elf Ranger
-  rows include quiver 1116, ten missiles 1117 and bow 1118.
-- `areas/obj/heavens.obj`: missile 1117 has flags 1032 without the transient bit;
-  quiver 1116 has 525320 including it. Bow 1118 has flags 8 before materialization.
-  `src/core/defines.h` defines `ITEM_TRANSIENT` as `BIT_20`.
-- `src/combat/range.c`: `do_fire()` sends a non-returning miss to `obj_to_room()`
-  without hit-related condition loss. `do_gather()` requires the shooter's PID
-  mark and gathers from the room in which the player now stands.
-- `src/world/handler.c::obj_to_room()` schedules `TAG_OBJ_DECAY` at delay zero
-  for transient objects outside lockers; `src/magic/affects.c::event_obj_affect()`
-  dispatches that tag to `Decay()`.
-- `tests/async/test_fired_missile_encumbrance.py` already runs real fire/gather
-  and container-weight functions under ASan/UBSan, but stubs room placement,
-  forces same-room misses and aborts on hit-only services. Its existing green
-  result cannot prove this defect fixed.
-- `tests/async/test_flatfile_newbie_regrant_journey.py` supplies isolated legacy
-  prototypes, real grants and a snapshot inspector; it and
-  `test_flatfile_combat_journey.py` provide reusable socket/build helpers.
+## Non-goals and ablation decisions
 
-Expected implementation edits: `src/account/nanny.c`, the existing missile
-regression, and `docs/reference/LEGACY_STARTER_KITS.md`. Extend the existing
-newbie journey for the command/event acceptance where practical; if its regrant
-and observer scenario would become tangled, add one focused starter-arrow
-journey using those existing helpers. Do not create a new harness framework.
-`range.c`, `handler.c`, `affects.c`, kit tables and area prototypes are exercised
-inputs, not planned production edits.
+- Keep `ADD_MONEY()`, `SUB_MONEY()` and `currency_wallet_value_delta()` value
+  semantics for prices, fees, change, value-only rewards and unrelated callers.
+  Do not auto-exchange a wallet to satisfy `give N gold`; preserve the requested
+  physical coins instead.
+- Keep the existing transaction facade, publication helpers and four-element
+  contexts. Drop a new currency abstraction, setting, async queue, ledger,
+  two-party transaction coordinator or generic test framework: none is required
+  to stop the traced conversions.
+- Keep checked NPC/no-PID fallbacks because the PC facade does not accept them.
+  Keep all-components-before-mutation validation, rather than partially applying
+  a vector. Keep persistent PC writes centralized in the transaction facade.
+- Keep every refund boundary and real command/persistence proof. A helper-only
+  test or conserving total value would miss the reported failure.
+- No repair of historical purses, guessed reward-denomination migration, generated
+  area edits, production deployment, player-data editing or full burn-in.
+  Existing converted coins can still be exchanged through the bank.
 
-## Ablated implementation sequence
+## Files
 
-1. **Expose the missing boundary in a focused regression.** Extend the existing
-   fire/gather harness to materialize production starter missiles and execute
-   actual room placement. Exercise the scheduled decay callback for the old
-   transient control rather than only counting a requested tag. Use production
-   functions with controlled RNG/services, not a copied conditional. The starter
-   miss/survival assertion must fail against the unmodified baseline.
-2. **Correct the flag at its source.** Add `ITEM_MISSILE` to the existing
-   materializer exemption list. Retain costs, prototype flags, keywords,
-   spellbooks, NPC behavior and the grant coordinator unchanged. No new helper.
-3. **Prove the real route and preserved behavior.** Exercise a real freshly
-   granted Ranger kit in a disposable non-Chaos server, wear/load the quiver and
-   bow, observe a miss, allow event pulses, and gather. Repeat across an adjacent
-   exit after moving to the landing room. Reuse native deterministic cases for
-   hit wear, zero-condition scrapping, returning shots and controls. Assert UID,
-   condition, counts and weights rather than only the absence of a crumble line.
-4. **Document and qualify.** Update the starter-kit reference with the missile
-   exemption, preserved bow/quiver behavior and old-instance limitation. Record
-   the exact test evidence here, reread the diff, and retain only required work.
+Expected production changes are confined to `src/cmd/actobj.c`: reuse
+`credit_coins()`, `submit_coin_debit()`, existing give completion/context and
+refund/publication functions. Keep any necessary checked NPC mutation local
+and guarded from persistent PCs; update source contracts narrowly to enforce
+that boundary rather than adding a broad exemption for all wallet writes.
 
-Ablation keeps one source condition plus proof of the actual failure path.
-It removes a proposed need for general transient-item policy machinery,
-retroactive migration and the adjacent #429 enhancement: none is required to
-make newly granted arrows recoverable. Executing room placement/event handling
-and a command journey stays in scope because the existing stub misses the bug.
+Extend `tests/async/test_take_coins.py`,
+`tests/async/test_coin_command_transaction_contract.py` and, where its existing
+fixtures help, `tests/async/test_currency_in_memory.py` and
+`tests/async/test_currency_transaction_contract.py`. Add a focused native
+coin-transfer test only if executing debit/give/refund paths would tangle the
+existing pickup harness. Extract production functions and link the real
+currency implementation; stub external services, never the arithmetic under test.
+
+Add one focused `tests/async/test_coin_denomination_journey.py`, reusing the
+minimal world, client, flat-file build and snapshot inspector from
+`test_flatfile_combat_journey.py`, and the currency/bag patterns from
+`test_flatfile_first_session_currency.py` and
+`test_flatfile_auction_coin_put_journey.py`. Do not build a second socket framework.
+Update this plan with implementation evidence. Edit a specific quest/content
+file only if the reward investigation identifies an explicit denomination that
+still bypasses these fixed routes, and name that file before making the change.
+
+## Implementation sequence
+
+1. **Expose the conversions with production code.** Replace the pickup test's
+   scalar credit stub with real per-denomination wallet behavior and production
+   credit/transaction functions. Add the debit, recipient and refund assertions
+   below. Show denomination assertions failing on the unmodified baseline, while
+   current ordering/refusal controls remain meaningful. Preserve existing pickup
+   text, partial-pile and corpse tests.
+2. **Carry vectors through pickup and debit.** Pass the selected counts from
+   both pickup routes to the existing credit adapter and then the PC vector API.
+   For explicit debits, negate the requested vector and use the real completion
+   callback to publish exactly once after commitment; do not manually publish
+   on submit=true. NPC/no-PID paths validate all resulting counts, subtract/add
+   exactly those coins and preserve applicable dirty/GMCP behavior. All balances
+   stay within `0..INT_MAX`; keep arithmetic in 64 bits. Remove value conversions
+   and aggregate-int restrictions made obsolete by vector movement, while
+   retaining parser limits, per-denomination limits and value-based log thresholds.
+3. **Preserve give and compensation.** Credit PC and NPC recipients with the
+   requested vector. Keep sender-first saving and the existing MAXLVL no-debit
+   route. Return the same vector on destination loss, recipient refusal, failed
+   object creation or failed container publication. Existing give context already
+   records amount and coin type, sufficient to reconstruct its single-type
+   refund; do not add redundant state. Refund success must observe commitment,
+   not just submission, and refusal must remain visible through the existing
+   diagnostic path. No canonical-value or auction-value fallback may silently
+   replace an exact refund. Since completion is synchronous, eliminate any
+   obsolete in-flight rationale in comments touched by the change.
+4. **Cover rewards and actual gameplay.** A money-object reward and an explicit
+   denomination give must use the corrected paths. Exercise a synthetic legacy
+   quest through its actual `quester` handler so all four payments reach quest
+   completion, rather than merely checking an NPC's wallet. Trace Emp's actual
+   quest when identifiable; retain value-only payouts unless its definition and
+   intended behavior justify a specific content change. Record unresolved identity
+   honestly rather than silently declaring this acceptance item complete.
+5. **Qualify and review.** Run the focused native checks, isolated journey,
+   required build/format checks and documentation checks. Review the final diff
+   against every outcome and remove unnecessary adapters or state. Record exact
+   commands, backend coverage and any unavailable checks before implementation
+   commit/push/review. External CI is not a completion gate.
 
 ## Proof and acceptance
 
-- Fresh half-elf and wood-elf Ranger grants produce the expected missile count,
-  normal cost/keywords and no grant-added transient bit. Prototype-authored
-  transient flags remain intact, including an explicitly flagged missile control.
-- Same-room and adjacent-room misses leave the same arrow UID at full condition
-  after event processing. The owner can gather it; a different PID cannot.
-  Repeated cycles restore quiver count/weight and carried encumbrance exactly.
-- Ordinary missiles behave identically. Returning/cursed missiles stay in the
-  quiver. Controlled successful hits still wear and scrap missiles as before.
-- Another transient object still schedules and completes decay. Bow/quiver
-  dropping still uses the current policy. No general decay code changes.
-- The real grant-to-fire-to-event-to-gather journey passes in isolated state;
-  native harness coverage and socket coverage are reported separately.
+The regression assertions must compare `[copper, silver, gold, platinum]` counts,
+revision changes, source/destination ownership and feedback, not only total value.
 
-Planned local commands after implementation:
+- Pickup: empty purse plus 40 gold becomes `[0,0,40,0]`; 35 gold plus 5 gold
+  remains 40 gold; `[3,12,17,0]` is not normalized. Cover full and selected partial
+  pickups from floor, bag and PC corpse, including direct `get()` and selected
+  `take_coins()` routes. Assert the exact residual pile, extraction/relabel behavior
+  and existing messages. Refused credit leaves every pile field and revision alone.
+- Debit: give, put, drop and `drop all.coins` preserve unselected counts. Four
+  successful 10-gold debits from 40 leave 30, 20, 10 and 0 gold. Include mixed
+  wallets and a valid vector whose copper-equivalent total exceeds `INT_MAX`,
+  so no obsolete value cast can truncate or reject an otherwise valid transfer.
+- Recipients: PC-to-PC, PC-to-NPC and NPC-to-PC give preserve the exact type;
+  include NPC pickup/debit and existing no-PID fallback behavior. Staff credit
+  still mints the requested type without debiting or refunding the staff purse.
+- Failure: source short of the selected type cannot spend other denominations;
+  PC/NPC recipient overflow, invalid PC identity, destination disappearance,
+  closed/unavailable container, existing-pile overflow and allocation/publication
+  failure change nothing or restore the original vector exactly once. Verify
+  submit=false and submit=true/committed=false separately, including the current
+  reserved-trade refusal. No successful give/put/drop announcement on refusal.
+- Revision/order: successful PC mutations advance revisions and dirty status;
+  rejected ones do not. Assert sender save precedes PC recipient credit and
+  storage/corpse save, and preserve the existing bank ordering. A refund after
+  sender-save must restore live state and remain dirty for the subsequent save.
+- Rewards: an authored gold money pile retains gold after grant/pickup, and an
+  explicit NPC gold give retains gold. Value-only reward controls still use
+  canonical incoming change and leave pre-existing denominations alone. Do not
+  alter legacy quest value goals or infer coin types from descriptive text.
+- Real journey: create disposable local characters below MAXLVL, seed the bank
+  with a known gold balance, withdraw 40 gold, put/get it through a bag, and make
+  four `give 10 gold` payments through a synthetic quest NPC. Assert each purse
+  and completion. Relog and restart at intermediate nonzero-wallet and bag-held
+  checkpoints, then continue payments; also verify persistent recipient credits
+  and refused transfers do not duplicate coins after saving/reload. Use durable
+  snapshot inspection as well as command output. Floor coins and NPC wallets
+  need only the persistence guarantees they already have.
+
+Planned commands (the new journey is created during implementation):
 
 ```sh
-python3 tests/async/test_fired_missile_encumbrance.py
-python3 tests/async/test_newbie_kit_plan.py
-python3 tests/async/test_newbie_kit_suitability.py
-python3 tests/async/test_newbie_grant_lifecycle.py
-# Run the extended newbie journey or its focused starter-arrow entry point.
+python3 tests/async/test_take_coins.py
+python3 tests/async/test_coin_command_transaction_contract.py
+python3 tests/async/test_currency_in_memory.py
+python3 tests/async/test_currency_transaction_contract.py
+python3 tests/async/test_money_carry_count.py
+python3 tests/async/test_coin_denomination_journey.py
+python3 tests/async/test_flatfile_auction_coin_put_journey.py
+python3 tests/async/test_area_coin_pickup.py
 make -C src
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Use the existing flat-file journey build helper for its disposable server.
-Confirm development/test configuration before any runtime work. Keep compiled
-artifacts under `bin/`; use synthetic accounts and private state, never existing
-player files or production. A full burn-in, live-world acceptance and CI waiting
-are not completion gates for this focused repair. Report any unavailable check.
+Run any additional native test introduced for the missing transfer paths. Reuse
+one built flat-file server across compatible journeys. The focused restart
+journey qualifies flat-file persistence; a MariaDB build or stubbed save-order
+test alone must not be reported as a MariaDB runtime qualification. Exercise
+the same commands on an isolated MariaDB fixture if available and report its
+coverage separately. Use local/test settings, loopback listeners and disposable
+accounts/state; keep new compiled outputs under `bin/`. No production operations
+are needed for the plan or core implementation.
 
-## Original estimate and planning validation
+## Estimate and planning checkpoint
 
-Estimated **2-3 hours of my active implementation time**, including the focused
-regressions, isolated command/event journey, required build, documentation and
-reviewable commit. The production edit is small; most time is in proving the
-real decay boundary and preserved hit/returning behavior. Allow up to 4 hours if
-the existing journey fixtures require additional setup. This excludes external
-review, merge scheduling, deployment and any separately requested old-item repair.
+Estimated **3-5 hours of my active implementation time** for the shared repair,
+native regressions, isolated quest/relog/restart journey, build and reviewable
+commit. Rough allocation: 30-45 minutes for failing regressions, 45-75 minutes
+for the transfer/refund changes, 60-100 minutes for command/persistence proof,
+and 30-60 minutes for build, documentation and final review. Reuse of existing
+fixtures is assumed. Allow an additional 1-2 hours if Emp's identified quest
+needs a separate explicit-denomination reward fix or local DB setup is required;
+waiting for its identity, external review, merge and deployment are excluded.
 
-The following records the original planning checkpoint. Implementation results
-are recorded separately below.
+Planning validation on 2026-10-30 at the baseline above:
 
-Planning checks on the baseline (2026-10-28):
-
+- `python3 tests/async/test_take_coins.py`: passed; its scalar purse limitation
+  remains and is explicitly addressed above.
+- `python3 tests/async/test_coin_command_transaction_contract.py`: passed;
+  current assertions still encode the value-based implementation.
+- `python3 tests/async/test_currency_in_memory.py`: passed under ASan/UBSan,
+  including range refusal, revisions, save order and trade reservations.
+- `python3 tests/async/test_currency_transaction_contract.py`: all 9 tests passed.
 - `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `python3 tests/async/test_fired_missile_encumbrance.py`: 96 scenarios, 50 cycles
-  each passed under ASan/UBSan; room placement is stubbed, so this is a baseline
-  compatibility result, not proof of missed-arrow survival.
-- `python3 tests/async/test_newbie_kit_suitability.py`: 603 normal
-  race/class/alignment cases and all four existing review regressions passed.
-- `git diff --check`: passed. The prior plan's SHA-256 is unchanged after the move.
-- Only planning documents changed. No production C/C++ change or full server
-  build was required for this planning commit; implementation checks remain open.
+- `git diff --check` passed. The preserved #428 plan and the original HEAD copy
+  have the same SHA-256: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
 
-## Implementation and qualification, 2026-10-28
-
-The production change adds only `ITEM_MISSILE` to the existing grant-added
-transient exemption in `materialize_legacy_newbie_item()`. The starter reference
-now documents missile recovery, unchanged bow/quiver dropping behavior,
-prototype-authored flags and the limitation for already granted arrows.
-
-The expanded existing native regression first failed against the unmodified
-production code at its post-dispatch survival assertion: the real decay path
-had removed a starter arrow. With the one-condition correction it passes all
-384 starter/ordinary, same/adjacent, returning/non-returning and weight/count
-scenarios, each repeated 50 times (19,200 cycles), plus four transient decay
-controls and eight hit/wear/scrapping/returning cases under ASan/UBSan. Both
-legacy Ranger selections still contain ten arrows. Wrong-PID gathering is
-rejected, and UID/condition/encumbrance checks remain exact. Controlled services
-cover allocation, RNG, event dispatch and unrelated combat/ownership I/O; the
-materializer, commands, room placement, decay callback and decay body are real.
-
-The separate `test_starter_arrow_journey.py` reuses the existing minimal-world,
-legacy-object installer, socket client and flat-file build helpers. Keeping it
-separate avoids adding archery setup to the unrelated regrant/latency journey.
-It creates fresh Half-Elf and Wood-Elf Rangers and a second synthetic player as
-the target, then drives real grant, wield/put/wear, fire, event pulses, travel,
-look, gather and save commands. Historical races/classes are explicitly enabled
-only in the fixture. The minimal-world fallback room for Wood Elf has a fixture
-exit to the range. This makes no change to normal character availability or
-hometown rules. Debugging confirmed that sentinel mobs intentionally gain cover
-and are inappropriate targets for this journey; no targeting change was needed.
-
-Both real same-room and adjacent-room cases pass for both Rangers. Half-Elf
-retains all ten original UIDs, full condition, quiver count 10 and weight 11.
-Wood-Elf first lands one ordinary hit, consuming one arrow normally; its nine
-remaining original UIDs then survive both observed misses and gathering, with
-full condition, quiver count 9 and weight 10. The assertion compares each
-successful miss trial's exact before/after UID sets; it does not infer survival
-from missing text. Actual pulses run before the landing-room inspection.
-
-Completed commands and results:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: passed, including the
-  expanded ASan/UBSan cases described above.
-- `python3 tests/async/test_newbie_kit_plan.py`: passed 36,360 selections,
-  471 legacy table cells and pure preparation.
-- `python3 tests/async/test_newbie_kit_suitability.py`: passed 603 normal
-  race/class/alignment cases and four existing review regressions.
-- `python3 tests/async/test_newbie_grant_lifecycle.py`: passed under ASan/UBSan.
-- `make -C src -j6`: full MariaDB development build passed with warnings as
-  errors. The existing journey build helper also built the flat-file server.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_issue428_flatfile`:
-  passed both races and both room cases. Omitting the binary argument uses the
-  existing build helper; no pre-existing local binary is required.
-- Python syntax checks, `./scripts/format.sh --check`, all 14 documentation
-  contracts and `git diff --check` passed.
-
-The ignored evidence file is `bin/qualification/issue428/gameplay-report.json`.
-Its qualified flat-file binary SHA-256 is
-`48ebded67a20bc7102d82b629d70ea60b4af22355d7accf0e9ee9c79c5bce9b3`.
-Runtime evidence covers disposable minimal-world flat-file sessions; native
-controls supply deterministic hits, returns, ownership marks and decay checks.
-No MariaDB socket journey, full-world acceptance, migration or production
-operation is claimed. Previously granted arrows keep their saved flags.
-
-Final ablation retains one production condition, an extension of the existing
-native regression and one focused socket journey using current helpers. No
-new production abstraction, flag rewrite at firing time, global decay exception,
-kit expansion, persistence change or migration was added. Task-created debugger
-instrumentation and build scripts were removed; binaries and reports remain
-ignored under `bin/`. The original checkout's unrelated work was preserved.
-
-The initial commit hook selected GCC 16's standard-library headers through the
-host's default Clang search path and failed to parse them (`__builtin_popcountg`).
-The unchanged staged C++ check passes with Clang 18 explicitly selecting the
-installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
-remain enabled; no source suppression or hook bypass is used.
-
-## PR #445 review follow-up, 2026-10-28
-
-The owner's review follow-up explicitly includes all seven findings, including
-the six existing archery defects. This expands the original production scope to
-`src/combat/range.c`; the original kit access, counts, flags and old-instance
-compatibility decisions still apply. The clean branch was rebased from
-`8e95eb5dd` onto current master `b7498fb6b` without conflicts. The unrelated pager
-checkout and character-mechanics worktree were preserved.
-
-All seven findings were verified against the reviewed source and executable
-controls. The fixes reuse existing paths:
-
-1. Hold a detached broken missile through damage messages and enchantments,
-   then scrap it. If the victim died and cannot supply a room for `MakeScrap`,
-   extract the broken missile before leaving the shot. Surviving missiles retain
-   their existing inventory placement. The retirement decision is captured before
-   damage, avoiding a later read of an object that death handling may retire.
-2. Use the existing owning keyword/short-description setters for both marking
-   and restoration, so replacing custom strings frees them and never adopts a
-   borrowed prototype pointer with owning flags.
-3. Restore directly from `obj_index` strings instead of materializing a live
-   object to obtain text. No new template cache or string-ownership layer is needed.
-4. Stop gathering at the existing capacity before detaching another arrow.
-5. Skip incompatible ammunition before moving it from either floor or corpse.
-6. Reset block state and message selection inside the shot loop.
-7. Wait for a command-specific response before its following prompt. Preserve
-   unsolicited output in the full transcript, outside the returned command result.
-
-The existing native harness now executes production mark creation/expiry, string
-setters and `free_obj`. Controlled pool release deletes heap objects, so ASan sees
-actual retirement rather than a counter-only scrap operation. It passes 384
-fire/gather scenarios repeated 50 times, four decay controls, ten hit/return/wear
-and retirement cases (including melee and enchantment death), 100 mark-expiry
-cycles, room/corpse gather capacity/family controls, and same/adjacent-room
-blocked-then-unblocked volleys. Allocation, event dispatch, combat effects and
-unrelated services remain controlled boundaries.
-
-Temporary in-memory negative controls substituted the reviewed implementations,
-without changing tracked source. Each of the seven corresponding checks rejected
-the old behavior: actual retirement exposed a sanitizer failure; borrowed-string
-ownership, expiry allocation, full gathering, ammunition-family selection, volley
-state and stale-prompt acceptance failed their targeted controls. Evidence is
-ignored under `bin/qualification/issue428/`; temporary control code was removed.
-
-Completed local validation:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: all expanded ASan/UBSan
-  controls passed, including real owned-string teardown and heap retirement.
-- `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile -j6`: passed
-  the existing warnings-as-errors profiles.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_new`: passed
-  buffered/arriving-prompt controls and both real Ranger journeys in both room
-  arrangements. Half-Elf consumed two successful hits before its observed miss,
-  then retained eight original missiles at quiver count 8/weight 9. Wood-Elf
-  retained ten at count 10/weight 11. Miss trials preserve exact UIDs/condition.
-  The rebuilt flat-file binary SHA-256 is
-  `d999684ac6f9a6e5501a29a74a1dff1ee5afd6b3b0798c9fa37531ce9c89fa38`.
-- Python syntax, all 14 documentation contracts, changed-line formatting,
-  clang-tidy with the established Clang 18/GCC 13 header selection, and
-  `git diff --check`: passed.
-
-The original kit-selection, suitability and grant-lifecycle evidence above is
-reused because those implementations and inputs did not change. Runtime proof
-remains disposable minimal-world flat-file state; production and full-world
-acceptance remain release work. No migration, dependency, setting, parallel
-implementation, extra production helper or CI wait is required. Keep the review
-repair as a focused follow-up commit; this standalone PR needs no stacking or
-release tag and can be squashed when merged.
+Only planning documents change at this checkpoint. No full server build,
+new denomination regression, gameplay journey, reward fix or production/live
+verification is claimed. The implementation acceptance items above remain open.
+Issue #444 is the identified work item; a targeted open GitLab mirror search
+for coin issues returned unrelated collector/flight work, not a matching item.
+GitHub's native Development association links #444 to this branch, verified
+with `gh issue develop 444 --repo LuminariMUD/Duris --list`. Retain the issue
+until implementation and its acceptance work are complete; this plan does not
+close it.
