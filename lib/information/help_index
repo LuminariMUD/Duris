@@ -26861,3 +26861,267 @@ your specialization's own help lists its additions and removals.
 A listed spell still needs to be learned and prepared. Type 'spells'
 to inspect your character's spell list and 'help cast' for casting syntax.
 #
+Conjure Greater Dracolich
+The Necromancer eleventh-circle dracolich spell is named Create Greater
+Dracolich, not Conjure Greater Dracolich.
+Syntax: cast 'create greater dracolich' <corpse>
+Read 'help create greater dracolich' for requirements and effects.
+#
+Two-Handed Sword Mastery
+Two-Handed Sword Mastery is a passive racial innate gained by Centaurs
+at level 31. It grants full proficiency (100) in the '2h slashing'
+weapon skill automatically, with no activation command or cooldown.
+Two-handed swords use the '2h slashing' skill and require both hands
+to wield ('wield <sword>').
+See also: Centaur, Innate, Wield.
+#
+Torch
+A torch or lantern is a held light source ('hold <torch>') that
+illuminates dark rooms while carried in a free hand. Non-permanent
+torches and lanterns burn down over time and expire when their fuel
+is spent.
+Read 'help light' and 'help continual light' for other light options.
+#
+Alias
+There is no in-game 'alias' command on Duris. Configure command aliases,
+macros and keybindings in your MUD client (such as Mudlet).
+Most game commands can be abbreviated to their shortest unambiguous
+prefix, and common channels have single-character shorthands such as
+''' for say and ':' for emote.
+See also: Commands, Toggle.
+#
+Medicus
+Syntax: smoke medicus <pipe>
+Medicus is a pipe herb that increases hit-point regeneration based on
+your level for 5 mud hours. It does not stack with itself, Regenerate,
+Regeneration or Accelerated Healing. Smoking any herb leaves your lungs
+recovering for a short period before you can smoke again.
+Read 'help smoke' for pipe requirements and weather restrictions.
+#
+Buffs and Effects
+Use 'score' to inspect your active buffs, ongoing spell effects,
+protections and senses. Having Detect Magic active reveals additional
+magical details and remaining durations.
+Read 'help affects' and 'help score' for details.
+#
+Compare
+There is no 'compare' command on Duris. To inspect and compare gear:
+use 'look <item>' and 'examine <item>' for appearance and container
+contents; cast 'identify', recite an identify scroll, use 'lore' or
+play 'song of revelation' to reveal exact stats, weight, flags and
+affects; and check 'score' and 'attributes' before and after equipping
+an item.
+See also: Identify, Lore, Examine, Attributes, Score.
+#
+Blessings
+For world, racewar and trade-post blessings granted by the Gods of
+Duris, use 'boon' and read 'help boon' or 'help divine boons'.
+For blessing spells, read 'help bless', 'help divine blessing',
+'help natures blessing', 'help death blessing' or
+'help windstrom blessing'.
+#
+Mercenaries
+Read 'help mercenary' for the playable Mercenary class and its allowed
+races, specializations and innates, and 'help mercenary skills' for its
+skill progression.
+Town NPCs with "mercenary" in their name are ordinary mobiles rather
+than hireable followers; for followers you can buy, read 'help pet shop'.
+#
+Reports
+Syntax: report [<target>]
+Reports your current and maximum hit points and movement points (plus
+mana for Psionicists and Mindflayers) out loud to the room, or privately
+to <target> via tell when a target name is supplied. Illithids must
+specify a <target> because they cannot speak out loud.
+For other status reports, read 'help namedreport' (equipment set bonus
+spells) and 'help fraglist' (player-kill leaderboards).
+#
+Innates
+Syntax: innate
+        innate <ability> [<arguments>]
+        innate list player | all
+Typing 'innate' lists the racial, class and specialization innate
+abilities your character possesses. Passive innates operate
+automatically; active innates use 'innate <ability>' or their own
+command syntax.
+Read 'help innate', 'help races' and 'help classes' for details.
+#
+Quests
+Syntax: quest
+        quest daily
+        quest share <player>
+        toggle quest [on|off]
+Quests include zone NPC quests (started with 'ask <mob> <topic>' or by
+giving items to quest mobs), bartender world quests ('ask bartender
+quest') and daily objectives ('quest daily').
+Use 'quest' to inspect your current bartender or daily assignment and
+'toggle quest' to show or hide the '(Q)' marker on quest mobs.
+Read 'help quest', 'help bartender' and 'help ask' for full details.
+#
+Namedreport
+Syntax: namedreport
+Lists the bonus spells granted by named equipment sets, grouped by zone,
+along with the required piece counts and cooldown colors.
+Read 'help named equipment sets' for full rules.
+#
+Alliancechat
+Syntax: acc <message>
+        toggle acc
+Alliance chat uses the 'acc' command to speak with members of your
+guild and its allied guild. Use 'toggle acc' to turn the channel off
+or back on.
+Read 'help acc' and 'help channels' for details.
+#
+Well-Rested Well Rested Wellrested
+Characters earn bonus combat and kill experience from the 'rested' and
+'well-rested' effects shown in 'score':
+- Rested (1.5x experience): granted for 150 mud hours (ticks) after
+  staying logged off for at least 9 real hours, or from a single cast
+  of the 'rested' spell.
+- Well-rested (2x experience): granted for 150 mud hours (ticks) after
+  staying logged off for at least 20 real hours, when creating a new
+  character, or when 'rested' is cast on a character who already has
+  the rested bonus.
+Both effects survive death and cannot be dispelled.
+See also: Rested, Score, Exp.
+#
+Switch Target
+To change your melee target during combat, use 'kill <target>' or
+'hit <target>', or train the 'switch opponents' skill to change targets
+with reduced combat delay.
+Read 'help switch opponents' and 'help kill' for details.
+#
+Recipes
+Syntax: salvage <item>
+        recite <recipe>
+        forge [info | stat | make] [<number>]
+        craft [info | stat | make] [<number>]
+Equipment recipes are found as scrolls by salvaging eligible magical
+items with 'salvage <item>'. Carrying Lantan Scientific Tools prevents
+item breakage and improves your chance to discover a recipe.
+To learn a recipe scroll, use 'recite <recipe>'. You need at least 1
+point in 'forge' (for weapons, shields and head, body, arm, hand, leg
+or foot armor) or 'craft' (for accessories worn on other slots).
+Reciting a valid recipe consumes the scroll and records it permanently.
+Use 'forge' or 'craft' to list known recipes, 'info <number>' to see
+materials, and 'make <number>' to craft the item. For Alchemist potion
+recipes, read 'help alchemist recipe'.
+See also: Salvage, Forge, Craft, Alchemist Recipe.
+#
+New Hope
+The Village of New Hope is a high-level adventure zone rather than a
+starting hometown.
+Read 'help hometown' for playable starting cities and inns.
+#
+Skills Sorcerer
+Read 'help sorcerer skills' for the Sorcerer spell and skill progression
+table, and 'help sorcerer' for the class overview and specializations.
+#
+Fraglist
+Syntax: fraglist [normal | goodie | evil | undead | <race> | <class> | ship | guild]
+Displays the current level-cap status, racewar frag totals, and the top
+and lowest player-kill (frag) leaderboards. You can abbreviate 'fraglist'
+as 'frag' and filter by side, race, class, 'ship' frags or 'guild' frags.
+Read 'help frag' and 'help frags' for how frags are earned and lost.
+#
+Bard Songs
+Read 'help bard skills' for the Bard song and instrument progression
+table, 'help songs' for individual song descriptions, and 'help play'
+for performing songs with instruments.
+For specialization song changes, read 'help disharmonist',
+'help minstrel' and 'help scoundrel'.
+#
+Vaults
+Item storage on Duris uses lockers rather than a 'vault' command. At a
+bank, type 'enter locker' to enter your personal storage locker (or
+'enter <guildname>.locker' for a guild locker). For coin storage, use
+'deposit', 'withdraw' and 'balance' at a bank.
+Read 'help locker storage' and 'help bank' for details.
+#
+Gamblers Luck
+Gamblers Luck is a passive racial innate gained by Halflings at level 26.
+It permanently increases Luck by 10, with no activation command or
+cooldown.
+See also: Halfling, Innate, Luck.
+#
+Newbie Kit
+Syntax: toggle newbie [on|off]
+New characters automatically receive a race- and class-appropriate
+starter kit when entering the game, including basic clothing and armor,
+a weapon, food and water, a light source, bandages (for classes with
+the bandage skill), a quill and starter spellbook for book casters,
+and a bow, quiver and 10 recoverable arrows for Rangers and Rogues
+(plus lockpicks for Rogues). Most starter armor pieces are transient
+and crumble if dropped.
+When 'toggle newbie' is on, respawning after death or logging in with
+an empty inventory grants a fresh starter kit. In Chaos mode, use
+'chaos kit' to re-equip your Chaos starter kit when your inventory and
+equipment are empty.
+See also: Toggle, Start.
+#
+Toggle Heal
+Syntax: toggle heal [on|off]
+Toggles Heal Display. When enabled, healing over 1 hit point that you
+receive or cast on another character in the same room prints
+'[Heal: <amount> ]' in your output.
+See also: Toggle.
+#
+Ferry
+Syntax: look contraption
+        buy ticket
+        enter <ferry>
+        look out
+        disembark
+Scheduled passenger ferries sail fixed routes between coastal ports.
+At a ferry dock, 'look contraption' shows the ferry's route, current
+status or arrival time, and ticket cost (5 or 10 platinum).
+Use 'buy ticket' at the dock machine and keep the ticket in your
+inventory during the voyage; passengers without a valid ticket are put
+back ashore when the ferry departs. Board with 'enter <ferry>' while
+docked, use 'look out' (or 'toggle shipmap') aboard, and type
+'disembark' from the boarding deck when the ferry reaches your port.
+For player-owned vessels, read 'help ships'.
+#
+Teachers
+Class guildmasters and trainers serve as teachers for your character:
+- At a guildmaster of your class, type 'practice' while resting to list
+  skills you can train and spells you can scribe, or
+  'practice <skill|spell>' and 'practice all' to pay for training or
+  scribing (holding a spellbook and a quill for spells).
+- At level 30 or higher, type 'specialize' at your class teacher to view
+  or select an eligible specialization.
+- Use 'ask <teacher> level' when you need epic runestone hints to break
+  a level cap.
+- Spellcasters can also teach spells directly to another player with
+  'teach <player> <spell>'.
+Read 'help practice', 'help specialize', 'help teach' and 'help hometown'.
+#
+Offhand
+Your secondary hand can hold a shield ('wear <shield>'), a held item or
+light ('hold <item>'), or a secondary weapon ('wield <weapon>').
+Wielding two one-handed weapons requires the 'dual wield' skill. Reach
+weapons cannot be wielded in the offhand when dual-wielding, and for
+non-Rangers the offhand weapon's weight is limited by your Strength.
+See also: Dual Wield, Wield, Hold, Two Daggers, Rapier and Dirk.
+#
+Reaver Spells
+Read 'help reaver skills' for the base Reaver spell circles and skill
+levels.
+Reavers unlock elemental or blood spell circles when they specialize at
+level 30; read 'help flame reaver', 'help ice reaver',
+'help shock reaver', 'help earth reaver' and 'help blood reaver' for
+each specialization's spell list.
+#
+Quill
+A quill (pen) must be held in one hand while holding a spellbook in the
+other hand in order to copy spells with 'scribe <spell>' or learn spells
+from a teacher with 'practice <spell>' or 'practice all'.
+Quills are included in new book-caster starter kits and sold by magic
+and scribe shops in hometowns.
+See also: Scribe, Spellbook, Practice.
+#
+Stone Magus
+The earth-aligned Conjurer specialization is named Earth Magus (which
+grants the Living Stone and Stone Skin innates at level 30).
+Read 'help earth magus' and 'help conjurer' for full details.
+#

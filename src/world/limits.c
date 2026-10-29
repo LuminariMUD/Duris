@@ -1485,8 +1485,8 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			return 0;
 		}
 
-		XP = -1 * (new_exp_table[GET_LEVEL(ch) + 1] *
-			   get_property("exp.death.level.loss", 0.10));
+		XP = -static_cast<Amount>(new_exp_table[GET_LEVEL(ch) + 1]) *
+		     get_property("exp.death.level.loss", 0.10);
 		// We reduce the exp loss from death by 2x of the global modifier if the global modifier is less than 1/2.
 		// So, .4 -> 80% modifier, .3 -> 60% modifier, .15 -> 30% modifier, etc.
 		if (exp_mods[EXPMOD_GLOBAL] < .5)
@@ -1865,7 +1865,9 @@ void point_update(void)
 	for (i = character_list; i; i = i_next)
 	{
 		i_next = i->next;
-		if (IS_NPC(i))
+		// Locker holders are PID-zero PCs owned by the locker writer. They must
+		// survive until its terminal snapshot commits, even while the user idles.
+		if (IS_NPC(i) || GET_PID(i) <= 0)
 			continue;
 		// A failed death save deliberately retains the character in memory until
 		// its durable retry succeeds. It is not an idle/linkdead player and must
