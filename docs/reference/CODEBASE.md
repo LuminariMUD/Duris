@@ -354,6 +354,10 @@ work. Quest maps use a synchronous map viewpoint without room-transfer hooks,
 population changes or action interruption, and emit `Quest.Map` rather than
 overwriting the character's `Room.Map`.
 
+ASK and KILL completion credit must match the accepted quest type and the
+target's actual advertised zone. A matching prototype elsewhere cannot advance
+the task; killing an ASK target cannot turn it into a KILL reward.
+
 Quests cannot be shared unless `world.quest.share.max` (default 0, at most 4)
 allows it. Every completed quest pays one item reward to the player who
 completed it; kill quests pay at completion instead of rolling rewards onto

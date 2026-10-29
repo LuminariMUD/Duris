@@ -287,18 +287,17 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 	gmcp_quest_status(ch);
 }
 
+static bool world_quest_matches_target(P_char ch, P_char mob, int type)
+{
+	return IS_ALIVE(ch) && IS_PC(ch) && ch->only.pc->quest_active == 1 &&
+	       ch->only.pc->quest_type == type && mob && IS_NPC(mob) && mob->in_room >= 0 &&
+	       mob->in_room <= top_of_world && GET_VNUM(mob) == ch->only.pc->quest_mob_vnum &&
+	       zone_table[world[mob->in_room].zone].number == ch->only.pc->quest_zone_number;
+}
+
 void quest_ask(P_char ch, P_char quest_mob)
 {
-	if (ch->only.pc->quest_active != 1)
-		return;
-
-	if (IS_PC(quest_mob))
-		return;
-
-	if ((GET_VNUM(quest_mob) != ch->only.pc->quest_mob_vnum))
-		return;
-
-	if (ch->only.pc->quest_type != FIND_AND_ASK)
+	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_ASK))
 		return;
 
 	wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
@@ -313,16 +312,8 @@ void quest_ask(P_char ch, P_char quest_mob)
 
 void quest_kill(P_char ch, P_char quest_mob)
 {
-	if (!IS_ALIVE(ch) || !(quest_mob) || IS_NPC(ch))
-	{
+	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_KILL))
 		return;
-	}
-
-	if (ch->only.pc->quest_active != 1 || IS_PC(quest_mob) ||
-	    (GET_VNUM(quest_mob) != ch->only.pc->quest_mob_vnum))
-	{
-		return;
-	}
 
 	if (ch->only.pc->quest_accomplished == 1)
 	{
