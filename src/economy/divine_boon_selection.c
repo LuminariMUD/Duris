@@ -102,23 +102,20 @@ bool ordinary_room(int room, unsigned side)
 	if (town && IS_SET(hometowns[town - 1].flags,
 			   (side ? JUSTICE_GOODHOME : JUSTICE_EVILHOME) | JUSTICE_UNDEADHOME))
 		return false;
+	// Mountains, no-swim water and no-ground rooms stay passable: players walk
+	// mountains and routinely carry a boat or fly. Treating them as walls left
+	// only two Experience zones reachable by both factions.
 	switch (entry.sector_type)
 	{
-	case SECT_MOUNTAIN:
-	case SECT_WATER_NOSWIM:
-	case SECT_NO_GROUND:
 	case SECT_UNDERWATER:
 	case SECT_UNDERWATER_GR:
 	case SECT_FIREPLANE:
 	case SECT_OCEAN:
-	case SECT_UNDRWLD_NOSWIM:
-	case SECT_UNDRWLD_NOGROUND:
 	case SECT_AIR_PLANE:
 	case SECT_WATER_PLANE:
 	case SECT_EARTH_PLANE:
 	case SECT_ETHEREAL:
 	case SECT_ASTRAL:
-	case SECT_UNDRWLD_MOUNTAIN:
 	case SECT_UNDRWLD_LIQMITH:
 	case SECT_CASTLE_WALL:
 	case SECT_NEG_PLANE:
@@ -523,37 +520,49 @@ try
 
 		if (experience_boons < DIVINE_BOON_EXPERIENCE_SLOTS && online)
 		{
-			// Pick an eligible online player's level from either side. Keep
-			// the existing -5/+3 range, widening at most ten levels.
-			const int level = levels[number(0, static_cast<int>(levels.size()) - 1)];
-			for (int spread = 0; spread <= 10 && new_experience_zone < 0; spread += 5)
-				for (unsigned relaxed = 0; relaxed < 2 && new_experience_zone < 0;
-				     ++relaxed)
-				{
-					unsigned count = 0;
-					for (size_t index = 0; index < catalogue.size(); ++index)
+			// Draw eligible online players' levels from either side without
+			// replacement, so one level without a fitting zone does not waste
+			// the hour; the Epic centre below only sums them. Keep the existing
+			// -5/+3 range, widening at most ten levels.
+			for (size_t next = 0; next < levels.size() && new_experience_zone < 0;
+			     ++next)
+			{
+				std::swap(levels[next],
+					  levels[number(static_cast<int>(next),
+							static_cast<int>(levels.size()) - 1)]);
+				const int level = levels[next];
+				for (int spread = 0; spread <= 10 && new_experience_zone < 0;
+				     spread += 5)
+					for (unsigned relaxed = 0;
+					     relaxed < 2 && new_experience_zone < 0; ++relaxed)
 					{
-						// Match the chosen player's side-independent zone level
-						// without requiring opposing players to be online.
-						const double typical =
-							(fit[index][0] + fit[index][1]) / 2;
-						if (catalogue[index].experience &&
-						    open(index, relaxed) &&
-						    typical >= level - 5 - spread &&
-						    typical <= level + 3 + spread &&
-						    number(1, ++count) == 1)
-							new_experience_zone =
-								catalogue[index].number;
-					}
-					if (diagnostic && count)
-						for (unsigned side = 0; side < 2; ++side)
+						unsigned count = 0;
+						for (size_t index = 0; index < catalogue.size();
+						     ++index)
 						{
-							diagnostic->experience_candidates[side] =
-								count;
-							diagnostic->experience_relaxed[side] =
-								relaxed;
+							// Match the chosen player's side-independent zone level
+							// without requiring opposing players to be online.
+							const double typical =
+								(fit[index][0] + fit[index][1]) / 2;
+							if (catalogue[index].experience &&
+							    open(index, relaxed) &&
+							    typical >= level - 5 - spread &&
+							    typical <= level + 3 + spread &&
+							    number(1, ++count) == 1)
+								new_experience_zone =
+									catalogue[index].number;
 						}
-				}
+						if (diagnostic && count)
+							for (unsigned side = 0; side < 2; ++side)
+							{
+								diagnostic->experience_candidates
+									[side] = count;
+								diagnostic
+									->experience_relaxed[side] =
+									relaxed;
+							}
+					}
+			}
 			if (new_experience_zone >= 0)
 			{
 				divine_boon_slot exp;
