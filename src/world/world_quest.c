@@ -128,6 +128,9 @@ void resetQuest(P_char ch)
 	ch->only.pc->quest_kill_original = 0;
 	ch->only.pc->quest_map_room = 0;
 	ch->only.pc->quest_map_bought = 0;
+	ch->only.pc->quest_origin_room = 0;
+	ch->only.pc->quest_replacement_due = 0;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 }
 
 // How many other players a quest's receiver may share it with. world.quest.share.max
@@ -675,9 +678,12 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			victim->only.pc->quest_zone_number = ch->only.pc->quest_zone_number;
 			victim->only.pc->quest_giver = ch->only.pc->quest_giver;
 			victim->only.pc->quest_level = ch->only.pc->quest_level;
+			victim->only.pc->quest_origin_room = ch->only.pc->quest_origin_room;
 			victim->only.pc->quest_receiver = ch->only.pc->quest_receiver;
 			victim->only.pc->quest_kill_how_many = ch->only.pc->quest_kill_how_many;
 			victim->only.pc->quest_kill_original = ch->only.pc->quest_kill_original;
+			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+			mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS);
 			do_quest(victim, writable_arg(""), 0);
 			gmcp_quest_status(victim);
 
@@ -787,11 +793,12 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 		ch);
 }
 
-// Attempts to create a quest for ch (a PC), given by the persisted giver vnum.
-// The caller has already validated any live NPC.  Keeping only the vnum here
-// lets an asynchronous payment callback continue after that NPC leaves the room.
+// The caller validates the real interaction and captures its origin before payment.
+// Keep those VNUMs by value so a continuation cannot rediscover a different giver
+// instance or use the customer's later position as the accepted origin.
 // Returns TRUE if successful, and FALSE if failed.
-bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *failure)
+bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
+			     quest_creation_failure *failure)
 {
 	int quest_zone = -1;
 	int quest_mob = -1;
@@ -804,7 +811,8 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *
 		*failure = QUEST_CREATION_NO_FAILURE;
 
 	// Fail if missing an arg, the player is not a PC, or the persisted giver is invalid.
-	if (!ch || IS_NPC(ch) || giver_vnum <= 0)
+	if (!ch || IS_NPC(ch) || giver_vnum <= 0 || origin_vnum <= 0 ||
+	    real_room(origin_vnum) == NOWHERE)
 	{
 		if (failure)
 			*failure = QUEST_CREATION_INVALID_ACTOR;
@@ -919,12 +927,15 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *
 	ch->only.pc->quest_zone_number = zone_table[quest_zone].number;
 	ch->only.pc->quest_giver = giver_vnum;
 	ch->only.pc->quest_level = GET_LEVEL(ch);
+	ch->only.pc->quest_origin_room = origin_vnum;
+	ch->only.pc->quest_replacement_due = 0;
 	ch->only.pc->quest_receiver = GET_PID(ch);
 	ch->only.pc->quest_kill_how_many = 0;
 	ch->only.pc->quest_kill_original = quest_kill_original;
 	debug("Quest Kill Original Value: %d, mob_index number: %d, mob_index limit: %d, mob_vnum: %d",
 	      ch->only.pc->quest_kill_original, mob_index[rnum].number, mob_index[rnum].limit - 1,
 	      mob_index[rnum].virtual_number);
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 
 	return TRUE;
 }
@@ -933,13 +944,14 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *
 // the identity to the stable vnum used by deferred continuations.
 bool createQuest(P_char ch, P_char giver, quest_creation_failure *failure)
 {
-	if (!giver || !ch || IS_NPC(ch) || (IS_PC(giver) && !IS_TRUSTED(giver)))
+	if (!giver || !ch || IS_NPC(ch) || (IS_PC(giver) && !IS_TRUSTED(giver)) ||
+	    giver->in_room != ch->in_room || ch->in_room == NOWHERE)
 	{
 		if (failure)
 			*failure = QUEST_CREATION_INVALID_ACTOR;
 		return FALSE;
 	}
-	return createQuestForGiverVnum(ch, GET_VNUM(giver), failure);
+	return createQuestForGiverVnum(ch, GET_VNUM(giver), world[ch->in_room].number, failure);
 }
 
 void show_map_at(P_char ch, int room)
