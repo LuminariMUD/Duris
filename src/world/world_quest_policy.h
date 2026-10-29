@@ -16,8 +16,39 @@
 #define DURIS_WORLD_QUEST_POLICY_H
 
 #include <vector>
+#include <unordered_map>
 
 #include "core/structs.h"
+
+// Describes a route under the supplied player facts. It is not, by itself, a
+// verdict that an accepted assignment is invalidated by the world.
+enum class world_quest_route_status
+{
+	available,
+	unavailable,
+	unproven,
+};
+
+// Build and reuse only within one command. Room IDs are rnums; the result has
+// no live pointers. Reverse links prove a directed return journey.
+struct world_quest_route_context
+{
+	struct room
+	{
+		int map_entrance = NOWHERE;
+		bool returns_to_origin = false;
+		std::vector<int> incoming;
+	};
+	std::unordered_map<int, room> rooms;
+	size_t work = 0;
+	bool exhausted = false;
+	bool uncertain = false;
+};
+
+world_quest_route_context world_quest_policy_routes(P_char ch, int origin_vnum, int accepted_level);
+world_quest_route_status world_quest_policy_route(const world_quest_route_context &context,
+						  int room);
+int world_quest_policy_map_room(const world_quest_route_context &context, int room);
 
 bool world_quest_policy_bootstrap();
 // Reuse the boot probe for Divine encounter checks, without quest reward rules.

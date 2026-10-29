@@ -65,7 +65,7 @@ bool valid_snapshot(const player_load_result &result)
 		return false;
 	for (const player_snapshot_integer &entry : result.snapshot.status_integers)
 		if (entry.field < player_status_field::class_primary ||
-		    entry.field > player_status_field::divine_boon_delivery_seq ||
+		    entry.field > player_status_field::quest_replacement_due ||
 		    ((entry.field == player_status_field::learned_flight_stops ||
 		      entry.field == player_status_field::divine_boon_delivery_seq) &&
 		     !entry.is_unsigned) ||
@@ -388,6 +388,12 @@ void apply_integer(P_char ch, const player_snapshot_integer &entry, int *hit_dif
 		break;
 	case player_status_field::divine_boon_delivery_seq:
 		ch->only.pc->divine_boon_delivery_seq = entry.unsigned_value;
+		break;
+	case player_status_field::quest_origin_room:
+		ch->only.pc->quest_origin_room = loaded;
+		break;
+	case player_status_field::quest_replacement_due:
+		ch->only.pc->quest_replacement_due = loaded;
 		break;
 	case player_status_field::copper:
 	case player_status_field::silver:
