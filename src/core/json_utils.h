@@ -112,7 +112,6 @@ char *json_build_comm_channel_ex(const char *channel, const char *sender, const 
 				 const char *alignment);
 
 /* build quest.status gmcp message */
-char *json_build_quest_status(struct char_data *ch);
 char *json_build_quest_status(struct char_data *ch, world_quest_target_status status);
 
 /* build ship.info gmcp message */

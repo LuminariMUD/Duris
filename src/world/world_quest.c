@@ -961,11 +961,6 @@ void show_map_at(P_char ch, int room)
 	ch->in_room = old_room;
 }
 
-int quest_buy_map(P_char ch)
-{
-	return quest_buy_map(ch, world_quest_refresh(ch));
-}
-
 int quest_buy_map(P_char ch, world_quest_target_status availability)
 {
 	if (!IS_ALIVE(ch) || IS_NPC(ch) || availability != world_quest_target_status::valid ||

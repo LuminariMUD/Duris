@@ -49,7 +49,6 @@ functions = [
     ('gmcp.c', 'void gmcp_send_quest_map('),
     ('gmcp.c', 'void gmcp_quest_status(struct char_data *ch)'),
     ('gmcp.c', 'void gmcp_quest_status(struct char_data *ch, world_quest_target_status status)'),
-    ('gmcp.c', 'void gmcp_quest_map(struct char_data *ch)'),
     ('gmcp.c', 'void gmcp_quest_map(struct char_data *ch, world_quest_target_status status)'),
     ('world_quest.c', 'void show_map_at('),
     ('utility.c', 'int IS_MORPH('),

@@ -1181,10 +1181,6 @@ char *json_build_chargen_complete(const char *name, const char *message)
 }
 
 /* build quest.status gmcp message for bartender quests */
-char *json_build_quest_status(struct char_data *ch)
-{
-	return json_build_quest_status(ch, world_quest_target_status::unchecked);
-}
 
 char *json_build_quest_status(struct char_data *ch, world_quest_target_status status)
 {

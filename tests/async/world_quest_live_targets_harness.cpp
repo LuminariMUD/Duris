@@ -184,7 +184,6 @@ void send_to_char(const char *text, P_char)
 }
 void gmcp_quest_status(P_char) {}
 void gmcp_quest_status(P_char, world_quest_target_status) {}
-void gmcp_quest_map(P_char) {}
 void show_map_at(P_char, int room)
 {
 	shown_map = room;

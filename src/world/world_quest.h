@@ -33,7 +33,6 @@ int calc_zone_mob_level();
 int newbie_quest(P_char, P_char, int, char *);
 void quest_kill(P_char ch, P_char vict);
 void quest_ask(P_char ch, P_char quest_mob);
-int quest_buy_map(P_char ch);
 int quest_buy_map(P_char ch, world_quest_target_status status);
 void resetQuest(P_char ch);
 int getItemFromZone(int zone);

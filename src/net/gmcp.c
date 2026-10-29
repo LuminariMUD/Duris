@@ -1217,15 +1217,6 @@ void gmcp_quest_status(struct char_data *ch, world_quest_target_status status)
 }
 
 /* generate and send quest.map for bartender quests */
-void gmcp_quest_map(struct char_data *ch)
-{
-	if (!ch || !ch->desc || !GMCP_ENABLED(ch))
-		return;
-	P_char player = GET_PLYR(ch);
-	if (IS_NPC(player))
-		return;
-	gmcp_quest_map(ch, world_quest_refresh(player));
-}
 
 void gmcp_quest_map(struct char_data *ch, world_quest_target_status status)
 {

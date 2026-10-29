@@ -126,7 +126,6 @@ void gmcp_comm_channel_ex(struct char_data *ch, const char *channel, const char 
 /* quest status - sends bartender quest info */
 void gmcp_quest_status(struct char_data *ch);
 void gmcp_quest_status(struct char_data *ch, world_quest_target_status status);
-void gmcp_quest_map(struct char_data *ch);
 void gmcp_quest_map(struct char_data *ch, world_quest_target_status status);
 void gmcp_send_quest_map(struct char_data *ch, const char *map_buf);
 

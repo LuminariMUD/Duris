@@ -42,7 +42,6 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
             ("world/world_quest.c", "bool world_quest_replace("),
             ("world/world_quest.c", "void resetQuest("),
             ("world/world_quest.c", "bool createQuest("),
-            ("world/world_quest.c", "int quest_buy_map(P_char ch)"),
             ("world/world_quest.c", "int quest_buy_map(P_char ch, world_quest_target_status"),
             ("world/world_quest.c", "void world_quest_describe("),
             ("world/world_quest.c", "void do_quest("),

@@ -855,7 +855,8 @@ accepted-assignment recovery and full gameplay/restart proof remain next.
 ### Recovery review checkpoint (2026-10-29)
 
 Working branch: `branch/issue-437-quest-recovery`, based on #466 head
-`fd1702522`. Recovery is ready for a focused stacked PR; add its link after creation.
+`fd1702522`. Review-ready PR: [#467](https://github.com/LuminariMUD/Duris/pull/467),
+implementation commit `787f0c6fd`.
 
 The same route builder supplies current/capable/potential proofs within one shared
 work bound. Accepted-target validation uses one live scan, saved origin/level,
@@ -879,6 +880,13 @@ Checked text/GMCP overloads reuse one command's verdict; JSON remains read-only.
 Quest.Status exposes availability/replacement-due and retains pending progress/map
 entitlement. Unverified target/zone directions are withheld and empty Quest.Map
 clears stale directions. No extra fields, ledger, global route cache or service.
+Final caller tracing removed three unused one-argument map/JSON adapters added
+by this slice: every real caller already carries a checked verdict. The normal
+one-argument GMCP status gateway remains because login/combat callers use it.
+Only the checked map/serializer APIs remain, avoiding another validation path.
+Both incremental builds, the 71-scenario native suite and text/JSON/GMCP fixtures
+passed after removing these unused adapters; the real journey evidence above is
+reused because its production call path is unchanged.
 
 Evidence:
 
