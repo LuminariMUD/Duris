@@ -11055,6 +11055,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 					send_to_char(
 						"Ask 'abandon confirm' to discard your free replacement and earned progress without a charge.\r\n",
 						pl);
+					gmcp_quest_status(pl, availability);
 					return TRUE;
 				}
 				resetQuest(pl);
