@@ -1183,6 +1183,11 @@ char *json_build_chargen_complete(const char *name, const char *message)
 /* build quest.status gmcp message for bartender quests */
 char *json_build_quest_status(struct char_data *ch)
 {
+	return json_build_quest_status(ch, world_quest_target_status::unchecked);
+}
+
+char *json_build_quest_status(struct char_data *ch, world_quest_target_status status)
+{
 	cJSON *root;
 	char *result;
 	char target_buf[MAX_STRING_LENGTH];
@@ -1198,10 +1203,19 @@ char *json_build_quest_status(struct char_data *ch)
 	if (remaining >= 0)
 		cJSON_AddNumberToObject(root, "remaining", remaining);
 
+	using availability = world_quest_target_status;
+	const char *state = status == availability::valid	 ? "available" :
+			    status == availability::unavailable	 ? "unavailable" :
+			    status == availability::blocked	 ? "temporarilyBlocked" :
+			    status == availability::needs_origin ? "needsBartender" :
+								   "unproven";
+	cJSON_AddStringToObject(root, "availability", state);
+	cJSON_AddBoolToObject(root, "replacementDue", ch->only.pc->quest_replacement_due != 0);
+
 	/* Check if quest is active */
-	if (ch->only.pc->quest_active == 1)
+	if (ch->only.pc->quest_active == 1 || ch->only.pc->quest_replacement_due)
 	{
-		cJSON_AddBoolToObject(root, "active", 1);
+		cJSON_AddBoolToObject(root, "active", ch->only.pc->quest_active == 1);
 
 		/* Quest type */
 		if (ch->only.pc->quest_type == FIND_AND_ASK)
@@ -1224,7 +1238,9 @@ char *json_build_quest_status(struct char_data *ch)
 		/* Prototype descriptions were cached at boot; displaying a quest never spawns an NPC. */
 		const int target = real_mobile(ch->only.pc->quest_mob_vnum);
 		const int zone_idx = real_zone(ch->only.pc->quest_zone_number);
-		if (target >= 0 && mob_index[target].desc2 && zone_idx >= 0)
+		if (status == availability::valid && ch->only.pc->quest_active == 1 &&
+		    !ch->only.pc->quest_replacement_due && !ch->only.pc->quest_accomplished &&
+		    target >= 0 && mob_index[target].desc2 && zone_idx >= 0)
 		{
 			if (ch->only.pc->quest_type == FIND_AND_ASK)
 			{
@@ -1248,11 +1264,22 @@ char *json_build_quest_status(struct char_data *ch)
 		}
 		else
 		{
-			snprintf(target_buf, MAX_STRING_LENGTH, "Quest target unavailable");
+			const char *message =
+				ch->only.pc->quest_replacement_due ?
+					"Your task is no longer available. Ask a bartender for a free replacement." :
+				ch->only.pc->quest_accomplished ?
+					"Task complete. Return to your quest giver." :
+				status == availability::blocked ?
+					"Your task is temporarily blocked." :
+					"Ask a bartender to check your task.";
+			snprintf(target_buf, MAX_STRING_LENGTH, "%s", message);
 		}
 
 		cJSON_AddStringToObject(root, "target", target_buf);
-		cJSON_AddNumberToObject(root, "zoneNumber", ch->only.pc->quest_zone_number);
+		if (status == availability::valid && !ch->only.pc->quest_accomplished &&
+		    ch->only.pc->quest_active == 1 && !ch->only.pc->quest_replacement_due &&
+		    target >= 0 && mob_index[target].desc2 && zone_idx >= 0)
+			cJSON_AddNumberToObject(root, "zoneNumber", ch->only.pc->quest_zone_number);
 	}
 	else
 	{

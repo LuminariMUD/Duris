@@ -216,7 +216,10 @@ def test_dual_backend_journey_matches_this_server() -> None:
     for a funds line the server no longer prints, and left its container when setup failed."""
     assert '"DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11"' in DUAL_BACKEND
     waited = [line for line in DUAL_BACKEND.splitlines() if 'client.expect("Quest-room test' in line]
-    assert len(waited) == 2
+    assert waited
+    assert {"Quest-room test move complete.", "Quest-room test funds committed."} <= {
+        line.split('"')[1] for line in waited
+    }
     for line in waited:
         assert line.split('"')[1] in CHAOS, line
     prepare = DUAL_BACKEND[DUAL_BACKEND.index("def prepare_mariadb(") :

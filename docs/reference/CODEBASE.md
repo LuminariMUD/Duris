@@ -344,15 +344,33 @@ payload is unchanged. Legacy pfile imports also initialize both to zero. SQL
 requires migration `0055_world_quest_recovery`. New purchases capture the real
 bartender/customer room into the payment context and creation API; they retain
 that origin even if the customer later moves. Reset clears it and sharing copies
-it, with each mutation marking status dirty. New selection validates routes;
-stale-assignment recovery remains tracked in `docs/ongoing-projects/plan.md` for
-#437.
+it, with each mutation marking status dirty. Accepted work is revalidated at QUEST, bartender and initial GMCP status use;
+checked rendering reuses that command's verdict. A separate maximum-capability
+and optimistic-procedure pass can prove a hard world-route loss without treating
+a player's lost gear, unknown script or work-budget exhaustion as cancellation.
+All passes share the existing bound; accepted supply is checked against remaining
+kills, without applying the new-purchase minus-one rule again.
+
+A world-invalid incomplete task becomes inactive with a durable replacement due.
+A bartender redeems it through the same selector without a new fee or daily-use
+penalty, retaining accepted type/level, earned kills, original quota, receiver,
+remaining shares, map purchase and original start time. No replacement leaves
+that entitlement intact. Explicit confirmed abandonment discards it for free.
+Completed work is preserved and claimed before new-purchase gates. Legacy
+zero-origin work gets target/location checks and must be rebound at a real
+bartender before directions are disclosed. Sharing checks the recipient's own
+eligibility and cannot overwrite an entitlement. Full journey qualification
+remains tracked in `docs/ongoing-projects/plan.md` for #437.
 
 Quest text and JSON status read boot-cached NPC short descriptions without
 spawning prototypes. Missing giver/target details never reset paid or completed
 work. Quest maps use a synchronous map viewpoint without room-transfer hooks,
 population changes or action interruption, and emit `Quest.Map` rather than
 overwriting the character's `Room.Map`.
+Quest.Status includes `availability` and `replacementDue`, retaining progress and
+`mapBought` for pending work. Unverified targets/zone directions are withheld;
+an empty Quest.Map packet with zone zero clears stale directions. JSON serializers
+do not change quest state or money.
 
 ASK and KILL completion credit must match the accepted quest type and the
 target's actual advertised zone. A matching prototype elsewhere cannot advance

@@ -22,7 +22,7 @@ import tempfile
 import time
 import uuid
 
-from test_flatfile_combat_journey import MudClient
+from test_flatfile_combat_journey import MudClient, reconnect_character
 from quest_character_flow import create_quest_character
 
 
@@ -275,9 +275,58 @@ def collect_logs(run_root: pathlib.Path) -> str:
     return "\n".join(sections)[-50000:]
 
 
+# Test-only debugger probe. It changes only disposable in-memory zone flags;
+# all quest transitions, payments, saves and loads use production commands.
+RECOVERY_PROBE = r"""
+#include "core/prototypes.h"
+#include "core/utils.h"
+#include "world/world_quest_policy.h"
+#include <cstdio>
+#include <cassert>
+#include <vector>
+extern P_room world;
+extern zone_data *zone_table;
+extern int top_of_world;
+extern "C" void quest_journey_checkpoint(P_char ch, const char *label)
+{
+    assert(ch && IS_PC(ch));
+    const auto &q = *ch->only.pc;
+    FILE *out = fopen("quest-journey.tsv", "a");
+    if (!out) return;
+    fprintf(out, "%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%lld\t%d\t%d\t%d\t%d\t%d\t%d\t%lld\t%lld\n",
+        label, q.quest_active, q.quest_replacement_due, q.quest_origin_room,
+        q.quest_level, q.quest_type, q.quest_mob_vnum, q.quest_zone_number,
+        static_cast<long long>(q.quest_started), q.quest_receiver, q.quest_shares_left,
+        q.quest_kill_how_many, q.quest_kill_original, q.quest_map_room, q.quest_map_bought,
+        static_cast<long long>(GET_MONEY(ch)), static_cast<long long>(ch->points.curr_exp));
+    fclose(out);
+}
+extern "C" void quest_journey_invalidate(P_char ch)
+{
+    quest_journey_checkpoint(ch, "before-invalidation");
+    std::vector<int> eligible;
+    world_quest_policy_zone_list(ch, eligible);
+    for (int zone : eligible) zone_table[zone].flags |= ZONE_CLOSED;
+}
+"""
+JOURNEY_FIELDS = (
+    "active", "replacement_due", "origin", "level", "type", "mob", "zone", "started",
+    "receiver", "shares", "kills", "quota", "map_room", "map_bought", "wallet", "xp",
+)
+
+
+def read_journey_states(run_root: pathlib.Path) -> list[dict]:
+    records = []
+    for line in (run_root / "quest-journey.tsv").read_text().splitlines():
+        label, *values = line.split("\t")
+        require(len(values) == len(JOURNEY_FIELDS), "incomplete debugger checkpoint")
+        records.append({"label": label, **dict(zip(JOURNEY_FIELDS, map(int, values)))})
+    return records
+
+
 def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathlib.Path,
                           database_environment: dict[str, str] | None) -> dict:
-    with tempfile.TemporaryDirectory(prefix=f"world-quest-{backend}-run-") as run_tmp:
+    with tempfile.TemporaryDirectory(prefix=f"world-quest-{backend}-run-", dir=ROOT / "bin/tests") as run_tmp:
         run_root = pathlib.Path(run_tmp)
         player_journal, critical_journal, output_path = setup_run_root(run_root)
         plain_port, tls_port, websocket_port = available_ports()
@@ -289,20 +338,44 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         # Leave production commands and content unchanged.
         pid_path = run_root / "inferior.pid"
         gdb_path = run_root / "quest.gdb"
-        gdb_path.write_text(
-            "set pagination off\nset confirm off\nset startup-with-shell off\n"
-            "handle SIGTERM nostop noprint pass\ntbreak main\ncommands\nsilent\n"
-            f"python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))\n"
-            "continue\nend\ntbreak do_chaos\ncommands\nsilent\n"
-            f"set ch->player.level = {QUEST_LEVEL}\ncontinue\nend\nrun\n"
-        )
-        with output_path.open("w") as output:
-            process = subprocess.Popen(
-                ["gdb", "--batch", "--return-child-result", "-x", str(gdb_path),
-                 "--args", str(binary), "-d", str(run_root), str(plain_port)],
-                cwd=run_root, env=environment, stdout=output, stderr=subprocess.STDOUT,
-                text=True,
+        probe_source = run_root / "recovery_probe.cpp"
+        probe_binary = run_root / "recovery_probe.so"
+        probe_source.write_text(RECOVERY_PROBE)
+        flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
+                 subprocess.check_output(["mysql_config", "--cflags"], text=True).split())
+        built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Isrc", *flags,
+                     str(probe_source), "-o", str(probe_binary)], timeout=60)
+        require(built.returncode == 0, built.stdout.decode(errors="replace"))
+
+        def launch(restarted: bool = False) -> subprocess.Popen[str]:
+            # At a raw entry breakpoint, read SysV x86-64's first argument.
+            # Optimized DWARF can name a callee register before its prologue
+            # has replaced the caller's value (NPC giver versus player).
+            gdb_path.write_text(
+                "set pagination off\nset confirm off\nset startup-with-shell off\n"
+                "handle SIGTERM nostop noprint pass\nhandle SIGPIPE nostop noprint pass\n"
+                f"set $journey_invalidate = {0 if restarted else 1}\n"
+                "tbreak main\ncommands\nsilent\n"
+                f"python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))\n"
+                f'set $probe=(void*)dlopen("{probe_binary}",2)\n'
+                "continue\nend\ntbreak *do_chaos\ncommands\nsilent\n"
+                f"set ((char_data*)$rdi)->player.level = {QUEST_LEVEL}\ncontinue\nend\n"
+                "break *do_quest\ncommands\nsilent\n"
+                "if $journey_invalidate\nset $journey_invalidate=0\n"
+                "call (void)quest_journey_invalidate((char_data*)$rdi)\nend\ncontinue\nend\n"
+                "break *world_quest_describe\ncommands\nsilent\n"
+                f'call (void)quest_journey_checkpoint((char_data*)$rdi,"{"restart" if restarted else "first"}")\n'
+                "continue\nend\nrun\n"
             )
+            with output_path.open("w") as output:
+                return subprocess.Popen(
+                    ["gdb", "--batch", "--return-child-result", "-x", str(gdb_path),
+                     "--args", str(binary), "-d", str(run_root), str(plain_port)],
+                    cwd=run_root, env=environment, stdout=output, stderr=subprocess.STDOUT,
+                    text=True,
+                )
+
+        process = launch()
         client = None
         try:
             boot_output = wait_for_boot(process, output_path)
@@ -349,17 +422,102 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             if database_environment is not None:
                 player_state = verify_mariadb_player_state(database_environment)
 
-            client.send("ask bartender abandon confirm")
-            client.expect("You no longer have a task.", timeout=30)
+            client.send("ask bartender map")
+            client.expect("will now show you additional information", timeout=30)
+            # This first explicit QUEST closes every eligible target zone in the
+            # disposable process, proving both invalidation and a no-candidate wait.
+            client.send("quest")
+            client.expect("Your task is no longer available.", timeout=30)
+            states = read_journey_states(run_root)
+            accepted = next(x for x in states if x["label"] == "before-invalidation")
+            pending = states[-1]
+            preserved = ("origin", "level", "type", "mob", "zone", "started", "receiver",
+                         "shares", "kills", "quota", "map_bought", "wallet", "xp")
+            require(accepted["map_bought"] == 1, "map purchase did not precede invalidation")
+            require(pending["active"] == 0 and pending["replacement_due"] == 1,
+                    "world-invalid work did not become a replacement entitlement")
+            require(all(pending[k] == accepted[k] for k in preserved),
+                    "invalidation changed paid or earned state")
+            client.send("ask bartender quest")
+            client.expect("Your free replacement and earned progress remain yours.", timeout=30)
+            client.send("save")
+            client.expect("Save complete for Taverek.", timeout=120)
+            if database_environment is not None:
+                verify_mariadb_player_state(database_environment, active=0, map_bought=1,
+                                            replacement_due=1)
+            # Mortals rent at an inn; the bartender's city room cannot camp.
+            # Follow authored ordinary exits from Mathorn's Bar to the inn.
+            for direction in ("down", "south", "west", "west", "south", "south",
+                              "down", "down", "down", "down", "south", "south",
+                              "south", "east", "east", "east", "east", "east",
+                              "south", "up"):
+                client.send(direction)
+            client.expect("The Quivering Leaf Inn", timeout=60)
+            client.send("rent")
+            client.expect("ACCOUNT MENU", timeout=30)
+            client.send("0")
+            client.close()
+            client = reconnect_character(plain_port, expected_room="The Quivering Leaf Inn")
+            client.send("quest")
+            client.expect("Your task is no longer available.", timeout=30)
+            relogged = read_journey_states(run_root)[-1]
+            require(all(relogged[k] == pending[k] for k in JOURNEY_FIELDS),
+                    "pending entitlement changed on relogin")
+            client.send("save")
+            client.expect("Save complete for Taverek.", timeout=120)
+            client.send("rent")
+            client.expect("ACCOUNT MENU", timeout=30)
+            client.send("0")
             client.close()
             client = None
             os.kill(int(pid_path.read_text()), signal.SIGTERM)
             process.wait(timeout=30)
-            require(process.returncode == 0,
-                    f"{backend} bartender server did not stop cleanly: {output_path.read_text(errors='replace')[-12000:]}")
+            require(process.returncode == 0, "first recovery server did not stop cleanly")
+            first_output = output_path.read_text(errors="replace")
+            require("Normal termination of game." in first_output, "first shutdown was not normal")
+            # Zone closures were an in-memory fixture. A fresh boot restores
+            # authored content while retaining the player's durable entitlement.
+            process = launch(restarted=True)
+            wait_for_boot(process, output_path)
+            client = reconnect_character(plain_port, expected_room="The Quivering Leaf Inn")
+            client.send("quest")
+            client.expect("Your task is no longer available.", timeout=30)
+            restarted = read_journey_states(run_root)[-1]
+            require(all(restarted[k] == pending[k] for k in JOURNEY_FIELDS),
+                    "pending entitlement changed across server restart")
+            # Placement/funds are explicit fixture setup, separate from the free
+            # replacement wallet comparison immediately afterwards.
+            client.send(f"chaos questroom {BARTENDER_ROOM}")
+            client.expect("Quest-room test funds committed.", timeout=60)
+            client.send("quest")
+            client.expect("Your task is no longer available.", timeout=30)
+            before_replacement = read_journey_states(run_root)[-1]
+            client.send("ask bartender quest")
+            client.expect("Here is your free replacement.", timeout=30)
+            client.expect_any(("Go kill ", "Go ask "), timeout=30)
+            replacement = read_journey_states(run_root)[-1]
+            require(replacement["active"] == 1 and replacement["replacement_due"] == 0,
+                    "entitlement did not redeem exactly once")
+            kept = ("level", "type", "started", "receiver", "shares", "kills", "quota",
+                    "map_bought", "wallet", "xp")
+            require(all(replacement[k] == before_replacement[k] for k in kept),
+                    "free replacement changed wallet, XP or accepted work")
+            require(replacement["origin"] == BARTENDER_ROOM and replacement["map_room"] > 0,
+                    "replacement lost its current verified origin/entrance")
+            client.send("save")
+            client.expect("Save complete for Taverek.", timeout=120)
+            if database_environment is not None:
+                verify_mariadb_player_state(database_environment, map_bought=1)
+            client.close()
+            client = None
+            os.kill(int(pid_path.read_text()), signal.SIGTERM)
+            process.wait(timeout=30)
+            require(process.returncode == 0, "restarted recovery server did not stop cleanly")
             final_output = output_path.read_text(errors="replace")
-            require("Normal termination of game." in final_output,
-                    f"{backend} server missed normal termination")
+            require("Normal termination of game." in final_output, "final shutdown was not normal")
+            recovery = {"accepted": accepted, "pending": pending, "relogged": relogged,
+                        "restarted": restarted, "before_replacement": before_replacement,
+                        "replacement": replacement}
             logs = collect_logs(run_root)
             return {
                 "backend": backend,
@@ -370,16 +528,20 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
                 "fixture_level": QUEST_LEVEL,
                 "quest_first_result": first_result,
                 "quest_second_result": second_result,
-                "catalog_ready_count": final_output.count("World quest catalog ready:"),
+                "catalog_ready_count": first_output.count("World quest catalog ready:") +
+                                       final_output.count("World quest catalog ready:"),
                 "player_state": player_state,
+                "recovery": recovery,
                 "server_output_tail": final_output[-4000:],
                 "log_tail": logs[-8000:],
             }
         except Exception as error:
             output = output_path.read_text(errors="replace")
             logs = collect_logs(run_root)
+            checkpoints = read_journey_states(run_root) if (run_root / "quest-journey.tsv").exists() else []
             raise AssertionError(
                 f"{backend} bartender journey failed: {error}\n"
+                f"--- quest checkpoints ---\n{json.dumps(checkpoints)}\n"
                 f"--- server output ---\n{output[-16000:]}\n"
                 f"--- runtime logs ---\n{logs}"
             ) from error
@@ -388,7 +550,10 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
                 client.close()
             if process.poll() is None:
                 if pid_path.exists():
-                    os.kill(int(pid_path.read_text()), signal.SIGTERM)
+                    try:
+                        os.kill(int(pid_path.read_text()), signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass  # The debugger's inferior already exited.
                 else:
                     process.terminate()
                 try:
@@ -410,7 +575,8 @@ def verify_mariadb_zone_flag(container: str, root_password: str, database: str) 
     return {"zone_rows": int(fields[0]), "quest_enabled_rows": int(fields[1])}
 
 
-def verify_mariadb_player_state(environment: dict[str, str]) -> dict[str, int | str]:
+def verify_mariadb_player_state(environment: dict[str, str], *, active: int = 1,
+                               map_bought: int = 0, replacement_due: int = 0) -> dict[str, int | str]:
     query = (
         "SELECT name, account_name, quest_active, quest_mob_vnum, quest_type, "
         "quest_started, quest_zone_number, quest_giver, quest_level, quest_receiver, "
@@ -454,15 +620,15 @@ def verify_mariadb_player_state(environment: dict[str, str]) -> dict[str, int | 
         "quest_replacement_due": int(fields[16]),
     }
     detail = "raw quest fields=" + repr(fields[2:])
-    require(quest_active == 1, "MariaDB player row did not persist an active quest; " + detail)
+    require(quest_active == active, "MariaDB row has wrong active quest state; " + detail)
     require(quest_giver == 16553, "MariaDB player row has the wrong bartender giver; " + detail)
     require(quest_mob_vnum > 0, "MariaDB player row has no quest target; " + detail)
     require(quest_started > 0, "MariaDB player row has no quest start time; " + detail)
     require(quest_level == QUEST_LEVEL, "MariaDB player row has the wrong accepted quest level; " + detail)
     require(int(fields[15]) == BARTENDER_ROOM, "MariaDB row lost the accepted origin; " + detail)
-    require(int(fields[16]) == 0, "new quest unexpectedly needs replacement; " + detail)
-    require(int(fields[13]) > 0, "new quest lost its verified entrance; " + detail)
-    require(int(fields[14]) == 0, "new quest received a paid map for free; " + detail)
+    require(int(fields[16]) == replacement_due, "wrong replacement entitlement; " + detail)
+    require((int(fields[13]) > 0) == bool(active), "wrong verified map state; " + detail)
+    require(int(fields[14]) == map_bought, "wrong purchased-map entitlement; " + detail)
     require(quest_zone_number not in {0, 292, 536},
             "MariaDB player row persisted an explicitly denied quest zone")
     return state

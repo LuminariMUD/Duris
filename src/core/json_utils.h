@@ -13,6 +13,7 @@
 #define JSON_UTILS_H
 
 #include "core/structs.h"
+#include "world/world_quest.h"
 #include <cjson/cJSON.h>
 
 /* forward declarations */
@@ -112,6 +113,7 @@ char *json_build_comm_channel_ex(const char *channel, const char *sender, const 
 
 /* build quest.status gmcp message */
 char *json_build_quest_status(struct char_data *ch);
+char *json_build_quest_status(struct char_data *ch, world_quest_target_status status);
 
 /* build ship.info gmcp message */
 char *json_build_ship_info(struct ShipData *ship, struct char_data *ch);

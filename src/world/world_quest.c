@@ -543,9 +543,12 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 		}
 	}
 
-	if (ch->only.pc->quest_active == 0)
+	const auto availability = world_quest_refresh(ch);
+	if (availability != world_quest_target_status::valid || !ch->only.pc->quest_active ||
+	    ch->only.pc->quest_accomplished)
 	{
-		send_to_char("You don't have a quest!\r\n", ch);
+		world_quest_describe(ch, availability);
+		gmcp_quest_status(ch, availability);
 		return;
 	}
 
@@ -594,7 +597,8 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				return;
 			}
 
-			if (victim->only.pc->quest_active)
+			if (IS_NPC(victim) || victim->only.pc->quest_active ||
+			    victim->only.pc->quest_replacement_due)
 			{
 				send_to_char("Your fellow adventurer is already on a task.\r\n",
 					     ch);
@@ -651,6 +655,21 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				send_to_char("They've already done this quest!\r\n", ch);
 				return;
 			}
+			const int remaining = ch->only.pc->quest_type == FIND_AND_KILL ?
+						      ch->only.pc->quest_kill_original -
+							      ch->only.pc->quest_kill_how_many :
+						      1;
+			const auto recipient = world_quest_policy_check_target(
+				victim, ch->only.pc->quest_origin_room, ch->only.pc->quest_level,
+				ch->only.pc->quest_zone_number, ch->only.pc->quest_mob_vnum,
+				ch->only.pc->quest_type, remaining);
+			if (recipient.status != world_quest_target_status::valid)
+			{
+				send_to_char(
+					"Your fellow adventurer cannot currently use this task's route or target.\r\n",
+					ch);
+				return;
+			}
 			resetQuest(victim);
 
 			ch->only.pc->quest_shares_left--;
@@ -671,14 +690,56 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			victim->only.pc->quest_receiver = ch->only.pc->quest_receiver;
 			victim->only.pc->quest_kill_how_many = ch->only.pc->quest_kill_how_many;
 			victim->only.pc->quest_kill_original = ch->only.pc->quest_kill_original;
+			victim->only.pc->quest_map_room =
+				recipient.map_room >= 0 ? world[recipient.map_room].number : 0;
 			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 			mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS);
-			do_quest(victim, writable_arg(""), 0);
-			gmcp_quest_status(victim);
+			world_quest_describe(victim, recipient.status);
+			gmcp_quest_status(victim, recipient.status);
 
 			return;
 		}
 
+	world_quest_describe(ch, availability);
+	gmcp_quest_status(ch, availability);
+}
+
+void world_quest_describe(P_char ch, world_quest_target_status availability)
+{
+	using status = world_quest_target_status;
+	if (!ch || IS_NPC(ch))
+		return;
+	if (ch->only.pc->quest_replacement_due)
+	{
+		send_to_char(
+			"Your task is no longer available. Ask a bartender for a free replacement. Your earned progress and purchased map are retained.\r\n",
+			ch);
+		return;
+	}
+	if (!ch->only.pc->quest_active)
+	{
+		send_to_char("You don't have a quest!\r\n", ch);
+		return;
+	}
+	if (ch->only.pc->quest_accomplished)
+	{
+		send_to_char("This quest is already finished, go talk to the quest master!\r\n",
+			     ch);
+		return;
+	}
+	if (availability != status::valid)
+	{
+		const char *message =
+			availability == status::blocked ?
+				"Your task is temporarily blocked by your current condition or travel abilities." :
+			availability == status::needs_origin ?
+				"This older task needs a bartender to check its travel origin." :
+				"I cannot prove that your task is usable right now. Ask a bartender to check it.";
+		send_to_char(message, ch);
+		send_to_char("\r\nYour task and earned progress have been kept.\r\n", ch);
+		return;
+	}
+	char buf[MAX_STRING_LENGTH];
 	const int giver = real_mobile(ch->only.pc->quest_giver);
 	const char *giver_name = giver >= 0 && mob_index[giver].desc2 ? mob_index[giver].desc2 :
 									"A bartender";
@@ -745,6 +806,80 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 	send_to_char(
 		"If you're unable to finish it, go to the quest master and ask him to &+Wabandon&n your quest!\r\n",
 		ch);
+}
+
+world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
+{
+	using status = world_quest_target_status;
+	if (!ch || IS_NPC(ch))
+		return status::unproven;
+	auto &quest = *ch->only.pc;
+	if (quest.quest_accomplished)
+		return status::valid;
+	if (quest.quest_replacement_due)
+		return status::unavailable;
+	if (!quest.quest_active)
+		return status::valid;
+	const int remaining = quest.quest_type == FIND_AND_KILL ?
+				      quest.quest_kill_original - quest.quest_kill_how_many :
+				      1;
+	const int origin = quest.quest_origin_room > 0 ? quest.quest_origin_room : bartender_origin;
+	const auto checked = world_quest_policy_check_target(ch, origin, quest.quest_level,
+							     quest.quest_zone_number,
+							     quest.quest_mob_vnum, quest.quest_type,
+							     remaining);
+	bool changed = false;
+	if (checked.status == status::unavailable)
+	{
+		quest.quest_active = 0;
+		quest.quest_replacement_due = 1;
+		changed = true;
+	}
+	const int map = checked.status == status::valid && checked.map_room >= 0 ?
+				world[checked.map_room].number :
+				0;
+	if (quest.quest_map_room != map)
+	{
+		quest.quest_map_room = map;
+		changed = true;
+	}
+	if (checked.status == status::valid && quest.quest_origin_room <= 0 && origin > 0)
+	{
+		quest.quest_origin_room = origin;
+		changed = true;
+	}
+	if (changed)
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	return checked.status;
+}
+
+bool world_quest_replace(P_char ch, P_char giver)
+{
+	if (!ch || IS_NPC(ch) || !giver || !IS_NPC(giver) || ch->in_room < 0 ||
+	    ch->in_room > top_of_world || giver->in_room != ch->in_room ||
+	    !ch->only.pc->quest_replacement_due || ch->only.pc->quest_accomplished)
+		return false;
+	auto &quest = *ch->only.pc;
+	const int remaining = quest.quest_type == FIND_AND_KILL ?
+				      quest.quest_kill_original - quest.quest_kill_how_many :
+				      1;
+	if (remaining < 1)
+		return false;
+	world_quest_target target;
+	const int origin = world[ch->in_room].number;
+	if (world_quest_policy_select_target(ch, origin, quest.quest_level, target,
+					     quest.quest_type,
+					     remaining) != QUEST_CREATION_NO_FAILURE)
+		return false;
+	quest.quest_active = 1;
+	quest.quest_replacement_due = 0;
+	quest.quest_mob_vnum = target.mob_vnum;
+	quest.quest_zone_number = zone_table[target.zone].number;
+	quest.quest_origin_room = origin;
+	quest.quest_giver = GET_VNUM(giver);
+	quest.quest_map_room = target.map_room >= 0 ? world[target.map_room].number : 0;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	return true;
 }
 
 // The caller validates the real interaction and captures its origin before payment.
@@ -828,7 +963,14 @@ void show_map_at(P_char ch, int room)
 
 int quest_buy_map(P_char ch)
 {
-	if (!IS_ALIVE(ch) || IS_NPC(ch))
+	return quest_buy_map(ch, world_quest_refresh(ch));
+}
+
+int quest_buy_map(P_char ch, world_quest_target_status availability)
+{
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || availability != world_quest_target_status::valid ||
+	    !ch->only.pc->quest_active || ch->only.pc->quest_replacement_due ||
+	    ch->only.pc->quest_accomplished)
 	{
 		return 0;
 	}
@@ -858,8 +1000,10 @@ int quest_buy_map(P_char ch)
 	{
 		show_map_at(ch, map_room);
 
-		/* Send quest map via GMCP for WebSocket clients */
-		gmcp_quest_map(ch);
+		// show_map_at emits the paid map through Quest.Map as well as text.
+		if (ch->desc)
+			ch->desc->gmcp_quest_map_sent = 1;
+		gmcp_quest_status(ch, availability);
 	}
 
 	return 1;
