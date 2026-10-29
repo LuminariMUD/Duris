@@ -12,7 +12,6 @@
 #include "item/objmisc.h"
 #include "sql/sql.h"
 #include "ships/ships.h"
-#include "world/graph.h"
 #include <map>
 #include "world/world_quest_policy.h"
 
@@ -53,7 +52,6 @@ struct candidate
 	std::vector<int> stone_rooms;
 };
 std::vector<candidate> catalogue;
-std::array<std::array<std::vector<int>, NUM_PORTS>, NUM_PORTS> cargo_paths;
 std::array<std::vector<int>, 2> paths;
 std::optional<divine_boon_state> prepared_hour;
 // Ring of the last eight durably published hourly decisions (current boot only).
@@ -345,7 +343,6 @@ bool divine_boon_selection_bootstrap()
 try
 {
 	catalogue.clear();
-	cargo_paths = {};
 	prepared_hour.reset();
 	prepared_diagnostic.reset();
 	submitted_diagnostic.reset();
@@ -387,19 +384,6 @@ try
 		if (zone.encounters.size() >= 5)
 			catalogue.push_back(std::move(zone));
 	}
-	// The native shortest-path search belongs to boot, never player commands.
-	for (int source = 0; source < NUM_PORTS; ++source)
-		for (int destination = 0; destination < NUM_PORTS; ++destination)
-		{
-			if (source == destination)
-				continue;
-			const int from = real_room(ports[source].ocean_map_room);
-			const int to = real_room(ports[destination].ocean_map_room);
-			if (from < 0 || to < 0 || from >= top_of_world || to >= top_of_world)
-				continue;
-			if (!dijkstra(from, to, valid_ship_edge, cargo_paths[source][destination]))
-				cargo_paths[source][destination].clear();
-		}
 	refresh_paths();
 	return true;
 }
@@ -469,36 +453,15 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &slot)
 	    slot.cargo_commodity != slot.source_port ||
 	    slot.contraband_commodity != slot.source_port)
 		return false;
+	// Any port pair qualifies, whichever faction lives nearby. Only require that
+	// both ports exist in the loaded world with their ship shops.
+	if (!world)
+		return false;
 	const int source = real_room(ports[slot.source_port].loc_room),
 		  destination = real_room(ports[slot.destination_port].loc_room);
-	if (source < 0 || source > top_of_world || destination < 0 || destination > top_of_world ||
-	    world[source].funct != ship_shop_proc || world[destination].funct != ship_shop_proc)
-		return false;
-
-	bool land = false;
-	for (unsigned side = 0; side < 2; ++side)
-		land |= path_valid(source, side) && path_valid(destination, side);
-	if (!land)
-		return false;
-	const int from = real_room(ports[slot.source_port].ocean_map_room),
-		  to = real_room(ports[slot.destination_port].ocean_map_room);
-	if (from < 0 || to < 0 || from > top_of_world || to > top_of_world)
-		return false;
-	int room = from;
-	for (int direction : cargo_paths[slot.source_port][slot.destination_port])
-	{
-		// Revalidate the cached route without graph-search scratch marks.
-		// These are the same navigation restrictions as VALID_SHIP_EDGE.
-		if (direction < 0 || direction >= NUM_EXITS || !world[room].dir_option[direction] ||
-		    TOROOM(room, direction) < 0 || TOROOM(room, direction) > top_of_world ||
-		    IS_SECRET(room, direction) || IS_LOCKED(room, direction) ||
-		    IS_BLOCKED(room, direction) ||
-		    !(TO_OCEAN(room, direction) || TO_DOCKABLE(room, direction) ||
-		      TO_NOSWIM(room, direction)))
-			return false;
-		room = TOROOM(room, direction);
-	}
-	return room == to;
+	return source >= 0 && source <= top_of_world && destination >= 0 &&
+	       destination <= top_of_world && world[source].funct == ship_shop_proc &&
+	       world[destination].funct == ship_shop_proc;
 }
 
 bool divine_boon_select(const divine_boon_state &published, int64_t now,
@@ -682,44 +645,21 @@ try
 
 	if (!has_cargo)
 	{
-		// Validate each water route once per selection pass; the second scan only
-		// chooses among these proved routes and relaxes the shared-side preference.
-		std::vector<divine_boon_slot> routes;
-		bool shared_route = false;
+		// Uniformly random over every source/destination pair in the port list.
+		divine_boon_slot route;
+		unsigned count = 0;
 		for (int source = 0; source < NUM_PORTS; ++source)
 			for (int destination = 0; destination < NUM_PORTS; ++destination)
 			{
-				divine_boon_slot route;
-				route.category = divine_boon_category::cargo;
-				route.source_port = route.cargo_commodity =
-					route.contraband_commodity = source;
-				route.destination_port = destination;
-				if (!divine_boon_cargo_eligible(route) ||
-				    cargo_sell_price(source) <= 0 ||
-				    contra_sell_price(source) <= 0 ||
-				    cargo_buy_price(destination, source) <=
-					    cargo_sell_price(source) ||
-				    contra_buy_price(destination, source) <=
-					    contra_sell_price(source))
-					continue;
-				const int from = real_room(ports[source].loc_room),
-					  to = real_room(ports[destination].loc_room);
-				shared_route |= path_valid(from, 0) && path_valid(to, 0) &&
-						path_valid(from, 1) && path_valid(to, 1);
-				routes.push_back(route);
+				divine_boon_slot candidate;
+				candidate.category = divine_boon_category::cargo;
+				candidate.source_port = candidate.cargo_commodity =
+					candidate.contraband_commodity = source;
+				candidate.destination_port = destination;
+				if (divine_boon_cargo_eligible(candidate) &&
+				    number(1, ++count) == 1)
+					route = candidate;
 			}
-		divine_boon_slot route;
-		unsigned count = 0;
-		for (const auto &candidate : routes)
-		{
-			const int from = real_room(ports[candidate.source_port].loc_room),
-				  to = real_room(ports[candidate.destination_port].loc_room);
-			if (shared_route && !(path_valid(from, 0) && path_valid(to, 0) &&
-					      path_valid(from, 1) && path_valid(to, 1)))
-				continue;
-			if (number(1, ++count) == 1)
-				route = candidate;
-		}
 		if (diagnostic)
 			diagnostic->cargo_routes = count;
 		if (count)
@@ -766,8 +706,7 @@ void divine_boon_selection_status(P_char ch)
 		send_to_char_f(ch, "divine_targets side=%s experience=%u epic=%u\r\n",
 			       side ? "evil" : "good", exp, epic);
 	}
-	unsigned routes = 0, shared = 0;
-	int first_source = -1, first_destination = -1;
+	unsigned routes = 0;
 	for (int source = 0; source < NUM_PORTS; ++source)
 		for (int destination = 0; destination < NUM_PORTS; ++destination)
 		{
@@ -776,25 +715,9 @@ void divine_boon_selection_status(P_char ch)
 			route.source_port = route.cargo_commodity = route.contraband_commodity =
 				source;
 			route.destination_port = destination;
-			if (!divine_boon_cargo_eligible(route) || cargo_sell_price(source) <= 0 ||
-			    contra_sell_price(source) <= 0 ||
-			    cargo_buy_price(destination, source) <= cargo_sell_price(source) ||
-			    contra_buy_price(destination, source) <= contra_sell_price(source))
-				continue;
-			++routes;
-			const int from = real_room(ports[source].loc_room),
-				  to = real_room(ports[destination].loc_room);
-			shared += path_valid(from, 0) && path_valid(to, 0) && path_valid(from, 1) &&
-				  path_valid(to, 1);
-			if (first_source < 0)
-			{
-				first_source = source;
-				first_destination = destination;
-			}
+			routes += divine_boon_cargo_eligible(route);
 		}
-	send_to_char_f(ch,
-		       "divine_routes count=%u shared=%u first_source=%d first_destination=%d\r\n",
-		       routes, shared, first_source, first_destination);
+	send_to_char_f(ch, "divine_routes count=%u of %d\r\n", routes, NUM_PORTS * (NUM_PORTS - 1));
 
 	const auto *published = divine_boon_runtime_state();
 	if (published)

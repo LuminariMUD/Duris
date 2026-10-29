@@ -231,7 +231,7 @@ def run(backend, binary):
                     assert target or time.monotonic() < deadline, 'No reachable payable ground stone: ' + status
                     if target is None:
                         time.sleep(.5)
-                routes = re.search(r'divine_routes count=(\d+) shared=(\d+) first_source=(-?\d+) first_destination=(-?\d+)', status)
+                routes = re.search(r'divine_routes count=(\d+) of (\d+)', status)
                 print('Loaded route catalogue: ' + (routes.group(0) if routes else 'missing'), flush=True)
                 zone, payout = target['number'], target['epic_payout']
                 room, carrier = stone_site(target)
