@@ -2522,7 +2522,8 @@ void ship_activity()
 			}
 
 			// Battle Stations!
-			if (ship->target != NULL && !ship_target_in_contact(ship))
+			if (ship->target != NULL &&
+			    (!ship_target_in_contact(ship) || ship->timer[T_TARGET_IDLE] == 0))
 			{
 				ship->target = NULL;
 				act_to_all_in_ship(ship, "Target lost. Crew preparing to stand down.\r\n");
