@@ -670,6 +670,15 @@ int main(int argc, char **argv)
 		rooms[5].contents = nullptr;
 		objects[0].func.obj = nullptr;
 
+		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		check(status::unavailable); // The accepted origin has no exit to its target.
+		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
+		{
+			rooms[5].continent = 0;
+			check(status::unproven); // Missing geography alone cannot authorize a reroll.
+			rooms[5].continent = CONT_GC;
+		}
 		check(status::needs_origin, 1, 0);
 		check(status::unavailable, 1, 999999);
 		move(&player, 2);
@@ -874,15 +883,17 @@ int main(int argc, char **argv)
 		daily_remaining = 0;
 		wallet_debits = reward_claims = history_writes = 0;
 		GET_COPPER(&player) = 10000;
-		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		ask("quest");
+		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		ask("abandon");
 		assert(!pc.quest_active && pc.quest_replacement_due && GET_MONEY(&player) == 10000);
+		assert((published_statuses == std::vector{ status::unavailable }));
+		assert(feedback.find("abandon confirm") != std::string::npos);
 		const auto waiting = pc;
 		ask("quest");
 		assert(!memcmp(&pc, &waiting, sizeof(pc)));
 		ask("map");
 		assert(GET_MONEY(&player) == 10000 && wallet_debits == 0 && history_writes == 0);
-		rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
 		player.player.level = 10;
 		ask("quest"); // Continuation precedes new-purchase level and allowance gates.
 		assert(pc.quest_active && !pc.quest_replacement_due && GET_MONEY(&player) == 10000);
