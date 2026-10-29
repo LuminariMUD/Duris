@@ -303,9 +303,10 @@ struct quest_route_builder
 						       exit(from, direction)))
 					continue;
 				const int to = world[from].dir_option[direction]->to_room;
-				if (underdark_only ? !IS_UD_MAP(to) || !IS_MAP_ROOM(to) :
-						     level <= WORLD_QUEST_LOCAL_MAX_LEVEL &&
-							     region(to) != local_region)
+				if (underdark_only ?
+					    !IS_UD_MAP(to) || !IS_MAP_ROOM(to) :
+					    level <= WORLD_QUEST_LOCAL_MAX_LEVEL && local_region &&
+						    region(to) != local_region)
 					continue;
 				if (visited.size() >= WORLD_QUEST_MAX_ROUTE_ROOMS &&
 				    !visited.count(to))
@@ -452,7 +453,10 @@ struct quest_route_builder
 		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
 		{
 			local_region = region(origin);
-			if (!local_region)
+			// The potential pass can disprove every route even when a locked
+			// origin prevents resolving geography. A path in this relaxed
+			// graph yields only unproven, never a valid assignment.
+			if (!local_region && mode != quest_route_mode::potential)
 			{
 				unknown();
 				return;
@@ -466,7 +470,8 @@ struct quest_route_builder
 		}
 		expand(origin, context.rooms, false);
 		mark_returns(origin, context.rooms);
-		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL && !IS_MAP_ROOM(origin))
+		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL && !IS_MAP_ROOM(origin) &&
+		    mode != quest_route_mode::potential)
 		{
 			// Geography considers potential ordinary connections through a town,
 			// so an unknown shop in a side street cannot erase a proved region.
