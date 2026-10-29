@@ -1,6 +1,6 @@
 # Issue #444: preserve denominations in physical coin transfers
 
-Status: **planned; implementation not started**. Updated 2026-10-30.
+Status: **implemented; command/persistence qualification in progress**. Updated 2026-10-30.
 Issue: [Duris #444](https://github.com/LuminariMUD/Duris/issues/444).
 Branch: [`branch/issue-444-coin-denominations`](https://github.com/LuminariMUD/Duris/tree/branch/issue-444-coin-denominations).
 Source baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
@@ -9,8 +9,9 @@ Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-444-coin-denomination
 This plan follows the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
 The previous shared plan, including its #428/#445 qualification and review record,
 is preserved byte-for-byte as [plan-issue-428.md](plan-issue-428.md).
-The authorized deliverable for this branch checkpoint is this committed/pushed
-plan and issue association; the implementation steps below remain future work.
+The owner has authorized implementation, focused tests and gameplay/persistence
+qualification, commit/push, and a pull request linked to #444. The original
+planning checkpoint below is historical; current results are recorded at the end.
 
 ## Outcome
 
@@ -289,3 +290,25 @@ GitHub's native Development association links #444 to this branch, verified
 with `gh issue develop 444 --repo LuminariMUD/Duris --list`. Retain the issue
 until implementation and its acceptance work are complete; this plan does not
 close it.
+
+## Implementation qualification, 2026-10-30
+
+The production edit stays in `src/cmd/actobj.c`. Both pickup routes, explicit
+debits, recipient credits and all refunds now carry exact coin vectors. The
+existing PC transaction completion controls debit publication. A single guarded
+fallback validates all denominations before mutating NPC/no-PID wallets; it has
+real credit, debit and refund callers. Global value-based payments are unchanged.
+
+The expanded pickup regression failed against the unmodified source at its
+40-gold wallet assertion and passes with the fix. Pickup and transfer regressions
+link the real currency implementation and pass under ASan/UBSan; their shared
+header contains only existing world/persistence test services. Native checks
+cover partial/mixed pickup, PC/NPC/no-PID movement, overflow and refused debits,
+exact compensation, staff credit, revisions, and sender-first save ordering.
+Both MariaDB and flat-file development builds have passed.
+
+The new isolated journey has exercised four actual legacy quest completions,
+bank/bag transfers, relog, a wallet/bag restart, a typed money-object reward,
+mixed pickup/drop, PC receipt/relog and a real PC-overflow refund. Final journey
+qualification is still open while its remaining expected-response assertions
+are verified. No production operation or Emp-specific quest validation is claimed.

@@ -210,6 +210,20 @@ static void inspect_authority(const std::string &root, int32_t pid)
 		std::cout << domains.domains.wallet[i];
 	}
 	std::cout << "],\"wallet_revision\":" << domains.domains.wallet_revision;
+	std::cout << ",\"coin_items\":[";
+	bool first_coin = true;
+	for (const auto &item : snapshot.items)
+		if (item.type == ITEM_MONEY)
+		{
+			if (!first_coin)
+				std::cout << ',';
+			first_coin = false;
+			std::cout << "{\"uid\":" << item.object_uid
+				  << ",\"parent_index\":" << item.parent_index << ",\"coins\":["
+				  << item.values[0] << ',' << item.values[1] << ','
+				  << item.values[2] << ',' << item.values[3] << "]}";
+		}
+	std::cout << ']';
 	std::cout << ",\"bank\":[";
 	for (size_t i = 0; i < 4; ++i)
 	{

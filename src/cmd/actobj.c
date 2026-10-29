@@ -304,26 +304,48 @@ static void announce_corpse_bulk_get(P_char actor, bulk_get_state &state, P_obj 
 		act("$n begins pulling things from $p.", TRUE, actor, container, 0, TO_ROOM);
 }
 
-// Add coins taken from a pile to the actor's purse. A player's wallet refuses them when a
-// denomination would overflow; its revision advances only when it took them. The caller
-// takes the coins out of the pile only once this returns true.
-static bool credit_coins(P_char actor, int64_t value)
+// NPCs and characters without a persistent identity do not use the player transaction
+// facade. Check the whole vector before changing any denomination.
+static bool change_nonpersistent_coins(P_char actor, const currency_vector &delta)
 {
-	if (value <= 0)
+	if (!actor || (IS_PC(actor) && GET_PID(actor) > 0))
+		return false;
+	for (size_t index = 0; index < delta.amount.size(); ++index)
+	{
+		const int64_t after = actor->points.cash[index] + delta.amount[index];
+		if (after < 0 || after > INT_MAX)
+			return false;
+	}
+	for (size_t index = 0; index < delta.amount.size(); ++index)
+		actor->points.cash[index] += static_cast<int>(delta.amount[index]);
+	if (IS_PC(actor))
+		mark_player_dirty_components(GET_PID(actor), PLAYER_COMPONENT_STATUS);
+	gmcp_char_vitals(actor);
+	return true;
+}
+
+// Keep the exact denominations; callers remove coins from the source only after success.
+static bool credit_coins(P_char actor,
+			 const std::array<int32_t, CURRENCY_DENOMINATION_COUNT> &amount)
+{
+	currency_vector delta = {};
+	bool any = false;
+	for (size_t index = 0; index < amount.size(); ++index)
+	{
+		if (amount[index] < 0)
+			return false;
+		delta.amount[index] = amount[index];
+		any = any || amount[index];
+	}
+	if (!actor || !any)
 		return false;
 	if (!IS_PC(actor) || GET_PID(actor) <= 0)
-	{
-		if (value > INT_MAX)
-			return false;
-		ADD_MONEY(actor, static_cast<int>(value));
-		return true;
-	}
+		return change_nonpersistent_coins(actor, delta);
 	const uint64_t revision = actor->only.pc->wallet_revision;
-	return currency_transaction_submit_wallet_value(actor, value,
-							currency_reason_type::wallet_reward, 0,
-							critical_source_site::command,
-							critical_deadline_class::interactive,
-							nullptr, nullptr, 0) &&
+	return currency_transaction_submit(actor, delta, {}, currency_reason_type::wallet_reward, 0,
+					   critical_source_site::command,
+					   critical_deadline_class::interactive, nullptr, nullptr,
+					   0) &&
 	       actor->only.pc->wallet_revision != revision;
 }
 
@@ -331,19 +353,15 @@ static bool credit_coins(P_char actor, int64_t value)
 static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 		       const coin_get_submission_options &options)
 {
-	static constexpr std::array<int64_t, CURRENCY_DENOMINATION_COUNT> values = { 1, 10, 100,
-										     1000 };
 	std::array<int32_t, CURRENCY_DENOMINATION_COUNT> got = {};
-	int64_t value = 0;
 	bool emptied = true;
 	for (size_t index = 0; index < got.size(); ++index)
 	{
 		got[index] =
 			std::min(money->value[index], std::max(options.amount_limit[index], 0));
 		emptied = emptied && got[index] == money->value[index];
-		value += got[index] * values[index];
 	}
-	if (!credit_coins(actor, value))
+	if (!credit_coins(actor, got))
 		return false;
 	for (size_t index = 0; index < got.size(); ++index)
 		money->value[index] -= got[index];
@@ -588,7 +606,7 @@ publish_after_ack:
 			s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 			s_obj ? OBJ_VNUM(s_obj) : -1);
 
-		if (!credit_coins(ch, total_value))
+		if (!credit_coins(ch, { got_c, got_s, got_g, got_p }))
 		{
 			GETDBG_LOG(
 				"GETDBG[get-coins-empty]: ch=%s room=%d obj=%s [%d] uid=%lu total=%lld showit=%d slip=%d container=%s [%d]",
@@ -2607,25 +2625,33 @@ int64_t coin_debit_value(const coin_debit_context &context)
 	return total;
 }
 
-void refund_committed_coin_debit(P_char actor, int64_t value, int64_t reason_id)
+void refund_committed_coin_debit(P_char actor,
+				 const std::array<int32_t, CURRENCY_DENOMINATION_COUNT> &amount,
+				 int64_t reason_id)
 {
-	if (!actor || value <= 0)
+	if (!actor)
 		return;
+	currency_vector delta = {};
+	for (size_t index = 0; index < amount.size(); ++index)
+		delta.amount[index] = amount[index];
+	bool restored;
 	if (IS_PC(actor) && GET_PID(actor) > 0)
 	{
-		/* Compensation must remain rebasable if another wallet reward was queued while
-		 * the original debit was in flight. */
-		if (!currency_transaction_submit_wallet_value(
-			    actor, value, currency_reason_type::wallet_reward, reason_id,
-			    critical_source_site::recovery, critical_deadline_class::recovery,
-			    nullptr, nullptr, 0))
-			persistence_alert(AVATAR, "currency", "coin_refund", "none", "none",
-					  "submission_failed", "pid=%d value=%lld", GET_PID(actor),
-					  static_cast<long long>(value));
-		return;
+		const uint64_t revision = actor->only.pc->wallet_revision;
+		restored = currency_transaction_submit(actor, delta, {},
+						       currency_reason_type::wallet_reward,
+						       reason_id, critical_source_site::recovery,
+						       critical_deadline_class::recovery, nullptr,
+						       nullptr, 0) &&
+			   actor->only.pc->wallet_revision != revision;
 	}
-	if (value <= INT_MAX)
-		ADD_MONEY(actor, static_cast<int>(value));
+	else
+		restored = change_nonpersistent_coins(actor, delta);
+	if (!restored)
+		persistence_alert(AVATAR, "currency", "coin_refund", "none", "none",
+				  "refund_failed", "pid=%d copper=%d silver=%d gold=%d platinum=%d",
+				  IS_PC(actor) ? GET_PID(actor) : 0, amount[0], amount[1],
+				  amount[2], amount[3]);
 }
 
 bool coin_put_destination_available(P_char actor, P_obj container)
@@ -2701,7 +2727,9 @@ void coin_give_credit_completion(P_char recipient, bool committed, const currenc
 		{
 			if (context.debit_committed)
 			{
-				refund_committed_coin_debit(sender, context.value, context.room);
+				std::array<int32_t, CURRENCY_DENOMINATION_COUNT> amount = {};
+				amount[context.coin_type] = context.amount;
+				refund_committed_coin_debit(sender, amount, context.room);
 				send_to_char(
 					"The coin transfer did not commit; your coins are being restored.\r\n",
 					sender);
@@ -2730,6 +2758,8 @@ bool begin_coin_give_credit(P_char sender, P_char recipient, const coin_debit_co
 {
 	if (!sender || !recipient || debit.coin_type >= CURRENCY_DENOMINATION_COUNT)
 		return false;
+	currency_vector delta = {};
+	delta.amount[debit.coin_type] = debit.amount[debit.coin_type];
 	const int64_t value = coin_debit_value(debit);
 	coin_give_credit_context context = { sender->runtime_id,
 					     value,
@@ -2745,16 +2775,15 @@ bool begin_coin_give_credit(P_char sender, P_char recipient, const coin_debit_co
 		// The giver's save goes first: a crash before the recipient's loses the coins
 		// instead of paying them twice.
 		currency_transaction_save_first(sender);
-		return currency_transaction_submit_wallet_value(
-			recipient, value, currency_reason_type::wallet_reward,
+		return currency_transaction_submit(
+			recipient, delta, {}, currency_reason_type::wallet_reward,
 			IS_PC(sender) ? GET_PID(sender) : 0, critical_source_site::command,
 			critical_deadline_class::interactive, coin_give_credit_completion, &context,
 			sizeof(context));
 	}
 
-	if (value > INT_MAX)
+	if (!credit_coins(recipient, debit.amount))
 		return false;
-	ADD_MONEY(recipient, static_cast<int>(value));
 	announce_coin_give(sender, recipient, context);
 	return true;
 }
@@ -2856,7 +2885,7 @@ void publish_coin_drop(P_char actor, const coin_debit_context &context)
 				   context.amount[3]);
 	if (!money)
 	{
-		refund_committed_coin_debit(actor, coin_debit_value(context), context.room);
+		refund_committed_coin_debit(actor, context.amount, context.room);
 		send_to_char("The coins could not be placed; your wallet is being restored.\r\n",
 			     actor);
 		return;
@@ -2920,10 +2949,9 @@ void coin_debit_completion(P_char actor, bool committed, const currency_command_
 		return;
 	}
 	memcpy(&context, encoded, sizeof(context));
-	const int64_t value = coin_debit_value(context);
 	if (context.room < 0 || context.room > top_of_world || actor->in_room != context.room)
 	{
-		refund_committed_coin_debit(actor, value, context.room);
+		refund_committed_coin_debit(actor, context.amount, context.room);
 		send_to_char("The coin destination changed; your wallet is being restored.\r\n",
 			     actor);
 		return;
@@ -2937,7 +2965,7 @@ void coin_debit_completion(P_char actor, bool committed, const currency_command_
 	case coin_debit_action::put:
 		if (!publish_coin_put(actor, context))
 		{
-			refund_committed_coin_debit(actor, value, context.container_uid);
+			refund_committed_coin_debit(actor, context.amount, context.container_uid);
 			send_to_char(
 				"The coins could not be put away; your wallet is being restored.\r\n",
 				actor);
@@ -2949,7 +2977,8 @@ void coin_debit_completion(P_char actor, bool committed, const currency_command_
 		if (!recipient || recipient->in_room != context.room ||
 		    !begin_coin_give_credit(actor, recipient, context, true))
 		{
-			refund_committed_coin_debit(actor, value, context.target_runtime_id);
+			refund_committed_coin_debit(actor, context.amount,
+						    context.target_runtime_id);
 			send_to_char(
 				"The coin transfer could not be completed; your wallet is being restored.\r\n",
 				actor);
@@ -2964,7 +2993,19 @@ bool submit_coin_debit(P_char actor, const coin_debit_context &context)
 	const int64_t value = coin_debit_value(context);
 	if (!actor || value <= 0)
 		return false;
-	if (value > INT_MAX || SUB_MONEY(actor, static_cast<int>(value), 0) != 0)
+	currency_vector delta = {};
+	for (size_t index = 0; index < context.amount.size(); ++index)
+	{
+		if (context.amount[index] < 0)
+			return false;
+		delta.amount[index] = -static_cast<int64_t>(context.amount[index]);
+	}
+	if (IS_PC(actor) && GET_PID(actor) > 0)
+		return currency_transaction_submit(
+			actor, delta, {}, currency_reason_type::wallet_spend, 0,
+			critical_source_site::command, critical_deadline_class::interactive,
+			coin_debit_completion, &context, sizeof(context));
+	if (!change_nonpersistent_coins(actor, delta))
 		return false;
 	coin_debit_completion(actor, true, {}, 0, reinterpret_cast<const uint8_t *>(&context),
 			      sizeof(context));
