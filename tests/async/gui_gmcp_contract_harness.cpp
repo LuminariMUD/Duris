@@ -213,6 +213,14 @@ const char *contra_type_name(int)
 
 // Isolate world/mechanics dependencies while exercising production serializers.
 
+static world_quest_target_status quest_availability = world_quest_target_status::valid;
+static int quest_checks = 0;
+world_quest_target_status world_quest_refresh(P_char, int)
+{
+	++quest_checks;
+	return quest_availability;
+}
+
 int sql_world_quest_can_do_another(P_char)
 {
 	return 2;
@@ -617,6 +625,39 @@ int main()
 	assert(wire.empty() && a.in_room == 1);
 	apc.quest_map_bought = 1;
 	a.specials.position = old_position;
+
+	// A checked command reuses its verdict. Neither serialization nor the
+	// checked transport overload may run another eligibility query.
+	const auto saved_quest = apc;
+	const int checks_before = quest_checks;
+	for (auto status :
+	     { world_quest_target_status::blocked, world_quest_target_status::unproven,
+	       world_quest_target_status::needs_origin, world_quest_target_status::unavailable })
+	{
+		wire.clear();
+		gmcp_quest_status(&a, status);
+		assert(quest_checks == checks_before);
+		assert(!memcmp(&apc, &saved_quest, sizeof(apc)));
+		const std::string state = payload(&ad, "Quest.Status");
+		assert(state.find("\"zoneNumber\"") == std::string::npos);
+		assert(state.find("bronze guardian") == std::string::npos);
+		assert(state.find("\"mapBought\":true") != std::string::npos);
+		assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
+		assert(ad.gmcp_quest_map_sent == 0);
+	}
+	apc.quest_active = 0;
+	apc.quest_replacement_due = 1;
+	wire.clear();
+	gmcp_quest_status(&a, world_quest_target_status::unavailable);
+	const std::string pending = payload(&ad, "Quest.Status");
+	assert(pending.find("\"active\":false") != std::string::npos);
+	assert(pending.find("\"replacementDue\":true") != std::string::npos);
+	assert(pending.find("\"killCount\":2") != std::string::npos);
+	assert(pending.find("\"killRequired\":5") != std::string::npos);
+	assert(pending.find("\"mapBought\":true") != std::string::npos);
+	assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
+	apc = saved_quest;
+	ad.gmcp_quest_map_sent = 1;
 
 	wire.clear();
 	gmcp_flush_initial_states();

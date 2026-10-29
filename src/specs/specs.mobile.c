@@ -10957,6 +10957,7 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		return;
 
 	case world_quest_payment_action::map:
+	{
 		if (pl->only.pc->quest_active != 1 || pl->only.pc->quest_map_bought == 1)
 		{
 			send_to_char(
@@ -10967,9 +10968,16 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 		send_to_char("You hand over the money.\r\n", pl);
 		send_to_char("Take a quick peek at this note:\r\n", pl);
-		if (!quest_buy_map(pl))
+		// World state and travel abilities may change while payment is pending.
+		const auto availability = world_quest_refresh(pl);
+		if (!quest_buy_map(pl, availability))
+		{
 			world_quest_refund_payment(pl, payment.fee);
+			world_quest_describe(pl, availability);
+			gmcp_quest_status(pl, availability);
+		}
 		return;
+	}
 
 	case world_quest_payment_action::quest:
 		// A quest may have completed or another command may have changed the
@@ -10988,11 +10996,11 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		if (createQuestForGiverVnum(pl, payment.giver_vnum, payment.origin_vnum, &failure))
 		{
 			send_to_char("You hand over the money.\r\n", pl);
-			do_quest(pl, writable_arg(""), 0);
+			world_quest_describe(pl, world_quest_target_status::valid);
 			send_to_char(
 				"Remember, you can always type 'quest' to see your current quest.\r\n",
 				pl);
-			gmcp_quest_status(pl);
+			gmcp_quest_status(pl, world_quest_target_status::valid);
 			return;
 		}
 
@@ -11030,6 +11038,50 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		if (ch != ParseTarget(ch, name))
 		{
 			return FALSE;
+		}
+
+		const bool abandoning = isname("abandon", what) || isname("resign", what);
+		const bool mapping = isname(what, "map") || isname(arg, "m");
+		const bool requesting = isname(what, "quest") || isname(arg, "q");
+		if (!abandoning && !mapping && !requesting)
+			return FALSE;
+		const auto availability = world_quest_refresh(pl, world[ch->in_room].number);
+		if (pl->only.pc->quest_replacement_due)
+		{
+			if (abandoning)
+			{
+				if (!isname("confirm", what))
+				{
+					send_to_char(
+						"Ask 'abandon confirm' to discard your free replacement and earned progress without a charge.\r\n",
+						pl);
+					gmcp_quest_status(pl, availability);
+					return TRUE;
+				}
+				resetQuest(pl);
+				send_to_char(
+					"You no longer have a task. No fee or quest allowance was charged.\r\n",
+					pl);
+				gmcp_quest_status(pl, world_quest_target_status::valid);
+			}
+			else if (requesting && world_quest_replace(pl, ch))
+			{
+				send_to_char(
+					"Here is your free replacement. Your earned progress and purchased map have been kept.\r\n",
+					pl);
+				world_quest_describe(pl, world_quest_target_status::valid);
+				gmcp_quest_status(pl, world_quest_target_status::valid);
+			}
+			else
+			{
+				send_to_char(
+					mapping ?
+						"Your task needs a free replacement. Ask for a quest before buying a map.\r\n" :
+						"No suitable replacement is available right now. Your free replacement and earned progress remain yours. Ask for a quest again later.\r\n",
+					pl);
+				gmcp_quest_status(pl, availability);
+			}
+			return TRUE;
 		}
 
 		if (isname("abandon", what) || isname("resign", what))
@@ -11118,6 +11170,14 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 				return TRUE;
 			}
 
+			if (availability != world_quest_target_status::valid ||
+			    pl->only.pc->quest_accomplished)
+			{
+				world_quest_describe(pl, availability);
+				gmcp_quest_status(pl, availability);
+				return TRUE;
+			}
+
 			const int map_room = pl->only.pc->quest_map_room > 0 ?
 						     real_room(pl->only.pc->quest_map_room) :
 						     NOWHERE;
@@ -11173,6 +11233,22 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		if (!isname(what, "quest") && !isname(arg, "q"))
 			return FALSE;
 
+		if (pl->only.pc->quest_accomplished && pl->only.pc->quest_giver == GET_VNUM(ch))
+		{
+			act("$n says, 'Woah, nice work! Congratulations!'", TRUE, ch, 0, pl,
+			    TO_VICT);
+			act("$N says to $n, 'Well done!'", TRUE, pl, 0, ch, TO_NOTVICT);
+			quest_full_reward(pl, ch, 1);
+			return TRUE;
+		}
+
+		if (pl->only.pc->quest_accomplished)
+		{
+			act("$n says, 'Woah, nice work! But i didt give you this quest! Go find the real quest master'",
+			    TRUE, ch, 0, pl, TO_VICT);
+			return TRUE;
+		}
+
 		if (GET_LEVEL(pl) < WORLD_QUEST_MIN_LEVEL)
 		{
 			mobsay(ch, "You need to reach level 11 before taking world quests.");
@@ -11195,30 +11271,12 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		   return TRUE;
 		   }
 		 */
-		if (pl->only.pc->quest_accomplished && pl->only.pc->quest_giver == GET_VNUM(ch))
-		{
-			act("$n says, 'Woah, nice work! Congratulations!'", TRUE, ch, 0, pl,
-			    TO_VICT);
-			act("$N says to $n, 'Well done!'", TRUE, pl, 0, ch, TO_NOTVICT);
-			quest_full_reward(pl, ch, 1);
-			return TRUE;
-		}
-
-		if (pl->only.pc->quest_accomplished)
-		{
-			act("$n says, 'Woah, nice work! But i didt give you this quest! Go find the real quest master'",
-			    TRUE, ch, 0, pl, TO_VICT);
-			return TRUE;
-		}
 
 		if (pl->only.pc->quest_active == 1)
 		{
-			mobsay(ch,
-			       "&+LBaaaaaah! Finish the quest that you're already on first, then come back!&n");
-			send_to_char(
-				"&+LIf you unable to finish it, go to the quest master and ask him to take you of duty!\r\n",
-				pl);
-			return -1;
+			world_quest_describe(pl, availability);
+			gmcp_quest_status(pl, availability);
+			return TRUE;
 		}
 
 		temp = MAX(0, static_cast<int>(get_property("world.quest.cost.per.level", 20.000) *

@@ -23,12 +23,14 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         '#include "persistence/persistence_checkpoint.h"\n'
         '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
         '#include "net/gmcp.h"\n#include "world/world_quest_policy_math.h"\n'
-        '#include <ctime>\n'
+        '#include <ctime>\n#include "cmd/interp.h"\n#include "core/utility.h"\n#include "net/comm.h"\n#include "world/zone_story_quest_runtime.h"\n'
         'extern P_room world;\nextern P_index obj_index;\nextern zone_data *zone_table;\n'
         'extern int top_of_world;\nextern int CheckFor_remember(P_char, P_char);\n'
-        'extern time_info_data time_info;\n'
+        'extern time_info_data time_info;\nextern const char *month_name[];\n'
         'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
+            ("cmd/interp.c", "void half_chop("),
+            ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
             ("world/outposts.c", "bool check_castle_walls("),
             ("combat/range.c", "int check_wall("),
             ("core/utility.c", "bool ac_can_see_from("),
@@ -36,12 +38,17 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
             ("core/utility.c", "bool aggressive_to_at("),
             ("world/world_quest.c", "static int world_quest_share_limit("),
             ("world/world_quest.c", "bool createQuestForGiverVnum("),
+            ("world/world_quest.c", "world_quest_target_status world_quest_refresh("),
+            ("world/world_quest.c", "bool world_quest_replace("),
             ("world/world_quest.c", "void resetQuest("),
             ("world/world_quest.c", "bool createQuest("),
-            ("world/world_quest.c", "int quest_buy_map("),
+            ("world/world_quest.c", "int quest_buy_map(P_char ch, world_quest_target_status"),
+            ("world/world_quest.c", "void world_quest_describe("),
+            ("world/world_quest.c", "void do_quest("),
             ("specs.mobile.c", "static void world_quest_report_creation_failure("),
             ("specs.mobile.c", "static void world_quest_refund_payment("),
             ("specs.mobile.c", "static void world_quest_payment_committed("),
+            ("specs.mobile.c", "int world_quest(P_char"),
         )) + r'''
 void run_payment(P_char player, int origin, int fee, bool committed)
 {
@@ -64,9 +71,11 @@ void run_map_payment(P_char player, int fee)
         "-fno-sanitize-recover=all", "-Isrc", "-Isrc/no_mysql", "-D__NO_MYSQL__",
         "tests/async/world_quest_live_targets_harness.cpp", str(adapters), str(HARNESS_STUBS),
         "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
+        "src/core/safe_format.c",
         "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     scenarios = [(level, "normal", "kill") for level in (10, 11, 29, 30, 40, 41, 49, 50)]
+    scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]
     scenarios += [(level, "gear", kind) for level in (11, 29, 56) for kind in ("ask", "kill")]
     scenarios += [(level, "foreign", "kill") for level in (11, 29, 30)]

@@ -1,9 +1,10 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **live selection qualified on MariaDB; recovery and full journeys next**. Updated 2026-10-29.
+Status: **selection and recovery qualified on both backends; full target gameplay/latency qualification remains**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
-all three investigation comments. Implementation branch:
-`branch/issue-437-bartender-quest-routes`.
+all three investigation comments. Stack root:
+`branch/issue-437-bartender-quest-routes`. Current continuation branch:
+`branch/issue-437-quest-recovery`.
 Source baseline: `master` / `origin/master` at
 `9632f29804687ccf049ddf7a59a5ae16878e0583`.
 
@@ -307,6 +308,21 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Current recovery slice: outcome is revalidation and a durable free replacement
+for an incomplete world-invalid assignment, retaining accepted type/level, earned
+progress, original quota, map entitlement and shares. Non-goals: no fee ledger,
+movement simulation, general route engine or new persistence fields. Files:
+existing policy, quest/bartender, text/JSON/GMCP consumers and focused fixtures.
+Proof: executable revalidation/transition/command cases plus existing snapshot
+evidence and disposable save/restart journeys.
+
+Use the same route builder for current travel, maximum permitted player
+capabilities, and an optimistic upper bound that includes unknown procedures.
+Only the last graph's failure can prove a hard world-route loss; a relevant
+unknown gate or exhausted shared work budget cannot cancel work. All passes
+share the existing operation bound. Read live target instances once, use
+remaining kills for accepted work, and keep the serializer read-only.
+
 Current completion-credit slice: outcome is credit only for the accepted quest
 type and advertised actual zone. The death hook calls `quest_kill` for every
 matching death; source inspection found it also advancing ASK tasks, including
@@ -381,19 +397,19 @@ payment/quest API. Origin validation remains a prerequisite for full route work.
   controlled RNG and synthetic graphs, not a copied selector. Reproduce foreign
   selection at 11/29 and unusable 23501 placement through full creation. Record
   the archived policy decision and limits of the named production reports.
-- [ ] **2. Resolve origin and routes (3-4 hours).** Implement the explicit
+- [x] **2. Resolve origin and routes (3-4 hours).** Implement the explicit
   origin/context and conservative traversal in `src/world/world_quest_policy.c`
   and `.h`, with constants in `world_quest_policy_math.h` where appropriate.
   Wire `world_quest.c/.h` and `specs/specs.mobile.c` to pass the request origin.
   Use movement/map sources as contracts; change those production files only
   for a small justified shared read-only predicate.
-- [ ] **3. Select and describe live routine targets (2-3 hours).** Extend boot
+- [x] **3. Select and describe live routine targets (2-3 hours).** Extend boot
   placement metadata and per-request filtering in the same policy module;
   use actual zone/live supply in `createQuestForGiverVnum()` and validated
   entrances in `quest_buy_map()`. Retain boot level/reward calculations and
   fail-closed history behavior. Update the misleading failure message that
   currently tells low-level players to try colleagues around the world.
-- [ ] **4. Recover and persist existing work (2-3 hours).** Implement the shared
+- [x] **4. Recover and persist existing work (2-3 hours).** Implement the shared
   validator/replacement transition in `world_quest.c/.h` and bartender handling.
   Touch `src/core/structs.h`, `src/player/player_snapshot.h`,
   `player_snapshot_capture.c`, `player_snapshot_codec.c`,
@@ -510,7 +526,7 @@ do not wait for hosted CI or claim unrun checks passed.
 ### Implementation checkpoint: persistence prerequisite (2026-10-29)
 
 Review-ready PR: [#451](https://github.com/LuminariMUD/Duris/pull/451),
-implementation commit `0cafcc82c`. This branch is its head; stack further
+implementation commit `0cafcc82c`. Its head is `branch/issue-437-bartender-quest-routes`; stack further
 implementation on it while the dependency remains open. Do not merge or deploy
 the unfinished #437 policy as though this prerequisite completed the issue.
 
@@ -835,6 +851,99 @@ passed: `make -C src -j2`, policy, 14 documentation, format and diff checks.
 No death-hook refactor, reward rebalance or unrelated progression change.
 This is a separate focused repair found while tracing #437's recovery path;
 accepted-assignment recovery and full gameplay/restart proof remain next.
+
+### Recovery review checkpoint (2026-10-29)
+
+Working branch: `branch/issue-437-quest-recovery`, based on #466 head
+`fd1702522`. Review-ready PR: [#467](https://github.com/LuminariMUD/Duris/pull/467),
+implementation commit `787f0c6fd`.
+
+The same route builder supplies current/capable/potential proofs within one shared
+work bound. Accepted-target validation uses one live scan, saved origin/level,
+routine sources, live suitability and remaining kill supply. Hard final/return
+locks remain unavailable despite unknown side branches. Relevant unknown
+procedures, temporary player restrictions, lost travel capability and exhausted
+bounds cannot alone authorize replacement. Zero-origin legacy work gets
+target/location checks and needs a real bartender origin before directions.
+
+`world_quest_refresh` marks proven invalid incomplete work inactive/due without
+wallet, XP, history or reward changes. `world_quest_replace` uses the same selector
+with fixed accepted type and remaining quota. Earned kills, original quota,
+accepted level, shares, map entitlement, receiver and original start time survive.
+Failed/repeated redemption and completed legacy work are preserved. Recovery and
+completed claims precede new-purchase level/allowance gates. Confirmed abandonment
+can discard an entitlement for free; normal voluntary abandonment retains its fee
+and partial-progress history behavior. Sharing checks the recipient before copying
+state and cannot overwrite a replacement entitlement.
+
+Checked text/GMCP overloads reuse one command's verdict; JSON remains read-only.
+Quest.Status exposes availability/replacement-due and retains pending progress/map
+entitlement. Unverified target/zone directions are withheld and empty Quest.Map
+clears stale directions. No extra fields, ledger, global route cache or service.
+Final caller tracing removed three unused one-argument map/JSON adapters added
+by this slice: every real caller already carries a checked verdict. The normal
+one-argument GMCP status gateway remains because login/combat callers use it.
+Only the checked map/serializer APIs remain, avoiding another validation path.
+Both incremental builds, the 71-scenario native suite and text/JSON/GMCP fixtures
+passed after removing these unused adapters; the real journey evidence above is
+reused because its production call path is unchanged.
+
+Evidence:
+
+- `test_world_quest_target_retries.py`: **71 production scenarios under
+  ASan/UBSan**. Eight accepted ASK/KILL matrices at 11/29/30/41 include real
+  refresh/replace transitions and complete bartender/QUEST/sharing commands:
+  unknown origin/rebind, actor movement, temporary conditions, hard final/return
+  locks versus unknown side branches/gates, lost capabilities, remaining supply,
+  accepted-target bounds, exact state retention, free redemption below admission
+  and with zero daily allowance, failed/repeated requests, map charges, free
+  cancellation, normal paid abandonment and recipient eligibility. Existing 63
+  selector/creation/payment regressions remain in that run.
+  Log: `bin/tests/issue437-recovery-commands.log`.
+- `test_gui_gmcp_contract.py`: real serializers/wire paths cover all unavailable
+  states, clearing stale maps with retained entitlement and progress, and prove
+  checked rendering performs no second eligibility query.
+  `test_world_quest_remaining_unloaded.py`: complete text/JSON rendering under
+  ASan/UBSan, missing metadata, finished work and unknown history.
+- `test_world_quest_routes.py`; `test_world_quest_xp_feedback.py` (both backends);
+  policy, failure feedback, help parser and all 14 documentation contracts passed.
+  Format and diff checks passed. Both incremental server builds passed.
+- Maintained real journey passed separately on **MariaDB and flatfile**:
+  new grant, pipelined paid abandon/new grant, map purchase, disposable world
+  invalidation, no-candidate entitlement retention, SQL save (MariaDB), 20
+  ordinary town exits to Quivering Leaf Inn, real RENT/relogin, normal server
+  shutdown, restart/materialization, and free redemption after content returns.
+  Exact accepted fields, wallet and XP are compared across save/relogin/restart
+  and redemption. Each process built the catalog once (two boots total).
+  These runs used fresh quota-1 KILL assignments; partial 3-of-4 progress is
+  proved in the native transition/command fixture, not claimed as real combat.
+  The explicit test helper grants 100,000 copper after restart for placement;
+  redemption compares the wallet immediately after that setup and charges zero.
+- MariaDB log: `bin/tests/issue437-recovery-mariadb-journey.log`, binary SHA256
+  `92e7554f770104b3079e0584884165dd235c8866988196f02e034af2d903f875`.
+  Original target 16306, replacement 16329, zone 163, origin 16633, quota 1 and
+  map entrance 568109; paid map and original start time retained, XP stayed 1.
+  Wallet 99,118 survived invalidation/relogin/restart; setup then made it 199,118
+  and free redemption left that amount unchanged.
+- Flatfile log: `bin/tests/issue437-recovery-flatfile-journey.log`, binary SHA256
+  `0f25e09e09e2df797fcb7e6df4e099459233dfb4f76370581b1b503c4d23688a`.
+  Same boundaries, replacement 16305. Wallet 99,122 survived until explicit setup
+  made it 199,122; redemption left it unchanged. XP stayed 1.
+- Fixture repairs: wait for complete async character entry before commands, use
+  native inn RENT rather than camping in a city, and pass normal SIGPIPE through
+  GDB. The debugger probe uses raw function entry/SysV x86-64 argument registers;
+  optimized DWARF initially read the caller's NPC register before the prologue.
+  Probe assertions and exact redemption comparisons remain strict. None of these
+  repairs changed production logout/signal/quest rules.
+
+Remaining: original baseline/named-target qualification still marked in step 1;
+step 5's actual target travel and ASK/KILL completion at 11/29, level-30 control,
+real partial progression/history/quota proof, representative Good/Evil/Underdark
+qualification (or precise unsupported origin), and command/observer latency.
+The final map-request hint was clarified after those real runs to distinguish a
+pending entitlement from a failed replacement search. Both builds and the native
+71-scenario suite passed again; the quest transition/routing logic is unchanged.
+Recovery component qualification does **not** close #437.
 
 Completed on the source baseline:
 

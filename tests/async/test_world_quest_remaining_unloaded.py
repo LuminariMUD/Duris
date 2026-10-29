@@ -56,6 +56,7 @@ JSON_HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "world/world_quest.h"
+#include "world/world_quest_policy.h"
 #include "world/zone_story_quest_runtime.h"
 #include "persistence/persistence_checkpoint.h"
 #include <cassert>
@@ -94,15 +95,18 @@ int BOUNDED(int lo, int x, int hi) { return x < lo ? lo : x > hi ? hi : x; }
 int sql_world_quest_done_already(P_char, int) { std::abort(); }
 void mark_player_dirty_components(int, player_component_mask_t) { std::abort(); }
 void gmcp_quest_status(P_char) { std::abort(); }
+void gmcp_quest_status(P_char, world_quest_target_status) {}
+world_quest_target_status world_quest_refresh(P_char, int) { return world_quest_target_status::valid; }
+world_quest_target_check world_quest_policy_check_target(P_char, int, int, int, int, int, int) { std::abort(); }
 void show_map_at(P_char, int) { std::abort(); }
 namespace zone_story_quest_runtime {
 zone_story_quest_feature::service *service() { return nullptr; }
 std::string render_daily(P_char, bool, std::string *) { std::abort(); }
 }
-''' + extract_function("world_quest.c", "static int world_quest_share_limit(") + "\n" + extract_function("world_quest.c", "void do_quest(") + r'''
+''' + extract_function("world_quest.c", "static int world_quest_share_limit(") + "\n" + extract_function("world_quest.c", "void do_quest(") + "\n" + extract_function("world_quest.c", "void world_quest_describe(") + r'''
 static cJSON *quest_status(P_char ch)
 {
-    char *text = json_build_quest_status(ch);
+    char *text = json_build_quest_status(ch, world_quest_target_status::valid);
     assert(text);
     cJSON *status = cJSON_Parse(text);
     json_free_string(text);
@@ -153,20 +157,31 @@ int main()
         pc.quest_mob_vnum = missing == 1 ? 999 : 101;
         profiles[1].desc2 = missing == 2 ? nullptr : const_cast<char *>("a bronze guardian");
         pc.quest_zone_number = missing == 3 ? 999 : 123;
-        pc.quest_accomplished = 1;
+        pc.quest_accomplished = 0;
         const auto before = pc;
         shown.clear(); do_quest(&ch, const_cast<char *>(""), 0);
-        assert(shown.find("already finished") != std::string::npos);
         assert(shown.find("gave you the following quest") != std::string::npos);
         status = quest_status(&ch);
         if (missing != 0) {
             assert(shown.find("details are unavailable") != std::string::npos);
             assert(std::string(cJSON_GetObjectItem(status, "target")->valuestring) ==
-                   "Quest target unavailable");
+                   "Ask a bartender to check your task.");
         }
         cJSON_Delete(status);
         assert(!memcmp(&before, &pc, sizeof(pc)));
+
+        pc.quest_accomplished = 1;
+        const auto completed = pc;
+        shown.clear(); do_quest(&ch, const_cast<char *>(""), 0);
+        assert(shown.find("already finished") != std::string::npos);
+        status = quest_status(&ch);
+        assert(std::string(cJSON_GetObjectItem(status, "target")->valuestring) ==
+               "Task complete. Return to your quest giver.");
+        assert(!cJSON_HasObjectItem(status, "zoneNumber"));
+        cJSON_Delete(status);
+        assert(!memcmp(&completed, &pc, sizeof(pc)));
     }
+
 }
 '''
 

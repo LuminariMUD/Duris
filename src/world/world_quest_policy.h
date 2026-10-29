@@ -62,7 +62,19 @@ struct world_quest_target
 
 quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vnum,
 							int accepted_level,
-							world_quest_target &target);
+							world_quest_target &target,
+							int required_type = 0, int needed = 0);
+
+struct world_quest_target_check
+{
+	world_quest_target_status status = world_quest_target_status::unproven;
+	int map_room = NOWHERE;
+	size_t work = 0;
+};
+
+world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_vnum,
+							 int accepted_level, int zone_number,
+							 int mob_vnum, int type, int needed);
 
 bool world_quest_policy_bootstrap();
 // Reuse the boot probe for Divine encounter checks, without quest reward rules.
