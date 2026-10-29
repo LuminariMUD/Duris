@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mortal locker grants, named entry, legacy coexistence and restart on disposable MariaDB.
+"""Mortal locker grants, idle saves, legacy coexistence and restart on disposable MariaDB.
 
 Run with tests/async/with_disposable_mariadb.sh. No checkout .env, production
 database, running server or existing player is used.
@@ -228,8 +228,49 @@ def run(binary):
                 leave(VISITOR)
                 check('account grant and named entry after visitor reconnect')
 
+                # Reproduce the idle-rent ordering with a real PID-zero holder,
+                # a distinct account/character name and one newly deposited UID.
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + OWNER, 'Ok.')
+                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                marker_uid = sql("SELECT pi.obj_uid FROM player_items pi JOIN player_data p "
+                                 f"ON p.pid=pi.pid WHERE p.name='{OWNER}' AND pi.vnum=677")
+                assert marker_uid.isdecimal(), marker_uid
+                previous_contents = contents()
+                assert marker_uid not in [row.split('\t')[1] for row in previous_contents.splitlines()]
+                enter(OWNER)
+                act(OWNER, 'drop mace', 'You drop')
+                # The numeric selector preserves the dots in the holder's name.
+                for target in ('1.' + ACCOUNT_LOCKER, OWNER):
+                    response = command(clients[GOD], f'setbit char {target} timer 15')
+                    assert 'No one by that name' not in response, response
+                # No owner input after setting the timer: point_update must close
+                # the real descriptor, prepare the locker leave and extract the PC.
+                deadline = time.monotonic() + 100
+                while sql(f"SELECT COUNT(*) FROM log_entries WHERE pid="
+                          f"(SELECT pid FROM player_data WHERE name='{OWNER}') "
+                          "AND message='Idle Rent'") != '1':
+                    assert process.poll() is None and time.monotonic() < deadline, 'owner never idle-rented'
+                    time.sleep(.1)
+                clients.pop(OWNER).close()
+                login(OWNER)
+                enter(OWNER, items=2)
+                assert command(clients[OWNER], 'look in chest').lower().count('mace') >= 1
+                leave(OWNER)
+                expected_contents = '\n'.join(sorted(previous_contents.splitlines() +
+                                                     [f'{ACCOUNT_LOCKER}\t{marker_uid}\t677']))
+                assert '\n'.join(sorted(contents().splitlines())) == expected_contents
+                assert sql("SELECT COUNT(*) FROM log_entries WHERE pid=0 AND message='Idle Rent'") == '0'
+                object_log_path = runtime / 'logs/log/obj'
+                locker_log = object_log_path.read_text() if object_log_path.exists() else ''
+                assert f'Locker anti-idle eject: user={OWNER} ' not in locker_log
+                file_log = (runtime / 'logs/log/file').read_text()
+                assert 'source_missing' not in file_log and 'dirty locker char missing' not in file_log
+                assert 'pid=0 intent=5' not in file_log
+                check('real idle disconnect preserves both locker UIDs, owner identity and re-entry')
+
                 before_restart = contents()
-                assert len(before_restart.splitlines()) == 3, before_restart
+                assert len(before_restart.splitlines()) == 4, before_restart
                 grants = sql("SELECT owner,visitor FROM locker_access ORDER BY owner,visitor")
                 evidence['contents_before_restart'] = before_restart
                 evidence['grants_before_restart'] = grants
@@ -244,16 +285,16 @@ def run(binary):
                 assert contents() == before_restart
                 assert sql("SELECT owner,visitor FROM locker_access ORDER BY owner,visitor") == grants
                 denied(OTHER)  # A persisted direct grant never overrides racewar.
-                enter(OWNER)
+                enter(OWNER, items=2)
                 denied(OTHER)  # No opposite-side occupant disclosure either.
                 leave(OWNER)
-                enter(VISITOR, OWNER)
+                enter(VISITOR, OWNER, items=2)
                 assert 'mace' in command(clients[VISITOR], 'look in chest')
                 leave(VISITOR)
                 denied(VISITOR, LEGACY_LOCKER)
                 check('cold restart preserves both lockers and grants; opposite-side idle/occupied entry denied')
 
-                enter(OWNER)
+                enter(OWNER, items=2)
                 act(OWNER, 'grant rem ' + ACCOUNTS[VISITOR], 'lost access')
                 leave(OWNER)
                 denied(VISITOR)
