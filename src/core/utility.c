@@ -1782,6 +1782,9 @@ bool ac_can_see_from(P_char sub, P_char obj, int viewer_room)
 	}
 
 	// First, we need to see if the subject can see anything or is dayblind / nightblind in the room their in.
+	// room_light adds positive actor light on arrival. Project that contribution
+	// only into the requested room; ordinary same-room calls already include it.
+	const bool projected_light = viewer_room != sub->in_room && sub->light > 0;
 	dayblind = IS_DAYBLIND_AT(sub, viewer_room);
 	sroom = viewer_room;
 	if (!IS_MAP_ROOM(sroom))
@@ -1827,7 +1830,8 @@ bool ac_can_see_from(P_char sub, P_char obj, int viewer_room)
 			}
 		}
 		// Else check for nightblind: Dark room with no ultra subject.
-		else if (!IS_AFFECTED2(sub, AFF2_ULTRAVISION) && !CAN_DAYPEOPLE_SEE(sroom))
+		else if (!IS_AFFECTED2(sub, AFF2_ULTRAVISION) && !projected_light &&
+			 !CAN_DAYPEOPLE_SEE(sroom))
 		{
 			flame = viewer_room != sub->in_room && IS_AFFECTED4(sub, AFF4_MAGE_FLAME);
 			// Anyone with mage flame overrides room to twilight.
@@ -1914,7 +1918,8 @@ bool ac_can_see_from(P_char sub, P_char obj, int viewer_room)
 		// Else check for nightblind: Dark room with no infra/ultra subject.
 		else if (!has_innate(sub, INNATE_OPHIDIAN_EYES) &&
 			 !IS_AFFECTED(sub, AFF_INFRAVISION) &&
-			 !IS_AFFECTED2(sub, AFF2_ULTRAVISION) && !CAN_DAYPEOPLE_SEE(oroom))
+			 !IS_AFFECTED2(sub, AFF2_ULTRAVISION) &&
+			 !(projected_light && oroom == viewer_room) && !CAN_DAYPEOPLE_SEE(oroom))
 		{
 			flame = viewer_room != sub->in_room && IS_AFFECTED4(sub, AFF4_MAGE_FLAME);
 			// Anyone with mage flame overrides room to twilight.
