@@ -2124,6 +2124,9 @@ int restoreStatus(char *buf, P_char ch)
 	ch->points.max_mana = ch->points.base_mana + calculate_mana(ch);
 	ch->points.max_vitality = vitality_limit(ch);
 
+	// Legacy pfiles contain no accepted origin or replacement entitlement.
+	ch->only.pc->quest_origin_room = 0;
+	ch->only.pc->quest_replacement_due = 0;
 	if (stat_vers > 41)
 	{
 		ch->only.pc->quest_active = GET_INTE(buf);

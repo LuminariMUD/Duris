@@ -85,6 +85,10 @@ static player_snapshot make_full(player_revision_t revision)
 		{ player_status_field::learned_flight_stops, 0, (uint64_t{ 1 } << 26) | 1, true });
 	snapshot.status_strings.push_back({ player_status_string_field::name, "Player" });
 	snapshot.conditions = { 1, 2, 3, 4, 5 };
+	snapshot.status_integers.push_back(
+		{ player_status_field::quest_origin_room, 16633, 0, false });
+	snapshot.status_integers.push_back(
+		{ player_status_field::quest_replacement_due, 1, 0, false });
 	snapshot.quest_values[3] = 77;
 	snapshot.languages.push_back({ 1, 90, 0 });
 	snapshot.introductions.push_back({ 2, 44, 12345 });
@@ -1575,8 +1579,12 @@ int main(int argc, char **argv)
 			applied.error_code == ENOENT,
 		"partial snapshot created a missing player baseline");
 	player_snapshot full = make_full(1);
+	auto old_status = full;
+	std::erase_if(old_status.status_integers, [](const auto &row)
+		      { return row.field > player_status_field::divine_boon_delivery_seq; });
 	std::vector<uint8_t> legacy_bytes;
-	require(player_snapshot_encode(full, &legacy_bytes) == player_snapshot_codec_result::ok,
+	require(player_snapshot_encode(old_status, &legacy_bytes) ==
+			player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
 	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1);
 	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
@@ -1676,6 +1684,16 @@ int main(int argc, char **argv)
 			found_flights = field.is_unsigned &&
 					field.unsigned_value == ((uint64_t{ 1 } << 26) | 1);
 	require(found_flights, "unrelated component save erased flight discoveries");
+	int origin = 0, replacement_due = 0;
+	for (const auto &field : loaded.status_integers)
+	{
+		if (field.field == player_status_field::quest_origin_room)
+			origin = field.signed_value;
+		if (field.field == player_status_field::quest_replacement_due)
+			replacement_due = field.signed_value;
+	}
+	require(origin == 16633 && replacement_due == 1,
+		"unrelated component save erased quest recovery state");
 	require(loaded.status_strings.back().value == std::string(64, 'a'),
 		"unrelated component erased news acknowledgement");
 	player_snapshot trophy_checkpoint = make_status(2, 51, 1202);
