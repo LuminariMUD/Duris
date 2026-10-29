@@ -1345,6 +1345,9 @@ struct pc_only_data
 	int quest_kill_original;
 	int quest_map_room;
 	int quest_map_bought;
+	// Kept outside the legacy 14-value quest payload in player snapshots.
+	int quest_origin_room; // VNUM; zero for quests accepted before origin tracking.
+	int quest_replacement_due;
 
 	long unsigned int last_ip;
 	int skillpoints;

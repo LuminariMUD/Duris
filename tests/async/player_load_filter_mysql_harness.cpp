@@ -401,6 +401,83 @@ int main()
 			progress(11) == std::pair(uint64_t{ 7 }, int64_t{ 54321 }),
 		"discovery checkpoint retry failed");
 
+	// Quest recovery and the associated payment share one status checkpoint.
+	const auto legacy_quest = load(12, 480);
+	require(legacy_quest.outcome == player_load_outcome::applied,
+		"legacy quest fixture could not load");
+	for (auto field :
+	     { player_status_field::quest_origin_room, player_status_field::quest_replacement_due })
+		require(std::any_of(legacy_quest.snapshot.status_integers.begin(),
+				    legacy_quest.snapshot.status_integers.end(),
+				    [field](const auto &row)
+				    { return row.field == field && row.signed_value == 0; }),
+			"legacy SQL quest did not default its recovery state");
+	player_snapshot quest = {};
+	quest.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	quest.pid = 12;
+	quest.revision = 100;
+	quest.components = PLAYER_COMPONENT_STATUS;
+	quest.encoded_size_bound = 4096;
+	quest.wallet_revision = legacy_quest.domains.wallet_revision + 1;
+	quest.quest_values = { 0, 23501, 1, 0, 123, 234, 16553, 11, 0, 2, 4, 7, 12345, 1 };
+	quest.status_integers = {
+		{ player_status_field::quest_origin_room, 16633, 0, false },
+		{ player_status_field::quest_replacement_due, 1, 0, false },
+		{ player_status_field::gold, 123, 0, false },
+	};
+	const auto check_quest = [&](const player_snapshot &expected)
+	{
+		const auto restored = load(12, 481);
+		require(restored.outcome == player_load_outcome::applied &&
+				restored.snapshot.quest_values == expected.quest_values &&
+				restored.domains.wallet_revision == expected.wallet_revision &&
+				restored.domains.wallet[2] ==
+					static_cast<uint64_t>(
+						expected.status_integers[2].signed_value),
+			"quest progress or wallet did not reload together");
+		for (size_t index = 0; index < 2; ++index)
+			require(std::any_of(restored.snapshot.status_integers.begin(),
+					    restored.snapshot.status_integers.end(),
+					    [&](const auto &row)
+					    {
+						    return row.field ==
+								   expected.status_integers[index]
+									   .field &&
+							   row.signed_value ==
+								   expected.status_integers[index]
+									   .signed_value;
+					    }),
+				"quest recovery field did not reload");
+	};
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+			player_save_apply_outcome::applied,
+		"quest recovery checkpoint failed");
+	check_quest(quest);
+	auto quest_languages = quest;
+	quest_languages.components = PLAYER_COMPONENT_LANGUAGES;
+	quest_languages.revision++;
+	require(player_snapshot_repository_apply(test_connection, quest_languages).outcome ==
+			player_save_apply_outcome::applied,
+		"quest unrelated-component checkpoint failed");
+	check_quest(quest);
+	auto replacement = quest;
+	replacement.revision += 2;
+	replacement.wallet_revision++;
+	replacement.status_integers[0].signed_value = 12801;
+	replacement.status_integers[1].signed_value = 0;
+	replacement.status_integers[2].signed_value = 100;
+	execute("CREATE TRIGGER reject_quest_save BEFORE UPDATE ON player_data FOR EACH ROW "
+		"SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic quest save failure'");
+	require(player_snapshot_repository_apply(test_connection, replacement).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"synthetic quest save failure was not reported");
+	check_quest(quest);
+	execute("DROP TRIGGER reject_quest_save");
+	require(player_snapshot_repository_apply(test_connection, replacement).outcome ==
+			player_save_apply_outcome::applied,
+		"quest replacement checkpoint retry failed");
+	check_quest(replacement);
+
 	player_snapshot delivery = discovery;
 	delivery.revision++;
 	delivery.status_integers = { { player_status_field::epics, 450, 0, false },
