@@ -1128,6 +1128,26 @@ void setcontact(int i, P_ship target, P_ship ship, int x, int y)
  * contact range (35 rooms plus the crew's scout bonus).  Pass false to
  * enumerate every ship sharing the map patch regardless of distance.
  */
+/* Check only the locked target, without overwriting the global contacts[] buffer.
+ * Use the same map coordinates and 3-D contact range as getcontacts(). */
+bool ship_target_in_contact(P_ship ship)
+{
+	if (ship->target == NULL)
+		return false;
+	if (!SHIP_LOADED(ship->target) || SHIP_SINKING(ship->target) ||
+	    SHIP_DOCKED(ship->target))
+		return false;
+
+	int x, y;
+	if (!calculate_map_coords(ship->location, ship->target->location, x, y))
+		return false;
+
+	x = 50 + x;
+	y = 50 - y;
+	return ship_range(ship, ship->target, x, y) <=
+	       35 + ship->crew.get_contact_range_mod();
+}
+
 int getcontacts(P_ship ship, bool limit_range)
 {
 	int counter = 0;
