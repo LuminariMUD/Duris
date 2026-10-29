@@ -1186,6 +1186,7 @@ int do_lock_target(P_char ch, P_ship ship, char *arg)
 				ship->timer[T_BSTATION] = BSTATION;
 			}
 			ship->target = temp;
+			ship->timer[T_TARGET_IDLE] = 300;
 			act_to_all_in_ship_f(ship, "Locked onto &+W[%s]:&N %s&N\r\n", temp->id,
 					     temp->name);
 			return TRUE;
