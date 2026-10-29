@@ -5365,10 +5365,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	{
 		const auto before = PLR_FLAGS(ch);
 		result = PLR_TOG(PLR_WHO);
-		if (result == 1 && GET_LEVEL(ch) < 30)
+		if (result == 1 && GET_LEVEL(ch) < 2)
 		{
 			PLR_FLAGS(ch) = before;
-			send_to_char("Sorry, you must be at least level 30 to toggle who!\r\n",
+			send_to_char("Sorry, you must be at least level 2 to toggle who!\r\n",
 				     send_ch);
 			return;
 		}

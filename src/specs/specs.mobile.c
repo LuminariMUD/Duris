@@ -10838,6 +10838,7 @@ struct world_quest_payment_context
 	world_quest_payment_action action;
 	int32_t fee;
 	int32_t giver_vnum;
+	int32_t origin_vnum;
 };
 
 static_assert(sizeof(world_quest_payment_context) <= CURRENCY_PENDING_CONTEXT_MAX_BYTES);
@@ -10975,7 +10976,7 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 
 		quest_creation_failure failure = QUEST_CREATION_NO_FAILURE;
-		if (createQuestForGiverVnum(pl, payment.giver_vnum, &failure))
+		if (createQuestForGiverVnum(pl, payment.giver_vnum, payment.origin_vnum, &failure))
 		{
 			send_to_char("You hand over the money.\r\n", pl);
 			do_quest(pl, writable_arg(""), 0);
@@ -11006,7 +11007,8 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		return FALSE;
 	}
 
-	if (!IS_ALIVE(ch) || !arg || !IS_ALIVE(pl) || IS_NPC(pl))
+	if (!IS_ALIVE(ch) || !arg || !IS_ALIVE(pl) || IS_NPC(pl) || ch->in_room != pl->in_room ||
+	    ch->in_room < 0 || ch->in_room > top_of_world)
 	{
 		return FALSE;
 	}
@@ -11082,7 +11084,8 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			}
 
 			const world_quest_payment_context payment = {
-				world_quest_payment_action::abandon, temp, GET_VNUM(ch)
+				world_quest_payment_action::abandon, temp, GET_VNUM(ch),
+				world[ch->in_room].number
 			};
 			if (!currency_transaction_submit_wallet_value(
 				    pl, -static_cast<int64_t>(temp),
@@ -11139,7 +11142,8 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			}
 
 			const world_quest_payment_context payment = {
-				world_quest_payment_action::map, temp, GET_VNUM(ch)
+				world_quest_payment_action::map, temp, GET_VNUM(ch),
+				world[ch->in_room].number
 			};
 			if (!currency_transaction_submit_wallet_value(
 				    pl, -static_cast<int64_t>(temp),
@@ -11225,7 +11229,8 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		}
 
 		const world_quest_payment_context payment = { world_quest_payment_action::quest,
-							      temp, GET_VNUM(ch) };
+							      temp, GET_VNUM(ch),
+							      world[ch->in_room].number };
 		if (!currency_transaction_submit_wallet_value(
 			    pl, -static_cast<int64_t>(temp), currency_reason_type::wallet_spend,
 			    GET_VNUM(ch), critical_source_site::command,
