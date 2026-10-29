@@ -539,7 +539,8 @@ static void trap_restored_damage(P_char ch, P_obj obj)
 
 bool movement_trap_trigger(P_obj obj, int direction)
 {
-	return obj->trap_charge && IS_SET(obj->trap_eff, TRAP_EFF_MOVE) &&
+	return direction >= DIR_NORTH && direction <= DIR_DOWN && obj->trap_charge &&
+	       IS_SET(obj->trap_eff, TRAP_EFF_MOVE) &&
 	       IS_SET(obj->trap_eff, TRAP_EFF_NORTH << direction);
 }
 
