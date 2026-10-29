@@ -39,7 +39,11 @@ int main(int argc, char **argv)
 	const auto expected = state.revision++;
 	state.paused = true;
 	state.last_opportunity = now - now % DIVINE_BOON_HOUR;
-	// Retain the real cargo objective if the combined campaign already rotated it.
+	// Natural selection is proved before this fixture. Replace its Epic with
+	// the known payment target, retaining the real cargo objective.
+	for (auto &slot : state.slots)
+		if (slot.category == divine_boon_category::epic)
+			slot = {};
 	size_t index = 0;
 	while (index < state.slots.size() && state.slots[index].id)
 		++index;

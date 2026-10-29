@@ -102,9 +102,8 @@ bool ordinary_room(int room, unsigned side)
 	if (town && IS_SET(hometowns[town - 1].flags,
 			   (side ? JUSTICE_GOODHOME : JUSTICE_EVILHOME) | JUSTICE_UNDEADHOME))
 		return false;
-	// Mountains, no-swim water and no-ground rooms stay passable: players walk
-	// mountains and routinely carry a boat or fly. Treating them as walls left
-	// only two Experience zones reachable by both factions.
+	// Zone mountains, no-swim water and no-ground rooms are traversable with
+	// ordinary travel equipment or flight. Map barriers are checked per exit.
 	switch (entry.sector_type)
 	{
 	case SECT_UNDERWATER:
@@ -130,8 +129,14 @@ bool ordinary_room(int room, unsigned side)
 bool ordinary_exit(int room, int direction, unsigned side)
 {
 	const auto *exit = world[room].dir_option[direction];
-	return exit && !IS_SET(exit->exit_info, EX_SECRET | EX_LOCKED | EX_BLOCKED | EX_WALLED) &&
-	       ordinary_room(exit->to_room, side);
+	if (!exit || IS_SET(exit->exit_info, EX_SECRET | EX_LOCKED | EX_BLOCKED | EX_WALLED) ||
+	    !ordinary_room(exit->to_room, side))
+		return false;
+	// Match map_entry_barrier: even flight cannot cross map mountains or
+	// cavern walls, but authored transitions to/from ordinary zones can.
+	return !(IS_MAP_ROOM(room) && IS_MAP_ROOM(exit->to_room) &&
+		 (world[exit->to_room].sector_type == SECT_MOUNTAIN ||
+		  world[exit->to_room].sector_type == SECT_UNDRWLD_MOUNTAIN));
 }
 
 bool live_zone(const candidate &zone)

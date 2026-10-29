@@ -265,6 +265,45 @@ int main()
 		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
 	}
 	rooms[3].sector_type = SECT_FIELD;
+	// A map corridor is different from a mountain room inside a zone:
+	// normal movement cannot enter map mountains/cavern walls from the map,
+	// even with flight. Both the boot search and cached path must enforce it.
+	room_direction_data corridor_exit = {};
+	corridor_exit.to_room = 2;
+	rooms[10].dir_option[0] = &corridor_exit;
+	exits[0].to_room = exits[1].to_room = 8;
+	zones[4].flags = ZONE_MAP;
+	for (int sector : { SECT_MOUNTAIN, SECT_UNDRWLD_MOUNTAIN })
+	{
+		rooms[9].sector_type = SECT_FIELD;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[9].sector_type = sector;
+		assert(!divine_boon_zone_eligible(18, 0) && !divine_boon_zone_eligible(18, 1));
+		assert(divine_boon_selection_bootstrap());
+		assert(!divine_boon_zone_eligible(18, 0) && !divine_boon_zone_eligible(18, 1));
+		// Authored zone/map transitions retain the movement rule's exception.
+		rooms[8].zone = 2;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[8].zone = 4;
+		rooms[9].zone = 2;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[9].zone = 4;
+	}
+	for (int sector :
+	     { SECT_WATER_NOSWIM, SECT_NO_GROUND, SECT_UNDRWLD_NOSWIM, SECT_UNDRWLD_NOGROUND })
+	{
+		rooms[9].sector_type = sector;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+	}
+	rooms[9].sector_type = SECT_FIELD;
+	zones[4].flags = 0;
+	exits[0].to_room = exits[1].to_room = 2;
+	rooms[10].dir_option[0] = nullptr;
+	assert(divine_boon_selection_bootstrap());
 	rooms[0].room_flags = ROOM_SAFE; // A safe hometown may lead to normal encounters.
 	assert(divine_boon_zone_eligible(18, 0));
 
