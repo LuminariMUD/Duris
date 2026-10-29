@@ -1,6 +1,6 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **implementation in progress; persistence prerequisite first**. Updated 2026-10-29.
+Status: **persistence prerequisite review-ready; origin capture implemented**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Implementation branch:
 `branch/issue-437-bartender-quest-routes`.
@@ -320,6 +320,18 @@ isolated SQL migration apply/reapply/save/load, server build and format checks.
 The existing status path is sufficient; no new payload, table, ledger or service
 is needed. Gameplay work and the full acceptance matrix remain outstanding.
 
+The next reviewable dependency captures the actual request room through the
+existing payment context and creation API. Outcome: successful new quests retain
+that VNUM even if a continuation observes a later player location; reset clears
+it, sharing copies it, and the mutations mark status dirty. Non-goals: no route,
+target eligibility, recovery or map policy change in this slice. Files:
+`world_quest.c/.h`, `specs.mobile.c`, the existing target-retry fixture and this
+handoff. Proof: execute the production continuation/creation/reset functions
+with deterministic targets, moved customer, invalid origin and rejected payment;
+reuse the persistence proof above and run the focused policy checks/build.
+Passing VNUMs directly removes the need for live giver lookups or a second
+payment/quest API. Origin validation remains a prerequisite for full route work.
+
 - [ ] **1. Pin baseline and executable failures (1-2 hours).** Extend
   `tests/async/test_world_quest_target_retries.py` for live availability and
   bounded retries; add one focused production-policy route harness if the
@@ -528,6 +540,46 @@ Build/SQL logs are local under `bin/tests/issue437-build.log` and
 is claimed yet, and no production operation occurred. Next: stack origin/route
 policy and executable synthetic
 graph regressions; keep the full outcome and acceptance matrix above.
+
+### Implementation checkpoint: accepted-origin capture (2026-10-29)
+
+Working branch: `branch/issue-437-bartender-route-policy`, based on #451 head
+`9a2fd8db0`. Review-ready stacked PR:
+[#452](https://github.com/LuminariMUD/Duris/pull/452), implementation commit
+`0f71055a3`, targeting #451's branch. The bartender validates co-location and captures its request room
+VNUM into the existing payment context. Creation accepts that explicit origin
+and stores it only on success; an invalid origin takes the ordinary failure and
+refund path. The synchronous giver API checks co-location too. No later player
+position or duplicate giver instance is used to infer the accepted origin.
+Reset clears origin/entitlement; sharing copies origin; create/reset/share mark
+`PLAYER_COMPONENT_STATUS` dirty. The selector remains unchanged in this slice.
+
+Evidence:
+
+- `python3 tests/async/test_world_quest_target_retries.py`: passed. The existing
+  fixture now runs the production payment continuation as well as production
+  creation/selection: captured room 16633 survives a customer position change;
+  invalid origin refunds exactly once with no active quest; payment rejection
+  creates no quest; resets clear origin; successful creation marks status dirty.
+  The synchronous giver entry point captures the co-located room and rejects a
+  remote giver without changing the accepted quest.
+  Existing history/probe bounds and failure-state preservation still pass.
+- `python3 tests/async/test_world_quest_failure_feedback.py`: passed.
+- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
+- `python3 tests/async/test_world_quest_reward_policy.py`: passed.
+- `python3 tests/async/test_world_quest_xp_feedback.py`: passed for MariaDB and
+  flatfile fixtures, including existing kill-credit and trainer behavior.
+- `./scripts/format.sh --check`, `git diff --check`: passed; documentation
+  contract all 14 passed.
+- `make -C src -j2`: passed (incremental build, log
+  `bin/tests/issue437-origin-build.log`). Persistence evidence from #451 is
+  unchanged and is reused; no database suite rerun for this consumer wiring.
+
+Next: build the bounded read-only route context and synthetic room/exit
+regressions, then use that same context for live routine-target selection and
+revalidation. None of the route, availability or stale-recovery acceptance
+claims are satisfied merely by recording the origin. Step 2 remains open until
+the traversal and full creation path enforce the contract.
 
 Completed on the source baseline:
 
