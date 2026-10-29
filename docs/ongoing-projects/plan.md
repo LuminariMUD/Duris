@@ -782,8 +782,9 @@ journeys remain open. Do not treat this selector PR as completion of #437.
 
 ### Read-only presentation checkpoint (2026-10-29)
 
-Working branch: `branch/issue-437-quest-presentation`, based on #464 head
-`103e289a2`. Text QUEST and JSON status now use `mob_index[].desc2`, whose owning
+Review-ready PR: [#465](https://github.com/LuminariMUD/Duris/pull/465),
+implementation commit `dbd0bc2c6`, branch `branch/issue-437-quest-presentation`,
+based on #464 head `103e289a2`. Text QUEST and JSON status now use `mob_index[].desc2`, whose owning
 loader stores the prototype short description. Removed temporary NPC creation/
 extraction and the display-time reset of a paid quest when its giver cannot be
 loaded. Missing target/zone metadata produces unavailable details while keeping
