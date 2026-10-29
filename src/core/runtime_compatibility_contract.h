@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"b2d9ab5b0837dd9035bc13399fb1e6cf55b4de0dd14822342807271cccc3a80c";
+	"acd16d31ab0a7fa92a367628f43d9f63baabd95cbd6bb8c3219dcee48f48e7de";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"8a57defdc0d722642fd5d36e3e371e0280709ea17f9f3952103082ebd8f5ac1c";
+	"87e819caa3b23cd72e47ba827d6ae61c1a94d476a493a48de64f8878d41a80d7";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -106,15 +106,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0049 checkpoints prepared Divine award delivery with player status.
  * Migration 0050 stores exact Divine trade manifests and the market generation.
  * Migration 0051 saves prepared artifact/guild delivery proof with entity snapshots.
+ * Migration 0055 adds accepted bartender origin and replacement entitlement.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0054_full_group_combat_results";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 55;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0055_world_quest_recovery";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 56;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"a0524d5a745ae0aadcc97ca047968477f504fffbd85cb904f770da9175c5ce32";
+	"47767f2f2110f99179be5ae51a04e1250fa2380cdf4e5b6a4d2eb885e46999bb";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"8f0287389d282c53668cb367c5af1a3ab35f11db095986edd1da984269473241";
+	"344a942d5d7122aa55470cc77b11220fa55d0fff73d87e0dc937da70e823713a";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"23fab5a00d6aa9657320a973cc0f33b9be2829e70393d282d9686fc83a8c201f";
+	"622ff41ff3a1d6a031d8e37da0274af5baf965258e410a5641f35672d1ec9913";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

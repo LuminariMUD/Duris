@@ -34,7 +34,7 @@ P_room world = rooms;
 const int top_of_world = 1;
 index_data indexes[1]{};
 P_index mob_index = indexes;
-zone_data zones[1]{};
+zone_data zones[2]{};
 zone_data *zone_table = zones;
 hometown_data hometowns[1]{};
 time_info_data time_info{};
@@ -86,7 +86,9 @@ functions = [
     ('mobact.c', 'void remember(P_char ch, P_char victim, bool check_group_remember)'),
     ('mobact.c', 'void clearMemory(P_char ch)'),
     ('mobact.c', 'int CheckFor_remember(P_char ch, P_char victim)\n{'),
+    ('utility.c', 'bool has_native_planar_affinity_at('),
     ('utility.c', 'bool has_native_planar_affinity('),
+    ('utility.c', 'bool aggressive_to_at('),
     ('utility.c', 'bool aggressive_to('),
     ('mobact.c', 'void MobStartFight('),
 ]
@@ -150,7 +152,17 @@ int main() {
                 }
             }
         }
-        rooms[0].number = g.first; player.player.level = 51;
+        rooms[0].number = g.first; rooms[1].number = 1;
+        player.player.level = 51; npc.memory = nullptr;
+        mob.in_room = 1; player.in_room = 0;
+        assert(!aggressive_to(&mob, &player));
+        assert(aggressive_to_at(&mob, &player, 1));
+        assert(player.in_room == 0);
+        mob.in_room = 0; player.in_room = 1;
+        assert(aggressive_to(&mob, &player));
+        assert(!aggressive_to_at(&mob, &player, 0));
+        assert(player.in_room == 1);
+        player.in_room = 0;
         for (int room : {NOWHERE, top_of_world + 1}) {
             player.in_room = room; assert(!has_native_planar_affinity(&player));
         }
@@ -168,6 +180,19 @@ int main() {
         assert(!has_native_planar_affinity(&player));
     }
     assert(!has_native_planar_affinity(nullptr));
+    // Outcast aggression uses the projected encounter's town, not the
+    // customer's departure town.
+    npc.aggro_flags = AGGR_OUTCASTS; npc.memory = nullptr;
+    rooms[0].zone = 0; rooms[1].zone = 1;
+    zones[0].hometown = 0; zones[1].hometown = 1;
+    hometowns[0].flags = JUSTICE_EVILHOME;
+    player.player.racewar = RACEWAR_GOOD;
+    player.in_room = 0; mob.in_room = 1;
+    assert(!aggressive_to(&mob, &player));
+    assert(aggressive_to_at(&mob, &player, 1));
+    assert(player.in_room == 0 && mob.in_room == 1);
+    mob.in_room = 0; rooms[1].zone = 0; zones[1].hometown = 0;
+    hometowns[0].flags = 0; npc.aggro_flags = AGGR_ALL;
     // Actual group-memory propagation revokes otherwise valid native protection.
     pc_only_data group_pc{};
     groupmate.only.pc = &group_pc; group_pc.pid = 216;

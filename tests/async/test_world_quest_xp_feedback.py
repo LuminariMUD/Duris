@@ -24,6 +24,7 @@ def extract_function(name: str, signature: str) -> str:
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "cmd/interp.h"
 #include "core/utils.h"
 #include "core/utility.h"
 #include "core/files.h"
@@ -198,6 +199,7 @@ void act(const char *text, int, P_char ch, P_obj, void *, int target) {
         failed_learning.push_back(ch);
 }
 void mobsay(P_char, const char *) {}
+void do_action(P_char, char *, int) {}
 char *coin_stringv(int, int) { static char text[] = "coins"; return text; }
 int number(int low, int high) {
     if (conjure_roll && low == 1 && high == conjure_intelligence) return conjure_roll;
@@ -259,6 +261,10 @@ int main() {
         pc.quest_active = 1;
         pc.quest_mob_vnum = 55;
         pc.quest_type = FIND_AND_KILL;
+        pc.quest_zone_number = zones[0].number = 123;
+        zones[1].number = 456;
+        rooms[0].zone = 0; rooms[1].zone = 1;
+        mob.in_room = 0;
         pc.quest_accomplished = 0;
         pc.quest_kill_original = 5;
         pc.quest_kill_how_many = 0;
@@ -330,6 +336,24 @@ int main() {
             }
         }
     }
+    // The double specialization must multiply at its accumulator precision.
+    // Ordinary death dispatch still uses float and keeps its existing rounding.
+    for (bool precise : {false, true}) {
+        reset();
+        player.player.level = 30;
+        player.points.curr_exp = 5000000;
+        new_exp_table[31] = 16777223; // Not exactly representable as float.
+        death_penalty = 0.125; // Exactly representable in either precision.
+        const int loss = precise ? gain_exp_amount<double>(&player, nullptr, 0, EXP_DEATH, false) :
+                                   gain_exp(&player, nullptr, 0, EXP_DEATH);
+        const int expected = precise ? -2097152 : -2097153;
+        assert(loss == expected);
+        assert(player.points.curr_exp == 5000000 + expected);
+        assert(player.player.level == 30);
+        assert(dirty == 1);
+    }
+    new_exp_table[31] = 10000;
+    death_penalty = 0.15;
     // Missing-property fallback and a non-default cutoff use the same policy.
     assert(death_exp_loss_level_threshold() == 30);
     death_cutoff = 25;
@@ -437,16 +461,36 @@ int main() {
     assert(pc.quest_active == 0);
 
     // Qualification failures must neither award XP nor advance the kill count.
-    for (int scenario = 0; scenario < 6; ++scenario) {
+    for (int scenario = 0; scenario < 10; ++scenario) {
         reset();
         if (scenario == 0) npc.R_num = 1;
         if (scenario == 1) pc.quest_active = 0;
         if (scenario == 2) pc.quest_accomplished = 1;
         if (scenario == 3) player.specials.position = STAT_DEAD;
+        if (scenario == 6) pc.quest_type = FIND_AND_ASK;
+        if (scenario == 7) mob.in_room = 1;
+        if (scenario == 8) mob.in_room = NOWHERE;
+        if (scenario == 9) mob.in_room = top_of_world + 1;
         quest_kill(&player, scenario == 4 ? &other : scenario == 5 ? nullptr : &mob);
         assert(player.points.curr_exp == 0 && pc.quest_kill_how_many == 0);
         assert(output.find("Quest EXP:") == std::string::npos);
     }
+    // An ASK interaction must match both type and the accepted destination.
+    for (int scenario = 0; scenario < 6; ++scenario) {
+        reset();
+        pc.quest_type = scenario == 0 ? FIND_AND_KILL : FIND_AND_ASK;
+        if (scenario == 1) mob.in_room = 1;
+        if (scenario == 2) mob.in_room = NOWHERE;
+        if (scenario == 3) mob.in_room = top_of_world + 1;
+        if (scenario == 4) npc.R_num = 1;
+        const auto before = pc;
+        quest_ask(&player, scenario == 5 ? nullptr : &mob);
+        assert(!memcmp(&before, &pc, sizeof(pc)));
+        assert(player.points.curr_exp == 0 && finished == 0 && epics == 0);
+    }
+    reset(); pc.quest_type = FIND_AND_ASK;
+    quest_ask(&player, &mob);
+    assert(finished == 1 && epics == 1 && pc.quest_active == 0);
     // Report the modified, truncated, per-award capped amount, never the request.
     reset();
     rested_tag = TAG_RESTED;
@@ -1106,7 +1150,8 @@ def main() -> None:
     functions += [extract_function("limits.c", "int gain_exp_combat_share(")]
     functions += [extract_function("limits.c", "int gain_exp(")]
     functions += [extract_function("world_quest.c", signature) for signature in (
-        "int quest_exp_reward(", "void quest_full_reward(", "void quest_kill(")]
+        "int quest_exp_reward(", "void quest_full_reward(",
+        "static bool world_quest_matches_target(", "void quest_ask(", "void quest_kill(")]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
     functions += [extract_function("magic.c", "void spell_contain_being(")]
     functions += [extract_function("fight.c", "void kill_gain(P_char ch, P_char victim)\n")]

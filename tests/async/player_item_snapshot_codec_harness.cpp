@@ -551,7 +551,7 @@ int main(int argc, char **argv)
 					}),
 			"old player file did not load with empty flight discoveries: " + error);
 	}
-	for (uint32_t version : { 9u, 10u, 11u })
+	for (uint32_t version : { 9u, 10u, 11u, 12u })
 	{
 		const auto bytes = wire(version);
 		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
@@ -560,6 +560,41 @@ int main(int argc, char **argv)
 				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION,
 			"old snapshot did not default its absent wallet revision");
 	}
+	for (uint32_t version : { 1u, 3u, 5u, 7u, 8u, 9u, 10u, 11u, 12u })
+	{
+		const auto bytes = wire(version);
+		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
+				player_snapshot_codec_result::ok,
+			"legacy quest fixture did not decode");
+		for (auto field : { player_status_field::quest_origin_room,
+				    player_status_field::quest_replacement_due })
+			require(std::count_if(read_back.status_integers.begin(),
+					      read_back.status_integers.end(),
+					      [field](const auto &row) {
+						      return row.field == field &&
+							     !row.is_unsigned &&
+							     row.signed_value == 0;
+					      }) == 1,
+				"legacy quest recovery state did not default exactly once");
+	}
+	changed = full;
+	changed.quest_values = { 0, 23501, 1, 0, 123, 234, 16553, 11, 0, 2, 4, 7, 12345, 1 };
+	changed.status_integers.push_back(
+		{ player_status_field::quest_origin_room, 16633, 0, false });
+	changed.status_integers.push_back(
+		{ player_status_field::quest_replacement_due, 1, 0, false });
+	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok &&
+			player_snapshot_decode(other.data(), other.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			read_back.wallet_revision == full.wallet_revision &&
+			read_back.quest_values == changed.quest_values &&
+			read_back.status_integers[1].signed_value == 16633 &&
+			read_back.status_integers[2].signed_value == 1,
+		"quest recovery state, progress or wallet revision lost in round trip");
+	put32(other, 0, 12);
+	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
+			player_snapshot_codec_result::invalid_value,
+		"version 12 accepted status fields introduced in version 13");
 	const auto version8 = wire(8);
 	require(player_snapshot_decode(version8.data(), version8.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&
