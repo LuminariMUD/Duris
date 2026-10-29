@@ -330,6 +330,21 @@ int main()
 	assert(obstacle.trap_charge == 1);
 	obstacle.trap_charge = 0;
 	available();
+	// Non-direction trap flags must not block diagonal exits. Movement only
+	// checks trap direction bits from north through down.
+	for (int direction = DIR_NORTHWEST; direction < NUM_EXITS; ++direction)
+	{
+		rooms[3].dir_option[DIR_EAST] = nullptr;
+		edge(3, direction, 2);
+		obstacle.trap_charge = 1;
+		obstacle.trap_eff = BIT_1 | (BIT_4 << DIR_EAST) | BIT_10 | BIT_11 | BIT_12;
+		available();
+		assert(obstacle.trap_charge == 1);
+		rooms[3].dir_option[direction] = nullptr;
+	}
+	edge(3, DIR_EAST, 2);
+	unavailable(); // The actual east trigger still blocks the east route.
+	obstacle.trap_charge = 0;
 	objects[0].func.obj = unknown_object;
 	unavailable();
 	objects[0].func.obj = board;
