@@ -198,6 +198,7 @@ void ADD_MONEY(P_char ch, int value)
 	GET_COPPER(ch) += value;
 }
 int daily_remaining = 1, wallet_debits = 0, reward_claims = 0, history_writes = 0;
+void (*during_payment)(P_char) = nullptr;
 bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency_reason_type,
 					      int64_t, critical_source_site,
 					      critical_deadline_class,
@@ -206,6 +207,8 @@ bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency
 {
 	GET_COPPER(ch) += value;
 	wallet_debits += value < 0;
+	if (during_payment)
+		during_payment(ch);
 	callback(ch, true, {}, 0, static_cast<const uint8_t *>(context), size);
 	return true;
 }
@@ -953,6 +956,34 @@ int main(int argc, char **argv)
 		       !recipient_state.quest_map_bought &&
 		       !recipient_state.quest_replacement_due && pc.quest_shares_left == 1);
 		share_limit = 0;
+		// The world and actor can change after the debit is submitted, before
+		// the real completion callback decides whether to deliver the map.
+		for (bool route_changed : { false, true })
+		{
+			pc = accepted;
+			pc.quest_map_bought = 0;
+			GET_COPPER(&player) = 10000;
+			map_calls = 0;
+			const int debits_before = wallet_debits;
+			during_payment = route_changed ? +[](P_char)
+			{ rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED; } :
+							 +[](P_char actor)
+			{ actor->specials.affected_by |= AFF_BLIND; };
+			ask("map");
+			during_payment = nullptr;
+			assert(GET_MONEY(&player) == 10000 && wallet_debits == debits_before + 1);
+			assert(!pc.quest_map_bought && !pc.quest_map_room && map_calls == 0);
+			assert(pc.quest_active == !route_changed &&
+			       pc.quest_replacement_due == route_changed);
+			assert(pc.quest_kill_how_many == accepted.quest_kill_how_many &&
+			       pc.quest_kill_original == accepted.quest_kill_original);
+			assert((published_statuses == std::vector{ route_changed ?
+									   status::unavailable :
+									   status::blocked }));
+			assert(feedback.find("You get your money back") != std::string::npos);
+			player.specials.affected_by &= ~AFF_BLIND;
+			rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		}
 		std::cout << "accepted target checks " << level << ' ' << argv[3] << ": passed\n";
 		return 0;
 	}

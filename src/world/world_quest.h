@@ -17,7 +17,6 @@
 
 enum class world_quest_target_status
 {
-	unchecked,
 	valid,
 	unavailable,
 	blocked,
