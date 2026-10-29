@@ -15664,29 +15664,27 @@ int llyren(P_char ch, P_char pl, int cmd, char *arg)
 int teacher(P_char ch, P_char pl, int cmd, char *arg)
 {
 	P_obj t_obj;
-	char buf[512];
 
 	if (cmd != CMD_ASK || !arg || !strstr(arg, "level") || !pl ||
 	    !GET_CLASS(pl, ch->player.m_class))
 		return FALSE;
 
-	snprintf(buf, 512,
-		 "For your further path of development it is crucial that you visit\n"
-		 "%s of the magical runestones locates in the following lands:\n",
-		 GET_LEVEL(pl) >= get_property("exp.levelForAllRunestones", 51) - 1 ? "all" :
-										      "one");
+	send_to_char_f(pl,
+		       "For your further path of development it is crucial that you visit\n"
+		       "%s of the magical runestones locates in the following lands:\n",
+		       GET_LEVEL(pl) >= get_property("exp.levelForAllRunestones", 51) - 1 ? "all" :
+											    "one");
 
 	for (t_obj = object_list; t_obj; t_obj = t_obj->next)
 	{
 		if (obj_index[t_obj->R_num].func.obj == epic_stone &&
 		    t_obj->value[3] == GET_LEVEL(pl) + 1)
 		{
-			strcat(buf, zone_table[real_zone0(t_obj->value[2])].name);
-			strcat(buf, "\n");
+			send_to_char(zone_table[real_zone0(t_obj->value[2])].name, pl);
+			send_to_char("\n", pl);
 		}
 	}
 
-	send_to_char(buf, pl);
 	return TRUE;
 }
 

@@ -1756,6 +1756,11 @@ int gain_exp_combat_share(P_char ch, P_char victim, double precise_share, int or
 	P_char encounter = type == EXP_HEALING && victim ? GET_OPPONENT(victim) : victim;
 	const bool combat = type == EXP_DAMAGE || type == EXP_TANKING || type == EXP_HEALING ||
 			    type == EXP_MELEE || type == EXP_KILL || type == EXP_KILL_BONUS;
+	// Healing names the patient, so check both sides of that encounter.
+	if (combat &&
+	    ((encounter && IS_NPC(encounter) && IS_ACT(encounter, ACT_TEACHER | ACT_SPEC_TEACHER)) ||
+	     (victim && IS_NPC(victim) && IS_ACT(victim, ACT_TEACHER | ACT_SPEC_TEACHER))))
+		return 0;
 	if (combat && divine_experience_active(ch, encounter))
 		return gain_exp_amount<double>(ch, victim, precise_share, type, true);
 	return gain_exp_amount<float>(ch, victim, ordinary_share, type, false);
