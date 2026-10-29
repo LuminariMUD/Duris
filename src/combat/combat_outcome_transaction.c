@@ -132,9 +132,18 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 					return false;
 			}
 		critical_command command = {};
-		if (!combat_outcome_command_build(&command, operation_id, prepared) ||
-		    !artifact_guild_delivery_reserve(prepared.artifact_deliveries))
+		if (!combat_outcome_command_build(&command, operation_id, prepared))
+		{
+			logit(LOG_STATUS, "pvp_frag: outcome=command_build_failed victim_pid=%u participants=%zu",
+			      prepared.victim_pid, prepared.participant_count);
 			return false;
+		}
+		if (!artifact_guild_delivery_reserve(prepared.artifact_deliveries))
+		{
+			logit(LOG_STATUS, "pvp_frag: outcome=artifact_reservation_failed victim_pid=%u",
+			      prepared.victim_pid);
+			return false;
+		}
 		reserved = true;
 		key = operation_key(operation_id);
 		pending.emplace(key,
