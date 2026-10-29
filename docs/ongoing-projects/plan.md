@@ -1,352 +1,475 @@
-# Issue #428: keep missed starter arrows recoverable
+# Issue #437: usable bartender quests and recovery
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-28.
-Issue: [Duris #428](https://github.com/LuminariMUD/Duris/issues/428).
-Owner: `moshehbenavraham`.
-Branch: `branch/issue-428-starter-arrow-decay`, based on `master` at
-`8e95eb5dddfb6c9dddd7765921ded420696369f6`.
+Status: **implementation plan; gameplay changes not started**. Updated 2026-10-29.
+Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
+all three investigation comments. Implementation branch:
+`branch/issue-437-bartender-quest-routes`.
+Source baseline: `master` / `origin/master` at
+`9632f29804687ccf049ddf7a59a5ae16878e0583`.
 
-The prior Conjurer plan is preserved byte-for-byte in
-[plan-issue-215.md](plan-issue-215.md). The earlier telemetry delivery plan is
-[plan-issue-59.md](plan-issue-59.md).
-
-## Selection and availability
-
-Reviewed the complete open issue lists for this project on 2026-10-28:
-16 GitHub issues in `LuminariMUD/Duris`, 16 GitLab issues/work items in the
-`max757/duris` mirror, and no additional open GitLab tasks. Cross-checked four
-open GitHub pull requests and zero open GitLab merge requests. No matching
-arrow-fix PR or existing development branch was found for #428 before pickup.
-The mirror's open records date from October 3-8 and require comparison with
-current GitHub master; an open mirror record alone does not establish unfinished
-implementation.
-
-Choose #428 for confirmed player impact, a directly traced cause, no existing
-assignee or competing PR, a small production change, and concrete executable
-acceptance criteria. It also removes a defect that would otherwise be spread by
-starter-kit enhancement #429, without taking on that enhancement.
-
-Other GitHub candidates were considered:
-
-- #439 is a more serious potential locker-state/lifetime failure, already
-  assigned and investigated. It needs coordinated extraction, idle, descriptor,
-  save/retry and shutdown work. #428 is the more bounded immediately deliverable
-  repair; this does not downgrade #439's importance.
-- #421 is a confirmed pet/group-output bug, but overlaps active terminal/group
-  edits in the original checkout. Do not duplicate that work.
-- #419 needs intentional key disposal coordinated with durable custody and
-  backend recovery. #418 needs a consistent key/relocking policy. #420 explicitly
-  awaits the intended Reflection-versus-summon-capacity rule.
-- #438 is a small help-display defect, currently labelled enhancement; losing
-  usable starter ammunition has greater direct gameplay impact.
-- #429, #436, #437 and #214 are enhancements or gameplay policy/balance work.
-  #97 is a broad readiness checklist. #38, #52, #65 and #185 are future-labelled
-  or broader efforts; #52 also has its own assigned worktree.
-
-All 16 GitLab records were screened: #8, #9, #12, #15, #16, #19, #20, #21,
-#22, #23, #24, #25, #26, #27, #28 and #29. They cover older display/shop fixes,
-connection limits, flight/quantity-purchase features, capacity and lifecycle
-qualification, security/site maintenance, telemetry, trophies and builder work.
-For the bug-labelled alternatives, current source already has the deadlines and
-bounded subprocess diagnostics described as missing in #22; the reporting URL
-and libcurl baseline have advanced since #21; README repository links have
-advanced since #25. Other visible drift includes newer DOMPurify in #9 and
-reserved Studio tags in #28. These observations are not a claim that every
-acceptance criterion on those records is complete. No mirror item was changed
-or closed, and no matching mirror arrow issue was found to link.
+This delivery publishes the plan and links the branch. It does not implement or
+deploy the proposed policy. The prior #428 plan and qualification record are
+preserved byte-for-byte in [plan-issue-428.md](plan-issue-428.md).
 
 ## Outcome
 
-A newly granted regular legacy starter missile that misses in an ordinary dry
-room must survive scheduled event processing and remain recoverable through its
-owner's normal `gather` command. Cover both a same-room miss and a miss landing
-in the adjacent room. Preserve arrow identity, condition, quiver count and
-encumbrance across fire/gather cycles.
+New bartender quests must name suitable, currently usable NPCs in the advertised
+zone, with a verified ordinary route from the actual request origin. For accepted
+levels **11 through 29**, that route must stay within the origin's resolved local
+geography and require no paid transport or special travel equipment. Level **30**
+is outside the local-only restriction. Route legality, live availability,
+accurate directions and stale-assignment recovery apply at every quest level.
 
-Preserve ordinary ammunition, successful-hit wear/scrapping, returning/cursed
-arrows, other transient gear and existing starter-grant publication/ownership.
+An assignment invalidated by the world must offer a free replacement without an
+abandonment charge, lost earned progress, or false completion/history consumption.
+If no new target qualifies, refuse a new purchase and return its fee; for an
+already paid invalid assignment, retain a durable replacement entitlement.
 
-## Non-goals and explicit compatibility decisions
+Keep the boot catalog, level windows, reward filtering/weighting, completion
+history, daily allowance, sharing limits and successful completion behavior.
+The changes below explicitly replace the defective availability and global
+population assumptions, rather than loosening the other rules to manufacture a
+target. A positive local grant and completion must pass: refusing every request
+does not meet the outcome.
 
-- Do not implement #429, change class/race kit access, counts, admission masks,
-  Chaos kits, damage, accuracy, terrain rules or quiver capacity.
-- Keep the starter bow's added transient flag and the quiver's prototype
-  transient flag. Deliberately dropping either retains today's dissolution
-  behavior; neither must land on the floor for an ordinary missed shot.
-- Exempt missiles only from the flag added by this grant path. Do not clear a
-  transient flag authored on a prototype or supplied by another legitimate path.
-- Previously granted arrows retain their saved flags. This fix applies to new
-  materializations, including later grants through the same legacy path; it does
-  not repair old instances or resurrect arrows already destroyed. Document that
-  limit. Do not infer origin from VNUM or the `newbie` keyword, rewrite saves,
-  add load-time normalization, or perform a production inventory migration.
-- No global decay exception, firing-time flag rewrite, schema, setting, new
-  service, generic policy helper or grant-coordinator refactor is needed.
-- The owner's follow-up authorizes implementation, local qualification,
-  documentation, commit/push and a PR on this branch. Merge and production
-  deployment remain subsequent work.
+## Non-goals
 
-## Source evidence and files
+No general travel planner, combat-safety guarantee, new transport system,
+reward rebalance, zone approval list, or world-wide area repair. Preserve the
+Divine selector and unrelated quests. Production deployment and reconstruction
+of an unidentified player's historical assignment are separate from the local
+implementation; retain the latter as an explicit evidence limitation.
 
-Inspected the following on the baseline above; line numbers may move:
+## What the source establishes
 
-- `src/account/nanny.c:1127`: `materialize_legacy_newbie_item()` instantiates a
-  detached object. For regular PC grants it sets cost to one and adds
-  `ITEM_TRANSIENT` unless the type is exempt. Missiles are missing from that
-  list. `load_obj_to_newbies()` supplies the existing bounded grant coordinator.
-- `src/account/newbie_kit_plan.c:537` and `:1604`: half-elf and wood-elf Ranger
-  rows include quiver 1116, ten missiles 1117 and bow 1118.
-- `areas/obj/heavens.obj`: missile 1117 has flags 1032 without the transient bit;
-  quiver 1116 has 525320 including it. Bow 1118 has flags 8 before materialization.
-  `src/core/defines.h` defines `ITEM_TRANSIENT` as `BIT_20`.
-- `src/combat/range.c`: `do_fire()` sends a non-returning miss to `obj_to_room()`
-  without hit-related condition loss. `do_gather()` requires the shooter's PID
-  mark and gathers from the room in which the player now stands.
-- `src/world/handler.c::obj_to_room()` schedules `TAG_OBJ_DECAY` at delay zero
-  for transient objects outside lockers; `src/magic/affects.c::event_obj_affect()`
-  dispatches that tag to `Decay()`.
-- `tests/async/test_fired_missile_encumbrance.py` already runs real fire/gather
-  and container-weight functions under ASan/UBSan, but stubs room placement,
-  forces same-room misses and aborts on hit-only services. Its existing green
-  result cannot prove this defect fixed.
-- `tests/async/test_flatfile_newbie_regrant_journey.py` supplies isolated legacy
-  prototypes, real grants and a snapshot inspector; it and
-  `test_flatfile_combat_journey.py` provide reusable socket/build helpers.
+These findings were checked in the baseline above. The issue comments are useful
+leads and previous experiment records, not substitutes for the owning code.
+Line numbers below refer to that baseline and may move during implementation.
 
-Expected implementation edits: `src/account/nanny.c`, the existing missile
-regression, and `docs/reference/LEGACY_STARTER_KITS.md`. Extend the existing
-newbie journey for the command/event acceptance where practical; if its regrant
-and observer scenario would become tangled, add one focused starter-arrow
-journey using those existing helpers. Do not create a new harness framework.
-`range.c`, `handler.c`, `affects.c`, kit tables and area prototypes are exercised
-inputs, not planned production edits.
+1. **Global selection is real, and it was specified deliberately.**
+   `src/world/world_quest_policy.c:367-383,560-604` filters status, hometowns,
+   levels, map presence and rewards, then weights eligible zones globally.
+   There is no origin or route check. Before `35b2071a8`, `getQuestZoneList()`
+   used local map exits, a below-30 `map_section` comparison and the
+   `3000 + level^3` distance threshold. However, the
+   [plan committed with that change](https://github.com/LuminariMUD/Duris/blob/35b2071a84fba5d968b07d13fa1f0d2b4a58d267/docs/ongoing-projects/issue-157-dynamic-bar-quests.md#fr-001--global-dynamic-catalog)
+   expressly requires a catalog independent of bartender identity, room,
+   player zone and continent exits. #437 therefore proposes a policy revision;
+   the evidence does not support calling this an accidental omission. Preserve
+   the global catalog and narrow its per-request eligible subset.
+2. **Geography fields are not travel proofs.**
+   `world_quest.c:392-431` returns the first zone-to-map exit without proving
+   inbound access. `map.c:1389-1452` assigns continent IDs within map-zone
+   connectivity; ordinary interiors can retain zero. `map.h:42-55` defines
+   surface continent IDs 1-14; zero is not a valid surface continent.
+   `map.c:1466-1617` builds coordinate sections, not mortal routes.
+   `calculate_map_distance()` at `map.c:329-355` returns squared coordinate
+   distance, or -1 across different map zones. Neither that distance nor
+   equal `map_section` proves affordability or legal access.
+3. **Zero-population targets are already filtered.**
+   `select_cached_mob()` at `world_quest_policy.c:385-446` requires global
+   population >=2 for KILL and exactly 1 for ASK. Creation rechecks population
+   at `world_quest.c:862-870`. The missing boundary is actual live rooms and
+   usable instances, not simply another `mob_index[].number > 0` test.
+4. **Prototype ownership can give the wrong destination.**
+   `load_mobile_profiles()` at `world_quest_policy.c:249-281` groups targets by
+   prototype VNUM interval. Authored resets independently confirm cross-zone
+   reuse: `areas/zon/shaughin.zon:185-186` places 6610 in room 6543, and
+   `areas/zon/astral_main.zon:13-16` places 19830 in rooms 19701/19704.
+   Advertised location and accessible supply must use the selected live zone.
+   Do not change reward ownership or average-level arithmetic as a side effect.
+5. **Target suitability also needs the live instance.**
+   ASK's cached speech/visibility checks and aggression probe in room rnum 1
+   do not prove interaction in the target room. KILL does not use the existing
+   `combat_eligible` profile. `world_quest.c:911-924` sets its quota from global
+   population minus one. Real ASK completion is reached through
+   `cmd/actcomm.c::do_ask()`; real KILL progress is credited through
+   `combat/fight.c` and `world_quest.c::quest_kill()`.
+6. **Movement routines cannot be called as harmless route predicates.**
+   `cmd/actmove.c::leave_by_exit()` starts regeneration and checks live blockers;
+   entry checks use `ch->in_room`, and some branches alter posture. Commands,
+   room hooks and `char_to_room()` can invoke scripts, move or destroy actors.
+   Inspect `actmove.c:254-775,780-975,1339-1423`,
+   `cmd/interp.c:2814-2830`, and `world/handler.c:1167-1184,1548-1568`.
+   `combat/forced_movement.c::map_entry_barrier()` is a reusable side-effect-free
+   map barrier check. Flight does not bypass its map mountain/cavern-wall rule.
+7. **The Divine fix is a reference, not the bartender solution.**
+   Merged #448 changes `economy/divine_boon_selection.c::ordinary_exit()` and
+   cached-path validation. Its roots are faction hometowns, and its policy
+   assumes some boat/flight travel. Its reset scan also permits probabilities
+   >=50. None supplies #437's origin-specific, routine-target contract.
+   Generic `world/graph.h` edge macros omit different restrictions and cannot
+   be selected by name alone. Do not modify Divine policy for this task.
+8. **Stale quests currently remain chargeable obligations.**
+   `do_quest()` recreates a prototype for display at `world_quest.c:687-753`;
+   it never verifies live availability. `specs/specs.mobile.c:11024-11098`
+   charges to abandon; its callback at `10930-10947` records partially
+   completed KILL abandonment in history. `quest_kill()` already pays XP per
+   credited kill. Recovery must not reset that counter and pay the same progress
+   again, or call `sql_world_quest_finished()` for a server-invalid assignment.
+9. **Persistence and payment have important current constraints.**
+   Active quest state is 14 values in `core/structs.h:1333-1347` and
+   `player/player_snapshot.h::quest_values`; capture, load, SQL column arrays
+   and the binary snapshot codec all mirror that ordering. There is no saved
+   origin room or purchase fee. Despite deferred naming/comments,
+   `economy/currency_transaction.c::apply()` currently invokes completion
+   synchronously after updating the wallet; player snapshots persist it.
+   Do not introduce a second transaction system or assume a durable fee ledger.
 
-## Ablated implementation sequence
+The earlier issue experiments and local files under
+`bin/tests/issue437-investigation/` contain real level-11/29 client assignments
+from Woodseer to Seacaves/Old Graveyard, and the relocated/disappeared 23501
+case. I inspected their recorded outputs; I did not rerun those servers for
+this planning commit. The policy, creation and movement files checked above
+have not changed from the recorded `e08fa3d1b` investigation head; unrelated
+trainer edits in `specs.mobile.c` have landed since. Reproduce the relevant
+journeys against the implementation build, rather than claiming old binaries
+qualify new behavior. Previous sampled path counts are not failure-rate estimates.
 
-1. **Expose the missing boundary in a focused regression.** Extend the existing
-   fire/gather harness to materialize production starter missiles and execute
-   actual room placement. Exercise the scheduled decay callback for the old
-   transient control rather than only counting a requested tag. Use production
-   functions with controlled RNG/services, not a copied conditional. The starter
-   miss/survival assertion must fail against the unmodified baseline.
-2. **Correct the flag at its source.** Add `ITEM_MISSILE` to the existing
-   materializer exemption list. Retain costs, prototype flags, keywords,
-   spellbooks, NPC behavior and the grant coordinator unchanged. No new helper.
-3. **Prove the real route and preserved behavior.** Exercise a real freshly
-   granted Ranger kit in a disposable non-Chaos server, wear/load the quiver and
-   bow, observe a miss, allow event pulses, and gather. Repeat across an adjacent
-   exit after moving to the landing room. Reuse native deterministic cases for
-   hit wear, zero-condition scrapping, returning shots and controls. Assert UID,
-   condition, counts and weights rather than only the absence of a crumble line.
-4. **Document and qualify.** Update the starter-kit reference with the missile
-   exemption, preserved bow/quiver behavior and old-instance limitation. Record
-   the exact test evidence here, reread the diff, and retain only required work.
+The named centaur/Ice Castle report remains qualified. Current authored content
+has a 100% reset for centaur 82718 and 100% resets into IceCrag's named rareload
+room 97005. The prior full-policy audit excluded that centaur and the three
+investigated level-60 IceCrag singletons through non-overlapping level windows.
+That does not identify the player's actual target. Record the running revision,
+target VNUM/type, accepted level/time and live rooms if the affected record
+becomes available; never manufacture those identifiers or assert a zero-load
+new assignment from the current count checks. Test synthetic zero-load cases
+and the independently proven reused/staging targets regardless.
 
-Ablation keeps one source condition plus proof of the actual failure path.
-It removes a proposed need for general transient-item policy machinery,
-retroactive migration and the adjacent #429 enhancement: none is required to
-make newly granted arrows recoverable. Executing room placement/event handling
-and a command journey stays in scope because the existing stub misses the bug.
+## Proposed behavior decisions
+
+These are concrete implementation defaults for #437, not claims about current
+behavior or authorization to deploy this planning branch.
+
+### Origin, boundary and affordability
+
+- Capture the request room VNUM while validating the real bartender/customer
+  interaction, and pass it by value through creation/payment context. Use that
+  same room after a payment continuation; do not rediscover any NPC sharing
+  the giver VNUM or select relative to a later player position.
+- Apply local-only policy to accepted levels 11-29. Preserve the level-11
+  admission gate, level-41 mapless gate, and level-50 KILL-only switch.
+  Revalidation uses the saved accepted level, so leveling or walking away
+  does not silently change an existing contract.
+- For a surface-map origin, use its positive continent ID. For an interior,
+  find its legally reachable first map boundaries through ordinary directed
+  connections; do not traverse an entire continent to decide the origin.
+  Require an unambiguous local geography. Resolve Underdark origins as the
+  reachable Underdark map component, distinct from surface continents; do not
+  equate two continent-zero interiors. A boundary crossing to another surface
+  continent or between surface and Underdark is nonlocal for levels 11-29.
+  Multiple same-region entrances are valid; conflicting regions or unresolved
+  geography produce a clear refusal, never a global fallback.
+- Validate the route all the way into the NPC's actual room and a directed
+  return route to the origin. A reverse exit need not be the same physical
+  entrance if an alternative ordinary return path exists. A one-way trap does
+  not qualify. Low-level transit cannot leave and reenter the local region.
+- Define affordable here as **no mandatory travel fare, keys, hired travel,
+  another player's spell, or equipment/temporary-flight dependency** for
+  levels 11-29. Ordinary walking, opening an unlocked door and crawling are
+  allowed. Do not restore the squared-distance formula or add an arbitrary
+  gameplay radius. This does not promise a shortest journey or combat safety.
+  At 30+, allow only travel capabilities the player actually has and the
+  validator can prove; unknown scripted/paid transport remains ineligible.
+
+### One conservative route validator
+
+Keep a quest-specific, read-only traversal in `world_quest_policy.c`, reused by
+creation and revalidation. It must take explicit source/destination room IDs
+and relevant player facts, rather than relocating a real player or invoking
+movement/interaction commands. Reuse safe existing predicates where their
+contracts fit; extract a small shared predicate only if a real movement rule
+otherwise has to be duplicated. Do not refactor the movement subsystem.
+
+Reject secret, blocked, walled, locked/key-dependent exits; castle walls;
+map-to-map mountains/cavern walls; closed/private zones; restricted/private,
+guild, jail, locker and hazardous rooms; incompatible hostile-town transit;
+and current blocking actors, traps or special gates that prevent ordinary
+travel. An ordinary mountain room and a legitimate map/zone transition remain
+valid. A closed door qualifies only if it can actually be opened without a
+key or skill and has no blocking script. Model safe posture changes explicitly.
+Water, no-ground, underwater and dangerous plane sectors need explicit policy,
+not `can_enter_room()`'s permissive return alone.
+
+Room, mobile and object procedures may intercept travel or ASK. Treat an
+unclassified relevant procedure as unproven. Audit procedures encountered in
+the representative positive routes and allow only those shown not to gate the
+operation, using existing procedure identities. Do not reject every NPC with
+`ACT_SPEC` or assume all room scripts are harmless. Do not build a generic
+script simulator or a zone approval table.
+
+Use one request-local traversal/live-instance context with explicit shared work
+bounds, short-lived room results and no pointers retained across commands.
+Keep the existing 32 target-probe and 32 history-check limits. Add a separate
+shared room/edge-work limit for origin resolution, outbound and return checks;
+calibrate it using the loaded-world journey and existing game-loop latency
+trace. Exhaustion is **unproven**, not proof that a quest became impossible:
+skip/refuse a new candidate, but never cancel/refund a valid existing quest
+because a search budget ran out. Reuse results within the request, avoid one
+whole-world traversal per candidate, and do not rebuild the boot catalog.
+
+### Routine sources, live targets and truthful directions
+
+- Add only the necessary routine-source metadata to the boot catalog using
+  loaded reset commands. A direct unconditional `M`, positive limit and
+  probability 100 are necessary for the conservative routine pool. Account for
+  dependency flags, reset mode, random-table/follower/script-only sources and
+  placement in holding/distribution rooms. A 100% line alone is insufficient.
+  Inspect `db.c::reset_zone()` semantics rather than treating fields as labels.
+- Require a proven ordinary placement in the destination zone; a staging-room
+  only or rare/conditional source stays out of routine quests, even when it
+  happens to have a counted instance. Do not classify by room name text or
+  maintain a list of guessed rare VNUMs. A VNUM with a genuine independent
+  routine placement can qualify through that placement, not through its rare
+  instances. For ambiguous mixed sources, exclude until provenance is proved.
+- Keep prototype metadata/level averages and reward pools in their current
+  ownership model. Index target placements separately by actual reset room
+  zone, reusing the existing profile, so 6610 and 19830 are not falsely
+  advertised in their prototype-owning zones. Apply the destination zone's
+  existing level/reward eligibility. A mismatch may correctly leave no target;
+  do not compensate by changing level windows or borrowing another zone's reward.
+- Resolve actual live NPCs once for the bounded request. Require the selected
+  target to be alive, in the advertised eligible zone and on a proven route.
+  Do not count probes, invalid rooms, pets/charmed summons, inaccessible holding
+  rooms or unrelated populations elsewhere. Recheck immediately before
+  publishing quest state; live presence and routine provenance are separate gates.
+- ASK retains the exactly-one-global-instance rule and existing level/pre-31
+  visibility restrictions, and additionally verifies actual visibility,
+  speech/interaction and non-aggression in the target environment. Inspect
+  predicates for hidden reliance on `ch->in_room` before reusing them.
+- KILL requires cached combat eligibility plus live attack legality, including
+  safe-room and protected NPC checks. Require at least two usable instances;
+  preserve `min(difficulty_scaled_random_7_to_9, usable_count - 1)`.
+  Do not promise future replenishment to satisfy the initial quota. After
+  partial progress, validate supply against **remaining** kills, not the
+  original quota or a fresh minus-one formula.
+- Choose the map entrance from the validated route to that actual target zone.
+  Store its VNUM in the existing `quest_map_room` independently of whether the
+  player has bought the map; `quest_map_bought` still controls disclosure.
+  Revalidate before map purchase and display, and keep text/GMCP aligned.
+  No map sale for an unavailable/unproven route. A moved target cannot leave
+  old zone directions or an unrelated first-marker map on screen.
+
+### Stale assignments and persistence
+
+Use **free replacement**, rather than retrospective cash reimbursement, as the
+recovery contract for accepted quests. Exact historical fees are not recorded.
+Keep the existing full refund for a new purchase that cannot create a quest.
+
+1. Revalidate from `do_quest()` and bartender request/map/abandon handling,
+   before charging or giving stale directions. Run the check once per command
+   and reuse its result. A restarted or relogged quest is checked on its first
+   use after world loading. Keep presentation serialization free of money/state
+   side effects; publish the resulting status through the existing GMCP path.
+2. Separate valid, world-unavailable, player-temporarily-blocked and unproven
+   results. Despawn, incompatible relocation, insufficient remaining usable
+   supply and a newly locked route can establish world unavailability.
+   Blindness, temporary incapacity, the player moving elsewhere, or removing
+   their own travel equipment must not grant a free reroll. Unproven script
+   behavior or a budget limit is not an automatic cancellation either.
+3. For a proven invalid, incomplete assignment, mark replacement due and make
+   it inactive, retaining accepted level, giver/origin, type, kill progress and
+   original quota, map entitlement and remaining share allowance. Explain the
+   reason and the free replacement option. Do not write completion history,
+   consume daily quota, remove earned XP or pay new rewards. Finished quests
+   remain claimable; never cancel one because its last target was killed.
+4. `ask <bartender> quest` redeems that one entitlement through the same selector
+   without a new fee. Use the current request origin for the replacement and
+   persist it after success. Preserve accepted level/type, earned kill count
+   and original quota; require enough usable targets for the remaining work.
+   Do not replay partial-kill XP, reset share limits or manufacture a completion.
+   If no replacement exists, leave no active target and retain the entitlement
+   across save/restart. Repeated requests cannot duplicate it. Free cancellation
+   can discard it through explicit abandonment without a fee/history penalty.
+   Handle recovery before the new-purchase level/quota/fee gates: it continues
+   already accepted work, while still requiring loaded completion history and
+   rejecting previously completed replacement targets. Never automatically
+   abandon or erase progress merely because replacement is temporarily absent.
+5. Add two explicit persisted values: accepted origin room VNUM (zero means
+   legacy/unknown) and replacement-due flag. Use the existing append-only
+   `player_status_field` mechanism with a codec version increment and old-wire
+   defaults; leave the 14-value legacy quest payload layout intact. Update
+   capture, SQL save/load, materialization and reset/share paths together.
+   Add a guarded additive migration for the two SQL columns using the current
+   migration runner. No new table, ledger or persistence service.
+6. Legacy quests without an origin get target/location validation, but a guessed
+   giver location must not be called their accepted origin. At a real bartender,
+   validate/rebind a usable quest or offer the same free replacement for an
+   invalid/obsolete contract. If the origin cannot be reconstructed on display,
+   explain that a bartender check is needed; do not charge, blindly discard it,
+   or show unverified directions. Preserve completed legacy quests and progress.
+7. Mark quest/recovery mutations dirty with `PLAYER_COMPONENT_STATUS`; prove
+   one player snapshot retains both the monetary result and associated quest
+   state under the current save model. Handle shared quests explicitly: copy
+   origin/accepted policy, revalidate the recipient, never copy a pending
+   replacement as an active task, and retain remaining share/progress limits.
+
+## Ablated implementation sequence and files
+
+- [ ] **1. Pin baseline and executable failures (1-2 hours).** Extend
+  `tests/async/test_world_quest_target_retries.py` for live availability and
+  bounded retries; add one focused production-policy route harness if the
+  current lightweight fixture cannot represent real room/exit state. Use
+  controlled RNG and synthetic graphs, not a copied selector. Reproduce foreign
+  selection at 11/29 and unusable 23501 placement through full creation. Record
+  the archived policy decision and limits of the named production reports.
+- [ ] **2. Resolve origin and routes (3-4 hours).** Implement the explicit
+  origin/context and conservative traversal in `src/world/world_quest_policy.c`
+  and `.h`, with constants in `world_quest_policy_math.h` where appropriate.
+  Wire `world_quest.c/.h` and `specs/specs.mobile.c` to pass the request origin.
+  Use movement/map sources as contracts; change those production files only
+  for a small justified shared read-only predicate.
+- [ ] **3. Select and describe live routine targets (2-3 hours).** Extend boot
+  placement metadata and per-request filtering in the same policy module;
+  use actual zone/live supply in `createQuestForGiverVnum()` and validated
+  entrances in `quest_buy_map()`. Retain boot level/reward calculations and
+  fail-closed history behavior. Update the misleading failure message that
+  currently tells low-level players to try colleagues around the world.
+- [ ] **4. Recover and persist existing work (2-3 hours).** Implement the shared
+  validator/replacement transition in `world_quest.c/.h` and bartender handling.
+  Touch `src/core/structs.h`, `src/player/player_snapshot.h`,
+  `player_snapshot_capture.c`, `player_snapshot_codec.c`,
+  `player_snapshot_repository.c`, `player_load_repository.c`, and
+  `player_load_materialize.c`, plus the additive migration and its maintained
+  schema/runner registration. Update `core/json_utils.c` / `net/gmcp.c` only
+  as needed to represent unavailable/replacement status and truthful maps.
+  Preserve the legacy importer payload and initialize new fields safely.
+- [ ] **5. Prove complete journeys and document (4-6 hours).** Extend
+  `tests/async/run_world_quest_dual_backend.py` with request, actual travel,
+  ASK/KILL completion, invalidation, free replacement, save and restart.
+  Reuse its disposable world/account/database setup and existing client.
+  Extend snapshot/codec/load and GMCP tests where the new fields require it.
+  Update `docs/reference/CODEBASE.md` and the maintained bartender help source
+  after locating its authoring path; do not edit generated help/area output.
+  Record exact results here, reread the diff and cut unsupported machinery.
+
+**Ablation decisions:** keep geography, route checks, routine provenance, live
+selection and durable recovery because each closes a distinct demonstrated
+failure. Simplify around one catalog and one reusable quest validator; reuse
+existing payment, player status, migration and journey mechanisms. Choose free
+replacement to avoid a new fee ledger and invented legacy refunds. Drop the
+old distance formula, prototype-count-only patch, direct reuse of Divine paths,
+generic routing service, movement simulation, global route cache/invalidation
+framework, new configuration surface, custom test framework and production-wide
+content cleanup. Do not add a report, dashboard or separate approval stage.
 
 ## Proof and acceptance
 
-- Fresh half-elf and wood-elf Ranger grants produce the expected missile count,
-  normal cost/keywords and no grant-added transient bit. Prototype-authored
-  transient flags remain intact, including an explicitly flagged missile control.
-- Same-room and adjacent-room misses leave the same arrow UID at full condition
-  after event processing. The owner can gather it; a different PID cannot.
-  Repeated cycles restore quiver count/weight and carried encumbrance exactly.
-- Ordinary missiles behave identically. Returning/cursed missiles stay in the
-  quiver. Controlled successful hits still wear and scrap missiles as before.
-- Another transient object still schedules and completes decay. Bow/quiver
-  dropping still uses the current policy. No general decay code changes.
-- The real grant-to-fire-to-event-to-gather journey passes in isolated state;
-  native harness coverage and socket coverage are reported separately.
+The regressions must exercise production decisions and full command routes,
+not merely assert that a source string or helper exists.
 
-Planned local commands after implementation:
+- **Levels/geography:** 10/11, 29/30, 40/41 and 49/50; local versus foreign
+  candidates; interior origin with continent zero; multiple entrances in one
+  region; conflicting/unknown origin; Underdark origin and surface transition;
+  no local candidate with exact new-purchase refund and no active quest.
+- **Routes:** mountains/cavern walls even with flight; ordinary mountain rooms
+  and authored map/zone transitions; nearby but separated by a wall;
+  one-way entry without a return and an alternate legal return; blocked final
+  room; locked/key/secret/blocked/walled edges; openable unlocked doors;
+  changed doors, occupied/restricted rooms, hostile transit and an actual
+  scripted gate; water/flight capability present versus absent; source-specific
+  access rather than reachability from some other faction hometown. Prove the
+  traversal leaves characters, events, doors and room populations unchanged.
+- **Targets:** zero live instances despite successful prototype loading;
+  rare/conditional source and 100% staging-only reset; actual target moved
+  outside the advertised zone; reused 6610/19830 and representative 4405
+  placement; global count sufficient but usable population insufficient;
+  live ASK invisibility/speech/aggression and KILL safe/protected NPC rejection.
+  Keep tests for named centaur/IceCrag examples qualified by the full level
+  pipeline, and add the exact reported targets if identified.
+- **Recovery:** target extracted after acceptance, moved or made inaccessible;
+  another player's kills leaving insufficient remaining supply; legitimate
+  partial progress; a completed quest whose target is now gone; voluntary
+  abandonment retaining its current charges/history; no fee/history penalty
+  for server-invalid work; no candidate while replacement is due; repeat
+  requests; player movement/temporary incapacity; shared recipients; legacy
+  unknown-origin records; save/relogin/restart on both backends. Assert exact
+  wallet, progress, XP, quota, history, entitlement and map outcomes.
+- **Compatibility/performance:** accepted-level reward floor, withheld rewards,
+  weighted sampling among eligible zones, 32-probe/history bounds and history
+  read failure remain covered. New traversal bounds are exercised with an
+  intentionally oversized graph; exhaustion never invalidates an existing
+  task. Record loaded-world command/observer latency and visit counts, avoiding
+  unbounded scans and catalog rebuilds. Unknown geography must not empty every
+  real hometown's useful low-level pool: qualify positive Good-side and Evil-side
+  origins and an Underdark origin, or report the specific unsupported route.
+- **Real play:** in disposable flat-file and MariaDB servers, request at
+  Woodseer at levels 11 and 29, follow a validated route with ordinary movement,
+  interact/kill and complete. Exercise at least one level-30 control, map
+  purchase and dynamically invalidated persisted quest. Setup may place the
+  synthetic player at the bartender; travel proof may not teleport it to the
+  target. Repeated random sampling alone does not prove the policy.
+
+Planned focused commands after implementation (new route/recovery entry points
+are added when their fixtures are written):
 
 ```sh
-python3 tests/async/test_fired_missile_encumbrance.py
-python3 tests/async/test_newbie_kit_plan.py
-python3 tests/async/test_newbie_kit_suitability.py
-python3 tests/async/test_newbie_grant_lifecycle.py
-# Run the extended newbie journey or its focused starter-arrow entry point.
+python3 tests/async/test_world_quest_dynamic_policy.py
+python3 tests/async/test_world_quest_target_retries.py
+python3 tests/async/test_world_quest_failure_feedback.py
+python3 tests/async/test_world_quest_reward_policy.py
+python3 tests/async/test_world_quest_xp_feedback.py
+python3 tests/async/test_flatfile_world_quest_history.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_flatfile_player_repository.py
+python3 tests/async/test_player_load_pipeline.py
+python3 tests/async/test_gui_gmcp_contract.py
+python3 tests/async/test_persistence_migration_contract.py
+python3 tests/async/run_world_quest_dual_backend.py
 make -C src
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Use the existing flat-file journey build helper for its disposable server.
-Confirm development/test configuration before any runtime work. Keep compiled
-artifacts under `bin/`; use synthetic accounts and private state, never existing
-player files or production. A full burn-in, live-world acceptance and CI waiting
-are not completion gates for this focused repair. Report any unavailable check.
+Extend `player_item_snapshot_codec_harness.cpp`'s current/old-wire fixtures for
+the two new fields, and the dual-backend fixture for the migration's isolated
+apply/reapply/load checks. Register the new apply/verifier and hashes in
+`migrations/migration_manifest.json`; follow the existing immutable migration
+contract, without editing sealed historical payloads. Keep all new compiled
+output below `bin/`.
+The dual-backend journey builds private binaries and uses disposable state and
+Docker MariaDB; it does not read `.env`. This checkout reports `ENVIRONMENT=local`.
+No production operation, player-data rewrite, wipe or live-world deployment is
+part of implementation qualification. Local evidence is the completion gate;
+do not wait for hosted CI or claim unrun checks passed.
 
-## Original estimate and planning validation
+## Planning validation and handoff
 
-Estimated **2-3 hours of my active implementation time**, including the focused
-regressions, isolated command/event journey, required build, documentation and
-reviewable commit. The production edit is small; most time is in proving the
-real decay boundary and preserved hit/returning behavior. Allow up to 4 hours if
-the existing journey fixtures require additional setup. This excludes external
-review, merge scheduling, deployment and any separately requested old-item repair.
+Completed on the source baseline:
 
-The following records the original planning checkpoint. Implementation results
-are recorded separately below.
-
-Planning checks on the baseline (2026-10-28):
-
+- Read the full issue and its three comments, traced the current selector,
+  creation/payment/display/completion paths, inspected movement/reset/content
+  semantics and both player persistence mappings, and inspected the earlier
+  selector and its committed policy specification.
+- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
+- `python3 tests/async/test_world_quest_target_retries.py`: passed.
+- `python3 tests/async/test_world_quest_failure_feedback.py`: passed.
 - `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `python3 tests/async/test_fired_missile_encumbrance.py`: 96 scenarios, 50 cycles
-  each passed under ASan/UBSan; room placement is stubbed, so this is a baseline
-  compatibility result, not proof of missed-arrow survival.
-- `python3 tests/async/test_newbie_kit_suitability.py`: 603 normal
-  race/class/alignment cases and all four existing review regressions passed.
-- `git diff --check`: passed. The prior plan's SHA-256 is unchanged after the move.
-- Only planning documents changed. No production C/C++ change or full server
-  build was required for this planning commit; implementation checks remain open.
+- `git diff --check`: passed.
+- Prior #428 plan preservation: SHA-256 of the archived file and the original
+  tracked blob both equal
+  `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
 
-## Implementation and qualification, 2026-10-28
+These are planning/baseline checks, not implementation qualification. No C/C++
+file changed, so a server build and the new gameplay journeys are not claimed.
 
-The production change adds only `ITEM_MISSILE` to the existing grant-added
-transient exemption in `materialize_legacy_newbie_item()`. The starter reference
-now documents missile recovery, unchanged bow/quiver dropping behavior,
-prototype-authored flags and the limitation for already granted arrows.
+Issue #437 is the implementation work item. No existing matching development
+branch or open PR was found. Targeted searches of the connected
+`max757/duris` mirror found related display/telemetry records, not a matching
+route/availability work item; do not link unrelated work or create a duplicate.
+The branch is linked to #437 through GitHub's Development association, verified
+with `gh issue develop 437 --repo LuminariMUD/Duris --list`. #448 is an already
+landed reference, and #4/#37 are outside this branch's scope.
 
-The expanded existing native regression first failed against the unmodified
-production code at its post-dispatch survival assertion: the real decay path
-had removed a starter arrow. With the one-condition correction it passes all
-384 starter/ordinary, same/adjacent, returning/non-returning and weight/count
-scenarios, each repeated 50 times (19,200 cycles), plus four transient decay
-controls and eight hit/wear/scrapping/returning cases under ASan/UBSan. Both
-legacy Ranger selections still contain ten arrows. Wrong-PID gathering is
-rejected, and UID/condition/encumbrance checks remain exact. Controlled services
-cover allocation, RNG, event dispatch and unrelated combat/ownership I/O; the
-materializer, commands, room placement, decay callback and decay body are real.
+## Estimate for me to implement
 
-The separate `test_starter_arrow_journey.py` reuses the existing minimal-world,
-legacy-object installer, socket client and flat-file build helpers. Keeping it
-separate avoids adding archery setup to the unrelated regrant/latency journey.
-It creates fresh Half-Elf and Wood-Elf Rangers and a second synthetic player as
-the target, then drives real grant, wield/put/wear, fire, event pulses, travel,
-look, gather and save commands. Historical races/classes are explicitly enabled
-only in the fixture. The minimal-world fallback room for Wood Elf has a fixture
-exit to the range. This makes no change to normal character availability or
-hometown rules. Debugging confirmed that sentinel mobs intentionally gain cover
-and are inappropriate targets for this journey; no targeting change was needed.
-
-Both real same-room and adjacent-room cases pass for both Rangers. Half-Elf
-retains all ten original UIDs, full condition, quiver count 10 and weight 11.
-Wood-Elf first lands one ordinary hit, consuming one arrow normally; its nine
-remaining original UIDs then survive both observed misses and gathering, with
-full condition, quiver count 9 and weight 10. The assertion compares each
-successful miss trial's exact before/after UID sets; it does not infer survival
-from missing text. Actual pulses run before the landing-room inspection.
-
-Completed commands and results:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: passed, including the
-  expanded ASan/UBSan cases described above.
-- `python3 tests/async/test_newbie_kit_plan.py`: passed 36,360 selections,
-  471 legacy table cells and pure preparation.
-- `python3 tests/async/test_newbie_kit_suitability.py`: passed 603 normal
-  race/class/alignment cases and four existing review regressions.
-- `python3 tests/async/test_newbie_grant_lifecycle.py`: passed under ASan/UBSan.
-- `make -C src -j6`: full MariaDB development build passed with warnings as
-  errors. The existing journey build helper also built the flat-file server.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_issue428_flatfile`:
-  passed both races and both room cases. Omitting the binary argument uses the
-  existing build helper; no pre-existing local binary is required.
-- Python syntax checks, `./scripts/format.sh --check`, all 14 documentation
-  contracts and `git diff --check` passed.
-
-The ignored evidence file is `bin/qualification/issue428/gameplay-report.json`.
-Its qualified flat-file binary SHA-256 is
-`48ebded67a20bc7102d82b629d70ea60b4af22355d7accf0e9ee9c79c5bce9b3`.
-Runtime evidence covers disposable minimal-world flat-file sessions; native
-controls supply deterministic hits, returns, ownership marks and decay checks.
-No MariaDB socket journey, full-world acceptance, migration or production
-operation is claimed. Previously granted arrows keep their saved flags.
-
-Final ablation retains one production condition, an extension of the existing
-native regression and one focused socket journey using current helpers. No
-new production abstraction, flag rewrite at firing time, global decay exception,
-kit expansion, persistence change or migration was added. Task-created debugger
-instrumentation and build scripts were removed; binaries and reports remain
-ignored under `bin/`. The original checkout's unrelated work was preserved.
-
-The initial commit hook selected GCC 16's standard-library headers through the
-host's default Clang search path and failed to parse them (`__builtin_popcountg`).
-The unchanged staged C++ check passes with Clang 18 explicitly selecting the
-installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
-remain enabled; no source suppression or hook bypass is used.
-
-## PR #445 review follow-up, 2026-10-28
-
-The owner's review follow-up explicitly includes all seven findings, including
-the six existing archery defects. This expands the original production scope to
-`src/combat/range.c`; the original kit access, counts, flags and old-instance
-compatibility decisions still apply. The clean branch was rebased from
-`8e95eb5dd` onto current master `b7498fb6b` without conflicts. The unrelated pager
-checkout and character-mechanics worktree were preserved.
-
-All seven findings were verified against the reviewed source and executable
-controls. The fixes reuse existing paths:
-
-1. Hold a detached broken missile through damage messages and enchantments,
-   then scrap it. If the victim died and cannot supply a room for `MakeScrap`,
-   extract the broken missile before leaving the shot. Surviving missiles retain
-   their existing inventory placement. The retirement decision is captured before
-   damage, avoiding a later read of an object that death handling may retire.
-2. Use the existing owning keyword/short-description setters for both marking
-   and restoration, so replacing custom strings frees them and never adopts a
-   borrowed prototype pointer with owning flags.
-3. Restore directly from `obj_index` strings instead of materializing a live
-   object to obtain text. No new template cache or string-ownership layer is needed.
-4. Stop gathering at the existing capacity before detaching another arrow.
-5. Skip incompatible ammunition before moving it from either floor or corpse.
-6. Reset block state and message selection inside the shot loop.
-7. Wait for a command-specific response before its following prompt. Preserve
-   unsolicited output in the full transcript, outside the returned command result.
-
-The existing native harness now executes production mark creation/expiry, string
-setters and `free_obj`. Controlled pool release deletes heap objects, so ASan sees
-actual retirement rather than a counter-only scrap operation. It passes 384
-fire/gather scenarios repeated 50 times, four decay controls, ten hit/return/wear
-and retirement cases (including melee and enchantment death), 100 mark-expiry
-cycles, room/corpse gather capacity/family controls, and same/adjacent-room
-blocked-then-unblocked volleys. Allocation, event dispatch, combat effects and
-unrelated services remain controlled boundaries.
-
-Temporary in-memory negative controls substituted the reviewed implementations,
-without changing tracked source. Each of the seven corresponding checks rejected
-the old behavior: actual retirement exposed a sanitizer failure; borrowed-string
-ownership, expiry allocation, full gathering, ammunition-family selection, volley
-state and stale-prompt acceptance failed their targeted controls. Evidence is
-ignored under `bin/qualification/issue428/`; temporary control code was removed.
-
-Completed local validation:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: all expanded ASan/UBSan
-  controls passed, including real owned-string teardown and heap retirement.
-- `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile -j6`: passed
-  the existing warnings-as-errors profiles.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_new`: passed
-  buffered/arriving-prompt controls and both real Ranger journeys in both room
-  arrangements. Half-Elf consumed two successful hits before its observed miss,
-  then retained eight original missiles at quiver count 8/weight 9. Wood-Elf
-  retained ten at count 10/weight 11. Miss trials preserve exact UIDs/condition.
-  The rebuilt flat-file binary SHA-256 is
-  `d999684ac6f9a6e5501a29a74a1dff1ee5afd6b3b0798c9fa37531ce9c89fa38`.
-- Python syntax, all 14 documentation contracts, changed-line formatting,
-  clang-tidy with the established Clang 18/GCC 13 header selection, and
-  `git diff --check`: passed.
-
-The original kit-selection, suitability and grant-lifecycle evidence above is
-reused because those implementations and inputs did not change. Runtime proof
-remains disposable minimal-world flat-file state; production and full-world
-acceptance remain release work. No migration, dependency, setting, parallel
-implementation, extra production helper or CI wait is required. Keep the review
-repair as a focused follow-up commit; this standalone PR needs no stacking or
-release tag and can be squashed when merged.
+**12-18 hours of my active implementation and local validation time**, broken
+down in the five steps above. Most effort is in truthful route/target checks,
+legacy recovery semantics and dual-backend gameplay proof, not the below-30
+comparison. Allow up to **24 hours** if procedure classification or usable
+low-level content needs further investigation, or the disposable persistence
+fixtures need repair. This excludes external review, production fact collection
+requiring owner access, merge scheduling and deployment. The estimate is for
+the complete issue scope, not a same-continent-only patch.
