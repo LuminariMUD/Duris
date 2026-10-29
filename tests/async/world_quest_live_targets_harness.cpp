@@ -183,7 +183,11 @@ void send_to_char(const char *text, P_char)
 	feedback += text;
 }
 void gmcp_quest_status(P_char) {}
-void gmcp_quest_status(P_char, world_quest_target_status) {}
+std::vector<world_quest_target_status> published_statuses;
+void gmcp_quest_status(P_char, world_quest_target_status status)
+{
+	published_statuses.push_back(status);
+}
 void show_map_at(P_char, int room)
 {
 	shown_map = room;
@@ -839,6 +843,7 @@ int main(int argc, char **argv)
 		{
 			history_reads.clear();
 			feedback.clear();
+			published_statuses.clear();
 			std::string argument = std::string("bartender ") + what;
 			assert(world_quest(giver, &player, CMD_ASK, argument.data()) != FALSE);
 		};
@@ -871,11 +876,16 @@ int main(int argc, char **argv)
 		assert(pc.quest_map_bought == 1 && GET_MONEY(&player) == 10000 - 10 * level &&
 		       wallet_debits == 1 && map_calls == 1);
 		const int paid_wallet = GET_MONEY(&player);
-		pc.quest_map_bought = 0;
 		player.specials.affected_by |= AFF_BLIND;
-		ask("map");
-		assert(pc.quest_active && !pc.quest_replacement_due && !pc.quest_map_bought &&
-		       GET_MONEY(&player) == paid_wallet && wallet_debits == 1);
+		for (int bought : { 0, 1 })
+		{
+			pc.quest_map_bought = bought;
+			ask("map");
+			assert(pc.quest_active && !pc.quest_replacement_due &&
+			       pc.quest_map_bought == bought && GET_MONEY(&player) == paid_wallet &&
+			       wallet_debits == 1);
+			assert((published_statuses == std::vector{ status::blocked }));
+		}
 		player.specials.affected_by &= ~AFF_BLIND;
 		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
 		ask("abandon confirm");
@@ -889,6 +899,9 @@ int main(int argc, char **argv)
 		pc.quest_giver = GET_VNUM(giver);
 		daily_remaining = 0;
 		player.player.level = 10;
+		ask("map");
+		assert((published_statuses == std::vector{ status::valid }));
+		assert(reward_claims == 0 && wallet_debits == 1);
 		ask("quest");
 		assert(reward_claims == 1 && wallet_debits == 1 && history_writes == 0);
 		player.player.level = level;

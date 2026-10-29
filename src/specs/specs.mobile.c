@@ -11172,6 +11172,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			    pl->only.pc->quest_accomplished)
 			{
 				world_quest_describe(pl, availability);
+				gmcp_quest_status(pl, availability);
 				return TRUE;
 			}
 
