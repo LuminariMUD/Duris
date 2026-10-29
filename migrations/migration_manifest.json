@@ -728,6 +728,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "a0524d5a745ae0aadcc97ca047968477f504fffbd85cb904f770da9175c5ce32",
       "verify_checksum": "8f0287389d282c53668cb367c5af1a3ab35f11db095986edd1da984269473241"
+    },
+    {
+      "id": "0055_world_quest_recovery",
+      "sequence": 56,
+      "description": "Persist accepted bartender origin and free replacement entitlement",
+      "apply": "immutable/0055_world_quest_recovery.sql",
+      "verify": "immutable/0055_world_quest_recovery.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "47767f2f2110f99179be5ae51a04e1250fa2380cdf4e5b6a4d2eb885e46999bb",
+      "verify_checksum": "344a942d5d7122aa55470cc77b11220fa55d0fff73d87e0dc937da70e823713a"
     }
   ],
   "engine_verifiers": [

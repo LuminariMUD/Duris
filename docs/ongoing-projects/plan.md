@@ -1,15 +1,16 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **implementation plan; gameplay changes not started**. Updated 2026-10-29.
+Status: **implementation in progress; persistence prerequisite first**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Implementation branch:
 `branch/issue-437-bartender-quest-routes`.
 Source baseline: `master` / `origin/master` at
 `9632f29804687ccf049ddf7a59a5ae16878e0583`.
 
-This delivery publishes the plan and links the branch. It does not implement or
-deploy the proposed policy. The prior #428 plan and qualification record are
-preserved byte-for-byte in [plan-issue-428.md](plan-issue-428.md).
+The planning baseline publishes the plan and links the branch. Implementation
+progress and review boundaries are recorded below. The prior #428 plan and
+qualification record are preserved byte-for-byte in
+[plan-issue-428.md](plan-issue-428.md).
 
 ## Outcome
 
@@ -306,6 +307,19 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Implementation order adjustment (2026-10-29): publish the two persisted fields
+as a focused prerequisite PR before wiring the policy and recovery consumers.
+This leaves each dependency independently buildable and reviewable. Outcome:
+retain accepted origin and replacement entitlement through either backend,
+defaulting legacy records to unknown origin/no entitlement. Non-goals: no
+selector, payment, recovery, or movement behavior changes in this prerequisite.
+Files: existing player status capture/codec/repository/materialization paths,
+the additive migration, and their existing focused fixtures. Proof: current and
+old-wire round trips, capture of wallet plus quest state, flatfile save/load,
+isolated SQL migration apply/reapply/save/load, server build and format checks.
+The existing status path is sufficient; no new payload, table, ledger or service
+is needed. Gameplay work and the full acceptance matrix remain outstanding.
+
 - [ ] **1. Pin baseline and executable failures (1-2 hours).** Extend
   `tests/async/test_world_quest_target_retries.py` for live availability and
   bounded retries; add one focused production-policy route harness if the
@@ -436,6 +450,49 @@ part of implementation qualification. Local evidence is the completion gate;
 do not wait for hosted CI or claim unrun checks passed.
 
 ## Planning validation and handoff
+
+### Implementation checkpoint: persistence prerequisite (2026-10-29)
+
+Implemented accepted-origin VNUM and replacement-due status fields in snapshot
+schema 13, status capture, SQL save/load and character materialization. The
+existing 14-value quest array and its SQL ordering remain intact. All supported
+old wire versions (1, 3, 5, 7-12) receive zero defaults on status loads; partial
+saves without status receive no invented quest state. Legacy pfile import also
+sets both values to zero. Immutable migration `0055_world_quest_recovery`
+(manifest sequence 56) adds guarded columns and verifies their definitions.
+The baseline/bootstrap and sealed older migrations are unchanged.
+
+This is the prerequisite portion of step 4, not completion of step 4 or #437.
+Selection, origin capture at the bartender, recovery transitions, sharing/reset
+integration, route-derived maps, GMCP and real gameplay journeys still need
+implementation. Existing policy/target-retry evidence above remains applicable
+to the unchanged selector only; it does not qualify the proposed new behavior.
+
+Focused evidence for the prerequisite:
+
+- `python3 tests/async/test_player_snapshot_capture.py`: passed, exercising
+  capture/codec of origin, entitlement, partial kill progress and wallet together.
+- `python3 tests/async/test_player_item_snapshot_codec.py`: passed with
+  ASan/UBSan, current/old-wire defaults and rejection of new field IDs in v12.
+- `python3 tests/async/test_flatfile_player_repository.py`: passed, including
+  persistence of recovery fields across an unrelated component checkpoint.
+- `bash tests/async/run_player_save_claim_mysql.sh`: passed on disposable
+  MariaDB 10.11. Apply/reapply retained a synthetic legacy row and its progress;
+  real status writer/loader retained quest and wallet state together; an injected
+  failure rolled both back and retry succeeded. Includes existing save-claim,
+  load-filter and zone-state checks on that same disposable database.
+- `python3 tests/async/test_immutable_migration_runner.py`: all 25 passed.
+- `python3 tests/async/test_player_load_pipeline.py`: passed.
+- `python3 tests/async/test_persistence_migration_contract.py`: passed.
+- `python3 tests/async/test_pfile_tool.py`: passed, including `_PFILE_` build.
+- `python3 tests/async/test_documentation_contract.py`: all 14 passed.
+- `make -C src -j2`, `./scripts/format.sh --check`, `git diff --check`: passed.
+
+Build/SQL logs are local under `bin/tests/issue437-build.log` and
+`bin/tests/issue437-sql.log`. No gameplay route/recovery or restart qualification
+is claimed yet, and no production operation occurred. Next: publish this
+dependency for review, then stack origin/route policy and executable synthetic
+graph regressions; keep the full outcome and acceptance matrix above.
 
 Completed on the source baseline:
 

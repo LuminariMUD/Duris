@@ -321,6 +321,14 @@ equipment fallback if unavailable.
 persistence in disposable MariaDB and flat-file instances; focused
 `test_world_quest_*` tests cover policy and failure boundaries.
 
+Quest origin (`quest_origin_room`, a VNUM) and replacement entitlement
+(`quest_replacement_due`) are append-only player status fields. Snapshot version
+13 defaults both to zero for earlier wire versions; the legacy 14-value quest
+payload is unchanged. Legacy pfile imports also initialize both to zero. SQL
+requires migration `0055_world_quest_recovery`. The persistence prerequisite
+does not yet assign origins or issue replacements; those policy consumers are
+tracked in `docs/ongoing-projects/plan.md` for #437.
+
 Quests cannot be shared unless `world.quest.share.max` (default 0, at most 4)
 allows it. Every completed quest pays one item reward to the player who
 completed it; kill quests pay at completion instead of rolling rewards onto
