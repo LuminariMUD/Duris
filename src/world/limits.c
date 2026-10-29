@@ -1865,7 +1865,9 @@ void point_update(void)
 	for (i = character_list; i; i = i_next)
 	{
 		i_next = i->next;
-		if (IS_NPC(i))
+		// Locker holders are PID-zero PCs owned by the locker writer. They must
+		// survive until its terminal snapshot commits, even while the user idles.
+		if (IS_NPC(i) || GET_PID(i) <= 0)
 			continue;
 		// A failed death save deliberately retains the character in memory until
 		// its durable retry succeeds. It is not an idle/linkdead player and must

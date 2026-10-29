@@ -50,6 +50,7 @@ class StorageLocker
 
 	P_char GetLockerChar(void) { return m_chLocker; };
 	P_char GetLockerUser(void) { return m_chUser; };
+	bool LockerUserIsOwner(void) const { return m_userIsOwner; }
 
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
@@ -79,6 +80,8 @@ class StorageLocker
 	int m_realRoom;
 	P_char m_chLocker;
 	P_char m_chUser;
+	// The authenticated entry verdict outlives the user's descriptor.
+	bool m_userIsOwner;
 	//  int m_itemCount;
 	bool m_bIValue;
 	int m_currentChestId;
