@@ -1,352 +1,303 @@
-# Issue #428: keep missed starter arrows recoverable
+# Issue #418: recoverable Quintaragon Castle resets
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-28.
-Issue: [Duris #428](https://github.com/LuminariMUD/Duris/issues/428).
-Owner: `moshehbenavraham`.
-Branch: `branch/issue-428-starter-arrow-decay`, based on `master` at
-`8e95eb5dddfb6c9dddd7765921ded420696369f6`.
+Status: **implementation plan; gameplay changes not implemented**. Updated 2026-10-30.
+Issue: [Duris #418](https://github.com/LuminariMUD/Duris/issues/418).
+Branch: [branch/issue-418-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-418-plan),
+linked in issue #418's Development section.
+Baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-issue-418-plan`.
 
-The prior Conjurer plan is preserved byte-for-byte in
-[plan-issue-215.md](plan-issue-215.md). The earlier telemetry delivery plan is
-[plan-issue-59.md](plan-issue-59.md).
-
-## Selection and availability
-
-Reviewed the complete open issue lists for this project on 2026-10-28:
-16 GitHub issues in `LuminariMUD/Duris`, 16 GitLab issues/work items in the
-`max757/duris` mirror, and no additional open GitLab tasks. Cross-checked four
-open GitHub pull requests and zero open GitLab merge requests. No matching
-arrow-fix PR or existing development branch was found for #428 before pickup.
-The mirror's open records date from October 3-8 and require comparison with
-current GitHub master; an open mirror record alone does not establish unfinished
-implementation.
-
-Choose #428 for confirmed player impact, a directly traced cause, no existing
-assignee or competing PR, a small production change, and concrete executable
-acceptance criteria. It also removes a defect that would otherwise be spread by
-starter-kit enhancement #429, without taking on that enhancement.
-
-Other GitHub candidates were considered:
-
-- #439 is a more serious potential locker-state/lifetime failure, already
-  assigned and investigated. It needs coordinated extraction, idle, descriptor,
-  save/retry and shutdown work. #428 is the more bounded immediately deliverable
-  repair; this does not downgrade #439's importance.
-- #421 is a confirmed pet/group-output bug, but overlaps active terminal/group
-  edits in the original checkout. Do not duplicate that work.
-- #419 needs intentional key disposal coordinated with durable custody and
-  backend recovery. #418 needs a consistent key/relocking policy. #420 explicitly
-  awaits the intended Reflection-versus-summon-capacity rule.
-- #438 is a small help-display defect, currently labelled enhancement; losing
-  usable starter ammunition has greater direct gameplay impact.
-- #429, #436, #437 and #214 are enhancements or gameplay policy/balance work.
-  #97 is a broad readiness checklist. #38, #52, #65 and #185 are future-labelled
-  or broader efforts; #52 also has its own assigned worktree.
-
-All 16 GitLab records were screened: #8, #9, #12, #15, #16, #19, #20, #21,
-#22, #23, #24, #25, #26, #27, #28 and #29. They cover older display/shop fixes,
-connection limits, flight/quantity-purchase features, capacity and lifecycle
-qualification, security/site maintenance, telemetry, trophies and builder work.
-For the bug-labelled alternatives, current source already has the deadlines and
-bounded subprocess diagnostics described as missing in #22; the reporting URL
-and libcurl baseline have advanced since #21; README repository links have
-advanced since #25. Other visible drift includes newer DOMPurify in #9 and
-reserved Studio tags in #28. These observations are not a claim that every
-acceptance criterion on those records is complete. No mirror item was changed
-or closed, and no matching mirror arrow issue was found to link.
+The preceding starter-arrow plan and qualification record are preserved byte-for-byte
+in [plan-issue-428.md](plan-issue-428.md). This task authorizes investigation, this
+plan, commit/push, and issue-to-branch linkage. Implementation is subsequent work.
 
 ## Outcome
 
-A newly granted regular legacy starter missile that misses in an ordinary dry
-room must survive scheduled event processing and remain recoverable through its
-owner's normal `gather` command. Cover both a same-room miss and a miss landing
-in the adjacent room. Preserve arrow identity, condition, quiver count and
-encumbrance across fire/gather cycles.
+Choose an availability-based reset policy for Quintaragon Castle: its seven
+consumable-key gates may reset locked only when their authored source can actually
+supply the key. A reset must leave a connected or linkdead player body a physical
+way out without another key, a lockpicking skill, a spell, or staff intervention.
 
-Preserve ordinary ammunition, successful-hit wear/scrapping, returning/cursed
-arrows, other transient gear and existing starter-grant publication/ownership.
+Preserve consumption, ordinary carrier respawns, object and mobile limits, loot,
+and mode-1 timer admission. A surviving carrier may remain keyless; access must
+then cease to depend on that carrier. The issue requests a consistent
+key/relocking policy, rather than mandating a new restocking mechanism.
 
-## Non-goals and explicit compatibility decisions
+## Current source findings
 
-- Do not implement #429, change class/race kit access, counts, admission masks,
-  Chaos kits, damage, accuracy, terrain rules or quiver capacity.
-- Keep the starter bow's added transient flag and the quiver's prototype
-  transient flag. Deliberately dropping either retains today's dissolution
-  behavior; neither must land on the floor for an ordinary missed shot.
-- Exempt missiles only from the flag added by this grant path. Do not clear a
-  transient flag authored on a prototype or supplied by another legitimate path.
-- Previously granted arrows retain their saved flags. This fix applies to new
-  materializations, including later grants through the same legacy path; it does
-  not repair old instances or resurrect arrows already destroyed. Document that
-  limit. Do not infer origin from VNUM or the `newbie` keyword, rewrite saves,
-  add load-time normalization, or perform a production inventory migration.
-- No global decay exception, firing-time flag rewrite, schema, setting, new
-  service, generic policy helper or grant-coordinator refactor is needed.
-- The owner's follow-up authorizes implementation, local qualification,
-  documentation, commit/push and a PR on this branch. Merge and production
-  deployment remain subsequent work.
+The issue is a hypothesis and acceptance specification, not runtime evidence for
+this checkout. Its linked source baseline is older. The three authored castle
+files have no diff between that baseline and this plan's baseline; the engine
+paths below were read again on this checkout.
 
-## Source evidence and files
+- `areas/AREA:12` selects `castle`; `areas/zon/castle.zon:1` identifies zone
+  number **24**, with top room 2532, mode **1**, and lifespan range **5-10**.
+  These are zone-age ticks, not a promise of 5-10 real minutes. The scheduler
+  uses `PULSES_IN_TICK=300` and `WAIT_SEC=4`; configuration can also scale lifespan.
+- `areas/obj/castle.obj` gives keys **2405, 2418, 2422, 2425, 2436, 2437,
+  2438** a break chance of **100**. Entrance key **2402** has **0**; container
+  key **2434** has **10**. Key 2434 belongs to a bookcase, not one of these gates.
+- `src/cmd/actmove.c::do_unlock()` consumes a breaking key through `break_key()`
+  and unlocks the matching reverse exit. `src/world/handler.c::extract_obj()`
+  decrements the live prototype count. There is no permanent used-key counter
+  in these paths. Making future keys durable would not by itself establish the
+  behavior of existing instances or fix every lock-in.
+- `src/world/db.c::reset_zone()`, around lines 3399-3410 and 3613-3680,
+  rejects an ordinary `M` load at the live mobile limit, clears mobile context,
+  and skips its conditional `E`/`G` rows. The current shopkeeper-specific
+  admission rules do not restock these castle carriers.
+- The `G` and `E` cases around lines 3807 and 3884 apply the live object limit
+  before attaching an object to the newly loaded mobile. All seven key rows
+  have limit **1** and chance **100**. A key held elsewhere can suppress the
+  new carrier's key; consuming it later does not rerun the surviving carrier's
+  conditional rows. Conversely, absent carrier plus absent key permits normal
+  loading. The mechanism still supports the issue's reported sequence.
+- The `D` case around line 4079 sets lock/closed state without checking key
+  availability. Castle's door rows run **before** its mobile/item rows. A key
+  availability decision made there would observe the wrong phase of the reset.
+- `src/world/events.c::event_reset_zone()` calls `reset_zone(zone, 0)` when
+  the zone is old enough and mode 2 or `is_empty()` permits it.
+  `src/world/db.c::is_empty()` scans playing descriptors, not all player bodies.
+  A connected player blocks the castle's ordinary timer reset; a descriptorless
+  linkdead body does not. `src/cmd/actwiz.c::do_zreset()` bypasses this timer gate
+  for `zreset ok` and purges then resets for `zreset full`.
+- `src/cmd/actmove.c::find_door()` refuses hidden/blocked exits even if their
+  lock bit is clear. The **2436** pair resets to state **6**, so merely unlocking
+  it leaves a secret-exit obstruction. `setup_dir()` masks authored door type
+  with `& 3`; the `7` in its room records means pickproof plus an ignored high
+  bit at load, while the `D` rows establish runtime secrecy.
+- An independent traversal of all authored castle exits found **5760**, reached
+  south from **2401**, as its external physical destination. Relaxing only the
+  seven consumable-key gates leaves no static exit route from their interior
+  endpoints: the **2402 south <-> 2401 north** entrance still resets locked.
+  Relaxing that pair as well yields routes from all seven interior endpoints.
+  This over-approximates traversability: it permits every nonlocked physical
+  exit and does not prove terrain, combat, or movement requirements. Real mortal
+  command journeys must supply the missing gameplay proof.
+- `has_key()` checks inventory and **HOLD only**. It cannot establish whether
+  Glynn carries key **2437**, which is equipped in slot **4**. Source availability
+  must inspect the carrier's direct inventory and all equipment slots.
+- `src/world/new_events.c` uses reset argument **2** for a normal cold
+  boot and skips initial reset during copyover/Redis world recovery.
+  `src/world/world_recovery_pipeline.c` restores door flags. No new persistent
+  state is needed, and this reset fix must not claim to rewrite an old recovery
+  snapshot immediately on restore.
 
-Inspected the following on the baseline above; line numbers may move:
+The reporter's actual live counts, key location, connection state, reset type,
+and deployed revision remain unknown. No production reproduction is claimed.
 
-- `src/account/nanny.c:1127`: `materialize_legacy_newbie_item()` instantiates a
-  detached object. For regular PC grants it sets cost to one and adds
-  `ITEM_TRANSIENT` unless the type is exempt. Missiles are missing from that
-  list. `load_obj_to_newbies()` supplies the existing bounded grant coordinator.
-- `src/account/newbie_kit_plan.c:537` and `:1604`: half-elf and wood-elf Ranger
-  rows include quiver 1116, ten missiles 1117 and bow 1118.
-- `areas/obj/heavens.obj`: missile 1117 has flags 1032 without the transient bit;
-  quiver 1116 has 525320 including it. Bow 1118 has flags 8 before materialization.
-  `src/core/defines.h` defines `ITEM_TRANSIENT` as `BIT_20`.
-- `src/combat/range.c`: `do_fire()` sends a non-returning miss to `obj_to_room()`
-  without hit-related condition loss. `do_gather()` requires the shooter's PID
-  mark and gathers from the room in which the player now stands.
-- `src/world/handler.c::obj_to_room()` schedules `TAG_OBJ_DECAY` at delay zero
-  for transient objects outside lockers; `src/magic/affects.c::event_obj_affect()`
-  dispatches that tag to `Decay()`.
-- `tests/async/test_fired_missile_encumbrance.py` already runs real fire/gather
-  and container-weight functions under ASan/UBSan, but stubs room placement,
-  forces same-room misses and aborts on hit-only services. Its existing green
-  result cannot prove this defect fixed.
-- `tests/async/test_flatfile_newbie_regrant_journey.py` supplies isolated legacy
-  prototypes, real grants and a snapshot inspector; it and
-  `test_flatfile_combat_journey.py` provide reusable socket/build helpers.
+## Exact gates and sources
 
-Expected implementation edits: `src/account/nanny.c`, the existing missile
-regression, and `docs/reference/LEGACY_STARTER_KITS.md`. Extend the existing
-newbie journey for the command/event acceptance where practical; if its regrant
-and observer scenario would become tangled, add one focused starter-arrow
-journey using those existing helpers. Do not create a new harness framework.
-`range.c`, `handler.c`, `affects.c`, kit tables and area prototypes are exercised
-inputs, not planned production edits.
+Each line names the key, authored carrier/home, loading row, and both gate sides.
+Directions are the runtime directions, not the key's prose description.
 
-## Ablated implementation sequence
+- **2405**: Juku, mobile **2406**, room **2427**, `E` slot **18**, zone row
+  **263**; **2414 down <-> 2415 up**.
+- **2418**: Giauque, mobile **2415**, room **2439**, `G`, zone row **289**;
+  **2427 up <-> 2428 down**.
+- **2422**: large rat, mobile **2418**, room **2452**, `G`, zone row **332**;
+  **2446 west <-> 2448 east**.
+- **2425**: Cetyla, mobile **2419**, room **2456**, `E` slot **18**, zone row
+  **335**; **2460 up <-> 2461 down**.
+- **2436**: Povtail, mobile **2433**, room **2481**, `G`, zone row **360**;
+  **2471 north <-> 2479 south**, both reset secret as well as locked.
+- **2437**: Glynn, mobile **2420**, room **2477**, `E` slot **4**, zone row
+  **352**; **2480 north <-> 2488 south**.
+- **2438**: Gilman, mobile **2428**, room **2493**, `E` slot **18**, zone row
+  **390**; **2480 south <-> 2498 north**.
+- Recovery boundary: durable entrance key **2402**, Tev **2401** in room
+  **2401**; **2401 north <-> 2402 south**. Include this pair in occupied-zone
+  escape handling, without changing its ordinary empty-zone reset policy.
 
-1. **Expose the missing boundary in a focused regression.** Extend the existing
-   fire/gather harness to materialize production starter missiles and execute
-   actual room placement. Exercise the scheduled decay callback for the old
-   transient control rather than only counting a requested tag. Use production
-   functions with controlled RNG/services, not a copied conditional. The starter
-   miss/survival assertion must fail against the unmodified baseline.
-2. **Correct the flag at its source.** Add `ITEM_MISSILE` to the existing
-   materializer exemption list. Retain costs, prototype flags, keywords,
-   spellbooks, NPC behavior and the grant coordinator unchanged. No new helper.
-3. **Prove the real route and preserved behavior.** Exercise a real freshly
-   granted Ranger kit in a disposable non-Chaos server, wear/load the quiver and
-   bow, observe a miss, allow event pulses, and gather. Repeat across an adjacent
-   exit after moving to the landing room. Reuse native deterministic cases for
-   hit wear, zero-condition scrapping, returning shots and controls. Assert UID,
-   condition, counts and weights rather than only the absence of a crumble line.
-4. **Document and qualify.** Update the starter-kit reference with the missile
-   exemption, preserved bow/quiver behavior and old-instance limitation. Record
-   the exact test evidence here, reread the diff, and retain only required work.
+## Selected policy and ablation
 
-Ablation keeps one source condition plus proof of the actual failure path.
-It removes a proposed need for general transient-item policy machinery,
-retroactive migration and the adjacent #429 enhancement: none is required to
-make newly granted arrows recoverable. Executing room placement/event handling
-and a command journey stays in scope because the existing stub misses the bug.
+Run one castle-specific access correction at the **end of the existing reset
+command loop**, after all `M`/`E`/`G` and `D` commands have finished:
+
+1. Scope by `zone_table[zone].number == 24`, never by array index. Use the small
+   explicit gate/source mapping above. Resolve VNUMs through existing lookups;
+   verify matching reverse exits and keys before touching either side. Do not
+   introduce a zone flag, reset opcode, config property, or reusable policy engine.
+2. Determine whether any non-NPC character body is currently in the zone using
+   the live character list and a valid room. Include linkdead players and staff;
+   do not use descriptor presence or change global `is_empty()` semantics.
+3. If a player body remains, clear `EX_LOCKED` and `EX_SECRET` on both sides
+   of all seven gates **and the entrance pair**. Leave their normal reset-closed
+   state, door type and pickproof flags intact. These mapped exits are not
+   blocked; this is not a general blocked-exit override. After reconnect, normal
+   `open` and movement must suffice to follow the escape route.
+4. Otherwise, for each of the seven keys, leave the ordinary reset state only
+   if the authored carrier is alive in its authored room with that exact key
+   in direct inventory or any equipment slot. If that source cannot supply the
+   key, clear lock and secret bits on both gate sides. A global live count, a
+   player's key, a corpse/container copy, or a carrier moved elsewhere does not
+   establish an accessible authored source. Do not spawn, move, retire, or
+   duplicate any object or mobile to satisfy this check.
+5. Apply the correction to ordinary and explicit staff resets alike. A clean
+   cold boot with all sources successfully loaded retains the normal locked
+   progression. Existing forced-load behavior is not extended by this fix.
+   Repeated resets are idempotent. Once the zone is empty and the source again
+   has its key, the existing `D` rows may restore normal locked/secret state.
+
+This deliberately prioritizes access when a key source is unavailable. Another
+party may traverse an affected gate without obtaining a replacement key after
+such a reset. An occupied staff reset also makes the mapped entrance/gates
+available. These are explicit gameplay consequences, not claims of unchanged
+progression. Fresh, empty resets with stocked sources still require the keys.
+NPCs, hazards, and normal movement requirements remain in effect.
+
+**Keep:** the scoped correction, all seven pairs, occupied-zone handling,
+secret-bit clearing, the entrance recovery boundary, and executable proof.
+Removing any of them leaves a traced acceptance failure.
+
+**Simplify:** repair the lock/access contract after reset rather than trying to
+teach `M`/`E`/`G` to re-equip surviving mobs. Reuse current loading and limits;
+no area-row reordering or new runtime state is required.
+
+**Drop:** global force-loading, unlimited key copies, changing all key break
+chances, general survivor restocking, new escape items/exits, global linkdead
+reset vetoes, persistence migrations, and a pathfinding service. Existing
+`ITEM_SWITCH` opens blocked exits, not these locks; adding switches would also
+require new behavior and area objects. These alternatives add work without
+being necessary for the chosen outcome.
+
+## Non-goals
+
+Do not repair every consumable key in the world, change unrelated zones or
+ordinary loot limits, change the bookcase key, redesign key custody, change
+timer cadence, or implement adjacent issue #419. No retroactive inventory
+migration, new persistent state, blanket lock bypass, or production operation
+is part of this scope. Combat safety and freedom from all terrain/spell hazards
+are not promised; the recovery guarantee concerns reset-created door obstruction.
+
+## Files and implementation sequence
+
+1. **Capture failing behavior.** Add one focused native regression, provisionally
+   `tests/async/test_castle_key_reset.py` with a small companion C++ harness.
+   Follow the production-code extraction/build pattern in
+   `test_shopkeeper_population.py`; execute the actual reset loop and relevant
+   cases, not a Python restatement. Use current castle data as fixture input.
+   Compile into `bin/tests/` with ASan/UBSan. Establish the old E and G failures
+   and negative controls before the production change.
+2. **Implement the policy in `src/world/db.c`.** Keep the mapping and private
+   correction next to `reset_zone()`, and call it once after the loop. Make no
+   changes to the M/E/G limit/admission logic, key consumption, the scheduler,
+   `is_empty()`, or authored castle content. Recheck the mapping against area
+   inputs in the regression so future data edits cannot silently drift.
+3. **Prove command-level recovery.** Add a focused disposable journey,
+   provisionally `tests/async/test_castle_key_reset_journey.py`, reusing
+   `test_flatfile_combat_journey.py`'s server-build, private runtime, port and
+   socket helpers. Load the authored castle room graph, relevant mobs/objects
+   and reset rows, plus the exterior landing room; do not replace the graph
+   with an artificial two-room shortcut. Use synthetic accounts and ordinary
+   mortal commands for consumption, reconnect, open and movement. Staff fixture
+   setup may arrange state, but staff bypasses cannot serve as recovery proof.
+4. **Document and qualify.** Record actual commands/results and the chosen
+   gameplay tradeoff here; include a concise operator explanation in
+   `docs/operations/RUNBOOK.md`. Read the final diff, format changed C/C++ lines,
+   run the focused checks and required build, then prepare the implementation
+   commit for normal review. No merge or deployment is part of this plan task.
+
+Production scope is one existing C++ translation unit. Tests and the existing
+runbook/plan are supporting changes. `actmove.c`, `handler.c`, `events.c`, castle
+area files and recovery code are exercised dependencies, not planned edits.
+If the mortal journey exposes a real movement obstruction on the proposed
+route, resolve that specific requirement and update this plan before declaring
+completion; static connectivity alone is insufficient.
 
 ## Proof and acceptance
 
-- Fresh half-elf and wood-elf Ranger grants produce the expected missile count,
-  normal cost/keywords and no grant-added transient bit. Prototype-authored
-  transient flags remain intact, including an explicitly flagged missile control.
-- Same-room and adjacent-room misses leave the same arrow UID at full condition
-  after event processing. The owner can gather it; a different PID cannot.
-  Repeated cycles restore quiver count/weight and carried encumbrance exactly.
-- Ordinary missiles behave identically. Returning/cursed missiles stay in the
-  quiver. Controlled successful hits still wear and scrap missiles as before.
-- Another transient object still schedules and completes decay. Bow/quiver
-  dropping still uses the current policy. No general decay code changes.
-- The real grant-to-fire-to-event-to-gather journey passes in isolated state;
-  native harness coverage and socket coverage are reported separately.
+- **Held-key sequence:** for every listed key, start with a player-held key and
+  allow its dead carrier to respawn keyless. The new policy already leaves that
+  gate unlocked at this first reset; assert this earlier prevention explicitly.
+  To exercise the remainder of the historical sequence, let the key holder use
+  normal close/lock/unlock commands to consume the key (or seed the native test
+  with the pre-fix locked state), leave the carrier alive, then reset again.
+  Both sides must be closed, unlocked and visible. Repeat the reset;
+  carrier/loot counts must not change. Execute E and G production paths,
+  including 2437's non-HOLD slot; do not expect unlocking an already unlocked
+  door to consume a key.
+- **Reload control:** with no live key and a dead carrier, an ordinary empty
+  reset loads the carrier and key under existing limits. Both gate sides retain
+  their authored locked state, including the 2436 secret bits. Killing a keyless
+  carrier remains a valid route to normal replacement, but is no longer required
+  just to make access possible.
+- **Availability controls:** player-held, corpse, container and off-site copies
+  do not count as a stocked source; the correct carrier with the key at home
+  does. Missing/moved carriers and failed item materialization yield accessible
+  gates without ordinary-loot duplication. Verify both sides, exact object
+  counts/identities, and no unrelated equipment replacement.
+- **Connected player:** exercise production `event_reset_zone()` and
+  `is_empty()` together with a playing descriptor in zone 24. At expiry, no
+  ordinary reset occurs. A playing character in a different zone does not block
+  the castle. Testing `reset_zone()` directly is not proof of timer admission.
+- **Linkdead and staff reset:** with a player body but no playing descriptor,
+  the due timer may reset; all eight recovery pairs must be visible/unlocked.
+  Reconnect the same mortal and physically leave from each of the seven interior
+  endpoints to **2401**, then **5760**, without a key or magical/staff bypass.
+  Include the secret closet explicitly. Run the same access assertions after
+  `zreset ok` with a connected mortal; cover full-reset behavior in isolation.
+- **Progression restoration:** after the final player leaves, an empty reset
+  with stocked sources restores normal locks and closet secrecy. A missing key
+  affects its mapped gate only. The entrance's empty-zone behavior remains normal.
+- **Isolation:** prove a non-24 zone, unrelated castle doors, bookcase key 2434,
+  ordinary equipment, mobile limits and existing shopkeeper special cases retain
+  their baseline behavior. Do not redefine existing force-reset loot semantics.
+- **Boot/recovery boundary:** verify cold-boot flags with stocked sources and
+  rerun the sequence from restored-like live state. Existing door snapshots may
+  retain old flags until a qualifying reset; immediate repair of arbitrary old
+  snapshots, manually locked doors, and unrelated magical confinement is not
+  promised. No new persistence field or save-data rewrite is planned.
 
-Planned local commands after implementation:
+Planned verification commands after implementation (new test names above are
+provisional and do not yet exist):
 
 ```sh
-python3 tests/async/test_fired_missile_encumbrance.py
-python3 tests/async/test_newbie_kit_plan.py
-python3 tests/async/test_newbie_kit_suitability.py
-python3 tests/async/test_newbie_grant_lifecycle.py
-# Run the extended newbie journey or its focused starter-arrow entry point.
+python3 tests/async/test_castle_key_reset.py
+python3 tests/async/test_castle_key_reset_journey.py
+python3 tests/async/test_key_break_custody_contract.py
+python3 tests/async/test_zone_reset_timing_contract.py
+python3 tests/async/test_no_reset_zone_key.py
+python3 tests/async/test_shopkeeper_population.py
 make -C src
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Use the existing flat-file journey build helper for its disposable server.
-Confirm development/test configuration before any runtime work. Keep compiled
-artifacts under `bin/`; use synthetic accounts and private state, never existing
-player files or production. A full burn-in, live-world acceptance and CI waiting
-are not completion gates for this focused repair. Report any unavailable check.
+Keep binaries and disposable runtime evidence under `bin/`, and verify the test
+environment before starting a server. A new worktree does not inherit `.env` or
+running services. Use the existing isolated flat-file fixture, not production
+accounts/data. No production reset, migration, restart, deployment, full burn-in,
+or CI wait is needed for this scope. Report any unavailable runtime check.
 
-## Original estimate and planning validation
+## Planning verification and estimate
 
-Estimated **2-3 hours of my active implementation time**, including the focused
-regressions, isolated command/event journey, required build, documentation and
-reviewable commit. The production edit is small; most time is in proving the
-real decay boundary and preserved hit/returning behavior. Allow up to 4 hours if
-the existing journey fixtures require additional setup. This excludes external
-review, merge scheduling, deployment and any separately requested old-item repair.
+Completed on this baseline:
 
-The following records the original planning checkpoint. Implementation results
-are recorded separately below.
+- Read issue #418 and its comments (none), current source, all seven source/gate
+  mappings and castle object values. The issue is open, with no project work
+  items and no development branch linked before this task.
+- Independently parsed all castle exits and key reset rows. Confirmed seven
+  reciprocal gate pairs, four E and three G sources, the secret pair, and the
+  entrance boundary needed for a static route to room 5760.
+- `python3 tests/async/test_key_break_custody_contract.py`: passed.
+- `python3 tests/async/test_zone_reset_timing_contract.py`: passed.
+- `python3 tests/async/test_no_reset_zone_key.py`: passed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed
+  before and after drafting.
+- `git diff --check`: passed. The preserved issue #428 plan's SHA-256 matches
+  the original tracked file exactly.
 
-Planning checks on the baseline (2026-10-28):
+These are planning/source checks. The two existing key/timing contracts inspect
+source text; they do not execute the reported gameplay sequence. The issue's old
+uncommitted C++ probe was not assumed to be present or rerun. No new regression,
+full build, socket journey, or production validation has been performed here.
 
-- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `python3 tests/async/test_fired_missile_encumbrance.py`: 96 scenarios, 50 cycles
-  each passed under ASan/UBSan; room placement is stubbed, so this is a baseline
-  compatibility result, not proof of missed-arrow survival.
-- `python3 tests/async/test_newbie_kit_suitability.py`: 603 normal
-  race/class/alignment cases and all four existing review regressions passed.
-- `git diff --check`: passed. The prior plan's SHA-256 is unchanged after the move.
-- Only planning documents changed. No production C/C++ change or full server
-  build was required for this planning commit; implementation checks remain open.
-
-## Implementation and qualification, 2026-10-28
-
-The production change adds only `ITEM_MISSILE` to the existing grant-added
-transient exemption in `materialize_legacy_newbie_item()`. The starter reference
-now documents missile recovery, unchanged bow/quiver dropping behavior,
-prototype-authored flags and the limitation for already granted arrows.
-
-The expanded existing native regression first failed against the unmodified
-production code at its post-dispatch survival assertion: the real decay path
-had removed a starter arrow. With the one-condition correction it passes all
-384 starter/ordinary, same/adjacent, returning/non-returning and weight/count
-scenarios, each repeated 50 times (19,200 cycles), plus four transient decay
-controls and eight hit/wear/scrapping/returning cases under ASan/UBSan. Both
-legacy Ranger selections still contain ten arrows. Wrong-PID gathering is
-rejected, and UID/condition/encumbrance checks remain exact. Controlled services
-cover allocation, RNG, event dispatch and unrelated combat/ownership I/O; the
-materializer, commands, room placement, decay callback and decay body are real.
-
-The separate `test_starter_arrow_journey.py` reuses the existing minimal-world,
-legacy-object installer, socket client and flat-file build helpers. Keeping it
-separate avoids adding archery setup to the unrelated regrant/latency journey.
-It creates fresh Half-Elf and Wood-Elf Rangers and a second synthetic player as
-the target, then drives real grant, wield/put/wear, fire, event pulses, travel,
-look, gather and save commands. Historical races/classes are explicitly enabled
-only in the fixture. The minimal-world fallback room for Wood Elf has a fixture
-exit to the range. This makes no change to normal character availability or
-hometown rules. Debugging confirmed that sentinel mobs intentionally gain cover
-and are inappropriate targets for this journey; no targeting change was needed.
-
-Both real same-room and adjacent-room cases pass for both Rangers. Half-Elf
-retains all ten original UIDs, full condition, quiver count 10 and weight 11.
-Wood-Elf first lands one ordinary hit, consuming one arrow normally; its nine
-remaining original UIDs then survive both observed misses and gathering, with
-full condition, quiver count 9 and weight 10. The assertion compares each
-successful miss trial's exact before/after UID sets; it does not infer survival
-from missing text. Actual pulses run before the landing-room inspection.
-
-Completed commands and results:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: passed, including the
-  expanded ASan/UBSan cases described above.
-- `python3 tests/async/test_newbie_kit_plan.py`: passed 36,360 selections,
-  471 legacy table cells and pure preparation.
-- `python3 tests/async/test_newbie_kit_suitability.py`: passed 603 normal
-  race/class/alignment cases and four existing review regressions.
-- `python3 tests/async/test_newbie_grant_lifecycle.py`: passed under ASan/UBSan.
-- `make -C src -j6`: full MariaDB development build passed with warnings as
-  errors. The existing journey build helper also built the flat-file server.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_issue428_flatfile`:
-  passed both races and both room cases. Omitting the binary argument uses the
-  existing build helper; no pre-existing local binary is required.
-- Python syntax checks, `./scripts/format.sh --check`, all 14 documentation
-  contracts and `git diff --check` passed.
-
-The ignored evidence file is `bin/qualification/issue428/gameplay-report.json`.
-Its qualified flat-file binary SHA-256 is
-`48ebded67a20bc7102d82b629d70ea60b4af22355d7accf0e9ee9c79c5bce9b3`.
-Runtime evidence covers disposable minimal-world flat-file sessions; native
-controls supply deterministic hits, returns, ownership marks and decay checks.
-No MariaDB socket journey, full-world acceptance, migration or production
-operation is claimed. Previously granted arrows keep their saved flags.
-
-Final ablation retains one production condition, an extension of the existing
-native regression and one focused socket journey using current helpers. No
-new production abstraction, flag rewrite at firing time, global decay exception,
-kit expansion, persistence change or migration was added. Task-created debugger
-instrumentation and build scripts were removed; binaries and reports remain
-ignored under `bin/`. The original checkout's unrelated work was preserved.
-
-The initial commit hook selected GCC 16's standard-library headers through the
-host's default Clang search path and failed to parse them (`__builtin_popcountg`).
-The unchanged staged C++ check passes with Clang 18 explicitly selecting the
-installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
-remain enabled; no source suppression or hook bypass is used.
-
-## PR #445 review follow-up, 2026-10-28
-
-The owner's review follow-up explicitly includes all seven findings, including
-the six existing archery defects. This expands the original production scope to
-`src/combat/range.c`; the original kit access, counts, flags and old-instance
-compatibility decisions still apply. The clean branch was rebased from
-`8e95eb5dd` onto current master `b7498fb6b` without conflicts. The unrelated pager
-checkout and character-mechanics worktree were preserved.
-
-All seven findings were verified against the reviewed source and executable
-controls. The fixes reuse existing paths:
-
-1. Hold a detached broken missile through damage messages and enchantments,
-   then scrap it. If the victim died and cannot supply a room for `MakeScrap`,
-   extract the broken missile before leaving the shot. Surviving missiles retain
-   their existing inventory placement. The retirement decision is captured before
-   damage, avoiding a later read of an object that death handling may retire.
-2. Use the existing owning keyword/short-description setters for both marking
-   and restoration, so replacing custom strings frees them and never adopts a
-   borrowed prototype pointer with owning flags.
-3. Restore directly from `obj_index` strings instead of materializing a live
-   object to obtain text. No new template cache or string-ownership layer is needed.
-4. Stop gathering at the existing capacity before detaching another arrow.
-5. Skip incompatible ammunition before moving it from either floor or corpse.
-6. Reset block state and message selection inside the shot loop.
-7. Wait for a command-specific response before its following prompt. Preserve
-   unsolicited output in the full transcript, outside the returned command result.
-
-The existing native harness now executes production mark creation/expiry, string
-setters and `free_obj`. Controlled pool release deletes heap objects, so ASan sees
-actual retirement rather than a counter-only scrap operation. It passes 384
-fire/gather scenarios repeated 50 times, four decay controls, ten hit/return/wear
-and retirement cases (including melee and enchantment death), 100 mark-expiry
-cycles, room/corpse gather capacity/family controls, and same/adjacent-room
-blocked-then-unblocked volleys. Allocation, event dispatch, combat effects and
-unrelated services remain controlled boundaries.
-
-Temporary in-memory negative controls substituted the reviewed implementations,
-without changing tracked source. Each of the seven corresponding checks rejected
-the old behavior: actual retirement exposed a sanitizer failure; borrowed-string
-ownership, expiry allocation, full gathering, ammunition-family selection, volley
-state and stale-prompt acceptance failed their targeted controls. Evidence is
-ignored under `bin/qualification/issue428/`; temporary control code was removed.
-
-Completed local validation:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: all expanded ASan/UBSan
-  controls passed, including real owned-string teardown and heap retirement.
-- `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile -j6`: passed
-  the existing warnings-as-errors profiles.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_new`: passed
-  buffered/arriving-prompt controls and both real Ranger journeys in both room
-  arrangements. Half-Elf consumed two successful hits before its observed miss,
-  then retained eight original missiles at quiver count 8/weight 9. Wood-Elf
-  retained ten at count 10/weight 11. Miss trials preserve exact UIDs/condition.
-  The rebuilt flat-file binary SHA-256 is
-  `d999684ac6f9a6e5501a29a74a1dff1ee5afd6b3b0798c9fa37531ce9c89fa38`.
-- Python syntax, all 14 documentation contracts, changed-line formatting,
-  clang-tidy with the established Clang 18/GCC 13 header selection, and
-  `git diff --check`: passed.
-
-The original kit-selection, suitability and grant-lifecycle evidence above is
-reused because those implementations and inputs did not change. Runtime proof
-remains disposable minimal-world flat-file state; production and full-world
-acceptance remain release work. No migration, dependency, setting, parallel
-implementation, extra production helper or CI wait is required. Keep the review
-repair as a focused follow-up commit; this standalone PR needs no stacking or
-release tag and can be squashed when merged.
+Estimate: **3-5 hours of my active implementation and validation time** from this
+plan, including roughly 45-75 minutes for the native regression, 30-45 minutes for
+the scoped production change, 60-120 minutes for the real command/reconnect
+journey, and 45-60 minutes for build, compatibility checks, documentation and
+final review. Allow **up to 6 hours** if the authored castle fixture or safe
+movement through its terrain needs additional qualification. This is an estimate,
+not a guarantee; it excludes external review, merge scheduling and deployment.
