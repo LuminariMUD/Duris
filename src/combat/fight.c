@@ -882,8 +882,19 @@ static void combat_outcome_committed(bool committed, const combat_outcome_result
 	// The frags, epics and blood money changed when the outcome was submitted; a
 	// refusal only loses its history rows.
 	if (!committed)
-		logit(LOG_DEBUG, "combat outcome for victim %u was not recorded",
-		      payload.victim_pid);
+	{
+		logit(LOG_STATUS, "pvp_frag: outcome=not_recorded victim_pid=%u participants=%zu",
+		      payload.victim_pid, payload.participant_count);
+		for (size_t index = 0; index < payload.participant_count; ++index)
+		{
+			const auto &entry = payload.participants[index];
+			if (entry.frag_delta <= 0)
+				continue;
+			P_char recipient = find_player_by_pid(entry.pid);
+			if (recipient && IS_PC(recipient))
+				send_to_char("Your PvP reward could not be recorded; staff have been alerted.\r\n", recipient);
+		}
+	}
 	for (size_t index = 0; index < payload.participant_count; ++index)
 	{
 		const auto &entry = payload.participants[index];
@@ -2543,14 +2554,22 @@ void die(P_char ch, P_char killer)
 			P_char credited_killer = IS_PC_PET(killer) ? GET_MASTER(killer) : killer;
 			if (opposite_racewar(ch, credited_killer))
 			{
-				const bool award = !CHAR_IN_ARENA(ch) &&
-						   fragWorthy(credited_killer, ch) &&
-						   !affected_by_spell(ch, TAG_RECENTLY_FRAGGED);
+				const bool in_arena = CHAR_IN_ARENA(ch);
+				const bool worthy = fragWorthy(credited_killer, ch);
+				const bool recent = affected_by_spell(ch, TAG_RECENTLY_FRAGGED);
+				const bool award = !in_arena && worthy && !recent;
+				if (!award)
+					logit(LOG_STATUS,
+					      "pvp_frag: outcome=ineligible killer_pid=%d victim_pid=%d arena=%d worthy=%d recent=%d",
+					      GET_PID(credited_killer), GET_PID(ch), in_arena, worthy, recent);
 				if (!submit_pvp_outcome(credited_killer, ch, award))
-					send_to_char(
-						"The PvP outcome service is busy; no rewards were "
-						"applied.\r\n",
-						ch);
+				{
+					logit(LOG_STATUS,
+					      "pvp_frag: outcome=submission_failed killer_pid=%d victim_pid=%d award=%d",
+					      GET_PID(credited_killer), GET_PID(ch), award);
+					send_to_char("The PvP outcome service is busy; no rewards were applied.\r\n", ch);
+					send_to_char("Your PvP kill could not be recorded; staff have been alerted.\r\n", credited_killer);
+				}
 			}
 		}
 	}
