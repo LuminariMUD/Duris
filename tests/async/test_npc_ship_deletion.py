@@ -16,6 +16,9 @@ FUNCTIONS = "\n\n".join(
     extract_function(file, signature)
     for file, signatures in (
         ("ship_utils.c", (
+            "float range(float x1, float y1, float z1, float x2,",
+            "static float ship_range(P_ship ship, P_ship target, int x, int y)\n",
+            "bool ship_target_in_contact(P_ship ship)",
             "ShipObjHash::ShipObjHash()", "P_ship ShipObjHash::find(P_obj key)",
             "bool ShipObjHash::add(P_ship ship)", "bool ShipObjHash::erase(P_ship ship)\n",
             "bool ShipObjHash::erase(P_ship ship, unsigned t_index)",
@@ -29,7 +32,8 @@ FUNCTIONS = "\n\n".join(
         )),
         ("ship_auto.c", ("void clear_autopilot(P_ship ship)",)),
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
-        ("ship_npc_ai.c", ("NPCShipAI::NPCShipAI(P_ship s, P_char ch)",)),
+        ("ship_npc_ai.c", ("NPCShipAI::NPCShipAI(P_ship s, P_char ch)",
+                           "void NPCShipAI::escort_attacked_by(P_ship attacker)",)),
         ("ship_shop.c", ("int list_hulls(P_char ch, P_ship ship, int owned)",)),
         ("actwiz.c", ("static void purge_drop_item(", "void do_purge(P_char ch, char *argument, int /*cmd*/)")),
     )
@@ -84,6 +88,12 @@ void check_contraband(P_ship ship,int) {++customs_calls;if(ship==blocked_ship)SE
 
 static room_data rooms[32] = {};
 P_room world = rooms;
+static int contact_x, contact_y, contact_bonus;
+static bool same_map = true;
+bool calculate_map_coords(int, int, int &x, int &y) {
+    x = contact_x; y = contact_y; return same_map;
+}
+int ShipCrew::get_contact_range_mod() const { return contact_bonus; }
 static index_data objects[3] = {};
 P_index obj_index = objects;
 ShipObjHash shipObjHash;
@@ -281,6 +291,66 @@ static void remove_runtime(P_ship ship) {
     assert(shipObjHash.erase(ship)); delete_ship(ship, true);
 }
 
+static void check_target_recovery() {
+    P_ship ship = make_ship(0, 2), target = make_ship(0, 3);
+    ship->flags = target->flags = LOADED;
+    ship->x = ship->y = target->x = target->y = 50;
+    ship->target = target;
+    contacts[0].ship = target; contacts[0].range = 17;
+    const auto saved_contact = contacts[0];
+    contact_x = 35;
+    assert(ship_target_in_contact(ship));
+    target->x = 50.1f;
+    assert(!ship_target_in_contact(ship));
+    target->x = 50;
+    target->z = 1;
+    assert(!ship_target_in_contact(ship));
+    contact_bonus = 1;
+    assert(ship_target_in_contact(ship));
+    target->z = 0; contact_x = 37;
+    assert(!ship_target_in_contact(ship));
+    contact_bonus = 2;
+    assert(ship_target_in_contact(ship));
+    assert(!memcmp(&contacts[0], &saved_contact, sizeof(saved_contact)));
+    contact_x = contact_bonus = 0;
+    for (int invalid = 0; invalid < 4; ++invalid) {
+        target->flags = invalid == 0 ? 0 : LOADED;
+        if (invalid == 1) target->flags |= DOCKED;
+        if (invalid == 2) target->flags |= SINKING;
+        same_map = invalid != 3;
+        assert(!ship_target_in_contact(ship));
+    }
+    target->flags = LOADED; same_map = true;
+    // With no captain aboard, a nearby idle lock must eventually stand down.
+    ship->timer[T_TARGET_IDLE] = 300;
+    ship->timer[T_BSTATION] = BSTATION;
+    for (int tick = 0; tick < 299; ++tick) ship_activity();
+    assert(ship->target == target && ship->timer[T_BSTATION] == BSTATION);
+    ship_activity();
+    assert(!ship->target && ship->timer[T_BSTATION] == BSTATION - 1);
+    for (int tick = 0; tick < BSTATION - 2; ++tick) ship_activity();
+    assert(ship->timer[T_BSTATION] == 1);
+    ship_activity();
+    assert(ship->timer[T_BSTATION] == 0); // Existing summon gate is now clear.
+    ship->target = target; ship->timer[T_TARGET_IDLE] = 300;
+    ship_activity();
+    assert(ship->target == target && ship->timer[T_BSTATION] == BSTATION);
+    contact_x = 38;
+    ship_activity();
+    assert(!ship->target && ship->timer[T_BSTATION] == BSTATION - 1);
+    contact_x = 0;
+    // NPC acquisition belongs to its AI, not a player's inactivity escape.
+    P_ship escort = make_ship(NPCSHIP, 4);
+    escort->flags = LOADED;
+    escort->x = escort->y = 50;
+    escort->npc_ai->escort_attacked_by(target);
+    assert(escort->target == target);
+    ship_activity();
+    assert(escort->target == target && escort->timer[T_BSTATION] == BSTATION);
+    remove_runtime(escort); remove_runtime(ship); remove_runtime(target);
+    puts("PASS target contact boundaries, idle recovery, cooldown and NPC acquisition");
+}
+
 static void check_sinking(bool passenger) {
     P_ship first = make_ship(NPCSHIP, 2), later = make_ship(NPCSHIP, 3);
     // Hash order is object-address dependent: choose the actual first visitor.
@@ -291,6 +361,7 @@ static void check_sinking(bool passenger) {
     later->timer[T_UNDOCK] = 20;
     first->flags |= SINKING; first->timer[T_SINKING] = 1;
     P_ship escort = make_ship(NPCSHIP, 4);
+    later->flags &= ~DOCKED; // Keep the unrelated target a valid live contact.
     escort->target = later; // An engaged escort still holds the sinking ship.
     escort->npc_ai->escort = escort->npc_ai->did_board = first;
     const auto ref = first->runtime_ref;
@@ -514,7 +585,8 @@ static void busy_effects()
 int main(int argc, char **argv) {
     assert(argc == 2);
     objects[1].virtual_number = VOBJ_ALL_SHIPS;
-    if (!strcmp(argv[1],"busy-delete")) busy_delete();
+    if (!strcmp(argv[1],"target-recovery")) check_target_recovery();
+    else if (!strcmp(argv[1],"busy-delete")) busy_delete();
     else if (!strcmp(argv[1],"busy-effects")) busy_effects();
     else if (!strcmp(argv[1], "sinking")) check_sinking(false);
     else if (!strcmp(argv[1], "passenger")) check_sinking(true);
@@ -546,7 +618,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+        for case in ("target-recovery", "busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
                      "occupied", "references", "unloaded", "ambiguous"):
             if case=="ambiguous" and backend=="mysql":
                 continue
