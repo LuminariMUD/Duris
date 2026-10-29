@@ -442,6 +442,8 @@ python3 tests/async/test_flatfile_player_repository.py
 python3 tests/async/test_player_load_pipeline.py
 python3 tests/async/test_gui_gmcp_contract.py
 python3 tests/async/test_persistence_migration_contract.py
+python3 tests/async/test_runtime_boot_compatibility.py
+python3 scripts/validate_runtime_compatibility.py
 python3 tests/async/run_world_quest_dual_backend.py
 make -C src
 ./scripts/format.sh --check
@@ -478,6 +480,34 @@ saves without status receive no invented quest state. Legacy pfile import also
 sets both values to zero. Immutable migration `0055_world_quest_recovery`
 (manifest sequence 56) adds guarded columns and verifies their definitions.
 The baseline/bootstrap and sealed older migrations are unchanged.
+
+Loaded-world follow-up found a missing runtime-contract update: after applying
+0055, the compiled boot gate still expected head 0054 and refused the disposable
+database with COMPAT-E002. The first focused save/load checks had not booted a
+server and did not cover this boundary. The correction in this dependency
+updates `migrations/runtime_compatibility_manifest.json` and
+`src/core/runtime_compatibility_contract.h` to head 0055, sequence 56, its apply,
+verify and complete-history checksums, and measured schema fingerprints from
+disposable MySQL 8.0 and MariaDB 10.11. Both engines retain 200 runtime tables.
+Runtime compatibility checks are now explicit in the completion commands above.
+
+Correction qualification (all passed):
+
+- `python3 tests/async/test_runtime_boot_compatibility.py`: all 7 passed.
+- `python3 scripts/validate_runtime_compatibility.py`: valid synchronized head,
+  history and measured fingerprints.
+- `RUNTIME_DB_IMAGE=mariadb:10.11 bash tests/async/run_runtime_compatibility_mysql.sh`
+  and the same command with `RUNTIME_DB_IMAGE=mysql:8.0`: passed, including
+  full-schema checks and intentional schema/history drift rejection.
+- `DURIS_WORLD_QUEST_BACKEND=mariadb
+  DURIS_WORLD_QUEST_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_new
+  python3 tests/async/run_world_quest_dual_backend.py` (environment assignments
+  on the same command line): passed. This uses the corrected build and a
+  disposable migrated MariaDB server, grants and abandons real bartender tasks,
+  saves their status, and exits normally. It proves the runtime boot boundary;
+  it does not qualify the unfinished route policy.
+- `make -C src -j2` and format/diff checks: passed. Logs under
+  `bin/tests/issue437-compat-{mariadb,mysql,journey,build}.log`.
 
 This is the prerequisite portion of step 4, not completion of step 4 or #437.
 Selection, origin capture at the bartender, recovery transitions, sharing/reset
