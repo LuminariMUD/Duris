@@ -844,6 +844,7 @@ void jettison_all(P_ship ship);
 // utilities
 bool getmap(P_ship ship, bool limit_range = FALSE);
 int getcontacts(P_ship ship, bool limit_range = TRUE);
+bool ship_target_in_contact(P_ship ship);
 
 void change_crew(P_ship ship, int crew_index, bool skill_drop);
 void set_crew(P_ship ship, int crew_index, bool reset_skills = true);
