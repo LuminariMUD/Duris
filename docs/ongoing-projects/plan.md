@@ -453,6 +453,11 @@ do not wait for hosted CI or claim unrun checks passed.
 
 ### Implementation checkpoint: persistence prerequisite (2026-10-29)
 
+Review-ready PR: [#451](https://github.com/LuminariMUD/Duris/pull/451),
+implementation commit `0cafcc82c`. This branch is its head; stack further
+implementation on it while the dependency remains open. Do not merge or deploy
+the unfinished #437 policy as though this prerequisite completed the issue.
+
 Implemented accepted-origin VNUM and replacement-due status fields in snapshot
 schema 13, status capture, SQL save/load and character materialization. The
 existing 14-value quest array and its SQL ordering remain intact. All supported
@@ -490,8 +495,8 @@ Focused evidence for the prerequisite:
 
 Build/SQL logs are local under `bin/tests/issue437-build.log` and
 `bin/tests/issue437-sql.log`. No gameplay route/recovery or restart qualification
-is claimed yet, and no production operation occurred. Next: publish this
-dependency for review, then stack origin/route policy and executable synthetic
+is claimed yet, and no production operation occurred. Next: stack origin/route
+policy and executable synthetic
 graph regressions; keep the full outcome and acceptance matrix above.
 
 Completed on the source baseline:
