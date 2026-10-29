@@ -216,6 +216,10 @@ bool divine_boon_epic_zone_eligible(int zone, unsigned side)
 {
 	return epic_target_available && zone == 18 && side == 0;
 }
+int32_t divine_boon_shared_target_zone(const divine_boon_slot &slot)
+{
+	return divine_boon_target_zone(slot);
+}
 double difficulty_multiplier(difficulty_dial)
 {
 	return 1;

@@ -6,7 +6,6 @@
 #include "sql/sql.h"
 #include "world/epic.h"
 #include "ships/ships.h"
-#include "world/graph.h"
 
 #include <cassert>
 #include <chrono>
@@ -139,20 +138,6 @@ std::array<divine_boon_population, 2> divine_boon_activity_population()
 }
 
 const PortData ports[NUM_PORTS] = { { 103, "Source", 108 }, { 104, "Destination", 109 } };
-bool water_connected = true;
-int water_searches = 0;
-bool valid_ship_edge(int, int)
-{
-	return true;
-}
-bool dijkstra(int from, int to, valid_edge_func *edge, std::vector<int> &path)
-{
-	assert(((from == 8 && to == 9) || (from == 9 && to == 8)) && edge == valid_ship_edge);
-	++water_searches;
-	path = { 5 };
-	return water_connected;
-}
-
 int ship_shop_proc(int, P_char, int, char *)
 {
 	return false;
@@ -266,12 +251,59 @@ int main()
 	old_target.zones = { 999, 18 };
 	assert(divine_boon_shared_target_zone(old_target) == 18);
 	exits[0].exit_info = 0;
-	for (int sector : { SECT_OCEAN, SECT_NO_GROUND, SECT_UNDERWATER, SECT_FIREPLANE })
+	for (int sector :
+	     { SECT_OCEAN, SECT_UNDERWATER, SECT_FIREPLANE, SECT_LAVA, SECT_CASTLE_WALL })
 	{
 		rooms[3].sector_type = sector;
 		assert(!divine_boon_zone_eligible(18, 0));
 	}
+	// Players walk mountains and routinely carry a boat or fly.
+	for (int sector : { SECT_MOUNTAIN, SECT_UNDRWLD_MOUNTAIN, SECT_WATER_NOSWIM, SECT_NO_GROUND,
+			    SECT_UNDRWLD_NOSWIM, SECT_UNDRWLD_NOGROUND })
+	{
+		rooms[3].sector_type = sector;
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+	}
 	rooms[3].sector_type = SECT_FIELD;
+	// A map corridor is different from a mountain room inside a zone:
+	// normal movement cannot enter map mountains/cavern walls from the map,
+	// even with flight. Both the boot search and cached path must enforce it.
+	room_direction_data corridor_exit = {};
+	corridor_exit.to_room = 2;
+	rooms[10].dir_option[0] = &corridor_exit;
+	exits[0].to_room = exits[1].to_room = 8;
+	zones[4].flags = ZONE_MAP;
+	for (int sector : { SECT_MOUNTAIN, SECT_UNDRWLD_MOUNTAIN })
+	{
+		rooms[9].sector_type = SECT_FIELD;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[9].sector_type = sector;
+		assert(!divine_boon_zone_eligible(18, 0) && !divine_boon_zone_eligible(18, 1));
+		assert(divine_boon_selection_bootstrap());
+		assert(!divine_boon_zone_eligible(18, 0) && !divine_boon_zone_eligible(18, 1));
+		// Authored zone/map transitions retain the movement rule's exception.
+		rooms[8].zone = 2;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[8].zone = 4;
+		rooms[9].zone = 2;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+		rooms[9].zone = 4;
+	}
+	for (int sector :
+	     { SECT_WATER_NOSWIM, SECT_NO_GROUND, SECT_UNDRWLD_NOSWIM, SECT_UNDRWLD_NOGROUND })
+	{
+		rooms[9].sector_type = sector;
+		assert(divine_boon_selection_bootstrap());
+		assert(divine_boon_zone_eligible(18, 0) && divine_boon_zone_eligible(18, 1));
+	}
+	rooms[9].sector_type = SECT_FIELD;
+	zones[4].flags = 0;
+	exits[0].to_room = exits[1].to_room = 2;
+	rooms[10].dir_option[0] = nullptr;
+	assert(divine_boon_selection_bootstrap());
 	rooms[0].room_flags = ROOM_SAFE; // A safe hometown may lead to normal encounters.
 	assert(divine_boon_zone_eligible(18, 0));
 
@@ -290,6 +322,24 @@ int main()
 	assert(picks[0].zones[0] == 18 && picks[0].zones[1] == 18);
 	assert(divine_boon_rotate(&state, 3600, picks.data(), picks.size()));
 	assert(divine_boon_target_zone(state.slots[0]) == 18);
+
+	// A level with no fitting zone does not waste the hour while another
+	// online player's level has one, whichever level is tried first.
+	divine_boon_state fallback;
+	assert(divine_boon_set_mode(&fallback, divine_boon_mode::draining, 0));
+	assert(divine_boon_set_mode(&fallback, divine_boon_mode::divine, 0));
+	std::array<divine_boon_population, 2> unmatched = {};
+	unmatched[0].levels = { 60 };
+	assert(!divine_boon_select(fallback, 3600, unmatched, &picks));
+	unmatched[1].levels = { 17 };
+	for (int first : { 0, 2 })
+	{
+		random_value = first;
+		assert(divine_boon_select(fallback, 3600, unmatched, &picks));
+		assert(picks.size() == 1 && picks[0].category == divine_boon_category::experience &&
+		       divine_boon_target_zone(picks[0]) == 18);
+	}
+	random_value = 0;
 
 	// A legacy persisted two-target objective is normalized for live display
 	// and awards without rewriting its snapshot, ID or expiry timestamp.
@@ -519,8 +569,9 @@ int main()
 	assert(divine_boon_rotate(&full, 8 * 3600, picks.data(), picks.size()));
 	assert(!divine_boon_select(full, 8 * 3600, opposing, &picks));
 
-	// Cargo remains independent of player activity and requires a real
-	// profitable, navigable route with suitable port shops.
+	// Cargo remains independent of player activity. Any pair of ports that
+	// exist with their ship shops qualifies; faction reachability, sea-path
+	// proofs and price spreads do not filter the list.
 	divine_boon_slot route;
 	route.category = divine_boon_category::cargo;
 	route.source_port = route.cargo_commodity = route.contraband_commodity = 0;
@@ -528,26 +579,14 @@ int main()
 	rooms[3].funct = rooms[4].funct = ship_shop_proc;
 	rooms[3].room_flags = rooms[4].room_flags = 0;
 	rooms[3].sector_type = rooms[4].sector_type = SECT_FIELD;
-	room_direction_data water_exits[2] = {};
-	water_exits[0].to_room = 9;
-	water_exits[1].to_room = 8;
-	rooms[8].dir_option[5] = &water_exits[0];
-	rooms[9].dir_option[5] = &water_exits[1];
-	rooms[8].sector_type = rooms[9].sector_type = SECT_OCEAN;
 	assert(divine_boon_selection_bootstrap());
 	assert(divine_boon_cargo_eligible(route));
-	const int water_before = water_searches;
-	for (int i = 0; i < 100; ++i)
-		assert(divine_boon_cargo_eligible(route));
-	assert(water_searches == water_before); // A cached navigation proof.
-	water_exits[0].exit_info = EX_CLOSED | EX_LOCKED;
-	assert(!divine_boon_cargo_eligible(route));
-	water_exits[0].exit_info = 0;
-	water_connected = false;
-	assert(divine_boon_selection_bootstrap());
-	assert(!divine_boon_cargo_eligible(route));
-	water_connected = true;
-	assert(divine_boon_selection_bootstrap());
+	zones[2].flags = ZONE_CLOSED; // Neither faction can walk to the port.
+	assert(divine_boon_cargo_eligible(route));
+	zones[2].flags = 0;
+	rooms[3].sector_type = rooms[4].sector_type = SECT_LAVA; // Not walkable either.
+	assert(divine_boon_cargo_eligible(route));
+	rooms[3].sector_type = rooms[4].sector_type = SECT_FIELD;
 	route.destination_port = 0;
 	assert(!divine_boon_cargo_eligible(route));
 	route.destination_port = 1;
@@ -557,10 +596,13 @@ int main()
 	rooms[4].funct = nullptr;
 	assert(!divine_boon_cargo_eligible(route));
 	rooms[4].funct = ship_shop_proc;
-	zones[2].flags = ZONE_CLOSED;
-	assert(!divine_boon_cargo_eligible(route));
-	zones[2].flags = 0;
-	assert(divine_boon_selection_bootstrap());
+	// Either direction of the only shop pair can be drawn: the reservoir keeps
+	// the first pair when every later draw misses, the last when each one hits.
+	random_value = 2;
+	assert(divine_boon_select(full, 8 * 3600, quiet_players, &picks));
+	assert(picks.size() == 1 && picks[0].category == divine_boon_category::cargo &&
+	       picks[0].source_port == 0 && picks[0].destination_port == 1);
+	random_value = 0;
 	assert(divine_boon_select(full, 8 * 3600, quiet_players, &picks));
 	assert(picks.size() == 1 && picks[0].category == divine_boon_category::cargo);
 	assert(divine_boon_rotate(&full, 9 * 3600, picks.data(), picks.size()));

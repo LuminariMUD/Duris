@@ -1846,12 +1846,14 @@ hotspots: both factions can travel there and compete. PvP awards still
 require legitimate opposing-faction kills. Unaffiliated players may use
 the global trade boon but receive no fabricated racewar objectives.
 EXP and Epic targets must be reachable by both factions and exclude
-hometowns, safe, private, unfinished and unsuitable zones. Experience
-targets use eligible online player levels across both factions. Epic
+hometowns, safe, private, unfinished and unsuitable zones.
+Paths may need a boat or flight; map mountains and cavern walls still block.
+Experience targets use eligible online player levels across both factions. Epic
 targets consider online levels and zone payouts; with nobody online,
 one Epic objective may await future players. Neither restricts entry.
 
 Cargo AND contraband: +25% eligible BASE SALE REVENUE for four real hours.
+The source and destination are drawn at random from every port.
 Buy at the displayed source after this boon starts, then sell at its distinct
 destination before expiry. Existing market, Nexus and ship effects remain.
 The cap combines both goods: three times the hold capacity of your account's
@@ -1893,7 +1895,7 @@ Experience zones follow eligible online player levels across both sides.
 Epic zones require real Epic objectives accessible to both sides. With
 no players online, at most one Epic objective waits for a future login.
 
-Cargo uses a randomly chosen valid, profitable shipping route; no player
+Cargo uses a route drawn at random from every port pair; no player
 activity is required to create it. Buy eligible cargo or contraband at
 the named source after boon activation and sell it at the destination
 before it expires. The allowance for both goods is three times the hold

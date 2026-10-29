@@ -65,7 +65,7 @@ def stone_site(zone):
         fields = line.split()
         if current != zone['number'] or len(fields) < 6:
             continue
-        if fields[0] == 'M':
+        if fields[0] in ('M', 'F'):
             mob, room = int(fields[2]), int(fields[4])
         if fields[0] in ('O', 'G') and fields[2] in ('358', '359', '360'):
             if fields[0] == 'O':
@@ -210,32 +210,41 @@ def run(backend, binary):
                     journey.make_overlord(runtime / 'state', GOD)
                 boot()
                 god = login(GOD, GOD_ACCOUNT)
-                clock_file.write_text(str(epoch + 3600))
-                # The real hourly selector has no warmed player population here:
-                # it must select a valid global cargo route, without a test RNG.
-                deadline = time.monotonic() + 15
-                while True:
-                    rotated = command(god, 'boon')
-                    if 'Cargo & Contraband' in rotated:
-                        break
-                    assert time.monotonic() < deadline, rotated
-                    time.sleep(.2)
                 # Stones initialize on their existing object periodic event (up to
                 # PULSE_MOBILE+4 pulses after boot), not at catalogue construction.
+                # Wait before advancing the hour so natural Epic selection is tested.
                 deadline = time.monotonic() + 15
                 target = None
                 while target is None:
                     status = command(god, 'world persistence')
-                    eligible = {int(z): side for side, z in re.findall(r'divine_target side=(good|evil) zone=(\d+)', status)}
-                    target = next((z for z in SEED if z['number'] in eligible and stone_site(z) is not None), None)
-                    assert target or time.monotonic() < deadline, 'No reachable payable ground stone: ' + status
+                    eligible = {side: {int(z) for faction, z in re.findall(
+                        r'divine_target side=(good|evil) zone=(\d+)', status) if faction == side}
+                        for side in ('good', 'evil')}
+                    shared = eligible['good'] & eligible['evil']
+                    target = next((z for z in SEED if z['number'] in shared and stone_site(z) is not None), None)
+                    assert target or time.monotonic() < deadline, 'No shared reachable payable stone: ' + status
                     if target is None:
                         time.sleep(.5)
-                routes = re.search(r'divine_routes count=(\d+) shared=(\d+) first_source=(-?\d+) first_destination=(-?\d+)', status)
-                print('Loaded route catalogue: ' + (routes.group(0) if routes else 'missing'), flush=True)
+                routes = re.search(r'divine_routes count=(\d+) of (\d+)', status)
+                assert routes and tuple(map(int, routes.groups())) == (90, 90), status
+                print('Loaded route catalogue: ' + routes.group(0), flush=True)
+                print('Loaded targets: ' + '; '.join(re.findall(
+                    r'divine_targets side=\w+ experience=\d+ epic=\d+', status)), flush=True)
+                # No mortal population is present: create one waiting Epic objective
+                # and a cargo route through the real hourly selector, without test RNG.
+                clock_file.write_text(str(epoch + 3600))
+                deadline = time.monotonic() + 15
+                while True:
+                    rotated = command(god, 'divineboon status')
+                    if 'Cargo & contraband' in rotated and 'Epic stone' in rotated:
+                        break
+                    assert time.monotonic() < deadline, rotated
+                    time.sleep(.2)
+                assert re.search(r'categories=epic\+cargo', rotated), rotated
+                print(f'{backend}: natural hourly Epic and cargo selection passed', flush=True)
                 zone, payout = target['number'], target['epic_payout']
                 room, carrier = stone_site(target)
-                side = 1 if eligible[zone] == 'evil' else 0
+                side = 0
                 exp_zones = [int(z) for faction, z in re.findall(r'divine_exp side=(good|evil) zone=(\d+)', status) if faction == ('evil' if side else 'good') and int(z) != zone]
                 assert exp_zones, 'No eligible experience target: ' + status
                 exp_zone = exp_zones[0]
@@ -406,7 +415,10 @@ def run(backend, binary):
                             release_gate.unlink()
                             saw_prepared = True
                         if time.monotonic() >= next_attack:
-                            command(god, 'purge') # Wandering NPCs must not steal the PvP death.
+                            # Do not wait for a command response here: GDB can stop
+                            # the game between purge and its response. This loop
+                            # must keep polling the gate that releases the game.
+                            god.send('purge') # Wandering NPCs must not steal the PvP death.
                             player.send('kill ' + ('human' if side else 'orc'))
                             next_attack = time.monotonic() + .8
                         victim._receive()
