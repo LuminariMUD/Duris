@@ -307,6 +307,15 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Current presentation slice: outcome is quest status/map rendering without NPC
+creation, actor transfers, hooks or lost completed/legacy quest state. Non-goals:
+no selection/recovery transition or map entitlement change. Files: existing
+`world_quest.c`, `json_utils.c` and their focused executable fixtures. Proof:
+production text/JSON rendering with absent prototypes and invalid zones, and
+telnet/GMCP map output while actor, quest and room populations remain unchanged.
+Reuse boot-cached prototype descriptions and the existing synchronous GMCP map
+viewpoint pattern; no new display service or alternate prototype loader.
+
 Current live-selection slice: outcome is a real new assignment from routine
 reset provenance, actual NPC locations and usable population, using the accepted
 origin's bounded route context and a truthful map entrance. Non-goals: no reward
@@ -770,6 +779,31 @@ accepted-target revalidation, durable free replacement, legacy/share handling
 and truthful unavailable maps. Required 11/29 ordinary travel and ASK/KILL
 completion, save/relogin/restart on both backends and command/observer latency
 journeys remain open. Do not treat this selector PR as completion of #437.
+
+### Read-only presentation checkpoint (2026-10-29)
+
+Review-ready PR: [#465](https://github.com/LuminariMUD/Duris/pull/465),
+implementation commit `dbd0bc2c6`, branch `branch/issue-437-quest-presentation`,
+based on #464 head `103e289a2`. Text QUEST and JSON status now use `mob_index[].desc2`, whose owning
+loader stores the prototype short description. Removed temporary NPC creation/
+extraction and the display-time reset of a paid quest when its giver cannot be
+loaded. Missing target/zone metadata produces unavailable details while keeping
+progress and completed work. Real live eligibility/recovery is the next slice.
+
+`show_map_at` now reuses `gmcp_quest_map`'s synchronous non-moving viewpoint,
+restores the room immediately, rejects invalid room IDs, and uses the explicit
+`Quest.Map` renderer package. It no longer transfers the actor, invokes arrival/
+departure hooks, changes populations, interrupts actions or overwrites `Room.Map`.
+
+Passed: `test_world_quest_remaining_unloaded.py` executes the complete production
+QUEST display and JSON serializer under ASan/UBSan for ASK/KILL, unknown history,
+missing giver/target/description/zone and completed assignments; NPC loads,
+extraction and quest reset abort in the fixture, and status remains byte-identical.
+`test_gui_gmcp_contract.py` executes the production text map entry point and normal
+GMCP serializers/framing; transfer hooks abort, map and observer-room state remain
+unchanged, unpaid/invalid maps emit nothing, and Quest.Map uses its own channel.
+`make -C src -j2` and the real MariaDB grant/paid-abandon/save/clean-shutdown smoke passed on binary SHA256 `1c35d86179ba7cf31cd78adf93b2ef4e630dfeedfe5fb93639ec96790b5a9c93` (`bin/tests/issue437-presentation-mariadb-journey.log`). Full stale recovery, legacy policy and the gameplay/
+restart journeys above remain open.
 
 Completed on the source baseline:
 

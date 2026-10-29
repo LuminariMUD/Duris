@@ -1186,7 +1186,6 @@ char *json_build_quest_status(struct char_data *ch)
 	cJSON *root;
 	char *result;
 	char target_buf[MAX_STRING_LENGTH];
-	struct char_data *q_mob = NULL;
 	int remaining;
 
 	if (!ch || IS_NPC(ch))
@@ -1222,16 +1221,15 @@ char *json_build_quest_status(struct char_data *ch)
 			cJSON_AddNullToObject(root, "type");
 		}
 
-		/* Build target string - need to load mob to get name */
-		q_mob = read_mobile(real_mobile(ch->only.pc->quest_mob_vnum), REAL);
-		if (q_mob)
+		/* Prototype descriptions were cached at boot; displaying a quest never spawns an NPC. */
+		const int target = real_mobile(ch->only.pc->quest_mob_vnum);
+		const int zone_idx = real_zone(ch->only.pc->quest_zone_number);
+		if (target >= 0 && mob_index[target].desc2 && zone_idx >= 0)
 		{
-			int zone_idx = real_zone0(ch->only.pc->quest_zone_number);
-
 			if (ch->only.pc->quest_type == FIND_AND_ASK)
 			{
 				snprintf(target_buf, MAX_STRING_LENGTH,
-					 "Go ask %s in %s about the %s.", q_mob->player.short_descr,
+					 "Go ask %s in %s about the %s.", mob_index[target].desc2,
 					 zone_table[zone_idx].name, month_name[time_info.month]);
 			}
 			else if (ch->only.pc->quest_type == FIND_AND_KILL)
@@ -1240,17 +1238,13 @@ char *json_build_quest_status(struct char_data *ch)
 						 ch->only.pc->quest_kill_how_many;
 				snprintf(target_buf, MAX_STRING_LENGTH,
 					 "Go kill %d %s (%d left) in %s!",
-					 ch->only.pc->quest_kill_original,
-					 q_mob->player.short_descr, kills_left,
-					 zone_table[zone_idx].name);
+					 ch->only.pc->quest_kill_original, mob_index[target].desc2,
+					 kills_left, zone_table[zone_idx].name);
 			}
 			else
 			{
 				snprintf(target_buf, MAX_STRING_LENGTH, "Unknown quest type");
 			}
-
-			extract_char(q_mob);
-			q_mob = NULL;
 		}
 		else
 		{

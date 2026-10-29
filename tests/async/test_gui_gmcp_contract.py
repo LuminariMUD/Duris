@@ -49,6 +49,7 @@ functions = [
     ('gmcp.c', 'void gmcp_send_quest_map('),
     ('gmcp.c', 'void gmcp_quest_status('),
     ('gmcp.c', 'void gmcp_quest_map('),
+    ('world_quest.c', 'void show_map_at('),
     ('utility.c', 'int IS_MORPH('),
     ('ws_handlers.c', 'void ws_send_full_game_state('),
 ]
