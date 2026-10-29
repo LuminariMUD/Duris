@@ -307,6 +307,16 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Current completion-credit slice: outcome is credit only for the accepted quest
+type and advertised actual zone. The death hook calls `quest_kill` for every
+matching death; source inspection found it also advancing ASK tasks, including
+rewriting their zero kill quota and awarding a KILL completion. Non-goals: no
+reward rebalance or death-hook refactor. Files: `world_quest.c` and the existing
+production XP/completion fixture. Proof: ASK/KILL wrong-type, wrong-zone, missing
+target and invalid-room cases retain exact state/XP/history; legitimate awards
+retain existing behavior. Share the identical target-boundary check between the
+two real completion callers.
+
 Current presentation slice: outcome is quest status/map rendering without NPC
 creation, actor transfers, hooks or lost completed/legacy quest state. Non-goals:
 no selection/recovery transition or map entitlement change. Files: existing
@@ -804,6 +814,27 @@ GMCP serializers/framing; transfer hooks abort, map and observer-room state rema
 unchanged, unpaid/invalid maps emit nothing, and Quest.Map uses its own channel.
 `make -C src -j2` and the real MariaDB grant/paid-abandon/save/clean-shutdown smoke passed on binary SHA256 `1c35d86179ba7cf31cd78adf93b2ef4e630dfeedfe5fb93639ec96790b5a9c93` (`bin/tests/issue437-presentation-mariadb-journey.log`). Full stale recovery, legacy policy and the gameplay/
 restart journeys above remain open.
+
+### Completion credit checkpoint (2026-10-29)
+
+Review-ready PR: [#466](https://github.com/LuminariMUD/Duris/pull/466),
+implementation commit `64fb0b322`, branch `branch/issue-437-quest-credit-boundaries`,
+based on #465 head `27c5ff704`. Source tracing found that `fight.c` calls `quest_kill` for every
+matching player/group death, while the credit function omitted a quest-type
+check. Killing an ASK singleton could therefore rewrite its zero kill quota,
+pay XP and manufacture a KILL completion. Both completion functions also
+accepted the same VNUM outside the advertised zone, bypassing actual-zone
+selection. One private shared predicate now checks alive PC, active assignment,
+accepted type, live target identity and target room's zone before either hook.
+
+The existing `test_world_quest_xp_feedback.py` production-body fixture now covers
+wrong type, wrong zone, missing/unroomed/out-of-range/wrong-VNUM targets for both
+hooks, with unchanged quest/XP/history and positive ASK/KILL controls. Its full
+existing award suite passed under ASan/UBSan for MariaDB and flatfile. Also
+passed: `make -C src -j2`, policy, 14 documentation, format and diff checks.
+No death-hook refactor, reward rebalance or unrelated progression change.
+This is a separate focused repair found while tracing #437's recovery path;
+accepted-assignment recovery and full gameplay/restart proof remain next.
 
 Completed on the source baseline:
 
