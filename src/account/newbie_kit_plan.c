@@ -47,6 +47,9 @@ static const int minotaur_evil_eq[] = { 677, 283,  285,	 1112, 286, 288,
 static const int blighter_stuff[] = { 1109, 1108, 1113, 1112, 1140, 677, 239, 618,
 				      679,  680,  729,	729,  452,  437, -1 };
 
+static const int archery_stuff[] = { 1116, 1117, 1117, 1117, 1117, 1117, 1117,
+				     1117, 1117, 1117, 1117, 1118, -1 };
+
 using kit_table = std::array<std::array<const int *, CLASS_COUNT + 1>, LAST_RACE + 1>;
 const kit_table &legacy_kits()
 {
@@ -535,9 +538,8 @@ const kit_table &legacy_kits()
 			   PROTECT({ 1114, 1115, 1143, 706, 735, 731, 731, -1 }));
 
 		CREATE_KIT(RACE_HALFELF, CLASS_RANGER,
-			   PROTECT({ 1101, 1102, 1103, 1104, 1105, 1105, 1106, 1107, 1113,
-				     1113, 1114, 1115, 1116, 1117, 1117, 1117, 1117, 1117,
-				     1117, 1117, 1117, 1117, 1117, 1118, -1 }));
+			   PROTECT({ 1101, 1102, 1103, 1104, 1105, 1105, 1106, 1107, 1113, 1113,
+				     1114, 1115, -1 }));
 
 		CREATE_KIT(RACE_HALFELF, CLASS_DRUID,
 			   PROTECT({ 1135, 1136, 1137, 1138, 1139, 1140, -1 }));
@@ -1602,9 +1604,8 @@ const kit_table &legacy_kits()
 				     -1 }));
 
 		CREATE_KIT(RACE_WOODELF, CLASS_RANGER,
-			   PROTECT({ 1101, 1102, 1103, 1104, 1105, 1105, 1106, 1107, 1113,
-				     1113, 1114, 1115, 1116, 1117, 1117, 1117, 1117, 1117,
-				     1117, 1117, 1117, 1117, 1117, 1118, -1 }));
+			   PROTECT({ 1101, 1102, 1103, 1104, 1105, 1105, 1106, 1107, 1113, 1113,
+				     1114, 1115, -1 }));
 
 		CREATE_KIT(RACE_WOODELF, CLASS_CLERIC,
 			   PROTECT({ 1119, 1120, 1121, 1122, 1124, 1126, 1127, -1 }));
@@ -1737,6 +1738,9 @@ std::vector<newbie_kit_item> make_newbie_kit_plan(const newbie_kit_input &input)
 		append(blighter_stuff);
 	}
 
+	if (input.main_class == CLASS_RANGER || input.main_class == CLASS_ROGUE)
+		append(archery_stuff);
+
 	if (input.ailvio)
 		result.push_back({ 29319, false });
 	else if (input.wutvr)
@@ -1765,6 +1769,7 @@ std::vector<int> newbie_kit_template_vnums()
 	append(minotaur_good_eq);
 	append(minotaur_evil_eq);
 	append(blighter_stuff);
+	append(archery_stuff);
 	std::sort(result.begin(), result.end());
 	result.erase(std::unique(result.begin(), result.end()), result.end());
 	return result;

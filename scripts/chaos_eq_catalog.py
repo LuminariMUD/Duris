@@ -486,6 +486,11 @@ def class_matrix(analysis: dict[str, Any], metrics: dict[int, dict[str, Any]], p
             totem = fundamentals.get("shaman_totem")
             if totem:
                 support.append({"slot": 18, "slot_name": "HOLD", "vnum": totem["vnum"], "name": totem["name"], "role": "three_sphere_high_circle_totem"})
+        if class_name in {"Ranger", "Rogue"}:
+            for vnum in [25753] + [25758] * 10:
+                metric = metrics[vnum]
+                support.append({"slot": -1, "slot_name": "bag_support", "vnum": vnum,
+                                "name": metric["name"], "role": "starter_archery"})
         return_row = {
             "class_id": int(class_id),
             "observed_high_level_characters": analysis.get("class_counts", {}).get(class_name, 0),
@@ -712,7 +717,9 @@ def emit_policy_report(path: Path, catalog: dict[str, Any]) -> None:
                   "equipment arrives directly in inventory.", "", "Shared consumables must also be usable by every class and playable race.",
                   "The shared set uses VNUM 80186 (three clear potions), granting Hawkvision,",
                   "Lionrage and Elephantstrength at cast level 20. Source restrictions and category",
-                  "are revalidated; no other restricted shared support is silently accepted.", "", "## Selected profiles", "",
+                  "are revalidated; no other restricted shared support is silently accepted.", "", "Rangers and Rogues receive bow 25753 and ten arrows 25758 in the bag,",
+                  "with compatible quiver 25757 in the quiver slot in both profiles.",
+                  "Melee weapons and skill-gated lockpicks remain available.", "", "## Selected profiles", "",
                   "| Profile | Class | Core slots | Globe item VNUM | Slot:VNUM equipment |",
                   "| --- | --- | --- | --- | --- |"])
     for profile, matrix in catalog["profiles"].items():
