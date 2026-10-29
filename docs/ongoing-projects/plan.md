@@ -757,7 +757,7 @@ The saved row contains target 16306, actual zone 163, origin 16633, quota 1,
 verified entrance 568109, map not bought and no replacement due. One catalog
 build served both requests. The level-29 grant's private diagnostic record is
 `bin/tests/issue437-live-actor-29.log`. These grant checks do not prove travel or
-completion. A flatfile build/journey is currently running; record its result.
+completion. The incremental flatfile build and the same real grant/paid-abandon/save/clean-shutdown journey also passed (`bin/tests/issue437-live-flatfile-journey.log`), binary SHA256 `ac7c22470f2a2e0c8c71316feec57831c11ab6a19f6f06cd722ebe85f4660989`. This grant smoke has no restart/completion claim.
 
 Also passed: `make -C src -j2`; route ASan/UBSan fixture; projection, planar
 affinity, dynamic policy, failure feedback, reward, difficulty, help parser and
