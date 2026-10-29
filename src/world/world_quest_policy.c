@@ -137,9 +137,11 @@ struct quest_route_builder
 	{
 		// board explicitly handles writing/reading/look/examine/removal only.
 		// The hide artifact handles SAY; the regeneration ring handles RUB
-		// and periodic ticks. Neither consumes travel, door or ASK commands.
+		// and periodic ticks. Tracks and blood stains only handle decay or
+		// cosmetic ticks; ordinary movement/combat creates them on the route.
+		// None consumes travel, door or ASK commands.
 		return !proc || proc == board || proc == artifact_hide ||
-		       proc == ring_of_regeneration;
+		       proc == ring_of_regeneration || proc == tracks || proc == blood_stains;
 	}
 
 	bool ordinary_space(int room) const

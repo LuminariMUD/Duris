@@ -43,6 +43,15 @@ int quester(P_char, P_char, int, char *)
 {
 	std::abort();
 }
+int tracks(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+int blood_stains(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+
 int board(P_obj, P_char, int, char *)
 {
 	std::abort();
@@ -357,6 +366,15 @@ int main()
 	unavailable();
 	objects[0].func.obj = board;
 	available();
+	// Walking and ordinary combat leave passive traces on the return path.
+	for (auto procedure : { tracks, blood_stains })
+	{
+		objects[0].func.obj = procedure;
+		available(11);
+		available(29);
+		available(30);
+	}
+
 	fixture();
 	obj_data held{};
 	held.R_num = 0;

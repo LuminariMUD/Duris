@@ -1005,3 +1005,34 @@ quest interaction. The gameplay qualification plan is preserved in task-owned
 stash `aeb4a5d792af549a10794f035342141cd1333ef0` pending return to
 `branch/issue-437-gameplay-qualification`; apply it only after this fix is merged
 into that local branch and drop only this verified stash.
+
+
+### Passive route traces repair (2026-10-29)
+
+Review-ready PR: [#469](https://github.com/LuminariMUD/Duris/pull/469), commit
+`494002a8f`, based on #468.
+
+Outcome: ordinary walking/combat traces must not turn a proved route into an
+unknown gate. Non-goals: no generic procedure exemption or area allowlist.
+Files: `world_quest_policy.c` and the existing route/live-target fixtures. Proof:
+route and accepted-target checks with tracks/blood stains, actor/status/rooms
+unchanged and procedures never invoked; unknown handlers remain unproven.
+
+The real level-11 ASK trip reached Woodseer streets, then failed at a footprint
+left behind (VNUM 1276): ordinary return validation stopped at the new object's
+`tracks` procedure. `cmd/track.c` creates it during movement. Its owning handler
+in `specs.object.c` handles only decay. Blood stains are likewise created by
+normal combat/bleeding (`fight.c` and `handler.c`), and their handler handles only
+setup, cosmetic periodic updates and decay. Both identities are now classified
+as travel/door/ASK-safe. No procedure runs during validation.
+
+The focused route fixture reproduced the failure before the fix
+(`bin/tests/issue437-passive-traces-before.log`). Extended existing accepted
+ASK/KILL checks at 11/29/30/41 with the same trace identities. The interrupted
+gameplay work is preserved in task-owned stash
+`0257c956eb3f6d3e5cc451ba1a06221c1a856ab4`; apply it on the gameplay branch after
+fast-forwarding this focused fix, then drop only that verified stash.
+Temporary `Q437_DEBUG` owning-source logging was removed completely.
+
+Passed after the passive-trace fix: route ASan/UBSan fixture, all 71 production
+selector/recovery/command scenarios, server build, format and diff checks.
