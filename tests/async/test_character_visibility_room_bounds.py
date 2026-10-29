@@ -75,6 +75,47 @@ int main()
     assert(std::strcmp(PERS(&subject, &viewer, false), "someone") == 0);
     REMOVE_BIT(subject.specials.affected_by, AFF_INVISIBLE);
 
+    // Projection uses the supplied observer room without moving either actor.
+    viewer.in_room = NOWHERE; subject.in_room = 1;
+    assert(!ac_can_see(&viewer, &subject, true));
+    assert(ac_can_see_from(&viewer, &subject, 1));
+    assert(viewer.in_room == NOWHERE && subject.in_room == 1);
+    assert(!ac_can_see_from(&viewer, &subject, NOWHERE));
+    assert(!ac_can_see_from(&viewer, &subject, top_of_world + 1));
+    viewer.in_room = 0;
+    rooms[1].light = 0;
+    subject.player.race = RACE_SKELETON;
+    assert(!ac_can_see_from(&viewer, &subject, 1));
+    // Arrival adds the viewer's ordinary light, without moving them during a
+    // projection or changing the destination's cached light/occupants.
+    viewer.light = 1;
+    const auto before_viewer = viewer;
+    const auto before_room = rooms[1];
+    assert(ac_can_see_from(&viewer, &subject, 1));
+    assert(!memcmp(&viewer, &before_viewer, sizeof(viewer)));
+    assert(!memcmp(&rooms[1], &before_room, sizeof(rooms[1])));
+    viewer.in_room = 1; rooms[1].light = 1;
+    assert(ac_can_see(&viewer, &subject, true));
+    rooms[1].light = 0;
+    assert(!ac_can_see(&viewer, &subject, true)); // Same-room light is already accounted for.
+    viewer.in_room = 0;
+    for (int light : {0, -1}) {
+        viewer.light = light;
+        assert(!ac_can_see_from(&viewer, &subject, 1));
+    }
+    viewer.light = 1; viewer.in_room = NOWHERE;
+    subject.in_room = 0; rooms[0].light = 0;
+    assert(!ac_can_see_from(&viewer, &subject, 1)); // Light belongs only to the projected room.
+    viewer.light = 0; viewer.in_room = 0;
+    subject.in_room = 1; rooms[0].light = 1;
+    SET_BIT(viewer.specials.affected_by4, AFF4_MAGE_FLAME);
+    assert(ac_can_see_from(&viewer, &subject, 1));
+    assert(viewer.in_room == 0 && subject.in_room == 1);
+    REMOVE_BIT(viewer.specials.affected_by4, AFF4_MAGE_FLAME);
+    rooms[1].light = 1;
+    subject.player.race = 0;
+    subject.in_room = NOWHERE;
+    assert(!ac_can_see_from(&viewer, &subject, 1));
     int cases = 0;
     for (bool npc : {false, true})
         for (bool trusted : {false, true})
@@ -114,6 +155,7 @@ with tempfile.TemporaryDirectory(prefix="visibility-room-bounds-", dir=build_roo
     binary = Path(directory) / "harness"
     harness.write_text("\n".join((
         PRELUDE,
+        extract_function("utility.c", "bool ac_can_see_from("),
         extract_function("utility.c", "bool ac_can_see(P_char sub, P_char obj, bool"),
         extract_function("utility.c", "char *PERS(P_char ch, P_char vict, int short_d)"),
         extract_function("utility.c", "char *PERS(P_char ch, P_char vict, int short_d, bool noansi)"),

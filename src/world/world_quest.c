@@ -800,17 +800,8 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 			     quest_creation_failure *failure)
 {
-	int quest_zone = -1;
-	int quest_mob = -1;
-	int quest_type = -1;
-	int target_probe_budget = WORLD_QUEST_MAX_TARGET_PROBES;
-	int history_check_budget = WORLD_QUEST_MAX_HISTORY_CHECKS;
-	vector<int> tried_targets;
-
 	if (failure)
 		*failure = QUEST_CREATION_NO_FAILURE;
-
-	// Fail if missing an arg, the player is not a PC, or the persisted giver is invalid.
 	if (!ch || IS_NPC(ch) || giver_vnum <= 0 || origin_vnum <= 0 ||
 	    real_room(origin_vnum) == NOWHERE)
 	{
@@ -818,113 +809,24 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 			*failure = QUEST_CREATION_INVALID_ACTOR;
 		return FALSE;
 	}
-
-	vector<int> valid_zones;
-	getQuestZoneList(ch, valid_zones);
-	if (valid_zones.empty())
-	{
-		wizlog(56, "Unable to find a quest zone for %s", GET_NAME(ch));
-		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_ZONE;
-		return FALSE;
-	}
-
-	// Visit each zone once, trying distinct targets before moving on. The
-	// catalog and its cached scores are never rebuilt on the command path.
-	vector<int> remaining_zones = valid_zones;
-	while (!remaining_zones.empty() && history_check_budget > 0)
-	{
-		quest_zone = world_quest_policy_select_zone(ch, remaining_zones);
-		if (quest_zone < 0)
-			break;
-		for (vector<int>::iterator zone = remaining_zones.begin();
-		     zone != remaining_zones.end(); ++zone)
-		{
-			if (*zone == quest_zone)
-			{
-				remaining_zones.erase(zone);
-				break;
-			}
-		}
-
-		const int first_type = GET_LEVEL(ch) > 49 ? FIND_AND_KILL : number(1, 2);
-		const int second_type =
-			first_type == FIND_AND_KILL ?
-				FIND_AND_ASK :
-				(first_type == FIND_AND_ASK ? FIND_AND_KILL : FIND_AND_ASK);
-		const int type_attempts = GET_LEVEL(ch) > 49 ? 1 : 2;
-		for (int attempt = 0; attempt < type_attempts; ++attempt)
-		{
-			quest_type = attempt == 0 ? first_type : second_type;
-			while (history_check_budget > 0)
-			{
-				quest_mob = world_quest_policy_suggest_mob(quest_zone, ch,
-									   quest_type,
-									   &target_probe_budget,
-									   tried_targets);
-				if (quest_mob <= 0)
-					break;
-				tried_targets.push_back(quest_mob);
-				--history_check_budget;
-
-				const int mob_rnum = real_mobile(quest_mob);
-				if (mob_rnum < 0 ||
-				    (quest_type == FIND_AND_KILL &&
-				     mob_index[mob_rnum].number < 2) ||
-				    (quest_type == FIND_AND_ASK && mob_index[mob_rnum].number < 1))
-				{
-					quest_mob = -1;
-					continue;
-				}
-
-				const int completed = sql_world_quest_done_already(ch, quest_mob);
-				if (completed < 0)
-				{
-					// A failed read stops the request; it must not grant a quest
-					// or trigger more history queries against a failing backend.
-					if (failure)
-						*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
-					return FALSE;
-				}
-				if (completed > 0)
-				{
-					quest_mob = -1;
-					continue;
-				}
-				break;
-			}
-			if (quest_mob > 0)
-				break;
-		}
-		if (quest_mob > 0)
-			break;
-	}
-
-	if (quest_mob <= 0)
-	{
-		wizlog(56, "Unable to find a valid quest target for %s", GET_NAME(ch));
-		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
-		return FALSE;
-	}
-
-	const int rnum = real_mobile(quest_mob);
-	if (rnum < 0)
+	world_quest_target target;
+	const auto outcome =
+		world_quest_policy_select_target(ch, origin_vnum, GET_LEVEL(ch), target);
+	if (outcome != QUEST_CREATION_NO_FAILURE)
 	{
 		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
+			*failure = outcome;
 		return FALSE;
 	}
-
 	const int quest_kill_original =
-		MIN(difficulty_scale_world_quest_kills(number(7, 9)), mob_index[rnum].number - 1);
+		MIN(difficulty_scale_world_quest_kills(number(7, 9)), target.usable_count - 1);
 	ch->only.pc->quest_shares_left = world_quest_share_limit();
 	ch->only.pc->quest_active = 1;
-	ch->only.pc->quest_mob_vnum = quest_mob;
-	ch->only.pc->quest_type = quest_type;
+	ch->only.pc->quest_mob_vnum = target.mob_vnum;
+	ch->only.pc->quest_type = target.type;
 	ch->only.pc->quest_accomplished = 0;
 	ch->only.pc->quest_started = time(NULL);
-	ch->only.pc->quest_zone_number = zone_table[quest_zone].number;
+	ch->only.pc->quest_zone_number = zone_table[target.zone].number;
 	ch->only.pc->quest_giver = giver_vnum;
 	ch->only.pc->quest_level = GET_LEVEL(ch);
 	ch->only.pc->quest_origin_room = origin_vnum;
@@ -932,11 +834,9 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 	ch->only.pc->quest_receiver = GET_PID(ch);
 	ch->only.pc->quest_kill_how_many = 0;
 	ch->only.pc->quest_kill_original = quest_kill_original;
-	debug("Quest Kill Original Value: %d, mob_index number: %d, mob_index limit: %d, mob_vnum: %d",
-	      ch->only.pc->quest_kill_original, mob_index[rnum].number, mob_index[rnum].limit - 1,
-	      mob_index[rnum].virtual_number);
+	ch->only.pc->quest_map_room = target.map_room >= 0 ? world[target.map_room].number : 0;
+	ch->only.pc->quest_map_bought = 0;
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-
 	return TRUE;
 }
 
@@ -1006,19 +906,21 @@ int quest_buy_map(P_char ch)
 		return 0;
 	}
 
+	const int map_room =
+		ch->only.pc->quest_map_room > 0 ? real_room(ch->only.pc->quest_map_room) : NOWHERE;
+	if (map_room < 0)
+	{
+		send_to_char("I cannot verify a map for your current quest right now.\r\n", ch);
+		return 0;
+	}
 	ch->only.pc->quest_map_bought = 1;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	send_to_char(
 		"The 'quest' command will now show you additional information about the quest.\r\n",
 		ch);
 
-	int map_room = get_map_room(real_zone(ch->only.pc->quest_zone_number));
-
-	// debug("quest_zone_number: %d, real_zone: %d, map_room: %d", ch->only.pc->quest_zone_number, real_zone(ch->only.pc->quest_zone_number), map_room);
-
 	if (map_room > 0)
 	{
-		ch->only.pc->quest_map_room = world[map_room].number;
-		// debug("quest_map_room: %d", ch->only.pc->quest_map_room);
 		show_map_at(ch, map_room);
 
 		/* Send quest map via GMCP for WebSocket clients */
@@ -1042,17 +944,6 @@ int getQuestItemFromZone(int zone, int quest_level)
 bool isInvalidQuestZone(int zone_number)
 {
 	return world_quest_policy_zone_is_invalid(zone_number);
-}
-
-void getQuestZoneList(P_char ch, vector<int> &valid_zones)
-{
-	world_quest_policy_zone_list(ch, valid_zones);
-}
-
-int suggestQuestMob(int zone_num, P_char ch, int QUEST_TYPE)
-{
-	int target_probe_budget = WORLD_QUEST_MAX_TARGET_PROBES;
-	return world_quest_policy_suggest_mob(zone_num, ch, QUEST_TYPE, &target_probe_budget);
 }
 
 // Called from comm.c to populate the boot-time world-quest catalog and avg_mob_level.

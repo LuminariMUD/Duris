@@ -67,19 +67,21 @@ def test_explicit_deny_controls_are_not_an_approval_list() -> None:
 
 
 def test_zone_list_is_global_and_does_not_scan_on_request() -> None:
-    function = extract_function("world_quest.c", "void getQuestZoneList(")
+    function = extract_function("world/world_quest_policy.c", "void world_quest_policy_zone_list(")
     assert "get_zone_info" not in function
-    assert "quest_zone" not in function
-    assert "curMapExits" not in function
     assert "top_of_mobt" not in function
     assert "top_of_objt" not in function
-    assert "world_quest_policy_zone_list" in function
+    assert "in_room" not in function
+    assert "static_zone_eligibility" in function
 
 
 def test_suggest_target_reads_cached_candidates() -> None:
-    function = extract_function("world_quest.c", "int suggestQuestMob(")
-    assert "world_quest_policy_suggest_mob" in function
-    assert "top_of_mobt" not in function
+    function = extract_function("world/world_quest_policy.c",
+                                "quest_creation_failure world_quest_policy_select_target(")
+    assert "quest_target_request" in function
+    assert "request.suggest" in function and "request.validate" in function
+    assert "read_mobile_probe(" not in function
+    assert "char_to_room(" not in function
 
 
 def test_boot_populates_catalog_before_loop_in_all_modes() -> None:
@@ -90,7 +92,7 @@ def test_boot_populates_catalog_before_loop_in_all_modes() -> None:
     assert "if (calc_zone_mob_level() < 0)" in boot
     # The catalog is a boot concern, not an abandon/request concern.
     assert "world_quest_policy_bootstrap" not in MOBILE
-    assert "world_quest_policy_bootstrap" not in extract_function("world_quest.c", "void getQuestZoneList(")
+    assert "world_quest_policy_bootstrap" not in extract_function("world_quest.c", "bool createQuestForGiverVnum(")
 
 
 def test_catalog_failure_is_latched_and_scores_are_boot_cached() -> None:
@@ -103,12 +105,16 @@ def test_catalog_failure_is_latched_and_scores_are_boot_cached() -> None:
 
 def test_target_probes_have_one_request_budget_and_no_failed_state_mutation() -> None:
     create = extract_function("world_quest.c", "bool createQuestForGiverVnum(")
-    assert "target_probe_budget = WORLD_QUEST_MAX_TARGET_PROBES" in create
-    assert "&target_probe_budget" in create
-    assert create.index("const int rnum = real_mobile(quest_mob);") < create.index(
+    selection = extract_function("world/world_quest_policy.c",
+                                "quest_creation_failure world_quest_policy_select_target(")
+    assert "probes = WORLD_QUEST_MAX_TARGET_PROBES" in POLICY
+    assert "history_checks = WORLD_QUEST_MAX_HISTORY_CHECKS" in POLICY
+    assert create.index("world_quest_policy_select_target(") < create.index(
         "ch->only.pc->quest_active = 1;")
-    assert "quest_kill_how_many = 0;" not in extract_function(
-        "world/world_quest_policy.c", "int select_cached_mob(")
+    assert selection.index("sql_world_quest_done_already(") < selection.index("request.validate(")
+    assert "quest_kill_how_many = 0;" not in selection
+    assert "load_routine_sources();" in extract_function(
+        "world/world_quest_policy.c", "bool world_quest_policy_bootstrap(")
 
 
 def test_mariadb_world_quest_reads_fail_closed() -> None:

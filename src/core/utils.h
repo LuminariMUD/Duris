@@ -1214,9 +1214,10 @@ char *CRYPT2(char *passwd, char *name);
 
 #define IS_BLIND(ch) (IS_AFFECTED(ch, AFF_BLIND)) // || IS_DAYBLIND(ch))
 
-#define IS_DAYBLIND(ch)                                                                          \
-	(!has_innate(ch, INNATE_EYELESS) && !IS_TRUSTED(ch) && !IS_TWILIGHT_ROOM(ch->in_room) && \
+#define IS_DAYBLIND_AT(ch, room)                                                          \
+	(!has_innate(ch, INNATE_EYELESS) && !IS_TRUSTED(ch) && !IS_TWILIGHT_ROOM(room) && \
 	 !IS_AFFECTED4(ch, AFF4_GLOBE_OF_DARKNESS) && has_innate(ch, INNATE_DAYBLIND))
+#define IS_DAYBLIND(ch) IS_DAYBLIND_AT(ch, (ch)->in_room)
 
 #define DISALLOW_GROUPED 1
 #define DISALLOW_SELF 2

@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "core/structs.h"
+#include "world/world_quest.h"
 
 // Describes a route under the supplied player facts. It is not, by itself, a
 // verdict that an accepted assignment is invalidated by the world.
@@ -50,16 +51,26 @@ world_quest_route_status world_quest_policy_route(const world_quest_route_contex
 						  int room);
 int world_quest_policy_map_room(const world_quest_route_context &context, int room);
 
+struct world_quest_target
+{
+	int zone = -1;
+	int mob_vnum = -1;
+	int type = 0;
+	int usable_count = 0;
+	int map_room = NOWHERE;
+};
+
+quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vnum,
+							int accepted_level,
+							world_quest_target &target);
+
 bool world_quest_policy_bootstrap();
 // Reuse the boot probe for Divine encounter checks, without quest reward rules.
 // Unknown, staff-level, shop and non-combat prototypes return -1.
 int world_quest_policy_combat_level(int mob_rnum);
 bool world_quest_policy_zone_is_invalid(int zone_number);
 void world_quest_policy_zone_list(P_char ch, std::vector<int> &valid_zones);
-int world_quest_policy_select_zone(P_char ch, const std::vector<int> &valid_zones);
-int world_quest_policy_suggest_mob(int zone_number, P_char ch, int quest_type,
-				   int *target_probe_budget,
-				   const std::vector<int> &excluded_targets = {});
+int world_quest_policy_select_zone(int accepted_level, const std::vector<int> &valid_zones);
 int world_quest_policy_random_item(int zone_number);
 int world_quest_policy_random_quest_item(int zone_number, int quest_level);
 

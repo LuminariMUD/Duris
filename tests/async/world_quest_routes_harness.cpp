@@ -47,6 +47,14 @@ int board(P_obj, P_char, int, char *)
 {
 	std::abort();
 }
+int artifact_hide(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
+int ring_of_regeneration(P_obj, P_char, int, char *)
+{
+	std::abort();
+}
 int singleton_shop_id(P_char)
 {
 	return 0;
@@ -358,6 +366,10 @@ int main()
 	player.carrying = nullptr;
 	player.equipment[0] = &held;
 	assert(world_quest_policy_route(routes(), 2) == world_quest_route_status::unproven);
+	objects[0].func.obj = artifact_hide;
+	available();
+	objects[0].func.obj = ring_of_regeneration;
+	available();
 	// The bound covers an oversized, otherwise legal graph; exhaustion is
 	// unproven rather than a cancellation-worthy impossibility verdict.
 	fixture(WORLD_QUEST_MAX_ROUTE_ROOMS + 4);

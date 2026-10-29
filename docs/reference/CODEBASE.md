@@ -301,12 +301,26 @@ For eligible zones, the relative selection weight is
 Item count is deliberately linear; zero-reward zones have zero weight. See
 `world_quest_policy_math.h` for boundaries and constants.
 
-Targets use the inclusive level band `[L - 4, L + 5]`. Kill targets need at
-least two existing instances; ask targets need exactly one, speech capability,
-and no player-specific aggression. Below level 31, invisible/concealed/hidden
-ask targets are excluded. Dynamic aggression probes and completion-history
-checks each have a request-wide budget of 32. Previously completed targets are
-excluded from subsequent retries; a history-read error stops assignment.
+Targets use the inclusive level band `[L - 4, L + 5]` for both the cached
+prototype and live actor. A per-request index uses actual destination zones,
+not prototype ownership. Each instance must match a direct unconditional 100%
+`M` reset at its saved birthplace; mixed conditional/rare/random-table sources
+and inaccessible staging births stay ineligible. Kill targets need at least two
+usable, visible, unprotected instances in that zone; the initial quota is capped
+at usable count minus one. ASK needs a singleton that can speak, hear and respond
+in its current room without player-specific aggression or an intercepting
+procedure. Below 31, invisible/concealed/hidden ASK targets remain excluded.
+
+One bounded read-only route context proves ordinary outbound and return travel
+from the captured origin to both the reset and current rooms. Accepted levels
+11-29 stay in their resolved local geography without keys, fares or special
+travel equipment. Level 30+ may use proven current travel capabilities.
+Unknown scripts and exhausted budgets cannot grant a new target. The map
+entrance comes from the proved route and is cached before purchase; the map
+remains paid. Selection never spawns a prototype or moves the observer.
+Live target probes and completion-history checks each have a request-wide
+budget of 32; room/edge/actor work shares a two-million-operation bound.
+Previously completed targets are excluded; a history-read error stops assignment.
 
 `createQuest()` distinguishes no eligible zone from no valid target. Bartender
 payments use the currency transaction API: the debit changes the wallet in memory
@@ -318,7 +332,9 @@ history still uses each backend's world-quest adapter. Reward selection uses
 the accepted quest level's cached pool, with the existing logged random-
 equipment fallback if unavailable.
 `tests/async/run_world_quest_dual_backend.py` exercises real quest grant and
-persistence in disposable MariaDB and flat-file instances; focused
+persistence in disposable MariaDB and flat-file instances. It uses GDB to set
+the disposable Chaos actor to level 11 before its first command; its retained
+Chaos HP/equipment do not qualify combat difficulty. Focused
 `test_world_quest_*` tests cover policy and failure boundaries.
 
 Quest origin (`quest_origin_room`, a VNUM) and replacement entitlement
@@ -328,8 +344,9 @@ payload is unchanged. Legacy pfile imports also initialize both to zero. SQL
 requires migration `0055_world_quest_recovery`. New purchases capture the real
 bartender/customer room into the payment context and creation API; they retain
 that origin even if the customer later moves. Reset clears it and sharing copies
-it, with each mutation marking status dirty. Route validation and replacement
-behavior remain tracked in `docs/ongoing-projects/plan.md` for #437.
+it, with each mutation marking status dirty. New selection validates routes;
+stale-assignment recovery remains tracked in `docs/ongoing-projects/plan.md` for
+#437.
 
 Quests cannot be shared unless `world.quest.share.max` (default 0, at most 4)
 allows it. Every completed quest pays one item reward to the player who
