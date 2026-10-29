@@ -5,10 +5,78 @@
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
       The slate is clean. The grudges survived. Make your mark.
 &+W======================================================================&n
-&+WUpdated: October 28, 2026&n
+&+WUpdated: October 29, 2026&n
 
-Welcome back! Find clearer paths through the world and answers in the library.
+Welcome back! Quivers are stocked, mana flows in battle and the library grew.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/29/26&n &+L-&n &+YStarter bows, combat mana and fuller help&n
+&+W----------------------------------------------------------------------&n
+
+&+CBows in hand, arrows back in the quiver&n
+&+Y-&n Every Ranger and Rogue of any race now starts with a usable archery
+  kit: &+Ga reed longbow&n, &+ga small quiver&n and &+Y10&n &+gthin arrows&n, alongside
+  their melee weapons and Rogue lockpicks. Empty-inventory starter
+  re-grants include the archery kit too; read &+C'help newbie kit'&n.
+&+Y-&n In both Chaos starter profiles (at creation and via &+C'chaos kit'&n),
+  Rangers and Rogues receive &+gthe quiver of holding&n in their quiver
+  slot plus &+Gan ancient green longbow&n and &+Y10&n &+Garrows of &+Wslaying&n in
+  their bag. Remove and &+C'open quiver'&n before loading arrows into it.
+&+Y-&n Newly granted starter arrows no longer crumble after a missed shot
+  on dry ground; recover them with &+C'gather'&n. Starter bows and quivers
+  still crumble if dropped.
+&+Y-&n &+C'gather'&n now checks your worn quiver's remaining space and ammo type
+  before picking up arrows or bolts. In multi-shot &+C'fire'&n volleys, a
+  shield block on one shot no longer treats the rest of the volley as
+  blocked. Broken arrows no longer garble hit or enchantment messages,
+  and &+C"cast 'enchant arrows'"&n restores arrow names when the mark fades.
+
+&+CMana in battle, sharper kicks and honest sparring&n
+&+Y-&n Psionicists, Mindflayers, Pillithids and other mana users now
+  regenerate mana normally during combat at their standard rate and
+  modifiers. Progress toward the next point carries smoothly into and
+  out of battle; incapacitation and bright-room penalties still apply.
+&+Y-&n Fighting or healing against trainer and guildmaster mobs no longer
+  awards combat experience, and periodic melee experience requires an
+  opponent able to fight back. Asking &+C'ask <teacher> level'&n now lists
+  every epic runestone zone for your next level without cutting off.
+&+Y-&n Knockbacks and tackles (&+C'kick'&n, &+C'rearkick'&n and &+C'tackle'&n) now check
+  overland mountains, cavern walls, closed doors, private-room limits
+  and ocean water before sending a target out of the room, and cleanly
+  separate rider and mount on a knockback.
+&+Y-&n &+C'kick'&n, &+C'roundkick'&n and &+C'rearkick'&n pass harmlessly through ghostly,
+  immaterial foes with clear feedback, applying &+C'roundkick'&n recovery
+  lag to the attacker. Kicks, &+C'bite'&n, Plant &+C'branch'&n and snakebite
+  venom ticks recheck combat rules when a guard steps in.
+&+Y-&n Leaving a storage locker on departure moves you out before dropping
+  unsaved items, and room script triggers handle mid-trigger deaths or
+  teleports safely.
+
+&+CDivine Boons, clients and new help pages&n
+&+Y-&n Cargo boons now draw their origin and destination at random from
+  every valid port pair in the world, replacing the earlier route list.
+  Shared Experience and Epic boon reachability now allows paths that
+  need a boat or flight while still blocking overland mountains and
+  Underdark cavern walls, and hourly Experience selection checks all
+  online player levels. Read &+C'help boon'&n or &+C'help divine boons'&n.
+&+Y-&n Pressing Enter in the web client now advances paged text (&+C'help'&n,
+  &+C'news'&n and lists) one page at a time. Plain text mode
+  (&+C'toggle terminal gen'&n) strips ANSI colors and stays active through
+  character deletion and hardcore death. Typing &+C'map'&n on GMCP shows the
+  text map even when &+C'toggle map'&n is off, and &+C'toggle terminal msp'&n
+  skips unchanged automatic group frames.
+&+Y-&n New help pages cover rested bonuses (&+C'help well-rested'&n), crafting
+  scrolls (&+C'help recipes'&n), coastal travel (&+C'help ferry'&n), training
+  (&+C'help teachers'&n, &+C'help quill'&n) and gear (&+C'help offhand'&n,
+  &+C'help two-handed sword mastery'&n, &+C'help gamblers luck'&n,
+  &+C'help torch'&n, &+C'help medicus'&n, &+C'help compare'&n and &+C'help vaults'&n).
+&+Y-&n Also added: &+C'help alias'&n, &+C'help buffs'&n, &+C'help effects'&n,
+  &+C'help blessings'&n, &+C'help mercenaries'&n, &+C'help reports'&n,
+  &+C'help innates'&n, &+C'help quests'&n, &+C'help namedreport'&n,
+  &+C'help alliancechat'&n, &+C'help switch target'&n, &+C'help new hope'&n,
+  &+C'help skills_sorcerer'&n, &+C'help fraglist'&n, &+C'help bard songs'&n,
+  &+C'help toggle heal'&n, &+C'help reaver spells'&n, &+C'help stone magus'&n and
+  &+C'help conjure greater dracolich'&n.
 
 &+R10/28/26&n &+L-&n &+YQuicker answers, clearer paths&n
 &+W----------------------------------------------------------------------&n

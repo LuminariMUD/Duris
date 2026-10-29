@@ -2132,7 +2132,7 @@ bool persistence_flush_all_character_saves(void)
  */
 bool persistence_save_character_terminal(P_char ch, int type)
 {
-	if (!ch || IS_NPC(ch) || !GET_NAME(ch))
+	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
 		return false;
 
 	const int room = calculate_save_room(ch, type, ch->in_room);
@@ -2164,7 +2164,7 @@ bool persistence_save_character_terminal_database_acknowledged(P_char ch, int ty
 bool persistence_save_all_characters_terminal(int type)
 {
 	for (P_char ch = character_list; ch; ch = ch->next)
-		if (IS_PC(ch) && GET_NAME(ch))
+		if (IS_PC(ch) && GET_PID(ch) > 0 && GET_NAME(ch))
 			persistence_save_character_terminal(ch, type);
 	return true;
 }
@@ -5365,10 +5365,10 @@ void do_toggle(P_char ch, char *arg, int /*cmd*/)
 	{
 		const auto before = PLR_FLAGS(ch);
 		result = PLR_TOG(PLR_WHO);
-		if (result == 1 && GET_LEVEL(ch) < 30)
+		if (result == 1 && GET_LEVEL(ch) < 2)
 		{
 			PLR_FLAGS(ch) = before;
-			send_to_char("Sorry, you must be at least level 30 to toggle who!\r\n",
+			send_to_char("Sorry, you must be at least level 2 to toggle who!\r\n",
 				     send_ch);
 			return;
 		}

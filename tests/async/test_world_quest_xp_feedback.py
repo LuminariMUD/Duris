@@ -330,6 +330,24 @@ int main() {
             }
         }
     }
+    // The double specialization must multiply at its accumulator precision.
+    // Ordinary death dispatch still uses float and keeps its existing rounding.
+    for (bool precise : {false, true}) {
+        reset();
+        player.player.level = 30;
+        player.points.curr_exp = 5000000;
+        new_exp_table[31] = 16777223; // Not exactly representable as float.
+        death_penalty = 0.125; // Exactly representable in either precision.
+        const int loss = precise ? gain_exp_amount<double>(&player, nullptr, 0, EXP_DEATH, false) :
+                                   gain_exp(&player, nullptr, 0, EXP_DEATH);
+        const int expected = precise ? -2097152 : -2097153;
+        assert(loss == expected);
+        assert(player.points.curr_exp == 5000000 + expected);
+        assert(player.player.level == 30);
+        assert(dirty == 1);
+    }
+    new_exp_table[31] = 10000;
+    death_penalty = 0.15;
     // Missing-property fallback and a non-default cutoff use the same policy.
     assert(death_exp_loss_level_threshold() == 30);
     death_cutoff = 25;
