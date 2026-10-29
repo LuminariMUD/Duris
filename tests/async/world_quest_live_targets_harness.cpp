@@ -762,8 +762,19 @@ int main(int argc, char **argv)
 		const auto accepted = pc;
 		// The oversized graph's added branch is no longer part of this world.
 		rooms[5].dir_option[DIR_NORTH] = nullptr;
+		descriptor_data session{};
+		player.desc = &session;
+		pc.quest_map_room = 500002; // Previously published entrance is now stale.
+		session.gmcp_quest_map_sent = 1;
+		assert(world_quest_refresh(&player) == status::valid);
+		assert(pc.quest_map_room == 500001 && !session.gmcp_quest_map_sent &&
+		       dirty_marks == 1);
+		session.gmcp_quest_map_sent = 1;
+		dirty_marks = 0;
 		assert(world_quest_refresh(&player) == status::valid);
 		assert(!memcmp(&pc, &accepted, sizeof(pc)) && dirty_marks == 0);
+		assert(session.gmcp_quest_map_sent == 1); // Unchanged maps keep the cache.
+		player.desc = nullptr;
 		pc.quest_origin_room = 0;
 		pc.quest_map_room = 0;
 		assert(world_quest_refresh(&player) == status::needs_origin);

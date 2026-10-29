@@ -841,6 +841,8 @@ world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 	if (quest.quest_map_room != map)
 	{
 		quest.quest_map_room = map;
+		if (ch->desc)
+			ch->desc->gmcp_quest_map_sent = 0;
 		changed = true;
 	}
 	if (checked.status == status::valid && quest.quest_origin_room <= 0 && origin > 0)
