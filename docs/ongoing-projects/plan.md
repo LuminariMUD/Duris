@@ -1,352 +1,364 @@
-# Issue #428: keep missed starter arrows recoverable
+# Issue #419: dispose of NORENT keys at intentional rent
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-28.
-Issue: [Duris #428](https://github.com/LuminariMUD/Duris/issues/428).
-Owner: `moshehbenavraham`.
-Branch: `branch/issue-428-starter-arrow-decay`, based on `master` at
-`8e95eb5dddfb6c9dddd7765921ded420696369f6`.
+Status: **implementation planned; baseline capture defect independently reproduced**.
+Updated 2026-10-30.
+Issue: [Duris #419](https://github.com/LuminariMUD/Duris/issues/419).
+Branch: [branch/issue-419-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-419-plan).
+Source baseline: `master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-419-plan`.
 
-The prior Conjurer plan is preserved byte-for-byte in
-[plan-issue-215.md](plan-issue-215.md). The earlier telemetry delivery plan is
-[plan-issue-59.md](plan-issue-59.md).
-
-## Selection and availability
-
-Reviewed the complete open issue lists for this project on 2026-10-28:
-16 GitHub issues in `LuminariMUD/Duris`, 16 GitLab issues/work items in the
-`max757/duris` mirror, and no additional open GitLab tasks. Cross-checked four
-open GitHub pull requests and zero open GitLab merge requests. No matching
-arrow-fix PR or existing development branch was found for #428 before pickup.
-The mirror's open records date from October 3-8 and require comparison with
-current GitHub master; an open mirror record alone does not establish unfinished
-implementation.
-
-Choose #428 for confirmed player impact, a directly traced cause, no existing
-assignee or competing PR, a small production change, and concrete executable
-acceptance criteria. It also removes a defect that would otherwise be spread by
-starter-kit enhancement #429, without taking on that enhancement.
-
-Other GitHub candidates were considered:
-
-- #439 is a more serious potential locker-state/lifetime failure, already
-  assigned and investigated. It needs coordinated extraction, idle, descriptor,
-  save/retry and shutdown work. #428 is the more bounded immediately deliverable
-  repair; this does not downgrade #439's importance.
-- #421 is a confirmed pet/group-output bug, but overlaps active terminal/group
-  edits in the original checkout. Do not duplicate that work.
-- #419 needs intentional key disposal coordinated with durable custody and
-  backend recovery. #418 needs a consistent key/relocking policy. #420 explicitly
-  awaits the intended Reflection-versus-summon-capacity rule.
-- #438 is a small help-display defect, currently labelled enhancement; losing
-  usable starter ammunition has greater direct gameplay impact.
-- #429, #436, #437 and #214 are enhancements or gameplay policy/balance work.
-  #97 is a broad readiness checklist. #38, #52, #65 and #185 are future-labelled
-  or broader efforts; #52 also has its own assigned worktree.
-
-All 16 GitLab records were screened: #8, #9, #12, #15, #16, #19, #20, #21,
-#22, #23, #24, #25, #26, #27, #28 and #29. They cover older display/shop fixes,
-connection limits, flight/quantity-purchase features, capacity and lifecycle
-qualification, security/site maintenance, telemetry, trophies and builder work.
-For the bug-labelled alternatives, current source already has the deadlines and
-bounded subprocess diagnostics described as missing in #22; the reporting URL
-and libcurl baseline have advanced since #21; README repository links have
-advanced since #25. Other visible drift includes newer DOMPurify in #9 and
-reserved Studio tags in #28. These observations are not a claim that every
-acceptance criterion on those records is complete. No mirror item was changed
-or closed, and no matching mirror arrow issue was found to link.
+This delivery is the plan and its validation. Implementation, deployment and the
+reported live item's diagnosis are future work. The previous #428 plan and its
+qualification history are preserved byte-for-byte in
+[plan-issue-428.md](plan-issue-428.md).
 
 ## Outcome
 
-A newly granted regular legacy starter missile that misses in an ordinary dry
-room must survive scheduled event processing and remain recoverable through its
-owner's normal `gather` command. Cover both a same-room miss and a miss landing
-in the adjacent room. Preserve arrow identity, condition, quiver count and
-encumbrance across fire/gather cycles.
+After a successful intentional rent save, a genuine temporary key carried,
+equipped or nested on the player must be absent when that player reconnects.
+This includes Golden Hall key 40401 and both freshly created and previously
+owned copies. Its durable custody must record the disposal so an older snapshot
+cannot restore it. MariaDB and flatfile-primary must agree.
 
-Preserve ordinary ammunition, successful-hit wear/scrapping, returning/cursed
-arrows, other transient gear and existing starter-grant publication/ownership.
+Preserve unrelated durable assets, retained/unmaterialized item components,
+ordinary save behavior and existing crash/copyover recovery semantics. Establish
+separately whether this conditional defect caused the reported live observation;
+a synthetic reproduction is not proof about that particular item.
 
-## Non-goals and explicit compatibility decisions
+## Evidence from the current codebase
 
-- Do not implement #429, change class/race kit access, counts, admission masks,
-  Chaos kits, damage, accuracy, terrain rules or quiver capacity.
-- Keep the starter bow's added transient flag and the quiver's prototype
-  transient flag. Deliberately dropping either retains today's dissolution
-  behavior; neither must land on the floor for an ordinary missed shot.
-- Exempt missiles only from the flag added by this grant path. Do not clear a
-  transient flag authored on a prototype or supplied by another legitimate path.
-- Previously granted arrows retain their saved flags. This fix applies to new
-  materializations, including later grants through the same legacy path; it does
-  not repair old instances or resurrect arrows already destroyed. Document that
-  limit. Do not infer origin from VNUM or the `newbie` keyword, rewrite saves,
-  add load-time normalization, or perform a production inventory migration.
-- No global decay exception, firing-time flag rewrite, schema, setting, new
-  service, generic policy helper or grant-coordinator refactor is needed.
-- The owner's follow-up authorizes implementation, local qualification,
-  documentation, commit/push and a PR on this branch. Merge and production
-  deployment remain subsequent work.
+The issue was read, including its empty comment thread, but its older revision
+and reproduction were not used as proof of current behavior.
 
-## Source evidence and files
+- `areas/obj/gold_hal.obj:16` defines key 40401 with type 18 and flags 8388608.
+  `src/core/defines.h:127,218` identifies these as `ITEM_KEY` and
+  `ITEM_NORENT`. The key's eight values are zero. The zone equips it on paladin
+  40400 in room 40401 (`areas/zon/gold_hal.zon:654-655`); the east gate in
+  `areas/wld/gold_hal.wld:18-31` requires 40401.
+- `src/item/objconv.c:220-226` sets NORENT for keys, and
+  `src/world/db.c:3252` calls that conversion during creation. An area edit or
+  special case for vnum 40401 would address neither the shared cause nor custody.
+  Generated production area data has not been inspected in this planning task.
+- Both `inn()` and `undead_inn()` in `src/specs/specs.room.c` submit
+  `RENT_INN`. `do_quit()` and the trusted early exit in `do_camp()` in
+  `src/cmd/actoth.c` also use that intent. The normal camp completion uses
+  `RENT_CAMPED`, and idle departure uses `RENT_LINKDEAD`.
+- `persistence_save_character_terminal()` at `src/cmd/actoth.c:2133` captures
+  and queues a full checkpoint, invokes the locker hook, and returns without
+  waiting for durable completion. Its callers extract the character.
+  Queue failure is reported but does not keep the character in the game.
+  This established asynchronous logout behavior is a constraint on this repair.
+- `src/player/player_snapshot_capture.c:356-369` skips NORENT objects only
+  when their runtime ownership is not active. The player capture calls that
+  traversal with `omit_norent=true` for every intent, even though
+  `player_snapshot.save_intent` already exists. The skip occurs before child
+  traversal. Private recursion, public list/tree capture, player capture and
+  pet capture share machinery, so the repair must not change every caller.
+- A new executable probe linked the production capture, codec and runtime
+  ownership modules with the existing engine stubs. All **36 baseline cases**
+  passed: six intents (INN, CRASH, CRASH2, QUIT, LINKDEAD, CAMPED), two ownership
+  states, and carried/held/nested placement. For every intent, the fresh key
+  disappeared from the encoded/decoded item list and the active key survived
+  with its UID, NORENT flag and topology. A nested bag remained in either case.
+  This independently confirms the reported boundary and also demonstrates
+  that fresh keys are currently omitted from crash checkpoints.
+- `src/player/player_snapshot_repository.c::apply_items()` claims the captured
+  graph, replaces player payload rows, and commits inside the player-save SQL
+  transaction. `src/flatfile/flatfile_player_repository.c` prepares one ownership
+  catalog image and commits it with the player image through the existing
+  authority transaction.
+- `src/item/item_claim.c`, `item_claim_repository.c`, and
+  `src/flatfile/flatfile_item_repository.c` already prevent a destroyed UID
+  from being reclaimed by a stale save. Ordinary snapshot omission does not
+  create that destruction record.
+- `src/world/handler.c:3205-3216` explicitly explains why `extract_obj()`
+  does not retire custody: extraction is also used during shutdown, copyover
+  and bulk teardown. Unheld active player ownership rows can be reaped at boot;
+  that is not immediate, replay-resistant rent disposal.
+- `tests/async/test_player_save_claim.py` protects the general active-custody
+  NORENT safeguard. `test_player_snapshot_capture.py` has a usable production
+  capture/codec harness. The flat-file and MariaDB claim harnesses already
+  exercise destroyed-item exclusion; existing socket journeys supply disposable
+  worlds, accounts, backend setup, restart and copyover helpers.
 
-Inspected the following on the baseline above; line numbers may move:
+No open PR mentioning 419 was returned by the GitHub PR search. Targeted
+searches for “Golden” and “rent” found no open matching issue in the
+`max757/duris` GitLab mirror. #419 is the work item for this branch; this is not
+a claim that every mirror record has been audited.
 
-- `src/account/nanny.c:1127`: `materialize_legacy_newbie_item()` instantiates a
-  detached object. For regular PC grants it sets cost to one and adds
-  `ITEM_TRANSIENT` unless the type is exempt. Missiles are missing from that
-  list. `load_obj_to_newbies()` supplies the existing bounded grant coordinator.
-- `src/account/newbie_kit_plan.c:537` and `:1604`: half-elf and wood-elf Ranger
-  rows include quiver 1116, ten missiles 1117 and bow 1118.
-- `areas/obj/heavens.obj`: missile 1117 has flags 1032 without the transient bit;
-  quiver 1116 has 525320 including it. Bow 1118 has flags 8 before materialization.
-  `src/core/defines.h` defines `ITEM_TRANSIENT` as `BIT_20`.
-- `src/combat/range.c`: `do_fire()` sends a non-returning miss to `obj_to_room()`
-  without hit-related condition loss. `do_gather()` requires the shooter's PID
-  mark and gathers from the room in which the player now stands.
-- `src/world/handler.c::obj_to_room()` schedules `TAG_OBJ_DECAY` at delay zero
-  for transient objects outside lockers; `src/magic/affects.c::event_obj_affect()`
-  dispatches that tag to `Decay()`.
-- `tests/async/test_fired_missile_encumbrance.py` already runs real fire/gather
-  and container-weight functions under ASan/UBSan, but stubs room placement,
-  forces same-room misses and aborts on hit-only services. Its existing green
-  result cannot prove this defect fixed.
-- `tests/async/test_flatfile_newbie_regrant_journey.py` supplies isolated legacy
-  prototypes, real grants and a snapshot inspector; it and
-  `test_flatfile_combat_journey.py` provide reusable socket/build helpers.
+## Policy and non-goals
 
-Expected implementation edits: `src/account/nanny.c`, the existing missile
-regression, and `docs/reference/LEGACY_STARTER_KITS.md`. Extend the existing
-newbie journey for the command/event acceptance where practical; if its regrant
-and observer scenario would become tangled, add one focused starter-arrow
-journey using those existing helpers. Do not create a new harness framework.
-`range.c`, `handler.c`, `affects.c`, kit tables and area prototypes are exercised
-inputs, not planned production edits.
+1. **Disposal trigger:** `RENT_INN` plus a materialized player's item whose
+   actual type is `ITEM_KEY` and whose actual flags include `ITEM_NORENT`.
+   Apply this consistently to every existing RENT_INN producer, including
+   explicit quit and the trusted camp shortcut. Do not reinterpret the numeric
+   intent names: RENT_QUIT is also used for ordinary saves.
+2. **Eligibility:** use type and flag, not vnum, name, break chance, or whether
+   a runtime ownership entry happened to hydrate. All genuine NORENT keys get
+   the rule; a NORENT non-key retains the current durable-asset safeguard.
+   A key without the flag is a preservation control, even though normal key
+   creation adds it.
+3. **Recovery compatibility:** do not dispose on RENT_CRASH, RENT_CRASH2 or
+   copyover, nor add disposal to CAMPED, LINKDEAD, death, pets, lockers, corpses
+   or world-item saves. Preserve their existing behavior. In particular,
+   current ordinary player checkpoints omit fresh NORENT keys and retain
+   active ones; this plan does not silently turn fresh-key crash recovery into
+   a new feature. Test copyover separately because it also serializes live
+   objects. Record any difference between checkpoint recovery and actual
+   copyover instead of claiming one proves the other.
+4. **Atomicity:** committed disposal and the saved inventory must agree.
+   A replay of a pre-rent snapshot cannot revive a retired UID; repeating the
+   same rent save must be safe. Before commit, failures must not leave a
+   half-updated ownership/payload pair. Existing queue failure and terminal
+   writer failure reporting remain in place; this issue does not promise a
+   successful logout is durable when the current save queue itself fails.
+5. **Preservation:** a key inside a saved bag is removed without removing the
+   bag or unrelated contents. Protected retained source rows are not decoded
+   or reclassified as ordinary live items. Do not expand the policy to missing,
+   malformed or unmaterialized assets based on guessed type/flags.
+
+No area flag change, new setting, new service, global extraction hook, per-key
+writer job, production inventory migration, key-break/relocking redesign
+(#418), or general persistence rewrite is needed. Do not change the timing of
+logout, bypass the writer, or run production mutations as part of this work.
 
 ## Ablated implementation sequence
 
-1. **Expose the missing boundary in a focused regression.** Extend the existing
-   fire/gather harness to materialize production starter missiles and execute
-   actual room placement. Exercise the scheduled decay callback for the old
-   transient control rather than only counting a requested tag. Use production
-   functions with controlled RNG/services, not a copied conditional. The starter
-   miss/survival assertion must fail against the unmodified baseline.
-2. **Correct the flag at its source.** Add `ITEM_MISSILE` to the existing
-   materializer exemption list. Retain costs, prototype flags, keywords,
-   spellbooks, NPC behavior and the grant coordinator unchanged. No new helper.
-3. **Prove the real route and preserved behavior.** Exercise a real freshly
-   granted Ranger kit in a disposable non-Chaos server, wear/load the quiver and
-   bow, observe a miss, allow event pulses, and gather. Repeat across an adjacent
-   exit after moving to the landing room. Reuse native deterministic cases for
-   hit wear, zero-condition scrapping, returning shots and controls. Assert UID,
-   condition, counts and weights rather than only the absence of a crumble line.
-4. **Document and qualify.** Update the starter-kit reference with the missile
-   exemption, preserved bow/quiver behavior and old-instance limitation. Record
-   the exact test evidence here, reread the diff, and retain only required work.
+### 1. Add the failing behavioral regressions
 
-Ablation keeps one source condition plus proof of the actual failure path.
-It removes a proposed need for general transient-item policy machinery,
-retroactive migration and the adjacent #429 enhancement: none is required to
-make newly granted arrows recoverable. Executing room placement/event handling
-and a command journey stays in scope because the existing stub misses the bug.
+Extend the existing production capture/codec harness and both save-claim
+harnesses. The decisive failure is a successfully applied RENT_INN save whose
+active key can still load; capture inclusion alone is not the final assertion,
+because the worker needs the candidate's UID to retire it.
 
-## Proof and acceptance
+Use fresh and active key 40401 in carried, HOLD and nested placements. Include
+multiple keys, a durable bag with ordinary siblings, an active NORENT non-key,
+an unflagged key, and an already destroyed key. Also cover a key under a
+normally omitted NORENT container: today's early return must not hide a
+candidate from the disposal operation. Establish the existing behavior of
+non-rent intents before modifying it.
 
-- Fresh half-elf and wood-elf Ranger grants produce the expected missile count,
-  normal cost/keywords and no grant-added transient bit. Prototype-authored
-  transient flags remain intact, including an explicitly flagged missile control.
-- Same-room and adjacent-room misses leave the same arrow UID at full condition
-  after event processing. The owner can gather it; a different PID cannot.
-  Repeated cycles restore quiver count/weight and carried encumbrance exactly.
-- Ordinary missiles behave identically. Returning/cursed missiles stay in the
-  quiver. Controlled successful hits still wear and scrap missiles as before.
-- Another transient object still schedules and completes decay. Bow/quiver
-  dropping still uses the current policy. No general decay code changes.
-- The real grant-to-fire-to-event-to-gather journey passes in isolated state;
-  native harness coverage and socket coverage are reported separately.
+### 2. Carry rent candidates to the existing save transaction
 
-Planned local commands after implementation:
+Keep capture non-mutating. For the main player's RENT_INN item graph, include
+candidate key rows even when they have no runtime ownership entry. Existing
+`save_intent`, UID, type, flags and item topology contain the required data:
+reuse them instead of adding a second disposal queue or a wire-format version.
+
+Preserve ordinary parent indices for saved containers. For an ancestor that
+the existing filter omits, traverse its skipped subtree only to collect
+eligible keys as disposal-only root rows in this RENT_INN request; do not
+promote or save its ordinary contents. These candidate rows must be consumed
+and removed before the persisted player payload is encoded. Keep the current
+depth/object/byte bounds and cycle detection effective for this traversal.
+
+Limit the new capture context to player rent. Public list/tree capture and
+pet/locker/world callers retain their existing contract. Extend the current
+private traversal rather than creating an inventory-policy framework.
+
+### 3. Retire and omit candidates atomically in each backend
+
+Add the narrow rent-key decision to the existing item-claim module so the two
+backends use the same predicate. Pass rent context only for the incoming main
+player item component; never derive it from a previously stored flat-file
+snapshot's old intent during a status-only or pet-only save.
+
+In MariaDB, integrate retirement into the existing claim/apply transaction.
+In flat-file, integrate it into the existing claim catalog after-image and
+commit that image with the filtered player image. Create a destroyed record
+for a fresh candidate UID and retire an existing active candidate. Follow
+existing destruction identity, detached root/parent topology, item/owner
+revision and ownership-audit conventions. Reuse current record locks and
+the flat-file authority lock; do not start a nested independent transaction.
+
+Use the existing written-item filtering/remapping path to remove the
+candidates. Preserve the general claim rules for ordinary assets. A UID that
+is already destroyed remains destroyed, and retrying rent does not increment
+revisions or emit duplicate retirement events unnecessarily. Deliberate rent
+disposal should be identifiable as such, not reported as a duplicate-item
+incident; use existing persistence diagnostics, without introducing telemetry
+infrastructure.
+
+Only loaded, captured player holdings authorize retirement. Do not scan and
+destroy every ownership row for a PID or prototype. Check the existing
+memory-authoritative claim behavior for a stale recorded owner in a focused
+test; do not invent a different ownership conflict policy just for keys.
+Use the object's assigned UID; do not infer identity from its vnum or invent
+another UID. Keep malformed-source handling consistent with the current
+capture and repository boundaries.
+
+Keep ownership, payload and revision changes within the single transaction on
+all error paths. Keep tombstones through restart so ordinary boot reaping and
+an older save cannot make the same UID claimable again. The runtime cache is
+not the durable authority: verify terminal cleanup/relogin replaces or forgets
+the old domain, rather than mutating live objects from the writer thread.
+
+### 4. Prove the command and persistence journeys
+
+Add one focused `tests/async/test_norent_key_rent_journey.py` using existing
+journey helpers and a backend selector. Do not add a general test framework.
+Install the real Golden Hall key prototype into disposable fixtures and use
+real rent commands with synthetic players and an inn. Native cases can
+cover additional RENT_INN producers without duplicating a whole world setup.
+
+For each backend, obtain a fresh key and a demonstrably hydrated owned key,
+then rent and reconnect for carried, equipped and nested placement. To
+establish a previously owned fixture despite today's fresh-key omission,
+seed a valid synthetic owned snapshot through the backend test setup and
+log in through the real loader; confirm UID and active custody before renting.
+Do not mistake assigning a UID for proving ownership hydration.
+
+Wait for the actual terminal writer result before inspecting durable state.
+Check both the saved payload and ownership record, then reconnect and restart
+the disposable server. Verify no key returns and bag/sibling UIDs and contents
+are unchanged. An empty inventory display alone is insufficient.
+
+Exercise crash checkpoints, copyover and their subsequent reconnect paths as
+compatibility controls, with fresh and active copies. Confirm active keys
+survive recovery and that fresh-key behavior matches the independently
+measured baseline for the route tested. Exercise an older queued checkpoint
+followed by rent, an older snapshot replayed after committed rent, duplicate
+rent apply, SQL rollback and flat-file commit/recovery failure. Reuse the
+existing worker and authority-transaction harnesses for deterministic faults;
+do not use arbitrary sleeps as durability evidence.
+
+### 5. Investigate the reported live instance and finish documentation
+
+The issue supplies no reporter character or actual item UID. Locate the
+original report and relevant permitted operational evidence, then correlate
+the precise UID, vnum, instance type/flags, root/parent placement, runtime
+custody, durable owner/state and save intent with the server that served the
+report. Record its running revision/binary identity and evidence timestamps;
+a current checkout revision is not proof of the running executable or of
+what ran when the report occurred.
+
+Use read-only inspection and existing diagnostics. Keep credentials, raw
+player records and operational logs out of Git; record only the minimal
+redacted finding in this plan/issue. No live rent, forced logout, item mutation,
+migration or deployment is authorized by this planning request. If the
+original object is gone or the reporter cannot be identified, state that
+exact-instance attribution remains unverified and specify the missing
+evidence. Do not close that acceptance item by substituting the synthetic
+reproduction.
+
+Update `docs/reference/DATABASE.md` where it explains claims/destruction with
+the exact RENT_INN key exception, transaction behavior and preserved recovery
+semantics. Update this plan with measured results, unresolved live attribution
+and the final source revision. Reread the diff and remove speculative code.
+
+## Files
+
+Expected production edits:
+
+- `src/player/player_snapshot_capture.c`: rent-specific candidate capture.
+- `src/item/item_claim.h`, `src/item/item_claim.c`: the shared narrow predicate
+  and, only if necessary, the existing claim result's disposal accounting.
+- `src/item/item_claim_repository.h`, `src/item/item_claim_repository.c`,
+  `src/player/player_snapshot_repository.c`: SQL claim context and atomic
+  retirement/filtering.
+- `src/flatfile/flatfile_item_repository.h`,
+  `src/flatfile/flatfile_item_repository.c`,
+  `src/flatfile/flatfile_player_repository.c`: the same operation in the
+  existing flat-file claim/authority transaction.
+
+Expected verification edits: the current capture, flat-file claim, MariaDB
+claim, and worker/transaction harnesses where a new assertion is needed, plus
+the one focused dual-backend rent journey. Existing copyover coverage should
+be extended only where its current assertions miss the key's lifetime.
+
+`player_snapshot.h`, the codec, terminal callers, loaders, runtime ownership,
+copyover and `handler.c` are traced dependencies and test inputs, not automatic
+production edit targets. No database migration or snapshot schema change is
+currently required. If a new regression disproves that, revise this plan with
+the specific boundary before adding machinery.
+
+## Proof and completion criteria
+
+- All six fresh/owned by carried/equipped/nested cases pass on both backends
+  through rent, durable apply, reconnect and restart.
+- Removed UIDs have destroyed custody and no loadable player payload. Retrying
+  or replaying an older snapshot never recreates them.
+- Containers, siblings, unrelated durable NORENT assets, unflagged keys and
+  protected retained components keep their existing identity and behavior.
+- Filtered-ancestor nesting cannot hide a key from disposal or expose ordinary
+  omitted contents. Bounds and cycle rejection still work.
+- Active-key crash/copyover recovery remains intact; fresh-key baseline
+  limitations are documented and route-specific tests are reported honestly.
+- Status-only/pet-only checkpoints and non-rent contexts do not dispose keys.
+  Terminal queue ordering and failure behavior remain unchanged.
+- Backend fault tests demonstrate atomic state or successful transaction
+  recovery, with no premature success claim.
+- Live attribution has either direct evidence or a clearly recorded unresolved
+  dependency; issue closure requires resolving or explicitly dispositioning it.
+
+Run the narrow tests as their edits land, followed by the required build:
 
 ```sh
-python3 tests/async/test_fired_missile_encumbrance.py
-python3 tests/async/test_newbie_kit_plan.py
-python3 tests/async/test_newbie_kit_suitability.py
-python3 tests/async/test_newbie_grant_lifecycle.py
-# Run the extended newbie journey or its focused starter-arrow entry point.
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_save_claim.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_player_save_worker.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_authority_transaction.py
+python3 tests/async/test_terminal_save_safety.py
+python3 tests/async/test_terminal_extract_item_retention.py
+python3 tests/async/test_copyover_custody.py
 make -C src
+python3 tests/async/test_norent_key_rent_journey.py --backend flatfile
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Use the existing flat-file journey build helper for its disposable server.
-Confirm development/test configuration before any runtime work. Keep compiled
-artifacts under `bin/`; use synthetic accounts and private state, never existing
-player files or production. A full burn-in, live-world acceptance and CI waiting
-are not completion gates for this focused repair. Report any unavailable check.
+The new journey command/interface is planned, not present yet. Its flat-file
+leg must use the existing isolated build helper and keep artifacts under
+`bin/`; its MariaDB leg uses disposable credentials from the wrapper, never
+the checkout's `.env`. No full burn-in or CI wait is needed for this scoped
+change. Run additional tests only when a touched boundary or failure warrants
+them, and report unavailable validation explicitly.
 
-## Original estimate and planning validation
+## Ablation decisions
 
-Estimated **2-3 hours of my active implementation time**, including the focused
-regressions, isolated command/event journey, required build, documentation and
-reviewable commit. The production edit is small; most time is in proving the
-real decay boundary and preserved hit/returning behavior. Allow up to 4 hours if
-the existing journey fixtures require additional setup. This excludes external
-review, merge scheduling, deployment and any separately requested old-item repair.
+Keep transaction-level disposal, both backend paths, actual reconnect proof
+and live-instance attribution: each maps to an explicit issue requirement.
+Keep bounded capture of candidates hidden by an omitted ancestor because the
+existing early return otherwise defeats nested disposal.
 
-The following records the original planning checkpoint. Implementation results
-are recorded separately below.
+Simplify by using existing snapshot fields, the existing claim/filter paths,
+destroyed custody states, one writer and the flat-file authority transaction.
+A small shared predicate has two actual backend consumers. Reuse current
+journey helpers and existing fault harnesses.
 
-Planning checks on the baseline (2026-10-28):
+Drop the area edit, a golden-key-only exception, removal of the general
+NORENT preservation safeguard, a new schema/DTO, synchronous per-item
+destruction, global extraction changes, a migration and adjacent door policy.
+None is necessary for the scoped lifetime rule. The main complexity that
+remains is atomic custody disposal and proving compatibility.
 
+## Planning validation and implementation estimate
+
+Planning evidence on the baseline:
+
+- The standalone production capture/codec probe passed 36 cases; source and
+  executable are ignored under `bin/tests/issue419-planning/`.
+- Docker is available for the planned disposable MariaDB qualification.
 - `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `python3 tests/async/test_fired_missile_encumbrance.py`: 96 scenarios, 50 cycles
-  each passed under ASan/UBSan; room placement is stubbed, so this is a baseline
-  compatibility result, not proof of missed-arrow survival.
-- `python3 tests/async/test_newbie_kit_suitability.py`: 603 normal
-  race/class/alignment cases and all four existing review regressions passed.
-- `git diff --check`: passed. The prior plan's SHA-256 is unchanged after the move.
-- Only planning documents changed. No production C/C++ change or full server
-  build was required for this planning commit; implementation checks remain open.
+- `git diff --check`: passed. The archived #428 plan has the same SHA-256 as
+  the original: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
+- No production C/C++ file changed, so a full server build and database/socket
+  journeys are implementation validation, not claims made by this plan.
 
-## Implementation and qualification, 2026-10-28
+Estimate for **my active implementation and local qualification: 6-9 hours**:
 
-The production change adds only `ITEM_MISSILE` to the existing grant-added
-transient exemption in `materialize_legacy_newbie_item()`. The starter reference
-now documents missile recovery, unchanged bow/quiver dropping behavior,
-prototype-authored flags and the limitation for already granted arrows.
+- Regression fixtures and final transaction design: 1-1.5 hours.
+- Capture and both backend changes: 2-3 hours.
+- Dual-backend rent/reconnect/restart, recovery and fault qualification:
+  2-3 hours.
+- Required build, documentation and final review: 1-1.5 hours.
 
-The expanded existing native regression first failed against the unmodified
-production code at its post-dispatch survival assertion: the real decay path
-had removed a starter arrow. With the one-condition correction it passes all
-384 starter/ordinary, same/adjacent, returning/non-returning and weight/count
-scenarios, each repeated 50 times (19,200 cycles), plus four transient decay
-controls and eight hit/wear/scrapping/returning cases under ASan/UBSan. Both
-legacy Ranger selections still contain ten arrows. Wrong-PID gathering is
-rejected, and UID/condition/encumbrance checks remain exact. Controlled services
-cover allocation, RNG, event dispatch and unrelated combat/ownership I/O; the
-materializer, commands, room placement, decay callback and decay body are real.
-
-The separate `test_starter_arrow_journey.py` reuses the existing minimal-world,
-legacy-object installer, socket client and flat-file build helpers. Keeping it
-separate avoids adding archery setup to the unrelated regrant/latency journey.
-It creates fresh Half-Elf and Wood-Elf Rangers and a second synthetic player as
-the target, then drives real grant, wield/put/wear, fire, event pulses, travel,
-look, gather and save commands. Historical races/classes are explicitly enabled
-only in the fixture. The minimal-world fallback room for Wood Elf has a fixture
-exit to the range. This makes no change to normal character availability or
-hometown rules. Debugging confirmed that sentinel mobs intentionally gain cover
-and are inappropriate targets for this journey; no targeting change was needed.
-
-Both real same-room and adjacent-room cases pass for both Rangers. Half-Elf
-retains all ten original UIDs, full condition, quiver count 10 and weight 11.
-Wood-Elf first lands one ordinary hit, consuming one arrow normally; its nine
-remaining original UIDs then survive both observed misses and gathering, with
-full condition, quiver count 9 and weight 10. The assertion compares each
-successful miss trial's exact before/after UID sets; it does not infer survival
-from missing text. Actual pulses run before the landing-room inspection.
-
-Completed commands and results:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: passed, including the
-  expanded ASan/UBSan cases described above.
-- `python3 tests/async/test_newbie_kit_plan.py`: passed 36,360 selections,
-  471 legacy table cells and pure preparation.
-- `python3 tests/async/test_newbie_kit_suitability.py`: passed 603 normal
-  race/class/alignment cases and four existing review regressions.
-- `python3 tests/async/test_newbie_grant_lifecycle.py`: passed under ASan/UBSan.
-- `make -C src -j6`: full MariaDB development build passed with warnings as
-  errors. The existing journey build helper also built the flat-file server.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_issue428_flatfile`:
-  passed both races and both room cases. Omitting the binary argument uses the
-  existing build helper; no pre-existing local binary is required.
-- Python syntax checks, `./scripts/format.sh --check`, all 14 documentation
-  contracts and `git diff --check` passed.
-
-The ignored evidence file is `bin/qualification/issue428/gameplay-report.json`.
-Its qualified flat-file binary SHA-256 is
-`48ebded67a20bc7102d82b629d70ea60b4af22355d7accf0e9ee9c79c5bce9b3`.
-Runtime evidence covers disposable minimal-world flat-file sessions; native
-controls supply deterministic hits, returns, ownership marks and decay checks.
-No MariaDB socket journey, full-world acceptance, migration or production
-operation is claimed. Previously granted arrows keep their saved flags.
-
-Final ablation retains one production condition, an extension of the existing
-native regression and one focused socket journey using current helpers. No
-new production abstraction, flag rewrite at firing time, global decay exception,
-kit expansion, persistence change or migration was added. Task-created debugger
-instrumentation and build scripts were removed; binaries and reports remain
-ignored under `bin/`. The original checkout's unrelated work was preserved.
-
-The initial commit hook selected GCC 16's standard-library headers through the
-host's default Clang search path and failed to parse them (`__builtin_popcountg`).
-The unchanged staged C++ check passes with Clang 18 explicitly selecting the
-installed GCC 13 headers via `CLANG_TIDY` and `--gcc-install-dir`. Commit hooks
-remain enabled; no source suppression or hook bypass is used.
-
-## PR #445 review follow-up, 2026-10-28
-
-The owner's review follow-up explicitly includes all seven findings, including
-the six existing archery defects. This expands the original production scope to
-`src/combat/range.c`; the original kit access, counts, flags and old-instance
-compatibility decisions still apply. The clean branch was rebased from
-`8e95eb5dd` onto current master `b7498fb6b` without conflicts. The unrelated pager
-checkout and character-mechanics worktree were preserved.
-
-All seven findings were verified against the reviewed source and executable
-controls. The fixes reuse existing paths:
-
-1. Hold a detached broken missile through damage messages and enchantments,
-   then scrap it. If the victim died and cannot supply a room for `MakeScrap`,
-   extract the broken missile before leaving the shot. Surviving missiles retain
-   their existing inventory placement. The retirement decision is captured before
-   damage, avoiding a later read of an object that death handling may retire.
-2. Use the existing owning keyword/short-description setters for both marking
-   and restoration, so replacing custom strings frees them and never adopts a
-   borrowed prototype pointer with owning flags.
-3. Restore directly from `obj_index` strings instead of materializing a live
-   object to obtain text. No new template cache or string-ownership layer is needed.
-4. Stop gathering at the existing capacity before detaching another arrow.
-5. Skip incompatible ammunition before moving it from either floor or corpse.
-6. Reset block state and message selection inside the shot loop.
-7. Wait for a command-specific response before its following prompt. Preserve
-   unsolicited output in the full transcript, outside the returned command result.
-
-The existing native harness now executes production mark creation/expiry, string
-setters and `free_obj`. Controlled pool release deletes heap objects, so ASan sees
-actual retirement rather than a counter-only scrap operation. It passes 384
-fire/gather scenarios repeated 50 times, four decay controls, ten hit/return/wear
-and retirement cases (including melee and enchantment death), 100 mark-expiry
-cycles, room/corpse gather capacity/family controls, and same/adjacent-room
-blocked-then-unblocked volleys. Allocation, event dispatch, combat effects and
-unrelated services remain controlled boundaries.
-
-Temporary in-memory negative controls substituted the reviewed implementations,
-without changing tracked source. Each of the seven corresponding checks rejected
-the old behavior: actual retirement exposed a sanitizer failure; borrowed-string
-ownership, expiry allocation, full gathering, ammunition-family selection, volley
-state and stale-prompt acceptance failed their targeted controls. Evidence is
-ignored under `bin/qualification/issue428/`; temporary control code was removed.
-
-Completed local validation:
-
-- `python3 tests/async/test_fired_missile_encumbrance.py`: all expanded ASan/UBSan
-  controls passed, including real owned-string teardown and heap retirement.
-- `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile -j6`: passed
-  the existing warnings-as-errors profiles.
-- `python3 tests/async/test_starter_arrow_journey.py bin/server/dms_new`: passed
-  buffered/arriving-prompt controls and both real Ranger journeys in both room
-  arrangements. Half-Elf consumed two successful hits before its observed miss,
-  then retained eight original missiles at quiver count 8/weight 9. Wood-Elf
-  retained ten at count 10/weight 11. Miss trials preserve exact UIDs/condition.
-  The rebuilt flat-file binary SHA-256 is
-  `d999684ac6f9a6e5501a29a74a1dff1ee5afd6b3b0798c9fa37531ce9c89fa38`.
-- Python syntax, all 14 documentation contracts, changed-line formatting,
-  clang-tidy with the established Clang 18/GCC 13 header selection, and
-  `git diff --check`: passed.
-
-The original kit-selection, suitability and grant-lifecycle evidence above is
-reused because those implementations and inputs did not change. Runtime proof
-remains disposable minimal-world flat-file state; production and full-world
-acceptance remain release work. No migration, dependency, setting, parallel
-implementation, extra production helper or CI wait is required. Keep the review
-repair as a focused follow-up commit; this standalone PR needs no stacking or
-release tag and can be squashed when merged.
+Allow **up to 12 hours** if full-world/copyover fixtures or backend fault
+coverage need repair. This is an estimate, not a commitment; it excludes
+external review, deployment and waiting for reporter/live-instance access.
+Once that evidence is available, read-only attribution should take about
+30-60 minutes, but cannot be promised without the UID or reporter context.
