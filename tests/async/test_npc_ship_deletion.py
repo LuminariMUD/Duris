@@ -31,6 +31,12 @@ FUNCTIONS = "\n\n".join(
             "void ship_activity()", "void flush_pending_ship_saves(void)", "void dock_ship(P_ship ship, int to_room)",
         )),
         ("ship_auto.c", ("void clear_autopilot(P_ship ship)",)),
+        ("ship_control.c", ("int do_lock_target(P_char ch, P_ship ship, char *arg)",)),
+        ("ship_combat.c", ("int volley_hit_percent(int hit_chance)",
+                           "void volley_hit_event(P_char /*ch*/",
+                           "int check_ram_arc(float heading, float bearing, float size)",
+                           "int try_ram_ship(P_ship ship, P_ship target, float tbearing)",
+                           "int fire_weapon(P_ship ship, int w_num, int t_contact, int hit_chance, P_char ch)")),
         ("ship_npc.c", ("bool try_unload_npc_ship(P_ship ship)",)),
         ("ship_npc_ai.c", ("NPCShipAI::NPCShipAI(P_ship s, P_char ch)",
                            "void NPCShipAI::escort_attacked_by(P_ship attacker)",)),
@@ -88,6 +94,8 @@ void check_contraband(P_ship ship,int) {++customs_calls;if(ship==blocked_ship)SE
 
 static room_data rooms[32] = {};
 P_room world = rooms;
+static zone_data map_zone[1]{};
+zone_data *zone_table = map_zone;
 static int contact_x, contact_y, contact_bonus;
 static bool same_map = true;
 bool calculate_map_coords(int, int, int &x, int &y) {
@@ -99,9 +107,9 @@ P_index obj_index = objects;
 ShipObjHash shipObjHash;
 P_ship cyrics_revenge = nullptr;
 int davy_jones_locker_rnum = 1;
-const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._mxsail = 100, ._speedgain = 1 }};
+const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._hull = 100, ._mxsail = 100, ._mxspeed = 20, ._speedgain = 1 }};
 const ShipArcProperties ship_arc_properties[MAXSHIPCLASS] = {};
-const WeaponData weapon_data[MAXWEAPON] = {};
+const WeaponData weapon_data[MAXWEAPON] = {{ .max_range = 50, .reload_time = 2, .volley_time = 3 }};
 static int persistence_calls, freed_ships, extracted_objects, extracted_crew, invariant_logs;
 static bool persistence_ok = false, ambiguous_delete=false, deletion_recovered=false;
 static std::set<void *> live_ships;
@@ -165,7 +173,8 @@ flatfile_ship_result flatfile_ship_remove(const std::string &, uint32_t, const s
 
 // Stable deterministic mechanics: production heartbeat changes the timers,
 // sail repair, position and reload state itself.
-int number(int low, int) { return low; }
+static bool miss_rams;
+int number(int low, int high) { return miss_rams ? high : low; }
 float get_property(const char *, double fallback) { return fallback; }
 void act_to_all_in_ship(P_ship, const char *) {}
 void act_to_all_in_ship_f(P_ship, const char *, ...) {}
@@ -214,11 +223,28 @@ void everyone_look_out_ship(P_ship) { abort(); }
 void stop_autopilot(P_ship) { abort(); }
 void autopilot_activity(P_ship) {}
 void NPCShipAI::activity() {}
-int getcontacts(P_ship, bool) { abort(); }
-int try_ram_ship(P_ship, P_ship, float) { abort(); }
+static int contact_count;
+int getcontacts(P_ship, bool) { return contact_count; }
+bool isname(const char *word, const char *names) { return !strcasecmp(word, names); }
+void attacked_by(P_ship, P_ship, int) {}
+void set_pvp_on_passengers(P_ship) {}
+int get_arc(float, float) { return SIDE_FORE; }
+int BOUNDED(int lo, int value, int hi) { return value < lo ? lo : value > hi ? hi : value; }
+bool has_eq_ram(const ShipData *) { return false; }
+int eq_ram_damage(const ShipData *) { return 0; }
+int damage_hull(P_ship, P_ship, int, int, int) { return TRUE; }
+int damage_sail(P_ship, P_ship, int) { return TRUE; }
+void stun_all_in_ship(P_ship, int) {}
+static VolleyData scheduled_volley;
+nevent_schedule_result add_event(event_func callback, int, P_char, P_char, P_obj, int,
+                                  const void *data, int size) {
+    assert(callback == volley_hit_event && size == sizeof(scheduled_volley));
+    memcpy(&scheduled_volley, data, size);
+    return {nevent_schedule_status::scheduled, {}};
+}
 void land_ship(P_ship) { abort(); }
 void crash_land(P_ship) { abort(); }
-int dice(int, int) { abort(); }
+int dice(int, int) { return 0; }
 bool has_eq_diplomat(const ShipData *) { return false; }
 int get_property(const char *, int fallback) { return fallback; }
 P_ship try_load_pirate_ship(P_ship) { return nullptr; }
@@ -322,8 +348,14 @@ static void check_target_recovery() {
     }
     target->flags = LOADED; same_map = true;
     // With no captain aboard, a nearby idle lock must eventually stand down.
-    ship->timer[T_TARGET_IDLE] = 300;
-    ship->timer[T_BSTATION] = BSTATION;
+    char_data captain{};
+    captain.player.name = const_cast<char *>("Captain");
+    map_zone[0].flags = ZONE_MAP;
+    contact_count = 1;
+    ship->target = nullptr;
+    assert(do_lock_target(&captain, ship, target->id));
+    assert(ship->target == target && ship->timer[T_TARGET_IDLE] == 300 &&
+           ship->timer[T_BSTATION] == BSTATION);
     for (int tick = 0; tick < 299; ++tick) ship_activity();
     assert(ship->target == target && ship->timer[T_BSTATION] == BSTATION);
     ship_activity();
@@ -332,13 +364,17 @@ static void check_target_recovery() {
     assert(ship->timer[T_BSTATION] == 1);
     ship_activity();
     assert(ship->timer[T_BSTATION] == 0); // Existing summon gate is now clear.
-    ship->target = target; ship->timer[T_TARGET_IDLE] = 300;
+    assert(do_lock_target(&captain, ship, target->id));
     ship_activity();
     assert(ship->target == target && ship->timer[T_BSTATION] == BSTATION);
+    assert(do_lock_target(&captain, ship, const_cast<char *>("off")));
+    assert(!ship->target && ship->timer[T_BSTATION] == BSTATION);
+    assert(do_lock_target(&captain, ship, target->id));
     contact_x = 38;
     ship_activity();
     assert(!ship->target && ship->timer[T_BSTATION] == BSTATION - 1);
     contact_x = 0;
+    contact_count = 0;
     // NPC acquisition belongs to its AI, not a player's inactivity escape.
     P_ship escort = make_ship(NPCSHIP, 4);
     escort->flags = LOADED;
@@ -349,6 +385,35 @@ static void check_target_recovery() {
     assert(escort->target == target && escort->timer[T_BSTATION] == BSTATION);
     remove_runtime(escort); remove_runtime(ship); remove_runtime(target);
     puts("PASS target contact boundaries, idle recovery, cooldown and NPC acquisition");
+}
+
+static void check_target_combat() {
+    P_ship ship = make_ship(0, 2), target = make_ship(0, 3);
+    ship->flags = target->flags = LOADED;
+    ship->x = ship->y = target->x = target->y = 50;
+    world[1].number = 500001;
+    ship->target = target;
+    ship->slot[0].type = SLOT_WEAPON;
+    ship->slot[0].val1 = 5;
+    contacts[0].ship = target; contacts[0].range = 5;
+    ship->timer[T_TARGET_IDLE] = 1;
+    assert(fire_weapon(ship, 0, 0, 50, nullptr));
+    assert(ship->timer[T_TARGET_IDLE] == 300 && ship->timer[T_BSTATION] == BSTATION);
+    ship_activity();
+    assert(ship->target == target && ship->timer[T_TARGET_IDLE] == 299);
+    target->timer[T_TARGET_IDLE] = target->timer[T_BSTATION] = 1;
+    volley_hit_event(nullptr, nullptr, nullptr, &scheduled_volley);
+    assert(target->timer[T_TARGET_IDLE] == 300 && target->timer[T_BSTATION] == BSTATION);
+    // Even an unsuccessful real ram attempt is hostile activity by both ships.
+    ship->speed = BOARDING_SPEED + 3;
+    ship->timer[T_TARGET_IDLE] = ship->timer[T_BSTATION] = 1;
+    target->timer[T_TARGET_IDLE] = target->timer[T_BSTATION] = 1;
+    miss_rams = true;
+    assert(try_ram_ship(ship, target, 0));
+    assert(ship->timer[T_TARGET_IDLE] == 300 && ship->timer[T_BSTATION] == BSTATION);
+    assert(target->timer[T_TARGET_IDLE] == 300 && target->timer[T_BSTATION] == BSTATION);
+    remove_runtime(ship); remove_runtime(target);
+    puts("PASS firing, incoming volley and ram attempts renew combat protection");
 }
 
 static void check_sinking(bool passenger) {
@@ -586,6 +651,7 @@ int main(int argc, char **argv) {
     assert(argc == 2);
     objects[1].virtual_number = VOBJ_ALL_SHIPS;
     if (!strcmp(argv[1],"target-recovery")) check_target_recovery();
+    else if (!strcmp(argv[1],"target-combat")) check_target_combat();
     else if (!strcmp(argv[1],"busy-delete")) busy_delete();
     else if (!strcmp(argv[1],"busy-effects")) busy_effects();
     else if (!strcmp(argv[1], "sinking")) check_sinking(false);
@@ -618,7 +684,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-deletion-", dir=build_root) as
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("target-recovery", "busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
+        for case in ("target-recovery", "target-combat", "busy-delete","busy-effects","sinking", "passenger", "purge", "unload", "persistence", "ownerless",
                      "occupied", "references", "unloaded", "ambiguous"):
             if case=="ambiguous" and backend=="mysql":
                 continue

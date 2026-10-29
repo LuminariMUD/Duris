@@ -1134,8 +1134,7 @@ bool ship_target_in_contact(P_ship ship)
 {
 	if (ship->target == NULL)
 		return false;
-	if (!SHIP_LOADED(ship->target) || SHIP_SINKING(ship->target) ||
-	    SHIP_DOCKED(ship->target))
+	if (!SHIP_LOADED(ship->target) || SHIP_SINKING(ship->target) || SHIP_DOCKED(ship->target))
 		return false;
 
 	int x, y;
@@ -1144,8 +1143,7 @@ bool ship_target_in_contact(P_ship ship)
 
 	x = 50 + x;
 	y = 50 - y;
-	return ship_range(ship, ship->target, x, y) <=
-	       35 + ship->crew.get_contact_range_mod();
+	return ship_range(ship, ship->target, x, y) <= 35 + ship->crew.get_contact_range_mod();
 }
 
 int getcontacts(P_ship ship, bool limit_range)

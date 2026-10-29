@@ -2529,7 +2529,8 @@ void ship_activity()
 			     (!IS_NPC_SHIP(ship) && ship->timer[T_TARGET_IDLE] == 0)))
 			{
 				ship->target = NULL;
-				act_to_all_in_ship(ship, "Target lost. Crew preparing to stand down.\r\n");
+				act_to_all_in_ship(
+					ship, "Target lost. Crew preparing to stand down.\r\n");
 			}
 			if (ship->target != NULL)
 				ship->timer[T_BSTATION] = BSTATION;

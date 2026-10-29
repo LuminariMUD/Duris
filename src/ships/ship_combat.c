@@ -1392,6 +1392,8 @@ int try_ram_ship(P_ship ship, P_ship target, float tbearing)
 
 	act_to_all_in_ship_f(ship, "You attempt to ram &+W[%s]&N: %s! Chance to hit: &+W%d%%&N",
 			     SHIP_ID(target), SHIP_NAME(target), hit_chance);
+	ship->timer[T_BSTATION] = BSTATION;
+	ship->timer[T_TARGET_IDLE] = 300;
 	if (target->timer[T_BSTATION] == 0)
 		act_to_all_in_ship(target,
 				   "&=LRYour crew scrambles madly to battlestations!&N\r\n");
