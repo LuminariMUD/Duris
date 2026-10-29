@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute quest awards and kill-bonus XP with production function bodies."""
+"""Execute quest awards, combat eligibility and kill-bonus XP with production bodies."""
 
 from pathlib import Path
 import os
@@ -718,6 +718,73 @@ int main() {
         slot.expires_at = time(nullptr) + 7200;
         slot.zones[0] = 18;
     };
+    // Trainer encounters cannot grant any combat XP, with or without Divine
+    // bonuses. Ordinary NPCs still award each source through the same dispatcher.
+    group_list trainer_group{}, reward_group{};
+    trainer_group.ch = &other;
+    trainer_group.next = &reward_group;
+    reward_group.ch = &player;
+    for (auto trainer_flag : {0u, ACT_TEACHER, ACT_SPEC_TEACHER}) {
+        for (bool enabled : {false, true}) {
+            for (int kind : {EXP_DAMAGE, EXP_TANKING, EXP_MELEE, EXP_KILL, EXP_KILL_BONUS}) {
+                reset_divine();
+                divine_enabled = enabled;
+                mob.specials.act = ACT_ISNPC | trainer_flag;
+                player.group = &trainer_group;
+                other.in_room = 0;
+                boon_events.clear();
+                const int xp = gain_exp_combat_share(&player, &mob, 100.5, 100, kind);
+                assert(trainer_flag ? xp == 0 : xp > 0);
+                assert(player.points.curr_exp == xp);
+                if (trainer_flag) {
+                    assert(dirty == 0);
+                    assert(output.empty());
+                    assert(boon_events.empty());
+                }
+            }
+            for (P_char patient : {&player, &other}) {
+                reset_divine();
+                divine_enabled = enabled;
+                in_test_group = true;
+                patient->specials.fighting = &mob;
+                const int xp = gain_exp(&player, patient, 40, EXP_HEALING);
+                assert(trainer_flag ? xp == 0 : xp > 0);
+                assert(player.points.curr_exp == xp);
+                patient->specials.fighting = nullptr;
+            }
+            // Healing a trainer also cannot yield XP from its ordinary opponent.
+            reset_divine();
+            divine_enabled = enabled;
+            in_test_group = true;
+            mob.specials.fighting = &other;
+            const int healing = gain_exp(&player, &mob, 40, EXP_HEALING);
+            assert(trainer_flag ? healing == 0 : healing > 0);
+
+            // A rejected damage award must not reach its recursive tank share.
+            reset_divine();
+            divine_enabled = enabled;
+            in_test_group = true;
+            other.points.curr_exp = 0;
+            other.in_room = 0;
+            other.player.race = RACE_HUMAN;
+            other.player.racewar = RACEWAR_GOOD;
+            other.group = &trainer_group;
+            mob.specials.fighting = &other;
+            gain_exp(&player, &mob, 100, EXP_DAMAGE);
+            assert(trainer_flag ? other.points.curr_exp == 0 : other.points.curr_exp > 0);
+            other.group = nullptr;
+
+            // Noncombat rewards and overlapping player flags are unaffected.
+            reset_divine();
+            divine_enabled = enabled;
+            assert(gain_exp(&player, &mob, 100, EXP_QUEST) == 100);
+            other.specials.act = trainer_flag;
+            player.specials.fighting = &other;
+            assert(gain_exp(&player, &player, 40, EXP_HEALING) > 0);
+            other.specials.act = 0;
+        }
+    }
+    mob.specials.act = ACT_ISNPC;
     for (int kind : {EXP_DAMAGE, EXP_KILL, EXP_KILL_BONUS}) {
         reset_divine();
         assert(gain_exp(&player, &mob, 100, kind) == 200);
@@ -1068,7 +1135,7 @@ def main() -> None:
                 str(source("ansi.c")), str(source("unicode.c")), "-lcrypto", str(HARNESS_STUBS), "-o", str(binary),
             ], cwd=ROOT, check=True)
             subprocess.run([str(binary)], check=True, timeout=10)
-    print("quest XP and solo/group kill-bonus boon credit passed (mariadb + flatfile)")
+    print("quest XP, trainer combat eligibility and kill-bonus credit passed (mariadb + flatfile)")
 
 
 if __name__ == "__main__":

@@ -9403,9 +9403,15 @@ void perform_violence(void)
 			}
 		}
 
-		// If someone's hitting on opponent (ch is) then give opponent melee exp.
-		if (melee_exp_pulse && opponent && !IS_IMMOBILE(ch) && (opponent != ch) &&
-		    IS_PC(opponent) && (opponent->in_room == ch->in_room))
+		if (!FightingCheck(ch, opponent, "perform_violence"))
+			continue;
+
+		// Keep periodic XP independent of attack timers, but require an attacker
+		// that can act. The attack-round checks below also handle their feedback.
+		if (melee_exp_pulse && !IS_IMMOBILE(ch) && !HOLD_CANT_ATTACK(ch) &&
+		    !item_action_active(ch) &&
+		    (!IS_AFFECTED2(ch, AFF2_CASTING) || affected_by_spell(ch, SPELL_BATTLEMAGE)) &&
+		    !IS_AFFECTED5(ch, AFF5_NOT_OFFENSIVE) && opponent != ch && IS_PC(opponent))
 		{
 			// Make sure we're gaining a positive amount.
 			if (GET_LEVEL(ch) * 2 > GET_LEVEL(opponent))
@@ -9436,9 +9442,6 @@ void perform_violence(void)
 			startPvP(ch, GET_RACEWAR(ch) != GET_RACEWAR(opponent));
 			startPvP(opponent, GET_RACEWAR(ch) != GET_RACEWAR(opponent));
 		}
-
-		if (!FightingCheck(ch, opponent, "perform_violence"))
-			continue;
 
 		/* misfire */
 		if (IS_PC(ch))
