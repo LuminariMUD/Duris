@@ -81,6 +81,8 @@
 #define T_RAM_WEAPONS 6
 #define T_MAINTENANCE 7
 #define T_MINDBLAST 8
+// Time remaining until an idle target lock is released (seconds).
+#define T_TARGET_IDLE 9
 #define MAXTIMERS 10
 
 #define MAXSHIPS 2000
