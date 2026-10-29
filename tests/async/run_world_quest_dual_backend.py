@@ -28,6 +28,7 @@ from quest_character_flow import create_quest_character
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BARTENDER_ROOM = 16633
+QUEST_LEVEL = 11
 # The migrations verify their schema on MariaDB 10.11 and MySQL 8.0 only.
 DB_IMAGE = os.environ.get("DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11")
 REQUESTED_BACKEND = os.environ.get("DURIS_WORLD_QUEST_BACKEND", "both")
@@ -283,9 +284,22 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         environment = runtime_environment(
             backend, state_root, player_journal, critical_journal, plain_port,
             tls_port, websocket_port, database_environment)
+        # Chaos creation starts at 56. Set only the disposable actor's level
+        # before its first command; route policy below 30 ignores travel gear.
+        # Leave production commands and content unchanged.
+        pid_path = run_root / "inferior.pid"
+        gdb_path = run_root / "quest.gdb"
+        gdb_path.write_text(
+            "set pagination off\nset confirm off\nset startup-with-shell off\n"
+            "handle SIGTERM nostop noprint pass\ntbreak main\ncommands\nsilent\n"
+            f"python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))\n"
+            "continue\nend\ntbreak do_chaos\ncommands\nsilent\n"
+            f"set ch->player.level = {QUEST_LEVEL}\ncontinue\nend\nrun\n"
+        )
         with output_path.open("w") as output:
             process = subprocess.Popen(
-                [str(binary), "-d", str(run_root), str(plain_port)],
+                ["gdb", "--batch", "--return-child-result", "-x", str(gdb_path),
+                 "--args", str(binary), "-d", str(run_root), str(plain_port)],
                 cwd=run_root, env=environment, stdout=output, stderr=subprocess.STDOUT,
                 text=True,
             )
@@ -293,7 +307,7 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         try:
             boot_output = wait_for_boot(process, output_path)
             binary_path = binary.resolve()
-            running_path = pathlib.Path(os.readlink(f"/proc/{process.pid}/exe")).resolve()
+            running_path = pathlib.Path(os.readlink(f"/proc/{int(pid_path.read_text())}/exe")).resolve()
             require(running_path == binary_path,
                     f"running executable mismatch: expected {binary_path}, got {running_path}")
             client = MudClient(plain_port)
@@ -339,7 +353,7 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             client.expect("You no longer have a task.", timeout=30)
             client.close()
             client = None
-            process.send_signal(signal.SIGTERM)
+            os.kill(int(pid_path.read_text()), signal.SIGTERM)
             process.wait(timeout=30)
             require(process.returncode == 0,
                     f"{backend} bartender server did not stop cleanly: {output_path.read_text(errors='replace')[-12000:]}")
@@ -352,7 +366,8 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
                 "binary_path": str(binary_path),
                 "running_executable": str(running_path),
                 "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
-                "pid": process.pid,
+                "pid": int(pid_path.read_text()),
+                "fixture_level": QUEST_LEVEL,
                 "quest_first_result": first_result,
                 "quest_second_result": second_result,
                 "catalog_ready_count": final_output.count("World quest catalog ready:"),
@@ -372,7 +387,10 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             if client is not None:
                 client.close()
             if process.poll() is None:
-                process.terminate()
+                if pid_path.exists():
+                    os.kill(int(pid_path.read_text()), signal.SIGTERM)
+                else:
+                    process.terminate()
                 try:
                     process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
@@ -397,7 +415,7 @@ def verify_mariadb_player_state(environment: dict[str, str]) -> dict[str, int | 
         "SELECT name, account_name, quest_active, quest_mob_vnum, quest_type, "
         "quest_started, quest_zone_number, quest_giver, quest_level, quest_receiver, "
         "quest_shares_left, quest_kill_how_many, quest_kill_original, quest_map_room, "
-        "quest_map_bought FROM player_data "
+        "quest_map_bought, quest_origin_room, quest_replacement_due FROM player_data "
         "WHERE name='Taverek' AND account_name='Journeyacct' LIMIT 1;"
     )
     result = subprocess.run([
@@ -409,7 +427,7 @@ def verify_mariadb_player_state(environment: dict[str, str]) -> dict[str, int | 
     require(result.returncode == 0,
             "could not read MariaDB player quest state:\n" + result.stderr[-4000:])
     fields = result.stdout.strip().split("\t")
-    require(len(fields) == 15, "unexpected MariaDB player quest-state result")
+    require(len(fields) == 17, "unexpected MariaDB player quest-state result")
     quest_active = int(fields[2])
     quest_mob_vnum = int(fields[3])
     quest_started = int(fields[5])
@@ -432,13 +450,19 @@ def verify_mariadb_player_state(environment: dict[str, str]) -> dict[str, int | 
         "quest_kill_original": int(fields[12]),
         "quest_map_room": int(fields[13]),
         "quest_map_bought": int(fields[14]),
+        "quest_origin_room": int(fields[15]),
+        "quest_replacement_due": int(fields[16]),
     }
     detail = "raw quest fields=" + repr(fields[2:])
     require(quest_active == 1, "MariaDB player row did not persist an active quest; " + detail)
     require(quest_giver == 16553, "MariaDB player row has the wrong bartender giver; " + detail)
     require(quest_mob_vnum > 0, "MariaDB player row has no quest target; " + detail)
     require(quest_started > 0, "MariaDB player row has no quest start time; " + detail)
-    require(quest_level == 56, "MariaDB player row has the wrong accepted quest level; " + detail)
+    require(quest_level == QUEST_LEVEL, "MariaDB player row has the wrong accepted quest level; " + detail)
+    require(int(fields[15]) == BARTENDER_ROOM, "MariaDB row lost the accepted origin; " + detail)
+    require(int(fields[16]) == 0, "new quest unexpectedly needs replacement; " + detail)
+    require(int(fields[13]) > 0, "new quest lost its verified entrance; " + detail)
+    require(int(fields[14]) == 0, "new quest received a paid map for free; " + detail)
     require(quest_zone_number not in {0, 292, 536},
             "MariaDB player row persisted an explicitly denied quest zone")
     return state

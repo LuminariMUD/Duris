@@ -184,7 +184,7 @@ def test_every_dial_reaches_its_hook() -> None:
          "seconds = difficulty_scale_int(seconds, "
          "difficulty_multiplier(DIFFICULTY_ARTIFACT_FEEDING));"),
         ("world_quest.c", "bool createQuestForGiverVnum(",
-         "MIN(difficulty_scale_world_quest_kills(number(7, 9)), mob_index[rnum].number - 1);"),
+         "MIN(difficulty_scale_world_quest_kills(number(7, 9)), target.usable_count - 1);"),
     ]
     for name, signature, expression in hooks:
         assert _flat(expression) in _flat(_body(name, signature)), (name, expression)

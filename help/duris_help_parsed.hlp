@@ -20538,8 +20538,12 @@ of them you must kill, and what zone they reside in. The reward for such a quest
 is given to you upon returning to the bartender who sold it.  Likewise, a go ask
 assignment provides the name of the mob, what they must be asked, and where they
 reside, but for this quest the reward is given there and it contains some money.
-As you progress in level the quests will become more difficult and farther away.
-Potioned players must traverse the planes and sail the seas to reach their goal.
+From levels 11 through 29, new bartender tasks stay in the local region and
+require ordinary travel without keys, fares or special travel equipment.
+From level 30 onward, tasks may lead farther away using travel abilities you
+currently have. A task names a suitable target that is available when assigned;
+it does not promise a safe fight. If no suitable task is available, the
+bartender returns your purchase fee. Maps mark a verified route into the zone.
 Whichever quest you get will reward you with an item from the zone randomly, and
 some noticable experience. The quest may be shared only by the one who purchased
 it. That person may share it with four others, upon consent, who aren't too many

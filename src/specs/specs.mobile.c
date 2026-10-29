@@ -10848,6 +10848,14 @@ static void world_quest_report_creation_failure(P_char pl, quest_creation_failur
 	if (!pl)
 		return;
 
+	if (GET_LEVEL(pl) >= WORLD_QUEST_MIN_LEVEL && GET_LEVEL(pl) <= WORLD_QUEST_LOCAL_MAX_LEVEL)
+	{
+		send_to_char(
+			"No suitable local task is available by ordinary travel right now. Please come back later.\r\n",
+			pl);
+		return;
+	}
+
 	if (failure == QUEST_CREATION_NO_ELIGIBLE_ZONE)
 	{
 		send_to_char(
@@ -10959,7 +10967,8 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 		send_to_char("You hand over the money.\r\n", pl);
 		send_to_char("Take a quick peek at this note:\r\n", pl);
-		quest_buy_map(pl);
+		if (!quest_buy_map(pl))
+			world_quest_refund_payment(pl, payment.fee);
 		return;
 
 	case world_quest_payment_action::quest:
@@ -11109,7 +11118,9 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 				return TRUE;
 			}
 
-			int map_room = get_map_room(real_zone(pl->only.pc->quest_zone_number));
+			const int map_room = pl->only.pc->quest_map_room > 0 ?
+						     real_room(pl->only.pc->quest_map_room) :
+						     NOWHERE;
 			// debug("do_quest(): quest_zone_number: %d, real_zone: %d, map_room: %d", pl->only.pc->quest_zone_number, real_zone(pl->only.pc->quest_zone_number), map_room);
 
 			if (map_room <= 0)

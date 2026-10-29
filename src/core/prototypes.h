@@ -3032,7 +3032,9 @@ bool are_together(P_char ch1, P_char ch2);
 bool has_help(P_char);
 bool is_aggr_to(P_char, P_char);
 bool aggressive_to(P_char, P_char);
+bool aggressive_to_at(P_char, P_char, int target_room);
 bool has_native_planar_affinity(P_char);
+bool has_native_planar_affinity_at(P_char, int room);
 bool aggressive_to_basic(P_char, P_char);
 char *PERS(P_char, P_char, int);
 char *PERS(P_char, P_char, int, bool);
@@ -3060,6 +3062,7 @@ void publish_account_bank_balances_revision(const char *account_name, int racewa
 					    const AccountBankBalances *balances,
 					    uint64_t bank_revision);
 bool ac_can_see(P_char, P_char, bool);
+bool ac_can_see_from(P_char, P_char, int viewer_room);
 bool ac_can_see_obj(P_char sub, P_obj obj, int zrange = 0);
 int get_vis_mode(P_char, int);
 int coin_type(char *);

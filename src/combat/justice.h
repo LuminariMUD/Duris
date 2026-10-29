@@ -189,7 +189,9 @@ extern const char *town_name_list[];
 #define IS_NOTWELCOME(a) \
 	(CHAR_IN_TOWN(a) && IS_TOWN_NOTWELCOME(a, CHAR_IN_TOWN(a)) && !IS_AFFECTED(a, AFF_BOUND))
 
-#define IS_INVADER(a) \
-	(CHAR_IN_TOWN(a) && IS_TOWN_INVADER(a, CHAR_IN_TOWN(a)) && !IS_AFFECTED(a, AFF_BOUND))
+#define IS_INVADER_AT(a, room)                    \
+	(zone_table[world[room].zone].hometown && \
+	 IS_TOWN_INVADER(a, zone_table[world[room].zone].hometown) && !IS_AFFECTED(a, AFF_BOUND))
+#define IS_INVADER(a) IS_INVADER_AT(a, (a)->in_room)
 
 #endif

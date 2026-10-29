@@ -1,6 +1,6 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **persistence, origin and route prerequisites qualified; selector integration next**. Updated 2026-10-29.
+Status: **live selection qualified on MariaDB; recovery and full journeys next**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Implementation branch:
 `branch/issue-437-bartender-quest-routes`.
@@ -306,6 +306,17 @@ Keep the existing full refund for a new purchase that cannot create a quest.
    replacement as an active task, and retain remaining share/progress limits.
 
 ## Ablated implementation sequence and files
+
+Current live-selection slice: outcome is a real new assignment from routine
+reset provenance, actual NPC locations and usable population, using the accepted
+origin's bounded route context and a truthful map entrance. Non-goals: no reward
+rebalance, Divine change, area repair or movement/interaction simulation. Files:
+the existing world-quest policy/creation/bartender paths, small explicit-room
+versions of existing visibility/aggression predicates, and focused fixtures.
+Proof: controlled production selection/creation, then positive local command
+journeys and relocated/zero/staging/unsafe target refusal with exact refunds.
+Keep one profile/catalog and one selector; remove the prototype-only selector
+and its unused convenience wrapper rather than leaving a bypass path.
 
 Current route slice: outcome is a bounded, read-only per-request proof from the
 accepted origin to actual room IDs and back, including local geography below
@@ -690,6 +701,74 @@ The context currently returns unproven for missing routes when any encountered
 procedure was unknown; an irrelevant unknown branch must not conceal a
 definitively locked target route. All recovery, real ASK/KILL completion,
 save/relogin/restart and command/observer latency acceptance remains open.
+
+### Live selection review checkpoint (2026-10-29)
+
+Working branch: `branch/issue-437-live-quest-targets`, based on #458 head
+`d91a924bf`. Selection is ready for its focused stacked PR; link it below after creation.
+`world_quest_policy_select_target` now owns one complete bounded selection path:
+boot-cached direct unconditional 100% `M` placements, per-instance birthplace
+matching, actual destination zone, a single live-character index, reachable
+ordinary source and current room, live ASK/KILL suitability and usable kill
+population. Mixed conditional/F/R sources at the same birthplace and random
+table rooms stay ineligible. Prototype level averages/reward ownership remain
+unchanged. The obsolete prototype-only selector and both convenience wrappers
+are removed. History is read before the final live validation; history results
+are cached per VNUM while failed attempts are tracked per zone so cross-zone
+reuse can retry without duplicate history queries.
+
+Creation publishes the validated target and entrance, sets the initial quota
+from usable count minus one, and preserves failure state. Map purchase consumes
+the cached entrance and refunds a failed map publication. Below-30 refusal text
+no longer advises intercontinental travel. Visibility/aggression now have
+explicit-room variants sharing the original implementations; ordinary callers
+retain wrappers for their current rooms. Projected visibility accounts for the
+observer's own mage flame without relocating it.
+
+Passed: `test_world_quest_target_retries.py` now links the real cached policy,
+production visibility/aggression/creation/map/payment bodies and controlled
+reset/live fixtures under ASan/UBSan. All **63 scenarios** passed, including
+level boundaries, actual-zone reuse, rare/conditional/staging/removed targets,
+live interaction/protection changes, lost summon ownership/charm/following,
+actual usable quotas, exact fee refunds and map charges, moved-customer origin,
+history failure and request-wide 32-probe/history bounds (including last valid
+slots and cross-zone retries). Projection room-bounds and planar-affinity tests,
+dynamic policy, failure feedback, rewards and difficulty checks passed.
+
+Real loaded-world follow-up identified the starter hide artifact and regeneration
+ring as harmless SAY/RUB/periodic handlers that the route proof had conservatively
+left unknown. Their owning procedures were audited and those two identities are
+now travel-safe, with held/worn regressions that abort if a procedure is invoked.
+Unknown held procedures remain unproven. The actual level-56 actor then reached
+17,892 rooms using 300,805 work units without exhaustion, but had no eligible
+live level/zone targets. The refund is a supported refusal, not a positive grant
+or evidence that a new high-level content pool should be invented.
+
+Positive real disposable MariaDB command grants passed at Woodseer for **11 and
+29**. Level 11 indexed ordinary 16306 instances while excluding the same VNUM's
+staging-born copies. The maintained dual-backend runner now sets its disposable
+Chaos actor to 11 with GDB before the first command; no production test command
+or content policy was added. Retained Chaos HP/equipment do not qualify combat
+difficulty. The MariaDB grant / pipelined paid abandon + next grant / save /
+normal shutdown passed (`bin/tests/issue437-live-mariadb-journey.log`,
+binary SHA256 `46c07efa21cc0520fad0be5adc150f9debd6de176af5d1b459a48d563338a890`).
+The saved row contains target 16306, actual zone 163, origin 16633, quota 1,
+verified entrance 568109, map not bought and no replacement due. One catalog
+build served both requests. The level-29 grant's private diagnostic record is
+`bin/tests/issue437-live-actor-29.log`. These grant checks do not prove travel or
+completion. A flatfile build/journey is currently running; record its result.
+
+Also passed: `make -C src -j2`; route ASan/UBSan fixture; projection, planar
+affinity, dynamic policy, failure feedback, reward, difficulty, help parser and
+all 14 documentation contracts; format and diff checks. Updated the codebase
+reference and maintained parsed Quest help to describe implemented new selection.
+
+Next focused change: remove existing display-time prototype creation from
+`do_quest` / JSON status and room transfer hooks from `show_map_at`. Then implement
+accepted-target revalidation, durable free replacement, legacy/share handling
+and truthful unavailable maps. Required 11/29 ordinary travel and ASK/KILL
+completion, save/relogin/restart on both backends and command/observer latency
+journeys remain open. Do not treat this selector PR as completion of #437.
 
 Completed on the source baseline:
 
