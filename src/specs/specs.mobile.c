@@ -10839,7 +10839,6 @@ struct world_quest_payment_context
 	int32_t fee;
 	int32_t giver_vnum;
 	int32_t origin_vnum;
-	world_quest_target_status availability = world_quest_target_status::unchecked;
 };
 
 static_assert(sizeof(world_quest_payment_context) <= CURRENCY_PENDING_CONTEXT_MAX_BYTES);
@@ -10969,12 +10968,14 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 		send_to_char("You hand over the money.\r\n", pl);
 		send_to_char("Take a quick peek at this note:\r\n", pl);
-		const auto availability = payment.availability ==
-							  world_quest_target_status::unchecked ?
-						  world_quest_refresh(pl) :
-						  payment.availability;
+		// World state and travel abilities may change while payment is pending.
+		const auto availability = world_quest_refresh(pl);
 		if (!quest_buy_map(pl, availability))
+		{
 			world_quest_refund_payment(pl, payment.fee);
+			world_quest_describe(pl, availability);
+			gmcp_quest_status(pl, availability);
+		}
 		return;
 	}
 
@@ -11172,6 +11173,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			    pl->only.pc->quest_accomplished)
 			{
 				world_quest_describe(pl, availability);
+				gmcp_quest_status(pl, availability);
 				return TRUE;
 			}
 
@@ -11211,7 +11213,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 
 			const world_quest_payment_context payment = {
 				world_quest_payment_action::map, temp, GET_VNUM(ch),
-				world[ch->in_room].number, availability
+				world[ch->in_room].number
 			};
 			if (!currency_transaction_submit_wallet_value(
 				    pl, -static_cast<int64_t>(temp),
