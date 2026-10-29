@@ -2,7 +2,7 @@
 """Real local bartender-quest journey for MariaDB and flatfile-primary builds.
 
 This is intentionally a ``run_`` script rather than an automatically discovered
-regression: it builds and boots the full world twice and needs Docker for the
+regression: it builds/boots the full world, exercises restart, and needs Docker for the
 isolated MariaDB authority. It never reads the repository's .env and never uses
 the long-running local stack. Every account/database/state root is disposable.
 """
@@ -21,9 +21,9 @@ import subprocess
 import tempfile
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
-from test_flatfile_combat_journey import MudClient, reconnect_character
-from quest_character_flow import create_quest_character
+from test_flatfile_combat_journey import MudClient, reconnect_character, create_character
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -33,6 +33,15 @@ QUEST_LEVEL = 11
 DB_IMAGE = os.environ.get("DURIS_WORLD_QUEST_DB_IMAGE", "mariadb:10.11")
 REQUESTED_BACKEND = os.environ.get("DURIS_WORLD_QUEST_BACKEND", "both")
 BINARY_OVERRIDE = os.environ.get("DURIS_WORLD_QUEST_BINARY")
+JOURNEY = os.environ.get("DURIS_WORLD_QUEST_JOURNEY", "both")
+GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
+                       os.environ.get("DURIS_WORLD_QUEST_GAMEPLAY_CASES",
+                                      "11:2,11:1,29:1,29:2,30:1").split(","))
+if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
+                             for case in GAMEPLAY_CASES):
+    raise ValueError("unsupported focused gameplay cases")
+if JOURNEY not in {"both", "recovery", "gameplay", "audit"}:
+    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, or audit")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
 
@@ -275,40 +284,10 @@ def collect_logs(run_root: pathlib.Path) -> str:
     return "\n".join(sections)[-50000:]
 
 
-# Test-only debugger probe. It changes only disposable in-memory zone flags;
-# all quest transitions, payments, saves and loads use production commands.
-RECOVERY_PROBE = r"""
-#include "core/prototypes.h"
-#include "core/utils.h"
-#include "world/world_quest_policy.h"
-#include <cstdio>
-#include <cassert>
-#include <vector>
-extern P_room world;
-extern zone_data *zone_table;
-extern int top_of_world;
-extern "C" void quest_journey_checkpoint(P_char ch, const char *label)
-{
-    assert(ch && IS_PC(ch));
-    const auto &q = *ch->only.pc;
-    FILE *out = fopen("quest-journey.tsv", "a");
-    if (!out) return;
-    fprintf(out, "%s\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%lld\t%d\t%d\t%d\t%d\t%d\t%d\t%lld\t%lld\n",
-        label, q.quest_active, q.quest_replacement_due, q.quest_origin_room,
-        q.quest_level, q.quest_type, q.quest_mob_vnum, q.quest_zone_number,
-        static_cast<long long>(q.quest_started), q.quest_receiver, q.quest_shares_left,
-        q.quest_kill_how_many, q.quest_kill_original, q.quest_map_room, q.quest_map_bought,
-        static_cast<long long>(GET_MONEY(ch)), static_cast<long long>(ch->points.curr_exp));
-    fclose(out);
-}
-extern "C" void quest_journey_invalidate(P_char ch)
-{
-    quest_journey_checkpoint(ch, "before-invalidation");
-    std::vector<int> eligible;
-    world_quest_policy_zone_list(ch, eligible);
-    for (int zone : eligible) zone_table[zone].flags |= ZONE_CLOSED;
-}
-"""
+# Test-only debugger setup and native-state inspection. Recovery closes
+# disposable zones; quest transitions, payments, saves and loads use real commands.
+RECOVERY_PROBE_PATH = ROOT / "tests/async/world_quest_journey_probe.cpp"
+
 JOURNEY_FIELDS = (
     "active", "replacement_due", "origin", "level", "type", "mob", "zone", "started",
     "receiver", "shares", "kills", "quota", "map_room", "map_bought", "wallet", "xp",
@@ -324,6 +303,323 @@ def read_journey_states(run_root: pathlib.Path) -> list[dict]:
     return records
 
 
+def gameplay_snapshot(client: MudClient, run_root: pathlib.Path) -> dict:
+    path = run_root / "quest-gameplay.json"
+    old = json.loads(path.read_text()) if path.exists() else None
+    client.send("score")
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if path.exists():
+            current = json.loads(path.read_text())
+            if old is None or (current["pid"], current["sequence"]) != (old["pid"], old["sequence"]):
+                client._receive()
+                return current
+        client._receive()
+    raise AssertionError("gameplay score checkpoint did not arrive")
+
+
+def settled_gameplay_snapshot(client: MudClient, run_root: pathlib.Path) -> dict:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        state = gameplay_snapshot(client, run_root)
+        if not state["items_busy"] and state["remaining"] >= 0 and state["history_done"] >= 0:
+            return state
+        time.sleep(0.1)
+    raise AssertionError(f"gameplay ownership/history did not settle: {state}")
+
+
+def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool = False,
+                   before_kills: int | None = None) -> tuple[dict, int]:
+    steps, route_waits = 0, 0
+    for _ in range(150):
+        state = gameplay_snapshot(client, run_root)
+        state["route_waits"] = route_waits
+        require(not state["due"], f"assignment became unavailable during travel: {state}")
+        if not returning and (not state["active"] or
+                              (before_kills is not None and state["kills"] > before_kills)):
+            return state, steps
+        if returning and state["room"] == BARTENDER_ROOM:
+            return state, steps
+        if state["fighting"]:
+            for _ in range(60):
+                time.sleep(1)
+                state = gameplay_snapshot(client, run_root)
+                if not returning and (not state["active"] or
+                                      (before_kills is not None and state["kills"] > before_kills)):
+                    return state, steps
+                if not state["fighting"]:
+                    break
+            else:
+                raise AssertionError(f"ordinary combat did not resolve: {state}")
+            continue
+        require(not state["route_exhausted"], "navigation route budget exhausted")
+        if state.get("selector"):
+            return state, steps
+        path = state["path"]
+        if not path and state["route_uncertain"] and route_waits < 30:
+            route_waits += 1
+            time.sleep(1)
+            continue
+        require(path, f"no route to a current routine target after {route_waits} waits: {state}")
+        if state["moves"] < 25:
+            client.send("rest")
+            for _ in range(30):
+                time.sleep(1)
+                rested = gameplay_snapshot(client, run_root)
+                if rested["moves"] >= min(70, rested["max_moves"]):
+                    break
+            client.send("stand")
+            continue
+        posture = state["position"]
+        batch = path[:8]
+        for step in batch:
+            if step["crawl"] and posture != 2:
+                client.send("kneel")
+                posture = 2
+            elif not step["crawl"] and posture != 3:
+                client.send("stand")
+                posture = 3
+            if step["closed"]:
+                client.send("open " + step["direction"])
+            client.send(step["direction"])
+        observed = gameplay_snapshot(client, run_root)
+        if observed["room"] == batch[-1]["to"]:
+            steps += len(batch)
+        elif observed["fighting"]:
+            prefix = [batch[0]["from"]] + [step["to"] for step in batch]
+            require(observed["room"] in prefix, f"combat displaced the journey off its route: {observed}")
+            steps += prefix.index(observed["room"])
+        else:
+            raise AssertionError(f"ordinary commands diverged from the proved route: expected {batch[-1]}, got {observed}")
+    raise AssertionError("target navigation exceeded 1,200 ordinary steps")
+
+
+def stop_quest_server(process: subprocess.Popen[str], pid_path: pathlib.Path,
+                      output_path: pathlib.Path) -> str:
+    os.kill(int(pid_path.read_text()), signal.SIGTERM)
+    process.wait(timeout=30)
+    output = output_path.read_text(errors="replace")
+    require(process.returncode == 0 and "Normal termination of game." in output,
+            "journey server did not stop normally:\n" + output[-6000:])
+    require(output.count("World quest catalog ready:") == 1,
+            "catalog was rebuilt during commands")
+    return output
+
+
+def stored_gameplay_history(environment: dict[str, str] | None, state: dict) -> int:
+    if environment is None:
+        return state["stored_history"]
+    query = f"SELECT COUNT(*) FROM world_quest_accomplished WHERE pid={state['player_id']};"
+    result = subprocess.run([
+        "mysql", "--protocol=tcp", "--ssl=0", "-h", environment["DB_HOST"],
+        "-P", environment["DB_PORT"], "-u", environment["DB_USER"], "-N", "-B",
+        environment["DB_NAME"], "-e", query,
+    ], env={**environment, "MYSQL_PWD": environment["DB_PASSWD"]},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    require(result.returncode == 0, "could not read disposable completion history")
+    return int(result.stdout.strip())
+
+
+def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
+                     database_environment) -> tuple[MudClient, list[dict]]:
+    results = []
+    partial_persisted = False
+    rewards = set()
+    for level, kind in GAMEPLAY_CASES:
+        (run_root / "quest-gameplay-control.txt").write_text(f"{level} {kind} 1\n")
+        client.send(f"chaos questroom {BARTENDER_ROOM}")
+        client.expect("Quest-room test funds committed.", timeout=60)
+        before = gameplay_snapshot(client, run_root)
+        if before["active"] or before["due"]:
+            client.send("ask bartender abandon confirm")
+            client.expect("You no longer have a task.", timeout=30)
+        attempts = []
+        for _ in range(8):
+            client.send("ask bartender quest")
+            client.expect_any(("Go kill ", "Go ask "), timeout=30)
+            accepted = gameplay_snapshot(client, run_root)
+            require(accepted["accepted_level"] == level,
+                    f"requested gameplay level was unavailable: {accepted}")
+            attempts.append({"mob": accepted["mob"], "zone": accepted["zone"], "quota": accepted["quota"]})
+            if accepted["type"] == kind and (kind != 1 or level != 29 or accepted["quota"] >= 2):
+                break
+            # Only fixture preparation: pay the ordinary abandonment fee before
+            # making any progress. The preferred kind can legitimately fall back
+            # to the other type in a selected zone; KILL also needs a partial state.
+            client.send("ask bartender abandon confirm")
+            client.expect("You no longer have a task.", timeout=30)
+        else:
+            raise AssertionError(f"no qualifying level-{level} type-{kind} task within eight purchases: {attempts}")
+        baseline_items = {item["uid"] for item in accepted["items"]}
+        history_before = stored_gameplay_history(database_environment, accepted)
+        steps, partials = 0, []
+        previous = accepted
+        for _ in range(40):
+            target, travelled = navigate_quest(client, run_root,
+                                              before_kills=previous["kills"] if kind == 1 else None)
+            steps += travelled
+            if not target["active"]:
+                completed = target
+                break
+            if kind == 1 and target["kills"] > previous["kills"]:
+                current = target
+            elif kind == 2:
+                client.send(f"ask {target['selector']} {target['month']}")
+                outcome, _ = client.expect_any(("You gain some experience.",
+                                                "No-one by that name here..."), timeout=30)
+            else:
+                client.send(f"kill {target['selector']}")
+                # A native rescuer may become our opponent before the target
+                # dies. Observe real combat rather than demand quest feedback
+                # from every fight or manufacture credit for the rescuer.
+                for _ in range(120):
+                    time.sleep(1)
+                    current = gameplay_snapshot(client, run_root)
+                    if (not current["active"] or current["kills"] > previous["kills"] or
+                            not current["fighting"]):
+                        break
+                else:
+                    raise AssertionError(f"ordinary target combat did not resolve: {current}")
+                if current["active"] and current["kills"] == previous["kills"]:
+                    continue
+                target = current
+
+            if kind == 2:
+                if outcome == "No-one by that name here...":
+                    continue
+                current = gameplay_snapshot(client, run_root)
+            if not current["active"]:
+                completed = current
+                break
+            require(kind == 1 and current["kills"] > previous["kills"],
+                    f"combat made no legitimate quest progress: {current}")
+            require(current["quota"] == accepted["quota"] and current["history_done"] == 0,
+                    "partial combat altered quota or consumed history")
+            require(current["remaining"] == previous["remaining"], "partial combat used a quest allowance")
+            require(current["progress_xp"] > previous["progress_xp"], "partial combat awarded no actual XP")
+            partials.append(current)
+            if not partial_persisted and level == 29 and (29, 1) in GAMEPLAY_CASES:
+                client.send("save")
+                client.expect("Save complete for Taverek.", timeout=120)
+                saved = gameplay_snapshot(client, run_root)
+                require(saved["active"] and saved["kills"] < saved["quota"],
+                        "combat completed before the partial checkpoint")
+                client = restart(client)
+                restored = settled_gameplay_snapshot(client, run_root)
+                kept = ("active", "due", "accepted_level", "type", "mob", "zone", "kills",
+                        "quota", "map_bought", "map_room", "origin", "receiver", "shares", "started",
+                        "wallet", "xp")
+                require(all(saved[k] == restored[k] for k in kept),
+                        f"partial state did not survive restart: {saved} -> {restored}")
+                held_rewards = rewards & {item["uid"] for item in saved["items"]}
+                require(not rewards or held_rewards and held_rewards <= {item["uid"] for item in restored["items"]},
+                        "held earlier quest rewards did not persist")
+                partials.append({"saved": saved, "restored": restored})
+                partial_persisted = True
+                current = restored
+            previous = current
+        else:
+            raise AssertionError("quest did not complete within forty real interactions")
+        completed = settled_gameplay_snapshot(client, run_root)
+        require(not completed["active"] and not completed["due"], f"quest did not complete: {completed}")
+        require(completed["history_done"] == 1, f"completion history missing: {completed}")
+        require(completed["progress_xp"] > previous["progress_xp"], "real completion awarded no XP")
+        require(completed["completion_target"] == accepted["mob"] and
+                completed["remaining"] == max(completed["completion_remaining"] - 1, 0) and
+                completed["completion_calls"] == previous["completion_calls"] + 1,
+                "completion did not use exactly one allowance at its actual level")
+        new_items = [item for item in completed["items"]
+                     if item["uid"] == completed["reward_uid"] and item["vnum"] == completed["reward_vnum"]]
+        require(completed["reward_uid"] not in baseline_items and len(new_items) == 1,
+                f"level {level} kind {kind} mob {accepted['mob']} completion reward missing: {new_items}; state={completed}")
+        rewards.add(new_items[0]["uid"])
+        client.send("save")
+        client.expect("Save complete for Taverek.", timeout=120)
+        deadline = time.monotonic() + 30
+        while stored_gameplay_history(database_environment, completed) != history_before + 1:
+            require(time.monotonic() < deadline, "completion did not persist exactly one history row")
+            time.sleep(0.1)
+            completed = settled_gameplay_snapshot(client, run_root)
+        returned, return_steps = navigate_quest(client, run_root, returning=True)
+        results.append({"level": level, "kind": kind, "ordinary_steps": steps,
+                        "return_steps": return_steps, "attempts": attempts, "accepted": accepted,
+                        "target": target, "partials": partials, "reward": new_items[0],
+                        "completed": completed, "returned": returned})
+        (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
+    require((29, 1) not in GAMEPLAY_CASES or partial_persisted,
+            "no real partial-progress restart was qualified")
+    return client, results
+
+
+def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) -> dict:
+    def inspect(actor: MudClient, *, place: bool = True) -> dict:
+        path = run_root / "quest-world-audit.json"
+        path.unlink(missing_ok=True)
+        (run_root / "quest-gameplay-control.txt").write_text("29 0 3\n")
+        if place:
+            actor.send(f"chaos questroom {BARTENDER_ROOM}")
+            actor.expect("Quest-room test funds committed.", timeout=60)
+        actor.send("score")
+        deadline = time.monotonic() + 120
+        while not path.exists():
+            require(time.monotonic() < deadline, "loaded-world audit did not arrive")
+            actor._receive()
+        actor.expect("Score information for", timeout=30)
+        actor.expect("Pos:", timeout=30)
+        return json.loads(path.read_text())
+
+    good = inspect(client)
+    observer = MudClient(port, source_host="127.0.0.2")
+    try:
+        create_character(observer, expected_room=None, account="Observeacct", character="Vimerek",
+                         race_name="d", alignment="e", hometown="c")
+        evil = inspect(observer, place=False)
+        require(good["racewar"] != evil["racewar"], "observer did not acquire its native Evil side")
+        require(any(x["level"] == 11 and x["failure"] == 0 for x in good["origins"]),
+                "loaded Good origins lost every usable level-11 target")
+        require(any(x["level"] == 29 and x["failure"] == 0 for x in evil["origins"]),
+                "loaded Evil origins lost every usable level-29 target")
+        require(any(x["level"] == 29 and x["underdark_map_rooms"] > 0 for x in evil["origins"]),
+                "no ordinary level-29 Underdark origin route was proved")
+
+        # Disable every sampling/RNG/history breakpoint before timing real commands.
+        # The idle debugger performs no stops inside this measurement window.
+        (run_root / "quest-gameplay-control.txt").write_text("29 0 2\n")
+        client.send(f"chaos questroom {BARTENDER_ROOM}")
+        client.expect("Quest-room test funds committed.", timeout=60)
+
+        def timed(actor: MudClient, command: str, replies: tuple[str, ...]) -> float:
+            started = time.monotonic()
+            actor.send(command)
+            actor.expect_any(replies, timeout=30)
+            return (time.monotonic() - started) * 1000
+
+        def observe() -> list[float]:
+            samples = []
+            for _ in range(64):
+                samples.append(timed(observer, "score", ("Score information for Vimerek",)))
+                observer.expect("Pos:", timeout=30)
+            return samples
+
+        commands = []
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            observed = executor.submit(observe)
+            for _ in range(12):
+                commands.append({"command": "purchase", "ms": timed(
+                    client, "ask bartender quest", ("Go ask ", "Go kill "))})
+                commands.append({"command": "quest", "ms": timed(
+                    client, "quest", ("Go ask ", "Go kill "))})
+                commands.append({"command": "abandon", "ms": timed(
+                    client, "ask bartender abandon confirm", ("You no longer have a task.",))})
+            observer_samples = observed.result()
+        require(max(observer_samples) < 1000,
+                f"observer response exceeded one second: {observer_samples}")
+        return {"good": good, "evil": evil, "commands": commands,
+                "observer_ms": observer_samples}
+    finally:
+        observer.close()
+
+
 def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathlib.Path,
                           database_environment: dict[str, str] | None) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"world-quest-{backend}-run-", dir=ROOT / "bin/tests") as run_tmp:
@@ -334,39 +630,121 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             backend, state_root, player_journal, critical_journal, plain_port,
             tls_port, websocket_port, database_environment)
         # Chaos creation starts at 56. Set only the disposable actor's level
-        # before its first command; route policy below 30 ignores travel gear.
+        # at explicit per-case setup; route policy below 30 ignores travel gear.
         # Leave production commands and content unchanged.
         pid_path = run_root / "inferior.pid"
         gdb_path = run_root / "quest.gdb"
         probe_source = run_root / "recovery_probe.cpp"
         probe_binary = run_root / "recovery_probe.so"
-        probe_source.write_text(RECOVERY_PROBE)
+        probe_source.write_text(RECOVERY_PROBE_PATH.read_text())
         flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
                  subprocess.check_output(["mysql_config", "--cflags"], text=True).split())
-        built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Isrc", *flags,
-                     str(probe_source), "-o", str(probe_binary)], timeout=60)
+        built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
+                     "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Isrc", *flags,
+                     str(probe_source), "-lcjson", "-o", str(probe_binary)], timeout=60)
         require(built.returncode == 0, built.stdout.decode(errors="replace"))
 
+
+        type_line = next(i + 1 for i, line in enumerate(
+            (ROOT / "src/world/world_quest_policy.c").read_text().splitlines())
+            if "const int type_attempts =" in line)
+        (run_root / "quest-gameplay-control.txt").write_text(f"{QUEST_LEVEL} 0 0\n")
+
+        boot_count = 0
+
         def launch(restarted: bool = False) -> subprocess.Popen[str]:
-            # At a raw entry breakpoint, read SysV x86-64's first argument.
-            # Optimized DWARF can name a callee register before its prologue
-            # has replaced the caller's value (NPC giver versus player).
-            gdb_path.write_text(
-                "set pagination off\nset confirm off\nset startup-with-shell off\n"
-                "handle SIGTERM nostop noprint pass\nhandle SIGPIPE nostop noprint pass\n"
-                f"set $journey_invalidate = {0 if restarted else 1}\n"
-                "tbreak main\ncommands\nsilent\n"
-                f"python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))\n"
-                f'set $probe=(void*)dlopen("{probe_binary}",2)\n'
-                "continue\nend\ntbreak *do_chaos\ncommands\nsilent\n"
-                f"set ((char_data*)$rdi)->player.level = {QUEST_LEVEL}\ncontinue\nend\n"
-                "break *do_quest\ncommands\nsilent\n"
-                "if $journey_invalidate\nset $journey_invalidate=0\n"
-                "call (void)quest_journey_invalidate((char_data*)$rdi)\nend\ncontinue\nend\n"
-                "break *world_quest_describe\ncommands\nsilent\n"
-                f'call (void)quest_journey_checkpoint((char_data*)$rdi,"{"restart" if restarted else "first"}")\n'
-                "continue\nend\nrun\n"
-            )
+            nonlocal boot_count
+            boot_count += 1
+            # Raw SysV x86-64 entry arguments avoid pre-prologue DWARF values.
+            script = f"""
+set pagination off
+set confirm off
+set startup-with-shell off
+handle SIGTERM nostop noprint pass
+handle SIGPIPE nostop noprint pass
+set $journey_invalidate = {0 if restarted else 1}
+define apply_journey_mode
+if quest_gameplay_stage > 0
+disable $checkpoint_break
+disable $invalidate_break
+end
+if quest_gameplay_stage == 1 || quest_gameplay_stage == 3
+enable $plan_break
+else
+disable $plan_break
+end
+if quest_gameplay_stage == 1
+enable $kind_break
+enable $history_break
+else
+disable $kind_break
+disable $history_break
+end
+end
+tbreak main
+commands
+silent
+python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))
+set $probe=(void*)dlopen("{probe_binary}",2)
+call (void)quest_gameplay_read_control()
+apply_journey_mode
+continue
+end
+break *do_chaos
+commands
+silent
+call (void)quest_gameplay_setup((char_data*)$rdi)
+apply_journey_mode
+continue
+end
+break *do_quest
+set $invalidate_break=$bpnum
+commands
+silent
+if $journey_invalidate
+set $journey_invalidate=0
+call (void)quest_journey_invalidate((char_data*)$rdi)
+end
+continue
+end
+break *world_quest_describe
+set $checkpoint_break=$bpnum
+commands
+silent
+call (void)quest_journey_checkpoint((char_data*)$rdi,"{"restart" if restarted else "first"}")
+continue
+end
+break *do_score
+set $plan_break=$bpnum
+commands
+silent
+if quest_gameplay_stage == 3
+call (void)quest_gameplay_setup((char_data*)$rdi)
+call (void)quest_world_audit((char_data*)$rdi)
+else
+call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+end
+continue
+end
+break *sql_world_quest_finished
+set $history_break=$bpnum
+commands
+silent
+call (void)quest_gameplay_history((char_data*)$rdi,(obj_data*)$rsi)
+continue
+end
+break world/world_quest_policy.c:{type_line}
+set $kind_break=$bpnum
+commands
+silent
+if required_type == 0 && quest_gameplay_kind > 0
+set first_type=quest_gameplay_kind
+end
+continue
+end
+run
+"""
+            gdb_path.write_text(script)
             with output_path.open("w") as output:
                 return subprocess.Popen(
                     ["gdb", "--batch", "--return-child-result", "-x", str(gdb_path),
@@ -377,6 +755,18 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
 
         process = launch()
         client = None
+
+        def restart_gameplay(current: MudClient) -> MudClient:
+            nonlocal process, client
+            current.close()
+            client = None
+            stop_quest_server(process, pid_path, output_path)
+            process = launch(restarted=True)
+            wait_for_boot(process, output_path)
+            client = reconnect_character(plain_port, expected_room=None)
+            client.expect("Pos:", timeout=60)  # Complete async entry, regardless of saved room.
+            return client
+
         try:
             boot_output = wait_for_boot(process, output_path)
             binary_path = binary.resolve()
@@ -384,7 +774,12 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             require(running_path == binary_path,
                     f"running executable mismatch: expected {binary_path}, got {running_path}")
             client = MudClient(plain_port)
-            create_quest_character(client)
+            create_character(client, expected_room=None, hometown="p")
+            # The starter kit arrives in inventory; use normal equipment commands
+            # before setting the lower accepted level for the gameplay journey.
+            client.send("wield mace")
+            client.expect("You wield", timeout=30)
+            client.send("wear all")
             client.send(f"chaos questroom {BARTENDER_ROOM}")
             client.expect("Quest-room test move complete.", timeout=15)
             client.expect("Quest-room test funds committed.", timeout=60)
@@ -392,6 +787,31 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             client.expect("Save complete for Taverek.", timeout=120)
             client.send("look")
             client.expect("Mathorn's Bar", timeout=15)
+            if JOURNEY == "audit":
+                audit = perform_world_audit(client, run_root, plain_port)
+                client.close()
+                client = None
+                output = stop_quest_server(process, pid_path, output_path)
+                logs = collect_logs(run_root)
+                native_slow = [line for line in (output + "\n" + logs).splitlines()
+                               if "COMMAND OP SLOW:" in line and
+                               ("operation=ask " in line or "operation=quest " in line)]
+                return {
+                    "backend": backend, "journey": "audit", "audit": audit,
+                    "native_slow_quest_commands": native_slow,
+                    "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
+                    "catalog_ready_count": boot_count,
+                }
+            if JOURNEY == "gameplay":
+                client, gameplay = perform_gameplay(client, run_root, restart_gameplay, database_environment)
+                client.close()
+                client = None
+                stop_quest_server(process, pid_path, output_path)
+                return {
+                    "backend": backend, "journey": "gameplay", "gameplay": gameplay,
+                    "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
+                    "catalog_ready_count": boot_count,
+                }
             client.send("ask bartender quest")
             first_result, _ = client.expect_any(("Go kill ", "Go ask "), timeout=30)
             transcript_after_first = bytes(client.transcript).decode("utf-8", errors="replace")
@@ -508,6 +928,10 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             client.expect("Save complete for Taverek.", timeout=120)
             if database_environment is not None:
                 verify_mariadb_player_state(database_environment, map_bought=1)
+            if JOURNEY != "recovery":
+                client, gameplay = perform_gameplay(client, run_root, restart_gameplay, database_environment)
+            else:
+                gameplay = []
             client.close()
             client = None
             os.kill(int(pid_path.read_text()), signal.SIGTERM)
@@ -528,10 +952,10 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
                 "fixture_level": QUEST_LEVEL,
                 "quest_first_result": first_result,
                 "quest_second_result": second_result,
-                "catalog_ready_count": first_output.count("World quest catalog ready:") +
-                                       final_output.count("World quest catalog ready:"),
+                "catalog_ready_count": boot_count,
                 "player_state": player_state,
                 "recovery": recovery,
+                "gameplay": gameplay,
                 "server_output_tail": final_output[-4000:],
                 "log_tail": logs[-8000:],
             }
@@ -539,9 +963,16 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
             output = output_path.read_text(errors="replace")
             logs = collect_logs(run_root)
             checkpoints = read_journey_states(run_root) if (run_root / "quest-journey.tsv").exists() else []
+            gameplay_path = run_root / "quest-gameplay.json"
+            gameplay_state = gameplay_path.read_text() if gameplay_path.exists() else ""
+            completed_path = run_root / "quest-gameplay-results.json"
+            completed_cases = completed_path.read_text() if completed_path.exists() else "[]"
+            transcript = bytes(client.transcript).decode(errors="replace")[-6000:] if client else ""
             raise AssertionError(
                 f"{backend} bartender journey failed: {error}\n"
                 f"--- quest checkpoints ---\n{json.dumps(checkpoints)}\n"
+                f"--- completed gameplay cases ---\n{completed_cases}\n"
+                f"--- gameplay state ---\n{gameplay_state}\n--- client ---\n{transcript}\n"
                 f"--- server output ---\n{output[-16000:]}\n"
                 f"--- runtime logs ---\n{logs}"
             ) from error

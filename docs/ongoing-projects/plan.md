@@ -1,12 +1,18 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **selection and recovery qualified on both backends; full target gameplay/latency qualification remains**. Updated 2026-10-29.
+Status: **implementation, review remediation and local qualification complete; [PR #470](https://github.com/LuminariMUD/Duris/pull/470)**. Updated 2026-10-30.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Stack root:
 `branch/issue-437-bartender-quest-routes`. Current continuation branch:
-`branch/issue-437-quest-recovery`.
+`branch/issue-437-gameplay-qualification` (based on #469).
 Source baseline: `master` / `origin/master` at
 `9632f29804687ccf049ddf7a59a5ae16878e0583`.
+
+All five steps are complete. The [review qualification record](#review-remediation-and-fresh-qualification-2026-10-30)
+is the current handoff; earlier component checkpoints are historical and their
+remaining-work notes are superseded by it. The linked PRs record integration
+status. Production deployment remains separate.
+
 
 The planning baseline publishes the plan and links the branch. Implementation
 progress and review boundaries are recorded below. The prior #428 plan and
@@ -308,6 +314,16 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Current gameplay qualification slice: outcome is real ordinary travel and
+ASK/KILL completion at the required levels, persistent earned progress/history,
+and command/observer latency evidence. Non-goals: no target teleportation,
+combat-safety rebalance, production operations or another route engine. Files:
+the existing disposable dual-backend journey, its test-only debugger probe and
+this handoff; repair owning code only for reproduced findings. Proof: native
+client commands, actual room/target/reward/history checkpoints and current
+server binaries on both authorities. Reconstruct navigation from the production
+route context; debugger setup/inspection runs outside timed commands.
+
 Current recovery slice: outcome is revalidation and a durable free replacement
 for an incomplete world-invalid assignment, retaining accepted type/level, earned
 progress, original quota, map entitlement and shares. Non-goals: no fee ledger,
@@ -390,7 +406,7 @@ reuse the persistence proof above and run the focused policy checks/build.
 Passing VNUMs directly removes the need for live giver lookups or a second
 payment/quest API. Origin validation remains a prerequisite for full route work.
 
-- [ ] **1. Pin baseline and executable failures (1-2 hours).** Extend
+- [x] **1. Pin baseline and executable failures (1-2 hours).** Extend
   `tests/async/test_world_quest_target_retries.py` for live availability and
   bounded retries; add one focused production-policy route harness if the
   current lightweight fixture cannot represent real room/exit state. Use
@@ -418,7 +434,7 @@ payment/quest API. Origin validation remains a prerequisite for full route work.
   schema/runner registration. Update `core/json_utils.c` / `net/gmcp.c` only
   as needed to represent unavailable/replacement status and truthful maps.
   Preserve the legacy importer payload and initialize new fields safely.
-- [ ] **5. Prove complete journeys and document (4-6 hours).** Extend
+- [x] **5. Prove complete journeys and document (4-6 hours).** Extend
   `tests/async/run_world_quest_dual_backend.py` with request, actual travel,
   ASK/KILL completion, invalidation, free replacement, save and restart.
   Reuse its disposable world/account/database setup and existing client.
@@ -971,7 +987,7 @@ The branch is linked to #437 through GitHub's Development association, verified
 with `gh issue develop 437 --repo LuminariMUD/Duris --list`. #448 is an already
 landed reference, and #4/#37 are outside this branch's scope.
 
-## Estimate for me to implement
+## Original planning estimate
 
 **12-18 hours of my active implementation and local validation time**, broken
 down in the five steps above. Most effort is in truthful route/target checks,
@@ -1001,10 +1017,9 @@ racewar/visibility/height/disguise predicates remain shared and unchanged.
 Review-ready PR: [#468](https://github.com/LuminariMUD/Duris/pull/468), commit
 `d85f60a57`. The focused ASan/UBSan suite, server build, format/tidy/diff checks
 passed. This is a separate focused fix stacked on #467, discovered while preparing real
-quest interaction. The gameplay qualification plan is preserved in task-owned
-stash `aeb4a5d792af549a10794f035342141cd1333ef0` pending return to
-`branch/issue-437-gameplay-qualification`; apply it only after this fix is merged
-into that local branch and drop only this verified stash.
+quest interaction. The gameplay branch was fast-forwarded to this fix, its
+task-owned planning stash was applied successfully and only that verified stash
+was dropped. Continue on `branch/issue-437-gameplay-qualification`.
 
 
 ### Passive route traces repair (2026-10-29)
@@ -1028,11 +1043,168 @@ as travel/door/ASK-safe. No procedure runs during validation.
 
 The focused route fixture reproduced the failure before the fix
 (`bin/tests/issue437-passive-traces-before.log`). Extended existing accepted
-ASK/KILL checks at 11/29/30/41 with the same trace identities. The interrupted
-gameplay work is preserved in task-owned stash
-`0257c956eb3f6d3e5cc451ba1a06221c1a856ab4`; apply it on the gameplay branch after
-fast-forwarding this focused fix, then drop only that verified stash.
+ASK/KILL checks at 11/29/30/41 with the same trace identities. The gameplay branch was fast-forwarded to this focused fix. Its task-owned
+stash was applied; both independent plan additions were preserved while resolving
+their append conflict, and only the verified stash was dropped.
 Temporary `Q437_DEBUG` owning-source logging was removed completely.
 
 Passed after the passive-trace fix: route ASan/UBSan fixture, all 71 production
 selector/recovery/command scenarios, server build, format and diff checks.
+
+### Complete gameplay and loaded-world qualification (2026-10-29)
+
+All five implementation steps and the proof/acceptance groups above now have
+local evidence. [PR #470](https://github.com/LuminariMUD/Duris/pull/470) is
+review-ready on `branch/issue-437-gameplay-qualification`, stacked on #469;
+implementation commit `f5ebb5d3d` is pushed. No required implementation work
+remains. External review and production deployment remain outside this implementation.
+
+The maintained dual-backend runner now follows production route links with
+ordinary directions, unlocked-door opening and posture changes. It uses the
+owning routine-source lookup to identify a current target, then sends real
+ASK/KILL commands. It does not teleport to a target, freeze an NPC or manufacture
+progress, XP, history or items. Test setup controls the synthetic Chaos actor's
+accepted level and first random quest kind. Normal starter gear is equipped with
+native commands; retained Chaos HP/skills do not prove combat difficulty.
+Rescuers, normal fights, target movement, XP rollover and asynchronous reward
+publication are observed through actual state rather than treated as completion.
+
+Real positive cases, with outward/return ordinary movement counts:
+
+- MariaDB: 11 ASK 16329 (35/35); 11 KILL 16306, quota 1 (37/37);
+  29 KILL 41300, quota 3 (307/305); 29 ASK 22008 (118/118).
+- Flatfile: 11 ASK 16316 (38/38); 11 KILL 16306, quota 1 (34/34);
+  29 KILL 22012, quota 2 (115/115); 29 ASK 29422 (209/209).
+- Level-30 controls: MariaDB KILL 69006, quota 7 (137/131);
+  flatfile KILL 93501, quota 5 (116/106).
+
+Every completed case asserts actual XP gain, exactly one new persisted history
+row, exactly one history/completion API call, the allowance decrement with its
+native zero floor, and publication of the exact new reward UID/VNUM. Reward
+identity is captured at the real completion call rather than inferred from chat.
+Previously earned reward UIDs survive the partial restart as well.
+
+The MariaDB partial checkpoint retained 1/3 kills, wallet 158,364 and raw XP
+113,968 across SAVE, normal shutdown, restart and native re-entry. Flatfile
+retained 1/2 kills, wallet 157,980 and XP 161,497. Exact accepted type/level,
+origin/target/zone, original quota, map, start time, receiver/shares and entitlement
+are also compared. Chaos re-entry naturally sets the actor's current level to 56;
+the accepted level remains 29 and no earned XP is altered by the fixture.
+Cumulative native level thresholds account for ordinary XP rollover.
+
+Evidence reuse is deliberate: the four completed low-level cases are retained
+prefixes of `bin/tests/issue437-gameplay-{mariadb,flatfile}.log`. Those initial
+five-case runs failed only in their later level-30 case (a rescuer/combat timeout
+and a temporarily unproven route). They are not claimed as wholly passing runs.
+The focused `issue437-gameplay-{mariadb,flatfile}-level30.log` runs passed after
+the fixture used an explicit native weapon command and observed real combat.
+The uncertain route was never counted as a positive journey or used to cancel
+the assignment. Native policy/creation/command regressions provide controlled
+negative proof; random successful gameplay alone is not the policy oracle.
+
+The final source change removes two completed-quest guards made unreachable by
+the earlier completed-task gate. Both server builds, the 71-scenario ASan/UBSan
+production-command suite and the read-only text/JSON fixture passed after this
+cut. Repeating all established travel/recovery journeys for dead-code removal
+would not add relevant evidence. Final loaded-world audits use the rebuilt
+binaries; their logs retain exact SHA-256 values.
+
+The audit creates a genuine Good Human and Evil Drow through the maintained
+character-creation flow, then calls production selection/revalidation against
+loaded content. Reusing that existing creator removes the obsolete, duplicate
+`quest_character_flow.py` prompt state machine; no new creation abstraction or
+engine test API was added. The Drow's test level is set by the debugger, and it
+remains at its native starting room. Origin-specific audit calls do not move it.
+
+In the MariaDB audit (live populations can differ between boots):
+
+- Good Woodseer origin 16633 and Tharnadia origin 132560 select real targets at
+  11/29/30; the earlier low-level pool is not globally emptied.
+- Evil origin 97653 selects a real level-29 target (5796, two usable instances)
+  and a level-30 target. Other unsupported origins retain a bounded refusal.
+- Underdark origin 36563 proves 2,561 rooms, including 1,394 Underdark map rooms,
+  at levels 11/29. There are zero loaded NPCs within that proved component
+  satisfying even the necessary live-level/eligible-zone filters, so no local
+  target is selected. The level-30 control selects a target after its broader
+  ordinary route becomes available. Origins 11832/70176 do not prove a local
+  first map boundary at 11/29. These are specific supported refusals, not claims
+  that every Underdark hometown has a low-level quest pool.
+- Loaded named targets have their real placements recorded: 23501 in 23478
+  (zone 234), 6610 in 6543 (zone 65), 19830 in zone 197, and 4405 in 24002
+  (zone 240). Production target checks cover every accepted level and both
+  permitted types from Woodseer, including source, live eligibility, actual zone
+  and route gates. None qualifies for these actor/origin profiles. Positive
+  reused-prototype selection and moved/staging/zero-load rejection remain proved
+  through full creation in the controlled native harness.
+- Centaur 82718 is live at level 45 in 82763; 97038/97051 are live at level 60 in
+  97005, and 97039 at level 60 in 97152. All are excluded through the full current
+  pipeline for these profiles. This neither identifies the reported player's
+  target nor establishes a zero-load assignment. The qualified historical-report
+  limitation above remains unchanged.
+
+Command/observer timing disables every sampling/RNG/history breakpoint before
+the measured window. Each backend runs 12 real purchase/QUEST/paid-abandon cycles
+(36 commands) while a second native client requests 64 SCORE responses. Flatfile
+observed maxima were 270.6 ms for command responses and 270.5 ms for the observer;
+MariaDB observed 267.4/267.0 ms. No ASK/QUEST crossed the native 50-ms operation
+threshold; response timing also includes the game's command pulse and output.
+These are loaded-world observations, not a worst-case latency guarantee.
+The final audit reports room/work counts, no exhaustion and one catalog build
+per boot; MariaDB's largest representative route work was 319,913, below the
+shared two-million bound. The oversized native graph separately proves bounded
+exhaustion without destructive quest invalidation.
+
+Audit logs: `bin/tests/issue437-loaded-audit-{mariadb,flatfile}.log`.
+Maintained focused invocation uses `DURIS_WORLD_QUEST_JOURNEY=audit`; focused
+gameplay uses `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`. The default gameplay matrix
+is still all five cases. Existing dual-backend paid-map/recovery/rent/relogin/
+restart/free-redemption proof above remains valid. The final qualification also
+passed formatting, documentation contracts and diff checks. No temporary engine
+diagnostics remain.
+
+Final rebuilt audit binary SHA-256:
+- MariaDB: `58c7b4c31094b19f375ce38f57c8532fdc1ca0e6a19493117cc7c8fc45f90182`.
+- Flatfile: `4a7b47594364e4ff9e4a6d8de90db69c55b8a4bba2579f6c61ab62ec321b4644`.
+
+The refactored runner's recovery-only path was also rerun on both final binaries:
+`bin/tests/issue437-final-recovery-{mariadb,flatfile}.log`. Both passed paid
+purchase/abandon/map, invalidation, no-candidate retention, SAVE, ordinary travel
+to RENT, relogin, normal restart and free redemption. Each retained wallet 99,118
+until explicit test setup added funds; redemption left 199,118 unchanged.
+Each run recorded exactly two catalog builds across its two boots. This checks
+the moved probe and debugger mode switches without replaying unrelated combat.
+The audit's explicit positive Good/Evil/Underdark assertions were checked against
+the retained passing audit results after their addition.
+
+### Review remediation and fresh qualification (2026-10-30)
+
+Reviews of the complete stack identified and corrected diagonal trap-mask
+aliasing, omitted arriving-player light, stale sent-map caching, missing status
+publication on blocked map requests and abandonment confirmation, stale map
+availability across asynchronous payment, and disconnected low-level origins
+being classified as uncertain. Each correction has a focused regression that
+failed before its fix. Unknown geography and actor-side barriers still preserve
+accepted work; only a proved world-side loss grants replacement entitlement.
+
+The gameplay fixture now retries a valid assignment of the other type through
+its existing bounded purchase/paid-abandon loop. Setting the preferred first type
+does not suppress production's legitimate per-zone fallback. No progress or
+reward is manufactured, and production selection is unchanged.
+
+Fresh complete runs passed on both MariaDB and flatfile after these corrections:
+paid map/recovery, no-candidate entitlement, RENT/relogin, cold restart and free
+redemption; level-11 and level-29 ASK/KILL completion and ordinary return travel;
+level-29 partial SAVE/restart with exact quest, wallet, XP and held reward identity;
+and a level-30 KILL control. Each run completed all five cases and three boots.
+The earlier failed run that exposed the fixture assumption is not counted as a
+passing run. The 71-scenario sanitizer suite, route/visibility/GMCP checks and both
+server builds also passed. No production operations occurred.
+
+Fresh binary SHA-256 values:
+- MariaDB: `192dee0c9b1745d67854805a7e03d0195e7a698581d496249237424b12978d8b`.
+- Flatfile: `692de210ffaa1e455fa3fa12267bc7e03b1ca781435ee0379f890a297a414da6`.
+
+Run with `DURIS_WORLD_QUEST_BACKEND=mariadb` or `flatfile` and the matching
+`DURIS_WORLD_QUEST_BINARY`, then `python3 tests/async/run_world_quest_dual_backend.py`.
+The complete JSON evidence is retained under the review worktree's
+`bin/analysis/pr-451-471-quest-{mariadb,flatfile}.json`.

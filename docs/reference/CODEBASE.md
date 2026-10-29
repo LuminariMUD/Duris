@@ -331,11 +331,20 @@ so disconnect/reconnect cannot resume against stale room state. Completion
 history still uses each backend's world-quest adapter. Reward selection uses
 the accepted quest level's cached pool, with the existing logged random-
 equipment fallback if unavailable.
-`tests/async/run_world_quest_dual_backend.py` exercises real quest grant and
-persistence in disposable MariaDB and flat-file instances. It uses GDB to set
-the disposable Chaos actor to level 11 before its first command; its retained
-Chaos HP/equipment do not qualify combat difficulty. Focused
-`test_world_quest_*` tests cover policy and failure boundaries.
+`tests/async/run_world_quest_dual_backend.py` exercises real grants, ordinary
+outbound/return travel, ASK/KILL completion, partial progress across restart,
+paid maps and durable free replacement in disposable MariaDB and flatfile
+instances. Test-only `DURIS_WORLD_QUEST_JOURNEY` selects recovery, gameplay,
+both (default), or the loaded-world audit/observer timing pass. Focused gameplay
+cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`; the full
+matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2).
+The debugger sets only the disposable Chaos actor's requested level and first
+random quest kind, and inspects production route/provenance results without
+moving actors. The player walks and interacts through normal commands. Its
+retained Chaos HP/equipment do not qualify combat difficulty. All sampling/RNG
+breakpoints are disabled for command/observer timing. Character creation reuses
+the maintained combat-journey flow. Focused `test_world_quest_*` tests cover
+policy and failure boundaries.
 
 Quest origin (`quest_origin_room`, a VNUM) and replacement entitlement
 (`quest_replacement_due`) are append-only player status fields. Snapshot version
