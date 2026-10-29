@@ -705,7 +705,8 @@ save/relogin/restart and command/observer latency acceptance remains open.
 ### Live selection review checkpoint (2026-10-29)
 
 Working branch: `branch/issue-437-live-quest-targets`, based on #458 head
-`d91a924bf`. Selection is ready for its focused stacked PR; link it below after creation.
+`d91a924bf`. Review-ready PR: [#464](https://github.com/LuminariMUD/Duris/pull/464),
+implementation commit `296fcd94c`; base is #458.
 `world_quest_policy_select_target` now owns one complete bounded selection path:
 boot-cached direct unconditional 100% `M` placements, per-instance birthplace
 matching, actual destination zone, a single live-character index, reachable
