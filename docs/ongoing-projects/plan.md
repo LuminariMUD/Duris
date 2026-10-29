@@ -1009,6 +1009,9 @@ into that local branch and drop only this verified stash.
 
 ### Passive route traces repair (2026-10-29)
 
+Review-ready PR: [#469](https://github.com/LuminariMUD/Duris/pull/469), commit
+`494002a8f`, based on #468.
+
 Outcome: ordinary walking/combat traces must not turn a proved route into an
 unknown gate. Non-goals: no generic procedure exemption or area allowlist.
 Files: `world_quest_policy.c` and the existing route/live-target fixtures. Proof:
