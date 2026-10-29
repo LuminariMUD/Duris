@@ -782,6 +782,8 @@ void volley_hit_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void *dat
 		act_to_all_in_ship(target,
 				   "&=LRYour crew scrambles to their battlestations&N!\r\n");
 	target->timer[T_BSTATION] = BSTATION;
+	target->timer[T_TARGET_IDLE] = 300;
+	target->timer[T_TARGET_IDLE] = 300;
 
 	set_pvp_on_passengers(ship);
 	set_pvp_on_passengers(target);
@@ -1851,6 +1853,7 @@ int fire_weapon(P_ship ship, int w_num, int t_contact, int hit_chance, P_char ch
 	add_event(volley_hit_event, (int)volley_time, NULL, NULL, NULL, 0, &vd, sizeof(VolleyData));
 
 	ship->timer[T_BSTATION] = BSTATION;
+	ship->timer[T_TARGET_IDLE] = 300;
 
 	set_pvp_on_passengers(ship);
 	set_pvp_on_passengers(target);
