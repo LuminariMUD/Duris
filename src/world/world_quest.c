@@ -613,14 +613,6 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				return;
 			}
 
-			if (ch->only.pc->quest_accomplished == 1)
-			{
-				send_to_char(
-					"Hehe, sharing it so they get reward without work?!\r\n",
-					ch);
-				return;
-			}
-
 			if (ch->only.pc->quest_level <
 			    GET_LEVEL(victim) - get_property("world.quest.level.high.value", 6))
 			{
@@ -772,19 +764,11 @@ void world_quest_describe(P_char ch, world_quest_target_status availability)
 		send_to_char(buf, ch);
 	}
 
-	// always call this
-
 	if (ch->only.pc->quest_map_bought == 1)
 	{
 		send_to_char("You also got some additional information from the quest master:\r\n",
 			     ch);
 		show_map_at(ch, real_room(ch->only.pc->quest_map_room));
-	}
-
-	if (ch->only.pc->quest_accomplished == 1)
-	{
-		send_to_char("This quest is already finished, go talk to the quest master!\r\n",
-			     ch);
 	}
 
 	if (ch->only.pc->quest_receiver != GET_PID(ch))
