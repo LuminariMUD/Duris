@@ -855,8 +855,10 @@ int main(int argc, char **argv)
 		wallet_debits = reward_claims = history_writes = 0;
 		GET_COPPER(&player) = 10000;
 		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		ask("quest");
+		ask("abandon");
 		assert(!pc.quest_active && pc.quest_replacement_due && GET_MONEY(&player) == 10000);
+		assert((published_statuses == std::vector{ status::unavailable }));
+		assert(feedback.find("abandon confirm") != std::string::npos);
 		const auto waiting = pc;
 		ask("quest");
 		assert(!memcmp(&pc, &waiting, sizeof(pc)));
