@@ -514,7 +514,9 @@ graph regressions; keep the full outcome and acceptance matrix above.
 ### Implementation checkpoint: accepted-origin capture (2026-10-29)
 
 Working branch: `branch/issue-437-bartender-route-policy`, based on #451 head
-`9a2fd8db0`. The bartender validates co-location and captures its request room
+`9a2fd8db0`. Review-ready stacked PR:
+[#452](https://github.com/LuminariMUD/Duris/pull/452), implementation commit
+`0f71055a3`, targeting #451's branch. The bartender validates co-location and captures its request room
 VNUM into the existing payment context. Creation accepts that explicit origin
 and stores it only on success; an invalid origin takes the ordinary failure and
 refund path. The synchronous giver API checks co-location too. No later player
