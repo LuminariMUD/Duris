@@ -1,6 +1,6 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **persistence prerequisite review-ready; origin capture implemented**. Updated 2026-10-29.
+Status: **persistence, origin and route prerequisites qualified; selector integration next**. Updated 2026-10-29.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Implementation branch:
 `branch/issue-437-bartender-quest-routes`.
@@ -307,6 +307,18 @@ Keep the existing full refund for a new purchase that cannot create a quest.
 
 ## Ablated implementation sequence and files
 
+Current route slice: outcome is a bounded, read-only per-request proof from the
+accepted origin to actual room IDs and back, including local geography below
+30 and a route-derived map entrance. Non-goals for this slice: no catalog/reward
+rewrite, movement simulation, global route cache or policy configuration. Files:
+`world_quest_policy.c/.h`, its math constants, the existing trap trigger predicate
+(shared with actual movement), and one synthetic production-route harness.
+Proof: executable room/exit cases plus a loaded-world origin/latency audit before
+enabling the new selector. Reuse the existing map barrier, castle wall, dynamic
+wall and shop identity predicates; classify audited procedures by identity and
+leave other procedures unproven. Outbound and return searches share cached room
+checks and one work bound; no whole-world search is repeated for each target.
+
 Implementation order adjustment (2026-10-29): publish the two persisted fields
 as a focused prerequisite PR before wiring the policy and recovery consumers.
 This leaves each dependency independently buildable and reviewable. Outcome:
@@ -580,6 +592,101 @@ regressions, then use that same context for live routine-target selection and
 revalidation. None of the route, availability or stale-recovery acceptance
 claims are satisfied merely by recording the origin. Step 2 remains open until
 the traversal and full creation path enforce the contract.
+
+### Route proof prerequisite (2026-10-29)
+
+Working branch: `branch/issue-437-ordinary-routes`, based on #452 head
+`5daa9ce34` (including #451's runtime-contract correction). The independently
+qualified request-local traversal is implemented in `world_quest_policy.c`.
+The current selector does **not** call it yet. Step 2 stays open until the full
+creation path uses it, and step 3 still needs routine/live target selection.
+No route-enabled assignment, recovery or real travel outcome is claimed here.
+
+Outward edges and a reverse walk prove directed return reachability, including
+alternate return paths. Geography uses potential ordinary connections through
+interiors to find unambiguous first map boundaries, separately from actual travel
+proof. This prevents an unrelated unknown side-street procedure from erasing a
+proved local region. A low-level interior origin must still reach an actual map
+boundary through the strict travel graph. Surface continents and directed
+Underdark map components are distinct; local restriction ends after accepted
+level 29. At 30+, the proof permits present boat, flight and waterbreathing
+capabilities. Groundless surface and Underdark sectors require flight; ordinary
+low-ceiling passages allow kneeling/crawling without mutating actor posture.
+
+The code reuses `map_entry_barrier`, `check_castle_walls`, `check_wall` and
+`singleton_shop_id`; the latter was traced as a read-only lookup, and its
+possible unbound-shop scan is charged to the work budget.
+`movement_trap_trigger` is extracted from the existing movement trap expression.
+Audited travel-safe identities are room `inn`/`ship_shop_proc`, mobile
+`world_quest`/`quester`, and object `board`. Shops qualify only when their resolved
+secondary procedure is absent or one of those audited mobile procedures.
+These are **travel/door** classifications, not permission to assume an NPC's
+ASK handler is safe. Other procedures, room affects, occupied single-file
+passages, falling/current conditions remain unproven.
+
+Ablation: keep one shared connection rule for geography and actual traversal,
+with scripts/actors additionally checked for travel; no movement simulation,
+global route cache, configuration, zone approval list or parallel path engine.
+Removed unused predecessor storage: the existing reverse edge graph already
+supplies the return proof. The result contains room IDs and facts only and must
+be rebuilt for the next command.
+
+Evidence:
+
+- `python3 tests/async/test_world_quest_routes.py`: production traversal linked
+  with the real map/trap predicates under ASan/UBSan. Covers 10/11, 29/30,
+  40/41, 49/50, explicit origin versus another origin's access, interior origin,
+  same/foreign/conflicting/unknown geography, distinct Underdark components,
+  directed alternate returns, closed/unlocked versus locked/spiked/secret/
+  blocked/walled doors, map barriers even with flight, ordinary mountain
+  transitions and crawling, restricted rooms/zones, faction transit,
+  boat/flight/waterbreathing, known/unknown/secondary procedures, carried/worn
+  object handlers, dynamic walls/traps and oversized traversal exhaustion.
+  Actor, status, rooms and exits remain byte-for-byte unchanged.
+- `python3 tests/async/test_legacy_trap_effects.py`: passed with ASan/UBSan.
+- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
+- `python3 tests/async/test_world_quest_target_retries.py`: passed.
+- `make -C src -j2`: passed; `bin/tests/issue437-route-build.log`.
+- `python3 tests/async/test_documentation_contract.py`: all 14 passed.
+- `./scripts/format.sh --check` and `git diff --check`: passed.
+- A disposable MariaDB loaded-world debugger audit ran the production context
+  for **38 actual bartender origins / 114 requests**, at levels 11, 29 and 30.
+  Final sample: maximum **322,428 work units**, maximum **27,432 microseconds**,
+  no exhaustion. Bounds remain 65,536 inspected rooms / 2,000,000 shared work
+  units, leaving room for the forthcoming bounded live-instance checks.
+  These are helper timings, not command/observer latency or a worst-case
+  latency guarantee. The oversized synthetic graph verifies exhaustion returns
+  unproven, never cancellation authority.
+- Woodseer 16633 proved 18,034 returnable rooms at 11/29; Ixie origin 97653
+  proved 12,740; Drow origin 36563 proved 2,523. The audit found respectively
+  10/256, 0/85, and 0/0 reachable live instances passing only the existing
+  level/zone windows at 11/29. These are **not** fully eligible quest targets:
+  routine provenance, interaction/attack legality and history still need their
+  planned checks. Do not relax level windows or rewards to fill empty pools.
+  Drow and several other origins lack a verified useful low-level pool; further
+  qualification must report the precise unsupported origin when it remains.
+- Local audit source and exact records are under
+  `bin/tests/issue437-routes/loaded_routes.cpp`, `run_loaded.py`, and
+  `runtime7/routes.tsv`; the same directory retains earlier failed probes.
+  The first loaded audit exposed the fixed boot-contract omission. Later
+  audits exposed the overbroad side-street rejection and shop secondary
+  `world_quest` delegate; the executable fixture now covers both regressions.
+
+Next: wire this context into one bounded request/live-instance selection path,
+index direct unconditional 100% reset placements by their actual zone, and use
+actual usable population and route-derived maps in creation. `db.c::reset_zone`
+sets `GET_BIRTHPLACE(mob)` to the reset room VNUM for direct `M` loads; pair that
+with routine-placement metadata rather than counting unrelated/rare instances.
+The local level-11 candidates 16305/16306 independently have direct ordinary
+resets in Twisted Wood and staging resets in 16399: keep only usable instances
+from proven ordinary sources, not the global count.
+
+Before recovery consumes a failed route result, separate temporary player
+capability loss and relevant unknown scripts from proven world unavailability.
+The context currently returns unproven for missing routes when any encountered
+procedure was unknown; an irrelevant unknown branch must not conceal a
+definitively locked target route. All recovery, real ASK/KILL completion,
+save/relogin/restart and command/observer latency acceptance remains open.
 
 Completed on the source baseline:
 
