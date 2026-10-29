@@ -981,3 +981,27 @@ low-level content needs further investigation, or the disposable persistence
 fixtures need repair. This excludes external review, production fact collection
 requiring owner access, merge scheduling and deployment. The estimate is for
 the complete issue scope, not a same-continent-only patch.
+
+
+### Room-selector repair found during gameplay qualification (2026-10-29)
+
+Outcome: a generated NPC selector must remain one command argument and resolve
+to the same NPC after native ASK parsing. Non-goals: no targeting-policy change.
+Files: `world/handler.c` and the existing native room-selector fixture. Proof:
+two NPCs named `guard patrol` / `guard captain`, where selecting the captain
+must survive production `half_chop` and resolve `2.guard` to the captain.
+
+The previous helper could emit `1.guard captain`. ASK split that into target
+`1.guard` and message `captain ...`, addressing the patrol instead. The old
+fixture's simplified `isname` stub masked this by matching only single words.
+The fixture now links production `isname` and ASK's actual parser. It reproduced
+the failure before the fix (`bin/tests/issue437-room-selector-before.log`).
+The helper now extracts the first name keyword before calculating the ordinal;
+racewar/visibility/height/disguise predicates remain shared and unchanged.
+Review-ready PR: [#468](https://github.com/LuminariMUD/Duris/pull/468), commit
+`d85f60a57`. The focused ASan/UBSan suite, server build, format/tidy/diff checks
+passed. This is a separate focused fix stacked on #467, discovered while preparing real
+quest interaction. The gameplay qualification plan is preserved in task-owned
+stash `aeb4a5d792af549a10794f035342141cd1333ef0` pending return to
+`branch/issue-437-gameplay-qualification`; apply it only after this fix is merged
+into that local branch and drop only this verified stash.
