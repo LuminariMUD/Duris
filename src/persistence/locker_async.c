@@ -69,8 +69,8 @@ struct locker_async_slot
 	unsigned long gen;
 	time_t dirty_at;
 	time_t retry_at; /* a failed terminal save waits for this before the pulse starts it */
-	/* The user by pid and the locker character by name, found again when a snapshot
-	 * starts: either may be extracted before then (a user saved on the way out). */
+	/* The user may leave before capture. The holder must remain live until the
+	 * terminal write succeeds; its name avoids retaining a raw pointer. */
 	int user_pid;
 };
 
@@ -484,8 +484,10 @@ static int start_one_snapshot(struct locker_async_slot *s)
 	chUser = find_char_by_pid(s->user_pid);
 	if (!chLocker)
 	{
-		logit(LOG_FILE, "locker_async: dirty locker char missing for %s -- clearing",
-		      s->locker_name);
+		persistence_alert(
+			AVATAR, "locker_async", s->locker_name, "none", "none", "source_missing",
+			"live locker inventory lost before capture gen=%lu terminal=%d; cannot retry",
+			s->gen, s->terminal);
 		slot_clear(s);
 		return 0;
 	}
