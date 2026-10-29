@@ -438,17 +438,18 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             client.send("ask bartender quest")
             client.expect_any(("Go kill ", "Go ask "), timeout=30)
             accepted = gameplay_snapshot(client, run_root)
-            require(accepted["type"] == kind and accepted["accepted_level"] == level,
-                    f"requested gameplay case was unavailable: {accepted}")
+            require(accepted["accepted_level"] == level,
+                    f"requested gameplay level was unavailable: {accepted}")
             attempts.append({"mob": accepted["mob"], "zone": accepted["zone"], "quota": accepted["quota"]})
-            if kind != 1 or level != 29 or accepted["quota"] >= 2:
+            if accepted["type"] == kind and (kind != 1 or level != 29 or accepted["quota"] >= 2):
                 break
             # Only fixture preparation: pay the ordinary abandonment fee before
-            # making any progress, to obtain a task with a real partial state.
+            # making any progress. The preferred kind can legitimately fall back
+            # to the other type in a selected zone; KILL also needs a partial state.
             client.send("ask bartender abandon confirm")
             client.expect("You no longer have a task.", timeout=30)
         else:
-            raise AssertionError("no multi-kill level-29 task found within eight purchases")
+            raise AssertionError(f"no qualifying level-{level} type-{kind} task within eight purchases: {attempts}")
         baseline_items = {item["uid"] for item in accepted["items"]}
         history_before = stored_gameplay_history(database_environment, accepted)
         steps, partials = 0, []

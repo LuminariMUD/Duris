@@ -1,17 +1,17 @@
 # Issue #437: usable bartender quests and recovery
 
-Status: **implementation and local qualification complete; review-ready [PR #470](https://github.com/LuminariMUD/Duris/pull/470)**. Updated 2026-10-29.
+Status: **implementation, review remediation and local qualification complete; [PR #470](https://github.com/LuminariMUD/Duris/pull/470)**. Updated 2026-10-30.
 Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
 all three investigation comments. Stack root:
 `branch/issue-437-bartender-quest-routes`. Current continuation branch:
-`branch/issue-437-gameplay-qualification` (based on #469 / `95a6077bd`).
+`branch/issue-437-gameplay-qualification` (based on #469).
 Source baseline: `master` / `origin/master` at
 `9632f29804687ccf049ddf7a59a5ae16878e0583`.
 
-All five steps are complete. The [final qualification record](#complete-gameplay-and-loaded-world-qualification-2026-10-29)
+All five steps are complete. The [review qualification record](#review-remediation-and-fresh-qualification-2026-10-30)
 is the current handoff; earlier component checkpoints are historical and their
-remaining-work notes are superseded by it. PR #470 is stacked on #469, with
-implementation commit `f5ebb5d3d`. The stack remains open for external review.
+remaining-work notes are superseded by it. The linked PRs record integration
+status. Production deployment remains separate.
 
 
 The planning baseline publishes the plan and links the branch. Implementation
@@ -1175,3 +1175,36 @@ Each run recorded exactly two catalog builds across its two boots. This checks
 the moved probe and debugger mode switches without replaying unrelated combat.
 The audit's explicit positive Good/Evil/Underdark assertions were checked against
 the retained passing audit results after their addition.
+
+### Review remediation and fresh qualification (2026-10-30)
+
+Reviews of the complete stack identified and corrected diagonal trap-mask
+aliasing, omitted arriving-player light, stale sent-map caching, missing status
+publication on blocked map requests and abandonment confirmation, stale map
+availability across asynchronous payment, and disconnected low-level origins
+being classified as uncertain. Each correction has a focused regression that
+failed before its fix. Unknown geography and actor-side barriers still preserve
+accepted work; only a proved world-side loss grants replacement entitlement.
+
+The gameplay fixture now retries a valid assignment of the other type through
+its existing bounded purchase/paid-abandon loop. Setting the preferred first type
+does not suppress production's legitimate per-zone fallback. No progress or
+reward is manufactured, and production selection is unchanged.
+
+Fresh complete runs passed on both MariaDB and flatfile after these corrections:
+paid map/recovery, no-candidate entitlement, RENT/relogin, cold restart and free
+redemption; level-11 and level-29 ASK/KILL completion and ordinary return travel;
+level-29 partial SAVE/restart with exact quest, wallet, XP and held reward identity;
+and a level-30 KILL control. Each run completed all five cases and three boots.
+The earlier failed run that exposed the fixture assumption is not counted as a
+passing run. The 71-scenario sanitizer suite, route/visibility/GMCP checks and both
+server builds also passed. No production operations occurred.
+
+Fresh binary SHA-256 values:
+- MariaDB: `192dee0c9b1745d67854805a7e03d0195e7a698581d496249237424b12978d8b`.
+- Flatfile: `692de210ffaa1e455fa3fa12267bc7e03b1ca781435ee0379f890a297a414da6`.
+
+Run with `DURIS_WORLD_QUEST_BACKEND=mariadb` or `flatfile` and the matching
+`DURIS_WORLD_QUEST_BINARY`, then `python3 tests/async/run_world_quest_dual_backend.py`.
+The complete JSON evidence is retained under the review worktree's
+`bin/analysis/pr-451-471-quest-{mariadb,flatfile}.json`.
