@@ -96,6 +96,7 @@ extern int top_of_infot;
 extern int top_of_mobt;
 extern int top_of_objt;
 extern int top_of_zone_table;
+extern int top_of_world;
 extern int used_descs;
 extern struct agi_app_type agi_app[];
 extern struct command_info cmd_info[];
@@ -436,12 +437,9 @@ int get_map_room(int zone_id)
 
 void do_quest(P_char ch, char *args, int /*cmd*/)
 {
-	P_char q_mob;
-	P_char q_giver;
 	P_char victim;
 
 	char buf[MAX_STRING_LENGTH];
-	char q_name[MAX_STRING_LENGTH];
 
 	char name[MAX_INPUT_LENGTH], who[MAX_STRING_LENGTH];
 
@@ -690,73 +688,38 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			return;
 		}
 
-	if ((q_giver = read_mobile(real_mobile(ch->only.pc->quest_giver), REAL)))
+	const int giver = real_mobile(ch->only.pc->quest_giver);
+	const char *giver_name = giver >= 0 && mob_index[giver].desc2 ? mob_index[giver].desc2 :
+									"A bartender";
+	checked_snprintf(buf, MAX_STRING_LENGTH, "%s gave you the following quest:\r\n",
+			 giver_name);
+	send_to_char(buf, ch);
+
+	const int target = real_mobile(ch->only.pc->quest_mob_vnum);
+	const int zone = real_zone(ch->only.pc->quest_zone_number);
+	if (target < 0 || !mob_index[target].desc2 || zone < 0)
 	{
-		snprintf(q_name, MAX_STRING_LENGTH, "%s", q_giver->player.short_descr);
-		checked_snprintf(buf, MAX_STRING_LENGTH, "%s gave you the following quest:\r\n",
-				 q_name);
+		send_to_char(
+			"Your quest details are unavailable. Please ask a bartender to check your task.\r\n",
+			ch);
+	}
+	else if (ch->only.pc->quest_type == FIND_AND_ASK)
+	{
+		checked_snprintf(buf, MAX_STRING_LENGTH, "Go ask %s in %s about the %s.\r\n",
+				 mob_index[target].desc2, zone_table[zone].name,
+				 month_name[time_info.month]);
 		send_to_char(buf, ch);
-
-		if (q_giver)
-		{
-			extract_char(q_giver);
-			q_giver = NULL;
-		}
 	}
-	else
+	else if (ch->only.pc->quest_type == FIND_AND_KILL)
 	{
-		wizlog(56, "UNABLE TO LOAD Q MOB:%d for char %s reseting his quest.",
-		       ch->only.pc->quest_giver, GET_NAME(ch));
-		send_to_char(
-			"HMMMMM (bug), Seems like you forgot your quest already, go grab a new one, if this one dont work, try another bartender around the world. Sorry we working on a fix ASAP.!\r\n",
-			ch);
-		resetQuest(ch);
-		return;
+		checked_snprintf(
+			buf, MAX_STRING_LENGTH, "Go kill %d %s (%d left) in %s!\r\n",
+			ch->only.pc->quest_kill_original, mob_index[target].desc2,
+			(ch->only.pc->quest_kill_original - ch->only.pc->quest_kill_how_many),
+			zone_table[zone].name);
+		send_to_char(buf, ch);
 	}
 
-	// wizlog(56, "questmob num:%d",ch->only.pc->quest_mob_vnum);
-	if ((q_mob = read_mobile(real_mobile(ch->only.pc->quest_mob_vnum), REAL)))
-	{
-		snprintf(q_name, MAX_STRING_LENGTH, "%s", q_mob->player.short_descr);
-
-		if (ch->only.pc->quest_type == FIND_AND_ASK)
-		{
-			checked_snprintf(
-				buf, MAX_STRING_LENGTH, "Go ask %s in %s about the %s.\r\n", q_name,
-				zone_table[real_zone0(ch->only.pc->quest_zone_number)].name,
-				month_name[time_info.month]);
-			send_to_char(buf, ch);
-		}
-		else if (ch->only.pc->quest_type == FIND_AND_KILL)
-		{
-			checked_snprintf(
-				buf, MAX_STRING_LENGTH, "Go kill %d %s (%d left) in %s!\r\n",
-				ch->only.pc->quest_kill_original, q_name,
-				(ch->only.pc->quest_kill_original -
-				 ch->only.pc->quest_kill_how_many),
-				zone_table[real_zone0(ch->only.pc->quest_zone_number)].name);
-			send_to_char(buf, ch);
-			wizlog(56,
-			       "%s got a quest to go kill %d of mob vnum %d; they have %d left.",
-			       GET_NAME(ch), ch->only.pc->quest_kill_original,
-			       ch->only.pc->quest_mob_vnum,
-			       (ch->only.pc->quest_kill_original -
-				ch->only.pc->quest_kill_how_many));
-		}
-
-		if (q_mob)
-		{
-			extract_char(q_mob);
-			q_mob = NULL;
-		}
-	}
-	else
-	{
-		send_to_char(
-			"HMMMMMMMMMM, something's broken with your quest, tell a god ):(2)\r\n",
-			ch);
-		return;
-	}
 	// always call this
 
 	if (ch->only.pc->quest_map_bought == 1)
@@ -856,39 +819,20 @@ bool createQuest(P_char ch, P_char giver, quest_creation_failure *failure)
 
 void show_map_at(P_char ch, int room)
 {
-	if (!IS_ALIVE(ch) || IS_NPC(ch))
+	if (!ch || !IS_ALIVE(ch) || IS_NPC(ch) || ch->only.pc->quest_map_bought != 1)
+		return;
+	if (room < 0 || room > top_of_world)
 	{
+		send_to_char("I cannot verify a map for your current quest right now.\r\n", ch);
 		return;
 	}
 
-	if (!(room))
-	{
-		send_to_char(
-			"&+W* There is a bug with the map for this quest please contact an Admin.&n.\r\n",
-			ch);
-		logit(LOG_DEBUG, "World quest: (%s) failed in show_map_at for room (%d).",
-		      GET_NAME(ch), room);
-		return;
-	}
-
-	if (ch->only.pc->quest_map_bought == 1)
-	{
-		if (room == -1)
-		{
-			send_to_char(
-				"&+W* This zone is not connected to the overland maps of duris&n.\r\n",
-				ch);
-			return;
-		}
-
-		int old_room = ch->in_room;
-		char_from_room(ch);
-		char_to_room(ch, room, -2);
-		display_map(ch, 20, 999);
-		char_from_room(ch);
-		char_to_room(ch, old_room, -2);
-		return;
-	}
+	// Match gmcp_quest_map's synchronous viewpoint without transfer hooks,
+	// occupant-list changes or interrupting the viewer's current action.
+	const int old_room = ch->in_room;
+	ch->in_room = room;
+	display_map_room(ch, room, 20, 999, 1);
+	ch->in_room = old_room;
 }
 
 int quest_buy_map(P_char ch)

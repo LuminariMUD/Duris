@@ -348,6 +348,12 @@ it, with each mutation marking status dirty. New selection validates routes;
 stale-assignment recovery remains tracked in `docs/ongoing-projects/plan.md` for
 #437.
 
+Quest text and JSON status read boot-cached NPC short descriptions without
+spawning prototypes. Missing giver/target details never reset paid or completed
+work. Quest maps use a synchronous map viewpoint without room-transfer hooks,
+population changes or action interruption, and emit `Quest.Map` rather than
+overwriting the character's `Room.Map`.
+
 Quests cannot be shared unless `world.quest.share.max` (default 0, at most 4)
 allows it. Every completed quest pays one item reward to the player who
 completed it; kill quests pay at completion instead of rolling rewards onto
