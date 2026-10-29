@@ -598,6 +598,9 @@ the traversal and full creation path enforce the contract.
 Working branch: `branch/issue-437-ordinary-routes`, based on #452 head
 `5daa9ce34` (including #451's runtime-contract correction). The independently
 qualified request-local traversal is implemented in `world_quest_policy.c`.
+Review-ready stacked PR: [#458](https://github.com/LuminariMUD/Duris/pull/458),
+implementation commit `dab40e144`, targeting #452's branch. The parent runtime
+contract correction is commit `3f9a6eb4e` in #451.
 The current selector does **not** call it yet. Step 2 stays open until the full
 creation path uses it, and step 3 still needs routine/live target selection.
 No route-enabled assignment, recovery or real travel outcome is claimed here.
