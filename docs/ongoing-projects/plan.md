@@ -1,380 +1,424 @@
-# Issue #420: preserve Shambler capacity while defensive images are active
+# Issue #490: complete private locker chest behavior
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
-Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
-Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
-Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
-Worktree: /home/aiwithapex/projects/duris-issue-420.
+Status: **planned only; implementation has not started**. Updated 2026-10-30.
+Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
+Assignee: `moshehbenavraham`.
+Branch: [branch/issue-490-private-chests](https://github.com/LuminariMUD/Duris/tree/branch/issue-490-private-chests).
+Worktree: `/home/aiwithapex/projects/duris-issue-490`.
+Source baseline: remote `master`, `0bec1dbaec2793f64bb8b6328dcd69447ef17494`.
 
-The previous plan and completed qualification record for #428 are preserved
-byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
-authorizes implementation, including the shared Reflection/Mirror Image
-exemption, local qualification, commit/push and a PR linked to #420.
-The later master integration preserves the completed bartender-quest record in
-[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
+The previous shared plan, including #420's completed implementation and later
+integration records, is preserved byte-for-byte in
+[plan-issue-420.md](plan-issue-420.md). Its SHA-256 is
+`9306f27c4fad0663f588bb44f6b05fc8492d368d9bffb872c5c325570020f8e7`.
+This handoff covers the requested planning and publication. It does not claim
+that the repairs below have been implemented, deployed, or qualified in gameplay.
 
-## Outcome and accepted balance decision
+## Outcome
 
-At Shambler's admission boundary, exclude linked NPC images whose prototype is
-IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
-pet permits a cast, independent of whether zero, one, two, three or four images
-exist. Two or more ordinary pets still reject it. Any existing linked shambling
-mound still rejects another cast, including when it is the only ordinary pet.
+Make the advertised private-chest workflow coherent: explicit access policy,
+effective open/close state, item movement history, capacity independent of ID,
+truthful backend availability, and management/payment/save results that survive
+asynchronous completion and restart without inventing success. Preserve existing
+items, saved ownership identities, public sorting, password hardening, price and
+five-chest limit. Prove the entire supported command journey in disposable state.
 
-The owner accepted this resolution of the issue's open balance question, not a
-claim that the code or existing help already establishes that rule. It is
-specific to admission to Shambler. It does not make images cease to be pets.
+## Independently checked source findings
 
-**Shared-prototype consequence:** Reflection and Mirror Image both create
-pet-linked NPC 250. The accepted rule intentionally exempts both at this one
-boundary, including Reflection reached through its racial innate or an item.
-A Reflection-only exception that still counts otherwise identical Mirror Image
-pets would require a distinct policy and additional provenance; this plan does
-not silently introduce that distinction.
+Paths and line numbers refer to the baseline above. These are source findings,
+not a claim of unauthorized access against a running game.
 
-Keep the explicit Titan-versus-Reflection exclusions, genuine pet caps, mound
-uniqueness, image ownership, duration, replacement and combat behavior. Ordinary
-Displacement remains an affect with no pet-capacity consequence.
+1. `src/item/storage_lockers.c:567-607` authorizes personal/account owners,
+   staff, and matching guild members for management. `locker_opencmd()` at
+   4279-4366 exempts only the personal/account owner from passwords. The two
+   policies differ. `StorageLocker` has an occupant, and normal entry excludes
+   a second occupant at 3333-3415. Do not invent a multi-user session service.
 
-## Source findings, checked independently of the issue
+2. `GetCurrentChestId()` is used only by `locker_closecmd()`; successful open
+   sets a selection without connecting it to content inspection or movement.
+   `PrivateChest` objects start with ordinary container flags at zero.
+   `src/cmd/actobj.c:1095-1141`, `3473-3481`, and `7683-7767` supply container
+   preflight/bulk/empty paths, while `src/cmd/actinf.c:2893-2937` and 3928-3929
+   render contents, including examine's call back into look. The shared
+   `item_command_policy.c` checks type/takeability, not chest authorization.
 
-All paths and line numbers below refer to the baseline above.
+3. `PrivateChest::PrivateChest()` at `storage_lockers.c:1680-1707` puts the
+   database ID into `value[0]`. Ordinary `put()` at `actobj.c:3966-3970` and
+   `bulk_put_permitted()` at 3489-3523 interpret it as weight capacity. The
+   existing sorting-chest constructor sets `value[0] = -1` at 1568. Separate
+   `m_chestId` already exists. This confirms the field collision in source;
+   this planning pass did not rerun the issue's removed temporary diagnostic.
 
-1. **Reflection really creates pet links.**
-   src/classes/sillusionist.c:573-704 checks for an existing Titan, replaces
-   image followers, computes BOUNDED(1, (level - 26) / 5, 4), loads mobile 250,
-   and calls setup_pet(image, ch, 3, PET_NOCASH). Effective levels 31/36/41/46
-   produce 1/2/3/4 images. Images attach to the caster even when the visual
-   target is another player; preserve that existing ownership rule.
-   src/classes/necromancy.c:236-314 creates the LNK_PET through
-   linked_affect_to_char(). count_pets() counts every such link.
+4. A complete source call-site search finds no consumers of `CHEST_ACTION_PUT`
+   or `CHEST_ACTION_GET`. The three gameplay calls to `sql_log_chest_activity()`
+   record open, failed verification, and close with no item text.
+   `sql_player.c:2114-2125` queues the insert; callers ignore its result.
+   `locker_logcmd()` at 4386-4427 reads 50 records and checks permission only
+   before its asynchronous read. Its name join loses the display name after
+   deletion, but the log's numeric locker/chest identities remain stored.
 
-2. **Shambler has two separate admission rules.**
-   src/magic/blispells.c:666-742 first rejects an existing linked mobile 100,
-   then rejects count_pets(ch) > 1. Its army-prevention comment supports keeping
-   the ordinary-pet cap, but does not specify how images should count.
-   Terrain then selects 1-2, 2-4 or 3-6 mounds; unsupported sectors reject the
-   cast. The top comment's 1d4+2 is not the rule for every terrain.
-   Success retains setup_pet(..., 15, PET_NOCASH | PET_NOAGGRO), death-event
-   scheduling, following and TAG_CONJURED_PET.
+5. Creation at `storage_lockers.c:4051-4148` commits the new row on the writer
+   before its actor-bound callback charges money. `sql_async.c:265-281` drops
+   that callback if the character no longer exists. Payment failure queues an
+   unchecked compensating delete. The callback does not recheck management
+   authorization before charging. Password removal/replacement and deletion at
+   4191-4265 mutate memory and report success without inspecting durable results.
+   Name lookup is case-insensitive, but input is not checked against the SQL
+   `chest_name varchar(32)` before insertion; add only the validation this real
+   representation and unambiguous command targeting require.
 
-3. **A global counting change would broaden the balance change.**
-   Other actual consumers of count_pets() are bard charm in
-   src/classes/bard.c:827, the pet shop in src/specs/specs.room.c:868, NPC
-   corpse creation in src/mob/mobact.c:1118, and NPC Shambler selection at
-   src/mob/mobact.c:10772. The last independently requires zero total pets
-   before choosing the spell. Keep all four decisions and the generic counter
-   unchanged. Direct Shambler execution uses the corrected admission rule for
-   any caster; NPC autonomous spell selection remains its current separate rule.
+6. The currency facade is not a durable purchase receipt.
+   `src/economy/currency_transaction.c:143-218` changes memory and calls its
+   completion immediately; bank deltas queue separately. Its bank-payment
+   calculation at 54-88 can return denomination change to the wallet. Preserve
+   that detail and the existing whole-wallet-else-whole-bank choice; do not
+   silently combine a short wallet and short bank. Existing durable command
+   infrastructure supplies an inbox, operation IDs, transaction/replay handling,
+   and completion publication (`critical_command_repository.c:727-772`,
+   1136-1168). Divine trade demonstrates joint wallet/domain persistence and
+   save reservations; its cargo-specific payload cannot simply be used for a chest.
 
-4. **The existing image constant is precise enough; the illusion helper is not.**
-   src/core/defines.h:1374 defines IMAGE_REFLECTION_VNUM.
-   src/magic/magic.c:1727-1880 shows Mirror Image calling make_mirror(), which
-   loads the same prototype and calls setup_pet().
-   src/classes/innates.c:2470 also loads mobile 250 for Project Image, but does
-   not create a pet link in that path, so it contributes nothing to either count.
-   is_illusion_char() in src/classes/sillusionist.c:1400 also identifies
-   illusion disguises. Reusing that broader predicate could exempt real pets
-   merely because they are disguised; use the NPC/prototype check instead.
+7. Flat-file support is intentionally public-only in gameplay:
+   `storage_lockers.c:2891-2958` explicitly says private chests are MariaDB's,
+   and materialization at 3113-3136 expects SQL private-chest rows.
+   `flatfile_locker_repository.h:27-55` nevertheless represents private chests
+   and their saved contents. `flatfile_locker_prepare_public_save()` at
+   `flatfile_locker_repository.c:683-755` updates only the public record in the
+   loaded catalog. SQL reads refuse without a DB; no-MySQL save/log stubs return
+   false. Backend availability needs a deliberate contract, not a claim that
+   flat-file cannot serialize private data or has already deleted it.
 
-5. **The Reflection entry routes and both Titan exclusions already exist.**
-   src/classes/innates.c:2647-2666 dispatches the racial innate to
-   spell_reflection() after its own Titan check and cooldown handling.
-   src/classes/sillusionist.c:1871-1920 rejects Titan creation while a
-   mobile-250 image follower exists; Reflection independently rejects a linked
-   Titan. Neither restriction should move into a pet-count helper.
-   src/classes/skills.c:2217-2218 registers Shambler as an 11th-circle Scourge
-   specialization spell. A real command journey must satisfy that eligibility,
-   rather than assuming that any level-36 character can cast it.
+8. Private content saves already use the one writer and owner
+   `{locker, locker_id, chest_id}` (`sql_player.c:2127-2149`,
+   `player_snapshot_repository.c:1337-1362`). However, their bool reports only
+   admission; they lack the per-locker completion delivery used for public saves
+   in `persistence/locker_async.c:263-298`. Private durability must participate
+   in terminal cleanup. The constructor/sort/load path and metadata handling
+   should be repaired without replacing the established ownership authority.
 
-6. **Displacement and help need careful interpretation.**
-   src/classes/psionics.c:1461-1483 adds an AC affect without creating followers
-   or links; the reported name does not establish a Displacement defect.
-   lib/information/help_index contains the maintained Reflection and Shambler
-   entries (around lines 13489 and 25410). Neither currently explains this
-   image-counting rule. Add concise player wording there with the fix.
+The room advertises the full command set at `storage_lockers.c:3225-3236`.
+The maintained `CHEST / EQ CHEST / CHEST CREATE` help entry in
+`lib/information/help_index` does not describe this implemented subcommand system.
+The schema already accommodates bcrypt's 60-byte encoding; a password column
+widening is unnecessary (`migrations/bootstrap_multithread_safe.sql:1324-1348`).
 
-## Executable planning evidence
+## Proposed behavior contract
 
-A temporary probe under bin/qualification/issue420/ reused the existing
-Reflection ownership fixture and extracted the current, unmodified production
-bodies of spell_reflection(), setup_pet(), count_pets() and spell_shambler().
-It executed all 20 combinations of 0/1/2/3 ordinary pets and 0/1/2/3/4 actual
-Reflection-created images under ASan/UBSan.
+These are explicit implementation choices based on the existing code, not a
+claim that the issue or current help has already established all these rules.
 
-Observed results:
+- Keep current management rights: matching personal/account owner, staff under
+  the existing staff predicate, and members of the owning guild may list,
+  create, delete-empty, change passwords, and read the log. Use the same manager
+  verdict for password bypass on open. Guild private chests partition the shared
+  locker; they are not secret from fellow guild members who can change passwords.
+  Do not add creator ownership, guild ranks, or a second access list.
+- A guest must already have valid locker entry access. A named chest with a
+  password also requires successful verification; a password-free chest requires
+  no secret. Guests cannot manage chests or view the activity log. Knowing a
+  chest password never grants locker entry or bypasses racewar restrictions.
+- Every private chest requires an explicit successful `open <name> [password]`
+  before content inspection or movement, including for managers. One chest is
+  selected at a time; opening another replaces it, and `close` revokes it.
+  Bind authorization to the opener's runtime identity and current locker visit;
+  another actor must never borrow the occupant's selection. Public sorting
+  chests retain their existing behavior; `open public` clears private selection.
+- Close, password changes/removal, deletion, departure, disconnect, and re-entry
+  invalidate private authorization and pending open requests. Recheck current
+  role, locker visit, chest identity and credential generation on asynchronous
+  completion. A stale response cannot reopen a chest or alter a recreated one.
+- Use unlimited locker-container weight (`value[0] = -1`), matching public
+  sorting storage. Keep `m_chestId` for identity. Initialize the corresponding
+  space sentinel if a supported `USE_SPACE` build needs it. Player carrying
+  limits, item restrictions, and total locker accounting stay in force.
+- Support private-chest gameplay on the SQL backend, including MariaDB and
+  MySQL qualification. In flat-file mode, clearly reject private management,
+  private-chest open, and activity-log operations before hashing, charges, selection, or
+  mutations. Describe this availability in the room/help and retain public
+  storage/sorting. Preserve all serialized private metadata, hashes, IDs and
+  item graphs across public saves/restart. A temporary SQL outage is a service
+  failure, not permission to switch backend or create a new empty catalog.
+- Retain 500 platinum, five private chests plus public storage, one-token names,
+  optional passwords up to 72 bytes, bcrypt and guarded legacy upgrades,
+  empty-only deletion, no deletion refund, and latest-50 log viewing.
 
-- With no ordinary pets, zero or one image reaches Shambler's mound loader;
-  two, three or four images trigger the exact pet-cap rejection.
-- With one ordinary pet, zero images reaches the loader; even one image rejects.
-- With two or three ordinary pets, every image count rejects.
-- The generic count equals ordinary pets plus images throughout.
+## Non-goals and ablation
 
-The controlled mound loader intentionally returned null. This proves current
-admission behavior, not successful summons, event expiry, command reachability,
-or a booted-world reproduction. Room/link services and RNG were controlled.
-The ignored result is bin/qualification/issue420/baseline.txt; the temporary
-probe source and executable are removed after investigation. The implementation
-regression below must exercise successful mound creation, not stop at this probe.
+No production operations, migration against a live database, deployment, wipe,
+new authentication service, general container ACL framework, configurable chest
+limits/prices/capacities, creator/rank permissions, flat-file gameplay parity,
+or repository-wide cleanup. No unrelated locker entry, guild, cargo, currency,
+privacy, or terminal-departure policy change belongs in this branch.
 
-Existing baseline checks also passed:
+Ablation keeps the existing wrapper list, selection, password worker, item
+movement bodies, ownership snapshots, writer, and durable command coordinator.
+One small chest access predicate has real inspection/movement consumers; it is
+not a new permissions layer. A new private-chest command payload is justified
+by the existing create/payment split and durable activity/management outcomes;
+reuse the current inbox/journal instead of adding a receipt service or table.
+The wallet/bank reservation work below serves a real second payment consumer.
+Do not broaden cargo-specific types merely to avoid writing a few chest fields.
 
-- python3 tests/async/test_reflection_image_ownership.py: 409 casts plus Titan
-  rejection under ASan/UBSan, preserving prototypes, ordinary pets, links, combat
-  redirection and private-string cleanup. Extraction/room services are fixtures.
-- python3 tests/async/test_innate_reflection.py: real innate dispatch,
-  race/level eligibility, self targeting, configurable cooldown and Titan
-  rejection. Its Reflection body is stubbed; it does not prove the combined
-  innate-to-Shambler route.
+Flat-file gameplay parity is dropped because the issue explicitly allows honest
+unsupported-backend rejection and the owning loader already declares this
+boundary. Data preservation and the unsupported-mode journey remain mandatory.
+Capacity uses the existing unlimited sentinel instead of an invented limit.
+Log rendering uses stable stored numeric IDs after deletion, avoiding a new
+historical-name column. No password schema migration or rewrite is justified.
+Do not add a migration unless implementation proves existing durable storage
+cannot express a required invariant; any such change must be additive, guarded,
+re-runnable, and update this plan and the repository's migration contracts.
 
-## Non-goals
+## Files and implementation sequence
 
-- No change to count_pets() or its other consumers, no generalized capacity
-  policy, optional parameter, image-origin field, new configuration or service.
-- No change to image links, charm, durations, strings, damage, replacement,
-  Mirror Image creation rules, racial unlocks/cooldowns or Titan restrictions.
-- No change to Shambler terrain yields, lifetime, ordinary-pet limit, existing
-  mound exclusion, class access or NPC autonomous spell selection.
-- No pet persistence migration, old-instance rewrite, production operation,
-  deployment, full burn-in or dependency on hosted CI.
-- Do not fold Conjurer capacity work #215, prior image-ownership work, or
-  unrelated pet/lifetime investigations into this fix.
+Only this plan and its preserved predecessor change during planning.
+Expected implementation touch points are listed with their concrete purpose:
 
-## Files and ablated implementation sequence
+- `src/item/storage_lockers.c` and `.h`: policy, selection/invalidation,
+  management publication, backend messages, activity handoff and room help.
+- `src/cmd/actobj.c`, `src/cmd/actinf.c`: content gates and successful movement
+  hooks at the real single/bulk/empty/coin boundaries.
+- `src/sql/sql_player.c` and `.h`, `src/player/player_snapshot_repository.c`
+  and `.h`, `src/persistence/locker_async.c` and `.h`: private save receipts,
+  error propagation and cleanup fencing, reusing existing snapshot application.
+- A focused `src/item/private_chest_command.c` and `.h`: the concrete immutable
+  command codec/result and SQL executor for creation, metadata changes and
+  activity records; keep runtime ownership in the locker code. Split this file
+  only if the current build boundaries actually require it.
+- Existing critical command validation/dispatch/completion files, `src/Makefile`,
+  and currency/player save reservation code: register that command and prevent
+  a pending purchase or later save from undoing/double-applying its payment.
+  Touch the snapshot codec only if required for payment recovery, preserving
+  older save compatibility. Do not reuse a cargo trade marker as a chest marker.
+- Existing locker/password/container/flat-file tests, one native private-chest
+  lifecycle regression and one SQL command journey; relevant regression-runner
+  registration, `lib/information/help_index`, and this plan's completion record.
 
-Expected production edit: src/magic/blispells.c only.
-Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
-one focused command journey tests/async/test_shambler_reflection_journey.py
-(new), its resource-intensive registration in tests/run_regression_tests.py,
-lib/information/help_index, and this plan's completion record.
-Retain test_innate_reflection.py as an unchanged compatibility test unless the
-new regression exposes a necessary gap.
+### 1. Establish focused failing behavior before changing production
 
-1. **Extend the existing native regression before changing the guard.**
-   Add the production Shambler body and generic counter to the current Reflection
-   fixture. Model mobile 100, successful materialization and observable
-   scheduling/tagging at the existing controlled service boundaries. Assert
-   returned mounds and unchanged image/ordinary-pet state, not just absence of
-   refusal text. At least image-only 2+ and one ordinary pet plus one image must
-   fail against the current source. Do not create a second harness framework.
+Extend `test_locker_container_weight_lifecycle.py` to instantiate the production
+private constructor at multiple IDs and exercise both `put()` capacity handling
+and `bulk_put_permitted()`. Reuse its production-body extraction and ASan/UBSan
+stubs; do not recreate container arithmetic in a test.
 
-2. **Count at the existing Shambler boundary.**
-   In its existing linked-pet traversal, retain the mound rejection and tally
-   only pets that are not NPCs of IMAGE_REFLECTION_VNUM. Use the resulting
-   local count for the existing > 1 guard. Preserve rejection precedence and
-   the terrain/summoning body. Add a short comment explaining this admission
-   policy. No new production helper or header declaration is necessary.
-   Keep all non-image pets counted; do not use flags such as PET_NOCASH,
-   temporary duration, charm status, or the broad illusion predicate.
+Add `tests/async/test_private_chest_lifecycle.py` using actual locker management,
+open/close, content gate and movement bodies. Control password-worker, writer
+and completion timing at their existing boundaries. Demonstrate missing session
+gating, missing item history, premature metadata success, and stale completions
+with disposable identities. Keep cryptographic behavior in the existing password
+suite. Negative controls must fail for the intended observable behavior on the
+baseline; source-token assertions alone do not prove authorization.
 
-3. **Drive the real command route in disposable state.**
-   Reuse test_flatfile_combat_journey.py and its server build/world/socket
-   helpers. Follow the staff-controlled fixture setup demonstrated by
-   run_racial_pulse_journey.py, but keep this scenario separate from its
-   unrelated race-stat checks. Supply the image and mound prototypes and a
-   supported outdoor room. Configure synthetic, otherwise eligible Scourge
-   casters with known spell access, mana and preparation; do not change normal
-   race/class rules. Exercise racial "innate reflection" for Gnome and Kobold,
-   then "cast 'shambler'" while at least two images remain. Also cover the normal
-   spell route to Reflection on a prepared test caster and a Mirror Image
-   command control for the shared-prototype policy.
-   Observe image and mound identities/counts plus ownership/following through
-   existing inspection facilities. Synchronize on each command's response and
-   following prompt; an unsolicited prompt alone cannot prove completion.
-   Check a repeated Shambler rejection, ordinary-pet rejection and both
-   Titan/Reflection orders. Recast/cleanup must leave ordinary pets intact.
+### 2. Connect selection to inspection and all item boundaries
 
-4. **Document and finish proportional qualification.**
-   Explain in Shambler help that Reflection/Mirror Image images do not consume
-   its ordinary-pet allowance, that at most one other pet may precede the cast,
-   and that an existing mound prevents another cast. Add a brief cross-reference
-   in Reflection help without claiming a global exemption. Run the checks below,
-   reread the entire diff and record exact results and limitations here.
+Resolve a private chest through its actual `StorageLocker::FindChestForObject()`
+wrapper, never through a name, prototype number, or `value[0]`. Apply one shared
+access decision before content enumeration and before transfer preflight. Trace
+ancestor containers where the lookup permits nested content; an inner object
+cannot bypass its private root. Ordinary containers pass through unchanged.
 
-Ablation keeps one local counting decision, the already available image constant,
-an extension of existing native coverage, and one small journey using existing
-helpers. A global counter change would alter four unrelated consumers. A broad
-illusion predicate changes more than image counting. Per-spell provenance adds
-state without serving the proposed shared-image rule. Removing image links
-would disturb ownership and lifecycle. These alternatives are dropped.
-The command journey stays because the existing tests do not execute the combined
-player workflow. No alternative production implementations need to be built.
+Cover single/numeric/all/all-filtered get and put, coin paths, empty with both
+source and destination, look-in/examine, and the existing public sort path.
+Check again after traps or delayed work that can change actor/object/session
+identity. Close cannot leave an earlier selection or queued verification usable.
+Use a small authorization generation only for actual in-flight invalidation;
+do not build a general session map. Never authorize by generic container flags
+alone, including transparent containers. Change the private capacity constructor
+without changing the ordinary container weight rules.
 
-## Proof and acceptance
+### 3. Give management and payment a durable result
 
-- Cross 0/1/2/3/4 images with 0/1/2/3 ordinary pets: casts succeed only with at
-  most one ordinary pet and no existing mound. Include a non-image summoned pet
-  as well as a charmed-pet control; both count. Non-pet links do not count.
-- An existing mound rejects with zero or multiple images, including when that
-  mound is the only ordinary pet. Additional casts cannot accumulate mound groups.
-- In supported terrain, admitted casts create the unchanged yields (1-2, 2-4,
-  3-6) under controlled RNG. Unsupported terrain still rejects without creating
-  anything. New mounds retain pet links/followers, tagging and scheduled lifetime.
-- Image-only and mixed cases leave image identity, strings, links and existing
-  ordinary pets intact. Reflection replacement removes only the previous images;
-  after image cleanup the ordinary-pet decision is the same.
-- The generic count_pets() still counts images. This demonstrates that the
-  shared helper's contract, including its other callers, has not changed.
-- Real Reflection spell and racial routes reach successful Shambler creation;
-  the Mirror Image control follows the explicitly proposed rule. Existing
-  Displacement alone adds no pet restriction.
-- Titan first still blocks Reflection; images first still block Titan.
-  The racial rejection does not spend cooldown or add combat lag.
-- Native and socket results are reported separately. A missing command journey
-  leaves that acceptance item unverified; green helper tests cannot replace it.
+Use one domain-specific private-chest command on the existing critical command
+coordinator/writer. Include operation ID, stable locker/chest identity, actor PID,
+account/side where needed, expected state, and owned strings/hashes; no pointers
+or plaintext passwords cross the thread boundary. Reuse the existing completion
+and replay mechanism rather than actor-bound callbacks for persistent effects.
 
-Planned commands after implementation, with artifacts confined to bin/:
+For creation, capture the complete wallet-else-bank payment including change,
+reserve the affected purse/account-side bank and relevant save publication, and
+admit the immutable operation. Adapt the existing economic/save reservation
+pattern narrowly for this real consumer; block conflicting account-bank mutations
+on other online characters until resolution too. Do not equate the currency
+facade's immediate callback with COMMIT.
 
-    python3 tests/async/test_reflection_image_ownership.py
-    python3 tests/async/test_innate_reflection.py
+In one SQL transaction, lock/validate the locker, name, count and payment
+preconditions, write the exact payment and new chest, and retain the result in
+the existing operation inbox. Duplicate operation delivery returns the same
+result without charging/inserting again. Duplicate names, a full locker,
+insufficient funds, rejected submission or failed transaction produce neither
+charge nor chest. Ambiguous commit uses the existing durable result resolution;
+never retry as a new operation or rely on an unchecked compensating delete.
+
+Only committed results publish new balances, synchronize the shared bank,
+materialize a chest in a still-matching visit, and announce success. Resolve an
+offline payer by durable identity/recovery; disconnect must not discard the
+payment outcome, resurrect a stale wallet snapshot, or charge a new session.
+Release reservations on final rejection or reconciliation, not on a timeout that
+leaves the database outcome unknown. The committed chest is found on next entry
+if its original room no longer exists. Allocation failure in materialization
+must leave the stored paid chest available for re-entry, not repeat the purchase.
+
+For password replacement/removal and deletion, invalidate access when admitted,
+serialize conflicting operations, check expected chest/password state, and
+publish metadata/removal and final success only after the committed result.
+Reject nonempty or unavailable deletion and wait for older chest snapshots
+before removal. A failed write retains the prior hash/chest; re-opening is
+required after invalidation. A legacy rehash uses compare-and-swap against the
+verified credential and cannot replace a newer password. Re-resolve all live
+objects by identity when publishing; a freed/reused room is not the old visit.
+
+### 4. Record successful movement and wait for private saves
+
+At the confirmed movement boundary, capture actual actor, locker/chest IDs,
+action, item description plus UID/vnum, and actual moved amount for coins.
+Reserve bounded event context before mutation; if that reservation fails, reject
+the candidate before moving it. Submit reserved context only after an actual
+success; a refused writer submission retains the event for retry. Reserve per root,
+not one misleading entry for an entire attempted bulk command. Moving a bag
+records that root and keeps its nested identity intact. Empty records source
+GET and target PUT where applicable. Moves within the same private root are
+internal rearrangements; crossing private roots produces the appropriate two
+records. Automatic sort/load/save is not a player deposit/withdrawal.
+
+Submit successful events through the same domain command's activity action so
+its operation inbox prevents duplicate records on retry. Do not emit success
+for authorization, capacity, cursed-item, trap or other rejected candidates.
+Preserve earlier successful entries when a later bulk candidate fails. Handle
+coin piles before extraction/merging destroys their description; record the
+actual amount moved. Keep passwords and hashes out of all event payloads/output.
+Keep the relevant locker busy until admitted events are acknowledged; retain
+pending evidence through writer rejection/retry instead of silently dropping it.
+Revalidate log-view permission and visit on asynchronous read completion. Order
+latest-50 deterministically and show numeric IDs when the chest has been deleted.
+
+Extend the existing private snapshot submission to report final writer results
+into the locker lifecycle. All private saves, activity and management results
+must settle before a terminal public-save acknowledgement can release the room
+or allow a conflicting re-entry. Retryable/ambiguous results preserve the work;
+terminal failures retain recoverable state and report the real failure. Reuse
+public locker result handling; do not add a second save worker. Preserve owner
+`{locker, locker_id, chest_id}`, nested UIDs, and sort isolation.
+
+### 5. Match help and finish complete local qualification
+
+Document supported backends, manager/guest/guild semantics, explicit open/close,
+capacity, syntax, cost/funding/change, limit, passwords, logging, empty-only delete
+and persistence outcomes in chest/locker help and room instructions. Retain the
+distinction between `eq chest create` and a nonexistent standalone command.
+
+Use `tests/async/test_mysql_private_chest_journey.py` (new) with the existing
+`test_mysql_locker_grant_journey.py` fixture/bootstrap/socket patterns and
+`with_disposable_mariadb.sh`. Extend `test_flatfile_locker_journey.py` for clear
+unsupported-mode behavior and public-storage compatibility. Seed private flat
+records through the existing repository fixture and prove they are unchanged
+after public saves and a cold restart. Never use real player inventories.
+Register expensive journeys in the existing resource-intensive test list.
+
+## Proof and acceptance coverage
+
+Completion requires all of the following; a green hash/helper suite is insufficient:
+
+- Roles: personal owner, same-account same-side owner, matching guild member,
+  staff using the current staff rule, granted guest, ungranted and opposite-side
+  controls. Managers use explicit open; guests cannot manage/view logs; a guild
+  member can manage shared chests and bypass their passwords as documented.
+- Access: content inspection and all movement forms fail closed until permitted
+  open; correct, missing, wrong, overlength and legacy credentials; password-free
+  operation; selecting another chest; close; password replacement/removal;
+  deletion/recreation; revoked role; leave/re-entry; disconnect; stale/out-of-order
+  completion. Also verify ordinary bags, public sorting and unrelated door open/close.
+- Capacity: chest IDs 10 and 100 with identical contents produce identical
+  single/bulk eligibility; high IDs never grant extra capacity. Existing nested
+  weight, ordinary finite container limits and carrying limits still hold.
+- Audit: actual actor/IDs/item context, partial coins, nested bag roots,
+  single/bulk/empty and cross-chest movement, latest-50 ordering, post-deletion
+  identity, and log-view denial. No rejected or automatic move appears as success.
+  Writer admission failure, transaction failure and replay cannot silently lose
+  or duplicate accepted activity; no passwords/hashes enter logs.
+- Management/payment: create/list, case-insensitive duplicates, name length and
+  reserved/unresolvable names, public name protection, fifth/sixth chest,
+  password set/change/remove, delete-empty/reject-nonempty/unavailable, no refund,
+  full wallet, full bank, bank denomination change, insufficient individual
+  sources despite a combined sufficient total, and no double charge on replay.
+- Persistence/lifecycle: save/re-entry/cold restart preserve private/public item
+  graphs, UIDs, ownership and sorting; private writer failure cannot be hidden
+  by a successful public save. Exercise departure, idle rent, disconnect/extraction,
+  actor disappearance between commit/publication, rejection before admission,
+  pre-COMMIT failure, lost/ambiguous COMMIT acknowledgement and recovery. Verify
+  balances and chest rows together using the disposable database, not just text.
+- Backend matrix: real SQL command journeys on disposable MariaDB 10.11 and
+  MySQL 8.0; no-MySQL/flat-file build plus unsupported-mode/public-storage journey
+  and preserved pre-existing private records. A missing engine leg remains
+  explicitly unqualified; it is not replaced by compilation or mocked SQL.
+
+Commands after implementation (new test filenames above are planned):
+
+    python3 tests/async/test_private_chest_lifecycle.py
+    python3 tests/async/test_private_chest_password_hardening.py
+    python3 tests/async/test_locker_container_weight_lifecycle.py
+    python3 tests/async/test_locker_ownership_cutover.py
+    python3 tests/async/test_flatfile_locker_repository.py
+    python3 tests/async/test_locker_named_entry_runtime.py
+    python3 tests/async/test_locker_async_pipeline.py
+    python3 tests/async/test_locker_result_failures.py
+    python3 tests/async/test_locker_leave_during_save.py
+    python3 tests/async/test_sql_async.py
     make -C src
-    python3 tests/async/test_shambler_reflection_journey.py
+    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_private_chest_journey.py
+    TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_private_chest_journey.py
+    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py
+    python3 tests/async/test_flatfile_locker_journey.py
     ./scripts/format.sh --check
     python3 tests/async/test_documentation_contract.py
     git diff --check
 
-The proposed journey should build its fresh flat-file executable through the
-existing helper by default, with an optional explicit freshly built binary as
-the nearby journeys support. Confirm local/dev configuration before runtime
-work; use private temporary accounts/world data, never live player state.
-No persistence behavior changes, so restart/database qualification is not a new
-gate. Production/full-world acceptance is outside this implementation estimate.
+The flat-file journey already builds a no-MySQL server through existing helpers;
+keep all build artifacts under `bin/`. Also run the focused command codec,
+critical replay, currency/reservation and snapshot compatibility checks affected
+by the implementation, using existing tests. Record exact commands at that step.
+Inspect local/dev environment before booting; use synthetic run roots and the
+disposable SQL wrapper, which never sources the checkout's `.env`. Do not require
+hosted CI, full burn-in, production reproduction, or a deployment for completion.
 
-## Tracking and estimate
+## Estimate and tracking
 
-GitHub #420 is the work item for this branch. Searches for open PRs referencing
-420 or Shambler/Reflection found none. Targeted max757/duris GitLab searches
-found no matching Shambler work item; the Reflection result was unrelated
-lifetime-qualification item #27. Do not link that item or close related historical
-issues merely because they mention images or pets. Link this branch directly
-in #420's Development section and provide the committed plan link there.
-A planning-only commit must not use an issue-closing keyword.
+Estimate for me: **12-18 hours of active implementation and qualification** for
+this complete SQL-supported contract. Rough allocation: 2-3 hours for focused
+regressions/access/capacity; 4-6 hours for durable creation/payment, management
+and lifecycle integration; 2-3 hours for audit/save acknowledgements; 4-6 hours
+for engine/backend journeys, help, required builds and final review. Allow up to
+24 hours if payment reservation/recovery compatibility requires more work than
+the existing durable domain patterns support. These are my working-time estimates,
+not elapsed waiting time, another developer's estimate, or implementation already
+performed. External review, changed product policy, full flat-file private-chest
+parity, merge waiting and deployment are outside this estimate.
 
-Estimate: **2-3 hours of my active implementation time** for the documented rule,
-including regression-first work, the small production change, help, the real
-command journey, required build and reviewable commits. Approximately 30-45
-minutes is native regression plus fix, 60-90 minutes is command-fixture setup and
-runtime checks, and 30-45 minutes is documentation, build and final review.
-Allow up to 4 hours if spell preparation or minimal-world fixtures require more
-setup. This excludes a changed balance decision, external review, merge waiting
-and deployment.
+Issue #490 is the single work item. GitHub's Development association links this
+branch to #490; the handling comment and final plan link provide the handoff.
+Use a planning-only commit referencing #490 without a closing keyword. Do not
+close the issue, open an implementation PR, merge or deploy at the planning stage.
 
-## Planning completion checks
+## Planning validation and limits
 
-Only this plan and preservation of the previous plan are committed. No
-production C/C++ edit, full server build or booted-world reproduction is claimed
-at this planning stage. The focused baseline evidence is recorded above.
-Planning validation completed:
+On this isolated baseline, independently rerun and passed:
 
-- python3 tests/async/test_documentation_contract.py: all 14 tests passed.
-- git diff --check: passed.
-- The archived #428 plan and baseline plan have identical SHA-256:
-  db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
-- Only the requested plan and the intact historical archive are tracked changes;
-  the original checkout's branch and files are preserved.
+- `python3 tests/async/test_private_chest_password_hardening.py`: hashing worker,
+  bounded/cancelled login jobs, legacy handling, stale hash and source contracts.
+- `python3 tests/async/test_locker_container_weight_lifecycle.py`: all 22 existing
+  cases under ASan/UBSan, covering sorting/loading/weights/movement predicates.
+- `python3 tests/async/test_locker_ownership_cutover.py`: all six contract tests.
+- `python3 tests/async/test_flatfile_locker_repository.py`: repository harness.
 
-## Implementation and qualification, 2026-10-30
+These do not prove the unimplemented access policy, full management journey,
+activity logging or durable payment result. No maintained C/C++ code changed;
+no full server build, new runtime reproduction, database migration, or production
+operation is claimed. The original checkout's quest-documentation work and all
+other worktrees are preserved. Additional planning checks passed:
 
-Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
-of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
-unchanged. The existing mound rejection remains first, and terrain, summon
-creation, tagging and lifetime code are unchanged. Help now states the shared
-Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
-
-The existing ownership regression executes the production Shambler body and
-counter alongside Reflection/setup_pet. All 640 combinations of image count,
-ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
-pass under ASan/UBSan. They check actual fixture mound materialization,
-ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
-scheduling endpoints, tagging, duplicate-cast rejection and admission after
-image removal. The original 409 Reflection casts and Titan rejection still pass.
-Two in-memory negative controls substitute the old production Shambler body:
-two images alone and one image with one ordinary pet each fail at the successful
-mound-creation assertion. No tracked production source is changed by those
-controls.
-
-The new command journey boots a fresh flat-file server with private state and
-drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
-real Shambler casts. Every route retains four images and creates three to six
-mounds in forest terrain. Staff inspection checks mobile identities, keywords,
-following and pet links. It also proves duplicate-mound and two-ordinary-pet
-rejection, the one-pet allowance, cleanup without losing ordinary pets, both
-Titan exclusion orders, and the published help. A real Reflection recast
-replaces every image identity while retaining the ordinary companion.
-
-Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
-Scourges after image creation; the Displacement control uses an eligible
-MindFlayer's real WILL command before switching back to Scourge. This does not
-add or claim a playable class combination. Staff edits resolve the PC explicitly
-because images share its name. Commands require their own receipt and following
-prompt and handle paging. No runtime test hooks or production settings are added.
-The journey is registered as resource-intensive in the existing regression runner.
-
-Completed on the planning baseline:
-
-- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
-- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
-  Titan rejection without cooldown or combat-lag consumption.
-- make -C src -j6: MariaDB development build passed with warnings as errors.
-- make -C src PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
-  -j6: flat-file development build passed.
-- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
-  default fresh-build helper and the explicit live recast case.
-- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
-  documentation contracts and git diff --check passed.
-
-The planning-baseline command log is bin/qualification/issue420/journey-final.log.
-The report at gameplay-report.json in that directory holds the latest full run;
-see the integration record below for its current binary. The planning-baseline
-qualified flat-file binary SHA-256 is
-98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
-Native fixtures control room/link services and scheduled callbacks; the socket
-journey exercises the real parser, spell dispatch, materialization and ownership.
-No full-world, MariaDB socket, restart or production qualification is claimed.
-
-Final ablation retains one production counting decision, one existing native
-test extension, a focused journey using existing build/world/socket helpers,
-its runner registration and the necessary help/plan updates. There is no new
-capacity API, persisted state, configuration, migration or image-lifecycle edit.
-
-### Master integration and final qualification
-
-Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
-Its shared plan.md now records completed #437 work. The merge retains this #420
-plan at the requested path and archives the upstream #437 plan byte-for-byte.
-The only overlapping file was the plan; Shambler/Reflection and their admission
-behavior did not change upstream. The archived #437 plan and the upstream file
-have identical SHA-256:
-ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
-
-The 640-case sanitizer matrix, original Reflection/innate checks, all 14
-documentation contracts, formatting, diff checks and MariaDB build passed again
-against the integrated source. The default command-journey invocation built a
-fresh flat-file server and passed all four routes, the real Reflection recast,
-ordinary-pet/mound controls, Titan exclusions, Displacement and help.
-Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
-created 5, 4, 3 and 4 forest mounds respectively.
-
-Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
-bin/qualification/issue420/journey-integrated.log.
-The integrated flat-file binary SHA-256 is
-0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
-
-
-## Sequential PR integration, 2026-10-30
-
-Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
-#432, #475, #476 and #477. Game code, player help and test discovery merged
-without conflicts. The shared-plan conflict keeps this Shambler record at
-`plan.md` and preserves the completed coin record byte-for-byte at
-[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
-remain intact.
-
-The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
-409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
-formatting, whitespace, test discovery and all 14 documentation checks pass on
-the combined source. The earlier disposable-server gameplay report remains the
-runtime qualification for racial and spell images, ownership, pet/mound caps,
-Titan exclusions, Displacement and help; that complete journey was not repeated
-in this merge pass. No production operation is included.
+- `python3 tests/async/test_documentation_contract.py`: all 14 tests.
+- `git diff --check`: no whitespace errors.
+- The archived #420 record exactly matches the baseline shared plan bytes and
+  SHA-256 given above.
+- GitHub assignment, handling comment, and the native Development branch link
+  were verified. The final issue handoff records the published commit and plan;
+  post-push checks must confirm matching local/remote heads and a clean worktree.
