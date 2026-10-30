@@ -23,7 +23,7 @@ extern struct time_info_data time_info;
 extern struct zone_data *zone_table;
 extern int top_of_zone_table;
 extern int mini_mode;
-extern const char *race_types[];
+extern const struct race_names race_names_table[];
 extern P_char character_list;
 extern P_index mob_index;
 extern P_desc descriptor_list;
@@ -478,7 +478,8 @@ void justice_action_invader(P_char ch)
 			      "HOMETOWN ALARM: town=%s room=%d trigger=%s npc_vnum=%d race=%s master=%s",
 			      town_name_list[CHAR_IN_TOWN(ch)], world[ch->in_room].number,
 			      GET_NAME(ch), IS_NPC(ch) ? GET_VNUM(ch) : -1,
-			      race_types[GET_RACE(ch)], master ? GET_NAME(master) : "none");
+			      race_names_table[GET_RACE(ch)].normal,
+			      master ? GET_NAME(master) : "none");
 			justice_hometown_echo(CHAR_IN_TOWN(ch), alarm);
 		}
 	}

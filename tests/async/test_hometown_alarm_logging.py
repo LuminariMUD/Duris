@@ -27,7 +27,6 @@ index_data mobs[1]{};
 P_index mob_index = mobs;
 hometown_data hometowns[LAST_HOME]{};
 const char *town_name_list[] = {"Nowhere", "Tharnadia", "Ixarkon", "Arachdrathos"};
-const char *race_types[RACE_DEMON + 1]{};
 
 static std::vector<int> rolls;
 static std::vector<std::string> logs, echoes;
@@ -59,6 +58,7 @@ void logit(const char *filename, const char *format, ...) {
     logs.emplace_back(text);
 }
 '''
+program += extract_function("common.c", "const struct race_names race_names_table[LAST_RACE + 2] = {") + ";\n"
 program += extract_function("affects.c", "P_char get_linked_char(P_char ch, ush_int type)")
 program += "\n" + extract_function("training_dummy.c", "bool training_dummy_is(P_char ch)")
 program += "\n" + extract_function("justice.c", "void justice_action_invader(P_char ch)")
@@ -80,9 +80,6 @@ int main() {
     hometowns[HOME_THARN - 1].flags = JUSTICE_GOODHOME;
     hometowns[HOME_ARACHDRATHOS - 1].flags = JUSTICE_EVILHOME;
     mobs[0].virtual_number = 1234;
-    race_types[RACE_DEMON] = "Demon";
-    race_types[RACE_DROW] = "Drow Elf";
-    race_types[RACE_HUMAN] = "Human";
 
     char demon_name[] = "a summoned demon", player_name[] = "Raider";
     char master_name[] = "FriendlyOwner";
