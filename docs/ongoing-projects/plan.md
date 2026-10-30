@@ -610,8 +610,22 @@ The access implementation is committed as `8446ffed9`. Fixture dependency
 was resolved by retaining both sets of required boundaries. Post-integration
 private lifecycle, idle lifecycle and documentation checks pass; production
 sources did not change in that dependency merge, so the recorded builds and
-socket journeys remain valid. The access branch is ready for a focused PR on
-`branch/issue-490-idle-harness`; its link will be recorded immediately after
-creation. Next implementation branch should start from this access head and
+socket journeys remain valid. The access branch is published in review-ready
+[PR #503](https://github.com/LuminariMUD/Duris/pull/503), targeting
+`branch/issue-490-idle-harness` (PR #502). The review stack is #497 → #502 → #503. Next implementation branch should start from this access head and
 implement durable management/payment before claiming PUT/GET audit or terminal
 private-save durability. Keep the original #490 acceptance/proof section intact.
+
+Published review boundaries:
+
+- [PR #497](https://github.com/LuminariMUD/Duris/pull/497): capacity, head
+  `branch/issue-490-private-chests`, base `master`.
+- [PR #502](https://github.com/LuminariMUD/Duris/pull/502): inherited idle fixture
+  linkage repair, head `branch/issue-490-idle-harness`, base the capacity branch.
+- [PR #503](https://github.com/LuminariMUD/Duris/pull/503): access/session/backend
+  behavior, head `branch/issue-490-chest-access`, base the fixture branch.
+
+All are open, non-draft and ready for review. Do not merge them as part of this
+implementation authorization. Keep progressing on dependent durability work
+without waiting for hosted checks or for the owner to prompt another chunk.
+The issue and overall implementation goal remain open/active.
