@@ -60,7 +60,7 @@ const char *reward_label(divine_boon_category category)
 	switch (category)
 	{
 	case divine_boon_category::experience:
-		return "200% Experience";
+		return "200% Base Experience";
 	case divine_boon_category::epic:
 		return "+50% Epic Points";
 	case divine_boon_category::cargo:
