@@ -248,3 +248,39 @@ HARNESS_STUB artifact_guild_capture_status artifact_guild_state_prepare_delivery
 {
 	return artifact_guild_capture_status::unavailable;
 }
+
+// Ordinary-container fixtures have no live locker registry. The private-chest
+// regression links production access and audit routing instead of these boundaries.
+HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
+{
+	return true;
+}
+HARNESS_STUB void locker_record_movement(P_char, P_obj, P_obj, bool, const char *) {}
+HARNESS_STUB bool currency_transaction_chest_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool locker_object_is_private_chest(P_obj)
+{
+	return false;
+}
+HARNESS_STUB bool sql_chest_log_available(void)
+{
+	return true;
+}
+
+HARNESS_STUB bool auction_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool collector_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool shop_trade_transaction_player_busy(P_char)
+{
+	return false;
+}

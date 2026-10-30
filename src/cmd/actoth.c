@@ -3809,7 +3809,8 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 				ncoins = vcoins;
 			}
 			percent -= ncoins;
-			if (IS_PC(victim) && victim->only.pc->divine_trade_payment_pending)
+			if (IS_PC(victim) && (victim->only.pc->divine_trade_payment_pending ||
+					      currency_transaction_chest_busy(victim)))
 				failed = TRUE;
 
 			if (!failed)

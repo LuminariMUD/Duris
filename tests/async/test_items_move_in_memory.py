@@ -101,7 +101,7 @@ assert apply_locker.index("find_locker(") < apply_locker.index("DELETE FROM lock
     apply_locker.index("claim_graph(") < apply_locker.index("insert_item_rows(")
 SQL_PLAYER = (SRC / "sql_player.c").read_text()
 # A private chest's save is a writer job only; the writer's chest apply claims its items.
-private_chest = body(SQL_PLAYER, "bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)\n{", True)
+private_chest = body((SRC / "storage_lockers.c").read_text(), "bool PrivateChest::FlushContents(")
 assert "locker_chest_snapshot_repository_apply_from_pool" in private_chest
 assert "DELETE FROM locker_items" not in private_chest and "claim_items(DB" not in private_chest
 assert "bool sql_save_locker(" not in SQL_PLAYER

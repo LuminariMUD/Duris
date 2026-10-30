@@ -10247,6 +10247,8 @@ This will place all items that have the max_wis stat in 2.chest.
 
 If you need the complete list of sort types, use "equip sort help" while
 inside the locker. The same information is available with "help equip sort".
+For named private chests, their permissions and storage availability, see
+"help chest".
 ===========================================================================
 See also: BANKS, GRANT
 
@@ -27168,9 +27170,28 @@ For a container chest, use "look in <chest>", "open <chest>",
 restrict access. A chest in the world does not by itself guarantee storage
 through a restart; use an authorized storage locker for saved equipment.
 
-There is no "chest create" command. The old guild "construct chest"
-feature is disabled. For worn chest armor, use "equipment" and
-"wear <armor> body"; the item must fit that slot and your character.
+Inside a MariaDB-backed locker, "eq chest list" lists private chests.
+Use "eq chest create <name> [password]" to buy one for 500 platinum
+(maximum five). Names use 1-32 letters, digits, underscores or hyphens;
+public, chest and private are reserved names. Payment uses your whole
+purse if sufficient, otherwise your bank; short balances are not combined.
+
+Use "open <name> [password]" before looking in, putting into, getting
+from, or emptying a private chest. Only one private chest is open at a
+time. "close" revokes access; changing its password, disconnecting or
+leaving also closes it. Locker managers can open without a password.
+Guests still need permission to enter the locker and the chest password.
+
+Managers can use "eq chest password <name> <password|none>",
+"eq chest delete <name>" (empty chests only; no refund), and "eq log".
+Wait for the result of a purchase or management change before continuing.
+A pending save can keep you inside briefly: retry leaving once secured.
+Activity history records actual item and coin movements, including bulk
+and empty operations. Deleted chests retain their numeric identity there.
+
+Private-chest commands require the SQL backend. Flat-file lockers support
+public storage and sorting. The old guild "construct chest" is disabled.
+For chest armor, use "equipment" and "wear <armor> body".
 See also: LOCKER, EQUIPMENT, CONSTRUCT
 ===========================================================================
 

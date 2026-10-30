@@ -48,11 +48,19 @@ static std::vector<std::string> order;
 static int64_t wallet = 0;
 static critical_command queued;
 static critical_submit_result coordinator_result = critical_submit_result::accepted;
+static uint32_t reserved_chest_pid, reserved_trade_pid;
+static std::string reserved_chest_account;
+static int reserved_chest_racewar;
+bool currency_transaction_chest_busy(P_char ch) { return ch && reserved_chest_pid && GET_PID(ch)==static_cast<int>(reserved_chest_pid); }
+bool collector_transaction_player_busy(P_char) { return false; }
+bool shop_trade_transaction_player_busy(P_char) { return false; }
+bool player_account(P_char ch, std::string *name) { *name="fixture";return ch && GET_PID(ch)>0; }
 
-bool currency_transaction_submit_wallet_value(P_char, int64_t value, currency_reason_type,
+bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency_reason_type,
     int64_t, critical_source_site, critical_deadline_class, currency_completion_fn,
     const void *, size_t)
 {
+    if (currency_transaction_chest_busy(ch)) return false;
     if (value < 0 && wallet < -value)
         return false;
     wallet += value;
@@ -78,7 +86,9 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 ''' + declarations + function(source, "std::string operation_key(") + \
     function(source, "bool publish(std::unordered_map<std::string, pending_auction>::iterator") + \
     function(source, "P_obj carried_item(P_char character, uint64_t item_uid)") + \
-    function(source, "bool submit(P_char character, const auction_command_payload &payload,") + r'''
+    function(source, "bool submit(P_char character, const auction_command_payload &payload,") + \
+    function(source, "bool auction_transaction_player_busy(") + \
+    function((SRC / "currency_transaction.c").read_text(), "bool currency_transaction_reserve_chest(") + r'''
 
 static auction_command_payload request(auction_action action)
 {
@@ -199,7 +209,20 @@ int main()
     assert((order == std::vector<std::string>{"command"}));
     complete(&ch, true, 4500);
     assert(wallet == 13480);
-    puts("auction escrow: taken at submit, the rest given back at completion");
+    // The real pending-claim predicate prevents the real chest reservation
+    // until its committed payout is published. Reverse overlap is refused
+    // before the auction command can clear another durable pickup row.
+    order.clear();
+    assert(submit(&ch,claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    assert(!currency_transaction_reserve_chest(&ch) && !reserved_chest_pid);
+    complete(&ch,true,4500);assert(wallet==17980);
+    assert(currency_transaction_reserve_chest(&ch));order.clear();
+    assert(!submit(&ch,claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    assert(pending.empty() && order.empty() && wallet==17980);
+    reserved_chest_pid=0;reserved_chest_account.clear();
+    assert(submit(&ch,claim,nullptr,critical_source_site::command,critical_deadline_class::interactive));
+    complete(&ch,true,4500);assert(wallet==22480);
+    puts("auction escrow and chest-reservation interlock preserve committed payouts");
 }
 '''
 

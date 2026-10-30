@@ -11,6 +11,36 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Private locker registry, access, receipts and audit (#490 / #497)
+
+`python3 tests/async/test_private_chest_regressions.py` compiles the production
+sorting, wrapper registry, actor/visit access, password continuation, private-save
+receipt, management reconciliation and audit code under ASan/UBSan. It controls
+world/prototype, item capture and writer/SQL boundaries; it is not a server journey.
+The fixture keeps private identity/contents across repeated custom sorting, rejects
+stale or borrowed access, retains failed/refused snapshots, publishes management
+only after readback, retries an audit event with the same ID, and renders deleted
+chest IDs. The existing container/weight regression covers real transfer admission.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/run_private_chest_purchase_mysql.py`
+executes the production purchase transaction/controller on disposable InnoDB. It
+checks atomic wallet/bank payment, rollback after insertion, queue refusal, lost
+COMMIT response, extracted purchaser, duplicate name, limit and stale revision.
+Repeat with `TEST_DB_IMAGE=mysql:8.0` for MySQL. Currency preparation/publication
+is a controlled boundary here; `test_currency_in_memory.py` executes that module.
+The existing game-loop-query journey exercises the actual locker command path,
+custom sorting and saved item/history routing through leave and re-entry. The
+journey injects a terminal private-save rejection on disposable MariaDB/MySQL,
+verifies the actor and contents remain live, then removes the fault and proves
+retry/re-entry. After the fault is removed, it requires automatic persistence
+before any further save or exit. The native fixture also holds an older write in
+flight and verifies that only the newest retained capture is flushed, without
+reading later unsaved live changes; refusal, predecessor failure and exceptions
+retain retry data. The journey catches a movement visibility pass ignoring a veto.
+`test_private_chest_lifecycle.py` carries the 25 access/role/backend and durable
+legacy-upgrade cases from the consolidated #502/#503 stack.
+
+
 ## Combat callbacks and terminal locker departure (#430)
 
 `python3 tests/async/test_combat_edge_cases_runtime.py` runs the production combat
