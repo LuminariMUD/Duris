@@ -114,6 +114,7 @@ account_racewar_admission account_check_racewar_admission(struct descriptor_data
 							  bool blocked, bool immortal);
 bool account_commit_character_admission(struct descriptor_data *d, struct char_data *character,
 					bool blocked, account_racewar_admission *result);
+bool save_account_character_departure(struct char_data *character);
 void account_format_racewar_denial(const account_racewar_admission *result, char *buffer,
 				   size_t buffer_size);
 
