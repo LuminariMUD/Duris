@@ -49,6 +49,7 @@ telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.
 telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py --backend mariadb
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
+coin_denominations $DB python3 tests/async/test_mysql_coin_denomination_journey.py --server $SERVER
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server $SERVER
 world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SERVER copyover
 world_restart_midcapture $DB python3 tests/async/run_world_restart_journey.py $SERVER midcapture

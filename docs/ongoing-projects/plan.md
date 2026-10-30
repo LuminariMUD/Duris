@@ -1,419 +1,425 @@
-# Issue #418: recoverable Quintaragon Castle resets
+# Issue #444: preserve denominations in physical coin transfers
 
-Status: **implemented; local qualification complete; ready for review**.
-Updated 2026-10-30.
-Issue: [Duris #418](https://github.com/LuminariMUD/Duris/issues/418).
-Branch: [branch/issue-418-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-418-plan),
-linked in issue #418's Development section.
-Baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
-Worktree: `/home/aiwithapex/projects/duris-issue-418-plan`.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
+Issue: [Duris #444](https://github.com/LuminariMUD/Duris/issues/444).
+Branch: [`branch/issue-444-coin-denominations`](https://github.com/LuminariMUD/Duris/tree/branch/issue-444-coin-denominations).
+Source baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-444-coin-denominations`.
 
-The preceding starter-arrow plan and qualification record are preserved byte-for-byte
-in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up authorizes
-implementation, planned tests and gameplay qualification, commit/push and a PR.
-Merge and production deployment remain separate work.
-
-PR: [#476](https://github.com/LuminariMUD/Duris/pull/476). During publication,
-`master` advanced to `bc1537d9eb996db126ab20835201909baa91349c`; its completed
-bartender-quest plan is preserved byte-for-byte in
-[plan-issue-437.md](plan-issue-437.md). The integration changes no castle source
-or authored area data beyond the implementation documented here.
+This plan follows the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
+The previous shared plan, including its #428/#445 qualification and review record,
+is preserved byte-for-byte as [plan-issue-428.md](plan-issue-428.md).
+The #437 qualification plan incorporated from newer master is also preserved
+byte-for-byte as [plan-issue-437.md](plan-issue-437.md).
+The owner has authorized implementation, focused tests and gameplay/persistence
+qualification, commit/push, and a pull request linked to #444. The original
+planning checkpoint below is historical; current results are recorded at the end.
 
 ## Outcome
 
-Choose an availability-based reset policy for Quintaragon Castle: its seven
-consumable-key gates may reset locked only when their authored source can actually
-supply the key. A reset must leave a connected or linkdead player body a physical
-way out without another key, a lockpicking skill, a spell, or staff intervention.
+Physical coins retain their copper, silver, gold and platinum counts through
+pickup, explicit give, put, drop and rejected-transfer refunds. A player with
+40 gold can retrieve those coins from a bag and give 10 gold four times without
+an intervening exchange. Each successful transfer removes exactly the selected
+coins, leaves unrelated denominations unchanged and delivers exactly those
+coins to the recipient or pile. Failed transfers leave the source intact or
+restore the exact debited vector, with no duplicate credit or success message.
 
-Preserve consumption, ordinary carrier respawns, object and mobile limits, loot,
-and mode-1 timer admission. A surviving carrier may remain keyless; access must
-then cease to depend on that carrier. The issue requests a consistent
-key/relocking policy, rather than mandating a new restocking mechanism.
+Preserve the existing command restrictions, NPC behavior except denomination
+conversion, staff minting exception, overflow refusals, wallet revision/dirty
+state, client feedback and save ordering. Rewards carrying an explicit coin
+vector use the same semantics; value-only rewards retain their existing meaning.
+Saved wallets and persistent containers must retain their exact counts after
+relog and server restart.
 
-## Current source findings
+## Source findings and limits
 
-The issue is a hypothesis and acceptance specification, not runtime evidence for
-this checkout. Its linked source baseline is older. The three authored castle
-files have no diff between that baseline and this plan's baseline; the engine
-paths below were read again on this checkout.
+These findings were checked in the worktree above, rather than accepted from
+issue #444's older `8e95eb5dd` source links. Line numbers refer to this baseline.
 
-- `areas/AREA:12` selects `castle`; `areas/zon/castle.zon:1` identifies zone
-  number **24**, with top room 2532, mode **1**, and lifespan range **5-10**.
-  These are zone-age ticks, not a promise of 5-10 real minutes. The scheduler
-  uses `PULSES_IN_TICK=300` and `WAIT_SEC=4`; configuration can also scale lifespan.
-- `areas/obj/castle.obj` gives keys **2405, 2418, 2422, 2425, 2436, 2437,
-  2438** a break chance of **100**. Entrance key **2402** has **0**; container
-  key **2434** has **10**. Key 2434 belongs to a bookcase, not one of these gates.
-- `src/cmd/actmove.c::do_unlock()` consumes a breaking key through `break_key()`
-  and unlocks the matching reverse exit. `src/world/handler.c::extract_obj()`
-  decrements the live prototype count. There is no permanent used-key counter
-  in these paths. Making future keys durable would not by itself establish the
-  behavior of existing instances or fix every lock-in.
-- `src/world/db.c::reset_zone()`, around lines 3399-3410 and 3613-3680,
-  rejects an ordinary `M` load at the live mobile limit, clears mobile context,
-  and skips its conditional `E`/`G` rows. The current shopkeeper-specific
-  admission rules do not restock these castle carriers.
-- The `G` and `E` cases around lines 3807 and 3884 apply the live object limit
-  before attaching an object to the newly loaded mobile. All seven key rows
-  have limit **1** and chance **100**. A key held elsewhere can suppress the
-  new carrier's key; consuming it later does not rerun the surviving carrier's
-  conditional rows. Conversely, absent carrier plus absent key permits normal
-  loading. The mechanism still supports the issue's reported sequence.
-- The `D` case around line 4079 sets lock/closed state without checking key
-  availability. Castle's door rows run **before** its mobile/item rows. A key
-  availability decision made there would observe the wrong phase of the reset.
-- `src/world/events.c::event_reset_zone()` calls `reset_zone(zone, 0)` when
-  the zone is old enough and mode 2 or `is_empty()` permits it.
-  `src/world/db.c::is_empty()` scans playing descriptors, not all player bodies.
-  A connected player blocks the castle's ordinary timer reset; a descriptorless
-  linkdead body does not. `src/cmd/actwiz.c::do_zreset()` bypasses this timer gate
-  for `zreset ok` and purges then resets for `zreset full`.
-- `src/cmd/actmove.c::find_door()` refuses hidden/blocked exits even if their
-  lock bit is clear. The **2436** pair resets to state **6**, so merely unlocking
-  it leaves a secret-exit obstruction. `setup_dir()` masks authored door type
-  with `& 3`; the `7` in its room records means pickproof plus an ignored high
-  bit at load, while the `D` rows establish runtime secrecy.
-- An independent traversal of all authored castle exits found **5760**, reached
-  south from **2401**, as its external physical destination. Relaxing only the
-  seven consumable-key gates leaves no static exit route from their interior
-  endpoints: the **2402 south <-> 2401 north** entrance still resets locked.
-  Relaxing that pair as well yields routes from all seven interior endpoints.
-  This over-approximates traversability: it permits every nonlocked physical
-  exit and does not prove terrain, combat, or movement requirements. Real mortal
-  command journeys must supply the missing gameplay proof.
-- `has_key()` checks inventory and **HOLD only**. It cannot establish whether
-  Glynn carries key **2437**, which is equipped in slot **4**. Source availability
-  must inspect the carrier's direct inventory and all equipment slots.
-- `src/world/new_events.c` uses reset argument **2** for a normal cold
-  boot and skips initial reset during copyover/Redis world recovery.
-  `src/world/world_recovery_pipeline.c` restores door flags. No new persistent
-  state is needed, and this reset fix must not claim to rewrite an old recovery
-  snapshot immediately on restore.
+- `src/cmd/actobj.c:310-366`: `credit_coins()` accepts a copper-equivalent value;
+  PCs use `currency_transaction_submit_wallet_value()` and NPC/no-PID fallbacks
+  use `ADD_MONEY()`. `take_coins()` has the exact selected four-element `got`
+  array but reduces it to value before credit. Its source-pile subtraction,
+  relabelling, messages and corpse write happen only after credit succeeds.
+- `src/cmd/actobj.c:569-605`: ordinary `get()` has a second money route which
+  also discards the vector. Both routes must change; fixing `take_coins()` alone
+  misses direct pickup. Keep its 64-bit total for logging, not as wallet input.
+- `src/cmd/actobj.c:2600-2972`: `coin_debit_context.amount` already holds the
+  exact vector, and put/drop already publish that vector. The loss happens in
+  `submit_coin_debit()` through `SUB_MONEY()`, in `begin_coin_give_credit()`
+  through value credit, and in `refund_committed_coin_debit()` through value
+  refund. No new transfer context or durable transaction system is needed.
+- `src/economy/currency_value.h:7-45` and `src/core/utility.c:2247-2300,2363-2379`:
+  positive value credit canonicalizes only the incoming amount. Thus 35 existing
+  gold plus 5 gold worth stays 40 gold, while 40 gold worth credited to an empty
+  purse becomes 4 platinum. Negative PC value spending canonicalizes the entire
+  remainder: 40 gold minus 10 gold worth becomes 3 platinum. These are source
+  conclusions; the historical executable probe in the issue was not rerun here.
+- `src/economy/currency_transaction.c:140-233` and its header: vector submission
+  already validates every resulting denomination before mutation, advances the
+  wallet revision, marks status dirty and updates GMCP. Completion is synchronous.
+  **Submission returning true does not prove commitment:** insufficient balance,
+  overflow or a reserved trade can call completion with `committed=false` and
+  still return true. Pickup's revision check is intentional. The current debit
+  wrapper calls publication manually after `SUB_MONEY()` returns success; replace
+  that assumption with the actual transaction completion when switching to vectors.
+- `src/cmd/actoth.c:2530-2624`: deposits and withdrawals already use exact wallet
+  and bank vectors. Reuse that API; no bank implementation change is indicated.
+- `src/cmd/actobj.c:2744-2752,2778-2782,2812-2820`: PC give saves the sender before
+  recipient credit; storage/corpse put saves the sender before destination save.
+  Keep these boundaries. The currency header explicitly describes a save-order
+  model that favors avoiding duplication over crash-atomic transfers; do not
+  promise stronger durability than this patch provides.
+- `src/cmd/actobj.c:4088-4144`: ordinary `give` checks the selected denomination,
+  while `MAXLVL` PCs intentionally skip debit. Preserve both. NPCs and no-PID
+  actors cannot simply be passed to the PC transaction API, which rejects them.
+- `src/world/quest.c:120-171,260-278,728-813`: the legacy quester calls `do_give()`
+  before checking completion. Coin goals compare `GET_MONEY(mob)` and consume
+  value; coin rewards use value-only `ADD_MONEY()`. A quest saying "gold" does
+  not establish a denomination-specific reward or completion rule.
+- `src/world/world_quest.c:253-262,370` also pays mercenaries by value. The zone
+  story production/runtime files catalogue and track legacy completions; they
+  are not evidence of a separate gold-paying reward implementation. Legacy item
+  rewards use object creation/grant, preserving authored money-object fields
+  until the pickup boundary. Do not convert every quest reward into gold.
+- Other inspected value callers include shop settlement in
+  `src/economy/shop.c:2664-2684`, world-quest fee refunds in
+  `src/specs/specs.mobile.c:10876-10882`, and denomination-labelled wagers in
+  `src/economy/cardgames.c:581-583` / `src/specs/specs.gellz.c:391,768`.
+  They do not go through the physical give/put/drop adapter. This inspection
+  supports keeping the global value API unchanged; it does not qualify those
+  separate gameplay systems or expand #444 into an economy-wide rewrite.
+- `src/player/player_snapshot_capture.c:174-177`,
+  `src/player/player_load_materialize.c:594-597`, and
+  `src/flatfile/flatfile_player_repository.c:629-634` already save/load four
+  separate counts. There is no evidence that a schema or data migration is needed.
+- `tests/async/test_take_coins.py` replaces production `credit_coins()` with a
+  one-integer purse. `test_coin_command_transaction_contract.py` explicitly
+  expects the value-based calls. Their current green results cannot establish
+  denomination preservation. `test_currency_in_memory.py` already links real
+  production transactions and covers synchronous refusal, revisions and trade
+  reservations; reuse its setup and service stubs.
 
-The reporter's actual live counts, key location, connection state, reset type,
-and deployed revision remain unknown. No production reproduction is claimed.
+Emp's exact NPC/quest and live build remain unidentified in the issue and its
+empty comment thread. Do not choose a quest from similar wording or claim to
+have reproduced that player's route. Before changing a particular value-only
+reward, identify its NPC/VNUM, definition and intended currency from the report
+or owner, then trace its actual handler. This uncertainty does not prevent the
+shared transfer fix or a synthetic quest journey; it remains explicit in the
+implementation handoff and prevents claiming that specific reward verified.
 
-## Exact gates and sources
+## Non-goals and ablation decisions
 
-Each line names the key, authored carrier/home, loading row, and both gate sides.
-Directions are the runtime directions, not the key's prose description.
+- Keep `ADD_MONEY()`, `SUB_MONEY()` and `currency_wallet_value_delta()` value
+  semantics for prices, fees, change, value-only rewards and unrelated callers.
+  Do not auto-exchange a wallet to satisfy `give N gold`; preserve the requested
+  physical coins instead.
+- Keep the existing transaction facade, publication helpers and four-element
+  contexts. Drop a new currency abstraction, setting, async queue, ledger,
+  two-party transaction coordinator or generic test framework: none is required
+  to stop the traced conversions.
+- Keep checked NPC/no-PID fallbacks because the PC facade does not accept them.
+  Keep all-components-before-mutation validation, rather than partially applying
+  a vector. Keep persistent PC writes centralized in the transaction facade.
+- Keep every refund boundary and real command/persistence proof. A helper-only
+  test or conserving total value would miss the reported failure.
+- No repair of historical purses, guessed reward-denomination migration, generated
+  area edits, production deployment, player-data editing or full burn-in.
+  Existing converted coins can still be exchanged through the bank.
 
-- **2405**: Juku, mobile **2406**, room **2427**, `E` slot **18**, zone row
-  **263**; **2414 down <-> 2415 up**.
-- **2418**: Giauque, mobile **2415**, room **2439**, `G`, zone row **289**;
-  **2427 up <-> 2428 down**.
-- **2422**: large rat, mobile **2418**, room **2452**, `G`, zone row **332**;
-  **2446 west <-> 2448 east**.
-- **2425**: Cetyla, mobile **2419**, room **2456**, `E` slot **18**, zone row
-  **335**; **2460 up <-> 2461 down**.
-- **2436**: Povtail, mobile **2433**, room **2481**, `G`, zone row **360**;
-  **2471 north <-> 2479 south**, both reset secret as well as locked.
-- **2437**: Glynn, mobile **2420**, room **2477**, `E` slot **4**, zone row
-  **352**; **2480 north <-> 2488 south**.
-- **2438**: Gilman, mobile **2428**, room **2493**, `E` slot **18**, zone row
-  **390**; **2480 south <-> 2498 north**.
-- Recovery boundary: durable entrance key **2402**, Tev **2401** in room
-  **2401**; **2401 north <-> 2402 south**. Include this pair in occupied-zone
-  escape handling, without changing its ordinary empty-zone reset policy.
+## Files
 
-## Selected policy and ablation
+Expected production changes are confined to `src/cmd/actobj.c`: reuse
+`credit_coins()`, `submit_coin_debit()`, existing give completion/context and
+refund/publication functions. Keep any necessary checked NPC mutation local
+and guarded from persistent PCs; update source contracts narrowly to enforce
+that boundary rather than adding a broad exemption for all wallet writes.
 
-Run one castle-specific access correction at the **end of the existing reset
-command loop**, after all `M`/`E`/`G` and `D` commands have finished:
+Extend `tests/async/test_take_coins.py`,
+`tests/async/test_coin_command_transaction_contract.py` and, where its existing
+fixtures help, `tests/async/test_currency_in_memory.py` and
+`tests/async/test_currency_transaction_contract.py`. Add a focused native
+coin-transfer test only if executing debit/give/refund paths would tangle the
+existing pickup harness. Extract production functions and link the real
+currency implementation; stub external services, never the arithmetic under test.
 
-1. Scope by `zone_table[zone].number == 24`, never by array index. Use the small
-   explicit gate/source mapping above. Resolve VNUMs through existing lookups;
-   verify matching reverse exits and keys before touching either side. Do not
-   introduce a zone flag, reset opcode, config property, or reusable policy engine.
-2. Determine whether any player body is currently in the zone using
-   the live character list and a valid room. Include linkdead players, staff and
-   morphed players (whose active body is represented as an NPC);
-   do not use descriptor presence or change global `is_empty()` semantics.
-3. If a player body remains, clear `EX_LOCKED` and `EX_SECRET` on both sides
-   of all seven gates **and the entrance pair**. Leave their normal reset-closed
-   state, door type and pickproof flags intact. These mapped exits are not
-   blocked; this is not a general blocked-exit override. After reconnect, normal
-   `open` and movement must suffice to follow the escape route.
-4. Otherwise, for each of the seven keys, leave the ordinary reset state only
-   if the authored carrier is alive in its authored room with that exact key
-   in direct inventory or any equipment slot. If that source cannot supply the
-   key, clear lock and secret bits on both gate sides. A global live count, a
-   player's key, a corpse/container copy, or a carrier moved elsewhere does not
-   establish an accessible authored source. Do not spawn, move, retire, or
-   duplicate any object or mobile to satisfy this check.
-5. Apply the correction to ordinary and explicit staff resets alike. A clean
-   cold boot with all sources successfully loaded retains the normal locked
-   progression. Existing forced-load behavior is not extended by this fix.
-   Repeated resets are idempotent. Once the zone is empty and the source again
-   has its key, the existing `D` rows may restore normal locked/secret state.
+Add one focused `tests/async/test_coin_denomination_journey.py`, reusing the
+minimal world, client, flat-file build and snapshot inspector from
+`test_flatfile_combat_journey.py`, and the currency/bag patterns from
+`test_flatfile_first_session_currency.py` and
+`test_flatfile_auction_coin_put_journey.py`. Do not build a second socket framework.
+Update this plan with implementation evidence. Edit a specific quest/content
+file only if the reward investigation identifies an explicit denomination that
+still bypasses these fixed routes, and name that file before making the change.
 
-This deliberately prioritizes access when a key source is unavailable. Another
-party may traverse an affected gate without obtaining a replacement key after
-such a reset. An occupied staff reset also makes the mapped entrance/gates
-available. These are explicit gameplay consequences, not claims of unchanged
-progression. Fresh, empty resets with stocked sources still require the keys.
-NPCs, hazards, and normal movement requirements remain in effect.
+## Implementation sequence
 
-**Keep:** the scoped correction, all seven pairs, occupied-zone handling,
-secret-bit clearing, the entrance recovery boundary, and executable proof.
-Removing any of them leaves a traced acceptance failure.
-
-**Simplify:** repair the lock/access contract after reset rather than trying to
-teach `M`/`E`/`G` to re-equip surviving mobs. Reuse current loading and limits;
-no area-row reordering or new runtime state is required.
-
-**Drop:** global force-loading, unlimited key copies, changing all key break
-chances, general survivor restocking, new escape items/exits, global linkdead
-reset vetoes, persistence migrations, and a pathfinding service. Existing
-`ITEM_SWITCH` opens blocked exits, not these locks; adding switches would also
-require new behavior and area objects. These alternatives add work without
-being necessary for the chosen outcome.
-
-## Non-goals
-
-Do not repair every consumable key in the world, change unrelated zones or
-ordinary loot limits, change the bookcase key, redesign key custody, change
-timer cadence, or implement adjacent issue #419. No retroactive inventory
-migration, new persistent state, blanket lock bypass, or production operation
-is part of this scope. Combat safety and freedom from all terrain/spell hazards
-are not promised; the recovery guarantee concerns reset-created door obstruction.
-
-## Files and implementation sequence
-
-1. **Capture failing behavior.** Add one focused native regression, provisionally
-   `tests/async/test_castle_key_reset.py` with a small companion C++ harness.
-   Follow the production-code extraction/build pattern in
-   `test_shopkeeper_population.py`; execute the actual reset loop and relevant
-   cases, not a Python restatement. Use current castle data as fixture input.
-   Compile into `bin/tests/` with ASan/UBSan. Establish the old E and G failures
-   and negative controls before the production change.
-2. **Implement the policy in `src/world/db.c`.** Keep the mapping and private
-   correction next to `reset_zone()`, and call it once after the loop. Make no
-   changes to the M/E/G limit/admission logic, key consumption, the scheduler,
-   `is_empty()`, or authored castle content. Recheck the mapping against area
-   inputs in the regression so future data edits cannot silently drift.
-3. **Prove command-level recovery.** Add a focused disposable journey,
-   provisionally `tests/async/test_castle_key_reset_journey.py`, reusing
-   `test_flatfile_combat_journey.py`'s server-build, private runtime, port and
-   socket helpers. Load the authored castle room graph, relevant mobs/objects
-   and reset rows, plus the exterior landing room; do not replace the graph
-   with an artificial two-room shortcut. Use synthetic accounts and ordinary
-   mortal commands for consumption, reconnect, open and movement. Staff fixture
-   setup may arrange state, but staff bypasses cannot serve as recovery proof.
-4. **Document and qualify.** Record actual commands/results and the chosen
-   gameplay tradeoff here; include a concise operator explanation in
-   `docs/operations/RUNBOOK.md`. Read the final diff, format changed C/C++ lines,
-   run the focused checks and required build, then prepare the implementation
-   commit for normal review. No merge or deployment is part of this plan task.
-
-Production scope is one existing C++ translation unit. Tests and the existing
-runbook/plan are supporting changes. `actmove.c`, `handler.c`, `events.c`, castle
-area files and recovery code are exercised dependencies, not planned edits.
-If the mortal journey exposes a real movement obstruction on the proposed
-route, resolve that specific requirement and update this plan before declaring
-completion; static connectivity alone is insufficient.
+1. **Expose the conversions with production code.** Replace the pickup test's
+   scalar credit stub with real per-denomination wallet behavior and production
+   credit/transaction functions. Add the debit, recipient and refund assertions
+   below. Show denomination assertions failing on the unmodified baseline, while
+   current ordering/refusal controls remain meaningful. Preserve existing pickup
+   text, partial-pile and corpse tests.
+2. **Carry vectors through pickup and debit.** Pass the selected counts from
+   both pickup routes to the existing credit adapter and then the PC vector API.
+   For explicit debits, negate the requested vector and use the real completion
+   callback to publish exactly once after commitment; do not manually publish
+   on submit=true. NPC/no-PID paths validate all resulting counts, subtract/add
+   exactly those coins and preserve applicable dirty/GMCP behavior. All balances
+   stay within `0..INT_MAX`; keep arithmetic in 64 bits. Remove value conversions
+   and aggregate-int restrictions made obsolete by vector movement, while
+   retaining parser limits, per-denomination limits and value-based log thresholds.
+3. **Preserve give and compensation.** Credit PC and NPC recipients with the
+   requested vector. Keep sender-first saving and the existing MAXLVL no-debit
+   route. Return the same vector on destination loss, recipient refusal, failed
+   object creation or failed container publication. Existing give context already
+   records amount and coin type, sufficient to reconstruct its single-type
+   refund; do not add redundant state. Refund success must observe commitment,
+   not just submission, and refusal must remain visible through the existing
+   diagnostic path. No canonical-value or auction-value fallback may silently
+   replace an exact refund. Since completion is synchronous, eliminate any
+   obsolete in-flight rationale in comments touched by the change.
+4. **Cover rewards and actual gameplay.** A money-object reward and an explicit
+   denomination give must use the corrected paths. Exercise a synthetic legacy
+   quest through its actual `quester` handler so all four payments reach quest
+   completion, rather than merely checking an NPC's wallet. Trace Emp's actual
+   quest when identifiable; retain value-only payouts unless its definition and
+   intended behavior justify a specific content change. Record unresolved identity
+   honestly rather than silently declaring this acceptance item complete.
+5. **Qualify and review.** Run the focused native checks, isolated journey,
+   required build/format checks and documentation checks. Review the final diff
+   against every outcome and remove unnecessary adapters or state. Record exact
+   commands, backend coverage and any unavailable checks before implementation
+   commit/push/review. External CI is not a completion gate.
 
 ## Proof and acceptance
 
-- **Held-key sequence:** for every listed key, start with a player-held key and
-  allow its dead carrier to respawn keyless. The new policy already leaves that
-  gate unlocked at this first reset; assert this earlier prevention explicitly.
-  To exercise the remainder of the historical sequence, let the key holder use
-  normal close/lock/unlock commands to consume the key (or seed the native test
-  with the pre-fix locked state), leave the carrier alive, then reset again.
-  Both sides must be closed, unlocked and visible. Repeat the reset;
-  carrier/loot counts must not change. Execute E and G production paths,
-  including 2437's non-HOLD slot; do not expect unlocking an already unlocked
-  door to consume a key.
-- **Reload control:** with no live key and a dead carrier, an ordinary empty
-  reset loads the carrier and key under existing limits. Both gate sides retain
-  their authored locked state, including the 2436 secret bits. Killing a keyless
-  carrier remains a valid route to normal replacement, but is no longer required
-  just to make access possible.
-- **Availability controls:** player-held, corpse, container and off-site copies
-  do not count as a stocked source; the correct carrier with the key at home
-  does. Missing/moved carriers and failed item materialization yield accessible
-  gates without ordinary-loot duplication. Verify both sides, exact object
-  counts/identities, and no unrelated equipment replacement.
-- **Connected player:** exercise production `event_reset_zone()` and
-  `is_empty()` together with a playing descriptor in zone 24. At expiry, no
-  ordinary reset occurs. A playing character in a different zone does not block
-  the castle. Testing `reset_zone()` directly is not proof of timer admission.
-- **Linkdead and staff reset:** with a player body but no playing descriptor,
-  the due timer may reset; all eight recovery pairs must be visible/unlocked.
-  Reconnect the same mortal and physically leave from each of the seven interior
-  endpoints to **2401**, then **5760**, without a key or magical/staff bypass.
-  Include the secret closet explicitly. Run the same access assertions after
-  `zreset ok` with a connected mortal; cover full-reset behavior in isolation.
-- **Progression restoration:** after the final player leaves, an empty reset
-  with stocked sources restores normal locks and closet secrecy. A missing key
-  affects its mapped gate only. The entrance's empty-zone behavior remains normal.
-- **Isolation:** prove a non-24 zone, unrelated castle doors, bookcase key 2434,
-  ordinary equipment, mobile limits and existing shopkeeper special cases retain
-  their baseline behavior. Do not redefine existing force-reset loot semantics.
-- **Boot/recovery boundary:** verify cold-boot flags with stocked sources and
-  rerun the sequence from restored-like live state. Existing door snapshots may
-  retain old flags until a qualifying reset; immediate repair of arbitrary old
-  snapshots, manually locked doors, and unrelated magical confinement is not
-  promised. No new persistence field or save-data rewrite is planned.
+The regression assertions must compare `[copper, silver, gold, platinum]` counts,
+revision changes, source/destination ownership and feedback, not only total value.
 
-Verification commands (the two planned test entry points are now implemented):
+- Pickup: empty purse plus 40 gold becomes `[0,0,40,0]`; 35 gold plus 5 gold
+  remains 40 gold; `[3,12,17,0]` is not normalized. Cover full and selected partial
+  pickups from floor, bag and PC corpse, including direct `get()` and selected
+  `take_coins()` routes. Assert the exact residual pile, extraction/relabel behavior
+  and existing messages. Refused credit leaves every pile field and revision alone.
+- Debit: give, put, drop and `drop all.coins` preserve unselected counts. Four
+  successful 10-gold debits from 40 leave 30, 20, 10 and 0 gold. Include mixed
+  wallets and a valid vector whose copper-equivalent total exceeds `INT_MAX`,
+  so no obsolete value cast can truncate or reject an otherwise valid transfer.
+- Recipients: PC-to-PC, PC-to-NPC and NPC-to-PC give preserve the exact type;
+  include NPC pickup/debit and existing no-PID fallback behavior. Staff credit
+  still mints the requested type without debiting or refunding the staff purse.
+- Failure: source short of the selected type cannot spend other denominations;
+  PC/NPC recipient overflow, invalid PC identity, destination disappearance,
+  closed/unavailable container, existing-pile overflow and allocation/publication
+  failure change nothing or restore the original vector exactly once. Verify
+  submit=false and submit=true/committed=false separately, including the current
+  reserved-trade refusal. No successful give/put/drop announcement on refusal.
+- Revision/order: successful PC mutations advance revisions and dirty status;
+  rejected ones do not. Assert sender save precedes PC recipient credit and
+  storage/corpse save, and preserve the existing bank ordering. A refund after
+  sender-save must restore live state and remain dirty for the subsequent save.
+- Rewards: an authored gold money pile retains gold after grant/pickup, and an
+  explicit NPC gold give retains gold. Value-only reward controls still use
+  canonical incoming change and leave pre-existing denominations alone. Do not
+  alter legacy quest value goals or infer coin types from descriptive text.
+- Real journey: create disposable local characters below MAXLVL, seed the bank
+  with a known gold balance, withdraw 40 gold, put/get it through a bag, and make
+  four `give 10 gold` payments through a synthetic quest NPC. Assert each purse
+  and completion. Relog and restart at intermediate nonzero-wallet and bag-held
+  checkpoints, then continue payments; also verify persistent recipient credits
+  and refused transfers do not duplicate coins after saving/reload. Use durable
+  snapshot inspection as well as command output. Floor coins and NPC wallets
+  need only the persistence guarantees they already have.
+
+Planned commands (the new journey is created during implementation):
 
 ```sh
-python3 tests/async/test_castle_key_reset.py
-python3 tests/async/test_castle_key_reset_journey.py
-python3 tests/async/test_key_break_custody_contract.py
-python3 tests/async/test_zone_reset_timing_contract.py
-python3 tests/async/test_no_reset_zone_key.py
-python3 tests/async/test_shopkeeper_population.py
+python3 tests/async/test_take_coins.py
+python3 tests/async/test_coin_command_transaction_contract.py
+python3 tests/async/test_currency_in_memory.py
+python3 tests/async/test_currency_transaction_contract.py
+python3 tests/async/test_money_carry_count.py
+python3 tests/async/test_coin_denomination_journey.py
+python3 tests/async/test_flatfile_auction_coin_put_journey.py
+python3 tests/async/test_area_coin_pickup.py
 make -C src
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Keep binaries and disposable runtime evidence under `bin/`, and verify the test
-environment before starting a server. A new worktree does not inherit `.env` or
-running services. Use the existing isolated flat-file fixture, not production
-accounts/data. No production reset, migration, restart, deployment, full burn-in,
-or CI wait is needed for this scope. Report any unavailable runtime check.
+Run any additional native test introduced for the missing transfer paths. Reuse
+one built flat-file server across compatible journeys. The focused restart
+journey qualifies flat-file persistence; a MariaDB build or stubbed save-order
+test alone must not be reported as a MariaDB runtime qualification. Exercise
+the same commands on an isolated MariaDB fixture if available and report its
+coverage separately. Use local/test settings, loopback listeners and disposable
+accounts/state; keep new compiled outputs under `bin/`. No production operations
+are needed for the plan or core implementation.
 
-## Original planning verification and estimate
+## Estimate and planning checkpoint
 
-Completed on this baseline:
+Estimated **3-5 hours of my active implementation time** for the shared repair,
+native regressions, isolated quest/relog/restart journey, build and reviewable
+commit. Rough allocation: 30-45 minutes for failing regressions, 45-75 minutes
+for the transfer/refund changes, 60-100 minutes for command/persistence proof,
+and 30-60 minutes for build, documentation and final review. Reuse of existing
+fixtures is assumed. Allow an additional 1-2 hours if Emp's identified quest
+needs a separate explicit-denomination reward fix or local DB setup is required;
+waiting for its identity, external review, merge and deployment are excluded.
 
-- Read issue #418 and its comments (none), current source, all seven source/gate
-  mappings and castle object values. The issue is open, with no project work
-  items and no development branch linked before this task.
-- Independently parsed all castle exits and key reset rows. Confirmed seven
-  reciprocal gate pairs, four E and three G sources, the secret pair, and the
-  entrance boundary needed for a static route to room 5760.
-- `python3 tests/async/test_key_break_custody_contract.py`: passed.
-- `python3 tests/async/test_zone_reset_timing_contract.py`: passed.
-- `python3 tests/async/test_no_reset_zone_key.py`: passed.
-- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed
-  before and after drafting.
-- `git diff --check`: passed. The preserved issue #428 plan's SHA-256 matches
-  the original tracked file exactly.
+Planning validation on 2026-10-30 at the baseline above:
 
-These are planning/source checks. The two existing key/timing contracts inspect
-source text; they do not execute the reported gameplay sequence. The issue's old
-uncommitted C++ probe was not assumed to be present or rerun. No new regression,
-full build, socket journey, or production validation has been performed here.
+- `python3 tests/async/test_take_coins.py`: passed; its scalar purse limitation
+  remains and is explicitly addressed above.
+- `python3 tests/async/test_coin_command_transaction_contract.py`: passed;
+  current assertions still encode the value-based implementation.
+- `python3 tests/async/test_currency_in_memory.py`: passed under ASan/UBSan,
+  including range refusal, revisions, save order and trade reservations.
+- `python3 tests/async/test_currency_transaction_contract.py`: all 9 tests passed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
+- `git diff --check` passed. The preserved #428 plan and the original HEAD copy
+  have the same SHA-256: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
 
-Estimate: **3-5 hours of my active implementation and validation time** from this
-plan, including roughly 45-75 minutes for the native regression, 30-45 minutes for
-the scoped production change, 60-120 minutes for the real command/reconnect
-journey, and 45-60 minutes for build, compatibility checks, documentation and
-final review. Allow **up to 6 hours** if the authored castle fixture or safe
-movement through its terrain needs additional qualification. This is an estimate,
-not a guarantee; it excludes external review, merge scheduling and deployment.
+Only planning documents change at this checkpoint. No full server build,
+new denomination regression, gameplay journey, reward fix or production/live
+verification is claimed. The implementation acceptance items above remain open.
+Issue #444 is the identified work item; a targeted open GitLab mirror search
+for coin issues returned unrelated collector/flight work, not a matching item.
+GitHub's native Development association links #444 to this branch, verified
+with `gh issue develop 444 --repo LuminariMUD/Duris --list`. Retain the issue
+until implementation and its acceptance work are complete; this plan does not
+close it.
 
 ## Implementation and qualification, 2026-10-30
 
-The implementation keeps the planned policy in one private helper and one call
-after the reset loop in `src/world/db.c`. The helper resolves the eight exact
-gate pairs, examines carrier inventory and every equipment slot, and uses the
-live character list to include linkdead occupants. It clears lock/secret bits
-only on the mapped reciprocal exits. No source/item creation path, area input,
-global emptiness rule, persistence field or migration changed.
+The production edit stays in src/cmd/actobj.c. Both pickup routes, explicit
+debits, recipient credits and all refunds now carry exact coin vectors. The
+existing PC transaction completion controls debit publication. A single guarded
+fallback validates all denominations before mutating NPC/no-PID wallets; it has
+real credit, debit and refund callers. Global value-based payments are unchanged.
 
-The new native test extracts the production reset loop, M/G/E/D cases,
-finalization, access correction, `is_empty()` and `event_reset_zone()`. Allocation,
-placement, RNG and unrelated services are controlled; it is not a second reset
-implementation. Fixture rows and exits come from the authored castle files.
-Against the original source, all seven held-key/consumption cases fail at the
-locked-door assertion. With the fix, all seven and the availability, occupancy
-and boundary groups pass under ASan/UBSan. They cover stable surviving-carrier
-identities, normal dead-carrier replacement, repeated resets, all equipment
-slots, off-carrier/off-site copies, item creation failure, the outer entrance,
-secret closet, unrelated bookcase key, another zone number and mismatched reverse
-exits. The existing shopkeeper population regression also passes.
+The expanded pickup regression failed against the unmodified source at its
+40-gold wallet assertion. It passes with the fix, including partial corpse
+pickup, exact mixed counts, 35 gold plus 5 gold, NPC/no-PID pickup, overflow
+retention, revisions, haul text and corpse-save bookkeeping.
 
-Implementation inspection found one required refinement: `morph()` moves the
-original PC to limbo and represents the active player body as an NPC with
-`orig_char`. Counting only `!IS_NPC` would miss a linkdead morphed player. The
-occupancy check also uses the existing `IS_MORPH()` predicate; a native negative
-control fails without it and passes with it. This preserves the player-body
-recovery requirement without changing morph or global reset behavior.
+The focused transfer regression executes production debit, put/drop publication,
+recipient credit, refund and currency transaction functions under ASan/UBSan.
+External world placement, allocation, feedback and writer services are controlled
+boundaries. It covers four repeated payments for PC/NPC/no-PID senders, mixed
+drop-all with value above INT_MAX, PC/NPC recipients, self-give, staff credit
+and refusal without a staff refund, missing/invalid recipients, exact refunds
+for seven put/drop failure conditions, selected-denomination insufficiency,
+reserved-trade refusal, revision/dirty behavior and sender-first saves. Refund
+refusal is observed through the existing diagnostic path. The shared header
+holds the former currency test's world/persistence services; it is not a second
+currency implementation.
 
-The socket journey uses the real server with private flat-file authority, seven
-new mortal accounts and one staff setup account. It loads the authored castle
-room graph, key prototypes and relevant reset rows, with an exterior landing
-room at 5760. Only the fixture's reset lifespan (one real timer tick), NPC
-aggression/wandering and unrelated spawns are controlled. The real callback
-still runs every 300 pulses; the test does not call it through a debug shortcut.
+The new gameplay journey runs real command parsing and the legacy quester
+handler on disposable mortal characters. On **both flat-file and MariaDB** it
+proves:
 
-Staff removal drops NPC equipment/inventory on the floor, so the fixture takes
-each original key after removing its carrier rather than creating a second copy.
-Live object inspection confirms exactly one key of each VNUM, carried by the
-mortal. The next empty timer reset creates keyless carriers. Real mortal
-close/lock/unlock commands consume all seven keys, reducing each live count to
-zero; another empty timer reset preserves the same carrier IDs and keeps both
-sides of every gate accessible. Removing the keyless carriers permits normal
-replacement and restores the authored locks, including the secret closet.
+- An authored 40-gold pile, bank deposit/withdraw, two puts that merge in a bag,
+  save/relog, and bulk pickup retain exactly 40 gold.
+- Four give-10-gold commands each complete a synthetic legacy quest, leaving
+  30, 20, 10 and 0 gold without exchange. Between the second and third payments,
+  a restart preserves 10 gold in the wallet and 10 gold in the bag. A fifth,
+  unaffordable payment does not complete the quest.
+- A second quest grants an authored 17-gold money object. Its bag/pickup route,
+  a mixed [3,12,17,0] pile and a gold drop/get retain their exact denominations.
+- A second PC receives 10 gold and retains it over relog. Filling that recipient's
+  gold count to INT_MAX makes a later give fail after the sender debit; the
+  sender retains exactly [3,12,24,0], with no success announcement or duplicate
+  credit. The restored balance is saved and survives the subsequent restart.
+- A closed bag refuses coin put without advancing the wallet revision. The mixed
+  coins then survive a bag-held restart, return to the wallet exactly once, and
+  a repeated empty-bag pickup cannot credit them again.
 
-With seven connected mortals placed at the interior endpoints, the due timer
-reports `will_reset=0` and leaves the locks intact. After their sockets close,
-the same scheduler reports `will_reset=1`; all eight recovery pairs become
-unlocked and visible. Each mortal reconnects and walks to 5760 using only normal
-open/movement commands. Staff readback verifies the room after every movement:
-**14, 13, 17, 21, 32, 34 and 34 steps**, respectively, **165 steps total**.
-The closet is included. Separate connected-mortal journeys pass after both
-`zreset ok` (basement) and `zreset full` (closet). The final empty, stocked timer
-reset restores normal locks and secrecy. All six observed timer cases have zero
-callback lateness. The disposable server exits successfully and is removed.
+The MariaDB wrapper reuses every command and assertion from the same journey;
+only the snapshot reader changes to actual SQL rows. Its database/schema are
+created in the existing disposable loopback container runner, bootstrapped and
+migrated there, and removed at exit. No checkout credentials or production state
+are used. Both journeys perform two real server restarts, not only a serializer
+round trip. Controlled native failures supply destination/allocation cases that
+cannot be reliably forced through ordinary gameplay.
 
-Completed commands/results:
+The flat-file journey is registered in the regression runner's serial resource
+group. The SQL wrapper is excluded from its no-argument discovery and registered
+in tests/run_db_tests.sh, which supplies its disposable database and server.
+This avoids introducing a test-all failure from a journey that requires SQL.
 
-- `python3 tests/async/test_castle_key_reset.py`: seven key sequences and three
-  control groups passed under ASan/UBSan, including the morph negative control
-  described above and unchanged surviving object identities.
-- `python3 tests/async/test_castle_key_reset_journey.py`: passed all seven key
-  consumption sequences, seven reconnect/escape routes, six timer cases, both
-  staff-reset modes and normal progression restoration.
-- `python3 tests/async/test_shopkeeper_population.py`: all five scenarios passed.
-- Existing `test_key_break_custody_contract.py`,
-  `test_zone_reset_timing_contract.py` and `test_no_reset_zone_key.py`: passed.
-- `make -C src -j6`: MariaDB development build passed. The journey's existing
-  build helper also compiled and validated its separate flat-file server.
-- Python syntax, changed C/C++ formatting, all 14 documentation contracts and
-  `git diff --check`: passed; final commit checks remain enabled.
+Current master advanced during the work. Merge 1f8d15412 incorporates
+b352b650c3f05ea0c2e109eaa9abcc3040290952; production changes had no conflict.
+The shared plan conflict was resolved by retaining this #444 plan and preserving
+the incoming #437 document with SHA-256
+ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
+The tests and both builds below qualify the combined source.
 
-Ignored evidence is under `bin/qualification/issue418/`: `gameplay-report.json`,
-the command transcript/server log, and the MariaDB build log. This qualifies
-reset/door behavior in isolated native and flat-file runtime fixtures. It does
-not claim production validation, a MariaDB socket journey, full-zone combat
-safety, or an old recovery-snapshot migration.
+Completed checks:
 
-Final ablation retains one production helper/call, one native regression with
-its harness, one socket journey using existing build/client helpers, and the
-plan/runbook updates. No area mutation, source restocking, new setting, schema,
-global timer change, or parallel implementation remains. The morph predicate
-is the only source-discovered refinement to the planned behavior.
+    python3 tests/async/test_take_coins.py
+    python3 tests/async/test_coin_transfers.py
+    python3 tests/async/test_currency_in_memory.py
+    python3 tests/async/test_currency_transaction_contract.py
+    python3 tests/async/test_coin_command_transaction_contract.py
+    python3 tests/async/test_money_carry_count.py
+    make -C src -j6
+    make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_issue444_flatfile"
+    python3 tests/async/test_coin_denomination_journey.py --server bin/server/dms_issue444_flatfile
+    python3 tests/async/test_flatfile_auction_coin_put_journey.py --server bin/server/dms_issue444_flatfile
+    python3 tests/async/test_area_coin_pickup.py --server bin/server/dms_issue444_flatfile
+    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_coin_denomination_journey.py --server bin/server/dms_new
+    ./scripts/format.sh --check
+    python3 tests/async/test_documentation_contract.py
+    git diff --check
 
-After integrating `master` at `bc1537d9e`, the native regressions, existing
-key/reset and shopkeeper contracts, MariaDB build, documentation/format checks,
-and the complete socket journey passed again. The integrated journey repeated
-all seven key sequences, all seven escape routes (165 movements), both staff
-reset modes and the six real timer cases. Its flat-file binary SHA-256 is
-`e5a013228ae2c50cf82588044761b431da0ac457a078ad716fc81420cbc74ac5`.
-The only merge conflict was the shared plan path; the other project's record
-was preserved unchanged in `plan-issue-437.md`. No castle implementation change
-was needed for integration.
+All passed: native pickup/transfer/currency tests under ASan/UBSan, all nine
+currency contracts, direct/bulk pickup count gates, both builds with warnings
+as errors, both coin journeys, auction-to-bag/reload regression, all three area
+coin pickup routes, formatting, all 14 documentation contracts and whitespace
+checks. Python syntax checks also passed.
+
+The ignored evidence is under bin/qualification/issue444/. Qualified binaries:
+
+- Flat-file SHA-256: a12b13d5880aff4c7b68f3bd6964599a23682327342b9bfddba9bbbeead2c95c.
+- MariaDB SHA-256: c575bc8932677b4e2bc6fc069398b018782e9b921b0c695b8765011cf534148a.
+
+The commit hook initially selected incompatible GCC 16 standard-library headers.
+It passed with Clang 18 explicitly selecting the installed GCC 13 headers via
+--extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13. Hooks remained
+enabled; no source suppressions or check bypasses were added.
+
+Final ablation retains the existing transaction/publication design, one guarded
+nonpersistent-wallet adapter, executable regressions, and one command sequence
+reused for both persistence backends. No new currency service, configuration,
+schema, production reward-policy change or recovery migration was introduced.
+The prior plans and unrelated worktrees were preserved.
+
+Emp's exact quest and live build remain unidentified. The shared defect and
+explicitly authored reward paths are qualified; that individual report is not
+claimed reproduced. No value-only reward was guessed or changed. Production
+deployment and live-world qualification are separate from this implementation.
+The PR references #444 without automatically closing that remaining report-level
+verification question.
 
 
 ## Sequential PR integration, 2026-10-30
 
-Integrated master `daac1146de750de0dc71d277d2f4103c1fd56da7` after PRs
-#432 and #475. Production code merged without conflicts. The shared-plan
-conflict preserves this castle record at `plan.md` and the completed rent-key
-record byte-for-byte at [plan-issue-419.md](plan-issue-419.md).
+Integrated master `b4fa5220e982ca7ab7b8dc4d09d5389cca46cb94` after PRs
+#432, #475 and #476. Production code merged without conflicts. The shared-plan
+conflict keeps this coin record at `plan.md` and preserves the completed castle
+record byte-for-byte at [plan-issue-418.md](plan-issue-418.md). The rent-key and
+quest records remain in their existing issue-specific archives.
 
-The MariaDB server build, seven castle key sequences and reset/occupancy/boundary
-controls under ASan/UBSan, key-break custody, reset timing, no-reset-zone key,
-all five shopkeeper population cases, formatting, whitespace and all 14
-documentation checks pass on the combined source. This merge pass retains the
-previous complete disposable-server gameplay qualification; it does not claim a
-new production operation or a full hosted CI run.
+The MariaDB server build, exact PC/NPC coin transfers and refunds, partial/mixed
+pickup, wallet transaction and in-memory behavior, carry counts, shared flat-file
+player repository, formatting, whitespace and all 14 documentation checks pass
+on the combined source. The shared inspector retains both rent-key inspection
+and coin-vector inspection. Earlier MariaDB and flat-file gameplay reports retain
+the bank/bag/four-quest-payment/relog/restart qualification; those complete
+journeys were not repeated in this merge pass. Emp's unidentified value-only
+quest reward remains outside the verified scope. No production operation or
+currency migration is included.
