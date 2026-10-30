@@ -1826,39 +1826,82 @@ PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_
 	}
 }
 
-bool PrivateChest::SaveContents(int locker_id, bool durable)
+bool PrivateChest::SaveContents(StorageLocker *locker, bool durable)
 {
-	locker_chest_snapshot snapshot;
-	snapshot.locker_id = locker_id;
-	snapshot.chest_id = m_chestId;
+	auto snapshot = std::make_shared<locker_chest_snapshot>();
+	snapshot->locker_id = locker->GetLockerId();
+	snapshot->chest_id = m_chestId;
 	std::vector<uint8_t> contents;
 	if (!m_pChestObject ||
-	    player_item_snapshot_contents_capture(m_pChestObject, &snapshot.items) !=
+	    player_item_snapshot_contents_capture(m_pChestObject, &snapshot->items) !=
 		    player_snapshot_capture_result::ok ||
-	    player_item_snapshot_list_encode(snapshot.items, &contents) !=
+	    player_item_snapshot_list_encode(snapshot->items, &contents) !=
 		    player_snapshot_codec_result::ok)
 		return false;
+	// One immutable write and one latest capture per chest. A newer request may
+	// replace the waiting capture, but can never acknowledge an older write.
+	m_nextSnapshot = std::move(snapshot);
+	m_nextContents = std::move(contents);
+	if (!FlushContents())
+		return true;
+	const bool scheduled = locker->SchedulePrivateSave();
+	return !durable && scheduled;
+}
+
+bool PrivateChest::FlushContents(void)
+{
 	if (m_saveReceipt)
 	{
 		if (!m_saveReceipt->finished.load(std::memory_order_acquire))
-			return !durable;
+		{
+			if (m_nextSnapshot && m_nextContents == m_pendingContents)
+			{
+				m_nextSnapshot.reset();
+				m_nextContents.clear();
+			}
+			return true;
+		}
 		if (m_saveReceipt->ok)
 			m_savedContents = std::move(m_pendingContents);
+		else if (!m_nextSnapshot)
+		{
+			m_nextSnapshot = m_pendingSnapshot;
+			m_nextContents = std::move(m_pendingContents);
+		}
 		m_saveReceipt.reset();
+		m_pendingSnapshot.reset();
 	}
-	if (contents == m_savedContents)
-		return true;
+	if (m_nextSnapshot && m_nextContents == m_savedContents)
+	{
+		m_nextSnapshot.reset();
+		m_nextContents.clear();
+	}
+	if (!m_nextSnapshot)
+		return false;
+	const auto snapshot = m_nextSnapshot;
 	auto receipt = std::make_shared<sql_write_receipt>();
-	const uint64_t owner = (static_cast<uint64_t>(m_chestId) << 32) |
-			       static_cast<uint32_t>(locker_id);
+	const uint64_t owner = (static_cast<uint64_t>(snapshot->chest_id) << 32) |
+			       static_cast<uint32_t>(snapshot->locker_id);
 	const size_t bytes =
-		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
+		sizeof(*snapshot) + snapshot->items.size() * sizeof(player_item_snapshot);
 	const auto submitted = persistence_writer_submit(
 		persistence_job_kind::locker, owner, bytes,
-		[snapshot = std::move(snapshot), receipt]()
+		[snapshot, receipt]()
 		{
-			const auto result =
-				locker_chest_snapshot_repository_apply_from_pool(snapshot);
+			player_save_apply_result result{};
+			try
+			{
+				result =
+					locker_chest_snapshot_repository_apply_from_pool(*snapshot);
+			}
+			catch (const std::bad_alloc &)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, ENOMEM };
+			}
+			catch (...)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, EFAULT };
+			}
 			if (result.outcome != player_save_apply_outcome::retryable_failure &&
 			    result.outcome != player_save_apply_outcome::ambiguous_commit)
 			{
@@ -1870,19 +1913,48 @@ bool PrivateChest::SaveContents(int locker_id, bool durable)
 			}
 			return result;
 		});
-	if (submitted != player_save_submit_result::accepted &&
-	    submitted != player_save_submit_result::replaced)
+	if (submitted == player_save_submit_result::accepted ||
+	    submitted == player_save_submit_result::replaced)
+	{
+		m_pendingSnapshot = std::move(m_nextSnapshot);
+		m_pendingContents = std::move(m_nextContents);
+		m_saveReceipt = std::move(receipt);
+	}
+	return true;
+}
+
+bool StorageLocker::SchedulePrivateSave(void)
+{
+	if (!m_chLocker)
 		return false;
-	m_pendingContents = std::move(contents);
-	m_saveReceipt = std::move(receipt);
-	return !durable;
+	if (get_scheduled_excluding_current(m_chLocker, event_savePrivateChests))
+		return true;
+	return add_event(event_savePrivateChests, WAIT_SEC, m_chLocker, NULL, NULL, 0, &m_realRoom,
+			 sizeof(m_realRoom))
+		.was_scheduled();
+}
+
+void StorageLocker::event_savePrivateChests(P_char chLocker, P_char, P_obj, void *data)
+{
+	const int room = *static_cast<const int *>(data);
+	if (room < 0 || room > top_of_world || !IS_ROOM(room, ROOM_LOCKER))
+		return;
+	StorageLocker *locker = GetChestList(room);
+	if (!locker || locker->GetLockerChar() != chLocker)
+		return;
+	bool pending = false;
+	for (PrivateChest *chest : locker->GetPrivateChests())
+		if (chest->FlushContents())
+			pending = true;
+	if (pending)
+		locker->SchedulePrivateSave();
 }
 
 bool StorageLocker::PrivateContentsDurable(void)
 {
 	bool durable = true;
 	for (PrivateChest *chest : GetPrivateChests())
-		if (!chest->SaveContents(m_lockerId, true))
+		if (!chest->SaveContents(this, true))
 			durable = false;
 	return durable;
 }
@@ -3826,7 +3898,7 @@ bool StorageLocker::LockerToPFile(void)
 					      obj_index[chest_obj->R_num].virtual_number :
 					      -1,
 				      chest_obj->obj_uid, chest_contents, m_realRoom);
-			if (!static_cast<PrivateChest *>(p)->SaveContents(m_lockerId, false))
+			if (!static_cast<PrivateChest *>(p)->SaveContents(this, false))
 			{
 				logit(LOG_DEBUG,
 				      "LockerToPFile: failed to save private chest locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d",
@@ -4254,7 +4326,7 @@ void locker_chest_changes_pulse(void)
 static void locker_change_chest(P_char actor, StorageLocker *locker, PrivateChest *chest,
 				const std::string &hash, bool remove)
 {
-	if (!chest->SaveContents(locker->GetLockerId(), true))
+	if (!chest->SaveContents(locker, true))
 	{
 		send_to_char("That chest is still being secured. Please try again shortly.\r\n",
 			     actor);

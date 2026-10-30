@@ -21,8 +21,12 @@ password; guests still require locker admission and the private password.
 
 Private snapshots retain immutable data and completion receipts. Departure keeps
 the live room and contents until the current private captures are acknowledged.
-A refused or failed snapshot can be retried with those contents still present.
-Public storage continues through the existing locker writer.
+One in-flight capture and one latest waiting capture are retained per chest.
+A later ordinary save replaces the waiting capture, never the acknowledged one.
+An existing owner-bound nevent flushes it after completion, including writer
+refusal/failure; it uses immutable data rather than recapturing unsaved changes.
+Timer admission failure is reported as non-acceptance. Public storage continues
+through the existing locker writer.
 
 A purchase commits the chest and exact wallet/bank payment together. The nullable
 unique operation ID on the chest is its receipt while completion is unresolved;
@@ -83,7 +87,9 @@ Focused executable proof:
 
 - `python3 tests/async/test_private_chest_regressions.py`: production sorting,
   registry, session and stale verification, save refusal/failure/ACK, management
-  reconciliation, audit retry and deleted identity; ASan/UBSan.
+  reconciliation, audit retry and deleted identity; ASan/UBSan. It also verifies
+  A/B/C coalescing without another save, immutable capture versus later unsaved
+  changes, refused writer admission, failed predecessors and exception receipts.
 - `python3 tests/async/test_locker_container_weight_lifecycle.py`: 24 native
   container, capacity, loading and weight cases; ASan/UBSan.
 - `python3 tests/async/test_currency_in_memory.py`: the production currency
@@ -95,8 +101,8 @@ Focused executable proof:
 - `test_mysql_game_loop_queries_journey.py` passes on disposable MariaDB 10.11
   and MySQL 8.0: actual access, custom sorting, history and re-entry, plus a private
   INSERT trigger that forces a terminal save failure. The live actor/contents
-  remain usable; removing the trigger permits a durable retry and re-entry.
-  It reports zero game-loop SQL sites and no duplicate room insertion.
+  remain usable; removing the trigger permits a durable retry and re-entry. After removing the failure, SQL must contain the retained
+  generation before any further save or departure. It reports zero game-loop SQL sites and no duplicate room insertion.
 - `test_private_chest_lifecycle.py`: all 25 ASan/UBSan cases pass, including the
   carried access/role/visit/furniture/backend cases and acknowledged, failed and
   superseded legacy rehash completions.

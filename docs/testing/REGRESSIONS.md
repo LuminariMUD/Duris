@@ -32,7 +32,11 @@ The existing game-loop-query journey exercises the actual locker command path,
 custom sorting and saved item/history routing through leave and re-entry. The
 journey injects a terminal private-save rejection on disposable MariaDB/MySQL,
 verifies the actor and contents remain live, then removes the fault and proves
-retry/re-entry. It also catches a movement visibility pass ignoring that veto.
+retry/re-entry. After the fault is removed, it requires automatic persistence
+before any further save or exit. The native fixture also holds an older write in
+flight and verifies that only the newest retained capture is flushed, without
+reading later unsaved live changes; refusal, predecessor failure and exceptions
+retain retry data. The journey catches a movement visibility pass ignoring a veto.
 `test_private_chest_lifecycle.py` carries the 25 access/role/backend and durable
 legacy-upgrade cases from the consolidated #502/#503 stack.
 

@@ -23,6 +23,33 @@ static bool refuse = false;
 static player_save_apply_outcome write_outcome = player_save_apply_outcome::applied;
 static std::deque<persistence_job_write_fn> jobs;
 static uint64_t saved_owner;
+static bool private_event_pending;
+static P_char private_event_owner;
+static int private_event_room;
+static nevent_data private_event{};
+P_nevent get_scheduled_excluding_current(P_char, event_func_type)
+{
+	return private_event_pending ? &private_event : NULL;
+}
+nevent_schedule_result add_event(event_func fn, int, P_char owner, P_char, P_obj, int,
+				 const void *data, int size)
+{
+	assert(fn == StorageLocker::event_savePrivateChests && size == sizeof(int));
+	private_event_pending = true;
+	private_event_owner = owner;
+	memcpy(&private_event_room, data, sizeof(private_event_room));
+	return { nevent_schedule_status::scheduled, { &private_event, 1 } };
+}
+static void private_tick()
+{
+	assert(private_event_pending);
+	private_event_pending = false;
+	StorageLocker::event_savePrivateChests(private_event_owner, NULL, NULL,
+					       &private_event_room);
+}
+static std::vector<int> written_weights;
+static bool throw_write;
+
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
 static std::vector<std::pair<std::string, std::shared_ptr<sql_write_receipt>>> audit_writes;
 static std::shared_ptr<sql_write_receipt> management_receipt;
@@ -156,6 +183,10 @@ player_save_apply_result
 locker_chest_snapshot_repository_apply_from_pool(const locker_chest_snapshot &s)
 {
 	assert(s.locker_id == 7 && s.chest_id == 55);
+	if (throw_write)
+		throw std::bad_alloc();
+	if (!s.items.empty())
+		written_weights.push_back(s.items[0].weight);
 	return { write_outcome, 0, 0 };
 }
 player_snapshot_capture_result
@@ -337,7 +368,7 @@ int main()
 			assert(locker.FindChestForObject(object) == chest);
 			assert(object->contains == item);
 		}
-		assert(chest->SaveContents(7, false));
+		assert(chest->SaveContents(&locker, false));
 		assert(saved_owner == ((55ULL << 32) | 7));
 		assert(!locker.PrivateContentsDurable());
 		write_outcome = player_save_apply_outcome::terminal_failure;
@@ -355,6 +386,67 @@ int main()
 		assert(!locker.PrivateContentsDurable());
 		finish_save();
 		assert(locker.PrivateContentsDurable());
+		written_weights.clear();
+		++item->weight;
+		const int first_weight = item->weight;
+		assert(chest->SaveContents(&locker, false));
+		++item->weight;
+		const int latest_weight = item->weight;
+		assert(chest->SaveContents(&locker, false));
+		++item->weight;
+		const int coalesced_weight = item->weight;
+		assert(chest->SaveContents(&locker, false));
+		++item->weight; // unsaved live changes cannot mutate a queued capture
+		finish_save();
+		private_tick();
+		assert(!jobs.empty());
+		finish_save();
+		private_tick();
+		assert((written_weights == std::vector<int>{ first_weight, coalesced_weight }));
+		assert(latest_weight != coalesced_weight);
+		assert(!locker.PrivateContentsDurable());
+		finish_save();
+		private_tick();
+		assert(locker.PrivateContentsDurable());
+		++item->weight;
+		throw_write = true;
+		assert(chest->SaveContents(&locker, false));
+		finish_save();
+		throw_write = false;
+		private_tick();
+		assert(!jobs.empty());
+		finish_save();
+		private_tick();
+		assert(locker.PrivateContentsDurable());
+		// Refused writer admission retains the immutable capture for the timer.
+		++item->weight;
+		const int refused_weight = item->weight;
+		refuse = true;
+		assert(chest->SaveContents(&locker, false) && jobs.empty());
+		++item->weight;
+		refuse = false;
+		private_tick();
+		finish_save();
+		private_tick();
+		assert(written_weights.back() == refused_weight);
+		assert(!locker.PrivateContentsDurable());
+		finish_save();
+		private_tick();
+		assert(locker.PrivateContentsDurable());
+		// A failed older generation must yield to its retained successor.
+		++item->weight;
+		assert(chest->SaveContents(&locker, false));
+		++item->weight;
+		const int successor_weight = item->weight;
+		assert(chest->SaveContents(&locker, false));
+		write_outcome = player_save_apply_outcome::terminal_failure;
+		finish_save();
+		write_outcome = player_save_apply_outcome::applied;
+		private_tick();
+		finish_save();
+		private_tick();
+		assert(written_weights.back() == successor_weight &&
+		       locker.PrivateContentsDurable());
 		assert(!locker_container_access_allowed(&actor, object));
 		locker.SetCurrentChestId(55);
 		assert(locker_container_access_allowed(&actor, object));

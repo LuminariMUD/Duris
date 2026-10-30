@@ -207,6 +207,12 @@ def locker(client, sql, runtime, output_path):
         client.expect('private chests are still being secured', timeout=30)
     finally:
         sql('DROP TRIGGER reject_private_chest_save')
+    # The retained capture must reach SQL automatically, without another save,
+    # command mutation or departure recapturing the live chest.
+    deadline = time.monotonic() + 30
+    while int(sql("SELECT COUNT(*) FROM locker_items i JOIN private_chests c ON c.id=i.chest_id WHERE c.chest_name='vault' AND c.is_public=0 AND i.vnum=677").strip()) != 2:
+        assert time.monotonic() < deadline, 'retained private capture was not retried automatically'
+        time.sleep(.1)
     leave_locker(client)
     deadline = time.monotonic() + 60
     while True:
@@ -267,7 +273,7 @@ def run(server):
     mysql.append('--ssl-mode=DISABLED' if '--ssl-mode' in subprocess.check_output(
         ['mysql', '--help'], text=True, stderr=subprocess.STDOUT) else '--skip-ssl')
     def sql(text):
-        subprocess.run(mysql + [database], input=text, text=True, env=environment, check=True)
+        return subprocess.check_output(mysql + [database], input=text, text=True, env=environment)
 
     subprocess.run(mysql, input='CREATE DATABASE ' + database +
                    ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci', text=True,

@@ -36,6 +36,7 @@ std::string remove_all_locker_access_statement(const char *name);
 class LockerChest;
 class ComboChest;
 class PrivateChest;
+struct locker_chest_snapshot;
 
 class StorageLocker
 {
@@ -76,6 +77,8 @@ class StorageLocker
 	LockerChest *FindChestForObject(P_obj obj);
 
 	static void event_resortLocker(P_char chLocker, P_char ch, P_obj obj, void *data);
+	static void event_savePrivateChests(P_char chLocker, P_char ch, P_obj obj, void *data);
+	bool SchedulePrivateSave(void);
 	int m_itemCount;
 
 	int GetCurrentChestId(void) { return m_currentChestId; };
@@ -342,7 +345,9 @@ class PrivateChest : public LockerChest
 	// Memory holds the chest's password: empty for none.
 	const std::string &GetPasswordHash(void) { return m_passwordHash; };
 	void SetPasswordHash(const char *hash) { m_passwordHash = hash ? hash : ""; };
-	bool SaveContents(int locker_id, bool durable);
+	bool SaveContents(StorageLocker *locker, bool durable);
+	// Submit/acknowledge retained captures; true while work remains.
+	bool FlushContents(void);
 
     protected:
 	int m_chestId;
@@ -351,6 +356,9 @@ class PrivateChest : public LockerChest
 	std::shared_ptr<struct sql_write_receipt> m_saveReceipt;
 	std::vector<uint8_t> m_pendingContents;
 	std::vector<uint8_t> m_savedContents;
+	std::shared_ptr<const locker_chest_snapshot> m_pendingSnapshot;
+	std::shared_ptr<const locker_chest_snapshot> m_nextSnapshot;
+	std::vector<uint8_t> m_nextContents;
 };
 
 #endif // __STORAGE_LOCKERS_H__
