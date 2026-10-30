@@ -2831,9 +2831,9 @@ Bartender - Last Edited: 2009-09-02 14:50:21 by Blaize
 ======================================================
 Bartenders around the world united to stuff their pockets
 with platinum and gold.  An adventurous traveler can for a fee
-ask a bartender about a quest.  When sharing is available,
-consenting companions may join a suitable task. The bartender offers an
-adventure that your level of character can complete.
+ask a bartender about a quest. The purchaser may use QUEST SHARE <player>
+to invite up to four consenting companions to a suitable task. The bartender
+offers an adventure that your level of character can complete.
 Mercenaries receive plat bonus at level 25 and beyond for
 completing some quests.
 Bartenders are located in every hometown and numerous
@@ -20553,10 +20553,13 @@ Maps cost an additional fee and mark a verified way into the target area.
 Unverified directions are withheld until the task can be checked again. An
 older saved task may need a real bartender to check its travel origin first.
 
-Sharing may be disabled. When enabled, only the purchaser may share, within
-the remaining limit, with a consenting companion of a suitable level who can
-use the task's route and target. Each recipient buys their own map. Voluntarily
-abandoning a usable task still costs money and may use a quest allowance after
+The purchaser may share a quest with up to four consenting companions, for a
+party of five. Each companion must be of a suitable level, have a quest allowance
+remaining, not have done the task before, and be able to use its route and target.
+Sharing has no extra quest fee; each recipient buys their own map and earns
+their own completion reward. Recipients cannot share the task again. Quests
+purchased while sharing was disabled keep their original remaining shares.
+Voluntarily abandoning a usable task still costs money and may use a quest allowance after
 partial progress. A pending free replacement can be discarded without either
 penalty by asking for 'abandon confirm'.
 ask bartender quest

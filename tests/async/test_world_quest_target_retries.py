@@ -2,6 +2,7 @@
 """Real cached policy and creation against controlled reset/live-world fixtures."""
 
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -9,6 +10,8 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source as repo_source
 
 
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+share_limit = re.search(r"^world\.quest\.share\.max=(.+)$",
+                        (ROOT / "lib/duris.properties").read_text(), re.MULTILINE).group(1)
 with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/tests") as temporary:
     work = Path(temporary)
     adapters = work / "production_adapters.cpp"
@@ -94,7 +97,7 @@ void run_map_payment(P_char player, int fee)
         "probe_cap", "probe_cap_zones", "last_probe",
     )]
     for level, mode, kind in scenarios:
-        result = subprocess.run([str(binary), str(level), mode, kind], cwd=work,
+        result = subprocess.run([str(binary), str(level), mode, kind, share_limit], cwd=work,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 timeout=15)
         if result.returncode:

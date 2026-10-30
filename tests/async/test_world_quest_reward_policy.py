@@ -3,7 +3,7 @@
 
 Rewards still come from the quest's zone, but never quest items and never the zone's most
 valuable items; each completed quest pays one reward to the player who completed it;
-quests are unshareable by default; and the fee is a property.
+quests may be shared with four companions; and the fee is a property.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ def test_reward_grant_rejection_does_not_publish_a_stale_object() -> None:
     assert "sql_world_quest_finished(ch, reward_granted ? reward : NULL)" in full
 
 
-def test_quests_are_unshareable_by_default() -> None:
+def test_quest_sharing_remains_configurable() -> None:
     limit = extract_function("world_quest.c", "static int world_quest_share_limit(")
     assert '"world.quest.share.max", 0.000' in limit
     create = extract_function("world_quest.c", "bool createQuestForGiverVnum(")
@@ -154,7 +154,7 @@ def test_bartender_fee_is_a_property() -> None:
 def test_properties_ship_the_documented_defaults() -> None:
     section = PROPERTIES[PROPERTIES.index("[worldQuest]"):]
     section = section[: section.index("\n[", 1)].splitlines()
-    for line in ("world.quest.share.max=0.000", "world.quest.cost.per.level=20.000",
+    for line in ("world.quest.share.max=4.000", "world.quest.cost.per.level=20.000",
                  "world.quest.reward.top.withheld.percent=20.000"):
         assert line in section, line
 
@@ -166,7 +166,7 @@ if __name__ == "__main__":
         test_catalog_withholds_top_value_items_before_pools_and_scores,
         test_nofear_block_reads_the_fourth_affect_field,
         test_kill_quests_pay_one_reward_on_completion,
-        test_quests_are_unshareable_by_default,
+        test_quest_sharing_remains_configurable,
         test_bartender_fee_is_a_property,
         test_properties_ship_the_documented_defaults,
     ]
