@@ -186,14 +186,16 @@ def run(binary):
                 if entrance:
                     pair_flags((2402, 2401, 2401, 2401, 0, 2402, 18), locked)
 
-            def trace_count():
-                return len(re.findall(r"ZONE RESET TRACE:.*zone_vnum=24\b", base.runtime_logs(runtime)))
+            def reset_traces():
+                # The diagnostic tail can drop older traces as the log grows.
+                status = (runtime / "logs/log/status").read_text(errors="replace")
+                return re.findall(r"ZONE RESET TRACE:.*zone_vnum=24\b[^\n]*", status)
 
             def wait_timer(reset, description):
-                before = trace_count()
+                before = len(reset_traces())
                 deadline = time.monotonic() + 100
                 while True:
-                    traces = re.findall(r"ZONE RESET TRACE:.*zone_vnum=24\b[^\n]*", base.runtime_logs(runtime))
+                    traces = reset_traces()
                     if len(traces) > before:
                         latest = traces[-1]
                         assert f"will_reset={int(reset)}" in latest, latest

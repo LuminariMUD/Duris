@@ -125,6 +125,15 @@ def run(binary, build):
                 command(client, "toggle paging no")
                 return client
 
+            def logout(client):
+                # Combat stun legitimately blocks quit, even after saving succeeds.
+                deadline = time.monotonic() + 30
+                while " Stunned" in command(client, "score"):
+                    assert time.monotonic() < deadline, "combat stun did not expire"
+                    time.sleep(.25)
+                client.send("quit"); client.expect("ACCOUNT MENU", timeout=30)
+                client.send("0"); client.close(); clients.remove(client)
+
             try:
                 boot()
                 for name, account in ACTORS:
@@ -232,14 +241,12 @@ def run(binary, build):
                 command(assassin, "wake"); command(assassin, "stand")
                 assert "now drips" in command(assassin, "apply weakness journeydagger")
                 assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
-                assassin.send("quit"); assassin.expect("ACCOUNT MENU", timeout=30)
-                assassin.send("0"); assassin.close(); clients.remove(assassin)
+                logout(assassin)
                 assassin = login(*ACTORS[1])
                 assassin.send("save"); assassin.expect("Save complete for Shadeblade.")
                 coated = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
                 assert "coating 2 1537" in coated, coated
-                victim.send("quit"); victim.expect("ACCOUNT MENU", timeout=30)
-                victim.send("0"); victim.close(); clients.remove(victim)
+                logout(victim)
                 victim = login(*ACTORS[2])
                 victim.send("save"); victim.expect("Save complete for Venomtarget.")
                 restored = subprocess.check_output([str(fixture_binary), str(state), "inspect"], text=True)
