@@ -1,6 +1,6 @@
 # Issue #455: separate unread news from combat condition colors
 
-Status: **implementation plan; implementation has not started**. Updated 2026-10-30.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
 Issue: [Duris #455](https://github.com/LuminariMUD/Duris/issues/455).
 Branch: [branch/issue-455-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-455-plan).
 Source baseline: origin/master at c9361959ceb6cb2a9004fea2c03748cef909dc3f.
@@ -217,5 +217,47 @@ Planning qualification completed:
 - cmp confirmed plan-issue-420.md is byte-identical to the baseline plan;
   SHA-256: 9306f27c4fad0663f588bb44f6b05fc8492d368d9bffb872c5c325570020f8e7.
 
-Only this plan and preservation of the previous plan are committed. No
-production implementation or full server build is part of this commit.
+The planning commit contains only this plan and preservation of the previous
+plan. It does not contain production implementation or a full server build.
+
+## Implementation and qualification, 2026-10-30
+
+The shared footer now emits the existing resolved frame markup before the
+conditional news suffix. No condition branch, profile resolver, notification
+state, footer capacity calculation or terminal framing changed. The final
+ablation review retained this argument reorder and extended the existing news
+fixture; no production helper, configuration, new runner or unrelated cleanup
+was needed.
+
+The regression first ran against the original production source and failed
+at the assertion that the marker uses the frame foreground. After the fix,
+all 24 combinations of TC/EC fields, one/two-line layout, ANSI/MSP terminal and
+default/custom foreground pass under ASan/UBSan. They assert exact plain text,
+unchanged red condition words, the foreground of the leading space and every
+marker/bracket character, and the actual terminal escape before the suffix.
+Focused cases also cover cyan tank/enemy wards, staff visibility, AFK, generic
+uncolored terminal output, read/empty-publication closing frames and noncombat
+prompts. Existing long-name footer, owner/body, smart-prompt, auxiliary-prompt
+and news command/acknowledgement checks pass in the same executable.
+
+Completed checks:
+
+- SANITIZE=1 python3 tests/async/test_word_output_integration.py: passed after
+  failing at the new color assertion on the original source. Ignored evidence
+  logs: bin/tests/issue455-baseline.log and bin/tests/issue455-fixed.log.
+- make -C src -j8: passed; MariaDB development build with warnings as errors,
+  including net/prompt.c compilation and bin/server/dms_new linking. No local
+  .env was present or needed for compilation; no server or database was used.
+  Ignored build log: bin/tests/issue455-build.log.
+- ./scripts/format.sh --check: passed. The .inc fixture was also formatted
+  directly and passed clang-format --dry-run --Werror because the changed-line
+  script does not select that extension.
+- python3 tests/async/test_documentation_contract.py: all 14 tests passed.
+- git diff --check: passed. Build/test artifacts remain ignored under bin/.
+
+Verification executes the production prompt, queue, news and ANSI conversion
+code with controlled world/logging/transport services. It does not boot a
+world, test live client triggers, change persistence or certify production
+deployment. The visible prompt text remains identical, so color-stripping
+client regex behavior is still outside the evidence. The implementation PR
+links #455 for closure on merge; opening it leaves the issue open for review.
