@@ -7751,7 +7751,7 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				 MAX_STRING_LENGTH - strlen(who_output),
 				 "\nThere are %d visible &+rgod(s)&n on.\n", who_gods_size);
 		strcpy(buf, "");
-		if (who_list_size > 0)
+		if (who_list_size > 0 || IS_TRUSTED(ch))
 		{
 			strcat(who_output, "\n Listing of the Mortals!\n"
 					   "-=-=-=-=-=-=-=-=-=-=-=-=-\n");
@@ -7877,11 +7877,28 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				}
 			}
 
-			checked_snprintf(
-				who_output + strlen(who_output),
-				MAX_STRING_LENGTH - strlen(who_output),
-				"\nThere are %d &+gmortal(s)&n on.\n\n&+cTotal visible players: %d.&N\n",
-				who_list_size, who_list_size + who_gods_size);
+			checked_snprintf(who_output + strlen(who_output),
+					 MAX_STRING_LENGTH - strlen(who_output),
+					 "\nThere are %d &+gmortal(s)&n on.", who_list_size);
+			if (IS_TRUSTED(ch))
+			{
+				int good_count = 0, evil_count = 0;
+				for (j = 0; j < who_list_size; j++)
+				{
+					if (IS_RACEWAR_EVIL(who_list[j]))
+						evil_count++;
+					else if (IS_RACEWAR_GOOD(who_list[j]))
+						good_count++;
+				}
+				checked_snprintf(who_output + strlen(who_output),
+						 MAX_STRING_LENGTH - strlen(who_output),
+						 "  %d &+Revil(s)&n, %d &+Ygood(s)&n.", evil_count,
+						 good_count);
+			}
+			checked_snprintf(who_output + strlen(who_output),
+					 MAX_STRING_LENGTH - strlen(who_output),
+					 "\n\n&+cTotal visible players: %d.&N\n",
+					 who_list_size + who_gods_size);
 			if (IS_TRUSTED(ch))
 			{
 				checked_snprintf(who_output + strlen(who_output),

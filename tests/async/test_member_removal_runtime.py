@@ -258,6 +258,7 @@ with tempfile.TemporaryDirectory(prefix="member-removal-") as directory:
         PRELUDE,
         extract_function("group.c", "bool group_remove_member(P_char ch)"),
         extract_function("group.c", "void do_disband(P_char ch,"),
+        extract_function("fight.c", "static void unlink_fighting(P_char ch)"),
         extract_function("fight.c", "void stop_fighting(P_char ch)"),
         DRIVER,
     ]))
