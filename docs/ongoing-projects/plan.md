@@ -511,3 +511,44 @@ limitation; the synthetic reproduction does not prove the exact report.
 The branch and PR refer to #419 without automatically closing it. The code
 repair, qualification, documentation and PR are deliverable; historical
 live attribution is recorded as unavailable.
+
+## Master integration and final qualification, 2026-10-30
+
+Qualified source commit:
+[0598fb15fb83f5279977d40bbca95d9405cbea33](https://github.com/LuminariMUD/Duris/commit/0598fb15fb83f5279977d40bbca95d9405cbea33).
+
+PR [#475](https://github.com/LuminariMUD/Duris/pull/475) initially reported a
+conflict because master advanced to
+`b352b650c3f05ea0c2e109eaa9abcc3040290952` during implementation. The merge
+preserves master's quest snapshot version 13, new status fields and their
+regressions. All production code merged cleanly. The sole conflict was the
+shared plan; master's #437 plan was preserved byte-for-byte as
+[plan-issue-437.md](plan-issue-437.md), SHA-256
+`ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4`.
+The earlier #428 archive remains unchanged.
+
+Both server builds, all nine focused Python regressions listed above, the
+MariaDB claim/loader suite, both full-world socket journeys, changed-line
+clang-tidy, the staged merge hook, formatting and all 14 documentation tests
+passed again after integration. The 12 rent cases and active/fresh recovery
+controls are therefore qualified on the merged source, not merely the earlier
+branch.
+
+The flat-file rerun exposed an inspector read concurrent with atomic snapshot
+publication. The fixture now holds the existing authority lock while opening
+and validating that file and reports the read result after it completes.
+It does not retry arbitrary read errors or change the server. The full
+flat-file journey then passed all cases and recovery controls.
+
+The current reports `bin/qualification/issue419/flatfile.json` and
+`mariadb.json` both record `passed: true`; pre-merge reports are retained in
+the `premerge/` subdirectory. Repeated test/build logs have a `merged-`
+or `build-merged-` prefix. Final socket-qualified binary SHA-256 values,
+which supersede the earlier hashes:
+
+- Flat-file: `5c2a9c1bc99ff93d2f349792a441f89034a27959b32a538b10be369e01f37aa0`.
+- MariaDB: `20f5d9040debbaedda6eb743f29d72e4fda17403dc8b52e0ccd409fa8bde50f5`.
+
+The #419-specific change still requires no schema migration; the merged quest
+migration belongs to master. Original-instance attribution remains unavailable,
+and production deployment remains outside this delivery.
