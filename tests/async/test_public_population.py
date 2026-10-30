@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 who = extract_function("actinf.c", "void do_who(")
-start = who.index('\t\t\tchecked_snprintf(\n', who.index('/* No frag food title?'))
+start = who.rindex('\t\t\tchecked_snprintf', 0, who.index('"\\nThere are %d &+gmortal(s)'))
 end = who.index('\n\t\t}\n\t\tsend_to_char(who_output', start)
 summary = who[start:end]
 # The command still applies the real visibility rule before constructing its list.
@@ -29,6 +29,7 @@ harness = r'''
 #include <cassert>
 #include <climits>
 #include <cstring>
+#include <initializer_list>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
@@ -88,10 +89,12 @@ copyover_recover_fail:
 @STATUS@
 @LEGACY@
 
-std::string summary(P_char ch, const std::string &prefix = {})
+std::string summary(P_char ch, std::initializer_list<P_char> mortals,
+                    const std::string &prefix = {})
 {
     char who_output[MAX_STRING_LENGTH] = {};
-    int who_list_size = 2, who_gods_size = 1, total_ingame_connections = 8;
+    const auto who_list = mortals.begin();
+    int j, who_list_size = mortals.size(), who_gods_size = 1, total_ingame_connections = 8;
     assert(prefix.size() < sizeof(who_output));
     memcpy(who_output, prefix.c_str(), prefix.size());
     @SUMMARY@
@@ -108,16 +111,37 @@ int main()
     GET_RACEWAR(&good) = GET_RACEWAR(&other_good) = RACEWAR_GOOD;
     GET_RACEWAR(&evil) = RACEWAR_EVIL;
     staff.player.level = MAXLVL;
+    const auto listed = { &other_good, &evil };
     assert(who_visible_to(&good, &other_good));
     assert(!who_visible_to(&good, &evil));
     assert(who_visible_to(&staff, &evil));
-    const auto ordinary = summary(&good);
+    const auto ordinary = summary(&good, listed);
     assert(ordinary.find("Total visible players: 3") != std::string::npos);
     assert(ordinary.find("connections") == std::string::npos);
     assert(ordinary.find("online") == std::string::npos);
     max_descs_this_hour = 99; // Live socket peak must never appear in who.
-    assert(summary(&good) == ordinary);
-    const auto trusted = summary(&staff);
+    assert(summary(&good, listed) == ordinary);
+    const auto trusted = summary(&staff, listed);
+    assert(trusted.find("mortal(s)&n on.  1 &+Revil(s)&n, 1 &+Ygood(s)&n.\n") != std::string::npos);
+    assert(ordinary.find("mortal(s)&n on.\n\n") != std::string::npos);
+    assert(ordinary.find("&+Revil(s)&n,") == std::string::npos);
+    // A neutral race can choose either faction, regardless of moral alignment.
+    other_good.player.race = evil.player.race = RACE_THRIKREEN;
+    GET_ALIGNMENT(&other_good) = -1000;
+    GET_ALIGNMENT(&evil) = 1000;
+    assert(summary(&staff, listed) == trusted);
+    assert(summary(&staff, { &good, &other_good }).find(
+        "mortal(s)&n on.  0 &+Revil(s)&n, 2 &+Ygood(s)&n.\n") != std::string::npos);
+    assert(summary(&staff, { &evil }).find(
+        "mortal(s)&n on.  1 &+Revil(s)&n, 0 &+Ygood(s)&n.\n") != std::string::npos);
+    char_data neutral = {}, undead = {};
+    GET_RACEWAR(&neutral) = RACEWAR_NEUTRAL;
+    GET_RACEWAR(&undead) = RACEWAR_UNDEAD;
+    assert(summary(&staff, { &other_good, &evil, &neutral, &undead }).find(
+        "There are 4 &+gmortal(s)&n on.  1 &+Revil(s)&n, 1 &+Ygood(s)&n.\n") != std::string::npos);
+    SET_BIT(staff.specials.act, PLR_MORTAL);
+    assert(summary(&staff, listed) == ordinary);
+    REMOVE_BIT(staff.specials.act, PLR_MORTAL);
     assert(trusted.find("connections this boot: 42") != std::string::npos);
     assert(trusted.find("Total in-game connections: 8") != std::string::npos);
     const std::string last_hour_label =
@@ -126,31 +150,31 @@ int main()
         max_descs_previous_hour = peak;
         max_descs_previous_hour_valid = true;
         const auto suffix = last_hour_label + std::to_string(peak) + ".&n\n";
-        assert(summary(&good) == ordinary + suffix);
-        assert(summary(&staff) == trusted + suffix);
+        assert(summary(&good, listed) == ordinary + suffix);
+        assert(summary(&staff, listed) == trusted + suffix);
         max_descs_this_hour = peak + 100;
-        assert(summary(&good) == ordinary + suffix);
+        assert(summary(&good, listed) == ordinary + suffix);
     }
     // The list cutoff must leave every trusted footer intact near capacity.
     max_descs_previous_hour = INT_MAX;
     const std::string near_limit(MAX_STRING_LENGTH - 513, 'x');
     const auto peak_suffix = last_hour_label + std::to_string(INT_MAX) + ".&n\n";
-    assert(summary(&staff, near_limit) == near_limit + trusted + peak_suffix);
+    assert(summary(&staff, listed, near_limit) == near_limit + trusted + peak_suffix);
     curr_ingame_evil = 1;
-    assert(summary(&good, near_limit) == near_limit + ordinary + peak_suffix +
+    assert(summary(&good, listed, near_limit) == near_limit + ordinary + peak_suffix +
            "There are &+Revil(s)&N online.\n");
     curr_ingame_evil = 0;
     max_descs_previous_hour_valid = false;
-    assert(summary(&good) == ordinary);
+    assert(summary(&good, listed) == ordinary);
     for (int good_count : { 0, 1, 7 }) {
         for (int evil_count : { 0, 1, 7 }) {
             curr_ingame_good = good_count;
             curr_ingame_evil = evil_count;
-            assert(summary(&good) == ordinary +
+            assert(summary(&good, listed) == ordinary +
                    (evil_count > 0 ? "There are &+Revil(s)&N online.\n" : ""));
-            assert(summary(&evil) == ordinary +
+            assert(summary(&evil, listed) == ordinary +
                    (good_count > 0 ? "There are &+Ygood(s)&N online.\n" : ""));
-            assert(summary(&staff) == trusted);
+            assert(summary(&staff, listed) == trusted);
         }
     }
     curr_ingame_good = curr_ingame_evil = 0;
@@ -181,17 +205,17 @@ int main()
     fclose(image);
     assert(used_descs == 6 && curr_ingame_good == 2 && curr_ingame_evil == 2);
     assert(max_ingame_good == 2 && max_ingame_evil == 2);
-    assert(summary(&good) == ordinary + "There are &+Revil(s)&N online.\n");
-    assert(summary(&evil) == ordinary + "There are &+Ygood(s)&N online.\n");
-    assert(summary(&staff) == trusted);
+    assert(summary(&good, listed) == ordinary + "There are &+Revil(s)&N online.\n");
+    assert(summary(&evil, listed) == ordinary + "There are &+Ygood(s)&N online.\n");
+    assert(summary(&staff, listed) == trusted);
     for (int i = 0; i < 4; ++i) {
         assert(restored[i].desc && STATE(restored[i].desc) == CON_PLAYING);
         update_ingame_racewar(-GET_RACEWAR(&restored[i]));
     }
     assert(curr_ingame_good == 0 && curr_ingame_evil == 0);
-    assert(summary(&good) == ordinary && summary(&evil) == ordinary);
+    assert(summary(&good, listed) == ordinary && summary(&evil, listed) == ordinary);
     update_ingame_racewar(RACEWAR_EVIL);
-    assert(summary(&good) == ordinary + "There are &+Revil(s)&N online.\n");
+    assert(summary(&good, listed) == ordinary + "There are &+Revil(s)&N online.\n");
     update_ingame_racewar(-RACEWAR_EVIL);
     while (descriptor_list) {
         P_desc d = descriptor_list;
@@ -203,7 +227,7 @@ int main()
     for (auto &ch : restored) free(ch.player.name);
     for (int peak : { 0, 1, 99 }) {
         max_descs = peak;
-        assert(summary(&good) == ordinary);
+        assert(summary(&good, listed) == ordinary);
         maintenance_request request;
         assert(prepare_web_status(request));
         std::string report(request.content.data(), request.content_size);
