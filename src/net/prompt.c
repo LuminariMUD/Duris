@@ -288,8 +288,9 @@ void make_prompt(P_desc point)
 
 	// Keep the notification and terminal framing even when a combat name is long.
 	char footer[64];
-	snprintf(footer, sizeof footer, "%s%s> %s", has_unread_news(owner) ? " (news)" : "",
+	snprintf(footer, sizeof footer, "%s%s> %s",
 		 output_role_markup(prompt_profile, OutputRole::None, "&+g", true),
+		 has_unread_news(owner) ? " (news)" : "",
 		 t_ch->desc && t_ch->desc->term_type == TERM_MSP ? "&n\n</prompt>\n" : "");
 	const size_t footer_size = strlen(footer);
 	pPromptCap -= footer_size;
