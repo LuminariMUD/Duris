@@ -1706,7 +1706,7 @@ zones, exp, Myrabolus
 #0
 
 Artifact
-Artifact - Last Edited: 2017-09-19 00:43:26 by lohrr
+Artifact - Last Edited: 2026-10-28
 ====================================================
 Artifacts are the premier weapons, armor, and items in the game.  Each
 artifact or arti, has its own special characteristics, which make each
@@ -1724,6 +1724,10 @@ For a list of artifacts that players own, type artifacts. To review the unique
 artifacts, type artifact unique.
 Artifact Details:
 Krindor's Incredible Device - special affect for Monks, Illusionists, Psionicists, Bards, and Rogues
+
+Equipment and artifacts must not be transferred between racewar sides,
+except where immortals approve an exception for significant racewar
+imbalance after Discord playerbase consultation. See &+Yhelp rules&n.
 
 ==See also==
 
@@ -14364,8 +14368,9 @@ to run farther or turn corners in order to lure properly.
 
 #0
 
+
 Immortals
-Immortals - Last Edited: 2009-11-24 22:04:46 by Blaize
+Immortals - Last Edited: 2026-10-28
 ======================================================
 Immortals/Gods are people who have obtained level 57 or above. They should be
 respected for donating their time and energy into making the game a better
@@ -14375,9 +14380,11 @@ ability(situations not withstanding).
    statistics of items or other private information.
 2. Immortals cannot give away objects or equipment, unless mitigating circumstances
    (such as a quest) come into play and are discussed with other immortals.
-3. Staff members may not actively play player characters, and active
-   players may not serve as Staff. This applies across all characters and
-   accounts. See &+Yhelp rules&n for the full policy.
+3. Players with immortal characters or immortal-level privileges may
+   not actively play mortal characters. Active mortal players may not
+   serve as immortals. Developers, coders and zone builders without
+   such privileges may continue to play, but must not abuse privileged
+   information. See &+Yhelp rules&n for the full policy.
 Nobody likes rules, but we need them to keep the game fun and interesting.
 Most immortals can be reached at immortalname@durismud.com.
 
@@ -17538,26 +17545,52 @@ Classes, Specialization, Spell circle
 #0
 
 Multiplay
-Multiplay - Last Edited: 2009-04-17 23:15:37 by Blaize
+Multiplay - Last Edited: 2026-10-28
 ======================================================
-READ HELP RULES
+Only one character may be logged in per player at any time, including
+when using separate accounts or devices. No inn-storage exception applies.
+Cross-racewar spying and circumvention of the one-hour side-switch
+timer are prohibited. Account sharing alone is not a violation pending
+playerbase consultation on a formal sharing policy.
+
+After a PvP death, wait at least one real-life hour before logging in
+another character to take revenge or assist retaliation, even on the
+same racewar side. This includes returning to an area where the same
+PvP encounter is reasonably expected. It is separate from the
+opposite-side login timer.
+
+See &+Yhelp rules&n and &+Yhelp multi-playing&n for details.
 
 ==See also==
 
-* Punishment
-* Raid
+* Multiplaying
+* Racewars
 * Rules
 
 #0
 
 Multiplaying
-Multiplaying - Last Edited: 2008-09-13 14:47:01 by Blaize
-=========================================================
-READ HELP RULES
+Multiplaying - Last Edited: 2026-10-28
+======================================================
+Only one character may be logged in per player at any time, including
+when using separate accounts or devices. No inn-storage exception applies.
+Cross-racewar spying and circumvention of the one-hour side-switch
+timer are prohibited. Account sharing alone is not a violation pending
+playerbase consultation on a formal sharing policy.
+
+After a PvP death, wait at least one real-life hour before logging in
+another character to take revenge or assist retaliation, even on the
+same racewar side. This includes returning to an area where the same
+PvP encounter is reasonably expected. It is separate from the
+opposite-side login timer.
+
+See &+Yhelp rules&n and &+Yhelp multi-playing&n for details.
 
 ==See also==
 
-* Punishment
+* Multiplay
+* Racewars
+* Rules
 
 #0
 
@@ -20700,12 +20733,21 @@ The following races are currently available on Duris DikuMUD:
 #0
 
 Racewars
-Racewars - Last Edited: 2014-08-08 05:29:04 by lohrr
+Racewars - Last Edited: 2026-10-28
 ====================================================
 Duris consists of a delicately balanced world in which the Good and Evil races battle
 one another in the endless pursuit of equipment, frags and more importantly, bragging
 rights. To make this possible, player killing (PK) is fully tolerated and is encouraged.
-Players must be familiar with the rules of Duris.
+Players must be familiar with the rules of Duris. One hour must pass
+after logging off before switching racewar sides.
+After a PvP death, wait at least one real-life hour before logging in
+another character to take revenge or assist retaliation, even on the
+same racewar side. This includes returning to an area where the same
+PvP encounter is reasonably expected; see &+Yhelp multi-playing&n.
+Do not share tactical intelligence across racewar sides, including planned
+attacks, movements or warnings of impending PvP through in-game or external
+communication.
+See &+Yhelp rules&n for full requirements.
 In addition, there are neutral races. These races are available to both racewars,  and
 players are given the option of selecting which racewar they want to be aligned with.
 When a player from either racewar kills the player of another racewar, the player is
@@ -22007,13 +22049,27 @@ commands, socials, flex
 #0
 
 Robots
-Robots - Last Edited: 2017-09-10 21:22:16 by ashyel
-===================================================
-A robot is a character that is set up to be run fully independent of its user, through triggers or other methods, by another person.  If you can leave your house for an 8 hour shift and your character is still playable, productive, and fully functional for your teammates to control.. it is a bot. You are botting. The person controlling your bot is now essentially multiplaying.  If we think your character is a bot, you likely already KNOW its a bot, and it will be addressed asap. If you are unsure whether or not you are running a bot, check with an admin BEFORE you get caught with it.
+Robots - Last Edited: 2026-10-28
+======================================================
+Scripts, triggers and automation are permitted, including unattended
+skill development and repetitive skill training.
+
+Real-life interruptions such as bathroom breaks, family responsibilities
+or work meetings are acceptable. Players may temporarily use bot
+triggers to maintain a character during these interruptions.
+
+Automation should supplement normal gameplay rather than replace it.
+A character running continuously as a fully automated bot, with little
+or no real player involvement, is prohibited. Unattended skill training
+alone is not a violation. Immortals assess overall patterns of play,
+not isolated periods away from the keyboard.
+
+See &+Yhelp rules&n for the full policy.
 
 ==See also==
 
-multiplaying, rules, laws
+* Multiplaying
+* Rules
 
 #0
 
