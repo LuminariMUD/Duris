@@ -16,6 +16,10 @@ HARNESS = r'''
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+bool locker_container_access(P_char, P_obj) { return true; }
+void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+const char *coins_to_string(int,int,int,int,const char *) { return "coins"; }
+
 
 const int top_of_world = 1;
 const char *coin_names[] = {"copper","silver","gold","platinum"};

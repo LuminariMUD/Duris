@@ -291,6 +291,8 @@ struct StorageLocker {
     P_char GetLockerUser() { return user; }
     P_char GetLockerChar() { return character; }
     int GetLockerId() { return 1; }
+    bool ChestWritePending() { return false; }
+    bool PrivateContentsDurable() { return true; }
     bool LockerToPFile() {
         ++snapshot_calls;
         if (!snapshot_ok) return false;
@@ -302,6 +304,8 @@ struct StorageLocker {
         return true;
     }
 };
+bool private_chest_purchase_locker_busy(int) { return false; }
+bool sql_chest_log_pending(int) { return false; }
 static StorageLocker locker;
 static StorageLocker *retained_locker;
 static bool locker_handle_leave(P_char, StorageLocker *, int, int);

@@ -19,6 +19,7 @@ PRELUDE = r'''
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+
 #include <cstdarg>
 #include <string>
 #define FALSE 0
@@ -59,6 +60,9 @@ struct obj_data {
     struct { int room = 0; } loc;
 };
 using P_obj = obj_data *;
+bool locker_container_access(P_char, P_obj) { return true; }
+void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+
 static std::string output;
 static int saves = 0;
 static void send_to_char(const char *text, P_char) { output += text; }

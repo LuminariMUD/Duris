@@ -36,6 +36,7 @@ using namespace std;
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include "combat/ctf.h"
 #include "world/epic.h"
 #include "economy/divine_boon_selection.h"
@@ -2848,6 +2849,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			// Found something
 			if (bits != 0)
 			{
+				if (!locker_container_access(ch, tmp_object))
+					return;
 				short_desc =
 					show_obj_to_char(tmp_object, ch, LISTOBJ_SHORTDESC, FALSE);
 				CAP(short_desc);

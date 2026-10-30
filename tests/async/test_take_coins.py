@@ -18,6 +18,9 @@ HARNESS = r'''
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+bool locker_container_access(P_char, P_obj) { return true; }
+void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+
 
 struct bulk_get_state { std::vector<std::string> haul; };
 static std::string actor_text, room_text;

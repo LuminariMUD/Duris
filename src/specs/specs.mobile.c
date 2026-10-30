@@ -1571,10 +1571,10 @@ int money_changer(P_char me, P_char ch, int cmd, char *arg)
 	/*
 	 * else cmd == CMD_EXCHANGE
 	 */
-	if (IS_PC(ch) && ch->only.pc->divine_trade_payment_pending)
+	if (IS_PC(ch) &&
+	    (ch->only.pc->divine_trade_payment_pending || currency_transaction_chest_busy(ch)))
 	{
-		send_to_char("Your purse is settling a cargo trade. Try the exchange shortly.\r\n",
-			     ch);
+		send_to_char("Your purse is settling a payment. Try the exchange shortly.\r\n", ch);
 		return TRUE;
 	}
 	arg = one_argument(arg, Gbuf1);
@@ -16268,10 +16268,11 @@ int smelter(P_char ch, P_char pl, int cmd, char *argument)
 			{
 				return FALSE;
 			}
-			if (IS_PC(pl) && pl->only.pc->divine_trade_payment_pending)
+			if (IS_PC(pl) && (pl->only.pc->divine_trade_payment_pending ||
+					  currency_transaction_chest_busy(pl)))
 			{
 				send_to_char(
-					"Your purse is settling a cargo trade. Try the payment shortly.\r\n",
+					"Your purse is settling a payment. Try the payment shortly.\r\n",
 					pl);
 				return TRUE;
 			}

@@ -1765,6 +1765,8 @@ revalidate_movement:
 	if (world[new_room].people)
 	{
 		char_from_room(ch);
+		if (ch->in_room != NOWHERE)
+			return FALSE;
 		if (!char_to_room(ch, new_room, -2))
 		{
 			return FALSE;

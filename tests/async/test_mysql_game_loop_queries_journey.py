@@ -103,7 +103,13 @@ LOCKER_COMMANDS = (
     ('grant list', 'No one has access to your locker but you.'),
     ('grant add Nobody', 'Unknown character or account: nobody'),
     ('load obj 677', 'Pos: standing >'),
-    ('put mace vault', 'Pos: standing >'),
+    ('put mace vault', 'Open that private chest first'),
+    ('open vault', "You open the 'vault' chest."),
+    ('put mace vault', 'Ok.'),
+    ('eq sort custom weapon armor', 'Pos: standing >'),
+    ('look in vault', 'mace'),
+    ('close', 'You close the chest.'),
+    ('look in vault', 'Open that private chest first'),
     ('load obj 677', 'Pos: standing >'),
     ('drop mace', 'Pos: standing >'),
 )
@@ -157,12 +163,51 @@ def add_lockers(runtime):
     (mini / 'mini.obj').write_text(objects.replace('$~', counter + '$~'))
 
 
-def locker(client):
+def locker(client, sql, runtime, output_path):
     """Use the locker, leave it, and enter again once its save has landed: the
     rows come back from the writer with the dropped mace and the chest's."""
     run_commands(client, LOCKER_COMMANDS)
-    client.send('north')
-    client.expect('applying magic locks', timeout=30)
+    # Let public saves/logs work while the private repository fails permanently.
+    # A new root guarantees this generation differs from any acknowledged capture.
+    sql("""DELIMITER //
+           CREATE TRIGGER reject_private_chest_save BEFORE INSERT ON locker_items
+           FOR EACH ROW BEGIN
+             IF EXISTS (SELECT 1 FROM private_chests WHERE id=NEW.chest_id
+                        AND chest_name='vault' AND is_public=0) THEN
+               SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='private chest regression rejection';
+             END IF;
+           END//
+           DELIMITER ;
+        """)
+    run_commands(client, (
+        ('open vault', "You open the 'vault' chest."),
+        ('load obj 677', 'Pos: standing >'),
+        ('put mace vault', 'Ok.'),
+        ('close', 'You close the chest.'),
+    ))
+    try:
+        client.send('north')
+        client.expect('private chests are still being secured', timeout=30)
+        deadline = time.monotonic() + 30
+        while True:
+            logs = output_path.read_text(errors='replace') + '\n'.join(
+                path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')
+                if path.is_file())
+            if 'domain=persistence_writer/locker action=write_failed' in logs:
+                break
+            assert time.monotonic() < deadline, 'the private save rejection never reached completion'
+            time.sleep(0.1)
+        # A terminal writer failure still leaves the actor and current contents usable.
+        run_commands(client, (
+            ('open vault', "You open the 'vault' chest."),
+            ('look in vault', 'mace'),
+            ('close', 'You close the chest.'),
+        ))
+        client.send('north')
+        client.expect('private chests are still being secured', timeout=30)
+    finally:
+        sql('DROP TRIGGER reject_private_chest_save')
+    leave_locker(client)
     deadline = time.monotonic() + 60
     while True:
         client.send('enter locker')
@@ -174,9 +219,26 @@ def locker(client):
         time.sleep(1)
     run_commands(client, (
         ('eq chest list', 'vault'),
+        ('look in vault', 'Open that private chest first'),
+        ('open vault', "You open the 'vault' chest."),
         ('look in vault', 'mace'),
-        ('north', 'applying magic locks'),
+        ('get mace vault', 'You get'),
+        ('put mace vault', 'Ok.'),
+        ('eq log', 'put vault'),
     ))
+
+    leave_locker(client)
+
+
+def leave_locker(client):
+    deadline = time.monotonic() + 30
+    while True:
+        client.send("north")
+        answer, _ = client.expect_any(("applying magic locks", "private chests are still being secured"), timeout=30)
+        if answer == "applying magic locks":
+            return
+        assert time.monotonic() < deadline, "private chest snapshots never became durable"
+        time.sleep(0.2)
 
 
 def run_commands(client, commands):
@@ -269,7 +331,7 @@ def run(server):
             client.expect('Please select an option', timeout=15)
             enter(client)
             run_commands(client, COMMANDS)
-            locker(client)
+            locker(client, sql, runtime, output_path)
             client.send('quit')
             client.expect('Please select an option', timeout=60)
             enter(client)
@@ -387,8 +449,10 @@ def run(server):
                 ("SELECT COUNT(*) FROM guilds WHERE TRIM(name)='Journeyguild'", '1'),
                 ("SELECT COUNT(*) FROM associations WHERE TRIM(name)='Journeyguild'", '1'),
                 ("SELECT COUNT(*) FROM private_chests WHERE chest_name='vault'", '1'),
-                ('SELECT COUNT(*) FROM locker_items WHERE vnum=677', '2'),
-                ('SELECT COUNT(*) > 1 FROM private_chest_log', '1')):
+                ('SELECT COUNT(*) FROM locker_items WHERE vnum=677', '3'),
+                ('SELECT COUNT(*) > 1 FROM private_chest_log', '1'),
+                ("SELECT COUNT(*) > 1 FROM private_chest_log WHERE action_type=3 AND item_short LIKE '%uid%'", '1'),
+                ('SELECT COUNT(*) > 0 FROM private_chest_log WHERE action_type=4', '1')):
             got = scalar(query)
             assert got == expected, f'{query}: {got}, expected {expected}'
 

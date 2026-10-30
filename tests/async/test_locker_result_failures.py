@@ -12,7 +12,7 @@ assert "locker_require_active_user" not in source
 assert "Only the locker owner can manage access." in source
 assert "bool is_owner = locker_char && esc_locker_name_matches_player" in source
 # Non-owner opens must pass the async verification and credential recheck.
-opening = source[source.index("static int locker_opencmd(P_char ch, char *arg)\n{"):source.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
+opening = source[source.index("static int locker_opencmd(P_char ch, char *arg)\n{"):source.index("static int locker_closecmd(P_char ch, char *arg)\n{")]
 assert "sql_verify_chest_password" not in opening
 assert "if (is_owner)" in opening
 # The chest's password is held in memory while the locker is open.
@@ -24,8 +24,8 @@ assert "password_work_submit(arg2, hash.c_str(), nullptr, 1, 1)" in opening
 assert "current->GetPasswordHash() == hash" in opening
 assert "finish(completed_desc, valid && same, nullptr);" in opening
 assert "locker_chest_id(locker, name.c_str()) != chest_id" in opening
-assert opening.index("if (!valid)") < opening.index("locker->SetCurrentChestId(chest_id)")
-failed = opening[opening.index("if (!valid)"):opening.index("locker->SetCurrentChestId(chest_id)")]
+assert opening.index("if (!valid)") < opening.index("locker->OpenChest(actor,")
+failed = opening[opening.index("if (!valid)"):opening.index("locker->OpenChest(actor,")]
 assert "CHEST_ACTION_FAIL" in failed and "return;" in failed
 assert "if (!submitted)" in opening
 assert "Password service is busy; try again later." in opening

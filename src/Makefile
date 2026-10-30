@@ -514,6 +514,7 @@ OBJS =  $(SHIP_OBJS) \
 				 net/ssl.o \
 				 world/statistics.o \
 				 item/storage_lockers.o \
+				 item/private_chest_purchase.o \
 				 item/locker_identify.o \
 				 item/locker_receipt.o \
 				 persistence/locker_async.o \

@@ -361,11 +361,12 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 			std::min(money->value[index], std::max(options.amount_limit[index], 0));
 		emptied = emptied && got[index] == money->value[index];
 	}
-	if (!credit_coins(actor, got))
+	if (!locker_container_access(actor, container) || !credit_coins(actor, got))
 		return false;
 	for (size_t index = 0; index < got.size(); ++index)
 		money->value[index] -= got[index];
 	const std::string coins = coins_to_string(got[3], got[2], got[1], got[0], "&+y");
+	locker_record_movement(actor, container, NULL, false, coins.c_str());
 	if (bulk_get_state *haul = container ? corpse_bulk_get(actor, container->obj_uid) : NULL)
 		haul->haul.push_back(coins);
 	else
@@ -401,6 +402,7 @@ static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj 
 	    actor->in_room != room || !IS_AWAKE(actor) || IS_IMMOBILE(actor))
 		return false;
 	return !container || (find_live_item_uid(container_uid) == container &&
+			      locker_container_access(actor, container) &&
 			      (OBJ_CARRIED_BY(container, actor) || OBJ_WORN_BY(container, actor) ||
 			       (OBJ_ROOM(container) && container->loc.room == room)));
 }
@@ -408,6 +410,7 @@ static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj 
 static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool slip)
 {
 	obj_from_obj(o_obj);
+	locker_record_movement(ch, s_obj, o_obj, false);
 
 #if USE_SPACE
 	s_obj->space -= GET_OBJ_SPACE(o_obj);
@@ -461,6 +464,12 @@ static void report_coin_get_rejection(P_char actor, P_obj container)
 /** Pick up one object. */
 void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 {
+	if (s_obj && !locker_container_access(ch, s_obj))
+	{
+		item_get_rejected = true;
+		return;
+	}
+
 	int got_p = 0, got_g = 0, got_s = 0, got_c = 0, notall = 0;
 	char Gbuf3[MAX_STRING_LENGTH];
 	P_obj corpse = NULL;
@@ -585,6 +594,8 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		showit = TRUE;
 
 publish_after_ack:
+	if (s_obj && !locker_container_access(ch, s_obj))
+		return;
 
 	if ((o_obj->type == ITEM_MONEY) && ((o_obj->value[0] > 0) || (o_obj->value[1] > 0) ||
 					    (o_obj->value[2] > 0) || (o_obj->value[3] > 0)))
@@ -620,6 +631,8 @@ publish_after_ack:
 			send_to_char("You can't carry any of the coins.\r\n", ch);
 			return;
 		}
+		const std::string chest_coins = coins_to_string(got_p, got_g, got_s, got_c, "");
+		locker_record_movement(ch, s_obj, NULL, false, chest_coins.c_str());
 		o_obj->value[3] = o_obj->value[2] = o_obj->value[1] = o_obj->value[0] = 0;
 		if (total_value > 999999)
 		{
@@ -1096,6 +1109,9 @@ static bool do_get_container_preflight(P_char ch, P_obj s_obj, bool &corpse_flag
 				       bool check_front_line, const char *arg1, const char *arg2,
 				       bool &fail)
 {
+	if (!locker_container_access(ch, s_obj))
+		return FALSE;
+
 	if ((GET_ITEM_TYPE(s_obj) != ITEM_CORPSE) && IS_SET(s_obj->value[1], CONT_CLOSED))
 	{
 		GETDBG_LOG(
@@ -2657,6 +2673,7 @@ void refund_committed_coin_debit(P_char actor,
 bool coin_put_destination_available(P_char actor, P_obj container)
 {
 	if (!actor || !container || !container->obj_uid ||
+	    !locker_container_access(actor, container) ||
 	    (!OBJ_CARRIED_BY(container, actor) && !OBJ_WORN_BY(container, actor) &&
 	     (!OBJ_ROOM(container) || container->loc.room != actor->in_room)))
 		return false;
@@ -2819,6 +2836,9 @@ bool publish_transient_coin_put(P_char actor, P_obj container, P_obj old_money,
 	{
 		add_coins(old_money, context.amount[0], context.amount[1], context.amount[2],
 			  context.amount[3]);
+		const std::string coins = coins_to_string(context.amount[3], context.amount[2],
+							  context.amount[1], context.amount[0], "");
+		locker_record_movement(actor, container, NULL, true, coins.c_str());
 		finish_coin_put_publication(actor, container, context);
 		return true;
 	}
@@ -3472,7 +3492,7 @@ void report_bulk_put(P_char actor, const bulk_put_state &state, P_obj container)
 
 bool bulk_put_destination_available(P_char actor, P_obj container)
 {
-	if (!actor || !container ||
+	if (!actor || !container || !locker_container_access(actor, container) ||
 	    (!OBJ_CARRIED_BY(container, actor) && !OBJ_WORN_BY(container, actor) &&
 	     (!OBJ_ROOM(container) || container->loc.room != actor->in_room)))
 		return false;
@@ -3823,6 +3843,8 @@ static bool reject_put_trap(P_char actor, P_obj item, bool *trap_rejected)
 bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 {
 	char Gbuf3[MAX_STRING_LENGTH];
+	if (!locker_container_access(ch, s_obj))
+		return FALSE;
 	if (trap_rejected)
 		*trap_rejected = false;
 
@@ -3869,7 +3891,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 				}
 				if (s_obj->value[0] > s_obj->value[3])
 				{
-					if (reject_put_trap(ch, o_obj, trap_rejected))
+					if (reject_put_trap(ch, o_obj, trap_rejected) ||
+					    !locker_container_access(ch, s_obj))
 						return FALSE;
 					if (showit)
 						send_to_char("Ok.\r\n", ch);
@@ -3888,6 +3911,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 						 */
 						obj_from_char(o_obj);
 						obj_to_obj(o_obj, s_obj);
+						locker_record_movement(ch, s_obj, o_obj, true);
 						s_obj->value[3]++;
 					}
 					else
@@ -3897,6 +3921,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 						 * Do we need obj_from_room???(s_obj, ....);
 						 */
 						obj_to_obj(o_obj, s_obj);
+						locker_record_movement(ch, s_obj, o_obj, true);
 						/*
 						 * Do we need obj_to_room???(s_obj, ch);
 						 */
@@ -3977,7 +4002,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 					      GET_ITEM_TYPE(s_obj) == ITEM_CONTAINER)))
 					{
 #endif
-						if (reject_put_trap(ch, o_obj, trap_rejected))
+						if (reject_put_trap(ch, o_obj, trap_rejected) ||
+						    !locker_container_access(ch, s_obj))
 							return FALSE;
 						if (showit)
 							send_to_char("Ok.\r\n", ch);
@@ -3996,6 +4022,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 							 */
 							obj_from_char(o_obj);
 							obj_to_obj(o_obj, s_obj);
+							locker_record_movement(ch, s_obj, o_obj,
+									       true);
 #if USE_SPACE
 							s_obj->space += GET_OBJ_SPACE(o_obj);
 #endif
@@ -4008,6 +4036,8 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 							 */
 							obj_from_room(o_obj);
 							obj_to_obj(o_obj, s_obj);
+							locker_record_movement(ch, s_obj, o_obj,
+									       true);
 						}
 
 						if (IS_TRUSTED(ch))
@@ -7745,8 +7775,13 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 			act("$P will not fit in $p.", FALSE, actor, target, content, TO_CHAR);
 			break;
 		}
+		if (!locker_container_access(actor, source) ||
+		    !locker_container_access(actor, target))
+			break;
 		obj_from_obj(content);
 		obj_to_obj(content, target);
+		locker_record_movement(actor, source, content, false);
+		locker_record_movement(actor, target, content, true);
 		if (GET_ITEM_TYPE(target) == ITEM_QUIVER)
 			++target->value[3];
 		++moved;

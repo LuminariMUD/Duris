@@ -14,6 +14,8 @@
 
 #include <string.h>
 #include <string>
+#include <memory>
+#include <cstdint>
 #include <vector>
 #include "item/item_transfer_command.h"
 
@@ -21,6 +23,9 @@
 // corpses are rejected by the unsorted chest so they remain visible on the
 // locker room floor rather than being hidden inside a sorting chest.
 bool locker_eq_type_fits_for_storage(::byte eqType, P_obj obj);
+// Includes containers nested inside a private chest. Ordinary containers pass.
+void locker_invalidate_access(P_char actor);
+void locker_chest_changes_pulse(void);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
 /* The statement that removes every locker grant `name` holds (a character deletion). */
@@ -61,7 +66,31 @@ class StorageLocker
 	int m_itemCount;
 
 	int GetCurrentChestId(void) { return m_currentChestId; };
-	void SetCurrentChestId(int id) { m_currentChestId = id; };
+	void OpenChest(P_char actor, int id)
+	{
+		m_currentChestId = id;
+		m_openActor = actor->runtime_id;
+		++m_accessEpoch;
+	}
+	void CloseChest(void)
+	{
+		m_currentChestId = 0;
+		m_openActor = 0;
+		++m_accessEpoch;
+	}
+	bool ChestIsOpen(P_char actor, int id) const
+	{
+		return actor && actor->runtime_id == m_openActor && m_currentChestId == id;
+	}
+	uint64_t VisitId(void) const { return m_visitId; }
+	uint64_t AccessEpoch(void) const { return m_accessEpoch; }
+	bool ChestWritePending(void) const { return m_chestWritePending; }
+	void SetChestWritePending(bool pending)
+	{
+		m_chestWritePending = pending;
+		CloseChest();
+	}
+	bool PrivateContentsDurable(void);
 	int GetLockerId(void) { return m_lockerId; };
 	void SetLockerId(int id) { m_lockerId = id; };
 	int GetPublicChestId(void) { return m_publicChestId; };
@@ -87,6 +116,10 @@ class StorageLocker
 	int m_currentChestId;
 	int m_lockerId;
 	int m_publicChestId;
+	uint64_t m_visitId = 0;
+	uint64_t m_openActor = 0;
+	uint64_t m_accessEpoch = 0;
+	bool m_chestWritePending = false;
 };
 
 class LockerChest
@@ -308,11 +341,16 @@ class PrivateChest : public LockerChest
 	// Memory holds the chest's password: empty for none.
 	const std::string &GetPasswordHash(void) { return m_passwordHash; };
 	void SetPasswordHash(const char *hash) { m_passwordHash = hash ? hash : ""; };
+	// Admission suffices mid-stay; departure requires the current capture's ACK.
+	bool SaveContents(int locker_id, bool durable);
 
     protected:
 	int m_chestId;
 	std::string m_passwordHash;
 	char m_chestName[128];
+	std::shared_ptr<struct sql_write_receipt> m_saveReceipt;
+	std::vector<uint8_t> m_pendingContents;
+	std::vector<uint8_t> m_savedContents;
 };
 
 #endif // __STORAGE_LOCKERS_H__

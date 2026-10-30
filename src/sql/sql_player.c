@@ -287,9 +287,14 @@ bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*
 {
 	return false;
 }
-bool sql_save_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*chest_obj*/)
+void sql_chest_log_pulse(void) {}
+bool sql_chest_log_pending(int)
 {
 	return false;
+}
+bool sql_chest_log_available(void)
+{
+	return true;
 }
 P_obj sql_locker_items_from_rows(const sql_rows & /*rows*/, int /*locker_id*/, int /*chest_id*/,
 				 P_obj /*chest_obj*/)
@@ -2111,42 +2116,76 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 // private chest functions
 // ============================================================================
 
+namespace
+{
+struct pending_chest_log
+{
+	int locker_id;
+	std::string statement;
+	std::shared_ptr<sql_write_receipt> receipt;
+};
+std::vector<pending_chest_log> chest_logs;
+}
+
+bool sql_chest_log_available(void)
+{
+	return chest_logs.size() < 4094;
+}
+bool sql_chest_log_pending(int locker_id)
+{
+	for (const auto &entry : chest_logs)
+		if (entry.locker_id == locker_id)
+			return true;
+	return false;
+}
+
+void sql_chest_log_pulse(void)
+{
+	size_t submitted = 0;
+	for (auto it = chest_logs.begin(); it != chest_logs.end();)
+	{
+		if (it->receipt && it->receipt->finished.load(std::memory_order_acquire))
+		{
+			if (it->receipt->ok)
+			{
+				it = chest_logs.erase(it);
+				continue;
+			}
+			it->receipt.reset();
+		}
+		if (!it->receipt && submitted++ < 16)
+		{
+			auto receipt = std::make_shared<sql_write_receipt>();
+			if (sql_queue_statements({ it->statement }, receipt))
+				it->receipt = std::move(receipt);
+		}
+		++it;
+	}
+}
+
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short)
 {
-	if (!DB || locker_id <= 0 || !char_name || action_type < 1)
+	if (!DB || locker_id <= 0 || !char_name || action_type < 1 || chest_logs.size() >= 4096)
 		return false;
-	return sql_queue(
-		"INSERT INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short) "
-		"VALUES (%d, %s, '%s', %d, %s)",
-		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
-		escape_str(char_name).c_str(), action_type,
-		item_short ? ("'" + escape_str(item_short) + "'").c_str() : "NULL");
-}
-
-bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
-{
-	if (locker_id <= 0 || chest_id <= 0 || !chest_obj)
+	critical_operation_id operation = {};
+	char hex[33];
+	if (!critical_operation_id_generate(&operation) ||
+	    !critical_operation_id_to_hex(operation, hex, sizeof(hex)))
 		return false;
-
-	// The chest save goes to the one writer, behind any save still queued; a job it
-	// refuses is the caller's failure to report.
-	locker_chest_snapshot snapshot;
-	snapshot.locker_id = locker_id;
-	snapshot.chest_id = chest_id;
-	if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) !=
-	    player_snapshot_capture_result::ok)
-		return false;
-	// A private chest's key never matches its locker's public job.
-	const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
-			       static_cast<uint32_t>(locker_id);
-	const size_t bytes =
-		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
-	const player_save_submit_result submitted = persistence_writer_submit(
-		persistence_job_kind::locker, owner, bytes, [snapshot]()
-		{ return locker_chest_snapshot_repository_apply_from_pool(snapshot); });
-	return submitted == player_save_submit_result::accepted ||
-	       submitted == player_save_submit_result::replaced;
+	const std::string item = item_short ? std::string(item_short).substr(0, 256) : "";
+	chest_logs.push_back(
+		{ locker_id,
+		  sql_format(
+			  "INSERT IGNORE INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short, event_id, logged_at) "
+			  "VALUES (%d, %s, '%s', %d, %s, UNHEX('%s'), FROM_UNIXTIME(%lld))",
+			  locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
+			  escape_str(char_name).c_str(), action_type,
+			  item_short ? ("'" + escape_str(item.c_str()) + "'").c_str() : "NULL", hex,
+			  static_cast<long long>(time(NULL))),
+		  {} });
+	sql_chest_log_pulse();
+	return true;
 }
 
 // single query corpse loading - all data in one query

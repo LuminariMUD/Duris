@@ -41,6 +41,9 @@ currency_transaction_health health = {};
 
 uint32_t reserved_trade_pid;
 int64_t reserved_trade_payment;
+uint32_t reserved_chest_pid = 0;
+std::string reserved_chest_account;
+int reserved_chest_racewar = 0;
 
 bool wallet_value_delta(P_char character, int64_t value, currency_vector *delta)
 {
@@ -143,6 +146,8 @@ void queue_bank_delta(const std::string &account, int racewar, const currency_ve
 bool apply(P_char character, const currency_command_payload &payload,
 	   currency_completion_fn completion, const void *context, size_t context_size)
 {
+	if (currency_transaction_chest_busy(character))
+		return false;
 	std::string account;
 	if (!player_account(character, &account) ||
 	    payload.pid != static_cast<uint32_t>(GET_PID(character)) ||
@@ -260,7 +265,8 @@ bool currency_transaction_prepare_identify(P_char character, int64_t cost,
 					   critical_command *command)
 {
 	std::string account;
-	if (!command || cost <= 0 || !player_account(character, &account))
+	if (!command || cost <= 0 || currency_transaction_chest_busy(character) ||
+	    reserved_trade_pid || !player_account(character, &account))
 		return false;
 	currency_vector wallet_delta = {}, bank_delta = {};
 	const bool use_bank = GET_MONEY(character) < cost;
@@ -358,12 +364,15 @@ void currency_transaction_reset_for_tests(void)
 {
 	reserved_trade_pid = 0;
 	reserved_trade_payment = 0;
+	reserved_chest_pid = 0;
+	reserved_chest_account.clear();
 	health = {};
 }
 
 bool currency_transaction_reserve_trade(P_char character, int64_t payment)
 {
-	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || reserved_trade_pid)
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || reserved_trade_pid ||
+	    currency_transaction_chest_busy(character))
 		return false;
 	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
 					GET_GOLD(character), GET_PLATINUM(character) } };
@@ -387,6 +396,7 @@ void currency_transaction_release_trade(uint32_t pid)
 bool currency_transaction_publish_trade(P_char character, int64_t payment)
 {
 	if (!character || IS_NPC(character) || !character->only.pc ||
+	    currency_transaction_chest_busy(character) ||
 	    character->only.pc->wallet_revision == UINT64_MAX)
 		return false;
 	currency_vector before, after;
@@ -402,4 +412,59 @@ bool currency_transaction_publish_trade(P_char character, int64_t payment)
 	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
 	gmcp_char_vitals(character);
 	return true;
+}
+
+bool currency_transaction_chest_busy(P_char character)
+{
+	return reserved_chest_pid && character && !IS_NPC(character) &&
+	       (static_cast<uint32_t>(GET_PID(character)) == reserved_chest_pid ||
+		(GET_RACEWAR(character) == reserved_chest_racewar &&
+		 !strcasecmp(get_account_name_safe(character), reserved_chest_account.c_str())));
+}
+
+bool currency_transaction_reserve_chest(P_char character)
+{
+	std::string account;
+	if (reserved_chest_pid || reserved_trade_pid || !player_account(character, &account))
+		return false;
+	reserved_chest_pid = static_cast<uint32_t>(GET_PID(character));
+	reserved_chest_account = std::move(account);
+	reserved_chest_racewar = GET_RACEWAR(character);
+	return true;
+}
+
+void currency_transaction_release_chest(uint32_t pid)
+{
+	if (pid == reserved_chest_pid)
+	{
+		reserved_chest_pid = 0;
+		reserved_chest_account.clear();
+	}
+}
+
+void currency_transaction_publish_chest(P_char character, const currency_command_result &result,
+					bool bank_changes)
+{
+	if (!reserved_chest_pid)
+		return;
+	if (character && static_cast<uint32_t>(GET_PID(character)) == reserved_chest_pid)
+	{
+		GET_COPPER(character) = static_cast<int>(result.wallet.amount[0]);
+		GET_SILVER(character) = static_cast<int>(result.wallet.amount[1]);
+		GET_GOLD(character) = static_cast<int>(result.wallet.amount[2]);
+		GET_PLATINUM(character) = static_cast<int>(result.wallet.amount[3]);
+		character->only.pc->wallet_revision = result.wallet_revision;
+		mark_player_dirty_components(reserved_chest_pid, PLAYER_COMPONENT_STATUS);
+		gmcp_char_vitals(character);
+	}
+	if (bank_changes)
+	{
+		const AccountBankBalances bank{ static_cast<int>(result.bank.amount[0]),
+						static_cast<int>(result.bank.amount[1]),
+						static_cast<int>(result.bank.amount[2]),
+						static_cast<int>(result.bank.amount[3]) };
+		publish_account_bank_balances_revision(reserved_chest_account.c_str(),
+						       reserved_chest_racewar, &bank,
+						       result.bank_revision);
+	}
 }

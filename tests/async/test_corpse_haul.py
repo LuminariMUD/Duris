@@ -19,6 +19,7 @@ prelude = r'''
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+
 #include <cstdarg>
 #include <cctype>
 #include <cerrno>
@@ -89,6 +90,9 @@ struct obj_data {
  struct { int room=0; obj_data *inside=nullptr; } loc;
 };
 using P_obj = obj_data *;
+bool locker_container_access(P_char, P_obj) { return true; }
+void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
 static std::unordered_map<uint64_t, P_obj> objects;
