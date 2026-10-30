@@ -2830,9 +2830,9 @@ Bartender
 Bartender - Last Edited: 2009-09-02 14:50:21 by Blaize
 ======================================================
 Bartenders around the world united to stuff their pockets
-with platinum and gold.  The adventurous traveler and up to
-4 companions can for a fee ask the many bartenders around the
-world about quest and the bartender will send you on an
+with platinum and gold.  An adventurous traveler can for a fee
+ask a bartender about a quest.  When sharing is available,
+consenting companions may join a suitable task. The bartender offers an
 adventure that your level of character can complete.
 Mercenaries receive plat bonus at level 25 and beyond for
 completing some quests.
@@ -20531,32 +20531,40 @@ Quest
 Quest - Last Edited: 2009-08-16 22:29:12 by Blaize
 ==================================================
 Quests are given by mobs to players.  Most often the quest will require the player to get an object or series of objects to bring back.  Prizes can include money, items, keys or nothing at all.  New to Duris is the bartender quest system.
-Many bartenders throughout the realms of Duris are now able to assign you tasks,
-for a small fee, along with a map, for an even smaller fee. They are either a go
-kill quest or a go ask task.  The go kills provide the name of the mob, how many
-of them you must kill, and what zone they reside in. The reward for such a quest
-is given to you upon returning to the bartender who sold it.  Likewise, a go ask
-assignment provides the name of the mob, what they must be asked, and where they
-reside, but for this quest the reward is given there and it contains some money.
-As you progress in level the quests will become more difficult and farther away.
-Potioned players must traverse the planes and sail the seas to reach their goal.
-Whichever quest you get will reward you with an item from the zone randomly, and
-some noticable experience. The quest may be shared only by the one who purchased
-it. That person may share it with four others, upon consent, who aren't too many
-levels below them or more than three levels above them. The map is personal, buy
-your own. Your quest will wait for your return should you decide to leave Duris.
-The bartenders of Duris have spent much time and lots of money to provide quests
-and they are more than happy to share them with you, as long as, you make use of
-the information.  Therefore they will charge large amounts of money to those who
-abandon their quests. All questing bartenders will line their pockets with funds
-from your laziness.
-Notice you can do 4 quest per level up to lvl 50 then you can do 3 quest per RL day.
+Bartenders can sell you either a go kill task or a go ask task, starting at
+level 11. A task names its target and the area where it can be found. Kill tasks
+give the required number of kills and award their reward when you finish the
+last one. For an ask task, bring the named target the message shown by QUEST.
+
+From levels 11 through 29, new tasks stay in the local region and require
+ordinary travel without keys, fares or special travel equipment. From level 30,
+tasks may lead farther away using travel abilities you currently have. A suitable
+target is available when assigned; this does not promise a safe fight. If no
+suitable new task is available, the bartender returns your purchase fee.
+
+QUEST and the bartender check your current task. If a world change has made it
+impossible, ask a bartender for a quest to receive a free replacement. Earned
+kills, the original quota, accepted level, remaining shares and a purchased map
+are kept. If no replacement is available, the free replacement remains yours
+through logout and restart. Removing your own travel equipment or a temporary
+condition does not earn a free replacement. An inconclusive check keeps your task.
+
+Maps cost an additional fee and mark a verified way into the target area.
+Unverified directions are withheld until the task can be checked again. An
+older saved task may need a real bartender to check its travel origin first.
+
+Sharing may be disabled. When enabled, only the purchaser may share, within
+the remaining limit, with a consenting companion of a suitable level who can
+use the task's route and target. Each recipient buys their own map. Voluntarily
+abandoning a usable task still costs money and may use a quest allowance after
+partial progress. A pending free replacement can be discarded without either
+penalty by asking for 'abandon confirm'.
 ask bartender quest
-*Purchases a quest or rewards a go kill quest.
+*Purchases a quest, checks accepted work, or redeems a free replacement.
 ask bartender map
 *Purchases a map of the area surrounding the zone.
 ask bartender abandon
-*With enough cash this command will terminate your current quest.
+*Voluntarily gives up your current task; a usable task may carry a fee.
 quest
 *Displays current quest, any progress made, and the map, if bought.
 *For the purchaser, displays how many more times the quest may be shared.

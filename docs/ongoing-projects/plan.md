@@ -1,6 +1,6 @@
 # Issue #420: preserve Shambler capacity while defensive images are active
 
-Status: **implemented; local qualification complete on the planning baseline**. Updated 2026-10-30.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
 Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
 Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
 Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
@@ -10,6 +10,8 @@ The previous plan and completed qualification record for #428 are preserved
 byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
 authorizes implementation, including the shared Reflection/Mirror Image
 exemption, local qualification, commit/push and a PR linked to #420.
+The later master integration preserves the completed bartender-quest record in
+[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
 
 ## Outcome and accepted balance decision
 
@@ -322,9 +324,10 @@ Completed on the planning baseline:
 - Changed-line formatting, clang-tidy, Python syntax, regression discovery,
   documentation contracts and git diff --check passed.
 
-The ignored report is bin/qualification/issue420/gameplay-report.json, with
-the command log in journey-final.log in the same directory. The qualified
-flat-file binary SHA-256 is
+The planning-baseline command log is bin/qualification/issue420/journey-final.log.
+The report at gameplay-report.json in that directory holds the latest full run;
+see the integration record below for its current binary. The planning-baseline
+qualified flat-file binary SHA-256 is
 98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
 Native fixtures control room/link services and scheduled callbacks; the socket
 journey exercises the real parser, spell dispatch, materialization and ownership.
@@ -334,3 +337,26 @@ Final ablation retains one production counting decision, one existing native
 test extension, a focused journey using existing build/world/socket helpers,
 its runner registration and the necessary help/plan updates. There is no new
 capacity API, persisted state, configuration, migration or image-lifecycle edit.
+
+### Master integration and final qualification
+
+Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
+Its shared plan.md now records completed #437 work. The merge retains this #420
+plan at the requested path and archives the upstream #437 plan byte-for-byte.
+The only overlapping file was the plan; Shambler/Reflection and their admission
+behavior did not change upstream. The archived #437 plan and the upstream file
+have identical SHA-256:
+ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
+
+The 640-case sanitizer matrix, original Reflection/innate checks, all 14
+documentation contracts, formatting, diff checks and MariaDB build passed again
+against the integrated source. The default command-journey invocation built a
+fresh flat-file server and passed all four routes, the real Reflection recast,
+ordinary-pet/mound controls, Titan exclusions, Displacement and help.
+Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
+created 5, 4, 3 and 4 forest mounds respectively.
+
+Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
+bin/qualification/issue420/journey-integrated.log.
+The integrated flat-file binary SHA-256 is
+0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.

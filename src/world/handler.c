@@ -4148,9 +4148,10 @@ bool get_char_room_target(P_char viewer, P_char target, char *out, size_t capaci
 	out[0] = 0;
 	if (!viewer || !target || viewer->in_room == NOWHERE || viewer->in_room != target->in_room)
 		return false;
-	char race_word[MAX_INPUT_LENGTH];
+	char name_word[MAX_INPUT_LENGTH], race_word[MAX_INPUT_LENGTH];
+	one_argument(GET_NAME(target), name_word);
 	one_argument(race_names_table[GET_RACE1(target)].normal, race_word);
-	const char *words[] = { GET_NAME(target), race_word };
+	const char *words[] = { name_word, race_word };
 	for (const char *word : words)
 	{
 		if (!room_target_matches(viewer, target, word))

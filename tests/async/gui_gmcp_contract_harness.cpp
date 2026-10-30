@@ -60,7 +60,8 @@ static bool second_ship_enabled;
 static std::map<P_desc, std::vector<std::string>> wire;
 static std::map<P_desc, std::map<std::string, std::string>> ws_wire;
 int top_of_zone_table = 0;
-index_data *mob_index, *obj_index;
+static index_data quest_profile{};
+index_data *mob_index = &quest_profile, *obj_index;
 Skill skills[MAX_SKILLS];
 static int affect_remaining_pulses = 2640;
 int ne_event_time(P_nevent)
@@ -212,18 +213,29 @@ const char *contra_type_name(int)
 
 // Isolate world/mechanics dependencies while exercising production serializers.
 
+static world_quest_target_status quest_availability = world_quest_target_status::valid;
+static int quest_checks = 0;
+world_quest_target_status world_quest_refresh(P_char, int)
+{
+	++quest_checks;
+	return quest_availability;
+}
+
 int sql_world_quest_can_do_another(P_char)
 {
 	return 2;
 }
-static char_data quest_mob;
 static int quest_loads;
 P_char read_mobile(int, int)
 {
 	++quest_loads;
-	return &quest_mob;
+	std::abort();
 }
 int real_mobile(const int)
+{
+	return 0;
+}
+int real_zone(const int)
 {
 	return 0;
 }
@@ -570,7 +582,7 @@ int main()
 	affect.flags = 0;
 	affect.duration = 3;
 	assert(affect_seconds() == 180); // ordinary display behavior stays unchanged
-	quest_mob.player.short_descr = const_cast<char *>("bronze guardian");
+	quest_profile.desc2 = const_cast<char *>("bronze guardian");
 	apc.quest_active = 1;
 	apc.quest_type = FIND_AND_KILL;
 	apc.quest_kill_original = 5;
@@ -590,12 +602,66 @@ int main()
 	}
 	assert(wire.empty() && quest_loads == 0);
 	gmcp_flush_initial_states();
-	assert(quest_loads == 1 && ad.gmcp_quest_map_sent == 1);
+	assert(quest_loads == 0 && ad.gmcp_quest_map_sent == 1);
 	assert(payload(&ad, "Quest.Map") == "{\"map\":\"quest map\",\"zoneNumber\":228}");
 	assert(a.in_room == 1);
+	// Text QUEST uses the same non-moving viewpoint and Quest.Map package.
+	const int old_position = a.specials.position;
+	a.specials.position = STAT_NORMAL | POS_STANDING;
+	const auto before_quest_map = apc;
+	const auto before_room = rooms[1];
+	wire.clear();
+	show_map_at(&a, 2);
+	assert(payload(&ad, "Quest.Map") == "{\"map\":\"quest map\",\"zoneNumber\":228}");
+	assert(wire[&ad].size() == 1 && a.in_room == 1);
+	assert(!memcmp(&apc, &before_quest_map, sizeof(apc)));
+	assert(!memcmp(&rooms[1], &before_room, sizeof(before_room)));
+	wire.clear();
+	show_map_at(&a, NOWHERE);
+	show_map_at(&a, top_of_world + 1);
+	assert(wire.empty() && a.in_room == 1);
+	apc.quest_map_bought = 0;
+	show_map_at(&a, 2);
+	assert(wire.empty() && a.in_room == 1);
+	apc.quest_map_bought = 1;
+	a.specials.position = old_position;
+
+	// A checked command reuses its verdict. Neither serialization nor the
+	// checked transport overload may run another eligibility query.
+	const auto saved_quest = apc;
+	const int checks_before = quest_checks;
+	for (auto status :
+	     { world_quest_target_status::blocked, world_quest_target_status::unproven,
+	       world_quest_target_status::needs_origin, world_quest_target_status::unavailable })
+	{
+		wire.clear();
+		gmcp_quest_status(&a, status);
+		assert(quest_checks == checks_before);
+		assert(!memcmp(&apc, &saved_quest, sizeof(apc)));
+		const std::string state = payload(&ad, "Quest.Status");
+		assert(state.find("\"zoneNumber\"") == std::string::npos);
+		assert(state.find("bronze guardian") == std::string::npos);
+		assert(state.find("\"mapBought\":true") != std::string::npos);
+		assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
+		assert(ad.gmcp_quest_map_sent == 0);
+	}
+	apc.quest_active = 0;
+	apc.quest_replacement_due = 1;
+	wire.clear();
+	gmcp_quest_status(&a, world_quest_target_status::unavailable);
+	const std::string pending = payload(&ad, "Quest.Status");
+	assert(pending.find("\"active\":false") != std::string::npos);
+	assert(pending.find("\"replacementDue\":true") != std::string::npos);
+	assert(pending.find("\"killCount\":2") != std::string::npos);
+	assert(pending.find("\"killRequired\":5") != std::string::npos);
+	assert(pending.find("\"mapBought\":true") != std::string::npos);
+	assert(payload(&ad, "Quest.Map") == "{\"map\":\"\",\"zoneNumber\":0}");
+	apc = saved_quest;
+	ad.gmcp_quest_map_sent = 1;
+
 	wire.clear();
 	gmcp_flush_initial_states();
-	assert(wire.empty() && quest_loads == 1);
+	assert(wire.empty() && quest_loads == 0);
 	gmcp_handle_negotiation(&ad, TELNET_DONT);
 	gmcp_handle_negotiation(&ad, TELNET_DO);
 	gmcp_handle_negotiation(&ad, TELNET_DONT);
@@ -603,7 +669,8 @@ int main()
 	assert(wire.empty()); // disabling before the flush cancels the request
 	gmcp_handle_negotiation(&ad, TELNET_DO);
 	gmcp_flush_initial_states();
-	assert(quest_loads == 2); // later legitimate re-negotiation is not lost
+	assert(quest_loads == 0); // later legitimate re-negotiation is not lost
+	payload(&ad, "Quest.Status");
 	payload(&ad, "Quest.Map");
 	wire.clear();
 	gmcp_send_initial_state(&a); // toggle/reconnect also resends an already-sent map
