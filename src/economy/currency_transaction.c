@@ -14,6 +14,9 @@
 
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
+#include "economy/auction_transaction.h"
+#include "economy/collector_transaction.h"
+#include "economy/shop_trade_transaction.h"
 
 #include "core/files.h"
 #include "flatfile/flatfile_player_repository.h"
@@ -26,6 +29,7 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <climits>
@@ -146,7 +150,12 @@ void queue_bank_delta(const std::string &account, int racewar, const currency_ve
 bool apply(P_char character, const currency_command_payload &payload,
 	   currency_completion_fn completion, const void *context, size_t context_size)
 {
-	if (currency_transaction_chest_busy(character))
+	// Other characters share the bank, not the purchaser's wallet. Their
+	// already-committed wallet credits must still publish while the bank is held.
+	if (currency_transaction_chest_busy(character) &&
+	    (payload.pid == reserved_chest_pid ||
+	     std::any_of(payload.bank_delta.amount.begin(), payload.bank_delta.amount.end(),
+			 [](int64_t delta) { return delta != 0; })))
 		return false;
 	std::string account;
 	if (!player_account(character, &account) ||
@@ -425,7 +434,10 @@ bool currency_transaction_chest_busy(P_char character)
 bool currency_transaction_reserve_chest(P_char character)
 {
 	std::string account;
-	if (reserved_chest_pid || reserved_trade_pid || !player_account(character, &account))
+	if (reserved_chest_pid || reserved_trade_pid || !player_account(character, &account) ||
+	    auction_transaction_player_busy(character) ||
+	    collector_transaction_player_busy(character) ||
+	    shop_trade_transaction_player_busy(character))
 		return false;
 	reserved_chest_pid = static_cast<uint32_t>(GET_PID(character));
 	reserved_chest_account = std::move(account);

@@ -223,6 +223,8 @@ bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &p
 				   shop_trade_completion_fn completion,
 				   shop_trade_prepare_fn prepare)
 {
+	if (character && currency_transaction_chest_busy(character))
+		return false;
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
 	    static_cast<uint32_t>(GET_PID(character)) != payload.player_pid ||
 	    pending.size() >= SHOP_TRADE_PENDING_MAX || player_pending(payload.player_pid))

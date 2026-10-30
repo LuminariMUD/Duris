@@ -55,6 +55,11 @@ private gameplay, production operation, release or deployment is included.
 
 Keep 500 platinum, five private chests, whole-wallet-else-whole-bank selection,
 denomination change, bcrypt/guarded upgrades, empty-only deletion and no refund.
+Chest-name comparison uses the SQL column collation, so legacy accented names
+produce a completed rejection without charges or a stuck reservation. Purchases
+interlock with pending auction, collector and shop operations in both directions.
+The shared bank is fenced; other account characters' independent wallet credits
+continue to publish and survive the purchaser's final balance publication.
 Names fit the SQL column and command targeting. Flat-file private commands reject
 before hashing or payment; public storage and serialized private records remain.
 The maintained chest help now documents the actual command/session contract.
@@ -126,3 +131,11 @@ Final local results:
 
 Hosted CI completion is not a gate. The issue and #497 remain open for owner
 review/merge. No release tag or deployment is part of this change.
+
+Merge preflight qualification also passes all 39 financial/private regression files
+and both native SQL purchase suites. Regressions cover the real auction pending
+predicate and chest reservation before payout, reverse admission refusal before
+any auction command, peer wallet credits while the bank is reserved, and legacy
+`café`/`cafe` collisions with immediate reservation release and a succeeding later
+purchase. The schema's collation remains authoritative; unknown COMMIT outcomes
+still reconcile by operation ID before name checks.

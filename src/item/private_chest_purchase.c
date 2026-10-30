@@ -66,12 +66,12 @@ unsigned int apply_purchase(MYSQL *connection, const purchase &p, sql_rows *rows
 	if (const auto error = sql_select(
 		    connection,
 		    sql_format(
-			    "SELECT chest_name FROM private_chests WHERE locker_id=%d AND is_public=0",
-			    p.locker_id),
+			    "SELECT chest_name='%s' FROM private_chests WHERE locker_id=%d AND is_public=0",
+			    escape(p.name).c_str(), p.locker_id),
 		    &chests))
 		return error;
 	for (const auto &row : chests)
-		if (row[0] && !strcasecmp(row[0], p.name.c_str()))
+		if (row[0] && atoi(row[0]))
 			return outcome("taken");
 	if (chests.size() >= 5)
 		return outcome("full");

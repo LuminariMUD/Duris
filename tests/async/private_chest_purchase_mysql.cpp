@@ -203,6 +203,7 @@ int main()
 	assert(mysql_real_connect(DB, getenv("TEST_DB_HOST"), getenv("TEST_DB_USER"),
 				  getenv("TEST_DB_PASSWORD"), getenv("CHEST_TEST_DB"),
 				  static_cast<unsigned>(atoi(getenv("TEST_DB_PORT"))), NULL, 0));
+	assert(mysql_set_character_set(DB, "utf8mb4") == 0);
 	execute("CREATE TABLE lockers(id INT PRIMARY KEY) ENGINE=InnoDB");
 	execute("INSERT INTO lockers VALUES(7)");
 	execute("CREATE TABLE private_chests(id INT PRIMARY KEY AUTO_INCREMENT,locker_id INT,chest_name VARCHAR(32) COLLATE utf8mb4_unicode_ci,password_hash VARCHAR(64),is_public TINYINT,purchase_operation BINARY(16) UNIQUE,UNIQUE(locker_id,chest_name)) ENGINE=InnoDB");
@@ -249,6 +250,17 @@ int main()
 	start("VAULT");
 	finish();
 	assert(result_id == 0 && !reserved && scalar("SELECT platinum FROM player_data") == 1000);
+	reset();
+	execute("INSERT INTO private_chests(locker_id,chest_name,is_public) VALUES(7,'caf\xC3\xA9',0)");
+	start("cafe");
+	finish();
+	assert(result_id == 0 && !reserved && !pending && !queued);
+	assert(scalar("SELECT COUNT(*) FROM private_chests") == 1 &&
+	       scalar("SELECT platinum FROM player_data") == 1000);
+	start("available");
+	finish();
+	assert(result_id > 0 && !reserved);
+
 	reset();
 	execute("INSERT INTO private_chests(locker_id,chest_name,is_public) VALUES(7,'a',0),(7,'b',0),(7,'c',0),(7,'d',0),(7,'e',0)");
 	start("sixth");

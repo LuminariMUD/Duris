@@ -260,6 +260,8 @@ bool submit(P_char character, const critical_operation_id &operation_id,
 	    const collector_command_payload &payload, collector_completion_fn completion,
 	    critical_source_site source, critical_deadline_class deadline)
 {
+	if (character && currency_transaction_chest_busy(character))
+		return false;
 	if (pending.size() >= COLLECTOR_PENDING_MAX || listing_pending(payload.listing) ||
 	    critical_operation_id_is_zero(operation_id) ||
 	    (payload.actor_pid && (!character || IS_NPC(character) || GET_PID(character) <= 0 ||

@@ -269,3 +269,18 @@ HARNESS_STUB bool sql_chest_log_available(void)
 {
 	return true;
 }
+
+HARNESS_STUB bool auction_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool collector_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool shop_trade_transaction_player_busy(P_char)
+{
+	return false;
+}
