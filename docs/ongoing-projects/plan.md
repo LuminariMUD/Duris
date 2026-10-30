@@ -1,556 +1,419 @@
-# Issue #419: dispose of NORENT keys at intentional rent
+# Issue #418: recoverable Quintaragon Castle resets
 
-Status: **implemented; local qualification complete; original live-instance attribution unavailable**.
+Status: **implemented; local qualification complete; ready for review**.
 Updated 2026-10-30.
-Issue: [Duris #419](https://github.com/LuminariMUD/Duris/issues/419).
-Branch: [branch/issue-419-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-419-plan).
-Source baseline: `master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
-Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-419-plan`.
+Issue: [Duris #418](https://github.com/LuminariMUD/Duris/issues/418).
+Branch: [branch/issue-418-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-418-plan),
+linked in issue #418's Development section.
+Baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-issue-418-plan`.
 
-The implementation and measured qualification results are recorded below.
-Production deployment and attribution to the reporter's specific item are not
-claimed. The previous #428 plan and its qualification history are preserved byte-for-byte in
-[plan-issue-428.md](plan-issue-428.md).
+The preceding starter-arrow plan and qualification record are preserved byte-for-byte
+in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up authorizes
+implementation, planned tests and gameplay qualification, commit/push and a PR.
+Merge and production deployment remain separate work.
 
-The newer master #437 plan is also preserved byte-for-byte in
-[plan-issue-437.md](plan-issue-437.md) during PR integration.
+PR: [#476](https://github.com/LuminariMUD/Duris/pull/476). During publication,
+`master` advanced to `bc1537d9eb996db126ab20835201909baa91349c`; its completed
+bartender-quest plan is preserved byte-for-byte in
+[plan-issue-437.md](plan-issue-437.md). The integration changes no castle source
+or authored area data beyond the implementation documented here.
 
 ## Outcome
 
-After a successful intentional rent save, a genuine temporary key carried,
-equipped or nested on the player must be absent when that player reconnects.
-This includes Golden Hall key 40401 and both freshly created and previously
-owned copies. Its durable custody must record the disposal so an older snapshot
-cannot restore it. MariaDB and flatfile-primary must agree.
+Choose an availability-based reset policy for Quintaragon Castle: its seven
+consumable-key gates may reset locked only when their authored source can actually
+supply the key. A reset must leave a connected or linkdead player body a physical
+way out without another key, a lockpicking skill, a spell, or staff intervention.
 
-Preserve unrelated durable assets, retained/unmaterialized item components,
-ordinary save behavior and existing crash/copyover recovery semantics. Establish
-separately whether this conditional defect caused the reported live observation;
-a synthetic reproduction is not proof about that particular item.
+Preserve consumption, ordinary carrier respawns, object and mobile limits, loot,
+and mode-1 timer admission. A surviving carrier may remain keyless; access must
+then cease to depend on that carrier. The issue requests a consistent
+key/relocking policy, rather than mandating a new restocking mechanism.
 
-## Evidence from the current codebase
+## Current source findings
 
-The issue was read, including its empty comment thread, but its older revision
-and reproduction were not used as proof of current behavior.
+The issue is a hypothesis and acceptance specification, not runtime evidence for
+this checkout. Its linked source baseline is older. The three authored castle
+files have no diff between that baseline and this plan's baseline; the engine
+paths below were read again on this checkout.
 
-- `areas/obj/gold_hal.obj:16` defines key 40401 with type 18 and flags 8388608.
-  `src/core/defines.h:127,218` identifies these as `ITEM_KEY` and
-  `ITEM_NORENT`. The key's eight values are zero. The zone equips it on paladin
-  40400 in room 40401 (`areas/zon/gold_hal.zon:654-655`); the east gate in
-  `areas/wld/gold_hal.wld:18-31` requires 40401.
-- `src/item/objconv.c:220-226` sets NORENT for keys, and
-  `src/world/db.c:3252` calls that conversion during creation. An area edit or
-  special case for vnum 40401 would address neither the shared cause nor custody.
-  Generated production area data has not been inspected in this planning task.
-- Both `inn()` and `undead_inn()` in `src/specs/specs.room.c` submit
-  `RENT_INN`. `do_quit()` and the trusted early exit in `do_camp()` in
-  `src/cmd/actoth.c` also use that intent. The normal camp completion uses
-  `RENT_CAMPED`, and idle departure uses `RENT_LINKDEAD`.
-- `persistence_save_character_terminal()` at `src/cmd/actoth.c:2133` captures
-  and queues a full checkpoint, invokes the locker hook, and returns without
-  waiting for durable completion. Its callers extract the character.
-  Queue failure is reported but does not keep the character in the game.
-  This established asynchronous logout behavior is a constraint on this repair.
-- `src/player/player_snapshot_capture.c:356-369` skips NORENT objects only
-  when their runtime ownership is not active. The player capture calls that
-  traversal with `omit_norent=true` for every intent, even though
-  `player_snapshot.save_intent` already exists. The skip occurs before child
-  traversal. Private recursion, public list/tree capture, player capture and
-  pet capture share machinery, so the repair must not change every caller.
-- A new executable probe linked the production capture, codec and runtime
-  ownership modules with the existing engine stubs. All **36 baseline cases**
-  passed: six intents (INN, CRASH, CRASH2, QUIT, LINKDEAD, CAMPED), two ownership
-  states, and carried/held/nested placement. For every intent, the fresh key
-  disappeared from the encoded/decoded item list and the active key survived
-  with its UID, NORENT flag and topology. A nested bag remained in either case.
-  This independently confirms the reported boundary and also demonstrates
-  that fresh keys are currently omitted from crash checkpoints.
-- `src/player/player_snapshot_repository.c::apply_items()` claims the captured
-  graph, replaces player payload rows, and commits inside the player-save SQL
-  transaction. `src/flatfile/flatfile_player_repository.c` prepares one ownership
-  catalog image and commits it with the player image through the existing
-  authority transaction.
-- `src/item/item_claim.c`, `item_claim_repository.c`, and
-  `src/flatfile/flatfile_item_repository.c` already prevent a destroyed UID
-  from being reclaimed by a stale save. Ordinary snapshot omission does not
-  create that destruction record.
-- `src/world/handler.c:3205-3216` explicitly explains why `extract_obj()`
-  does not retire custody: extraction is also used during shutdown, copyover
-  and bulk teardown. Unheld active player ownership rows can be reaped at boot;
-  that is not immediate, replay-resistant rent disposal.
-- `tests/async/test_player_save_claim.py` protects the general active-custody
-  NORENT safeguard. `test_player_snapshot_capture.py` has a usable production
-  capture/codec harness. The flat-file and MariaDB claim harnesses already
-  exercise destroyed-item exclusion; existing socket journeys supply disposable
-  worlds, accounts, backend setup, restart and copyover helpers.
+- `areas/AREA:12` selects `castle`; `areas/zon/castle.zon:1` identifies zone
+  number **24**, with top room 2532, mode **1**, and lifespan range **5-10**.
+  These are zone-age ticks, not a promise of 5-10 real minutes. The scheduler
+  uses `PULSES_IN_TICK=300` and `WAIT_SEC=4`; configuration can also scale lifespan.
+- `areas/obj/castle.obj` gives keys **2405, 2418, 2422, 2425, 2436, 2437,
+  2438** a break chance of **100**. Entrance key **2402** has **0**; container
+  key **2434** has **10**. Key 2434 belongs to a bookcase, not one of these gates.
+- `src/cmd/actmove.c::do_unlock()` consumes a breaking key through `break_key()`
+  and unlocks the matching reverse exit. `src/world/handler.c::extract_obj()`
+  decrements the live prototype count. There is no permanent used-key counter
+  in these paths. Making future keys durable would not by itself establish the
+  behavior of existing instances or fix every lock-in.
+- `src/world/db.c::reset_zone()`, around lines 3399-3410 and 3613-3680,
+  rejects an ordinary `M` load at the live mobile limit, clears mobile context,
+  and skips its conditional `E`/`G` rows. The current shopkeeper-specific
+  admission rules do not restock these castle carriers.
+- The `G` and `E` cases around lines 3807 and 3884 apply the live object limit
+  before attaching an object to the newly loaded mobile. All seven key rows
+  have limit **1** and chance **100**. A key held elsewhere can suppress the
+  new carrier's key; consuming it later does not rerun the surviving carrier's
+  conditional rows. Conversely, absent carrier plus absent key permits normal
+  loading. The mechanism still supports the issue's reported sequence.
+- The `D` case around line 4079 sets lock/closed state without checking key
+  availability. Castle's door rows run **before** its mobile/item rows. A key
+  availability decision made there would observe the wrong phase of the reset.
+- `src/world/events.c::event_reset_zone()` calls `reset_zone(zone, 0)` when
+  the zone is old enough and mode 2 or `is_empty()` permits it.
+  `src/world/db.c::is_empty()` scans playing descriptors, not all player bodies.
+  A connected player blocks the castle's ordinary timer reset; a descriptorless
+  linkdead body does not. `src/cmd/actwiz.c::do_zreset()` bypasses this timer gate
+  for `zreset ok` and purges then resets for `zreset full`.
+- `src/cmd/actmove.c::find_door()` refuses hidden/blocked exits even if their
+  lock bit is clear. The **2436** pair resets to state **6**, so merely unlocking
+  it leaves a secret-exit obstruction. `setup_dir()` masks authored door type
+  with `& 3`; the `7` in its room records means pickproof plus an ignored high
+  bit at load, while the `D` rows establish runtime secrecy.
+- An independent traversal of all authored castle exits found **5760**, reached
+  south from **2401**, as its external physical destination. Relaxing only the
+  seven consumable-key gates leaves no static exit route from their interior
+  endpoints: the **2402 south <-> 2401 north** entrance still resets locked.
+  Relaxing that pair as well yields routes from all seven interior endpoints.
+  This over-approximates traversability: it permits every nonlocked physical
+  exit and does not prove terrain, combat, or movement requirements. Real mortal
+  command journeys must supply the missing gameplay proof.
+- `has_key()` checks inventory and **HOLD only**. It cannot establish whether
+  Glynn carries key **2437**, which is equipped in slot **4**. Source availability
+  must inspect the carrier's direct inventory and all equipment slots.
+- `src/world/new_events.c` uses reset argument **2** for a normal cold
+  boot and skips initial reset during copyover/Redis world recovery.
+  `src/world/world_recovery_pipeline.c` restores door flags. No new persistent
+  state is needed, and this reset fix must not claim to rewrite an old recovery
+  snapshot immediately on restore.
 
-No open PR mentioning 419 was returned by the GitHub PR search. Targeted
-searches for “Golden” and “rent” found no open matching issue in the
-`max757/duris` GitLab mirror. #419 is the work item for this branch; this is not
-a claim that every mirror record has been audited.
+The reporter's actual live counts, key location, connection state, reset type,
+and deployed revision remain unknown. No production reproduction is claimed.
 
-## Policy and non-goals
+## Exact gates and sources
 
-1. **Disposal trigger:** `RENT_INN` plus a materialized player's item whose
-   actual type is `ITEM_KEY` and whose actual flags include `ITEM_NORENT`.
-   Apply this consistently to every existing RENT_INN producer, including
-   explicit quit and the trusted camp shortcut. Do not reinterpret the numeric
-   intent names: RENT_QUIT is also used for ordinary saves.
-2. **Eligibility:** use type and flag, not vnum, name, break chance, or whether
-   a runtime ownership entry happened to hydrate. All genuine NORENT keys get
-   the rule; a NORENT non-key retains the current durable-asset safeguard.
-   A key without the flag is a preservation control, even though normal key
-   creation adds it.
-3. **Recovery compatibility:** do not dispose on RENT_CRASH, RENT_CRASH2 or
-   copyover, nor add disposal to CAMPED, LINKDEAD, death, pets, lockers, corpses
-   or world-item saves. Preserve their existing behavior. In particular,
-   current ordinary player checkpoints omit fresh NORENT keys and retain
-   active ones; this plan does not silently turn fresh-key crash recovery into
-   a new feature. Test copyover separately because it also serializes live
-   objects. Record any difference between checkpoint recovery and actual
-   copyover instead of claiming one proves the other.
-4. **Atomicity:** committed disposal and the saved inventory must agree.
-   A replay of a pre-rent snapshot cannot revive a retired UID; repeating the
-   same rent save must be safe. Before commit, failures must not leave a
-   half-updated ownership/payload pair. Existing queue failure and terminal
-   writer failure reporting remain in place; this issue does not promise a
-   successful logout is durable when the current save queue itself fails.
-5. **Preservation:** a key inside a saved bag is removed without removing the
-   bag or unrelated contents. Protected retained source rows are not decoded
-   or reclassified as ordinary live items. Do not expand the policy to missing,
-   malformed or unmaterialized assets based on guessed type/flags.
+Each line names the key, authored carrier/home, loading row, and both gate sides.
+Directions are the runtime directions, not the key's prose description.
 
-No area flag change, new setting, new service, global extraction hook, per-key
-writer job, production inventory migration, key-break/relocking redesign
-(#418), or general persistence rewrite is needed. Do not change the timing of
-logout, bypass the writer, or run production mutations as part of this work.
+- **2405**: Juku, mobile **2406**, room **2427**, `E` slot **18**, zone row
+  **263**; **2414 down <-> 2415 up**.
+- **2418**: Giauque, mobile **2415**, room **2439**, `G`, zone row **289**;
+  **2427 up <-> 2428 down**.
+- **2422**: large rat, mobile **2418**, room **2452**, `G`, zone row **332**;
+  **2446 west <-> 2448 east**.
+- **2425**: Cetyla, mobile **2419**, room **2456**, `E` slot **18**, zone row
+  **335**; **2460 up <-> 2461 down**.
+- **2436**: Povtail, mobile **2433**, room **2481**, `G`, zone row **360**;
+  **2471 north <-> 2479 south**, both reset secret as well as locked.
+- **2437**: Glynn, mobile **2420**, room **2477**, `E` slot **4**, zone row
+  **352**; **2480 north <-> 2488 south**.
+- **2438**: Gilman, mobile **2428**, room **2493**, `E` slot **18**, zone row
+  **390**; **2480 south <-> 2498 north**.
+- Recovery boundary: durable entrance key **2402**, Tev **2401** in room
+  **2401**; **2401 north <-> 2402 south**. Include this pair in occupied-zone
+  escape handling, without changing its ordinary empty-zone reset policy.
 
-## Ablated implementation sequence
+## Selected policy and ablation
 
-### 1. Add the failing behavioral regressions
+Run one castle-specific access correction at the **end of the existing reset
+command loop**, after all `M`/`E`/`G` and `D` commands have finished:
 
-Extend the existing production capture/codec harness and both save-claim
-harnesses. The decisive failure is a successfully applied RENT_INN save whose
-active key can still load; capture inclusion alone is not the final assertion,
-because the worker needs the candidate's UID to retire it.
+1. Scope by `zone_table[zone].number == 24`, never by array index. Use the small
+   explicit gate/source mapping above. Resolve VNUMs through existing lookups;
+   verify matching reverse exits and keys before touching either side. Do not
+   introduce a zone flag, reset opcode, config property, or reusable policy engine.
+2. Determine whether any player body is currently in the zone using
+   the live character list and a valid room. Include linkdead players, staff and
+   morphed players (whose active body is represented as an NPC);
+   do not use descriptor presence or change global `is_empty()` semantics.
+3. If a player body remains, clear `EX_LOCKED` and `EX_SECRET` on both sides
+   of all seven gates **and the entrance pair**. Leave their normal reset-closed
+   state, door type and pickproof flags intact. These mapped exits are not
+   blocked; this is not a general blocked-exit override. After reconnect, normal
+   `open` and movement must suffice to follow the escape route.
+4. Otherwise, for each of the seven keys, leave the ordinary reset state only
+   if the authored carrier is alive in its authored room with that exact key
+   in direct inventory or any equipment slot. If that source cannot supply the
+   key, clear lock and secret bits on both gate sides. A global live count, a
+   player's key, a corpse/container copy, or a carrier moved elsewhere does not
+   establish an accessible authored source. Do not spawn, move, retire, or
+   duplicate any object or mobile to satisfy this check.
+5. Apply the correction to ordinary and explicit staff resets alike. A clean
+   cold boot with all sources successfully loaded retains the normal locked
+   progression. Existing forced-load behavior is not extended by this fix.
+   Repeated resets are idempotent. Once the zone is empty and the source again
+   has its key, the existing `D` rows may restore normal locked/secret state.
 
-Use fresh and active key 40401 in carried, HOLD and nested placements. Include
-multiple keys, a durable bag with ordinary siblings, an active NORENT non-key,
-an unflagged key, and an already destroyed key. Also cover a key under a
-normally omitted NORENT container: today's early return must not hide a
-candidate from the disposal operation. Establish the existing behavior of
-non-rent intents before modifying it.
+This deliberately prioritizes access when a key source is unavailable. Another
+party may traverse an affected gate without obtaining a replacement key after
+such a reset. An occupied staff reset also makes the mapped entrance/gates
+available. These are explicit gameplay consequences, not claims of unchanged
+progression. Fresh, empty resets with stocked sources still require the keys.
+NPCs, hazards, and normal movement requirements remain in effect.
 
-### 2. Carry rent candidates to the existing save transaction
+**Keep:** the scoped correction, all seven pairs, occupied-zone handling,
+secret-bit clearing, the entrance recovery boundary, and executable proof.
+Removing any of them leaves a traced acceptance failure.
 
-Keep capture non-mutating. For the main player's RENT_INN item graph, include
-candidate key rows even when they have no runtime ownership entry. Existing
-`save_intent`, UID, type, flags and item topology contain the required data:
-reuse them instead of adding a second disposal queue or a wire-format version.
+**Simplify:** repair the lock/access contract after reset rather than trying to
+teach `M`/`E`/`G` to re-equip surviving mobs. Reuse current loading and limits;
+no area-row reordering or new runtime state is required.
 
-Preserve ordinary parent indices for saved containers. For an ancestor that
-the existing filter omits, traverse its skipped subtree only to collect
-eligible keys as disposal-only root rows in this RENT_INN request; do not
-promote or save its ordinary contents. These candidate rows must be consumed
-and removed before the persisted player payload is encoded. Keep the current
-depth/object/byte bounds and cycle detection effective for this traversal.
+**Drop:** global force-loading, unlimited key copies, changing all key break
+chances, general survivor restocking, new escape items/exits, global linkdead
+reset vetoes, persistence migrations, and a pathfinding service. Existing
+`ITEM_SWITCH` opens blocked exits, not these locks; adding switches would also
+require new behavior and area objects. These alternatives add work without
+being necessary for the chosen outcome.
 
-Limit the new capture context to player rent. Public list/tree capture and
-pet/locker/world callers retain their existing contract. Extend the current
-private traversal rather than creating an inventory-policy framework.
+## Non-goals
 
-### 3. Retire and omit candidates atomically in each backend
+Do not repair every consumable key in the world, change unrelated zones or
+ordinary loot limits, change the bookcase key, redesign key custody, change
+timer cadence, or implement adjacent issue #419. No retroactive inventory
+migration, new persistent state, blanket lock bypass, or production operation
+is part of this scope. Combat safety and freedom from all terrain/spell hazards
+are not promised; the recovery guarantee concerns reset-created door obstruction.
 
-Add the narrow rent-key decision to the existing item-claim module so the two
-backends use the same predicate. Pass rent context only for the incoming main
-player item component; never derive it from a previously stored flat-file
-snapshot's old intent during a status-only or pet-only save.
+## Files and implementation sequence
 
-In MariaDB, integrate retirement into the existing claim/apply transaction.
-In flat-file, integrate it into the existing claim catalog after-image and
-commit that image with the filtered player image. Create a destroyed record
-for a fresh candidate UID and retire an existing active candidate. Follow
-existing destruction identity, detached root/parent topology, item/owner
-revision and ownership-audit conventions. Reuse current record locks and
-the flat-file authority lock; do not start a nested independent transaction.
+1. **Capture failing behavior.** Add one focused native regression, provisionally
+   `tests/async/test_castle_key_reset.py` with a small companion C++ harness.
+   Follow the production-code extraction/build pattern in
+   `test_shopkeeper_population.py`; execute the actual reset loop and relevant
+   cases, not a Python restatement. Use current castle data as fixture input.
+   Compile into `bin/tests/` with ASan/UBSan. Establish the old E and G failures
+   and negative controls before the production change.
+2. **Implement the policy in `src/world/db.c`.** Keep the mapping and private
+   correction next to `reset_zone()`, and call it once after the loop. Make no
+   changes to the M/E/G limit/admission logic, key consumption, the scheduler,
+   `is_empty()`, or authored castle content. Recheck the mapping against area
+   inputs in the regression so future data edits cannot silently drift.
+3. **Prove command-level recovery.** Add a focused disposable journey,
+   provisionally `tests/async/test_castle_key_reset_journey.py`, reusing
+   `test_flatfile_combat_journey.py`'s server-build, private runtime, port and
+   socket helpers. Load the authored castle room graph, relevant mobs/objects
+   and reset rows, plus the exterior landing room; do not replace the graph
+   with an artificial two-room shortcut. Use synthetic accounts and ordinary
+   mortal commands for consumption, reconnect, open and movement. Staff fixture
+   setup may arrange state, but staff bypasses cannot serve as recovery proof.
+4. **Document and qualify.** Record actual commands/results and the chosen
+   gameplay tradeoff here; include a concise operator explanation in
+   `docs/operations/RUNBOOK.md`. Read the final diff, format changed C/C++ lines,
+   run the focused checks and required build, then prepare the implementation
+   commit for normal review. No merge or deployment is part of this plan task.
 
-Use the existing written-item filtering/remapping path to remove the
-candidates. Preserve the general claim rules for ordinary assets. A UID that
-is already destroyed remains destroyed, and retrying rent does not increment
-revisions or emit duplicate retirement events unnecessarily. Deliberate rent
-disposal should be identifiable as such, not reported as a duplicate-item
-incident; use existing persistence diagnostics, without introducing telemetry
-infrastructure.
+Production scope is one existing C++ translation unit. Tests and the existing
+runbook/plan are supporting changes. `actmove.c`, `handler.c`, `events.c`, castle
+area files and recovery code are exercised dependencies, not planned edits.
+If the mortal journey exposes a real movement obstruction on the proposed
+route, resolve that specific requirement and update this plan before declaring
+completion; static connectivity alone is insufficient.
 
-Only loaded, captured player holdings authorize retirement. Do not scan and
-destroy every ownership row for a PID or prototype. Check the existing
-memory-authoritative claim behavior for a stale recorded owner in a focused
-test; do not invent a different ownership conflict policy just for keys.
-Use the object's assigned UID; do not infer identity from its vnum or invent
-another UID. Keep malformed-source handling consistent with the current
-capture and repository boundaries.
+## Proof and acceptance
 
-Keep ownership, payload and revision changes within the single transaction on
-all error paths. Keep tombstones through restart so ordinary boot reaping and
-an older save cannot make the same UID claimable again. The runtime cache is
-not the durable authority. Verify that terminal extraction removes the live key
-and subsequent loads use durable custody; do not mutate live objects from the
-writer thread. The completed inspection below explains why clearing the entire
-runtime ownership domain is unnecessary.
+- **Held-key sequence:** for every listed key, start with a player-held key and
+  allow its dead carrier to respawn keyless. The new policy already leaves that
+  gate unlocked at this first reset; assert this earlier prevention explicitly.
+  To exercise the remainder of the historical sequence, let the key holder use
+  normal close/lock/unlock commands to consume the key (or seed the native test
+  with the pre-fix locked state), leave the carrier alive, then reset again.
+  Both sides must be closed, unlocked and visible. Repeat the reset;
+  carrier/loot counts must not change. Execute E and G production paths,
+  including 2437's non-HOLD slot; do not expect unlocking an already unlocked
+  door to consume a key.
+- **Reload control:** with no live key and a dead carrier, an ordinary empty
+  reset loads the carrier and key under existing limits. Both gate sides retain
+  their authored locked state, including the 2436 secret bits. Killing a keyless
+  carrier remains a valid route to normal replacement, but is no longer required
+  just to make access possible.
+- **Availability controls:** player-held, corpse, container and off-site copies
+  do not count as a stocked source; the correct carrier with the key at home
+  does. Missing/moved carriers and failed item materialization yield accessible
+  gates without ordinary-loot duplication. Verify both sides, exact object
+  counts/identities, and no unrelated equipment replacement.
+- **Connected player:** exercise production `event_reset_zone()` and
+  `is_empty()` together with a playing descriptor in zone 24. At expiry, no
+  ordinary reset occurs. A playing character in a different zone does not block
+  the castle. Testing `reset_zone()` directly is not proof of timer admission.
+- **Linkdead and staff reset:** with a player body but no playing descriptor,
+  the due timer may reset; all eight recovery pairs must be visible/unlocked.
+  Reconnect the same mortal and physically leave from each of the seven interior
+  endpoints to **2401**, then **5760**, without a key or magical/staff bypass.
+  Include the secret closet explicitly. Run the same access assertions after
+  `zreset ok` with a connected mortal; cover full-reset behavior in isolation.
+- **Progression restoration:** after the final player leaves, an empty reset
+  with stocked sources restores normal locks and closet secrecy. A missing key
+  affects its mapped gate only. The entrance's empty-zone behavior remains normal.
+- **Isolation:** prove a non-24 zone, unrelated castle doors, bookcase key 2434,
+  ordinary equipment, mobile limits and existing shopkeeper special cases retain
+  their baseline behavior. Do not redefine existing force-reset loot semantics.
+- **Boot/recovery boundary:** verify cold-boot flags with stocked sources and
+  rerun the sequence from restored-like live state. Existing door snapshots may
+  retain old flags until a qualifying reset; immediate repair of arbitrary old
+  snapshots, manually locked doors, and unrelated magical confinement is not
+  promised. No new persistence field or save-data rewrite is planned.
 
-### 4. Prove the command and persistence journeys
-
-Add one focused `tests/async/test_norent_key_rent_journey.py` using existing
-journey helpers and a backend selector. Do not add a general test framework.
-Install the real Golden Hall key prototype into disposable fixtures and use
-real rent commands with synthetic players and an inn. Native cases can
-cover additional RENT_INN producers without duplicating a whole world setup.
-
-For each backend, obtain a fresh key and a demonstrably hydrated owned key,
-then rent and reconnect for carried, equipped and nested placement. To
-establish a previously owned fixture despite today's fresh-key omission,
-seed a valid synthetic owned snapshot through the backend test setup and
-log in through the real loader; confirm UID and active custody before renting.
-Do not mistake assigning a UID for proving ownership hydration.
-
-Wait for the actual terminal writer result before inspecting durable state.
-Check both the saved payload and ownership record, then reconnect and restart
-the disposable server. Verify no key returns and bag/sibling UIDs and contents
-are unchanged. An empty inventory display alone is insufficient.
-
-Exercise crash checkpoints, copyover and their subsequent reconnect paths as
-compatibility controls, with fresh and active copies. Confirm active keys
-survive recovery and that fresh-key behavior matches the independently
-measured baseline for the route tested. Exercise an older queued checkpoint
-followed by rent, an older snapshot replayed after committed rent, duplicate
-rent apply, SQL rollback and flat-file commit/recovery failure. Reuse the
-existing worker and authority-transaction harnesses for deterministic faults;
-do not use arbitrary sleeps as durability evidence.
-
-### 5. Investigate the reported live instance and finish documentation
-
-The issue supplies no reporter character or actual item UID. Locate the
-original report and relevant permitted operational evidence, then correlate
-the precise UID, vnum, instance type/flags, root/parent placement, runtime
-custody, durable owner/state and save intent with the server that served the
-report. Record its running revision/binary identity and evidence timestamps;
-a current checkout revision is not proof of the running executable or of
-what ran when the report occurred.
-
-Use read-only inspection and existing diagnostics. Keep credentials, raw
-player records and operational logs out of Git; record only the minimal
-redacted finding in this plan/issue. No live rent, forced logout, item mutation,
-migration or deployment is authorized by this planning request. If the
-original object is gone or the reporter cannot be identified, state that
-exact-instance attribution remains unverified and specify the missing
-evidence. Do not close that acceptance item by substituting the synthetic
-reproduction.
-
-Update `docs/reference/DATABASE.md` where it explains claims/destruction with
-the exact RENT_INN key exception, transaction behavior and preserved recovery
-semantics. Update this plan with measured results, unresolved live attribution
-and the final source revision. Reread the diff and remove speculative code.
-
-## Files
-
-Expected production edits:
-
-- `src/player/player_snapshot_capture.c`: rent-specific candidate capture.
-- `src/item/item_claim.h`, `src/item/item_claim.c`: the shared narrow predicate
-  and, only if necessary, the existing claim result's disposal accounting.
-- `src/item/item_claim_repository.h`, `src/item/item_claim_repository.c`,
-  `src/player/player_snapshot_repository.c`: SQL claim context and atomic
-  retirement/filtering.
-- `src/flatfile/flatfile_item_repository.h`,
-  `src/flatfile/flatfile_item_repository.c`,
-  `src/flatfile/flatfile_player_repository.c`: the same operation in the
-  existing flat-file claim/authority transaction.
-
-Expected verification edits: the current capture, flat-file claim, MariaDB
-claim, and worker/transaction harnesses where a new assertion is needed, plus
-the one focused dual-backend rent journey. Existing copyover coverage should
-be extended only where its current assertions miss the key's lifetime.
-
-`player_snapshot.h`, the codec, terminal callers, loaders, runtime ownership,
-copyover and `handler.c` are traced dependencies and test inputs, not automatic
-production edit targets. No database migration or snapshot schema change is
-currently required. If a new regression disproves that, revise this plan with
-the specific boundary before adding machinery.
-
-## Proof and completion criteria
-
-- All six fresh/owned by carried/equipped/nested cases pass on both backends
-  through rent, durable apply, reconnect and restart.
-- Removed UIDs have destroyed custody and no loadable player payload. Retrying
-  or replaying an older snapshot never recreates them.
-- Containers, siblings, unrelated durable NORENT assets, unflagged keys and
-  protected retained components keep their existing identity and behavior.
-- Filtered-ancestor nesting cannot hide a key from disposal or expose ordinary
-  omitted contents. Bounds and cycle rejection still work.
-- Active-key crash/copyover recovery remains intact; fresh-key baseline
-  limitations are documented and route-specific tests are reported honestly.
-- Status-only/pet-only checkpoints and non-rent contexts do not dispose keys.
-  Terminal queue ordering and failure behavior remain unchanged.
-- Backend fault tests demonstrate atomic state or successful transaction
-  recovery, with no premature success claim.
-- Live attribution has either direct evidence or a clearly recorded unresolved
-  dependency; issue closure requires resolving or explicitly dispositioning it.
-
-Run the narrow tests as their edits land, followed by the required build:
+Verification commands (the two planned test entry points are now implemented):
 
 ```sh
-python3 tests/async/test_player_snapshot_capture.py
-python3 tests/async/test_player_save_claim.py
-bash tests/async/run_player_save_claim_mysql.sh
-python3 tests/async/test_player_save_worker.py
-python3 tests/async/test_player_save_pipeline.py
-python3 tests/async/test_flatfile_authority_transaction.py
-python3 tests/async/test_terminal_save_safety.py
-python3 tests/async/test_terminal_extract_item_retention.py
-python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_castle_key_reset.py
+python3 tests/async/test_castle_key_reset_journey.py
+python3 tests/async/test_key_break_custody_contract.py
+python3 tests/async/test_zone_reset_timing_contract.py
+python3 tests/async/test_no_reset_zone_key.py
+python3 tests/async/test_shopkeeper_population.py
 make -C src
-python3 tests/async/test_norent_key_rent_journey.py --backend flatfile
-bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-The new journey command/interface is planned, not present yet. Its flat-file
-leg must use the existing isolated build helper and keep artifacts under
-`bin/`; its MariaDB leg uses disposable credentials from the wrapper, never
-the checkout's `.env`. No full burn-in or CI wait is needed for this scoped
-change. Run additional tests only when a touched boundary or failure warrants
-them, and report unavailable validation explicitly.
+Keep binaries and disposable runtime evidence under `bin/`, and verify the test
+environment before starting a server. A new worktree does not inherit `.env` or
+running services. Use the existing isolated flat-file fixture, not production
+accounts/data. No production reset, migration, restart, deployment, full burn-in,
+or CI wait is needed for this scope. Report any unavailable runtime check.
 
-## Ablation decisions
+## Original planning verification and estimate
 
-Keep transaction-level disposal, both backend paths, actual reconnect proof
-and live-instance attribution: each maps to an explicit issue requirement.
-Keep bounded capture of candidates hidden by an omitted ancestor because the
-existing early return otherwise defeats nested disposal.
+Completed on this baseline:
 
-Simplify by using existing snapshot fields, the existing claim/filter paths,
-destroyed custody states, one writer and the flat-file authority transaction.
-A small shared predicate has two actual backend consumers. Reuse current
-journey helpers and existing fault harnesses.
+- Read issue #418 and its comments (none), current source, all seven source/gate
+  mappings and castle object values. The issue is open, with no project work
+  items and no development branch linked before this task.
+- Independently parsed all castle exits and key reset rows. Confirmed seven
+  reciprocal gate pairs, four E and three G sources, the secret pair, and the
+  entrance boundary needed for a static route to room 5760.
+- `python3 tests/async/test_key_break_custody_contract.py`: passed.
+- `python3 tests/async/test_zone_reset_timing_contract.py`: passed.
+- `python3 tests/async/test_no_reset_zone_key.py`: passed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed
+  before and after drafting.
+- `git diff --check`: passed. The preserved issue #428 plan's SHA-256 matches
+  the original tracked file exactly.
 
-Drop the area edit, a golden-key-only exception, removal of the general
-NORENT preservation safeguard, a new schema/DTO, synchronous per-item
-destruction, global extraction changes, a migration and adjacent door policy.
-None is necessary for the scoped lifetime rule. The main complexity that
-remains is atomic custody disposal and proving compatibility.
+These are planning/source checks. The two existing key/timing contracts inspect
+source text; they do not execute the reported gameplay sequence. The issue's old
+uncommitted C++ probe was not assumed to be present or rerun. No new regression,
+full build, socket journey, or production validation has been performed here.
 
-## Planning validation and implementation estimate
-
-Planning evidence on the baseline:
-
-- The standalone production capture/codec probe passed 36 cases; source and
-  executable are ignored under `bin/tests/issue419-planning/`.
-- Docker is available for the planned disposable MariaDB qualification.
-- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `git diff --check`: passed. The archived #428 plan has the same SHA-256 as
-  the original: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
-- No production C/C++ file changed, so a full server build and database/socket
-  journeys are implementation validation, not claims made by this plan.
-
-Estimate for **my active implementation and local qualification: 6-9 hours**:
-
-- Regression fixtures and final transaction design: 1-1.5 hours.
-- Capture and both backend changes: 2-3 hours.
-- Dual-backend rent/reconnect/restart, recovery and fault qualification:
-  2-3 hours.
-- Required build, documentation and final review: 1-1.5 hours.
-
-Allow **up to 12 hours** if full-world/copyover fixtures or backend fault
-coverage need repair. This is an estimate, not a commitment; it excludes
-external review, deployment and waiting for reporter/live-instance access.
-Once that evidence is available, read-only attribution should take about
-30-60 minutes, but cannot be promised without the UID or reporter context.
+Estimate: **3-5 hours of my active implementation and validation time** from this
+plan, including roughly 45-75 minutes for the native regression, 30-45 minutes for
+the scoped production change, 60-120 minutes for the real command/reconnect
+journey, and 45-60 minutes for build, compatibility checks, documentation and
+final review. Allow **up to 6 hours** if the authored castle fixture or safe
+movement through its terrain needs additional qualification. This is an estimate,
+not a guarantee; it excludes external review, merge scheduling and deployment.
 
 ## Implementation and qualification, 2026-10-30
 
-Implementation commit:
-[41adafc3e5f9cea34c7c5861726d4cc42091a996](https://github.com/LuminariMUD/Duris/commit/41adafc3e5f9cea34c7c5861726d4cc42091a996).
+The implementation keeps the planned policy in one private helper and one call
+after the reset loop in `src/world/db.c`. The helper resolves the eight exact
+gate pairs, examines carrier inventory and every equipment slot, and uses the
+live character list to include linkdead occupants. It clears lock/secret bits
+only on the mapped reciprocal exits. No source/item creation path, area input,
+global emptiness rule, persistence field or migration changed.
 
-The player RENT_INN capture includes fresh and active NORENT keys for
-transactional disposal. Skipped ancestors are walked within the existing
-budgets/cycle checks to collect only key candidates. Their ordinary contents
-remain omitted. Capture never extracts or changes the live objects.
+The new native test extracts the production reset loop, M/G/E/D cases,
+finalization, access correction, `is_empty()` and `event_reset_zone()`. Allocation,
+placement, RNG and unrelated services are controlled; it is not a second reset
+implementation. Fixture rows and exits come from the authored castle files.
+Against the original source, all seven held-key/consumption cases fail at the
+locked-door assertion. With the fix, all seven and the availability, occupancy
+and boundary groups pass under ASan/UBSan. They cover stable surviving-carrier
+identities, normal dead-carrier replacement, repeated resets, all equipment
+slots, off-carrier/off-site copies, item creation failure, the outer entrance,
+secret closet, unrelated bookcase key, another zone number and mismatched reverse
+exits. The existing shopkeeper population regression also passes.
 
-Both repositories use the existing claim loops to write destroyed custody under
-destruction:0:0, detach each key from its former parent, and use the existing
-graph filter to omit it from the saved player items. Fresh UIDs get tombstones;
-already destroyed candidates remain unchanged. Ownership revisions and the
-existing SQL audit / flat-file claim log record actual changes. Intentional
-retirement does not produce duplicate-item warnings. SQL payload replacement
-and custody commit together; flat-file catalog and player images share the
-existing authority transaction.
+Implementation inspection found one required refinement: `morph()` moves the
+original PC to limbo and represents the active player body as an NPC with
+`orig_char`. Counting only `!IS_NPC` would miss a linkdead morphed player. The
+occupancy check also uses the existing `IS_MORPH()` predicate; a native negative
+control fails without it and passes with it. This preserves the player-body
+recovery requirement without changing morph or global reset behavior.
 
-The general durable-NORENT safeguard remains for non-keys. The rule is enabled
-only for the incoming main player item component with RENT_INN; status-only
-and pet-only updates cannot infer disposal from a stored intent. Quit and the
-trusted camp shortcut already share that intent. No migration, snapshot-schema
-change, separate disposal payload, writer job, setting, area edit or production
-terminal-caller change was needed.
+The socket journey uses the real server with private flat-file authority, seven
+new mortal accounts and one staff setup account. It loads the authored castle
+room graph, key prototypes and relevant reset rows, with an exterior landing
+room at 5760. Only the fixture's reset lifespan (one real timer tick), NPC
+aggression/wandering and unrelated spawns are controlled. The real callback
+still runs every 300 pulses; the test does not call it through a debug shortcut.
 
-### Evidence and simplifications
+Staff removal drops NPC equipment/inventory on the floor, so the fixture takes
+each original key after removing its carrier rather than creating a second copy.
+Live object inspection confirms exactly one key of each VNUM, carried by the
+mortal. The next empty timer reset creates keyless carriers. Real mortal
+close/lock/unlock commands consume all seven keys, reducing each live count to
+zero; another empty timer reset preserves the same carrier IDs and keeps both
+sides of every gate accessible. Removing the keyless carriers permits normal
+replacement and restores the authored locks, including the secret closet.
 
-The new capture and first flat-file rent assertions failed before the production
-repair. The expanded capture/codec suite passes **56 cases**: seven intents,
-fresh/active ownership, and carried/held/nested/omitted-ancestor placement.
-Additional executable controls cover cycles, depth and object limits, invalid
-UIDs, unchanged generic list capture, an unflagged key and an active NORENT
-non-key. Failure leaves the output snapshot unmodified.
+With seven connected mortals placed at the interior endpoints, the due timer
+reports `will_reset=0` and leaves the locks intact. After their sockets close,
+the same scheduler reports `will_reset=1`; all eight recovery pairs become
+unlocked and visible. Each mortal reconnects and walks to 5760 using only normal
+open/movement commands. Staff readback verifies the room after every movement:
+**14, 13, 17, 21, 32, 34 and 34 steps**, respectively, **165 steps total**.
+The closet is included. Separate connected-mortal journeys pass after both
+`zreset ok` (basement) and `zreset full` (closet). The final empty, stocked timer
+reset restores normal locks and secrecy. All six observed timer cases have zero
+callback lateness. The disposable server exits successfully and is removed.
 
-Each backend's repository suite passes all six ownership/placement cases,
-container/sibling and unflagged-key controls, a stale foreign recorded owner,
-identical rent replay, pre-rent snapshot replay, missing-UID rejection,
-non-rent intents and partial status/pet updates. SQL failure injected at the
-payload deletion boundary rolls back custody, audit and inventory together.
-Flat-file faults before journal commit, after journal publication and after
-the first image prove unchanged prior state or recovery of the complete
-retired-key/player-image pair. The worker test proves that replacing a queued
-checkpoint retains RENT_INN and the key payload together.
+Completed commands/results:
 
-The new socket journey reuses existing full-world runtime, account, backend and
-build helpers. It loads actual prototype 40401 and rents at Golden Hall inn
-40454, using a synthetic staff PC for object setup. Inn processing and player
-save/load are the real routes; staff level affects population bookkeeping,
-not key disposal. All **12 cases** (six per backend) pass real rent, durable
-state inspection and reconnect. A subsequent complete restart confirms every
-retired UID stays absent. Backpack 48 and nested sibling 15 retain their exact
-UIDs and parent placement throughout.
+- `python3 tests/async/test_castle_key_reset.py`: seven key sequences and three
+  control groups passed under ASan/UBSan, including the morph negative control
+  described above and unchanged surviving object identities.
+- `python3 tests/async/test_castle_key_reset_journey.py`: passed all seven key
+  consumption sequences, seven reconnect/escape routes, six timer cases, both
+  staff-reset modes and normal progression restoration.
+- `python3 tests/async/test_shopkeeper_population.py`: all five scenarios passed.
+- Existing `test_key_break_custody_contract.py`,
+  `test_zone_reset_timing_contract.py` and `test_no_reset_zone_key.py`: passed.
+- `make -C src -j6`: MariaDB development build passed. The journey's existing
+  build helper also compiled and validated its separate flat-file server.
+- Python syntax, changed C/C++ formatting, all 14 documentation contracts and
+  `git diff --check`: passed; final commit checks remain enabled.
 
-Owned-fixture setup was simplified from offline snapshot seeding: temporarily
-clear NORENT on the isolated newly loaded key, save and rent, reconnect through
-the real loader, then restore the original flag. A subsequent ordinary save
-retains that flagged key, proving active runtime custody was hydrated. The
-fresh fixture's ordinary save omits its key while live inventory still contains
-it. The temporary flag change is fixture setup only.
+Ignored evidence is under `bin/qualification/issue418/`: `gameplay-report.json`,
+the command transcript/server log, and the MariaDB build log. This qualifies
+reset/door behavior in isolated native and flat-file runtime fixtures. It does
+not claim production validation, a MariaDB socket journey, full-zone combat
+safety, or an old recovery-snapshot migration.
 
-Both full-world backends also pass active-key checkpoint, SIGKILL/relogin and
-actual SIGUSR1 copyover controls. Fresh NORENT keys remain omitted by
-checkpoint/crash/copyover, matching the baseline capture result and source:
-copyover's separate world-object graph includes floor/NPC roots, not PC
-inventory. This repair preserves that existing limitation.
+Final ablation retains one production helper/call, one native regression with
+its harness, one socket journey using existing build/client helpers, and the
+plan/runbook updates. No area mutation, source restocking, new setting, schema,
+global timer change, or parallel implementation remains. The morph predicate
+is the only source-discovered refinement to the planned behavior.
 
-Runtime-cache cleanup was ablated after source inspection. Ordinary hydration
-updates incoming entries without clearing every historical UID. Disposal does
-not require a global clear: terminal extraction removes the live object,
-retired payloads are absent, loaders check durable custody, and the existing
-destroyed-state rule prevents stale saves from reclaiming the UID. Same-process
-reconnect and process-restart journeys prove those boundaries. No speculative
-cache-reset hook was added.
+After integrating `master` at `bc1537d9e`, the native regressions, existing
+key/reset and shopkeeper contracts, MariaDB build, documentation/format checks,
+and the complete socket journey passed again. The integrated journey repeated
+all seven key sequences, all seven escape routes (165 movements), both staff
+reset modes and the six real timer cases. Its flat-file binary SHA-256 is
+`e5a013228ae2c50cf82588044761b431da0ac457a078ad716fc81420cbc74ac5`.
+The only merge conflict was the shared plan path; the other project's record
+was preserved unchanged in `plan-issue-437.md`. No castle implementation change
+was needed for integration.
 
-Two existing harness linkage gaps blocked required checks: the save-pipeline
-fixture needed a memory-free stub for its extracted toggle command, and the
-no-player copyover fixture needed fail-if-called launch-gate stubs. Those
-focused test repairs are included; neither changes game behavior. The
-copyover fixture exercises real world-object/ownership save/exec/recover under
-ASan/UBSan. PC key recovery is proven separately by the socket journey.
 
-### Completed verification
+## Sequential PR integration, 2026-10-30
 
-All commands below passed. Builds use the development warnings-as-errors
-profile. Logs and runtime reports are ignored under
-`bin/qualification/issue419/`.
+Integrated master `daac1146de750de0dc71d277d2f4103c1fd56da7` after PRs
+#432 and #475. Production code merged without conflicts. The shared-plan
+conflict preserves this castle record at `plan.md` and the completed rent-key
+record byte-for-byte at [plan-issue-419.md](plan-issue-419.md).
 
-```sh
-make -C src -j6
-make -C src PERSISTENCE_BACKEND=flatfile SERVER_BIN_DIR=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile DMS_BINARY=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile/dms_new -j6
-python3 tests/async/test_player_snapshot_capture.py
-python3 tests/async/test_player_save_claim.py
-bash tests/async/run_player_save_claim_mysql.sh
-python3 tests/async/test_player_save_worker.py
-python3 tests/async/test_player_save_pipeline.py
-python3 tests/async/test_flatfile_authority_transaction.py
-python3 tests/async/test_terminal_save_safety.py
-python3 tests/async/test_terminal_extract_item_retention.py
-python3 tests/async/test_copyover_custody.py
-python3 tests/async/test_player_load_items.py
-python3 tests/async/test_norent_key_rent_journey.py --backend flatfile --server bin/qualification/issue419/flatfile/dms_new
-bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
-./scripts/format.sh --check
-python3 tests/async/test_documentation_contract.py
-git diff --check
-./scripts/tidy.sh
-CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy ./scripts/tidy.sh --staged
-```
-
-Changed Python files passed syntax checks; all 14 documentation tests passed.
-The load-items regression includes retained-source hydration controls.
-MariaDB was rebuilt after final header edits. The initial direct-Git commit
-selected system Clang 18, which could not parse the installed GCC 16 library
-headers. Selecting the installed LLVM 22.1.8 used by the passing worktree check
-resolved this. The staged check and commit hook both passed, without bypass.
-
-The socket reports `flatfile.json` and `mariadb.json` each contain
-`passed: true`, six exact retired UIDs and the three recovery outcomes.
-Socket-qualified binary SHA-256 values:
-
-- Flat-file: `98dd08f58454cbca955ef5f0595f4888cf6a8850fbf88f7912e7be9a1ab09cca`.
-- MariaDB: `a26136659dd1490a1c5ab44a96d9caaed72b119ead76ebd7066f3bad9eb0733b`.
-
-Subsequent edits before the implementation commit were documentation, header
-comments, test assertions/diagnostics and formatting. No server behavior
-changed after these socket qualifications. No production state changed,
-and no deployment or CI result is claimed.
-
-### Original-instance attribution
-
-The refreshed issue still contains no reporter character, actual UID or event
-time and has no comments supplying them. The local report file is empty;
-targeted report-history searches did not identify the incident. The owning
-checkout is configured local, so its revision is not evidence of the reported
-server. The user has no additional identifying information.
-
-The original instance's flags, custody history and running revision therefore
-cannot be established from available evidence. This remains an explicit
-limitation; the synthetic reproduction does not prove the exact report.
-The issue remains open pending review. GitHub converted the original development
-branch association into a linked PR that can close #419 when merged; merge
-review must account for this attribution limitation. The code repair,
-qualification, documentation and PR are deliverable; historical live
-attribution is recorded as unavailable.
-
-## Master integration and final qualification, 2026-10-30
-
-Qualified source commit:
-[0598fb15fb83f5279977d40bbca95d9405cbea33](https://github.com/LuminariMUD/Duris/commit/0598fb15fb83f5279977d40bbca95d9405cbea33).
-
-PR [#475](https://github.com/LuminariMUD/Duris/pull/475) initially reported a
-conflict because master advanced to
-`b352b650c3f05ea0c2e109eaa9abcc3040290952` during implementation. The merge
-preserves master's quest snapshot version 13, new status fields and their
-regressions. All production code merged cleanly. The sole conflict was the
-shared plan; master's #437 plan was preserved byte-for-byte as
-[plan-issue-437.md](plan-issue-437.md), SHA-256
-`ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4`.
-The earlier #428 archive remains unchanged.
-
-Both server builds, all nine focused Python regressions listed above, the
-MariaDB claim/loader suite, both full-world socket journeys, changed-line
-clang-tidy, the staged merge hook, formatting and all 14 documentation tests
-passed again after integration. The 12 rent cases and active/fresh recovery
-controls are therefore qualified on the merged source, not merely the earlier
-branch.
-
-The flat-file rerun exposed an inspector read concurrent with atomic snapshot
-publication. The fixture now holds the existing authority lock while opening
-and validating that file and reports the read result after it completes.
-It does not retry arbitrary read errors or change the server. The full
-flat-file journey then passed all cases and recovery controls.
-
-The current reports `bin/qualification/issue419/flatfile.json` and
-`mariadb.json` both record `passed: true`; pre-merge reports are retained in
-the `premerge/` subdirectory. Repeated test/build logs have a `merged-`
-or `build-merged-` prefix. Final socket-qualified binary SHA-256 values,
-which supersede the earlier hashes:
-
-- Flat-file: `5c2a9c1bc99ff93d2f349792a441f89034a27959b32a538b10be369e01f37aa0`.
-- MariaDB: `20f5d9040debbaedda6eb743f29d72e4fda17403dc8b52e0ccd409fa8bde50f5`.
-
-The #419-specific change still requires no schema migration; the merged quest
-migration belongs to master. Original-instance attribution remains unavailable,
-and production deployment remains outside this delivery.
+The MariaDB server build, seven castle key sequences and reset/occupancy/boundary
+controls under ASan/UBSan, key-break custody, reset timing, no-reset-zone key,
+all five shopkeeper population cases, formatting, whitespace and all 14
+documentation checks pass on the combined source. This merge pass retains the
+previous complete disposable-server gameplay qualification; it does not claim a
+new production operation or a full hosted CI run.

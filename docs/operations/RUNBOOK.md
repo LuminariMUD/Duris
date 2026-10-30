@@ -1071,6 +1071,28 @@ forced. Correct the database failure, confirm the writer's age is falling, then 
 the copyover again. Shutdown alerts carry `shutdown_cancelled=0`: shutdown went ahead,
 and the log names any save it could not write.
 
+## Quintaragon Castle reset access
+
+Zone 24 retains its ordinary mode-1 timer admission: a connected playing character
+prevents a timer reset; a linkdead body does not. After any castle reset, the seven
+consumable-key gates stay locked only when their authored carrier has the key at
+its home room. A key held elsewhere, or a surviving keyless carrier, leaves the
+corresponding gate closed but unlocked and visible. This does not restock mobs or
+change key consumption, equipment limits, or ordinary loot.
+
+When any player body remains in the castle, including a linkdead or morphed player or staff,
+the reset leaves all seven pairs and the outer entrance unlocked and visible so
+normal open/movement commands can leave the zone. This also applies to staff
+`zreset ok` and `zreset full`. It removes reset-created door obstruction, not
+monsters or terrain hazards. A later empty reset with stocked sources restores
+the normal locks and secret closet. Other parties can therefore find an unlocked
+gate after a reset with an unavailable key source; this is intentional.
+
+The affected key VNUMs are 2405, 2418, 2422, 2425, 2436, 2437 and 2438. Entrance
+key 2402 retains its normal empty-zone policy, and bookcase key 2434 is unchanged.
+Copyover/world recovery retains its saved door flags until a qualifying reset;
+the rule does not migrate old snapshots or repair arbitrary manual locks.
+
 ## Restart and crash recovery
 
 The automatic recovery paths are:
