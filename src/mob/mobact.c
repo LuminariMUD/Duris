@@ -8089,6 +8089,14 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 
 		if (best_obj)
 		{
+			const uint64_t actor_id = ch->runtime_id;
+			const int pickup_room = ch->in_room;
+			const uint64_t container_uid = best_obj->obj_uid;
+			const auto pickup_can_continue = [&]()
+			{
+				ch = find_character_by_runtime_id(actor_id);
+				return ch && IS_ALIVE(ch);
+			};
 			if (IS_CONTAINER(best_obj) && (max < 0))
 			{
 				if (best_obj->type == ITEM_CORPSE)
@@ -8103,33 +8111,45 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 				     obj && (CAN_CARRY_N(ch) > IS_CARRYING_N(ch)); obj = obj2)
 				{
 					obj2 = obj->next_content;
+					const uint64_t next_uid = obj2 ? obj2->obj_uid : 0;
 					if (IS_SET(obj->extra_flags, ITEM_SECRET) ||
 					    IS_SET(obj->extra_flags, ITEM_NOSHOW) ||
 					    IS_SET(obj->extra_flags, ITEM_BURIED) ||
 					    !CAN_WEAR(obj, ITEM_TAKE))
 						continue;
-					if (obj->type == ITEM_MONEY)
-					{
-						get(ch, obj, best_obj, FALSE);
-						act("$n gets some stuff from $p.", FALSE, ch,
-						    best_obj, 0, TO_ROOM);
+					P_obj expected = obj;
+					const uint64_t expected_uid = obj->obj_uid;
+					const bool money = obj->type == ITEM_MONEY;
+					get(ch, obj, best_obj, FALSE);
+					if (!pickup_can_continue())
+						return;
+					if (ch->in_room != pickup_room || !IS_AWAKE(ch) ||
+					    IS_IMMOBILE(ch) ||
+					    find_scavenged_object(best_obj, container_uid) !=
+						    best_obj ||
+					    !OBJ_ROOM(best_obj) ||
+					    best_obj->loc.room != pickup_room)
+						goto normal;
+					obj2 = find_scavenged_object(obj2, next_uid);
+					P_obj received =
+						find_scavenged_object(expected, expected_uid);
+					if (!money && (!received || !OBJ_CARRIED_BY(received, ch)))
 						continue;
-					}
-					else
-					{
-						P_obj expected = obj;
-						const uint64_t expected_uid = obj->obj_uid;
-						get(ch, obj, best_obj, FALSE);
-						P_obj received = find_scavenged_object(
-							expected, expected_uid);
-						if (!received || !OBJ_CARRIED_BY(received, ch))
-							continue; // obj is notake, or too heavy
-						act("$n gets some stuff from $p.", FALSE, ch,
-						    best_obj, 0, TO_ROOM);
-						if (!IS_ANIMAL(ch) && !IS_DRAGON(ch) &&
-						    !IS_UNDEAD(ch))
-							CheckEqWorthUsing(ch, received);
-					}
+					act("$n gets some stuff from $p.", FALSE, ch, best_obj, 0,
+					    TO_ROOM);
+					if (!money && !IS_ANIMAL(ch) && !IS_DRAGON(ch) &&
+					    !IS_UNDEAD(ch))
+						CheckEqWorthUsing(ch, received);
+					if (!pickup_can_continue())
+						return;
+					if (ch->in_room != pickup_room || !IS_AWAKE(ch) ||
+					    IS_IMMOBILE(ch) ||
+					    find_scavenged_object(best_obj, container_uid) !=
+						    best_obj ||
+					    !OBJ_ROOM(best_obj) ||
+					    best_obj->loc.room != pickup_room)
+						goto normal;
+					obj2 = find_scavenged_object(obj2, next_uid);
 				}
 				goto normal;
 			}
@@ -8146,9 +8166,15 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 				P_obj expected = best_obj;
 				const uint64_t expected_uid = best_obj->obj_uid;
 				get(ch, best_obj, NULL, TRUE);
+				if (!pickup_can_continue())
+					return;
+				if (ch->in_room != pickup_room || !IS_AWAKE(ch) || IS_IMMOBILE(ch))
+					goto normal;
 				P_obj received = find_scavenged_object(expected, expected_uid);
 				if (received && OBJ_CARRIED_BY(received, ch))
 					CheckEqWorthUsing(ch, received);
+				if (!pickup_can_continue())
+					return;
 				goto normal;
 			}
 		}
