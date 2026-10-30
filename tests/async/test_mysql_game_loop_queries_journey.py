@@ -103,13 +103,13 @@ LOCKER_COMMANDS = (
     ('grant list', 'No one has access to your locker but you.'),
     ('grant add Nobody', 'Unknown character or account: nobody'),
     ('load obj 677', 'Pos: standing >'),
-    ('put mace vault', 'Open that private chest first'),
+    ('put mace vault', 'open that private chest first'),
     ('open vault', "You open the 'vault' chest."),
     ('put mace vault', 'Ok.'),
     ('eq sort custom weapon armor', 'Pos: standing >'),
     ('look in vault', 'mace'),
     ('close', 'You close the chest.'),
-    ('look in vault', 'Open that private chest first'),
+    ('look in vault', 'open that private chest first'),
     ('load obj 677', 'Pos: standing >'),
     ('drop mace', 'Pos: standing >'),
 )
@@ -219,7 +219,7 @@ def locker(client, sql, runtime, output_path):
         time.sleep(1)
     run_commands(client, (
         ('eq chest list', 'vault'),
-        ('look in vault', 'Open that private chest first'),
+        ('look in vault', 'open that private chest first'),
         ('open vault', "You open the 'vault' chest."),
         ('look in vault', 'mace'),
         ('get mace vault', 'You get'),

@@ -44,6 +44,7 @@
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -3565,8 +3566,8 @@ static void forget_hostname(int descriptor);
 
 void close_socket(struct descriptor_data *d)
 {
-	locker_invalidate_access(d->character);
-	locker_invalidate_access(d->original);
+	locker_invalidate_chest_access(d->character);
+	locker_invalidate_chest_access(d->original);
 
 	struct descriptor_data *tmp;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;

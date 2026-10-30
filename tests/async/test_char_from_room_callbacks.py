@@ -288,6 +288,7 @@ static int snapshot_calls, terminal_saves, deferred_saves, locker_releases;
 static char_data locker_character;
 struct StorageLocker {
     P_char user, character;
+    void InvalidateChestAccess() {}
     P_char GetLockerUser() { return user; }
     P_char GetLockerChar() { return character; }
     int GetLockerId() { return 1; }

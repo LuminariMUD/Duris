@@ -1,5 +1,6 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include "net/comm.h"
 #include "magic/spells.h"
 #include "player/player_snapshot.h"

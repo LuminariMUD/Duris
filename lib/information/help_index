@@ -10247,6 +10247,8 @@ This will place all items that have the max_wis stat in 2.chest.
 
 If you need the complete list of sort types, use "equip sort help" while
 inside the locker. The same information is available with "help equip sort".
+For named private chests, their permissions and storage availability, see
+"help chest".
 ===========================================================================
 See also: BANKS, GRANT
 

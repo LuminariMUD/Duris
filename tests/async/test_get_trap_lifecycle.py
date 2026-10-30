@@ -13,6 +13,7 @@ def take(signature):
 prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include "core/utility.h"
 #include "net/comm.h"
 #include "net/gmcp.h"

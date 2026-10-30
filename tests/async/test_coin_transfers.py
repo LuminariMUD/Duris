@@ -13,10 +13,11 @@ HARNESS = r'''
 #include "currency_test_support.h"
 #include "net/comm.h"
 #include "classes/necromancy.h"
+#include "item/storage_lockers.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-bool locker_container_access(P_char, P_obj) { return true; }
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
 void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
 const char *coins_to_string(int,int,int,int,const char *) { return "coins"; }
 

@@ -2055,7 +2055,7 @@ void show_string(struct descriptor_data *, const char *);
 
 /* storage_lockers.c */
 
-bool locker_container_access(P_char actor, P_obj container);
+bool locker_container_access_allowed(P_char actor, P_obj container);
 void locker_record_movement(P_char actor, P_obj container, P_obj item, bool deposit,
 			    const char *description = NULL);
 bool locker_leave_for_extraction(P_char ch);

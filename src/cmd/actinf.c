@@ -2849,8 +2849,12 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			// Found something
 			if (bits != 0)
 			{
-				if (!locker_container_access(ch, tmp_object))
+				if (!locker_container_access_allowed(ch, tmp_object))
+				{
+					send_to_char("You must open that private chest first.\n",
+						     ch);
 					return;
+				}
 				short_desc =
 					show_obj_to_char(tmp_object, ch, LISTOBJ_SHORTDESC, FALSE);
 				CAP(short_desc);
@@ -3730,6 +3734,12 @@ void do_examine(P_char ch, char *argument, int /*cmd*/)
 			     FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP | FIND_CHAR_ROOM |
 				     FIND_NO_TRACKS,
 			     ch, &tmp_char, &tmp_object);
+	}
+
+	if (tmp_object && !locker_container_access_allowed(ch, tmp_object))
+	{
+		send_to_char("You must open that private chest first.\n", ch);
+		return;
 	}
 
 	if (tmp_object && chaos_material_pouch_is_active(tmp_object))

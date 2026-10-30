@@ -17,6 +17,7 @@ import tempfile
 import time
 
 import test_flatfile_combat_journey as journey
+from test_flight_network_journey import command
 
 ROOT = journey.ROOT
 
@@ -139,6 +140,13 @@ def run(binary: pathlib.Path) -> None:
             client = journey.reconnect_character(plain_port)
             # First named owner entry must create the same locker as default entry.
             enter_locker(client, 0, journey.CHARACTER)
+            room_text = command(client, "look room")
+            assert "require SQL storage" in room_text, room_text
+            for text in ("eq chest list", "eq chest create vault fixture-secret",
+                         "eq chest password vault none", "eq chest delete vault", "eq log"):
+                assert "require SQL storage" in command(client, text), text
+            # Ordinary door opening and public storage must still work on this backend.
+            assert "require SQL storage" not in command(client, "open door")
             client.send("drop banana")
             client.expect("You drop a banana.", timeout=10)
             leave(client)

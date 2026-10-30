@@ -361,7 +361,7 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 			std::min(money->value[index], std::max(options.amount_limit[index], 0));
 		emptied = emptied && got[index] == money->value[index];
 	}
-	if (!locker_container_access(actor, container) || !credit_coins(actor, got))
+	if (!locker_container_access_allowed(actor, container) || !credit_coins(actor, got))
 		return false;
 	for (size_t index = 0; index < got.size(); ++index)
 		money->value[index] -= got[index];
@@ -402,7 +402,7 @@ static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj 
 	    actor->in_room != room || !IS_AWAKE(actor) || IS_IMMOBILE(actor))
 		return false;
 	return !container || (find_live_item_uid(container_uid) == container &&
-			      locker_container_access(actor, container) &&
+			      locker_container_access_allowed(actor, container) &&
 			      (OBJ_CARRIED_BY(container, actor) || OBJ_WORN_BY(container, actor) ||
 			       (OBJ_ROOM(container) && container->loc.room == room)));
 }
@@ -464,17 +464,16 @@ static void report_coin_get_rejection(P_char actor, P_obj container)
 /** Pick up one object. */
 void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 {
-	if (s_obj && !locker_container_access(ch, s_obj))
-	{
-		item_get_rejected = true;
-		return;
-	}
-
 	int got_p = 0, got_g = 0, got_s = 0, got_c = 0, notall = 0;
 	char Gbuf3[MAX_STRING_LENGTH];
 	P_obj corpse = NULL;
 	bool slip = FALSE;
 	item_get_rejected = true;
+	if (ch && s_obj && !locker_container_access_allowed(ch, s_obj))
+	{
+		send_to_char("You must open that private chest first.\r\n", ch);
+		return;
+	}
 	if (item_get_ack_publication)
 	{
 		if (s_obj && s_obj->type == ITEM_CORPSE && IS_SET(s_obj->value[1], PC_CORPSE))
@@ -594,7 +593,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 		showit = TRUE;
 
 publish_after_ack:
-	if (s_obj && !locker_container_access(ch, s_obj))
+	if (s_obj && !locker_container_access_allowed(ch, s_obj))
 		return;
 
 	if ((o_obj->type == ITEM_MONEY) && ((o_obj->value[0] > 0) || (o_obj->value[1] > 0) ||
@@ -1109,9 +1108,12 @@ static bool do_get_container_preflight(P_char ch, P_obj s_obj, bool &corpse_flag
 				       bool check_front_line, const char *arg1, const char *arg2,
 				       bool &fail)
 {
-	if (!locker_container_access(ch, s_obj))
+	if (!locker_container_access_allowed(ch, s_obj))
+	{
+		send_to_char("You must open that private chest first.\r\n", ch);
+		fail = true;
 		return FALSE;
-
+	}
 	if ((GET_ITEM_TYPE(s_obj) != ITEM_CORPSE) && IS_SET(s_obj->value[1], CONT_CLOSED))
 	{
 		GETDBG_LOG(
@@ -2673,13 +2675,13 @@ void refund_committed_coin_debit(P_char actor,
 bool coin_put_destination_available(P_char actor, P_obj container)
 {
 	if (!actor || !container || !container->obj_uid ||
-	    !locker_container_access(actor, container) ||
 	    (!OBJ_CARRIED_BY(container, actor) && !OBJ_WORN_BY(container, actor) &&
 	     (!OBJ_ROOM(container) || container->loc.room != actor->in_room)))
 		return false;
 	const int type = GET_ITEM_TYPE(container);
 	return (type == ITEM_CONTAINER || type == ITEM_STORAGE || type == ITEM_CORPSE) &&
-	       !IS_SET(container->value[1], CONT_CLOSED);
+	       !IS_SET(container->value[1], CONT_CLOSED) &&
+	       locker_container_access_allowed(actor, container);
 }
 
 void announce_coin_give(P_char sender, P_char recipient, const coin_give_credit_context &context)
@@ -3492,12 +3494,13 @@ void report_bulk_put(P_char actor, const bulk_put_state &state, P_obj container)
 
 bool bulk_put_destination_available(P_char actor, P_obj container)
 {
-	if (!actor || !container || !locker_container_access(actor, container) ||
+	if (!actor || !container ||
 	    (!OBJ_CARRIED_BY(container, actor) && !OBJ_WORN_BY(container, actor) &&
 	     (!OBJ_ROOM(container) || container->loc.room != actor->in_room)))
 		return false;
 	return item_command_container_is_valid(container) &&
-	       !IS_SET(container->value[1], CONT_CLOSED);
+	       !IS_SET(container->value[1], CONT_CLOSED) &&
+	       locker_container_access_allowed(actor, container);
 }
 
 /**
@@ -3843,10 +3846,15 @@ static bool reject_put_trap(P_char actor, P_obj item, bool *trap_rejected)
 bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 {
 	char Gbuf3[MAX_STRING_LENGTH];
-	if (!locker_container_access(ch, s_obj))
-		return FALSE;
 	if (trap_rejected)
 		*trap_rejected = false;
+
+	if (!locker_container_access_allowed(ch, s_obj))
+	{
+		if (showit)
+			send_to_char("You must open that private chest first.\r\n", ch);
+		return FALSE;
+	}
 
 	if (IS_ARTIFACT(o_obj) && !IS_TRUSTED(ch))
 	{
@@ -3892,7 +3900,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 				if (s_obj->value[0] > s_obj->value[3])
 				{
 					if (reject_put_trap(ch, o_obj, trap_rejected) ||
-					    !locker_container_access(ch, s_obj))
+					    !locker_container_access_allowed(ch, s_obj))
 						return FALSE;
 					if (showit)
 						send_to_char("Ok.\r\n", ch);
@@ -4003,7 +4011,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 					{
 #endif
 						if (reject_put_trap(ch, o_obj, trap_rejected) ||
-						    !locker_container_access(ch, s_obj))
+						    !locker_container_access_allowed(ch, s_obj))
 							return FALSE;
 						if (showit)
 							send_to_char("Ok.\r\n", ch);
@@ -7775,8 +7783,8 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 			act("$P will not fit in $p.", FALSE, actor, target, content, TO_CHAR);
 			break;
 		}
-		if (!locker_container_access(actor, source) ||
-		    !locker_container_access(actor, target))
+		if (!locker_container_access_allowed(actor, source) ||
+		    !locker_container_access_allowed(actor, target))
 			break;
 		obj_from_obj(content);
 		obj_to_obj(content, target);

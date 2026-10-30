@@ -261,6 +261,41 @@ int main(int argc, char **argv)
 			access[0].owner_name == "account.user.1.locker" &&
 			access[0].visitor_name == "accountguest",
 		"locker catalog was not canonical or did not round trip nested state");
+	// Public saves must retain every unsupported private record and nested item byte.
+	const fs::path preservation_root = root / "private-preservation";
+	prepare_root(preservation_root);
+	auto preserved = player_locker();
+	preserved.chests[0].items.push_back(item(103, 0, 303));
+	require(flatfile_locker_establish(preservation_root.string(), { preserved }, {}, &error) ==
+			flatfile_locker_result::ok,
+		"private preservation fixture could not be established");
+	for (uint64_t uid : { 150, 151 })
+	{
+		flatfile_locker_save save;
+		save.locker_name = "hero.locker";
+		save.items = { item(uid, PLAYER_SNAPSHOT_NO_PARENT, 304) };
+		flatfile_authority_lock lock;
+		require(lock.acquire(preservation_root.string(), &error),
+			"could not lock private preservation fixture");
+		flatfile_authority_operation operation;
+		require(flatfile_locker_prepare_public_save(preservation_root.string(), lock, save,
+							    { item_owner_type::locker, 2, 11 },
+							    save.items, &operation,
+							    &error) == flatfile_locker_result::ok,
+			"public save could not be prepared beside private data");
+		require(flatfile_authority_transaction_commit_operations(
+				preservation_root.string(), lock, { operation }, &error) ==
+				flatfile_authority_transaction_result::ok,
+			"public save could not be committed beside private data");
+		++preserved.revision;
+		++preserved.chests[1].revision;
+		preserved.chests[1].items = save.items;
+	}
+	// Establishment reloads the file and compares the entire encoded catalog,
+	// including private IDs, name, hash, revision, sort config and nested metadata.
+	require(flatfile_locker_establish(preservation_root.string(), { preserved }, {}, &error) ==
+			flatfile_locker_result::already_exists,
+		"public save changed stored private chest data or its nested graph");
 	auto conflicting = player;
 	conflicting.revision++;
 	require(flatfile_locker_establish(root.string(), { guild, conflicting, account },

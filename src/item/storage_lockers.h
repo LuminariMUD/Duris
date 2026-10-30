@@ -15,7 +15,6 @@
 #include <string.h>
 #include <string>
 #include <memory>
-#include <cstdint>
 #include <vector>
 #include "item/item_transfer_command.h"
 
@@ -23,8 +22,10 @@
 // corpses are rejected by the unsorted chest so they remain visible on the
 // locker room floor rather than being hidden inside a sorting chest.
 bool locker_eq_type_fits_for_storage(::byte eqType, P_obj obj);
-// Includes containers nested inside a private chest. Ordinary containers pass.
-void locker_invalidate_access(P_char actor);
+// Ordinary containers pass; private contents require this visit's authenticated opener.
+bool locker_container_access_allowed(P_char actor, P_obj container);
+bool locker_object_is_private_chest(P_obj object);
+void locker_invalidate_chest_access(P_char actor);
 void locker_chest_changes_pulse(void);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
@@ -56,7 +57,19 @@ class StorageLocker
 	P_char GetLockerChar(void) { return m_chLocker; };
 	P_char GetLockerUser(void) { return m_chUser; };
 	bool LockerUserIsOwner(void) const { return m_userIsOwner; }
+	bool LockerUserMatches(P_char ch) const
+	{
+		return ch && ch == m_chUser && ch->runtime_id == m_userRuntimeId;
+	}
 
+	bool ChestWritePending(void) const { return m_chestWritePending; }
+	void SetChestWritePending(bool pending)
+	{
+		m_chestWritePending = pending;
+		InvalidateChestAccess();
+	}
+	uint64_t VisitId(void) const { return m_chLocker ? m_chLocker->runtime_id : 0; }
+	bool PrivateContentsDurable(void);
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
 	void SortIValues(void);
@@ -66,31 +79,19 @@ class StorageLocker
 	int m_itemCount;
 
 	int GetCurrentChestId(void) { return m_currentChestId; };
-	void OpenChest(P_char actor, int id)
+	void SetCurrentChestId(int id, bool manager = false)
 	{
 		m_currentChestId = id;
-		m_openActor = actor->runtime_id;
-		++m_accessEpoch;
-	}
-	void CloseChest(void)
+		m_currentChestManager = manager;
+	};
+	bool CurrentChestOpenedAsManager(void) const { return m_currentChestManager; }
+	uint64_t GetChestAccessGeneration(void) const { return m_chestAccessGeneration; }
+	void InvalidateChestAccess(void)
 	{
 		m_currentChestId = 0;
-		m_openActor = 0;
-		++m_accessEpoch;
+		m_currentChestManager = false;
+		++m_chestAccessGeneration;
 	}
-	bool ChestIsOpen(P_char actor, int id) const
-	{
-		return actor && actor->runtime_id == m_openActor && m_currentChestId == id;
-	}
-	uint64_t VisitId(void) const { return m_visitId; }
-	uint64_t AccessEpoch(void) const { return m_accessEpoch; }
-	bool ChestWritePending(void) const { return m_chestWritePending; }
-	void SetChestWritePending(bool pending)
-	{
-		m_chestWritePending = pending;
-		CloseChest();
-	}
-	bool PrivateContentsDurable(void);
 	int GetLockerId(void) { return m_lockerId; };
 	void SetLockerId(int id) { m_lockerId = id; };
 	int GetPublicChestId(void) { return m_publicChestId; };
@@ -109,16 +110,16 @@ class StorageLocker
 	int m_realRoom;
 	P_char m_chLocker;
 	P_char m_chUser;
+	uint64_t m_userRuntimeId;
 	// The authenticated entry verdict outlives the user's descriptor.
 	bool m_userIsOwner;
 	//  int m_itemCount;
 	bool m_bIValue;
 	int m_currentChestId;
+	bool m_currentChestManager;
+	uint64_t m_chestAccessGeneration;
 	int m_lockerId;
 	int m_publicChestId;
-	uint64_t m_visitId = 0;
-	uint64_t m_openActor = 0;
-	uint64_t m_accessEpoch = 0;
 	bool m_chestWritePending = false;
 };
 
@@ -341,7 +342,6 @@ class PrivateChest : public LockerChest
 	// Memory holds the chest's password: empty for none.
 	const std::string &GetPasswordHash(void) { return m_passwordHash; };
 	void SetPasswordHash(const char *hash) { m_passwordHash = hash ? hash : ""; };
-	// Admission suffices mid-stay; departure requires the current capture's ACK.
 	bool SaveContents(int locker_id, bool durable);
 
     protected:

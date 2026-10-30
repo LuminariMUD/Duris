@@ -29,7 +29,12 @@ COMMIT response, extracted purchaser, duplicate name, limit and stale revision.
 Repeat with `TEST_DB_IMAGE=mysql:8.0` for MySQL. Currency preparation/publication
 is a controlled boundary here; `test_currency_in_memory.py` executes that module.
 The existing game-loop-query journey exercises the actual locker command path,
-custom sorting and saved item/history routing through leave and re-entry.
+custom sorting and saved item/history routing through leave and re-entry. The
+journey injects a terminal private-save rejection on disposable MariaDB/MySQL,
+verifies the actor and contents remain live, then removes the fault and proves
+retry/re-entry. It also catches a movement visibility pass ignoring that veto.
+`test_private_chest_lifecycle.py` carries the 25 access/role/backend and durable
+legacy-upgrade cases from the consolidated #502/#503 stack.
 
 
 ## Combat callbacks and terminal locker departure (#430)

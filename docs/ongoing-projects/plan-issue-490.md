@@ -1,6 +1,6 @@
 # Issue #490: private locker chests
 
-Status: implemented; final local qualification in progress. Updated 2026-10-30.
+Status: implemented; local qualification complete; ready for review. Updated 2026-10-30.
 Issue: [#490](https://github.com/LuminariMUD/Duris/issues/490).
 PR: [#497](https://github.com/LuminariMUD/Duris/pull/497).
 Branch: `branch/issue-490-private-chests`, based on current `master`.
@@ -57,6 +57,18 @@ The maintained chest help now documents the actual command/session contract.
 
 The shared `plan.md` is restored from master; this issue's handoff is independent
 of unrelated work. Original planning and capacity qualification remain in Git.
+The published access stack (#502 -> #503, head `574b090e4`) is integrated into
+#497, using its one occupant/credential-generation implementation and additional
+furniture, role-revocation, ordinary-door and backend checks. Its original tests
+are carried forward, with legacy-upgrade receipts and departure retry coverage.
+Published ancestry is retained so the clean durability continuation can advance
+without rewriting or dropping the existing stack.
+
+Files: `storage_lockers.c/.h` own registry, sessions and receipts; `actobj.c`,
+`actinf.c` and `item_command_policy.c` enforce inspection/movement; the purchase
+module and currency module commit/publish payment. The movement visibility pass
+now respects a vetoed departure. The dispatcher, migration/contracts, maintained
+help and focused tests supply the integration and proof.
 
 ## Migration and proof
 
@@ -80,11 +92,31 @@ Focused executable proof:
   production atomic purchase/controller with rollback, queue refusal, lost reply,
   offline completion, duplicate/limit/stale controls and bank change. Also run with
   `TEST_DB_IMAGE=mysql:8.0`.
-- Existing `test_mysql_game_loop_queries_journey.py`: real server commands,
-  private access, custom sorting, item history, leave and re-entry, with no SQL
-  queries on the game loop.
+- `test_mysql_game_loop_queries_journey.py` passes on disposable MariaDB 10.11
+  and MySQL 8.0: actual access, custom sorting, history and re-entry, plus a private
+  INSERT trigger that forces a terminal save failure. The live actor/contents
+  remain usable; removing the trigger permits a durable retry and re-entry.
+  It reports zero game-loop SQL sites and no duplicate room insertion.
+- `test_private_chest_lifecycle.py`: all 25 ASan/UBSan cases pass, including the
+  carried access/role/visit/furniture/backend cases and acknowledged, failed and
+  superseded legacy rehash completions.
+- `test_mysql_locker_grant_journey.py`: all 13 real owner/guest/guild groups pass,
+  including ordinary doors, idle disconnect, cold restart and stable item UIDs.
 
-Final build, regression, database journey, documentation, formatting and static
-analysis results will be recorded after the current local runs finish. Hosted CI
-completion is not a gate. The issue remains open until final qualification is
-recorded; the PR remains open for merge, with no production operation authorized.
+Final local results:
+
+- Development and production MariaDB builds pass; the client-free artifact build
+  and flat-file locker/public restart journey pass for the integrated sources.
+- Root `make test-all -j8 TEST_JOBS=8` executed 898 tests: 897 passed initially;
+  the timing-bound PostHog test passed an isolated rerun without relaxing its
+  250ms assertion. Following access integration, all 35 affected regression files
+  pass, including the 25 session cases and the flat-file locker journey.
+- `make test-db -j4 TEST_DB_JOBS=8` executed 98 database legs: 97 passed initially.
+  Its game-loop journey exposed the movement visibility pass ignoring a veto;
+  the fix is verified by the strengthened MariaDB and MySQL reruns above. The
+  other database results are retained; this was not a production operation.
+- `make test-native`, all 14 documentation contracts, runtime/migration contract
+  validation, changed-line formatting, Clang-Tidy 22 and whitespace checks pass.
+
+Hosted CI completion is not a gate. The issue and #497 remain open for owner
+review/merge. No release tag or deployment is part of this change.
