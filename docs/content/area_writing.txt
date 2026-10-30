@@ -3233,115 +3233,133 @@ X
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
+Current reference: docs/reference/QUEST_SYSTEMS.md, "Static NPC quests".
+The file language below describes src/world/quest.c as of 2026-10-30.
+
 Format for quest mobs:
 ----------------------
 
-Each qst mob starts with '#' and the mob id.  Follow
-by any number of M or Q sub-format.  Each mob ends with
-'S'.  '#~' to end the whole qst file.
+Each giver starts with '#' and a mobile VNUM, followed by any number of M/MA
+and Q/QA records. End that giver with S. Per-area sources are concatenated
+according to areas/AREA. Its final areas/qst/end.qst source supplies $~ for
+the combined world.qst terminator. Do not put #~ at the end of a quest file;
+that is not a terminator recognized by the runtime reader.
 
----------------BEGIN QST FILE------------------------
-#<mob 1 number>
-[M or Q-format and can repeat any number of times in any order]
-[M or Q-format and can repeat any number of times in any order]
-      .
-      .
-      .
-[M or Q-format and can repeat any number of times in any order]
+---------------BEGIN PER-AREA FRAGMENT----------------
+#<mobile VNUM>
+M
+<keyword list>~
+<response>~
+Q
+<completion response>~
+G I <required object VNUM>
+R I <reward object VNUM>
 S
-#<mob 2 number>
-[M or Q-format and can repeat any number of times in any order]
-[M or Q-format and can repeat any number of times in any order]
-      .
-      .
-      .
-[M or Q-format and can repeat any number of times in any order]
-S
-#<mob 3 number>
-      .
-      .
-      .
-#<mob N number>
-[M or Q-format and can repeat any number of times in any order]
-S
-#~
------------------END QST FILE--------------------
+-----------------END PER-AREA FRAGMENT----------------
 
+M-format:
+---------
+M
+<keyword list>~
+<response>~
 
-/----------------------------------------------------------------
-| M-format:
-| --------
-| M
-  <list of key words to trigger this message>~
-  <message>
-  ~
+MA has the same format and sends the response to the room. M sends it to
+only the interacting player. For example:
 
-For example:
-  M
-  home scroll
-  The guy says, 'Yes, I wan't to find my way home.
-  Do you have a spare scroll to give me?'
-  ~
+M
+home scroll~
+$n says, 'Yes, I want to find my way home.
+Do you have a spare scroll to give me?'~
 
-Explanation:
-When the player tell/ask this mob and the message contains
-either 'home' or 'scroll', the mob will reply to player
-with the above message.
+The player can ask or tell the giver "home" or "scroll". Matching uses
+isname(): the entire supplied message must match a keyword or contiguous
+phrase in the keyword list, case-insensitively. A longer sentence that merely
+contains one of those words does not necessarily match. Both characters
+must be visible to one another for mortals; the giver must be awake and not
+fighting, and neither party can have the conjured-pet tag.
 
-/----------------------------------------------------------------
-| Q-format:
-| --------
-| Q
-  <message>
-  ~
-  [G or R-format and can repeat any number of times in any order]
-  [D-format and can only appear once for each Q-format... if
-   more than one D-format, then the last D-format is used]
+Q-format:
+---------
+Q
+<completion response>~
+[G requirement records]
+[R reward records]
+[optional D disappearance record]
 
-For example:
-  Q
-  He says, 'Thank you for bringing this sword to me and giving me
-  1000 gold coins.  For your generosity, I will teach you the secret
-  of the spell 'resurrection'.  Here's a map to the inner dungeon.
-  You may find it useful if you do decide to explore further into
-  the dungeon.'
-  ~
-  R S <resurrection id>
-  G I <sword id>
-  G C 1000
-  R I <map id>
-  D
-  Then he waves good-bye to you and disappears.
-  ~
-/----------------------------------------------------------------
-  G-format:
-  --------
-  G I <item number>
-  G C <number of coins>
-  G T <item type>
+QA sends completion/disappearance responses to the room; Q addresses the
+interacting player. G, R, and D belong to the most recent Q/QA and must not
+precede it. Later messages and completion rules in a file are tested first.
 
-/----------------------------------------------------------------
-  R-format:
-  --------
-  R C <coin number>
-  R I <item number>
-  R S <skill/spell number>
-  R E <experience pt value>
+For example (replace all placeholder IDs with valid prototypes/skill IDs):
 
-/----------------------------------------------------------------
-  D-format:
-  --------
-  D
-  <message>
-  ~
+Q
+$n says, 'Thank you for the sword and 1000 copper worth of coins.
+I will teach you resurrection and give you this map.'~
+G I <sword VNUM>
+G C 1000
+R S <resurrection skill ID>
+R I <map VNUM>
+D
+$n waves goodbye and disappears.~
 
------------------------------------------------------------------
-Note: If there is more than 1 G-format defined for the Q-format, then
-    qst mob must have all the G-format items before it will release
-    the quest message to the player.  For example, a mob quest is defined
-    with 'G I 1234' and 'G C 5678'.  Then quest is only consider complete,
-    if the mob has item #1234 and more than 5678 gold coins.
-------------------------------------------------------------------
+G-format: requirements on the NPC's carried inventory and wallet
+--------------------------------------------------------------
+G I <object VNUM>
+G T <item type number>
+G C <value in copper>
+
+The NPC must meet every requirement. Identical item requirements need that
+many separate copies. Coin requirements use the server's base coin value:
+1000 means 1000 copper, not 1000 gold pieces. A wallet value equal to the
+requirement is sufficient. Use one combined G C line per rule, and keep G I
+and G T goals disjoint: overlapping prechecks and consumption are not atomic.
+
+A give calls do_give() before checking goals. Successful object and coin
+transfers reach the NPC in memory before that check: currency completion runs
+before its submit call returns and credits NPC coins directly. A rejected
+give does not prevent the subsequent goal check from finding earlier offerings.
+Earlier offerings already held by the NPC can count. They are not reserved
+per player. The first successful rule consumes requirements, attempts tracking
+credit, then applies rewards and optional disappearance. An empty goal list
+therefore passes on any give that reaches the completion check.
+
+R-format: rewards
+-----------------
+R I <object VNUM>
+R C <value in copper>
+R S <skill/spell number>
+R E <experience value>
+
+Items are attempted through the creation-grant service. Player delivery needs
+a free carrying slot and resulting carried weight strictly below the limit;
+otherwise the item goes to the room. Missing objects, artifact checks,
+or busy grant services can prevent an item reward. Money and skill rewards
+address the completer; skill teaching requires the applicable skill level and
+initializes learned to 1 only if not learned. XP also reaches PC group members
+in the room; the completer and group-member caps currently differ. See the
+current quest reference for those caps and the reward failure boundaries.
+Tracking, offering consumption, and rewards are separate operations; a failed
+reward does not automatically return consumed items or money.
+
+D-format: remove the giver after this completion
+----------------------------------------------
+D
+<disappearance response>~
+
+D belongs to the preceding Q/QA. If repeated, the last D supplies its message.
+The implementation extracts the giver and its remaining equipment/inventory;
+it does not simply move the NPC to the void. Normal world resets determine
+whether another giver appears later.
+
+Ambient messages can use the special keyword qc_action <number>, normally
+with MA. Mobile updates roll a chance to emit them; this is not an exact
+repeating timer and does not define a completion.
+
+Staff can inspect loaded content with qview <mobile-vnum>, qref <object-vnum>,
+qinfo <object-vnum>, and qlist [<mobile-vnum> | <from> <to>]. Bare qlist uses
+the current zone's prototype range; hlqlist is its alias. Edit areas/qst
+sources, then use the normal area generation procedure, rather than editing
+combined world.qst output.
 
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
             CREATION STANDARDS AND GUIDELINES FOR THE QUEST FILE

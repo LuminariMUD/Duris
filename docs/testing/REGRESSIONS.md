@@ -1273,7 +1273,9 @@ covers the real naming function, not the live reveal-true-name spell command.
 belongs to the zone with the highest first vnum (zone number × 100) at or below its giver's
 vnum, which is the area its giver comes from: an area's mobs run past its first hundred
 vnums and past its top room. `zone_for_giver_vnum()` and `scripts/zone_story_quest_catalog.py`
-use the same rule, so the checked-in catalog snapshot matches the runtime catalog. The
+use the same zone rule. Snapshot freshness is separately checked against the
+current area sources using the comparison in
+[the catalog reference](../reference/ZONE_STORY_QUEST_CATALOG.md). The
 heavens givers (zone 0) stay on zone 1, because the catalog needs a positive zone. Zones
 with equal counts are ordered by the name a player reads: color codes are skipped as
 `strip_ansi()` skips them, and case is ignored. `achievements zone <area>` finds an area by
@@ -1290,7 +1292,7 @@ The production harness maps givers past a zone's first hundred vnums and past it
 The catalog test checks a Winterhaven giver and a Tower of Darkness giver in the real world
 files. The feature harness ties seven zones with real colored names. The lookup test runs
 the command's lookup with the real `is_abbrev()`, `strip_ansi()` and `skip_spaces()` on the
-text `one_argument()` hands it. No test completes a quest on a running server.
+text `one_argument()` hands it. These four tests do not complete a quest on a running server.
 
 ## Addresses kept 30 days after their last use
 
@@ -2057,8 +2059,8 @@ python3 tests/async/test_world_quest_xp_feedback.py
 
 The test compiles `gain_exp()`, `display_gain()`, `quest_kill()` and `quest_full_reward()`
 from the source on both backends and checks the line for kills, turn-ins, every cap and
-exit that credits nothing, and an immortal, whose staff log it reads. No test turns in a
-quest on a running server.
+exit that credits nothing, and an immortal, whose staff log it reads. This focused
+test does not turn in a quest on a running server; separate world-quest journeys do.
 
 ## Random drop message for a pet's kill
 
