@@ -22,6 +22,7 @@ functions = [
     ("innates.c", "static int innate_unlock_level("),
     ("innates.c", "bool has_innate("),
     ("innates.c", "void assign_innates("),
+    ("utility.c", "bool ac_can_see_from("),
     ("utility.c", "bool ac_can_see("),
     ("affects.c", "void affect_modify("),
     ("affects.c", "struct affected_type *affect_to_char("),

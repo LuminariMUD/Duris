@@ -114,7 +114,8 @@ int main(int argc, char **argv)
     for (int attempt = 0; attempt < 100; ++attempt)
     {
         health = redis_donation_worker_health_copy();
-        if (health.received >= 84)
+        // Receipt precedes validation; wait until the final payload is processed.
+        if (health.validated + health.replayed >= 84)
             break;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
