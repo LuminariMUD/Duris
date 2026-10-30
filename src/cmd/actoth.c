@@ -2144,7 +2144,7 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	    queued == player_save_pipeline_result::coalesced)
 	{
 		// The caller returns to the account menu before detaching the character.
-		if (!sync_account_character_projection(ch, room, TRUE))
+		if (!sync_account_character_projection(ch, room, FALSE))
 			persistence_alert(AVATAR, "account", "redacted", "none", "none",
 					  "write_failed",
 					  "terminal character projection save failed");
@@ -2156,6 +2156,10 @@ bool persistence_save_character_terminal(P_char ch, int type)
 		persistence_alert(AVATAR, "player_save", "terminal", "none", "none", "queue_failed",
 				  "pid=%d intent=%d outcome=%u", GET_PID(ch), type,
 				  (unsigned)queued);
+	// Even a rejected character snapshot must not turn a departure into a side-switch bypass.
+	if (!save_account_character_departure(ch))
+		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
+				  "departure account save failed");
 	return true;
 }
 

@@ -1,391 +1,380 @@
-# Issue #478: keep character-selection level aligned after death
+# Issue #420: preserve Shambler capacity while defensive images are active
 
-Status: **implemented; focused local qualification complete; ready for review**.
-Updated 2026-10-30.
-Issue: [Duris #478](https://github.com/LuminariMUD/Duris/issues/478).
-Branch: [branch/issue-478-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-478-plan).
-Source baseline: origin/master at c9361959ceb6cb2a9004fea2c03748cef909dc3f.
-Worktree: /home/aiwithapex/projects/duris-issue-478.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
+Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
+Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
+Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
+Worktree: /home/aiwithapex/projects/duris-issue-420.
 
-The completed Shambler plan previously at this path is preserved byte-for-byte
-in [plan-issue-420.md](plan-issue-420.md). The owner subsequently authorized
-implementation, focused qualification, commit/push and a PR linked to #478.
-The existing checkout and its unrelated edits remain untouched.
+The previous plan and completed qualification record for #428 are preserved
+byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
+authorizes implementation, including the shared Reflection/Mirror Image
+exemption, local qualification, commit/push and a PR linked to #420.
+The later master integration preserves the completed bartender-quest record in
+[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
 
-## Outcome
+## Outcome and accepted balance decision
 
-After an ordinary, non-arena death, the account's character list must show the
-character's current authoritative level. At the default cutoff, a level-16 Monk
-must retain level and XP, and these observations must agree:
+At Shambler's admission boundary, exclude linked NPC images whose prototype is
+IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
+pet permits a cast, independent of whether zero, one, two, three or four images
+exist. Two or more ordinary pets still reject it. Any existing linked shambling
+mound still rejects another cast, including when it is the only ordinary pet.
 
-- the character's level and XP immediately before and after death processing;
-- the character-selection row on the existing account connection;
-- the character list after disconnecting and authenticating again;
-- the persisted player status after the terminal snapshot commits;
-- the character loaded by selecting that row, including after a server restart.
+The owner accepted this resolution of the issue's open balance question, not a
+claim that the code or existing help already establishes that rule. It is
+specific to admission to Shambler. It does not make images cease to be pets.
 
-Verify the shared server projection through both telnet text and WebSocket
-character-list JSON. Keep configured death-XP rules, respawn behavior, queued
-input disposal, account ownership/admission, and asynchronous saves intact.
-A menu projection must never become the source used to overwrite player level.
+**Shared-prototype consequence:** Reflection and Mirror Image both create
+pet-linked NPC 250. The accepted rule intentionally exempts both at this one
+boundary, including Reflection reached through its racial innate or an item.
+A Reflection-only exception that still counts otherwise identical Mirror Image
+pets would require a distinct policy and additional provenance; this plan does
+not silently introduce that distinction.
 
-## Source findings and remaining uncertainty
+Keep the explicit Titan-versus-Reflection exclusions, genuine pet caps, mound
+uniqueness, image ownership, duration, replacement and combat behavior. Ordinary
+Displacement remains an affect with no pet-capacity consequence.
 
-All source locations below refer to the baseline above. The original production
-record was not accessed. The stale-cache path identified during planning has now
-been reproduced with synthetic characters on both maintained backends.
+## Source findings, checked independently of the issue
 
-1. **Both menu protocols consume cached account state.**
-   [account.c](../../src/account/account.c), display_character_list()
-   (around lines 1785-1977), formats acct_chars.level.
-   [ws_handlers.c](../../src/net/ws_handlers.c), ws_build_character_list()
-   (around lines 2702-2735), emits that same field as JSON level.
-   A second display-only calculation would duplicate the problem.
+All paths and line numbers below refer to the baseline above.
 
-2. **A new account read and an existing session have different sources.**
-   [sql_player.c](../../src/sql/sql_player.c), sql_load_account()
-   (around lines 1508-1562), selects pd.level by joining account_characters
-   to player_data; account_from_rows() materializes it into acct_chars.
-   account_characters does not supply the level in that query.
-   Its projection repair handles ownership/mapping, not a separate stored level.
-   On flat-file, [flatfile_account_adapter.c](../../src/flatfile/flatfile_account_adapter.c)
-   serializes membership level into identity records and loads it back.
-   Therefore a MariaDB reconnect may repair an in-memory mismatch, whereas a
-   flat-file reconnect can retain a stale durable membership level.
+1. **Reflection really creates pet links.**
+   src/classes/sillusionist.c:573-704 checks for an existing Titan, replaces
+   image followers, computes BOUNDED(1, (level - 26) / 5, 4), loads mobile 250,
+   and calls setup_pet(image, ch, 3, PET_NOCASH). Effective levels 31/36/41/46
+   produce 1/2/3/4 images. Images attach to the caster even when the visual
+   target is another player; preserve that existing ownership rule.
+   src/classes/necromancy.c:236-314 creates the LNK_PET through
+   linked_affect_to_char(). count_pets() counts every such link.
 
-3. **The existing helper already supplies the needed publication behavior.**
-   sync_account_character_projection() in account.c:2550-2577 copies current
-   player level, PID, race/classes, specialization, playtime and room into its
-   account entry, with optional write_account(). write_account():3186-3217
-   persists through the selected backend and copies the account into its other
-   connected sessions. MariaDB account saves write account/mapping metadata,
-   not player_data.level. This helper already runs after normal character entry;
-   the WebSocket creation path also publishes after entry raises level 0 to 1.
-   Reuse it while the character still has its descriptor/account.
+2. **Shambler has two separate admission rules.**
+   src/magic/blispells.c:666-742 first rejects an existing linked mobile 100,
+   then rejects count_pets(ch) > 1. Its army-prevention comment supports keeping
+   the ordinary-pet cap, but does not specify how images should count.
+   Terrain then selects 1-2, 2-4 or 3-6 mounds; unsupported sectors reject the
+   cast. The top comment's 1d4+2 is not the rule for every terrain.
+   Success retains setup_pet(..., 15, PET_NOCASH | PET_NOAGGRO), death-event
+   scheduling, following and TAG_CONJURED_PET.
 
-4. **The normal death path bypasses the older projection-update location.**
-   [fight.c](../../src/combat/fight.c):2890-2928 calls
-   persistence_save_character_terminal(ch, RENT_DEATH), then extracts through
-   extract_char_after_terminal_save().
-   [actoth.c](../../src/cmd/actoth.c):2133-2155 queues the snapshot directly
-   through player_save_pipeline_request(); it does not call writeCharacter()
-   or the projection helper.
-   [handler.c](../../src/world/handler.c):4018-4068 clears queued input, sends
-   the account menu/return signal, detaches the descriptor and frees the player,
-   without updating its account-character level.
-   [files.c](../../src/core/files.c):1347-1455 still has a flat-file projection
-   refresh in writeCharacter(), but this is not the terminal helper's path.
-   The ordinary queued writeCharacter() path also returns before that block.
-   Changing only that legacy block would miss the reported workflow.
+3. **A global counting change would broaden the balance change.**
+   Other actual consumers of count_pets() are bard charm in
+   src/classes/bard.c:827, the pet shop in src/specs/specs.room.c:868, NPC
+   corpse creation in src/mob/mobact.c:1118, and NPC Shambler selection at
+   src/mob/mobact.c:10772. The last independently requires zero total pets
+   before choosing the spell. Keep all four decisions and the generic counter
+   unchanged. Direct Shambler execution uses the corrected admission rule for
+   any caster; NPC autonomous spell selection remains its current separate rule.
 
-5. **Player status has an independent persistence/load path.**
-   [player_snapshot_capture.c](../../src/player/player_snapshot_capture.c):140
-   captures GET_LEVEL(ch), alongside experience.
-   [player_snapshot_repository.c](../../src/player/player_snapshot_repository.c)
-   maps the status level to player_data.level; the
-   [load repository](../../src/player/player_load_repository.c) reads it and
-   [materializer](../../src/player/player_load_materialize.c):233-235 assigns
-   player.level from the loaded status. load_char_into_game() uses this pipeline,
-   rather than acct_chars.level, to create the playable character.
-   Thus saved/loaded level 16 with menu level 1 is consistent with a stale cache.
-   A session entering at 1, advancing to 16, and dying before another entry
-   refresh is a concrete candidate to reproduce.
+4. **The existing image constant is precise enough; the illusion helper is not.**
+   src/core/defines.h:1374 defines IMAGE_REFLECTION_VNUM.
+   src/magic/magic.c:1727-1880 shows Mirror Image calling make_mirror(), which
+   loads the same prototype and calls setup_pet().
+   src/classes/innates.c:2470 also loads mobile 250 for Project Image, but does
+   not create a pet link in that path, so it contributes nothing to either count.
+   is_illusion_char() in src/classes/sillusionist.c:1400 also identifies
+   illusion disguises. Reusing that broader predicate could exempt real pets
+   merely because they are disguised; use the NPC/prototype check instead.
 
-6. **The XP protection and input fix are present independently.**
-   [limits.c](../../src/world/limits.c):623-627 reads
-   exp.goodieDeathExpLossLevelThreshold with default 30; gain_exp() protects
-   EXP_DEATH below it. fight.c:2564-2589 guards both ordinary XP loss and the
-   Lich's forced-delevel branch with that cutoff.
-   The changes described by merged [PR #314](https://github.com/LuminariMUD/Duris/pull/314)
-   and [PR #412](https://github.com/LuminariMUD/Duris/pull/412) are therefore
-   relevant controls, not assumptions that resolve #478.
-   Retain the input flush and existing death-HP snapshot/respawn ordering.
+5. **The Reflection entry routes and both Titan exclusions already exist.**
+   src/classes/innates.c:2647-2666 dispatches the racial innate to
+   spell_reflection() after its own Titan check and cooldown handling.
+   src/classes/sillusionist.c:1871-1920 rejects Titan creation while a
+   mobile-250 image follower exists; Reflection independently rejects a linked
+   Titan. Neither restriction should move into a pet-count helper.
+   src/classes/skills.c:2217-2218 registers Shambler as an 11th-circle Scourge
+   specialization spell. A real command journey must satisfy that eligibility,
+   rather than assuming that any level-36 character can cast it.
 
-**Investigate before editing:** reproduce the 1-to-16 same-session sequence and
-record whether existing-session, immediate-reconnect and post-commit-reconnect
-results differ. Also start from an already saved level-16 login as a control.
-Do not assert that every level-16 death shows 1. If the candidate does not
-reproduce, trace the observed account refresh/write ordering before selecting a
-fix. In particular, distinguish queue acceptance from committed player status.
+6. **Displacement and help need careful interpretation.**
+   src/classes/psionics.c:1461-1483 adds an AC affect without creating followers
+   or links; the reported name does not establish a Displacement defect.
+   lib/information/help_index contains the maintained Reflection and Shambler
+   entries (around lines 13489 and 25410). Neither currently explains this
+   image-counting rule. Add concise player wording there with the fix.
+
+## Executable planning evidence
+
+A temporary probe under bin/qualification/issue420/ reused the existing
+Reflection ownership fixture and extracted the current, unmodified production
+bodies of spell_reflection(), setup_pet(), count_pets() and spell_shambler().
+It executed all 20 combinations of 0/1/2/3 ordinary pets and 0/1/2/3/4 actual
+Reflection-created images under ASan/UBSan.
+
+Observed results:
+
+- With no ordinary pets, zero or one image reaches Shambler's mound loader;
+  two, three or four images trigger the exact pet-cap rejection.
+- With one ordinary pet, zero images reaches the loader; even one image rejects.
+- With two or three ordinary pets, every image count rejects.
+- The generic count equals ordinary pets plus images throughout.
+
+The controlled mound loader intentionally returned null. This proves current
+admission behavior, not successful summons, event expiry, command reachability,
+or a booted-world reproduction. Room/link services and RNG were controlled.
+The ignored result is bin/qualification/issue420/baseline.txt; the temporary
+probe source and executable are removed after investigation. The implementation
+regression below must exercise successful mound creation, not stop at this probe.
+
+Existing baseline checks also passed:
+
+- python3 tests/async/test_reflection_image_ownership.py: 409 casts plus Titan
+  rejection under ASan/UBSan, preserving prototypes, ordinary pets, links, combat
+  redirection and private-string cleanup. Extraction/room services are fixtures.
+- python3 tests/async/test_innate_reflection.py: real innate dispatch,
+  race/level eligibility, self targeting, configurable cooldown and Titan
+  rejection. Its Reflection body is stubbed; it does not prove the combined
+  innate-to-Shambler route.
 
 ## Non-goals
 
-- No change to XP balance, the configurable cutoff, Monk abilities, race rules,
-  character creation levels, or which deaths return to the account menu.
-- No new schema/migration, duplicate SQL level column, account cache service,
-  background refresh job, general event framework, or persistence redesign.
-- No per-render database query, forced logout/relogin, frontend workaround,
-  synchronous database wait in the death handler, or revival of old retry logic.
-- No raw production character/account investigation, destructive production
-  reproduction, deployment, broad burn-in, or waiting for hosted CI.
-- No implementation of #213's broader onboarding work or reopening #314/#412.
+- No change to count_pets() or its other consumers, no generalized capacity
+  policy, optional parameter, image-origin field, new configuration or service.
+- No change to image links, charm, durations, strings, damage, replacement,
+  Mirror Image creation rules, racial unlocks/cooldowns or Titan restrictions.
+- No change to Shambler terrain yields, lifetime, ordinary-pet limit, existing
+  mound exclusion, class access or NPC autonomous spell selection.
+- No pet persistence migration, old-instance rewrite, production operation,
+  deployment, full burn-in or dependency on hosted CI.
+- Do not fold Conjurer capacity work #215, prior image-ownership work, or
+  unrelated pet/lifetime investigations into this fix.
 
-## Files and implementation sequence
+## Files and ablated implementation sequence
 
-Expected production edit: **src/cmd/actoth.c**, at the shared terminal-save
-boundary. Reuse **src/account/account.c** unchanged unless reproduction exposes
-a concrete limitation in the helper. An edit to fight.c, handler.c, a display
-renderer, or the SQL/load repositories needs evidence that the shared boundary
-cannot satisfy an acceptance item.
+Expected production edit: src/magic/blispells.c only.
+Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
+one focused command journey tests/async/test_shambler_reflection_journey.py
+(new), its resource-intensive registration in tests/run_regression_tests.py,
+lib/information/help_index, and this plan's completion record.
+Retain test_innate_reflection.py as an unchanged compatibility test unless the
+new regression exposes a necessary gap.
 
-Expected proof edit: add one focused two-backend journey,
-**tests/async/run_death_level_projection_journey.py**. The existing death-input
-runner is flat-file-only and does not inspect level or restart behavior; reuse
-its combat/client setup and keep it as an unchanged input-compatibility check.
-Reuse the existing journey clients, disposable database setup, server/world
-fixtures and player inspector rather than adding another test framework.
-Use one focused native regression for the terminal helper only if the runtime
-journey cannot exercise its failure branches deterministically.
-Register new tests in the existing runners where applicable.
-Documentation edits are this plan and the preserved #420 record.
+1. **Extend the existing native regression before changing the guard.**
+   Add the production Shambler body and generic counter to the current Reflection
+   fixture. Model mobile 100, successful materialization and observable
+   scheduling/tagging at the existing controlled service boundaries. Assert
+   returned mounds and unchanged image/ordinary-pet state, not just absence of
+   refusal text. At least image-only 2+ and one ordinary pet plus one image must
+   fail against the current source. Do not create a second harness framework.
 
-1. **Establish a failing, observable regression.**
-   Use disposable accounts and a non-hardcore Monk under the shipped cutoff.
-   Enter at level 1, raise it to 16 through existing staff/gameplay facilities
-   without relogging, and verify the live level/XP. Avoid direct database
-   mutation of a live character. Trigger a real non-arena death.
-   Request the character list on the same connection before selecting again,
-   capture the displayed numeric level, then compare saved player status,
-   loaded level/XP and a newly authenticated account list.
-   Retain a baseline failure transcript/assertion against the unmodified code.
-   Reuse run_issue213_onboarding_journey.py for its two-backend environment,
-   staff setup, state inspection and graceful-restart patterns; do not run or
-   copy its entire unrelated onboarding campaign.
+2. **Count at the existing Shambler boundary.**
+   In its existing linked-pet traversal, retain the mound rejection and tally
+   only pets that are not NPCs of IMAGE_REFLECTION_VNUM. Use the resulting
+   local count for the existing > 1 guard. Preserve rejection precedence and
+   the terrain/summoning body. Add a short comment explaining this admission
+   policy. No new production helper or header declaration is necessary.
+   Keep all non-image pets counted; do not use flags such as PET_NOCASH,
+   temporary duration, charm status, or the broad illusion predicate.
 
-2. **Publish through the existing terminal-save path.**
-   Proposed minimal change: after the terminal snapshot is accepted/coalesced,
-   call sync_account_character_projection(ch, room, TRUE) while descriptor
-   ownership is still intact. Reuse the calculated save-room vnum, current
-   post-death level and existing account fanout/persistence. This also keeps
-   quit/rent callers of the shared boundary consistent without separate patches.
-   Account writes do not write MariaDB player status; flat-file needs the
-   durable membership update for reconnect. Preserve the existing return and
-   extraction contract: a terminal save queues and the caller leaves.
-   Treat projection write failure with the existing bounded persistence-alert
-   pattern; do not claim a successful player commit from the helper's result.
-   On queue/capture failure, preserve existing diagnostics and departure
-   semantics; do not persist a projection as evidence that player status saved.
-   Recheck this placement against the reproduction before committing it.
+3. **Drive the real command route in disposable state.**
+   Reuse test_flatfile_combat_journey.py and its server build/world/socket
+   helpers. Follow the staff-controlled fixture setup demonstrated by
+   run_racial_pulse_journey.py, but keep this scenario separate from its
+   unrelated race-stat checks. Supply the image and mound prototypes and a
+   supported outdoor room. Configure synthetic, otherwise eligible Scourge
+   casters with known spell access, mana and preparation; do not change normal
+   race/class rules. Exercise racial "innate reflection" for Gnome and Kobold,
+   then "cast 'shambler'" while at least two images remain. Also cover the normal
+   spell route to Reflection on a prepared test caster and a Mirror Image
+   command control for the shared-prototype policy.
+   Observe image and mound identities/counts plus ownership/following through
+   existing inspection facilities. Synchronize on each command's response and
+   following prompt; an unsolicited prompt alone cannot prove completion.
+   Check a repeated Shambler rejection, ordinary-pet rejection and both
+   Titan/Reflection orders. Recast/cleanup must leave ordinary pets intact.
 
-3. **Prove both session and persistence behavior.**
-   Execute the acceptance cases below with fresh MariaDB and flat-file binaries.
-   Use bounded saved-revision/state polling when comparing durable status,
-   rather than sleeping and assuming a queue has committed. Separately exercise
-   immediate reconnect/reselection so waiting in the test cannot conceal a
-   real ordering defect. If it exposes an additional blocker, repair the
-   smallest existing ordering boundary and update this plan before expanding.
-   Observe the real WebSocket return-to-menu/character-list messages with the
-   existing protocol client; a helper-only test does not prove that payload.
-   Preserve unrelated account entries and account admission/membership fields.
+4. **Document and finish proportional qualification.**
+   Explain in Shambler help that Reflection/Mirror Image images do not consume
+   its ordinary-pet allowance, that at most one other pet may precede the cast,
+   and that an existing mound prevents another cast. Add a brief cross-reference
+   in Reflection help without claiming a global exemption. Run the checks below,
+   reread the entire diff and record exact results and limitations here.
 
-4. **Finish and record evidence.**
-   Reread the diff with the ablation checks below. Run applicable formatting,
-   focused regressions, both builds and documentation checks. Record exact
-   commands, binary/source identities, baseline failure and fixed results here.
-   Keep generated transcripts, server state and binaries under ignored bin/.
-   Commit only the necessary source, regression and documentation changes.
+Ablation keeps one local counting decision, the already available image constant,
+an extension of existing native coverage, and one small journey using existing
+helpers. A global counter change would alter four unrelated consumers. A broad
+illusion predicate changes more than image counting. Per-spell provenance adds
+state without serving the proposed shared-image rule. Removing image links
+would disturb ownership and lifecycle. These alternatives are dropped.
+The command journey stays because the existing tests do not execute the combined
+player workflow. No alternative production implementations need to be built.
 
 ## Proof and acceptance
 
-- **Reported case:** a same-session level-1-to-16 Monk dies below cutoff; the
-  same-connection telnet list and WebSocket list report 16, the reloaded
-  character is 16, and committed player status contains 16 with unchanged XP.
-- **Persistence:** fresh authentication immediately after death and after the
-  save commits agrees with that result; graceful server restart and fresh
-  authentication preserve it. Check player_data.level/exp on MariaDB and
-  player snapshot plus membership level on flat-file.
-- **Control:** a character who entered already at level 16 remains correctly
-  displayed after death. Include a pre-existing stale flat-file membership
-  repaired by normal authoritative character entry, then death/reconnect.
-- **Actual delevel:** at/above the configured cutoff, choose XP that causes a
-  real loss of level and assert the new current level in the list, snapshot and
-  reloaded character. Do not substitute highest_level or hard-code 16/30.
-  Reuse existing XP cutoff tests for default/configured protection and Lich rules.
-- **Shared caller:** one quit/rent control after an in-session level change
-  exercises the same terminal boundary without adding a second refresh path.
-- **Integrity:** no other character's level/identity/membership changes; the
-  existing account fanout remains valid, with no use of acct_chars pointers
-  invalidated by account copies. A disconnected descriptor is never retained
-  by an asynchronous callback.
-- **Failure and compatibility:** rejected snapshot submission and account-write
-  failure keep current alerts/departure behavior and do not assert durability;
-  no new blocking wait or retry machinery. Death text, fresh menu input,
-  queued-input disposal, respawn HP and configured XP behavior still pass.
+- Cross 0/1/2/3/4 images with 0/1/2/3 ordinary pets: casts succeed only with at
+  most one ordinary pet and no existing mound. Include a non-image summoned pet
+  as well as a charmed-pet control; both count. Non-pet links do not count.
+- An existing mound rejects with zero or multiple images, including when that
+  mound is the only ordinary pet. Additional casts cannot accumulate mound groups.
+- In supported terrain, admitted casts create the unchanged yields (1-2, 2-4,
+  3-6) under controlled RNG. Unsupported terrain still rejects without creating
+  anything. New mounds retain pet links/followers, tagging and scheduled lifetime.
+- Image-only and mixed cases leave image identity, strings, links and existing
+  ordinary pets intact. Reflection replacement removes only the previous images;
+  after image cleanup the ordinary-pet decision is the same.
+- The generic count_pets() still counts images. This demonstrates that the
+  shared helper's contract, including its other callers, has not changed.
+- Real Reflection spell and racial routes reach successful Shambler creation;
+  the Mirror Image control follows the explicitly proposed rule. Existing
+  Displacement alone adds no pet restriction.
+- Titan first still blocks Reflection; images first still block Titan.
+  The racial rejection does not spend cooldown or add combat lag.
+- Native and socket results are reported separately. A missing command journey
+  leaves that acceptance item unverified; green helper tests cannot replace it.
 
-Planned commands (implement the new journey's arguments as shown):
+Planned commands after implementation, with artifacts confined to bin/:
 
+    python3 tests/async/test_reflection_image_ownership.py
+    python3 tests/async/test_innate_reflection.py
     make -C src
-    make -C src PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_issue478_flatfile
-    python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary bin/server/dms_new --output bin/qualification/issue478/mariadb
-    python3 tests/async/run_death_level_projection_journey.py --backend flatfile --binary bin/server/dms_issue478_flatfile --output bin/qualification/issue478/flatfile
-    python3 tests/async/test_death_respawn_state.py
-    python3 tests/async/test_death_transition_contract.py
-    python3 tests/async/test_player_account_identity_save.py
-    python3 tests/async/test_flatfile_account_membership.py
-    python3 tests/async/test_world_quest_xp_feedback.py
-    python3 tests/async/test_lich_death_experience.py
-    python3 tests/async/test_terminal_save_safety.py
+    python3 tests/async/test_shambler_reflection_journey.py
     ./scripts/format.sh --check
     python3 tests/async/test_documentation_contract.py
     git diff --check
 
-Each journey invocation must exercise both protocol observations.
-Use tests/async/disposable_schema.sh / with_disposable_mariadb.sh for MariaDB,
-and a private temporary flat-file root. Read local environment classification
-without printing secrets; do not point tests at the checkout's production DB.
-Run run_death_input_journey.py with the fresh flat-file --binary and an ignored
---output directory to preserve input-compatibility coverage. Do not require the
-unrelated full-world corpse/loot journey unless that behavior is touched.
+The proposed journey should build its fresh flat-file executable through the
+existing helper by default, with an optional explicit freshly built binary as
+the nearby journeys support. Confirm local/dev configuration before runtime
+work; use private temporary accounts/world data, never live player state.
+No persistence behavior changes, so restart/database qualification is not a new
+gate. Production/full-world acceptance is outside this implementation estimate.
 
-## Ablation decisions
+## Tracking and estimate
 
-**Keep:** one publication at the shared terminal boundary, the existing helper
-and backend writers, same-session plus reconnect/restart proof, both renderers,
-and a real delevel control. Omitting any leaves a stated outcome or an actual
-consumer unverified.
+GitHub #420 is the work item for this branch. Searches for open PRs referencing
+420 or Shambler/Reflection found none. Targeted max757/duris GitLab searches
+found no matching Shambler work item; the Reflection result was unrelated
+lifetime-qualification item #27. Do not link that item or close related historical
+issues merely because they mention images or pets. Link this branch directly
+in #420's Development section and provide the committed plan link there.
+A planning-only commit must not use an issue-closing keyword.
 
-**Simplify:** one focused journey reusing existing disposable setup. Retain
-existing cutoff/respawn/input tests instead of duplicating their matrices.
-Use existing alerts and account fanout; no new flags, callbacks or services.
+Estimate: **2-3 hours of my active implementation time** for the documented rule,
+including regression-first work, the small production change, help, the real
+command journey, required build and reviewable commits. Approximately 30-45
+minutes is native regression plus fix, 60-90 minutes is command-fixture setup and
+runtime checks, and 30-45 minutes is documentation, build and final review.
+Allow up to 4 hours if spell preparation or minimal-world fixtures require more
+setup. This excludes a changed balance decision, external review, merge waiting
+and deployment.
 
-**Drop:** patching each death/quit caller, changing XP to match a stale menu,
-querying player_data every time a list renders, fixing the frontend separately,
-schema backfills and a full qualification campaign. None is needed by the traced
-cache-publication gap. A per-death wait would change the current save contract.
+## Planning completion checks
 
-**Investigate:** the immediate-reconnect ordering and flat-file durable identity
-publication must be demonstrated, not inferred from a green helper test.
-Revisit only the affected step if that evidence changes the proposed boundary.
+Only this plan and preservation of the previous plan are committed. No
+production C/C++ edit, full server build or booted-world reproduction is claimed
+at this planning stage. The focused baseline evidence is recorded above.
+Planning validation completed:
 
-## Tracking, estimate and planning evidence
-
-#478 is the implementation work item for this branch. The open-PR and linked-
-branch checks found no existing work for it. Link branch/issue-478-plan in #478's
-Development section and post the committed plan link. #314 and #412 are merged
-reference PRs, not additional open work items. Planning commits must reference
-#478 without an issue-closing keyword; leave the issue open.
-
-Estimate: **3-5 hours of my active implementation time** including the failing
-reproduction, shared-boundary repair, two-backend/protocol persistence journeys,
-required builds, focused regressions and final reviewable commits. Roughly
-45-75 minutes is reproduction, 30-45 minutes is fix/failure-path coverage,
-90-150 minutes is journeys/builds, and 15-30 minutes is documentation/review.
-Allow up to 6 hours if immediate-reconnect ordering exposes another necessary
-persistence repair. This excludes external review, merge waiting, deployment
-and production/full-world qualification.
-
-Planning baseline checks completed successfully:
-
-- python3 tests/async/test_death_respawn_state.py
-- python3 tests/async/test_death_transition_contract.py
-- python3 tests/async/test_player_account_identity_save.py
-- python3 tests/async/test_flatfile_account_membership.py (native membership test)
-
-These checks establish existing controls; none reproduces #478. At the planning
-stage there is no C/C++ change, full build, booted-game reproduction, database
-mutation or production operation. All 14 documentation contracts and
-git diff --check passed. The archived prior plan was compared byte-for-byte
-with c9361959c:docs/ongoing-projects/plan.md and is identical. Implementation
-acceptance was pending at planning commit a3891d233; completion is recorded below.
+- python3 tests/async/test_documentation_contract.py: all 14 tests passed.
+- git diff --check: passed.
+- The archived #428 plan and baseline plan have identical SHA-256:
+  db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
+- Only the requested plan and the intact historical archive are tracked changes;
+  the original checkout's branch and files are preserved.
 
 ## Implementation and qualification, 2026-10-30
 
-The production change is five added lines in src/cmd/actoth.c. After accepted or
-coalesced terminal snapshot submission, the existing projection helper updates
-the still-attached account and persists it through its existing backend writer.
-Projection write failure emits the existing persistence alert. Rejected snapshot
-submission retains its previous alert/departure path and does not publish a new
-durable membership. No snapshot format, XP rule, renderer, schema, callback,
-blocking wait or retry policy changes.
+Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
+of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
+unchanged. The existing mound rejection remains first, and terrain, summon
+creation, tagging and lifetime code are unchanged. Help now states the shared
+Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
 
-The baseline binaries reproduce the stale-level failure on both backends. A
-synthetic Human Monk enters at 1, advances to 16 through the real staff command,
-then dies through the native death path. The captured pre-death level is 16;
-the same-connection character list contains level 1. The old binaries are
-preserved under bin/qualification/issue478/{mariadb,flatfile}-before. Failure
-results/transcripts are in the corresponding *-before-regression directories.
-The native regression also fails against the baseline at the absent account
-publication assertion.
+The existing ownership regression executes the production Shambler body and
+counter alongside Reflection/setup_pet. All 640 combinations of image count,
+ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
+pass under ASan/UBSan. They check actual fixture mound materialization,
+ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
+scheduling endpoints, tagging, duplicate-cast rejection and admission after
+image removal. The original 409 Reflection casts and Titan rejection still pass.
+Two in-memory negative controls substitute the old production Shambler body:
+two images alone and one image with one ordinary pet each fail at the successful
+mound-creation assertion. No tracked production source is changed by those
+controls.
 
-Ablation retained the single shared-boundary edit. The runtime regression reuses
-the existing minimal-world configuration, protocol clients, disposable SQL
-authority and player inspector. Full-world generated area files and unrelated
-onboarding/loot scenarios are unnecessary for the level/menu/reload contract.
-The inspector adds only membership-level observation and a stopped-server
-synthetic stale-membership seed. The focused native regression is needed for
-deterministic rejected-submission and account-storage failure coverage that the
-socket journey cannot reliably induce.
+The new command journey boots a fresh flat-file server with private state and
+drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
+real Shambler casts. Every route retains four images and creates three to six
+mounds in forest terrain. Staff inspection checks mobile identities, keywords,
+following and pet links. It also proves duplicate-mound and two-ordinary-pet
+rejection, the one-pet allowance, cleanup without losing ordinary pets, both
+Titan exclusion orders, and the published help. A real Reflection recast
+replaces every image identity while retaining the ordinary companion.
 
-The native test executes both production function bodies with real engine
-types under ASan/UBSan. Accepted/coalesced saves publish the authoritative level
-and identity/class/room fields; rejected, capture-failed and unavailable saves
-do not write membership. Storage failure alerts without changing departure or
-manual-save cleanup. Link-dead, null and NPC cases preserve their existing
-contracts. Another account entry remains untouched. Storage, snapshot submission
-and alert transport are controlled boundaries in this test, not a database
-fault-injection claim.
+Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
+Scourges after image creation; the Displacement control uses an eligible
+MindFlayer's real WILL command before switching back to Scourge. This does not
+add or claim a playable class combination. Staff edits resolve the PC explicitly
+because images share its name. Commands require their own receipt and following
+prompt and handle paging. No runtime test hooks or production settings are added.
+The journey is registered as resource-intensive in the existing regression runner.
 
-The shared helper and write_account() fanout implementation remain unchanged.
-The terminal caller holds no acct_chars pointer across that operation. Normal
-authentication replaces a duplicate account connection, so the socket journey
-does not manufacture concurrent same-account sessions to test an unreachable
-login state. It instead checks the retained sibling character on every list.
+Completed on the planning baseline:
 
-Existing WebSocket extraction emits reason "quit" even on this native death
-path. The journey confirms death from the staff's actual kill/death output and
-checks the real return_to_menu character list. This fix preserves that existing
-reason field; it does not infer death from it or change the protocol contract.
+- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
+- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
+  Titan rejection without cooldown or combat-lag consumption.
+- make -C src -j6: MariaDB development build passed with warnings as errors.
+- make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
+  -j6: flat-file development build passed.
+- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
+  default fresh-build helper and the explicit live recast case.
+- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
+  documentation contracts and git diff --check passed.
 
-Completed focused checks:
+The planning-baseline command log is bin/qualification/issue420/journey-final.log.
+The report at gameplay-report.json in that directory holds the latest full run;
+see the integration record below for its current binary. The planning-baseline
+qualified flat-file binary SHA-256 is
+98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
+Native fixtures control room/link services and scheduled callbacks; the socket
+journey exercises the real parser, spell dispatch, materialization and ownership.
+No full-world, MariaDB socket, restart or production qualification is claimed.
 
-- MariaDB and flat-file development builds passed with warnings as errors.
-- test_terminal_account_projection.py passed under ASan/UBSan.
-- test_death_respawn_state.py, test_death_transition_contract.py,
-  test_player_account_identity_save.py and test_terminal_save_safety.py passed.
-- test_flatfile_account_membership.py and test_flatfile_player_repository.py
-  passed, including the maintained native repository regression.
-- test_world_quest_xp_feedback.py passed for MariaDB and flat-file compilation;
-  test_lich_death_experience.py passed.
-- run_death_input_journey.py passed against the fresh flat-file executable:
-  native death, queued-input disposal, retained death/menu output and fresh input.
-- Changed-line formatting, clang-tidy, Python syntax, shell syntax, native test
-  discovery, all 14 documentation contracts and git diff --check passed.
-- The #420 archive still matches its original baseline byte-for-byte.
+Final ablation retains one production counting decision, one existing native
+test extension, a focused journey using existing build/world/socket helpers,
+its runner registration and the necessary help/plan updates. There is no new
+capacity API, persisted state, configuration, migration or image-lifecycle edit.
 
-Final binary SHA-256 values:
+### Master integration and final qualification
 
-- MariaDB: 15ac42f42c51d8fc5e73ecae7c027c0ed2f59cdd20196e1551e3c79e9163e780
-- Flat-file: 5f412ba06f6283a330ad5733e437156808a3867bb37bba9c8d41f3456e495dc4
+Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
+Its shared plan.md now records completed #437 work. The merge retains this #420
+plan at the requested path and archives the upstream #437 plan byte-for-byte.
+The only overlapping file was the plan; Shambler/Reflection and their admission
+behavior did not change upstream. The archived #437 plan and the upstream file
+have identical SHA-256:
+ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
 
-These executables use the planning baseline plus the sole production diff
-described above; the actoth.c Git blob is
-c0d4d7a3927e6344ba7dd85ed6b2c10a802cc9a4. The source diff is retained at
-bin/qualification/issue478/production.patch.
+The 640-case sanitizer matrix, original Reflection/innate checks, all 14
+documentation contracts, formatting, diff checks and MariaDB build passed again
+against the integrated source. The default command-journey invocation built a
+fresh flat-file server and passed all four routes, the real Reflection recast,
+ordinary-pet/mound controls, Titan exclusions, Displacement and help.
+Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
+created 5, 4, 3 and 4 forest mounds respectively.
 
-Both complete runtime invocations passed with the final binaries:
+Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
+bin/qualification/issue420/journey-integrated.log.
+The integrated flat-file binary SHA-256 is
+0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
 
-    tests/async/with_disposable_mariadb.sh python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary bin/server/dms_new --output bin/qualification/issue478/mariadb-qualified-final
-    python3 tests/async/run_death_level_projection_journey.py --backend flatfile --binary bin/server/dms_issue478_flatfile --output bin/qualification/issue478/flatfile-qualified-final
 
-Their result.json records have complete=true and match the executable hashes
-above: 10 MariaDB cases and 11 flat-file cases. Both protocols show 16 following
-the in-session 1-to-16 death and the already-level-16 control, with unchanged
-12,345 XP in the saved and loaded player. A real death at level 30 with zero
-in-level XP yields level 29 and 1,150,000 in-level XP; the menu shows 29 rather
-than the retained highest_level of 30. Fresh authentication/reselection starts
-before any durable-state polling, and each resulting saved revision is newer
-than its pre-death revision.
+## Sequential PR integration, 2026-10-30
 
-Both protocols also show 17 after the shared quit boundary following an
-in-session level change. A graceful stop, cold boot, fresh authentication and
-selection preserve level 17 and 12,345 XP. The flat-file leg then seeds only the
-stopped synthetic character's membership level to 1 while its player snapshot
-stays at 17. Authoritative entry loads 17 and repairs membership; death and a
-fresh account login continue to show 17. The sibling character stays at 1.
+Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
+#432, #475, #476 and #477. Game code, player help and test discovery merged
+without conflicts. The shared-plan conflict keeps this Shambler record at
+`plan.md` and preserves the completed coin record byte-for-byte at
+[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
+remain intact.
 
-The MariaDB leg is registered in tests/run_db_tests.sh; the focused native test
-is discovered by the normal regression runner. The flat-file journey remains
-an explicit binary-supplied run, matching the existing death-input journey.
-The minimal-world fixture intentionally skips full-world corpse restoration;
-no corpse/loot persistence behavior was changed or claimed. No acceptance item
-requires production data, a running shared server, deployment or hosted CI.
+The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
+409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
+formatting, whitespace, test discovery and all 14 documentation checks pass on
+the combined source. The earlier disposable-server gameplay report remains the
+runtime qualification for racial and spell images, ownership, pet/mound caps,
+Titan exclusions, Displacement and help; that complete journey was not repeated
+in this merge pass. No production operation is included.
