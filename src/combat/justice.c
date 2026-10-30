@@ -456,35 +456,30 @@ void justice_action_invader(P_char ch)
 			justice_send_guards(NOWHERE, ch, 1);
 		}
 
+		const char *alarm = nullptr;
 		if (IS_SET(hometowns[CHAR_IN_TOWN(ch) - 1].flags, JUSTICE_GOODHOME) &&
 		    !(number(0, 15)) && get_property("justice.alarms.good", 1))
 		{
 			int rnum = number(1, 4);
-			if (rnum == 1)
-				justice_hometown_echo(
-					CHAR_IN_TOWN(ch),
-					"&+RAlarm bells sound, &+rsignalling an invasion!&n");
-			if (rnum == 2)
-				justice_hometown_echo(
-					CHAR_IN_TOWN(ch),
-					"&+LMilitia forces muster to bolster the town's defenses against the &=Lrinvaders!!!&n");
-			if (rnum == 3)
-				justice_hometown_echo(
-					CHAR_IN_TOWN(ch),
-					"&+LMilitia forces muster to bolster the town's defenses against the &=Lrinvaders!!!&n");
-			if (rnum == 4)
-				justice_hometown_echo(
-					CHAR_IN_TOWN(ch),
-					"&+RAlarm bells sound, &+rsignalling an invasion!&n");
-			return;
+			if (rnum == 1 || rnum == 4)
+				alarm = "&+RAlarm bells sound, &+rsignalling an invasion!&n";
+			else
+				alarm = "&+LMilitia forces muster to bolster the town's defenses against the &=Lrinvaders!!!&n";
 		}
 		else if (IS_SET(hometowns[CHAR_IN_TOWN(ch) - 1].flags, JUSTICE_EVILHOME) &&
 			 !number(0, 15) && get_property("justice.alarms.evil", 1))
 		{
-			justice_hometown_echo(
-				CHAR_IN_TOWN(ch),
-				"&+yHorns begin to &+Ybellow &+yand drums &+cthunder&n &+yto the &+Rcall to arms!&n");
-			return;
+			alarm = "&+yHorns begin to &+Ybellow &+yand drums &+cthunder&n &+yto the &+Rcall to arms!&n";
+		}
+		if (alarm)
+		{
+			P_char master = GET_MASTER(ch);
+			logit(LOG_STATUS,
+			      "HOMETOWN ALARM: town=%s room=%d trigger=%s npc_vnum=%d race=%s master=%s",
+			      town_name_list[CHAR_IN_TOWN(ch)], world[ch->in_room].number,
+			      GET_NAME(ch), IS_NPC(ch) ? GET_VNUM(ch) : -1,
+			      race_types[GET_RACE(ch)], master ? GET_NAME(master) : "none");
+			justice_hometown_echo(CHAR_IN_TOWN(ch), alarm);
 		}
 	}
 }
