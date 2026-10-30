@@ -2758,6 +2758,7 @@ int salvage_cargo(P_char ch, P_ship ship, int crates)
 		send_to_char_f(ch, "Your crew hooks %d crates from the ocean surface.\r\n", i);
 
 	update_ship_status(ship);
+	queue_ship_save(ship, "cargo salvage");
 	return TRUE;
 }
 
