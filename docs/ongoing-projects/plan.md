@@ -508,9 +508,11 @@ server. The user has no additional identifying information.
 The original instance's flags, custody history and running revision therefore
 cannot be established from available evidence. This remains an explicit
 limitation; the synthetic reproduction does not prove the exact report.
-The branch and PR refer to #419 without automatically closing it. The code
-repair, qualification, documentation and PR are deliverable; historical
-live attribution is recorded as unavailable.
+The issue remains open pending review. GitHub converted the original development
+branch association into a linked PR that can close #419 when merged; merge
+review must account for this attribution limitation. The code repair,
+qualification, documentation and PR are deliverable; historical live
+attribution is recorded as unavailable.
 
 ## Master integration and final qualification, 2026-10-30
 
