@@ -15,14 +15,24 @@
 #ifndef WORLD_QUEST_H
 #define WORLD_QUEST_H
 
-#include <vector>
+enum class world_quest_target_status
+{
+	valid,
+	unavailable,
+	blocked,
+	unproven,
+	needs_origin,
+};
+
+world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin = 0);
+bool world_quest_replace(P_char ch, P_char giver);
+void world_quest_describe(P_char ch, world_quest_target_status status);
 
 int calc_zone_mob_level();
-int suggestQuestMob(int zone_num, P_char ch, int questtype);
 int newbie_quest(P_char, P_char, int, char *);
 void quest_kill(P_char ch, P_char vict);
 void quest_ask(P_char ch, P_char quest_mob);
-int quest_buy_map(P_char ch);
+int quest_buy_map(P_char ch, world_quest_target_status status);
 void resetQuest(P_char ch);
 int getItemFromZone(int zone);
 int getQuestItemFromZone(int zone, int quest_level);
@@ -37,8 +47,8 @@ enum quest_creation_failure
 };
 
 bool createQuest(P_char ch, P_char giver, quest_creation_failure *failure = nullptr);
-bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *failure = nullptr);
-void getQuestZoneList(P_char ch, vector<int> &);
+bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
+			     quest_creation_failure *failure = nullptr);
 bool isInvalidQuestZone(int zoneID);
 
 #endif // WORLD_QUEST_H

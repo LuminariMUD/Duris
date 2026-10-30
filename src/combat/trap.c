@@ -537,6 +537,13 @@ static void trap_restored_damage(P_char ch, P_obj obj)
 		extract_char(caster);
 }
 
+bool movement_trap_trigger(P_obj obj, int direction)
+{
+	return direction >= DIR_NORTH && direction <= DIR_DOWN && obj->trap_charge &&
+	       IS_SET(obj->trap_eff, TRAP_EFF_MOVE) &&
+	       IS_SET(obj->trap_eff, TRAP_EFF_NORTH << direction);
+}
+
 bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *sprung)
 {
 	if (dir < DIR_NORTH || dir > DIR_DOWN || !trap_target_eligible(ch) || ch->in_room < 0 ||
@@ -546,8 +553,7 @@ bool checkmovetrap(P_char ch, int dir, std::vector<std::pair<P_obj, uint64_t>> *
 	const uint64_t actor_id = ch->runtime_id;
 	for (P_obj obj = world[room].contents; obj; obj = obj->next_content)
 	{
-		if (!obj->trap_charge || !IS_SET(obj->trap_eff, TRAP_EFF_MOVE) ||
-		    !IS_SET(obj->trap_eff, TRAP_EFF_NORTH << dir))
+		if (!movement_trap_trigger(obj, dir))
 			continue;
 		const std::pair<P_obj, uint64_t> identity = { obj, obj->obj_uid };
 		if (sprung && std::find(sprung->begin(), sprung->end(), identity) != sprung->end())

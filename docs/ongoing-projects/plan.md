@@ -13,6 +13,12 @@ in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up authorizes
 implementation, planned tests and gameplay qualification, commit/push and a PR.
 Merge and production deployment remain separate work.
 
+PR: [#476](https://github.com/LuminariMUD/Duris/pull/476). During publication,
+`master` advanced to `bc1537d9eb996db126ab20835201909baa91349c`; its completed
+bartender-quest plan is preserved byte-for-byte in
+[plan-issue-437.md](plan-issue-437.md). The integration changes no castle source
+or authored area data beyond the implementation documented here.
+
 ## Outcome
 
 Choose an availability-based reset policy for Quintaragon Castle: its seven
@@ -386,3 +392,13 @@ its harness, one socket journey using existing build/client helpers, and the
 plan/runbook updates. No area mutation, source restocking, new setting, schema,
 global timer change, or parallel implementation remains. The morph predicate
 is the only source-discovered refinement to the planned behavior.
+
+After integrating `master` at `bc1537d9e`, the native regressions, existing
+key/reset and shopkeeper contracts, MariaDB build, documentation/format checks,
+and the complete socket journey passed again. The integrated journey repeated
+all seven key sequences, all seven escape routes (165 movements), both staff
+reset modes and the six real timer cases. Its flat-file binary SHA-256 is
+`e5a013228ae2c50cf82588044761b431da0ac457a078ad716fc81420cbc74ac5`.
+The only merge conflict was the shared plan path; the other project's record
+was preserved unchanged in `plan-issue-437.md`. No castle implementation change
+was needed for integration.

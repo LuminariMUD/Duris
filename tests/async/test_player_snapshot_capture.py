@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 12);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 13);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -234,6 +234,12 @@ int main()
     ch.only.pc = &pc;
     pc.pid = 42;
     const std::string read_hash(64, 'a');
+    pc.quest_origin_room = 16633;
+    pc.quest_replacement_due = 1;
+    pc.quest_kill_how_many = 4;
+    pc.quest_kill_original = 7;
+    pc.wallet_revision = 19;
+    GET_GOLD(&ch) = 123;
     std::memcpy(pc.last_read_news_hash, read_hash.c_str(), read_hash.size() + 1);
     player_snapshot status;
     assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_STATUS, RENT_CRASH, 22800, &status) == player_snapshot_capture_result::ok);
@@ -241,6 +247,23 @@ int main()
     assert(status.status_strings.back().field == player_status_string_field::last_read_news_hash);
     pc.last_read_news_hash[0] = '\0';
     assert(status.status_strings.back().value == read_hash);
+    assert(status.status_integers.size() == PLAYER_STATUS_INTEGER_COUNT);
+    std::vector<uint8_t> status_bytes;
+    player_snapshot restored_status;
+    assert(player_snapshot_encode(status, &status_bytes) == player_snapshot_codec_result::ok);
+    assert(player_snapshot_decode(status_bytes.data(), status_bytes.size(), &restored_status) == player_snapshot_codec_result::ok);
+    assert(restored_status.wallet_revision == 19);
+    assert(restored_status.quest_values[10] == 4 && restored_status.quest_values[11] == 7);
+    bool found_origin = false, found_replacement = false, found_gold = false;
+    for (const auto &field : restored_status.status_integers) {
+        if (field.field == player_status_field::quest_origin_room)
+            found_origin = field.signed_value == 16633;
+        if (field.field == player_status_field::quest_replacement_due)
+            found_replacement = field.signed_value == 1;
+        if (field.field == player_status_field::gold)
+            found_gold = field.signed_value == 123;
+    }
+    assert(found_origin && found_replacement && found_gold);
     // Event-owned Hatred must be recomputed after either backend reloads a player.
     affected_type hatred_combat{}, hatred_spell{}, ordinary{};
     hatred_combat.type = hatred_spell.type = TAG_HATRED;
@@ -371,7 +394,7 @@ int main()
     ch.affected=nullptr;
     std::cout << "[PASS] later terminal captures preserve one protected cargo row at the ordinary row limit\n";
 
-    std::cout << "[PASS] immutable retained-source capture, byte bound and unchanged wire format\n";
+    std::cout << "[PASS] immutable retained-source capture, byte bound and versioned wire round trip\n";
 }
 """
 

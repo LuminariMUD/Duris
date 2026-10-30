@@ -96,6 +96,7 @@ extern int top_of_infot;
 extern int top_of_mobt;
 extern int top_of_objt;
 extern int top_of_zone_table;
+extern int top_of_world;
 extern int used_descs;
 extern struct agi_app_type agi_app[];
 extern struct command_info cmd_info[];
@@ -128,6 +129,9 @@ void resetQuest(P_char ch)
 	ch->only.pc->quest_kill_original = 0;
 	ch->only.pc->quest_map_room = 0;
 	ch->only.pc->quest_map_bought = 0;
+	ch->only.pc->quest_origin_room = 0;
+	ch->only.pc->quest_replacement_due = 0;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 }
 
 // How many other players a quest's receiver may share it with. world.quest.share.max
@@ -283,18 +287,17 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 	gmcp_quest_status(ch);
 }
 
+static bool world_quest_matches_target(P_char ch, P_char mob, int type)
+{
+	return IS_ALIVE(ch) && IS_PC(ch) && ch->only.pc->quest_active == 1 &&
+	       ch->only.pc->quest_type == type && mob && IS_NPC(mob) && mob->in_room >= 0 &&
+	       mob->in_room <= top_of_world && GET_VNUM(mob) == ch->only.pc->quest_mob_vnum &&
+	       zone_table[world[mob->in_room].zone].number == ch->only.pc->quest_zone_number;
+}
+
 void quest_ask(P_char ch, P_char quest_mob)
 {
-	if (ch->only.pc->quest_active != 1)
-		return;
-
-	if (IS_PC(quest_mob))
-		return;
-
-	if ((GET_VNUM(quest_mob) != ch->only.pc->quest_mob_vnum))
-		return;
-
-	if (ch->only.pc->quest_type != FIND_AND_ASK)
+	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_ASK))
 		return;
 
 	wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
@@ -309,16 +312,8 @@ void quest_ask(P_char ch, P_char quest_mob)
 
 void quest_kill(P_char ch, P_char quest_mob)
 {
-	if (!IS_ALIVE(ch) || !(quest_mob) || IS_NPC(ch))
-	{
+	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_KILL))
 		return;
-	}
-
-	if (ch->only.pc->quest_active != 1 || IS_PC(quest_mob) ||
-	    (GET_VNUM(quest_mob) != ch->only.pc->quest_mob_vnum))
-	{
-		return;
-	}
 
 	if (ch->only.pc->quest_accomplished == 1)
 	{
@@ -433,12 +428,9 @@ int get_map_room(int zone_id)
 
 void do_quest(P_char ch, char *args, int /*cmd*/)
 {
-	P_char q_mob;
-	P_char q_giver;
 	P_char victim;
 
 	char buf[MAX_STRING_LENGTH];
-	char q_name[MAX_STRING_LENGTH];
 
 	char name[MAX_INPUT_LENGTH], who[MAX_STRING_LENGTH];
 
@@ -551,9 +543,12 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 		}
 	}
 
-	if (ch->only.pc->quest_active == 0)
+	const auto availability = world_quest_refresh(ch);
+	if (availability != world_quest_target_status::valid || !ch->only.pc->quest_active ||
+	    ch->only.pc->quest_accomplished)
 	{
-		send_to_char("You don't have a quest!\r\n", ch);
+		world_quest_describe(ch, availability);
+		gmcp_quest_status(ch, availability);
 		return;
 	}
 
@@ -602,7 +597,8 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				return;
 			}
 
-			if (victim->only.pc->quest_active)
+			if (IS_NPC(victim) || victim->only.pc->quest_active ||
+			    victim->only.pc->quest_replacement_due)
 			{
 				send_to_char("Your fellow adventurer is already on a task.\r\n",
 					     ch);
@@ -613,14 +609,6 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			{
 				send_to_char(
 					"Your fellow adventurer needs to consent you first.\r\n",
-					ch);
-				return;
-			}
-
-			if (ch->only.pc->quest_accomplished == 1)
-			{
-				send_to_char(
-					"Hehe, sharing it so they get reward without work?!\r\n",
 					ch);
 				return;
 			}
@@ -659,6 +647,21 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 				send_to_char("They've already done this quest!\r\n", ch);
 				return;
 			}
+			const int remaining = ch->only.pc->quest_type == FIND_AND_KILL ?
+						      ch->only.pc->quest_kill_original -
+							      ch->only.pc->quest_kill_how_many :
+						      1;
+			const auto recipient = world_quest_policy_check_target(
+				victim, ch->only.pc->quest_origin_room, ch->only.pc->quest_level,
+				ch->only.pc->quest_zone_number, ch->only.pc->quest_mob_vnum,
+				ch->only.pc->quest_type, remaining);
+			if (recipient.status != world_quest_target_status::valid)
+			{
+				send_to_char(
+					"Your fellow adventurer cannot currently use this task's route or target.\r\n",
+					ch);
+				return;
+			}
 			resetQuest(victim);
 
 			ch->only.pc->quest_shares_left--;
@@ -675,95 +678,97 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			victim->only.pc->quest_zone_number = ch->only.pc->quest_zone_number;
 			victim->only.pc->quest_giver = ch->only.pc->quest_giver;
 			victim->only.pc->quest_level = ch->only.pc->quest_level;
+			victim->only.pc->quest_origin_room = ch->only.pc->quest_origin_room;
 			victim->only.pc->quest_receiver = ch->only.pc->quest_receiver;
 			victim->only.pc->quest_kill_how_many = ch->only.pc->quest_kill_how_many;
 			victim->only.pc->quest_kill_original = ch->only.pc->quest_kill_original;
-			do_quest(victim, writable_arg(""), 0);
-			gmcp_quest_status(victim);
+			victim->only.pc->quest_map_room =
+				recipient.map_room >= 0 ? world[recipient.map_room].number : 0;
+			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+			mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS);
+			world_quest_describe(victim, recipient.status);
+			gmcp_quest_status(victim, recipient.status);
 
 			return;
 		}
 
-	if ((q_giver = read_mobile(real_mobile(ch->only.pc->quest_giver), REAL)))
+	world_quest_describe(ch, availability);
+	gmcp_quest_status(ch, availability);
+}
+
+void world_quest_describe(P_char ch, world_quest_target_status availability)
+{
+	using status = world_quest_target_status;
+	if (!ch || IS_NPC(ch))
+		return;
+	if (ch->only.pc->quest_replacement_due)
 	{
-		snprintf(q_name, MAX_STRING_LENGTH, "%s", q_giver->player.short_descr);
-		checked_snprintf(buf, MAX_STRING_LENGTH, "%s gave you the following quest:\r\n",
-				 q_name);
+		send_to_char(
+			"Your task is no longer available. Ask a bartender for a free replacement. Your earned progress and purchased map are retained.\r\n",
+			ch);
+		return;
+	}
+	if (!ch->only.pc->quest_active)
+	{
+		send_to_char("You don't have a quest!\r\n", ch);
+		return;
+	}
+	if (ch->only.pc->quest_accomplished)
+	{
+		send_to_char("This quest is already finished, go talk to the quest master!\r\n",
+			     ch);
+		return;
+	}
+	if (availability != status::valid)
+	{
+		const char *message =
+			availability == status::blocked ?
+				"Your task is temporarily blocked by your current condition or travel abilities." :
+			availability == status::needs_origin ?
+				"This older task needs a bartender to check its travel origin." :
+				"I cannot prove that your task is usable right now. Ask a bartender to check it.";
+		send_to_char(message, ch);
+		send_to_char("\r\nYour task and earned progress have been kept.\r\n", ch);
+		return;
+	}
+	char buf[MAX_STRING_LENGTH];
+	const int giver = real_mobile(ch->only.pc->quest_giver);
+	const char *giver_name = giver >= 0 && mob_index[giver].desc2 ? mob_index[giver].desc2 :
+									"A bartender";
+	checked_snprintf(buf, MAX_STRING_LENGTH, "%s gave you the following quest:\r\n",
+			 giver_name);
+	send_to_char(buf, ch);
+
+	const int target = real_mobile(ch->only.pc->quest_mob_vnum);
+	const int zone = real_zone(ch->only.pc->quest_zone_number);
+	if (target < 0 || !mob_index[target].desc2 || zone < 0)
+	{
+		send_to_char(
+			"Your quest details are unavailable. Please ask a bartender to check your task.\r\n",
+			ch);
+	}
+	else if (ch->only.pc->quest_type == FIND_AND_ASK)
+	{
+		checked_snprintf(buf, MAX_STRING_LENGTH, "Go ask %s in %s about the %s.\r\n",
+				 mob_index[target].desc2, zone_table[zone].name,
+				 month_name[time_info.month]);
 		send_to_char(buf, ch);
-
-		if (q_giver)
-		{
-			extract_char(q_giver);
-			q_giver = NULL;
-		}
 	}
-	else
+	else if (ch->only.pc->quest_type == FIND_AND_KILL)
 	{
-		wizlog(56, "UNABLE TO LOAD Q MOB:%d for char %s reseting his quest.",
-		       ch->only.pc->quest_giver, GET_NAME(ch));
-		send_to_char(
-			"HMMMMM (bug), Seems like you forgot your quest already, go grab a new one, if this one dont work, try another bartender around the world. Sorry we working on a fix ASAP.!\r\n",
-			ch);
-		resetQuest(ch);
-		return;
+		checked_snprintf(
+			buf, MAX_STRING_LENGTH, "Go kill %d %s (%d left) in %s!\r\n",
+			ch->only.pc->quest_kill_original, mob_index[target].desc2,
+			(ch->only.pc->quest_kill_original - ch->only.pc->quest_kill_how_many),
+			zone_table[zone].name);
+		send_to_char(buf, ch);
 	}
-
-	// wizlog(56, "questmob num:%d",ch->only.pc->quest_mob_vnum);
-	if ((q_mob = read_mobile(real_mobile(ch->only.pc->quest_mob_vnum), REAL)))
-	{
-		snprintf(q_name, MAX_STRING_LENGTH, "%s", q_mob->player.short_descr);
-
-		if (ch->only.pc->quest_type == FIND_AND_ASK)
-		{
-			checked_snprintf(
-				buf, MAX_STRING_LENGTH, "Go ask %s in %s about the %s.\r\n", q_name,
-				zone_table[real_zone0(ch->only.pc->quest_zone_number)].name,
-				month_name[time_info.month]);
-			send_to_char(buf, ch);
-		}
-		else if (ch->only.pc->quest_type == FIND_AND_KILL)
-		{
-			checked_snprintf(
-				buf, MAX_STRING_LENGTH, "Go kill %d %s (%d left) in %s!\r\n",
-				ch->only.pc->quest_kill_original, q_name,
-				(ch->only.pc->quest_kill_original -
-				 ch->only.pc->quest_kill_how_many),
-				zone_table[real_zone0(ch->only.pc->quest_zone_number)].name);
-			send_to_char(buf, ch);
-			wizlog(56,
-			       "%s got a quest to go kill %d of mob vnum %d; they have %d left.",
-			       GET_NAME(ch), ch->only.pc->quest_kill_original,
-			       ch->only.pc->quest_mob_vnum,
-			       (ch->only.pc->quest_kill_original -
-				ch->only.pc->quest_kill_how_many));
-		}
-
-		if (q_mob)
-		{
-			extract_char(q_mob);
-			q_mob = NULL;
-		}
-	}
-	else
-	{
-		send_to_char(
-			"HMMMMMMMMMM, something's broken with your quest, tell a god ):(2)\r\n",
-			ch);
-		return;
-	}
-	// always call this
 
 	if (ch->only.pc->quest_map_bought == 1)
 	{
 		send_to_char("You also got some additional information from the quest master:\r\n",
 			     ch);
 		show_map_at(ch, real_room(ch->only.pc->quest_map_room));
-	}
-
-	if (ch->only.pc->quest_accomplished == 1)
-	{
-		send_to_char("This quest is already finished, go talk to the quest master!\r\n",
-			     ch);
 	}
 
 	if (ch->only.pc->quest_receiver != GET_PID(ch))
@@ -787,145 +792,126 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 		ch);
 }
 
-// Attempts to create a quest for ch (a PC), given by the persisted giver vnum.
-// The caller has already validated any live NPC.  Keeping only the vnum here
-// lets an asynchronous payment callback continue after that NPC leaves the room.
-// Returns TRUE if successful, and FALSE if failed.
-bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *failure)
+world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 {
-	int quest_zone = -1;
-	int quest_mob = -1;
-	int quest_type = -1;
-	int target_probe_budget = WORLD_QUEST_MAX_TARGET_PROBES;
-	int history_check_budget = WORLD_QUEST_MAX_HISTORY_CHECKS;
-	vector<int> tried_targets;
+	using status = world_quest_target_status;
+	if (!ch || IS_NPC(ch))
+		return status::unproven;
+	auto &quest = *ch->only.pc;
+	if (quest.quest_accomplished)
+		return status::valid;
+	if (quest.quest_replacement_due)
+		return status::unavailable;
+	if (!quest.quest_active)
+		return status::valid;
+	const int remaining = quest.quest_type == FIND_AND_KILL ?
+				      quest.quest_kill_original - quest.quest_kill_how_many :
+				      1;
+	const int origin = quest.quest_origin_room > 0 ? quest.quest_origin_room : bartender_origin;
+	const auto checked = world_quest_policy_check_target(ch, origin, quest.quest_level,
+							     quest.quest_zone_number,
+							     quest.quest_mob_vnum, quest.quest_type,
+							     remaining);
+	bool changed = false;
+	if (checked.status == status::unavailable)
+	{
+		quest.quest_active = 0;
+		quest.quest_replacement_due = 1;
+		changed = true;
+	}
+	const int map = checked.status == status::valid && checked.map_room >= 0 ?
+				world[checked.map_room].number :
+				0;
+	if (quest.quest_map_room != map)
+	{
+		quest.quest_map_room = map;
+		if (ch->desc)
+			ch->desc->gmcp_quest_map_sent = 0;
+		changed = true;
+	}
+	if (checked.status == status::valid && quest.quest_origin_room <= 0 && origin > 0)
+	{
+		quest.quest_origin_room = origin;
+		changed = true;
+	}
+	if (changed)
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	return checked.status;
+}
 
+bool world_quest_replace(P_char ch, P_char giver)
+{
+	if (!ch || IS_NPC(ch) || !giver || !IS_NPC(giver) || ch->in_room < 0 ||
+	    ch->in_room > top_of_world || giver->in_room != ch->in_room ||
+	    !ch->only.pc->quest_replacement_due || ch->only.pc->quest_accomplished)
+		return false;
+	auto &quest = *ch->only.pc;
+	const int remaining = quest.quest_type == FIND_AND_KILL ?
+				      quest.quest_kill_original - quest.quest_kill_how_many :
+				      1;
+	if (remaining < 1)
+		return false;
+	world_quest_target target;
+	const int origin = world[ch->in_room].number;
+	if (world_quest_policy_select_target(ch, origin, quest.quest_level, target,
+					     quest.quest_type,
+					     remaining) != QUEST_CREATION_NO_FAILURE)
+		return false;
+	quest.quest_active = 1;
+	quest.quest_replacement_due = 0;
+	quest.quest_mob_vnum = target.mob_vnum;
+	quest.quest_zone_number = zone_table[target.zone].number;
+	quest.quest_origin_room = origin;
+	quest.quest_giver = GET_VNUM(giver);
+	quest.quest_map_room = target.map_room >= 0 ? world[target.map_room].number : 0;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	return true;
+}
+
+// The caller validates the real interaction and captures its origin before payment.
+// Keep those VNUMs by value so a continuation cannot rediscover a different giver
+// instance or use the customer's later position as the accepted origin.
+// Returns TRUE if successful, and FALSE if failed.
+bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
+			     quest_creation_failure *failure)
+{
 	if (failure)
 		*failure = QUEST_CREATION_NO_FAILURE;
-
-	// Fail if missing an arg, the player is not a PC, or the persisted giver is invalid.
-	if (!ch || IS_NPC(ch) || giver_vnum <= 0)
+	if (!ch || IS_NPC(ch) || giver_vnum <= 0 || origin_vnum <= 0 ||
+	    real_room(origin_vnum) == NOWHERE)
 	{
 		if (failure)
 			*failure = QUEST_CREATION_INVALID_ACTOR;
 		return FALSE;
 	}
-
-	vector<int> valid_zones;
-	getQuestZoneList(ch, valid_zones);
-	if (valid_zones.empty())
-	{
-		wizlog(56, "Unable to find a quest zone for %s", GET_NAME(ch));
-		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_ZONE;
-		return FALSE;
-	}
-
-	// Visit each zone once, trying distinct targets before moving on. The
-	// catalog and its cached scores are never rebuilt on the command path.
-	vector<int> remaining_zones = valid_zones;
-	while (!remaining_zones.empty() && history_check_budget > 0)
-	{
-		quest_zone = world_quest_policy_select_zone(ch, remaining_zones);
-		if (quest_zone < 0)
-			break;
-		for (vector<int>::iterator zone = remaining_zones.begin();
-		     zone != remaining_zones.end(); ++zone)
-		{
-			if (*zone == quest_zone)
-			{
-				remaining_zones.erase(zone);
-				break;
-			}
-		}
-
-		const int first_type = GET_LEVEL(ch) > 49 ? FIND_AND_KILL : number(1, 2);
-		const int second_type =
-			first_type == FIND_AND_KILL ?
-				FIND_AND_ASK :
-				(first_type == FIND_AND_ASK ? FIND_AND_KILL : FIND_AND_ASK);
-		const int type_attempts = GET_LEVEL(ch) > 49 ? 1 : 2;
-		for (int attempt = 0; attempt < type_attempts; ++attempt)
-		{
-			quest_type = attempt == 0 ? first_type : second_type;
-			while (history_check_budget > 0)
-			{
-				quest_mob = world_quest_policy_suggest_mob(quest_zone, ch,
-									   quest_type,
-									   &target_probe_budget,
-									   tried_targets);
-				if (quest_mob <= 0)
-					break;
-				tried_targets.push_back(quest_mob);
-				--history_check_budget;
-
-				const int mob_rnum = real_mobile(quest_mob);
-				if (mob_rnum < 0 ||
-				    (quest_type == FIND_AND_KILL &&
-				     mob_index[mob_rnum].number < 2) ||
-				    (quest_type == FIND_AND_ASK && mob_index[mob_rnum].number < 1))
-				{
-					quest_mob = -1;
-					continue;
-				}
-
-				const int completed = sql_world_quest_done_already(ch, quest_mob);
-				if (completed < 0)
-				{
-					// A failed read stops the request; it must not grant a quest
-					// or trigger more history queries against a failing backend.
-					if (failure)
-						*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
-					return FALSE;
-				}
-				if (completed > 0)
-				{
-					quest_mob = -1;
-					continue;
-				}
-				break;
-			}
-			if (quest_mob > 0)
-				break;
-		}
-		if (quest_mob > 0)
-			break;
-	}
-
-	if (quest_mob <= 0)
-	{
-		wizlog(56, "Unable to find a valid quest target for %s", GET_NAME(ch));
-		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
-		return FALSE;
-	}
-
-	const int rnum = real_mobile(quest_mob);
-	if (rnum < 0)
+	world_quest_target target;
+	const auto outcome =
+		world_quest_policy_select_target(ch, origin_vnum, GET_LEVEL(ch), target);
+	if (outcome != QUEST_CREATION_NO_FAILURE)
 	{
 		if (failure)
-			*failure = QUEST_CREATION_NO_ELIGIBLE_TARGET;
+			*failure = outcome;
 		return FALSE;
 	}
-
 	const int quest_kill_original =
-		MIN(difficulty_scale_world_quest_kills(number(7, 9)), mob_index[rnum].number - 1);
+		MIN(difficulty_scale_world_quest_kills(number(7, 9)), target.usable_count - 1);
 	ch->only.pc->quest_shares_left = world_quest_share_limit();
 	ch->only.pc->quest_active = 1;
-	ch->only.pc->quest_mob_vnum = quest_mob;
-	ch->only.pc->quest_type = quest_type;
+	ch->only.pc->quest_mob_vnum = target.mob_vnum;
+	ch->only.pc->quest_type = target.type;
 	ch->only.pc->quest_accomplished = 0;
 	ch->only.pc->quest_started = time(NULL);
-	ch->only.pc->quest_zone_number = zone_table[quest_zone].number;
+	ch->only.pc->quest_zone_number = zone_table[target.zone].number;
 	ch->only.pc->quest_giver = giver_vnum;
 	ch->only.pc->quest_level = GET_LEVEL(ch);
+	ch->only.pc->quest_origin_room = origin_vnum;
+	ch->only.pc->quest_replacement_due = 0;
 	ch->only.pc->quest_receiver = GET_PID(ch);
 	ch->only.pc->quest_kill_how_many = 0;
 	ch->only.pc->quest_kill_original = quest_kill_original;
-	debug("Quest Kill Original Value: %d, mob_index number: %d, mob_index limit: %d, mob_vnum: %d",
-	      ch->only.pc->quest_kill_original, mob_index[rnum].number, mob_index[rnum].limit - 1,
-	      mob_index[rnum].virtual_number);
-
+	ch->only.pc->quest_map_room = target.map_room >= 0 ? world[target.map_room].number : 0;
+	ch->only.pc->quest_map_bought = 0;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	return TRUE;
 }
 
@@ -933,55 +919,39 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, quest_creation_failure *
 // the identity to the stable vnum used by deferred continuations.
 bool createQuest(P_char ch, P_char giver, quest_creation_failure *failure)
 {
-	if (!giver || !ch || IS_NPC(ch) || (IS_PC(giver) && !IS_TRUSTED(giver)))
+	if (!giver || !ch || IS_NPC(ch) || (IS_PC(giver) && !IS_TRUSTED(giver)) ||
+	    giver->in_room != ch->in_room || ch->in_room == NOWHERE)
 	{
 		if (failure)
 			*failure = QUEST_CREATION_INVALID_ACTOR;
 		return FALSE;
 	}
-	return createQuestForGiverVnum(ch, GET_VNUM(giver), failure);
+	return createQuestForGiverVnum(ch, GET_VNUM(giver), world[ch->in_room].number, failure);
 }
 
 void show_map_at(P_char ch, int room)
 {
-	if (!IS_ALIVE(ch) || IS_NPC(ch))
+	if (!ch || !IS_ALIVE(ch) || IS_NPC(ch) || ch->only.pc->quest_map_bought != 1)
+		return;
+	if (room < 0 || room > top_of_world)
 	{
+		send_to_char("I cannot verify a map for your current quest right now.\r\n", ch);
 		return;
 	}
 
-	if (!(room))
-	{
-		send_to_char(
-			"&+W* There is a bug with the map for this quest please contact an Admin.&n.\r\n",
-			ch);
-		logit(LOG_DEBUG, "World quest: (%s) failed in show_map_at for room (%d).",
-		      GET_NAME(ch), room);
-		return;
-	}
-
-	if (ch->only.pc->quest_map_bought == 1)
-	{
-		if (room == -1)
-		{
-			send_to_char(
-				"&+W* This zone is not connected to the overland maps of duris&n.\r\n",
-				ch);
-			return;
-		}
-
-		int old_room = ch->in_room;
-		char_from_room(ch);
-		char_to_room(ch, room, -2);
-		display_map(ch, 20, 999);
-		char_from_room(ch);
-		char_to_room(ch, old_room, -2);
-		return;
-	}
+	// Match gmcp_quest_map's synchronous viewpoint without transfer hooks,
+	// occupant-list changes or interrupting the viewer's current action.
+	const int old_room = ch->in_room;
+	ch->in_room = room;
+	display_map_room(ch, room, 20, 999, 1);
+	ch->in_room = old_room;
 }
 
-int quest_buy_map(P_char ch)
+int quest_buy_map(P_char ch, world_quest_target_status availability)
 {
-	if (!IS_ALIVE(ch) || IS_NPC(ch))
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || availability != world_quest_target_status::valid ||
+	    !ch->only.pc->quest_active || ch->only.pc->quest_replacement_due ||
+	    ch->only.pc->quest_accomplished)
 	{
 		return 0;
 	}
@@ -994,23 +964,27 @@ int quest_buy_map(P_char ch)
 		return 0;
 	}
 
+	const int map_room =
+		ch->only.pc->quest_map_room > 0 ? real_room(ch->only.pc->quest_map_room) : NOWHERE;
+	if (map_room < 0)
+	{
+		send_to_char("I cannot verify a map for your current quest right now.\r\n", ch);
+		return 0;
+	}
 	ch->only.pc->quest_map_bought = 1;
+	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	send_to_char(
 		"The 'quest' command will now show you additional information about the quest.\r\n",
 		ch);
 
-	int map_room = get_map_room(real_zone(ch->only.pc->quest_zone_number));
-
-	// debug("quest_zone_number: %d, real_zone: %d, map_room: %d", ch->only.pc->quest_zone_number, real_zone(ch->only.pc->quest_zone_number), map_room);
-
 	if (map_room > 0)
 	{
-		ch->only.pc->quest_map_room = world[map_room].number;
-		// debug("quest_map_room: %d", ch->only.pc->quest_map_room);
 		show_map_at(ch, map_room);
 
-		/* Send quest map via GMCP for WebSocket clients */
-		gmcp_quest_map(ch);
+		// show_map_at emits the paid map through Quest.Map as well as text.
+		if (ch->desc)
+			ch->desc->gmcp_quest_map_sent = 1;
+		gmcp_quest_status(ch, availability);
 	}
 
 	return 1;
@@ -1030,17 +1004,6 @@ int getQuestItemFromZone(int zone, int quest_level)
 bool isInvalidQuestZone(int zone_number)
 {
 	return world_quest_policy_zone_is_invalid(zone_number);
-}
-
-void getQuestZoneList(P_char ch, vector<int> &valid_zones)
-{
-	world_quest_policy_zone_list(ch, valid_zones);
-}
-
-int suggestQuestMob(int zone_num, P_char ch, int QUEST_TYPE)
-{
-	int target_probe_budget = WORLD_QUEST_MAX_TARGET_PROBES;
-	return world_quest_policy_suggest_mob(zone_num, ch, QUEST_TYPE, &target_probe_budget);
 }
 
 // Called from comm.c to populate the boot-time world-quest catalog and avg_mob_level.

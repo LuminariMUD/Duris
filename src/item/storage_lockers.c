@@ -299,6 +299,9 @@ static bool esc_locker_name_matches_player(const char *esc_locker_name, P_char c
 
 	if (strstr(name, "account.") == name)
 	{
+		if (!ch->desc || !ch->desc->account || !ch->desc->account->acct_name ||
+		    !*ch->desc->account->acct_name)
+			return false;
 		const char *player_acct = get_account_name_safe(ch);
 		char locker_acct[MAX_INPUT_LENGTH];
 		char *src = name + 8;
@@ -527,10 +530,9 @@ static void locker_handle_postsave(P_char ch, StorageLocker *pLocker, int room)
 	else
 	{
 		/* anti-idle code.  only let people idle in their own locker */
-		bool idle_is_owner =
-			esc_locker_name_matches_player(GET_NAME(pLocker->GetLockerChar()), ch);
-
-		if (!idle_is_owner && (ch->specials.timer > 3))
+		// Entry captured ownership while the account was attached. close_socket()
+		// detaches it before the idle-rent save runs this hook again.
+		if (!pLocker->LockerUserIsOwner() && (ch->specials.timer > 3))
 		{
 			logit(LOG_OBJ,
 			      "Locker anti-idle eject: user=%s locker_char=%s locker_id=%d room=%d(%s) timer=%d",
@@ -624,6 +626,7 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	, m_realRoom(rroom)
 	, m_chLocker(chLocker)
 	, m_chUser(chUser)
+	, m_userIsOwner(esc_locker_name_matches_player(GET_NAME(chLocker), chUser))
 	, m_bIValue(false)
 	, m_currentChestId(0)
 	, m_lockerId(0)

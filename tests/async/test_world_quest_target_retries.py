@@ -1,209 +1,103 @@
 #!/usr/bin/env python3
-"""Run the production quest retry/selection functions against deterministic fixtures."""
+"""Real cached policy and creation against controlled reset/live-world fixtures."""
 
+from pathlib import Path
 import subprocess
 import tempfile
-from pathlib import Path
 
-from _paths import ROOT, extract_function
+from _paths import ROOT, HARNESS_STUBS, extract_function, source as repo_source
 
 
-PRELUDE = r'''
-#include <algorithm>
-#include <cassert>
-#include <ctime>
-#include <vector>
-#include "world/world_quest_policy_math.h"
-using namespace std;
-constexpr int FIND_AND_KILL = 1, FIND_AND_ASK = 2, MAXLVL = 62, NOWHERE = -1;
-constexpr int ACT_SPEC = 1;
-#define TRUE true
-#define FALSE false
-#define MIN(a, b) std::min(a, b)
-#define GET_LEVEL(ch) ((ch)->level)
-#define IS_NPC(ch) ((ch)->npc)
-#define IS_PC(ch) (!IS_NPC(ch))
-#define IS_TRUSTED(ch) false
-#define GET_NAME(ch) "fixture"
-#define GET_VNUM(ch) 16553
-#define GET_PID(ch) 1
-#define REMOVE_BIT(value, bits) ((value) &= ~(bits))
-#define BOUNDED(low, value, high) std::max((low), std::min((value), (high)))
-float get_property(const char *, double fallback) { return static_cast<float>(fallback); }
-// The difficulty module is not linked; a neutral world quest dial leaves the kill count alone.
-int difficulty_scale_world_quest_kills(int kills) { return kills; }
-struct pc_data {
-    int quest_shares_left = 0, quest_active = 0, quest_mob_vnum = 0, quest_type = 0;
-    int quest_accomplished = 0, quest_zone_number = 0, quest_giver = 0, quest_level = 0;
-    int quest_receiver = 0, quest_kill_how_many = 0, quest_kill_original = 0;
-    time_t quest_started = 0;
-    bool operator==(const pc_data &) const = default;
-};
-struct character {
-    int level = 56;
-    bool npc = false;
-    struct { pc_data *pc = nullptr; } only;
-    struct { int act = 0; } specials;
-    int in_room = NOWHERE;
-};
-using P_char = character *;
-#include "world/world_quest.h"
-struct index_entry { int number = 2, limit = 10, virtual_number = 0; };
-vector<index_entry> mob_index;
-int top_of_mobt;
-struct zone_entry { int number = 100; };
-vector<zone_entry> zone_table;
-struct quest_mob_profile {
-    int rnum, vnum, level;
-    bool can_speak = true, invisible = false, hidden = false;
-};
-struct quest_zone_profile { vector<quest_mob_profile> mobs; };
-vector<quest_zone_profile> zones;
-vector<int> history_reads;
-vector<int> probe_reads;
-int fresh_target = -1, error_target = -1;
-int number(int low, int) { return low; }
-void wizlog(int, const char *, ...) {}
-void debug(const char *, ...) {}
-int real_mobile(int vnum) { return vnum - 1000; }
-void getQuestZoneList(P_char, vector<int> &out) {
-    for (size_t i = 0; i < zones.size(); ++i) out.push_back(static_cast<int>(i));
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/tests") as temporary:
+    work = Path(temporary)
+    adapters = work / "production_adapters.cpp"
+    mobile = repo_source("specs.mobile.c").read_text()
+    payment_context = mobile[mobile.index("enum class world_quest_payment_action"):
+                             mobile.index("static void world_quest_report_creation_failure")]
+    adapters.write_text(
+        '#include "core/prototypes.h"\n#include "core/utils.h"\n'
+        '#include "magic/spells.h"\n#include "world/map.h"\n'
+        '#include "world/weather.h"\n#include "combat/justice.h"\n'
+        '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n'
+        '#include "persistence/persistence_checkpoint.h"\n'
+        '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
+        '#include "net/gmcp.h"\n#include "world/world_quest_policy_math.h"\n'
+        '#include <ctime>\n#include "cmd/interp.h"\n#include "core/utility.h"\n#include "net/comm.h"\n#include "world/zone_story_quest_runtime.h"\n'
+        'extern P_room world;\nextern P_index obj_index;\nextern zone_data *zone_table;\n'
+        'extern int top_of_world;\nextern int CheckFor_remember(P_char, P_char);\n'
+        'extern time_info_data time_info;\nextern const char *month_name[];\n'
+        'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
+        + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
+            ("cmd/interp.c", "void half_chop("),
+            ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
+            ("world/outposts.c", "bool check_castle_walls("),
+            ("combat/range.c", "int check_wall("),
+            ("core/utility.c", "bool ac_can_see_from("),
+            ("core/utility.c", "bool has_native_planar_affinity_at("),
+            ("core/utility.c", "bool aggressive_to_at("),
+            ("world/world_quest.c", "static int world_quest_share_limit("),
+            ("world/world_quest.c", "bool createQuestForGiverVnum("),
+            ("world/world_quest.c", "world_quest_target_status world_quest_refresh("),
+            ("world/world_quest.c", "bool world_quest_replace("),
+            ("world/world_quest.c", "void resetQuest("),
+            ("world/world_quest.c", "bool createQuest("),
+            ("world/world_quest.c", "int quest_buy_map(P_char ch, world_quest_target_status"),
+            ("world/world_quest.c", "void world_quest_describe("),
+            ("world/world_quest.c", "void do_quest("),
+            ("specs.mobile.c", "static void world_quest_report_creation_failure("),
+            ("specs.mobile.c", "static void world_quest_refund_payment("),
+            ("specs.mobile.c", "static void world_quest_payment_committed("),
+            ("specs.mobile.c", "int world_quest(P_char"),
+        )) + r'''
+void run_payment(P_char player, int origin, int fee, bool committed)
+{
+    world_quest_payment_context payment{world_quest_payment_action::quest, fee, 9000, origin};
+    world_quest_payment_committed(player, committed, {}, 0,
+        reinterpret_cast<const uint8_t *>(&payment), sizeof(payment));
 }
-int world_quest_policy_select_zone(P_char, const vector<int> &valid) { return valid.front(); }
-int sql_world_quest_done_already(P_char, int target) {
-    // A repeated history lookup is a bug even when the request eventually succeeds.
-    assert(find(history_reads.begin(), history_reads.end(), target) == history_reads.end());
-    history_reads.push_back(target);
-    if (target == error_target) return -1;
-    return target == fresh_target ? 0 : 1;
-}
-P_char read_mobile_probe(int vnum, int) {
-    probe_reads.push_back(vnum);
-    return new character;
-}
-constexpr int VIRTUAL = 1;
-struct mobile_probe_guard {
-    P_char value;
-    ~mobile_probe_guard() { delete value; }
-};
-void char_to_room(P_char ch, int room, int) { ch->in_room = room; }
-bool aggressive_to(P_char, P_char) { return false; }
-'''
-
-ADAPTER = r'''
-int world_quest_policy_suggest_mob(int zone, P_char ch, int type, int *budget,
-                                  const vector<int> &excluded = {}) {
-    return select_cached_mob(zones[zone], ch, type, budget, excluded);
+void run_map_payment(P_char player, int fee)
+{
+    world_quest_payment_context payment{world_quest_payment_action::map, fee, 9000, 1000};
+    world_quest_payment_committed(player, true, {}, 0,
+        reinterpret_cast<const uint8_t *>(&payment), sizeof(payment));
 }
 '''
-
-SCENARIOS = r'''
-void setup(int zone_count, int mobs_per_zone, int level, int instances) {
-    zones.assign(zone_count, {});
-    zone_table.assign(zone_count, {});
-    mob_index.assign(zone_count * mobs_per_zone, {});
-    history_reads.clear();
-    probe_reads.clear();
-    fresh_target = error_target = -1;
-    top_of_mobt = static_cast<int>(mob_index.size()) - 1;
-    for (int i = 0; i <= top_of_mobt; ++i) {
-        mob_index[i].number = instances;
-        mob_index[i].virtual_number = 1000 + i;
-        zones[i / mobs_per_zone].mobs.push_back({i, 1000 + i, level});
-    }
-}
-int main() {
-    pc_data pc;
-    character player;
-    player.only.pc = &pc;
-    quest_creation_failure failure;
-
-    // At level 56 there is only one quest type. Skip completed A and issue B.
-    setup(1, 2, 56, 2);
-    fresh_target = 1001;
-    assert(createQuestForGiverVnum(&player, 16553, &failure));
-    assert((history_reads == vector<int>{1000, 1001}));
-    assert(pc.quest_active == 1 && pc.quest_mob_vnum == 1001);
-    assert(pc.quest_type == FIND_AND_KILL && failure == QUEST_CREATION_NO_FAILURE);
-
-    // The same retry must work for ask quests and retain the shared probe budget.
-    pc = {};
-    player.level = 30;
-    setup(1, 2, 30, 1);
-    fresh_target = 1001;
-    assert(createQuestForGiverVnum(&player, 16553, &failure));
-    assert((history_reads == vector<int>{1000, 1001}));
-    assert(probe_reads == history_reads);
-    assert(pc.quest_type == FIND_AND_ASK && pc.quest_mob_vnum == 1001);
-
-    // All duplicates: stop after each distinct target, preserving existing state.
-    const pc_data before = pc;
-    setup(1, 2, 30, 1);
-    assert(!createQuestForGiverVnum(&player, 16553, &failure));
-    assert((history_reads == vector<int>{1000, 1001}));
-    assert(pc == before && failure == QUEST_CREATION_NO_ELIGIBLE_TARGET);
-
-    // A backend error must stop immediately, even if a fresh target follows it.
-    setup(1, 2, 30, 1);
-    error_target = 1000;
-    fresh_target = 1001;
-    assert(!createQuestForGiverVnum(&player, 16553, &failure));
-    assert((history_reads == vector<int>{1000}));
-    assert(pc == before && failure == QUEST_CREATION_NO_ELIGIBLE_TARGET);
-
-    // Caps are per request, including retries within and across zones.
-    player.level = 56;
-    for (int zone_count : {1, 4}) {
-        setup(zone_count, 64 / zone_count, 56, 2);
-        fresh_target = 1000 + WORLD_QUEST_MAX_HISTORY_CHECKS;
-        assert(!createQuestForGiverVnum(&player, 16553, &failure));
-        assert(history_reads.size() == WORLD_QUEST_MAX_HISTORY_CHECKS);
-        assert(pc == before);
-    }
-    player.level = 30;
-    setup(4, 16, 30, 1);
-    assert(!createQuestForGiverVnum(&player, 16553, &failure));
-    assert(probe_reads.size() <= WORLD_QUEST_MAX_TARGET_PROBES);
-    assert(history_reads.size() <= WORLD_QUEST_MAX_HISTORY_CHECKS);
-    assert(pc == before);
-
-    // The last permitted history check can still grant a valid quest.
-    player.level = 56;
-    setup(1, WORLD_QUEST_MAX_HISTORY_CHECKS, 56, 2);
-    fresh_target = 999 + WORLD_QUEST_MAX_HISTORY_CHECKS;
-    assert(createQuestForGiverVnum(&player, 16553, &failure));
-    assert(history_reads.size() == WORLD_QUEST_MAX_HISTORY_CHECKS);
-    assert(pc.quest_mob_vnum == fresh_target);
-    // Quests are unshareable by default: a granted quest carries no shares.
-    assert(pc.quest_shares_left == 0);
-}
-'''
-
-
-def main() -> None:
-    harness = (
-        PRELUDE
-        + extract_function("world/world_quest_policy.c", "int select_cached_mob(")
-        + ADAPTER
-        + extract_function("world_quest.c", "static int world_quest_share_limit(")
-        + extract_function("world_quest.c", "bool createQuestForGiverVnum(")
-        + SCENARIOS
     )
-    build_root = ROOT / "bin/tests"
-    build_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="world-quest-retries-", dir=build_root) as directory:
-        path = Path(directory)
-        source = path / "retries.cpp"
-        binary = path / "retries"
-        source.write_text(harness)
-        subprocess.run(
-            ["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-             "-Isrc", str(source), "-o", str(binary)],
-            cwd=ROOT, check=True,
-        )
-        subprocess.run([str(binary)], cwd=ROOT, check=True)
-    print("world quest target retry runtime regression passed")
-
-
-if __name__ == "__main__":
-    main()
+    binary = work / "targets"
+    subprocess.run([
+        "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+        "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all", "-Isrc", "-Isrc/no_mysql", "-D__NO_MYSQL__",
+        "tests/async/world_quest_live_targets_harness.cpp", str(adapters), str(HARNESS_STUBS),
+        "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
+        "src/core/safe_format.c",
+        "-Wl,--gc-sections", "-o", str(binary),
+    ], cwd=ROOT, check=True)
+    scenarios = [(level, "normal", "kill") for level in (10, 11, 29, 30, 40, 41, 49, 50)]
+    scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
+    scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]
+    scenarios += [(level, "gear", kind) for level in (11, 29, 56) for kind in ("ask", "kill")]
+    scenarios += [(level, "foreign", "kill") for level in (11, 29, 30)]
+    scenarios += [(level, "mapless", "kill") for level in (40, 41)]
+    scenarios += [(11, mode, "ask") for mode in (
+        "rare", "conditional", "mixed", "random", "follower", "mount", "staging_release",
+        "moved", "unspeaking", "invisible", "hidden", "aggressive", "silent", "sleeping", "zero",
+    )]
+    scenarios += [(11, mode, "kill") for mode in (
+        "zero", "unroomed", "one_usable", "safe", "protected", "noexp", "summoned", "summon_kind",
+        "charmed", "following", "no_reset",
+        "no_reward", "no_level_window", "no_return", "history_error", "quota", "cross_zone_retry",
+    )]
+    scenarios += [(56, mode, "kill") for mode in (
+        "history_cap", "history_cap_zones", "last_history", "last_history_zones",
+        "probe_cap", "probe_cap_zones", "last_probe",
+    )]
+    for level, mode, kind in scenarios:
+        result = subprocess.run([str(binary), str(level), mode, kind], cwd=work,
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                timeout=15)
+        if result.returncode:
+            raise AssertionError(f"{level} {mode} {kind}:\n{result.stdout}")
+        print(result.stdout.strip().splitlines()[-1])
+    print(f"{len(scenarios)} production live-target/creation/payment scenarios passed")

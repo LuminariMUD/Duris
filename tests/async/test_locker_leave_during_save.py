@@ -115,7 +115,8 @@ int main()
     char user_name[] = "Veridian";
     char_data locker = {};
     locker.player.name = locker_name;
-    locker.specials.act = ACT_ISNPC;
+    pc_only_data locker_pc = {};
+    locker.only.pc = &locker_pc; // Real locker holders are PID-zero PCs.
     pc_only_data pc = {};
     pc.pid = 7;
     char_data user = {};
@@ -154,7 +155,9 @@ int main()
 }
 '''
 
-with tempfile.TemporaryDirectory() as temp_dir:
+build = ROOT / "bin/tests/locker-leave-during-save"
+build.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(dir=build) as temp_dir:
     source = Path(temp_dir) / "harness.cpp"
     binary = Path(temp_dir) / "harness"
     source.write_text(HARNESS)
