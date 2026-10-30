@@ -1,1210 +1,556 @@
-# Issue #437: usable bartender quests and recovery
+# Issue #419: dispose of NORENT keys at intentional rent
 
-Status: **implementation, review remediation and local qualification complete; [PR #470](https://github.com/LuminariMUD/Duris/pull/470)**. Updated 2026-10-30.
-Issue: [Duris #437](https://github.com/LuminariMUD/Duris/issues/437), including
-all three investigation comments. Stack root:
-`branch/issue-437-bartender-quest-routes`. Current continuation branch:
-`branch/issue-437-gameplay-qualification` (based on #469).
-Source baseline: `master` / `origin/master` at
-`9632f29804687ccf049ddf7a59a5ae16878e0583`.
+Status: **implemented; local qualification complete; original live-instance attribution unavailable**.
+Updated 2026-10-30.
+Issue: [Duris #419](https://github.com/LuminariMUD/Duris/issues/419).
+Branch: [branch/issue-419-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-419-plan).
+Source baseline: `master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
+Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-419-plan`.
 
-All five steps are complete. The [review qualification record](#review-remediation-and-fresh-qualification-2026-10-30)
-is the current handoff; earlier component checkpoints are historical and their
-remaining-work notes are superseded by it. The linked PRs record integration
-status. Production deployment remains separate.
-
-
-The planning baseline publishes the plan and links the branch. Implementation
-progress and review boundaries are recorded below. The prior #428 plan and
-qualification record are preserved byte-for-byte in
+The implementation and measured qualification results are recorded below.
+Production deployment and attribution to the reporter's specific item are not
+claimed. The previous #428 plan and its qualification history are preserved byte-for-byte in
 [plan-issue-428.md](plan-issue-428.md).
+
+The newer master #437 plan is also preserved byte-for-byte in
+[plan-issue-437.md](plan-issue-437.md) during PR integration.
 
 ## Outcome
 
-New bartender quests must name suitable, currently usable NPCs in the advertised
-zone, with a verified ordinary route from the actual request origin. For accepted
-levels **11 through 29**, that route must stay within the origin's resolved local
-geography and require no paid transport or special travel equipment. Level **30**
-is outside the local-only restriction. Route legality, live availability,
-accurate directions and stale-assignment recovery apply at every quest level.
+After a successful intentional rent save, a genuine temporary key carried,
+equipped or nested on the player must be absent when that player reconnects.
+This includes Golden Hall key 40401 and both freshly created and previously
+owned copies. Its durable custody must record the disposal so an older snapshot
+cannot restore it. MariaDB and flatfile-primary must agree.
 
-An assignment invalidated by the world must offer a free replacement without an
-abandonment charge, lost earned progress, or false completion/history consumption.
-If no new target qualifies, refuse a new purchase and return its fee; for an
-already paid invalid assignment, retain a durable replacement entitlement.
+Preserve unrelated durable assets, retained/unmaterialized item components,
+ordinary save behavior and existing crash/copyover recovery semantics. Establish
+separately whether this conditional defect caused the reported live observation;
+a synthetic reproduction is not proof about that particular item.
 
-Keep the boot catalog, level windows, reward filtering/weighting, completion
-history, daily allowance, sharing limits and successful completion behavior.
-The changes below explicitly replace the defective availability and global
-population assumptions, rather than loosening the other rules to manufacture a
-target. A positive local grant and completion must pass: refusing every request
-does not meet the outcome.
+## Evidence from the current codebase
 
-## Non-goals
+The issue was read, including its empty comment thread, but its older revision
+and reproduction were not used as proof of current behavior.
 
-No general travel planner, combat-safety guarantee, new transport system,
-reward rebalance, zone approval list, or world-wide area repair. Preserve the
-Divine selector and unrelated quests. Production deployment and reconstruction
-of an unidentified player's historical assignment are separate from the local
-implementation; retain the latter as an explicit evidence limitation.
+- `areas/obj/gold_hal.obj:16` defines key 40401 with type 18 and flags 8388608.
+  `src/core/defines.h:127,218` identifies these as `ITEM_KEY` and
+  `ITEM_NORENT`. The key's eight values are zero. The zone equips it on paladin
+  40400 in room 40401 (`areas/zon/gold_hal.zon:654-655`); the east gate in
+  `areas/wld/gold_hal.wld:18-31` requires 40401.
+- `src/item/objconv.c:220-226` sets NORENT for keys, and
+  `src/world/db.c:3252` calls that conversion during creation. An area edit or
+  special case for vnum 40401 would address neither the shared cause nor custody.
+  Generated production area data has not been inspected in this planning task.
+- Both `inn()` and `undead_inn()` in `src/specs/specs.room.c` submit
+  `RENT_INN`. `do_quit()` and the trusted early exit in `do_camp()` in
+  `src/cmd/actoth.c` also use that intent. The normal camp completion uses
+  `RENT_CAMPED`, and idle departure uses `RENT_LINKDEAD`.
+- `persistence_save_character_terminal()` at `src/cmd/actoth.c:2133` captures
+  and queues a full checkpoint, invokes the locker hook, and returns without
+  waiting for durable completion. Its callers extract the character.
+  Queue failure is reported but does not keep the character in the game.
+  This established asynchronous logout behavior is a constraint on this repair.
+- `src/player/player_snapshot_capture.c:356-369` skips NORENT objects only
+  when their runtime ownership is not active. The player capture calls that
+  traversal with `omit_norent=true` for every intent, even though
+  `player_snapshot.save_intent` already exists. The skip occurs before child
+  traversal. Private recursion, public list/tree capture, player capture and
+  pet capture share machinery, so the repair must not change every caller.
+- A new executable probe linked the production capture, codec and runtime
+  ownership modules with the existing engine stubs. All **36 baseline cases**
+  passed: six intents (INN, CRASH, CRASH2, QUIT, LINKDEAD, CAMPED), two ownership
+  states, and carried/held/nested placement. For every intent, the fresh key
+  disappeared from the encoded/decoded item list and the active key survived
+  with its UID, NORENT flag and topology. A nested bag remained in either case.
+  This independently confirms the reported boundary and also demonstrates
+  that fresh keys are currently omitted from crash checkpoints.
+- `src/player/player_snapshot_repository.c::apply_items()` claims the captured
+  graph, replaces player payload rows, and commits inside the player-save SQL
+  transaction. `src/flatfile/flatfile_player_repository.c` prepares one ownership
+  catalog image and commits it with the player image through the existing
+  authority transaction.
+- `src/item/item_claim.c`, `item_claim_repository.c`, and
+  `src/flatfile/flatfile_item_repository.c` already prevent a destroyed UID
+  from being reclaimed by a stale save. Ordinary snapshot omission does not
+  create that destruction record.
+- `src/world/handler.c:3205-3216` explicitly explains why `extract_obj()`
+  does not retire custody: extraction is also used during shutdown, copyover
+  and bulk teardown. Unheld active player ownership rows can be reaped at boot;
+  that is not immediate, replay-resistant rent disposal.
+- `tests/async/test_player_save_claim.py` protects the general active-custody
+  NORENT safeguard. `test_player_snapshot_capture.py` has a usable production
+  capture/codec harness. The flat-file and MariaDB claim harnesses already
+  exercise destroyed-item exclusion; existing socket journeys supply disposable
+  worlds, accounts, backend setup, restart and copyover helpers.
 
-## What the source establishes
+No open PR mentioning 419 was returned by the GitHub PR search. Targeted
+searches for “Golden” and “rent” found no open matching issue in the
+`max757/duris` GitLab mirror. #419 is the work item for this branch; this is not
+a claim that every mirror record has been audited.
 
-These findings were checked in the baseline above. The issue comments are useful
-leads and previous experiment records, not substitutes for the owning code.
-Line numbers below refer to that baseline and may move during implementation.
+## Policy and non-goals
 
-1. **Global selection is real, and it was specified deliberately.**
-   `src/world/world_quest_policy.c:367-383,560-604` filters status, hometowns,
-   levels, map presence and rewards, then weights eligible zones globally.
-   There is no origin or route check. Before `35b2071a8`, `getQuestZoneList()`
-   used local map exits, a below-30 `map_section` comparison and the
-   `3000 + level^3` distance threshold. However, the
-   [plan committed with that change](https://github.com/LuminariMUD/Duris/blob/35b2071a84fba5d968b07d13fa1f0d2b4a58d267/docs/ongoing-projects/issue-157-dynamic-bar-quests.md#fr-001--global-dynamic-catalog)
-   expressly requires a catalog independent of bartender identity, room,
-   player zone and continent exits. #437 therefore proposes a policy revision;
-   the evidence does not support calling this an accidental omission. Preserve
-   the global catalog and narrow its per-request eligible subset.
-2. **Geography fields are not travel proofs.**
-   `world_quest.c:392-431` returns the first zone-to-map exit without proving
-   inbound access. `map.c:1389-1452` assigns continent IDs within map-zone
-   connectivity; ordinary interiors can retain zero. `map.h:42-55` defines
-   surface continent IDs 1-14; zero is not a valid surface continent.
-   `map.c:1466-1617` builds coordinate sections, not mortal routes.
-   `calculate_map_distance()` at `map.c:329-355` returns squared coordinate
-   distance, or -1 across different map zones. Neither that distance nor
-   equal `map_section` proves affordability or legal access.
-3. **Zero-population targets are already filtered.**
-   `select_cached_mob()` at `world_quest_policy.c:385-446` requires global
-   population >=2 for KILL and exactly 1 for ASK. Creation rechecks population
-   at `world_quest.c:862-870`. The missing boundary is actual live rooms and
-   usable instances, not simply another `mob_index[].number > 0` test.
-4. **Prototype ownership can give the wrong destination.**
-   `load_mobile_profiles()` at `world_quest_policy.c:249-281` groups targets by
-   prototype VNUM interval. Authored resets independently confirm cross-zone
-   reuse: `areas/zon/shaughin.zon:185-186` places 6610 in room 6543, and
-   `areas/zon/astral_main.zon:13-16` places 19830 in rooms 19701/19704.
-   Advertised location and accessible supply must use the selected live zone.
-   Do not change reward ownership or average-level arithmetic as a side effect.
-5. **Target suitability also needs the live instance.**
-   ASK's cached speech/visibility checks and aggression probe in room rnum 1
-   do not prove interaction in the target room. KILL does not use the existing
-   `combat_eligible` profile. `world_quest.c:911-924` sets its quota from global
-   population minus one. Real ASK completion is reached through
-   `cmd/actcomm.c::do_ask()`; real KILL progress is credited through
-   `combat/fight.c` and `world_quest.c::quest_kill()`.
-6. **Movement routines cannot be called as harmless route predicates.**
-   `cmd/actmove.c::leave_by_exit()` starts regeneration and checks live blockers;
-   entry checks use `ch->in_room`, and some branches alter posture. Commands,
-   room hooks and `char_to_room()` can invoke scripts, move or destroy actors.
-   Inspect `actmove.c:254-775,780-975,1339-1423`,
-   `cmd/interp.c:2814-2830`, and `world/handler.c:1167-1184,1548-1568`.
-   `combat/forced_movement.c::map_entry_barrier()` is a reusable side-effect-free
-   map barrier check. Flight does not bypass its map mountain/cavern-wall rule.
-7. **The Divine fix is a reference, not the bartender solution.**
-   Merged #448 changes `economy/divine_boon_selection.c::ordinary_exit()` and
-   cached-path validation. Its roots are faction hometowns, and its policy
-   assumes some boat/flight travel. Its reset scan also permits probabilities
-   >=50. None supplies #437's origin-specific, routine-target contract.
-   Generic `world/graph.h` edge macros omit different restrictions and cannot
-   be selected by name alone. Do not modify Divine policy for this task.
-8. **Stale quests currently remain chargeable obligations.**
-   `do_quest()` recreates a prototype for display at `world_quest.c:687-753`;
-   it never verifies live availability. `specs/specs.mobile.c:11024-11098`
-   charges to abandon; its callback at `10930-10947` records partially
-   completed KILL abandonment in history. `quest_kill()` already pays XP per
-   credited kill. Recovery must not reset that counter and pay the same progress
-   again, or call `sql_world_quest_finished()` for a server-invalid assignment.
-9. **Persistence and payment have important current constraints.**
-   Active quest state is 14 values in `core/structs.h:1333-1347` and
-   `player/player_snapshot.h::quest_values`; capture, load, SQL column arrays
-   and the binary snapshot codec all mirror that ordering. There is no saved
-   origin room or purchase fee. Despite deferred naming/comments,
-   `economy/currency_transaction.c::apply()` currently invokes completion
-   synchronously after updating the wallet; player snapshots persist it.
-   Do not introduce a second transaction system or assume a durable fee ledger.
+1. **Disposal trigger:** `RENT_INN` plus a materialized player's item whose
+   actual type is `ITEM_KEY` and whose actual flags include `ITEM_NORENT`.
+   Apply this consistently to every existing RENT_INN producer, including
+   explicit quit and the trusted camp shortcut. Do not reinterpret the numeric
+   intent names: RENT_QUIT is also used for ordinary saves.
+2. **Eligibility:** use type and flag, not vnum, name, break chance, or whether
+   a runtime ownership entry happened to hydrate. All genuine NORENT keys get
+   the rule; a NORENT non-key retains the current durable-asset safeguard.
+   A key without the flag is a preservation control, even though normal key
+   creation adds it.
+3. **Recovery compatibility:** do not dispose on RENT_CRASH, RENT_CRASH2 or
+   copyover, nor add disposal to CAMPED, LINKDEAD, death, pets, lockers, corpses
+   or world-item saves. Preserve their existing behavior. In particular,
+   current ordinary player checkpoints omit fresh NORENT keys and retain
+   active ones; this plan does not silently turn fresh-key crash recovery into
+   a new feature. Test copyover separately because it also serializes live
+   objects. Record any difference between checkpoint recovery and actual
+   copyover instead of claiming one proves the other.
+4. **Atomicity:** committed disposal and the saved inventory must agree.
+   A replay of a pre-rent snapshot cannot revive a retired UID; repeating the
+   same rent save must be safe. Before commit, failures must not leave a
+   half-updated ownership/payload pair. Existing queue failure and terminal
+   writer failure reporting remain in place; this issue does not promise a
+   successful logout is durable when the current save queue itself fails.
+5. **Preservation:** a key inside a saved bag is removed without removing the
+   bag or unrelated contents. Protected retained source rows are not decoded
+   or reclassified as ordinary live items. Do not expand the policy to missing,
+   malformed or unmaterialized assets based on guessed type/flags.
 
-The earlier issue experiments and local files under
-`bin/tests/issue437-investigation/` contain real level-11/29 client assignments
-from Woodseer to Seacaves/Old Graveyard, and the relocated/disappeared 23501
-case. I inspected their recorded outputs; I did not rerun those servers for
-this planning commit. The policy, creation and movement files checked above
-have not changed from the recorded `e08fa3d1b` investigation head; unrelated
-trainer edits in `specs.mobile.c` have landed since. Reproduce the relevant
-journeys against the implementation build, rather than claiming old binaries
-qualify new behavior. Previous sampled path counts are not failure-rate estimates.
+No area flag change, new setting, new service, global extraction hook, per-key
+writer job, production inventory migration, key-break/relocking redesign
+(#418), or general persistence rewrite is needed. Do not change the timing of
+logout, bypass the writer, or run production mutations as part of this work.
 
-The named centaur/Ice Castle report remains qualified. Current authored content
-has a 100% reset for centaur 82718 and 100% resets into IceCrag's named rareload
-room 97005. The prior full-policy audit excluded that centaur and the three
-investigated level-60 IceCrag singletons through non-overlapping level windows.
-That does not identify the player's actual target. Record the running revision,
-target VNUM/type, accepted level/time and live rooms if the affected record
-becomes available; never manufacture those identifiers or assert a zero-load
-new assignment from the current count checks. Test synthetic zero-load cases
-and the independently proven reused/staging targets regardless.
+## Ablated implementation sequence
 
-## Proposed behavior decisions
+### 1. Add the failing behavioral regressions
 
-These are concrete implementation defaults for #437, not claims about current
-behavior or authorization to deploy this planning branch.
+Extend the existing production capture/codec harness and both save-claim
+harnesses. The decisive failure is a successfully applied RENT_INN save whose
+active key can still load; capture inclusion alone is not the final assertion,
+because the worker needs the candidate's UID to retire it.
 
-### Origin, boundary and affordability
+Use fresh and active key 40401 in carried, HOLD and nested placements. Include
+multiple keys, a durable bag with ordinary siblings, an active NORENT non-key,
+an unflagged key, and an already destroyed key. Also cover a key under a
+normally omitted NORENT container: today's early return must not hide a
+candidate from the disposal operation. Establish the existing behavior of
+non-rent intents before modifying it.
 
-- Capture the request room VNUM while validating the real bartender/customer
-  interaction, and pass it by value through creation/payment context. Use that
-  same room after a payment continuation; do not rediscover any NPC sharing
-  the giver VNUM or select relative to a later player position.
-- Apply local-only policy to accepted levels 11-29. Preserve the level-11
-  admission gate, level-41 mapless gate, and level-50 KILL-only switch.
-  Revalidation uses the saved accepted level, so leveling or walking away
-  does not silently change an existing contract.
-- For a surface-map origin, use its positive continent ID. For an interior,
-  find its legally reachable first map boundaries through ordinary directed
-  connections; do not traverse an entire continent to decide the origin.
-  Require an unambiguous local geography. Resolve Underdark origins as the
-  reachable Underdark map component, distinct from surface continents; do not
-  equate two continent-zero interiors. A boundary crossing to another surface
-  continent or between surface and Underdark is nonlocal for levels 11-29.
-  Multiple same-region entrances are valid; conflicting regions or unresolved
-  geography produce a clear refusal, never a global fallback.
-- Validate the route all the way into the NPC's actual room and a directed
-  return route to the origin. A reverse exit need not be the same physical
-  entrance if an alternative ordinary return path exists. A one-way trap does
-  not qualify. Low-level transit cannot leave and reenter the local region.
-- Define affordable here as **no mandatory travel fare, keys, hired travel,
-  another player's spell, or equipment/temporary-flight dependency** for
-  levels 11-29. Ordinary walking, opening an unlocked door and crawling are
-  allowed. Do not restore the squared-distance formula or add an arbitrary
-  gameplay radius. This does not promise a shortest journey or combat safety.
-  At 30+, allow only travel capabilities the player actually has and the
-  validator can prove; unknown scripted/paid transport remains ineligible.
+### 2. Carry rent candidates to the existing save transaction
 
-### One conservative route validator
+Keep capture non-mutating. For the main player's RENT_INN item graph, include
+candidate key rows even when they have no runtime ownership entry. Existing
+`save_intent`, UID, type, flags and item topology contain the required data:
+reuse them instead of adding a second disposal queue or a wire-format version.
 
-Keep a quest-specific, read-only traversal in `world_quest_policy.c`, reused by
-creation and revalidation. It must take explicit source/destination room IDs
-and relevant player facts, rather than relocating a real player or invoking
-movement/interaction commands. Reuse safe existing predicates where their
-contracts fit; extract a small shared predicate only if a real movement rule
-otherwise has to be duplicated. Do not refactor the movement subsystem.
+Preserve ordinary parent indices for saved containers. For an ancestor that
+the existing filter omits, traverse its skipped subtree only to collect
+eligible keys as disposal-only root rows in this RENT_INN request; do not
+promote or save its ordinary contents. These candidate rows must be consumed
+and removed before the persisted player payload is encoded. Keep the current
+depth/object/byte bounds and cycle detection effective for this traversal.
 
-Reject secret, blocked, walled, locked/key-dependent exits; castle walls;
-map-to-map mountains/cavern walls; closed/private zones; restricted/private,
-guild, jail, locker and hazardous rooms; incompatible hostile-town transit;
-and current blocking actors, traps or special gates that prevent ordinary
-travel. An ordinary mountain room and a legitimate map/zone transition remain
-valid. A closed door qualifies only if it can actually be opened without a
-key or skill and has no blocking script. Model safe posture changes explicitly.
-Water, no-ground, underwater and dangerous plane sectors need explicit policy,
-not `can_enter_room()`'s permissive return alone.
+Limit the new capture context to player rent. Public list/tree capture and
+pet/locker/world callers retain their existing contract. Extend the current
+private traversal rather than creating an inventory-policy framework.
 
-Room, mobile and object procedures may intercept travel or ASK. Treat an
-unclassified relevant procedure as unproven. Audit procedures encountered in
-the representative positive routes and allow only those shown not to gate the
-operation, using existing procedure identities. Do not reject every NPC with
-`ACT_SPEC` or assume all room scripts are harmless. Do not build a generic
-script simulator or a zone approval table.
+### 3. Retire and omit candidates atomically in each backend
 
-Use one request-local traversal/live-instance context with explicit shared work
-bounds, short-lived room results and no pointers retained across commands.
-Keep the existing 32 target-probe and 32 history-check limits. Add a separate
-shared room/edge-work limit for origin resolution, outbound and return checks;
-calibrate it using the loaded-world journey and existing game-loop latency
-trace. Exhaustion is **unproven**, not proof that a quest became impossible:
-skip/refuse a new candidate, but never cancel/refund a valid existing quest
-because a search budget ran out. Reuse results within the request, avoid one
-whole-world traversal per candidate, and do not rebuild the boot catalog.
+Add the narrow rent-key decision to the existing item-claim module so the two
+backends use the same predicate. Pass rent context only for the incoming main
+player item component; never derive it from a previously stored flat-file
+snapshot's old intent during a status-only or pet-only save.
 
-### Routine sources, live targets and truthful directions
+In MariaDB, integrate retirement into the existing claim/apply transaction.
+In flat-file, integrate it into the existing claim catalog after-image and
+commit that image with the filtered player image. Create a destroyed record
+for a fresh candidate UID and retire an existing active candidate. Follow
+existing destruction identity, detached root/parent topology, item/owner
+revision and ownership-audit conventions. Reuse current record locks and
+the flat-file authority lock; do not start a nested independent transaction.
 
-- Add only the necessary routine-source metadata to the boot catalog using
-  loaded reset commands. A direct unconditional `M`, positive limit and
-  probability 100 are necessary for the conservative routine pool. Account for
-  dependency flags, reset mode, random-table/follower/script-only sources and
-  placement in holding/distribution rooms. A 100% line alone is insufficient.
-  Inspect `db.c::reset_zone()` semantics rather than treating fields as labels.
-- Require a proven ordinary placement in the destination zone; a staging-room
-  only or rare/conditional source stays out of routine quests, even when it
-  happens to have a counted instance. Do not classify by room name text or
-  maintain a list of guessed rare VNUMs. A VNUM with a genuine independent
-  routine placement can qualify through that placement, not through its rare
-  instances. For ambiguous mixed sources, exclude until provenance is proved.
-- Keep prototype metadata/level averages and reward pools in their current
-  ownership model. Index target placements separately by actual reset room
-  zone, reusing the existing profile, so 6610 and 19830 are not falsely
-  advertised in their prototype-owning zones. Apply the destination zone's
-  existing level/reward eligibility. A mismatch may correctly leave no target;
-  do not compensate by changing level windows or borrowing another zone's reward.
-- Resolve actual live NPCs once for the bounded request. Require the selected
-  target to be alive, in the advertised eligible zone and on a proven route.
-  Do not count probes, invalid rooms, pets/charmed summons, inaccessible holding
-  rooms or unrelated populations elsewhere. Recheck immediately before
-  publishing quest state; live presence and routine provenance are separate gates.
-- ASK retains the exactly-one-global-instance rule and existing level/pre-31
-  visibility restrictions, and additionally verifies actual visibility,
-  speech/interaction and non-aggression in the target environment. Inspect
-  predicates for hidden reliance on `ch->in_room` before reusing them.
-- KILL requires cached combat eligibility plus live attack legality, including
-  safe-room and protected NPC checks. Require at least two usable instances;
-  preserve `min(difficulty_scaled_random_7_to_9, usable_count - 1)`.
-  Do not promise future replenishment to satisfy the initial quota. After
-  partial progress, validate supply against **remaining** kills, not the
-  original quota or a fresh minus-one formula.
-- Choose the map entrance from the validated route to that actual target zone.
-  Store its VNUM in the existing `quest_map_room` independently of whether the
-  player has bought the map; `quest_map_bought` still controls disclosure.
-  Revalidate before map purchase and display, and keep text/GMCP aligned.
-  No map sale for an unavailable/unproven route. A moved target cannot leave
-  old zone directions or an unrelated first-marker map on screen.
+Use the existing written-item filtering/remapping path to remove the
+candidates. Preserve the general claim rules for ordinary assets. A UID that
+is already destroyed remains destroyed, and retrying rent does not increment
+revisions or emit duplicate retirement events unnecessarily. Deliberate rent
+disposal should be identifiable as such, not reported as a duplicate-item
+incident; use existing persistence diagnostics, without introducing telemetry
+infrastructure.
 
-### Stale assignments and persistence
+Only loaded, captured player holdings authorize retirement. Do not scan and
+destroy every ownership row for a PID or prototype. Check the existing
+memory-authoritative claim behavior for a stale recorded owner in a focused
+test; do not invent a different ownership conflict policy just for keys.
+Use the object's assigned UID; do not infer identity from its vnum or invent
+another UID. Keep malformed-source handling consistent with the current
+capture and repository boundaries.
 
-Use **free replacement**, rather than retrospective cash reimbursement, as the
-recovery contract for accepted quests. Exact historical fees are not recorded.
-Keep the existing full refund for a new purchase that cannot create a quest.
+Keep ownership, payload and revision changes within the single transaction on
+all error paths. Keep tombstones through restart so ordinary boot reaping and
+an older save cannot make the same UID claimable again. The runtime cache is
+not the durable authority. Verify that terminal extraction removes the live key
+and subsequent loads use durable custody; do not mutate live objects from the
+writer thread. The completed inspection below explains why clearing the entire
+runtime ownership domain is unnecessary.
 
-1. Revalidate from `do_quest()` and bartender request/map/abandon handling,
-   before charging or giving stale directions. Run the check once per command
-   and reuse its result. A restarted or relogged quest is checked on its first
-   use after world loading. Keep presentation serialization free of money/state
-   side effects; publish the resulting status through the existing GMCP path.
-2. Separate valid, world-unavailable, player-temporarily-blocked and unproven
-   results. Despawn, incompatible relocation, insufficient remaining usable
-   supply and a newly locked route can establish world unavailability.
-   Blindness, temporary incapacity, the player moving elsewhere, or removing
-   their own travel equipment must not grant a free reroll. Unproven script
-   behavior or a budget limit is not an automatic cancellation either.
-3. For a proven invalid, incomplete assignment, mark replacement due and make
-   it inactive, retaining accepted level, giver/origin, type, kill progress and
-   original quota, map entitlement and remaining share allowance. Explain the
-   reason and the free replacement option. Do not write completion history,
-   consume daily quota, remove earned XP or pay new rewards. Finished quests
-   remain claimable; never cancel one because its last target was killed.
-4. `ask <bartender> quest` redeems that one entitlement through the same selector
-   without a new fee. Use the current request origin for the replacement and
-   persist it after success. Preserve accepted level/type, earned kill count
-   and original quota; require enough usable targets for the remaining work.
-   Do not replay partial-kill XP, reset share limits or manufacture a completion.
-   If no replacement exists, leave no active target and retain the entitlement
-   across save/restart. Repeated requests cannot duplicate it. Free cancellation
-   can discard it through explicit abandonment without a fee/history penalty.
-   Handle recovery before the new-purchase level/quota/fee gates: it continues
-   already accepted work, while still requiring loaded completion history and
-   rejecting previously completed replacement targets. Never automatically
-   abandon or erase progress merely because replacement is temporarily absent.
-5. Add two explicit persisted values: accepted origin room VNUM (zero means
-   legacy/unknown) and replacement-due flag. Use the existing append-only
-   `player_status_field` mechanism with a codec version increment and old-wire
-   defaults; leave the 14-value legacy quest payload layout intact. Update
-   capture, SQL save/load, materialization and reset/share paths together.
-   Add a guarded additive migration for the two SQL columns using the current
-   migration runner. No new table, ledger or persistence service.
-6. Legacy quests without an origin get target/location validation, but a guessed
-   giver location must not be called their accepted origin. At a real bartender,
-   validate/rebind a usable quest or offer the same free replacement for an
-   invalid/obsolete contract. If the origin cannot be reconstructed on display,
-   explain that a bartender check is needed; do not charge, blindly discard it,
-   or show unverified directions. Preserve completed legacy quests and progress.
-7. Mark quest/recovery mutations dirty with `PLAYER_COMPONENT_STATUS`; prove
-   one player snapshot retains both the monetary result and associated quest
-   state under the current save model. Handle shared quests explicitly: copy
-   origin/accepted policy, revalidate the recipient, never copy a pending
-   replacement as an active task, and retain remaining share/progress limits.
+### 4. Prove the command and persistence journeys
 
-## Ablated implementation sequence and files
+Add one focused `tests/async/test_norent_key_rent_journey.py` using existing
+journey helpers and a backend selector. Do not add a general test framework.
+Install the real Golden Hall key prototype into disposable fixtures and use
+real rent commands with synthetic players and an inn. Native cases can
+cover additional RENT_INN producers without duplicating a whole world setup.
 
-Current gameplay qualification slice: outcome is real ordinary travel and
-ASK/KILL completion at the required levels, persistent earned progress/history,
-and command/observer latency evidence. Non-goals: no target teleportation,
-combat-safety rebalance, production operations or another route engine. Files:
-the existing disposable dual-backend journey, its test-only debugger probe and
-this handoff; repair owning code only for reproduced findings. Proof: native
-client commands, actual room/target/reward/history checkpoints and current
-server binaries on both authorities. Reconstruct navigation from the production
-route context; debugger setup/inspection runs outside timed commands.
+For each backend, obtain a fresh key and a demonstrably hydrated owned key,
+then rent and reconnect for carried, equipped and nested placement. To
+establish a previously owned fixture despite today's fresh-key omission,
+seed a valid synthetic owned snapshot through the backend test setup and
+log in through the real loader; confirm UID and active custody before renting.
+Do not mistake assigning a UID for proving ownership hydration.
 
-Current recovery slice: outcome is revalidation and a durable free replacement
-for an incomplete world-invalid assignment, retaining accepted type/level, earned
-progress, original quota, map entitlement and shares. Non-goals: no fee ledger,
-movement simulation, general route engine or new persistence fields. Files:
-existing policy, quest/bartender, text/JSON/GMCP consumers and focused fixtures.
-Proof: executable revalidation/transition/command cases plus existing snapshot
-evidence and disposable save/restart journeys.
+Wait for the actual terminal writer result before inspecting durable state.
+Check both the saved payload and ownership record, then reconnect and restart
+the disposable server. Verify no key returns and bag/sibling UIDs and contents
+are unchanged. An empty inventory display alone is insufficient.
 
-Use the same route builder for current travel, maximum permitted player
-capabilities, and an optimistic upper bound that includes unknown procedures.
-Only the last graph's failure can prove a hard world-route loss; a relevant
-unknown gate or exhausted shared work budget cannot cancel work. All passes
-share the existing operation bound. Read live target instances once, use
-remaining kills for accepted work, and keep the serializer read-only.
+Exercise crash checkpoints, copyover and their subsequent reconnect paths as
+compatibility controls, with fresh and active copies. Confirm active keys
+survive recovery and that fresh-key behavior matches the independently
+measured baseline for the route tested. Exercise an older queued checkpoint
+followed by rent, an older snapshot replayed after committed rent, duplicate
+rent apply, SQL rollback and flat-file commit/recovery failure. Reuse the
+existing worker and authority-transaction harnesses for deterministic faults;
+do not use arbitrary sleeps as durability evidence.
 
-Current completion-credit slice: outcome is credit only for the accepted quest
-type and advertised actual zone. The death hook calls `quest_kill` for every
-matching death; source inspection found it also advancing ASK tasks, including
-rewriting their zero kill quota and awarding a KILL completion. Non-goals: no
-reward rebalance or death-hook refactor. Files: `world_quest.c` and the existing
-production XP/completion fixture. Proof: ASK/KILL wrong-type, wrong-zone, missing
-target and invalid-room cases retain exact state/XP/history; legitimate awards
-retain existing behavior. Share the identical target-boundary check between the
-two real completion callers.
+### 5. Investigate the reported live instance and finish documentation
 
-Current presentation slice: outcome is quest status/map rendering without NPC
-creation, actor transfers, hooks or lost completed/legacy quest state. Non-goals:
-no selection/recovery transition or map entitlement change. Files: existing
-`world_quest.c`, `json_utils.c` and their focused executable fixtures. Proof:
-production text/JSON rendering with absent prototypes and invalid zones, and
-telnet/GMCP map output while actor, quest and room populations remain unchanged.
-Reuse boot-cached prototype descriptions and the existing synchronous GMCP map
-viewpoint pattern; no new display service or alternate prototype loader.
+The issue supplies no reporter character or actual item UID. Locate the
+original report and relevant permitted operational evidence, then correlate
+the precise UID, vnum, instance type/flags, root/parent placement, runtime
+custody, durable owner/state and save intent with the server that served the
+report. Record its running revision/binary identity and evidence timestamps;
+a current checkout revision is not proof of the running executable or of
+what ran when the report occurred.
 
-Current live-selection slice: outcome is a real new assignment from routine
-reset provenance, actual NPC locations and usable population, using the accepted
-origin's bounded route context and a truthful map entrance. Non-goals: no reward
-rebalance, Divine change, area repair or movement/interaction simulation. Files:
-the existing world-quest policy/creation/bartender paths, small explicit-room
-versions of existing visibility/aggression predicates, and focused fixtures.
-Proof: controlled production selection/creation, then positive local command
-journeys and relocated/zero/staging/unsafe target refusal with exact refunds.
-Keep one profile/catalog and one selector; remove the prototype-only selector
-and its unused convenience wrapper rather than leaving a bypass path.
+Use read-only inspection and existing diagnostics. Keep credentials, raw
+player records and operational logs out of Git; record only the minimal
+redacted finding in this plan/issue. No live rent, forced logout, item mutation,
+migration or deployment is authorized by this planning request. If the
+original object is gone or the reporter cannot be identified, state that
+exact-instance attribution remains unverified and specify the missing
+evidence. Do not close that acceptance item by substituting the synthetic
+reproduction.
 
-Current route slice: outcome is a bounded, read-only per-request proof from the
-accepted origin to actual room IDs and back, including local geography below
-30 and a route-derived map entrance. Non-goals for this slice: no catalog/reward
-rewrite, movement simulation, global route cache or policy configuration. Files:
-`world_quest_policy.c/.h`, its math constants, the existing trap trigger predicate
-(shared with actual movement), and one synthetic production-route harness.
-Proof: executable room/exit cases plus a loaded-world origin/latency audit before
-enabling the new selector. Reuse the existing map barrier, castle wall, dynamic
-wall and shop identity predicates; classify audited procedures by identity and
-leave other procedures unproven. Outbound and return searches share cached room
-checks and one work bound; no whole-world search is repeated for each target.
+Update `docs/reference/DATABASE.md` where it explains claims/destruction with
+the exact RENT_INN key exception, transaction behavior and preserved recovery
+semantics. Update this plan with measured results, unresolved live attribution
+and the final source revision. Reread the diff and remove speculative code.
 
-Implementation order adjustment (2026-10-29): publish the two persisted fields
-as a focused prerequisite PR before wiring the policy and recovery consumers.
-This leaves each dependency independently buildable and reviewable. Outcome:
-retain accepted origin and replacement entitlement through either backend,
-defaulting legacy records to unknown origin/no entitlement. Non-goals: no
-selector, payment, recovery, or movement behavior changes in this prerequisite.
-Files: existing player status capture/codec/repository/materialization paths,
-the additive migration, and their existing focused fixtures. Proof: current and
-old-wire round trips, capture of wallet plus quest state, flatfile save/load,
-isolated SQL migration apply/reapply/save/load, server build and format checks.
-The existing status path is sufficient; no new payload, table, ledger or service
-is needed. Gameplay work and the full acceptance matrix remain outstanding.
+## Files
 
-The next reviewable dependency captures the actual request room through the
-existing payment context and creation API. Outcome: successful new quests retain
-that VNUM even if a continuation observes a later player location; reset clears
-it, sharing copies it, and the mutations mark status dirty. Non-goals: no route,
-target eligibility, recovery or map policy change in this slice. Files:
-`world_quest.c/.h`, `specs.mobile.c`, the existing target-retry fixture and this
-handoff. Proof: execute the production continuation/creation/reset functions
-with deterministic targets, moved customer, invalid origin and rejected payment;
-reuse the persistence proof above and run the focused policy checks/build.
-Passing VNUMs directly removes the need for live giver lookups or a second
-payment/quest API. Origin validation remains a prerequisite for full route work.
+Expected production edits:
 
-- [x] **1. Pin baseline and executable failures (1-2 hours).** Extend
-  `tests/async/test_world_quest_target_retries.py` for live availability and
-  bounded retries; add one focused production-policy route harness if the
-  current lightweight fixture cannot represent real room/exit state. Use
-  controlled RNG and synthetic graphs, not a copied selector. Reproduce foreign
-  selection at 11/29 and unusable 23501 placement through full creation. Record
-  the archived policy decision and limits of the named production reports.
-- [x] **2. Resolve origin and routes (3-4 hours).** Implement the explicit
-  origin/context and conservative traversal in `src/world/world_quest_policy.c`
-  and `.h`, with constants in `world_quest_policy_math.h` where appropriate.
-  Wire `world_quest.c/.h` and `specs/specs.mobile.c` to pass the request origin.
-  Use movement/map sources as contracts; change those production files only
-  for a small justified shared read-only predicate.
-- [x] **3. Select and describe live routine targets (2-3 hours).** Extend boot
-  placement metadata and per-request filtering in the same policy module;
-  use actual zone/live supply in `createQuestForGiverVnum()` and validated
-  entrances in `quest_buy_map()`. Retain boot level/reward calculations and
-  fail-closed history behavior. Update the misleading failure message that
-  currently tells low-level players to try colleagues around the world.
-- [x] **4. Recover and persist existing work (2-3 hours).** Implement the shared
-  validator/replacement transition in `world_quest.c/.h` and bartender handling.
-  Touch `src/core/structs.h`, `src/player/player_snapshot.h`,
-  `player_snapshot_capture.c`, `player_snapshot_codec.c`,
-  `player_snapshot_repository.c`, `player_load_repository.c`, and
-  `player_load_materialize.c`, plus the additive migration and its maintained
-  schema/runner registration. Update `core/json_utils.c` / `net/gmcp.c` only
-  as needed to represent unavailable/replacement status and truthful maps.
-  Preserve the legacy importer payload and initialize new fields safely.
-- [x] **5. Prove complete journeys and document (4-6 hours).** Extend
-  `tests/async/run_world_quest_dual_backend.py` with request, actual travel,
-  ASK/KILL completion, invalidation, free replacement, save and restart.
-  Reuse its disposable world/account/database setup and existing client.
-  Extend snapshot/codec/load and GMCP tests where the new fields require it.
-  Update `docs/reference/CODEBASE.md` and the maintained bartender help source
-  after locating its authoring path; do not edit generated help/area output.
-  Record exact results here, reread the diff and cut unsupported machinery.
+- `src/player/player_snapshot_capture.c`: rent-specific candidate capture.
+- `src/item/item_claim.h`, `src/item/item_claim.c`: the shared narrow predicate
+  and, only if necessary, the existing claim result's disposal accounting.
+- `src/item/item_claim_repository.h`, `src/item/item_claim_repository.c`,
+  `src/player/player_snapshot_repository.c`: SQL claim context and atomic
+  retirement/filtering.
+- `src/flatfile/flatfile_item_repository.h`,
+  `src/flatfile/flatfile_item_repository.c`,
+  `src/flatfile/flatfile_player_repository.c`: the same operation in the
+  existing flat-file claim/authority transaction.
 
-**Ablation decisions:** keep geography, route checks, routine provenance, live
-selection and durable recovery because each closes a distinct demonstrated
-failure. Simplify around one catalog and one reusable quest validator; reuse
-existing payment, player status, migration and journey mechanisms. Choose free
-replacement to avoid a new fee ledger and invented legacy refunds. Drop the
-old distance formula, prototype-count-only patch, direct reuse of Divine paths,
-generic routing service, movement simulation, global route cache/invalidation
-framework, new configuration surface, custom test framework and production-wide
-content cleanup. Do not add a report, dashboard or separate approval stage.
+Expected verification edits: the current capture, flat-file claim, MariaDB
+claim, and worker/transaction harnesses where a new assertion is needed, plus
+the one focused dual-backend rent journey. Existing copyover coverage should
+be extended only where its current assertions miss the key's lifetime.
 
-## Proof and acceptance
+`player_snapshot.h`, the codec, terminal callers, loaders, runtime ownership,
+copyover and `handler.c` are traced dependencies and test inputs, not automatic
+production edit targets. No database migration or snapshot schema change is
+currently required. If a new regression disproves that, revise this plan with
+the specific boundary before adding machinery.
 
-The regressions must exercise production decisions and full command routes,
-not merely assert that a source string or helper exists.
+## Proof and completion criteria
 
-- **Levels/geography:** 10/11, 29/30, 40/41 and 49/50; local versus foreign
-  candidates; interior origin with continent zero; multiple entrances in one
-  region; conflicting/unknown origin; Underdark origin and surface transition;
-  no local candidate with exact new-purchase refund and no active quest.
-- **Routes:** mountains/cavern walls even with flight; ordinary mountain rooms
-  and authored map/zone transitions; nearby but separated by a wall;
-  one-way entry without a return and an alternate legal return; blocked final
-  room; locked/key/secret/blocked/walled edges; openable unlocked doors;
-  changed doors, occupied/restricted rooms, hostile transit and an actual
-  scripted gate; water/flight capability present versus absent; source-specific
-  access rather than reachability from some other faction hometown. Prove the
-  traversal leaves characters, events, doors and room populations unchanged.
-- **Targets:** zero live instances despite successful prototype loading;
-  rare/conditional source and 100% staging-only reset; actual target moved
-  outside the advertised zone; reused 6610/19830 and representative 4405
-  placement; global count sufficient but usable population insufficient;
-  live ASK invisibility/speech/aggression and KILL safe/protected NPC rejection.
-  Keep tests for named centaur/IceCrag examples qualified by the full level
-  pipeline, and add the exact reported targets if identified.
-- **Recovery:** target extracted after acceptance, moved or made inaccessible;
-  another player's kills leaving insufficient remaining supply; legitimate
-  partial progress; a completed quest whose target is now gone; voluntary
-  abandonment retaining its current charges/history; no fee/history penalty
-  for server-invalid work; no candidate while replacement is due; repeat
-  requests; player movement/temporary incapacity; shared recipients; legacy
-  unknown-origin records; save/relogin/restart on both backends. Assert exact
-  wallet, progress, XP, quota, history, entitlement and map outcomes.
-- **Compatibility/performance:** accepted-level reward floor, withheld rewards,
-  weighted sampling among eligible zones, 32-probe/history bounds and history
-  read failure remain covered. New traversal bounds are exercised with an
-  intentionally oversized graph; exhaustion never invalidates an existing
-  task. Record loaded-world command/observer latency and visit counts, avoiding
-  unbounded scans and catalog rebuilds. Unknown geography must not empty every
-  real hometown's useful low-level pool: qualify positive Good-side and Evil-side
-  origins and an Underdark origin, or report the specific unsupported route.
-- **Real play:** in disposable flat-file and MariaDB servers, request at
-  Woodseer at levels 11 and 29, follow a validated route with ordinary movement,
-  interact/kill and complete. Exercise at least one level-30 control, map
-  purchase and dynamically invalidated persisted quest. Setup may place the
-  synthetic player at the bartender; travel proof may not teleport it to the
-  target. Repeated random sampling alone does not prove the policy.
+- All six fresh/owned by carried/equipped/nested cases pass on both backends
+  through rent, durable apply, reconnect and restart.
+- Removed UIDs have destroyed custody and no loadable player payload. Retrying
+  or replaying an older snapshot never recreates them.
+- Containers, siblings, unrelated durable NORENT assets, unflagged keys and
+  protected retained components keep their existing identity and behavior.
+- Filtered-ancestor nesting cannot hide a key from disposal or expose ordinary
+  omitted contents. Bounds and cycle rejection still work.
+- Active-key crash/copyover recovery remains intact; fresh-key baseline
+  limitations are documented and route-specific tests are reported honestly.
+- Status-only/pet-only checkpoints and non-rent contexts do not dispose keys.
+  Terminal queue ordering and failure behavior remain unchanged.
+- Backend fault tests demonstrate atomic state or successful transaction
+  recovery, with no premature success claim.
+- Live attribution has either direct evidence or a clearly recorded unresolved
+  dependency; issue closure requires resolving or explicitly dispositioning it.
 
-Planned focused commands after implementation (new route/recovery entry points
-are added when their fixtures are written):
+Run the narrow tests as their edits land, followed by the required build:
 
 ```sh
-python3 tests/async/test_world_quest_dynamic_policy.py
-python3 tests/async/test_world_quest_target_retries.py
-python3 tests/async/test_world_quest_failure_feedback.py
-python3 tests/async/test_world_quest_reward_policy.py
-python3 tests/async/test_world_quest_xp_feedback.py
-python3 tests/async/test_flatfile_world_quest_history.py
 python3 tests/async/test_player_snapshot_capture.py
-python3 tests/async/test_player_item_snapshot_codec.py
-python3 tests/async/test_flatfile_player_repository.py
-python3 tests/async/test_player_load_pipeline.py
-python3 tests/async/test_gui_gmcp_contract.py
-python3 tests/async/test_persistence_migration_contract.py
-python3 tests/async/test_runtime_boot_compatibility.py
-python3 scripts/validate_runtime_compatibility.py
-python3 tests/async/run_world_quest_dual_backend.py
+python3 tests/async/test_player_save_claim.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_player_save_worker.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_authority_transaction.py
+python3 tests/async/test_terminal_save_safety.py
+python3 tests/async/test_terminal_extract_item_retention.py
+python3 tests/async/test_copyover_custody.py
 make -C src
+python3 tests/async/test_norent_key_rent_journey.py --backend flatfile
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Extend `player_item_snapshot_codec_harness.cpp`'s current/old-wire fixtures for
-the two new fields, and the dual-backend fixture for the migration's isolated
-apply/reapply/load checks. Register the new apply/verifier and hashes in
-`migrations/migration_manifest.json`; follow the existing immutable migration
-contract, without editing sealed historical payloads. Keep all new compiled
-output below `bin/`.
-The dual-backend journey builds private binaries and uses disposable state and
-Docker MariaDB; it does not read `.env`. This checkout reports `ENVIRONMENT=local`.
-No production operation, player-data rewrite, wipe or live-world deployment is
-part of implementation qualification. Local evidence is the completion gate;
-do not wait for hosted CI or claim unrun checks passed.
+The new journey command/interface is planned, not present yet. Its flat-file
+leg must use the existing isolated build helper and keep artifacts under
+`bin/`; its MariaDB leg uses disposable credentials from the wrapper, never
+the checkout's `.env`. No full burn-in or CI wait is needed for this scoped
+change. Run additional tests only when a touched boundary or failure warrants
+them, and report unavailable validation explicitly.
 
-## Planning validation and handoff
+## Ablation decisions
 
-### Implementation checkpoint: persistence prerequisite (2026-10-29)
+Keep transaction-level disposal, both backend paths, actual reconnect proof
+and live-instance attribution: each maps to an explicit issue requirement.
+Keep bounded capture of candidates hidden by an omitted ancestor because the
+existing early return otherwise defeats nested disposal.
 
-Review-ready PR: [#451](https://github.com/LuminariMUD/Duris/pull/451),
-implementation commit `0cafcc82c`. Its head is `branch/issue-437-bartender-quest-routes`; stack further
-implementation on it while the dependency remains open. Do not merge or deploy
-the unfinished #437 policy as though this prerequisite completed the issue.
+Simplify by using existing snapshot fields, the existing claim/filter paths,
+destroyed custody states, one writer and the flat-file authority transaction.
+A small shared predicate has two actual backend consumers. Reuse current
+journey helpers and existing fault harnesses.
 
-Implemented accepted-origin VNUM and replacement-due status fields in snapshot
-schema 13, status capture, SQL save/load and character materialization. The
-existing 14-value quest array and its SQL ordering remain intact. All supported
-old wire versions (1, 3, 5, 7-12) receive zero defaults on status loads; partial
-saves without status receive no invented quest state. Legacy pfile import also
-sets both values to zero. Immutable migration `0055_world_quest_recovery`
-(manifest sequence 56) adds guarded columns and verifies their definitions.
-The baseline/bootstrap and sealed older migrations are unchanged.
+Drop the area edit, a golden-key-only exception, removal of the general
+NORENT preservation safeguard, a new schema/DTO, synchronous per-item
+destruction, global extraction changes, a migration and adjacent door policy.
+None is necessary for the scoped lifetime rule. The main complexity that
+remains is atomic custody disposal and proving compatibility.
 
-Loaded-world follow-up found a missing runtime-contract update: after applying
-0055, the compiled boot gate still expected head 0054 and refused the disposable
-database with COMPAT-E002. The first focused save/load checks had not booted a
-server and did not cover this boundary. The correction in this dependency
-updates `migrations/runtime_compatibility_manifest.json` and
-`src/core/runtime_compatibility_contract.h` to head 0055, sequence 56, its apply,
-verify and complete-history checksums, and measured schema fingerprints from
-disposable MySQL 8.0 and MariaDB 10.11. Both engines retain 200 runtime tables.
-Runtime compatibility checks are now explicit in the completion commands above.
+## Planning validation and implementation estimate
 
-Correction qualification (all passed):
+Planning evidence on the baseline:
 
-- `python3 tests/async/test_runtime_boot_compatibility.py`: all 7 passed.
-- `python3 scripts/validate_runtime_compatibility.py`: valid synchronized head,
-  history and measured fingerprints.
-- `RUNTIME_DB_IMAGE=mariadb:10.11 bash tests/async/run_runtime_compatibility_mysql.sh`
-  and the same command with `RUNTIME_DB_IMAGE=mysql:8.0`: passed, including
-  full-schema checks and intentional schema/history drift rejection.
-- `DURIS_WORLD_QUEST_BACKEND=mariadb
-  DURIS_WORLD_QUEST_BINARY=/home/aiwithapex/projects/duris/bin/server/dms_new
-  python3 tests/async/run_world_quest_dual_backend.py` (environment assignments
-  on the same command line): passed. This uses the corrected build and a
-  disposable migrated MariaDB server, grants and abandons real bartender tasks,
-  saves their status, and exits normally. It proves the runtime boot boundary;
-  it does not qualify the unfinished route policy.
-- `make -C src -j2` and format/diff checks: passed. Logs under
-  `bin/tests/issue437-compat-{mariadb,mysql,journey,build}.log`.
-
-This is the prerequisite portion of step 4, not completion of step 4 or #437.
-Selection, origin capture at the bartender, recovery transitions, sharing/reset
-integration, route-derived maps, GMCP and real gameplay journeys still need
-implementation. Existing policy/target-retry evidence above remains applicable
-to the unchanged selector only; it does not qualify the proposed new behavior.
-
-Focused evidence for the prerequisite:
-
-- `python3 tests/async/test_player_snapshot_capture.py`: passed, exercising
-  capture/codec of origin, entitlement, partial kill progress and wallet together.
-- `python3 tests/async/test_player_item_snapshot_codec.py`: passed with
-  ASan/UBSan, current/old-wire defaults and rejection of new field IDs in v12.
-- `python3 tests/async/test_flatfile_player_repository.py`: passed, including
-  persistence of recovery fields across an unrelated component checkpoint.
-- `bash tests/async/run_player_save_claim_mysql.sh`: passed on disposable
-  MariaDB 10.11. Apply/reapply retained a synthetic legacy row and its progress;
-  real status writer/loader retained quest and wallet state together; an injected
-  failure rolled both back and retry succeeded. Includes existing save-claim,
-  load-filter and zone-state checks on that same disposable database.
-- `python3 tests/async/test_immutable_migration_runner.py`: all 25 passed.
-- `python3 tests/async/test_player_load_pipeline.py`: passed.
-- `python3 tests/async/test_persistence_migration_contract.py`: passed.
-- `python3 tests/async/test_pfile_tool.py`: passed, including `_PFILE_` build.
-- `python3 tests/async/test_documentation_contract.py`: all 14 passed.
-- `make -C src -j2`, `./scripts/format.sh --check`, `git diff --check`: passed.
-
-Build/SQL logs are local under `bin/tests/issue437-build.log` and
-`bin/tests/issue437-sql.log`. No gameplay route/recovery or restart qualification
-is claimed yet, and no production operation occurred. Next: stack origin/route
-policy and executable synthetic
-graph regressions; keep the full outcome and acceptance matrix above.
-
-### Implementation checkpoint: accepted-origin capture (2026-10-29)
-
-Working branch: `branch/issue-437-bartender-route-policy`, based on #451 head
-`9a2fd8db0`. Review-ready stacked PR:
-[#452](https://github.com/LuminariMUD/Duris/pull/452), implementation commit
-`0f71055a3`, targeting #451's branch. The bartender validates co-location and captures its request room
-VNUM into the existing payment context. Creation accepts that explicit origin
-and stores it only on success; an invalid origin takes the ordinary failure and
-refund path. The synchronous giver API checks co-location too. No later player
-position or duplicate giver instance is used to infer the accepted origin.
-Reset clears origin/entitlement; sharing copies origin; create/reset/share mark
-`PLAYER_COMPONENT_STATUS` dirty. The selector remains unchanged in this slice.
-
-Evidence:
-
-- `python3 tests/async/test_world_quest_target_retries.py`: passed. The existing
-  fixture now runs the production payment continuation as well as production
-  creation/selection: captured room 16633 survives a customer position change;
-  invalid origin refunds exactly once with no active quest; payment rejection
-  creates no quest; resets clear origin; successful creation marks status dirty.
-  The synchronous giver entry point captures the co-located room and rejects a
-  remote giver without changing the accepted quest.
-  Existing history/probe bounds and failure-state preservation still pass.
-- `python3 tests/async/test_world_quest_failure_feedback.py`: passed.
-- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
-- `python3 tests/async/test_world_quest_reward_policy.py`: passed.
-- `python3 tests/async/test_world_quest_xp_feedback.py`: passed for MariaDB and
-  flatfile fixtures, including existing kill-credit and trainer behavior.
-- `./scripts/format.sh --check`, `git diff --check`: passed; documentation
-  contract all 14 passed.
-- `make -C src -j2`: passed (incremental build, log
-  `bin/tests/issue437-origin-build.log`). Persistence evidence from #451 is
-  unchanged and is reused; no database suite rerun for this consumer wiring.
-
-Next: build the bounded read-only route context and synthetic room/exit
-regressions, then use that same context for live routine-target selection and
-revalidation. None of the route, availability or stale-recovery acceptance
-claims are satisfied merely by recording the origin. Step 2 remains open until
-the traversal and full creation path enforce the contract.
-
-### Route proof prerequisite (2026-10-29)
-
-Working branch: `branch/issue-437-ordinary-routes`, based on #452 head
-`5daa9ce34` (including #451's runtime-contract correction). The independently
-qualified request-local traversal is implemented in `world_quest_policy.c`.
-Review-ready stacked PR: [#458](https://github.com/LuminariMUD/Duris/pull/458),
-implementation commit `dab40e144`, targeting #452's branch. The parent runtime
-contract correction is commit `3f9a6eb4e` in #451.
-The current selector does **not** call it yet. Step 2 stays open until the full
-creation path uses it, and step 3 still needs routine/live target selection.
-No route-enabled assignment, recovery or real travel outcome is claimed here.
-
-Outward edges and a reverse walk prove directed return reachability, including
-alternate return paths. Geography uses potential ordinary connections through
-interiors to find unambiguous first map boundaries, separately from actual travel
-proof. This prevents an unrelated unknown side-street procedure from erasing a
-proved local region. A low-level interior origin must still reach an actual map
-boundary through the strict travel graph. Surface continents and directed
-Underdark map components are distinct; local restriction ends after accepted
-level 29. At 30+, the proof permits present boat, flight and waterbreathing
-capabilities. Groundless surface and Underdark sectors require flight; ordinary
-low-ceiling passages allow kneeling/crawling without mutating actor posture.
-
-The code reuses `map_entry_barrier`, `check_castle_walls`, `check_wall` and
-`singleton_shop_id`; the latter was traced as a read-only lookup, and its
-possible unbound-shop scan is charged to the work budget.
-`movement_trap_trigger` is extracted from the existing movement trap expression.
-Audited travel-safe identities are room `inn`/`ship_shop_proc`, mobile
-`world_quest`/`quester`, and object `board`. Shops qualify only when their resolved
-secondary procedure is absent or one of those audited mobile procedures.
-These are **travel/door** classifications, not permission to assume an NPC's
-ASK handler is safe. Other procedures, room affects, occupied single-file
-passages, falling/current conditions remain unproven.
-
-Ablation: keep one shared connection rule for geography and actual traversal,
-with scripts/actors additionally checked for travel; no movement simulation,
-global route cache, configuration, zone approval list or parallel path engine.
-Removed unused predecessor storage: the existing reverse edge graph already
-supplies the return proof. The result contains room IDs and facts only and must
-be rebuilt for the next command.
-
-Evidence:
-
-- `python3 tests/async/test_world_quest_routes.py`: production traversal linked
-  with the real map/trap predicates under ASan/UBSan. Covers 10/11, 29/30,
-  40/41, 49/50, explicit origin versus another origin's access, interior origin,
-  same/foreign/conflicting/unknown geography, distinct Underdark components,
-  directed alternate returns, closed/unlocked versus locked/spiked/secret/
-  blocked/walled doors, map barriers even with flight, ordinary mountain
-  transitions and crawling, restricted rooms/zones, faction transit,
-  boat/flight/waterbreathing, known/unknown/secondary procedures, carried/worn
-  object handlers, dynamic walls/traps and oversized traversal exhaustion.
-  Actor, status, rooms and exits remain byte-for-byte unchanged.
-- `python3 tests/async/test_legacy_trap_effects.py`: passed with ASan/UBSan.
-- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
-- `python3 tests/async/test_world_quest_target_retries.py`: passed.
-- `make -C src -j2`: passed; `bin/tests/issue437-route-build.log`.
-- `python3 tests/async/test_documentation_contract.py`: all 14 passed.
-- `./scripts/format.sh --check` and `git diff --check`: passed.
-- A disposable MariaDB loaded-world debugger audit ran the production context
-  for **38 actual bartender origins / 114 requests**, at levels 11, 29 and 30.
-  Final sample: maximum **322,428 work units**, maximum **27,432 microseconds**,
-  no exhaustion. Bounds remain 65,536 inspected rooms / 2,000,000 shared work
-  units, leaving room for the forthcoming bounded live-instance checks.
-  These are helper timings, not command/observer latency or a worst-case
-  latency guarantee. The oversized synthetic graph verifies exhaustion returns
-  unproven, never cancellation authority.
-- Woodseer 16633 proved 18,034 returnable rooms at 11/29; Ixie origin 97653
-  proved 12,740; Drow origin 36563 proved 2,523. The audit found respectively
-  10/256, 0/85, and 0/0 reachable live instances passing only the existing
-  level/zone windows at 11/29. These are **not** fully eligible quest targets:
-  routine provenance, interaction/attack legality and history still need their
-  planned checks. Do not relax level windows or rewards to fill empty pools.
-  Drow and several other origins lack a verified useful low-level pool; further
-  qualification must report the precise unsupported origin when it remains.
-- Local audit source and exact records are under
-  `bin/tests/issue437-routes/loaded_routes.cpp`, `run_loaded.py`, and
-  `runtime7/routes.tsv`; the same directory retains earlier failed probes.
-  The first loaded audit exposed the fixed boot-contract omission. Later
-  audits exposed the overbroad side-street rejection and shop secondary
-  `world_quest` delegate; the executable fixture now covers both regressions.
-
-Next: wire this context into one bounded request/live-instance selection path,
-index direct unconditional 100% reset placements by their actual zone, and use
-actual usable population and route-derived maps in creation. `db.c::reset_zone`
-sets `GET_BIRTHPLACE(mob)` to the reset room VNUM for direct `M` loads; pair that
-with routine-placement metadata rather than counting unrelated/rare instances.
-The local level-11 candidates 16305/16306 independently have direct ordinary
-resets in Twisted Wood and staging resets in 16399: keep only usable instances
-from proven ordinary sources, not the global count.
-
-Before recovery consumes a failed route result, separate temporary player
-capability loss and relevant unknown scripts from proven world unavailability.
-The context currently returns unproven for missing routes when any encountered
-procedure was unknown; an irrelevant unknown branch must not conceal a
-definitively locked target route. All recovery, real ASK/KILL completion,
-save/relogin/restart and command/observer latency acceptance remains open.
-
-### Live selection review checkpoint (2026-10-29)
-
-Working branch: `branch/issue-437-live-quest-targets`, based on #458 head
-`d91a924bf`. Review-ready PR: [#464](https://github.com/LuminariMUD/Duris/pull/464),
-implementation commit `296fcd94c`; base is #458.
-`world_quest_policy_select_target` now owns one complete bounded selection path:
-boot-cached direct unconditional 100% `M` placements, per-instance birthplace
-matching, actual destination zone, a single live-character index, reachable
-ordinary source and current room, live ASK/KILL suitability and usable kill
-population. Mixed conditional/F/R sources at the same birthplace and random
-table rooms stay ineligible. Prototype level averages/reward ownership remain
-unchanged. The obsolete prototype-only selector and both convenience wrappers
-are removed. History is read before the final live validation; history results
-are cached per VNUM while failed attempts are tracked per zone so cross-zone
-reuse can retry without duplicate history queries.
-
-Creation publishes the validated target and entrance, sets the initial quota
-from usable count minus one, and preserves failure state. Map purchase consumes
-the cached entrance and refunds a failed map publication. Below-30 refusal text
-no longer advises intercontinental travel. Visibility/aggression now have
-explicit-room variants sharing the original implementations; ordinary callers
-retain wrappers for their current rooms. Projected visibility accounts for the
-observer's own mage flame without relocating it.
-
-Passed: `test_world_quest_target_retries.py` now links the real cached policy,
-production visibility/aggression/creation/map/payment bodies and controlled
-reset/live fixtures under ASan/UBSan. All **63 scenarios** passed, including
-level boundaries, actual-zone reuse, rare/conditional/staging/removed targets,
-live interaction/protection changes, lost summon ownership/charm/following,
-actual usable quotas, exact fee refunds and map charges, moved-customer origin,
-history failure and request-wide 32-probe/history bounds (including last valid
-slots and cross-zone retries). Projection room-bounds and planar-affinity tests,
-dynamic policy, failure feedback, rewards and difficulty checks passed.
-
-Real loaded-world follow-up identified the starter hide artifact and regeneration
-ring as harmless SAY/RUB/periodic handlers that the route proof had conservatively
-left unknown. Their owning procedures were audited and those two identities are
-now travel-safe, with held/worn regressions that abort if a procedure is invoked.
-Unknown held procedures remain unproven. The actual level-56 actor then reached
-17,892 rooms using 300,805 work units without exhaustion, but had no eligible
-live level/zone targets. The refund is a supported refusal, not a positive grant
-or evidence that a new high-level content pool should be invented.
-
-Positive real disposable MariaDB command grants passed at Woodseer for **11 and
-29**. Level 11 indexed ordinary 16306 instances while excluding the same VNUM's
-staging-born copies. The maintained dual-backend runner now sets its disposable
-Chaos actor to 11 with GDB before the first command; no production test command
-or content policy was added. Retained Chaos HP/equipment do not qualify combat
-difficulty. The MariaDB grant / pipelined paid abandon + next grant / save /
-normal shutdown passed (`bin/tests/issue437-live-mariadb-journey.log`,
-binary SHA256 `46c07efa21cc0520fad0be5adc150f9debd6de176af5d1b459a48d563338a890`).
-The saved row contains target 16306, actual zone 163, origin 16633, quota 1,
-verified entrance 568109, map not bought and no replacement due. One catalog
-build served both requests. The level-29 grant's private diagnostic record is
-`bin/tests/issue437-live-actor-29.log`. These grant checks do not prove travel or
-completion. The incremental flatfile build and the same real grant/paid-abandon/save/clean-shutdown journey also passed (`bin/tests/issue437-live-flatfile-journey.log`), binary SHA256 `ac7c22470f2a2e0c8c71316feec57831c11ab6a19f6f06cd722ebe85f4660989`. This grant smoke has no restart/completion claim.
-
-Also passed: `make -C src -j2`; route ASan/UBSan fixture; projection, planar
-affinity, dynamic policy, failure feedback, reward, difficulty, help parser and
-all 14 documentation contracts; format and diff checks. Updated the codebase
-reference and maintained parsed Quest help to describe implemented new selection.
-
-Next focused change: remove existing display-time prototype creation from
-`do_quest` / JSON status and room transfer hooks from `show_map_at`. Then implement
-accepted-target revalidation, durable free replacement, legacy/share handling
-and truthful unavailable maps. Required 11/29 ordinary travel and ASK/KILL
-completion, save/relogin/restart on both backends and command/observer latency
-journeys remain open. Do not treat this selector PR as completion of #437.
-
-### Read-only presentation checkpoint (2026-10-29)
-
-Review-ready PR: [#465](https://github.com/LuminariMUD/Duris/pull/465),
-implementation commit `dbd0bc2c6`, branch `branch/issue-437-quest-presentation`,
-based on #464 head `103e289a2`. Text QUEST and JSON status now use `mob_index[].desc2`, whose owning
-loader stores the prototype short description. Removed temporary NPC creation/
-extraction and the display-time reset of a paid quest when its giver cannot be
-loaded. Missing target/zone metadata produces unavailable details while keeping
-progress and completed work. Real live eligibility/recovery is the next slice.
-
-`show_map_at` now reuses `gmcp_quest_map`'s synchronous non-moving viewpoint,
-restores the room immediately, rejects invalid room IDs, and uses the explicit
-`Quest.Map` renderer package. It no longer transfers the actor, invokes arrival/
-departure hooks, changes populations, interrupts actions or overwrites `Room.Map`.
-
-Passed: `test_world_quest_remaining_unloaded.py` executes the complete production
-QUEST display and JSON serializer under ASan/UBSan for ASK/KILL, unknown history,
-missing giver/target/description/zone and completed assignments; NPC loads,
-extraction and quest reset abort in the fixture, and status remains byte-identical.
-`test_gui_gmcp_contract.py` executes the production text map entry point and normal
-GMCP serializers/framing; transfer hooks abort, map and observer-room state remain
-unchanged, unpaid/invalid maps emit nothing, and Quest.Map uses its own channel.
-`make -C src -j2` and the real MariaDB grant/paid-abandon/save/clean-shutdown smoke passed on binary SHA256 `1c35d86179ba7cf31cd78adf93b2ef4e630dfeedfe5fb93639ec96790b5a9c93` (`bin/tests/issue437-presentation-mariadb-journey.log`). Full stale recovery, legacy policy and the gameplay/
-restart journeys above remain open.
-
-### Completion credit checkpoint (2026-10-29)
-
-Review-ready PR: [#466](https://github.com/LuminariMUD/Duris/pull/466),
-implementation commit `64fb0b322`, branch `branch/issue-437-quest-credit-boundaries`,
-based on #465 head `27c5ff704`. Source tracing found that `fight.c` calls `quest_kill` for every
-matching player/group death, while the credit function omitted a quest-type
-check. Killing an ASK singleton could therefore rewrite its zero kill quota,
-pay XP and manufacture a KILL completion. Both completion functions also
-accepted the same VNUM outside the advertised zone, bypassing actual-zone
-selection. One private shared predicate now checks alive PC, active assignment,
-accepted type, live target identity and target room's zone before either hook.
-
-The existing `test_world_quest_xp_feedback.py` production-body fixture now covers
-wrong type, wrong zone, missing/unroomed/out-of-range/wrong-VNUM targets for both
-hooks, with unchanged quest/XP/history and positive ASK/KILL controls. Its full
-existing award suite passed under ASan/UBSan for MariaDB and flatfile. Also
-passed: `make -C src -j2`, policy, 14 documentation, format and diff checks.
-No death-hook refactor, reward rebalance or unrelated progression change.
-This is a separate focused repair found while tracing #437's recovery path;
-accepted-assignment recovery and full gameplay/restart proof remain next.
-
-### Recovery review checkpoint (2026-10-29)
-
-Working branch: `branch/issue-437-quest-recovery`, based on #466 head
-`fd1702522`. Review-ready PR: [#467](https://github.com/LuminariMUD/Duris/pull/467),
-implementation commit `787f0c6fd`.
-
-The same route builder supplies current/capable/potential proofs within one shared
-work bound. Accepted-target validation uses one live scan, saved origin/level,
-routine sources, live suitability and remaining kill supply. Hard final/return
-locks remain unavailable despite unknown side branches. Relevant unknown
-procedures, temporary player restrictions, lost travel capability and exhausted
-bounds cannot alone authorize replacement. Zero-origin legacy work gets
-target/location checks and needs a real bartender origin before directions.
-
-`world_quest_refresh` marks proven invalid incomplete work inactive/due without
-wallet, XP, history or reward changes. `world_quest_replace` uses the same selector
-with fixed accepted type and remaining quota. Earned kills, original quota,
-accepted level, shares, map entitlement, receiver and original start time survive.
-Failed/repeated redemption and completed legacy work are preserved. Recovery and
-completed claims precede new-purchase level/allowance gates. Confirmed abandonment
-can discard an entitlement for free; normal voluntary abandonment retains its fee
-and partial-progress history behavior. Sharing checks the recipient before copying
-state and cannot overwrite a replacement entitlement.
-
-Checked text/GMCP overloads reuse one command's verdict; JSON remains read-only.
-Quest.Status exposes availability/replacement-due and retains pending progress/map
-entitlement. Unverified target/zone directions are withheld and empty Quest.Map
-clears stale directions. No extra fields, ledger, global route cache or service.
-Final caller tracing removed three unused one-argument map/JSON adapters added
-by this slice: every real caller already carries a checked verdict. The normal
-one-argument GMCP status gateway remains because login/combat callers use it.
-Only the checked map/serializer APIs remain, avoiding another validation path.
-Both incremental builds, the 71-scenario native suite and text/JSON/GMCP fixtures
-passed after removing these unused adapters; the real journey evidence above is
-reused because its production call path is unchanged.
-
-Evidence:
-
-- `test_world_quest_target_retries.py`: **71 production scenarios under
-  ASan/UBSan**. Eight accepted ASK/KILL matrices at 11/29/30/41 include real
-  refresh/replace transitions and complete bartender/QUEST/sharing commands:
-  unknown origin/rebind, actor movement, temporary conditions, hard final/return
-  locks versus unknown side branches/gates, lost capabilities, remaining supply,
-  accepted-target bounds, exact state retention, free redemption below admission
-  and with zero daily allowance, failed/repeated requests, map charges, free
-  cancellation, normal paid abandonment and recipient eligibility. Existing 63
-  selector/creation/payment regressions remain in that run.
-  Log: `bin/tests/issue437-recovery-commands.log`.
-- `test_gui_gmcp_contract.py`: real serializers/wire paths cover all unavailable
-  states, clearing stale maps with retained entitlement and progress, and prove
-  checked rendering performs no second eligibility query.
-  `test_world_quest_remaining_unloaded.py`: complete text/JSON rendering under
-  ASan/UBSan, missing metadata, finished work and unknown history.
-- `test_world_quest_routes.py`; `test_world_quest_xp_feedback.py` (both backends);
-  policy, failure feedback, help parser and all 14 documentation contracts passed.
-  Format and diff checks passed. Both incremental server builds passed.
-- Maintained real journey passed separately on **MariaDB and flatfile**:
-  new grant, pipelined paid abandon/new grant, map purchase, disposable world
-  invalidation, no-candidate entitlement retention, SQL save (MariaDB), 20
-  ordinary town exits to Quivering Leaf Inn, real RENT/relogin, normal server
-  shutdown, restart/materialization, and free redemption after content returns.
-  Exact accepted fields, wallet and XP are compared across save/relogin/restart
-  and redemption. Each process built the catalog once (two boots total).
-  These runs used fresh quota-1 KILL assignments; partial 3-of-4 progress is
-  proved in the native transition/command fixture, not claimed as real combat.
-  The explicit test helper grants 100,000 copper after restart for placement;
-  redemption compares the wallet immediately after that setup and charges zero.
-- MariaDB log: `bin/tests/issue437-recovery-mariadb-journey.log`, binary SHA256
-  `92e7554f770104b3079e0584884165dd235c8866988196f02e034af2d903f875`.
-  Original target 16306, replacement 16329, zone 163, origin 16633, quota 1 and
-  map entrance 568109; paid map and original start time retained, XP stayed 1.
-  Wallet 99,118 survived invalidation/relogin/restart; setup then made it 199,118
-  and free redemption left that amount unchanged.
-- Flatfile log: `bin/tests/issue437-recovery-flatfile-journey.log`, binary SHA256
-  `0f25e09e09e2df797fcb7e6df4e099459233dfb4f76370581b1b503c4d23688a`.
-  Same boundaries, replacement 16305. Wallet 99,122 survived until explicit setup
-  made it 199,122; redemption left it unchanged. XP stayed 1.
-- Fixture repairs: wait for complete async character entry before commands, use
-  native inn RENT rather than camping in a city, and pass normal SIGPIPE through
-  GDB. The debugger probe uses raw function entry/SysV x86-64 argument registers;
-  optimized DWARF initially read the caller's NPC register before the prologue.
-  Probe assertions and exact redemption comparisons remain strict. None of these
-  repairs changed production logout/signal/quest rules.
-
-Remaining: original baseline/named-target qualification still marked in step 1;
-step 5's actual target travel and ASK/KILL completion at 11/29, level-30 control,
-real partial progression/history/quota proof, representative Good/Evil/Underdark
-qualification (or precise unsupported origin), and command/observer latency.
-The final map-request hint was clarified after those real runs to distinguish a
-pending entitlement from a failed replacement search. Both builds and the native
-71-scenario suite passed again; the quest transition/routing logic is unchanged.
-Recovery component qualification does **not** close #437.
-
-Completed on the source baseline:
-
-- Read the full issue and its three comments, traced the current selector,
-  creation/payment/display/completion paths, inspected movement/reset/content
-  semantics and both player persistence mappings, and inspected the earlier
-  selector and its committed policy specification.
-- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
-- `python3 tests/async/test_world_quest_target_retries.py`: passed.
-- `python3 tests/async/test_world_quest_failure_feedback.py`: passed.
+- The standalone production capture/codec probe passed 36 cases; source and
+  executable are ignored under `bin/tests/issue419-planning/`.
+- Docker is available for the planned disposable MariaDB qualification.
 - `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `git diff --check`: passed.
-- Prior #428 plan preservation: SHA-256 of the archived file and the original
-  tracked blob both equal
-  `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
+- `git diff --check`: passed. The archived #428 plan has the same SHA-256 as
+  the original: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
+- No production C/C++ file changed, so a full server build and database/socket
+  journeys are implementation validation, not claims made by this plan.
 
-These are planning/baseline checks, not implementation qualification. No C/C++
-file changed, so a server build and the new gameplay journeys are not claimed.
+Estimate for **my active implementation and local qualification: 6-9 hours**:
 
-Issue #437 is the implementation work item. No existing matching development
-branch or open PR was found. Targeted searches of the connected
-`max757/duris` mirror found related display/telemetry records, not a matching
-route/availability work item; do not link unrelated work or create a duplicate.
-The branch is linked to #437 through GitHub's Development association, verified
-with `gh issue develop 437 --repo LuminariMUD/Duris --list`. #448 is an already
-landed reference, and #4/#37 are outside this branch's scope.
+- Regression fixtures and final transaction design: 1-1.5 hours.
+- Capture and both backend changes: 2-3 hours.
+- Dual-backend rent/reconnect/restart, recovery and fault qualification:
+  2-3 hours.
+- Required build, documentation and final review: 1-1.5 hours.
 
-## Original planning estimate
+Allow **up to 12 hours** if full-world/copyover fixtures or backend fault
+coverage need repair. This is an estimate, not a commitment; it excludes
+external review, deployment and waiting for reporter/live-instance access.
+Once that evidence is available, read-only attribution should take about
+30-60 minutes, but cannot be promised without the UID or reporter context.
 
-**12-18 hours of my active implementation and local validation time**, broken
-down in the five steps above. Most effort is in truthful route/target checks,
-legacy recovery semantics and dual-backend gameplay proof, not the below-30
-comparison. Allow up to **24 hours** if procedure classification or usable
-low-level content needs further investigation, or the disposable persistence
-fixtures need repair. This excludes external review, production fact collection
-requiring owner access, merge scheduling and deployment. The estimate is for
-the complete issue scope, not a same-continent-only patch.
+## Implementation and qualification, 2026-10-30
 
+Implementation commit:
+[41adafc3e5f9cea34c7c5861726d4cc42091a996](https://github.com/LuminariMUD/Duris/commit/41adafc3e5f9cea34c7c5861726d4cc42091a996).
 
-### Room-selector repair found during gameplay qualification (2026-10-29)
+The player RENT_INN capture includes fresh and active NORENT keys for
+transactional disposal. Skipped ancestors are walked within the existing
+budgets/cycle checks to collect only key candidates. Their ordinary contents
+remain omitted. Capture never extracts or changes the live objects.
 
-Outcome: a generated NPC selector must remain one command argument and resolve
-to the same NPC after native ASK parsing. Non-goals: no targeting-policy change.
-Files: `world/handler.c` and the existing native room-selector fixture. Proof:
-two NPCs named `guard patrol` / `guard captain`, where selecting the captain
-must survive production `half_chop` and resolve `2.guard` to the captain.
+Both repositories use the existing claim loops to write destroyed custody under
+destruction:0:0, detach each key from its former parent, and use the existing
+graph filter to omit it from the saved player items. Fresh UIDs get tombstones;
+already destroyed candidates remain unchanged. Ownership revisions and the
+existing SQL audit / flat-file claim log record actual changes. Intentional
+retirement does not produce duplicate-item warnings. SQL payload replacement
+and custody commit together; flat-file catalog and player images share the
+existing authority transaction.
 
-The previous helper could emit `1.guard captain`. ASK split that into target
-`1.guard` and message `captain ...`, addressing the patrol instead. The old
-fixture's simplified `isname` stub masked this by matching only single words.
-The fixture now links production `isname` and ASK's actual parser. It reproduced
-the failure before the fix (`bin/tests/issue437-room-selector-before.log`).
-The helper now extracts the first name keyword before calculating the ordinal;
-racewar/visibility/height/disguise predicates remain shared and unchanged.
-Review-ready PR: [#468](https://github.com/LuminariMUD/Duris/pull/468), commit
-`d85f60a57`. The focused ASan/UBSan suite, server build, format/tidy/diff checks
-passed. This is a separate focused fix stacked on #467, discovered while preparing real
-quest interaction. The gameplay branch was fast-forwarded to this fix, its
-task-owned planning stash was applied successfully and only that verified stash
-was dropped. Continue on `branch/issue-437-gameplay-qualification`.
+The general durable-NORENT safeguard remains for non-keys. The rule is enabled
+only for the incoming main player item component with RENT_INN; status-only
+and pet-only updates cannot infer disposal from a stored intent. Quit and the
+trusted camp shortcut already share that intent. No migration, snapshot-schema
+change, separate disposal payload, writer job, setting, area edit or production
+terminal-caller change was needed.
 
+### Evidence and simplifications
 
-### Passive route traces repair (2026-10-29)
+The new capture and first flat-file rent assertions failed before the production
+repair. The expanded capture/codec suite passes **56 cases**: seven intents,
+fresh/active ownership, and carried/held/nested/omitted-ancestor placement.
+Additional executable controls cover cycles, depth and object limits, invalid
+UIDs, unchanged generic list capture, an unflagged key and an active NORENT
+non-key. Failure leaves the output snapshot unmodified.
 
-Review-ready PR: [#469](https://github.com/LuminariMUD/Duris/pull/469), commit
-`494002a8f`, based on #468.
+Each backend's repository suite passes all six ownership/placement cases,
+container/sibling and unflagged-key controls, a stale foreign recorded owner,
+identical rent replay, pre-rent snapshot replay, missing-UID rejection,
+non-rent intents and partial status/pet updates. SQL failure injected at the
+payload deletion boundary rolls back custody, audit and inventory together.
+Flat-file faults before journal commit, after journal publication and after
+the first image prove unchanged prior state or recovery of the complete
+retired-key/player-image pair. The worker test proves that replacing a queued
+checkpoint retains RENT_INN and the key payload together.
 
-Outcome: ordinary walking/combat traces must not turn a proved route into an
-unknown gate. Non-goals: no generic procedure exemption or area allowlist.
-Files: `world_quest_policy.c` and the existing route/live-target fixtures. Proof:
-route and accepted-target checks with tracks/blood stains, actor/status/rooms
-unchanged and procedures never invoked; unknown handlers remain unproven.
+The new socket journey reuses existing full-world runtime, account, backend and
+build helpers. It loads actual prototype 40401 and rents at Golden Hall inn
+40454, using a synthetic staff PC for object setup. Inn processing and player
+save/load are the real routes; staff level affects population bookkeeping,
+not key disposal. All **12 cases** (six per backend) pass real rent, durable
+state inspection and reconnect. A subsequent complete restart confirms every
+retired UID stays absent. Backpack 48 and nested sibling 15 retain their exact
+UIDs and parent placement throughout.
 
-The real level-11 ASK trip reached Woodseer streets, then failed at a footprint
-left behind (VNUM 1276): ordinary return validation stopped at the new object's
-`tracks` procedure. `cmd/track.c` creates it during movement. Its owning handler
-in `specs.object.c` handles only decay. Blood stains are likewise created by
-normal combat/bleeding (`fight.c` and `handler.c`), and their handler handles only
-setup, cosmetic periodic updates and decay. Both identities are now classified
-as travel/door/ASK-safe. No procedure runs during validation.
+Owned-fixture setup was simplified from offline snapshot seeding: temporarily
+clear NORENT on the isolated newly loaded key, save and rent, reconnect through
+the real loader, then restore the original flag. A subsequent ordinary save
+retains that flagged key, proving active runtime custody was hydrated. The
+fresh fixture's ordinary save omits its key while live inventory still contains
+it. The temporary flag change is fixture setup only.
 
-The focused route fixture reproduced the failure before the fix
-(`bin/tests/issue437-passive-traces-before.log`). Extended existing accepted
-ASK/KILL checks at 11/29/30/41 with the same trace identities. The gameplay branch was fast-forwarded to this focused fix. Its task-owned
-stash was applied; both independent plan additions were preserved while resolving
-their append conflict, and only the verified stash was dropped.
-Temporary `Q437_DEBUG` owning-source logging was removed completely.
+Both full-world backends also pass active-key checkpoint, SIGKILL/relogin and
+actual SIGUSR1 copyover controls. Fresh NORENT keys remain omitted by
+checkpoint/crash/copyover, matching the baseline capture result and source:
+copyover's separate world-object graph includes floor/NPC roots, not PC
+inventory. This repair preserves that existing limitation.
 
-Passed after the passive-trace fix: route ASan/UBSan fixture, all 71 production
-selector/recovery/command scenarios, server build, format and diff checks.
+Runtime-cache cleanup was ablated after source inspection. Ordinary hydration
+updates incoming entries without clearing every historical UID. Disposal does
+not require a global clear: terminal extraction removes the live object,
+retired payloads are absent, loaders check durable custody, and the existing
+destroyed-state rule prevents stale saves from reclaiming the UID. Same-process
+reconnect and process-restart journeys prove those boundaries. No speculative
+cache-reset hook was added.
 
-### Complete gameplay and loaded-world qualification (2026-10-29)
+Two existing harness linkage gaps blocked required checks: the save-pipeline
+fixture needed a memory-free stub for its extracted toggle command, and the
+no-player copyover fixture needed fail-if-called launch-gate stubs. Those
+focused test repairs are included; neither changes game behavior. The
+copyover fixture exercises real world-object/ownership save/exec/recover under
+ASan/UBSan. PC key recovery is proven separately by the socket journey.
 
-All five implementation steps and the proof/acceptance groups above now have
-local evidence. [PR #470](https://github.com/LuminariMUD/Duris/pull/470) is
-review-ready on `branch/issue-437-gameplay-qualification`, stacked on #469;
-implementation commit `f5ebb5d3d` is pushed. No required implementation work
-remains. External review and production deployment remain outside this implementation.
+### Completed verification
 
-The maintained dual-backend runner now follows production route links with
-ordinary directions, unlocked-door opening and posture changes. It uses the
-owning routine-source lookup to identify a current target, then sends real
-ASK/KILL commands. It does not teleport to a target, freeze an NPC or manufacture
-progress, XP, history or items. Test setup controls the synthetic Chaos actor's
-accepted level and first random quest kind. Normal starter gear is equipped with
-native commands; retained Chaos HP/skills do not prove combat difficulty.
-Rescuers, normal fights, target movement, XP rollover and asynchronous reward
-publication are observed through actual state rather than treated as completion.
+All commands below passed. Builds use the development warnings-as-errors
+profile. Logs and runtime reports are ignored under
+`bin/qualification/issue419/`.
 
-Real positive cases, with outward/return ordinary movement counts:
+```sh
+make -C src -j6
+make -C src PERSISTENCE_BACKEND=flatfile SERVER_BIN_DIR=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile DMS_BINARY=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile/dms_new -j6
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_save_claim.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_player_save_worker.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_authority_transaction.py
+python3 tests/async/test_terminal_save_safety.py
+python3 tests/async/test_terminal_extract_item_retention.py
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_player_load_items.py
+python3 tests/async/test_norent_key_rent_journey.py --backend flatfile --server bin/qualification/issue419/flatfile/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
+./scripts/format.sh --check
+python3 tests/async/test_documentation_contract.py
+git diff --check
+./scripts/tidy.sh
+CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy ./scripts/tidy.sh --staged
+```
 
-- MariaDB: 11 ASK 16329 (35/35); 11 KILL 16306, quota 1 (37/37);
-  29 KILL 41300, quota 3 (307/305); 29 ASK 22008 (118/118).
-- Flatfile: 11 ASK 16316 (38/38); 11 KILL 16306, quota 1 (34/34);
-  29 KILL 22012, quota 2 (115/115); 29 ASK 29422 (209/209).
-- Level-30 controls: MariaDB KILL 69006, quota 7 (137/131);
-  flatfile KILL 93501, quota 5 (116/106).
+Changed Python files passed syntax checks; all 14 documentation tests passed.
+The load-items regression includes retained-source hydration controls.
+MariaDB was rebuilt after final header edits. The initial direct-Git commit
+selected system Clang 18, which could not parse the installed GCC 16 library
+headers. Selecting the installed LLVM 22.1.8 used by the passing worktree check
+resolved this. The staged check and commit hook both passed, without bypass.
 
-Every completed case asserts actual XP gain, exactly one new persisted history
-row, exactly one history/completion API call, the allowance decrement with its
-native zero floor, and publication of the exact new reward UID/VNUM. Reward
-identity is captured at the real completion call rather than inferred from chat.
-Previously earned reward UIDs survive the partial restart as well.
+The socket reports `flatfile.json` and `mariadb.json` each contain
+`passed: true`, six exact retired UIDs and the three recovery outcomes.
+Socket-qualified binary SHA-256 values:
 
-The MariaDB partial checkpoint retained 1/3 kills, wallet 158,364 and raw XP
-113,968 across SAVE, normal shutdown, restart and native re-entry. Flatfile
-retained 1/2 kills, wallet 157,980 and XP 161,497. Exact accepted type/level,
-origin/target/zone, original quota, map, start time, receiver/shares and entitlement
-are also compared. Chaos re-entry naturally sets the actor's current level to 56;
-the accepted level remains 29 and no earned XP is altered by the fixture.
-Cumulative native level thresholds account for ordinary XP rollover.
+- Flat-file: `98dd08f58454cbca955ef5f0595f4888cf6a8850fbf88f7912e7be9a1ab09cca`.
+- MariaDB: `a26136659dd1490a1c5ab44a96d9caaed72b119ead76ebd7066f3bad9eb0733b`.
 
-Evidence reuse is deliberate: the four completed low-level cases are retained
-prefixes of `bin/tests/issue437-gameplay-{mariadb,flatfile}.log`. Those initial
-five-case runs failed only in their later level-30 case (a rescuer/combat timeout
-and a temporarily unproven route). They are not claimed as wholly passing runs.
-The focused `issue437-gameplay-{mariadb,flatfile}-level30.log` runs passed after
-the fixture used an explicit native weapon command and observed real combat.
-The uncertain route was never counted as a positive journey or used to cancel
-the assignment. Native policy/creation/command regressions provide controlled
-negative proof; random successful gameplay alone is not the policy oracle.
+Subsequent edits before the implementation commit were documentation, header
+comments, test assertions/diagnostics and formatting. No server behavior
+changed after these socket qualifications. No production state changed,
+and no deployment or CI result is claimed.
 
-The final source change removes two completed-quest guards made unreachable by
-the earlier completed-task gate. Both server builds, the 71-scenario ASan/UBSan
-production-command suite and the read-only text/JSON fixture passed after this
-cut. Repeating all established travel/recovery journeys for dead-code removal
-would not add relevant evidence. Final loaded-world audits use the rebuilt
-binaries; their logs retain exact SHA-256 values.
+### Original-instance attribution
 
-The audit creates a genuine Good Human and Evil Drow through the maintained
-character-creation flow, then calls production selection/revalidation against
-loaded content. Reusing that existing creator removes the obsolete, duplicate
-`quest_character_flow.py` prompt state machine; no new creation abstraction or
-engine test API was added. The Drow's test level is set by the debugger, and it
-remains at its native starting room. Origin-specific audit calls do not move it.
+The refreshed issue still contains no reporter character, actual UID or event
+time and has no comments supplying them. The local report file is empty;
+targeted report-history searches did not identify the incident. The owning
+checkout is configured local, so its revision is not evidence of the reported
+server. The user has no additional identifying information.
 
-In the MariaDB audit (live populations can differ between boots):
+The original instance's flags, custody history and running revision therefore
+cannot be established from available evidence. This remains an explicit
+limitation; the synthetic reproduction does not prove the exact report.
+The issue remains open pending review. GitHub converted the original development
+branch association into a linked PR that can close #419 when merged; merge
+review must account for this attribution limitation. The code repair,
+qualification, documentation and PR are deliverable; historical live
+attribution is recorded as unavailable.
 
-- Good Woodseer origin 16633 and Tharnadia origin 132560 select real targets at
-  11/29/30; the earlier low-level pool is not globally emptied.
-- Evil origin 97653 selects a real level-29 target (5796, two usable instances)
-  and a level-30 target. Other unsupported origins retain a bounded refusal.
-- Underdark origin 36563 proves 2,561 rooms, including 1,394 Underdark map rooms,
-  at levels 11/29. There are zero loaded NPCs within that proved component
-  satisfying even the necessary live-level/eligible-zone filters, so no local
-  target is selected. The level-30 control selects a target after its broader
-  ordinary route becomes available. Origins 11832/70176 do not prove a local
-  first map boundary at 11/29. These are specific supported refusals, not claims
-  that every Underdark hometown has a low-level quest pool.
-- Loaded named targets have their real placements recorded: 23501 in 23478
-  (zone 234), 6610 in 6543 (zone 65), 19830 in zone 197, and 4405 in 24002
-  (zone 240). Production target checks cover every accepted level and both
-  permitted types from Woodseer, including source, live eligibility, actual zone
-  and route gates. None qualifies for these actor/origin profiles. Positive
-  reused-prototype selection and moved/staging/zero-load rejection remain proved
-  through full creation in the controlled native harness.
-- Centaur 82718 is live at level 45 in 82763; 97038/97051 are live at level 60 in
-  97005, and 97039 at level 60 in 97152. All are excluded through the full current
-  pipeline for these profiles. This neither identifies the reported player's
-  target nor establishes a zero-load assignment. The qualified historical-report
-  limitation above remains unchanged.
+## Master integration and final qualification, 2026-10-30
 
-Command/observer timing disables every sampling/RNG/history breakpoint before
-the measured window. Each backend runs 12 real purchase/QUEST/paid-abandon cycles
-(36 commands) while a second native client requests 64 SCORE responses. Flatfile
-observed maxima were 270.6 ms for command responses and 270.5 ms for the observer;
-MariaDB observed 267.4/267.0 ms. No ASK/QUEST crossed the native 50-ms operation
-threshold; response timing also includes the game's command pulse and output.
-These are loaded-world observations, not a worst-case latency guarantee.
-The final audit reports room/work counts, no exhaustion and one catalog build
-per boot; MariaDB's largest representative route work was 319,913, below the
-shared two-million bound. The oversized native graph separately proves bounded
-exhaustion without destructive quest invalidation.
+Qualified source commit:
+[0598fb15fb83f5279977d40bbca95d9405cbea33](https://github.com/LuminariMUD/Duris/commit/0598fb15fb83f5279977d40bbca95d9405cbea33).
 
-Audit logs: `bin/tests/issue437-loaded-audit-{mariadb,flatfile}.log`.
-Maintained focused invocation uses `DURIS_WORLD_QUEST_JOURNEY=audit`; focused
-gameplay uses `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`. The default gameplay matrix
-is still all five cases. Existing dual-backend paid-map/recovery/rent/relogin/
-restart/free-redemption proof above remains valid. The final qualification also
-passed formatting, documentation contracts and diff checks. No temporary engine
-diagnostics remain.
+PR [#475](https://github.com/LuminariMUD/Duris/pull/475) initially reported a
+conflict because master advanced to
+`b352b650c3f05ea0c2e109eaa9abcc3040290952` during implementation. The merge
+preserves master's quest snapshot version 13, new status fields and their
+regressions. All production code merged cleanly. The sole conflict was the
+shared plan; master's #437 plan was preserved byte-for-byte as
+[plan-issue-437.md](plan-issue-437.md), SHA-256
+`ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4`.
+The earlier #428 archive remains unchanged.
 
-Final rebuilt audit binary SHA-256:
-- MariaDB: `58c7b4c31094b19f375ce38f57c8532fdc1ca0e6a19493117cc7c8fc45f90182`.
-- Flatfile: `4a7b47594364e4ff9e4a6d8de90db69c55b8a4bba2579f6c61ab62ec321b4644`.
+Both server builds, all nine focused Python regressions listed above, the
+MariaDB claim/loader suite, both full-world socket journeys, changed-line
+clang-tidy, the staged merge hook, formatting and all 14 documentation tests
+passed again after integration. The 12 rent cases and active/fresh recovery
+controls are therefore qualified on the merged source, not merely the earlier
+branch.
 
-The refactored runner's recovery-only path was also rerun on both final binaries:
-`bin/tests/issue437-final-recovery-{mariadb,flatfile}.log`. Both passed paid
-purchase/abandon/map, invalidation, no-candidate retention, SAVE, ordinary travel
-to RENT, relogin, normal restart and free redemption. Each retained wallet 99,118
-until explicit test setup added funds; redemption left 199,118 unchanged.
-Each run recorded exactly two catalog builds across its two boots. This checks
-the moved probe and debugger mode switches without replaying unrelated combat.
-The audit's explicit positive Good/Evil/Underdark assertions were checked against
-the retained passing audit results after their addition.
+The flat-file rerun exposed an inspector read concurrent with atomic snapshot
+publication. The fixture now holds the existing authority lock while opening
+and validating that file and reports the read result after it completes.
+It does not retry arbitrary read errors or change the server. The full
+flat-file journey then passed all cases and recovery controls.
 
-### Review remediation and fresh qualification (2026-10-30)
+The current reports `bin/qualification/issue419/flatfile.json` and
+`mariadb.json` both record `passed: true`; pre-merge reports are retained in
+the `premerge/` subdirectory. Repeated test/build logs have a `merged-`
+or `build-merged-` prefix. Final socket-qualified binary SHA-256 values,
+which supersede the earlier hashes:
 
-Reviews of the complete stack identified and corrected diagonal trap-mask
-aliasing, omitted arriving-player light, stale sent-map caching, missing status
-publication on blocked map requests and abandonment confirmation, stale map
-availability across asynchronous payment, and disconnected low-level origins
-being classified as uncertain. Each correction has a focused regression that
-failed before its fix. Unknown geography and actor-side barriers still preserve
-accepted work; only a proved world-side loss grants replacement entitlement.
+- Flat-file: `5c2a9c1bc99ff93d2f349792a441f89034a27959b32a538b10be369e01f37aa0`.
+- MariaDB: `20f5d9040debbaedda6eb743f29d72e4fda17403dc8b52e0ccd409fa8bde50f5`.
 
-The gameplay fixture now retries a valid assignment of the other type through
-its existing bounded purchase/paid-abandon loop. Setting the preferred first type
-does not suppress production's legitimate per-zone fallback. No progress or
-reward is manufactured, and production selection is unchanged.
-
-Fresh complete runs passed on both MariaDB and flatfile after these corrections:
-paid map/recovery, no-candidate entitlement, RENT/relogin, cold restart and free
-redemption; level-11 and level-29 ASK/KILL completion and ordinary return travel;
-level-29 partial SAVE/restart with exact quest, wallet, XP and held reward identity;
-and a level-30 KILL control. Each run completed all five cases and three boots.
-The earlier failed run that exposed the fixture assumption is not counted as a
-passing run. The 71-scenario sanitizer suite, route/visibility/GMCP checks and both
-server builds also passed. No production operations occurred.
-
-Fresh binary SHA-256 values:
-- MariaDB: `192dee0c9b1745d67854805a7e03d0195e7a698581d496249237424b12978d8b`.
-- Flatfile: `692de210ffaa1e455fa3fa12267bc7e03b1ca781435ee0379f890a297a414da6`.
-
-Run with `DURIS_WORLD_QUEST_BACKEND=mariadb` or `flatfile` and the matching
-`DURIS_WORLD_QUEST_BINARY`, then `python3 tests/async/run_world_quest_dual_backend.py`.
-The complete JSON evidence is retained under the review worktree's
-`bin/analysis/pr-451-471-quest-{mariadb,flatfile}.json`.
+The #419-specific change still requires no schema migration; the merged quest
+migration belongs to master. Original-instance attribution remains unavailable,
+and production deployment remains outside this delivery.

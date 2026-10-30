@@ -5,6 +5,7 @@
 // log; the rest of the save commits. This drives
 // player_snapshot_repository_apply() against a real server.
 #include "item/item_claim_repository.h"
+#include "core/files.h"
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
@@ -755,6 +756,148 @@ int main()
 			       "SELECT CONCAT(copper,':',wallet_revision) FROM player_data WHERE pid=1") ==
 				"150:" + std::to_string(paid.wallet_revision),
 		"non-wallet status work reset the committed wallet revision");
+
+	// Inn rent consumes only NORENT keys, in the same transaction as the player.
+	for (int scenario = 0; scenario < 6; ++scenario)
+	{
+		const uint64_t uid = 4040100 + scenario * 10;
+		const int place = scenario % 3;
+		auto rent = snapshot_for(1, 200000 + scenario * 10, "Claimer");
+		rent.items = { item(uid, 100, -1), item(uid + 1, 40401, place == 2 ? 0 : -1),
+			       item(uid + 2, 101, 0), item(uid + 3, 102, -1) };
+		rent.items[0].type = ITEM_CONTAINER;
+		rent.items[1].type = ITEM_KEY;
+		rent.items[1].extra_flags = ITEM_NORENT;
+		rent.items[1].equipment_slot = place == 1 ? HOLD + 1 : 0;
+		rent.items[2].type = ITEM_FOOD;
+		rent.items[2].extra_flags = ITEM_NORENT;
+		rent.items[3].type = ITEM_KEY;
+		if (scenario >= 3)
+		{
+			auto before_rent = rent;
+			if (scenario == 5)
+			{
+				before_rent.pid = 2;
+				before_rent.status_strings[0].value = "Other";
+			}
+			require(player_snapshot_repository_apply(test_connection, before_rent)
+						.outcome == player_save_apply_outcome::applied,
+				"owned rent baseline");
+		}
+		rent.save_intent = RENT_INN;
+		const auto apply = [&](const player_snapshot &input)
+		{
+			require(player_snapshot_repository_apply(test_connection, input).outcome ==
+					player_save_apply_outcome::applied,
+				"rent save");
+		};
+		const auto kept = [&]
+		{
+			require(scalar(test_connection,
+				       "SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items WHERE pid=1") ==
+					std::to_string(uid) + "," + std::to_string(uid + 2) + "," +
+						std::to_string(uid + 3),
+				"rent lost ordinary items or retained key");
+			require(scalar(test_connection,
+				       "SELECT bag.obj_uid FROM player_items child JOIN player_items bag ON child.container_id=bag.id WHERE child.obj_uid=" +
+					       std::to_string(uid + 2) + " AND child.pid=1") ==
+					std::to_string(uid),
+				"rent changed sibling topology");
+		};
+		apply(rent);
+		kept();
+		require(owner_of(uid + 1) == "8:0:0:2:" + std::to_string(uid + 1) + ":0",
+			"rent custody");
+		const auto revision =
+			scalar(test_connection,
+			       "SELECT item_revision FROM item_current_owner WHERE item_uid=" +
+				       std::to_string(uid + 1));
+		const auto audits = scalar(test_connection,
+					   "SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=" +
+						   std::to_string(uid + 1));
+		apply(rent);
+		kept();
+		require(scalar(test_connection,
+			       "SELECT item_revision FROM item_current_owner WHERE item_uid=" +
+				       std::to_string(uid + 1)) == revision &&
+				scalar(test_connection,
+				       "SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=" +
+					       std::to_string(uid + 1)) == audits,
+			"rent retry changed custody or audit");
+		auto old = rent;
+		old.save_intent = RENT_CRASH;
+		--old.revision;
+		apply(old);
+		kept();
+		require(owner_of(uid + 1) == "8:0:0:2:" + std::to_string(uid + 1) + ":0",
+			"stale save revived key");
+		auto invalid = rent;
+		invalid.items[1].object_uid = 0;
+		invalid.items[0].vnum = 999;
+		require(player_snapshot_repository_apply(test_connection, invalid).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"UID-less disposal accepted");
+		kept();
+	}
+	auto recovery = snapshot_for(1, 300000, "Claimer");
+	// Preserve the delivery sequence established by the preceding reward tests.
+	recovery.status_integers.push_back(
+		{ player_status_field::divine_boon_delivery_seq, 0, 3, true });
+	recovery.status_integers.push_back({ player_status_field::epics, 500, 0, false });
+	recovery.items = { item(4040991, 40401, -1) };
+	recovery.items[0].type = ITEM_KEY;
+	recovery.items[0].extra_flags = ITEM_NORENT;
+	for (int intent :
+	     { RENT_CRASH, RENT_CRASH2, RENT_QUIT, RENT_LINKDEAD, RENT_CAMPED, RENT_DEATH })
+	{
+		recovery.save_intent = intent;
+		require(player_snapshot_repository_apply(test_connection, recovery).outcome ==
+					player_save_apply_outcome::applied &&
+				owner_of(4040991) == "1:1:0:1:4040991:0",
+			"recovery lost key");
+		++recovery.revision;
+	}
+	auto partial = recovery;
+	partial.components = PLAYER_COMPONENT_STATUS;
+	partial.save_intent = RENT_INN;
+	require(player_snapshot_repository_apply(test_connection, partial).outcome ==
+				player_save_apply_outcome::applied &&
+			owner_of(4040991) == "1:1:0:1:4040991:0",
+		"partial status disposed key");
+	partial.components = PLAYER_COMPONENT_PETS;
+	player_pet_snapshot pet_key{};
+	pet_key.pet_uid = 4040992;
+	pet_key.mob_vnum = 1201;
+	pet_key.room_vnum = 3001;
+	pet_key.items = recovery.items;
+	pet_key.items[0].object_uid = 4040993;
+	partial.pets = { pet_key };
+	require(player_snapshot_repository_apply(test_connection, partial).outcome ==
+				player_save_apply_outcome::applied &&
+			owner_of(4040993) == "11:4040992:1:1:4040993:0",
+		"pet rent disposed key");
+
+	// Fail after the ownership update but before the replacement payload commits.
+	recovery.save_intent = RENT_INN;
+	execute(test_connection,
+		"CREATE TRIGGER reject_rent_items BEFORE DELETE ON player_items FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='rent rollback probe'");
+	const auto failed_rent = player_snapshot_repository_apply(test_connection, recovery);
+	execute(test_connection, "DROP TRIGGER reject_rent_items");
+	require(failed_rent.outcome == player_save_apply_outcome::terminal_failure &&
+			owner_of(4040991) == "1:1:0:1:4040991:0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items WHERE pid=1 AND obj_uid=4040991") ==
+				"1" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM item_owner_audit WHERE item_uid=4040991 AND new_owner_type=8") ==
+				"0",
+		"rent rollback split custody, audit or inventory");
+	require(player_snapshot_repository_apply(test_connection, recovery).outcome ==
+				player_save_apply_outcome::applied &&
+			owner_of(4040991) == "8:0:0:2:4040991:0",
+		"rent after rollback");
+	std::cout
+		<< "[PASS] rent placements, replay, recovery intents, partial saves and SQL rollback\n";
 
 	mysql_close(test_connection);
 	mysql_library_end();
