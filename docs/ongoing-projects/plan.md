@@ -1,11 +1,11 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **implementation in progress; capacity/access chunks qualified; durable operations remain**. Updated 2026-10-30.
+Status: **paused at the owner's request; capacity/access PRs ready; durability implementation not started**. Updated 2026-10-30.
 Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
 Assignee: `moshehbenavraham`.
 Branch: [branch/issue-490-private-chests](https://github.com/LuminariMUD/Duris/tree/branch/issue-490-private-chests).
 Worktree: `/home/aiwithapex/projects/duris-issue-490`.
-Active dependent branch: `branch/issue-490-chest-access` (base: `branch/issue-490-idle-harness`).
+Current handoff branch: `branch/issue-490-chest-durability` (base: `branch/issue-490-chest-access`).
 Source baseline: remote `master`, `0bec1dbaec2793f64bb8b6328dcd69447ef17494`.
 
 The previous shared plan, including #420's completed implementation and later
@@ -15,6 +15,157 @@ integration records, is preserved byte-for-byte in
 The owner authorized implementation, proportional local validation, commits, pushes
 and focused review-ready PRs, stacked where dependent. The progress section below
 is the current handoff; original source findings describe the planning baseline.
+
+## Paused handoff, 2026-10-30
+
+The owner requested a pause at the next clean boundary. **Stop implementation
+here and resume only when requested.** This section is the current handoff and
+supersedes the earlier in-progress language in the chronological notes below.
+The original full issue scope and acceptance criteria remain required.
+
+### Checkout and review state
+
+- Main task worktree: `/home/aiwithapex/projects/duris-issue-490`.
+- Checked-out branch: `branch/issue-490-chest-durability`, tracking origin and
+  natively linked to #490. It was created from access head
+  `574b090e4b6ff7e39c1c6d5c58782cc15186bfec`. Only this paused handoff is added
+  on that branch; **no durability production code or new command codec exists**.
+- [PR #497](https://github.com/LuminariMUD/Duris/pull/497): capacity,
+  `branch/issue-490-private-chests` -> `master`, head `77742c782`.
+- [PR #502](https://github.com/LuminariMUD/Duris/pull/502): inherited idle-fixture
+  linkage repair, `branch/issue-490-idle-harness` -> capacity branch,
+  head `885d40fca`. Its extra worktree is
+  `/home/aiwithapex/projects/duris-issue-490-harness` and is clean.
+- [PR #503](https://github.com/LuminariMUD/Duris/pull/503): access/session/backend,
+  `branch/issue-490-chest-access` -> fixture branch, head `574b090e4`.
+- All three PRs were verified **open, non-draft and mergeable** at pause. They
+  remain ready for review. Nothing was merged, tagged, released or deployed.
+  Recheck live PR/base state on resume; do not assume these refs stay unchanged.
+- No task build, test, disposable database or server session remains running.
+  The durability branch was clean before this documentation-only checkpoint;
+  the handoff commit is pushed and its matching local/remote heads are verified
+  before reporting the pause. Other worktrees and the original quest-reference
+  checkout were preserved.
+
+### What is already delivered
+
+Capacity is independent of the saved chest ID. Real inspection/movement paths
+use the active visit's authenticated selection; stale open results, selection
+replacement, close, password operations, deletion, departure and disconnect are
+covered by the access work. Guild managers use the same password bypass as other
+managers. Private wrappers remain fixed furniture. Delayed log viewing rechecks
+permissions/visit. Unsupported flat-file management/log operations fail before
+hashing/charges, room/help availability is accurate, and private stored records
+are preserved. The PR descriptions state each chunk's exact proof limits.
+
+These are partial implementation deliveries, **not completion of #490**.
+In particular, the old management/payment write ordering and missing PUT/GET
+history are still present. Current help deliberately describes the log as
+open/close/failure history until item activity is actually implemented.
+
+### Required remaining work and next delivery
+
+1. Implement durable chest management outcomes: password replacement/removal,
+   guarded legacy upgrades, empty-only deletion, rejected admission, failed
+   writes and safe asynchronous publication. Refresh password-presence wording
+   when metadata changes; the current setter changes the stored string only.
+2. Commit creation and the exact 500000-copper payment as one replayable outcome.
+   Preserve whole-wallet-else-whole-bank funding, denomination change and the
+   rejection of combined insufficient sources. Handle offline completion,
+   unknown COMMIT results, stale captures, shared bank publication and conflicting
+   operations without charging twice or leaving an unsupported paid/free chest.
+3. Add successful PUT/GET audit events at actual movement boundaries, with actor,
+   stable locker/chest and item context, correct partial/bulk/coin/empty behavior,
+   no rejected/automatic movement recorded as success, and durable retry handling.
+4. Connect private snapshot final results to terminal locker cleanup/re-entry.
+   A successful public save must not hide a private-save failure or free its
+   recoverable state prematurely.
+5. Extend the existing journeys for all management/funding/limit/failure/replay
+   cases, filled private content across save/re-entry/restart, and the required
+   MariaDB 10.11 / MySQL 8.0 matrix. Reuse the valid no-MySQL/native evidence
+   unless relevant code changes invalidate it. Update help/log descriptions and
+   this plan with each completed chunk. Do not gate on hosted CI.
+
+The next intended chunk is a focused durable private-chest command/SQL outcome
+foundation on the current durability branch, followed by real runtime/payment
+reservation integration. Publish each complete, qualified chunk as a focused
+PR based on its actual dependency; keep all later acceptance work explicit.
+No implementation decisions about new bank caches or global load barriers have
+been made or implemented. Inspect the owning code before choosing that approach.
+
+### Source findings for the next session
+
+These were inspected after the access PR was published:
+
+- `critical_command_coordinator.c::queue_on_writer()` submits critical work to
+  the existing persistence writer. Reuse that writer, inbox, operation identity,
+  result and replay handling; do not add another writer or receipt service.
+- `currency_transaction.c::apply()` updates memory and calls completion before
+  returning. Bank deltas are separate writer jobs. Its callback's `committed`
+  flag therefore does not mean the chest purchase durably committed.
+- `currency_transaction.c::bank_payment_deltas()` spends the whole fee from the
+  bank when the wallet alone is short, taking smaller denominations first and
+  returning overpayment change to the wallet. Preserve its exact behavior.
+- `player_pending_trade_snapshot` is encoded by snapshot schema 13. Its SQL
+  settlement in `player_snapshot_repository.c::settle_pending_trade()` explicitly
+  requires command type **19** and decodes `divine_trade_result`, including
+  wallet revision/payment checks. It is not a generic receipt that a chest can
+  silently reuse. The existing reservation APIs are cargo-specific and retain
+  one trade PID; inspect and extend the actual required boundary carefully.
+- `player_snapshot_codec.c::player_snapshot_settle_trade()` applies a scalar
+  wallet-value change and optional cargo affect. A bank-funded chest can have a
+  different exact wallet denomination delta. Any new pending-purchase capture
+  must preserve old snapshot decoding and avoid losing unrelated terminal state.
+- Player loads use a **separate read worker** in `player_load_pipeline.c`; their
+  results are not automatically ordered behind a critical write. The load hold
+  callback currently accepts a PID, not an account/side key.
+- `player_load_materialize.c` assigns the loaded bank balance/revision directly;
+  `utility.c::publish_account_bank_balances_revision()` currently updates matching
+  `CON_PLAYING` descriptors. Shared-bank reservation/publication design must
+  account for concurrent login and pre-entry hydration as well as other online
+  characters. This is a source-observed integration consideration, not a
+  reproduced production incident or a reason to redesign unrelated domains.
+
+### Validation to retain
+
+- Capacity: both new cases failed at actual admission assertions on the original
+  constructor, then all **24** container/weight cases passed under ASan/UBSan.
+- Access: both stale-completion regressions failed on the baseline, then all
+  **22** private lifecycle cases passed under ASan/UBSan. They execute the real
+  constructor, open/close, access and log-view callbacks with controlled services.
+- Expanded MariaDB journey: **13 groups passed**, including actual owner/guest/
+  guild commands, single/bulk transfers, denial, idle disconnect, cold restart,
+  grant/racewar compatibility and stable UIDs. Report:
+  `bin/qualification/issue490/journey.json`; log:
+  `bin/qualification/issue490/access-mariadb-journey.log`.
+  Its binary SHA-256 is
+  `032e3b4d2d27d7c7857666dc8c79a36cc6ebccd6fa6e4a80dc8af9f2d1d2e5c7`.
+  It predates only the final three-line non-locker lookup guard; that guard has
+  executable native proof and a passing final MariaDB build. Valid-room runtime
+  evidence was reused because the guard does not change those paths.
+- Final no-MySQL artifact build and expanded public-storage/restart/unsupported
+  journey passed on the final access sources. Log:
+  `bin/qualification/issue490/access-flatfile-final.log` (fresh build 72.034 s).
+- The flat-file repository test passed a full encoded-catalog comparison after
+  two committed public saves alongside private metadata and nested contents.
+- Focused password, ownership, get/put trap, coin, empty/corpse, departure/
+  extraction, idle lifecycle, world-recovery and item-command checks passed.
+  PR #502's two weak stubs fixed inherited account API linkage; its focused
+  idle/projection checks and the integrated idle/private checks passed.
+- MariaDB `make -C src -j6`, formatting, Clang-Tidy 22, whitespace checks and
+  **14** documentation contracts passed. Final build log:
+  `bin/qualification/issue490/access-final-build.log`.
+- Use `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy` for checks/commits:
+  installed Clang-Tidy 22 handles the GCC 16 headers selected by Clang. System
+  Clang-Tidy 18 cannot parse them. No hook was bypassed.
+- `make world` generated the local ignored full-world inputs needed by the SQL
+  journey. No local `.env` exists in the main task worktree; fixture runs use
+  explicit local configuration and disposable SQL. Do not commit generated
+  artifacts, logs, credentials or player state.
+
+Last remaining estimate was **10-16 hours of active work**, mainly payment and
+recovery integration. Paused time is excluded. The overall goal is paused and
+incomplete; do not mark it achieved on the strength of these partial PRs.
 
 ## Outcome
 
