@@ -883,7 +883,7 @@ void clear_title(P_char ch)
 	}
 }
 
-void display_gain(P_char ch, int gain, int type)
+static void display_gain_divine(P_char ch, int gain, int type, int divine_credit)
 {
 	char buffer[MAX_STRING_LENGTH];
 
@@ -904,7 +904,10 @@ void display_gain(P_char ch, int gain, int type)
 	}
 	if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_KILL && gain != 0)
 	{
-		snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d \r\n", gain);
+		if (divine_credit > 0)
+			snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d &+C(Divine Boon +%d)&+G \r\n", gain, divine_credit);
+		else
+			snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d \r\n", gain);
 		send_to_char(buffer, ch);
 	}
 	else if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_WORLD_QUEST && gain > 0 &&
@@ -913,6 +916,11 @@ void display_gain(P_char ch, int gain, int type)
 		snprintf(buffer, MAX_STRING_LENGTH, "&+CQuest EXP:&+G %d \r\n", gain);
 		send_to_char(buffer, ch);
 	}
+}
+
+void display_gain(P_char ch, int gain, int type)
+{
+	display_gain_divine(ch, gain, type, 0);
 }
 
 void update_exp_table()
@@ -1624,6 +1632,11 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			*base *= std::min(1.0, difficulty_multiplier(DIFFICULTY_EXP_EARNED));
 	}
 
+	// Capture the ordinary result for feedback only. Do not alter award arithmetic.
+	// Clamp the counterfactual through the same final limits as the actual award.
+	const bool ordinary_representable = std::isfinite(XP) && XP >= 0 &&
+		XP <= std::numeric_limits<int>::max();
+	const int ordinary_computed_xp = divine && ordinary_representable ? (int)XP : 0;
 	if (divine)
 		XP += eligible_base;
 	// Reject non-finite or unrepresentable Divine awards before integer conversion.
@@ -1670,6 +1683,19 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		mark_player_dirty_components(GET_PID(ch), components);
 	}
 	const int after_exp = GET_EXP(ch);
+	int divine_credited_xp = 0;
+	if (divine && credited_xp > 0 && ordinary_representable)
+	{
+		const int range = new_exp_table[GET_LEVEL(ch) + 1] / 3;
+		const int ordinary_capped = BOUNDED(-range, ordinary_computed_xp, range);
+		const std::int64_t ceiling = std::min<std::int64_t>(
+			global_exp_limit, std::numeric_limits<int>::max());
+		const std::int64_t remaining = std::max<std::int64_t>(
+			0, ceiling - static_cast<std::int64_t>(before_exp));
+		const int ordinary_credited = static_cast<int>(std::min<std::int64_t>(
+			ordinary_capped, remaining));
+		divine_credited_xp = std::max(0, credited_xp - ordinary_credited);
+	}
 	(void)telemetry_runtime_game_progression(
 		ch, ch->desc,
 		telemetry_progression_make_experience(
@@ -1679,7 +1705,8 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			static_cast<std::uint16_t>(GET_LEVEL(ch)), progression_modifier_flags,
 			TELEMETRY_QUALITY_NONE));
 	// Mortals see only XP actually credited; staff retain the hypothetical award log.
-	display_gain(ch, GET_LEVEL(ch) >= MINLVLIMMORTAL ? XP_final : credited_xp, type);
+	display_gain_divine(ch, GET_LEVEL(ch) >= MINLVLIMMORTAL ? XP_final : credited_xp,
+			   type, divine_credited_xp);
 	if (GET_LEVEL(ch) >= MINLVLIMMORTAL)
 	{
 		return 0;
