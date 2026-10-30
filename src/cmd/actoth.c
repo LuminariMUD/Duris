@@ -2143,6 +2143,11 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	if (queued == player_save_pipeline_result::queued ||
 	    queued == player_save_pipeline_result::coalesced)
 	{
+		// The caller returns to the account menu before detaching the character.
+		if (!sync_account_character_projection(ch, room, TRUE))
+			persistence_alert(AVATAR, "account", "redacted", "none", "none",
+					  "write_failed",
+					  "terminal character projection save failed");
 		if (struct deferred_save_slot *slot = find_deferred_save_slot(GET_PID(ch)))
 			memset(slot, 0, sizeof(*slot));
 		clear_manual_save_status(GET_PID(ch));

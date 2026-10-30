@@ -1,6 +1,6 @@
 # Issue #478: keep character-selection level aligned after death
 
-Status: **implementation plan; implementation and gameplay reproduction pending**.
+Status: **implemented; focused local qualification complete; ready for review**.
 Updated 2026-10-30.
 Issue: [Duris #478](https://github.com/LuminariMUD/Duris/issues/478).
 Branch: [branch/issue-478-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-478-plan).
@@ -8,7 +8,8 @@ Source baseline: origin/master at c9361959ceb6cb2a9004fea2c03748cef909dc3f.
 Worktree: /home/aiwithapex/projects/duris-issue-478.
 
 The completed Shambler plan previously at this path is preserved byte-for-byte
-in [plan-issue-420.md](plan-issue-420.md). This change delivers planning only.
+in [plan-issue-420.md](plan-issue-420.md). The owner subsequently authorized
+implementation, focused qualification, commit/push and a PR linked to #478.
 The existing checkout and its unrelated edits remain untouched.
 
 ## Outcome
@@ -30,13 +31,13 @@ A menu projection must never become the source used to overwrite player level.
 
 ## Source findings and remaining uncertainty
 
-All source locations below refer to the baseline above. The report's production
-symptom is unverified; source inspection identifies a plausible stale-cache path,
-not a completed production reproduction.
+All source locations below refer to the baseline above. The original production
+record was not accessed. The stale-cache path identified during planning has now
+been reproduced with synthetic characters on both maintained backends.
 
 1. **Both menu protocols consume cached account state.**
    [account.c](../../src/account/account.c), display_character_list()
-   (around lines 1630-1778), formats acct_chars.level.
+   (around lines 1785-1977), formats acct_chars.level.
    [ws_handlers.c](../../src/net/ws_handlers.c), ws_build_character_list()
    (around lines 2702-2735), emits that same field as JSON level.
    A second display-only calculation would duplicate the problem.
@@ -284,5 +285,107 @@ These checks establish existing controls; none reproduces #478. At the planning
 stage there is no C/C++ change, full build, booted-game reproduction, database
 mutation or production operation. All 14 documentation contracts and
 git diff --check passed. The archived prior plan was compared byte-for-byte
-with HEAD:docs/ongoing-projects/plan.md and is identical. Implementation
-acceptance remains pending.
+with c9361959c:docs/ongoing-projects/plan.md and is identical. Implementation
+acceptance was pending at planning commit a3891d233; completion is recorded below.
+
+## Implementation and qualification, 2026-10-30
+
+The production change is five added lines in src/cmd/actoth.c. After accepted or
+coalesced terminal snapshot submission, the existing projection helper updates
+the still-attached account and persists it through its existing backend writer.
+Projection write failure emits the existing persistence alert. Rejected snapshot
+submission retains its previous alert/departure path and does not publish a new
+durable membership. No snapshot format, XP rule, renderer, schema, callback,
+blocking wait or retry policy changes.
+
+The baseline binaries reproduce the stale-level failure on both backends. A
+synthetic Human Monk enters at 1, advances to 16 through the real staff command,
+then dies through the native death path. The captured pre-death level is 16;
+the same-connection character list contains level 1. The old binaries are
+preserved under bin/qualification/issue478/{mariadb,flatfile}-before. Failure
+results/transcripts are in the corresponding *-before-regression directories.
+The native regression also fails against the baseline at the absent account
+publication assertion.
+
+Ablation retained the single shared-boundary edit. The runtime regression reuses
+the existing minimal-world configuration, protocol clients, disposable SQL
+authority and player inspector. Full-world generated area files and unrelated
+onboarding/loot scenarios are unnecessary for the level/menu/reload contract.
+The inspector adds only membership-level observation and a stopped-server
+synthetic stale-membership seed. The focused native regression is needed for
+deterministic rejected-submission and account-storage failure coverage that the
+socket journey cannot reliably induce.
+
+The native test executes both production function bodies with real engine
+types under ASan/UBSan. Accepted/coalesced saves publish the authoritative level
+and identity/class/room fields; rejected, capture-failed and unavailable saves
+do not write membership. Storage failure alerts without changing departure or
+manual-save cleanup. Link-dead, null and NPC cases preserve their existing
+contracts. Another account entry remains untouched. Storage, snapshot submission
+and alert transport are controlled boundaries in this test, not a database
+fault-injection claim.
+
+The shared helper and write_account() fanout implementation remain unchanged.
+The terminal caller holds no acct_chars pointer across that operation. Normal
+authentication replaces a duplicate account connection, so the socket journey
+does not manufacture concurrent same-account sessions to test an unreachable
+login state. It instead checks the retained sibling character on every list.
+
+Existing WebSocket extraction emits reason "quit" even on this native death
+path. The journey confirms death from the staff's actual kill/death output and
+checks the real return_to_menu character list. This fix preserves that existing
+reason field; it does not infer death from it or change the protocol contract.
+
+Completed focused checks:
+
+- MariaDB and flat-file development builds passed with warnings as errors.
+- test_terminal_account_projection.py passed under ASan/UBSan.
+- test_death_respawn_state.py, test_death_transition_contract.py,
+  test_player_account_identity_save.py and test_terminal_save_safety.py passed.
+- test_flatfile_account_membership.py and test_flatfile_player_repository.py
+  passed, including the maintained native repository regression.
+- test_world_quest_xp_feedback.py passed for MariaDB and flat-file compilation;
+  test_lich_death_experience.py passed.
+- run_death_input_journey.py passed against the fresh flat-file executable:
+  native death, queued-input disposal, retained death/menu output and fresh input.
+- Changed-line formatting, clang-tidy, Python syntax, shell syntax, native test
+  discovery, all 14 documentation contracts and git diff --check passed.
+- The #420 archive still matches its original baseline byte-for-byte.
+
+Final binary SHA-256 values:
+
+- MariaDB: 15ac42f42c51d8fc5e73ecae7c027c0ed2f59cdd20196e1551e3c79e9163e780
+- Flat-file: 5f412ba06f6283a330ad5733e437156808a3867bb37bba9c8d41f3456e495dc4
+
+These executables use the planning baseline plus the sole production diff
+described above; the actoth.c Git blob is
+c0d4d7a3927e6344ba7dd85ed6b2c10a802cc9a4. The source diff is retained at
+bin/qualification/issue478/production.patch.
+
+Both complete runtime invocations passed with the final binaries:
+
+    tests/async/with_disposable_mariadb.sh python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary bin/server/dms_new --output bin/qualification/issue478/mariadb-qualified-final
+    python3 tests/async/run_death_level_projection_journey.py --backend flatfile --binary bin/server/dms_issue478_flatfile --output bin/qualification/issue478/flatfile-qualified-final
+
+Their result.json records have complete=true and match the executable hashes
+above: 10 MariaDB cases and 11 flat-file cases. Both protocols show 16 following
+the in-session 1-to-16 death and the already-level-16 control, with unchanged
+12,345 XP in the saved and loaded player. A real death at level 30 with zero
+in-level XP yields level 29 and 1,150,000 in-level XP; the menu shows 29 rather
+than the retained highest_level of 30. Fresh authentication/reselection starts
+before any durable-state polling, and each resulting saved revision is newer
+than its pre-death revision.
+
+Both protocols also show 17 after the shared quit boundary following an
+in-session level change. A graceful stop, cold boot, fresh authentication and
+selection preserve level 17 and 12,345 XP. The flat-file leg then seeds only the
+stopped synthetic character's membership level to 1 while its player snapshot
+stays at 17. Authoritative entry loads 17 and repairs membership; death and a
+fresh account login continue to show 17. The sibling character stays at 1.
+
+The MariaDB leg is registered in tests/run_db_tests.sh; the focused native test
+is discovered by the normal regression runner. The flat-file journey remains
+an explicit binary-supplied run, matching the existing death-input journey.
+The minimal-world fixture intentionally skips full-world corpse restoration;
+no corpse/loot persistence behavior was changed or claimed. No acceptance item
+requires production data, a running shared server, deployment or hosted CI.
