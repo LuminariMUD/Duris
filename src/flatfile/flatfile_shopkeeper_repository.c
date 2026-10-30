@@ -377,7 +377,7 @@ bool trade_items_match_payload(const shop_trade_payload &payload,
 		if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
 		{
 			++root_count;
-			if (item.object_uid != payload.selected_item_uid)
+			if (!payload.multi_root && item.object_uid != payload.selected_item_uid)
 				return false;
 		}
 		else if (item.parent_index < 0 || item.parent_index >= static_cast<int32_t>(index))
@@ -390,11 +390,12 @@ bool trade_items_match_payload(const shop_trade_payload &payload,
 			{ return candidate.item_uid < uid; });
 		if (expected == payload.items.begin() + payload.item_count ||
 		    expected->item_uid != item.object_uid ||
-		    expected->root_item_uid != payload.selected_item_uid ||
+		    (!payload.multi_root && expected->root_item_uid != payload.selected_item_uid) ||
 		    expected->parent_item_uid != parent_uid || expected->vnum != item.vnum)
 			return false;
 	}
-	return root_count == 1;
+	return payload.multi_root ? root_count >= 1 && root_count <= SHOP_TRADE_MAX_ITEMS :
+				    root_count == 1;
 }
 
 bool select_subtree(const std::vector<player_item_snapshot> &items, uint64_t root_uid,

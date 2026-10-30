@@ -37,7 +37,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'S', 'H', 'T', 'X', 0 };
-constexpr uint32_t catalog_version = 1;
+constexpr uint32_t catalog_version = 2;
 constexpr size_t catalog_maximum_operations = 262144;
 constexpr size_t catalog_maximum_bytes = 128 * 1024 * 1024;
 constexpr const char *catalog_filename = "shop_trade_operations";
@@ -48,6 +48,7 @@ struct operation_record
 	critical_operation_id operation_id = {};
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_digest = {};
 	unsigned int result_code = 0;
+	uint32_t result_size = SHOP_TRADE_RESULT_BYTES;
 	std::array<uint8_t, SHOP_TRADE_RESULT_BYTES> result = {};
 };
 
@@ -145,13 +146,14 @@ bool encode_catalog(const operation_catalog &catalog, std::vector<uint8_t> *byte
 		shop_trade_result decoded = {};
 		if (critical_operation_id_is_zero(operation.operation_id) ||
 		    !shop_trade_command_decode_result(operation.result.data(),
-						      operation.result.size(), &decoded))
+						      operation.result_size, &decoded))
 			return false;
 		payload.raw(operation.operation_id.bytes.data(),
 			    operation.operation_id.bytes.size());
 		payload.raw(operation.command_digest.data(), operation.command_digest.size());
 		payload.number<uint32_t>(operation.result_code);
-		payload.raw(operation.result.data(), operation.result.size());
+		payload.number<uint32_t>(operation.result_size);
+		payload.raw(operation.result.data(), operation.result_size);
 	}
 	if (!payload.valid || payload.bytes.size() > catalog_maximum_bytes)
 		return false;
@@ -180,8 +182,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, operation_catalog *catalo
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || version != catalog_version || !revision ||
-	    payload_size != bytes.size() - header_size)
+	    !header.number(&revision) || (version != 1 && version != catalog_version) ||
+	    !revision || payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
@@ -206,15 +208,18 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, operation_catalog *catalo
 	{
 		shop_trade_result result = {};
 		uint32_t result_code = 0;
+		operation.result_size = SHOP_TRADE_LEGACY_RESULT_BYTES;
 		if (!payload.raw(operation.operation_id.bytes.data(),
 				 operation.operation_id.bytes.size()) ||
 		    !payload.raw(operation.command_digest.data(),
 				 operation.command_digest.size()) ||
 		    !payload.number(&result_code) ||
-		    !payload.raw(operation.result.data(), operation.result.size()) ||
+		    (version >= 2 && !payload.number(&operation.result_size)) ||
+		    operation.result_size > operation.result.size() ||
+		    !payload.raw(operation.result.data(), operation.result_size) ||
 		    critical_operation_id_is_zero(operation.operation_id) ||
 		    !shop_trade_command_decode_result(operation.result.data(),
-						      operation.result.size(), &result))
+						      operation.result_size, &result))
 			return false;
 		operation.result_code = result_code;
 	}
@@ -252,8 +257,9 @@ critical_apply_result make_result(const operation_record &operation, uint64_t re
 						  critical_apply_outcome::terminal_failure :
 						  success,
 					  revision, operation.result_code };
-	applied.result_size = operation.result.size();
-	std::copy(operation.result.begin(), operation.result.end(), applied.result_payload.begin());
+	applied.result_size = operation.result_size;
+	std::copy_n(operation.result.begin(), operation.result_size,
+		    applied.result_payload.begin());
 	return applied;
 }
 

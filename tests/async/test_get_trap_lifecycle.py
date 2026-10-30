@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ASan/UBSan: real pickup finalizers after trap extraction and rejected delivery."""
+"""ASan/UBSan: pickup finalizers and scavenger floor publication/lifetime guards."""
 import os
 from pathlib import Path
 import subprocess
@@ -36,6 +36,15 @@ prelude = r'''
 P_obj object_list=nullptr;
 P_char character_list=nullptr;
 static room_data rooms[3]{};
+static int scheduled=0;
+int remember_array[3]={1,1,1};
+#define IS_CONTAINER(obj) ((obj)->type==ITEM_CONTAINER || (obj)->type==ITEM_CORPSE)
+void event_mob_mundane(P_char,P_char,P_obj,void *) {}
+#define PROFILE_START(...)
+#define PROFILE_END(...)
+nevent_schedule_result add_event(event_func, int, P_char ch, P_char, P_obj, int, const void *, int) {
+ assert(ch==character_list && IS_ALIVE(ch) && ch->in_room>=0); ++scheduled; return {};
+}
 P_room world=rooms;
 static index_data indexes[2]{};
 P_index obj_index=indexes;
@@ -44,12 +53,15 @@ int top_of_objt=2;
 static int trap_effect=1, trap_calls=0, pickups=0, reports=0, waits=0, corpse_writes=0;
 static bool item_get_ack_publication=false, item_get_rejected=false;
 static bool crumble=false, refuse_coins=false;
+static int slip_skill=0, equipment_checks=0;
 static std::string output, audit;
+static std::vector<std::string> events;
 void send_to_char(const char *text, P_char ch) {
  assert(IS_ALIVE(ch) && ch->only.pc); output+=text;
 }
-void act(const char *text,int,P_char ch,P_obj,void *,int) {
+void act(const char *text,int,P_char ch,P_obj,void *,int audience) {
  assert(IS_ALIVE(ch) && ch->only.pc); output+=text;
+ if(audience==TO_ROOM) events.emplace_back(text);
 }
 void debug(const char *format,...) {
  char buf[8192]; va_list ap; va_start(ap,format); vsnprintf(buf,sizeof(buf),format,ap); va_end(ap);
@@ -62,12 +74,15 @@ bool account_bound_reward_owner(P_char,P_obj) { return false; }
 int total_carried_weight(P_char) { return 0; }
 int number(int low,int) { return low; }
 int STAT_INDEX(int) { return 0; }
-int GET_CHAR_SKILL_P(P_char,int) { return 0; }
+int GET_CHAR_SKILL_P(P_char,int skill) { return skill==SKILL_SLIP ? slip_skill : 0; }
 int BOUNDED(int low,int value,int high) { return std::clamp(value,low,high); }
 int checked_snprintf_at(const char *,int,char *buf,size_t size,const char *format,...) {
  va_list ap; va_start(ap,format); int n=vsnprintf(buf,size,format,ap); va_end(ap); return n;
 }
 int real_mobile(int) { return -1; }
+obj_affect *get_obj_affect(P_obj,int) { return nullptr; }
+int obj_affect_time(P_obj,obj_affect *) { return 0; }
+int GET_CLASS(P_char,unsigned int) { return 0; }
 void CharWait(P_char ch,int) { assert(IS_ALIVE(ch)); ++waits; }
 void MakeScrap(P_char,P_obj) {}
 void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
@@ -90,14 +105,22 @@ void obj_to_char(P_obj obj,P_char ch) {
 void extract_obj(P_obj obj,int) { object_list=obj->next; delete obj; }
 void add_coins(P_obj,int,int,int,int) {}
 char *coins_to_string(int,int,int,int,const char *) { static char coins[]="coins"; return coins; }
-static bool credit_coins(P_char,int64_t) { return !refuse_coins; }
+static bool credit_coins(P_char,const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> &) { return !refuse_coins; }
+// This boundary records evaluation ordering; the socket journey proves real wear.
+void CheckEqWorthUsing(P_char ch,P_obj obj) {
+ assert(OBJ_CARRIED_BY(obj,ch)); ++equipment_checks;
+ events.emplace_back("evaluate");
+ if(CAN_WEAR(obj,ITEM_WEAR_BODY)) events.emplace_back("$n wears $p.");
+}
 void trapdamage(P_char ch,P_obj obj) {
  ++trap_calls; --obj->trap_charge;
  if(trap_effect==1) {
-  delete ch->only.pc; ch->only.pc=nullptr; ch->desc=nullptr;
+  if(IS_PC(ch)) delete ch->only.pc; ch->only.pc=nullptr; ch->desc=nullptr;
   ch->in_room=NOWHERE; ch->specials.position=STAT_DEAD; character_list=nullptr;
  } else if(trap_effect==2) ch->in_room=2;
  else if(trap_effect==3) ch->specials.position=STAT_SLEEPING;
+ else if(trap_effect==4) { P_obj next=obj->next_content; obj->next_content=nullptr; object_list=obj; obj->next=next->next; delete next; }
+ else if(trap_effect==5) { P_obj container=obj->loc.inside; obj->loc_p=LOC_NOWHERE; object_list=obj; obj->next->next=nullptr; delete container; }
 }
 '''
 
@@ -126,6 +149,15 @@ end=source.index('\nstatic P_obj do_get_obj_in_equipment_vis(',start)
 parts += [source[start:end],'static void\n'+take('do_get_finalize_container_success('),
           take('static void do_get_log_room_artifact_pickup('),
           take('static void do_get_finalize_room_item(')]
+# Exercise both real scavenger arms and their real rescheduling tail.
+mundane = extract_function('mobact.c', 'void event_mob_mundane(')
+start = mundane.index('\t\tif (best_obj)')
+end = mundane.index('\n\tif (!IS_ALIVE(ch))', start)
+scavenge = mundane[start:end].rsplit('\n\t}', 1)[0]
+reschedule = mundane[mundane.index('normal:'):mundane.index('quick:')]
+parts += [extract_function('mobact.c', 'static P_obj find_scavenged_object('),
+          'static void scavenge_floor(P_char ch,P_obj best_obj,int max=1) {\n'
+          'P_obj obj, obj2;\n' + scavenge + '\n' + reschedule + '}']
 parts.append(r'''
 int main() {
  // Modes: surviving/lethal/teleport/sleep traps, delivery, crumble, whole/partial/
@@ -191,6 +223,76 @@ int main() {
   if(npc) delete pc; else delete actor.only.pc;
  }
  puts("pickup finalizers: death, survival, teleport, sleep, ioun, crumble, coins, refusals and NPC pickup passed");
+ // Real floor caller: wearable, inventory-only, bound/no-loot/hitched/trap
+ // refusals, extracted delivery, consumed money, and successful Slip.
+ for(int mode=0; mode<12; ++mode) {
+  char_data actor{}; npc_only_data npc{};
+  actor.only.npc=&npc; actor.specials.act=ACT_ISNPC|ACT_SCAVENGER;
+  actor.specials.position=POS_STANDING|STAT_NORMAL; actor.in_room=1;
+  actor.runtime_id=1; actor.player.level=10; character_list=&actor;
+  P_obj item=new obj_data{}; item->obj_uid=51; item->condition=1;
+  item->wear_flags=ITEM_TAKE|(mode==1?0:ITEM_WEAR_BODY);
+  item->loc_p=LOC_ROOM; item->loc.room=1; object_list=item;
+  if(mode==2) item->extra2_flags=ITEM2_ACCOUNT_BOUND;
+  if(mode==3) item->extra2_flags=ITEM2_NOLOOT;
+  if(mode==4) item->hitched_to=&actor;
+  item->trap_eff=TRAP_EFF_OBJECT; item->trap_charge=(mode==5 || mode>=9)?1:0;
+  if(mode==7) { item->type=ITEM_MONEY; item->value[0]=1; }
+  crumble=mode==6; trap_effect=mode>=9?mode-8:0; refuse_coins=false; slip_skill=mode==8?100:0;
+  events.clear(); scheduled=equipment_checks=pickups=trap_calls=0;
+  scavenge_floor(&actor,item);
+  if(mode>=9) {
+   assert(events.empty() && equipment_checks==0 && pickups==0 && trap_calls==1);
+   assert(scheduled==(mode==9?0:1));
+  } else if(mode>=2 && mode<=5) {
+   assert(events.empty() && equipment_checks==0 && pickups==0);
+   assert(OBJ_ROOM(item) && item_get_rejected);
+   assert(trap_calls==(mode==5?1:0));
+  } else if(mode==6 || mode==7) {
+   assert((events==std::vector<std::string>{"$n gets $p."}));
+   assert(!object_list && equipment_checks==0);
+  } else {
+   std::vector<std::string> expected;
+   if(mode!=8) expected.emplace_back("$n gets $p.");
+   expected.emplace_back("evaluate");
+   if(mode!=1) expected.emplace_back("$n wears $p.");
+   if(events!=expected) {
+    fprintf(stderr,"scavenger mode %d events:",mode);
+    for(const auto &event : events) fprintf(stderr," [%s]",event.c_str());
+    fputc('\n',stderr);
+   }
+   assert(events==expected);
+   assert(equipment_checks==1 && pickups==1 && OBJ_CARRIED_BY(item,&actor));
+  }
+  if(mode!=6 && mode!=7) delete item;
+ }
+ // Container traps must stop safely before touching a dead actor, old room,
+ // extracted container or an extracted pending item.
+ for(int effect=1; effect<=5; ++effect) for(bool money : {false,true}) {
+  char_data actor{}; npc_only_data npc{};
+  actor.only.npc=&npc; actor.specials.act=ACT_ISNPC|ACT_SCAVENGER;
+  actor.specials.position=STAT_NORMAL|POS_STANDING; actor.in_room=1;
+  actor.runtime_id=1; actor.player.level=10; character_list=&actor;
+  P_obj container=new obj_data{}; container->type=ITEM_CONTAINER;
+  container->obj_uid=60; container->loc_p=LOC_ROOM; container->loc.room=1;
+  P_obj item=new obj_data{}; item->obj_uid=61; item->condition=1;
+  item->wear_flags=ITEM_TAKE|ITEM_WEAR_BODY; item->trap_charge=1;
+  item->trap_eff=TRAP_EFF_OBJECT; item->loc_p=LOC_INSIDE; item->loc.inside=container;
+  if(money) { item->type=ITEM_MONEY; item->value[0]=1; }
+  P_obj next=new obj_data{}; next->obj_uid=62; next->condition=1;
+  next->wear_flags=ITEM_TAKE; next->loc_p=LOC_INSIDE; next->loc.inside=container;
+  item->next_content=next; container->contains=item;
+  item->next=next; next->next=container; object_list=item;
+  trap_effect=effect; crumble=false; slip_skill=0;
+  events.clear(); scheduled=equipment_checks=pickups=trap_calls=0;
+  scavenge_floor(&actor,container,-1);
+  assert(trap_calls==1 && equipment_checks==0);
+  assert(scheduled==(effect==1?0:1));
+  if(effect!=4) delete next;
+  if(effect!=5) delete container;
+  delete item;
+ }
+ puts("scavenger floor caller: pickup-before-evaluation, inventory, refusals, extraction, coins and Slip passed");
 }
 ''')
 build=ROOT/'bin/tests';build.mkdir(exist_ok=True)

@@ -5,11 +5,32 @@ their wording and their intent. If anything is unclear, ask Staff through
 &+Ypetition&n before acting. Not knowing a rule does not excuse breaking it.
 
 &+C1. Fair play&n
-   Do not exploit loopholes or game mechanics to gain an unfair advantage.
-   This includes farming epics by camping epic stones, abusing broken
-   quests, or buying epic bottles that grant more epics than they cost.
-   Do not keep a character rented, camped, or voided solely to use as a
-   portal target. Do not use !risk or !frag alts to gain a PvP advantage.
+
+   Players are expected to play fairly and in the spirit of the game. Do
+   not exploit loopholes, game mechanics, or alternative characters to
+   gain an unfair advantage over other players.
+
+   Examples of prohibited behaviour include, but are not limited to:
+
+   - Farming epics by camping epic stones, abusing broken quests, or
+     purchasing epic bottles that grant more epics than they cost.
+
+   - Keeping characters rented, camped, or voided solely for use as portal
+     targets.
+
+   - Using !risk or !frag alternative characters to gain a PvP advantage.
+
+   - Using alternative characters to gather intelligence or reduce the
+     risks that would otherwise be faced by a primary character.
+
+   &+YImmortal discretion:&n These examples are not exhaustive. Immortals may
+   exercise reasonable discretion when determining whether conduct
+   violates the spirit of fair play, even where a specific action is not
+   explicitly listed. Decisions should consider the circumstances, intent,
+   and advantage gained, and should be applied fairly and consistently.
+
+   The fact that something is technically possible within the game does
+   not automatically make it permissible.
 
 &+C2. Bugs and exploits&n
    Report bugs promptly with the &+Ybug&n command. If you are unsure whether
@@ -29,51 +50,146 @@ their wording and their intent. If anything is unclear, ask Staff through
    civil; repeated abuse or disruptive complaints may result in a silence.
 
 &+C4. Characters and multi-playing&n
-   Multi-playing and sharing a character between players are prohibited.
+
+   Players may only have one character logged into the game at any time,
+   regardless of account, connection or device. Multi-playing is strictly
+   prohibited.
+
+   Players must not use characters on the opposite side of the racewar to
+   gather information that provides an advantage to their own side,
+   whether directly or indirectly. Players must not circumvent, or attempt
+   to circumvent, the racewar login timer through alternative characters,
+   accounts, connections or any other means.
+
+   Account and character sharing policies will be determined in
+   consultation with the playerbase. Until a formal policy is established,
+   account sharing alone will not be treated as a rules violation. All
+   other applicable rules remain enforceable regardless of who is
+   controlling a character.
+
    Do not access another person's account or character without permission,
    steal passwords, or attempt to compromise accounts.
-   Read &+Yhelp multi-playing&n for the full policy, including the limited
-   exception for equipment exchanges and storage characters inside an inn.
-   That exception does not permit using alts to assist in combat, scouting,
-   travel, or corpse retrieval.
+
+   See &+Yhelp multi-playing&n for further guidance.
 
 &+C5. Robots and unattended play&n
-   Do not run a robot or leave scripts playing your character while you
-   are away. Do not let another player control your character through
-   triggers. Simple client actions must follow the limits in &+Yhelp robots&n;
-   they must not turn your character into an unattended, playable bot.
-   Ask Staff before using automation if you are unsure whether it is allowed.
+
+   Scripts, triggers and automation are permitted, including unattended
+   botting for skill development and repetitive skill training.
+
+   Duris recognises that players have real-life commitments. Stepping away
+   for bathroom breaks, family responsibilities, work meetings or other
+   interruptions is perfectly acceptable. Players may use scripts or bot
+   triggers to temporarily maintain their characters while otherwise
+   occupied.
+
+   Automation should supplement actual gameplay, not replace it entirely.
+   While unattended skill development is expressly permitted, running a
+   character continuously as a fully automated bot, with little or no
+   genuine player involvement, is prohibited.
+
+   Immortals may exercise reasonable discretion when assessing excessive
+   automation, considering the overall pattern of play rather than
+   isolated periods of inactivity.
+
+   The intention is to accommodate real players, including those who use
+   automation for skill development or to balance gameplay with real-life
+   commitments, not encourage permanently automated characters.
+
+   See &+Yhelp robots&n for guidance.
 
 &+C6. PvP and racewars&n
+
    Player killing and corpse looting are expected parts of Duris. Resolve
    ordinary in-game rivalries through play, within these rules. PvP does
    not excuse harassment, real-world threats, or other misconduct.
+
    Wait at least &+Yone hour&n after logging off before logging on a character
    on the opposite side of the racewar.
+
    Do not use an opposite-side character to spy for your primary side or
-   to take revenge on its behalf. Follow the additional restrictions in
-   &+Yhelp multi-playing&n when switching characters after PvP.
+   to take revenge on its behalf.
+
+   After a PvP death, wait at least &+Yone real-life hour&n before logging in
+   another character to take revenge or assist retaliation. This applies
+   even when both characters are on the same racewar side, including
+   returning to an area where the same PvP encounter is reasonably
+   expected. See &+Yhelp multi-playing&n for further guidance.
+
+   &+YCross-racewar intelligence sharing is prohibited.&n Players must not
+   knowingly provide information to the opposing side that gives them an
+   unfair tactical advantage. This includes revealing planned attacks,
+   disclosing player or group movements, warning enemies of impending PvP
+   or raids, or otherwise assisting the opposing side using information
+   obtained through their own side.
+
+   This applies to in-game communication as well as external platforms
+   such as Discord, private messages and voice chat. Friendships across
+   racewar sides are perfectly acceptable, but players are expected to
+   respect the competitive integrity of the racewar.
 
 &+C7. Equipment and artifacts&n
-   Do not transfer equipment between the good and evil racewar sides,
-   either directly or through other characters or players.
-   You are not required to move artifacts between your characters whenever
-   you switch characters. See &+Yhelp artifact&n for the artifact policy.
 
-&+C8. Connections and punishment evasion&n
-   VPN use is prohibited. Characters linked to VPNs are treated as
-   offenders regardless of ownership.
-   Do not evade bans, silences, or other Staff restrictions by using other
-   characters, accounts, connections, or players.
+   Transferring equipment or artifacts between the good and evil racewar
+   sides is prohibited, whether directly or through other characters or
+   players.
 
-&+C9. Staff and active players&n
-   &+YServing as Staff and actively playing are mutually exclusive.&n
-   Staff members may not actively play any player character. Anyone
-   actively playing a character may not serve as Staff.
-   Stop active play before joining Staff, and step down from Staff before
-   resuming play. This rule applies to the individual across all characters
-   and accounts. It prevents abuse of Staff privileges and protects the
-   playerbase's trust in fair administration.
+   An exception may be considered in circumstances of significant racewar
+   imbalance. Duris recognises and appreciates players who voluntarily
+   switch sides to help maintain a healthy and competitive racewar.
+
+   Where such an exception is proposed, the immortal team will announce it
+   on Discord and provide the playerbase with a reasonable opportunity to
+   discuss the proposal before any decision is made. This discussion may
+   include whether equipment and artifacts should accompany the character
+   changing sides.
+
+   Exceptions will generally only be approved where there is broad
+   community support and the transfer is considered beneficial to overall
+   racewar balance. They are not intended to provide individual players
+   with an equipment advantage or an opportunity to circumvent normal game
+   rules.
+
+   Ultimately, the immortal team retains final discretion over whether an
+   exception is granted, including what equipment or artifacts, if any,
+   may be transferred. Decisions will be made with fairness, transparency
+   and player consultation in mind.
+
+   Players are not otherwise required to move artifacts between their
+   characters when switching characters. See &+Yhelp artifact&n for the general
+   artifact policy.
+
+&+C8. Punishment evasion&n
+
+   Players must not attempt to evade bans, silences or other disciplinary
+   restrictions imposed by immortals.
+
+   This includes using alternative characters, accounts, connections or
+   other players to circumvent an active punishment.
+
+   VPN use is permitted, provided it is not used to evade disciplinary
+   restrictions.
+
+&+C9. Immortals and active players&n
+
+   &+YServing as an immortal and actively playing are mutually exclusive.&n
+
+   Players who hold an immortal character or immortal-level privileges may
+   not actively play mortal characters. Anyone actively playing a mortal
+   character may not simultaneously serve as an immortal.
+
+   This restriction does not extend to developers, coders, zone builders
+   or other contributors who do not hold immortal characters or
+   privileges. We encourage players to contribute to the development and
+   improvement of Duris without having to give up playing the game.
+
+   All contributors are expected to act fairly and must not abuse
+   privileged access or non-public information to gain an unfair in-game
+   advantage.
+
+   These restrictions exist to prevent conflicts of interest, protect
+   competitive integrity and maintain the playerbase's trust in fair
+   administration.
 
 &+C10. Reporting and enforcement&n
    Use &+Ypetition&n to report misconduct or ask Staff for clarification.

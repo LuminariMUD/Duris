@@ -177,7 +177,8 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	flatfile_authority_lock lock;
 	require(lock.acquire(root, &error), "inspect authority lock: " + error);
 	std::cout << "{\"revision\":" << snapshot.revision << ",\"intent\":" << snapshot.save_intent
-		  << ",\"room\":" << snapshot.room_vnum;
+		  << ",\"room\":" << snapshot.room_vnum
+		  << ",\"membership_level\":" << identity.level;
 	for (const auto &entry : snapshot.status_strings)
 		if (entry.field == player_status_string_field::last_read_news_hash)
 		{
@@ -1286,6 +1287,26 @@ static void divine_trade_settlement(const fs::path &base)
 
 int main(int argc, char **argv)
 {
+	if (argc == 4 && std::string(argv[2]) == "stale-membership")
+	{
+		// The level-projection journey calls this only with its synthetic server stopped.
+		std::string error;
+		flatfile_identity_record identity;
+		require(flatfile_identity_lookup_pid(argv[1], std::stoi(argv[3]), &identity,
+						     &error) == flatfile_identity_result::ok,
+			"seed stale membership lookup: " + error);
+		std::vector<flatfile_identity_record> members;
+		require(flatfile_identity_list_account(argv[1], identity.account, &members,
+						       &error) == flatfile_identity_result::ok,
+			"seed stale account membership: " + error);
+		for (auto &member : members)
+			if (member.pid == identity.pid)
+				member.level = 1;
+		require(flatfile_identity_sync_account(argv[1], identity.account, members,
+						       &error) == flatfile_identity_result::ok,
+			"seed stale membership: " + error);
+		return 0;
+	}
 	if ((argc == 4 || argc == 5) && std::string(argv[2]) == "artifact-owner")
 	{
 		std::string error;

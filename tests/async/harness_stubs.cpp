@@ -6,6 +6,7 @@
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
 #include "economy/boon_reward_transaction.h"
+#include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_guild_delivery.h"
 #include "guild/artifact_guild_state.h"
@@ -20,6 +21,10 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
+{
+	return false;
+}
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
 // Ordinary NPC fixtures use their own race. Tutorial profile/parity coverage

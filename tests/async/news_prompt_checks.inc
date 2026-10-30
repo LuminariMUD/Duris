@@ -142,10 +142,109 @@ static void news_prompt_matrix()
 	const auto crowded = prompt();
 	assert(crowded.size() < MAX_INPUT_LENGTH && crowded.find("(news)") != std::string::npos &&
 	       crowded.ends_with("&n\n</prompt>\n"));
+
+	// The shared footer must leave the final combat/status color before the
+	// notification, using the same foreground as the prompt frame.
+	enemy.player.name = writable_arg("Enemy");
+	actor.points.hit = enemy.points.hit = 20;
+	const auto check_footer = [&](const std::string &content, int foreground)
+	{
+		const auto shown = prompt();
+		const bool msp = desc.term_type == TERM_MSP;
+		const auto plain = plain_text(shown);
+		assert(plain == (msp ? "\n<prompt>\n" + content + "\n</prompt>\n" : content));
+		const auto marker = plain.find("(news)");
+		assert(marker != std::string::npos && marker > 0 &&
+		       plain.find("(news)", marker + 1) == std::string::npos);
+		const AnsiString styled(shown.c_str());
+		for (size_t i = marker - 1; i <= marker + 6; ++i)
+			assert(styled.attr(i) == ATTR_FG(foreground)); // space, marker and >
+		for (const char *label : { "TC: pretty hurt", "EC: pretty hurt" })
+		{
+			const auto condition = plain.find(label);
+			if (condition != std::string::npos)
+				for (size_t i = condition + 4; i < condition + strlen(label); ++i)
+					assert(styled.attr(i) == ATTR_FG(28));
+		}
+		const std::string frame = foreground == 18 ? "&+g" : "&+C";
+		assert(shown.ends_with(frame + " (news)> " + (msp ? "&n\n</prompt>\n" : "&n")));
+		return shown;
+	};
+	int combat_cases = 0;
+	for (unsigned conditions : { unsigned(PROMPT_TANK_COND), unsigned(PROMPT_ENEMY_COND),
+				     unsigned(PROMPT_TANK_COND | PROMPT_ENEMY_COND) })
+		for (bool split : { false, true })
+			for (int terminal : { TERM_ANSI, TERM_MSP })
+				for (int foreground : { 18, 27 })
+				{
+					OutputProfilePreferences preference;
+					if (foreground == 27)
+						preference.set_color(OutputChannel::Prompt,
+								     ATTR_FG(27));
+					pc.output_preferences = preference.state();
+					pc.prompt = conditions | PROMPT_HIT |
+						    (split ? PROMPT_TWOLINE : 0);
+					desc.term_type = terminal;
+					std::string expected = split ? "< 20h >\n<" : "< 20h";
+					if (conditions & PROMPT_TANK_COND)
+						expected += " TC: pretty hurt";
+					if (conditions & PROMPT_ENEMY_COND)
+						expected += " EC: pretty hurt";
+					const auto shown =
+						check_footer(expected + " (news)> ", foreground);
+					char converted[MAX_STRING_LENGTH];
+					AnsiString(shown.c_str()).term(converted, TL_BLINK);
+					const std::string frame = foreground == 18 ? "\x1b[0;32m" :
+										     "\x1b[0;1;36m";
+					assert(std::string(converted).find(frame + " (news)> ") !=
+					       std::string::npos);
+					++combat_cases;
+				}
+	assert(combat_cases == 24);
+	pc.output_preferences = {};
+	desc.term_type = TERM_ANSI;
+	actor.points.ward = enemy.points.ward = 5;
+	for (unsigned condition : { unsigned(PROMPT_TANK_COND), unsigned(PROMPT_ENEMY_COND) })
+	{
+		pc.prompt = PROMPT_HIT | PROMPT_WARD | condition;
+		const std::string label = condition == PROMPT_TANK_COND ? "TC" : "EC";
+		const auto shown =
+			check_footer("< 20h " + label + ": pretty hurt (warded) (news)> ", 18);
+		const auto ward = plain_text(shown).find("(warded)");
+		for (size_t i = ward; i < ward + strlen("(warded)"); ++i)
+			assert(AnsiString(shown.c_str()).attr(i) == ATTR_FG(27));
+	}
+	actor.points.ward = enemy.points.ward = 0;
+	pc.prompt = PROMPT_HIT | PROMPT_ENEMY_COND | PROMPT_VIS;
+	actor.player.level = MAXLVLMORTAL + 1;
+	pc.wiz_invis = 7;
+	check_footer("< 20h EC: pretty hurt Vis: 7 (news)> ", 18);
+	actor.player.level = 0;
+	pc.wiz_invis = 0;
+	pc.prompt = PROMPT_HIT | PROMPT_ENEMY_COND;
+	SET_BIT(actor.specials.act, PLR_AFK);
+	check_footer("< 20h EC: pretty hurt (AFK) (news)> ", 18);
+	REMOVE_BIT(actor.specials.act, PLR_AFK);
+	desc.term_type = TERM_GENERIC;
+	const auto generic = check_footer("< 20h EC: pretty hurt (news)> ", 18);
+	AnsiString uncolored(generic.c_str());
+	uncolored.colorize(0); // process_output's TERM_GENERIC path
+	char converted[MAX_STRING_LENGTH];
+	uncolored.term(converted, TL_BLINK);
+	assert(std::string(converted) == "< 20h EC: pretty hurt (news)> ");
+	desc.term_type = TERM_ANSI;
+	assert(read().find("after overflow") != std::string::npos);
+	const std::string read_prompt = "&+g<&+r 20h&+c EC:&+R pretty hurt&+g> &n";
+	assert(!has_unread_news(&actor) && prompt() == read_prompt);
+	assert(publish_news("") && !has_unread_news(&actor) && prompt() == read_prompt);
+	assert(publish_news("after color checks\n"));
 	actor.specials.fighting = nullptr;
 	actor.in_room = NOWHERE;
 	pc.prompt = PROMPT_HIT;
 	desc.term_type = TERM_ANSI;
+	check_footer("< 20h (news)> ", 18);
+	printf("News prompt: %d combat color cases, wards, visibility, AFK, terminal output and read controls passed\n",
+	       combat_cases);
 
 	// Ownership and delivery use different bodies while switched or morphed.
 	body.desc = &desc;
