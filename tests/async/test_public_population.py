@@ -22,6 +22,8 @@ harness = r'''
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "core/utility.h"
+#include "magic/spells.h"
 #include "persistence/maintenance_snapshot.h"
 #include "persistence/copyover.h"
 #include "core/mm.h"
@@ -88,6 +90,49 @@ copyover_recover_fail:
 @SET_CONTENT@
 @STATUS@
 @LEGACY@
+
+// Keep the command's parsing, visibility, filtering and output guards intact.
+// Unrelated presentation and single-player inspection dependencies are fixtures.
+P_room world = nullptr;
+class_names class_names_table[1] = {};
+const race_names race_names_table[LAST_RACE + 1] = {};
+const surname_struct surnames[MAX_SURNAME + 1] = {};
+const surname_struct feudal_surnames[7] = {};
+str_app_type str_app[1] = {};
+long new_exp_table[MAXLVL + 2] = {};
+const char *connected_types[] = { "playing" };
+std::string command_output;
+void send_to_char(const char *text, P_char) { command_output += text; }
+void send_to_char(const char *text, P_char ch, int) { send_to_char(text, ch); }
+void statuslog(int, const char *, ...) {}
+bool ac_can_see(P_char, P_char, bool) { return true; }
+int fill_word(char *) { return false; }
+const char *who_display_name(P_char, P_char ch, char *, size_t) { return GET_NAME(ch); }
+const char *get_class_name(P_char, P_char) { return "Warrior"; }
+std::string pad_ansi(const char *text, int, bool) { return text; }
+const char *get_account_name_safe(P_char) { return "account"; }
+int get_real_race(P_char ch) { return GET_RACE(ch); }
+void list_snoopers(P_char, P_desc, char *) { assert(false); }
+void sprinttype(int, const char **, char *) { assert(false); }
+int calculate_ac(P_char) { assert(false); return 0; }
+int GET_PRIME_CLASS(P_char, uint) { assert(false); return 0; }
+int GET_SECONDARY_CLASS(P_char, uint) { assert(false); return 0; }
+int STAT_INDEX(int) { assert(false); return 0; }
+affected_type *get_spell_from_char(P_char, int, void *, int) { assert(false); return nullptr; }
+time_info_data age(P_char) { assert(false); return {}; }
+
+@ONE_ARGUMENT@
+@IS_ABBREV@
+@FLAG2IDX@
+@COMPARE@
+@WHO@
+
+std::string run_who(P_char ch, const char *arguments = "") {
+    std::string input(arguments);
+    command_output.clear();
+    do_who(ch, input.data(), 0);
+    return command_output;
+}
 
 std::string summary(P_char ch, std::initializer_list<P_char> mortals,
                     const std::string &prefix = {})
@@ -178,6 +223,37 @@ int main()
         }
     }
     curr_ingame_good = curr_ingame_evil = 0;
+    // Execute the complete production command with only staff connected, then
+    // with an evil mortal filtered out by `who good`, and finally as a mortal.
+    pc_only_data staff_pc = {};
+    staff.only.pc = &staff_pc;
+    staff.player.name = const_cast<char *>("Staff");
+    evil.player.name = const_cast<char *>("Evil");
+    good.player.name = const_cast<char *>("Good");
+    descriptor_data staff_desc = {}, evil_desc = {};
+    staff_desc.character = &staff;
+    evil_desc.character = &evil;
+    staff_desc.connected = evil_desc.connected = CON_PLAYING;
+    descriptor_list = &staff_desc;
+    const std::string zero_counts =
+        "There are 0 &+gmortal(s)&n on.  0 &+Revil(s)&n, 0 &+Ygood(s)&n.";
+    for (const char *arguments : { "", "sort" }) {
+        const auto output = run_who(&staff, arguments);
+        assert(output.find(zero_counts) != std::string::npos);
+        assert(output.find("Total visible players: 1") != std::string::npos);
+    }
+    staff_desc.next = &evil_desc;
+    for (const char *arguments : { "good", "good sort", "2 50 good" }) {
+        const auto output = run_who(&staff, arguments);
+        assert(output.find(zero_counts) != std::string::npos);
+        assert(output.find("Total visible players: 0") != std::string::npos);
+        assert(output.find("Total in-game connections: 2") != std::string::npos);
+    }
+    const auto ordinary_empty = run_who(&good);
+    assert(ordinary_empty.find("mortal(s)") == std::string::npos);
+    assert(ordinary_empty.find("evil(s)") == std::string::npos);
+    assert(ordinary_empty.find("Total in-game connections") == std::string::npos);
+    descriptor_list = nullptr;
     // Exercise the production recovery loop with live sockets, both factions,
     // the mortal/staff boundary, an invalid socket and a failed player load.
     FILE *image = tmpfile();
@@ -252,6 +328,11 @@ for marker, code in {
     '@STATUS@': extract_function('maintenance_snapshot.c', 'bool prepare_web_status('),
     '@LEGACY@': extract_function('actinf.c', 'void web_info('),
     '@SUMMARY@': summary,
+    '@ONE_ARGUMENT@': extract_function('interp.c', 'char *one_argument('),
+    '@IS_ABBREV@': extract_function('interp.c', 'bool is_abbrev('),
+    '@FLAG2IDX@': extract_function('utility.c', 'int flag2idx('),
+    '@COMPARE@': extract_function('actinf.c', 'int compare_char_data('),
+    '@WHO@': who,
     '@UPDATE_POPULATION@': extract_function('nanny.c', 'void update_ingame_racewar('),
     '@RESTORE@': restore,
 }.items():

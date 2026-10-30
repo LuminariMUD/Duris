@@ -7751,7 +7751,7 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				 MAX_STRING_LENGTH - strlen(who_output),
 				 "\nThere are %d visible &+rgod(s)&n on.\n", who_gods_size);
 		strcpy(buf, "");
-		if (who_list_size > 0)
+		if (who_list_size > 0 || IS_TRUSTED(ch))
 		{
 			strcat(who_output, "\n Listing of the Mortals!\n"
 					   "-=-=-=-=-=-=-=-=-=-=-=-=-\n");
