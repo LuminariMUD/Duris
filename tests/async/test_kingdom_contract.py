@@ -1659,19 +1659,20 @@ def test_garrison_identity_and_hunts_survive_extraction() -> None:
             r"\s*\|\|\s*!IS_ALIVE\(ch\)\)\s*return;", code) is not None,
               "movement skips membership only without removal and checks death after membership")
 
-    for path, signature, next_work in (
+    for path, signature, admission_guard, next_work in (
         ("src/world/handler.c", r"\bvoid\s+extract_char\s*\(",
-         "world_recovery_capture_forget_character(ch)"),
-        ("src/world/db.c", r"\bvoid\s+free_char\s*\(", "GET_OPPONENT(ch)"),
+         r"if\s*\(!locker_leave_for_extraction\(ch\)\)\s*return;\s*",
+         "item_actions_character_leaving(ch)"),
+        ("src/world/db.c", r"\bvoid\s+free_char\s*\(", "", "GET_OPPONENT(ch)"),
     ):
         bodies = function_bodies(read(path), signature)
         check(len(bodies) == 1, f"{signature} has one invalidation hook owner")
         if bodies:
             code = strip_comments(bodies[0])
             check(re.search(r"if\s*\(!ch\)\s*\{[^{}]*return;\s*\}"
-                            r"\s*\+\+character_removal_generation;", code) is not None
+                            r"\s*" + admission_guard + r"\+\+character_removal_generation;", code) is not None
                   and code.find("++character_removal_generation;") < code.find(next_work),
-                  f"{path} invalidates immediately after its null guard before nested work")
+                  f"{path} invalidates after admission guards before nested cleanup")
 
     hunt_check = function_bodies(read("src/mob/mobact.c"), r"\bvoid\s+MobHuntCheck\s*\(")
     check(len(hunt_check) == 1, "MobHuntCheck is defined once", f"{len(hunt_check)}")

@@ -75,9 +75,13 @@ char *json_build_comm_channel_ex(const char *, const char *, const char *, const
 {
 	return nullptr;
 }
-char *json_build_quest_status(struct char_data *)
+char *json_build_quest_status(struct char_data *, world_quest_target_status)
 {
 	return nullptr;
+}
+world_quest_target_status world_quest_refresh(P_char, int)
+{
+	return world_quest_target_status::unproven;
 }
 char *json_build_room_info(struct room_data *, struct char_data *)
 {
