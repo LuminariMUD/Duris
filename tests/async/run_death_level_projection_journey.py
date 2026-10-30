@@ -43,7 +43,9 @@ def run(binary, backend, output):
         process = None
         plain, tls, websocket = journey.available_ports()
         properties = runtime / "lib/duris.properties"
-        properties.write_text(re.sub(r"camp.timer=\d+\.\d+", "camp.timer=1.000", properties.read_text()))
+        properties.write_text(re.sub(r"account.timer.racewarSwitch=\d+\.\d+",
+            "account.timer.racewarSwitch=15.000",
+            re.sub(r"camp.timer=\d+\.\d+", "camp.timer=1.000", properties.read_text())))
         with authority(backend, runtime) as (env, sql):
             env.update(CRITICAL_COMMAND_JOURNAL_DIR=str(critical), DURIS_TLS_PORT=str(tls),
                        DURIS_WEBSOCKET_PORT=str(websocket), DURIS_WEBSOCKET="TRUE")
@@ -301,6 +303,40 @@ def run(binary, backend, output):
                     enter(client, name)
                     assert live(name)["level"] == 17
                     client = die(client, "telnet", name, "legacy stale membership repaired at entry")
+                    client.send("quit")
+                    client.expect("ACCOUNT MENU", timeout=30)
+                    client.close()
+                # A long same-side session must not consume the opposite-side
+                # cooldown while still online. Use a fifteen-second fixture timer.
+                if not process or process.poll() is not None:
+                    boot()
+                time.sleep(17)
+                evil = track(journey.MudClient(plain))
+                journey.create_character(evil, expected_room=None, account=ACCOUNT,
+                    character="Levelshade", existing_account=True, race_name="d",
+                    alignment="e", class_name="w", hometown="c")
+                evil.send("quit")
+                evil.expect("ACCOUNT MENU", timeout=30)
+                evil.close()
+                time.sleep(17)
+                good, _ = menu("telnet")
+                listing(good)
+                enter(good, PLAYERS[0][1])
+                time.sleep(17)
+                good.send("quit")
+                good.expect("ACCOUNT MENU", timeout=30)
+                good.expect("Please select an option")
+                listing(good)
+                good.send("Levelshade")
+                good.expect("cannot play this Evil-aligned character yet", timeout=10)
+                good.expect("more minute", timeout=10)
+                good.close()
+                fresh, _ = menu("telnet")
+                listing(fresh)
+                fresh.send("Levelshade")
+                fresh.expect("cannot play this Evil-aligned character yet", timeout=10)
+                evidence["cases"].append({"case": "long session opposite-side cooldown after quit and reconnect"})
+                print("PASS", backend, "long-session side-switch cooldown", flush=True)
                 evidence["complete"] = True
             finally:
                 for index, client in enumerate(history):

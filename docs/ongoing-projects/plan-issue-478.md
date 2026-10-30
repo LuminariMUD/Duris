@@ -401,3 +401,9 @@ character snapshot still records departure, while a failed account write emits t
 existing alert. The native regression covers both sides, long-session admission
 denial, rejected snapshots, detached flat-file resolution and the detached SQL
 update. The racewar-admission policy test and terminal-save safety contracts pass.
+
+The disposable-server death/menu journey also sets a 15-second fixture
+side-switch timer, stays on one side for 17 seconds, then verifies that the
+opposite side is denied immediately after quit and after a fresh login. The
+final reruns passed 12 flat-file and 11 MariaDB cases, including that direct
+admission check. Both `result.json` records report `complete: true`.
