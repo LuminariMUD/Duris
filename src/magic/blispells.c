@@ -666,7 +666,7 @@ void spell_horrid_wilting(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 void spell_shambler(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char /*victim*/, P_obj /*obj*/)
 {
-	int count;
+	int count = 0;
 	P_char mob;
 	struct char_link_data *cld;
 
@@ -677,14 +677,19 @@ void spell_shambler(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] i
 
 	for (cld = ch->linked; cld; cld = cld->next_linked)
 	{
-		if (cld->type == LNK_PET && cld->linking->only.npc->R_num == real_mobile(100))
+		if (cld->type != LNK_PET)
+			continue;
+		if (IS_NPC(cld->linking) && GET_VNUM(cld->linking) == 100)
 		{
 			send_to_char("You already have a mound.\n", ch);
 			return;
 		}
+		// Reflection and Mirror Image share this prototype, not ordinary pet capacity.
+		if (!IS_NPC(cld->linking) || GET_VNUM(cld->linking) != IMAGE_REFLECTION_VNUM)
+			++count;
 	}
 	// Don't need an undead army + shambler army.
-	if (count_pets(ch) > 1)
+	if (count > 1)
 	{
 		send_to_char("You already have enough pets.", ch);
 		return;

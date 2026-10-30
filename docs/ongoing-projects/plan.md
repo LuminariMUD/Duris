@@ -1,425 +1,380 @@
-# Issue #444: preserve denominations in physical coin transfers
+# Issue #420: preserve Shambler capacity while defensive images are active
 
 Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
-Issue: [Duris #444](https://github.com/LuminariMUD/Duris/issues/444).
-Branch: [`branch/issue-444-coin-denominations`](https://github.com/LuminariMUD/Duris/tree/branch/issue-444-coin-denominations).
-Source baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
-Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-444-coin-denominations`.
+Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
+Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
+Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
+Worktree: /home/aiwithapex/projects/duris-issue-420.
 
-This plan follows the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
-The previous shared plan, including its #428/#445 qualification and review record,
-is preserved byte-for-byte as [plan-issue-428.md](plan-issue-428.md).
-The #437 qualification plan incorporated from newer master is also preserved
-byte-for-byte as [plan-issue-437.md](plan-issue-437.md).
-The owner has authorized implementation, focused tests and gameplay/persistence
-qualification, commit/push, and a pull request linked to #444. The original
-planning checkpoint below is historical; current results are recorded at the end.
+The previous plan and completed qualification record for #428 are preserved
+byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
+authorizes implementation, including the shared Reflection/Mirror Image
+exemption, local qualification, commit/push and a PR linked to #420.
+The later master integration preserves the completed bartender-quest record in
+[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
 
-## Outcome
+## Outcome and accepted balance decision
 
-Physical coins retain their copper, silver, gold and platinum counts through
-pickup, explicit give, put, drop and rejected-transfer refunds. A player with
-40 gold can retrieve those coins from a bag and give 10 gold four times without
-an intervening exchange. Each successful transfer removes exactly the selected
-coins, leaves unrelated denominations unchanged and delivers exactly those
-coins to the recipient or pile. Failed transfers leave the source intact or
-restore the exact debited vector, with no duplicate credit or success message.
+At Shambler's admission boundary, exclude linked NPC images whose prototype is
+IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
+pet permits a cast, independent of whether zero, one, two, three or four images
+exist. Two or more ordinary pets still reject it. Any existing linked shambling
+mound still rejects another cast, including when it is the only ordinary pet.
 
-Preserve the existing command restrictions, NPC behavior except denomination
-conversion, staff minting exception, overflow refusals, wallet revision/dirty
-state, client feedback and save ordering. Rewards carrying an explicit coin
-vector use the same semantics; value-only rewards retain their existing meaning.
-Saved wallets and persistent containers must retain their exact counts after
-relog and server restart.
+The owner accepted this resolution of the issue's open balance question, not a
+claim that the code or existing help already establishes that rule. It is
+specific to admission to Shambler. It does not make images cease to be pets.
 
-## Source findings and limits
+**Shared-prototype consequence:** Reflection and Mirror Image both create
+pet-linked NPC 250. The accepted rule intentionally exempts both at this one
+boundary, including Reflection reached through its racial innate or an item.
+A Reflection-only exception that still counts otherwise identical Mirror Image
+pets would require a distinct policy and additional provenance; this plan does
+not silently introduce that distinction.
 
-These findings were checked in the worktree above, rather than accepted from
-issue #444's older `8e95eb5dd` source links. Line numbers refer to this baseline.
+Keep the explicit Titan-versus-Reflection exclusions, genuine pet caps, mound
+uniqueness, image ownership, duration, replacement and combat behavior. Ordinary
+Displacement remains an affect with no pet-capacity consequence.
 
-- `src/cmd/actobj.c:310-366`: `credit_coins()` accepts a copper-equivalent value;
-  PCs use `currency_transaction_submit_wallet_value()` and NPC/no-PID fallbacks
-  use `ADD_MONEY()`. `take_coins()` has the exact selected four-element `got`
-  array but reduces it to value before credit. Its source-pile subtraction,
-  relabelling, messages and corpse write happen only after credit succeeds.
-- `src/cmd/actobj.c:569-605`: ordinary `get()` has a second money route which
-  also discards the vector. Both routes must change; fixing `take_coins()` alone
-  misses direct pickup. Keep its 64-bit total for logging, not as wallet input.
-- `src/cmd/actobj.c:2600-2972`: `coin_debit_context.amount` already holds the
-  exact vector, and put/drop already publish that vector. The loss happens in
-  `submit_coin_debit()` through `SUB_MONEY()`, in `begin_coin_give_credit()`
-  through value credit, and in `refund_committed_coin_debit()` through value
-  refund. No new transfer context or durable transaction system is needed.
-- `src/economy/currency_value.h:7-45` and `src/core/utility.c:2247-2300,2363-2379`:
-  positive value credit canonicalizes only the incoming amount. Thus 35 existing
-  gold plus 5 gold worth stays 40 gold, while 40 gold worth credited to an empty
-  purse becomes 4 platinum. Negative PC value spending canonicalizes the entire
-  remainder: 40 gold minus 10 gold worth becomes 3 platinum. These are source
-  conclusions; the historical executable probe in the issue was not rerun here.
-- `src/economy/currency_transaction.c:140-233` and its header: vector submission
-  already validates every resulting denomination before mutation, advances the
-  wallet revision, marks status dirty and updates GMCP. Completion is synchronous.
-  **Submission returning true does not prove commitment:** insufficient balance,
-  overflow or a reserved trade can call completion with `committed=false` and
-  still return true. Pickup's revision check is intentional. The current debit
-  wrapper calls publication manually after `SUB_MONEY()` returns success; replace
-  that assumption with the actual transaction completion when switching to vectors.
-- `src/cmd/actoth.c:2530-2624`: deposits and withdrawals already use exact wallet
-  and bank vectors. Reuse that API; no bank implementation change is indicated.
-- `src/cmd/actobj.c:2744-2752,2778-2782,2812-2820`: PC give saves the sender before
-  recipient credit; storage/corpse put saves the sender before destination save.
-  Keep these boundaries. The currency header explicitly describes a save-order
-  model that favors avoiding duplication over crash-atomic transfers; do not
-  promise stronger durability than this patch provides.
-- `src/cmd/actobj.c:4088-4144`: ordinary `give` checks the selected denomination,
-  while `MAXLVL` PCs intentionally skip debit. Preserve both. NPCs and no-PID
-  actors cannot simply be passed to the PC transaction API, which rejects them.
-- `src/world/quest.c:120-171,260-278,728-813`: the legacy quester calls `do_give()`
-  before checking completion. Coin goals compare `GET_MONEY(mob)` and consume
-  value; coin rewards use value-only `ADD_MONEY()`. A quest saying "gold" does
-  not establish a denomination-specific reward or completion rule.
-- `src/world/world_quest.c:253-262,370` also pays mercenaries by value. The zone
-  story production/runtime files catalogue and track legacy completions; they
-  are not evidence of a separate gold-paying reward implementation. Legacy item
-  rewards use object creation/grant, preserving authored money-object fields
-  until the pickup boundary. Do not convert every quest reward into gold.
-- Other inspected value callers include shop settlement in
-  `src/economy/shop.c:2664-2684`, world-quest fee refunds in
-  `src/specs/specs.mobile.c:10876-10882`, and denomination-labelled wagers in
-  `src/economy/cardgames.c:581-583` / `src/specs/specs.gellz.c:391,768`.
-  They do not go through the physical give/put/drop adapter. This inspection
-  supports keeping the global value API unchanged; it does not qualify those
-  separate gameplay systems or expand #444 into an economy-wide rewrite.
-- `src/player/player_snapshot_capture.c:174-177`,
-  `src/player/player_load_materialize.c:594-597`, and
-  `src/flatfile/flatfile_player_repository.c:629-634` already save/load four
-  separate counts. There is no evidence that a schema or data migration is needed.
-- `tests/async/test_take_coins.py` replaces production `credit_coins()` with a
-  one-integer purse. `test_coin_command_transaction_contract.py` explicitly
-  expects the value-based calls. Their current green results cannot establish
-  denomination preservation. `test_currency_in_memory.py` already links real
-  production transactions and covers synchronous refusal, revisions and trade
-  reservations; reuse its setup and service stubs.
+## Source findings, checked independently of the issue
 
-Emp's exact NPC/quest and live build remain unidentified in the issue and its
-empty comment thread. Do not choose a quest from similar wording or claim to
-have reproduced that player's route. Before changing a particular value-only
-reward, identify its NPC/VNUM, definition and intended currency from the report
-or owner, then trace its actual handler. This uncertainty does not prevent the
-shared transfer fix or a synthetic quest journey; it remains explicit in the
-implementation handoff and prevents claiming that specific reward verified.
+All paths and line numbers below refer to the baseline above.
 
-## Non-goals and ablation decisions
+1. **Reflection really creates pet links.**
+   src/classes/sillusionist.c:573-704 checks for an existing Titan, replaces
+   image followers, computes BOUNDED(1, (level - 26) / 5, 4), loads mobile 250,
+   and calls setup_pet(image, ch, 3, PET_NOCASH). Effective levels 31/36/41/46
+   produce 1/2/3/4 images. Images attach to the caster even when the visual
+   target is another player; preserve that existing ownership rule.
+   src/classes/necromancy.c:236-314 creates the LNK_PET through
+   linked_affect_to_char(). count_pets() counts every such link.
 
-- Keep `ADD_MONEY()`, `SUB_MONEY()` and `currency_wallet_value_delta()` value
-  semantics for prices, fees, change, value-only rewards and unrelated callers.
-  Do not auto-exchange a wallet to satisfy `give N gold`; preserve the requested
-  physical coins instead.
-- Keep the existing transaction facade, publication helpers and four-element
-  contexts. Drop a new currency abstraction, setting, async queue, ledger,
-  two-party transaction coordinator or generic test framework: none is required
-  to stop the traced conversions.
-- Keep checked NPC/no-PID fallbacks because the PC facade does not accept them.
-  Keep all-components-before-mutation validation, rather than partially applying
-  a vector. Keep persistent PC writes centralized in the transaction facade.
-- Keep every refund boundary and real command/persistence proof. A helper-only
-  test or conserving total value would miss the reported failure.
-- No repair of historical purses, guessed reward-denomination migration, generated
-  area edits, production deployment, player-data editing or full burn-in.
-  Existing converted coins can still be exchanged through the bank.
+2. **Shambler has two separate admission rules.**
+   src/magic/blispells.c:666-742 first rejects an existing linked mobile 100,
+   then rejects count_pets(ch) > 1. Its army-prevention comment supports keeping
+   the ordinary-pet cap, but does not specify how images should count.
+   Terrain then selects 1-2, 2-4 or 3-6 mounds; unsupported sectors reject the
+   cast. The top comment's 1d4+2 is not the rule for every terrain.
+   Success retains setup_pet(..., 15, PET_NOCASH | PET_NOAGGRO), death-event
+   scheduling, following and TAG_CONJURED_PET.
 
-## Files
+3. **A global counting change would broaden the balance change.**
+   Other actual consumers of count_pets() are bard charm in
+   src/classes/bard.c:827, the pet shop in src/specs/specs.room.c:868, NPC
+   corpse creation in src/mob/mobact.c:1118, and NPC Shambler selection at
+   src/mob/mobact.c:10772. The last independently requires zero total pets
+   before choosing the spell. Keep all four decisions and the generic counter
+   unchanged. Direct Shambler execution uses the corrected admission rule for
+   any caster; NPC autonomous spell selection remains its current separate rule.
 
-Expected production changes are confined to `src/cmd/actobj.c`: reuse
-`credit_coins()`, `submit_coin_debit()`, existing give completion/context and
-refund/publication functions. Keep any necessary checked NPC mutation local
-and guarded from persistent PCs; update source contracts narrowly to enforce
-that boundary rather than adding a broad exemption for all wallet writes.
+4. **The existing image constant is precise enough; the illusion helper is not.**
+   src/core/defines.h:1374 defines IMAGE_REFLECTION_VNUM.
+   src/magic/magic.c:1727-1880 shows Mirror Image calling make_mirror(), which
+   loads the same prototype and calls setup_pet().
+   src/classes/innates.c:2470 also loads mobile 250 for Project Image, but does
+   not create a pet link in that path, so it contributes nothing to either count.
+   is_illusion_char() in src/classes/sillusionist.c:1400 also identifies
+   illusion disguises. Reusing that broader predicate could exempt real pets
+   merely because they are disguised; use the NPC/prototype check instead.
 
-Extend `tests/async/test_take_coins.py`,
-`tests/async/test_coin_command_transaction_contract.py` and, where its existing
-fixtures help, `tests/async/test_currency_in_memory.py` and
-`tests/async/test_currency_transaction_contract.py`. Add a focused native
-coin-transfer test only if executing debit/give/refund paths would tangle the
-existing pickup harness. Extract production functions and link the real
-currency implementation; stub external services, never the arithmetic under test.
+5. **The Reflection entry routes and both Titan exclusions already exist.**
+   src/classes/innates.c:2647-2666 dispatches the racial innate to
+   spell_reflection() after its own Titan check and cooldown handling.
+   src/classes/sillusionist.c:1871-1920 rejects Titan creation while a
+   mobile-250 image follower exists; Reflection independently rejects a linked
+   Titan. Neither restriction should move into a pet-count helper.
+   src/classes/skills.c:2217-2218 registers Shambler as an 11th-circle Scourge
+   specialization spell. A real command journey must satisfy that eligibility,
+   rather than assuming that any level-36 character can cast it.
 
-Add one focused `tests/async/test_coin_denomination_journey.py`, reusing the
-minimal world, client, flat-file build and snapshot inspector from
-`test_flatfile_combat_journey.py`, and the currency/bag patterns from
-`test_flatfile_first_session_currency.py` and
-`test_flatfile_auction_coin_put_journey.py`. Do not build a second socket framework.
-Update this plan with implementation evidence. Edit a specific quest/content
-file only if the reward investigation identifies an explicit denomination that
-still bypasses these fixed routes, and name that file before making the change.
+6. **Displacement and help need careful interpretation.**
+   src/classes/psionics.c:1461-1483 adds an AC affect without creating followers
+   or links; the reported name does not establish a Displacement defect.
+   lib/information/help_index contains the maintained Reflection and Shambler
+   entries (around lines 13489 and 25410). Neither currently explains this
+   image-counting rule. Add concise player wording there with the fix.
 
-## Implementation sequence
+## Executable planning evidence
 
-1. **Expose the conversions with production code.** Replace the pickup test's
-   scalar credit stub with real per-denomination wallet behavior and production
-   credit/transaction functions. Add the debit, recipient and refund assertions
-   below. Show denomination assertions failing on the unmodified baseline, while
-   current ordering/refusal controls remain meaningful. Preserve existing pickup
-   text, partial-pile and corpse tests.
-2. **Carry vectors through pickup and debit.** Pass the selected counts from
-   both pickup routes to the existing credit adapter and then the PC vector API.
-   For explicit debits, negate the requested vector and use the real completion
-   callback to publish exactly once after commitment; do not manually publish
-   on submit=true. NPC/no-PID paths validate all resulting counts, subtract/add
-   exactly those coins and preserve applicable dirty/GMCP behavior. All balances
-   stay within `0..INT_MAX`; keep arithmetic in 64 bits. Remove value conversions
-   and aggregate-int restrictions made obsolete by vector movement, while
-   retaining parser limits, per-denomination limits and value-based log thresholds.
-3. **Preserve give and compensation.** Credit PC and NPC recipients with the
-   requested vector. Keep sender-first saving and the existing MAXLVL no-debit
-   route. Return the same vector on destination loss, recipient refusal, failed
-   object creation or failed container publication. Existing give context already
-   records amount and coin type, sufficient to reconstruct its single-type
-   refund; do not add redundant state. Refund success must observe commitment,
-   not just submission, and refusal must remain visible through the existing
-   diagnostic path. No canonical-value or auction-value fallback may silently
-   replace an exact refund. Since completion is synchronous, eliminate any
-   obsolete in-flight rationale in comments touched by the change.
-4. **Cover rewards and actual gameplay.** A money-object reward and an explicit
-   denomination give must use the corrected paths. Exercise a synthetic legacy
-   quest through its actual `quester` handler so all four payments reach quest
-   completion, rather than merely checking an NPC's wallet. Trace Emp's actual
-   quest when identifiable; retain value-only payouts unless its definition and
-   intended behavior justify a specific content change. Record unresolved identity
-   honestly rather than silently declaring this acceptance item complete.
-5. **Qualify and review.** Run the focused native checks, isolated journey,
-   required build/format checks and documentation checks. Review the final diff
-   against every outcome and remove unnecessary adapters or state. Record exact
-   commands, backend coverage and any unavailable checks before implementation
-   commit/push/review. External CI is not a completion gate.
+A temporary probe under bin/qualification/issue420/ reused the existing
+Reflection ownership fixture and extracted the current, unmodified production
+bodies of spell_reflection(), setup_pet(), count_pets() and spell_shambler().
+It executed all 20 combinations of 0/1/2/3 ordinary pets and 0/1/2/3/4 actual
+Reflection-created images under ASan/UBSan.
+
+Observed results:
+
+- With no ordinary pets, zero or one image reaches Shambler's mound loader;
+  two, three or four images trigger the exact pet-cap rejection.
+- With one ordinary pet, zero images reaches the loader; even one image rejects.
+- With two or three ordinary pets, every image count rejects.
+- The generic count equals ordinary pets plus images throughout.
+
+The controlled mound loader intentionally returned null. This proves current
+admission behavior, not successful summons, event expiry, command reachability,
+or a booted-world reproduction. Room/link services and RNG were controlled.
+The ignored result is bin/qualification/issue420/baseline.txt; the temporary
+probe source and executable are removed after investigation. The implementation
+regression below must exercise successful mound creation, not stop at this probe.
+
+Existing baseline checks also passed:
+
+- python3 tests/async/test_reflection_image_ownership.py: 409 casts plus Titan
+  rejection under ASan/UBSan, preserving prototypes, ordinary pets, links, combat
+  redirection and private-string cleanup. Extraction/room services are fixtures.
+- python3 tests/async/test_innate_reflection.py: real innate dispatch,
+  race/level eligibility, self targeting, configurable cooldown and Titan
+  rejection. Its Reflection body is stubbed; it does not prove the combined
+  innate-to-Shambler route.
+
+## Non-goals
+
+- No change to count_pets() or its other consumers, no generalized capacity
+  policy, optional parameter, image-origin field, new configuration or service.
+- No change to image links, charm, durations, strings, damage, replacement,
+  Mirror Image creation rules, racial unlocks/cooldowns or Titan restrictions.
+- No change to Shambler terrain yields, lifetime, ordinary-pet limit, existing
+  mound exclusion, class access or NPC autonomous spell selection.
+- No pet persistence migration, old-instance rewrite, production operation,
+  deployment, full burn-in or dependency on hosted CI.
+- Do not fold Conjurer capacity work #215, prior image-ownership work, or
+  unrelated pet/lifetime investigations into this fix.
+
+## Files and ablated implementation sequence
+
+Expected production edit: src/magic/blispells.c only.
+Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
+one focused command journey tests/async/test_shambler_reflection_journey.py
+(new), its resource-intensive registration in tests/run_regression_tests.py,
+lib/information/help_index, and this plan's completion record.
+Retain test_innate_reflection.py as an unchanged compatibility test unless the
+new regression exposes a necessary gap.
+
+1. **Extend the existing native regression before changing the guard.**
+   Add the production Shambler body and generic counter to the current Reflection
+   fixture. Model mobile 100, successful materialization and observable
+   scheduling/tagging at the existing controlled service boundaries. Assert
+   returned mounds and unchanged image/ordinary-pet state, not just absence of
+   refusal text. At least image-only 2+ and one ordinary pet plus one image must
+   fail against the current source. Do not create a second harness framework.
+
+2. **Count at the existing Shambler boundary.**
+   In its existing linked-pet traversal, retain the mound rejection and tally
+   only pets that are not NPCs of IMAGE_REFLECTION_VNUM. Use the resulting
+   local count for the existing > 1 guard. Preserve rejection precedence and
+   the terrain/summoning body. Add a short comment explaining this admission
+   policy. No new production helper or header declaration is necessary.
+   Keep all non-image pets counted; do not use flags such as PET_NOCASH,
+   temporary duration, charm status, or the broad illusion predicate.
+
+3. **Drive the real command route in disposable state.**
+   Reuse test_flatfile_combat_journey.py and its server build/world/socket
+   helpers. Follow the staff-controlled fixture setup demonstrated by
+   run_racial_pulse_journey.py, but keep this scenario separate from its
+   unrelated race-stat checks. Supply the image and mound prototypes and a
+   supported outdoor room. Configure synthetic, otherwise eligible Scourge
+   casters with known spell access, mana and preparation; do not change normal
+   race/class rules. Exercise racial "innate reflection" for Gnome and Kobold,
+   then "cast 'shambler'" while at least two images remain. Also cover the normal
+   spell route to Reflection on a prepared test caster and a Mirror Image
+   command control for the shared-prototype policy.
+   Observe image and mound identities/counts plus ownership/following through
+   existing inspection facilities. Synchronize on each command's response and
+   following prompt; an unsolicited prompt alone cannot prove completion.
+   Check a repeated Shambler rejection, ordinary-pet rejection and both
+   Titan/Reflection orders. Recast/cleanup must leave ordinary pets intact.
+
+4. **Document and finish proportional qualification.**
+   Explain in Shambler help that Reflection/Mirror Image images do not consume
+   its ordinary-pet allowance, that at most one other pet may precede the cast,
+   and that an existing mound prevents another cast. Add a brief cross-reference
+   in Reflection help without claiming a global exemption. Run the checks below,
+   reread the entire diff and record exact results and limitations here.
+
+Ablation keeps one local counting decision, the already available image constant,
+an extension of existing native coverage, and one small journey using existing
+helpers. A global counter change would alter four unrelated consumers. A broad
+illusion predicate changes more than image counting. Per-spell provenance adds
+state without serving the proposed shared-image rule. Removing image links
+would disturb ownership and lifecycle. These alternatives are dropped.
+The command journey stays because the existing tests do not execute the combined
+player workflow. No alternative production implementations need to be built.
 
 ## Proof and acceptance
 
-The regression assertions must compare `[copper, silver, gold, platinum]` counts,
-revision changes, source/destination ownership and feedback, not only total value.
+- Cross 0/1/2/3/4 images with 0/1/2/3 ordinary pets: casts succeed only with at
+  most one ordinary pet and no existing mound. Include a non-image summoned pet
+  as well as a charmed-pet control; both count. Non-pet links do not count.
+- An existing mound rejects with zero or multiple images, including when that
+  mound is the only ordinary pet. Additional casts cannot accumulate mound groups.
+- In supported terrain, admitted casts create the unchanged yields (1-2, 2-4,
+  3-6) under controlled RNG. Unsupported terrain still rejects without creating
+  anything. New mounds retain pet links/followers, tagging and scheduled lifetime.
+- Image-only and mixed cases leave image identity, strings, links and existing
+  ordinary pets intact. Reflection replacement removes only the previous images;
+  after image cleanup the ordinary-pet decision is the same.
+- The generic count_pets() still counts images. This demonstrates that the
+  shared helper's contract, including its other callers, has not changed.
+- Real Reflection spell and racial routes reach successful Shambler creation;
+  the Mirror Image control follows the explicitly proposed rule. Existing
+  Displacement alone adds no pet restriction.
+- Titan first still blocks Reflection; images first still block Titan.
+  The racial rejection does not spend cooldown or add combat lag.
+- Native and socket results are reported separately. A missing command journey
+  leaves that acceptance item unverified; green helper tests cannot replace it.
 
-- Pickup: empty purse plus 40 gold becomes `[0,0,40,0]`; 35 gold plus 5 gold
-  remains 40 gold; `[3,12,17,0]` is not normalized. Cover full and selected partial
-  pickups from floor, bag and PC corpse, including direct `get()` and selected
-  `take_coins()` routes. Assert the exact residual pile, extraction/relabel behavior
-  and existing messages. Refused credit leaves every pile field and revision alone.
-- Debit: give, put, drop and `drop all.coins` preserve unselected counts. Four
-  successful 10-gold debits from 40 leave 30, 20, 10 and 0 gold. Include mixed
-  wallets and a valid vector whose copper-equivalent total exceeds `INT_MAX`,
-  so no obsolete value cast can truncate or reject an otherwise valid transfer.
-- Recipients: PC-to-PC, PC-to-NPC and NPC-to-PC give preserve the exact type;
-  include NPC pickup/debit and existing no-PID fallback behavior. Staff credit
-  still mints the requested type without debiting or refunding the staff purse.
-- Failure: source short of the selected type cannot spend other denominations;
-  PC/NPC recipient overflow, invalid PC identity, destination disappearance,
-  closed/unavailable container, existing-pile overflow and allocation/publication
-  failure change nothing or restore the original vector exactly once. Verify
-  submit=false and submit=true/committed=false separately, including the current
-  reserved-trade refusal. No successful give/put/drop announcement on refusal.
-- Revision/order: successful PC mutations advance revisions and dirty status;
-  rejected ones do not. Assert sender save precedes PC recipient credit and
-  storage/corpse save, and preserve the existing bank ordering. A refund after
-  sender-save must restore live state and remain dirty for the subsequent save.
-- Rewards: an authored gold money pile retains gold after grant/pickup, and an
-  explicit NPC gold give retains gold. Value-only reward controls still use
-  canonical incoming change and leave pre-existing denominations alone. Do not
-  alter legacy quest value goals or infer coin types from descriptive text.
-- Real journey: create disposable local characters below MAXLVL, seed the bank
-  with a known gold balance, withdraw 40 gold, put/get it through a bag, and make
-  four `give 10 gold` payments through a synthetic quest NPC. Assert each purse
-  and completion. Relog and restart at intermediate nonzero-wallet and bag-held
-  checkpoints, then continue payments; also verify persistent recipient credits
-  and refused transfers do not duplicate coins after saving/reload. Use durable
-  snapshot inspection as well as command output. Floor coins and NPC wallets
-  need only the persistence guarantees they already have.
+Planned commands after implementation, with artifacts confined to bin/:
 
-Planned commands (the new journey is created during implementation):
-
-```sh
-python3 tests/async/test_take_coins.py
-python3 tests/async/test_coin_command_transaction_contract.py
-python3 tests/async/test_currency_in_memory.py
-python3 tests/async/test_currency_transaction_contract.py
-python3 tests/async/test_money_carry_count.py
-python3 tests/async/test_coin_denomination_journey.py
-python3 tests/async/test_flatfile_auction_coin_put_journey.py
-python3 tests/async/test_area_coin_pickup.py
-make -C src
-./scripts/format.sh --check
-python3 tests/async/test_documentation_contract.py
-git diff --check
-```
-
-Run any additional native test introduced for the missing transfer paths. Reuse
-one built flat-file server across compatible journeys. The focused restart
-journey qualifies flat-file persistence; a MariaDB build or stubbed save-order
-test alone must not be reported as a MariaDB runtime qualification. Exercise
-the same commands on an isolated MariaDB fixture if available and report its
-coverage separately. Use local/test settings, loopback listeners and disposable
-accounts/state; keep new compiled outputs under `bin/`. No production operations
-are needed for the plan or core implementation.
-
-## Estimate and planning checkpoint
-
-Estimated **3-5 hours of my active implementation time** for the shared repair,
-native regressions, isolated quest/relog/restart journey, build and reviewable
-commit. Rough allocation: 30-45 minutes for failing regressions, 45-75 minutes
-for the transfer/refund changes, 60-100 minutes for command/persistence proof,
-and 30-60 minutes for build, documentation and final review. Reuse of existing
-fixtures is assumed. Allow an additional 1-2 hours if Emp's identified quest
-needs a separate explicit-denomination reward fix or local DB setup is required;
-waiting for its identity, external review, merge and deployment are excluded.
-
-Planning validation on 2026-10-30 at the baseline above:
-
-- `python3 tests/async/test_take_coins.py`: passed; its scalar purse limitation
-  remains and is explicitly addressed above.
-- `python3 tests/async/test_coin_command_transaction_contract.py`: passed;
-  current assertions still encode the value-based implementation.
-- `python3 tests/async/test_currency_in_memory.py`: passed under ASan/UBSan,
-  including range refusal, revisions, save order and trade reservations.
-- `python3 tests/async/test_currency_transaction_contract.py`: all 9 tests passed.
-- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
-- `git diff --check` passed. The preserved #428 plan and the original HEAD copy
-  have the same SHA-256: `db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf`.
-
-Only planning documents change at this checkpoint. No full server build,
-new denomination regression, gameplay journey, reward fix or production/live
-verification is claimed. The implementation acceptance items above remain open.
-Issue #444 is the identified work item; a targeted open GitLab mirror search
-for coin issues returned unrelated collector/flight work, not a matching item.
-GitHub's native Development association links #444 to this branch, verified
-with `gh issue develop 444 --repo LuminariMUD/Duris --list`. Retain the issue
-until implementation and its acceptance work are complete; this plan does not
-close it.
-
-## Implementation and qualification, 2026-10-30
-
-The production edit stays in src/cmd/actobj.c. Both pickup routes, explicit
-debits, recipient credits and all refunds now carry exact coin vectors. The
-existing PC transaction completion controls debit publication. A single guarded
-fallback validates all denominations before mutating NPC/no-PID wallets; it has
-real credit, debit and refund callers. Global value-based payments are unchanged.
-
-The expanded pickup regression failed against the unmodified source at its
-40-gold wallet assertion. It passes with the fix, including partial corpse
-pickup, exact mixed counts, 35 gold plus 5 gold, NPC/no-PID pickup, overflow
-retention, revisions, haul text and corpse-save bookkeeping.
-
-The focused transfer regression executes production debit, put/drop publication,
-recipient credit, refund and currency transaction functions under ASan/UBSan.
-External world placement, allocation, feedback and writer services are controlled
-boundaries. It covers four repeated payments for PC/NPC/no-PID senders, mixed
-drop-all with value above INT_MAX, PC/NPC recipients, self-give, staff credit
-and refusal without a staff refund, missing/invalid recipients, exact refunds
-for seven put/drop failure conditions, selected-denomination insufficiency,
-reserved-trade refusal, revision/dirty behavior and sender-first saves. Refund
-refusal is observed through the existing diagnostic path. The shared header
-holds the former currency test's world/persistence services; it is not a second
-currency implementation.
-
-The new gameplay journey runs real command parsing and the legacy quester
-handler on disposable mortal characters. On **both flat-file and MariaDB** it
-proves:
-
-- An authored 40-gold pile, bank deposit/withdraw, two puts that merge in a bag,
-  save/relog, and bulk pickup retain exactly 40 gold.
-- Four give-10-gold commands each complete a synthetic legacy quest, leaving
-  30, 20, 10 and 0 gold without exchange. Between the second and third payments,
-  a restart preserves 10 gold in the wallet and 10 gold in the bag. A fifth,
-  unaffordable payment does not complete the quest.
-- A second quest grants an authored 17-gold money object. Its bag/pickup route,
-  a mixed [3,12,17,0] pile and a gold drop/get retain their exact denominations.
-- A second PC receives 10 gold and retains it over relog. Filling that recipient's
-  gold count to INT_MAX makes a later give fail after the sender debit; the
-  sender retains exactly [3,12,24,0], with no success announcement or duplicate
-  credit. The restored balance is saved and survives the subsequent restart.
-- A closed bag refuses coin put without advancing the wallet revision. The mixed
-  coins then survive a bag-held restart, return to the wallet exactly once, and
-  a repeated empty-bag pickup cannot credit them again.
-
-The MariaDB wrapper reuses every command and assertion from the same journey;
-only the snapshot reader changes to actual SQL rows. Its database/schema are
-created in the existing disposable loopback container runner, bootstrapped and
-migrated there, and removed at exit. No checkout credentials or production state
-are used. Both journeys perform two real server restarts, not only a serializer
-round trip. Controlled native failures supply destination/allocation cases that
-cannot be reliably forced through ordinary gameplay.
-
-The flat-file journey is registered in the regression runner's serial resource
-group. The SQL wrapper is excluded from its no-argument discovery and registered
-in tests/run_db_tests.sh, which supplies its disposable database and server.
-This avoids introducing a test-all failure from a journey that requires SQL.
-
-Current master advanced during the work. Merge 1f8d15412 incorporates
-b352b650c3f05ea0c2e109eaa9abcc3040290952; production changes had no conflict.
-The shared plan conflict was resolved by retaining this #444 plan and preserving
-the incoming #437 document with SHA-256
-ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
-The tests and both builds below qualify the combined source.
-
-Completed checks:
-
-    python3 tests/async/test_take_coins.py
-    python3 tests/async/test_coin_transfers.py
-    python3 tests/async/test_currency_in_memory.py
-    python3 tests/async/test_currency_transaction_contract.py
-    python3 tests/async/test_coin_command_transaction_contract.py
-    python3 tests/async/test_money_carry_count.py
-    make -C src -j6
-    make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_issue444_flatfile"
-    python3 tests/async/test_coin_denomination_journey.py --server bin/server/dms_issue444_flatfile
-    python3 tests/async/test_flatfile_auction_coin_put_journey.py --server bin/server/dms_issue444_flatfile
-    python3 tests/async/test_area_coin_pickup.py --server bin/server/dms_issue444_flatfile
-    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_coin_denomination_journey.py --server bin/server/dms_new
+    python3 tests/async/test_reflection_image_ownership.py
+    python3 tests/async/test_innate_reflection.py
+    make -C src
+    python3 tests/async/test_shambler_reflection_journey.py
     ./scripts/format.sh --check
     python3 tests/async/test_documentation_contract.py
     git diff --check
 
-All passed: native pickup/transfer/currency tests under ASan/UBSan, all nine
-currency contracts, direct/bulk pickup count gates, both builds with warnings
-as errors, both coin journeys, auction-to-bag/reload regression, all three area
-coin pickup routes, formatting, all 14 documentation contracts and whitespace
-checks. Python syntax checks also passed.
+The proposed journey should build its fresh flat-file executable through the
+existing helper by default, with an optional explicit freshly built binary as
+the nearby journeys support. Confirm local/dev configuration before runtime
+work; use private temporary accounts/world data, never live player state.
+No persistence behavior changes, so restart/database qualification is not a new
+gate. Production/full-world acceptance is outside this implementation estimate.
 
-The ignored evidence is under bin/qualification/issue444/. Qualified binaries:
+## Tracking and estimate
 
-- Flat-file SHA-256: a12b13d5880aff4c7b68f3bd6964599a23682327342b9bfddba9bbbeead2c95c.
-- MariaDB SHA-256: c575bc8932677b4e2bc6fc069398b018782e9b921b0c695b8765011cf534148a.
+GitHub #420 is the work item for this branch. Searches for open PRs referencing
+420 or Shambler/Reflection found none. Targeted max757/duris GitLab searches
+found no matching Shambler work item; the Reflection result was unrelated
+lifetime-qualification item #27. Do not link that item or close related historical
+issues merely because they mention images or pets. Link this branch directly
+in #420's Development section and provide the committed plan link there.
+A planning-only commit must not use an issue-closing keyword.
 
-The commit hook initially selected incompatible GCC 16 standard-library headers.
-It passed with Clang 18 explicitly selecting the installed GCC 13 headers via
---extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13. Hooks remained
-enabled; no source suppressions or check bypasses were added.
+Estimate: **2-3 hours of my active implementation time** for the documented rule,
+including regression-first work, the small production change, help, the real
+command journey, required build and reviewable commits. Approximately 30-45
+minutes is native regression plus fix, 60-90 minutes is command-fixture setup and
+runtime checks, and 30-45 minutes is documentation, build and final review.
+Allow up to 4 hours if spell preparation or minimal-world fixtures require more
+setup. This excludes a changed balance decision, external review, merge waiting
+and deployment.
 
-Final ablation retains the existing transaction/publication design, one guarded
-nonpersistent-wallet adapter, executable regressions, and one command sequence
-reused for both persistence backends. No new currency service, configuration,
-schema, production reward-policy change or recovery migration was introduced.
-The prior plans and unrelated worktrees were preserved.
+## Planning completion checks
 
-Emp's exact quest and live build remain unidentified. The shared defect and
-explicitly authored reward paths are qualified; that individual report is not
-claimed reproduced. No value-only reward was guessed or changed. Production
-deployment and live-world qualification are separate from this implementation.
-The PR references #444 without automatically closing that remaining report-level
-verification question.
+Only this plan and preservation of the previous plan are committed. No
+production C/C++ edit, full server build or booted-world reproduction is claimed
+at this planning stage. The focused baseline evidence is recorded above.
+Planning validation completed:
+
+- python3 tests/async/test_documentation_contract.py: all 14 tests passed.
+- git diff --check: passed.
+- The archived #428 plan and baseline plan have identical SHA-256:
+  db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
+- Only the requested plan and the intact historical archive are tracked changes;
+  the original checkout's branch and files are preserved.
+
+## Implementation and qualification, 2026-10-30
+
+Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
+of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
+unchanged. The existing mound rejection remains first, and terrain, summon
+creation, tagging and lifetime code are unchanged. Help now states the shared
+Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
+
+The existing ownership regression executes the production Shambler body and
+counter alongside Reflection/setup_pet. All 640 combinations of image count,
+ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
+pass under ASan/UBSan. They check actual fixture mound materialization,
+ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
+scheduling endpoints, tagging, duplicate-cast rejection and admission after
+image removal. The original 409 Reflection casts and Titan rejection still pass.
+Two in-memory negative controls substitute the old production Shambler body:
+two images alone and one image with one ordinary pet each fail at the successful
+mound-creation assertion. No tracked production source is changed by those
+controls.
+
+The new command journey boots a fresh flat-file server with private state and
+drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
+real Shambler casts. Every route retains four images and creates three to six
+mounds in forest terrain. Staff inspection checks mobile identities, keywords,
+following and pet links. It also proves duplicate-mound and two-ordinary-pet
+rejection, the one-pet allowance, cleanup without losing ordinary pets, both
+Titan exclusion orders, and the published help. A real Reflection recast
+replaces every image identity while retaining the ordinary companion.
+
+Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
+Scourges after image creation; the Displacement control uses an eligible
+MindFlayer's real WILL command before switching back to Scourge. This does not
+add or claim a playable class combination. Staff edits resolve the PC explicitly
+because images share its name. Commands require their own receipt and following
+prompt and handle paging. No runtime test hooks or production settings are added.
+The journey is registered as resource-intensive in the existing regression runner.
+
+Completed on the planning baseline:
+
+- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
+- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
+  Titan rejection without cooldown or combat-lag consumption.
+- make -C src -j6: MariaDB development build passed with warnings as errors.
+- make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
+  -j6: flat-file development build passed.
+- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
+  default fresh-build helper and the explicit live recast case.
+- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
+  documentation contracts and git diff --check passed.
+
+The planning-baseline command log is bin/qualification/issue420/journey-final.log.
+The report at gameplay-report.json in that directory holds the latest full run;
+see the integration record below for its current binary. The planning-baseline
+qualified flat-file binary SHA-256 is
+98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
+Native fixtures control room/link services and scheduled callbacks; the socket
+journey exercises the real parser, spell dispatch, materialization and ownership.
+No full-world, MariaDB socket, restart or production qualification is claimed.
+
+Final ablation retains one production counting decision, one existing native
+test extension, a focused journey using existing build/world/socket helpers,
+its runner registration and the necessary help/plan updates. There is no new
+capacity API, persisted state, configuration, migration or image-lifecycle edit.
+
+### Master integration and final qualification
+
+Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
+Its shared plan.md now records completed #437 work. The merge retains this #420
+plan at the requested path and archives the upstream #437 plan byte-for-byte.
+The only overlapping file was the plan; Shambler/Reflection and their admission
+behavior did not change upstream. The archived #437 plan and the upstream file
+have identical SHA-256:
+ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
+
+The 640-case sanitizer matrix, original Reflection/innate checks, all 14
+documentation contracts, formatting, diff checks and MariaDB build passed again
+against the integrated source. The default command-journey invocation built a
+fresh flat-file server and passed all four routes, the real Reflection recast,
+ordinary-pet/mound controls, Titan exclusions, Displacement and help.
+Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
+created 5, 4, 3 and 4 forest mounds respectively.
+
+Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
+bin/qualification/issue420/journey-integrated.log.
+The integrated flat-file binary SHA-256 is
+0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
 
 
 ## Sequential PR integration, 2026-10-30
 
-Integrated master `b4fa5220e982ca7ab7b8dc4d09d5389cca46cb94` after PRs
-#432, #475 and #476. Production code merged without conflicts. The shared-plan
-conflict keeps this coin record at `plan.md` and preserves the completed castle
-record byte-for-byte at [plan-issue-418.md](plan-issue-418.md). The rent-key and
-quest records remain in their existing issue-specific archives.
+Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
+#432, #475, #476 and #477. Game code, player help and test discovery merged
+without conflicts. The shared-plan conflict keeps this Shambler record at
+`plan.md` and preserves the completed coin record byte-for-byte at
+[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
+remain intact.
 
-The MariaDB server build, exact PC/NPC coin transfers and refunds, partial/mixed
-pickup, wallet transaction and in-memory behavior, carry counts, shared flat-file
-player repository, formatting, whitespace and all 14 documentation checks pass
-on the combined source. The shared inspector retains both rent-key inspection
-and coin-vector inspection. Earlier MariaDB and flat-file gameplay reports retain
-the bank/bag/four-quest-payment/relog/restart qualification; those complete
-journeys were not repeated in this merge pass. Emp's unidentified value-only
-quest reward remains outside the verified scope. No production operation or
-currency migration is included.
+The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
+409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
+formatting, whitespace, test discovery and all 14 documentation checks pass on
+the combined source. The earlier disposable-server gameplay report remains the
+runtime qualification for racial and spell images, ownership, pet/mound caps,
+Titan exclusions, Displacement and help; that complete journey was not repeated
+in this merge pass. No production operation is included.

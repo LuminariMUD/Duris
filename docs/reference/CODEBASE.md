@@ -369,7 +369,7 @@ Completed work is preserved and claimed before new-purchase gates. Legacy
 zero-origin work gets target/location checks and must be rebound at a real
 bartender before directions are disclosed. Sharing checks the recipient's own
 eligibility and cannot overwrite an entitlement. Full journey qualification
-remains tracked in `docs/ongoing-projects/plan.md` for #437.
+remains tracked in `docs/ongoing-projects/plan-issue-437.md` for #437.
 
 Quest text and JSON status read boot-cached NPC short descriptions without
 spawning prototypes. Missing giver/target details never reset paid or completed

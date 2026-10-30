@@ -13498,8 +13498,10 @@ Similar to mirror image this spell creates up to four images that appear
 to resembling the caster, however these images can take a good 
 amount of damage before being destroyed dependant on the current health 
 of the caster when created. 
+
+These images do not count toward Shambler's allowance for other pets.
 ===========================================================================
-See also: "MIRROR IMAGE"
+See also: "MIRROR IMAGE", SHAMBLER
 
 #
 REGENERATION (Spell)
@@ -25416,6 +25418,10 @@ Duration:       Instantaneous
 Type of spell:  Summoning 
 
 "Shambler" coaxes the local vegetation up from the soil as animate mounds of green wrath that serve the caster as charmed guardians. The number raised depends on the lushness of the land - a pair at best in cities, deserts and roads, a full tangle in forests, swamps and fungal hollows - while barren ground yields nothing at all. The mounds remain only a short while before rotting away, and the caster cannot harbor more than a small retinue.
+
+You may have at most one other pet when casting this spell. Reflection and
+Mirror Image images do not count toward that allowance. An existing shambling
+mound prevents another cast, regardless of how many images you have.
 ===========================================================================
 See also: summon insects, conjure elemental, awaken forest
 #

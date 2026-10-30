@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise real Reflection/setup_pet with isolated room, link and cleanup fixtures.
+"""Exercise Reflection ownership and Shambler admission with real spell bodies.
 
 This checks repeated image ownership transitions, not a booted game or scheduler.
 """
@@ -21,6 +21,7 @@ prelude = r'''
 #include "economy/collector_presence.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "world/achievements.h"
 
 #include <algorithm>
 #include <cassert>
@@ -28,12 +29,13 @@ prelude = r'''
 #include <cstring>
 #include <ctime>
 #include <set>
+#include <map>
 #include <string>
 #include <vector>
 
 room_data rooms[1]{};
 P_room world = rooms;
-index_data indexes[3]{};
+index_data indexes[4]{};
 P_index mob_index = indexes;
 const race_names race_names_table[LAST_RACE + 2] = {
     {"None", "None", "None", "NO"},
@@ -46,6 +48,24 @@ static std::set<const char *> owned_strings;
 static std::vector<P_char> images;
 static int random_call;
 static int extracted_images;
+static bool high_dice;
+static std::string output;
+static std::map<P_char, int> death_events;
+static std::set<P_char> conjured;
+
+void send_to_char(const char *text, P_char) { output += text; }
+int dice(int count, int sides) { return count * (high_dice ? sides : 1); }
+void event_pet_death(P_char, P_char, P_obj, void *) { abort(); }
+nevent_schedule_result add_event(event_func callback, int delay, P_char mob,
+                                P_char victim, P_obj obj, int, const void *data, int) {
+    assert(callback == event_pet_death && !victim && !obj && !data);
+    assert(death_events.emplace(mob, delay).second);
+    return {nevent_schedule_status::scheduled, {}};
+}
+affected_type *apply_achievement(P_char mob, int tag) {
+    assert(tag == TAG_CONJURED_PET && conjured.insert(mob).second);
+    return nullptr;
+}
 
 int BOUNDED(int low, int value, int high) { return std::max(low, std::min(value, high)); }
 int number(int low, int high) {
@@ -109,9 +129,16 @@ void add_follower(P_char mob, P_char ch) {
     ch->followers = follow;
     mob->following = ch;
 }
-int real_mobile(int vnum) { return vnum == 250 ? 0 : -1; }
-P_char read_mobile(int nr, int) {
-    assert(nr >= 0 && nr < 3);
+int real_mobile(int vnum) {
+    for (int i = 0; i < 4; ++i)
+        if (indexes[i].virtual_number == vnum)
+            return i;
+    return -1;
+}
+P_char read_mobile(int nr, int type) {
+    if (type == VIRTUAL)
+        nr = real_mobile(nr);
+    assert(nr >= 0 && nr < 4);
     auto *mob = new char_data{};
     mob->only.npc = new npc_only_data{};
     mob->only.npc->R_num = nr;
@@ -168,6 +195,8 @@ void extract_char(P_char mob) {
         images.erase(entry);
         ++extracted_images;
     }
+    death_events.erase(mob);
+    conjured.erase(mob);
     delete mob->only.npc;
     delete mob;
 }
@@ -176,7 +205,9 @@ void extract_char(P_char mob) {
 production = "\n".join([
     extract_function("affects.c", "P_char get_linked_char("),
     extract_function("necromancy.c", "int setup_pet("),
+    extract_function("necromancy.c", "int count_pets("),
     extract_function("sillusionist.c", "void spell_reflection("),
+    extract_function("blispells.c", "void spell_shambler("),
 ])
 
 driver = r'''
@@ -333,10 +364,126 @@ static void titan_rejection() {
     assert_prototype_unchanged();
 }
 
+static void shambler_admission(int image_count, int pets, bool summoned,
+                              int sector, int expected_mounds, bool existing_mound) {
+    char_data caster{}, nonpet{};
+    pc_only_data pc{};
+    caster.only.pc = &pc;
+    caster.player.name = const_cast<char *>("Mirror");
+    caster.in_room = NOWHERE;
+    SET_POS(&caster, STAT_NORMAL + POS_STANDING);
+    char_to_room(&caster, 0, 0);
+    world[0].sector_type = sector;
+    random_call = 0;
+    std::vector<P_char> ordinary;
+    std::vector<const char *> names;
+    for (int i = 0; i < pets; ++i) {
+        P_char pet = read_mobile(1, REAL);
+        char_to_room(pet, 0, 0);
+        setup_pet(pet, &caster, 10, PET_NOCASH);
+        add_follower(pet, &caster);
+        pet->only.npc->summoned_instance = summoned;
+        if (summoned)
+            apply_achievement(pet, TAG_CONJURED_PET);
+        ordinary.push_back(pet);
+        names.push_back(pet->player.name);
+    }
+    if (existing_mound) {
+        P_char mound = read_mobile(100, VIRTUAL);
+        char_to_room(mound, 0, 0);
+        setup_pet(mound, &caster, 15, PET_NOCASH | PET_NOAGGRO);
+        add_follower(mound, &caster);
+    }
+    if (image_count) {
+        spell_reflection(26 + image_count * 5, &caster, nullptr, 0, &caster, nullptr);
+        assert_images(&caster, &caster, image_count);
+    }
+    // Unrelated links must not be interpreted as pets or dereferenced as NPCs.
+    char_link_data other{};
+    other.type = LNK_RIDING;
+    other.linking = &nonpet;
+    other.next_linked = caster.linked;
+    caster.linked = &other;
+    const auto original_images = images;
+    std::vector<const char *> image_names;
+    for (P_char image : images)
+        image_names.push_back(image->player.name);
+    assert(count_pets(&caster) == pets + image_count + existing_mound);
+
+    output.clear();
+    spell_shambler(50, &caster, nullptr, 0, &caster, nullptr);
+    const bool admitted = pets <= 1 && !existing_mound && expected_mounds > 0;
+    int created = 0;
+    std::vector<P_char> new_mounds;
+    for (auto *follow = caster.followers; follow; follow = follow->next) {
+        P_char mob = follow->follower;
+        if (GET_VNUM(mob) != 100 || existing_mound)
+            continue;
+        ++created;
+        new_mounds.push_back(mob);
+        assert(mob->following == &caster && get_linked_char(mob, LNK_PET) == &caster);
+        assert(mob->affected && mob->affected->duration == 15);
+        assert(conjured.count(mob) == 1);
+        assert(death_events.at(mob) == (high_dice ? 12 : 2) * 60 * WAIT_SEC);
+    }
+    assert(created == (admitted ? expected_mounds : 0));
+    if (existing_mound)
+        assert(output == "You already have a mound.\n");
+    else if (pets > 1)
+        assert(output == "You already have enough pets.");
+    else if (!expected_mounds)
+        assert(output.find("vegetation") != std::string::npos);
+    else
+        assert(output.empty());
+    assert(images == original_images);
+    for (size_t i = 0; i < images.size(); ++i)
+        assert(images[i]->player.name == image_names[i]);
+    assert_images(&caster, &caster, image_count);
+    assert(count_pets(&caster) == pets + image_count + existing_mound + created);
+    if (admitted) {
+        output.clear();
+        spell_shambler(50, &caster, nullptr, 0, &caster, nullptr);
+        assert(output == "You already have a mound.\n");
+        assert(count_pets(&caster) == pets + image_count + created);
+    }
+    for (int i = 0; i < pets; ++i) {
+        assert(ordinary[i]->player.name == names[i]);
+        assert(ordinary[i]->following == &caster);
+        assert(get_linked_char(ordinary[i], LNK_PET) == &caster);
+        assert(ordinary[i]->affected->duration == 10);
+    }
+    if (image_count) {
+        for (P_char mound : new_mounds)
+            extract_char(mound);
+        while (!images.empty())
+            extract_char(images.back());
+        assert(count_pets(&caster) == pets + existing_mound);
+        output.clear();
+        spell_shambler(50, &caster, nullptr, 0, &caster, nullptr);
+        assert(count_pets(&caster) == pets + existing_mound +
+               (admitted ? expected_mounds : 0));
+        for (int i = 0; i < pets; ++i) {
+            assert(ordinary[i]->player.name == names[i]);
+            assert(get_linked_char(ordinary[i], LNK_PET) == &caster);
+        }
+    }
+    // Remove the stack-owned non-pet link before normal fixture teardown.
+    auto **link = &caster.linked;
+    while (*link != &other)
+        link = &(*link)->next_linked;
+    *link = other.next_linked;
+    cleanup_followers(&caster);
+    char_from_room(&caster);
+    assert(images.empty() && owned_strings.empty() && death_events.empty() && conjured.empty());
+    assert(!world[0].people);
+    assert_prototype_unchanged();
+}
+
 int main() {
     indexes[0].virtual_number = 250;
     indexes[1].virtual_number = 3;
     indexes[2].virtual_number = TITAN_NUMBER;
+    indexes[3].virtual_number = 100;
     for (auto &index : indexes) {
         index.keys = prototype_keys;
         index.desc1 = prototype_long;
@@ -354,6 +501,23 @@ int main() {
     titan_rejection();
     puts("Reflection: 409 casts and titan rejection preserved prototypes, pets, links, "
          "combat redirection and private-string cleanup.");
+    int cases = 0;
+    for (bool summoned : {false, true})
+        for (bool high : {false, true}) {
+            high_dice = high;
+            const int sectors[] = {SECT_CITY, SECT_FIELD, SECT_FOREST, SECT_INSIDE};
+            const int counts[] = {high ? 2 : 1, high ? 4 : 2, high ? 6 : 3, 0};
+            for (int image_count = 0; image_count <= 4; ++image_count)
+                for (int pets = 0; pets <= 3; ++pets)
+                    for (int sector = 0; sector < 4; ++sector)
+                        for (bool mound : {false, true}) {
+                            shambler_admission(image_count, pets, summoned,
+                                               sectors[sector], counts[sector], mound);
+                            ++cases;
+                        }
+        }
+    printf("Shambler: %d image/pet/terrain/mound cases preserved admission, "
+           "ownership, yields, tagging and lifetime scheduling.\n", cases);
 }
 '''
 
