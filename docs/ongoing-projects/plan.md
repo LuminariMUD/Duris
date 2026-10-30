@@ -1,380 +1,496 @@
-# Issue #420: preserve Shambler capacity while defensive images are active
+# Issue #498: GMCP state and command-result contracts
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
-Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
-Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
-Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
-Worktree: /home/aiwithapex/projects/duris-issue-420.
+Status: **planned; implementation has not started**. Updated 2026-10-30.
 
-The previous plan and completed qualification record for #428 are preserved
-byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
-authorizes implementation, including the shared Reflection/Mirror Image
-exemption, local qualification, commit/push and a PR linked to #420.
-The later master integration preserves the completed bartender-quest record in
-[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
+- Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
+- Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
+- Server branch: [branch/issue-498-gmcp-contracts](https://github.com/LuminariMUD/Duris/tree/branch/issue-498-gmcp-contracts), natively linked to #498 in GitHub Development.
+- Local worktree: /home/aiwithapex/projects/duris-issue-498.
+- Audited server baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479 (origin/master).
+- Client reference: [immutable investigation](https://github.com/LuminariMUD/duris-client/blob/aa40a50cda789525dddddcce6f8056e53985a0bb/docs/ongoing-projects/protocol-interface-investigation.md), checked alongside both current issue bodies.
 
-## Outcome and accepted balance decision
+The previous contents of this path are already preserved byte-for-byte in
+[plan-issue-420.md](plan-issue-420.md); comparison was performed before editing.
+This commit supplies the requested plan only. Estimates concern future work.
 
-At Shambler's admission boundary, exclude linked NPC images whose prototype is
-IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
-pet permits a cast, independent of whether zero, one, two, three or four images
-exist. Two or more ordinary pets still reject it. Any existing linked shambling
-mound still rejects another cast, including when it is the only ordinary pet.
+## Outcome
 
-The owner accepted this resolution of the issue's open balance question, not a
-claim that the code or existing help already establishes that rule. It is
-specific to admission to Shambler. It does not make images cease to be pets.
+Deliver all seven server contract areas in #498: authoritative combat/tank
+state; game time; session lifecycle; capability/subscription gating; owner
+inventory/equipment; semantic action/activity/cooldown events; and authorized
+scan, ship-scan, dice, identify and WHO results. Preserve gameplay decisions,
+recipient information policy, legacy streams and bounded game-loop work.
+Record a disposition for every additional candidate. Supply real serialized
+fixtures and measured costs so client #26 can adopt each advertised feature.
 
-**Shared-prototype consequence:** Reflection and Mirror Image both create
-pet-linked NPC 250. The accepted rule intentionally exempts both at this one
-boundary, including Reflection reached through its racial innate or an item.
-A Reflection-only exception that still counts otherwise identical Mirror Image
-pets would require a distinct policy and additional provenance; this plan does
-not silently introduce that distinction.
-
-Keep the explicit Titan-versus-Reflection exclusions, genuine pet caps, mound
-uniqueness, image ownership, duration, replacement and combat behavior. Ordinary
-Displacement remains an affect with no pet-capacity consequence.
-
-## Source findings, checked independently of the issue
-
-All paths and line numbers below refer to the baseline above.
-
-1. **Reflection really creates pet links.**
-   src/classes/sillusionist.c:573-704 checks for an existing Titan, replaces
-   image followers, computes BOUNDED(1, (level - 26) / 5, 4), loads mobile 250,
-   and calls setup_pet(image, ch, 3, PET_NOCASH). Effective levels 31/36/41/46
-   produce 1/2/3/4 images. Images attach to the caster even when the visual
-   target is another player; preserve that existing ownership rule.
-   src/classes/necromancy.c:236-314 creates the LNK_PET through
-   linked_affect_to_char(). count_pets() counts every such link.
-
-2. **Shambler has two separate admission rules.**
-   src/magic/blispells.c:666-742 first rejects an existing linked mobile 100,
-   then rejects count_pets(ch) > 1. Its army-prevention comment supports keeping
-   the ordinary-pet cap, but does not specify how images should count.
-   Terrain then selects 1-2, 2-4 or 3-6 mounds; unsupported sectors reject the
-   cast. The top comment's 1d4+2 is not the rule for every terrain.
-   Success retains setup_pet(..., 15, PET_NOCASH | PET_NOAGGRO), death-event
-   scheduling, following and TAG_CONJURED_PET.
-
-3. **A global counting change would broaden the balance change.**
-   Other actual consumers of count_pets() are bard charm in
-   src/classes/bard.c:827, the pet shop in src/specs/specs.room.c:868, NPC
-   corpse creation in src/mob/mobact.c:1118, and NPC Shambler selection at
-   src/mob/mobact.c:10772. The last independently requires zero total pets
-   before choosing the spell. Keep all four decisions and the generic counter
-   unchanged. Direct Shambler execution uses the corrected admission rule for
-   any caster; NPC autonomous spell selection remains its current separate rule.
-
-4. **The existing image constant is precise enough; the illusion helper is not.**
-   src/core/defines.h:1374 defines IMAGE_REFLECTION_VNUM.
-   src/magic/magic.c:1727-1880 shows Mirror Image calling make_mirror(), which
-   loads the same prototype and calls setup_pet().
-   src/classes/innates.c:2470 also loads mobile 250 for Project Image, but does
-   not create a pet link in that path, so it contributes nothing to either count.
-   is_illusion_char() in src/classes/sillusionist.c:1400 also identifies
-   illusion disguises. Reusing that broader predicate could exempt real pets
-   merely because they are disguised; use the NPC/prototype check instead.
-
-5. **The Reflection entry routes and both Titan exclusions already exist.**
-   src/classes/innates.c:2647-2666 dispatches the racial innate to
-   spell_reflection() after its own Titan check and cooldown handling.
-   src/classes/sillusionist.c:1871-1920 rejects Titan creation while a
-   mobile-250 image follower exists; Reflection independently rejects a linked
-   Titan. Neither restriction should move into a pet-count helper.
-   src/classes/skills.c:2217-2218 registers Shambler as an 11th-circle Scourge
-   specialization spell. A real command journey must satisfy that eligibility,
-   rather than assuming that any level-36 character can cast it.
-
-6. **Displacement and help need careful interpretation.**
-   src/classes/psionics.c:1461-1483 adds an AC affect without creating followers
-   or links; the reported name does not establish a Displacement defect.
-   lib/information/help_index contains the maintained Reflection and Shambler
-   entries (around lines 13489 and 25410). Neither currently explains this
-   image-counting rule. Add concise player wording there with the fix.
-
-## Executable planning evidence
-
-A temporary probe under bin/qualification/issue420/ reused the existing
-Reflection ownership fixture and extracted the current, unmodified production
-bodies of spell_reflection(), setup_pet(), count_pets() and spell_shambler().
-It executed all 20 combinations of 0/1/2/3 ordinary pets and 0/1/2/3/4 actual
-Reflection-created images under ASan/UBSan.
-
-Observed results:
-
-- With no ordinary pets, zero or one image reaches Shambler's mound loader;
-  two, three or four images trigger the exact pet-cap rejection.
-- With one ordinary pet, zero images reaches the loader; even one image rejects.
-- With two or three ordinary pets, every image count rejects.
-- The generic count equals ordinary pets plus images throughout.
-
-The controlled mound loader intentionally returned null. This proves current
-admission behavior, not successful summons, event expiry, command reachability,
-or a booted-world reproduction. Room/link services and RNG were controlled.
-The ignored result is bin/qualification/issue420/baseline.txt; the temporary
-probe source and executable are removed after investigation. The implementation
-regression below must exercise successful mound creation, not stop at this probe.
-
-Existing baseline checks also passed:
-
-- python3 tests/async/test_reflection_image_ownership.py: 409 casts plus Titan
-  rejection under ASan/UBSan, preserving prototypes, ordinary pets, links, combat
-  redirection and private-string cleanup. Extraction/room services are fixtures.
-- python3 tests/async/test_innate_reflection.py: real innate dispatch,
-  race/level eligibility, self targeting, configurable cooldown and Titan
-  rejection. Its Reflection body is stubbed; it does not prove the combined
-  innate-to-Shambler route.
+Each core contract needs executable proof through its real gameplay/session
+path. A declared package, helper test, unchanged hash or screenshot alone does
+not establish the outcome. The player/pet/opponent HP symptom remains an
+investigation until reproduced and verified in the client.
 
 ## Non-goals
 
-- No change to count_pets() or its other consumers, no generalized capacity
-  policy, optional parameter, image-origin field, new configuration or service.
-- No change to image links, charm, durations, strings, damage, replacement,
-  Mirror Image creation rules, racial unlocks/cooldowns or Titan restrictions.
-- No change to Shambler terrain yields, lifetime, ordinary-pet limit, existing
-  mound exclusion, class access or NPC autonomous spell selection.
-- No pet persistence migration, old-instance rewrite, production operation,
-  deployment, full burn-in or dependency on hosted CI.
-- Do not fold Conjurer capacity work #215, prior image-ownership work, or
-  unrelated pet/lifetime investigations into this fix.
+- Client UI/automation rewrites, releases and text-fallback removal belong to
+  #26. Server fixtures, coordinated scenarios and evidence handoff remain
+  required here; server tests alone cannot claim client qualification.
+- No replacement command dispatcher, remote action API, event broker, durable
+  replay, database schema, synchronous storage calls, population feed, world
+  traversal per hit, zone-graph service or additional map generation.
+- No per-second countdown packets, recursive inventory push, speculative item
+  deltas, generic observer framework or blanket export of hidden affects.
+- No production operation, deployment, unrelated cleanup, full burn-in or wait
+  for hosted CI. Keep text behavior available during the companion migration.
 
-## Files and ablated implementation sequence
+## Findings from the owning source
 
-Expected production edit: src/magic/blispells.c only.
-Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
-one focused command journey tests/async/test_shambler_reflection_journey.py
-(new), its resource-intensive registration in tests/run_regression_tests.py,
-lib/information/help_index, and this plan's completion record.
-Retain test_innate_reflection.py as an unchanged compatibility test unless the
-new regression exposes a necessary gap.
+Paths and line numbers refer to the baseline above. These were checked directly;
+the issues and client investigation are inputs, not proof.
 
-1. **Extend the existing native regression before changing the guard.**
-   Add the production Shambler body and generic counter to the current Reflection
-   fixture. Model mobile 100, successful materialization and observable
-   scheduling/tagging at the existing controlled service boundaries. Assert
-   returned mounds and unchanged image/ordinary-pet state, not just absence of
-   refusal text. At least image-only 2+ and one ordinary pet plus one image must
-   fail against the current source. Do not create a second harness framework.
+1. **Negotiation/bootstrap already exist.**
+   [gmcp.c](../../src/net/gmcp.c):58-86,125-237,286-307 handles DO/DONT,
+   deferred snapshots, Core.Hello, Client.Info and opt-in Char.Input. It does
+   not handle Core.Supports or gameplay requests. Bootstrap already sends ship
+   clears, status, vitals, affects, group, room, quest and combat.
+   [gmcp.h](../../src/net/gmcp.h):139-144 distinguishes negotiated transport
+   from the character's NOGMCP preference. Pre-character lifecycle/control needs
+   a descriptor policy without bypassing that preference for gameplay data.
 
-2. **Count at the existing Shambler boundary.**
-   In its existing linked-pet traversal, retain the mound rejection and tally
-   only pets that are not NPCs of IMAGE_REFLECTION_VNUM. Use the resulting
-   local count for the existing > 1 guard. Preserve rejection precedence and
-   the terrain/summoning body. Add a short comment explaining this admission
-   policy. No new production helper or header declaration is necessary.
-   Keep all non-image pets counted; do not use flags such as PET_NOCASH,
-   temporary duration, charm status, or the broad illusion predicate.
+2. **WebSockets share the bootstrap.**
+   [account.c](../../src/account/account.c):2208,
+   [nanny.c](../../src/account/nanny.c):2215,
+   [actoth.c](../../src/cmd/actoth.c):5810-5813 and
+   [ws_handlers.c](../../src/net/ws_handlers.c):1057-1068 reach the same sender.
+   Account/nanny have several direct state and character assignments, including
+   pre-entry cancellation and switched originals. No protocol session generation
+   exists. Hook semantic boundaries; do not increment generation from bootstrap
+   or mechanically replace every STATE assignment.
 
-3. **Drive the real command route in disposable state.**
-   Reuse test_flatfile_combat_journey.py and its server build/world/socket
-   helpers. Follow the staff-controlled fixture setup demonstrated by
-   run_racial_pulse_journey.py, but keep this scenario separate from its
-   unrelated race-stat checks. Supply the image and mound prototypes and a
-   supported outdoor room. Configure synthetic, otherwise eligible Scourge
-   casters with known spell access, mana and preparation; do not change normal
-   race/class rules. Exercise racial "innate reflection" for Gnome and Kobold,
-   then "cast 'shambler'" while at least two images remain. Also cover the normal
-   spell route to Reflection on a prepared test caster and a Mirror Image
-   command control for the shared-prototype policy.
-   Observe image and mound identities/counts plus ownership/following through
-   existing inspection facilities. Synchronize on each command's response and
-   following prompt; an unsolicited prompt alone cannot prove completion.
-   Check a repeated Shambler rejection, ordinary-pet rejection and both
-   Titan/Reflection orders. Recast/cleanup must leave ordinary pets intact.
+3. **Combat is immediate and attacker-centric.**
+   gmcp.c:1013-1108 creates target/optional round, no tank; end sends target:null.
+   The target serializer uses GET_NAME without recipient masking there.
+   [prompt.c](../../src/net/prompt.c):299-342 derives tank as the opponent's
+   opponent, requires both relationships to be local, and masks an unseen tank
+   as "someone". [fight.c](../../src/combat/fight.c):5752-5759 sends victim
+   vitals and attacker target/round; secondary-target damage can omit the round,
+   and metadata is "unknown"/false. set_fighting(), unlink_fighting(),
+   stop_fighting(), terminal extraction and update_pos() are distinct paths.
+   Current packets do not prove ally damage, non-GMCP tank health or all posture
+   changes stay fresh. Self HP already has its own Char.Vitals source.
 
-4. **Document and finish proportional qualification.**
-   Explain in Shambler help that Reflection/Mirror Image images do not consume
-   its ordinary-pet allowance, that at most one other pet may precede the cast,
-   and that an existing mound prevents another cast. Add a brief cross-reference
-   in Reflection help without claiming a global exemption. Run the checks below,
-   reread the entire diff and record exact results and limitations here.
+4. **Time has small mutation boundaries.**
+   [weather.c](../../src/world/weather.c):75-99 advances time_info.hour and the
+   calendar; astral_clock_setMapModifiers() owns hourly map/announcement rules.
+   [actinf.c](../../src/cmd/actinf.c):6981-7090 contains staff "time N" and the
+   ordinary do_time() path that can schedule autoreboot. The field is hour,
+   not hours. Publish after normalized mutation; serialization must only read.
 
-Ablation keeps one local counting decision, the already available image constant,
-an extension of existing native coverage, and one small journey using existing
-helpers. A global counter change would alter four unrelated consumers. A broad
-illusion predicate changes more than image counting. Per-spell provenance adds
-state without serving the proposed shared-image rule. Removing image links
-would disturb ownership and lifecycle. These alternatives are dropped.
-The command journey stays because the existing tests do not execute the combined
-player workflow. No alternative production implementations need to be built.
+5. **Item dirtiness exists but is not subscription state.**
+   [handler.c](../../src/world/handler.c):1873-2193,3051 onward owns core item
+   transfers/equip and sets runtime flags. obj_to_char_at_end() is a separate
+   append/restoration path. unequip_char() has a saving argument.
+   [files.c](../../src/core/files.c):1455-1465 clears persistence dirty flags
+   and temporarily unequips on terminal saves. GMCP cannot depend on those
+   flags surviving saves. [structs.h](../../src/core/structs.h):500 already
+   has obj_uid; vnums are templates. [utils.h](../../src/core/utils.h):612-613
+   allows staff 3,000 carried objects: list bounds are a real requirement.
+   do_inventory(), do_equipment(), get_equipment_list(), list_obj_to_char()
+   and show_obj_to_char() own visibility, anatomy, duplicate presentation and
+   wraithform policy; raw object fields do not automatically preserve it.
 
-## Proof and acceptance
+6. **Completion owners already know useful outcomes.**
+   do_bash()/do_rescue() delegate to bash()/rescue() in
+   [actoff.c](../../src/cmd/actoff.c); rescue resolves and retargets around
+   8210-8300, with CharWait afterward.
+   [memorize.c](../../src/classes/memorize.c):490-568,1097-1253 distinguishes
+   completion and voluntary/disrupted cancellation.
+   [bard.c](../../src/classes/bard.c):1918-1928 knows actual song completion;
+   [epic_skills.c](../../src/classes/epic_skills.c):1252 onward owns infusion;
+   [mining.c](../../src/economy/mining.c):286,385,802 separates command and
+   delayed results. [events.c](../../src/world/events.c):368 onward owns
+   CharWait; [affects.c](../../src/magic/affects.c):1938-1960 creates hidden
+   short affects. [json_utils.c](../../src/core/json_utils.c):1008-1068 excludes
+   AFFTYPE_NOSHOW and already exports visible duration seconds. Reuse those
+   owners instead of input labels/output matching or exposing internal tags.
 
-- Cross 0/1/2/3/4 images with 0/1/2/3 ordinary pets: casts succeed only with at
-  most one ordinary pet and no existing mound. Include a non-image summoned pet
-  as well as a charmed-pet control; both count. Non-pet links do not count.
-- An existing mound rejects with zero or multiple images, including when that
-  mound is the only ordinary pet. Additional casts cannot accumulate mound groups.
-- In supported terrain, admitted casts create the unchanged yields (1-2, 2-4,
-  3-6) under controlled RNG. Unsupported terrain still rejects without creating
-  anything. New mounds retain pet links/followers, tagging and scheduled lifetime.
-- Image-only and mixed cases leave image identity, strings, links and existing
-  ordinary pets intact. Reflection replacement removes only the previous images;
-  after image cleanup the ordinary-pet decision is the same.
-- The generic count_pets() still counts images. This demonstrates that the
-  shared helper's contract, including its other callers, has not changed.
-- Real Reflection spell and racial routes reach successful Shambler creation;
-  the Mirror Image control follows the explicitly proposed rule. Existing
-  Displacement alone adds no pet restriction.
-- Titan first still blocks Reflection; images first still block Titan.
-  The racial rejection does not spend cooldown or add combat lag.
-- Native and socket results are reported separately. A missing command journey
-  leaves that acceptance item unverified; green helper tests cannot replace it.
+7. **Requested results can reuse existing decisions.**
+   actinf.c:9778-10050 performs scan detection/RNG and temporary room traversal.
+   do_who():7430 onward filters by level, morph, trust, faction, anonymity,
+   host and displayed fields/counts.
+   [tradeskill.c](../../src/economy/tradeskill.c):2546-2608 holds actual dice
+   results inside the roll loop. [ship_combat.c](../../src/ships/ship_combat.c):196
+   onward authorizes scan_target() by contacts/range before armor/internal
+   output. [magic.c](../../src/magic/magic.c):10499 onward gates identify,
+   including NOIDENTIFY/effective-level differences. Shop, auction, crafting
+   and spell callers reach it with different authority.
 
-Planned commands after implementation, with artifacts confined to bin/:
+8. **Flush names are not construction/measurement guarantees.**
+   gmcp.c:660-728 shares contact payloads by vessel/verification variant but
+   builds personalized own-ship info before hashing.
+   [comm.c](../../src/net/comm.c):2323-2381 times GMCP plus saves, lockers,
+   completion routing and caches as "gmcp_flush".
+   [latency_trace.h](../../src/persistence/latency_trace.h) has bounded
+   count/total/max/top samples, not a full percentile distribution.
+   [GAME_LOOP_PHASES.md](../network/GAME_LOOP_PHASES.md) fixes phase ordering;
+   do not move output/persistence/combat owners to make protocol tests pass.
 
-    python3 tests/async/test_reflection_image_ownership.py
-    python3 tests/async/test_innate_reflection.py
-    make -C src
-    python3 tests/async/test_shambler_reflection_journey.py
-    ./scripts/format.sh --check
-    python3 tests/async/test_documentation_contract.py
-    git diff --check
+9. **Not every proposed stream exists, and several need no duplicate.**
+   Char.Items/Char.Skills appear only as package constants; source search found
+   no callers of json_build_stat_roll()/json_build_chargen_complete(). Ship
+   details, quest map/status, affect seconds, chat presentation and input
+   receipts already work. [epic.c](../../src/world/epic.c):1950-1975 has cached
+   text with a cache-miss generation path; displayed_alignment() enforces
+   disclosure delay. [public-population.md](../guides/public-population.md)
+   explains why public MSSP/live population is withheld. A new stream must not
+   revive it or add periodic report generation.
 
-The proposed journey should build its fresh flat-file executable through the
-existing helper by default, with an optional explicit freshly built binary as
-the nearby journeys support. Confirm local/dev configuration before runtime
-work; use private temporary accounts/world data, never live player state.
-No persistence behavior changes, so restart/database qualification is not a new
-gate. Production/full-world acceptance is outside this implementation estimate.
+## Contract decisions and bounds
 
-## Tracking and estimate
+Finalize schemas in docs/network/GMCP.md (new), with examples produced by
+executable serializers. Duris.* names below are proposals, not current APIs.
+Record agreed fields/version availability in both trackers before client
+fallback retirement. This is coordination, not a new approval ceremony.
 
-GitHub #420 is the work item for this branch. Searches for open PRs referencing
-420 or Shambler/Reflection found none. Targeted max757/duris GitLab searches
-found no matching Shambler work item; the Reflection result was unrelated
-lifetime-qualification item #27. Do not link that item or close related historical
-issues merely because they mention images or pets. Link this branch directly
-in #420's Development section and provide the committed plan link there.
-A planning-only commit must not use an issue-closing keyword.
+- Preserve legacy packages/default sends. New catalogs/events require compatible
+  support and explicit interest; WebSockets keep their legacy default without
+  automatically subscribing to new large lists. Additive combat fields remain
+  compatible with existing readers.
+- Implement bounded Core.Supports.Set/Add/Remove for a small fixed feature set,
+  not a generic registry. Unknown modules/versions never grant authority.
+  Proposed Duris.Capabilities advertises only working schemas and effective
+  stream state; proposed Duris.Subscribe controls interest in new streams.
+  Support means decodable; interest means currently wanted. Unsubscribe clears
+  pending work, stops construction and explicitly invalidates client state.
+- Gate before JSON/list work: negotiation, effective preference, support,
+  interest, then dirty/request state. Session/Capabilities control remains
+  available to capable negotiated clients to report preference disable/enable;
+  gameplay streaming still honors NOGMCP.
+- Use a connection-local character generation and monotonic revisions/event
+  sequences, encoded losslessly where needed. Advance generation at semantic
+  attachment/entry, not renegotiation/bootstrap. A new connection starts a new
+  context. Session has account/chargen/playing states and character:null;
+  never expose credentials/account identifiers.
+- State replaces its documented whole scope. Define omitted versus null;
+  target:null/tank:null clear combat, items:[] is authoritative empty, and
+  unavailable/ineligible differs from empty. Session invalidation clears all
+  prior character streams. State resync never replays historical action events.
+- Events carry generation, event sequence, kind/outcome, permitted actor/target
+  and small known reason codes. Preserve each actual event in order; do not
+  coalesce it like state. No replay/exactly-once promise across disconnect.
+  Char.Input remains only a dequeue receipt.
+- Time v1 carries hour 0-23 and phase: dawn 04-08, day 09-15, dusk 16-18,
+  night 19-03. Optional calendar indexing/year offset must be specified if
+  retained. Cooldowns use monotonic server milliseconds and remaining
+  milliseconds at emission, scoped to the connection; clients count locally.
+  Keep global wait, selected skill cooldowns and status/activity restrictions
+  separate; a deadline alone does not guarantee CAN_ACT.
+- Initial limits to validate: Supports <=8 KiB/64 entries/96 bytes per entry;
+  new read/subscription requests burst 2 then 1/second per family; result pages
+  <=128 rows/16 KiB; new semantic events <=64 events/64 KiB per descriptor per
+  flush interval; new replaceable-state/list output <=32 KiB per descriptor
+  per flush plus a shared round-robin work budget. Event bytes use their
+  separate quota and enter the existing FIFO at completion, without waiting
+  for the state flush. These are implementation constants, not new user
+  options. Bound strings/collections before construction and final encoded size.
+- Reuse existing bounded Telnet/WebSocket FIFOs and failure/close behavior,
+  avoiding a second event queue. Events are never silently overwritten;
+  exhausting event/transport limits uses the documented overflow/connection
+  reset policy. Preserve control-message room when transport permits final
+  invalidation. Test it: state resync cannot reconstruct missed dice/history.
+- Large item/WHO/scan results use bounded pages with revision, continuation and
+  complete semantics; ordinary lists fit one page. Replace only completed
+  revisions, never a silently truncated list. Invalidate item-state continuations
+  on owner, visibility or mutation changes. Requested command results retain
+  values captured during their authorized pass; pagination must not repeat a
+  scan, random decision or identification. Cancel all old-character work on
+  session change. No borrowed item pointers survive extraction; construction,
+  captured results and pending work must also have explicit total bounds.
 
-Estimate: **2-3 hours of my active implementation time** for the documented rule,
-including regression-first work, the small production change, help, the real
-command journey, required build and reviewable commits. Approximately 30-45
-minutes is native regression plus fix, 60-90 minutes is command-fixture setup and
-runtime checks, and 30-45 minutes is documentation, build and final review.
-Allow up to 4 hours if spell preparation or minimal-world fixtures require more
-setup. This excludes a changed balance decision, external review, merge waiting
-and deployment.
+## Implementation sequence, files and proof
 
-## Planning completion checks
+Each step is a reviewable commit or small related series. Extend existing
+harnesses before adding focused tests; do not build another test framework.
+Advertise a feature only after its real path works.
 
-Only this plan and preservation of the previous plan are committed. No
-production C/C++ edit, full server build or booted-world reproduction is claimed
-at this planning stage. The focused baseline evidence is recorded above.
-Planning validation completed:
+### 1. Baseline, contracts and gating (2-3 active hours)
 
-- python3 tests/async/test_documentation_contract.py: all 14 tests passed.
-- git diff --check: passed.
-- The archived #428 plan and baseline plan have identical SHA-256:
-  db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
-- Only the requested plan and the intact historical archive are tracked changes;
-  the original checkout's branch and files are preserved.
+- Freeze serialized fixtures, seeds, populations and workloads at the baseline;
+  record construction counts, bytes and latency before runtime changes.
+- Add narrow support/interest/control state in src/net/gmcp.c/h and
+  src/core/structs.h; initialize/free/reset it on descriptor creation/close/
+  recovery. No new persistent preference/configuration service.
+- Integrate bounded state flushing at the existing cadence without moving
+  output/persistence/combat phases. Async mutations published after an earlier
+  flush remain pending for the next one.
+- Proof: production input/send paths for Set/Add/Remove, malformed/oversized
+  inputs, unknown versions, request floods, legacy Telnet/WebSocket defaults,
+  preferences and unverified identity. Extend the existing GMCP fuzz corpus
+  where parser branches are added.
 
-## Implementation and qualification, 2026-10-30
+### 2. Session and time (2-3 active hours)
 
-Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
-of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
-unchanged. The existing mound rejection remains first, and terrain, summon
-creation, tagging and lifetime code are unchanged. Help now states the shared
-Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
+- Hook attach/detach/account/chargen/playing in account.c, nanny.c, comm.c,
+  ws_handlers.c and actual quit/return/switch paths. Audit failed load,
+  pre-entry cancel, link-dead reconnect, copyover, morph and switched originals.
+  Send invalidation before character pointers are released.
+- Bootstrap order: capabilities/effective streams, session boundary, then
+  compatible snapshots. Same-socket detach sends character:null before new
+  character data. Re-enable resends state without advancing entry generation;
+  disable control is sent before gameplay gating blocks updates.
+- Cache one small global time payload per revision. Invalidate after
+  event_another_hour() normalization and staff time mutation. Entry/re-enable
+  sends the current revision to interested recipients, without command calls.
+- Defer optional calendar expansion/shutdown countdown metadata; neither is
+  needed for the required clock/phase UI. Do not advertise them.
+- Proof: initial/late negotiation, repeated DO, re-enable, A -> account -> B,
+  failed attach, chargen cancel, reconnect/copyover, morph/switch identity and
+  phase boundaries. Assert serialization never calls do_time/shutdown/storage.
 
-The existing ownership regression executes the production Shambler body and
-counter alongside Reflection/setup_pet. All 640 combinations of image count,
-ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
-pass under ASan/UBSan. They check actual fixture mound materialization,
-ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
-scheduling endpoints, tagging, duplicate-cast rejection and admission after
-image removal. The original 409 Reflection casts and Titan rejection still pass.
-Two in-memory negative controls substitute the old production Shambler body:
-two images alone and one image with one ordinary pet each fail at the successful
-mound-creation assertion. No tracked production source is changed by those
-controls.
+### 3. Combat, observers and damage events (3-5 active hours)
 
-The new command journey boots a fresh flat-file server with private state and
-drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
-real Shambler casts. Every route retains four images and creates three to six
-mounds in forest terrain. Staff inspection checks mobile identities, keywords,
-following and pet links. It also proves duplicate-mound and two-ordinary-pet
-rejection, the one-pet allowance, cleanup without losing ordinary pets, both
-Titan exclusion orders, and the published help. A real Reflection recast
-replaces every image identity while retaining the ordinary companion.
+- Extend Combat.Update with tank and explicit target/tank nulls. Follow prompt
+  relationships/locality and recipient PERS/visibility policy, including generic
+  unseen identity. Keep self HP separate from target/tank percent/condition.
+- Mark affected local observers dirty from relationship, health and posture
+  mutations, using room-local traversal/dirty-room ownership and coalescing.
+  Audit healing/regen/direct posture assignments, rescue, flee, death,
+  departure and terminal extraction, including non-GMCP tanks. Do not scan the
+  population/combat list per hit or add a global observer dependency index.
+- Mark old/new contexts before references die; resolve current relationships
+  at flush without delayed raw victims. Define state revisions/event ordering.
+- Separate outgoing applied-damage events from replaceable target state.
+  Preserve actually applied amounts, including secondary targets, without
+  retargeting the primary enemy. Pass known damage-type/critical metadata from
+  authoritative calculations; retain explicit unknown when unavailable.
+  Never recompute/roll again. Document legacy round scope and prevent capable
+  clients counting both old/new representations. No full miss/damage log.
+- Files: gmcp.c/h, fight.c, handler.c and concrete health/posture owners found
+  by the audit; keep any helper local to this responsibility.
+- Proof: player/pet/enemy independently near death; masked names; ally and
+  secondary damage; rescue/tank swaps; posture/heal; flee/death/departure/
+  extraction; clear-before-reuse; unchanged RNG; no disabled construction.
+  Under #26, identify the affected widget and verify values/labels/critical
+  styling and delayed text before claiming the reported HP symptom fixed.
 
-Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
-Scourges after image creation; the Displacement control uses an eligible
-MindFlayer's real WILL command before switching back to Scourge. This does not
-add or claim a playable class combination. Staff edits resolve the PC explicitly
-because images share its name. Commands require their own receipt and following
-prompt and handle paging. No runtime test hooks or production settings are added.
-The journey is registered as resource-intensive in the existing regression runner.
+### 4. Owner inventory/equipment (4-6 active hours)
 
-Completed on the planning baseline:
+- Implement Char.Items.List inv/eq with generation, location, revision,
+  completion, visible description, quantity, worn slot, usable selector and
+  known condition/flags. Per-instance rows with quantity 1 are sufficient for
+  separate objects; preserve duplicate targeting. Optional capacity/count/
+  weight reuses existing values, never identification-only fields.
+- Start with complete snapshots/empty or unavailable states. Revision-scoped
+  entry tokens/selectors suffice for v1. If client agreement requires stable
+  cross-snapshot identity, reuse audited obj_uid lifetime as an opaque string
+  scoped to generation; no new allocator, vnum, raw pointer or rounded number.
+- Add independent GMCP pending revision/dirtiness; saves may clear persistence
+  flags. Cover transfer/append/restore, equip/unequip, extraction, containers,
+  rename, damage/repair and visibility/anatomy/wraithform changes. Mark both
+  owners on transfer, not only player command sites.
+- Coalesce completed operations. Respect saving=true and restoration; never
+  publish transient terminal-save unequips or partial get-all. Audit src/item
+  transaction publication plus core/files.c and persistence restoration; emit
+  after authoritative commit/publication, not speculative ownership changes.
+- Serialize subscribed dirty/requested top-level lists with bounded pages/work.
+  Nested contents remain explicitly requested with current owner, visibility
+  and normal container-access eligibility. No recursive push, polling or deltas.
+- Files: gmcp.c/h, json_utils.c/h, handler.c, necessary item/publication owners
+  and actinf.c presentation policy. Share a read-only presentation helper only
+  if text/JSON truly share policy; do not invoke a printing command to serialize.
+- Proof: empties, 3,000-item staff lists, duplicates/selectors, get/drop/give/
+  get-all, wear/remove/disarm, containers, rename/repair, visibility, save/load,
+  async success/failure/replay, extraction between pages and unsubscribe.
+  Assert one completed bulk revision and no extra persistence or hidden data.
 
-- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
-- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
-  Titan rejection without cooldown or combat-lag consumption.
-- make -C src -j6: MariaDB development build passed with warnings as errors.
-- make -C src PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
-  -j6: flat-file development build passed.
-- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
-  default fresh-build helper and the explicit live recast case.
-- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
-  documentation contracts and git diff --check passed.
+### 5. Actions, activity, cooldowns and notices (5-8 active hours)
 
-The planning-baseline command log is bin/qualification/issue420/journey-final.log.
-The report at gameplay-report.json in that directory holds the latest full run;
-see the integration record below for its current binary. The planning-baseline
-qualified flat-file binary SHA-256 is
-98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
-Native fixtures control room/link services and scheduled callbacks; the socket
-journey exercises the real parser, spell dispatch, materialization and ownership.
-No full-world, MariaDB socket, restart or production qualification is claimed.
+- Hook actual success/failure/completion/cancellation: bash/rescue/flee in
+  actoff.c; disarm/consent in actnew.c and fight.c; follow/group in their cmd
+  owners; study/prayer in classes/memorize.c; infusion in epic_skills.c;
+  songs in bard.c; mining in economy/mining.c. Include early refusals and
+  deferred/async completion for pending actions, not only the command wrapper.
+- Send successful flee direction after movement succeeds, or explicit failure/
+  cancellation. Publish only reasons already known/permitted to the recipient.
+- Publish self global-wait and allowlisted skill cooldown changes from
+  CharWait/event_wait and short-affect add/replace/remove/expiry in events.c
+  and affects.c. Derive intervals from actual scheduled state, including
+  restored timers. No hidden-tag dump or timer added solely to tick a UI.
+- Send a small activity snapshot at entry/re-enable/change, with started,
+  completed/cancelled and known stop reason. Separate studies/prayers/infusion/
+  song cause from posture. Full prepared-spell catalogs are unnecessary.
+- Inventory actual active client automation notice triggers. Include consent,
+  follow/group, mining and skill-up notices. For tracks, frost beacon, scrying,
+  spell-hit reports and arrival/trap/movement notices, reuse already-permitted
+  values at existing recipient branches for active #26 needs; record every
+  trigger's owner/event or an explicit client-accepted deferral. Do not replace
+  "other notices" with a generic text-to-event parser.
+- Eligible local rescue/assist observers receive small relationship/outcome
+  updates, including required observed attack/miss transitions. No second
+  room-wide combat log, remote feed or other players' cooldowns.
+- Proof: success/refusal/failed roll, async finish, interruption/voluntary cancel,
+  cooldown replace/expire/clear, command/skill variants, duplicate events and
+  no false completion from affect loss. Verify bystander masking, a non-GMCP
+  actor and multiple individual events before one coalesced state flush.
 
-Final ablation retains one production counting decision, one existing native
-test extension, a focused journey using existing build/world/socket helpers,
-its runner registration and the necessary help/plan updates. There is no new
-capacity API, persisted state, configuration, migration or image-lifecycle edit.
+### 6. Authorized command results (3-5 active hours)
 
-### Master integration and final qualification
+- First emit negotiated JSON alongside the existing authorized command.
+  No GMCP handler directly calls gameplay functions. Any later transport
+  request must enqueue the same command through normal wait/eligibility/
+  input rules, with bounded pending request state.
+- Player scan: collect actual successful detections, including "here",
+  directions/distances and explicit empty/failure, inside the existing pass.
+  Restore ch->in_room before delivery. Preserve visibility/RNG count and order;
+  do not re-evaluate detection for JSON.
+- Ship scan: serialize already-authorized scan_target armor/internal/relative
+  results separately from routine contacts. Retain bridge/range/contact rules
+  and withhold world coordinates from unverified connections.
+- Dice: emit the loop's actual result, sides, index/count and roll ID to the
+  same allowed self/local observers, with recipient masking. No reroll; the
+  capability/ID contract and client tests prevent dual-source processing.
+- Identify: accumulate only fields actually revealed at successful spell/
+  service branches after existing cost/authority/completion. Test NOIDENTIFY
+  and effective-level differences, including shop/auction/crafting callers.
+- WHO: serialize accepted rows and branch-specific displayed fields from
+  do_who(), preserving filter/sort, explicit empty/failure, anonymity, trust,
+  level and population privacy. Do not export internal totals/opposing names
+  merely because the server knows them. No automatic roster.
+- Files: actinf.c, tradeskill.c, ship_combat.c, magic.c, necessary service
+  completion callers and gmcp.c/h/read-only serializers.
+- Proof: text/protocol permitted-field parity, fixed RNG call counts, blocked/
+  empty results, hidden targets, anonymous/trusted WHO, level-one/morph refusal,
+  identify cost/failure and ship verification. Exercise normal input dispatch.
 
-Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
-Its shared plan.md now records completed #437 work. The merge retains this #420
-plan at the requested path and archives the upstream #437 plan byte-for-byte.
-The only overlapping file was the plan; Shambler/Reflection and their admission
-behavior did not change upstream. The archived #437 plan and the upstream file
-have identical SHA-256:
-ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
+### 7. Integration, measurements and closeout (5-8 active hours)
 
-The 640-case sanitizer matrix, original Reflection/innate checks, all 14
-documentation contracts, formatting, diff checks and MariaDB build passed again
-against the integrated source. The default command-journey invocation built a
-fresh flat-file server and passed all four routes, the real Reflection recast,
-ordinary-pet/mound controls, Titan exclusions, Displacement and help.
-Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
-created 5, 4, 3 and 4 forest mounds respectively.
+- Extend test_gui_gmcp_contract.py/native harness for real serializers,
+  Telnet/WebSocket send paths, new bootstrap and clears. Extend the prompt/
+  toggle and input-receipt tests where their contracts change. Add focused
+  native mutation/command journeys for uncovered gameplay requirements only.
+- Implementation checks: ./scripts/format.sh --check, make -C src, the three
+  focused GMCP tests, relevant new gameplay/persistence tests,
+  test_game_loop_phase_contract.py and applicable public-population/output/
+  command-queue tests. Register new regressions if runner discovery needs it.
+  All compiled artifacts remain under bin/.
+- Cover initial/late negotiation, repeated bootstrap, reconnect/copyover,
+  same-socket switches, disable/re-enable, support/interest changes, null/empty,
+  stale revisions/duplicate events, slow consumers/overflow, legacy and
+  unverified clients. Preserve bought/valid quest-map and ship privacy rules.
+- In the actual client checkout run:
 
-Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
-bin/qualification/issue420/journey-integrated.log.
-The integrated flat-file binary SHA-256 is
-0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
+      python3 scripts/capture_server_gmcp.py --server /home/aiwithapex/projects/duris-issue-498
 
+  Check that extraction covers the changed functions; commit fixture provenance
+  on the client branch. Run affected real-Mudlet server-wire, connections,
+  information, combat, time, split, ship and lifecycle scenarios. Inspect
+  screenshots, numeric state and styling. Unavailable environments/scenarios
+  remain explicitly unverified; native fixture success is not Mudlet proof.
+- Finalize protocol/availability/compatibility/measured-limit docs and candidate
+  dispositions; update docs/reference/CODEBASE.md only where navigation needs
+  it. Link delivered commits/PRs and evidence in both issues. Keep unfinished
+  external qualification explicit; do not close on serializer-only coverage.
 
-## Sequential PR integration, 2026-10-30
+## Measured overhead gate
 
-Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
-#432, #475, #476 and #477. Game code, player help and test discovery merged
-without conflicts. The shared-plan conflict keeps this Shambler record at
-`plan.md` and preserves the completed coin record byte-for-byte at
-[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
-remain intact.
+Use this baseline, existing loop timing/trace tooling and workload runners.
+Add narrow protocol construction/send counters and a qualification workload
+where missing, not a new observability service or synchronous logging.
 
-The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
-409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
-formatting, whitespace, test discovery and all 14 documentation checks pass on
-the combined source. The earlier disposable-server gameplay report remains the
-runtime qualification for racial and spell images, ownership, pet/mound caps,
-Titan exclusions, Displacement and help; that complete journey was not repeated
-in this merge pass. No production operation is included.
+- Match population, seed, commands/events, world fixtures, verification and
+  ship/item distribution before/after. Also compare interest disabled/enabled.
+- Workloads: idle/negotiation churn; combat with non-GMCP tanks, multiple
+  observers and ally damage; unchanged/changing bridge observers; bulk items/
+  large inventories; WHO/scan bursts; throttled/nonreading consumers. Include
+  ordinary load and declared stress at 100 descriptors/3,000 carried items.
+- Warm up, then run at least three matched pairs per workload with enough
+  pulse samples for meaningful p99. Record sample counts/measurement overhead.
+  Compute p50/p95/p99 from bounded raw samples or the existing suitable
+  collector outside the loop; trace count/total/max summaries are insufficient.
+- Report serializer calls, bytes/payloads, dirty/coalesced work, refused
+  requests, sequence gaps/overflows, queue peaks, CPU/RSS and event-loop
+  p50/p95/p99/max/overruns. Attribute protocol construction/delivery separately
+  from the old gmcp_flush persistence/cache span.
+- Proposed initial budget: <=5% pulse-p99 regression at matched representative
+  load, pulse p99 <=250 ms, no additional attributable pulse overruns, and
+  added GMCP work p99 <=2 ms/max <=10 ms per flush at supported workload.
+  Idle/uninterested new-list construction, persistent backlog growth and new
+  blocking storage calls must be zero. These are proposed limits, not measured
+  results or owner agreement. Record the accepted budget in both trackers
+  before final qualification; adjust batching/implementation with evidence
+  instead of silently weakening the gate.
+- Retain compiler/build, machine, seeds, sizes, revisions and raw artifact
+  locations. Local results do not establish production overhead.
+
+## Further-candidate dispositions
+
+These decisions satisfy the requested assessment; all seven core areas above
+remain in scope. Record reasons and later changes in both issues at closeout.
+Do not advertise deferred features or remove their client fallback.
+
+- Affect category/polarity and permitted expiry/removal reason: defer category
+  tables/reason plumbing. Existing duration seconds permit local countdowns;
+  loss is not proof of expiry. A mixed/unknown taxonomy needs a real consumer
+  and policy audit. Selected self cooldown/activity state stays in step 5.
+- Richer score: defer. Current STATS already uses vitals/status; redundant
+  score queries are client work. A full score catalog needs another mutation
+  audit without a present panel requirement.
+- Learned skill list/changes: defer the full Char.Skills list (no active skills
+  tab); retain actual skill-up notices in step 5. Do not advertise the constant.
+- Spell preparation/activity: implement current activity/start/finish/cancel
+  in step 5; defer full prepared-spell catalogs.
+- Cached/delayed epic-zone report: defer. Existing cache/text generation and
+  delayed completion/alignment disclosure need a separate prepared structured
+  publication design. No new synchronous Redis work or immediate disclosures.
+- Local weather/visibility/map mode: defer richer weather; reuse Room.Map and
+  Room.Info. Add a scalar map-mode only if an active #26 ambiguity survives
+  those packets, using already-resolved state, without another map calculation.
+- Chat direction/recipient/event identity: defer broad schema changes; reuse
+  presentation/timestamps and single-source routing. If an active consumer
+  still needs "You -> Name" parsing, follow up with only permitted direction/
+  recipient at existing chat construction, with its own contract/proof.
+- Permitted chargen feedback: implement lifecycle here; defer roll/completion
+  payloads until fields/disclosure policy and a client scenario are explicit.
+  Unused builders do not authorize their precision. Account/chargen transitions
+  remain required in step 2.
+
+## Ablation review
+
+Kept the seven core contracts, recipient-policy repairs on touched paths,
+bounds, lifecycle correctness and real-path/performance proof: each serves an
+issue requirement. Simplified requests to output from authorized commands and
+reused bootstrap, socket FIFOs, room-local dirtiness, actual RNG values and
+existing cooldown/event owners.
+
+Dropped speculative deltas, a second command API, generic subscription/observer/
+event frameworks, durable replay, periodic catalogs, optional shutdown/calendar
+fields and catalogs without current consumers. Item paging stays because
+staff can really carry 3,000 items; independent pending state stays because
+saves clear persistence flags. No feature is justified by a constant alone.
+
+## Planning validation and my implementation estimate
+
+Run on the unmodified runtime baseline in this worktree:
+
+- python3 tests/async/test_gui_gmcp_contract.py — PASS; production serializers,
+  wire/send/bootstrap/bridge fixtures with substituted world services.
+- python3 tests/async/test_gmcp_prompt_regressions.py — PASS; native toggle
+  matrix/source contracts, not a live prompt/gameplay journey.
+- python3 tests/async/test_gmcp_input_receipts.py — PASS; native ASan/UBSan
+  dequeue/sequence/privacy checks.
+- Existing plan versus plan-issue-420.md — identical before replacement.
+
+This planning commit changes no C/C++; no full build, booted-game reproduction,
+new-contract fixture, overhead comparison or real-Mudlet check is claimed.
+Those remain the implementation deliverables above.
+
+My estimate as implementing agent is **24-38 active working hours**, including
+focused gameplay tests, fixture/scenario coordination, measurement and docs.
+The step estimates sum to that range; the first contract/lifecycle/time/combat
+slice is **7-11 hours**. That is roughly 3-5 focused eight-hour days, not a
+delivery promise or a human-team estimate.
+
+Assumptions: usable local/dev gameplay and Mudlet environments, no gameplay
+policy redesign. External review/contract feedback or unavailable environments
+add elapsed time. Unreproduced HP behavior, broader notices or missing mutation
+hooks could raise this to **40-50 active hours**; update this plan with that
+evidence if discovered. Client UI adoption/releases have a separate estimate
+under #26.
