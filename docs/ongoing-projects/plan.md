@@ -1,6 +1,7 @@
 # Issue #418: recoverable Quintaragon Castle resets
 
-Status: **implementation plan; gameplay changes not implemented**. Updated 2026-10-30.
+Status: **implemented; local qualification complete; ready for review**.
+Updated 2026-10-30.
 Issue: [Duris #418](https://github.com/LuminariMUD/Duris/issues/418).
 Branch: [branch/issue-418-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-418-plan),
 linked in issue #418's Development section.
@@ -8,8 +9,9 @@ Baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
 Worktree: `/home/aiwithapex/projects/duris-issue-418-plan`.
 
 The preceding starter-arrow plan and qualification record are preserved byte-for-byte
-in [plan-issue-428.md](plan-issue-428.md). This task authorizes investigation, this
-plan, commit/push, and issue-to-branch linkage. Implementation is subsequent work.
+in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up authorizes
+implementation, planned tests and gameplay qualification, commit/push and a PR.
+Merge and production deployment remain separate work.
 
 ## Outcome
 
@@ -118,8 +120,9 @@ command loop**, after all `M`/`E`/`G` and `D` commands have finished:
    explicit gate/source mapping above. Resolve VNUMs through existing lookups;
    verify matching reverse exits and keys before touching either side. Do not
    introduce a zone flag, reset opcode, config property, or reusable policy engine.
-2. Determine whether any non-NPC character body is currently in the zone using
-   the live character list and a valid room. Include linkdead players and staff;
+2. Determine whether any player body is currently in the zone using
+   the live character list and a valid room. Include linkdead players, staff and
+   morphed players (whose active body is represented as an NPC);
    do not use descriptor presence or change global `is_empty()` semantics.
 3. If a player body remains, clear `EX_LOCKED` and `EX_SECRET` on both sides
    of all seven gates **and the entrance pair**. Leave their normal reset-closed
@@ -249,8 +252,7 @@ completion; static connectivity alone is insufficient.
   snapshots, manually locked doors, and unrelated magical confinement is not
   promised. No new persistence field or save-data rewrite is planned.
 
-Planned verification commands after implementation (new test names above are
-provisional and do not yet exist):
+Verification commands (the two planned test entry points are now implemented):
 
 ```sh
 python3 tests/async/test_castle_key_reset.py
@@ -271,7 +273,7 @@ running services. Use the existing isolated flat-file fixture, not production
 accounts/data. No production reset, migration, restart, deployment, full burn-in,
 or CI wait is needed for this scope. Report any unavailable runtime check.
 
-## Planning verification and estimate
+## Original planning verification and estimate
 
 Completed on this baseline:
 
@@ -301,3 +303,86 @@ journey, and 45-60 minutes for build, compatibility checks, documentation and
 final review. Allow **up to 6 hours** if the authored castle fixture or safe
 movement through its terrain needs additional qualification. This is an estimate,
 not a guarantee; it excludes external review, merge scheduling and deployment.
+
+## Implementation and qualification, 2026-10-30
+
+The implementation keeps the planned policy in one private helper and one call
+after the reset loop in `src/world/db.c`. The helper resolves the eight exact
+gate pairs, examines carrier inventory and every equipment slot, and uses the
+live character list to include linkdead occupants. It clears lock/secret bits
+only on the mapped reciprocal exits. No source/item creation path, area input,
+global emptiness rule, persistence field or migration changed.
+
+The new native test extracts the production reset loop, M/G/E/D cases,
+finalization, access correction, `is_empty()` and `event_reset_zone()`. Allocation,
+placement, RNG and unrelated services are controlled; it is not a second reset
+implementation. Fixture rows and exits come from the authored castle files.
+Against the original source, all seven held-key/consumption cases fail at the
+locked-door assertion. With the fix, all seven and the availability, occupancy
+and boundary groups pass under ASan/UBSan. They cover stable surviving-carrier
+identities, normal dead-carrier replacement, repeated resets, all equipment
+slots, off-carrier/off-site copies, item creation failure, the outer entrance,
+secret closet, unrelated bookcase key, another zone number and mismatched reverse
+exits. The existing shopkeeper population regression also passes.
+
+Implementation inspection found one required refinement: `morph()` moves the
+original PC to limbo and represents the active player body as an NPC with
+`orig_char`. Counting only `!IS_NPC` would miss a linkdead morphed player. The
+occupancy check also uses the existing `IS_MORPH()` predicate; a native negative
+control fails without it and passes with it. This preserves the player-body
+recovery requirement without changing morph or global reset behavior.
+
+The socket journey uses the real server with private flat-file authority, seven
+new mortal accounts and one staff setup account. It loads the authored castle
+room graph, key prototypes and relevant reset rows, with an exterior landing
+room at 5760. Only the fixture's reset lifespan (one real timer tick), NPC
+aggression/wandering and unrelated spawns are controlled. The real callback
+still runs every 300 pulses; the test does not call it through a debug shortcut.
+
+Staff removal drops NPC equipment/inventory on the floor, so the fixture takes
+each original key after removing its carrier rather than creating a second copy.
+Live object inspection confirms exactly one key of each VNUM, carried by the
+mortal. The next empty timer reset creates keyless carriers. Real mortal
+close/lock/unlock commands consume all seven keys, reducing each live count to
+zero; another empty timer reset preserves the same carrier IDs and keeps both
+sides of every gate accessible. Removing the keyless carriers permits normal
+replacement and restores the authored locks, including the secret closet.
+
+With seven connected mortals placed at the interior endpoints, the due timer
+reports `will_reset=0` and leaves the locks intact. After their sockets close,
+the same scheduler reports `will_reset=1`; all eight recovery pairs become
+unlocked and visible. Each mortal reconnects and walks to 5760 using only normal
+open/movement commands. Staff readback verifies the room after every movement:
+**14, 13, 17, 21, 32, 34 and 34 steps**, respectively, **165 steps total**.
+The closet is included. Separate connected-mortal journeys pass after both
+`zreset ok` (basement) and `zreset full` (closet). The final empty, stocked timer
+reset restores normal locks and secrecy. All six observed timer cases have zero
+callback lateness. The disposable server exits successfully and is removed.
+
+Completed commands/results:
+
+- `python3 tests/async/test_castle_key_reset.py`: seven key sequences and three
+  control groups passed under ASan/UBSan, including the morph negative control
+  described above and unchanged surviving object identities.
+- `python3 tests/async/test_castle_key_reset_journey.py`: passed all seven key
+  consumption sequences, seven reconnect/escape routes, six timer cases, both
+  staff-reset modes and normal progression restoration.
+- `python3 tests/async/test_shopkeeper_population.py`: all five scenarios passed.
+- Existing `test_key_break_custody_contract.py`,
+  `test_zone_reset_timing_contract.py` and `test_no_reset_zone_key.py`: passed.
+- `make -C src -j6`: MariaDB development build passed. The journey's existing
+  build helper also compiled and validated its separate flat-file server.
+- Python syntax, changed C/C++ formatting, all 14 documentation contracts and
+  `git diff --check`: passed; final commit checks remain enabled.
+
+Ignored evidence is under `bin/qualification/issue418/`: `gameplay-report.json`,
+the command transcript/server log, and the MariaDB build log. This qualifies
+reset/door behavior in isolated native and flat-file runtime fixtures. It does
+not claim production validation, a MariaDB socket journey, full-zone combat
+safety, or an old recovery-snapshot migration.
+
+Final ablation retains one production helper/call, one native regression with
+its harness, one socket journey using existing build/client helpers, and the
+plan/runbook updates. No area mutation, source restocking, new setting, schema,
+global timer change, or parallel implementation remains. The morph predicate
+is the only source-discovered refinement to the planned behavior.
