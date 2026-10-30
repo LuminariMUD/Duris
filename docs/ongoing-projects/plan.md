@@ -1,6 +1,6 @@
 # Issue #444: preserve denominations in physical coin transfers
 
-Status: **implemented; command/persistence qualification in progress**. Updated 2026-10-30.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
 Issue: [Duris #444](https://github.com/LuminariMUD/Duris/issues/444).
 Branch: [`branch/issue-444-coin-denominations`](https://github.com/LuminariMUD/Duris/tree/branch/issue-444-coin-denominations).
 Source baseline: `origin/master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
@@ -9,6 +9,8 @@ Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-444-coin-denomination
 This plan follows the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
 The previous shared plan, including its #428/#445 qualification and review record,
 is preserved byte-for-byte as [plan-issue-428.md](plan-issue-428.md).
+The #437 qualification plan incorporated from newer master is also preserved
+byte-for-byte as [plan-issue-437.md](plan-issue-437.md).
 The owner has authorized implementation, focused tests and gameplay/persistence
 qualification, commit/push, and a pull request linked to #444. The original
 planning checkpoint below is historical; current results are recorded at the end.
@@ -291,24 +293,114 @@ with `gh issue develop 444 --repo LuminariMUD/Duris --list`. Retain the issue
 until implementation and its acceptance work are complete; this plan does not
 close it.
 
-## Implementation qualification, 2026-10-30
+## Implementation and qualification, 2026-10-30
 
-The production edit stays in `src/cmd/actobj.c`. Both pickup routes, explicit
+The production edit stays in src/cmd/actobj.c. Both pickup routes, explicit
 debits, recipient credits and all refunds now carry exact coin vectors. The
 existing PC transaction completion controls debit publication. A single guarded
 fallback validates all denominations before mutating NPC/no-PID wallets; it has
 real credit, debit and refund callers. Global value-based payments are unchanged.
 
 The expanded pickup regression failed against the unmodified source at its
-40-gold wallet assertion and passes with the fix. Pickup and transfer regressions
-link the real currency implementation and pass under ASan/UBSan; their shared
-header contains only existing world/persistence test services. Native checks
-cover partial/mixed pickup, PC/NPC/no-PID movement, overflow and refused debits,
-exact compensation, staff credit, revisions, and sender-first save ordering.
-Both MariaDB and flat-file development builds have passed.
+40-gold wallet assertion. It passes with the fix, including partial corpse
+pickup, exact mixed counts, 35 gold plus 5 gold, NPC/no-PID pickup, overflow
+retention, revisions, haul text and corpse-save bookkeeping.
 
-The new isolated journey has exercised four actual legacy quest completions,
-bank/bag transfers, relog, a wallet/bag restart, a typed money-object reward,
-mixed pickup/drop, PC receipt/relog and a real PC-overflow refund. Final journey
-qualification is still open while its remaining expected-response assertions
-are verified. No production operation or Emp-specific quest validation is claimed.
+The focused transfer regression executes production debit, put/drop publication,
+recipient credit, refund and currency transaction functions under ASan/UBSan.
+External world placement, allocation, feedback and writer services are controlled
+boundaries. It covers four repeated payments for PC/NPC/no-PID senders, mixed
+drop-all with value above INT_MAX, PC/NPC recipients, self-give, staff credit
+and refusal without a staff refund, missing/invalid recipients, exact refunds
+for seven put/drop failure conditions, selected-denomination insufficiency,
+reserved-trade refusal, revision/dirty behavior and sender-first saves. Refund
+refusal is observed through the existing diagnostic path. The shared header
+holds the former currency test's world/persistence services; it is not a second
+currency implementation.
+
+The new gameplay journey runs real command parsing and the legacy quester
+handler on disposable mortal characters. On **both flat-file and MariaDB** it
+proves:
+
+- An authored 40-gold pile, bank deposit/withdraw, two puts that merge in a bag,
+  save/relog, and bulk pickup retain exactly 40 gold.
+- Four give-10-gold commands each complete a synthetic legacy quest, leaving
+  30, 20, 10 and 0 gold without exchange. Between the second and third payments,
+  a restart preserves 10 gold in the wallet and 10 gold in the bag. A fifth,
+  unaffordable payment does not complete the quest.
+- A second quest grants an authored 17-gold money object. Its bag/pickup route,
+  a mixed [3,12,17,0] pile and a gold drop/get retain their exact denominations.
+- A second PC receives 10 gold and retains it over relog. Filling that recipient's
+  gold count to INT_MAX makes a later give fail after the sender debit; the
+  sender retains exactly [3,12,24,0], with no success announcement or duplicate
+  credit. The restored balance is saved and survives the subsequent restart.
+- A closed bag refuses coin put without advancing the wallet revision. The mixed
+  coins then survive a bag-held restart, return to the wallet exactly once, and
+  a repeated empty-bag pickup cannot credit them again.
+
+The MariaDB wrapper reuses every command and assertion from the same journey;
+only the snapshot reader changes to actual SQL rows. Its database/schema are
+created in the existing disposable loopback container runner, bootstrapped and
+migrated there, and removed at exit. No checkout credentials or production state
+are used. Both journeys perform two real server restarts, not only a serializer
+round trip. Controlled native failures supply destination/allocation cases that
+cannot be reliably forced through ordinary gameplay.
+
+The flat-file journey is registered in the regression runner's serial resource
+group. The SQL wrapper is excluded from its no-argument discovery and registered
+in tests/run_db_tests.sh, which supplies its disposable database and server.
+This avoids introducing a test-all failure from a journey that requires SQL.
+
+Current master advanced during the work. Merge 1f8d15412 incorporates
+b352b650c3f05ea0c2e109eaa9abcc3040290952; production changes had no conflict.
+The shared plan conflict was resolved by retaining this #444 plan and preserving
+the incoming #437 document with SHA-256
+ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
+The tests and both builds below qualify the combined source.
+
+Completed checks:
+
+    python3 tests/async/test_take_coins.py
+    python3 tests/async/test_coin_transfers.py
+    python3 tests/async/test_currency_in_memory.py
+    python3 tests/async/test_currency_transaction_contract.py
+    python3 tests/async/test_coin_command_transaction_contract.py
+    python3 tests/async/test_money_carry_count.py
+    make -C src -j6
+    make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_issue444_flatfile"
+    python3 tests/async/test_coin_denomination_journey.py --server bin/server/dms_issue444_flatfile
+    python3 tests/async/test_flatfile_auction_coin_put_journey.py --server bin/server/dms_issue444_flatfile
+    python3 tests/async/test_area_coin_pickup.py --server bin/server/dms_issue444_flatfile
+    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_coin_denomination_journey.py --server bin/server/dms_new
+    ./scripts/format.sh --check
+    python3 tests/async/test_documentation_contract.py
+    git diff --check
+
+All passed: native pickup/transfer/currency tests under ASan/UBSan, all nine
+currency contracts, direct/bulk pickup count gates, both builds with warnings
+as errors, both coin journeys, auction-to-bag/reload regression, all three area
+coin pickup routes, formatting, all 14 documentation contracts and whitespace
+checks. Python syntax checks also passed.
+
+The ignored evidence is under bin/qualification/issue444/. Qualified binaries:
+
+- Flat-file SHA-256: a12b13d5880aff4c7b68f3bd6964599a23682327342b9bfddba9bbbeead2c95c.
+- MariaDB SHA-256: c575bc8932677b4e2bc6fc069398b018782e9b921b0c695b8765011cf534148a.
+
+The commit hook initially selected incompatible GCC 16 standard-library headers.
+It passed with Clang 18 explicitly selecting the installed GCC 13 headers via
+--extra-arg=--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13. Hooks remained
+enabled; no source suppressions or check bypasses were added.
+
+Final ablation retains the existing transaction/publication design, one guarded
+nonpersistent-wallet adapter, executable regressions, and one command sequence
+reused for both persistence backends. No new currency service, configuration,
+schema, production reward-policy change or recovery migration was introduced.
+The prior plans and unrelated worktrees were preserved.
+
+Emp's exact quest and live build remain unidentified. The shared defect and
+explicitly authored reward paths are qualified; that individual report is not
+claimed reproduced. No value-only reward was guessed or changed. Production
+deployment and live-world qualification are separate from this implementation.
+The PR references #444 without automatically closing that remaining report-level
+verification question.

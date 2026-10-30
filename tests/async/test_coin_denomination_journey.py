@@ -124,8 +124,10 @@ def quit_character(client):
     client.close()
 
 
-def run(binary):
-    report = {"binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "checks": []}
+def run(binary, environment=None):
+    backend = "mariadb" if environment else "flatfile"
+    report = {"backend": backend,
+              "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(), "checks": []}
     with tempfile.TemporaryDirectory(prefix="coin-denominations-", dir=ROOT / "bin/tests") as directory:
         root = Path(directory)
         runtime, state = root / "runtime", root / "state"
@@ -133,8 +135,9 @@ def run(binary):
         state.mkdir(mode=0o700)
         (state / "domains").mkdir(mode=0o700)
         configure(runtime)
-        subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
-        server = Server(binary, runtime, state, "coin-denominations")
+        if not environment:
+            subprocess.run([str(journey.INSPECTOR), str(state), "seed-combat"], check=True)
+        server = Server(binary, runtime, state, "coin-denominations", environment=environment)
         actor = target = None
         try:
             server.start()
@@ -250,7 +253,7 @@ def run(binary):
             server.stop()
     output = ROOT / "bin/qualification/issue444"
     output.mkdir(parents=True, exist_ok=True)
-    (output / "gameplay-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    (output / f"gameplay-{backend}.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2), flush=True)
 
 
