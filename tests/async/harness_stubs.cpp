@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "account/account.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -236,4 +237,14 @@ HARNESS_STUB artifact_guild_capture_status artifact_guild_state_prepare_delivery
 	P_char, int, int, const critical_operation_id &, critical_command *)
 {
 	return artifact_guild_capture_status::unavailable;
+}
+
+// Unrelated persistence fixtures do not hydrate account projection storage.
+HARNESS_STUB int sync_account_character_projection(P_char, int, int)
+{
+	return TRUE;
+}
+HARNESS_STUB bool save_account_character_departure(P_char)
+{
+	return true;
 }
