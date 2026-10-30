@@ -802,7 +802,7 @@ void NPCShipAI::check_for_jettison()
 /*
  * Whether the ship is in position to send a boarding party across: the target
  * slow enough to board, this ship down to boarding speed, and both occupying
- * the same map cell.
+ * the same map cell and altitude with matching flight states.
  */
 bool NPCShipAI::check_boarding_conditions()
 {
@@ -811,6 +811,8 @@ bool NPCShipAI::check_boarding_conditions()
 	if (ship->speed > BOARDING_SPEED)
 		return false;
 	if ((int)ship->x != t_x || (int)ship->y != t_y)
+		return false;
+	if (SHIP_FLYING(ship) != SHIP_FLYING(ship->target) || ship->z != ship->target->z)
 		return false;
 	return true;
 }
@@ -905,17 +907,17 @@ int add_crate(P_ship ship, int index, int type);
  * Deliberately not everything: a random 40-60% of what is taken is destroyed
  * in the transfer and another 40-60% is left behind, so a robbed captain
  * keeps something and the pirate is limited by its own remaining capacity.
- * At least one crate is taken from every occupied slot.
+ * At least one crate is taken from each occupied slot while capacity remains.
  */
 void NPCShipAI::steal_target_cargo()
 {
-	bool changed = false;
+	int total_stolen = 0, total_destroyed = 0;
 	int total_load = SHIP_CARGO_LOAD(ship->target);
 	if (!total_load)
 		return;
 
 	int available = SHIP_AVAIL_CARGO_SALVAGE(ship);
-	if (!available)
+	if (available <= 0)
 		return;
 
 	float lost = (float)number(40, 60) / 100.0;
@@ -929,7 +931,7 @@ void NPCShipAI::steal_target_cargo()
 		stolen_pt = 1.0 / coeff;
 	float lost_pt = stolen_pt * lost;
 
-	for (int i = 0; !divine_trade_runtime_busy(ship->target) && i < MAXSLOTS;
+	for (int i = 0; available > 0 && !divine_trade_runtime_busy(ship->target) && i < MAXSLOTS;
 	     i++) // TODO: not all maybe, not instantly etc
 	{
 		if (ship->target->slot[i].type == SLOT_CARGO ||
@@ -938,27 +940,44 @@ void NPCShipAI::steal_target_cargo()
 			int stolen_crates = ship->target->slot[i].val0 * stolen_pt;
 			if (stolen_crates == 0)
 				stolen_crates = 1;
+			stolen_crates = MIN(stolen_crates, available);
 
 			int lost_crates = ship->target->slot[i].val0 * lost_pt;
 
-			if (!divine_trade_runtime_loss(ship->target, i,
-						       stolen_crates + lost_crates))
+			// Keep additions reversible until the victim's loss is accepted.
+			ShipSlot slots_before[MAXSLOTS];
+			memcpy(slots_before, ship->slot, sizeof(slots_before));
+			int transferred = 0;
+			for (; transferred < stolen_crates; transferred++)
+				if (!add_crate(ship, ship->target->slot[i].index,
+					       ship->target->slot[i].type == SLOT_CARGO ? 1 : 2))
+					break;
+			if (!transferred)
 				continue;
-			changed = true;
-			for (int j = 0; j < stolen_crates; j++)
-				add_crate(ship, ship->target->slot[i].index,
-					  ship->target->slot[i].type == SLOT_CARGO ? 1 : 2);
 
-			ship->target->slot[i].val0 -= (stolen_crates + lost_crates);
+			if (!divine_trade_runtime_loss(ship->target, i, transferred + lost_crates))
+			{
+				memcpy(ship->slot, slots_before, sizeof(slots_before));
+				continue;
+			}
+			available -= transferred;
+			total_stolen += transferred;
+			total_destroyed += lost_crates;
+
+			ship->target->slot[i].val0 -= (transferred + lost_crates);
 			if (ship->target->slot[i].val0 <= 0)
 				ship->target->slot[i].clear();
 		}
 	}
 	update_ship_status(ship);
-	if (changed)
+	if (total_stolen)
 	{
 		update_ship_status(ship->target);
 		queue_ship_save(ship->target, "NPC cargo theft");
+		act_to_all_in_ship_f(
+			ship->target,
+			"&+YThe pirates steal %d crate%s and destroy %d during the raid!&N\r\n",
+			total_stolen, total_stolen == 1 ? "" : "s", total_destroyed);
 	}
 }
 
