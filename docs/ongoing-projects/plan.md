@@ -1,15 +1,15 @@
 # Issue #419: dispose of NORENT keys at intentional rent
 
-Status: **implementation planned; baseline capture defect independently reproduced**.
+Status: **implemented; local qualification complete; original live-instance attribution unavailable**.
 Updated 2026-10-30.
 Issue: [Duris #419](https://github.com/LuminariMUD/Duris/issues/419).
 Branch: [branch/issue-419-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-419-plan).
 Source baseline: `master` at `b23ea8c65a467d17683ccd5de91f66b362209d06`.
 Worktree: `/home/aiwithapex/projects/duris-worktrees/issue-419-plan`.
 
-This delivery is the plan and its validation. Implementation, deployment and the
-reported live item's diagnosis are future work. The previous #428 plan and its
-qualification history are preserved byte-for-byte in
+The implementation and measured qualification results are recorded below.
+Production deployment and attribution to the reporter's specific item are not
+claimed. The previous #428 plan and its qualification history are preserved byte-for-byte in
 [plan-issue-428.md](plan-issue-428.md).
 
 ## Outcome
@@ -190,8 +190,10 @@ capture and repository boundaries.
 Keep ownership, payload and revision changes within the single transaction on
 all error paths. Keep tombstones through restart so ordinary boot reaping and
 an older save cannot make the same UID claimable again. The runtime cache is
-not the durable authority: verify terminal cleanup/relogin replaces or forgets
-the old domain, rather than mutating live objects from the writer thread.
+not the durable authority. Verify that terminal extraction removes the live key
+and subsequent loads use durable custody; do not mutate live objects from the
+writer thread. The completed inspection below explains why clearing the entire
+runtime ownership domain is unnecessary.
 
 ### 4. Prove the command and persistence journeys
 
@@ -362,3 +364,147 @@ coverage need repair. This is an estimate, not a commitment; it excludes
 external review, deployment and waiting for reporter/live-instance access.
 Once that evidence is available, read-only attribution should take about
 30-60 minutes, but cannot be promised without the UID or reporter context.
+
+## Implementation and qualification, 2026-10-30
+
+Implementation commit:
+[41adafc3e5f9cea34c7c5861726d4cc42091a996](https://github.com/LuminariMUD/Duris/commit/41adafc3e5f9cea34c7c5861726d4cc42091a996).
+
+The player RENT_INN capture includes fresh and active NORENT keys for
+transactional disposal. Skipped ancestors are walked within the existing
+budgets/cycle checks to collect only key candidates. Their ordinary contents
+remain omitted. Capture never extracts or changes the live objects.
+
+Both repositories use the existing claim loops to write destroyed custody under
+destruction:0:0, detach each key from its former parent, and use the existing
+graph filter to omit it from the saved player items. Fresh UIDs get tombstones;
+already destroyed candidates remain unchanged. Ownership revisions and the
+existing SQL audit / flat-file claim log record actual changes. Intentional
+retirement does not produce duplicate-item warnings. SQL payload replacement
+and custody commit together; flat-file catalog and player images share the
+existing authority transaction.
+
+The general durable-NORENT safeguard remains for non-keys. The rule is enabled
+only for the incoming main player item component with RENT_INN; status-only
+and pet-only updates cannot infer disposal from a stored intent. Quit and the
+trusted camp shortcut already share that intent. No migration, snapshot-schema
+change, separate disposal payload, writer job, setting, area edit or production
+terminal-caller change was needed.
+
+### Evidence and simplifications
+
+The new capture and first flat-file rent assertions failed before the production
+repair. The expanded capture/codec suite passes **56 cases**: seven intents,
+fresh/active ownership, and carried/held/nested/omitted-ancestor placement.
+Additional executable controls cover cycles, depth and object limits, invalid
+UIDs, unchanged generic list capture, an unflagged key and an active NORENT
+non-key. Failure leaves the output snapshot unmodified.
+
+Each backend's repository suite passes all six ownership/placement cases,
+container/sibling and unflagged-key controls, a stale foreign recorded owner,
+identical rent replay, pre-rent snapshot replay, missing-UID rejection,
+non-rent intents and partial status/pet updates. SQL failure injected at the
+payload deletion boundary rolls back custody, audit and inventory together.
+Flat-file faults before journal commit, after journal publication and after
+the first image prove unchanged prior state or recovery of the complete
+retired-key/player-image pair. The worker test proves that replacing a queued
+checkpoint retains RENT_INN and the key payload together.
+
+The new socket journey reuses existing full-world runtime, account, backend and
+build helpers. It loads actual prototype 40401 and rents at Golden Hall inn
+40454, using a synthetic staff PC for object setup. Inn processing and player
+save/load are the real routes; staff level affects population bookkeeping,
+not key disposal. All **12 cases** (six per backend) pass real rent, durable
+state inspection and reconnect. A subsequent complete restart confirms every
+retired UID stays absent. Backpack 48 and nested sibling 15 retain their exact
+UIDs and parent placement throughout.
+
+Owned-fixture setup was simplified from offline snapshot seeding: temporarily
+clear NORENT on the isolated newly loaded key, save and rent, reconnect through
+the real loader, then restore the original flag. A subsequent ordinary save
+retains that flagged key, proving active runtime custody was hydrated. The
+fresh fixture's ordinary save omits its key while live inventory still contains
+it. The temporary flag change is fixture setup only.
+
+Both full-world backends also pass active-key checkpoint, SIGKILL/relogin and
+actual SIGUSR1 copyover controls. Fresh NORENT keys remain omitted by
+checkpoint/crash/copyover, matching the baseline capture result and source:
+copyover's separate world-object graph includes floor/NPC roots, not PC
+inventory. This repair preserves that existing limitation.
+
+Runtime-cache cleanup was ablated after source inspection. Ordinary hydration
+updates incoming entries without clearing every historical UID. Disposal does
+not require a global clear: terminal extraction removes the live object,
+retired payloads are absent, loaders check durable custody, and the existing
+destroyed-state rule prevents stale saves from reclaiming the UID. Same-process
+reconnect and process-restart journeys prove those boundaries. No speculative
+cache-reset hook was added.
+
+Two existing harness linkage gaps blocked required checks: the save-pipeline
+fixture needed a memory-free stub for its extracted toggle command, and the
+no-player copyover fixture needed fail-if-called launch-gate stubs. Those
+focused test repairs are included; neither changes game behavior. The
+copyover fixture exercises real world-object/ownership save/exec/recover under
+ASan/UBSan. PC key recovery is proven separately by the socket journey.
+
+### Completed verification
+
+All commands below passed. Builds use the development warnings-as-errors
+profile. Logs and runtime reports are ignored under
+`bin/qualification/issue419/`.
+
+```sh
+make -C src -j6
+make -C src PERSISTENCE_BACKEND=flatfile SERVER_BIN_DIR=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile DMS_BINARY=/home/aiwithapex/projects/duris-worktrees/issue-419-plan/bin/qualification/issue419/flatfile/dms_new -j6
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_save_claim.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_player_save_worker.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_authority_transaction.py
+python3 tests/async/test_terminal_save_safety.py
+python3 tests/async/test_terminal_extract_item_retention.py
+python3 tests/async/test_copyover_custody.py
+python3 tests/async/test_player_load_items.py
+python3 tests/async/test_norent_key_rent_journey.py --backend flatfile --server bin/qualification/issue419/flatfile/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_norent_key_rent_journey.py --backend mariadb --server bin/server/dms_new
+./scripts/format.sh --check
+python3 tests/async/test_documentation_contract.py
+git diff --check
+./scripts/tidy.sh
+CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy ./scripts/tidy.sh --staged
+```
+
+Changed Python files passed syntax checks; all 14 documentation tests passed.
+The load-items regression includes retained-source hydration controls.
+MariaDB was rebuilt after final header edits. The initial direct-Git commit
+selected system Clang 18, which could not parse the installed GCC 16 library
+headers. Selecting the installed LLVM 22.1.8 used by the passing worktree check
+resolved this. The staged check and commit hook both passed, without bypass.
+
+The socket reports `flatfile.json` and `mariadb.json` each contain
+`passed: true`, six exact retired UIDs and the three recovery outcomes.
+Socket-qualified binary SHA-256 values:
+
+- Flat-file: `98dd08f58454cbca955ef5f0595f4888cf6a8850fbf88f7912e7be9a1ab09cca`.
+- MariaDB: `a26136659dd1490a1c5ab44a96d9caaed72b119ead76ebd7066f3bad9eb0733b`.
+
+Subsequent edits before the implementation commit were documentation, header
+comments, test assertions/diagnostics and formatting. No server behavior
+changed after these socket qualifications. No production state changed,
+and no deployment or CI result is claimed.
+
+### Original-instance attribution
+
+The refreshed issue still contains no reporter character, actual UID or event
+time and has no comments supplying them. The local report file is empty;
+targeted report-history searches did not identify the incident. The owning
+checkout is configured local, so its revision is not evidence of the reported
+server. The user has no additional identifying information.
+
+The original instance's flags, custody history and running revision therefore
+cannot be established from available evidence. This remains an explicit
+limitation; the synthetic reproduction does not prove the exact report.
+The branch and PR refer to #419 without automatically closing it. The code
+repair, qualification, documentation and PR are deliverable; historical
+live attribution is recorded as unavailable.
