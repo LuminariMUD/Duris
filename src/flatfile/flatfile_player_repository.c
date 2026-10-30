@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "flatfile/flatfile_player_repository.h"
+#include "core/files.h"
 
 #include "economy/collector_eligibility.h"
 #include "economy/divine_trade_repository.h"
@@ -1010,8 +1011,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		{
 			if (snapshot.components &
 			    (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
-				claims.push_back(
-					{ player_owner, &materialized.items, {}, new_player });
+				claims.push_back({ player_owner,
+						   &materialized.items,
+						   {},
+						   new_player,
+						   snapshot.save_intent == RENT_INN });
 			if (snapshot.components & PLAYER_COMPONENT_PETS)
 				for (const player_pet_snapshot &pet : materialized.pets)
 					claims.push_back(

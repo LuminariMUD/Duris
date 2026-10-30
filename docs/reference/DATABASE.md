@@ -367,6 +367,25 @@ stays, and a row `auction_item_custody`, `artifact_domain_state` or a child row 
 references is kept for the foreign keys
 ([PLAYER_SAVE_PIPELINE.md](../persistence/PLAYER_SAVE_PIPELINE.md)).
 
+An intentional player `RENT_INN` save disposes of materialized `ITEM_KEY` objects
+with `ITEM_NORENT`, including previously owned keys and keys inside containers.
+Capture carries their UIDs to the writer without changing live objects. The claim
+transaction records destroyed custody under `destruction:0:0`, detaches each key's
+root/parent identity and omits it from the player payload. Fresh UIDs get the same
+tombstone. MariaDB commits this with the inventory replacement; flatfile-primary
+commits the catalog and player images in one authority transaction. The ownership
+audit records the change to destruction; repeating the rent save changes neither
+the tombstone nor its audit. A stale snapshot cannot claim a destroyed UID again.
+
+This exception uses the actual type and flag, not a particular key prototype.
+Other durable NORENT items keep the existing preservation safeguard. Ordinary
+checkpoints, crash/copyover, camp, link-dead departure and other owner domains do
+not acquire this disposal rule. Existing fresh-NORENT-key omission on player
+crash checkpoints remains unchanged; active keys are retained. Explicit quit and
+the trusted camp shortcut already submit `RENT_INN` and share its key lifetime.
+Protected unmaterialized item components remain opaque. Queue/terminal-save
+failure reporting and nonblocking logout behavior are unchanged.
+
 `item_ownership_ledger` keeps the transfers that still commit as critical commands
 (creation grants, operator repair and destruction, auctions and the collector). A claim
 writes no ledger row, so the ledger does not explain `item_revision` and nothing reconciles

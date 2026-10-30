@@ -28,11 +28,14 @@
  *   - a row naming anyone else: take it, and write an item_owner_audit row;
  *   - a destroyed row: leave the item and its contents out of the save and report
  *     it in outcome->dupes.
+ * With rent_keys, retire the main player's NORENT keys instead of claiming them.
+ * A fresh UID gets a tombstone; an existing tombstone is left unchanged. These
+ * intentional disposals use the ownership audit, not the duplicate-item log.
  * Returns 0, or the MySQL error code of the statement that failed.
  */
 unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			 const std::vector<player_item_snapshot> &items,
-			 item_claim_outcome *outcome);
+			 item_claim_outcome *outcome, bool rent_keys = false);
 
 // Make item_current_owner name `holder` for one item a transfer takes from memory:
 // a missing row is inserted, another owner's row is taken with an item_owner_audit

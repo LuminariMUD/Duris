@@ -9,6 +9,19 @@ Duris has two deliberately separate histories:
   the baseline. Every post-baseline step receives one ordered ID, apply file,
   verifier, compatibility label, and exact SHA-256 hashes.
 
+## Online bartender recovery (0055)
+
+`run --online-world-quest` accepts only the sealed 56-step manifest ending in
+`0055_world_quest_recovery`, with the first 55 steps already applied. It retains
+production target confirmation, allow-list, fresh backup, advisory lock, sealed
+checksums, ordered history and success-last verification. The October 30 live
+review found MariaDB 11.8.6 and InnoDB/Dynamic `player_data`, with both new columns
+absent. Existing writers name columns; the default-zero tail fields preserve
+legacy behavior. The exact sealed ALTER statements execute as ALTER ONLINE TABLE
+with INSTANT-only DDL and one-second metadata/row-lock waits. Unsupported DDL or
+lock timeout leaves services running. Coordinate schema-aware backups across DDL
+and verify the new runtime contract before installation.
+
 ## Honest baseline adoption
 
 `0054_full_group_combat_results` (sequence 55) widens

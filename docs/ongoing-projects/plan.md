@@ -402,3 +402,18 @@ reset modes and the six real timer cases. Its flat-file binary SHA-256 is
 The only merge conflict was the shared plan path; the other project's record
 was preserved unchanged in `plan-issue-437.md`. No castle implementation change
 was needed for integration.
+
+
+## Sequential PR integration, 2026-10-30
+
+Integrated master `daac1146de750de0dc71d277d2f4103c1fd56da7` after PRs
+#432 and #475. Production code merged without conflicts. The shared-plan
+conflict preserves this castle record at `plan.md` and the completed rent-key
+record byte-for-byte at [plan-issue-419.md](plan-issue-419.md).
+
+The MariaDB server build, seven castle key sequences and reset/occupancy/boundary
+controls under ASan/UBSan, key-break custody, reset timing, no-reset-zone key,
+all five shopkeeper population cases, formatting, whitespace and all 14
+documentation checks pass on the combined source. This merge pass retains the
+previous complete disposable-server gameplay qualification; it does not claim a
+new production operation or a full hosted CI run.

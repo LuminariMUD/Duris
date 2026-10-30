@@ -296,6 +296,96 @@ int main()
     assert(ordinary.duration == 2640);
     ch.nevents = nullptr;
     ch.affected = nullptr;
+    // Rent must carry every temporary key to the writer for atomic disposal,
+    // including a key hidden inside a container the ordinary filter omits.
+    for (int intent : {RENT_INN, RENT_CRASH, RENT_CRASH2, RENT_QUIT, RENT_LINKDEAD, RENT_CAMPED, RENT_DEATH}) {
+        for (bool owned : {false, true}) {
+            for (int place = 0; place < 4; ++place) {
+                item_ownership_runtime_reset();
+                obj_data key{}, bag{}, sibling{};
+                indexes[1].virtual_number = 40401;
+                indexes[2].virtual_number = 100;
+                key.R_num = 1; key.obj_uid = 4040101; key.type = ITEM_KEY;
+                key.extra_flags = ITEM_NORENT;
+                bag.R_num = sibling.R_num = 2;
+                bag.obj_uid = 4040102; bag.type = ITEM_CONTAINER;
+                sibling.obj_uid = 4040103; sibling.type = ITEM_FOOD;
+                if (place == 3) bag.extra_flags = ITEM_NORENT;
+                if (owned) {
+                    item_ownership_runtime_entry entry{};
+                    entry.item_uid = key.obj_uid;
+                    entry.root_item_uid = place >= 2 ? bag.obj_uid : key.obj_uid;
+                    entry.parent_item_uid = place >= 2 ? bag.obj_uid : 0;
+                    entry.owner = {item_owner_type::player, 42, 0};
+                    entry.item_revision = entry.owner_revision = 1;
+                    entry.vnum = 40401; entry.state = item_custody_state::active;
+                    assert(item_ownership_runtime_hydrate(entry));
+                }
+                ch.carrying = nullptr; ch.equipment[HOLD] = nullptr;
+                if (place == 0) ch.carrying = &key;
+                if (place == 1) ch.equipment[HOLD] = &key;
+                if (place >= 2) { ch.carrying = &bag; bag.contains = &key; key.next_content = &sibling; }
+                player_snapshot saved, decoded;
+                assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_INVENTORY | PLAYER_COMPONENT_EQUIPMENT,
+                                               intent, 22800, &saved) == player_snapshot_capture_result::ok);
+                std::vector<uint8_t> bytes;
+                assert(player_snapshot_encode(saved, &bytes) == player_snapshot_codec_result::ok);
+                assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) == player_snapshot_codec_result::ok);
+                const bool include = intent == RENT_INN || (owned && place != 3);
+                assert(decoded.items.size() == (include ? 1u : 0u) + (place == 2 ? 2u : 0u));
+                for (const auto &row : decoded.items) if (row.object_uid == key.obj_uid) {
+                    assert(include && row.type == ITEM_KEY && row.extra_flags == ITEM_NORENT);
+                    assert(row.parent_index == (place == 2 ? 0 : PLAYER_SNAPSHOT_NO_PARENT));
+                    assert(row.equipment_slot == (place == 1 ? HOLD + 1 : 0));
+                }
+                assert(key.extra_flags == ITEM_NORENT && key.obj_uid == 4040101);
+                if (place >= 2) assert(bag.contains == &key && key.next_content == &sibling);
+            }
+        }
+    }
+    item_ownership_runtime_reset(); ch.carrying = nullptr; ch.equipment[HOLD] = nullptr;
+    std::cout << "[PASS] 56 rent/recovery capture and codec cases retain disposal identity without mutating live items\n";
+    {
+        obj_data bag{}, key{};
+        bag.R_num = 2; bag.type = ITEM_CONTAINER; bag.extra_flags = ITEM_NORENT;
+        key.R_num = 1; key.type = ITEM_KEY; key.extra_flags = ITEM_NORENT; key.obj_uid = 4040101;
+        ch.carrying = &bag; bag.contains = &key;
+        player_snapshot result; result.pid = 123;
+        const auto capture = [&] { return player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_INVENTORY,
+                                                                  RENT_INN, 22800, &result); };
+        key.next_content = &key;
+        assert(capture() == player_snapshot_capture_result::object_cycle && result.pid == 123);
+        key.next_content = nullptr; key.obj_uid = 0;
+        assert(capture() == player_snapshot_capture_result::malformed_source && result.pid == 123);
+        std::vector<obj_data> deep(PLAYER_SNAPSHOT_MAX_DEPTH + 1);
+        for (size_t i = 0; i < deep.size(); ++i) {
+            deep[i].R_num = 2; deep[i].type = ITEM_CONTAINER; deep[i].extra_flags = ITEM_NORENT;
+            deep[i].contains = i + 1 < deep.size() ? &deep[i + 1] : nullptr;
+        }
+        ch.carrying = deep.data();
+        assert(capture() == player_snapshot_capture_result::limit_exceeded && result.pid == 123);
+        std::vector<obj_data> wide(PLAYER_SNAPSHOT_MAX_OBJECTS);
+        for (size_t i = 0; i < wide.size(); ++i) {
+            wide[i].R_num = 2; wide[i].type = ITEM_FOOD;
+            wide[i].next_content = i + 1 < wide.size() ? &wide[i + 1] : nullptr;
+        }
+        ch.carrying = &bag; bag.contains = wide.data();
+        assert(capture() == player_snapshot_capture_result::limit_exceeded && result.pid == 123);
+        ch.carrying = &key; key.obj_uid = 4040101;
+        std::vector<player_item_snapshot> generic;
+        size_t generic_bytes = 0;
+        assert(player_item_snapshot_list_capture(&ch, true, true, true, &generic, &generic_bytes) == player_snapshot_capture_result::ok);
+        assert(generic.empty()); // Shared non-player capture keeps its old filtering.
+        key.extra_flags = 0;
+        assert(capture() == player_snapshot_capture_result::ok && result.items.size() == 1);
+        key.type = ITEM_FOOD; key.extra_flags = ITEM_NORENT;
+        item_ownership_runtime_entry entry{key.obj_uid, key.obj_uid, 0,
+            {item_owner_type::player, 42, 0}, 1, 1, 40401, item_custody_state::active};
+        assert(item_ownership_runtime_hydrate(entry));
+        assert(capture() == player_snapshot_capture_result::ok && result.items.size() == 1);
+        item_ownership_runtime_reset(); ch.carrying = nullptr;
+    }
+    std::cout << "[PASS] omitted-subtree bounds/cycles, UID validation, shared capture and unrelated NORENT controls\n";
     player_held_pet_state held;
     player_pet_snapshot retained = {};
     retained.mob_vnum = 1201; retained.hit = retained.max_hit = 10;

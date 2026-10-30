@@ -5,10 +5,57 @@
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
       The slate is clean. The grudges survived. Make your mark.
 &+W======================================================================&n
-&+WUpdated: October 29, 2026&n
+&+WUpdated: October 30, 2026&n
 
-Welcome back! Quivers are stocked, mana flows in battle and the library grew.
+Welcome back! Tavern tasks have clearer paths, and your library grew.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/30/26&n &+L-&n &+YTavern tasks worth the journey&n
+&+W----------------------------------------------------------------------&n
+
+&+CBartenders mind the road ahead&n
+&+Y-&n From levels &+Y11-29&n, new bartender tasks stay in your local region
+  with an ordinary way there and back, without keys, fares or special
+  travel gear. From &+Y30&n, tasks may use your current travel abilities.
+  Targets must be usable when assigned; a suitable road can still be
+  dangerous. If no suitable task is available, your fee is returned.
+&+Y-&n A task made impossible by world changes earns a &+Gfree replacement&n:
+  &+C'ask bartender quest'&n. Earned kills, the original quota, accepted
+  level, remaining shares and a purchased map carry over. If no new
+  target is available, that entitlement survives logout and restart.
+  Temporary conditions or removing your own travel gear do not earn a
+  reroll; an inconclusive check keeps your accepted task.
+&+Y-&n &+C'quest'&n explains blocked or unavailable work and shows only verified
+  directions. Older tasks may need a bartender to check their origin.
+  Checking a task or reading its map no longer moves your character or
+  creates temporary creatures. Client quest maps clear stale directions.
+&+Y-&n Ask and kill credit now require the accepted task type and target
+  area. When sharing is enabled, recipients must be able to use the
+  route and target. Kill rewards still arrive on the final kill.
+  Read &+C'help quest'&n for costs, maps, replacement and abandonment.
+
+&+CFewer loose ends in battle, storage and at sea&n
+&+Y-&n Pets in either combatant's group no longer prevent a qualifying PvP
+  kill from awarding player frags and rewards.
+&+Y-&n Locker contents stay protected while their owner idles out or loses
+  the connection, including while the final locker save is finishing.
+&+Y-&n Ships release targets that leave contact range, dock or sink.
+  Player ships also release stale locks after combat inactivity,
+  letting crews stand down so a stranded captain can summon the ship.
+&+Y-&n Commands targeting a numbered NPC handle multiword creature names
+  correctly, without treating the rest of the name as extra arguments.
+&+Y-&n &+C'toggle who'&n is available from level &+Y2&n. Death experience loss
+  calculations now keep the intended precision at large XP values.
+
+&+CMore answers on the shelf&n
+&+Y-&n New guides: &+C'help herbs'&n, &+C'help smoking'&n, &+C'help gootwiet'&n,
+  &+C'help combo'&n, &+C'help drain life'&n and &+C'help magic vulnerability'&n.
+&+Y-&n Find your way with &+C'help heading'&n, &+C'help ship basics'&n,
+  &+C'help ship-commands'&n and &+C'help woodseer'&n. &+C'help money'&n and
+  &+C'help lvl cap'&n now reach the currency and level-cap guides.
+&+Y-&n Also try &+C'help racewar chat'&n, &+C'help gmcp'&n, &+C'help autoloot'&n,
+  &+C'help chest'&n, &+C'help belt'&n, &+C'help pierce'&n and
+  &+C'help who visibility'&n.
 
 &+R10/29/26&n &+L-&n &+YStarter bows, combat mana and fuller help&n
 &+W----------------------------------------------------------------------&n
