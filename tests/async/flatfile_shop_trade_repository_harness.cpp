@@ -6,6 +6,7 @@
 #include "player/player_snapshot_codec.h"
 
 #include <cerrno>
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <openssl/sha.h>
 
 namespace fs = std::filesystem;
 
@@ -117,6 +119,32 @@ static shop_trade_result result_of(const critical_apply_result &applied)
 	return result;
 }
 
+// Build the actual historical v1 layout: one fixed 304-byte result, no
+// per-record length. The command ID/digest and all result fields are retained.
+static void historical_catalog(const fs::path &path)
+{
+	std::ifstream input(path, std::ios::binary);
+	std::vector<uint8_t> current((std::istreambuf_iterator<char>(input)), {});
+	require(current.size() == 116 + SHOP_TRADE_RESULT_BYTES,
+		"expected one current operation record");
+	std::vector<uint8_t> legacy(current.begin(), current.begin() + 112);
+	legacy.insert(legacy.end(), current.begin() + 116,
+		      current.begin() + 116 + SHOP_TRADE_LEGACY_RESULT_BYTES);
+	auto number = [&](size_t offset, uint32_t value)
+	{
+		for (size_t index = 0; index < 4; ++index)
+			legacy[offset + index] = static_cast<uint8_t>(value >> (index * 8));
+	};
+	number(8, 1);
+	number(12, static_cast<uint32_t>(legacy.size() - 56));
+	legacy[113] = 1;
+	SHA256(legacy.data() + 56, legacy.size() - 56, legacy.data() + 24);
+	std::ofstream output(path, std::ios::binary | std::ios::trunc);
+	output.write(reinterpret_cast<const char *>(legacy.data()),
+		     static_cast<std::streamsize>(legacy.size()));
+	require(output.good(), "could not write historical operation fixture");
+}
+
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
@@ -212,6 +240,13 @@ int main(int argc, char **argv)
 			purchased.item_uids[0] == 200 && purchased.item_revisions[0] == 2 &&
 			purchased.item_uids[1] == 201 && purchased.item_revisions[1] == 2,
 		"recovered purchase did not replay its exact result");
+	historical_catalog(domains / "shop_trade_operations");
+	const auto historical_result =
+		flatfile_shop_trade_repository_apply(root.string(), purchase_command);
+	require(historical_result.outcome == critical_apply_outcome::already_applied &&
+			historical_result.result_size == SHOP_TRADE_LEGACY_RESULT_BYTES &&
+			result_of(historical_result).item_uids[1] == 201,
+		"version-1 operation catalog could not replay its original result");
 
 	std::vector<flatfile_shopkeeper_record> shops;
 	require(flatfile_shopkeeper_list(root.string(), &shops, &error) ==
@@ -529,6 +564,130 @@ int main(int argc, char **argv)
 				flatfile_item_repository_result::ok &&
 			player_items.size() == 2 && remaining_shop_items.empty(),
 		"complimentary purchase did not transfer durable item custody");
+	// A new batch must recover all fifty sibling roots and its bag topology in
+	// the same authority transaction, then replay without a second grant.
+	const fs::path batch_root = root.parent_path() / "batch";
+	fs::create_directories(batch_root / "domains");
+	fs::permissions(batch_root, fs::perms::owner_all, fs::perm_options::replace);
+	fs::permissions(batch_root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	require(flatfile_shopkeeper_establish(batch_root.string(), { shop }, &error) ==
+			flatfile_shopkeeper_result::ok,
+		"could not establish batch shop");
+	require(flatfile_item_repository_establish_owner(
+			batch_root.string(), player_owner,
+			{ { 700, 700, 0, player_owner, 1, 1700, item_custody_state::active } },
+			&error) == flatfile_item_baseline_result::applied,
+		"could not establish batch bag");
+	require(flatfile_item_repository_establish_owner(batch_root.string(), shop_owner,
+							 shop_items, &error) ==
+			flatfile_item_baseline_result::applied,
+		"could not establish batch exemplar");
+	std::vector<player_item_snapshot> forest;
+	for (uint64_t index = 0; index < 50; ++index)
+	{
+		auto created = item;
+		created.object_uid = 400 + index;
+		forest.push_back(created);
+	}
+	auto batch = purchase(forest);
+	batch.multi_root = true;
+	batch.action = shop_trade_action::buy_produced;
+	batch.stock_item_uid = 200;
+	batch.target_root_item_uid = 700;
+	batch.target_parent_item_uid = 700;
+	batch.expected_target_parent_revision = 1;
+	for (auto &entry : batch.items)
+	{
+		entry.root_item_uid = entry.item_uid;
+		entry.expected_item_revision = ITEM_TRANSFER_ABSENT_REVISION;
+		entry.expected_state = item_custody_state::absent;
+	}
+	// A target absent from custody has no VNUM in the trade payload. Creating
+	// it with VNUM zero would make the entire ownership catalog unreadable.
+	auto unknown_parent = batch;
+	unknown_parent.target_root_item_uid = unknown_parent.target_parent_item_uid = 999999;
+	const auto refused_parent = flatfile_shop_trade_repository_apply(
+		batch_root.string(), command(unknown_parent, 29));
+	require(refused_parent.outcome == critical_apply_outcome::terminal_failure &&
+			refused_parent.error_code == ESTALE,
+		"unknown target metadata was committed");
+	require(flatfile_item_repository_load_owner(batch_root.string(), player_owner,
+						    &player_revision, &player_items, &error) ==
+				flatfile_item_repository_result::ok &&
+			player_items.size() == 1,
+		"refused unknown target corrupted existing ownership");
+	const auto batch_command = command(batch, 30);
+	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE", "1", 1);
+	applied = flatfile_shop_trade_repository_apply(batch_root.string(), batch_command);
+	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE");
+	require(applied.outcome == critical_apply_outcome::retryable_failure,
+		"batch interruption did not preserve its intent");
+	applied = flatfile_shop_trade_repository_apply(batch_root.string(), batch_command);
+	require(applied.outcome == critical_apply_outcome::already_applied &&
+			result_of(applied).item_count == 50 &&
+			result_of(applied).shop_revision == 2,
+		"fifty-root batch did not recover with one shop revision");
+	const auto replayed_batch =
+		flatfile_shop_trade_repository_apply(batch_root.string(), batch_command);
+	require(replayed_batch.result_size == applied.result_size &&
+			std::equal(applied.result_payload.begin(),
+				   applied.result_payload.begin() + applied.result_size,
+				   replayed_batch.result_payload.begin()),
+		"batch replay changed its result");
+	std::vector<flatfile_shopkeeper_record> batch_shops;
+	require(flatfile_shopkeeper_list(batch_root.string(), &batch_shops, &error) ==
+				flatfile_shopkeeper_result::ok &&
+			batch_shops.size() == 1 && batch_shops[0].revision == 2,
+		"batch did not advance its shop exactly once");
+	std::vector<uint8_t> original_stock, retained_stock;
+	require(player_item_snapshot_list_encode(trade_items, &original_stock) ==
+				player_snapshot_codec_result::ok &&
+			player_item_snapshot_list_encode(batch_shops[0].items, &retained_stock) ==
+				player_snapshot_codec_result::ok &&
+			original_stock == retained_stock,
+		"batch modified its produced stock exemplar");
+	require(flatfile_item_repository_load_owner(batch_root.string(), shop_owner, &shop_revision,
+						    &remaining_shop_items, &error) ==
+				flatfile_item_repository_result::ok &&
+			shop_revision == 1 && remaining_shop_items.size() == 2 &&
+			remaining_shop_items[0].item_uid == 200 &&
+			remaining_shop_items[0].item_revision == 1 &&
+			remaining_shop_items[1].item_uid == 201 &&
+			remaining_shop_items[1].parent_item_uid == 200,
+		"batch changed produced exemplar custody or child topology");
+	require(flatfile_item_repository_load_owner(batch_root.string(), player_owner,
+						    &player_revision, &player_items, &error) ==
+				flatfile_item_repository_result::ok &&
+			player_items.size() == 51,
+		"batch did not persist every root and the destination");
+	for (const auto &entry : player_items)
+		if (entry.item_uid != 700)
+			require(entry.parent_item_uid == 700 && entry.root_item_uid == 700,
+				"batch custody lost bag parentage");
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(batch_root.string(), &error),
+			"could not lock recovered batch");
+		player_snapshot restored = {};
+		restored.pid = 42;
+		restored.items = { container };
+		require(flatfile_shop_trade_materialization_reconcile(
+				batch_root.string(), lock, 42, player_items, &restored, &error) ==
+					flatfile_shop_trade_materialization_result::ok &&
+				restored.items.size() == 51,
+			"restart did not restore every purchased root: " + error);
+		for (size_t index = 1; index < restored.items.size(); ++index)
+			require(restored.items[index].parent_index == 0,
+				"restored root escaped its bag");
+	}
+	const auto old_replay =
+		flatfile_shop_trade_repository_apply(root.string(), purchase_command);
+	require(old_replay.result_size == historical_result.result_size &&
+			std::equal(historical_result.result_payload.begin(),
+				   historical_result.result_payload.begin() +
+					   historical_result.result_size,
+				   old_replay.result_payload.begin()),
+		"new catalog writes changed a historical result");
 	{
 		std::fstream catalog(domains / "shop_trade_materializations",
 				     std::ios::binary | std::ios::in | std::ios::out);

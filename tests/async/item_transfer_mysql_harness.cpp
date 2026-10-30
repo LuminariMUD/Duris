@@ -565,11 +565,95 @@ int main()
 		       " AND parent.obj_uid=" + std::to_string(container_uid))
 			      .c_str()) == 1);
 
+	// One ordinary creation command persists all fifty produced roots directly
+	// under the same existing bag, including physical player_items parentage.
+	item_transfer_payload container_batch = {};
+	container_batch.from_owner = system;
+	container_batch.to_owner = player_one;
+	container_batch.reason = item_transfer_reason::creation;
+	container_batch.expected_from_revision = owner_revision(connection, system);
+	container_batch.expected_to_revision = owner_revision(connection, player_one);
+	container_batch.multi_root = true;
+	container_batch.target_root_item_uid = container_uid;
+	container_batch.target_parent_item_uid = container_uid;
+	container_batch.expected_target_parent_revision = 1;
+	container_batch.item_count = 50;
+	std::vector<player_item_snapshot> batch_snapshots;
+	std::string created_uids;
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 100));
+	for (size_t index = 0; index < container_batch.item_count; ++index)
+	{
+		const uint64_t uid = item_uid_allocator_next();
+		container_batch.items[index] = { uid,  uid,
+						 0,    ITEM_TRANSFER_ABSENT_REVISION,
+						 1101, item_custody_state::absent };
+		batch_snapshots.push_back(physical_item(uid, 1101, PLAYER_SNAPSHOT_NO_PARENT));
+		created_uids += (index ? "," : "") + std::to_string(uid);
+	}
+	attach_blob(&container_batch, batch_snapshots);
+	const auto container_batch_applied = apply(connection, 240, container_batch);
+	assert(container_batch_applied.outcome == critical_apply_outcome::applied);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (" +
+		       created_uids + ") AND parent_item_uid=" + std::to_string(container_uid) +
+		       " AND root_item_uid=" + std::to_string(container_uid))
+			      .c_str()) == 50);
+	assert(scalar(connection,
+		      ("SELECT COUNT(*) FROM player_items child JOIN player_items parent ON "
+		       "parent.id=child.container_id WHERE child.obj_uid IN (" +
+		       created_uids + ") AND parent.obj_uid=" + std::to_string(container_uid))
+			      .c_str()) == 50);
+	const auto container_batch_replayed = apply(connection, 240, container_batch);
+	assert(container_batch_replayed.outcome == critical_apply_outcome::already_applied &&
+	       container_batch_replayed.result_size == container_batch_applied.result_size &&
+	       std::equal(container_batch_applied.result_payload.begin(),
+			  container_batch_applied.result_payload.begin() +
+				  container_batch_applied.result_size,
+			  container_batch_replayed.result_payload.begin()));
+
+	// Fail physical materialization after some rows have been inserted. The
+	// encompassing command must roll back all fifty custody rows and ledger
+	// entries as well as the physical prefix, without advancing either owner.
+	auto refused_batch = container_batch;
+	refused_batch.expected_from_revision = owner_revision(connection, system);
+	refused_batch.expected_to_revision = owner_revision(connection, player_one);
+	batch_snapshots.clear();
+	created_uids.clear();
+	for (size_t index = 0; index < refused_batch.item_count; ++index)
+	{
+		const uint64_t uid = item_uid_allocator_next();
+		refused_batch.items[index] = { uid,  uid,
+					       0,    ITEM_TRANSFER_ABSENT_REVISION,
+					       1101, item_custody_state::absent };
+		batch_snapshots.push_back(physical_item(uid, 1101, PLAYER_SNAPSHOT_NO_PARENT));
+		created_uids += (index ? "," : "") + std::to_string(uid);
+	}
+	attach_blob(&refused_batch, batch_snapshots);
+	execute(connection,
+		"CREATE TRIGGER reject_batch_item BEFORE INSERT ON player_items FOR EACH ROW "
+		"BEGIN IF NEW.obj_uid=" +
+			std::to_string(refused_batch.items[25].item_uid) +
+			" THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='expected batch materialization refusal'; END IF; END");
+	const auto refused_batch_result = apply(connection, 241, refused_batch);
+	execute(connection, "DROP TRIGGER reject_batch_item");
+	assert(refused_batch_result.outcome != critical_apply_outcome::applied &&
+	       refused_batch_result.outcome != critical_apply_outcome::already_applied);
+	for (const char *table : { "item_current_owner", "item_ownership_ledger", "player_items" })
+	{
+		const char *column = !strcmp(table, "player_items") ? "obj_uid" : "item_uid";
+		assert(scalar(connection, ("SELECT COUNT(*) FROM " + std::string(table) +
+					   " WHERE " + column + " IN (" + created_uids + ")")
+						  .c_str()) == 0);
+	}
+	assert(owner_revision(connection, system) == refused_batch.expected_from_revision &&
+	       owner_revision(connection, player_one) == refused_batch.expected_to_revision);
+
 	root_uid = container_uid - 2;
 	child_uid = container_uid - 1;
 	auto reparent = payload(player_one, player_one, item_transfer_reason::operator_repair,
-				nested_created_result.to_owner_revision,
-				nested_created_result.to_owner_revision, 1);
+				owner_revision(connection, player_one),
+				owner_revision(connection, player_one), 1);
 	reparent.selected_item_uid = root_uid;
 	reparent.target_root_item_uid = container_uid;
 	reparent.target_parent_item_uid = container_uid;
@@ -655,8 +739,8 @@ int main()
 
 	item_uid_allocator_reset_for_tests();
 	assert(item_uid_allocator_reserve(connection, 2));
-	assert(item_uid_allocator_next() == allocator_start + 9);
-	assert(item_uid_allocator_next() == allocator_start + 10);
+	assert(item_uid_allocator_next() == allocator_start + 109);
+	assert(item_uid_allocator_next() == allocator_start + 110);
 
 	check_memory_claims(connection);
 	for (uint8_t id = 1; id <= 24; ++id)

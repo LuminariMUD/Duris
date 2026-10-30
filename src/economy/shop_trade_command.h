@@ -22,13 +22,17 @@
 #include <cstdint>
 
 constexpr uint16_t SHOP_TRADE_PAYLOAD_VERSION = 4;
+// Version 5 carries a produced forest; versions 1-4 retain one selected tree.
+constexpr uint16_t SHOP_TRADE_BATCH_PAYLOAD_VERSION = 5;
 constexpr uint16_t SHOP_TRADE_PREVIOUS_PAYLOAD_VERSION = 3;
 constexpr uint16_t SHOP_TRADE_STOCK_PAYLOAD_VERSION = 2;
 constexpr uint16_t SHOP_TRADE_LEGACY_PAYLOAD_VERSION = 1;
-constexpr size_t SHOP_TRADE_MAX_ITEMS = 12;
+constexpr size_t SHOP_TRADE_LEGACY_MAX_ITEMS = 12;
+constexpr size_t SHOP_TRADE_MAX_ITEMS = 50;
 constexpr size_t SHOP_TRADE_ITEM_BLOB_MAX_BYTES = 128 * 1024;
-constexpr size_t SHOP_TRADE_RESULT_BYTES = 304;
-constexpr uint8_t SHOP_TRADE_RESULT_VERSION = 1;
+constexpr size_t SHOP_TRADE_LEGACY_RESULT_BYTES = 304;
+constexpr size_t SHOP_TRADE_RESULT_BYTES = 112 + SHOP_TRADE_MAX_ITEMS * 16;
+constexpr uint8_t SHOP_TRADE_RESULT_VERSION = 2;
 
 enum class shop_trade_action : uint8_t
 {
@@ -68,6 +72,7 @@ struct shop_trade_payload
 	uint64_t stock_item_uid;
 	uint64_t expected_stock_item_revision;
 	int32_t stock_vnum;
+	bool multi_root;
 	uint16_t item_count;
 	std::array<shop_trade_item_entry, SHOP_TRADE_MAX_ITEMS> items;
 	uint32_t item_blob_size;

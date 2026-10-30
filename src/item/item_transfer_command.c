@@ -192,11 +192,11 @@ bool validate_payload(const item_transfer_payload &payload)
 		return false;
 	if (payload.multi_root)
 	{
-		// A starter kit is created, and a deleted owner's items destroyed, in one batch.
+		// Independent creations can share a player-owned destination container.
 		if (payload.selected_item_uid || (!creation && !destruction) ||
-		    (creation &&
-		     (payload.to_owner.type != item_owner_type::player ||
-		      payload.target_root_item_uid || payload.target_parent_item_uid)) ||
+		    (creation && payload.to_owner.type != item_owner_type::player) ||
+		    (creation && payload.target_parent_item_uid &&
+		     !payload.expected_target_parent_revision) ||
 		    (payload.target_parent_item_uid ? !payload.target_root_item_uid :
 						      payload.target_root_item_uid != 0))
 			return false;
@@ -223,8 +223,12 @@ bool validate_payload(const item_transfer_payload &payload)
 				    root->parent_item_uid ||
 				    !target_topology_for(payload, entry.item_uid, &target_root,
 							 &target_parent) ||
-				    target_root != entry.root_item_uid ||
-				    target_parent != entry.parent_item_uid)
+				    target_root != (payload.target_parent_item_uid ?
+							    payload.target_root_item_uid :
+							    entry.root_item_uid) ||
+				    target_parent != (entry.item_uid == selected_root ?
+							      payload.target_parent_item_uid :
+							      entry.parent_item_uid))
 					return false;
 				continue;
 			}

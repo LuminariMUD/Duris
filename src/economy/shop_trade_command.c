@@ -82,6 +82,9 @@ bool valid_payload(const shop_trade_payload &payload)
 	    payload.item_blob_size > payload.item_blob.size())
 		return false;
 	const bool creates = creation(payload);
+	if ((payload.multi_root && !creates) ||
+	    (!payload.multi_root && payload.item_count > SHOP_TRADE_LEGACY_MAX_ITEMS))
+		return false;
 	if (!payload.target_root_item_uid)
 		return false;
 	const uint64_t target_root = payload.target_root_item_uid;
@@ -116,8 +119,9 @@ bool valid_payload(const shop_trade_payload &payload)
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
 		const auto &item = payload.items[index];
-		if (!item.item_uid || !root_uid || item.root_item_uid != root_uid ||
-		    item.vnum <= 0 || (creates && item.item_uid == payload.stock_item_uid) ||
+		if (!item.item_uid || !item.root_item_uid ||
+		    (!payload.multi_root && item.root_item_uid != root_uid) || item.vnum <= 0 ||
+		    (creates && item.item_uid == payload.stock_item_uid) ||
 		    item.expected_state !=
 			    (creates ? item_custody_state::absent : item_custody_state::active) ||
 		    (creates ? item.expected_item_revision != ITEM_TRANSFER_ABSENT_REVISION :
@@ -133,7 +137,11 @@ bool valid_payload(const shop_trade_payload &payload)
 				return false;
 			selected = true;
 		}
-		else if (!item.parent_item_uid)
+		else if (!item.parent_item_uid &&
+			 (!payload.multi_root || item.root_item_uid != item.item_uid))
+			return false;
+		if (payload.multi_root && item.item_uid == item.root_item_uid &&
+		    (item.parent_item_uid || item.vnum != payload.stock_vnum))
 			return false;
 	}
 	if (!selected)
@@ -149,15 +157,23 @@ bool valid_payload(const shop_trade_payload &payload)
 		return false;
 	for (size_t index = 0; index < payload.item_count; ++index)
 	{
-		if (payload.items[index].item_uid == payload.selected_item_uid)
+		if (payload.items[index].item_uid == payload.items[index].root_item_uid)
 			continue;
 		uint64_t parent_uid = payload.items[index].parent_item_uid;
 		bool reaches_selected = false;
 		for (size_t depth = 0; depth < payload.item_count; ++depth)
 		{
-			if (parent_uid == payload.selected_item_uid)
+			if (parent_uid == payload.items[index].root_item_uid)
 			{
-				reaches_selected = true;
+				reaches_selected = std::any_of(
+					payload.items.begin(),
+					payload.items.begin() + payload.item_count,
+					[&](const auto &item)
+					{
+						return item.item_uid == parent_uid &&
+						       !item.parent_item_uid &&
+						       item.root_item_uid == item.item_uid;
+					});
 				break;
 			}
 			auto parent = std::find_if(payload.items.begin(),
@@ -270,12 +286,14 @@ bool shop_trade_command_encode_payload(const shop_trade_payload &payload,
 bool shop_trade_command_decode_payload(const critical_command &command, shop_trade_payload *payload)
 {
 	if (!payload || command.type != critical_command_type::shop_trade ||
-	    (command.payload_version != SHOP_TRADE_PAYLOAD_VERSION &&
+	    (command.payload_version != SHOP_TRADE_BATCH_PAYLOAD_VERSION &&
+	     command.payload_version != SHOP_TRADE_PAYLOAD_VERSION &&
 	     command.payload_version != SHOP_TRADE_PREVIOUS_PAYLOAD_VERSION &&
 	     command.payload_version != SHOP_TRADE_STOCK_PAYLOAD_VERSION &&
 	     command.payload_version != SHOP_TRADE_LEGACY_PAYLOAD_VERSION))
 		return false;
 	*payload = {};
+	payload->multi_root = command.payload_version == SHOP_TRADE_BATCH_PAYLOAD_VERSION;
 	const uint8_t *cursor = command.payload.data();
 	const uint8_t *end = cursor + command.payload.size();
 	uint8_t action = 0, name_length = 0;
@@ -388,9 +406,10 @@ bool shop_trade_command_encode_result(const shop_trade_result &result,
 bool shop_trade_command_decode_result(const uint8_t *encoded, size_t size,
 				      shop_trade_result *result)
 {
-	if (!encoded || size != SHOP_TRADE_RESULT_BYTES || !result ||
-	    (encoded[1] && encoded[1] != SHOP_TRADE_RESULT_VERSION) || encoded[4] || encoded[5] ||
-	    encoded[6] || encoded[7])
+	if (!encoded || !result ||
+	    !((size == SHOP_TRADE_RESULT_BYTES && encoded[1] == SHOP_TRADE_RESULT_VERSION) ||
+	      (size == SHOP_TRADE_LEGACY_RESULT_BYTES && encoded[1] <= 1)) ||
+	    encoded[4] || encoded[5] || encoded[6] || encoded[7])
 		return false;
 	*result = {};
 	result->action = static_cast<shop_trade_action>(encoded[0]);
@@ -400,7 +419,7 @@ bool shop_trade_command_decode_result(const uint8_t *encoded, size_t size,
 	    (!encoded[1] && (result->action == shop_trade_action::buy_produced ||
 			     result->action == shop_trade_action::sell_destroy ||
 			     result->action == shop_trade_action::discard_invalid)) ||
-	    result->item_count > result->item_uids.size())
+	    result->item_count > result->item_uids.size() || result->item_count > (size - 112) / 16)
 		return false;
 	for (size_t index = 0; index < CURRENCY_DENOMINATION_COUNT; ++index)
 	{
@@ -445,7 +464,8 @@ bool shop_trade_command_build(critical_command *command, critical_operation_id o
 	*command = { .schema_version = CRITICAL_COMMAND_SCHEMA_VERSION,
 		     .operation_id = operation_id,
 		     .type = critical_command_type::shop_trade,
-		     .payload_version = SHOP_TRADE_PAYLOAD_VERSION,
+		     .payload_version = payload.multi_root ? SHOP_TRADE_BATCH_PAYLOAD_VERSION :
+							     SHOP_TRADE_PAYLOAD_VERSION,
 		     .source_site = source_site,
 		     .deadline_class = deadline_class,
 		     .accepted_at_usec = 0,

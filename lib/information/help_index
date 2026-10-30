@@ -2098,6 +2098,14 @@ BUY SELL (Command)
 These commands are used for making purchases or selling items in the
 various shops found around Faerun. The prices in these shops will be
 affected slightly by how personable you are and how charismatic you are.
+
+For supplies a shop produces, buy directly into a carried container with:
+    buy <item> <container> <quantity>
+For example: buy ration bag 20
+The quantity must be a whole number from 1 to 50. You receive what you can
+afford and what fits; the purchase summary gives the delivered count and
+total price. Items that were not admitted to the purchase are not charged.
+If delivery is still being processed, wait for the final purchase response.
 ===========================================================================
 See also: SHOPS, VALUE, LIST, CHARISMA
 

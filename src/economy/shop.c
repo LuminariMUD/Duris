@@ -32,6 +32,8 @@
 #include <cerrno>
 #include <cstdlib>
 #include <new>
+#include <algorithm>
+#include <vector>
 #include <unordered_map>
 
 /*
@@ -57,22 +59,18 @@ struct shop_data *shop_index;
 int number_of_shops = 0;
 const char *operator_str[] = { "[({", "])}", "|+", "&*", "^'" };
 
-struct produced_purchase_sequence
+struct produced_purchase_batch
 {
 	uint32_t shop_id = 0;
-	uint64_t stock_item_uid = 0;
 	uint64_t container_item_uid = 0;
-	uint64_t current_item_uid = 0;
+	std::vector<uint64_t> item_uids;
 	int requested = 0;
-	int remaining = 0;
-	int completed = 0;
 	int64_t price = 0;
-	bool flatfile = false;
-	bool payment_pending = false;
-	bool payment_committed = false;
+	bool debited = false;
+	bool keeper_credited = false;
 };
 
-static std::unordered_map<uint32_t, produced_purchase_sequence> produced_purchase_sequences;
+static std::unordered_map<uint32_t, produced_purchase_batch> produced_purchase_batches;
 
 void lore_item(P_char ch, P_obj obj);
 
@@ -97,9 +95,6 @@ static P_char shop_trade_find_keeper(uint32_t shop_id)
 			return candidate;
 	return NULL;
 }
-
-static void shop_trade_completion(P_char ch, bool committed, const shop_trade_result &result,
-				  unsigned int error_code, const shop_trade_payload &payload);
 
 static bool shop_trade_container_accepts(P_char ch, P_obj object, P_obj container)
 {
@@ -134,146 +129,331 @@ static bool shop_purchase_count(const char *argument, int *count)
 	return true;
 }
 
-static void shop_purchase_report(P_char ch, const produced_purchase_sequence &sequence,
-				 bool complete)
+static int64_t shop_wallet_value(P_char ch)
 {
-	if (!ch || sequence.requested <= 1)
+	return GET_COPPER(ch) + 10LL * GET_SILVER(ch) + 100LL * GET_GOLD(ch) +
+	       1000LL * GET_PLATINUM(ch);
+}
+
+static void shop_trade_completion(P_char ch, bool committed, const shop_trade_result &result,
+				  unsigned int error_code, const shop_trade_payload &payload);
+
+static void shop_purchase_report(P_char ch, const produced_purchase_batch &batch, int delivered)
+{
+	if (!ch || batch.requested <= 1)
 		return;
 	char message[MAX_STRING_LENGTH];
-	if (complete)
+	const char *total = batch.price > 0 && delivered > 0 ?
+				    coin_stringv(batch.price * delivered) :
+				    "no charge";
+	if (delivered == batch.requested)
 		snprintf(message, sizeof(message),
-			 "Purchase complete: %d of %d items delivered for %s.\r\n",
-			 sequence.completed, sequence.requested,
-			 coin_stringv(sequence.price * sequence.completed));
+			 "Purchase complete: %d of %d items delivered for %s.\r\n", delivered,
+			 batch.requested, total);
 	else
 		snprintf(
 			message, sizeof(message),
 			"Purchase stopped: %d of %d items delivered for %s; the remaining %d were not charged.\r\n",
-			sequence.completed, sequence.requested,
-			coin_stringv(sequence.price * sequence.completed), sequence.remaining);
+			delivered, batch.requested, total, batch.requested - delivered);
 	send_to_char(message, ch);
 }
 
-static void shop_creation_grant_completion(P_char ch, uint64_t item_uid, bool committed,
-					   unsigned int error_code);
+static void shop_creation_refund(P_char ch, produced_purchase_batch &batch)
+{
+	if (!batch.debited)
+		return;
+	const int64_t total = batch.price * static_cast<int64_t>(batch.item_uids.size());
+	ADD_MONEY(ch, total);
+	batch.debited = false;
+	if (!batch.keeper_credited)
+		return;
+	P_char keeper = shop_trade_find_keeper(batch.shop_id);
+	if (!keeper || SUB_MONEY(keeper, total, 0) != 0)
+		logit(LOG_FILE,
+		      "shop batch refund could not debit keeper (pid=%d shop=%u amount=%lld)",
+		      GET_PID(ch), batch.shop_id, static_cast<long long>(total));
+	if (keeper)
+		writeShopKeeper(keeper, static_cast<int>(batch.shop_id));
+	batch.keeper_credited = false;
+}
+
+static void shop_discard_produced(const produced_purchase_batch &batch)
+{
+	for (uint64_t uid : batch.item_uids)
+		if (P_obj object = shop_trade_find_object(uid); object && OBJ_NOWHERE(object))
+			extract_obj(object, FALSE);
+}
+
+// The shadow shares only read-only existing contents. Detached roots are linked
+// temporarily into that view, never into the live bag or the player's inventory.
+static bool shop_stage_produced(P_char ch, P_obj stock, P_obj destination, int requested,
+				int64_t price, std::vector<P_obj> *roots)
+{
+	roots->reserve(static_cast<size_t>(requested));
+	obj_data shadow = {};
+	if (destination)
+		shadow = *destination;
+	bool prepared = true;
+	for (int index = 0; index < requested; ++index)
+	{
+		if (price > 0 && price * (index + 1) > shop_wallet_value(ch))
+			break;
+		P_obj object = read_object(stock->R_num, REAL);
+		if (!object)
+		{
+			prepared = false;
+			break;
+		}
+		SET_BIT(object->extra2_flags, ITEM2_STOREITEM);
+		if (!shop_trade_container_accepts(ch, object, destination ? &shadow : nullptr))
+		{
+			extract_obj(object, FALSE);
+			break;
+		}
+		roots->push_back(object);
+		if (destination)
+		{
+			object->next_content = shadow.contains;
+			shadow.contains = object;
+			if (static_cast<int64_t>(shadow.weight) + GET_OBJ_WEIGHT(object) > INT_MAX)
+			{
+				prepared = false;
+				break;
+			}
+			shadow.weight += GET_OBJ_WEIGHT(object);
+		}
+	}
+	for (P_obj object : *roots)
+		object->next_content = nullptr;
+	return prepared;
+}
+
+static void shop_produced_completion(P_char ch, bool committed, const shop_trade_payload &payload)
+{
+	auto found = produced_purchase_batches.find(static_cast<uint32_t>(GET_PID(ch)));
+	if (found == produced_purchase_batches.end() || found->second.item_uids.empty() ||
+	    found->second.item_uids.front() != payload.selected_item_uid)
+		return;
+	produced_purchase_batch batch = std::move(found->second);
+	produced_purchase_batches.erase(found);
+	if (ch->desc)
+		ch->desc->prompt_mode = TRUE;
+	if (!committed)
+	{
+		// Flat-file escrow is refunded by shop_trade_transaction; grant failures
+		// settle here after the grant queue relinquishes its objects.
+		if (!payload.multi_root)
+			shop_creation_refund(ch, batch);
+		shop_discard_produced(batch);
+		shop_purchase_report(ch, batch, 0);
+		if (batch.requested == 1)
+			send_to_char(
+				"The purchase could not be delivered; you were not charged.\r\n",
+				ch);
+		return;
+	}
+	P_char keeper = shop_trade_find_keeper(batch.shop_id);
+	const int64_t total = batch.price * static_cast<int64_t>(batch.item_uids.size());
+	if (keeper && !batch.keeper_credited && total > 0)
+		ADD_MONEY(keeper, total);
+	char message[MAX_STRING_LENGTH];
+	if (keeper)
+	{
+		checked_substitute(message, sizeof(message), shop_index[batch.shop_id].message_buy,
+				   GET_NAME(ch), coin_stringv(total));
+		do_tell(keeper, message, 0);
+	}
+	P_obj destination = batch.container_item_uid ?
+				    shop_trade_find_object(batch.container_item_uid) :
+				    nullptr;
+	for (uint64_t uid : batch.item_uids)
+	{
+		P_obj object = shop_trade_find_object(uid);
+		if (payload.multi_root && OBJ_NOWHERE(object))
+		{
+			obj_to_char(object, ch);
+			if (destination)
+			{
+				obj_from_char(object);
+				obj_to_obj(object, destination);
+			}
+		}
+		act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
+		snprintf(message, sizeof(message), "You now have %s.\r\n",
+			 object->short_description);
+		send_to_char(message, ch);
+	}
+	shop_purchase_report(ch, batch, static_cast<int>(batch.item_uids.size()));
+}
+
+static void shop_creation_grant_completion(P_char ch, bool committed, const item_transfer_result &,
+					   unsigned int, const uint8_t *context,
+					   size_t context_size)
+{
+	if (!ch || !context || context_size != sizeof(uint64_t))
+		return;
+	shop_trade_payload purchase = {};
+	memcpy(&purchase.selected_item_uid, context, sizeof(uint64_t));
+	shop_produced_completion(ch, committed, purchase);
+}
+
 static void shop_creation_payment_completion(P_char ch, bool committed,
-					     const currency_command_result &result,
-					     unsigned int error_code, const uint8_t *context,
-					     size_t context_size);
-
-static bool shop_creation_refund(P_char ch, const produced_purchase_sequence &sequence)
+					     const currency_command_result &, unsigned int,
+					     const uint8_t *context, size_t context_size)
 {
-	if (!ch || sequence.price <= 0)
+	if (!ch || !context || context_size != sizeof(uint64_t))
+		return;
+	uint64_t uid = 0;
+	memcpy(&uid, context, sizeof(uid));
+	auto found = produced_purchase_batches.find(static_cast<uint32_t>(GET_PID(ch)));
+	if (found != produced_purchase_batches.end() && found->second.item_uids.front() == uid)
+		found->second.debited = committed;
+}
+
+static bool shop_produced_prepare(P_char ch, const shop_trade_payload &payload,
+				  const shop_trade_result &result)
+{
+	auto found = produced_purchase_batches.find(payload.player_pid);
+	if (found == produced_purchase_batches.end())
+		return false;
+	const produced_purchase_batch &batch = found->second;
+	P_obj destination = batch.container_item_uid ?
+				    shop_trade_find_object(batch.container_item_uid) :
+				    nullptr;
+	if (batch.container_item_uid && (!destination || !OBJ_CARRIED_BY(destination, ch) ||
+					 GET_ITEM_TYPE(destination) != ITEM_CONTAINER))
+		return false;
+	std::vector<P_obj> roots;
+	try
+	{
+		roots.reserve(batch.item_uids.size());
+		bool detached = true, published = true;
+		for (uint64_t uid : batch.item_uids)
+		{
+			P_obj object = shop_trade_find_object(uid);
+			roots.push_back(object);
+			detached = detached && object && OBJ_NOWHERE(object);
+			published = published && object &&
+				    (destination ? OBJ_INSIDE_OBJ(object, destination) :
+						   OBJ_CARRIED_BY(object, ch));
+		}
+		if ((!detached && !published) ||
+		    !shop_trade_runtime_batch_matches_payload(roots.data(), roots.size(), payload))
+		{
+			item_transfer_payload transfer = {};
+			transfer.from_owner = { item_owner_type::system, 0, 0 };
+			transfer.to_owner = { item_owner_type::player, payload.player_pid, 0 };
+			transfer.reason = item_transfer_reason::creation;
+			transfer.multi_root = true;
+			transfer.item_count = payload.item_count;
+			transfer.item_blob_size = payload.item_blob_size;
+			std::copy_n(payload.item_blob.begin(), payload.item_blob_size,
+				    transfer.item_blob.begin());
+			for (size_t index = 0; index < payload.item_count; ++index)
+			{
+				const auto &item = payload.items[index];
+				transfer.items[index] = { item.item_uid,
+							  item.root_item_uid,
+							  item.parent_item_uid,
+							  item.expected_item_revision,
+							  item.vnum,
+							  item.expected_state };
+			}
+			item_transfer_result created = {};
+			created.root_item_uid = item_transfer_result_root(transfer);
+			created.item_count = result.item_count;
+			created.from_owner_revision = result.counterparty_owner_revision;
+			created.to_owner_revision = result.player_owner_revision;
+			roots.clear();
+			if (!item_creation_grant_reconstruct(transfer, created, &roots))
+				return false;
+		}
 		return true;
-	ADD_MONEY(ch, sequence.price);
-	P_char keeper = shop_trade_find_keeper(sequence.shop_id);
-	if (!keeper)
+	}
+	catch (const std::bad_alloc &)
 	{
-		logit(LOG_FILE,
-		      "shop purchase refunded player but keeper was unavailable (pid=%d shop=%u amount=%lld)",
-		      GET_PID(ch), sequence.shop_id, static_cast<long long>(sequence.price));
 		return false;
 	}
-	if (SUB_MONEY(keeper, sequence.price, 0) != 0)
-		logit(LOG_FILE,
-		      "shop purchase refund could not debit keeper (pid=%d shop=%u amount=%lld)",
-		      GET_PID(ch), sequence.shop_id, static_cast<long long>(sequence.price));
-	writeShopKeeper(keeper, static_cast<int>(sequence.shop_id));
-	return true;
 }
 
-static bool shop_creation_submit_grant(P_char ch, produced_purchase_sequence &sequence)
+static bool shop_begin_produced(P_char ch, P_char keeper, P_obj stock, P_obj destination,
+				uint32_t shop_id, int requested, int64_t price)
 {
-	P_obj selected = shop_trade_find_object(sequence.current_item_uid);
-	P_obj destination = sequence.container_item_uid ?
-				    shop_trade_find_object(sequence.container_item_uid) :
-				    NULL;
-	return selected && OBJ_NOWHERE(selected) && IS_CARRYING_N(ch) + 1 <= CAN_CARRY_N(ch) &&
-	       (!sequence.container_item_uid || (destination && OBJ_CARRIED_BY(destination, ch) &&
-						 GET_ITEM_TYPE(destination) == ITEM_CONTAINER)) &&
-	       shop_trade_container_accepts(ch, selected, destination) &&
-	       item_creation_grant_submit_to_player_with_completion(ch, selected, ch, destination,
-								    shop_creation_grant_completion);
-}
-
-static bool shop_creation_submit_produced_continuation(P_char ch,
-						       produced_purchase_sequence &sequence)
-{
-	P_char keeper = shop_trade_find_keeper(sequence.shop_id);
-	P_obj stock = shop_trade_find_object(sequence.stock_item_uid);
-	P_obj destination = sequence.container_item_uid ?
-				    shop_trade_find_object(sequence.container_item_uid) :
-				    NULL;
-	if (!ch || !keeper || !stock || !OBJ_CARRIED_BY(stock, keeper) ||
-	    !shop_producing(stock, static_cast<int>(sequence.shop_id)) ||
-	    (sequence.container_item_uid && (!destination || !OBJ_CARRIED_BY(destination, ch) ||
-					     GET_ITEM_TYPE(destination) != ITEM_CONTAINER)) ||
-	    IS_CARRYING_N(ch) + 1 > CAN_CARRY_N(ch) ||
-	    (sequence.price > 0 && GET_MONEY(ch) < sequence.price))
-		return false;
-
-	P_obj selected = read_object(stock->R_num, REAL);
-	if (!selected)
-		return false;
-	SET_BIT(selected->extra2_flags, ITEM2_STOREITEM);
-	if (!shop_trade_container_accepts(ch, selected, destination))
+	const uint32_t pid = static_cast<uint32_t>(GET_PID(ch));
+	std::vector<P_obj> roots;
+	produced_purchase_batch batch;
+	batch.shop_id = shop_id;
+	batch.container_item_uid = destination ? destination->obj_uid : 0;
+	batch.requested = requested;
+	batch.price = price;
+	try
 	{
-		extract_obj(selected, FALSE);
+		if (!shop_stage_produced(ch, stock, destination, requested, price, &roots) ||
+		    roots.empty() || price * static_cast<int64_t>(roots.size()) > INT_MAX)
+		{
+			for (P_obj object : roots)
+				extract_obj(object, FALSE);
+			return false;
+		}
+		for (P_obj object : roots)
+			batch.item_uids.push_back(object->obj_uid);
+		if (!produced_purchase_batches.emplace(pid, std::move(batch)).second)
+		{
+			for (P_obj object : roots)
+				extract_obj(object, FALSE);
+			return false;
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		for (P_obj object : roots)
+			extract_obj(object, FALSE);
 		return false;
 	}
-	sequence.current_item_uid = selected->obj_uid;
-	if (sequence.price <= 0)
+	produced_purchase_batch &pending = produced_purchase_batches.at(pid);
+	const int64_t total = pending.price * static_cast<int64_t>(roots.size());
+	bool submitted = false;
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 	{
-		if (shop_creation_submit_grant(ch, sequence))
-			return true;
+		shop_trade_payload payload = {};
+		submitted = shop_trade_runtime_build_produced_batch(ch, roots.data(), roots.size(),
+								    stock, destination, shop_id,
+								    total, &payload) ==
+				    shop_trade_payload_build_result::ok &&
+			    shop_trade_transaction_submit(ch, payload, shop_trade_completion,
+							  shop_produced_prepare);
 	}
 	else
 	{
-		sequence.payment_pending = true;
-		if (currency_transaction_submit_wallet_value(
-			    ch, -sequence.price, currency_reason_type::wallet_spend,
-			    sequence.shop_id, critical_source_site::command,
-			    critical_deadline_class::interactive, shop_creation_payment_completion,
-			    &sequence.current_item_uid, sizeof(sequence.current_item_uid)))
-			return true;
-		sequence.payment_pending = false;
+		const uint64_t first_uid = pending.item_uids.front();
+		if (total == 0 ||
+		    (currency_transaction_submit_wallet_value(
+			     ch, -total, currency_reason_type::wallet_spend, shop_id,
+			     critical_source_site::command, critical_deadline_class::interactive,
+			     shop_creation_payment_completion, &first_uid, sizeof(first_uid)) &&
+		     pending.debited))
+		{
+			if (total > 0)
+			{
+				ADD_MONEY(keeper, total);
+				pending.keeper_credited = true;
+				writeShopKeeper(keeper, static_cast<int>(shop_id));
+			}
+			submitted = item_creation_grant_submit_batch_to_player(
+				ch, roots.data(), roots.size(), ch, destination,
+				shop_creation_grant_completion, &first_uid, sizeof(first_uid));
+		}
+		if (!submitted)
+			shop_creation_refund(ch, pending);
 	}
-	sequence.current_item_uid = 0;
-	extract_obj(selected, FALSE);
-	return false;
-}
-
-static bool shop_trade_submit_produced_continuation(P_char ch,
-						    const produced_purchase_sequence &sequence)
-{
-	P_char keeper = shop_trade_find_keeper(sequence.shop_id);
-	P_obj stock = shop_trade_find_object(sequence.stock_item_uid);
-	P_obj destination = sequence.container_item_uid ?
-				    shop_trade_find_object(sequence.container_item_uid) :
-				    NULL;
-	if (!keeper || !stock || !OBJ_CARRIED_BY(stock, keeper) ||
-	    !shop_producing(stock, static_cast<int>(sequence.shop_id)) ||
-	    (sequence.container_item_uid && (!destination || !OBJ_CARRIED_BY(destination, ch) ||
-					     GET_ITEM_TYPE(destination) != ITEM_CONTAINER)) ||
-	    IS_CARRYING_N(ch) + 1 > CAN_CARRY_N(ch))
-		return false;
-	P_obj selected = read_object(stock->R_num, REAL);
-	if (!selected)
-		return false;
-	if (!shop_trade_container_accepts(ch, selected, destination))
+	if (!submitted)
 	{
-		extract_obj(selected, FALSE);
+		shop_discard_produced(pending);
+		shop_purchase_report(ch, pending, 0);
+		produced_purchase_batches.erase(pid);
 		return false;
 	}
-	shop_trade_payload payload = {};
-	if (shop_trade_runtime_build_payload(ch, selected, stock, destination, sequence.shop_id,
-					     shop_trade_action::buy_produced, sequence.price,
-					     &payload) != shop_trade_payload_build_result::ok ||
-	    !shop_trade_transaction_submit(ch, payload, shop_trade_completion))
-	{
-		extract_obj(selected, FALSE);
-		return false;
-	}
+	send_to_char("Your purchase is being processed.\r\n", ch);
 	return true;
 }
 
@@ -308,6 +488,11 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 {
 	if (!ch)
 		return;
+	if (payload.multi_root)
+	{
+		shop_produced_completion(ch, committed, payload);
+		return;
+	}
 	P_obj object = shop_trade_find_object(payload.selected_item_uid);
 	P_char keeper = shop_trade_find_keeper(payload.shop_id);
 	P_obj destination = payload.target_parent_item_uid ?
@@ -332,17 +517,6 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 				  shop_trade_runtime_object_matches_payload(object, payload);
 	if (!committed || !exact_object)
 	{
-		if (produced)
-		{
-			auto sequence = produced_purchase_sequences.find(
-				static_cast<uint32_t>(GET_PID(ch)));
-			if (sequence != produced_purchase_sequences.end())
-			{
-				const produced_purchase_sequence stopped = sequence->second;
-				produced_purchase_sequences.erase(sequence);
-				shop_purchase_report(ch, stopped, false);
-			}
-		}
 		const bool durable_commit = committed ||
 					    (result.shop_revision && result.item_count);
 		if (durable_commit)
@@ -399,33 +573,6 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 		snprintf(message, MAX_STRING_LENGTH, "You now have %s.\r\n",
 			 object->short_description);
 		send_to_char(message, ch);
-		if (produced)
-		{
-			const uint32_t pid = static_cast<uint32_t>(GET_PID(ch));
-			auto sequence = produced_purchase_sequences.find(pid);
-			if (sequence != produced_purchase_sequences.end() &&
-			    sequence->second.flatfile &&
-			    sequence->second.shop_id == payload.shop_id &&
-			    sequence->second.stock_item_uid == payload.stock_item_uid &&
-			    sequence->second.container_item_uid == payload.target_parent_item_uid)
-			{
-				++sequence->second.completed;
-				if (--sequence->second.remaining <= 0)
-				{
-					shop_purchase_report(ch, sequence->second, true);
-					produced_purchase_sequences.erase(sequence);
-				}
-				else if (!shop_trade_submit_produced_continuation(ch,
-										  sequence->second))
-				{
-					const produced_purchase_sequence stopped = sequence->second;
-					produced_purchase_sequences.erase(sequence);
-					shop_purchase_report(ch, stopped, false);
-				}
-			}
-			else if (sequence != produced_purchase_sequences.end())
-				produced_purchase_sequences.erase(sequence);
-		}
 		return;
 	}
 
@@ -451,144 +598,6 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 		snprintf(message, MAX_STRING_LENGTH, "The shopkeeper now has %s.\r\n",
 			 object->short_description);
 		send_to_char(message, ch);
-	}
-}
-
-static void shop_creation_grant_completion(P_char ch, uint64_t item_uid, bool committed,
-					   unsigned int error_code)
-{
-	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0)
-		return;
-	const uint32_t pid = static_cast<uint32_t>(GET_PID(ch));
-	auto found = produced_purchase_sequences.find(pid);
-	if (found == produced_purchase_sequences.end() || found->second.flatfile ||
-	    found->second.current_item_uid != item_uid)
-	{
-		logit(LOG_FILE,
-		      "shop creation completion did not match a purchase (pid=%u uid=%llu committed=%d error=%u)",
-		      pid, static_cast<unsigned long long>(item_uid), committed, error_code);
-		return;
-	}
-	produced_purchase_sequence &sequence = found->second;
-	sequence.current_item_uid = 0;
-	if (!committed)
-	{
-		if (sequence.payment_committed)
-			shop_creation_refund(ch, sequence);
-		sequence.payment_committed = false;
-		const produced_purchase_sequence stopped = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, stopped, false);
-		if (stopped.requested == 1)
-			send_to_char(
-				stopped.price > 0 ?
-					"The purchase could not be delivered; your payment is being refunded.\r\n" :
-					"The purchase could not be delivered; you were not charged.\r\n",
-				ch);
-		return;
-	}
-	sequence.payment_committed = false;
-
-	P_obj object = shop_trade_find_object(item_uid);
-	P_char keeper = shop_trade_find_keeper(sequence.shop_id);
-	if (!object || (!OBJ_CARRIED_BY(object, ch) && !OBJ_INSIDE(object)))
-	{
-		statuslog(
-			56,
-			"&+RALERT&n: completed shop grant missing live publication [%llu] for player [%u]",
-			static_cast<unsigned long long>(item_uid), pid);
-		const produced_purchase_sequence stopped = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, stopped, false);
-		return;
-	}
-
-	char message[MAX_STRING_LENGTH];
-	act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
-	if (keeper)
-	{
-		checked_substitute(message, sizeof(message),
-				   shop_index[sequence.shop_id].message_buy, GET_NAME(ch),
-				   coin_stringv(sequence.price));
-		do_tell(keeper, message, 0);
-	}
-	snprintf(message, sizeof(message), "You now have %s.\r\n", object->short_description);
-	send_to_char(message, ch);
-	++sequence.completed;
-	--sequence.remaining;
-	if (sequence.remaining <= 0)
-	{
-		const produced_purchase_sequence complete = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, complete, true);
-		return;
-	}
-	if (!shop_creation_submit_produced_continuation(ch, sequence))
-	{
-		const produced_purchase_sequence stopped = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, stopped, false);
-	}
-}
-
-static void shop_creation_payment_completion(P_char ch, bool committed,
-					     const currency_command_result &,
-					     unsigned int error_code, const uint8_t *context,
-					     size_t context_size)
-{
-	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !context || context_size != sizeof(uint64_t))
-		return;
-	uint64_t item_uid = 0;
-	memcpy(&item_uid, context, sizeof(item_uid));
-	const uint32_t pid = static_cast<uint32_t>(GET_PID(ch));
-	auto found = produced_purchase_sequences.find(pid);
-	if (found == produced_purchase_sequences.end() || found->second.flatfile ||
-	    !found->second.payment_pending || found->second.current_item_uid != item_uid)
-	{
-		logit(LOG_FILE,
-		      "shop payment completion did not match a purchase (pid=%u uid=%llu committed=%d error=%u)",
-		      pid, static_cast<unsigned long long>(item_uid), committed, error_code);
-		return;
-	}
-	produced_purchase_sequence &sequence = found->second;
-	sequence.payment_pending = false;
-	P_obj selected = shop_trade_find_object(item_uid);
-	if (!committed)
-	{
-		if (selected && OBJ_NOWHERE(selected))
-			extract_obj(selected, FALSE);
-		sequence.current_item_uid = 0;
-		const produced_purchase_sequence stopped = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, stopped, false);
-		if (stopped.requested == 1)
-			send_to_char("The payment was declined; nothing was purchased.\r\n", ch);
-		return;
-	}
-
-	sequence.payment_committed = true;
-	P_char keeper = shop_trade_find_keeper(sequence.shop_id);
-	if (keeper && ch->in_room == keeper->in_room)
-	{
-		ADD_MONEY(keeper, static_cast<int>(sequence.price));
-		writeShopKeeper(keeper, static_cast<int>(sequence.shop_id));
-	}
-	else
-		keeper = NULL;
-	if (!keeper || !selected || !shop_creation_submit_grant(ch, sequence))
-	{
-		shop_creation_refund(ch, sequence);
-		sequence.payment_committed = false;
-		if (selected && OBJ_NOWHERE(selected))
-			extract_obj(selected, FALSE);
-		sequence.current_item_uid = 0;
-		const produced_purchase_sequence stopped = sequence;
-		produced_purchase_sequences.erase(found);
-		shop_purchase_report(ch, stopped, false);
-		if (stopped.requested == 1)
-			send_to_char(
-				"The purchase could not be delivered; your payment is being refunded.\r\n",
-				ch);
 	}
 }
 
@@ -1124,7 +1133,7 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 		}
 	}
 
-	if ((GET_MONEY(ch) < sale) && !IS_TRUSTED(ch))
+	if ((shop_wallet_value(ch) < sale) && !IS_TRUSTED(ch))
 	{
 		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ||
 		    produced_purchase)
@@ -1144,133 +1153,27 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 		send_to_char(Gbuf1, ch);
 		return;
 	}
-	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
-	{
-		const int64_t transaction_price = IS_TRUSTED(ch) ? 0 : sale;
-		const bool produced = produced_purchase;
-		P_obj destination = purchase_destination;
-		const uint32_t player_pid = static_cast<uint32_t>(GET_PID(ch));
-		bool sequence_registered = false;
-		if (produced && purchase_count > 1)
-		{
-			try
-			{
-				sequence_registered =
-					produced_purchase_sequences
-						.emplace(player_pid,
-							 produced_purchase_sequence{
-								 .shop_id = static_cast<uint32_t>(
-									 shop_nr),
-								 .stock_item_uid = temp1->obj_uid,
-								 .container_item_uid =
-									 destination->obj_uid,
-								 .current_item_uid = 0,
-								 .requested = purchase_count,
-								 .remaining = purchase_count,
-								 .completed = 0,
-								 .price = transaction_price,
-								 .flatfile = true,
-								 .payment_pending = false,
-								 .payment_committed = false })
-						.second;
-			}
-			catch (const std::bad_alloc &)
-			{
-				sequence_registered = false;
-			}
-			if (!sequence_registered)
-			{
-				send_to_char(
-					"The shop transaction service is busy. Please try again.\r\n",
-					ch);
-				return;
-			}
-		}
-		P_obj selected = temp1;
-		if (produced && !(selected = read_object(temp1->R_num, REAL)))
-		{
-			if (sequence_registered)
-				produced_purchase_sequences.erase(player_pid);
-			send_to_char("The shop could not create that item.\r\n", ch);
-			return;
-		}
-		if (produced && !shop_trade_container_accepts(ch, selected, destination))
-		{
-			if (sequence_registered)
-				produced_purchase_sequences.erase(player_pid);
-			extract_obj(selected, FALSE);
-			send_to_char("That item will not fit in the selected container.\r\n", ch);
-			return;
-		}
-		shop_trade_payload payload = {};
-		if (shop_trade_runtime_build_payload(
-			    ch, selected, produced ? temp1 : NULL, destination, shop_nr,
-			    produced ? shop_trade_action::buy_produced :
-				       shop_trade_action::buy_existing,
-			    transaction_price, &payload) != shop_trade_payload_build_result::ok ||
-		    !shop_trade_transaction_submit(ch, payload, shop_trade_completion))
-		{
-			if (produced)
-				extract_obj(selected, FALSE);
-			if (sequence_registered)
-				produced_purchase_sequences.erase(player_pid);
-			send_to_char("The shop transaction service is busy. Please try again.\r\n",
-				     ch);
-			return;
-		}
-		send_to_char("Your purchase is being processed.\r\n", ch);
-		return;
-	}
 	if (produced_purchase)
 	{
-		const uint32_t player_pid = static_cast<uint32_t>(GET_PID(ch));
-		bool sequence_registered = false;
-		try
-		{
-			sequence_registered =
-				produced_purchase_sequences
-					.emplace(player_pid,
-						 produced_purchase_sequence{
-							 .shop_id = static_cast<uint32_t>(shop_nr),
-							 .stock_item_uid = temp1->obj_uid,
-							 .container_item_uid =
-								 purchase_destination ?
-									 purchase_destination
-										 ->obj_uid :
-									 0,
-							 .current_item_uid = 0,
-							 .requested = purchase_count,
-							 .remaining = purchase_count,
-							 .completed = 0,
-							 .price = IS_TRUSTED(ch) ? 0 : sale,
-							 .flatfile = false,
-							 .payment_pending = false,
-							 .payment_committed = false })
-					.second;
-		}
-		catch (const std::bad_alloc &)
-		{
-			sequence_registered = false;
-		}
-		if (!sequence_registered)
-		{
-			send_to_char("The shop transaction service is busy. Please try again.\r\n",
-				     ch);
-			return;
-		}
-		auto sequence = produced_purchase_sequences.find(player_pid);
-		if (sequence == produced_purchase_sequences.end() ||
-		    !shop_creation_submit_produced_continuation(ch, sequence->second))
-		{
-			if (sequence != produced_purchase_sequences.end())
-			{
-				const produced_purchase_sequence stopped = sequence->second;
-				produced_purchase_sequences.erase(sequence);
-				shop_purchase_report(ch, stopped, false);
-			}
+		if (!shop_begin_produced(ch, keeper, temp1, purchase_destination,
+					 static_cast<uint32_t>(shop_nr), purchase_count,
+					 IS_TRUSTED(ch) ? 0 : sale))
 			send_to_char(
 				"The shop could not begin that purchase; nothing was charged.\r\n",
 				ch);
+		return;
+	}
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		shop_trade_payload payload = {};
+		if (shop_trade_runtime_build_payload(ch, temp1, nullptr, nullptr, shop_nr,
+						     shop_trade_action::buy_existing,
+						     IS_TRUSTED(ch) ? 0 : sale, &payload) !=
+			    shop_trade_payload_build_result::ok ||
+		    !shop_trade_transaction_submit(ch, payload, shop_trade_completion))
+		{
+			send_to_char("The shop transaction service is busy. Please try again.\r\n",
+				     ch);
 			return;
 		}
 		send_to_char("Your purchase is being processed.\r\n", ch);

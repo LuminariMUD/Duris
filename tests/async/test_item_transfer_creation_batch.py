@@ -121,6 +121,21 @@ int main()
     parent.target_parent_item_uid = 900;
     parent.target_root_item_uid = 900;
     assert(!builds(parent, 5));
+    parent.expected_target_parent_revision = 3;
+    assert(builds(parent, 11));
+    uint64_t target_root = 0, target_parent = 0;
+    assert(item_transfer_target_topology(parent, 100, &target_root, &target_parent));
+    assert(target_root == 900 && target_parent == 900);
+    assert(item_transfer_target_topology(parent, 200, &target_root, &target_parent));
+    assert(target_root == 900 && target_parent == 900);
+    assert(item_transfer_target_topology(parent, 201, &target_root, &target_parent));
+    assert(target_root == 900 && target_parent == 200);
+    critical_command container_command = {};
+    assert(item_transfer_command_build(&container_command, operation(12), parent,
+                                       critical_source_site::command,
+                                       critical_deadline_class::interactive));
+    assert(item_transfer_command_decode_payload(container_command, &decoded));
+    assert(decoded.multi_root && decoded.target_parent_item_uid == 900);
 
     auto detached_child = payload;
     detached_child.items[1].parent_item_uid = 0;
@@ -152,6 +167,10 @@ int main()
         destroyed.items[index].expected_state = item_custody_state::active;
     }
     assert(builds(destroyed, 8));
+    auto legacy_destroy_target = destroyed;
+    legacy_destroy_target.target_root_item_uid = 900;
+    legacy_destroy_target.target_parent_item_uid = 900;
+    assert(builds(legacy_destroy_target, 13));
     auto moved = destroyed;
     moved.to_owner = { item_owner_type::room, 500, 0 };
     moved.reason = item_transfer_reason::operator_repair;
