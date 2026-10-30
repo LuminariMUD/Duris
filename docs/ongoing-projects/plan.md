@@ -466,4 +466,8 @@ and then passing after the fix. No socket/restart/backend-parity qualification i
 claimed for this isolated capacity PR. The next chunk is access/session/backend
 policy, followed by durable management/payment/audit/save integration and full
 command qualification. Its dependent PR will be based on this foundation rather
-than waiting to publish the entire issue at once. The review link follows below.
+than waiting to publish the entire issue at once. The first review-ready chunk is [PR #497](https://github.com/LuminariMUD/Duris/pull/497),
+head `branch/issue-490-private-chests`, base `master`. Commit `e41c1b2e0` contains
+the capacity fix. The PR is open, non-draft and mergeable; it references #490
+without closing it. Later master commits only change unrelated population and
+regression fixtures, so the capacity/build evidence remains applicable.
