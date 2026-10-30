@@ -97,8 +97,9 @@ Do not restore an entire old database or clear rewards/history to undo flags.
 After separately approved operations, verify the already-pending character gets
 exactly one real errand without touching another stone or earning extra epics.
 Confirm the original 400 epics, completed-zone exclusions, save/rent/relogin and
-restart behavior, then task variety for zero/some/all completed zones. Keep #71
-open until production evidence is recorded.
+restart behavior, then task variety for zero/some/all completed zones. Keep
+acceptance evidence with the deployment record and linked issue; an issue's
+open/closed state does not establish that a deployment or live recovery occurred.
 
 Focused checks: `test_epic_task_seed.py` validates roster/CLI behavior;
 `run_epic_zone_seed_mysql.py --image mariadb:11.8` (also `mysql:8.0`) exercises

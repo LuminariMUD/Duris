@@ -48,6 +48,10 @@ docs/
 | [ARTIFACT_MANA.md](reference/ARTIFACT_MANA.md) | Per-item mana: the resource, its storage, and the crash window. |
 | [NATIVE_ARTIFACT_PILOTS.md](reference/NATIVE_ARTIFACT_PILOTS.md) | The five migrated native artifacts and the [source inventory](reference/artifact_source_inventory.json). |
 | [STUDIO_ITEM_ABILITIES.md](reference/STUDIO_ITEM_ABILITIES.md) | The typed `itemability` Studio action, its catalog, and its [schema](reference/studio-item-abilities.schema.json). |
+| [QUEST_SYSTEMS.md](reference/QUEST_SYSTEMS.md) | Quest-system overview: static NPC authoring, bartender assignments, tracking, dailies, commands, rewards, persistence, and validation. |
+| [BARTENDER_QUESTS.md](reference/BARTENDER_QUESTS.md) | Standalone bartender/world quest reference: commands, selection, rewards, fees, sharing, maps, recovery, persistence, and tests. |
+| [XML_QUESTS.md](reference/XML_QUESTS.md) | The XML actor/action/tag language, parser examples, runtime behavior, and incomplete loading, command, and persistence paths. |
+| [EPIC_TASKS.md](reference/EPIC_TASKS.md) | Epic task assignment, catalog readiness, runestone/PvP/nexus completion, sharing, clearing, rewards, and recovery. |
 | [ZONE_STORY_QUEST_TRACKING_CONTRACT.md](reference/ZONE_STORY_QUEST_TRACKING_CONTRACT.md) | What a zone-story quest completion records. |
 | [ZONE_STORY_QUEST_CATALOG.md](reference/ZONE_STORY_QUEST_CATALOG.md) | The generated quest catalog and its [snapshot](reference/ZONE_STORY_QUEST_PRODUCTION_CATALOG.json). |
 | [ZONE_STORY_QUEST_DAILY.md](reference/ZONE_STORY_QUEST_DAILY.md) | Daily zone-story quests, shipped disabled. |

@@ -99,7 +99,9 @@ Representative entry points by feature:
 - **Guilds and social systems:** `src/guild/` plus social handlers in
   `src/cmd/` and `src/world/`.
 - **Quests:** `src/world/quest.c`, `src/cmd/nq.c`,
-  `src/world/world_quest.c`, and `src/mob/encounters.c`.
+  `src/world/world_quest.c`, and `src/mob/encounters.c`; see the
+  [quest-system reference](QUEST_SYSTEMS.md) for authoring, runtime behavior,
+  tracking, XML, and epic tasks.
 - **Immortal and building commands:** primarily `src/cmd/actwiz.c`,
   `src/cmd/wikihelp.c`, `src/world/properties.c`, and `src/cmd/testcmd.c`.
 - **Chaos mode:** `src/combat/chaos.c`, `src/combat/chaos_config.c`, and the
@@ -275,120 +277,12 @@ and `test_relic_lab_reset_bounds.py` cover these paths.
 
 ## Bartender world-quest catalog
 
-`src/world/world_quest_policy.c` builds the global catalog once at boot through
-`calc_zone_mob_level()`, after world indexes, special procedures, and map setup.
-Both persistence backends use loaded content; `zones.quest_zone` is not an
-approval list. Repeated quest requests reuse cached mobile profiles, reward
-pools, and per-level scores rather than scanning all prototypes or querying SQL
-for zone eligibility. Temporary probes restore live entity counts.
-
-Policy excludes sentinel/non-normal zones, explicit zones 0/292/536, towns and
-hometowns, and zones without eligible local rewards. The truncated average
-prototype level must lie strictly inside `(L - 7, L + 5)`. Mapless zones require
-level 41 or higher. Source-eligible rewards pass the floor `2 * itemvalue >= L`;
-reward counts and means are calculated after that filter. Items that any
-hand-built quest pays out or asks players to hand in (the item goals of
-`quest_index`) are never rewards, flagged `ITEM2_QUESTITEM` or not. Each zone
-also withholds its most valuable `world.quest.reward.top.withheld.percent`
-(default 20) percent of source-eligible items, rounded up and including value
-ties. A zone whose items are all worth the same has no top tier, so nothing is
-withheld there; a zone's only item is. Per-level pools and scores are built from
-what remains, and the boot log reports both withheld counts. The setting is read
-when the catalog is built, so a change applies at the next boot.
-
-For eligible zones, the relative selection weight is
-`exp(-abs(average_level - L) / 6) * (average_ivalue / L) * eligible_item_count`.
-Item count is deliberately linear; zero-reward zones have zero weight. See
-`world_quest_policy_math.h` for boundaries and constants.
-
-Targets use the inclusive level band `[L - 4, L + 5]` for both the cached
-prototype and live actor. A per-request index uses actual destination zones,
-not prototype ownership. Each instance must match a direct unconditional 100%
-`M` reset at its saved birthplace; mixed conditional/rare/random-table sources
-and inaccessible staging births stay ineligible. Kill targets need at least two
-usable, visible, unprotected instances in that zone; the initial quota is capped
-at usable count minus one. ASK needs a singleton that can speak, hear and respond
-in its current room without player-specific aggression or an intercepting
-procedure. Below 31, invisible/concealed/hidden ASK targets remain excluded.
-
-One bounded read-only route context proves ordinary outbound and return travel
-from the captured origin to both the reset and current rooms. Accepted levels
-11-29 stay in their resolved local geography without keys, fares or special
-travel equipment. Level 30+ may use proven current travel capabilities.
-Unknown scripts and exhausted budgets cannot grant a new target. The map
-entrance comes from the proved route and is cached before purchase; the map
-remains paid. Selection never spawns a prototype or moves the observer.
-Live target probes and completion-history checks each have a request-wide
-budget of 32; room/edge/actor work shares a two-million-operation bound.
-Previously completed targets are excluded; a history-read error stops assignment.
-
-`createQuest()` distinguishes no eligible zone from no valid target. Bartender
-payments use the currency transaction API: the debit changes the wallet in memory
-and invokes its completion before the API returns. A failed later selection
-refunds the fee in memory; player saves persist the wallet. The deferred
-quest continuation stores the bartender's stable vnum rather than a live NPC pointer,
-so disconnect/reconnect cannot resume against stale room state. Completion
-history still uses each backend's world-quest adapter. Reward selection uses
-the accepted quest level's cached pool, with the existing logged random-
-equipment fallback if unavailable.
-`tests/async/run_world_quest_dual_backend.py` exercises real grants, ordinary
-outbound/return travel, ASK/KILL completion, partial progress across restart,
-paid maps and durable free replacement in disposable MariaDB and flatfile
-instances. Test-only `DURIS_WORLD_QUEST_JOURNEY` selects recovery, gameplay,
-both (default), or the loaded-world audit/observer timing pass. Focused gameplay
-cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`; the full
-matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2).
-The debugger sets only the disposable Chaos actor's requested level and first
-random quest kind, and inspects production route/provenance results without
-moving actors. The player walks and interacts through normal commands. Its
-retained Chaos HP/equipment do not qualify combat difficulty. All sampling/RNG
-breakpoints are disabled for command/observer timing. Character creation reuses
-the maintained combat-journey flow. Focused `test_world_quest_*` tests cover
-policy and failure boundaries.
-
-Quest origin (`quest_origin_room`, a VNUM) and replacement entitlement
-(`quest_replacement_due`) are append-only player status fields. Snapshot version
-13 defaults both to zero for earlier wire versions; the legacy 14-value quest
-payload is unchanged. Legacy pfile imports also initialize both to zero. SQL
-requires migration `0055_world_quest_recovery`. New purchases capture the real
-bartender/customer room into the payment context and creation API; they retain
-that origin even if the customer later moves. Reset clears it and sharing copies
-it, with each mutation marking status dirty. Accepted work is revalidated at QUEST, bartender and initial GMCP status use;
-checked rendering reuses that command's verdict. A separate maximum-capability
-and optimistic-procedure pass can prove a hard world-route loss without treating
-a player's lost gear, unknown script or work-budget exhaustion as cancellation.
-All passes share the existing bound; accepted supply is checked against remaining
-kills, without applying the new-purchase minus-one rule again.
-
-A world-invalid incomplete task becomes inactive with a durable replacement due.
-A bartender redeems it through the same selector without a new fee or daily-use
-penalty, retaining accepted type/level, earned kills, original quota, receiver,
-remaining shares, map purchase and original start time. No replacement leaves
-that entitlement intact. Explicit confirmed abandonment discards it for free.
-Completed work is preserved and claimed before new-purchase gates. Legacy
-zero-origin work gets target/location checks and must be rebound at a real
-bartender before directions are disclosed. Sharing checks the recipient's own
-eligibility and cannot overwrite an entitlement. Full journey qualification
-remains tracked in `docs/ongoing-projects/plan-issue-437.md` for #437.
-
-Quest text and JSON status read boot-cached NPC short descriptions without
-spawning prototypes. Missing giver/target details never reset paid or completed
-work. Quest maps use a synchronous map viewpoint without room-transfer hooks,
-population changes or action interruption, and emit `Quest.Map` rather than
-overwriting the character's `Room.Map`.
-Quest.Status includes `availability` and `replacementDue`, retaining progress and
-`mapBought` for pending work. Unverified targets/zone directions are withheld;
-an empty Quest.Map packet with zone zero clears stale directions. JSON serializers
-do not change quest state or money.
-
-ASK and KILL completion credit must match the accepted quest type and the
-target's actual advertised zone. A matching prototype elsewhere cannot advance
-the task; killing an ASK target cannot turn it into a KILL reward.
-
-Quests cannot be shared unless `world.quest.share.max` (default 0, at most 4)
-allows it. Every completed quest pays one item reward to the player who
-completed it; kill quests pay at completion instead of rolling rewards onto
-corpses. The fee is `world.quest.cost.per.level` copper per level (default 20).
+The [standalone bartender quest reference](BARTENDER_QUESTS.md) documents
+`world_quest.c`, the cached selection/reward catalog, route proofs, completion,
+fees, sharing, maps/GMCP, recovery, persistence, and validation. Its
+[source map](BARTENDER_QUESTS.md#source-map) links the owning handlers and hooks;
+its [policy section](BARTENDER_QUESTS.md#catalog-target-and-route-policy) gives
+the exact level windows, reward weighting, target rules, and work budgets.
 
 ## Shared NPC area-target pruning
 

@@ -13,6 +13,7 @@ with tempfile.TemporaryDirectory(prefix="divine-runtime-",dir=ROOT / "bin/tests"
     losses="\n".join(extract_function("ships/ship_utils.c",signature) for signature in
         ["int ShipSlot::get_weight(","int ShipData::slot_weight(","void ShipSlot::clear(","void clear_cargo(","int jettison_cargo(","int jettison_contraband(","int add_crate("])
     losses+="\n"+extract_function("ships/ship_shop.c","void check_contraband(")
+    losses+="\n"+extract_function("ships/ship_npc_ai.c","void NPCShipAI::steal_target_cargo()")
     source.write_text(harness.replace("// SPLIT_FUNCTIONS",split).replace("int main()",losses+"\nint main()",1))
 
     subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-Wno-unused-parameter",
