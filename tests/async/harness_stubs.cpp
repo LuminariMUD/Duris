@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "account/account.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -27,6 +28,16 @@ HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 }
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
+// Isolated terminal-save fixtures have no account projection or departure state.
+// Account lifecycle tests link the real implementation or supply their own boundary.
+HARNESS_STUB int sync_account_character_projection(P_char, int, int)
+{
+	return 1;
+}
+HARNESS_STUB bool save_account_character_departure(P_char)
+{
+	return true;
+}
 // Ordinary NPC fixtures use their own race. Tutorial profile/parity coverage
 // links the real lookup, including the full-world read_mobile_probe comparison.
 HARNESS_STUB int tutorial_mobile_mechanics_race(char_data *ch)
