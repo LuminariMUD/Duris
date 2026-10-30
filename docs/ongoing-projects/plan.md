@@ -1,380 +1,221 @@
-# Issue #420: preserve Shambler capacity while defensive images are active
+# Issue #455: separate unread news from combat condition colors
 
-Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
-Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
-Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
-Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
-Worktree: /home/aiwithapex/projects/duris-issue-420.
+Status: **implementation plan; implementation has not started**. Updated 2026-10-30.
+Issue: [Duris #455](https://github.com/LuminariMUD/Duris/issues/455).
+Branch: [branch/issue-455-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-455-plan).
+Source baseline: origin/master at c9361959ceb6cb2a9004fea2c03748cef909dc3f.
+Worktree: /home/aiwithapex/projects/duris-issue-455.
 
-The previous plan and completed qualification record for #428 are preserved
-byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
-authorizes implementation, including the shared Reflection/Mirror Image
-exemption, local qualification, commit/push and a PR linked to #420.
-The later master integration preserves the completed bartender-quest record in
-[plan-issue-437.md](plan-issue-437.md) and updates its codebase-guide reference.
+The completed #420 plan and qualification record are preserved byte-for-byte
+in [plan-issue-420.md](plan-issue-420.md).
 
-## Outcome and accepted balance decision
+## Outcome
 
-At Shambler's admission boundary, exclude linked NPC images whose prototype is
-IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
-pet permits a cast, independent of whether zero, one, two, three or four images
-exist. Two or more ordinary pets still reject it. Any existing linked shambling
-mound still rejects another cast, including when it is the only ordinary pet.
+Render the existing prompt-frame color transition before the unread-news
+suffix. Combat condition words keep their current severity colors; the space,
+`(news)` marker and closing `>` use the resolved prompt-frame foreground. Keep
+the exact visible wording, spacing, marker position and terminal framing.
+The marker still appears only when the owning character has unread news.
 
-The owner accepted this resolution of the issue's open balance question, not a
-claim that the code or existing help already establishes that rule. It is
-specific to admission to Shambler. It does not make images cease to be pets.
+For example, the default raw markup changes from
+`EC:&+R pretty hurt (news)&+g> ` to
+`EC:&+R pretty hurt&+g (news)> `. A player-selected prompt foreground replaces
+the default green through the existing profile resolver.
 
-**Shared-prototype consequence:** Reflection and Mirror Image both create
-pet-linked NPC 250. The accepted rule intentionally exempts both at this one
-boundary, including Reflection reached through its racial innate or an item.
-A Reflection-only exception that still counts otherwise identical Mirror Image
-pets would require a distinct policy and additional provenance; this plan does
-not silently introduce that distinction.
+## Findings checked against the code
 
-Keep the explicit Titan-versus-Reflection exclusions, genuine pet caps, mound
-uniqueness, image ownership, duration, replacement and combat behavior. Ordinary
-Displacement remains an affect with no pet-capacity consequence.
+Paths and line numbers refer to the baseline above.
 
-## Source findings, checked independently of the issue
+1. **The reported ordering defect is current.** In
+   [make_prompt](../../src/net/prompt.c), lines 289-295 construct the footer
+   with the news suffix first and output_role_markup(...) second. The footer
+   is appended at line 415 after combat fields, optional staff visibility and
+   AFK status. The issue's final append line and capacity expression are stale:
+   the current code uses pPromptCap + footer_size, with footer space reserved
+   before appending combat fields. Preserve this protection.
 
-All paths and line numbers below refer to the baseline above.
+2. **Either condition can be the final colored field.** The tank path at
+   lines 324-352 and enemy path at lines 379-404 choose severity foregrounds
+   without a trailing reset. They can also append cyan `(warded)`. A tank-only
+   prompt can exhibit the problem without an EC field. Visibility can leave
+   magenta active; AFK has its own explicit reset. The shared footer is the
+   common boundary that needs correction.
 
-1. **Reflection really creates pet links.**
-   src/classes/sillusionist.c:573-704 checks for an existing Titan, replaces
-   image followers, computes BOUNDED(1, (level - 26) / 5, 4), loads mobile 250,
-   and calls setup_pet(image, ch, 3, PET_NOCASH). Effective levels 31/36/41/46
-   produce 1/2/3/4 images. Images attach to the caster even when the visual
-   target is another player; preserve that existing ownership rule.
-   src/classes/necromancy.c:236-314 creates the LNK_PET through
-   linked_affect_to_char(). count_pets() counts every such link.
+3. **The frame color is configurable.** Lines 89-96 resolve the owner's
+   OutputChannel::Prompt profile with a Static caller policy. In
+   [output_role_markup](../../src/net/output_profiles.c), lines 672-681,
+   OutputRole::None with use_base=true selects the profile base foreground or
+   falls back to the existing `&+g`. A new hard-coded `&n` or green marker
+   would bypass the established frame selection. Reuse the existing call.
 
-2. **Shambler has two separate admission rules.**
-   src/magic/blispells.c:666-742 first rejects an existing linked mobile 100,
-   then rejects count_pets(ch) > 1. Its army-prevention comment supports keeping
-   the ordinary-pet cap, but does not specify how images should count.
-   Terrain then selects 1-2, 2-4 or 3-6 mounds; unsupported sectors reject the
-   cast. The top comment's 1d4+2 is not the rule for every terrain.
-   Success retains setup_pet(..., 15, PET_NOCASH | PET_NOAGGRO), death-event
-   scheduling, following and TAG_CONJURED_PET.
+4. **Ownership and notification state are separate from this defect.**
+   [has_unread_news](../../src/player/news.c), lines 17-23 and 76-80, compares
+   published content with the owning PC's acknowledgement through GET_PLYR.
+   make_prompt also obtains that owner before reading preferences. No change
+   to news acknowledgement, publication or persistence is needed.
 
-3. **A global counting change would broaden the balance change.**
-   Other actual consumers of count_pets() are bard charm in
-   src/classes/bard.c:827, the pet shop in src/specs/specs.room.c:868, NPC
-   corpse creation in src/mob/mobact.c:1118, and NPC Shambler selection at
-   src/mob/mobact.c:10772. The last independently requires zero total pets
-   before choosing the spell. Keep all four decisions and the generic counter
-   unchanged. Direct Shambler execution uses the corrected admission rule for
-   any caster; NPC autonomous spell selection remains its current separate rule.
+5. **Existing executable coverage misses color inheritance.**
+   [test_word_output_integration.py](../../tests/async/test_word_output_integration.py)
+   extracts the real make_prompt, queue, pager and news-command bodies and
+   links the production ANSI/profile/news code. Its
+   [news_prompt_checks.inc](../../tests/async/news_prompt_checks.inc) already
+   covers unread/read, layouts, ANSI/MSP, smart prompts, auxiliary prompts,
+   owner/body switching and long-name footer preservation. It does not assert
+   the news marker's foreground after a combat condition.
+   [combat_prompt_checks.inc](../../tests/async/combat_prompt_checks.inc)
+   demonstrates visible-offset attribute assertions with AnsiString.
 
-4. **The existing image constant is precise enough; the illusion helper is not.**
-   src/core/defines.h:1374 defines IMAGE_REFLECTION_VNUM.
-   src/magic/magic.c:1727-1880 shows Mirror Image calling make_mirror(), which
-   loads the same prototype and calls setup_pet().
-   src/classes/innates.c:2470 also loads mobile 250 for Project Image, but does
-   not create a pet link in that path, so it contributes nothing to either count.
-   is_illusion_char() in src/classes/sillusionist.c:1400 also identifies
-   illusion disguises. Reusing that broader predicate could exempt real pets
-   merely because they are disguised; use the NPC/prototype check instead.
-
-5. **The Reflection entry routes and both Titan exclusions already exist.**
-   src/classes/innates.c:2647-2666 dispatches the racial innate to
-   spell_reflection() after its own Titan check and cooldown handling.
-   src/classes/sillusionist.c:1871-1920 rejects Titan creation while a
-   mobile-250 image follower exists; Reflection independently rejects a linked
-   Titan. Neither restriction should move into a pet-count helper.
-   src/classes/skills.c:2217-2218 registers Shambler as an 11th-circle Scourge
-   specialization spell. A real command journey must satisfy that eligibility,
-   rather than assuming that any level-36 character can cast it.
-
-6. **Displacement and help need careful interpretation.**
-   src/classes/psionics.c:1461-1483 adds an AC affect without creating followers
-   or links; the reported name does not establish a Displacement defect.
-   lib/information/help_index contains the maintained Reflection and Shambler
-   entries (around lines 13489 and 25410). Neither currently explains this
-   image-counting rule. Add concise player wording there with the fix.
+6. **Color separation and client parsing are different claims.**
+   [process_output](../../src/net/comm.c), lines 4660-4682, converts queued
+   markup through AnsiString::term; TERM_GENERIC removes color attributes.
+   A corrected transition separates the server's styled runs. It cannot change
+   a client's condition regex after that client strips all colors: the visible
+   text remains identical. The issue supplies no failing client trigger, and
+   this checkout does not establish that client's parsing contract. Do not
+   claim universal trigger compatibility from a server color test. If an
+   affected client's trigger is supplied during implementation, replay the
+   before/after output through that actual trigger and identify any separate
+   client fix without changing this server prompt format speculatively.
 
 ## Executable planning evidence
 
-A temporary probe under bin/qualification/issue420/ reused the existing
-Reflection ownership fixture and extracted the current, unmodified production
-bodies of spell_reflection(), setup_pet(), count_pets() and spell_shambler().
-It executed all 20 combinations of 0/1/2/3 ordinary pets and 0/1/2/3/4 actual
-Reflection-created images under ASan/UBSan.
+The unchanged baseline passes:
 
-Observed results:
+    SANITIZE=1 python3 tests/async/test_word_output_integration.py
 
-- With no ordinary pets, zero or one image reaches Shambler's mound loader;
-  two, three or four images trigger the exact pet-cap rejection.
-- With one ordinary pet, zero images reaches the loader; even one image rejects.
-- With two or three ordinary pets, every image count rejects.
-- The generic count equals ordinary pets plus images throughout.
+A temporary probe reused that harness and inserted checks into a temporary
+copy of its news fixture; no tracked C/C++ or test file was changed. With real
+make_prompt and production AnsiString under ASan/UBSan, it exercised:
 
-The controlled mound loader intentionally returned null. This proves current
-admission behavior, not successful summons, event expiry, command reachability,
-or a booted-world reproduction. Room/link services and RNG were controlled.
-The ignored result is bin/qualification/issue420/baseline.txt; the temporary
-probe source and executable are removed after investigation. The implementation
-regression below must exercise successful mound creation, not stop at this probe.
+- TC only, EC only, and both conditions, at 20/100 health;
+- one-line and two-line prompts with resource fields enabled;
+- TERM_ANSI and TERM_MSP;
+- default green and a custom bright-cyan prompt foreground.
 
-Existing baseline checks also passed:
+All 24 combinations rendered `(news)` in the condition's bright red instead
+of the frame foreground. Representative actual raw output was
+`&+g<&+r 20h&n TC:&+R pretty hurt (news)&+g> &n`; the custom-frame case
+ended `pretty hurt (news)&+C> &n`. This confirms the defect and the coverage
+gap; these are baseline observations, not evidence that a fix has passed.
+The probe's world, visibility, logging and transport boundaries are fixtures;
+process_output is stubbed. No booted-world, socket/client or production
+reproduction is claimed. Temporary probe sources are removed after planning.
 
-- python3 tests/async/test_reflection_image_ownership.py: 409 casts plus Titan
-  rejection under ASan/UBSan, preserving prototypes, ordinary pets, links, combat
-  redirection and private-string cleanup. Extraction/room services are fixtures.
-- python3 tests/async/test_innate_reflection.py: real innate dispatch,
-  race/level eligibility, self targeting, configurable cooldown and Titan
-  rejection. Its Reflection body is stubbed; it does not prove the combined
-  innate-to-Shambler route.
+## Files and implementation sequence
 
-## Non-goals
+Expected implementation changes: src/net/prompt.c and
+tests/async/news_prompt_checks.inc. Update this plan with final evidence.
+No new test runner, production helper, header or configuration is needed.
 
-- No change to count_pets() or its other consumers, no generalized capacity
-  policy, optional parameter, image-origin field, new configuration or service.
-- No change to image links, charm, durations, strings, damage, replacement,
-  Mirror Image creation rules, racial unlocks/cooldowns or Titan restrictions.
-- No change to Shambler terrain yields, lifetime, ordinary-pet limit, existing
-  mound exclusion, class access or NPC autonomous spell selection.
-- No pet persistence migration, old-instance rewrite, production operation,
-  deployment, full burn-in or dependency on hosted CI.
-- Do not fold Conjurer capacity work #215, prior image-ownership work, or
-  unrelated pet/lifetime investigations into this fix.
+1. **Extend the existing news fixture first.** Use its real fighting pointers
+   and same-room characters to cover TC-only, EC-only and combined conditions.
+   Assert that condition words retain their severity attributes, while the
+   space before `(news)`, every marker character and `>` match the frame
+   foreground. Include default and custom frame colors that differ from the
+   tested injury color. The new boundary assertions must fail on the baseline.
 
-## Files and ablated implementation sequence
+2. **Reorder the two existing footer arguments.** Keep the same format string,
+   output_role_markup call, news predicate, footer buffer, capacity reservation
+   and terminal suffix. Pass frame markup first and the conditional news suffix
+   second. This yields frame markup followed by optional ` (news)` and `> `.
+   Apply the correction for every ordinary prompt, using the existing common
+   footer rather than inserting resets in individual condition branches.
 
-Expected production edit: src/magic/blispells.c only.
-Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
-one focused command journey tests/async/test_shambler_reflection_journey.py
-(new), its resource-intensive registration in tests/run_regression_tests.py,
-lib/information/help_index, and this plan's completion record.
-Retain test_innate_reflection.py as an unchanged compatibility test unless the
-new regression exposes a necessary gap.
+3. **Prove the boundary and retained behavior together.** Extend the same
+   fixture with the cases below. Reuse its production AnsiString conversion
+   to inspect terminal output as well as raw markup. Follow the actual
+   process_output sequence for TERM_GENERIC: clear colors before term().
+   Preserve registry/preferences and fixture state between cases so custom
+   profiles and unread state cannot leak into existing checks.
 
-1. **Extend the existing native regression before changing the guard.**
-   Add the production Shambler body and generic counter to the current Reflection
-   fixture. Model mobile 100, successful materialization and observable
-   scheduling/tagging at the existing controlled service boundaries. Assert
-   returned mounds and unchanged image/ordinary-pet state, not just absence of
-   refusal text. At least image-only 2+ and one ordinary pet plus one image must
-   fail against the current source. Do not create a second harness framework.
-
-2. **Count at the existing Shambler boundary.**
-   In its existing linked-pet traversal, retain the mound rejection and tally
-   only pets that are not NPCs of IMAGE_REFLECTION_VNUM. Use the resulting
-   local count for the existing > 1 guard. Preserve rejection precedence and
-   the terrain/summoning body. Add a short comment explaining this admission
-   policy. No new production helper or header declaration is necessary.
-   Keep all non-image pets counted; do not use flags such as PET_NOCASH,
-   temporary duration, charm status, or the broad illusion predicate.
-
-3. **Drive the real command route in disposable state.**
-   Reuse test_flatfile_combat_journey.py and its server build/world/socket
-   helpers. Follow the staff-controlled fixture setup demonstrated by
-   run_racial_pulse_journey.py, but keep this scenario separate from its
-   unrelated race-stat checks. Supply the image and mound prototypes and a
-   supported outdoor room. Configure synthetic, otherwise eligible Scourge
-   casters with known spell access, mana and preparation; do not change normal
-   race/class rules. Exercise racial "innate reflection" for Gnome and Kobold,
-   then "cast 'shambler'" while at least two images remain. Also cover the normal
-   spell route to Reflection on a prepared test caster and a Mirror Image
-   command control for the shared-prototype policy.
-   Observe image and mound identities/counts plus ownership/following through
-   existing inspection facilities. Synchronize on each command's response and
-   following prompt; an unsolicited prompt alone cannot prove completion.
-   Check a repeated Shambler rejection, ordinary-pet rejection and both
-   Titan/Reflection orders. Recast/cleanup must leave ordinary pets intact.
-
-4. **Document and finish proportional qualification.**
-   Explain in Shambler help that Reflection/Mirror Image images do not consume
-   its ordinary-pet allowance, that at most one other pet may precede the cast,
-   and that an existing mound prevents another cast. Add a brief cross-reference
-   in Reflection help without claiming a global exemption. Run the checks below,
-   reread the entire diff and record exact results and limitations here.
-
-Ablation keeps one local counting decision, the already available image constant,
-an extension of existing native coverage, and one small journey using existing
-helpers. A global counter change would alter four unrelated consumers. A broad
-illusion predicate changes more than image counting. Per-spell provenance adds
-state without serving the proposed shared-image rule. Removing image links
-would disturb ownership and lifecycle. These alternatives are dropped.
-The command journey stays because the existing tests do not execute the combined
-player workflow. No alternative production implementations need to be built.
+4. **Build, review and record results.** Run the commands below, review the
+   entire diff, and record exact results and limitations in this plan before
+   committing implementation. Artifacts stay under bin/. No CI wait is needed.
 
 ## Proof and acceptance
 
-- Cross 0/1/2/3/4 images with 0/1/2/3 ordinary pets: casts succeed only with at
-  most one ordinary pet and no existing mound. Include a non-image summoned pet
-  as well as a charmed-pet control; both count. Non-pet links do not count.
-- An existing mound rejects with zero or multiple images, including when that
-  mound is the only ordinary pet. Additional casts cannot accumulate mound groups.
-- In supported terrain, admitted casts create the unchanged yields (1-2, 2-4,
-  3-6) under controlled RNG. Unsupported terrain still rejects without creating
-  anything. New mounds retain pet links/followers, tagging and scheduled lifetime.
-- Image-only and mixed cases leave image identity, strings, links and existing
-  ordinary pets intact. Reflection replacement removes only the previous images;
-  after image cleanup the ordinary-pet decision is the same.
-- The generic count_pets() still counts images. This demonstrates that the
-  shared helper's contract, including its other callers, has not changed.
-- Real Reflection spell and racial routes reach successful Shambler creation;
-  the Mirror Image control follows the explicitly proposed rule. Existing
-  Displacement alone adds no pet restriction.
-- Titan first still blocks Reflection; images first still block Titan.
-  The racial rejection does not spend cooldown or add combat lag.
-- Native and socket results are reported separately. A missing command journey
-  leaves that acceptance item unverified; green helper tests cannot replace it.
+- Use a bright-red injured condition on each of TC and EC and retain its
+  exact words and severity attribute. The footer is shared by every severity;
+  duplicating the entire unchanged health-threshold ladder is unnecessary.
+- Cover TC-only, EC-only and combined fields in the 24-case layout/terminal/
+  frame matrix used by the baseline probe. Both marker and closing bracket
+  must use the frame foreground. An injury color matching the frame must not
+  be the only test, since it could hide the old ordering.
+- With PROMPT_WARD, a positive final tank/enemy ward stays cyan and `(news)`
+  returns to the frame color. Include the optional trailing visibility and
+  AFK fields as focused shared-footer cases.
+- Read/acknowledged and empty-publication controls omit `(news)`; they retain
+  the old closing-frame markup. Noncombat prompts receive the same marker
+  frame color. Assert exactly one marker when unread.
+- Compare expected plain text, including spaces, field labels, condition
+  wording and one/two-line layout. The ANSI boundary changes; visible text
+  does not. Render representative default/custom cases through the production
+  terminal converter and verify the marker/frame foreground there too.
+  TERM_GENERIC output stays free of color escapes with unchanged text.
+- Keep MSP opening/closing tags, its terminal reset, the normal final reset,
+  and the reserved footer under long-name truncation. Retain the existing
+  smart-prompt, pager/editor/confirmation/menu, no-prompt and switched/morphed
+  owner controls in the same executable suite.
+- The regression's baseline failure and fixed success must be recorded.
+  Passing raw marker-presence tests alone is insufficient. The harness does
+  not certify a live client trigger or full game-loop combat timing.
 
-Planned commands after implementation, with artifacts confined to bin/:
+Commands after implementation:
 
-    python3 tests/async/test_reflection_image_ownership.py
-    python3 tests/async/test_innate_reflection.py
+    SANITIZE=1 python3 tests/async/test_word_output_integration.py
     make -C src
-    python3 tests/async/test_shambler_reflection_journey.py
     ./scripts/format.sh --check
     python3 tests/async/test_documentation_contract.py
     git diff --check
 
-The proposed journey should build its fresh flat-file executable through the
-existing helper by default, with an optional explicit freshly built binary as
-the nearby journeys support. Confirm local/dev configuration before runtime
-work; use private temporary accounts/world data, never live player state.
-No persistence behavior changes, so restart/database qualification is not a new
-gate. Production/full-world acceptance is outside this implementation estimate.
+Use the project's local/development build configuration. This formatting-only
+behavior change needs no new database, persistence or restart journey. The
+existing full news journey exercises acknowledgement/reload/copyover/restart,
+but does not assert this combat color boundary; rerunning both persistence
+backends would not replace the targeted regression above.
 
-## Tracking and estimate
+## Ablation and non-goals
 
-GitHub #420 is the work item for this branch. Searches for open PRs referencing
-420 or Shambler/Reflection found none. Targeted max757/duris GitLab searches
-found no matching Shambler work item; the Reflection result was unrelated
-lifetime-qualification item #27. Do not link that item or close related historical
-issues merely because they mention images or pets. Link this branch directly
-in #420's Development section and provide the committed plan link there.
-A planning-only commit must not use an issue-closing keyword.
+Keep the single shared-footer correction because the 24 executable cases
+demonstrate the failure there. Keep the existing profile resolver and footer
+reservation because custom colors and bounded terminal framing depend on them.
+Extend the existing integration fixture because presence-only checks missed
+the defect and it already executes the affected function and ANSI code.
 
-Estimate: **2-3 hours of my active implementation time** for the documented rule,
-including regression-first work, the small production change, help, the real
-command journey, required build and reviewable commits. Approximately 30-45
-minutes is native regression plus fix, 60-90 minutes is command-fixture setup and
-runtime checks, and 30-45 minutes is documentation, build and final review.
-Allow up to 4 hours if spell preparation or minimal-world fixtures require more
-setup. This excludes a changed balance decision, external review, merge waiting
-and deployment.
+Drop per-condition resets, a news-specific color preference, a new semantic
+role, a footer helper, a parser/protocol redesign and a second test framework:
+none is necessary to establish the required boundary. Do not refactor health
+thresholds, change combat/ward mechanics, add a new visible separator or move
+the marker outside the prompt. Smart-prompt design, unrelated prompt cleanup,
+news storage, migrations, external-client changes, deployment and full burn-in
+are outside this task. No player help change is needed for unchanged wording
+and controls. The only extra planning file preserves the previous #420 record.
 
-## Planning completion checks
+## Tracking, estimate and planning validation
 
-Only this plan and preservation of the previous plan are committed. No
-production C/C++ edit, full server build or booted-world reproduction is claimed
-at this planning stage. The focused baseline evidence is recorded above.
-Planning validation completed:
+GitHub #455 is the work item for this branch. An open-PR search found no
+existing #455 PR. Create the branch's native link in the issue's Development
+section and add the committed plan link to the issue. Keep #455 open: a
+planning commit must not use an issue-closing keyword. No additional work item
+is justified by the inspected code or the issue's empty comment history.
 
+Estimate: **45-75 minutes of my active implementation time**, including
+regression-first coverage, the footer change, sanitizer checks, the required
+local build, final review and implementation commit/push. Roughly 20-30 minutes
+is regression coverage, 5 minutes is the production edit, and 20-40 minutes is
+compilation, validation and handoff. Allow up to 90 minutes if fresh-build or
+terminal-fixture setup needs repair. External review, merge/deployment and any
+separately demonstrated client parser change are excluded.
+
+Planning qualification completed:
+
+- SANITIZE=1 python3 tests/async/test_word_output_integration.py: passed.
+- Temporary 24-case baseline probe under ASan/UBSan: every case confirmed the
+  reported inheritance defect; no sanitizer finding. Probe sources removed.
 - python3 tests/async/test_documentation_contract.py: all 14 tests passed.
 - git diff --check: passed.
-- The archived #428 plan and baseline plan have identical SHA-256:
-  db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
-- Only the requested plan and the intact historical archive are tracked changes;
-  the original checkout's branch and files are preserved.
+- cmp confirmed plan-issue-420.md is byte-identical to the baseline plan;
+  SHA-256: 9306f27c4fad0663f588bb44f6b05fc8492d368d9bffb872c5c325570020f8e7.
 
-## Implementation and qualification, 2026-10-30
-
-Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
-of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
-unchanged. The existing mound rejection remains first, and terrain, summon
-creation, tagging and lifetime code are unchanged. Help now states the shared
-Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
-
-The existing ownership regression executes the production Shambler body and
-counter alongside Reflection/setup_pet. All 640 combinations of image count,
-ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
-pass under ASan/UBSan. They check actual fixture mound materialization,
-ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
-scheduling endpoints, tagging, duplicate-cast rejection and admission after
-image removal. The original 409 Reflection casts and Titan rejection still pass.
-Two in-memory negative controls substitute the old production Shambler body:
-two images alone and one image with one ordinary pet each fail at the successful
-mound-creation assertion. No tracked production source is changed by those
-controls.
-
-The new command journey boots a fresh flat-file server with private state and
-drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
-real Shambler casts. Every route retains four images and creates three to six
-mounds in forest terrain. Staff inspection checks mobile identities, keywords,
-following and pet links. It also proves duplicate-mound and two-ordinary-pet
-rejection, the one-pet allowance, cleanup without losing ordinary pets, both
-Titan exclusion orders, and the published help. A real Reflection recast
-replaces every image identity while retaining the ordinary companion.
-
-Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
-Scourges after image creation; the Displacement control uses an eligible
-MindFlayer's real WILL command before switching back to Scourge. This does not
-add or claim a playable class combination. Staff edits resolve the PC explicitly
-because images share its name. Commands require their own receipt and following
-prompt and handle paging. No runtime test hooks or production settings are added.
-The journey is registered as resource-intensive in the existing regression runner.
-
-Completed on the planning baseline:
-
-- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
-- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
-  Titan rejection without cooldown or combat-lag consumption.
-- make -C src -j6: MariaDB development build passed with warnings as errors.
-- make -C src PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
-  -j6: flat-file development build passed.
-- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
-  default fresh-build helper and the explicit live recast case.
-- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
-  documentation contracts and git diff --check passed.
-
-The planning-baseline command log is bin/qualification/issue420/journey-final.log.
-The report at gameplay-report.json in that directory holds the latest full run;
-see the integration record below for its current binary. The planning-baseline
-qualified flat-file binary SHA-256 is
-98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
-Native fixtures control room/link services and scheduled callbacks; the socket
-journey exercises the real parser, spell dispatch, materialization and ownership.
-No full-world, MariaDB socket, restart or production qualification is claimed.
-
-Final ablation retains one production counting decision, one existing native
-test extension, a focused journey using existing build/world/socket helpers,
-its runner registration and the necessary help/plan updates. There is no new
-capacity API, persisted state, configuration, migration or image-lifecycle edit.
-
-### Master integration and final qualification
-
-Master advanced to b352b650c3f05ea0c2e109eaa9abcc3040290952 during this work.
-Its shared plan.md now records completed #437 work. The merge retains this #420
-plan at the requested path and archives the upstream #437 plan byte-for-byte.
-The only overlapping file was the plan; Shambler/Reflection and their admission
-behavior did not change upstream. The archived #437 plan and the upstream file
-have identical SHA-256:
-ec2a89006a68a4540b5b71b325ef51bb7683d568588f35b59b83b76d31ab95b4.
-
-The 640-case sanitizer matrix, original Reflection/innate checks, all 14
-documentation contracts, formatting, diff checks and MariaDB build passed again
-against the integrated source. The default command-journey invocation built a
-fresh flat-file server and passed all four routes, the real Reflection recast,
-ordinary-pet/mound controls, Titan exclusions, Displacement and help.
-Gnome, Kobold, normal Reflection and Mirror Image retained four images each and
-created 5, 4, 3 and 4 forest mounds respectively.
-
-Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
-bin/qualification/issue420/journey-integrated.log.
-The integrated flat-file binary SHA-256 is
-0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
-
-
-## Sequential PR integration, 2026-10-30
-
-Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
-#432, #475, #476 and #477. Game code, player help and test discovery merged
-without conflicts. The shared-plan conflict keeps this Shambler record at
-`plan.md` and preserves the completed coin record byte-for-byte at
-[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
-remain intact.
-
-The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
-409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
-formatting, whitespace, test discovery and all 14 documentation checks pass on
-the combined source. The earlier disposable-server gameplay report remains the
-runtime qualification for racial and spell images, ownership, pet/mound caps,
-Titan exclusions, Displacement and help; that complete journey was not repeated
-in this merge pass. No production operation is included.
+Only this plan and preservation of the previous plan are committed. No
+production implementation or full server build is part of this commit.
