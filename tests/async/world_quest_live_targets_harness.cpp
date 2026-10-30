@@ -428,7 +428,9 @@ P_char spawn(int rnum, int birthplace, int room)
 
 int main(int argc, char **argv)
 {
-	assert(argc == 4);
+	assert(argc == 5);
+	const int configured_share_limit = std::stoi(argv[4]);
+	share_limit = configured_share_limit;
 	level = std::stoi(argv[1]);
 	mode = argv[2];
 	preferred_type = std::string(argv[3]) == "ask" ? FIND_AND_ASK : FIND_AND_KILL;
@@ -1015,6 +1017,43 @@ int main(int argc, char **argv)
 			player.specials.affected_by &= ~AFF_BLIND;
 			rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
 		}
+		// A paid quest grants four shares; sharing adds no fee and cannot relay.
+		share_limit = configured_share_limit;
+		resetQuest(&player);
+		GET_COPPER(&player) = 10000;
+		ask("quest");
+		assert(pc.quest_active && pc.quest_shares_left == 4);
+		const int debits_after_purchase = wallet_debits;
+		const int wallet_after_purchase = GET_MONEY(&player);
+		char_data companions[5]{};
+		pc_only_data companion_states[5]{};
+		for (int index = 0; index < 5; ++index)
+		{
+			auto &companion = companions[index];
+			companion = recipient;
+			companion.only.pc = &companion_states[index];
+			companion_states[index].pid = 100 + index;
+			companion.in_room = NOWHERE;
+			move(&companion, 0);
+			companion.next = character_list;
+			character_list = &companion;
+			command_recipient = &companion;
+			history_reads.clear();
+			do_quest(&player, sharing.data(), 0);
+			assert(companion.only.pc->quest_active == (index < 4));
+			assert(pc.quest_shares_left == std::max(0, 3 - index));
+			if (index < 4)
+			{
+				assert(companion.only.pc->quest_receiver == GET_PID(&player));
+				assert(!companion.only.pc->quest_map_bought);
+				feedback.clear();
+				do_quest(&companion, sharing.data(), 0);
+				assert(feedback.find("Only the quest receiver can share") !=
+				       std::string::npos);
+			}
+		}
+		assert(wallet_debits == debits_after_purchase &&
+		       GET_MONEY(&player) == wallet_after_purchase);
 		std::cout << "accepted target checks " << level << ' ' << argv[3] << ": passed\n";
 		return 0;
 	}
