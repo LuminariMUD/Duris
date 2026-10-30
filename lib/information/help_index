@@ -2818,7 +2818,7 @@ function calls, except the "Kvark".
 See also: IMMORTALS, "ZONE GOD", WIZLIST, KVARK
 
 #
-COINS CURRENCY MONEY (General Information)
+COINS CURRENCY MONEY DOSH (General Information)
 ===========================================================================
 Currency on Duris takes the form of coinage, and there are four types to be
 found: &+Wplatinum&+w, &+Ygold&+w, &+csilver&+w, and &+ycopper&+w.&n
@@ -27258,4 +27258,132 @@ how far it continues. From level 50, the final strike can stun. It cannot
 work against Golems, Dragons, Ghosts or phantasmal targets. Ki Strike
 abandons a combination in preparation. Finishing causes two rounds of lag.
 See also: MONK, SKILLS, KI STRIKE
+===========================================================================
+
+#
+ENHANCE ENHANCEMENT ENHANCEMENTS (Command)
+===========================================================================
+Syntax: enhance <item>
+        enhance <item> <donor item or essence>
+
+Carry the item in your inventory. The one-item command improves every
+eligible positive superior stat by one step together, using the required
+crafting materials. If materials are missing, it lists the combined
+requirements and remaining enhancements without consuming anything.
+An item needs a matching higher template and cannot exceed its permitted
+stat cap, currently 150% of its base stat. Some item affects forbid enhancing.
+The item-value limit for your level is three times your character level.
+
+Superior enhancement costs 1 platinum plus 0.1 platinum per current item
+value, once per use, in addition to the listed materials. Materials must
+be carried directly. An eligible Chaos craft pouch supplies them without
+being consumed. This command changes your item; it is not a free preview
+when you already have the required supplies and money.
+
+The two-item form consumes a different donor item to seek a stronger
+replacement. Ordinary donors must have item value at least five below
+the source (guild insignia require at least the source value). Weapons
+need weapon donors or enhancement essences. Ordinary replacement costs
+1 platinum at item value 20 or below, otherwise 10 platinum. Luck affects
+the improvement; not every item has a suitable replacement.
+
+Essences instead add their named property and are consumed on success.
+Their fees are 1, 20 or 100 platinum by essence value (up to 20, up to 30,
+or above 30). Repeated applications of the same property have a limit.
+See also: CRAFT, SALVAGE, CHAOS POUCH
+===========================================================================
+
+#
+BAGS CONTAINERS (General Information)
+===========================================================================
+Use bags and other containers to organize carried items:
+    look in bag
+    open bag
+    put sword bag
+    get sword bag
+    get all bag
+    close bag
+
+Use a numbered name such as 2.bag when carrying several similar bags.
+Closed containers must be opened first; item count, weight, size and
+special container restrictions can prevent an item fitting. A quiver
+accepts its appropriate ammunition rather than arbitrary equipment.
+For shop-produced supplies, try 'buy ration bag 20'; the bag must be
+carried and able to accept them. Read 'help buy' for quantities and costs.
+See also: GET, PUT, OPEN, CLOSE, QUIVER, BUY
+===========================================================================
+
+#
+SAILING SAIL (General Information)
+===========================================================================
+Ship travel uses crew orders from aboard a ship you are permitted to
+control. Start with 'help ship basics' and 'help ship commands'.
+
+Use 'order maneuver <direction>' to leave a dock through its water rooms.
+On the open sea, 'order speed <speed>' and 'order heading <heading>' set
+your course. Headings use 0 for north, 90 east, 180 south and 270 west.
+'order sail <heading> <distance>' uses the ship's automatic course;
+'order sail off' cancels it. Turning and acceleration take time.
+
+Watch 'contacts', your ship's condition and nearby shores. Slow down
+before maneuvering into a dock; sailing straight into land can crash
+your ship. Combat can prevent docking or summoning a ship.
+See also: SHIP MOVEMENT, SHIP COMBAT, HEADING, JETTISON
+===========================================================================
+
+#
+ORDER JETTISON JETTISON (Command)
+===========================================================================
+Syntax: order jettison cargo [number of crates]
+        order jettison contraband [number of crates]
+
+From aboard a ship you can control, order the crew to throw cargo or
+contraband overboard. Omitting the number throws all of that type away.
+For example: order jettison cargo 5
+
+This reduces your load and may restore speed lost to overloading. It
+does not sell the crates or pay you. Some jettisoned goods can become
+floating salvage for other ships, so do not treat this as safe storage.
+See also: SHIP CARGO, SHIP COMMANDS, SALVAGE, SAILING
+===========================================================================
+
+#
+GUILD COMMANDS (General Information)
+===========================================================================
+Use 'society' for the guild command menu and 'help society' for syntax.
+'help society examples' gives worked examples. Available actions depend
+on your membership, guild rank and the action's requirements.
+
+Use 'gsay <message>' to speak to your guild. At a bank with locker access,
+'enter locker guild' enters the shared guild locker. Guildhall building
+uses 'construct'; read 'help construct' before spending guild funds.
+Read 'help guild' for guild organization and 'help rules' for play policy.
+See also: SOCIETY, GUILD, GSAY, CONSTRUCT, LOCKERS
+===========================================================================
+
+#
+INTERCEPT (Innate)
+===========================================================================
+Intercept is a passive Bounty Hunter Mercenary innate gained at level 31.
+It needs no typed command, mana or activation fee. While you are standing
+normally, it can catch an incoming melee attack from an opponent fighting
+you, twisting their arm and preventing that strike.
+
+Luck affects the chance. A successful intercept briefly halves the
+attacker's attack count under the current combat setting. It cannot
+intercept that attacker again while the same Intercept effect remains.
+It is not the same as a Swashbuckler's sword-and-dirk counterattack.
+See also: BOUNTY HUNTER, MERCENARY, LUCK, RAPIER AND DIRK
+===========================================================================
+
+#
+EPIC POINT EPIC POINTS (General Information)
+===========================================================================
+Epic points are a reward and training currency, separate from experience.
+Use 'score' to see your balance, total earned and current epic task.
+Read 'help epic' for rewards and level advancement, and 'help epics' for
+an overview. 'epic skills' locates teachers; 'help epic skill cost'
+explains their fees. Epic skill training begins at level 30, with each
+skill's own prerequisites and epic-point and platinum costs still required.
+See also: EPIC, EPICS, EPIC SKILLS, EPIC SKILL COST
 ===========================================================================

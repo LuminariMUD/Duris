@@ -7,8 +7,94 @@
 &+W======================================================================&n
 &+WUpdated: October 30, 2026&n
 
-Welcome back! Tavern tasks have clearer paths, and your library grew.
+Welcome back! Bring your crew, stock your bags and take the open road.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/30/26&n &+L-&n &+YBring friends, fill bags, keep your coins&n
+&+W----------------------------------------------------------------------&n
+
+&+CBartender adventures for five&n
+&+Y-&n New bartender quests can be shared with &+Yfour companions&n:
+  &+C'quest share <player>'&n. Only the purchaser can share; each companion
+  must consent, qualify for the route and target, have an allowance left
+  and not have completed that task. Sharing adds no quest fee. Everyone
+  buys their own map and earns their own reward. Older tasks keep the
+  sharing allowance they had when purchased. Read &+C'help quest'&n.
+
+&+CShopping, pockets and instruments&n
+&+Y-&n Stock up on shop-produced supplies directly into a carried container:
+  &+C'buy ration bag 20'&n. Choose &+Y1-50&n items; you receive what you can
+  afford and what fits. The final response gives the delivered count
+  and price; items outside that purchase are not charged. Wait for that
+  response before trying another purchase.
+&+Y-&n Picking up, dropping, putting away and giving physical coins now
+  preserve their copper, silver, gold and platinum denominations.
+  &+C'give 5 platinum <player>'&n no longer turns the gift into copper.
+  A failed transfer restores the same types of coins to your purse.
+&+Y-&n Instruments made with &+C'minor creation'&n can now attach to a belt:
+  the lyre, horn, drum, mandolin, harp and flute all support it.
+
+&+COpen roads and doors that let you leave&n
+&+Y-&n The Valley of Crushk's southbound road visibly reaches the stone
+  highway, with a northbound return. Lylrstas has its reciprocal forest
+  entrance, and Meopham has an up/down approach from the grasslands
+  without replacing the surrounding wilderness compass routes.
+&+Y-&n Castle resets no longer strand you behind an internal gate whose
+  single-use key cannot be supplied. Occupied-castle escape gates stay
+  usable, including the outer entrance; when empty, normal key gates
+  can relock if their carrier has the key. Doors may still need opening.
+&+Y-&n Keys marked &+YNORENT&n now disappear when you intentionally rent at an
+  inn, including keys inside bags. Ordinary saves, link loss, camping
+  and routine restarts do not use this special key-disposal rule.
+
+&+CSummons, scavengers and seafaring&n
+&+Y-&n &+C'shambler'&n allows at most one other pet, but Reflection and Mirror
+  Image copies no longer use that allowance. An existing shambling
+  mound still prevents another cast.
+&+Y-&n You can see scavenging creatures pick up floor equipment before
+  wearing or wielding it. Pickups also handle traps that destroy or
+  move the creature, its container or the item safely.
+&+Y-&n Pirate boarding requires matching altitude and flight state as well
+  as proximity and speed. Pirates stop taking cargo when their hold
+  fills, and tell your crew how many crates were stolen or destroyed.
+  Crates recovered with &+C'order salvage'&n now survive ship reloads.
+
+&+CAccounts and a clearer view&n
+&+Y-&n Returning to the account menu after renting or camping refreshes
+  your character's displayed level and location. The opposite-racewar
+  login wait now starts from departure, including a detached character,
+  so time already spent playing does not count toward the &+Yone hour&n.
+&+Y-&n The unread &+C'(news)'&n prompt marker resets its color after combat
+  names. Staff &+C'who'&n summaries show Good and Evil mortal counts,
+  including zero; ordinary player visibility rules still apply.
+
+&+CRead the current rules before your next adventure&n
+&+Y-&n &+C'help rules'&n and the FAQ now agree: only one character may be logged
+  in per player, including link-dead characters, with no inn-storage
+  exception. Account sharing alone is not a violation while its formal
+  policy is under playerbase consultation; all other rules still apply.
+&+Y-&n Scripts and unattended skill training are permitted, as is temporary
+  automation during real-life interruptions. Continuously autonomous
+  play with little real player involvement is prohibited. Staff judge
+  the overall pattern; there is no fixed AFK time limit.
+&+Y-&n After a PvP death, wait &+Yone real-life hour&n before another character
+  takes revenge or assists retaliation, even on the same side. Do not
+  share tactical intelligence across racewars, in game or externally.
+  Cross-side equipment transfers need an immortal-approved imbalance
+  exception after playerbase consultation on Discord.
+&+Y-&n Immortal privileges and active mortal play are mutually exclusive.
+  Developers and builders without those privileges may play, but must
+  not abuse private information. VPNs are allowed; evading punishments
+  with them or any other connection remains prohibited.
+
+&+CMore answers for your next command&n
+&+Y-&n Try &+C'help enhancements'&n for materials, costs and donor options;
+  &+C'help bags'&n for storage; &+C'help sailing'&n and &+C'help jettison'&n
+  for the crew. &+C'help guild commands'&n points to society and guild tools.
+&+Y-&n &+C'help intercept'&n explains the Bounty Hunter's passive defense.
+  &+C'help epic points'&n explains rewards and training, while &+C'help dosh'&n
+  reaches currency help. Staff equipment-help aliases now match their
+  immortal command topics.
 
 &+R10/30/26&n &+L-&n &+YTavern tasks worth the journey&n
 &+W----------------------------------------------------------------------&n
