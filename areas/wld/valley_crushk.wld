@@ -1063,8 +1063,8 @@ S
 #2060
 &+YA Road Through the Hills&n~
    &+yThe road through the hills of Quistery continues east and west from here.
-&+yTowords the east you notice the base of a rather large hill.  Further in
-&+ythe distance you can see a small cottage on the top of this hill.
+&+yTo the south, a road descends toward a stone highway. Towards the east,
+&+ythe base of a large hill rises, with a cottage visible on top.
 ~
 20 0 4
 D1
@@ -1073,6 +1073,7 @@ There is a base of a large hill in that direction.
 ~
 0 0 2061
 D2
+The road descends toward the stone highway.
 ~
 ~
 0 0 548133

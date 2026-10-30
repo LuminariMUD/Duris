@@ -2810,7 +2810,7 @@ function calls, except the "Kvark".
 See also: IMMORTALS, "ZONE GOD", WIZLIST, KVARK
 
 #
-COINS CURRENCY (General Information)
+COINS CURRENCY MONEY (General Information)
 ===========================================================================
 Currency on Duris takes the form of coinage, and there are four types to be
 found: &+Wplatinum&+w, &+Ygold&+w, &+csilver&+w, and &+ycopper&+w.&n
@@ -14525,7 +14525,7 @@ Table of Contents for Ships -Type "Help <Ship_category>" to view
 ===========================================================================
 
 #
-SHIP_BASIC
+SHIP_BASIC SHIP BASICS SHIP HULL
 ===========================================================================
 A dock is much like any other shop, you use "buy #" and "list" to see what 
 ships and ship accessories are available at the docks.  You can only buy 
@@ -14844,7 +14844,7 @@ listed top speed, allowing you to escape.
 See also: SHIP_COMMANDS, SHIPS
 
 #
-SHIP_COMMANDS DISEMBARK REPAIR RELOAD
+SHIP_COMMANDS SHIP-COMMANDS DISEMBARK REPAIR RELOAD
 ===========================================================================
 Key to symbols:
   {}         One time only parameter
@@ -26055,7 +26055,7 @@ Usage: cast 'blood tithe'
 See also: Holy Sacrifice, Battle Ecstasy, Aura of Battlelust
 
 #
-"LEVEL CAP" (General Information)
+LEVEL CAP LVL CAP LVL LIMIT (General Information)
 ===========================================================================
 Syntax: fraglist
 
@@ -27125,3 +27125,190 @@ The earth-aligned Conjurer specialization is named Earth Magus (which
 grants the Living Stone and Stone Skin innates at level 30).
 Read 'help earth magus' and 'help conjurer' for full details.
 #
+
+#
+RACEWAR CHAT (General Information)
+===========================================================================
+Syntax: nchat <message>
+        jchat <message>
+
+Use NCHAT for questions and help from your racewar side, and JCHAT for
+general conversation with your side. Each channel has its own toggle:
+"toggle nchat" and "toggle jchat" turn reception on or off.
+See also: NCHAT, JCHAT, CHANNELS
+===========================================================================
+
+#
+GMCP (General Information)
+===========================================================================
+GMCP supplies structured game information to a compatible MUD client.
+Your client negotiates it; you do not type GMCP as a game command. The
+Duris web client also receives structured updates for its displays.
+
+Use "map" for a text map and "quest" for your bartender task. If a client
+panel seems stale, compare it with the actual game command before reporting
+the mismatch. Include your client and the affected panel in a bug report.
+See also: MAP, QUEST, BUG
+===========================================================================
+
+#
+HERBS HERB SMOKING (General Information)
+===========================================================================
+Syntax: smoke <herb> <pipe>
+
+Carry the herb and a pipe, or hold them in your hands. The first item must
+be a smoking herb and the second a pipe; for example, "smoke medicus pipe".
+Smoking consumes the herb. Rolling papers are consumed too; other pipes can
+wear out. There is no coin fee for the command beyond obtaining supplies.
+
+Herbs grant different temporary effects. Medicus improves healing, while
+Gootwiet can improve saving throws. Quality, pipe, race, class and location
+can affect the result. Other effects may prevent some benefits from stacking.
+After smoking, your lungs must recover before you can smoke again.
+
+You must be alive, able to move and see, and sheltered from rain or snow.
+Water and extreme heat can interfere. Animals, demons, dragons, Illithids,
+undead and angels normally cannot smoke. Trolls require wet conditions;
+Thri-Kreen cannot use nostril pipes.
+See also: MEDICUS, GOOTWIET, EFFECTS
+===========================================================================
+
+#
+GOOTWIET (General Information)
+===========================================================================
+Syntax: smoke gootwiet <pipe>
+
+Gootwiet is a smoking herb that can improve saving throws against
+paralysis, spells, breath and fear. Each benefit is checked separately;
+a successful smoke does not guarantee every bonus. Ocularius, Blue Haze,
+Medicus and Black Kush can suppress their corresponding saving benefit.
+
+Smoking another Gootwiet refreshes its existing effects rather than stacking
+another set of bonuses. You still consume a herb and must let your lungs
+recover. Strength and duration depend on the herb and smoking conditions.
+See also: HERBS, MEDICUS, EFFECTS
+===========================================================================
+
+#
+HEADING (General Information)
+===========================================================================
+Syntax: order heading <degrees>
+
+At your ship's control panel, order a heading from 0 through 360 degrees:
+0 is north, 90 east, 180 south and 270 west. Your ship takes time to turn;
+its current speed, hull and sails affect handling. Use "order speed 0" to
+stop moving. Heading changes do not maneuver a ship into or out of a dock;
+use "order maneuver <direction>" for that.
+See also: SHIP_MOVEMENT, SHIP_COMMANDS
+===========================================================================
+
+#
+WOODSEER (General Information)
+===========================================================================
+Woodseer is the Halfling hometown. Use "map" to orient yourself and
+"look" to inspect local exits, signs and services. Its bartender offers
+world quests to eligible adventurers; try "ask bartender quest" from
+level 11. A suitable task may be unavailable, so read the reply before
+paying for a map or setting out.
+See also: MAP, QUEST, BARTENDER
+===========================================================================
+
+#
+CHEST EQ CHEST CHEST CREATE (General Information)
+===========================================================================
+For a container chest, use "look in <chest>", "open <chest>",
+"put <item> <chest>" and "get <item> <chest>". Locks and ownership can
+restrict access. A chest in the world does not by itself guarantee storage
+through a restart; use an authorized storage locker for saved equipment.
+
+There is no "chest create" command. The old guild "construct chest"
+feature is disabled. For worn chest armor, use "equipment" and
+"wear <armor> body"; the item must fit that slot and your character.
+See also: LOCKER, EQUIPMENT, CONSTRUCT
+===========================================================================
+
+#
+BELT (General Information)
+===========================================================================
+Syntax: wear <belt> waist
+        remove <belt>
+
+Belts normally occupy the waist slot. The item must support that slot and
+meet your character's equipment restrictions. "equipment" shows your worn
+items; "identify" describes an item's properties when available.
+See also: WEAR, REMOVE, EQUIPMENT, IDENTIFY
+===========================================================================
+
+#
+PIERCE PIERCING (General Information)
+===========================================================================
+Piercing is a weapon category, rather than a standalone PIERCE command.
+Your appropriate weapon skill affects using the weapon. "skills" shows
+your learned skills and "identify" can help you inspect a weapon.
+Backstab requires a suitable piercing weapon and its own learned skill.
+See also: BACKSTAB, SKILLS, WEAPONS
+===========================================================================
+
+#
+AUTOLOOT (General Information)
+===========================================================================
+There is no AUTOLOOT command or toggle. Use "get <item> <corpse>" for a
+named item, or "get all <corpse>" to attempt the contents.
+Capacity, visibility, ownership and item restrictions still apply. Use
+"look in <corpse>" first when you want to choose what to carry.
+See also: GET, LOOT, CORPSE
+===========================================================================
+
+#
+MAGIC VULNERABILITY (General Information)
+===========================================================================
+Magic Vulnerability is a passive racial drawback of Ogres and Firbolgs
+from level 1. It increases incoming magical damage. It does not mean every
+spell automatically succeeds; saves and other defenses have their own rules.
+There is no activation command or timer to turn this innate on or off.
+See also: OGRE, FIRBOLG, INNATES
+===========================================================================
+
+#
+DRAIN LIFE (General Information)
+===========================================================================
+Syntax: innate 'drain life' <victim>
+
+Antipaladins gain Drain Life at level 36. A beam takes 5 hit points from
+the victim and gives you 5 each second until its level-based drain is
+exhausted.
+It ends if either of you leaves the room, the victim has 6 or fewer hit
+points, or you have reached 110% of your maximum hit points. You cannot
+maintain two beams at once. The cooldown is 60 seconds.
+See also: ANTIPALADIN, INNATES
+===========================================================================
+
+#
+WHO VISIBILITY (General Information)
+===========================================================================
+Syntax: toggle who
+
+From level 2, you may toggle your WHO visibility. The level requirement
+applies when enabling the toggle; level 1 characters cannot enable it.
+Use "toggle" to review your preferences. Other visibility rules still apply.
+See also: WHO, TOGGLE
+===========================================================================
+
+#
+COMBO COMBINATION ATTACK (Skill)
+===========================================================================
+Syntax: combination
+
+Monks who have learned Combination Attack can prepare a series of unarmed
+strikes against their current opponent. You must already be fighting and
+standing, with your primary wield and hold slots empty. Clear those slots
+before trying: even a refused attempt can begin the 30-second recovery timer.
+
+Preparation takes two combat rounds below level 51, or one round from 51.
+You must still be standing with an opponent in the room when it finishes.
+The sequence can deliver up to seven strikes; skill, level and luck affect
+how far it continues. From level 50, the final strike can stun. It cannot
+work against Golems, Dragons, Ghosts or phantasmal targets. Ki Strike
+abandons a combination in preparation. Finishing causes two rounds of lag.
+See also: MONK, SKILLS, KI STRIKE
+===========================================================================

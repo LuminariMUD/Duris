@@ -75,6 +75,8 @@ int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc-
 
 // The fixture's logit() writes nothing, so there is no log thread to flush before the exec.
 void flush_log_writer(void) {}
+bool pwipe_launch_allows_at(const char *, time_t) { std::abort(); }
+void pwipe_launch_deny(descriptor_data *) { std::abort(); }
 
 // This no-player custody fixture must never enter gameplay telemetry adapters.
 // Its clock is unavailable, so the telemetry durability barrier is not entered.

@@ -984,9 +984,10 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 	if (!combat_outcome_add_participant(&payload, ch, combat_participant_role::killer, true,
 					    ch->group && ch->group->ch == ch))
 		return false;
+	// Groups can include pets; only players have PvP history and rewards.
 	if (ch->group)
 		for (struct group_list *gl = ch->group; gl; gl = gl->next)
-			if (gl->ch != ch &&
+			if (gl->ch != ch && IS_PC(gl->ch) &&
 			    !combat_outcome_add_participant(&payload, gl->ch,
 							    combat_participant_role::killer_group,
 							    gl->ch->in_room == ch->in_room, false))
@@ -996,7 +997,7 @@ static bool submit_pvp_outcome(P_char ch, P_char victim, bool award_frags)
 		return false;
 	if (victim->group)
 		for (struct group_list *gl = victim->group; gl; gl = gl->next)
-			if (gl->ch != victim &&
+			if (gl->ch != victim && IS_PC(gl->ch) &&
 			    !combat_outcome_add_participant(
 				    &payload, gl->ch, combat_participant_role::victim_group,
 				    gl->ch->in_room == victim->in_room, false))

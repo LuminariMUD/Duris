@@ -404,3 +404,22 @@ claimed reproduced. No value-only reward was guessed or changed. Production
 deployment and live-world qualification are separate from this implementation.
 The PR references #444 without automatically closing that remaining report-level
 verification question.
+
+
+## Sequential PR integration, 2026-10-30
+
+Integrated master `b4fa5220e982ca7ab7b8dc4d09d5389cca46cb94` after PRs
+#432, #475 and #476. Production code merged without conflicts. The shared-plan
+conflict keeps this coin record at `plan.md` and preserves the completed castle
+record byte-for-byte at [plan-issue-418.md](plan-issue-418.md). The rent-key and
+quest records remain in their existing issue-specific archives.
+
+The MariaDB server build, exact PC/NPC coin transfers and refunds, partial/mixed
+pickup, wallet transaction and in-memory behavior, carry counts, shared flat-file
+player repository, formatting, whitespace and all 14 documentation checks pass
+on the combined source. The shared inspector retains both rent-key inspection
+and coin-vector inspection. Earlier MariaDB and flat-file gameplay reports retain
+the bank/bag/four-quest-payment/relog/restart qualification; those complete
+journeys were not repeated in this merge pass. Emp's unidentified value-only
+quest reward remains outside the verified scope. No production operation or
+currency migration is included.
