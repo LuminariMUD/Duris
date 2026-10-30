@@ -292,7 +292,7 @@ int main()
 	exp.expires_at = hour + 8 * DIVINE_BOON_HOUR;
 	after[0] = exp;
 	divine_boon_announce_changes(before, after, now);
-	assert(all_echoes.find("&+G200% Experience&n") != string::npos);
+	assert(all_echoes.find("&+G200% Base Experience&n") != string::npos);
 	assert(all_echoes.find("&+RNative coloured dungeon&n") != string::npos);
 	assert(recipient_echoes.empty());
 	const auto one = all_echoes;
