@@ -110,6 +110,14 @@ int main()
 		require(wiki_help(topic).find("no Fireshield") != string::npos,
 			"Elemental summon help omitted the optional mephit behavior");
 
+	for (const char *topic : { "immortals", "immortals gods" })
+	{
+		const string staff = wiki_help(topic);
+		require(staff.find("such as a quest") != string::npos &&
+				staff.find("discussed with other immortals") != string::npos,
+			"Immortal help disagrees about approved quest equipment awards");
+	}
+
 	cout << "flat-file help runtime passed\n";
 	return 0;
 }

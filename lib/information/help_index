@@ -9159,7 +9159,8 @@ However, there are certain rules by which they must abide:
 2. Immortals cannot give out information such as: statistics of a player,
    statistics of items or other private information.
 3. They cannot kill mortals. 
-4. Immortals cannot give away objects or equipment.
+4. Immortals cannot give away objects or equipment, unless mitigating
+   circumstances (such as a quest) come into play and are discussed with other immortals.
 5. Anyone with an immortal character or immortal-level privileges may
    not actively play mortal characters. Developers, coders and zone
    builders without these privileges may play, but must not exploit
