@@ -86,6 +86,7 @@ expected_resource_intensive = {
     "test_mob_gold_dial_runtime.py",
     "test_pet_restart_journey.py",
     "test_shambler_reflection_journey.py",
+    "test_shop_multi_buy_journey.py",
     "test_studioproc_duplicate_record.py",
     "test_item_movement_prompt_runtime.py",
     "test_information_cache_journey.py",
