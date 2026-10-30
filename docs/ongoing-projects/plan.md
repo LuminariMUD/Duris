@@ -1,17 +1,17 @@
 # Issue #420: preserve Shambler capacity while defensive images are active
 
-Status: **planning complete; implementation not started**. Updated 2026-10-30.
+Status: **implemented; local qualification complete on the planning baseline**. Updated 2026-10-30.
 Issue: [Duris #420](https://github.com/LuminariMUD/Duris/issues/420).
 Branch: [branch/issue-420-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-420-plan).
 Source baseline: origin/master at b23ea8c65a467d17683ccd5de91f66b362209d06.
 Worktree: /home/aiwithapex/projects/duris-issue-420.
 
 The previous plan and completed qualification record for #428 are preserved
-byte-for-byte in [plan-issue-428.md](plan-issue-428.md). This request authorizes
-investigation, this plan, commit/push and issue linkage; implementation is
-subsequent work.
+byte-for-byte in [plan-issue-428.md](plan-issue-428.md). The owner's follow-up
+authorizes implementation, including the shared Reflection/Mirror Image
+exemption, local qualification, commit/push and a PR linked to #420.
 
-## Outcome and proposed balance decision
+## Outcome and accepted balance decision
 
 At Shambler's admission boundary, exclude linked NPC images whose prototype is
 IMAGE_REFLECTION_VNUM (250) from the ordinary-pet count. Zero or one ordinary
@@ -19,12 +19,12 @@ pet permits a cast, independent of whether zero, one, two, three or four images
 exist. Two or more ordinary pets still reject it. Any existing linked shambling
 mound still rejects another cast, including when it is the only ordinary pet.
 
-This is the proposed resolution of the issue's open balance question, not a
+The owner accepted this resolution of the issue's open balance question, not a
 claim that the code or existing help already establishes that rule. It is
 specific to admission to Shambler. It does not make images cease to be pets.
 
 **Shared-prototype consequence:** Reflection and Mirror Image both create
-pet-linked NPC 250. The proposed rule intentionally exempts both at this one
+pet-linked NPC 250. The accepted rule intentionally exempts both at this one
 boundary, including Reflection reached through its racial innate or an item.
 A Reflection-only exception that still counts otherwise identical Mirror Image
 pets would require a distinct policy and additional provenance; this plan does
@@ -143,7 +143,8 @@ Existing baseline checks also passed:
 Expected production edit: src/magic/blispells.c only.
 Expected proof/documentation edits: tests/async/test_reflection_image_ownership.py,
 one focused command journey tests/async/test_shambler_reflection_journey.py
-(new), lib/information/help_index, and this plan's completion record.
+(new), its resource-intensive registration in tests/run_regression_tests.py,
+lib/information/help_index, and this plan's completion record.
 Retain test_innate_reflection.py as an unchanged compatibility test unless the
 new regression exposes a necessary gap.
 
@@ -269,3 +270,67 @@ Planning validation completed:
   db2e06ff1afe39dba4629cc840c579b994e04965df0e31995174625eee95fdbf.
 - Only the requested plan and the intact historical archive are tracked changes;
   the original checkout's branch and files are preserved.
+
+## Implementation and qualification, 2026-10-30
+
+Shambler now counts non-image pets in its existing linked-pet traversal. NPCs
+of IMAGE_REFLECTION_VNUM are exempt at this boundary; the generic counter is
+unchanged. The existing mound rejection remains first, and terrain, summon
+creation, tagging and lifetime code are unchanged. Help now states the shared
+Reflection/Mirror Image exemption and the retained ordinary-pet/mound limits.
+
+The existing ownership regression executes the production Shambler body and
+counter alongside Reflection/setup_pet. All 640 combinations of image count,
+ordinary charmed/summoned pets, terrain endpoints and existing-mound presence
+pass under ASan/UBSan. They check actual fixture mound materialization,
+ownership, unchanged images/pets, non-pet links, generic counting, both lifetime
+scheduling endpoints, tagging, duplicate-cast rejection and admission after
+image removal. The original 409 Reflection casts and Titan rejection still pass.
+Two in-memory negative controls substitute the old production Shambler body:
+two images alone and one image with one ordinary pet each fail at the successful
+mound-creation assertion. No tracked production source is changed by those
+controls.
+
+The new command journey boots a fresh flat-file server with private state and
+drives mortal Gnome/Kobold innates, ordinary Reflection and Mirror Image, then
+real Shambler casts. Every route retains four images and creates three to six
+mounds in forest terrain. Staff inspection checks mobile identities, keywords,
+following and pet links. It also proves duplicate-mound and two-ordinary-pet
+rejection, the one-pet allowance, cleanup without losing ordinary pets, both
+Titan exclusion orders, and the published help. A real Reflection recast
+replaces every image identity while retaining the ordinary companion.
+
+Spell-route fixtures are prepared Illusionists, changed to otherwise eligible
+Scourges after image creation; the Displacement control uses an eligible
+MindFlayer's real WILL command before switching back to Scourge. This does not
+add or claim a playable class combination. Staff edits resolve the PC explicitly
+because images share its name. Commands require their own receipt and following
+prompt and handle paging. No runtime test hooks or production settings are added.
+The journey is registered as resource-intensive in the existing regression runner.
+
+Completed on the planning baseline:
+
+- python3 tests/async/test_reflection_image_ownership.py: passed under ASan/UBSan.
+- python3 tests/async/test_innate_reflection.py: passed under ASan/UBSan, including
+  Titan rejection without cooldown or combat-lag consumption.
+- make -C src -j6: MariaDB development build passed with warnings as errors.
+- make -C src PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=/home/aiwithapex/projects/duris-issue-420/bin/server/dms_issue420_flatfile
+  -j6: flat-file development build passed.
+- python3 tests/async/test_shambler_reflection_journey.py: passed, including the
+  default fresh-build helper and the explicit live recast case.
+- Changed-line formatting, clang-tidy, Python syntax, regression discovery,
+  documentation contracts and git diff --check passed.
+
+The ignored report is bin/qualification/issue420/gameplay-report.json, with
+the command log in journey-final.log in the same directory. The qualified
+flat-file binary SHA-256 is
+98bfc2d61aaff7584341bd379bf578f84fd4fff9830c005c4e6dd63151f0f63f.
+Native fixtures control room/link services and scheduled callbacks; the socket
+journey exercises the real parser, spell dispatch, materialization and ownership.
+No full-world, MariaDB socket, restart or production qualification is claimed.
+
+Final ablation retains one production counting decision, one existing native
+test extension, a focused journey using existing build/world/socket helpers,
+its runner registration and the necessary help/plan updates. There is no new
+capacity API, persisted state, configuration, migration or image-lifecycle edit.
