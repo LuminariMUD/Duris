@@ -26,13 +26,18 @@ constexpr size_t SHOP_TRADE_PENDING_MAX = 128;
 using shop_trade_completion_fn = void (*)(P_char character, bool committed,
 					  const shop_trade_result &result, unsigned int error_code,
 					  const shop_trade_payload &payload);
+// A committed produced batch remains pending until all live roots can publish.
+using shop_trade_prepare_fn = bool (*)(P_char character, const shop_trade_payload &payload,
+				       const shop_trade_result &result);
 
 bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &payload,
-				   shop_trade_completion_fn completion);
+				   shop_trade_completion_fn completion,
+				   shop_trade_prepare_fn prepare = nullptr);
 void shop_trade_transaction_handle_completions(const critical_completion *completions,
 					       size_t count);
 void shop_trade_transaction_player_ready(P_char character);
 bool shop_trade_transaction_player_busy(P_char character);
+bool shop_trade_transaction_blocks_commands(P_char character);
 void shop_trade_transaction_reset_for_tests(void);
 
 #endif

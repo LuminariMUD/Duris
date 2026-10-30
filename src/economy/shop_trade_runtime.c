@@ -118,7 +118,7 @@ shop_trade_runtime_build_payload(P_char player, P_obj selected, P_obj stock, P_o
 	std::vector<player_item_snapshot> snapshots;
 	if (player_item_snapshot_tree_capture(selected, &snapshots, nullptr) !=
 		    player_snapshot_capture_result::ok ||
-	    snapshots.empty() || snapshots.size() > SHOP_TRADE_MAX_ITEMS ||
+	    snapshots.empty() || snapshots.size() > SHOP_TRADE_LEGACY_MAX_ITEMS ||
 	    snapshots.front().object_uid != selected->obj_uid)
 		return shop_trade_payload_build_result::capture_failure;
 	std::vector<uint8_t> blob;
@@ -242,4 +242,104 @@ bool shop_trade_runtime_object_matches_payload(P_obj selected, const shop_trade_
 		       player_snapshot_codec_result::ok &&
 	       encoded.size() == payload.item_blob_size &&
 	       std::equal(encoded.begin(), encoded.end(), payload.item_blob.begin());
+}
+
+shop_trade_payload_build_result
+shop_trade_runtime_build_produced_batch(P_char player, P_obj const *roots, size_t count,
+					P_obj stock, P_obj destination, uint32_t shop_id,
+					int64_t price, shop_trade_payload *payload)
+{
+	if (!roots || !count || count > SHOP_TRADE_MAX_ITEMS || !payload)
+		return shop_trade_payload_build_result::invalid;
+	std::vector<player_item_snapshot> forest;
+	shop_trade_payload built = {};
+	try
+	{
+		for (size_t index = 0; index < count; ++index)
+		{
+			shop_trade_payload tree = {};
+			const auto captured = shop_trade_runtime_build_payload(
+				player, roots[index], stock, destination, shop_id,
+				shop_trade_action::buy_produced, price, &tree);
+			if (captured != shop_trade_payload_build_result::ok)
+				return captured;
+			if (index == 0)
+			{
+				built = tree;
+				built.multi_root = true;
+				built.item_count = 0;
+			}
+			if (built.item_count + tree.item_count > SHOP_TRADE_MAX_ITEMS)
+				return shop_trade_payload_build_result::capture_failure;
+			std::copy_n(tree.items.begin(), tree.item_count,
+				    built.items.begin() + built.item_count);
+			built.item_count += tree.item_count;
+			std::vector<player_item_snapshot> snapshots;
+			if (player_item_snapshot_list_decode(tree.item_blob.data(),
+							     tree.item_blob_size, &snapshots) !=
+			    player_snapshot_codec_result::ok)
+				return shop_trade_payload_build_result::capture_failure;
+			const auto offset = static_cast<int32_t>(forest.size());
+			for (auto &snapshot : snapshots)
+			{
+				if (snapshot.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					snapshot.parent_index += offset;
+				forest.push_back(std::move(snapshot));
+			}
+		}
+		std::sort(built.items.begin(), built.items.begin() + built.item_count,
+			  [](const auto &left, const auto &right)
+			  { return left.item_uid < right.item_uid; });
+		std::vector<uint8_t> blob;
+		if (player_item_snapshot_list_encode(forest, &blob) !=
+			    player_snapshot_codec_result::ok ||
+		    blob.size() > built.item_blob.size())
+			return shop_trade_payload_build_result::capture_failure;
+		built.item_blob_size = static_cast<uint32_t>(blob.size());
+		std::copy(blob.begin(), blob.end(), built.item_blob.begin());
+		std::vector<uint8_t> validated;
+		if (!shop_trade_command_encode_payload(built, &validated))
+			return shop_trade_payload_build_result::invalid;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return shop_trade_payload_build_result::capture_failure;
+	}
+	*payload = built;
+	return shop_trade_payload_build_result::ok;
+}
+
+bool shop_trade_runtime_batch_matches_payload(P_obj const *roots, size_t count,
+					      const shop_trade_payload &payload)
+{
+	if (!roots || !count || !payload.multi_root)
+		return false;
+	std::vector<player_item_snapshot> forest;
+	try
+	{
+		for (size_t index = 0; index < count; ++index)
+		{
+			std::vector<player_item_snapshot> tree;
+			if (player_item_snapshot_tree_capture(roots[index], &tree, nullptr) !=
+			    player_snapshot_capture_result::ok)
+				return false;
+			const auto offset = static_cast<int32_t>(forest.size());
+			for (auto &snapshot : tree)
+			{
+				if (snapshot.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					snapshot.parent_index += offset;
+				forest.push_back(std::move(snapshot));
+			}
+		}
+		std::vector<uint8_t> encoded;
+		return forest.size() == payload.item_count &&
+		       player_item_snapshot_list_encode(forest, &encoded) ==
+			       player_snapshot_codec_result::ok &&
+		       encoded.size() == payload.item_blob_size &&
+		       std::equal(encoded.begin(), encoded.end(), payload.item_blob.begin());
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
 }

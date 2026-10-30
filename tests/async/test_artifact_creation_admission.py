@@ -803,9 +803,10 @@ void owned_recovery_cases() {
 
 creation_helpers="\n".join(extract_function("item_movement_transaction.c",sig) for sig in (
  "size_t creation_payload_depth(","bool stage_displaced_creation_objects(","void restore_displaced_creation_objects(",
- "void extract_creation_roots(","void extract_displaced_creation_objects(","bool reconcile_creation_grant_batch("))
+ "void extract_creation_roots(","void extract_displaced_creation_objects(",
+ "bool item_creation_grant_reconstruct(","bool reconcile_creation_grant_batch("))
 source=source.replace("// CREATION_REPAIR_CASES",r"""
-struct pending_creation_grant { uint64_t item_uid; };
+struct pending_creation_grant { uint64_t item_uid; uint64_t target_container_uid = 0; };
 struct creation_grant_queue { std::vector<pending_creation_grant> requests; };
 struct pending_movement { bool creation_batch=true; item_transfer_payload payload={}; };
 """+extract_function("item_movement_transaction.c","struct displaced_creation_object")+";\n"+r"""

@@ -34,6 +34,7 @@ def check(label: str, condition: bool) -> None:
 
 QUEUE_GRANT = function_body(MOVEMENT, "bool queue_creation_grant(")
 RECONCILE = function_body(MOVEMENT, "bool reconcile_creation_grant_batch(")
+RECONSTRUCT = function_body(MOVEMENT, "bool item_creation_grant_reconstruct(")
 BATCH_COMPLETE = function_body(MOVEMENT, "void creation_grant_batch_completion(")
 SINGLE_COMPLETE = function_body(MOVEMENT, "void creation_grant_completion(")
 LIVE_READY = function_body(MOVEMENT, "bool creation_grant_batch_live_ready(")
@@ -64,7 +65,7 @@ check("single completion erases pending by stable key after callback",
 PUBLISH = function_body(MOVEMENT, "void publish(")
 check("single missing graphs use detached reconciliation",
       "reconcile_creation_grant_batch(actor, entry, queue, result)" in PUBLISH and
-      "if (entry.creation_batch)\n\t\tfor (P_obj root : roots)" in RECONCILE)
+      "item_creation_grant_reconstruct(entry.payload, result, &roots)" in RECONCILE)
 
 check("single reconciliation is scoped to one request",
       "else if (entry.payload.reason == item_transfer_reason::creation)" in PUBLISH and
@@ -98,21 +99,21 @@ check("single request live-ready never substitutes the submitting actor",
 # extracts old roots only after successful materialization.
 check("reconciliation handles actor-carried or nested existing objects",
       "if (object && !OBJ_NOWHERE(object))" not in RECONCILE and
-      "stage_displaced_creation_objects" in RECONCILE)
+      "stage_displaced_creation_objects" in RECONSTRUCT)
 check("reconciliation stages displaced live objects",
       "displaced_creation_object" in MOVEMENT and
-      "displaced" in RECONCILE and
+      "displaced" in RECONSTRUCT and
       "object->obj_uid = 0" in MOVEMENT)
 check("reconciliation restores old UIDs after materialization failure",
-      "restore_displaced_creation_objects" in RECONCILE)
+      "restore_displaced_creation_objects" in RECONSTRUCT)
 check("reconciliation removes old graphs only after successful staging",
-      RECONCILE.find("player_load_item_graph_materialize_creation") >= 0 and
-      RECONCILE.find("extract_displaced_creation_objects") >
-      RECONCILE.find("player_load_item_graph_materialize_creation"))
+      RECONSTRUCT.find("player_load_item_graph_materialize_creation") >= 0 and
+      RECONSTRUCT.find("extract_displaced_creation_objects") >
+      RECONSTRUCT.find("player_load_item_graph_materialize_creation"))
 check("reconciliation cleans staged roots on every failed validation",
-      RECONCILE.count("extract_creation_roots(roots)") >= 2)
+      RECONSTRUCT.count("extract_creation_roots(roots)") >= 2)
 check("reconciliation handles nested children and duplicate UID matches",
-      "object_list" in MOVEMENT and "stage_displaced_creation_objects(entry.payload" in RECONCILE)
+      "object_list" in MOVEMENT and "stage_displaced_creation_objects(payload" in RECONSTRUCT)
 
 # The public materializer must reject malformed VNUMs before real_object().
 check("creation materializer rejects non-positive VNUMs",

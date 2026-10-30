@@ -44,5 +44,11 @@ shop_trade_runtime_build_payload(P_char player, P_obj selected, P_obj stock, P_o
 				 uint32_t shop_id, shop_trade_action action, int64_t price,
 				 shop_trade_payload *payload);
 bool shop_trade_runtime_object_matches_payload(P_obj selected, const shop_trade_payload &payload);
+shop_trade_payload_build_result
+shop_trade_runtime_build_produced_batch(P_char player, P_obj const *roots, size_t count,
+					P_obj stock, P_obj destination, uint32_t shop_id,
+					int64_t price, shop_trade_payload *payload);
+bool shop_trade_runtime_batch_matches_payload(P_obj const *roots, size_t count,
+					      const shop_trade_payload &payload);
 
 #endif

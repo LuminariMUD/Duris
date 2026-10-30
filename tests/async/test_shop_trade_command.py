@@ -191,7 +191,10 @@ int main()
 	assert(decoded_result.shop_revision == 12 && decoded_result.item_uids[1] == 101 &&
 	       decoded_result.wallet.amount[3] == 4);
 	encoded_result[1] = 0;
-	assert(shop_trade_command_decode_result(encoded_result.data(), encoded_result.size(),
+	assert(shop_trade_command_decode_result(encoded_result.data(), SHOP_TRADE_LEGACY_RESULT_BYTES,
+						&decoded_result));
+	encoded_result[1] = 1;
+	assert(shop_trade_command_decode_result(encoded_result.data(), SHOP_TRADE_LEGACY_RESULT_BYTES,
 						&decoded_result));
 	result.action = shop_trade_action::sell_destroy;
 	assert(shop_trade_command_encode_result(result, &encoded_result));
@@ -207,6 +210,40 @@ int main()
 	encoded_result.back() = 1;
 	assert(!shop_trade_command_decode_result(encoded_result.data(), encoded_result.size(),
 						 &decoded_result));
+
+	// A batch has one versioned command for all fifty independent roots. Legacy
+	// payloads cannot acquire forest semantics merely by changing their count.
+	auto batch = trade(shop_trade_action::buy_produced);
+	batch.multi_root = true;
+	batch.item_count = 50;
+	batch.target_root_item_uid = 700;
+	batch.target_parent_item_uid = 700;
+	batch.expected_target_parent_revision = 3;
+	for (size_t index = 0; index < batch.item_count; ++index)
+		batch.items[index] = {100 + index, 100 + index, 0, ITEM_TRANSFER_ABSENT_REVISION,
+			500, item_custody_state::absent};
+	assert(shop_trade_command_build(&command, operation(), batch,
+		critical_source_site::command, critical_deadline_class::interactive));
+	assert(command.payload_version == SHOP_TRADE_BATCH_PAYLOAD_VERSION);
+	assert(shop_trade_command_decode_payload(command, &decoded));
+	assert(decoded.multi_root && decoded.item_count == 50 && decoded.items[49].item_uid == 149);
+	auto legacy_batch = command;
+	legacy_batch.payload_version = SHOP_TRADE_PAYLOAD_VERSION;
+	assert(!shop_trade_command_decode_payload(legacy_batch, &decoded));
+	batch.items[49].item_uid = batch.items[48].item_uid;
+	assert(!shop_trade_command_build(&command, operation(), batch,
+		critical_source_site::command, critical_deadline_class::interactive));
+	result.action = shop_trade_action::buy_produced;
+	result.item_count = 50;
+	for (size_t index = 0; index < result.item_count; ++index)
+	{
+		result.item_uids[index] = 100 + index;
+		result.item_revisions[index] = 1;
+	}
+	assert(shop_trade_command_encode_result(result, &encoded_result));
+	assert(shop_trade_command_decode_result(encoded_result.data(), encoded_result.size(), &decoded_result));
+	assert(decoded_result.item_count == 50 && decoded_result.item_uids[49] == 149);
+	assert(!shop_trade_command_decode_result(encoded_result.data(), SHOP_TRADE_LEGACY_RESULT_BYTES, &decoded_result));
 	return 0;
 }
 '''

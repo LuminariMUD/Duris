@@ -30,6 +30,10 @@ enum class place
 	gone
 } sold_place = place::inventory;
 bool completion_called = false;
+int completion_count = 0;
+bool batch_ready = false;
+bool decline_wallet = false;
+int ownership_calls = 0;
 bool completion_committed = false;
 unsigned int completion_error = 0;
 
@@ -114,8 +118,13 @@ void completed(P_char completed_character, bool committed, const shop_trade_resu
 {
 	assert(completed_character == &character);
 	completion_called = true;
+	++completion_count;
 	completion_committed = committed;
 	completion_error = error_code;
+}
+bool prepare_batch(P_char, const shop_trade_payload &, const shop_trade_result &)
+{
+	return batch_ready;
 }
 } // namespace
 
@@ -131,9 +140,12 @@ bool currency_transaction_submit_wallet_value(P_char buyer, int64_t value, curre
 					      const void *, size_t)
 {
 	assert(buyer == &character);
+	if (decline_wallet)
+		return true; // synchronous range/reservation refusal without a revision change
 	if (value < 0 && wallet < -value)
 		return false;
 	wallet += value;
+	++buyer->only.pc->wallet_revision;
 	return true;
 }
 
@@ -180,6 +192,7 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 	published_transfer = payload;
 	published_transfer_result = result;
 	ownership_published = true;
+	++ownership_calls;
 	return true;
 }
 
@@ -305,5 +318,55 @@ int main()
 	       published_transfer_result.to_owner_revision == 3 &&
 	       !shop_trade_transaction_player_busy(&character));
 
+	// A committed forest waits for every live root before applying ownership or
+	// crediting the keeper. Reconnect retries it once; duplicate completions do not.
+	auto batch = trade(shop_trade_action::buy_produced, 400);
+	batch.multi_root = true;
+	batch.item_count = 50;
+	batch.price = 500;
+	batch.target_root_item_uid = batch.target_parent_item_uid = 700;
+	batch.expected_target_parent_revision = 5;
+	for (size_t index = 0; index < batch.item_count; ++index)
+		batch.items[index] = { 400 + index, 400 + index,
+				       0,	    ITEM_TRANSFER_ABSENT_REVISION,
+				       800,	    item_custody_state::absent };
+	decline_wallet = true;
+	assert(!shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
+	assert(wallet == 1000 && !shop_trade_transaction_player_busy(&character));
+	decline_wallet = false;
+	assert(shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
+	assert(wallet == 500 && shop_trade_transaction_blocks_commands(&character));
+	auto batch_result = result(shop_trade_action::buy_produced, 400, 11, 4);
+	batch_result.item_count = 50;
+	for (size_t index = 0; index < batch_result.item_count; ++index)
+	{
+		batch_result.item_uids[index] = 400 + index;
+		batch_result.item_revisions[index] = 1;
+	}
+	const auto batch_completion = completion(batch_result);
+	const int previous_callbacks = completion_count, previous_ownership = ownership_calls;
+	player_online = false;
+	shop_trade_transaction_handle_completions(&batch_completion, 1);
+	player_online = true;
+	shop_trade_transaction_player_ready(&character);
+	assert(completion_count == previous_callbacks && ownership_calls == previous_ownership &&
+	       shop_trade_transaction_player_busy(&character) && wallet == 500);
+	batch_ready = true;
+	shop_trade_transaction_player_ready(&character);
+	assert(completion_count == previous_callbacks + 1 &&
+	       ownership_calls == previous_ownership + 1 && published_transfer.multi_root &&
+	       published_transfer.item_count == 50 && published_transfer.selected_item_uid == 0 &&
+	       published_transfer.target_parent_item_uid == 700 &&
+	       !shop_trade_transaction_blocks_commands(&character) && wallet == 500);
+	shop_trade_transaction_handle_completions(&batch_completion, 1);
+	assert(completion_count == previous_callbacks + 1 &&
+	       ownership_calls == previous_ownership + 1);
+	batch.price = 0;
+	saves = 0;
+	assert(shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
+	assert(saves == 1 && wallet == 500);
+	const auto free_completion = completion(batch_result);
+	shop_trade_transaction_handle_completions(&free_completion, 1);
+	assert(wallet == 500 && !shop_trade_transaction_player_busy(&character));
 	shop_trade_transaction_reset_for_tests();
 }
