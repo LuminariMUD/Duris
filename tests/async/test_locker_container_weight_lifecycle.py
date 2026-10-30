@@ -37,9 +37,10 @@ files = "\n".join(extract_function("core/files.c", signature) for signature in (
     "int writeObject(", "P_obj restoreObjects(",
 ))
 commands = "\n".join(extract_function("cmd/actobj.c", signature) for signature in (
-    "bool bulk_put_permitted(", "void start_empty(",
+    "bool bulk_put_permitted(", "void start_empty(", "bool put(",
 ))
 chests = "\n".join(extract_function("item/storage_lockers.c", signature) for signature in (
+    "PrivateChest::PrivateChest(",
     "bool locker_eq_type_fits_for_storage(",
     "bool ComboChest::ItemFits(",
     "bool EqApplyChest::ItemFits(",
@@ -69,6 +70,7 @@ harness = r'''
 #include "net/comm.h"
 #include "magic/spells.h"
 #include "sql/sql_work.h"
+#include "sql/sql.h"
 #include "sql/item_extra_descr_codec.h"
 #include <cassert>
 #include <cstdio>
@@ -84,6 +86,9 @@ int top_of_objt = 1000;
 static index_data indices[10] = {};
 P_index obj_index = indices;
 P_index mob_index = indices;
+static room_data rooms[2];
+P_room world = rooms;
+const unsigned LockerChest::m_chestVnum = 173;
 extern const struct race_names race_names_table[];
 const struct race_names race_names_table[] = {{"human", "human", "human", "hum"}};
 // Include the unmodified #96443 Illithid and #83185 Shield Dwarves bag shells.
@@ -102,6 +107,7 @@ const object_template *find_object_template(int vnum) {
 
 int real_object(const int vnum) { return vnum; }
 P_obj read_object(int rnum, int mode) {
+    if (mode == VIRTUAL && rnum == 173) rnum = 0;
     ++prototype_loads;
     if (rnum == 9) return nullptr; // A retired prototype in a legacy subtree.
     assert(rnum >= 0 && rnum < 8);
@@ -128,6 +134,7 @@ void extract_obj(P_obj obj, int) {
 void logit(const char *, const char *, ...) {}
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 char *str_dup(const char *text) { return strdup(text); }
+char *FirstWord(char *text) { return text; }
 void str_free(const char *text) { free(const_cast<char *>(text)); }
 void *__malloc(size_t bytes, const char *, const char *, int) { return calloc(1, bytes); }
 void __free(void *ptr, const char *, int) { free(ptr); }
@@ -163,6 +170,17 @@ bool empty_source_available(P_char actor, P_obj obj) { return OBJ_CARRIED_BY(obj
 bool empty_target_available(P_char actor, P_obj obj) { return OBJ_CARRIED_BY(obj, actor); }
 bool empty_item_restrictions_allow(P_char, P_obj, P_obj) { return true; }
 void save_filled_container(P_obj) {}
+static bool reject_put_trap(P_char, P_obj, bool *) { return false; }
+static void do_get_reject_text(P_char, const char *) {}
+void obj_from_char(P_obj obj) {
+    P_char carrier = obj->loc.carrying;
+    P_obj *entry = &carrier->carrying;
+    while (*entry != obj) entry = &(*entry)->next_content;
+    *entry = obj->next_content;
+    GET_CARRYING_W(carrier) -= GET_OBJ_WEIGHT(obj);
+    obj->next_content = nullptr;
+    obj->loc_p = LOC_NOWHERE;
+}
 int char_light(P_char) { return 0; }
 int room_light(int, int) { return 0; }
 void send_to_char_f(P_char, const char *, ...) {}
@@ -197,7 +215,7 @@ ComboChest::~ComboChest() {}
 void ComboChest::FillExtraDescBuf(char *) {}
 
 static int sql_validate_loaded_item_type(P_obj, int type, const char *) { return type; }
-static bool sql_persistence_item_owner_fields_match(
+bool sql_persistence_item_owner_fields_match(
     unsigned long long, const char *, unsigned long long, unsigned long long, const char *const *) {
     return true;
 }
@@ -693,6 +711,45 @@ static void bulk_movement_cost() {
     extract_obj(outer, TRUE);
 }
 
+static void private_chest_capacity(bool bulk) {
+    for (int id : {10, 100, 1000000}) {
+        char_data actor = {};
+        PrivateChest chest(id, "vault", nullptr);
+        P_obj container = chest.GetChestObj();
+        obj_to_room(container, 0);
+        assert(chest.GetChestId() == id);
+        assert(chest.IsPrivateChest());
+        for (int weight : {20, 200, 2000}) {
+            P_obj item = read_object(3, REAL);
+            item->weight = weight;
+            obj_to_char_at_end(item, &actor);
+            if (bulk) {
+                int64_t total = container_total_weight(container), space = 0, quiver = 0;
+                assert(bulk_put_permitted(&actor, item, container, total, space, quiver));
+            }
+            assert(put(&actor, item, container, FALSE, nullptr));
+            assert(OBJ_INSIDE_OBJ(item, container));
+            assert(GET_CARRYING_W(&actor) == 0);
+        }
+        assert(container_total_weight(container) == 2220);
+        extract_obj(container, TRUE);
+    }
+    // Finite ordinary containers keep rejecting overweight items in both paths.
+    char_data actor = {};
+    P_obj bag = read_object(0, REAL);
+    bag->value[0] = 10;
+    obj_to_room(bag, 0);
+    P_obj item = read_object(3, REAL);
+    obj_to_char_at_end(item, &actor);
+    int64_t total = 0, space = 0, quiver = 0;
+    assert(!bulk_put_permitted(&actor, item, bag, total, space, quiver));
+    assert(!put(&actor, item, bag, FALSE, nullptr));
+    assert(OBJ_CARRIED_BY(item, &actor));
+    obj_from_char(item);
+    extract_obj(item, TRUE);
+    extract_obj(bag, TRUE);
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     for (int i = 0; i < 8; ++i) {
@@ -701,6 +758,8 @@ int main(int argc, char **argv) {
     }
     indices[9].virtual_number = 9;
     if (!strcmp(argv[1], "sorting")) sorting();
+    else if (!strcmp(argv[1], "private-single-capacity")) private_chest_capacity(false);
+    else if (!strcmp(argv[1], "private-bulk-capacity")) private_chest_capacity(true);
     else if (!strcmp(argv[1], "insert")) movement(false);
     else if (!strcmp(argv[1], "append")) movement(true);
     else if (!strcmp(argv[1], "worn-insert")) worn_movement(false, false);
@@ -739,11 +798,13 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
         "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-        "-I", str(ROOT / "src"), str(source), str(ROOT / "src/combat/trap_legacy.c"),
-        str(HARNESS_STUBS), "-o", str(binary),
+        "-I", str(ROOT / "src"), "-I/usr/include/mysql", str(source),
+        str(ROOT / "src/combat/trap_legacy.c"),
+        str(HARNESS_STUBS), "-lbsd", "-o", str(binary),
     ], check=True)
     failed = []
-    for case in ("sorting", "insert", "append", "public-load", "private-load",
+    for case in ("private-single-capacity", "private-bulk-capacity",
+                 "sorting", "insert", "append", "public-load", "private-load",
                  "worn-insert", "worn-append", "worn-nested-insert", "worn-nested-append",
                  "worn-weight-changes", "carried-weight-changes", "worn-recalculation",
                  "stale-bag-capacity", "nested-insert", "nested-append",

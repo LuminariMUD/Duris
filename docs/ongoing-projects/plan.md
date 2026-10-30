@@ -1,6 +1,6 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **planned only; implementation has not started**. Updated 2026-10-30.
+Status: **implementation in progress; capacity foundation qualified for review**. Updated 2026-10-30.
 Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
 Assignee: `moshehbenavraham`.
 Branch: [branch/issue-490-private-chests](https://github.com/LuminariMUD/Duris/tree/branch/issue-490-private-chests).
@@ -11,8 +11,9 @@ The previous shared plan, including #420's completed implementation and later
 integration records, is preserved byte-for-byte in
 [plan-issue-420.md](plan-issue-420.md). Its SHA-256 is
 `9306f27c4fad0663f588bb44f6b05fc8492d368d9bffb872c5c325570020f8e7`.
-This handoff covers the requested planning and publication. It does not claim
-that the repairs below have been implemented, deployed, or qualified in gameplay.
+The owner authorized implementation, proportional local validation, commits, pushes
+and focused review-ready PRs, stacked where dependent. The progress section below
+is the current handoff; original source findings describe the planning baseline.
 
 ## Outcome
 
@@ -422,3 +423,47 @@ other worktrees are preserved. Additional planning checks passed:
 - GitHub assignment, handling comment, and the native Development branch link
   were verified. The final issue handoff records the published commit and plan;
   post-push checks must confirm matching local/remote heads and a clean worktree.
+
+
+## Implementation progress, 2026-10-30
+
+Integrated remote master `40a6a7bc0` (22 commits since the planning baseline)
+without conflicts before implementation. The shared #490 plan and preserved #420
+record remain intact. No local `.env` is present in this isolated worktree;
+runtime qualification will use synthetic configuration and disposable state.
+
+The first independent delivery is the capacity foundation on
+`branch/issue-490-private-chests`, targeting master. It changes only the private
+constructor's capacity to the existing unlimited locker sentinel and retains
+`m_chestId` as the persistent identity. `USE_SPACE` is explicitly disabled in
+`actobj.c`; no speculative space-policy code is added.
+
+The extended existing native regression compiles the real private constructor,
+ordinary `put()`, bulk predicate, and object/weight code. Its new single and bulk
+cases both fail on the unmodified constructor at the actual admission assertions.
+The fixture crosses IDs 10, 100 and 1000000 with sequential weights 20, 200 and
+2000, verifies transfer/weight accounting, and retains finite ordinary-container
+rejection controls. World/prototype/log/trap services remain controlled fixture
+boundaries; this does not claim the full socket command journey.
+
+Ablation for this chunk keeps one local constructor fix and extends the existing
+harness. No capacity helper, header, migration or configuration is needed. The
+access, backend, audit, management/payment, save-result and full journey work
+remain required; passing this chunk does not complete #490. Capacity-foundation validation passed:
+
+- `python3 tests/async/test_locker_container_weight_lifecycle.py`: all 24 cases
+  under ASan/UBSan, including both new regressions and all 22 existing cases.
+- `make -C src -j6`: complete MariaDB development build, warnings as errors.
+- `bash scripts/format.sh --check`: passed.
+- Staged clang-tidy uses the installed Clang-Tidy 22 via
+  `CLANG_TIDY=/home/aiwithapex/.local/bin/clang-tidy`. The system default 18
+  cannot parse the GCC 16 headers it selects; no hook is bypassed.
+- `python3 tests/async/test_documentation_contract.py`: all 14 tests passed.
+- `git diff --check`: passed.
+
+The two new cases were first observed failing against the unchanged constructor
+and then passing after the fix. No socket/restart/backend-parity qualification is
+claimed for this isolated capacity PR. The next chunk is access/session/backend
+policy, followed by durable management/payment/audit/save integration and full
+command qualification. Its dependent PR will be based on this foundation rather
+than waiting to publish the entire issue at once. The review link follows below.

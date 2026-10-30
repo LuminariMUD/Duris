@@ -1691,7 +1691,8 @@ PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_
 		m_pChestObject->cost = 0;
 		m_pChestObject->weight = 0;
 		m_pChestObject->condition = 100;
-		m_pChestObject->value[0] = chest_id;
+		// Capacity follows public locker storage; m_chestId holds the saved identity.
+		m_pChestObject->value[0] = -1;
 		m_pChestObject->value[1] = m_pChestObject->value[2] = m_pChestObject->value[3] = 0;
 		m_pChestObject->type = ITEM_CONTAINER;
 		m_pChestObject->str_mask |= (STRUNG_KEYS | STRUNG_DESC1);
