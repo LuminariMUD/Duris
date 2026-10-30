@@ -1,11 +1,11 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **implementation in progress; capacity PR ready; access/backend chunk under qualification**. Updated 2026-10-30.
+Status: **implementation in progress; capacity/access chunks qualified; durable operations remain**. Updated 2026-10-30.
 Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
 Assignee: `moshehbenavraham`.
 Branch: [branch/issue-490-private-chests](https://github.com/LuminariMUD/Duris/tree/branch/issue-490-private-chests).
 Worktree: `/home/aiwithapex/projects/duris-issue-490`.
-Active dependent branch: `branch/issue-490-chest-access` (base: `branch/issue-490-private-chests`).
+Active dependent branch: `branch/issue-490-chest-access` (base: `branch/issue-490-idle-harness`).
 Source baseline: remote `master`, `0bec1dbaec2793f64bb8b6328dcd69447ef17494`.
 
 The previous shared plan, including #420's completed implementation and later
@@ -604,3 +604,14 @@ no server rebuild or broad regression was needed for that fixture-only patch.
 The access PR will target #502's branch and include this dependency before final
 validation. Room-departure/extraction callback native cases also pass after their
 ordinary-world fixture gains the new invalidation boundary.
+
+The access implementation is committed as `8446ffed9`. Fixture dependency
+`885d40fca` is integrated at `367e65112`; the single shared-stub append conflict
+was resolved by retaining both sets of required boundaries. Post-integration
+private lifecycle, idle lifecycle and documentation checks pass; production
+sources did not change in that dependency merge, so the recorded builds and
+socket journeys remain valid. The access branch is ready for a focused PR on
+`branch/issue-490-idle-harness`; its link will be recorded immediately after
+creation. Next implementation branch should start from this access head and
+implement durable management/payment before claiming PUT/GET audit or terminal
+private-save durability. Keep the original #490 acceptance/proof section intact.
