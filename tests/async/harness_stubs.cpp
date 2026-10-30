@@ -5,6 +5,7 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "account/account.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -246,4 +247,14 @@ HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
 HARNESS_STUB bool locker_object_is_private_chest(P_obj)
 {
 	return false;
+}
+
+// Unrelated persistence fixtures do not hydrate account projection storage.
+HARNESS_STUB int sync_account_character_projection(P_char, int, int)
+{
+	return TRUE;
+}
+HARNESS_STUB bool save_account_character_departure(P_char)
+{
+	return true;
 }
