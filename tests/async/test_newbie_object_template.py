@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Synthetic runtime regression for boot-only starter/artifact template caching.
+"""Runtime regression for object-template caching and Minor Creation instruments.
 
 Executes extracted production db.c parser/cache/publisher, fread_string,
-strn_cmp, isname, and the default proc parser against a temporary object file.
+strn_cmp, isname, and the default proc parser against temporary object files,
+including all six authored instruments from the full and mini datasets.
 Memory pool, identity, event, conversion,
 and procedure-library endpoints are fixtures; no database or game is started.
 Linux g++, ASan/UBSan and the repository headers are required.
 """
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 from _paths import ROOT, SRC, extract_function
@@ -255,8 +257,49 @@ static void check_boot_names()
     }
     assert(allocations.empty());
 }
-int main()
+
+static void check_minor_instruments(const char *path)
 {
+    obj_f = fopen(path, "r"); assert(obj_f);
+    int top = -1;
+    P_index generated = generate_indices(obj_f, &top);
+    assert(top == 6);
+    for (int nr = 0; nr <= top; ++nr) indexes[nr] = generated[nr];
+    FREE(generated);
+    const int instrument_types[] = {185, 189, 188, 186, 187, 184};
+    for (int nr = 0; nr <= top; ++nr)
+    {
+        const bool minor = nr < 6;
+        const auto prototype = parse_object_template(nr);
+        assert(indexes[nr].virtual_number == (minor ? 1241 + nr : 89177));
+        assert(prototype.type == ITEM_INSTRUMENT);
+        assert(IS_SET(prototype.wear_flags, ITEM_TAKE));
+        assert(IS_SET(prototype.wear_flags, ITEM_HOLD));
+        assert(!!IS_SET(prototype.wear_flags, ITEM_ATTACH_BELT) == minor);
+        if (minor)
+        {
+            assert(prototype.weight == (nr == 0 ? 0 : 1));
+            assert(prototype.value[0] == instrument_types[nr]);
+            for (int i = 1; i < 8; ++i)
+                assert(prototype.value[i] == (i <= 3 ? 1 : 0));
+        }
+        P_obj item = instantiate_object_template(prototype);
+        assert(item->type == ITEM_INSTRUMENT && item->R_num == nr);
+        assert(item->wear_flags == prototype.wear_flags && item->weight == prototype.weight);
+        assert(item->extra_flags == prototype.extra_flags &&
+               item->extra2_flags == prototype.extra2_flags);
+        assert(item->anti_flags == prototype.anti_flags &&
+               item->anti2_flags == prototype.anti2_flags);
+        for (int i = 0; i < 8; ++i) assert(item->value[i] == prototype.value[i]);
+    }
+    cleanup();
+    fclose(obj_f); obj_f = nullptr;
+    puts("Minor Creation instruments: six attachable prototypes and unflagged control passed");
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 2) { check_minor_instruments(argv[1]); return 0; }
     check_boot_names();
     obj_f = tmpfile(); assert(obj_f);
     write_record(0, "BAG random_exit", ITEM_CONTAINER, 12, ITEM_TAKE, true, "",
@@ -448,7 +491,8 @@ def main() -> int:
         extract_function("db.c", "static P_obj instantiate_object_template_impl("),
         extract_function("db.c", "P_obj instantiate_object_template(const object_template &prototype)"),
     ]
-    with tempfile.TemporaryDirectory() as directory:
+    (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="object-template-", dir=ROOT / "bin/tests") as directory:
         source = Path(directory) / "newbie_object_template.cpp"
         binary = Path(directory) / "newbie_object_template"
         source.write_text("\n".join([PRELUDE, *functions, DRIVER]), encoding="utf-8")
@@ -457,6 +501,20 @@ def main() -> int:
             "-fsanitize=address,undefined", "-Isrc", str(source), str(HARNESS_STUBS), "-o", str(binary),
         ], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True)
+        # Only frame real records here; production generates the index, parses
+        # numeric fields, and materializes every object in the same executable.
+        control = re.search(r"(?ms)^#89177\n.*?(?=^#\d+\n)",
+                            (ROOT / "areas/obj/newhope.obj").read_text())[0]
+        results = []
+        for dataset in ("areas/obj/heavens.obj", "areas_mini/mini.obj"):
+            content = (ROOT / dataset).read_text()
+            records = [re.search(rf"(?ms)^#{vnum}\n.*?(?=^#\d+\n)", content)[0]
+                       for vnum in range(1241, 1247)]
+            fixture = Path(directory) / "instruments.obj"
+            fixture.write_text("".join(records) + control + "#9999999\n$~\n")
+            print(f"Production loader: {dataset}", flush=True)
+            results.append(subprocess.run([str(binary), str(fixture)]).returncode)
+        assert results == [0, 0], f"instrument loader failures: {results}"
     print("All newbie object template checks passed.")
     return 0
 

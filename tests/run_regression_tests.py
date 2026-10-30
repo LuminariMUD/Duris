@@ -62,6 +62,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_mob_gold_dial_runtime.py",
         "test_pet_restart_journey.py",
         "test_shambler_reflection_journey.py",
+        "test_minor_creation_instrument_journey.py",
         "test_studioproc_duplicate_record.py",
         "test_item_movement_prompt_runtime.py",
         "test_information_cache_journey.py",

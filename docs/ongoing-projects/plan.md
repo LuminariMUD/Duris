@@ -1,6 +1,6 @@
 # Issue #453: attach Minor Creation instruments to a belt
 
-Status: **planned; implementation has not started**. Updated 2026-10-30.
+Status: **implemented; local qualification complete; ready for review**. Updated 2026-10-30.
 Issue: [Duris #453](https://github.com/LuminariMUD/Duris/issues/453).
 Branch: [branch/issue-453](https://github.com/LuminariMUD/Duris/tree/branch/issue-453).
 Source baseline: origin/master at `c9361959ceb6cb2a9004fea2c03748cef909dc3f`.
@@ -8,8 +8,8 @@ Worktree: `/home/aiwithapex/projects/duris-issue-453`.
 
 The previous shared plan and completed qualification record for #420 are
 preserved byte-for-byte in [plan-issue-420.md](plan-issue-420.md).
-This request authorizes planning, commit/push, and issue/branch linking.
-Implementation is the next task.
+The owner subsequently authorized implementation, focused tests and gameplay
+checks, commit/push, and a pull request linked to #453.
 
 ## Outcome and explicit rule
 
@@ -25,6 +25,9 @@ grant it to other items. Existing character/item eligibility, a worn waist
 item, and an available attachment slot still govern success.
 
 ## Findings checked against the codebase
+
+These findings describe the planning baseline above; the completion record below
+records the implemented behavior and its verification.
 
 1. **The spell resolves precisely these six prototypes.**
    `minor_create_name_list[]` in `src/core/constant.c:501-507` maps all six
@@ -231,5 +234,58 @@ This commit contains this plan and preservation of the previous #420 record.
 - Publication and the direct issue/branch association are verified after the
   planning commit and reported in the issue handoff.
 
-The game behavior remains at the baseline until the implementation steps
-above are carried out.
+The planning commit above left game behavior at the baseline. Implementation
+and its qualification are recorded below.
+
+## Implementation and qualification, 2026-10-30
+
+The full and mini sources now explicitly grant ITEM_ATTACH_BELT to 1241-1246.
+An exact comparison against the planning commit confirms that each source
+diff contains only six replacements of wear flags 16385 with 8404993. All
+other fields and text, including the existing differences between datasets,
+remain byte-for-byte intact. No production C/C++ change was necessary.
+
+The extended object-template regression still executes the original synthetic
+cache/publication cases. Its additional executable phase feeds the actual six
+records from each source, plus unchanged unflagged instrument 89177, through
+production index generation, parsing and materialization under ASan/UBSan.
+It checks capabilities, identity, weight, instrument values and copied flags
+and restrictions. Both datasets failed the new attachment assertion before
+the data fix; both now pass, including the ineligible control.
+
+The new command journey uses existing build, world, socket and command helpers.
+Private saved state prepares a level-51 mortal Bard with actual Minor Creation
+access and spell resources; live staff inspection confirms its class and level.
+All six real casts create the correct VNUM in the room with NOSELL/STOREITEM,
+then pickup, attachment and removal traverse the actual player commands.
+Equipment and staff inspection prove equipped-versus-carried state and slots.
+The journey also passes all three attachment slots, a rejected fourth item
+remaining carried, waist removal returning attachments, no-belt refusal,
+ordinary hold/remove, and refusal of unchanged instrument 89177.
+The copper-flute control is loaded after the six cases to avoid a shared
+flute keyword redirecting staff's room-first object lookup. The server shuts
+down normally and its logs contain no checked fatal/assert/sanitizer errors.
+
+Completed checks:
+
+- python3 tests/async/test_newbie_object_template.py: passed under ASan/UBSan.
+- make world: passed; all six generated full-world records were independently
+  checked for type ITEM_INSTRUMENT and wear flags 8404993.
+- python3 tests/async/test_minor_creation_instrument_journey.py: passed using
+  its default fresh flat-file build (47.695 seconds to compile).
+- python3 tests/async/test_documentation_contract.py: all 14 checks passed.
+- Python syntax and regression discovery/resource-intensive scheduling passed.
+- ./scripts/format.sh --check and git diff --check passed.
+
+Ignored runtime evidence is bin/qualification/issue453/gameplay-report.json
+and bin/qualification/issue453/journey-final.log. The qualified fresh binary
+SHA-256 is 98bd55639ce84cd2227f159d85c1b06cbd5caa1286609f3555587257602115ce.
+
+Final ablation retains the twelve data-field corrections, an extension of the
+existing loader executable, one focused journey using existing helpers, its
+runner registration, and this completion record. The #420 archive remains
+unchanged. No runtime policy, helper, configuration, migration, or production
+operation was added. The native fixture controls allocation and conversion
+services; the socket journey uses the real server. Full-world gameplay,
+MariaDB gameplay, persisted old-instance upgrades and deployment were outside
+this qualification.
