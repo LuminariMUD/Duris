@@ -44,6 +44,7 @@
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -3564,6 +3565,7 @@ void close_socket(struct descriptor_data *d)
 	if (d && d->player_load_request_id)
 		player_load_pipeline_cancel(d->player_load_request_id);
 	account_recovery_descriptor_closed(d);
+	locker_invalidate_chest_access(d->character);
 	password_async_cancel(d);
 	password_login_release(d->login_password_job);
 	d->login_password_job = nullptr;

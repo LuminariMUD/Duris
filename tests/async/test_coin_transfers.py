@@ -13,6 +13,7 @@ HARNESS = r'''
 #include "currency_test_support.h"
 #include "net/comm.h"
 #include "classes/necromancy.h"
+#include "item/storage_lockers.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -21,6 +22,7 @@ const int top_of_world = 1;
 const char *coin_names[] = {"copper","silver","gold","platinum"};
 static std::vector<P_char> characters;
 static P_obj destination = nullptr;
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
 static obj_data created = {};
 static bool allocation_fails = false, placement_fails = false;
 static int placed = 0, extracted = 0, announcements = 0;

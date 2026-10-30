@@ -21,6 +21,10 @@
 // corpses are rejected by the unsorted chest so they remain visible on the
 // locker room floor rather than being hidden inside a sorting chest.
 bool locker_eq_type_fits_for_storage(::byte eqType, P_obj obj);
+// Ordinary containers pass; private contents require this visit's authenticated opener.
+bool locker_container_access_allowed(P_char actor, P_obj container);
+bool locker_object_is_private_chest(P_obj object);
+void locker_invalidate_chest_access(P_char actor);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
 /* The statement that removes every locker grant `name` holds (a character deletion). */
@@ -51,6 +55,10 @@ class StorageLocker
 	P_char GetLockerChar(void) { return m_chLocker; };
 	P_char GetLockerUser(void) { return m_chUser; };
 	bool LockerUserIsOwner(void) const { return m_userIsOwner; }
+	bool LockerUserMatches(P_char ch) const
+	{
+		return ch && ch == m_chUser && ch->runtime_id == m_userRuntimeId;
+	}
 
 	bool LockerToPFile(void);
 	void PFileToLocker(void);
@@ -61,7 +69,19 @@ class StorageLocker
 	int m_itemCount;
 
 	int GetCurrentChestId(void) { return m_currentChestId; };
-	void SetCurrentChestId(int id) { m_currentChestId = id; };
+	void SetCurrentChestId(int id, bool manager = false)
+	{
+		m_currentChestId = id;
+		m_currentChestManager = manager;
+	};
+	bool CurrentChestOpenedAsManager(void) const { return m_currentChestManager; }
+	uint64_t GetChestAccessGeneration(void) const { return m_chestAccessGeneration; }
+	void InvalidateChestAccess(void)
+	{
+		m_currentChestId = 0;
+		m_currentChestManager = false;
+		++m_chestAccessGeneration;
+	}
 	int GetLockerId(void) { return m_lockerId; };
 	void SetLockerId(int id) { m_lockerId = id; };
 	int GetPublicChestId(void) { return m_publicChestId; };
@@ -80,11 +100,14 @@ class StorageLocker
 	int m_realRoom;
 	P_char m_chLocker;
 	P_char m_chUser;
+	uint64_t m_userRuntimeId;
 	// The authenticated entry verdict outlives the user's descriptor.
 	bool m_userIsOwner;
 	//  int m_itemCount;
 	bool m_bIValue;
 	int m_currentChestId;
+	bool m_currentChestManager;
+	uint64_t m_chestAccessGeneration;
 	int m_lockerId;
 	int m_publicChestId;
 };

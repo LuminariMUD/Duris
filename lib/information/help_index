@@ -10247,6 +10247,8 @@ This will place all items that have the max_wis stat in 2.chest.
 
 If you need the complete list of sort types, use "equip sort help" while
 inside the locker. The same information is available with "help equip sort".
+For named private chests, their permissions and storage availability, see
+"help chest".
 ===========================================================================
 See also: BANKS, GRANT
 
@@ -27163,14 +27165,43 @@ See also: MAP, QUEST, BARTENDER
 #
 CHEST EQ CHEST CHEST CREATE (General Information)
 ===========================================================================
-For a container chest, use "look in <chest>", "open <chest>",
-"put <item> <chest>" and "get <item> <chest>". Locks and ownership can
-restrict access. A chest in the world does not by itself guarantee storage
-through a restart; use an authorized storage locker for saved equipment.
+In a locker on a server using SQL storage:
+  eq chest list
+  eq chest create <name> [password]
+  eq chest password <name> <password|none>
+  eq chest delete <name>
+  open <name> [password]
+  close
+  eq log
 
-There is no "chest create" command. The old guild "construct chest"
-feature is disabled. For worn chest armor, use "equipment" and
-"wear <armor> body"; the item must fit that slot and your character.
+A private chest costs 500 platinum. You may have five per locker in addition
+to public storage. Its capacity follows unlimited locker storage, while your
+own carrying limits still apply. Chests stay in the locker; move their contents.
+Only an empty chest can be deleted; there is
+no refund. Passwords are optional and limited to 72 bytes.
+
+The personal/account owner, staff, and members of the owning guild manage
+chests and view their activity history. These managers do not need the chest
+password. Guild private chests are shared with fellow guild members, who can
+change their passwords. A granted locker guest needs the password when one
+is set, and cannot manage chests or view the activity log. A chest password
+does not grant entry to the locker.
+
+You must open a private chest before looking inside or moving its contents.
+Opening another chest replaces your selection. Close revokes access; password
+changes, deletion, leaving and disconnecting also require you to open again.
+Public sorting chests keep their normal behavior. The log currently records
+open, close and failed password checks.
+
+Flat-file storage supports public locker storage and sorting. Private chest
+commands and their activity log require SQL storage; saved private records
+are preserved in flat-file storage and are not made into accessible chests.
+
+For an ordinary chest outside this system, use "look in <chest>",
+"open <chest>", "put <item> <chest>" and "get <item> <chest>". Such a chest
+does not itself guarantee storage through a restart. There is no standalone
+"chest create" command; use the locker subcommand "eq chest create".
+The old guild "construct chest" feature remains disabled.
 See also: LOCKER, EQUIPMENT, CONSTRUCT
 ===========================================================================
 

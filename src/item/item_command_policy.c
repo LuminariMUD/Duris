@@ -15,10 +15,11 @@
 #include "item/item_command_policy.h"
 
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 
 bool item_command_object_is_takeable(P_char actor, P_obj object)
 {
-	return actor && object &&
+	return actor && object && !locker_object_is_private_chest(object) &&
 	       (CAN_WEAR(object, ITEM_TAKE) || ((GET_LEVEL(actor) >= 60) && !IS_NPC(actor)));
 }
 

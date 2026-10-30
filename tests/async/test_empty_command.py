@@ -59,6 +59,7 @@ struct obj_data {
     struct { int room = 0; } loc;
 };
 using P_obj = obj_data *;
+static bool locker_container_access_allowed(P_char, P_obj) { return true; }
 static std::string output;
 static int saves = 0;
 static void send_to_char(const char *text, P_char) { output += text; }

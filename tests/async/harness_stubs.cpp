@@ -237,3 +237,13 @@ HARNESS_STUB artifact_guild_capture_status artifact_guild_state_prepare_delivery
 {
 	return artifact_guild_capture_status::unavailable;
 }
+
+HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
+{
+	return true;
+}
+
+HARNESS_STUB bool locker_object_is_private_chest(P_obj)
+{
+	return false;
+}

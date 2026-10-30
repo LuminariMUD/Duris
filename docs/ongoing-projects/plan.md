@@ -1,10 +1,11 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **implementation in progress; capacity foundation qualified for review**. Updated 2026-10-30.
+Status: **implementation in progress; capacity PR ready; access/backend chunk under qualification**. Updated 2026-10-30.
 Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
 Assignee: `moshehbenavraham`.
 Branch: [branch/issue-490-private-chests](https://github.com/LuminariMUD/Duris/tree/branch/issue-490-private-chests).
 Worktree: `/home/aiwithapex/projects/duris-issue-490`.
+Active dependent branch: `branch/issue-490-chest-access` (base: `branch/issue-490-private-chests`).
 Source baseline: remote `master`, `0bec1dbaec2793f64bb8b6328dcd69447ef17494`.
 
 The previous shared plan, including #420's completed implementation and later
@@ -307,9 +308,8 @@ capacity, syntax, cost/funding/change, limit, passwords, logging, empty-only del
 and persistence outcomes in chest/locker help and room instructions. Retain the
 distinction between `eq chest create` and a nonexistent standalone command.
 
-Use `tests/async/test_mysql_private_chest_journey.py` (new) with the existing
-`test_mysql_locker_grant_journey.py` fixture/bootstrap/socket patterns and
-`with_disposable_mariadb.sh`. Extend `test_flatfile_locker_journey.py` for clear
+Extend `tests/async/test_mysql_locker_grant_journey.py` using its existing
+fixture/bootstrap/socket patterns and `with_disposable_mariadb.sh`. Extend `test_flatfile_locker_journey.py` for clear
 unsupported-mode behavior and public-storage compatibility. Seed private flat
 records through the existing repository fixture and prove they are unchanged
 after public saves and a cold restart. Never use real player inventories.
@@ -365,9 +365,8 @@ Commands after implementation (new test filenames above are planned):
     python3 tests/async/test_locker_leave_during_save.py
     python3 tests/async/test_sql_async.py
     make -C src
-    tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_private_chest_journey.py
-    TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_private_chest_journey.py
     tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py
+    TEST_DB_IMAGE=mysql:8.0 tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py
     python3 tests/async/test_flatfile_locker_journey.py
     ./scripts/format.sh --check
     python3 tests/async/test_documentation_contract.py
@@ -471,3 +470,137 @@ head `branch/issue-490-private-chests`, base `master`. Commit `e41c1b2e0` contai
 the capacity fix. The PR is open, non-draft and mergeable; it references #490
 without closing it. Later master commits only change unrelated population and
 regression fixtures, so the capacity/build evidence remains applicable.
+
+
+### Access/session/backend chunk in progress
+
+The capacity branch now includes master `4f4747ac5` and an incremental MariaDB
+build passed after that integration. Its final parent head is `77742c782`.
+The dependent branch `branch/issue-490-chest-access` is created, tracking origin,
+and natively linked to #490. The same isolated worktree is used to retain the
+validated build cache. PR #497 remains the capacity review boundary.
+
+Implemented locally, not yet published as a review-ready chunk:
+
+- One wrapper/ancestor-based content gate is called by get preflight and actual
+  pickup publication, put (including after traps), bulk/coin destinations,
+  empty through its existing source/target checks, look-in and examine. Public
+  and ordinary containers pass through the same gate without new rules.
+- The active occupant's runtime identity binds chest selection. A small request
+  generation plus the actual chest object's UID prevents stale password results
+  from reopening after close, delete/recreation or visit replacement. The shared
+  password worker already fences descriptor/account/state changes; it is reused.
+- Managers use the existing management predicate for password bypass. Role loss
+  invalidates that bypass. Password changes/removal, deletion, departure and the
+  actual `close_socket()` boundary revoke selection. Ordinary `close door` no
+  longer consumes the private close command. Log-read completion rechecks its
+  viewer, locker visit and management permission.
+- Dedicated chest management/log entry points reject flat-file mode before
+  password work or charges; known private open targets use the same gate. Room
+  instructions and chest/locker help state SQL availability. Flat-file gameplay
+  still materializes only public storage: an absent private object reaches the
+  ordinary open command's absent-target response. No placeholder objects, extra
+  catalog/name cache or interception of ordinary door/bag opens is introduced.
+- Existing native movement harnesses receive the declaration or an ordinary-world
+  stub for this new boundary. The dedicated lifecycle harness executes the real
+  constructor, selection, open/close callbacks and access predicate.
+
+The new lifecycle regression first reproduced two baseline failures at actual
+selection assertions: close while verification is pending, and recreation of
+the same chest name/ID before verification completes. All 22 current cases pass
+under ASan/UBSan, including wrong/changed credentials, actor reuse, nested
+containers, selected-chest replacement/public selection, manager role loss,
+disconnect invalidation and backend rejection. These use controlled role, writer
+and password-completion boundaries; they are not a substitute for gameplay.
+
+The first disposable SQL command run could not boot because this new worktree
+had no generated `areas/world.*` inputs. `make world` generated those local
+ignored runtime inputs; no live world or player state is used. The expanded
+existing SQL locker journey will cover owner/guest/guild-member open policy,
+real inspection/put/get/close, management/log denial and door compatibility.
+The expanded flat-file journey checks explicit unsupported management/log
+messages while preserving ordinary door/public storage/restart behavior. A
+repository fixture checks that two committed public saves preserve every private
+metadata field and a nested item graph through full encoded-catalog comparison.
+
+Ablation reuses both existing socket journeys instead of adding a second
+private-chest journey framework/file. The later complete management/payment/audit
+qualification should extend these same journeys; the originally proposed
+`test_mysql_private_chest_journey.py` is unnecessary. Durable setters, creation
+payment, item activity, save acknowledgements and the full final matrix remain
+open work. Access-only results must not be reported as completion of those items.
+
+A further access-boundary finding is included in this chunk: ordinary item
+takeability permits staff to pick up otherwise untakeable room objects. Moving
+an entire private wrapper out of its locker would erase the room-based access
+context. The shared item policy now rejects taking actual private wrappers even
+for staff; normal contents and ordinary staff pickup remain unchanged. One
+fixture executes the real shared takeability policy for both cases. This keeps
+private chests fixed as locker furniture, rather than creating a global portable
+chest registry or identifying containers by their names/prototype/ID fields.
+
+The no-MySQL server built successfully through the existing shared artifact
+helper, and the extended flat-file public-storage/restart/unsupported-command
+journey passed. The private-data preservation repository fixture also passed.
+SQL command qualification now passes; its setup gives the owner
+a covered bank baseline and clears unrelated starter inventory to leave genuine
+mortal carrying slots. No carrying-limit rule is relaxed for the test.
+
+SQL journey progress: real owner and granted-guest open/close/inspection,
+single and bulk put/get, wrong password, denied management/log viewing and
+ordinary door close have passed. A later old assertion used the ambiguous
+name `chest`, which now selects the newly materialized private chest. Its public
+content checks now explicitly use `unsorted`; the remaining journey/restart/guild
+checks subsequently passed before publishing this dependent PR. The fixture's inventory
+check tests actual emptiness rather than searching the entire transcript for
+"mace", since another actor's ambient drop output can contain that word.
+
+The shared `locker_current()` lookup now rejects invalid/non-locker rooms
+before reading their description attachment. This is necessary for delayed
+callbacks after departure; checking only whether the actor still exists is not
+a locker-visit check. A native regular-room fixture verifies it does not become
+a current locker even if fixture description text holds a valid locker address.
+This fixes the owning lookup once rather than adding caller-specific guards.
+
+### Access chunk qualification
+
+The complete expanded disposable MariaDB journey passed all 13 groups, including
+real owner and guest single/bulk movement, inspection, explicit open/close, wrong
+password, management/log denial, ordinary doors, owner log viewing, idle-rent
+disconnect, re-entry, cold restart, stable public UIDs/grants, opposite-side
+denial and a real guild member's password bypass. The private chest is empty
+after the guest's round trips, verified directly from SQL.
+
+Runtime report: `bin/qualification/issue490/journey.json`; output:
+`bin/qualification/issue490/access-mariadb-journey.log`. The report retains the
+qualified binary hash. That runtime binary predates only the final strict
+`locker_current()` room-type guard; the guard has its own executable native
+regression and the final incremental MariaDB build passed. Valid locker rooms
+already carry the required flag, so the successful command-path evidence is
+reused rather than rerunning the real idle timer for this three-line guard.
+
+Additional passed checks: all 22 private lifecycle cases under ASan/UBSan, the
+24 container/weight cases, password hardening, six ownership contracts, existing
+get/put trap, coin, empty and corpse-haul native checks, the world-recovery
+native contracts, four item-command pipeline contracts, the private flat-file
+record-preservation fixture, 14 documentation contracts, changed-line formatting,
+Clang-Tidy 22 and whitespace checks. The final no-MySQL artifact build and
+public-storage/restart/unsupported-command journey also passed for the latest
+sources (`access-flatfile-final.log`; fresh build 72.034 seconds).
+
+Remaining work is unchanged: setters/deletion and legacy rehash durability,
+atomic creation/payment with replay/recovery, actual PUT/GET audit records,
+private-save completion fencing, expanded failure injection and the final
+MariaDB/MySQL matrix. No migration, live-player operation, merge, deployment,
+issue closure or complete-private-chest claim is included in the access chunk.
+
+The existing idle-lifecycle harness failed to link against the terminal account
+APIs introduced by merged PR #489. This inherited fixture gap is isolated in
+[PR #502](https://github.com/LuminariMUD/Duris/pull/502), branch
+`branch/issue-490-idle-harness`, based on capacity PR #497. Its only change is
+the two missing weak account-projection/departure stubs with their owning header.
+The idle-lifecycle and real terminal account-projection native tests pass there;
+no server rebuild or broad regression was needed for that fixture-only patch.
+The access PR will target #502's branch and include this dependency before final
+validation. Room-departure/extraction callback native cases also pass after their
+ordinary-world fixture gains the new invalidation boundary.

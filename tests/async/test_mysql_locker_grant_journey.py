@@ -144,6 +144,15 @@ def run(binary):
                 sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
                 sql(f"UPDATE player_data SET level=20,highest_level=20,platinum=50 "
                     f"WHERE name IN ('{OWNER}','{VISITOR}','{OTHER}')")
+                # Chest fees come from the bank so carrying thousands of coins does not
+                # invalidate the mortal pickup tests through normal encumbrance limits.
+                sql("INSERT INTO account_banks(account_name,racewar,bank_platinum) "
+                    f"VALUES ('{ACCOUNTS[OWNER]}',1,2000) ON DUPLICATE KEY UPDATE bank_platinum=2000")
+                sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,"
+                    "opening_gold,opening_platinum,opening_revision) "
+                    "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision "
+                    f"FROM account_banks WHERE account_name='{ACCOUNTS[OWNER]}' AND racewar=1 "
+                    "ON DUPLICATE KEY UPDATE opening_platinum=VALUES(opening_platinum)")
                 # A separate imported personal locker with stable ownership, not a converted account row.
                 sql("INSERT INTO lockers(locker_name,owner_pid,racewar,race) "
                     f"SELECT '{LEGACY_LOCKER}',pid,racewar,race FROM player_data WHERE name='{OWNER}'")
@@ -163,10 +172,11 @@ def run(binary):
                 enter(VISITOR, 'AcCoUnT.Guestacct.1.LoCkEr', items=0)
                 leave(VISITOR)
                 assert sql("SELECT COUNT(*) FROM lockers WHERE locker_name='account.guestacct.1.locker'") == '1'
-                # The live starter-kit catalog may already supply a mace. Keep the
-                # two fixture lockers' marker counts independent of that catalog.
-                command(clients[OWNER], 'drop all.mace')
-                assert 'mace' not in command(clients[OWNER], 'inventory').lower()
+                # Keep the fixture's marker counts and free carrying slots independent
+                # of the live starter kit; private pickup checks use normal mortal limits.
+                command(clients[OWNER], 'drop all')
+                command(clients[VISITOR], 'drop all')
+                assert 'Nothing.' in command(clients[OWNER], 'inventory')
                 for _ in range(3):
                     command(clients[GOD], 'load obj 677')
                     act(GOD, 'give mace ' + OWNER, 'Ok.')
@@ -175,6 +185,19 @@ def run(binary):
                 check('first named and mixed-case canonical owner entry creates only the authenticated account side')
                 act(OWNER, 'drop mace', 'You drop')
                 act(OWNER, 'grant add ' + VISITOR, 'given access')
+                act(OWNER, 'eq chest create vault fixture-secret', "Private chest 'vault' created")
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'put mace vault', 'must open that private chest first')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'put mace vault', 'Ok.')
+                assert 'mace' in act(OWNER, 'look in vault', 'contains:')
+                act(OWNER, 'get mace vault', 'You get')
+                act(OWNER, 'close', 'You close the chest')
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'eq log', 'Recent locker activity:')
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + VISITOR, 'Ok.')
+                check('owner must explicitly open private chest; single put/get and close use real commands')
                 help_text = act(OWNER, 'help locker', 'account locker takes precedence')
                 assert '<character>.locker' in help_text and 'account.<account>.<side>' in help_text
                 assert "account's" in act(OWNER, 'help grant', "account's")
@@ -186,7 +209,27 @@ def run(binary):
                 leave(OWNER)
                 denied(OTHER)  # Also safe while the owner's terminal locker save may be pending.
                 enter(VISITOR, 'VaUlToWnEr')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                act(VISITOR, 'get mace vault', 'must open that private chest first')
+                act(VISITOR, 'put mace vault', 'must open that private chest first')
+                act(VISITOR, 'eq chest list', 'Sort your own locker')
+                act(VISITOR, 'eq log', 'Sort your own locker')
+                act(VISITOR, 'open vault wrong-secret', 'Wrong password')
+                act(VISITOR, 'open vault fixture-secret', "You open the 'vault' chest")
+                act(VISITOR, 'put mace vault', 'Ok.')
+                assert 'mace' in act(VISITOR, 'look in vault', 'contains:')
+                command(clients[VISITOR], 'close door')
+                assert 'mace' in act(VISITOR, 'look in vault', 'contains:')
+                act(VISITOR, 'get mace vault', 'You get')
+                act(VISITOR, 'put all.mace vault', 'You put')
+                act(VISITOR, 'get all.mace vault', 'You get')
+                act(VISITOR, 'close', 'You close the chest')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                check('granted mortal guest: wrong/correct password, inspection/movement, management/log denial, ordinary door close')
                 leave(VISITOR)
+                assert sql("SELECT COUNT(*) FROM locker_items i JOIN private_chests c ON c.id=i.chest_id "
+                           "JOIN lockers l ON l.id=c.locker_id "
+                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND c.is_public=0") == '0'
                 check('mortal character grant -> leave -> mixed-case named account entry; occupancy privacy')
 
                 enter(OWNER, LEGACY_LOCKER, items=0)
@@ -255,7 +298,7 @@ def run(binary):
                 clients.pop(OWNER).close()
                 login(OWNER)
                 enter(OWNER, items=2)
-                assert command(clients[OWNER], 'look in chest').lower().count('mace') >= 1
+                assert command(clients[OWNER], 'look in unsorted').lower().count('mace') >= 1
                 leave(OWNER)
                 expected_contents = '\n'.join(sorted(previous_contents.splitlines() +
                                                      [f'{ACCOUNT_LOCKER}\t{marker_uid}\t677']))
@@ -289,7 +332,7 @@ def run(binary):
                 denied(OTHER)  # No opposite-side occupant disclosure either.
                 leave(OWNER)
                 enter(VISITOR, OWNER, items=2)
-                assert 'mace' in command(clients[VISITOR], 'look in chest')
+                assert 'mace' in command(clients[VISITOR], 'look in unsorted')
                 leave(VISITOR)
                 denied(VISITOR, LEGACY_LOCKER)
                 check('cold restart preserves both lockers and grants; opposite-side idle/occupied entry denied')
@@ -320,6 +363,10 @@ def run(binary):
                 denied(VISITOR, guild_target + '.locker')
                 enter(OWNER, guild_target.upper() + '.LoCkEr', items=0)
                 denied(VISITOR, guild_target + '.locker')
+                act(OWNER, 'eq chest create shared guild-secret', "Private chest 'shared' created")
+                act(OWNER, 'open shared', "You open the 'shared' chest")
+                act(OWNER, 'close', 'You close the chest')
+                check('guild member with management rights explicitly opens a password chest without its secret')
                 leave(OWNER)
                 command(clients[GOD], 'load obj 677')
                 act(GOD, 'give mace ' + OWNER, 'Ok.')
@@ -344,11 +391,11 @@ def run(binary):
                 assert contents() == before_restart
                 check('canonical guild membership, creation, contents and fees match guild; nonmember/prestige/parole gates hold')
                 stop()
-                target = ROOT / 'bin/analysis/issue-234'
+                target = ROOT / 'bin/qualification/issue490'
                 target.mkdir(parents=True, exist_ok=True)
                 (target / 'journey.json').write_text(json.dumps(evidence, indent=2) + '\n')
             except Exception as error:
-                target = ROOT / 'bin/analysis/issue-234' / f'failure-{time.time_ns()}'
+                target = ROOT / 'bin/qualification/issue490' / f'failure-{time.time_ns()}'
                 target.mkdir(parents=True)
                 (target / 'evidence.json').write_text(json.dumps(evidence, indent=2) + '\n')
                 shutil.copy2(output_path, target / 'server.out')

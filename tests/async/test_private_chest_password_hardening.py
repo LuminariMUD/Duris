@@ -173,7 +173,7 @@ print("[PASS] game-thread callers use the shared worker without synchronous bcry
 # Private chests are held in memory while their locker is open; each write is
 # queued on the writer and carries only a bcrypt hash.
 chests = storage[storage.index("static int locker_chestcmd(P_char ch, char *arg)\n{"):
-                 storage.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
+                 storage.index("static int locker_closecmd(P_char ch, char *arg)\n{")]
 create = chests[chests.index('if (is_abbrev(arg1, "create"))'):chests.index('if (is_abbrev(arg1, "delete"))')]
 setter = chests[chests.index('if (is_abbrev(arg1, "password"))'):
                 chests.index("static int locker_opencmd(P_char ch, char *arg)\n{")]
