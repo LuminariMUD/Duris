@@ -360,3 +360,21 @@ Final runtime evidence: bin/qualification/issue420/gameplay-report.json and
 bin/qualification/issue420/journey-integrated.log.
 The integrated flat-file binary SHA-256 is
 0db6192894c88a7dee08a7b903e9bae473f575cd9cb48fce7a0446af4bafd2c9.
+
+
+## Sequential PR integration, 2026-10-30
+
+Integrated master `cd78dd1a705ac5a41dfadc30b31dee2162a9fac3` after PRs
+#432, #475, #476 and #477. Game code, player help and test discovery merged
+without conflicts. The shared-plan conflict keeps this Shambler record at
+`plan.md` and preserves the completed coin record byte-for-byte at
+[plan-issue-444.md](plan-issue-444.md). The castle, rent-key and quest archives
+remain intact.
+
+The MariaDB server build, 640 Shambler image/pet/terrain/mound combinations,
+409 Reflection casts and innate eligibility/cooldown controls under ASan/UBSan,
+formatting, whitespace, test discovery and all 14 documentation checks pass on
+the combined source. The earlier disposable-server gameplay report remains the
+runtime qualification for racial and spell images, ownership, pet/mound caps,
+Titan exclusions, Displacement and help; that complete journey was not repeated
+in this merge pass. No production operation is included.

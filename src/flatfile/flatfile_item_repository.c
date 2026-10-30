@@ -1852,7 +1852,8 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 	{
 		for (flatfile_item_claim &claim : *claims)
 		{
-			if (!claim.items || !item_owner_identity_valid(claim.owner))
+			if (!claim.items || !item_owner_identity_valid(claim.owner) ||
+			    (claim.rent_keys && claim.owner.type != item_owner_type::player))
 				return flatfile_item_repository_result::invalid;
 			claim.outcome = {};
 			bool claimer_changed = false;
@@ -1869,6 +1870,11 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 			for (size_t index = 0; index < items.size(); ++index)
 			{
 				const player_item_snapshot &item = items[index];
+				const bool rent_key =
+					claim.rent_keys &&
+					item_claim_is_norent_key(item.type, item.extra_flags);
+				if (rent_key && !item.object_uid)
+					return flatfile_item_repository_result::invalid;
 				const bool nested = item.parent_index >= 0 &&
 						    static_cast<size_t>(item.parent_index) < index;
 				const uint64_t parent_uid =
@@ -1894,11 +1900,26 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 				if (record && item_claim_leaves_out(record->state))
 				{
 					claim.outcome.left_out.insert(item.object_uid);
-					claim.outcome.dupes.push_back(
-						{ item.object_uid, item.vnum, record->owner });
+					if (!rent_key)
+						claim.outcome.dupes.push_back({ item.object_uid,
+										item.vnum,
+										record->owner });
 					continue;
 				}
-				if (!ensure_owner(&catalog, claim.owner))
+				const item_owner_identity target =
+					rent_key ?
+						item_owner_identity{ item_owner_type::destruction,
+								     0, 0 } :
+						claim.owner;
+				const auto state = rent_key ? item_custody_state::destroyed :
+							      item_custody_state::active;
+				const uint64_t target_root = rent_key ? item.object_uid :
+									roots[index];
+				const uint64_t target_parent = rent_key ? 0 : parent_uid;
+				if (rent_key)
+					claim.outcome.left_out.insert(item.object_uid);
+				if (!ensure_owner(&catalog, claim.owner) ||
+				    !ensure_owner(&catalog, target))
 					return flatfile_item_repository_result::invalid;
 				// ensure_owner() may insert; take the record again afterwards.
 				record = find_item(&catalog, item.object_uid);
@@ -1908,12 +1929,12 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 						return flatfile_item_repository_result::invalid;
 					const flatfile_item_ownership_record inserted = {
 						item.object_uid,
-						roots[index],
-						parent_uid,
-						claim.owner,
+						target_root,
+						target_parent,
+						target,
 						1,
 						item.vnum,
-						item_custody_state::active
+						state
 					};
 					catalog.items.insert(std::lower_bound(catalog.items.begin(),
 									      catalog.items.end(),
@@ -1922,31 +1943,37 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 					++claim.outcome.inserted;
 					changed = true;
 					claimer_changed = true;
+					if (rent_key)
+					{
+						audits->push_back({ item.object_uid, item.vnum,
+								    claim.owner, target });
+						changed_owners.push_back(target);
+					}
 					continue;
 				}
-				const bool owned =
-					item_owner_identity_equal(record->owner, claim.owner);
-				if (owned && record->root_item_uid == roots[index] &&
-				    record->parent_item_uid == parent_uid &&
-				    record->vnum == item.vnum &&
-				    record->state == item_custody_state::active)
+				const bool owned = item_owner_identity_equal(record->owner, target);
+				if (owned && record->root_item_uid == target_root &&
+				    record->parent_item_uid == target_parent &&
+				    record->vnum == item.vnum && record->state == state)
 					continue;
 				if (!owned)
 				{
 					audits->push_back({ item.object_uid, item.vnum,
-							    record->owner, claim.owner });
+							    record->owner, target });
 					changed_owners.push_back(record->owner);
 					++claim.outcome.claimed;
 				}
-				record->owner = claim.owner;
-				record->root_item_uid = roots[index];
-				record->parent_item_uid = parent_uid;
+				record->owner = target;
+				record->root_item_uid = target_root;
+				record->parent_item_uid = target_parent;
 				record->vnum = item.vnum;
-				record->state = item_custody_state::active;
+				record->state = state;
 				if (record->item_revision < UINT64_MAX)
 					++record->item_revision;
 				changed = true;
 				claimer_changed = true;
+				if (rent_key)
+					changed_owners.push_back(target);
 			}
 			if (claimer_changed)
 				changed_owners.push_back(claim.owner);

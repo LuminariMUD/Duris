@@ -66,6 +66,7 @@ int IS_MORPH(P_char) { return false; }
 int GET_CLASS(P_char, unsigned int) { return 0; }
 void do_color_preferences(P_char, const char *) { assert(false); }
 void show_toggles(P_char) { assert(false); }
+void __free(void *memory, const char *, int) { (std::free)(memory); }
 void gmcp_send_initial_state(P_char) { assert(false); }
 char *skip_spaces(char *s) { while (*s == ' ') ++s; return s; }
 char *one_argument(const char *s, char *out) {

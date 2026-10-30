@@ -214,6 +214,20 @@ static void inspect_authority(const std::string &root, int32_t pid)
 		std::cout << domains.domains.wallet[i];
 	}
 	std::cout << "],\"wallet_revision\":" << domains.domains.wallet_revision;
+	std::cout << ",\"coin_items\":[";
+	bool first_coin = true;
+	for (const auto &item : snapshot.items)
+		if (item.type == ITEM_MONEY)
+		{
+			if (!first_coin)
+				std::cout << ',';
+			first_coin = false;
+			std::cout << "{\"uid\":" << item.object_uid
+				  << ",\"parent_index\":" << item.parent_index << ",\"coins\":["
+				  << item.values[0] << ',' << item.values[1] << ','
+				  << item.values[2] << ',' << item.values[3] << "]}";
+		}
+	std::cout << ']';
 	std::cout << ",\"bank\":[";
 	for (size_t i = 0; i < 4; ++i)
 	{
@@ -1432,6 +1446,62 @@ int main(int argc, char **argv)
 				"seed artifact catalog: " + error);
 		}
 		std::cout << item.object_uid << '\n';
+		return 0;
+	}
+	if (argc == 4 && std::string(argv[2]) == "norent-inspect")
+	{
+		std::string error;
+		player_snapshot snapshot;
+		{
+			// The journey polls a live writer. Pin the published file while it is
+			// opened and validated, so rename cannot unlink that inode mid-read.
+			flatfile_authority_lock lock;
+			require(lock.acquire(argv[1], &error), "rent inspection lock: " + error);
+			require(flatfile_authority_transaction_recover(argv[1], lock, &error) ==
+					flatfile_authority_transaction_result::ok,
+				"rent inspection recovery");
+			const auto loaded = flatfile_player_snapshot_read(
+				argv[1], std::stoi(argv[3]), &snapshot, &error);
+			require(loaded == flatfile_player_load_result::ok,
+				"rent snapshot result=" +
+					std::to_string(static_cast<unsigned>(loaded)) + ": " +
+					error);
+		}
+		std::vector<flatfile_item_ownership_record> records;
+		require(flatfile_item_repository_read_population(argv[1], &records, &error) ==
+				flatfile_item_repository_result::ok,
+			"rent custody: " + error);
+		std::cout << "{\"revision\":" << snapshot.revision
+			  << ",\"intent\":" << snapshot.save_intent << ",\"items\":[";
+		bool first = true;
+		for (const auto &entry : snapshot.items)
+		{
+			if (!first)
+				std::cout << ',';
+			first = false;
+			const uint64_t parent =
+				entry.parent_index >= 0 ?
+					snapshot.items[entry.parent_index].object_uid :
+					0;
+			std::cout << '[' << entry.object_uid << ',' << entry.vnum << ','
+				  << entry.extra_flags << ',' << entry.equipment_slot << ','
+				  << parent << ']';
+		}
+		std::cout << "],\"keys\":[";
+		first = true;
+		for (const auto &entry : records)
+			if (entry.vnum == 40401)
+			{
+				if (!first)
+					std::cout << ',';
+				first = false;
+				std::cout << '[' << entry.item_uid << ','
+					  << static_cast<unsigned>(entry.state) << ','
+					  << static_cast<unsigned>(entry.owner.type) << ','
+					  << entry.owner.id << ',' << entry.root_item_uid << ','
+					  << entry.parent_item_uid << ']';
+			}
+		std::cout << "]}\n";
 		return 0;
 	}
 	if (argc == 4 && std::string(argv[2]) == "inspect")

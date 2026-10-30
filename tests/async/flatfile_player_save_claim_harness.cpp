@@ -9,6 +9,8 @@
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_codec.h"
+#include "core/defines.h"
+#include "core/files.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -641,6 +643,189 @@ int main(int argc, char **argv)
 	require(reap == flatfile_item_repository_result::ok && reaped == 2 &&
 			held_by(root, recovery_owner).empty(),
 		"released recovery evidence prevented a later genuine reap");
+	// Retire fresh and owned keys, in inventory/equipment/containers. Controls
+	// also prove that filtering renumbers siblings without destroying their bag.
+	for (int scenario = 0; scenario < 6; ++scenario)
+	{
+		const uint64_t uid = 4040100 + scenario * 10;
+		const int place = scenario % 3;
+		player_snapshot rent = snapshot_for(100 + scenario * 10);
+		rent.items = { item(uid, 100, -1), item(uid + 1, 40401, place == 2 ? 0 : -1),
+			       item(uid + 2, 101, 0), item(uid + 3, 102, -1) };
+		rent.items[0].type = ITEM_CONTAINER;
+		rent.items[1].type = ITEM_KEY;
+		rent.items[1].extra_flags = ITEM_NORENT;
+		rent.items[1].equipment_slot = place == 1 ? HOLD + 1 : 0;
+		rent.items[2].type = ITEM_FOOD;
+		rent.items[2].extra_flags = ITEM_NORENT;
+		rent.items[3].type = ITEM_KEY; // Deliberately unflagged.
+		// Previously owned cases include a stale foreign owner, which the
+		// ordinary memory-authoritative claim contract must still handle.
+		if (scenario >= 3)
+		{
+			auto before_rent = rent;
+			if (scenario == 5)
+			{
+				before_rent.pid = 41;
+				before_rent.status_strings[0].value = "Newcomer";
+			}
+			require(flatfile_player_snapshot_apply(root, before_rent, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"owned-key baseline");
+		}
+		rent.save_intent = RENT_INN;
+		const auto apply = [&](const player_snapshot &input)
+		{
+			require(flatfile_player_snapshot_apply(root, input, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"key save: " + error);
+		};
+		const auto custody = [&]
+		{
+			std::vector<flatfile_item_ownership_record> records;
+			require(flatfile_item_repository_load_uids(root, { uid + 1 }, &records,
+								   &error) ==
+						flatfile_item_repository_result::ok &&
+					records.size() == 1,
+				"key custody");
+			return records[0];
+		};
+		const auto kept = [&]
+		{
+			require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+						flatfile_player_load_result::ok &&
+					stored.items.size() == 3,
+				"rent payload");
+			require(stored.items[0].object_uid == uid &&
+					stored.items[1].object_uid == uid + 2 &&
+					stored.items[1].parent_index == 0 &&
+					stored.items[2].object_uid == uid + 3,
+				"rent changed the bag or unrelated items");
+		};
+		apply(rent);
+		kept();
+		const auto retired = custody();
+		require(retired.state == item_custody_state::destroyed &&
+				retired.owner.type == item_owner_type::destruction &&
+				retired.root_item_uid == uid + 1 && retired.parent_item_uid == 0,
+			"key not retired");
+		const auto audit = text_of(path / "logs/log/item_claims");
+		const auto dupe = text_of(path / "logs/log/dupes");
+		apply(rent);
+		kept();
+		require(custody().item_revision == retired.item_revision &&
+				text_of(path / "logs/log/item_claims") == audit &&
+				text_of(path / "logs/log/dupes") == dupe,
+			"rent replay is not idempotent");
+		auto old = rent;
+		old.save_intent = RENT_CRASH;
+		--old.revision;
+		apply(old);
+		kept();
+		require(custody().state == item_custody_state::destroyed, "stale save revived key");
+		auto invalid = rent;
+		invalid.items[1].object_uid = 0;
+		invalid.items[0].vnum = 999;
+		require(flatfile_player_snapshot_apply(root, invalid, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"UID-less disposal accepted");
+		kept();
+	}
+	// Recovery/ordinary intents retain owned keys. A status or pet update whose
+	// stored file still says INN must not dispose a new item implicitly.
+	player_snapshot recovery = snapshot_for(200);
+	recovery.items = { item(4040991, 40401, -1) };
+	recovery.items[0].type = ITEM_KEY;
+	recovery.items[0].extra_flags = ITEM_NORENT;
+	for (int intent :
+	     { RENT_CRASH, RENT_CRASH2, RENT_QUIT, RENT_LINKDEAD, RENT_CAMPED, RENT_DEATH })
+	{
+		recovery.save_intent = intent;
+		require(flatfile_player_snapshot_apply(root, recovery, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"recovery save");
+		require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				stored.items.size() == 1,
+			"recovery lost key");
+		++recovery.revision;
+	}
+	auto partial = recovery;
+	partial.components = PLAYER_COMPONENT_STATUS;
+	partial.save_intent = RENT_INN;
+	require(flatfile_player_snapshot_apply(root, partial, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"partial status");
+	partial.components = PLAYER_COMPONENT_PETS;
+	partial.save_intent = RENT_CRASH;
+	partial.pets = { follower };
+	partial.pets[0].items = recovery.items;
+	partial.pets[0].items[0].object_uid = 4040992;
+	require(flatfile_player_snapshot_apply(root, partial, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"partial pet");
+	require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+				flatfile_player_load_result::ok &&
+			stored.items.size() == 1 && stored.pets.size() == 1 &&
+			stored.pets[0].items.size() == 1,
+		"partial save disposed key");
+
+	// Exercise the real player + catalog transaction at each durability boundary.
+	recovery.save_intent = RENT_INN;
+	setenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT", "1", 1);
+	require(flatfile_player_snapshot_apply(root, recovery, &error).outcome ==
+			player_save_apply_outcome::retryable_failure,
+		"precommit fault not reached");
+	unsetenv("DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT");
+	require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+				flatfile_player_load_result::ok &&
+			stored.items.size() == 1,
+		"precommit changed payload");
+	std::vector<flatfile_item_ownership_record> before_commit;
+	require(flatfile_item_repository_load_uids(root, { 4040991 }, &before_commit, &error) ==
+				flatfile_item_repository_result::ok &&
+			before_commit.size() == 1 &&
+			before_commit[0].state == item_custody_state::active,
+		"precommit changed custody");
+	uint64_t fault_uid = 4041000;
+	for (const char *boundary : { "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL",
+				      "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE" })
+	{
+		auto baseline = recovery;
+		baseline.save_intent = RENT_CRASH;
+		baseline.items[0].object_uid = ++fault_uid;
+		require(flatfile_player_snapshot_apply(root, baseline, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"fault baseline");
+		auto interrupted = baseline;
+		interrupted.save_intent = RENT_INN;
+		setenv(boundary, "1", 1);
+		require(flatfile_player_snapshot_apply(root, interrupted, &error).outcome ==
+				player_save_apply_outcome::retryable_failure,
+			"commit fault not reached");
+		unsetenv(boundary);
+		{
+			flatfile_authority_lock lock;
+			require(lock.acquire(root, &error) &&
+					flatfile_authority_transaction_recover(root, lock,
+									       &error) ==
+						flatfile_authority_transaction_result::ok,
+				"rent recovery");
+		}
+		require(flatfile_player_snapshot_read(root, 42, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				stored.items.empty(),
+			"recovery payload");
+		std::vector<flatfile_item_ownership_record> records;
+		require(flatfile_item_repository_load_uids(root, { baseline.items[0].object_uid },
+							   &records, &error) ==
+					flatfile_item_repository_result::ok &&
+				records.size() == 1 &&
+				records[0].state == item_custody_state::destroyed,
+			"recovery custody");
+	}
+	std::cout
+		<< "[PASS] rent placements, replay, recovery intents, partial saves and authority faults\n";
 	std::cout << "flat-file player save claim passed\n";
 	return 0;
 }

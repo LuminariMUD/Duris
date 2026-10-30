@@ -43,11 +43,13 @@ for name, command in (
     assert "submit_coin_debit(ch, context)" in command, name
     assert "create_money(" not in command, name
 
-# Every actor, player or NPC, takes the coins from the wallet in memory and publishes
-# at once.
-assert "SUB_MONEY(actor, static_cast<int>(value), 0)" in submit
+# Persistent players publish from the transaction completion, never merely from a
+# successful submission. NPCs use the checked nonpersistent fallback.
+assert "SUB_MONEY(" not in submit
+assert "currency_transaction_submit(" in submit
+assert "coin_debit_completion, &context, sizeof(context)" in submit
+assert "change_nonpersistent_coins(actor, delta)" in submit
 assert "coin_debit_completion(actor, true," in submit
-assert "currency_transaction_submit" not in submit
 assert "publish_coin_drop(actor, context)" in completion
 assert "publish_coin_put(actor, context)" in completion
 assert "begin_coin_give_credit(actor, recipient, context, true)" in completion
@@ -55,7 +57,7 @@ assert "create_money(" in publish_drop and "obj_to_room(" in publish_drop
 
 # The owner the coins leave is saved before the one they reach.
 assert give_credit.index("currency_transaction_save_first(sender);") < give_credit.index(
-    "currency_transaction_submit_wallet_value(")
+    "currency_transaction_submit(")
 assert corpse_put.index("currency_transaction_save_first(actor);") < corpse_put.index(
     "writeCorpse(container);")
 assert finish_put.index("currency_transaction_save_first(actor);") < finish_put.index(
@@ -68,6 +70,17 @@ for retired in ("submit_coin_give", "submit_coin_put", "submit_coin_get", "coin_
     assert retired not in ACTOBJ, retired
 
 direct_cash_write = re.compile(r"points\.cash\[[^]]+\]\s*(?:[+\-]=|=(?!=))")
-assert not direct_cash_write.search(ACTOBJ)
+fallback = body("static bool change_nonpersistent_coins(")
+assert "if (!actor || (IS_PC(actor) && GET_PID(actor) > 0))" in fallback
+assert fallback.index("after < 0 || after > INT_MAX") < direct_cash_write.search(fallback).start()
+assert not direct_cash_write.search(ACTOBJ.replace(fallback, ""))
+
+# Every physical credit/refund uses exact counts; the global value API is still
+# available to unrelated value-denominated payments.
+for signature in ("static bool credit_coins(", "bool begin_coin_give_credit(",
+                  "void refund_committed_coin_debit("):
+    credit = body(signature)
+    assert "currency_transaction_submit_wallet_value" not in credit
+    assert "ADD_MONEY(" not in credit
 
 print("coin drop, put and give move coins in memory and save the giver first")

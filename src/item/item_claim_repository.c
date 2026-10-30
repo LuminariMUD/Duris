@@ -129,9 +129,9 @@ unsigned int load_current_rows(MYSQL *connection, const std::vector<player_item_
 
 unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			 const std::vector<player_item_snapshot> &items,
-			 item_claim_outcome *outcome)
+			 item_claim_outcome *outcome, bool rent_keys)
 {
-	if (!connection || !outcome)
+	if (!connection || !outcome || (rent_keys && owner.type != item_owner_type::player))
 		return EINVAL;
 	*outcome = {};
 	if (items.empty())
@@ -140,16 +140,20 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 	if (const unsigned int failed = load_current_rows(connection, items, &rows))
 		return failed;
 
-	const std::string active =
-		std::to_string(static_cast<unsigned>(item_custody_state::active));
+	const item_owner_identity destruction = { item_owner_type::destruction, 0, 0 };
 	std::vector<uint64_t> roots(items.size(), 0);
 	std::ostringstream audit;
 	size_t audits = 0;
 	bool changed = false;
+	bool disposed = false;
 	std::set<std::string> losers;
 	for (size_t index = 0; index < items.size(); ++index)
 	{
 		const player_item_snapshot &item = items[index];
+		const bool rent_key = rent_keys &&
+				      item_claim_is_norent_key(item.type, item.extra_flags);
+		if (rent_key && !item.object_uid)
+			return EINVAL;
 		const bool nested = item.parent_index >= 0 &&
 				    static_cast<size_t>(item.parent_index) < index;
 		const player_item_snapshot *parent = nested ? &items[item.parent_index] : nullptr;
@@ -174,11 +178,21 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 		    item_claim_leaves_out(static_cast<item_custody_state>(found->second.state)))
 		{
 			outcome->left_out.insert(item.object_uid);
-			outcome->dupes.push_back(
-				{ item.object_uid, item.vnum, found->second.owner });
+			if (!rent_key)
+				outcome->dupes.push_back(
+					{ item.object_uid, item.vnum, found->second.owner });
 			continue;
 		}
-		const std::string parent_sql = parent_uid ? std::to_string(parent_uid) : "NULL";
+		const item_owner_identity &target = rent_key ? destruction : owner;
+		const auto state = rent_key ? item_custody_state::destroyed :
+					      item_custody_state::active;
+		const std::string state_sql = std::to_string(static_cast<unsigned>(state));
+		const uint64_t target_root = rent_key ? item.object_uid : roots[index];
+		const uint64_t target_parent = rent_key ? 0 : parent_uid;
+		const std::string parent_sql = target_parent ? std::to_string(target_parent) :
+							       "NULL";
+		if (rent_key)
+			outcome->left_out.insert(item.object_uid);
 		if (found == rows.end())
 		{
 			if (const unsigned int failed = execute(
@@ -187,39 +201,48 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 				    "parent_item_uid,owner_type,owner_id,owner_context_id,"
 				    "item_revision,vnum,state) VALUES (" +
 					    std::to_string(item.object_uid) + ',' +
-					    std::to_string(roots[index]) + ',' + parent_sql + ',' +
-					    owner_values(owner) + ",1," +
-					    std::to_string(item.vnum) + ',' + active + ')'))
+					    std::to_string(target_root) + ',' + parent_sql + ',' +
+					    owner_values(target) + ",1," +
+					    std::to_string(item.vnum) + ',' + state_sql + ')'))
 				return failed;
+			if (rent_key)
+			{
+				disposed = true;
+				audit << (audits++ ? "," : "") << '(' << item.object_uid << ','
+				      << item.vnum << ',' << owner_values(owner) << ','
+				      << owner_values(target) << ')';
+			}
 			++outcome->inserted;
 			changed = true;
 			continue;
 		}
 		const current_row &current = found->second;
-		const bool owned = same_owner(current.owner, owner);
-		if (owned && current.root_item_uid == roots[index] &&
-		    current.parent_item_uid == parent_uid && current.vnum == item.vnum &&
-		    current.state == static_cast<unsigned>(item_custody_state::active))
+		const bool owned = same_owner(current.owner, target);
+		if (owned && current.root_item_uid == target_root &&
+		    current.parent_item_uid == target_parent && current.vnum == item.vnum &&
+		    current.state == static_cast<unsigned>(state))
 			continue;
 		if (const unsigned int failed = execute(
 			    connection,
 			    "UPDATE item_current_owner SET owner_type=" +
-				    std::to_string(static_cast<unsigned>(owner.type)) +
-				    ",owner_id=" + std::to_string(owner.id) +
-				    ",owner_context_id=" + std::to_string(owner.context_id) +
-				    ",root_item_uid=" + std::to_string(roots[index]) +
+				    std::to_string(static_cast<unsigned>(target.type)) +
+				    ",owner_id=" + std::to_string(target.id) +
+				    ",owner_context_id=" + std::to_string(target.context_id) +
+				    ",root_item_uid=" + std::to_string(target_root) +
 				    ",parent_item_uid=" + parent_sql +
-				    ",vnum=" + std::to_string(item.vnum) + ",state=" + active +
+				    ",vnum=" + std::to_string(item.vnum) + ",state=" + state_sql +
 				    ",item_revision=item_revision+1 WHERE item_uid=" +
 				    std::to_string(item.object_uid)))
 			return failed;
 		changed = true;
+		disposed = disposed || rent_key;
 		if (owned)
 			continue;
-		losers.insert(owner_values(current.owner));
+		if (!same_owner(current.owner, owner))
+			losers.insert(owner_values(current.owner));
 		++outcome->claimed;
 		audit << (audits++ ? "," : "") << '(' << item.object_uid << ',' << item.vnum << ','
-		      << owner_values(current.owner) << ',' << owner_values(owner) << ')';
+		      << owner_values(current.owner) << ',' << owner_values(target) << ')';
 	}
 	if (audits)
 		if (const unsigned int failed =
@@ -242,6 +265,13 @@ unsigned int claim_items(MYSQL *connection, const item_owner_identity &owner,
 			    connection, "UPDATE item_owner_revision SET revision=revision+1 WHERE "
 					"(owner_type,owner_id,owner_context_id)=(" +
 						loser + ")"))
+			return failed;
+	if (disposed)
+		if (const unsigned int failed = execute(
+			    connection,
+			    "INSERT INTO item_owner_revision (owner_type,owner_id,owner_context_id,revision) VALUES (" +
+				    owner_values(destruction) +
+				    ",1) ON DUPLICATE KEY UPDATE revision=revision+1"))
 			return failed;
 	return 0;
 }
