@@ -51,7 +51,16 @@ assert (
 
 # 4. The pid of a MariaDB character comes from the in-memory name index.
 init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")
-assert "sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));" in init_char
-assert "highestPCidNumb = sql_highest_player_pid() + 1;" in NANNY
+assert init_char.index("ch->only.pc->pid = getNewPCidNumb();") < init_char.index(
+    "sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));"
+)
+allocate_pid = section(NANNY, "int getNewPCidNumb(void)", "\n}\n").split("#else", 1)[1]
+assert (
+    allocate_pid.index("const int highest = sql_highest_player_pid();")
+    < allocate_pid.index("if (highest == INT_MAX)")
+    < allocate_pid.index("return -1;")
+    < allocate_pid.index("highestPCidNumb = highest + 1;")
+    < allocate_pid.index("return highestPCidNumb;")
+), "MariaDB allocates past the name index, refusing an exhausted native PID range"
 
 print("character creation, entry and death: text-only contracts ok")

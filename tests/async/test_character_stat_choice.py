@@ -17,10 +17,15 @@ PRELUDE = r"""
 struct index_data *mob_index = nullptr;
 static int expected_rolls, expected_faces, calls;
 static bool maximum;
+static bool launch_allowed = true;
 static std::string output;
 char *bonus = nullptr;
 void write_to_q(const char *text, txt_q *, const int) { if (text) output += text; }
 int websocket_send_text(P_desc, const char *text) { output = text; return 1; }
+bool pwipe_launch_admit(P_desc d) {
+    if (!launch_allowed) ws_send_system(d, "error", "Launch gate closed");
+    return launch_allowed;
+}
 static int ws_is_playable_race(int race) { return race == RACE_HUMAN || race == RACE_MOUNTAIN; }
 void display_stats(P_desc) {}
 void display_characteristics(P_desc) {}
@@ -110,6 +115,9 @@ int main() {
     assert(ch.base_stats.Dex == 95 && d.connected == CON_SWAPSTATYN);
     acct_entry account{};
     descriptor_data web{}; web.account = &account; web.connected = CON_ACCT_SELECT_CHAR;
+    launch_allowed = false;
+    rejected(&web, ws_cmd_roll_stats, R"({"race":1})");
+    launch_allowed = true;
     rejected(&web, ws_cmd_add_bonus, R"({"stat":"str"})");
     rejected(&web, ws_cmd_swap_stats, R"({"stat1":"str","stat2":"luk"})");
     for (const char *bad : {R"({"race":1,"method":"unknown"})", R"({"race":1,"method":false})",

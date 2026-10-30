@@ -90,7 +90,7 @@ void obj_to_char(P_obj obj,P_char ch) {
 void extract_obj(P_obj obj,int) { object_list=obj->next; delete obj; }
 void add_coins(P_obj,int,int,int,int) {}
 char *coins_to_string(int,int,int,int,const char *) { static char coins[]="coins"; return coins; }
-static bool credit_coins(P_char,int64_t) { return !refuse_coins; }
+static bool credit_coins(P_char,const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> &) { return !refuse_coins; }
 void trapdamage(P_char ch,P_obj obj) {
  ++trap_calls; --obj->trap_charge;
  if(trap_effect==1) {
