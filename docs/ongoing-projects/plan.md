@@ -12,6 +12,9 @@ Production deployment and attribution to the reporter's specific item are not
 claimed. The previous #428 plan and its qualification history are preserved byte-for-byte in
 [plan-issue-428.md](plan-issue-428.md).
 
+The newer master #437 plan is also preserved byte-for-byte in
+[plan-issue-437.md](plan-issue-437.md) during PR integration.
+
 ## Outcome
 
 After a successful intentional rent save, a genuine temporary key carried,
