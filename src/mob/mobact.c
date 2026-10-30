@@ -8145,9 +8145,7 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 				}
 				P_obj expected = best_obj;
 				const uint64_t expected_uid = best_obj->obj_uid;
-				get(ch, best_obj, NULL, FALSE);
-				// Unowned transient objects still publish synchronously. Authoritative
-				// objects are evaluated by item_get_completion after their claim commits.
+				get(ch, best_obj, NULL, TRUE);
 				P_obj received = find_scavenged_object(expected, expected_uid);
 				if (received && OBJ_CARRIED_BY(received, ch))
 					CheckEqWorthUsing(ch, received);

@@ -1,6 +1,6 @@
 # Issue #456: announce scavenger floor pickups before equipment use
 
-Status: **planned; implementation has not started**. Updated 2026-10-30.
+Status: **implemented; focused qualification complete; ready for review**. Updated 2026-10-30.
 Issue: [Duris #456](https://github.com/LuminariMUD/Duris/issues/456).
 Branch: [branch/issue-456-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-456-plan).
 Baseline: `origin/master` at `c9361959ceb6cb2a9004fea2c03748cef909dc3f`.
@@ -9,8 +9,9 @@ The branch is linked to #456 through GitHub's Development relationship.
 
 The previous #420 plan and qualification record are preserved byte-for-byte in
 [plan-issue-420.md](plan-issue-420.md). This document applies the repository's
-[ablation skill](../../.agents/skills/ablation/SKILL.md). This delivery authorizes
-planning, commit/push and issue linkage; the implementation below is future work.
+[ablation skill](../../.agents/skills/ablation/SKILL.md). The owner's follow-up
+authorizes implementation, focused tests and gameplay verification, commit/push,
+and a PR linked to #456. The implementation record follows the accepted plan.
 
 ## Outcome
 
@@ -22,6 +23,8 @@ pickups must not announce success or reach equipment evaluation. Preserve item
 selection, transfer checks, object identity checks and equipment decisions.
 
 ## Findings checked against the codebase
+
+These findings describe the planning baseline before implementation.
 
 1. **The reported call is still silent.** In `src/mob/mobact.c:8050-8156`,
    `event_mob_mundane()` selects the best eligible object. Its floor arm at
@@ -121,7 +124,7 @@ record. No new production file or general test framework is needed.
 3. **Prove the observed behavior on a disposable server.** Extend the existing
    NPC container journey with two uniquely named floor objects: a takeable
    wearable for an eligible humanoid NPC with an empty matching slot, and a
-   takeable non-wearable item that stays in inventory. Ensure the NPC has no
+   takeable item the NPC cannot equip that stays in inventory. Ensure the NPC has no
    Slip and the observer can see it. Preserve the existing container scenario.
    Capture the observer transcript continuously across drop and scavenger tick;
    do not clear asynchronous pickup messages while polling. Bound the wait and
@@ -205,3 +208,60 @@ real-server floor scenarios, builds, focused qualification and handoff. Roughly
 20-35 minutes cover native proof and the edit, 25-40 cover the journey, and
 30-45 cover builds, verification and review. Unexpected fixture/build defects
 may extend that range; review waiting, merge and deployment are excluded.
+
+## Implementation and qualification record
+
+The floor call now passes `TRUE` to the existing `get()` publication path. The
+obsolete deferred-completion comment is removed. Saved pointer/UID resolution,
+the carried-by guard, shared pickup behavior and the container calls are intact.
+There is no new production helper, state, configuration or persistence change.
+
+The existing native regression now accepts the production denomination-array
+coin-credit signature and executes the actual selected scavenger floor arm,
+`find_scavenged_object()` and real `get()`. Before the production edit, its
+wearable case failed with events `[evaluate] [$n wears $p.]`: the pickup was
+missing. Evidence: `bin/qualification/issue456/native-before.log`. After the
+edit, all 26 existing scenarios and nine added scavenger scenarios passed under
+ASan/UBSan with leak detection. The new cases cover ordered publication,
+inventory-only evaluation, account-bound/no-loot/hitched/trap rejection,
+extracted delivery, consumed money and successful Slip. Equipment evaluation,
+room/object services and damage outcomes are controlled native-fixture boundaries;
+the gameplay journey below supplies real selection, custody and equipment proof.
+
+The existing disposable-server journey retains its container scenario and adds
+an isolated floor room with a stationary Human scavenger. Its body-slot tunic
+produces the real slot-specific equipment text, "shrugs into". The loader in
+`src/world/db.c` automatically adds `ITEM_HOLD` to every takeable object; the
+inventory-only token therefore uses the normal Human race restriction instead
+of assuming a TAKE-only prototype remains unwearable after loading. These are
+fixture adjustments, not changes to game rules. Staff setup commands require
+their own reply and following prompt, and floor observations retain the entire
+transcript across pickup ticks.
+
+Completed on the implementation source:
+
+- `python3 tests/async/test_get_trap_lifecycle.py`: passed, including all nine
+  scavenger cases under ASan/UBSan and the existing pickup/trap/coin controls.
+- `python3 tests/async/test_mobact_coin_pickup_rescan.py`: passed.
+- `make -C src -j6`: MariaDB development build passed with warnings as errors.
+- The flat-file build and inspector-build commands above: passed.
+- `python3 tests/async/run_npc_container_claim_journey.py` with the newly built
+  flat-file binary: passed. The original container was emptied into NPC custody;
+  the tunic emitted exactly one pickup before its real equipment message and
+  was inspected equipped by the scavenger; the token emitted exactly one pickup,
+  no equipment action, and was inspected carried by the scavenger.
+- Changed-line formatting, Python syntax, all 14 documentation checks, archive
+  integrity and `git diff --check`: passed.
+
+Build and gameplay logs are under `bin/qualification/issue456/`:
+`mariadb-build.log`, `flatfile-build.log`, `inspector-build.log` and
+`gameplay.log`. The qualified flat-file binary SHA-256 is
+`5e8559bd9ec79b232beb98a3c8c4676f5fb209795200a8a5bb8986e2e9cf97d3`.
+The #420 archive remains byte-identical to its original baseline Git blob.
+
+Final ablation keeps one production flag change, removal of its misleading
+comment, extensions of two existing tests, the required fixture-signature repair
+and this handoff. No new harness or runner layer was added. Qualification used
+private temporary flat-file state and synthetic characters. No production
+operation, full-world reproduction, MariaDB gameplay journey, loot-persistence
+restart test, deployment or full burn-in is claimed.
