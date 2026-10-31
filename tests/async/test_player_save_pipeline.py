@@ -57,6 +57,8 @@ HARNESS = r'''
 
 P_char character_list = nullptr;
 static bool divine_pending = false;
+static bool locker_ready = true;
+bool locker_private_contents_durable(P_char) { return locker_ready; }
 void divine_boon_runtime_pulse() {}
 bool divine_boon_runtime_pending() { return divine_pending; }
 static room_data rooms[1]{};
@@ -401,6 +403,15 @@ int main()
     reward_quest.reward_items={reward_root,reward_child};
     reward_quest.reward_encoded_size=1024;
     int reward_callbacks = 0;
+    // Detached quest rewards add item components to an otherwise status-only
+    // request, so they must also wait for the private chest destination.
+    locker_ready = false;
+    assert(!player_save_pipeline_submit_world_quest(&erin.ch, reward_quest,
+        [&](P_char, const player_pending_world_quest &) { ++reward_callbacks; return true; }));
+    assert(!player_save_pipeline_world_quest_pending(46) && reward_callbacks == 0);
+    assert(player_revision_snapshot_copy(46, &revision));
+    assert(revision.unacknowledged_components == PLAYER_COMPONENT_STATUS);
+    locker_ready = true;
     hold_writer(true);
     assert(player_save_pipeline_submit_world_quest(&erin.ch, reward_quest,
         [&](P_char actor, const player_pending_world_quest &record) {
@@ -520,6 +531,23 @@ int main()
     assert(player_save_pipeline_terminal(&newcomer.ch, 1, 3001, 100) ==
            player_save_terminal_result::database_acknowledged);
     assert(player_revision_snapshot_copy(99, &revision) && revision.written_revision == 1);
+
+    // A private destination must land before an item checkpoint can remove the
+    // saved inventory source. Refusal retains the dirty graph for a later retry.
+    player custody(49);
+    assert(player_revision_hydrate(49, 0));
+    locker_ready = false;
+    assert(player_save_pipeline_request(&custody.ch, PLAYER_COMPONENT_INVENTORY,
+                                        RENT_CRASH, 3001) == player_save_pipeline_result::capture_failed);
+    assert(player_revision_snapshot_copy(49, &revision));
+    assert(revision.unacknowledged_components ==
+           (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));
+    locker_ready = true;
+    assert(player_save_pipeline_checkpoint_dirty(&custody.ch, RENT_CRASH, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(state.committed.count(49) == 1);
 
     // Shutdown reports a save that failed after its last pulse: the writer was still on
     // it when the drain ran out, and the interrupt made it fail.

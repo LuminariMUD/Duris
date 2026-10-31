@@ -20,6 +20,7 @@
 
 #include "core/prototypes.h"
 #include "core/files.h"
+#include "item/storage_lockers.h"
 #include "economy/collector_death_enrollment.h"
 #include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
@@ -294,6 +295,11 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 					      PLAYER_COMPONENT_INVENTORY;
 		}
 	}
+	// The player snapshot removes absent inventory rows. Commit a private chest's
+	// destination first, including item captures added by a pending quest reward.
+	if ((components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    !locker_private_contents_durable(ch))
+		return player_save_pipeline_result::capture_failed;
 	player_snapshot snapshot;
 	if (player_snapshot_capture(ch, queued_revision, components, save_intent, room_vnum,
 				    &snapshot) != player_snapshot_capture_result::ok)

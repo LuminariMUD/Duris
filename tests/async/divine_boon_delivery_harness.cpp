@@ -18,6 +18,7 @@
 #include "economy/nexus_stones.h"
 #include "player/player_save_pipeline.h"
 #include "player/player_snapshot_capture.h"
+#include "item/storage_lockers.h"
 #include "persistence/persistence_observability.h"
 
 #include <cassert>
@@ -113,6 +114,11 @@ double check_nexus_bonus_precise(P_char, double value, int, bool)
 bool trace_player_saves()
 {
 	return false;
+}
+// This combat publication fixture has no locker visit or pending chest writes.
+bool locker_private_contents_durable(P_char)
+{
+	return true;
 }
 bool player_save_worker_pid_pending(int)
 {
