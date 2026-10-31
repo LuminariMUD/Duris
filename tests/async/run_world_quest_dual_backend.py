@@ -40,8 +40,8 @@ GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
 if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
                              for case in GAMEPLAY_CASES):
     raise ValueError("unsupported focused gameplay cases")
-if JOURNEY not in {"both", "recovery", "gameplay", "audit"}:
-    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, or audit")
+if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported", "history"}:
+    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, audit, reported, or history")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
 
@@ -338,7 +338,7 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
         if not returning and (not state["active"] or
                               (before_kills is not None and state["kills"] > before_kills)):
             return state, steps
-        if returning and state["room"] == BARTENDER_ROOM:
+        if returning and state["room"] == state["route_origin"]:
             return state, steps
         if state["fighting"]:
             for _ in range(60):
@@ -421,14 +421,16 @@ def stored_gameplay_history(environment: dict[str, str] | None, state: dict) -> 
 
 
 def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
-                     database_environment) -> tuple[MudClient, list[dict]]:
+                     database_environment, *, origin: int = BARTENDER_ROOM,
+                     cases=GAMEPLAY_CASES) -> tuple[MudClient, list[dict]]:
     results = []
     partial_persisted = False
     rewards = set()
-    for level, kind in GAMEPLAY_CASES:
-        (run_root / "quest-gameplay-control.txt").write_text(f"{level} {kind} 1\n")
-        client.send(f"chaos questroom {BARTENDER_ROOM}")
-        client.expect("Quest-room test funds committed.", timeout=60)
+    for level, kind in cases:
+        (run_root / "quest-gameplay-control.txt").write_text(f"{level} {kind} 1 {origin}\n")
+        client.send(f"chaos questroom {origin}" if origin == BARTENDER_ROOM else "chaos")
+        if origin == BARTENDER_ROOM:
+            client.expect("Quest-room test funds committed.", timeout=60)
         before = gameplay_snapshot(client, run_root)
         if before["active"] or before["due"]:
             client.send("ask bartender abandon confirm")
@@ -498,7 +500,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             require(current["remaining"] == previous["remaining"], "partial combat used a quest allowance")
             require(current["progress_xp"] > previous["progress_xp"], "partial combat awarded no actual XP")
             partials.append(current)
-            if not partial_persisted and level == 29 and (29, 1) in GAMEPLAY_CASES:
+            if not partial_persisted and level == 29 and (29, 1) in cases:
                 client.send("save")
                 client.expect("Save complete for Taverek.", timeout=120)
                 saved = gameplay_snapshot(client, run_root)
@@ -546,9 +548,211 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                         "target": target, "partials": partials, "reward": new_items[0],
                         "completed": completed, "returned": returned})
         (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
-    require((29, 1) not in GAMEPLAY_CASES or partial_persisted,
+    require((29, 1) not in cases or partial_persisted,
             "no real partial-progress restart was qualified")
     return client, results
+
+
+def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
+                     database_environment, port: int) -> tuple[MudClient, dict]:
+    results = []
+    def place(actor, level, origin):
+        (run_root / "quest-gameplay-control.txt").write_text(f"{level} 1 4 {origin}\n")
+        (run_root / "quest-reported-setup.txt").write_text("0\n")
+        actor.send("chaos")
+        return settled_gameplay_snapshot(actor, run_root)
+
+    def setup(action):
+        (run_root / "quest-reported-setup.txt").write_text(f"{action}\n")
+        client.send("chaos")
+        return settled_gameplay_snapshot(client, run_root)
+
+    def purchase(actor):
+        actor.send("ask bartender quest")
+        actor.expect_any(("Go ask ", "Go kill ", "Please come back later.",
+                          "Try one of my colleagues around the world."), timeout=30)
+        return settled_gameplay_snapshot(actor, run_root)
+
+    def persist(state):
+        nonlocal client
+        client.send("save")
+        client.expect("Save complete for Taverek.", timeout=120)
+        history = stored_gameplay_history(database_environment, state)
+        client = restart(client)
+        # Chaos entry restores its level-56 floor. Reapply only the requested
+        # actor level; saved quest, purse and history are observed unchanged.
+        client.send("chaos")
+        restored = settled_gameplay_snapshot(client, run_root)
+        fields = ("active", "due", "origin", "accepted_level", "type", "mob", "zone",
+                  "kills", "quota", "map_bought", "receiver", "shares", "started",
+                  "wallet", "remaining", "giver")
+        require(all(state[k] == restored[k] for k in fields),
+                f"reported-giver state did not persist: {state} -> {restored}")
+        require(stored_gameplay_history(database_environment, restored) == history,
+                "reported-giver history changed across restart")
+        return restored
+
+    observer = MudClient(port, source_host="127.0.0.2")
+    try:
+        create_character(observer, expected_room=None, account="Observeacct", character="Vimerek",
+                         race_name="d", alignment="e", hometown="c")
+        for actor, side in ((client, "good"), (observer, "evil")):
+            for origin in (1734, 74339, 132560):
+                if side == "evil" and origin == 132560:
+                    continue  # Tharnadia is a Good hometown; #500's givers are neutral.
+                for level in (29, 30):
+                    before = place(actor, level, origin)
+                    granted = purchase(actor)
+                    expected = level == 30 or origin == 132560
+                    require(bool(granted["active"]) == expected,
+                            f"unexpected {side} giver {origin}/{level} result: {granted}")
+                    require(before["wallet"] - granted["wallet"] == (level * 20 if expected else 0),
+                            "purchase/refund changed the wrong wallet value")
+                    results.append({"side": side, "origin": origin, "level": level,
+                                    "before": before, "result": granted})
+                    if expected:
+                        actor.send("ask bartender abandon")
+                        actor.expect("You no longer have a task.", timeout=30)
+    finally:
+        observer.close()
+
+    transitions = []
+    for origin, level in ((1734, 30), (74339, 30), (132560, 29), (132560, 30)):
+        before = place(client, level, origin)
+        accepted = purchase(client)
+        aged = setup(1)
+        require(aged["active"] and aged["started"] < time.time() - 24 * 3600,
+                "aged task expired before abandonment")
+        client.send("ask bartender abandon")
+        client.expect("You no longer have a task.", timeout=30)
+        abandoned = settled_gameplay_snapshot(client, run_root)
+        require(not abandoned["active"] and not abandoned["due"] and
+                abandoned["remaining"] == accepted["remaining"] and
+                abandoned["wallet"] == aged["wallet"] - int(0.25 * level ** 3 / 100),
+                "aged zero-progress abandon changed fee/allowance/state")
+        persist(abandoned)
+        regrant = purchase(client)
+        require(regrant["active"] and regrant["origin"] == origin and
+                regrant["wallet"] == abandoned["wallet"] - level * 20,
+                "regrant after saved abandonment failed")
+        persist(regrant)
+        # Both commands enter before either payment response is read.
+        client.socket.sendall(b"ask bartender abandon\nask bartender quest\n")
+        client.expect("You no longer have a task.", timeout=30)
+        client.expect_any(("Go ask ", "Go kill "), timeout=30)
+        queued = settled_gameplay_snapshot(client, run_root)
+        require(queued["active"] and queued["remaining"] == before["remaining"] and
+                stored_gameplay_history(database_environment, queued) == 0,
+                "queued zero-progress reroll consumed history/allowance")
+        transitions.append({"origin": origin, "level": level, "accepted": accepted,
+                            "abandoned": abandoned, "regrant": regrant, "queued": queued})
+        client.send("ask bartender abandon")
+        client.expect("You no longer have a task.", timeout=30)
+
+    place(client, 30, 132560)
+    for _ in range(8):
+        accepted = purchase(client)
+        if accepted["type"] == 1 and accepted["quota"] > 1:
+            break
+        # Preferred KILL can legitimately fall back to ASK in a sampled zone.
+        client.send("ask bartender abandon")
+        client.expect("You no longer have a task.", timeout=30)
+    else:
+        raise AssertionError("progressed-abandon fixture found no KILL task")
+    progressed = setup(2)
+    client.send("ask bartender abandon")
+    client.expect("abandon confirm", timeout=30)
+    unchanged = settled_gameplay_snapshot(client, run_root)
+    require(unchanged["wallet"] == progressed["wallet"] and unchanged["active"],
+            "unconfirmed progressed abandonment changed work or wallet")
+    client.send("ask bartender abandon confirm")
+    client.expect("You no longer have a task.", timeout=30)
+    abandoned = settled_gameplay_snapshot(client, run_root)
+    require(abandoned["remaining"] == progressed["remaining"] - 1 and
+            abandoned["history_done"] == 1, "progressed abandonment did not consume history once")
+    persist(abandoned)
+    accepted = purchase(client)
+    require(accepted["active"] and accepted["mob"] != progressed["mob"],
+            "progressed-abandon target was issued again")
+    setup(3)
+    client.send("ask bartender quest")
+    client.expect_any(("Go ask ", "Go kill "), timeout=30)
+    bound = settled_gameplay_snapshot(client, run_root)
+    require(bound["origin"] == 132560 and bound["wallet"] == accepted["wallet"],
+            "legacy origin binding charged or lost accepted work")
+    client.send("ask bartender map")
+    client.expect("will now show you additional information", timeout=30)
+    setup(4)
+    client.send("quest")
+    client.expect("Your task is no longer available.", timeout=30)
+    pending = settled_gameplay_snapshot(client, run_root)
+    client.send("ask bartender quest")
+    client.expect("Your free replacement and earned progress remain yours.", timeout=30)
+    waiting = settled_gameplay_snapshot(client, run_root)
+    require(waiting["due"] and waiting["wallet"] == pending["wallet"],
+            "unavailable replacement was charged or discarded")
+    restored = persist(waiting)
+    client.send("ask bartender quest")
+    client.expect("Here is your free replacement.", timeout=30)
+    replacement = settled_gameplay_snapshot(client, run_root)
+    require(replacement["active"] and not replacement["due"] and
+            all(replacement[k] == restored[k] for k in
+                ("type", "accepted_level", "kills", "quota", "map_bought", "wallet", "remaining")),
+            "replacement lost progress/map or charged money/allowance")
+    persist(replacement)
+    client.send("ask bartender abandon confirm")
+    client.expect("You no longer have a task.", timeout=30)
+    client, gameplay = perform_gameplay(client, run_root, restart, database_environment,
+                                       origin=74339, cases=((30, 2), (30, 1)))
+    return client, {"matrix": results, "transitions": transitions,
+                    "progressed": progressed, "pending": waiting, "replacement": replacement,
+                    "bloodstone_gameplay": gameplay}
+
+
+def perform_history_regrant(client: MudClient, run_root: pathlib.Path, restart,
+                            database_environment) -> tuple[MudClient, dict]:
+    (run_root / "quest-gameplay-control.txt").write_text("30 1 4 132560\n")
+    (run_root / "quest-reported-setup.txt").write_text("0\n")
+    client.send("chaos")
+    before = settled_gameplay_snapshot(client, run_root)
+    client.send("ask bartender quest")
+    client.expect_any(("Go ask ", "Go kill "), timeout=30)
+    accepted = settled_gameplay_snapshot(client, run_root)
+    (run_root / "quest-reported-setup.txt").write_text("1\n")
+    client.send("chaos")
+    aged = settled_gameplay_snapshot(client, run_root)
+    (run_root / "quest-reported-setup.txt").write_text("6\n")
+    client.send("chaos")
+    deadline = time.monotonic() + 60
+    while not (run_root / "quest-history-ready.txt").exists():
+        require(time.monotonic() < deadline, "history fixture did not publish")
+        client._receive()
+    loaded = gameplay_snapshot(client, run_root)
+    client.send("ask bartender abandon")
+    client.expect("You no longer have a task.", timeout=30)
+    abandoned = settled_gameplay_snapshot(client, run_root)
+    client.send("ask bartender quest")
+    client.expect_any(("Go ask ", "Go kill ", "any more quests"), timeout=30)
+    regrant = settled_gameplay_snapshot(client, run_root)
+    require(regrant["active"], f"Tharnadia regrant refused with only yesterday's history: {loaded} -> {regrant}")
+    require(regrant["remaining"] == before["remaining"] and
+            regrant["wallet"] == abandoned["wallet"] - 600,
+            "history rollover changed allowance or purchase fee")
+    client.send("save")
+    client.expect("Save complete for Taverek.", timeout=120)
+    client = restart(client)
+    client.send("chaos")  # Reapply only the test actor's level after Chaos entry.
+    restored = settled_gameplay_snapshot(client, run_root)
+    require(all(restored[k] == regrant[k] for k in
+                ("active", "due", "mob", "type", "origin", "wallet", "remaining")),
+            "history-rollover regrant did not survive restart")
+    persisted = (restored["yesterday_history"] if database_environment is None else
+                 stored_gameplay_history(database_environment, restored))
+    require(persisted == before["remaining"] and restored["retained_history"] == 1,
+            "zero-progress abandonment wrote or lost completion history")
+    return client, {"before": before, "accepted": accepted, "aged": aged,
+                    "loaded": loaded, "abandoned": abandoned, "regrant": regrant,
+                    "restored": restored}
 
 
 def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) -> dict:
@@ -668,12 +872,12 @@ if quest_gameplay_stage > 0
 disable $checkpoint_break
 disable $invalidate_break
 end
-if quest_gameplay_stage == 1 || quest_gameplay_stage == 3
+if quest_gameplay_stage == 1 || quest_gameplay_stage == 3 || quest_gameplay_stage == 4
 enable $plan_break
 else
 disable $plan_break
 end
-if quest_gameplay_stage == 1
+if quest_gameplay_stage == 1 || quest_gameplay_stage == 4
 enable $kind_break
 enable $history_break
 else
@@ -726,7 +930,7 @@ call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::
 end
 continue
 end
-break *sql_world_quest_finished
+break *sql_world_quest_finish_async
 set $history_break=$bpnum
 commands
 silent
@@ -787,6 +991,22 @@ run
             client.expect("Save complete for Taverek.", timeout=120)
             client.send("look")
             client.expect("Mathorn's Bar", timeout=15)
+            if JOURNEY == "history":
+                client, history = perform_history_regrant(client, run_root, restart_gameplay,
+                                                           database_environment)
+                client.close()
+                client = None
+                stop_quest_server(process, pid_path, output_path)
+                return {"backend": backend, "journey": "history", "history": history,
+                        "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest()}
+            if JOURNEY == "reported":
+                client, reported = perform_reported(client, run_root, restart_gameplay,
+                                                     database_environment, plain_port)
+                client.close()
+                client = None
+                stop_quest_server(process, pid_path, output_path)
+                return {"backend": backend, "journey": "reported", "reported": reported,
+                        "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest()}
             if JOURNEY == "audit":
                 audit = perform_world_audit(client, run_root, plain_port)
                 client.close()
@@ -967,11 +1187,14 @@ run
             gameplay_state = gameplay_path.read_text() if gameplay_path.exists() else ""
             completed_path = run_root / "quest-gameplay-results.json"
             completed_cases = completed_path.read_text() if completed_path.exists() else "[]"
+            audit_path = run_root / "quest-world-audit.json"
+            audit_origins = json.loads(audit_path.read_text())["origins"] if audit_path.exists() else []
             transcript = bytes(client.transcript).decode(errors="replace")[-6000:] if client else ""
             raise AssertionError(
                 f"{backend} bartender journey failed: {error}\n"
                 f"--- quest checkpoints ---\n{json.dumps(checkpoints)}\n"
                 f"--- completed gameplay cases ---\n{completed_cases}\n"
+                f"--- loaded-world audit origins ---\n{json.dumps(audit_origins)}\n"
                 f"--- gameplay state ---\n{gameplay_state}\n--- client ---\n{transcript}\n"
                 f"--- server output ---\n{output[-16000:]}\n"
                 f"--- runtime logs ---\n{logs}"
