@@ -83,7 +83,7 @@ extern const surname_struct feudal_surnames[7];
  *   Inbetween King and Lightbringer there's an intentionally skipped spot such that the first 3 bits contain feudal,
  *   and the rest are achievement based.
  */
-static void update_feudal_surname(P_char ch, int points)
+static void update_feudal_surname(P_char ch, long points)
 {
 	int curr_surname;
 
@@ -104,7 +104,7 @@ static void update_feudal_surname(P_char ch, int points)
 
 void set_surname(P_char ch, int num)
 {
-	int points;
+	long points;
 
 	if (!IS_ALIVE(ch) || !IS_PC(ch))
 	{
@@ -255,15 +255,17 @@ void event_update_surnames(P_char /*ch*/, P_char /*victim*/, P_obj, void * /*dat
 	{
 		try
 		{
-			update_shipfrags();
 			ship_frags.clear();
-			ship_frags.reserve(20);
-			for (size_t index = 0; index < 20 && shipfrags[index].ship; ++index)
+			ShipVisitor ship;
+			for (bool found = shipObjHash.get_first(ship); found;
+			     found = shipObjHash.get_next(ship))
 			{
+				if (IS_NPC_SHIP(ship))
+					continue;
 				ship_frag_snapshot snapshot = {};
 				snprintf(snapshot.owner, sizeof(snapshot.owner), "%s",
-					 shipfrags[index].ship->ownername);
-				snapshot.frags = shipfrags[index].ship->frags;
+					 ship->ownername);
+				snapshot.frags = ship->frags;
 				ship_frags.push_back(snapshot);
 			}
 
@@ -297,7 +299,7 @@ void event_update_surnames(P_char /*ch*/, P_char /*victim*/, P_obj, void * /*dat
 
 		int character_ship_frags = 0;
 		for (const ship_frag_snapshot &snapshot : ship_frags)
-			if (!strcmp(snapshot.owner, GET_NAME(character)))
+			if (!strcasecmp(snapshot.owner, GET_NAME(character)))
 			{
 				character_ship_frags = snapshot.frags;
 				break;
@@ -1562,49 +1564,11 @@ void do_dismiss(P_char ch, char *argument, int cmd)
 
 int calculate_shipfrags(P_char ch)
 {
-	for (int i = 0; i < 20; i++)
+	ShipVisitor ship;
+	for (bool found = shipObjHash.get_first(ship); found; found = shipObjHash.get_next(ship))
 	{
-		if (shipfrags[i].ship == NULL)
-		{
-			break;
-		}
-		int found = 0;
-		ShipVisitor svs;
-		for (bool fn = shipObjHash.get_first(svs); fn; fn = shipObjHash.get_next(svs))
-		{
-			if (svs == shipfrags[i].ship)
-			{
-				found = 1;
-			}
-		}
-		if (!found)
-		{
-			break;
-		}
-
-		// debug("ownername: %s frags: %d getname: %s\r\n", shipfrags[i].ship->ownername, shipfrags[i].ship->frags, GET_NAME(ch));
-		if (!strcmp(shipfrags[i].ship->ownername, GET_NAME(ch)))
-		{
-			return shipfrags[i].ship->frags;
-		}
-
-		if (shipfrags[i].ship->frags == 0)
-		{
-			break;
-		}
-		if (i != 0)
-		{
-			if (shipfrags[i].ship == shipfrags[i - 1].ship)
-			{
-				break;
-			}
-		}
-
-		/*send_to_char_f(ch,
-		  "&+W%d:&N %s\r\n&+LCaptain: &+W%-20s &+LClass: &+y%-15s&+R Tonnage Sunk: &+W%d&N\r\n\r\n",
-		  i + 1, shipfrags[i].ship->name, shipfrags[i].ship->ownername,
-		  SHIPTYPE_NAME(SHIP_CLASS(shipfrags[i].ship)),
-		  shipfrags[i].ship->frags);*/
+		if (!IS_NPC_SHIP(ship) && !strcasecmp(ship->ownername, GET_NAME(ch)))
+			return MAX(0, ship->frags);
 	}
 	return 0;
 }
