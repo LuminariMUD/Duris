@@ -501,12 +501,14 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 for _ in range(120):
                     time.sleep(1)
                     current = gameplay_snapshot(client, run_root)
-                    if (not current["active"] or current["kills"] > previous["kills"] or
+                    if (not current["active"] or current["accomplished"] or
+                            current["kills"] > previous["kills"] or
                             not current["fighting"]):
                         break
                 else:
                     raise AssertionError(f"ordinary target combat did not resolve: {current}")
-                if current["active"] and current["kills"] == previous["kills"]:
+                if (current["active"] and not current["accomplished"] and
+                        current["kills"] == previous["kills"]):
                     continue
                 target = current
 
@@ -514,7 +516,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 if outcome == "No-one by that name here...":
                     continue
                 current = gameplay_snapshot(client, run_root)
-            if kind == 1 and current["active"] and current["kills"] == current["quota"]:
+            if kind == 1 and current["active"] and current["accomplished"]:
                 # The final kill stays active while its durable reward is published.
                 # History may already be committed; this is not partial progress.
                 deadline = time.monotonic() + 30

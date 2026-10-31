@@ -565,6 +565,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "reward_vnum", completion_reward_vnum);
 
 	number(root, "active", q.quest_active);
+	number(root, "accomplished", q.quest_accomplished);
 	number(root, "due", q.quest_replacement_due);
 	number(root, "accepted_level", q.quest_level);
 	number(root, "type", q.quest_type);
