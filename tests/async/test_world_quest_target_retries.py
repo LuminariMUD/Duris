@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         '#include "core/prototypes.h"\n#include "core/utils.h"\n'
         '#include "magic/spells.h"\n#include "world/map.h"\n'
         '#include "world/weather.h"\n#include "combat/justice.h"\n'
-        '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n'
+        '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n#include "world/buildings.h"\n'
         '#include "persistence/persistence_checkpoint.h"\n'
         '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
         '#include "player/player_save_pipeline.h"\n'
@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
             ("cmd/interp.c", "void half_chop("),
+            ("cmd/interp.c", "bool special("),
             ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
             ("world/outposts.c", "bool check_castle_walls("),
             ("combat/range.c", "int check_wall("),

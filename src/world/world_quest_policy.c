@@ -798,8 +798,50 @@ struct quest_target_request
 
 	bool handlers_eligible(P_char mob)
 	{
-		return ask_handler(mob, mob_index[GET_RNUM(mob)].func.mob) &&
-		       ask_handler(mob, mob_index[GET_RNUM(mob)].qst_func);
+		// special() offers ASK to the whole interaction scene before do_ask.
+		// Audit that scene without executing scripts or proving a travel route.
+		const auto &room = world[mob->in_room];
+		if (room.funct && room.funct != inn && room.funct != ship_shop_proc &&
+		    room.funct != crew_shop_proc)
+			return false;
+		auto object_handler = [&](P_obj object)
+		{
+			if (!object)
+				return true;
+			if (!quest_spend_work(work))
+				return false;
+			if (object->R_num < 0)
+				return true;
+			if (object->R_num > top_of_objt)
+				return false;
+			const auto proc = obj_index[object->R_num].func.obj;
+			return !proc || proc == board || proc == artifact_hide ||
+			       proc == ring_of_regeneration || proc == tracks ||
+			       proc == blood_stains;
+		};
+		for (P_obj object = actor->carrying; object; object = object->next_content)
+			if (!object_handler(object))
+				return false;
+		for (P_obj object : actor->equipment)
+			if (!object_handler(object))
+				return false;
+		for (P_obj object = room.contents; object; object = object->next_content)
+			if (!object_handler(object))
+				return false;
+		for (P_char person = room.people; person; person = person->next_in_room)
+		{
+			if (!quest_spend_work(work))
+				return false;
+			if (person == actor || !IS_NPC(person) || !IS_ALIVE(person) ||
+			    !IS_AWAKE(person))
+				continue;
+			const int rnum = GET_RNUM(person);
+			if (rnum < 0 || rnum > top_of_mobt ||
+			    !ask_handler(person, mob_index[rnum].func.mob) ||
+			    !ask_handler(person, mob_index[rnum].qst_func))
+				return false;
+		}
+		return true;
 	}
 
 	bool type_eligible(P_char mob, int type)

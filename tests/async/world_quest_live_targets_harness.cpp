@@ -62,6 +62,27 @@ std::string feedback;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
 
+static int interceptor_calls = 0;
+int blocking_mobile(P_char, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+int blocking_room(int, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+int blocking_object(P_obj, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+bool training_dummy_is(P_char)
+{
+	return false;
+}
+
 int unknown_room(int, P_char, int, char *)
 {
 	std::abort();
@@ -722,7 +743,7 @@ int main(int argc, char **argv)
 			edge(3, DIR_WEST, boundary);
 		}
 		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		rooms[3].funct = unknown_room;
+		rooms[5].funct = unknown_room;
 		rooms[3].sector_type =
 			SECT_NO_GROUND; // Target travel needs flight, not ASK speech.
 		rooms[5].sector_type = SECT_UNDERWATER; // Transit needs waterbreathing.
@@ -1109,11 +1130,11 @@ int main(int argc, char **argv)
 		hide_artifact.R_num = 0;
 		objects[0].func.obj = unknown_object;
 		player.carrying = &hide_artifact;
-		check(status::valid);
+		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
 		player.carrying = nullptr;
 		objects[0].func.obj = nullptr;
 		rooms[3].funct = unknown_room;
-		check(status::valid);
+		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
 		rooms[3].funct = nullptr;
 		// An unrelated unknown branch cannot conceal a definitive final lock.
 		two_way(0, DIR_NORTH, 1, DIR_SOUTH);
@@ -1167,6 +1188,49 @@ int main(int argc, char **argv)
 			mobiles[1].qst_func = world_quest;
 			check(status::unproven); // Known travel-safe does not mean ASK-safe.
 			mobiles[1].qst_func = nullptr;
+			// Execute the real command dispatcher to prove each blocker consumes ASK.
+			auto intercepted = [&]
+			{
+				const int calls = interceptor_calls;
+				check(status::unproven);
+				assert(interceptor_calls ==
+				       calls); // Policy must not run procedures.
+				world_quest_target rejected;
+				assert(world_quest_policy_select_target(&player, 1000, level,
+									rejected, FIND_AND_ASK) !=
+				       QUEST_CREATION_NO_FAILURE);
+				history_reads.clear();
+				move(&player, 3);
+				char message[] = "target message";
+				assert(special(&player, CMD_ASK, message));
+				assert(interceptor_calls > calls);
+				move(&player, 0);
+			};
+			mobiles[0].func.mob = blocking_mobile;
+			intercepted();
+			mobiles[0].func.mob = nullptr;
+			mobiles[0].qst_func = blocking_mobile;
+			intercepted();
+			mobiles[0].qst_func = nullptr;
+			rooms[3].funct = blocking_room;
+			intercepted();
+			rooms[3].funct = nullptr;
+			obj_data blocker{};
+			blocker.R_num = 0;
+			objects[0].func.obj = blocking_object;
+			player.carrying = &blocker;
+			intercepted();
+			player.carrying = nullptr;
+			player.equipment[0] = &blocker;
+			intercepted();
+			player.equipment[0] = nullptr;
+			rooms[3].contents = &blocker;
+			intercepted();
+			objects[0].func.obj = tracks;
+			check(status::valid); // Audited cosmetic objects still allow ASK.
+			rooms[3].contents = nullptr;
+			objects[0].func.obj = nullptr;
+			check(status::valid);
 			P_char ask = live.back().get();
 			pc.quest_active = 1;
 			pc.quest_level = level;
@@ -1439,10 +1503,10 @@ int main(int argc, char **argv)
 		recipient_state.quest_replacement_due = 0;
 		history_reads.clear();
 		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		rooms[3].funct = unknown_room;
+		rooms[5].funct = unknown_room;
 		do_quest(&player, sharing.data(), 0);
 		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
-		rooms[3].funct = nullptr;
+		rooms[5].funct = nullptr;
 		assert(recipient_state.quest_active && recipient_state.quest_origin_room == 1000 &&
 		       recipient_state.quest_level == pc.quest_level &&
 		       recipient_state.quest_kill_original == pc.quest_kill_original &&

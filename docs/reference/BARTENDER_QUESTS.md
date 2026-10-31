@@ -274,6 +274,13 @@ that process. Requests do not rebuild the catalog or scan prototypes to bypass
 it. Content, reset provenance, reward-policy, and map-cache changes require a
 new boot catalog; live actor locations and target interactions are rechecked per request.
 
+ASK checks the command interceptors at the target room: its room procedure,
+other awake NPC handlers, room objects, and the player's carried/equipped
+objects. Unknown handlers make an accepted task unproven and prevent new
+assignment until the interaction can be verified. Audited passive handlers
+remain eligible. This bounded audit never executes a procedure or checks the
+travel route.
+
 ## Recovery, maps, and sharing
 
 ### Availability and free replacement
