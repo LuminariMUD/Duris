@@ -340,3 +340,7 @@ The MariaDB journey binary SHA256 is `4bbe046fba84bc9d411afdf2f93b4e570a26c1d6dc
 The MySQL leg and the expanded management/funding/filled-private-restart journey
 remain due for the complete follow-up. Audit admission and bank/load behavior
 are still integration questions, not fixed or disproved by this first delivery.
+
+Published first delivery: [PR #507](https://github.com/LuminariMUD/Duris/pull/507),
+`branch/issue-490-followup`, targeting master. The next dependent delivery will
+resolve audit admission using the existing movement and SQL fixtures.
