@@ -128,11 +128,12 @@ int main() {
     racial_spldam_offensive_factor[RACE_DROW][0] = 1.75;
     racial_spldam_defensive_factor[RACE_BARBARIAN][0] = .5;
     racial_spldam_defensive_factor[RACE_ORC][0] = 1.5;
-    assert(racial_spell_damage(&actors[7], &actors[10], 0) == -.25);
-    assert(racial_spell_damage(&actors[8], &actors[11], 0) == -.25);
-    assert(racial_spell_damage(&actors[9], &actors[5], 0) == 1.25);
+    assert(racial_spell_damage(&actors[7], &actors[10], SPLDAM_GENERIC) == -.25);
+    assert(racial_spell_damage(&actors[8], &actors[11], SPLDAM_GENERIC) == -.25);
+    assert(racial_spell_damage(&actors[9], &actors[5], SPLDAM_GENERIC) == 1.25);
     assert(racial_spell_damage(&actors[8], &actors[11], -1) == 0);
-    assert(racial_spell_damage(&actors[8], &actors[11], LAST_SPLDAM_TYPE) == 0);
+    assert(racial_spell_damage(&actors[8], &actors[11], 0) == 0);
+    assert(racial_spell_damage(&actors[8], &actors[11], LAST_SPLDAM_TYPE + 1) == 0);
     assert(gith_word_0(&actors[12], 200) == 300 && gith_word_0(&actors[13], 200) == 300);
     assert(gith_word_1(&actors[12], 200) == 200 && gith_word_1(&actors[13], 200) == 200);
     assert(gith_word_2(&actors[12], 200) == 200 && gith_word_2(&actors[13], 200) == 200);
