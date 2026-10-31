@@ -6076,7 +6076,7 @@ bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
 				if (!invalidated)
 				{
 					// A SELECT queued before the commit must not republish stale history.
-					++world_quest_history_generation.find(pid)->second;
+					++world_quest_history_generation.at(pid);
 					world_quest_histories_loading.erase(pid);
 					world_quest_histories.erase(pid);
 					try
