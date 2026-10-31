@@ -636,6 +636,50 @@ def run(binary):
                 assert sql(f"SELECT COUNT(*) FROM locker_access WHERE owner='{guild_target}.locker'") == '0'
                 assert contents() == before_restart
                 check('canonical guild membership, creation, contents and fees match guild; nonmember/prestige/parole gates hold')
+
+                # A failed private INSERT must not let a player checkpoint erase the
+                # previously saved inventory payload. Kill the server before recovery.
+                if inventory_uids(OWNER, 677):
+                    act(OWNER, 'drop all.mace', 'You drop')
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + OWNER, 'Ok.')
+                crash_uid, = inventory_uids(OWNER, 677)
+                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                enter(OWNER, items=2)
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                sql("""DELIMITER //
+                       CREATE TRIGGER reject_private_chest_checkpoint BEFORE INSERT ON locker_items
+                       FOR EACH ROW BEGIN
+                         IF NEW.chest_id=%s THEN
+                           SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='private chest checkpoint rejection';
+                         END IF;
+                       END//
+                       DELIMITER ;
+                    """ % chest_id)
+                act(OWNER, 'put mace vault', 'Ok.')
+                assert 'mace' not in command(clients[OWNER], 'inventory').lower()
+                save_start = len(clients[OWNER].transcript)
+                act(OWNER, 'save', 'Save queued for ' + OWNER + '.')
+                time.sleep(2)
+                command(clients[OWNER], 'score')
+                assert b'Save complete for ' + OWNER.encode() not in clients[OWNER].transcript[save_start:]
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                assert sql(f"SELECT COUNT(*) FROM locker_items WHERE obj_uid={crash_uid}") == '0'
+                process.kill()
+                process.wait(timeout=30)
+                process = None
+                for client in clients.values():
+                    client.close()
+                clients.clear()
+                boot()
+                login(OWNER)
+                login(GOD)
+                assert crash_uid in inventory_uids(OWNER, 677)
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                assert sql(f"SELECT COUNT(*) FROM locker_items WHERE obj_uid={crash_uid}") == '0'
+                sql('DROP TRIGGER reject_private_chest_checkpoint')
+                check('failed private INSERT keeps saved source across rejected checkpoint and SIGKILL restart')
                 stop()
                 target = ROOT / 'bin/qualification/issue490'
                 target.mkdir(parents=True, exist_ok=True)

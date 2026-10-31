@@ -20,6 +20,7 @@
 
 #include "core/prototypes.h"
 #include "core/files.h"
+#include "item/storage_lockers.h"
 #include "economy/collector_death_enrollment.h"
 #include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
@@ -279,6 +280,12 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 		++health.unchanged;
 		return player_save_pipeline_result::unchanged;
 	}
+	// The player snapshot removes absent inventory rows. Commit a private chest's
+	// destination first, so a failed chest write cannot erase the last saved copy.
+	if ((revision.unacknowledged_components &
+	     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    !locker_private_contents_durable(ch))
+		return player_save_pipeline_result::capture_failed;
 	player_revision_t queued_revision = 0;
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))

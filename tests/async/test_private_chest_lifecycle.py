@@ -62,6 +62,7 @@ static std::function<void(P_char, const sql_rows &)> log_completion;
 static std::function<void(bool, const sql_rows &)> rehash_completion;
 static std::string feedback;
 static std::vector<int> events;
+static bool admit_log = true;
 const unsigned LockerChest::m_chestVnum = 173;
 
 char *str_dup(const char *value) { return strdup(value); }
@@ -117,7 +118,9 @@ bool password_async_start(P_desc, password_login_job *, const char *, password_c
     assert(!completion); completion = std::move(done); return true;
 }
 bool sql_log_chest_activity(int locker, int chest, const char *, int action, const char *) {
-    assert(locker == 7 && chest > 0); events.push_back(action); return true;
+    assert(locker == 7 && chest > 0);
+    if (admit_log) events.push_back(action);
+    return admit_log;
 }
 bool sql_queue_at(persistence_query_site, const char *, ...) { return true; }
 unsigned int sql_execute(MYSQL *, const std::string &) { return 1; }
@@ -192,7 +195,8 @@ static void run(const std::string &mode) {
         assert((feedback.find("hidden-item") != std::string::npos) == (mode == "log"));
         return;
     }
-    if (mode == "manager" || mode == "role-revoked") manager = true;
+    if (mode == "manager" || mode == "role-revoked" || mode == "open-admission-failed") manager = true;
+    if (mode == "open-admission-failed" || mode == "failed-open-admission-failed") admit_log = false;
     if (mode == "flatfile" || mode == "sql-unavailable") {
         flat_backend = mode == "flatfile";
         if (!flat_backend) DB = nullptr;
@@ -203,21 +207,28 @@ static void run(const std::string &mode) {
         assert(feedback.find(flat_backend ? "require SQL storage" : "temporarily unavailable") != std::string::npos);
         return;
     }
-    if (mode == "missing" || mode == "overlength") {
+    if (mode == "missing" || mode == "overlength" || mode == "failed-open-admission-failed") {
         locker.SetCurrentChestId(10);
         std::string request = "vault";
         if (mode == "overlength") request += " " + std::string(73, 'Q');
         assert(locker_opencmd(&actor, request.data()));
         assert(!completion && locker.GetCurrentChestId() == 0);
         assert(!locker_container_access_allowed(&actor, &inner));
-        assert(feedback.find("Wrong password") != std::string::npos);
-        assert(events.size() == 1 && events[0] == CHEST_ACTION_FAIL);
+        assert(feedback.find(mode == "failed-open-admission-failed" ? "Chest activity is unavailable" : "Wrong password") != std::string::npos);
+        assert(events.size() == (mode == "failed-open-admission-failed" ? 0U : 1U));
+        if (!events.empty()) assert(events[0] == CHEST_ACTION_FAIL);
         return;
     }
     char request[] = "vault correct";
     assert(locker_opencmd(&actor, request));
     if (manager) {
         assert(!completion);
+        if (mode == "open-admission-failed") {
+            assert(locker.GetCurrentChestId() == 0 && events.empty());
+            assert(!locker_container_access_allowed(&actor, chest->GetChestObj()));
+            assert(feedback.find("Chest activity is unavailable") != std::string::npos);
+            return;
+        }
         assert(locker_container_access_allowed(&actor, chest->GetChestObj()));
         manager = mode != "role-revoked";
         assert(locker_container_access_allowed(&actor, chest->GetChestObj()) == manager);
@@ -250,6 +261,7 @@ static void run(const std::string &mode) {
     } else if (mode == "stale-user") {
         ++actor.runtime_id;
     } else assert(mode == "open" || mode == "wrong" || mode == "close" ||
+                  mode == "close-admission-failed" ||
                   mode == "close-door" || mode == "disconnect" || mode == "select-other" || mode.starts_with("rehash"));
     auto done = std::move(completion); completion = {};
     done(&descriptor, mode == "wrong" ? 0 : 1, mode.starts_with("rehash") ? "$2b$upgraded" : nullptr);
@@ -265,7 +277,7 @@ static void run(const std::string &mode) {
         assert(chest->GetPasswordHash() == (mode == "rehash-stale" ? "$2b$newer" : mode == "rehash-failed" ? "$2b$fixture" : "$2b$upgraded"));
         return;
     }
-    if (mode == "open" || mode == "close" || mode == "close-door" ||
+    if (mode == "open" || mode == "close" || mode == "close-admission-failed" || mode == "close-door" ||
         mode == "disconnect" || mode == "select-other") {
         assert(locker.GetCurrentChestId() == 10);
         assert(events == std::vector<int>{CHEST_ACTION_OPEN});
@@ -279,10 +291,15 @@ static void run(const std::string &mode) {
         ++actor.runtime_id;
         assert(!locker_container_access_allowed(&actor, chest->GetChestObj()));
         --actor.runtime_id;
-        if (mode == "close") {
+        if (mode == "close" || mode == "close-admission-failed") {
+            admit_log = mode != "close-admission-failed";
             char no_arg[] = "";
             assert(locker_closecmd(&actor, no_arg));
             assert(!locker_container_access_allowed(&actor, &inner));
+            if (mode == "close-admission-failed") {
+                assert(events == std::vector<int>{CHEST_ACTION_OPEN});
+                assert(feedback.find("activity could not be recorded") != std::string::npos);
+            }
         } else if (mode == "close-door") {
             char door[] = "door";
             assert(!locker_closecmd(&actor, door));
@@ -328,7 +345,8 @@ with tempfile.TemporaryDirectory(prefix="private-chest-lifecycle-", dir=build) a
         str(HARNESS_STUBS), "-lbsd", "-lmysqlclient", "-o", str(binary),
     ], check=True)
     failures = []
-    for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "changed-hash", "close-pending", "superseded-open", "recreated",
+    for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "open-admission-failed",
+                 "failed-open-admission-failed", "close-admission-failed", "changed-hash", "close-pending", "superseded-open", "recreated",
                  "stale-user", "close", "close-door", "disconnect", "select-other",
                  "manager", "role-revoked", "flatfile", "sql-unavailable",
                  "log", "log-role-revoked", "log-visit-replaced", "log-other-user",

@@ -27,6 +27,8 @@ bool locker_container_access_allowed(P_char actor, P_obj container);
 bool locker_object_is_private_chest(P_obj object);
 void locker_invalidate_chest_access(P_char actor);
 void locker_chest_changes_pulse(void);
+// An item checkpoint inside a locker waits until private destination payloads are durable.
+bool locker_private_contents_durable(P_char actor);
 
 int guild_locker_room_hook(int room, P_char ch, int cmd, char *arg);
 /* The statement that removes every locker grant `name` holds (a character deletion). */

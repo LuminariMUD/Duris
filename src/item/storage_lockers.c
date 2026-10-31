@@ -570,6 +570,12 @@ static StorageLocker *locker_current(P_char ch)
 	return GetChestList(ch->in_room);
 }
 
+bool locker_private_contents_durable(P_char actor)
+{
+	StorageLocker *locker = locker_current(actor);
+	return !locker || !locker->LockerUserMatches(actor) || locker->PrivateContentsDurable();
+}
+
 static StorageLocker *locker_current_or_error(P_char ch, const char *message)
 {
 	StorageLocker *pLocker = locker_current(ch);
@@ -4738,15 +4744,24 @@ static int locker_opencmd(P_char ch, char *arg)
 			return;
 		if (!valid)
 		{
-			send_to_char("Wrong password.\r\n", actor);
-			sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor),
-					       CHEST_ACTION_FAIL, NULL);
+			if (!sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor),
+						    CHEST_ACTION_FAIL, NULL))
+				send_to_char(
+					"Chest activity is unavailable. Please try again later.\r\n",
+					actor);
+			else
+				send_to_char("Wrong password.\r\n", actor);
+			return;
+		}
+		if (!sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor), CHEST_ACTION_OPEN,
+					    NULL))
+		{
+			send_to_char("Chest activity is unavailable. Please try again later.\r\n",
+				     actor);
 			return;
 		}
 		locker->SetCurrentChestId(is_public ? 0 : chest_id, manager);
 		send_to_char_f(actor, "You open the '%s' chest.\r\n", name.c_str());
-		sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor), CHEST_ACTION_OPEN,
-				       NULL);
 	};
 	if (manager)
 	{
@@ -4837,9 +4852,12 @@ static int locker_closecmd(P_char ch, char *arg)
 	pLocker->InvalidateChestAccess();
 	if (!chest_id)
 		return FALSE;
-	sql_log_chest_activity(pLocker->GetLockerId(), chest_id, GET_NAME(ch), CHEST_ACTION_CLOSE,
-			       NULL);
-	send_to_char("You close the chest.\r\n", ch);
+	if (!sql_log_chest_activity(pLocker->GetLockerId(), chest_id, GET_NAME(ch),
+				    CHEST_ACTION_CLOSE, NULL))
+		send_to_char("You close the chest, but its activity could not be recorded.\r\n",
+			     ch);
+	else
+		send_to_char("You close the chest.\r\n", ch);
 	return TRUE;
 }
 
