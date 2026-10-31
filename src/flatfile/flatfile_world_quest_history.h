@@ -30,6 +30,11 @@ enum class flatfile_world_quest_result
 	io_error
 };
 
+flatfile_world_quest_result
+flatfile_world_quest_prepare_record(const std::string &root, const flatfile_authority_lock &lock,
+				    uint32_t pid, int quest_target, int player_level,
+				    int64_t occurred_at, flatfile_authority_operation *operation,
+				    std::string *error);
 flatfile_world_quest_result flatfile_world_quest_record(const char *root, uint32_t pid,
 							int quest_target, int player_level,
 							int64_t occurred_at, std::string *error);

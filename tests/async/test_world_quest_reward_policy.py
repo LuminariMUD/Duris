@@ -111,11 +111,12 @@ def test_kill_quests_pay_one_reward_on_completion() -> None:
     assert "obj_to_char(reward, quest_mob)" not in kill
     assert "obj_to_char(reward, ch)" not in kill
     assert "quest_kill_original + 1) <= 2" not in kill
-    assert kill.count("quest_item_reward(ch)") == 1
     done = kill[kill.index("quest_kill_how_many - ch->only.pc->quest_kill_original == 0"):]
-    assert done.index("quest_item_reward(ch)") < done.index("grant_world_quest_reward(ch, reward)")
-    assert done.index("grant_world_quest_reward(ch, reward)") < done.index("resetQuest(ch)")
-    assert "sql_world_quest_finished(ch, reward_granted ? reward : NULL)" in done
+    assert "world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true)" in done
+    assert "--ch->only.pc->quest_kill_how_many" in done
+    start = extract_function("world_quest.c", "static bool world_quest_start_reward(")
+    assert start.count("quest_item_reward(ch)") == 1
+    assert start.index("sql_world_quest_finish_async(") < start.index("world_quest_deliver_reward(")
 
 
 def test_reward_grant_rejection_does_not_publish_a_stale_object() -> None:
@@ -124,9 +125,11 @@ def test_reward_grant_rejection_does_not_publish_a_stale_object() -> None:
     rejected = grant.index("extract_obj(reward, FALSE)")
     assert rejected < grant.index("return false;", rejected)
     assert "your quest reward was not created" in grant
+    delivery = extract_function("world_quest.c", "static void world_quest_deliver_reward(")
+    assert "OBJ_CARRIED_BY(reward, ch) || grant_world_quest_reward(ch, reward)" in delivery
+    assert delivery.index("grant_world_quest_reward(ch, reward)") < delivery.index("resetQuest(ch)")
     full = extract_function("world_quest.c", "void quest_full_reward(")
-    assert "grant_world_quest_reward(ch, reward)" in full
-    assert "sql_world_quest_finished(ch, reward_granted ? reward : NULL)" in full
+    assert "world_quest_start_reward(ch, quest_mob, type, false)" in full
 
 
 def test_quest_sharing_remains_configurable() -> None:

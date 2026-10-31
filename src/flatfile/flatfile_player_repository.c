@@ -27,6 +27,7 @@
 #include "persistence/persistence_log.h"
 #include "persistence/dupe_log.h"
 #include "persistence/persistence_mode.h"
+#include "flatfile/flatfile_world_quest_history.h"
 #include "player/player_snapshot_codec.h"
 
 #include <algorithm>
@@ -947,6 +948,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	const bool status_current = !(snapshot.components & PLAYER_COMPONENT_STATUS) ||
 				    incoming_sequence >= stored_sequence;
+	if (snapshot.pending_world_quest.present && (!status_current || unresolved_trade))
+		return { player_save_apply_outcome::retryable_failure, 0, EAGAIN };
 	if (snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 		return { player_save_apply_outcome::stale_revision, materialized.revision, 0 };
 	std::vector<player_item_snapshot> held_items;
@@ -1092,6 +1095,31 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
+	flatfile_authority_operation quest_history;
+	if (snapshot.pending_world_quest.present)
+	{
+		const auto &quest = snapshot.pending_world_quest;
+		if (!(snapshot.components & PLAYER_COMPONENT_STATUS) || quest.target <= 0 ||
+		    quest.player_name.empty() ||
+		    (quest.awaiting_reward && quest.reward_items.empty()))
+			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+		for (const auto &item : quest.reward_items)
+			if (std::none_of(materialized.items.begin(), materialized.items.end(),
+					 [&](const auto &held) {
+						 return held.object_uid == item.object_uid &&
+							held.vnum == item.vnum;
+					 }))
+				return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		const auto prepared = flatfile_world_quest_prepare_record(
+			root, *authority, snapshot.pid, quest.target, quest.level,
+			quest.occurred_at, &quest_history, error);
+		if (prepared != flatfile_world_quest_result::ok)
+			return { prepared == flatfile_world_quest_result::io_error ?
+					 player_save_apply_outcome::retryable_failure :
+					 player_save_apply_outcome::terminal_failure,
+				 0, EIO };
+	}
+	materialized.pending_world_quest = {};
 	// The wallet, epic points and frags are memory's: a save that carries them writes
 	// them into the player's domain record with the captured wallet revision.
 	flatfile_authority_operation saved_balances;
@@ -1137,6 +1165,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{
+		if (snapshot.pending_world_quest.present)
+			operations.push_back(std::move(quest_history));
 		if (claim_changed)
 			operations.push_back(std::move(claimed));
 		if (delivered_changed)
