@@ -5,7 +5,9 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "core/utils.h"
 #include "account/account.h"
+#include "item/storage_lockers.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -266,7 +268,9 @@ HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
 {
 	return true;
 }
-HARNESS_STUB void locker_record_movement(P_char, P_obj, P_obj, bool, const char *) {}
+HARNESS_STUB LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) {}
+HARNESS_STUB LockerMovementAudit::~LockerMovementAudit() {}
+HARNESS_STUB void LockerMovementAudit::Commit(void) {}
 HARNESS_STUB bool currency_transaction_chest_busy(P_char)
 {
 	return false;
