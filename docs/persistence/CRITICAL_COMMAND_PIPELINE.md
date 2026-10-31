@@ -57,17 +57,25 @@ command's keys, and queues it on the one persistence writer
 (`persistence_job_kind::critical`), the same thread that applies every save. A command
 therefore lands in capture order with the saves around it: a save captured before the
 command is applied before it, one captured after, after it. `submit()` returns
-`accepted`; the command is durable once the writer has applied it. Commands are not
-journaled: like a save, a command that had not reached the database is lost in a crash
-(see [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md#consequences)).
+`accepted`; the command is durable once the writer has applied it. Most commands are
+not journaled: like a save, a command that had not reached the database is lost in a
+crash (see [ADR 0002](../adr/0002-persistence-reset-memory-is-the-authority.md#consequences)).
+PvP outcomes are the exception: the combat adapter synchronously syncs a complete,
+checksummed command under `CRITICAL_COMMAND_JOURNAL_DIR/combat-intents` before live
+rewards or pending-credit feedback. Refused writer admission retries from this retained
+intent without generating a new operation ID or admission time. This adds one durable
+file publication to PvP admission, rather than another persistence thread.
 Records are never coalesced or replaced by a newer command.
 
 The writer job carries its own copy of the command and of the apply function, so a
 command queued before shutdown still lands after the coordinator has stopped; its
 completion is then not delivered. The writer retries a lost connection, a lock wait or an
 ambiguous commit at the head of its queue, before anything queued after the command,
-exactly as it retries a save. Any other outcome is handed to the coordinator's
-completion channel.
+exactly as it retries a save. Combat failures without a committed result also retry
+at the queue head and retain their participant fences until the underlying authority
+is repaired. A committed rejection has a result payload and may release its fences;
+its full intent remains retained for staff reconciliation. Other terminal outcomes
+are handed to the coordinator's completion channel.
 
 The state and transition table is deliberately split between the coordinator's
 command lifecycle and a domain's live-publication lifecycle. The
@@ -297,12 +305,43 @@ from the player's last row (or the saved balance when there is none) and advance
 Zone trophies, the epic bonus window and the completed-zone reads at login read that
 ledger. Flat-file records the operation only.
 
-A PvP outcome changes the participants' frags, epics and blood money when it is submitted.
-Its command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
+A PvP outcome changes the participants' ordinary frags, epics and blood money after its
+intent is durable and the parent is queued, so related saves follow the parent.
+New submissions reserve writer capacity and queue storage before the admission
+callback syncs the full intent. That callback runs before the writer can execute the
+job. Capacity refusal creates no admitted intent and follows the existing busy/no-rewards
+path, rather than accepting ordinary credit for a later descriptor lookup. On success,
+ordinary awards publish synchronously before submission returns. Boot replay can still
+wait for capacity without republishing already-live balances; new submissions cannot
+overtake those older retained commands.
+Prepared Divine awards retain their existing committed-delivery path. The command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
 frag and epic ledgers the same way, and updates the frag leaderboard; it is no longer fenced
 on the participants' revisions. An epic stone's awards are added in memory when the touch
 commits, once per participant (a participant who left gets theirs on return), and the
 repository records them in the epic ledger with the stone claim.
+
+On boot, the combat adapter validates all active `.intent` files and queues them in
+original admission order with their original IDs/timestamps. A malformed file or an
+unavailable journal disables new PvP credit admission and alerts staff; it is never
+silently discarded. There are at most 128 unresolved intents. Successful completions
+rename the original full command to `.recorded` and sync the directory. Those files
+are private recovery evidence, not new work to replay. Committed rejections remain
+`.intent` records and alert staff, explicitly distinguishing the durable rejection
+receipt from a pre-commit failure.
+
+To recover a pre-commit failure, repair the actual cap/player authority; the fenced
+writer retries automatically. After a crash, restart with the same journal and backend
+authority: replay completes the native receipt, ledgers, prepared deliveries and race
+score idempotently. Do not edit/delete retained commands or generate replacement IDs.
+A committed rejection needs deliberate staff correction rather than blind replay of
+the same rejected receipt. Ordinary balances still use player saves: boot replay does
+not reapply their in-memory deltas, which could already have been saved. Retained
+`.intent`/`.recorded` commands preserve all participants, deltas and child intents for
+staff to reconcile against the native receipt and saved player state. Each file is the
+existing encoded critical command followed by its 32-byte SHA-256 checksum; its basename
+is the original operation ID in hex. Keep this directory
+with the authority's recovery backups, and prune recorded evidence only after its reward
+reconciliation/retention obligations are satisfied.
 
 `world persistence` reports `epic_transactions` submitted, committed, rejected and ledger
 rows the coordinator would not queue. Focused validation is

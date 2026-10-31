@@ -19,6 +19,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 constexpr size_t CRITICAL_COORDINATOR_MAX_OPERATIONS = 1024;
 constexpr size_t CRITICAL_COORDINATOR_MAX_BYTES = 64 * 1024 * 1024;
@@ -74,6 +75,9 @@ using critical_drain_observer_fn = void (*)(const critical_completion *completio
 bool critical_command_coordinator_init(critical_apply_fn apply, void *context);
 void critical_command_coordinator_shutdown(void);
 critical_submit_result critical_command_coordinator_submit(critical_command command);
+// Admission runs only after writer capacity is reserved, before the job can run.
+critical_submit_result critical_command_coordinator_submit_admitted(critical_command command,
+								    std::function<bool()> admit);
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity);
 bool critical_command_coordinator_is_fenced(const critical_entity_key &key,
 					    critical_operation_id *operation_id);

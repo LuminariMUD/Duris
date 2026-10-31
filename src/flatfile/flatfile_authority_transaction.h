@@ -26,8 +26,8 @@
  * Callers that build a transaction from a fixed domain contract must assert their
  * own maximum against this value at compile time.
  */
-// Two writes per full 20/20 outcome participant plus receipt and delivery index.
-constexpr size_t flatfile_authority_transaction_maximum_operations = 82;
+// Two writes per full 20/20 outcome participant, receipt, delivery index and cap.
+constexpr size_t flatfile_authority_transaction_maximum_operations = 83;
 constexpr size_t flatfile_authority_transaction_maximum_bytes = 256 * 1024 * 1024;
 
 struct flatfile_authority_after_image
