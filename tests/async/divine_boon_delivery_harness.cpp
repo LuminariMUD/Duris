@@ -481,8 +481,6 @@ int main(int argc, char **argv)
 	// Restart the actual transaction adapter with an admitted, uncommitted
 	// command. Preserve the ID/time and never reapply an already-live balance.
 	auto restart_payload = payload;
-	restart_payload.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM;
-	restart_payload.participants[0].epic_delta = 0;
 	restart_payload.participants[0].frag_delta = 3;
 	const auto live_frags = pc.frags;
 	critical_operation_id restart_id;

@@ -533,3 +533,62 @@ task; the implementation completion record below supersedes that status.
 No production migration, live gameplay deployment, news publication or release
 tag is part of this delivery. Actual live caps and target snapshot inventory are
 unverified until deployment is authorized.
+
+
+## PR #523 durability review follow-up — 2026-10-31
+
+All three review findings were valid and addressed. Combat admission now syncs a
+checksummed complete command before pending-credit feedback or live rewards. It
+reuses the existing codec, atomic file store and single writer. Queue refusal keeps
+the admitted intent for retry; boot validates and replays the original IDs/timestamps.
+Pre-commit failures retain the writer's participant fences until repair succeeds;
+committed rejection receipts are distinguished explicitly and their full intents
+remain available to staff. Successful commands are retained privately as `.recorded`
+evidence for ordinary reward reconciliation. Ordinary balances continue to use
+player saves; replay does not blindly add live rewards again. The operational recovery
+contract and file format are in `docs/persistence/CRITICAL_COMMAND_PIPELINE.md`.
+
+The SQL player/ledger loader now distinguishes an absent player from query/fetch or
+invalid-data failures. Database errors roll back the parent rather than committing
+an `ENOENT` rejection. Actual MariaDB 1205 timeouts were exercised in all three reads
+(`player_data`, `combat_frag_ledger`, `epic_ledger`), followed by successful retry and
+exactly-once receipt replay.
+
+Fresh local validation passed:
+
+```sh
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_flatfile"
+python3 tests/async/test_combat_outcome_transactional_cutover.py
+python3 tests/async/test_critical_command_coordinator.py
+python3 tests/async/test_divine_boon_delivery.py
+python3 tests/async/test_flatfile_player_domain_repository.py
+bash tests/async/run_combat_outcome_schema_mysql.sh
+python3 tests/async/test_frag_cap.py
+python3 tests/async/test_frag_cap_runtime.py
+python3 tests/async/test_frag_cap_config_contract.py
+python3 tests/async/test_frag_cap_journey.py --backend flatfile --server bin/server/dms_flatfile
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_frag_cap_journey.py --backend mariadb --server bin/server/dms_new
+./scripts/format.sh --staged --check
+./scripts/tidy.sh --staged
+git diff --check
+```
+
+Both native repositories passed a real SIGKILL after coordinator/writer enqueue and
+before repository commit, full intent reload, corrupt-cap failure, another restart,
+repair, successful replay and duplicate replay. Corrupted journal checksums fail
+closed without deleting evidence. ASan/UBSan publication tests also proved that the
+actual combat adapter persists before enqueue, retries unavailable admission with
+the same ID/time, and replays after reset without duplicating live rewards. Both
+loaded-world journeys repeated PvP, cap settlement, banked-XP advancement, restart,
+the quiet 33/32 tie and the quiet 36/36 circle. Logs are private local artifacts under
+`bin/tests/pr523-*.log`.
+
+While these fixes were being qualified, #519 and #521 landed and the remote runtime
+branch was synchronized in `8a87f6d9e`. That update and current master `b224db15f` were
+merged into this continuation without overwriting local edits or rewriting published
+history. #523 now targets master directly; its foundations are already carried forward.
+The branch is suitable for a squash merge when approved. No release tag is warranted
+for an unmerged feature. Git maintenance used `gc --no-prune` with cruft packs, retaining
+unreachable recovery objects. Unrelated worktrees and their changes were preserved.
+No production operation or hosted-CI wait was used for qualification.
