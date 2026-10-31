@@ -6,6 +6,7 @@
 #include "flatfile/flatfile_cargo_repository.h"
 #include "ships/ships.h"
 #include "flatfile/flatfile_player_repository.h"
+#include "combat/frag_cap_repository.h"
 #include "flatfile/flatfile_boon_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
@@ -1903,6 +1904,10 @@ int main(int argc, char **argv)
 	// Prepare an award, load it through the ordinary login reader, then commit
 	// the actual full status checkpoint containing its balance and watermark.
 	{
+		frag_cap_state cap;
+		require(frag_cap_flatfile_adopt(root.string(), 25, 150, &cap) ==
+				frag_cap_store_result::ok,
+			"initialize shared frag-cap authority before combat receipt");
 		flatfile_player_domain_record opponent;
 		opponent.pid = 43;
 		opponent.account_name = "divine-victim";
