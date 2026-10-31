@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flatfile-world-quests-") as tempo
             "tests/async/flatfile_world_quest_history_harness.cpp",
             rel("sql.c"),
             rel("flatfile_world_quest_history.c"),
-            rel("flatfile_store.c"),
+            rel("flatfile_store.c"), rel("flatfile_authority_transaction.c"),
             "-Wl,--gc-sections",
             "-lcrypto",
             str(HARNESS_STUBS), "-o",

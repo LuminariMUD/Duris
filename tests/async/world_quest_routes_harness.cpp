@@ -31,6 +31,150 @@ int ship_shop_proc(int, P_char, int, char *)
 {
 	std::abort();
 }
+int crew_shop_proc(int, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_citizen(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_comwoman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_brat(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_holyman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_merchant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_guard(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squire(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_peddler(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_insane(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_executioner(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boss(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_timid(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_shady(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sinister(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_menacing(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_baron(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sparrow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squirrel(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_crow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_mountainman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_salesman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_nomad(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_homeless(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_servant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_gnoll(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_griffon(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boar(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_cub(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_stirge(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_barons_mistress(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_critter(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_fierce(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wolf(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wino(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_watcher(P_char, P_char, int, char *)
+{
+	std::abort();
+}
 int world_quest(P_char, P_char, int, char *)
 {
 	std::abort();
@@ -312,6 +456,8 @@ int main()
 	available();
 	rooms[2].funct = ship_shop_proc;
 	available();
+	rooms[2].funct = crew_shop_proc;
+	available(30);
 	fixture();
 	char_data npc{};
 	npc_only_data npc_data{};
@@ -333,6 +479,26 @@ int main()
 	shops[0].func = nullptr;
 	mobiles[0].func.mob = unknown_mobile;
 	unavailable();
+	for (auto procedure : { bs_barons_mistress, bs_critter, bs_wolf, bs_fierce })
+	{
+		mobiles[0].func.mob = procedure;
+		unavailable();
+	}
+	for (auto procedure :
+	     { bs_boss,	    bs_citizen,	 bs_comwoman,	 bs_brat,	 bs_holyman, bs_merchant,
+	       bs_wino,	    bs_watcher,	 bs_guard,	 bs_squire,	 bs_peddler, bs_timid,
+	       bs_shady,    bs_sinister, bs_menacing,	 bs_executioner, bs_baron,   bs_sparrow,
+	       bs_squirrel, bs_crow,	 bs_mountainman, bs_salesman,	 bs_nomad,   bs_insane,
+	       bs_homeless, bs_servant,	 bs_gnoll,	 bs_griffon,	 bs_boar,    bs_cub,
+	       bs_stirge })
+		for (int room : { 0, 2, 3 })
+		{
+			rooms[npc.in_room].people = nullptr;
+			npc.in_room = room;
+			rooms[room].people = &npc;
+			mobiles[0].func.mob = procedure;
+			available(30);
+		}
 	fixture();
 	obj_data obstacle{};
 	obstacle.R_num = 0;

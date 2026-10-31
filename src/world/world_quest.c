@@ -42,6 +42,7 @@ using namespace std;
 #include "item/random_equipment.h"
 #include "item/item_movement_transaction.h"
 #include "persistence/persistence_checkpoint.h"
+#include "player/player_save_pipeline.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "world/weather.h"
@@ -142,46 +143,21 @@ static int world_quest_share_limit()
 	return BOUNDED(0, static_cast<int>(get_property("world.quest.share.max", 0.000)), 4);
 }
 
-void quest_epic_reward(P_char ch, int /*type*/)
+static int quest_epic_reward_amount(P_char ch)
 {
-	if (GET_LEVEL(ch) > 45 && ch->only.pc->quest_level > 45)
-	{
-		// snprintf(Gbuf1, MAX_STRING_LENGTH, "You gain some epic experience.");
-		// act(Gbuf1, FALSE, quest_mob, 0, ch, TO_VICT);
+	if (GET_LEVEL(ch) <= 45 || ch->only.pc->quest_level <= 45)
+		return 0;
+	const int level = ch->only.pc->quest_level;
+	if (level > 55)
+		return 15;
+	const int low = level - 45;
+	return number(low, level == 54 ? 10 : MIN(low + 2, 11));
+}
 
-		if (ch->only.pc->quest_level == 46)
-			gain_epic(ch, EPIC_QUEST, 0, number(1, 3));
-
-		if (ch->only.pc->quest_level == 47)
-			gain_epic(ch, EPIC_QUEST, 0, number(2, 4));
-
-		if (ch->only.pc->quest_level == 48)
-			gain_epic(ch, EPIC_QUEST, 0, number(3, 5));
-
-		if (ch->only.pc->quest_level == 49)
-			gain_epic(ch, EPIC_QUEST, 0, number(4, 6));
-
-		if (ch->only.pc->quest_level == 50)
-			gain_epic(ch, EPIC_QUEST, 0, number(5, 7));
-
-		if (ch->only.pc->quest_level == 51)
-			gain_epic(ch, EPIC_QUEST, 0, number(6, 8));
-
-		if (ch->only.pc->quest_level == 52)
-			gain_epic(ch, EPIC_QUEST, 0, number(7, 9));
-
-		if (ch->only.pc->quest_level == 53)
-			gain_epic(ch, EPIC_QUEST, 0, number(8, 10));
-
-		if (ch->only.pc->quest_level == 54)
-			gain_epic(ch, EPIC_QUEST, 0, number(9, 10));
-
-		if (ch->only.pc->quest_level == 55)
-			gain_epic(ch, EPIC_QUEST, 0, number(10, 11));
-
-		if (ch->only.pc->quest_level > 55)
-			gain_epic(ch, EPIC_QUEST, 0, 15);
-	}
+void quest_epic_reward(P_char ch, int /*type*/, int amount)
+{
+	if (amount > 0)
+		gain_epic(ch, EPIC_QUEST, 0, amount);
 }
 
 int quest_exp_reward(P_char ch, int /*type*/)
@@ -198,6 +174,16 @@ int quest_exp_reward(P_char ch, int /*type*/)
 	else
 		exp_gain = EXP_NOTCH(ch) * get_property("world.quest.exp.level.other", 1.000);
 	return exp_gain;
+}
+
+static player_world_quest_reward world_quest_prepare_reward(P_char ch, int type, bool final_kill)
+{
+	player_world_quest_reward reward;
+	reward.experience = final_kill ? 0 : quest_exp_reward(ch, type);
+	if (GET_CLASS(ch, CLASS_MERCENARY) && GET_LEVEL(ch) > 24)
+		reward.money = GET_LEVEL(ch) * 1256 + number(1, 500);
+	reward.epic = quest_epic_reward_amount(ch);
+	return reward;
 }
 
 P_obj quest_item_reward(P_char ch)
@@ -226,65 +212,195 @@ P_obj quest_item_reward(P_char ch)
 	return reward;
 }
 
-static bool grant_world_quest_reward(P_char ch, P_obj reward)
+static P_obj world_quest_reward_by_uid(uint64_t uid)
 {
-	if (!reward)
-		return false;
-	if (item_creation_grant_submit_to_player(ch, reward, ch))
-		return true;
-	extract_obj(reward, FALSE);
-	send_to_char("The ownership authority is busy; your quest reward was not created.\r\n", ch);
-	return false;
+	if (!uid)
+		return NULL;
+	for (P_obj object = object_list; object; object = object->next)
+		if (object->obj_uid == uid)
+			return object;
+	return NULL;
 }
 
-void quest_full_reward(P_char ch, P_char quest_mob, int type)
+// The history/after-image is durable before this publishes any completion rewards.
+static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bool final_kill,
+				       P_obj reward, bool already_secured,
+				       const player_world_quest_reward &values)
 {
 	char Gbuf1[MAX_STRING_LENGTH];
-
-	if (!IS_ALIVE(ch) || IS_NPC(ch))
+	if (!final_kill && quest_mob && type == FIND_AND_ASK)
 	{
-		return;
+		wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
+		       quest_mob->player.short_descr);
+		do_action(quest_mob, 0, CMD_NOD);
+		mobsay(quest_mob,
+		       "Thanks for bringing me the message. Here is a little something for your trouble.");
 	}
-
-	P_obj reward = quest_item_reward(ch);
-	const bool reward_granted = grant_world_quest_reward(ch, reward);
-	if (reward_granted)
+	const bool reward_granted = reward && OBJ_CARRIED_BY(reward, ch);
+	if (reward_granted && final_kill)
+		send_to_char_f(ch, "For completing your quest you receive %s&n.\r\n",
+			       reward->short_description);
+	else if (reward_granted && quest_mob)
 	{
 		act("$n gives you $q ", TRUE, quest_mob, reward, ch, TO_VICT);
 		act("$n gives $N $q.", FALSE, quest_mob, reward, ch, TO_NOTVICT);
 	}
+	else if (already_secured)
+		send_to_char("Your completed task is ready for its remaining rewards.\r\n", ch);
 
-	if (GET_CLASS(ch, CLASS_MERCENARY))
+	if (final_kill)
 	{
-		if (GET_LEVEL(ch) > 24)
-		{
-			int temp = GET_LEVEL(ch) * 1256 + number(1, 500);
-			mobsay(quest_mob, "I know you mercenaries don't work for free. Take this.");
-			snprintf(Gbuf1, MAX_STRING_LENGTH, "You receive %s.\r\n",
-				 coin_stringv(temp));
-			send_to_char(Gbuf1, ch);
-			ADD_MONEY(ch, temp);
-		}
-		else
-		{
-			mobsay(quest_mob,
-			       "Sorry, but it's hard to take a little pipsqueek like you seriously as a mercenary. Grow up a bit and you'll start earning your keep.");
-		}
+		wizlog(56, "%s finished quest target %d (kill quest)", GET_NAME(ch),
+		       ch->only.pc->quest_mob_vnum);
+		send_to_char("&+WCongratulations&n&n&+W, you finished your quest!&n\r\n", ch);
+		if (values.experience)
+			gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
 	}
 
-	quest_epic_reward(ch, type);
+	if (values.money > 0)
+	{
+		if (quest_mob && !final_kill)
+			mobsay(quest_mob, "I know you mercenaries don't work for free. Take this.");
+		else if (final_kill)
+		{
+			act("A sneaky gremlin appears near $n and whispers something.", TRUE, ch, 0,
+			    0, TO_ROOM);
+			act("A sneaky gremlin appears beside you.", FALSE, ch, 0, 0, TO_CHAR);
+			act("A sneaky gremlin whispers '&+LMy master sent me with your payment&N'.",
+			    FALSE, ch, 0, 0, TO_CHAR);
+		}
+		snprintf(Gbuf1, MAX_STRING_LENGTH, "You receive %s.\r\n",
+			 coin_stringv(values.money));
+		send_to_char(Gbuf1, ch);
+		ADD_MONEY(ch, values.money);
+	}
+	else if (GET_CLASS(ch, CLASS_MERCENARY) && quest_mob && !final_kill)
+		mobsay(quest_mob,
+		       "Sorry, but it's hard to take a little pipsqueek like you seriously as a mercenary. Grow up a bit and you'll start earning your keep.");
 
-	int exp_gain = quest_exp_reward(ch, type);
-	gain_exp(ch, NULL, exp_gain, EXP_WORLD_QUEST);
-
-	snprintf(Gbuf1, MAX_STRING_LENGTH, "&+WYou gain some experience.&n");
-	act(Gbuf1, FALSE, quest_mob, 0, ch, TO_VICT);
-
-	sql_world_quest_finished(ch, reward_granted ? reward : NULL);
+	quest_epic_reward(ch, type, values.epic);
+	if (!final_kill)
+	{
+		gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
+		if (quest_mob)
+			act("&+WYou gain some experience.&n", FALSE, quest_mob, 0, ch, TO_VICT);
+		else
+			send_to_char("&+WYou gain some experience.&n\r\n", ch);
+	}
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-
 	resetQuest(ch);
 	gmcp_quest_status(ch);
+}
+
+static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool final_kill)
+{
+	P_obj reward = quest_item_reward(ch);
+	const bool retrying_kill = final_kill && ch->only.pc->quest_accomplished ==
+							 PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
+	const player_world_quest_reward values =
+		retrying_kill ? player_world_quest_reward{ ch->only.pc->quest_receiver,
+							   ch->only.pc->quest_shares_left,
+							   ch->only.pc->quest_kill_how_many } :
+				world_quest_prepare_reward(ch, type, final_kill);
+	if (final_kill && !retrying_kill)
+	{
+		ch->only.pc->quest_accomplished = PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
+		ch->only.pc->quest_receiver = values.experience;
+		ch->only.pc->quest_shares_left = values.epic;
+		ch->only.pc->quest_kill_how_many = values.money;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	}
+	if (reward && IS_OBJ_STAT2(reward, ITEM2_CRUMBLELOOT) && !IS_TRUSTED(ch))
+	{
+		extract_obj(reward, FALSE);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"The quest reward is unavailable; your task was not changed.\r\n",
+			ch);
+		return false;
+	}
+	if (!reward || !reward->obj_uid)
+	{
+		if (reward)
+			extract_obj(reward, FALSE);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"The quest reward is unavailable; your task was not changed.\r\n",
+			ch);
+		return false;
+	}
+	const uint64_t reward_uid = reward ? reward->obj_uid : 0;
+	const uint64_t mob_id = quest_mob ? quest_mob->runtime_id : 0;
+	const int target = ch->only.pc->quest_mob_vnum;
+	const int started = ch->only.pc->quest_started;
+	if (!sql_world_quest_finish_async(
+		    ch, reward, true, final_kill, values, 0,
+		    [reward_uid, mob_id, target, started, type, final_kill, values](P_char actor)
+		    {
+			    if (!actor || !actor->only.pc || !actor->only.pc->quest_active ||
+				actor->only.pc->quest_mob_vnum != target ||
+				actor->only.pc->quest_started != started)
+				    return true;
+			    actor->only.pc->quest_accomplished =
+				    final_kill ? PLAYER_WORLD_QUEST_KILL_REWARD_PENDING :
+						 PLAYER_WORLD_QUEST_REWARD_PENDING;
+			    P_char mob = mob_id ? find_character_by_runtime_id(mob_id) : NULL;
+			    if (mob && mob->in_room != actor->in_room)
+				    mob = NULL;
+			    world_quest_deliver_reward(actor, mob, type, final_kill,
+						       world_quest_reward_by_uid(reward_uid), false,
+						       values);
+			    return true;
+		    }))
+	{
+		if (reward)
+			extract_obj(reward, FALSE);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"Your quest history is unavailable; your task was not changed.\r\n",
+			ch);
+		return false;
+	}
+	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		send_to_char("Your quest history is still being secured.\r\n", ch);
+	return true;
+}
+
+void quest_full_reward(P_char ch, P_char quest_mob, int type)
+{
+	if (!IS_ALIVE(ch) || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		return;
+	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED)
+	{
+		// Older unsecured records predate the credited-XP recovery state.
+		if (ch->only.pc->quest_kill_original <= 0)
+			return;
+		gain_exp(ch, NULL,
+			 quest_exp_reward(ch, FIND_AND_KILL) / ch->only.pc->quest_kill_original,
+			 EXP_WORLD_QUEST);
+	}
+	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED ||
+	    ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING)
+	{
+		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
+		return;
+	}
+	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_REWARD_PENDING ||
+	    ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_PENDING)
+	{
+		const bool final_kill = ch->only.pc->quest_accomplished ==
+					PLAYER_WORLD_QUEST_KILL_REWARD_PENDING;
+		const player_world_quest_reward values = { ch->only.pc->quest_receiver,
+							   ch->only.pc->quest_shares_left,
+							   ch->only.pc->quest_kill_how_many };
+		world_quest_deliver_reward(ch, quest_mob, final_kill ? FIND_AND_KILL : type,
+					   final_kill, NULL, true, values);
+		return;
+	}
+	world_quest_start_reward(ch, quest_mob, type, false);
 }
 
 static bool world_quest_matches_target(P_char ch, P_char mob, int type)
@@ -299,13 +415,8 @@ void quest_ask(P_char ch, P_char quest_mob)
 {
 	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_ASK))
 		return;
-
-	wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
-	       quest_mob->player.short_descr);
-	do_action(quest_mob, 0, CMD_NOD);
-
-	mobsay(quest_mob,
-	       "Thanks for bringing me the message. Here is a little something for your trouble.");
+	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		return;
 
 	quest_full_reward(ch, quest_mob, FIND_AND_ASK);
 }
@@ -314,8 +425,10 @@ void quest_kill(P_char ch, P_char quest_mob)
 {
 	if (!world_quest_matches_target(ch, quest_mob, FIND_AND_KILL))
 		return;
+	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		return;
 
-	if (ch->only.pc->quest_accomplished == 1)
+	if (ch->only.pc->quest_accomplished)
 	{
 		send_to_char(
 			"This quest is already finished, go visit your quest master for your reward!\r\n",
@@ -336,40 +449,9 @@ void quest_kill(P_char ch, P_char quest_mob)
 	}
 
 	gain_exp(ch, NULL, exp_gain / ch->only.pc->quest_kill_original, EXP_WORLD_QUEST);
-
 	if (ch->only.pc->quest_kill_how_many - ch->only.pc->quest_kill_original == 0)
 	{
-		send_to_char("&+WCongratulations&n&n&+W, you finished your quest!&n\r\n", ch);
-		wizlog(56, "%s finished quest @%s (kill quest)", GET_NAME(ch),
-		       quest_mob->player.short_descr);
-
-		// One reward per completed quest, handed to the player who completed it rather
-		// than rolled onto the corpse of each kill.
-		P_obj reward = quest_item_reward(ch);
-		const bool reward_granted = grant_world_quest_reward(ch, reward);
-		if (reward_granted)
-		{
-			send_to_char_f(ch, "For completing your quest you receive %s&n.\r\n",
-				       reward->short_description);
-		}
-
-		if (GET_CLASS(ch, CLASS_MERCENARY) && GET_LEVEL(ch) > 24)
-		{
-			int temp = GET_LEVEL(ch) * 1256 + number(1, 500);
-			act("A sneaky gremlin appears near $n and whispers something.", TRUE, ch, 0,
-			    0, TO_ROOM);
-			act("A sneaky gremlin appears beside you.", FALSE, ch, 0, 0, TO_CHAR);
-			act("A sneaky gremlin whispers '&+LMy master sent me with your payment&N'.",
-			    FALSE, ch, 0, 0, TO_CHAR);
-			send_to_char_f(ch, "You receive %s.\r\n", coin_stringv(temp));
-			ADD_MONEY(ch, temp);
-		}
-
-		quest_epic_reward(ch, FIND_AND_KILL);
-		sql_world_quest_finished(ch, reward_granted ? reward : NULL);
-		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-		resetQuest(ch);
-		gmcp_quest_status(ch);
+		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
 	}
 	else
 	{
@@ -438,7 +520,6 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 	{
 		return;
 	}
-
 	half_chop(args, name, who);
 	if (*name && isname(name, "daily"))
 	{
@@ -450,6 +531,11 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			if (!daily.empty())
 				send_to_char(daily.c_str(), ch);
 		}
+		return;
+	}
+	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
+	{
+		send_to_char("Your quest history is still being secured.\r\n", ch);
 		return;
 	}
 	/* When a populated daily assignment exists, show its player-facing details
@@ -485,6 +571,12 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			if (!victim)
 			{
 				send_to_char("Hmm, who do you mean?\r\n", ch);
+				return;
+			}
+			if (IS_PC(victim) &&
+			    player_save_pipeline_world_quest_pending(GET_PID(victim)))
+			{
+				send_to_char("Their quest history is still being secured.\r\n", ch);
 				return;
 			}
 
@@ -797,6 +889,8 @@ world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 	using status = world_quest_target_status;
 	if (!ch || IS_NPC(ch))
 		return status::unproven;
+	if (ch->only.pc->quest_active && player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		return status::unproven;
 	auto &quest = *ch->only.pc;
 	if (quest.quest_accomplished)
 		return status::valid;
@@ -841,9 +935,10 @@ world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 
 bool world_quest_replace(P_char ch, P_char giver)
 {
-	if (!ch || IS_NPC(ch) || !giver || !IS_NPC(giver) || ch->in_room < 0 ||
-	    ch->in_room > top_of_world || giver->in_room != ch->in_room ||
-	    !ch->only.pc->quest_replacement_due || ch->only.pc->quest_accomplished)
+	if (!ch || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)) || !giver ||
+	    !IS_NPC(giver) || ch->in_room < 0 || ch->in_room > top_of_world ||
+	    giver->in_room != ch->in_room || !ch->only.pc->quest_replacement_due ||
+	    ch->only.pc->quest_accomplished)
 		return false;
 	auto &quest = *ch->only.pc;
 	const int remaining = quest.quest_type == FIND_AND_KILL ?
@@ -877,8 +972,8 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 {
 	if (failure)
 		*failure = QUEST_CREATION_NO_FAILURE;
-	if (!ch || IS_NPC(ch) || giver_vnum <= 0 || origin_vnum <= 0 ||
-	    real_room(origin_vnum) == NOWHERE)
+	if (!ch || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)) ||
+	    giver_vnum <= 0 || origin_vnum <= 0 || real_room(origin_vnum) == NOWHERE)
 	{
 		if (failure)
 			*failure = QUEST_CREATION_INVALID_ACTOR;

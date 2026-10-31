@@ -1254,6 +1254,7 @@ struct pc_only_data
 	player_item_retention *retained_items; // owned source selectors; never live objects
 	uint64_t unloaded_components; // checkpoint components its load did not read; not saved
 	uint64_t learned_flight_stops; // permanent catalog bits; saved with experience
+	uint64_t divine_experience_pending; // non-kill feedback for this tick; never saved
 	int pid; // replacement for PC's ->nr
 
 	char *poofIn;
