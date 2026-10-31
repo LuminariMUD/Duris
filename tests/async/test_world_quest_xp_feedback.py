@@ -525,13 +525,13 @@ int main() {
     assert(player.points.curr_exp == 21000 && player.player.level == 20);
     assert(dirty == 1);
     quest_line(1000);
-    // Capped combat awards earn 70% rather than the previous 55%.
+    // Bank every otherwise-awarded XP point even if the retired modifier slot is changed.
     reset();
     player.points.curr_exp = new_exp_table[21];
     exp_mods[EXPMOD_OVER_LEVEL_CAP] = 0.7f;
-    assert(gain_exp(&player, &mob, 1000, EXP_KILL) == 700);
-    assert(player.points.curr_exp == 10700 && player.player.level == 20);
-    assert(output == "&+CEXP:&+G 700 \r\n");
+    assert(gain_exp(&player, &mob, 1000, EXP_KILL) == 1000);
+    assert(player.points.curr_exp == 11000 && player.player.level == 20);
+    assert(output == "&+CEXP:&+G 1000 \r\n");
     exp_mods[EXPMOD_OVER_LEVEL_CAP] = 1.0f;
     // Only the available room under the global limit is credited.
     reset();
@@ -932,8 +932,8 @@ int main() {
     in_test_group = true;
     player.points.curr_exp = 10000;
     exp_mods[EXPMOD_OVER_LEVEL_CAP] = 0.5f;
-    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 100);
-    assert(other.points.curr_exp == 66); // Do not inherit the attacker's level-cap reduction.
+    assert(gain_exp(&player, &mob, 100, EXP_DAMAGE) == 200);
+    assert(other.points.curr_exp == 66); // Tank credit stays unboosted; the retired cap slot affects neither actor.
     other.group = nullptr;
     reset_divine();
     affected_type other_blood{};
@@ -1231,8 +1231,8 @@ int main() {
 
 def main() -> None:
     properties = (ROOT / "lib" / "duris.properties").read_text(encoding="utf-8")
-    assert re.search(r"^exp\.factor\.overCap=0\.700$", properties, re.MULTILINE)
-    assert 'get_property("exp.factor.overCap", 0.700)' in source("limits.c").read_text(encoding="utf-8")
+    assert "exp.factor.overCap=" not in properties
+    assert 'get_property("exp.factor.overCap"' not in source("limits.c").read_text(encoding="utf-8")
     functions = [
         extract_function("limits.c", signature)
         for signature in (

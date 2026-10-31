@@ -52,6 +52,7 @@ DESTRUCTIVE_ACTIONS = {
     "archive", "purge", "pseudonymize", "cascade", "restore_tombstone",
 }
 REQUIRED_NON_DATABASE_STORES = {
+    "file:frag-cap": ("recovery_state", "FLATFILE_ROOT/domains/frag-cap.state"),
     "file:divine-boons": ("recovery_state", "FLATFILE_ROOT/domains/divine-boons.state"),
     "file:epic-zone-state": ("recovery_state", "FLATFILE_ROOT/domains/zone-*.state"),
     "file:epic-stone-claims": ("recovery_state", "FLATFILE_ROOT/domains/stone-*.claim"),

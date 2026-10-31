@@ -68,6 +68,8 @@ enum class persistence_job_kind : uint8_t
 	divine_boon,
 	// Native prepared artifact/guild delivery checks and ACKs.
 	artifact_delivery,
+	// Observe committed shared cap state for game-thread publication.
+	frag_cap,
 };
 
 enum class player_save_apply_outcome : uint8_t

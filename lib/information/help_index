@@ -6730,7 +6730,7 @@ frags to be split among the grouped victors. Typing "fraglist"  will show
 a list of the top ten and lowest ten fraggers in the mud. Or, you may type
 "frag <racewarside>", "frag <classname>" or "<frag racename>".
 ===========================================================================
-See also: TROPHY
+See also: TROPHY, LEVEL CAP
 
 #
 "FROST BEACON" (Spell)
@@ -8540,7 +8540,9 @@ When you create a character on Duris you have the option of creating it as
 increased damage, have greater resistance to damage and have higher hp than
 non-hardcore characters. Hardcore characters also do not require the
 special "potions" as others do to move past level 50, they are able to
-simply exp right up to level 56. However they have a configured limited
+simply exp right up to level 56. Their XP advancement can use two levels
+beyond the faction cap, bounded by 56; see HELP LEVEL CAP.
+However they have a configured limited
 life-span and will cease to exist completely when that configured death limit
 is reached.
 ===========================================================================
@@ -26008,21 +26010,38 @@ LEVEL CAP LVL CAP LVL LIMIT (General Information)
 ===========================================================================
 Syntax: fraglist
 
-Good and Evil unlock one level at a time. After the timer expires, the side
-leading in total frags must earn a fresh qualifying frag. With equal totals,
-either side can claim the unlock. The victim must be no more than five
-levels below the level open to all, and no more than five of the killer's
-side may be in the room, grouped or not.
+Everyone can reach level 31 through normal advancement. Good and Evil then
+race in fixed rounds of 72 real hours. Every positive ordinary PvP frag award
+adds to the recipient's chosen faction score. Neutral and undead races count
+for their chosen Good or Evil side. Death and frag losses do not subtract
+race points. Ship frags, arena scores and staff adjustments do not count.
 
-Intermediate levels open only for the winning side. Spell-circle levels
-31, 36, 41, 46, 51 and 56 open for all sides. Other sides always use the
-shared cap. Each unlock begins a three-day wait; waiting alone cannot
-unlock another level. Cap unlocks no longer grant an experience boon.
+At the deadline, the leading faction gets the next highest cap and the other
+faction gets the level immediately below it. A trailing winner can catch up
+and take the lead in one result. The normal faction caps stay at most one
+level apart. There is no minimum score: 0.20 beats 0.10, and no kill opens a
+level before the deadline.
 
-FRAGLIST shows the shared and side caps, totals and remaining timer.
-Hardcore may advance two levels beyond its side's cap, never beyond 56.
-The release preserves existing caps. Future season resets start at shared
-level 30 with no waiting period before the first qualifying frag.
+A tie raises EACH faction's existing cap by one, including a 0-0 tie on a
+quiet server. For example, Evil 32 / Good 31 becomes Evil 33 / Good 32 on a
+tie. At circle levels 36, 41, 46, 51 and 56, BOTH caps become that level,
+regardless of the race result. At 56 the clock ends. All round scores reset
+after each result; surplus never carries forward. Normal frag eligibility,
+sharing, losses and other rewards remain in effect.
+
+FRAGLIST shows both caps, this round's earned scores and its deadline.
+The displayed leader is provisional until the result is recorded. Pending
+or failed recording includes an operation reference; give it to staff for
+receipt recovery. Replays do not count again. Late outcomes from a closed
+round keep ordinary rewards but cannot change the closed race result.
+The saved clock and scores survive logout, restart and downtime.
+
+XP banks without a cap-specific penalty, within normal storage limits.
+Unlocks grant permission, not free levels: an appropriate positive XP gain
+can spend banked XP. The normal level-50 XP ceiling and epic-stone rules
+remain. Hardcore's XP allowance is faction cap +2, bounded by level 56.
+New seasons start at 31/31. Current-season activation preserves opened
+normal access and validates the previous cap range and deadline.
 ===========================================================================
 See also: FRAGS, HARDCORE
 #
@@ -26971,7 +26990,8 @@ Syntax: fraglist [normal | goodie | evil | undead | <race> | <class> | ship | gu
 Displays the current level-cap status, racewar frag totals, and the top
 and lowest player-kill (frag) leaderboards. You can abbreviate 'fraglist'
 as 'frag' and filter by side, race, class, 'ship' frags or 'guild' frags.
-Read 'help frag' and 'help frags' for how frags are earned and lost.
+Read 'help frag' and 'help frags' for rewards; 'help level cap' explains
+the shared clock and your personal contribution shown outside cached rankings.
 #
 Bard Songs
 Read 'help bard skills' for the Bard song and instrument progression

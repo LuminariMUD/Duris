@@ -72,7 +72,7 @@ with lock as publication:
                 rel("flatfile_shopkeeper_repository.c"),
                 rel("flatfile_auction_repository.c"),
                 rel("flatfile_boon_repository.c"),
-                rel("flatfile_player_domain_repository.c"),
+                rel("flatfile_player_domain_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
                 rel("flatfile_authority_transaction.c"),
                 rel("player_snapshot_codec.c"),
                 rel("flatfile_store.c"),

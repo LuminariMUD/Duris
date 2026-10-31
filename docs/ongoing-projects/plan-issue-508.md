@@ -1,10 +1,10 @@
 # Issue #508: a 72-hour Good/Evil frag race with guaranteed progression
 
-Status: **implementation resumed; replacement faction-rules PR #519 is ready for review**.
-Updated 2026-10-31. The code and tests in the implementation worktree still contain
-parts of the superseded personal-acceleration policy. They are not qualified for
-this contract. The owner has authorized implementation of this revised plan. Merge, release and
-production deployment remain separate.
+Status: **implemented and locally qualified; PRs #519, #521 and #523 ready for review**.
+Updated 2026-10-31. Active checkout is `/home/aiwithapex/projects/duris-issue-508-faction`,
+branch `branch/issue-508-faction-runtime`. The owner authorized implementation of
+this revised contract. Merge, release, migration and production deployment remain
+separate. Earlier personal-policy work is preserved in the original checkout.
 
 The controlling decisions are the owner's latest clarification in this chat:
 positive PvP frags pool by chosen Good/Evil faction during each three-day round;
@@ -40,10 +40,11 @@ additional Hardcore allowance.
 new currency, new services/schedulers, personal contribution targets, damage-based
 scoring, production wipes, or a second persistence/reward queue.
 
-**This pass's file and proof:** update this plan, inspect owning source and the
-existing PR stack, check the policy mathematically and validate document links.
-Preserve all pending source/test/help edits. Implementation below is future work;
-planning verification is not evidence that the server already follows these rules.
+**Implementation and proof:** the owners and accepted rules below are implemented
+in the replacement stack. The completion record distinguishes native policy,
+transaction/storage, and loaded-world evidence. Original pending work was reused
+selectively through a three-way merge; current master's #496 XP feedback was
+preserved. The original checkout remains a superseded recovery copy.
 
 ## Fixed gameplay contract
 
@@ -215,7 +216,8 @@ Reuse immutable [0057_shared_frag_cap](../../migrations/immutable/0057_shared_fr
 sequence 58, which adds one nullable MEDIUMBLOB to the existing singleton. The
 column is suitable for the revised snapshot; no new SQL schema is required merely
 because the serialized policy changes. Do not edit sealed migrations or fabricate
-new fingerprints. Recheck migration numbering before future implementation.
+new fingerprints. The final upstream check still has migration 0056 as its head; 0057 is the
+next additive migration. Recheck this again when merging/deploying.
 
 The snapshot is the sole authority. In the same transaction publish projections:
 `level = min(Good cap, Evil cap)`, `level_good = Good cap`, `level_evil = Evil cap`,
@@ -249,11 +251,11 @@ existing raw leaderboard cache and its old-format rejection can remain. Personal
 pending/failure feedback still carries the combat operation reference for recovery;
 there is no personal progress target. At 56, stop showing an unlock race/requirement.
 
-Update `lib/information/help_index`, `docs/reference/CODEBASE.md`,
-`docs/reference/CLASSES.md` and `lib/frag_cap.cfg` during implementation. They still
-contain superseded wording in the pending patch and are not revised in this pass.
-Hardcore help must state that its +2 XP allowance is separate from the normal
-one-level faction gap. No news publication or production help sync is implied.
+Updated `lib/information/help_index`, its overriding `help/duris_help_parsed.hlp`
+entries, `docs/reference/CODEBASE.md`, `docs/reference/CLASSES.md` and
+`lib/frag_cap.cfg`. Hardcore help explicitly separates its +2 XP allowance from
+the normal one-level faction gap. No news publication or production help sync
+has occurred.
 
 ## Current-season adoption, fresh resets and rollback
 
@@ -301,79 +303,78 @@ or use a forward fix. An old flatfile binary ignores this state and restores its
 old floor; old SQL maintenance only updates projections. Neither is a safe way to
 run an activated race. Never restore a lower cap or clear scores as a shortcut.
 
-## Source alignment review and work remaining
+## Final source alignment review
 
-Reviewed against the current checkout on 2026-10-31:
+- `frag_cap.c/.h` now implements the compressed top/advantage state, two exact
+  faction counters, fixed deadlines and the 97-byte v2 codec. No personal map,
+  target, qualification timestamp or early-opening path remains.
+- Both real combat repositories call `frag_cap_apply_combat()` inside the parent
+  transaction after receipt replay checks. The helper uses captured faction,
+  never PID or race identity, to select the bucket.
+- SQL saves the lower common cap and both effective side caps. Adoption validates
+  the old floor/maximum and custom clamping; flatfile prepares the same snapshot
+  under the existing authority lock. The full-group bound is 83 operations, with
+  an explicit conservative byte bound below the existing 256 MiB journal limit.
+- The existing maintenance job and store locks settle every deadline once.
+  Flatfile routes before SQL acquisition; SQL retains its time-budget rollback.
+- The runtime observes on the existing writer, preserves confirmed state during
+  read errors/backpressure, and publishes only newer revisions. Boot logs both
+  actual caps, revision, cutoff and deadline. Announcements show confirmed caps;
+  score changes remain provisional until the deadline.
+- Both `sql_level_cap()` branches select the chosen faction. XP and epic-stone
+  callers retain their normal checks. XP banks fully within existing ceilings,
+  and current master's credited Divine feedback remains intact.
+- Status/help/reference text consistently describes the new race. Current race
+  scores/caps stay outside cached historical rankings. The obsolete countdown
+  codec and acceleration settings are removed; history/telemetry IDs remain.
+- Native tests, real receipt tests and loaded-world fixtures now assert faction
+  pooling, ties and circles. Mechanical native compiler-list changes supply real
+  dependencies; they do not claim every unrelated campaign was rerun.
 
-- **Engine/codec/config:** `frag_cap.c/.h` still implements one shared cap,
-  per-PID points and acceleration. Replace that policy and its versioned state
-  with the rules above; update `frag_cap_config.c/.h`. Preserve useful time bounds,
-  atomic preparation, codec validation and the explicit-now test seam.
-- **Combat adapters:** both real parent transaction hooks already exist in the
-  pending patch. `frag_cap_apply_combat()` currently passes PID/points and discards
-  the captured `racewar`; route Good/Evil scores using that existing field. The
-  capture owner is [fight.c](../../src/combat/fight.c). No reward producer redesign.
-- **Storage/adoption:** transaction borrowing, atomic journal preparation and
-  migration 0057 are reusable. `frag_cap_sql_save()` currently zeros both side
-  projections; change them as specified. Fix the identified legacy-maximum
-  adoption edge before enabling the revised policy.
-- **Timer/publication:** the pending flatfile maintenance route, existing scheduler,
-  and asynchronous runtime observer are reusable. Change the settlement result,
-  status and announcement semantics; remove the acceleration-secured path.
-- **Readers/XP:** both `sql_level_cap()` branches currently ignore the side and
-  return the same cap. Restore side selection from the new authority. Retain the
-  full-XP banking change and test both [XP](../../src/world/limits.c) and
-  [epic-stone](../../src/world/epic.c) consumption of the selected faction cap.
-- **Player/reference text:** the pending help/config/reference changes still say
-  shared access, personal progress and acceleration. Rewrite those at activation;
-  keep cached ranking text free of current race/cap data.
-- **Tests:** existing policy, storage, publication and journey harnesses use the
-  earlier contract. Revise behavior assertions and fixtures, not just output
-  strings. In particular, the old cross-PID non-pooling and twenty-winner failure
-  assertions must become faction-pooling cases.
+Neutral/undead race identity does not select another score bucket. The capture
+continues to record `GET_RACEWAR(ch)`; direct routing tests pool distinct PIDs on
+Good/Evil and do not create a counter from historical third-side enum values.
+Account and character-creation policy itself is unchanged.
 
-Current character-creation/capture code retains historical side enums, but the
-accepted live policy has two chosen factions. Use captured chosen side consistently
-for neutral/undead races and add representative regressions; do not derive credit
-from historical race labels or turn this into an account-policy refactor.
+## Implementation acceptance record
 
-## Focused future qualification
+The local implementation gates below passed. Production inventory/activation is
+a separate authorized operation; no production policy or player state was inspected.
 
-These are implementation acceptance gates, not claims completed by this plan edit:
-
-- [ ] Fresh 31/31; first and later regular results at 72 hours; no early opening or
+- [x] Fresh 31/31; first and later regular results at 72 hours; no early opening or
       minimum frag threshold; positive-score and zero-score ties.
-- [ ] All examples above; repeated/alternating winners, trailing winner +2,
+- [x] All examples above; repeated/alternating winners, trailing winner +2,
       ties preserving the existing lead, every circle override, terminal 56/56.
-- [ ] Across all reachable cap states: neither cap decreases, normal gap <=1,
+- [x] Across all reachable cap states: neither cap decreases, normal gap <=1,
       highest cap advances once per elapsed round, 15/75-day schedules.
-- [ ] Positive faction pooling across PIDs/alts; twenty +5 awards =100 points;
+- [x] Positive faction pooling across PIDs/alts; twenty +5 awards =100 points;
       exact ties; less-than-one-frag wins; all scores continue counting; checked
       overflow, negative/zero/non-PvP exclusions and unchanged ordinary rewards.
-- [ ] Captured Good/Evil choice for neutral/undead races; historical leaderboard
+- [x] Captured Good/Evil choice for neutral/undead races; historical leaderboard
       leadership and current frag balances cannot change a round result.
-- [ ] Stable admission/cutoff, exact-deadline membership, whole-event assignment,
+- [x] Stable admission/cutoff, exact-deadline membership, whole-event assignment,
       no carry, late closed-round outcomes, replay and timer/combat contention.
-- [ ] SQL rollback/ambiguous commit and flatfile interrupted journal/image recovery;
+- [x] SQL rollback/ambiguous commit and flatfile interrupted journal/image recovery;
       reopen/restart, corruption, bounded full-group images and missing-state errors.
-- [ ] Downtime: saved scores decide one round, later elapsed empty rounds tie;
+- [x] Downtime: saved scores decide one round, later elapsed empty rounds tie;
       fixed deadlines, no score reuse, no extra transition from duplicate ticks.
-- [ ] Legacy caps below 31, divergent caps, customized old floor/maximum,
-      earlier/future/expired deadline, existing 56, repeated adoption and any real
-      intermediate-format conversion identified during authorized target inventory.
-- [ ] Fresh SQL reset and resumed cutoff/clock fencing; fresh flatfile root;
+- [x] Legacy caps below 31, divergent caps, customized old floor/maximum,
+      earlier/future/expired deadline, existing 56 and repeated adoption. Unsupported/corrupt versions fail visibly;
+      no real intermediate-policy authority was found in this local work. Any
+      target conversion remains conditional on authorized deployment inventory.
+- [x] Fresh SQL reset and resumed cutoff/clock fencing; fresh flatfile root;
       preserved earned levels/balances and rejection of old-season credit.
-- [ ] Correct faction readers for normal XP and epic stones; full XP banking,
+- [x] Correct faction readers for normal XP and epic stones; full XP banking,
       global/storage/overflow bounds, ordinary XP ceiling 50 and Hardcore +2<=56.
-- [ ] Cached/uncached current race status, provisional leadership/ties, pending and
+- [x] Cached/uncached current race status, provisional leadership/ties, pending and
       failure feedback, confirmed-state retention, no older-revision regression or
       duplicated announcements.
-- [ ] A real loaded-world PvP -> durable faction score -> normal maintenance ->
+- [x] A real loaded-world PvP -> durable faction score -> normal maintenance ->
       distinct faction caps -> legitimate banked-XP advancement -> restart journey
       on MariaDB and flatfile. Include a no-PvP tied-round case; use the existing
       fixture's offline deadline seeding, never a gameplay clock command.
 
-Reuse the existing focused entry points after updating their policy assertions:
+Focused entry points used for qualification:
 
 ```sh
 python3 tests/async/test_frag_cap.py
@@ -403,39 +404,38 @@ all fixtures remain disposable and must not source production credentials.
 
 ## Git and continuation handoff
 
-Implementation checkout: `/home/aiwithapex/projects/duris-issue-508`.
-Current working branch: `branch/issue-508-frag-cap-runtime`, based on `a68089af2`.
-It contains the intentionally preserved uncommitted activation/help/test work,
-including `frag_cap_runtime.c/.h`, `frag_cap_journey_fixture.cpp`,
-`frag_cap_runtime_harness.cpp`, `test_frag_cap_journey.py` and
-`test_frag_cap_runtime.py`. Do not discard or accidentally commit that work during
-this plan-only task. Other worktrees, including bartender work, remain separate.
+Active implementation: `/home/aiwithapex/projects/duris-issue-508-faction`, branch
+`branch/issue-508-faction-runtime`. Current master base is `aa77a2030`, including
+#496. The original `/home/aiwithapex/projects/duris-issue-508` remains a superseded
+recovery checkout; its pending files were preserved. Other worktrees were untouched.
 
-Existing stack:
+Replacement review stack:
 
-- Draft [#514](https://github.com/LuminariMUD/Duris/pull/514), head
-  `branch/issue-508-frag-progression` at `422a9e7cc`, base `master`: rules/codec and
-  original plan. It still implements the superseded personal policy.
-- Draft [#515](https://github.com/LuminariMUD/Duris/pull/515), head
-  `branch/issue-508-frag-cap-storage` at `a68089af2`, base #514: storage/migration.
-  Its transport is reusable, but tests/adoption/projections need the new contract.
+- [#519](https://github.com/LuminariMUD/Duris/pull/519), branch
+  `branch/issue-508-faction-rules`, commit `d6ec78fc9`, base master: engine/codec
+  and exhaustive native rules.
+- [#521](https://github.com/LuminariMUD/Duris/pull/521), branch
+  `branch/issue-508-faction-storage`, commit `9cd4a14ab`, base #519: both adapters,
+  immutable migration 0057, compatibility contract and storage/reset tests.
+- [#523](https://github.com/LuminariMUD/Duris/pull/523), branch
+  `branch/issue-508-faction-runtime`, activation commit `f6c7bc3af`, base #521:
+  real combat/maintenance, boot/publication/readers, full XP banking, status/help
+  and runtime regressions. A documentation-only follow-up records the final stack.
 
-These are not ready to merge as the accepted faction-race implementation. Both
-were returned to draft and their descriptions now point to the accepted plan.
-The documentation-only review is [#518](https://github.com/LuminariMUD/Duris/pull/518),
-head `branch/issue-508-faction-race-plan`, base #515. Policy revision commit
-`36b2270c3` changes only this document. The local runtime branch contains the same
-plan commit while its implementation remains uncommitted. No release tag belongs
-to this step. Future implementation must rescope the parent PRs before this stack
-is treated as the new gameplay feature.
+The earlier #514/#515 drafts and plan review #518 were closed as superseded,
+with replacement links; their branches/work remain preserved. Review the replacement stack, not those
+old personal-policy implementation diffs. No force rewrite, merge, release tag or
+production operation has occurred. Keep future checks proportional and reuse the
+qualified unchanged migration/receipt evidence rather than rerunning unrelated
+Nexus, shop, cargo or quest campaigns.
 
-After a later request to implement: revise the rules/codec/config and native cases;
-then the faction adapters/adoption/projections; then runtime/readers/help and real
-journeys. Keep focused commits and reviewable dependent PRs as each chunk passes.
-Update PR titles/bodies to the final policy and maintain the stack without force
-rewriting existing history. Inspect upstream/migration drift first. Rough remaining
-implementation/qualification estimate is 3-5 hours, subject to actual findings;
-the earlier minute-by-minute plan for the superseded policy is retired.
+Before deployment, apply 0057 through the maintained runner, retain the actual old
+configuration for validated adoption, and inventory any existing snapshot format.
+Boot refuses corrupt/unsupported snapshots. Never delete authority to force a new
+season, downgrade to the old flatfile floor or run old SQL projection-only
+maintenance after activation. The adoption/reset/rollback section remains the
+operator handoff; record actual production caps/cutoff/deadline only when that
+operation is explicitly authorized.
 
 ## Evidence retained from the earlier implementation
 
@@ -466,7 +466,7 @@ qualification**. Results and failure/retry history are in local
 - `make -j4 world` generated the missing local world files for the isolated
   journeys. No tracked area files, production data or credentials were changed.
 
-## This planning review's completion record
+## Historical plan review before implementation resumed
 
 The accepted requirements, implementation owners, migration/reset/rollback rules,
 examples, and future acceptance cases have been reconciled above. Existing source
@@ -487,30 +487,108 @@ All 73 pre-existing non-plan paths were verified byte-for-byte unchanged.
 
 The reviewed plan is committed and pushed in [#518](https://github.com/LuminariMUD/Duris/pull/518).
 The superseded implementation PRs #514/#515 are drafts with an explicit policy
-revision notice. Gameplay implementation remains a later task.
+revision notice. At that checkpoint gameplay implementation remained a later
+task; the implementation completion record below supersedes that status.
 
-## Resumed implementation — 2026-10-31
+## Revised implementation completion record — 2026-10-31
 
-Active checkout is now `/home/aiwithapex/projects/duris-issue-508-faction`.
-The original `/home/aiwithapex/projects/duris-issue-508` retains the earlier pending
-activation work for selective reuse. A clean replacement stack avoids publishing
-superseded policy code in the new foundation PRs; #514/#515 stay draft references.
-Current master is `aa77a2030`, including #496's credited Divine XP feedback. Preserve
-that newer XP source/test change when reusing the old activation patch.
+- Both server builds passed using separate backend objects/binaries. Formatting,
+  whitespace and staged clang-tidy passed. Upstream and migration numbering were
+  rechecked against current master.
+- Native policy passed all 455 transitions across 66 reachable states plus exact
+  admission, pooling, no early unlock, catch-up, adoption, deadline freezing,
+  codec corruption and arithmetic failure cases.
+- Native store tests passed under ASan/UBSan on flatfile, MariaDB 10.11 and
+  MySQL 8.0. Real combat tests passed flatfile interruption/recovery and SQL
+  rollback/replay. An injected lost COMMIT acknowledgement returned ambiguous;
+  retry recovered the actual committed receipt without adding points again.
+- `run_level_cap_mysql.py` passed on MariaDB and MySQL 8.0, including concurrent
+  score/timer writers, zero/positive ties, lead flips, circle equality, delayed
+  admission, catch-up and corrupted/missing authority. Each test run now owns a
+  unique harness output, allowing independent disposable engine runs safely.
+- `test_frag_cap_runtime.py` passed ASan/UBSan checks for coalesced observation,
+  distinct viewer caps, failed reads and writer refusal, stale revisions, quiet
+  boot recovery and exactly-once cap announcements.
+- Full XP feedback/banking passed both backend variants with the new #496 cases
+  preserved. Ordinary PvP rewards/codec, Hardcore config, singleton, cache framing,
+  maintenance contracts, lifecycle inventory, native epic paths and help catalog/
+  live-parser checks passed. The optional standalone SQL epic leg was skipped;
+  native epic checks and the real SQL combat/receipt suite passed.
+- The existing native `run_pwipe_handoff_mysql.py` suite passed with faction
+  projections and the stable reset clock, including fencing, retries, lost
+  acknowledgements and preserved fresh state. Its optional full-server cold-reset
+  recovery leg was not requested; no production wipe occurred.
+- Loaded-world `test_frag_cap_journey.py` passed on **both backends**: legitimate
+  mortal PvP changes the provisional leader, ordinary maintenance opens distinct
+  caps, banked XP advances only on a legitimate action, and restart preserves the
+  result. A later 0-0 round preserves the 33/32 lead; another quiet circle opens
+  36/36. None of those cap results grants a free character level. The SQL leg
+  verified real private Redis cached/uncached views; flatfile verified its native
+  uncached path and the shared native cache framing test covers the cache codec.
+- Cosmetic logging and restored budget/backpressure handling were checked with
+  focused native tests/builds; valid normal-path journey evidence was reused.
+  Final local logs are under `bin/tests/` (`journey-*.log`, `sql-combat.log`,
+  `sql-lifecycle.log`, `lifecycle-mysql.log`, `reset.log`, `runtime-tidy.log`).
 
-- Rules [#519](https://github.com/LuminariMUD/Duris/pull/519), branch
-  `branch/issue-508-faction-rules` at `d6ec78fc9`, base master: new engine and fixed
-  97-byte v2 snapshot. Native tests passed all 455 transitions plus pooling,
-  boundaries, delayed admission, catch-up, adoption, frozen deadlines, corruption
-  and checked overflow. `make -C src -j4`, formatting and staged clang-tidy passed.
-- Storage is being prepared on `branch/issue-508-faction-storage`, based on #519.
-  It keeps migration 0057 and both existing store mechanisms, routes captured
-  Good/Evil awards, publishes the lower shared cap and both faction projections,
-  and validates the old configured maximum during SQL adoption. Flatfile native
-  parent-receipt/recovery tests passed. Both SQL engine checks passed on disposable MariaDB 10.11 and MySQL 8.0,
-  including reset replay, legacy maximum clamping, faction projections, migration
-  replay and full runtime metadata. Seven runtime compatibility tests and 26
-  immutable runner tests also passed. The MariaDB server build passed.
-- The prior gameplay journeys are transport evidence only. Revised runtime,
-  faction readers, help/config, source contracts and gameplay journeys still need
-  implementation and qualification. Do not claim the feature is complete yet.
+No production migration, live gameplay deployment, news publication or release
+tag is part of this delivery. Actual live caps and target snapshot inventory are
+unverified until deployment is authorized.
+
+
+## PR #523 durability review follow-up — 2026-10-31
+
+All three review findings were valid and addressed. Combat admission now syncs a
+checksummed complete command before pending-credit feedback or live rewards. It
+reuses the existing codec, atomic file store and single writer. Queue refusal keeps
+the admitted intent for retry; boot validates and replays the original IDs/timestamps.
+Pre-commit failures retain the writer's participant fences until repair succeeds;
+committed rejection receipts are distinguished explicitly and their full intents
+remain available to staff. Successful commands are retained privately as `.recorded`
+evidence for ordinary reward reconciliation. Ordinary balances continue to use
+player saves; replay does not blindly add live rewards again. The operational recovery
+contract and file format are in `docs/persistence/CRITICAL_COMMAND_PIPELINE.md`.
+
+The SQL player/ledger loader now distinguishes an absent player from query/fetch or
+invalid-data failures. Database errors roll back the parent rather than committing
+an `ENOENT` rejection. Actual MariaDB 1205 timeouts were exercised in all three reads
+(`player_data`, `combat_frag_ledger`, `epic_ledger`), followed by successful retry and
+exactly-once receipt replay.
+
+Fresh local validation passed:
+
+```sh
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_flatfile"
+python3 tests/async/test_combat_outcome_transactional_cutover.py
+python3 tests/async/test_critical_command_coordinator.py
+python3 tests/async/test_divine_boon_delivery.py
+python3 tests/async/test_flatfile_player_domain_repository.py
+bash tests/async/run_combat_outcome_schema_mysql.sh
+python3 tests/async/test_frag_cap.py
+python3 tests/async/test_frag_cap_runtime.py
+python3 tests/async/test_frag_cap_config_contract.py
+python3 tests/async/test_frag_cap_journey.py --backend flatfile --server bin/server/dms_flatfile
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_frag_cap_journey.py --backend mariadb --server bin/server/dms_new
+./scripts/format.sh --staged --check
+./scripts/tidy.sh --staged
+git diff --check
+```
+
+Both native repositories passed a real SIGKILL after coordinator/writer enqueue and
+before repository commit, full intent reload, corrupt-cap failure, another restart,
+repair, successful replay and duplicate replay. Corrupted journal checksums fail
+closed without deleting evidence. ASan/UBSan publication tests also proved that the
+actual combat adapter persists before enqueue, retries unavailable admission with
+the same ID/time, and replays after reset without duplicating live rewards. Both
+loaded-world journeys repeated PvP, cap settlement, banked-XP advancement, restart,
+the quiet 33/32 tie and the quiet 36/36 circle. Logs are private local artifacts under
+`bin/tests/pr523-*.log`.
+
+While these fixes were being qualified, #519 and #521 landed and the remote runtime
+branch was synchronized in `8a87f6d9e`. That update and current master `b224db15f` were
+merged into this continuation without overwriting local edits or rewriting published
+history. #523 now targets master directly; its foundations are already carried forward.
+The branch is suitable for a squash merge when approved. No release tag is warranted
+for an unmerged feature. Git maintenance used `gc --no-prune` with cruft packs, retaining
+unreachable recovery objects. Unrelated worktrees and their changes were preserved.
+No production operation or hosted-CI wait was used for qualification.

@@ -77,7 +77,7 @@ SOURCES = [
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",
     "flatfile_auction_repository.c", "flatfile_boon_repository.c",
-    "flatfile_player_domain_repository.c", "flatfile_authority_transaction.c",
+    "flatfile_player_domain_repository.c", "frag_cap.c", "frag_cap_repository.c", "frag_cap_config.c", "flatfile_authority_transaction.c",
     "player_snapshot_codec.c", "flatfile_store.c", "item_transfer_command.c",
     "shop_trade_command.c", "critical_command.c", "epic_command.c", "zone_touch_command.c",
     "currency_command.c", "auction_command.c", "combat_outcome_command.c", "artifact_guild_command.c", "boon_reward_command.c",

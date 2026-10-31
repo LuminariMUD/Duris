@@ -20,6 +20,8 @@
 #include "persistence/persistence_observability.h"
 
 #include <cassert>
+#include <filesystem>
+#include "flatfile/flatfile_store.h"
 #include <cerrno>
 #include <algorithm>
 #include <cmath>
@@ -27,6 +29,8 @@
 #include <iostream>
 #include <limits>
 #include <mutex>
+
+void frag_cap_runtime_refresh() {}
 
 P_room world;
 zone_data *zone_table;
@@ -44,6 +48,8 @@ int last_artifact_type = -1;
 bool artifact_available = true;
 bool worker_pending = false, command_pending = false;
 critical_command submitted;
+std::string combat_journal;
+bool combat_queue_available = true;
 std::mutex pipeline_mutex;
 uint32_t trade_player_pid = 0;
 player_pending_trade_snapshot trade_capture;
@@ -112,6 +118,25 @@ bool critical_command_coordinator_is_fenced(const critical_entity_key &, critica
 }
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
+	if (command.type == critical_command_type::combat_outcome)
+	{
+		char reference[CRITICAL_COMMAND_ID_HEX_SIZE];
+		assert(critical_operation_id_to_hex(command.operation_id, reference,
+						    sizeof(reference)));
+		std::vector<uint8_t> persisted;
+		assert(flatfile_read(combat_journal + "/combat-intents",
+				     std::string(reference) + ".intent",
+				     CRITICAL_COMMAND_MAX_ENCODED_BYTES + 32, &persisted,
+				     nullptr) == flatfile_read_result::ok);
+		critical_command restored;
+		assert(persisted.size() > 32 &&
+		       critical_command_decode(persisted.data(), persisted.size() - 32,
+					       &restored) == critical_command_codec_result::ok &&
+		       critical_command_equal(command, restored));
+		submitted = std::move(command);
+		return combat_queue_available ? critical_submit_result::accepted :
+						critical_submit_result::unavailable;
+	}
 	submitted = std::move(command);
 	return critical_submit_result::accepted;
 }
@@ -240,7 +265,7 @@ float get_epic_zone_alignment_mod(int, ubyte)
 // ORDINARY_PVP_MATH
 // PREPARED_PVP_MATH
 
-int main()
+int main(int argc, char **argv)
 {
 	world = rooms;
 	zone_table = zones;
@@ -439,6 +464,11 @@ int main()
 
 	// The real outcome submitter defers this epic delta until a committed result.
 	combat_outcome_transaction_reset_for_tests();
+	assert(argc == 2);
+	std::filesystem::create_directory(argv[1]);
+	std::filesystem::permissions(argv[1], std::filesystem::perms::owner_all);
+	combat_journal = argv[1];
+	assert(combat_outcome_transaction_init(argv[1]));
 	pc.epics = 100;
 	pc.epic_revision = pc.divine_boon_delivery_seq = 0;
 	pc.divine_boon_delivery_ready = true;
@@ -448,9 +478,33 @@ int main()
 	payload.participants[0].epic_base = 100;
 	payload.participants[0].epic_spill_blood = 0;
 	critical_operation_id admitted;
+	// Restart the actual transaction adapter with an admitted, uncommitted
+	// command. Preserve the ID/time and never reapply an already-live balance.
+	auto restart_payload = payload;
+	restart_payload.participants[0].frag_delta = 3;
+	const auto live_frags = pc.frags;
+	critical_operation_id restart_id;
+	assert(combat_outcome_transaction_submit(restart_payload, nullptr, &restart_id));
+	const auto before_restart = submitted;
+	assert(pc.frags == live_frags + 3);
+	combat_outcome_transaction_reset_for_tests();
+	assert(combat_outcome_transaction_init(argv[1]));
+	assert(critical_command_equal(submitted, before_restart));
+	assert(pc.frags == live_frags + 3 && combat_outcome_transaction_health_copy().pending == 1);
+	assert(combat_outcome_intent_complete(restart_id));
+	combat_outcome_transaction_reset_for_tests();
+	assert(combat_outcome_transaction_init(argv[1]));
+	assert(combat_outcome_transaction_health_copy().pending == 0);
+	pc.frags = live_frags;
 	// A rejected parent never publishes epic or artifact rewards.
 	critical_operation_id rejected;
+	combat_queue_available = false;
 	assert(combat_outcome_transaction_submit(payload, nullptr, &rejected));
+	const auto durable_admission = submitted;
+	assert(combat_outcome_transaction_health_copy().pending == 1 && pc.epics == 100);
+	combat_queue_available = true;
+	combat_outcome_transaction_pulse();
+	assert(critical_command_equal(durable_admission, submitted));
 	critical_completion failure = {};
 	failure.operation_id = rejected;
 	failure.outcome = critical_apply_outcome::terminal_failure;
