@@ -21,10 +21,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const struct hardcore_config defaults = { true, true,  1,      false, true,  true,  true,
-						 true, true,  50,     2,     1.20f, 1.09f, 0.91f,
-						 110,  1.60f, 1.50f,  1000,  10000, 100,   2,
-						 100,  25,    100000, true,  true,  100 };
+static const struct hardcore_config defaults = { true, true,  1,     false,  true,  true,  true,
+						 true, true,  50,    2,	     1.20f, 1.09f, 0.91f,
+						 110,  1.60f, 1.50f, 1000,   10000, 100,   100,
+						 2,    100,   25,    100000, true,  true,  100 };
 
 static struct hardcore_config active;
 static bool config_initialized;
@@ -156,6 +156,7 @@ static void apply_value(const char *key, const char *value)
 	INT_KEY("score.level.points", score_level_points, 0, 1000000)
 	INT_KEY("score.experience.divisor", score_experience_divisor, 1, 100000000)
 	INT_KEY("score.frag.points", score_frag_points, 0, 1000000)
+	INT_KEY("score.epic.points", score_epic_points, 0, 1000000)
 	INT_KEY("score.multiclass.multiplier", score_multiclass_multiplier, 0, 100)
 	INT_KEY("score.killer.bonus", score_killer_bonus, 0, 1000000)
 	INT_KEY("score.death.penalty.points", score_death_penalty_points, 0, 1000000)

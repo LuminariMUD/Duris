@@ -291,34 +291,40 @@ void checkHallOfFame(P_char ch, char killer[1024])
 
 long getLeaderBoardPtsWithShipFrags(P_char ch, int ship_frags)
 {
-	if (!IS_PC(ch))
+	if (!ch || !IS_PC(ch) || GET_LEVEL(ch) < 1 || GET_LEVEL(ch) >= AVATAR)
 		return 0;
 
 	const struct hardcore_config *config = hardcore_config_get();
+	const long frags = ch->only.pc->frags;
+	const long valid_frags = frags > -config->score_invalid_frag_threshold &&
+						 frags < config->score_invalid_frag_threshold ?
+					 frags :
+					 0;
+	const struct affected_type *earned = get_spell_from_char(ch, TAG_EPICS_GAINED);
+	const long epics = earned ? MAX(0, earned->modifier) : 0;
 
-	// debug("ch: %s, shipfrags: %d, levelpoints: %d, exppoints: %d, fragpoints: %d, deathpoints: %d\r\n", GET_NAME(ch), sf, (GET_LEVEL(ch) * config->score_level_points), (ch->points.curr_exp / config->score_experience_divisor), (ch->only.pc->frags
-	// * config->score_frag_points), (ch->only.pc->numb_deaths * config->score_death_penalty_points));
-
-	long leaderpts = (GET_LEVEL(ch) * config->score_level_points) +
-			 (ch->points.curr_exp / config->score_experience_divisor) +
-			 (ship_frags * config->score_frag_points) +
-			 (ch->only.pc->frags * config->score_frag_points) -
-			 (ch->only.pc->numb_deaths * config->score_death_penalty_points);
-
-	return leaderpts;
+	// Frags are stored in hundredths; ship reputation and earned epics are whole units.
+	// Keep every term signed and wide, especially the unsigned death counter.
+	return (long)GET_LEVEL(ch) * config->score_level_points +
+	       MAX(0, ch->points.curr_exp) / config->score_experience_divisor +
+	       (long)MAX(0, ship_frags) * config->score_frag_points +
+	       valid_frags * config->score_frag_points + epics * config->score_epic_points -
+	       (long)ch->only.pc->numb_deaths * config->score_death_penalty_points;
 }
 
 long getLeaderBoardPts(P_char ch)
 {
-	if (!IS_PC(ch))
+	if (!ch || !IS_PC(ch))
 		return 0;
 
-	update_shipfrags();
 	return getLeaderBoardPtsWithShipFrags(ch, calculate_shipfrags(ch));
 }
 
 void displayLeader(P_char ch, char *arg, int /*cmd*/)
 {
+	if (!ch)
+		return;
+
 	char section[MAX_INPUT_LENGTH], value[MAX_INPUT_LENGTH];
 	char *remaining = one_argument(arg ? arg : (char *)"", section);
 	if (*section && (is_abbrev(section, "quests") || is_abbrev(section, "quest")))
@@ -350,55 +356,66 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 	}
 	const struct hardcore_config *config = hardcore_config_get();
 
-	if (!ch)
-		return;
-
-	// score = (level * points) + (exp / divisor) + (shipfrags * frag points) + (frags * frag points) - (deaths * penalty)
-	// filter out corrupted frags (> threshold = overflow junk from migration)
+	// Match getLeaderBoardPtsWithShipFrags(), including integer experience division.
+	// Invalid frags lose only their frag contribution, not the player's entire ranking.
 	// Read on the writer; the leader board follows on a later pulse.
 	const bool queued = sql_read_for(
 		ch,
-		sql_format("SELECT pd.name, "
-			   "  (pd.level * %d) + (pd.exp / %d) + "
-			   "  (COALESCE(s.frags, 0) * %d) + "
-			   "  (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d) - "
-			   "  (pd.numb_deaths * %d) as score "
-			   "FROM player_data pd "
-			   "LEFT JOIN ships s ON LOWER(pd.name) = LOWER(s.owner_name) "
-			   "WHERE pd.frags < %d "
-			   "ORDER BY score DESC "
-			   "LIMIT %d",
-			   config->score_level_points, config->score_experience_divisor,
-			   config->score_frag_points, config->score_invalid_frag_threshold,
-			   config->score_frag_points, config->score_death_penalty_points,
-			   config->score_invalid_frag_threshold, MAX_LEADERBOARD_SIZE),
+		sql_format(
+			"SELECT name, "
+			"  (level * %d) + (experience DIV %d) + "
+			"  (ship_frags * %d) + (frags * %d) + (epics * %d) - "
+			"  (deaths * %d) AS score, level, frags, ship_frags, epics, deaths "
+			"FROM (SELECT pd.pid, pd.name, CAST(pd.level AS SIGNED) AS level, "
+			"  GREATEST(COALESCE(pd.exp, 0), 0) AS experience, "
+			"  CASE WHEN pd.frags > -%d AND pd.frags < %d THEN pd.frags ELSE 0 END AS frags, "
+			"  GREATEST(COALESCE(s.frags, 0), 0) AS ship_frags, "
+			"  GREATEST(COALESCE(e.epics, 0), 0) AS epics, "
+			"  CAST(COALESCE(pd.numb_deaths, 0) AS SIGNED) AS deaths "
+			"FROM player_data pd "
+			"LEFT JOIN ships s ON pd.name = s.owner_name "
+			"LEFT JOIN (SELECT pid, MAX(modifier) AS epics FROM player_affects "
+			"  WHERE type = %d GROUP BY pid) e ON e.pid = pd.pid "
+			"WHERE pd.level >= 1 AND pd.level < %d) ranked "
+			"ORDER BY score DESC, name ASC, pid ASC "
+			"LIMIT %d",
+			config->score_level_points, config->score_experience_divisor,
+			config->score_frag_points, config->score_frag_points,
+			config->score_epic_points, config->score_death_penalty_points,
+			config->score_invalid_frag_threshold, config->score_invalid_frag_threshold,
+			TAG_EPICS_GAINED, AVATAR, MAX_LEADERBOARD_SIZE),
 		[](P_char live, const sql_rows &rows)
 		{
 			char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
-			const float divisor = (float)hardcore_config_get()->score_display_divisor;
+			const double divisor = hardcore_config_get()->score_display_divisor;
 			strcpy(buf,
 			       "\r\n&+y=-=-=-=-=-=-=-=-=-=--= &+rDuris Mud &+WLeader Board&+y =-=-=-=-=-=-=-=-=-=-=-&n\r\n\r\n");
-			snprintf(buf2, 2048, "   &+W%-15s           &+Y%s\r\n", "Name", "Score");
-			strcat(buf, buf2);
-			snprintf(buf2, 2048, "   &+L%-15s           &+L%s\r\n", "----", "-----");
+			snprintf(buf2, 2048, "&+WRank %-15s %3s %12s %9s %7s %7s %6s&n\r\n", "Name",
+				 "Lvl", "Score", "Frags", "Ship", "Epics", "Deaths");
 			strcat(buf, buf2);
 
+			int rank = 0;
 			for (const sql_row &row : rows)
 			{
 				if (row[0] && row[1])
 				{
 					strlcpy(name, row[0], sizeof name);
 					name[0] = toupper(name[0]);
-					const float pts = atof(row[1]) / divisor;
+					const double pts = atof(row[1]) / divisor;
 
-					checked_snprintf(buf2, 2048,
-							 "   &+w%-15s          &+Y%6.2f\t\r\n",
-							 name, pts);
+					checked_snprintf(
+						buf2, 2048,
+						"&+w%4d %-15s %3s &+Y%12.2f &+w%9.2f %7s %7s %6s&n\r\n",
+						++rank, name, row[2], pts, atof(row[3]) / 100.0,
+						row[4], row[5], row[6]);
 					strcat(buf, buf2);
 				}
 			}
 
-			strcat(buf, "\r\n");
+			if (rows.empty())
+				strcat(buf, "No players are ranked yet.\r\n");
+			strcat(buf,
+			       "\r\nEpics are total earned; scores include level, experience and death penalties.\r\nSee 'help leaderboard' for scoring.\r\n");
 			page_string(live->desc, buf, 1);
 		});
 	if (!queued)
