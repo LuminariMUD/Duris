@@ -161,8 +161,8 @@ implemented rule; its route/geography sections await the next chunk.
 
 The extended native fixture first failed against the old source for a level-11
 ASK with authored target level 6 and live level 11. After the production change,
-all **296** live-target/creation/payment scenarios passed under ASan/UBSan,
-including 224 new authored/live level cases at accepted levels 11/29/30/49.
+all **184** live-target/creation/payment scenarios passed under ASan/UBSan,
+including 112 new authored/live level cases at accepted levels 11/29/30/49.
 Both the selector and accepted-target API are exercised with forced quest type;
 the destination zone average remains fixed while each target level varies.
 All 10 SQL-history cases also passed.
