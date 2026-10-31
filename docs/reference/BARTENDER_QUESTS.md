@@ -204,8 +204,10 @@ to both kinds. A per-request index uses actual destination zones,
 not prototype ownership. Each instance must match a direct unconditional 100%
 `M` reset in a resetting zone, with a positive maximum, at its saved birthplace.
 Birthplace and current room must be in the same actual zone. Mixed
-conditional/rare/random-table sources and restricted staging rooms stay
-ineligible. Followers, mounts/other mastered mobs, summoned instances, charmed
+conditional/rare/random-table sources stay ineligible. Targets currently in
+restricted staging rooms are excluded; a private birthplace alone does not
+disqualify an ordinary-reset NPC currently in an eligible public room.
+Followers, mounts/other mastered mobs, summoned instances, charmed
 mobs, and conjured pets are excluded; targets must be alive with positive HP
 and at ground height (`z_cord == 0`). Both kinds need player-specific visibility.
 
@@ -251,7 +253,7 @@ Ambiguous geography preserves accepted work as unproven; a known matching
 family still permits the task even if the other family is ambiguous.
 Geographic membership applies to a target's actual zone, including disconnected
 rooms, without requiring a path to either its reset or current room.
-Closed/private destination zones and restricted target/reset rooms remain
+Closed/private destination zones and restricted current target rooms remain
 excluded, independently of transit conditions.
 
 Map hints use geographic entrances and identify a location, not a guaranteed
@@ -583,6 +585,10 @@ That focused run qualifies one backend/case, not the full default matrix.
 The gameplay debugger sets the disposable Chaos actor's requested level and
 selects an otherwise eligible zone/prototype with ordinary outward/return paths
 for completion testing. Production selection still validates the chosen target.
+Explicit fixture setup restores routine NPCs to their authored reset rooms and
+pins them against wandering, without changing levels, statistics, population
+counts or provenance. The same preparation runs after the partial-progress
+restart without changing saved player state.
 ASK completion fixtures use NPC levels outside the KILL band. The probe's
 navigation helper is independent of eligibility; special-travel assignments
 are covered by native policy fixtures. Tagged score requests synchronize

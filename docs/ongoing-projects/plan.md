@@ -179,7 +179,7 @@ Current master `aa77a2030` was merged for build/compatibility qualification.
 The second chunk replaces the route builder and all three capability passes
 with boot-time geography and one accepted-target interaction/supply check.
 The production route API and route limits are removed. Target-check bounds,
-actual restricted destination/reset rooms, provenance and ASK interaction rules
+actual restricted current target locations, provenance and ASK interaction rules
 remain. Maps use geographic zone entrances; travel changes no longer clear
 them or invalidate a task. Refusal messages now describe target/scope state.
 
@@ -289,6 +289,23 @@ allowance then legitimately changed because history is counted per current
 level below 50 (`sql_world_quest_can_do_another`). The regression now checks
 that partial combat writes no history, and checks equal remaining allowance
 when the actor level is unchanged. No allowance policy was changed.
+
+Final ablation also removes the carried-over private-birthplace restriction:
+the player interacts at the live target room, not its spawn room. Routine M-reset
+provenance and same-zone birthplace checks remain, but a public live target is
+not rejected just because it was born in a private holding room. The existing
+staging-release case now proves that positive behavior; NPCs currently in private
+holding rooms remain excluded. The fresh build and all 300 native/10 SQL-history
+cases pass with this final policy.
+
+To make completion inputs deterministic, explicit disposable setup now restores
+routine NPCs in the requested target pool to their authored birth rooms and sets
+their sentinel flag. It does not spawn prototypes or alter levels, statistics,
+population counts or reset provenance. Targets are then selected and validated
+through production policy. After partial restart the same explicit preparation
+pins the retained target; the fixture asserts every saved player/quest field
+is unchanged. This replaces reliance on a random wandering population, which
+could leave no ordinary-travel KILL completion fixture after the first ASK case.
 
 The full matrix next reached a genuine scripted movement gate on its chosen
 level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object
