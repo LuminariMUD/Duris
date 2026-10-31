@@ -1,6 +1,6 @@
 # Issue #508: shared progression with earned PvP acceleration
 
-Status: **implementation in progress; shared rules/codec chunk qualified locally**.
+Status: **implementation in progress; rules PR open, storage chunk qualified locally**.
 Updated 2026-10-31. No gameplay cutover or production operation has occurred.
 Delivery target: **270 minutes of implementation/qualification plus 30 minutes contingency**.
 The target is a tested, reviewable change; production deployment is separate.
@@ -458,6 +458,49 @@ with no new operation ledger, scheduler, clock abstraction or player fields.
 - **Not yet proven:** parent-receipt replay, database/flatfile persistence,
   publication, reset fencing, XP/help/status, and real gameplay journeys.
 
-Next: open the focused rules PR, then stack the atomic storage/runtime integration
-on a dependent branch. Keep the PR bases and exact test results here. No release
-tag belongs to this preparatory change; production deployment remains separate.
+Rules PR: [#514](https://github.com/LuminariMUD/Duris/pull/514), head
+`branch/issue-508-frag-progression` at `422a9e7cc`, base `master`.
+No release tag belongs to these preparatory changes; deployment remains separate.
+
+### Chunk 2: durable storage adapters and additive schema
+
+Current checkout remains `/home/aiwithapex/projects/duris-issue-508`, now on
+`branch/issue-508-frag-cap-storage`, based on chunk 1. This chunk adds
+`src/combat/frag_cap_repository.c/.h`, native storage tests and immutable migration
+`0057_shared_frag_cap` (sequence 58). The snapshot is a nullable MEDIUMBLOB on the
+existing singleton. Old migrations and baseline bootstrap SQL stay immutable;
+fresh bootstraps reach the same shape through the maintained migration runner.
+The manifest, compiled compatibility contract and measured MariaDB/MySQL metadata
+fingerprints are synchronized. No new table, player field or receipt ledger.
+
+The adapter borrows the caller's SQL transaction or already-recovered flatfile
+authority lock. The flatfile preparer only appends an after-image; no nested lock
+or separate cap commit. Boot adoption is idempotent and refuses corruption or a
+missing/invalid SQL singleton. Timer updates use the same lock and engine.
+
+Proof:
+
+- Passed `python3 tests/async/test_frag_cap_repository.py`, compiled with ASan/UBSan:
+  durable partial credit, reopen, parent-receipt replay, interrupted journal/image
+  recovery, failure before commit, immutable qualification, timer and corruption.
+- Passed `bash tests/async/with_disposable_mariadb.sh python3
+  tests/async/test_frag_cap_repository.py --mysql` on disposable MariaDB 10.11.
+- Passed the same command with `TEST_DB_IMAGE=mysql:8.0` on disposable MySQL 8.0.
+  Both initialize from bootstrap through the real migration runner, repeat the
+  runner, repeat the new additive migration, verify preserved legacy values and
+  validate the full runtime metadata fingerprint. SQL tests prove parent rollback,
+  deduplication, legacy side-cap adoption, corruption and missing-row refusal.
+- Passed both server builds with the commands recorded in chunk 1.
+- Passed `python3 tests/async/test_runtime_boot_compatibility.py` (7 tests) and
+  `python3 tests/async/test_immutable_migration_runner.py` (26 tests).
+
+The parent in these adapter tests is a small native receipt fixture. **Actual
+combat transaction integration and gameplay are not yet qualified.** This is a
+preparatory storage PR; it must not be reported as feature completion.
+
+Next: open the storage PR stacked on #514, then activate the policy in a dependent
+chunk: attach both real combat paths, route both maintenance paths, add boot
+adoption/publication, reset fencing, shared readers/status, XP/help and journeys.
+The original scenario checklist remains the completion gate. Reuse the focused
+two-engine migration/metadata proof above rather than rerunning unrelated Nexus,
+artifact and shop campaigns from `run_migration_runner_engines.py` for one column.
