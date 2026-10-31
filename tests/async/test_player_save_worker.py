@@ -22,6 +22,7 @@ HARNESS = r'''
 #include "player/player_save_worker.h"
 
 #include <cassert>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdlib>
@@ -192,6 +193,11 @@ static void test_admission_capacity()
         assert(persistence_writer_submit(persistence_job_kind::locker, queued + 1, 1,
                                           locker_job(99999)) == player_save_submit_result::unavailable);
         assert(errno == ENOSPC);
+        bool admitted = false;
+        assert(persistence_writer_submit_admitted(persistence_job_kind::critical, 999999, 1,
+                 locker_job(999999), [&] { admitted = true; return true; }) ==
+               player_save_submit_result::unavailable);
+        assert(!admitted && !persistence_writer_pending(persistence_job_kind::critical, 999999));
         // Even a tail replacement must fit, including the in-flight payload.
         errno = 0;
         assert(persistence_writer_submit(persistence_job_kind::locker, queued,
@@ -302,8 +308,50 @@ static void test_admission_allocation_failure()
     state.first_started = state.release_first = false;
 }
 
+static void test_durable_admission()
+{
+    player_save_worker_reset_for_tests();
+    assert(player_save_worker_init(apply_snapshot, nullptr));
+    std::atomic<bool> admitted = false;
+    std::atomic<unsigned> writes = 0;
+    auto write = [&] {
+        assert(admitted);
+        ++writes;
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.order.push_back("admitted");
+        return player_save_apply_result{player_save_apply_outcome::applied, 0, 0};
+    };
+    assert(persistence_writer_submit_admitted(persistence_job_kind::critical, 42, 64,
+             write, [&] { admitted = true; return true; }) == player_save_submit_result::accepted);
+    assert(player_save_worker_submit(snapshot_for(33, 1)) == player_save_submit_result::accepted);
+    assert(persistence_writer_wait_idle(5000));
+    assert((state.order == std::vector<std::string>{"admitted", "p33:1"}) && writes == 1);
+    drain();
+    unsigned admissions = 0;
+    assert(persistence_writer_submit_admitted(persistence_job_kind::critical, 43, 64,
+             write, [&] { ++admissions; return false; }) == player_save_submit_result::unavailable);
+    assert(admissions == 1 && !persistence_writer_pending(persistence_job_kind::critical, 43));
+    assert(persistence_writer_submit_admitted(persistence_job_kind::critical, 44, 64,
+             write, [&]() -> bool { ++admissions; throw std::bad_alloc(); }) ==
+           player_save_submit_result::unavailable);
+    assert(admissions == 2 && !persistence_writer_pending(persistence_job_kind::critical, 44));
+    for (int allocation : {0, 1}) {
+        allocation_fail_after = allocation;
+        const auto refused = persistence_writer_submit_admitted(persistence_job_kind::critical,
+            45, 64, write, [&] { ++admissions; return true; });
+        allocation_fail_after = -1;
+        assert(refused == player_save_submit_result::unavailable && admissions == 2);
+        assert(!persistence_writer_pending(persistence_job_kind::critical, 45));
+    }
+    assert(persistence_writer_wait_idle(5000) && writes == 1);
+    player_save_worker_reset_for_tests();
+    state.order.clear();
+    state.attempts.clear();
+}
+
 int main()
 {
+    test_durable_admission();
     test_admission_capacity();
     test_admission_allocation_failure();
     player_save_worker_reset_for_tests();

@@ -13,6 +13,8 @@
  ****************************************************************************/
 
 #include "combat/combat_outcome_repository.h"
+#include "combat/frag_cap_repository.h"
+#include "combat/frag_cap_config.h"
 
 #include "world/epic_command.h"
 #include "guild/artifact_guild_repository.h"
@@ -20,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <climits>
 #include <cstring>
 #include <limits>
@@ -128,39 +131,58 @@ bool insert_child_inbox(MYSQL *connection, const critical_operation_id &child,
 	return execute(connection, sql);
 }
 
-// The value of a ledger's last row for the player, when the player has one.
+// A missing ledger tail is valid; a query/fetch error must roll back the parent.
 bool ledger_tail(MYSQL *connection, const std::string &sql, int64_t *value)
 {
 	if (!execute(connection, sql))
 		return false;
 	MYSQL_RES *result = mysql_store_result(connection);
 	if (!result)
+	{
+		errno = EIO;
 		return false;
+	}
 	MYSQL_ROW row = mysql_fetch_row(result);
-	const bool ok = !row || parse_i64(row[0], value);
+	const bool ok = !mysql_errno(connection) && (!row || parse_i64(row[0], value));
+	if (!ok)
+		errno = EILSEQ;
 	mysql_free_result(result);
 	return ok;
 }
 
-bool load_player(MYSQL *connection, uint32_t pid, size_t payload_index, player_state *state)
+bool load_player(MYSQL *connection, uint32_t pid, size_t payload_index, player_state *state,
+		 bool *found)
 {
+	*found = false;
 	const std::string sql = "SELECT frags,frag_revision,epics,epic_revision FROM player_data "
 				"WHERE pid=" +
 				std::to_string(pid) + " FOR UPDATE";
 	if (!execute(connection, sql))
 		return false;
 	MYSQL_RES *result = mysql_store_result(connection);
-	MYSQL_ROW row = result ? mysql_fetch_row(result) : nullptr;
-	const bool ok = row && parse_i64(row[0], &state->frags) &&
-			parse_u64(row[1], &state->frag_revision) &&
-			parse_i64(row[2], &state->epics) &&
-			parse_u64(row[3], &state->epic_revision);
-	if (result)
-		mysql_free_result(result);
+	if (!result)
+	{
+		errno = EIO;
+		return false;
+	}
+	MYSQL_ROW row = mysql_fetch_row(result);
+	const bool query_ok = !mysql_errno(connection);
+	*found = row != nullptr;
+	const bool valid =
+		!row ||
+		(parse_i64(row[0], &state->frags) && parse_u64(row[1], &state->frag_revision) &&
+		 parse_i64(row[2], &state->epics) && parse_u64(row[3], &state->epic_revision));
+	mysql_free_result(result);
+	if (!query_ok || !valid)
+	{
+		errno = EILSEQ;
+		return false;
+	}
+	if (!*found)
+		return true;
 	state->payload_index = payload_index;
 	state->pid = pid;
-	return ok &&
-	       ledger_tail(connection,
+	return ledger_tail(connection,
 			   "SELECT frags_after FROM combat_frag_ledger WHERE pid=" +
 				   std::to_string(pid) + " AND frag_revision=" +
 				   std::to_string(state->frag_revision) + " FOR UPDATE",
@@ -205,7 +227,10 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 	{
 		player_state state = {};
 		const auto &entry = payload.participants[index];
-		if (!load_player(connection, entry.pid, index, &state))
+		bool found = false;
+		if (!load_player(connection, entry.pid, index, &state, &found))
+			return false;
+		if (!found)
 		{
 			*result_code = ENOENT;
 			return true;
@@ -413,6 +438,20 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 	for (const auto &child : payload.artifact_deliveries)
 		if (!artifact_guild_repository_prepare_delivery(connection, child))
 			return false;
+	frag_cap_state cap;
+	const auto loaded = frag_cap_sql_load(connection, &cap, true);
+	const uint64_t before = cap.revision;
+	const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+				    std::chrono::system_clock::now().time_since_epoch())
+				    .count();
+	if (loaded != frag_cap_store_result::ok ||
+	    !frag_cap_apply_combat(&cap, command, payload, now, frag_cap_config_policy()) ||
+	    (cap.revision != before &&
+	     frag_cap_sql_save(connection, cap) != frag_cap_store_result::ok))
+	{
+		errno = loaded == frag_cap_store_result::io_error ? EIO : EILSEQ;
+		return false;
+	}
 	*mutation_applied = true;
 	return true;
 }

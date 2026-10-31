@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-boon-") as temporary:
     sources = [
         "tests/async/flatfile_boon_repository_harness.cpp",
         rel("flatfile_boon_repository.c"),
-        rel("flatfile_player_domain_repository.c"),
+        rel("flatfile_player_domain_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
         rel("flatfile_player_snapshot_file.c"),
         rel("player_snapshot_codec.c"),
         rel("flatfile_authority_transaction.c"),
@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-boon-") as temporary:
     ]
     compile_result = subprocess.run(
         [
-            "g++",
+            "g++", "tests/async/harness_stubs.cpp",
             "-std=c++20",
             "-g",
             "-Og",

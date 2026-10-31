@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-item-repository-test-") as t
     binary = temporary_path / "flatfile_item_repository_test"
     compile_result = subprocess.run(
         [
-            "g++",
+            "g++", "tests/async/harness_stubs.cpp",
             "-std=c++20",
             "-Wall",
             "-Wextra",
@@ -41,7 +41,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-item-repository-test-") as t
             rel("flatfile_shopkeeper_repository.c"),
             rel("flatfile_auction_repository.c"),
             rel("flatfile_boon_repository.c"),
-            rel("flatfile_player_domain_repository.c"),
+            rel("flatfile_player_domain_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
             rel("flatfile_ip_activity_repository.c"),
             rel("flatfile_authority_transaction.c"),
             rel("flatfile_store.c"),

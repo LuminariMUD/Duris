@@ -11,6 +11,10 @@ output_root.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as directory:
     source = Path(directory) / "delivery.cpp"
     text = (ROOT / "tests/async/divine_boon_delivery_harness.cpp").read_text()
+    pipeline = (ROOT / "src/player/player_save_pipeline.c").read_text()
+    text = text.replace("// PENDING_WORLD_QUEST_STATE",
+                        pipeline[pipeline.index("struct pending_world_quest_save"):
+                                 pipeline.index("/** Cache the explicit diagnostic switch")])
     for marker, path, signature in (
         ("CHECKPOINT_BODY", "player/player_save_pipeline.c", "player_save_pipeline_result player_save_pipeline_checkpoint_dirty("),
         ("LOAD_HOLD_BODY", "player/player_save_pipeline.c", "bool player_save_pipeline_load_held("),
@@ -30,8 +34,8 @@ with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as 
              *(["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []),
              str(source), "src/economy/divine_boon_delivery.c", "src/economy/divine_boon.c",
              "src/combat/combat_outcome_command.c", "src/guild/artifact_guild_command.c", "src/world/zone_touch_command.c", "src/world/epic_command.c", "src/persistence/critical_command.c",
-             "src/combat/combat_outcome_transaction.c",
+             "src/combat/combat_outcome_transaction.c", "src/combat/combat_outcome_intent.c", "src/flatfile/flatfile_store.c",
              "src/economy/currency_command.c", str(HARNESS_STUBS),
              "-Wl,--gc-sections", "-lcrypto", "-o", binary], cwd=ROOT, check=True,
         )
-        subprocess.run([binary], cwd=ROOT, check=True)
+        subprocess.run([binary, str(Path(directory) / backend) + "-journal"], cwd=ROOT, check=True)

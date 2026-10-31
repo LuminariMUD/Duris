@@ -150,7 +150,7 @@ def run(server):
              *shlex.split(subprocess.check_output(['mysql_config', '--cflags'], text=True)),
              '-ffunction-sections', '-fdata-sections',
              'tests/async/address_retention_mysql_harness.cpp',
-             'src/persistence/maintenance_repository.c',
+             'src/persistence/maintenance_repository.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c',
              'src/economy/divine_boon.c', 'src/economy/divine_boon_repository.c',
              'src/economy/divine_trade.c', 'src/economy/divine_trade_command.c', 'src/economy/divine_trade_repository.c', 'src/economy/currency_command.c', 'src/persistence/critical_command.c',
              'src/persistence/persistence_observability.c', '-Wl,--gc-sections',

@@ -95,6 +95,14 @@ critical_apply_result apply(const critical_command &command, void *raw)
     }
     if (tag == 4 && attempt == 1)
         return {critical_apply_outcome::ambiguous_commit, 0, 2013};
+    if (tag == 19 && attempt < 3)
+        return {critical_apply_outcome::terminal_failure, 0, EILSEQ};
+    if (tag == 20)
+    {
+        critical_apply_result rejected = {critical_apply_outcome::terminal_failure, 0, ENOENT};
+        rejected.result_size = 1; // A committed rejection is distinct from no receipt.
+        return rejected;
+    }
     if (tag == 18)
     {
         critical_apply_result result = {critical_apply_outcome::terminal_failure, 0, 1062};
@@ -235,6 +243,21 @@ int main()
     assert(player_save_worker_init(apply_save, nullptr));
     assert(critical_command_coordinator_init(apply, &state));
     release(&apply_state::hold_save, true);
+    // Refused writer capacity must not publish a durable admission. A failed
+    // admission must release its coordinator reservation and participant fences.
+    auto admission_probe = make_command(67, {{critical_entity_type::player, 67}});
+    unsigned admissions = 0;
+    persistence_writer_quiesce();
+    assert(critical_command_coordinator_submit_admitted(admission_probe,
+        [&] { ++admissions; return true; }) == critical_submit_result::unavailable);
+    assert(admissions == 0 &&
+           !critical_command_coordinator_is_fenced({critical_entity_type::player, 67}, nullptr));
+    persistence_writer_resume();
+    assert(critical_command_coordinator_submit_admitted(admission_probe,
+        [&] { ++admissions; return false; }) == critical_submit_result::unavailable);
+    assert(admissions == 1 &&
+           !critical_command_coordinator_is_fenced({critical_entity_type::player, 67}, nullptr));
+    assert(critical_command_coordinator_health_copy().inflight == 0);
     assert(player_save_worker_submit(save_of(1)) == player_save_submit_result::accepted);
     wait_until([] { std::lock_guard<std::mutex> lock(state.mutex); return state.save_held; });
     critical_command a = make_command(
@@ -297,6 +320,24 @@ int main()
     assert(detail.find("site=repository.c:42 check=duplicate_listing expected=1 actual=2") == 0);
     assert(detail.find("source=command key_count=1 keys=item:18") != std::string::npos);
     assert(critical_operation_id_equal(refused.operation_id, completions[0].operation_id));
+
+    // Pre-commit combat failures keep their operation and player fence until
+    // repair succeeds. A committed rejection may release, with its receipt.
+    auto corrupt_combat = make_command(19, {{critical_entity_type::player, 19}});
+    corrupt_combat.type = critical_command_type::combat_outcome;
+    assert(critical_command_coordinator_submit(corrupt_combat) == critical_submit_result::accepted);
+    wait_until([&] { std::lock_guard<std::mutex> lock(state.mutex); return state.attempts[19] >= 1; });
+    assert(critical_command_coordinator_pulse(completions, 64) == 0);
+    assert(critical_command_coordinator_is_fenced({critical_entity_type::player, 19}, nullptr));
+    wait_until([&] { std::lock_guard<std::mutex> lock(state.mutex); return state.attempts[19] >= 3; });
+    wait_until([&] { return critical_command_coordinator_pulse(completions, 64) == 1; });
+    assert(completions[0].outcome == critical_apply_outcome::applied);
+    assert(!critical_command_coordinator_is_fenced({critical_entity_type::player, 19}, nullptr));
+    auto rejected_combat = make_command(20, {{critical_entity_type::player, 20}});
+    rejected_combat.type = critical_command_type::combat_outcome;
+    assert(critical_command_coordinator_submit(rejected_combat) == critical_submit_result::accepted);
+    wait_until([&] { return critical_command_coordinator_pulse(completions, 64) == 1; });
+    assert(completions[0].outcome == critical_apply_outcome::terminal_failure && completions[0].result_size == 1);
 
     critical_command many_keys = make_command(18, {});
     for (unsigned int key = 1; key <= 3000; ++key)

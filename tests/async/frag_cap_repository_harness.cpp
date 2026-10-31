@@ -130,6 +130,22 @@ int main(int argc, char **argv)
 	assert(parent(100, start, start, 5, true));
 	assert(load(&restored) == result::ok && restored == state);
 #endif
+	auto captured = state;
+	critical_command command{};
+	command.accepted_at_usec = start;
+	combat_outcome_payload payload{};
+	payload.participant_count = 4;
+	for (size_t i = 0; i < 4; ++i)
+	{
+		payload.participants[i].pid = static_cast<uint32_t>(400 + i);
+		payload.participants[i].frag_delta = 5;
+	}
+	payload.participants[0].racewar = 1;
+	payload.participants[1].racewar = 1;
+	payload.participants[2].racewar = 2;
+	payload.participants[3].racewar = 3;
+	assert(frag_cap_apply_combat(&captured, command, payload, start));
+	assert(captured.earned[0] == 10 && captured.earned[1] == 5);
 	assert(state.level == 31);
 	assert(parent(1, start + hour, start + hour, 5));
 	assert(load(&restored) == result::ok && restored.earned[0] == 5);

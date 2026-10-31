@@ -1,3 +1,5 @@
+#include "combat/frag_cap_runtime.h"
+#include "combat/combat_outcome_transaction.h"
 /****************************************************************************
  *
  *  File: fraglist.c                                            Part of Duris
@@ -174,32 +176,10 @@ static void show_fraglist(P_char ch, const std::string &filter)
 		},
 		[](P_char viewer, const sql_rows &rows)
 		{
-			char buf[65536], buf2[2048], name[256], before[1024], after[256];
+			char buf[65536], buf2[2048], name[256], totals[512];
 			int count;
-			int days, hours, mins, secs;
-
-			time_t cap_timer = fraglist_cap_header(rows, before, sizeof before, after,
-							       sizeof after);
-			cap_timer -= time(NULL);
-
-			if (cap_timer <= 0)
-			{
-				secs = mins = hours = days = 0;
-			}
-			else
-			{
-				secs = cap_timer % 60;
-				cap_timer /= 60;
-				mins = cap_timer % 60;
-				cap_timer /= 60;
-				hours = cap_timer % 24;
-				cap_timer /= 24;
-				days = cap_timer;
-			}
-
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "%s%02d:%02d:%02d:%02d%s&+WTop Fraggers\n\n", before, days, hours,
-				 mins, secs, after);
+			fraglist_totals_header(rows, totals, sizeof(totals));
+			snprintf(buf, sizeof(buf), "%s&+WTop Fraggers\n\n", totals);
 
 			for (const char *tag : { "top", "low" })
 			{
@@ -243,6 +223,14 @@ void do_fraglist(P_char ch, char *arg, int /*cmd*/)
 
 	if (!IS_ALIVE(ch))
 		return;
+
+	send_to_char(frag_cap_runtime_status(GET_RACEWAR(ch),
+					     static_cast<int64_t>(time(nullptr)) * 1000000)
+			     .c_str(),
+		     ch, LOG_PUBLIC);
+	if (combat_outcome_transaction_credit_pending(GET_PID(ch)))
+		send_to_char("PvP credit pending; this status shows confirmed awards only.\r\n", ch,
+			     LOG_PUBLIC);
 
 	// for default view (no filter), use cache
 	if (!arg || !arg[0])

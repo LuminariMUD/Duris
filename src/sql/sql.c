@@ -88,6 +88,8 @@
 #include "magic/spells.h"
 #include "sql/sql_player.h"
 #include "combat/frag_cap_config.h"
+#include "combat/frag_cap_runtime.h"
+#include "combat/frag_cap_repository.h"
 #include "world/timers.h"
 #include "core/utility.h"
 #include <errno.h>
@@ -686,12 +688,20 @@ bool sql_hydrate_item_owner_revisions(void)
 }
 void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
-	*open_level = *good_level = *evil_level = frag_cap_config_get()->cap_floor_level;
-	*next_update = 0;
+	const auto *state = frag_cap_runtime_state();
+	*open_level = state ? frag_cap_for_side(*state, frag_cap_side::none) : 0;
+	*good_level = state ? frag_cap_for_side(*state, frag_cap_side::good) : 0;
+	*evil_level = state ? frag_cap_for_side(*state, frag_cap_side::evil) : 0;
+	*next_update = state ? frag_cap_due_at(*state) / 1000000 : 0;
 }
-int sql_level_cap(int /*racewar_side*/)
+int sql_level_cap(int racewar_side)
 {
-	return frag_cap_config_get()->cap_floor_level;
+	const auto *state = frag_cap_runtime_state();
+	return state ? frag_cap_for_side(*state,
+					 racewar_side == RACEWAR_GOOD ? frag_cap_side::good :
+					 racewar_side == RACEWAR_EVIL ? frag_cap_side::evil :
+									frag_cap_side::none) :
+		       0;
 }
 void show_total_donated(P_char /*ch*/, const char * /*account_name*/) {}
 void sql_update_frag_leaderboard(P_char ch)
@@ -954,12 +964,14 @@ uint64_t sql_game_loop_query_count(void)
 {
 	return 0;
 }
-void sql_level_cap_reload(void) {}
+void sql_level_cap_reload(void)
+{
+	frag_cap_runtime_refresh();
+}
 #else
 
 static void sql_resetConnectTimes(void);
 static void sql_load_ip_activity(void);
-static void sql_load_level_cap(void);
 static void sql_load_recent_counts(void);
 static void sql_load_mud_info(void);
 static bool sql_verify_boot_database(void);
@@ -1773,7 +1785,6 @@ int initialize_mysql()
 
 	sql_resetConnectTimes();
 	sql_load_ip_activity();
-	sql_load_level_cap();
 	sql_load_recent_counts();
 	sql_load_mud_info();
 	sql_load_zones();
@@ -2619,83 +2630,28 @@ int sql_save_player_core(P_char ch)
 #define PROGRESS_FRAGS 1
 #define PROGRESS_EXP 2
 
-// The level_cap row, read at boot and again after the maintenance job changes it, so the
-// game never waits to read it.
-static struct
-{
-	bool loaded = false;
-	int level = 0;
-	int level_good = 0;
-	int level_evil = 0;
-	time_t next_update = 0;
-} level_cap_row;
-
-static void level_cap_row_publish(const char *level, const char *level_good, const char *level_evil,
-				  const char *next_update)
-{
-	level_cap_row.loaded = level && level_good && level_evil && next_update;
-	if (!level_cap_row.loaded)
-		return;
-	level_cap_row.level = atoi(level);
-	level_cap_row.level_good = atoi(level_good);
-	level_cap_row.level_evil = atoi(level_evil);
-	level_cap_row.next_update = atol(next_update);
-}
-
-static const char level_cap_query[] =
-	"SELECT level, level_good, level_evil, UNIX_TIMESTAMP(next_update) FROM level_cap";
-
-// Boot only: the game loop is not running yet.
-static void sql_load_level_cap(void)
-{
-	MYSQL_RES *db = db_query("%s", level_cap_query);
-	MYSQL_ROW row = db ? mysql_fetch_row(db) : NULL;
-	level_cap_row_publish(row ? row[0] : NULL, row ? row[1] : NULL, row ? row[2] : NULL,
-			      row ? row[3] : NULL);
-	if (db)
-		mysql_free_result(db);
-	if (!level_cap_row.loaded)
-		debug("sql_load_level_cap: Database read fail.");
-}
-
 void sql_level_cap_reload(void)
 {
-	sql_read(level_cap_query,
-		 [](bool ok, const sql_rows &rows)
-		 {
-			 if (ok && !rows.empty())
-				 level_cap_row_publish(rows[0][0], rows[0][1], rows[0][2],
-						       rows[0][3]);
-		 });
+	frag_cap_runtime_refresh();
 }
 
-// The level open to all, Good's and Evil's caps (the higher of that and the level the side
-// opened beyond it), all clamped to the configured range, and when the next level can be
-// unlocked.
 void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
-	const struct frag_cap_config *config = frag_cap_config_get();
-	const int open = level_cap_row.loaded ? level_cap_row.level : 0;
-	*open_level = std::clamp(open, config->cap_floor_level, config->cap_maximum_level);
-	*good_level = std::clamp(std::max(open, level_cap_row.level_good), config->cap_floor_level,
-				 config->cap_maximum_level);
-	*evil_level = std::clamp(std::max(open, level_cap_row.level_evil), config->cap_floor_level,
-				 config->cap_maximum_level);
-	*next_update = level_cap_row.loaded ? level_cap_row.next_update : 0;
+	const auto *state = frag_cap_runtime_state();
+	*open_level = state ? frag_cap_for_side(*state, frag_cap_side::none) : 0;
+	*good_level = state ? frag_cap_for_side(*state, frag_cap_side::good) : 0;
+	*evil_level = state ? frag_cap_for_side(*state, frag_cap_side::evil) : 0;
+	*next_update = state ? frag_cap_due_at(*state) / 1000000 : 0;
 }
 
-// Returns the highest level a mortal on racewar_side can reach; sides other than Good and
-// Evil have the level open to all.
 int sql_level_cap(int racewar_side)
 {
-	int open_level, good_level, evil_level;
-	time_t next_update;
-	get_level_cap_info(&open_level, &good_level, &evil_level, &next_update);
-	if (racewar_side == RACEWAR_GOOD)
-		return good_level;
-	if (racewar_side == RACEWAR_EVIL)
-		return evil_level;
-	return open_level;
+	const auto *state = frag_cap_runtime_state();
+	return state ? frag_cap_for_side(*state,
+					 racewar_side == RACEWAR_GOOD ? frag_cap_side::good :
+					 racewar_side == RACEWAR_EVIL ? frag_cap_side::evil :
+									frag_cap_side::none) :
+		       0;
 }
 
 /*
@@ -5454,19 +5410,33 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Resetting level_cap data... .. .");
 		send_to_all("Resetting level_cap data... .. .");
-		// No timer: the season's first qualifying frag unlocks the next level.
-		if (qry("UPDATE level_cap SET most_frags=0, racewar_leader=0, level=%d, level_good=0, level_evil=0, next_update=NOW()",
-			frag_cap_config_reset_level()))
+		if (!qry("START TRANSACTION"))
+			return FALSE;
+		MYSQL_RES *cap_reset = db_query(
+			"SELECT CAST(UNIX_TIMESTAMP(reset_started_at)*1000000 AS UNSIGNED) "
+			"FROM season_reset_state WHERE state_id=1 AND reset_status='resetting' FOR UPDATE");
+		MYSQL_ROW cap_reset_row = cap_reset ? mysql_fetch_row(cap_reset) : nullptr;
+		char *cap_reset_end = nullptr;
+		errno = 0;
+		const int64_t cap_reset_at = cap_reset_row && cap_reset_row[0] ?
+						     strtoll(cap_reset_row[0], &cap_reset_end, 10) :
+						     0;
+		const bool cap_reset_valid = cap_reset_at > 0 && !errno && cap_reset_end &&
+					     !*cap_reset_end;
+		if (cap_reset)
+			mysql_free_result(cap_reset);
+		if (!cap_reset_valid ||
+		    frag_cap_sql_reset_season(DB, cap_reset_at, frag_cap_config_policy()) !=
+			    frag_cap_store_result::ok ||
+		    !qry("UPDATE level_cap SET most_frags=0,racewar_leader=0 WHERE id=1") ||
+		    !qry("COMMIT"))
 		{
-			logit(LOG_DEBUG, "  success!");
-			send_to_all("  success!\n");
-		}
-		else
-		{
-			logit(LOG_DEBUG, "        failure!");
-			send_to_all("        failure!\n");
+			qry("ROLLBACK");
+			logit(LOG_STATUS,
+			      "sql_pwipe: Shared cap reset failed; reset remains fenced.");
 			return FALSE;
 		}
+
 		if (!(pwipe_recovery_epoch ?
 			      redis_recover_pwipe_state(pwipe_recovery_epoch - 1, true) :
 			      redis_clear_pwipe_state()))
