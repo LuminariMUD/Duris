@@ -1000,9 +1000,7 @@ struct quest_target_request
 		       world[source->room].number == GET_BIRTHPLACE(mob) &&
 		       world[source->room].zone == world[mob->in_room].zone &&
 		       source->profile->vnum == GET_VNUM(mob) &&
-		       static_zone_eligibility(world[mob->in_room].zone, level) &&
-		       source->profile->level >= level - 4 && source->profile->level <= level + 5 &&
-		       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5;
+		       static_zone_eligibility(world[mob->in_room].zone, level);
 	}
 
 	bool reachable(P_char mob) const
@@ -1051,15 +1049,17 @@ struct quest_target_request
 		if (mob->specials.z_cord != 0)
 			return false;
 		if (type == FIND_AND_KILL)
-			return profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
+			return profile.level >= level - 4 && profile.level <= level + 5 &&
+			       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5 &&
+			       profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
 			       GET_EXP(mob) > 0 && !IS_SHOPKEEPER(mob) &&
 			       !IS_SET(mob->specials.act,
 				       ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE) &&
 			       !IS_SET(world[room].room_flags, ROOM_SAFE) &&
 			       !IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
 		if (mob_index[GET_RNUM(mob)].number != 1 || !profile.can_speak ||
-		    profile.level >= MAXLVL || !CAN_SPEAK(mob) || !IS_AWAKE(mob) ||
-		    IS_AFFECTED2(mob, AFF2_SILENCED) ||
+		    profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL || !CAN_SPEAK(mob) ||
+		    !IS_AWAKE(mob) || IS_AFFECTED2(mob, AFF2_SILENCED) ||
 		    IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
 		    IS_SET(zone_table[world[room].zone].flags, ZONE_SILENT) ||
 		    world[room].sector_type == SECT_UNDERWATER ||

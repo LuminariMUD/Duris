@@ -49,6 +49,7 @@ std::set<int> fresh;
 std::vector<int> history_reads;
 std::string mode;
 int level, preferred_type, probe_reads = 0, object_reads = 0, dirty_marks = 0;
+int authored_target_level = -1, live_target_level = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
 void run_payment(P_char, int origin, int fee, bool committed);
@@ -501,6 +502,8 @@ P_char read_mobile_probe(int nr, int type)
 	mob->only.npc->R_num = rnum;
 	mob->specials.act = ACT_ISNPC;
 	mob->player.level = mode == "no_level_window" && rnum == 2 ? 60 : level;
+	if (authored_target_level >= 0 && rnum == (preferred_type == FIND_AND_ASK ? 1 : 0))
+		mob->player.level = authored_target_level;
 	mob->player.race = RACE_HUMAN;
 	GET_MAX_HIT(mob) = GET_HIT(mob) = 100;
 	GET_EXP(mob) = 100;
@@ -588,6 +591,8 @@ int main(int argc, char **argv)
 	level = std::stoi(argv[1]);
 	mode = argv[2];
 	preferred_type = std::string(argv[3]) == "ask" ? FIND_AND_ASK : FIND_AND_KILL;
+	const bool level_case = sscanf(mode.c_str(), "levels_%d_%d", &authored_target_level,
+				       &live_target_level) == 2;
 	fresh.insert(preferred_type == FIND_AND_ASK ? 1003 : 1002);
 	const bool budget_case = mode == "history_cap" || mode == "history_cap_zones" ||
 				 mode == "last_history" || mode == "last_history_zones" ||
@@ -748,7 +753,8 @@ int main(int argc, char **argv)
 	assert(boot_probes == top_of_mobt + 1);
 	if (mode == "cosmetic")
 		mobiles[1].func.mob = bs_wino;
-	assert(zones[0].avg_mob_level == level);
+	if (!level_case)
+		assert(zones[0].avg_mob_level == level);
 	assert(zones[1].avg_mob_level == (mode == "no_level_window" ? 60 : level));
 	for (auto &owned : live)
 	{
@@ -783,6 +789,8 @@ int main(int argc, char **argv)
 			if (mode == "sleeping")
 				SET_POS(mob, STAT_SLEEPING + POS_PRONE);
 		}
+		if (level_case && GET_RNUM(mob) == (preferred_type == FIND_AND_ASK ? 1 : 0))
+			mob->player.level = live_target_level;
 	}
 	if (mode == "safe")
 		rooms[3].room_flags |= ROOM_SAFE;
@@ -863,6 +871,30 @@ int main(int argc, char **argv)
 		return 0;
 	}
 #endif
+	if (level_case)
+	{
+		const bool expected = preferred_type == FIND_AND_ASK ?
+					      authored_target_level < MAXLVL &&
+						      live_target_level < MAXLVL :
+					      authored_target_level >= level - 4 &&
+						      authored_target_level <= level + 5 &&
+						      live_target_level >= level - 4 &&
+						      live_target_level <= level + 5;
+		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
+		world_quest_target target;
+		const auto failure = world_quest_policy_select_target(&player, 1000, level, target,
+								      preferred_type);
+		assert((failure == QUEST_CREATION_NO_FAILURE) == expected);
+		if (expected)
+			assert(target.mob_vnum == vnum && target.type == preferred_type);
+		const auto accepted = world_quest_policy_check_target(&player, 1000, level, 20,
+								      vnum, preferred_type, 1);
+		assert(accepted.status == (expected ? world_quest_target_status::valid :
+						      world_quest_target_status::unavailable));
+		assert(zones[1].avg_mob_level == level && dirty_marks == 0);
+		std::cout << level << ' ' << mode << ' ' << argv[3] << " level policy passed\n";
+		return 0;
+	}
 	if (mode == "validate")
 	{
 		using status = world_quest_target_status;

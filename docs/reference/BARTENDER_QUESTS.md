@@ -197,8 +197,10 @@ guaranteed final target distribution after live eligibility/history failures.
 
 ### Live targets
 
-Targets use the inclusive level band `[L - 4, L + 5]` for both the cached
-prototype and live actor. A per-request index uses actual destination zones,
+KILL targets use the inclusive level band `[L - 4, L + 5]` for both the cached
+prototype and live actor. ASK targets instead require both levels below 62,
+without a player-relative level band. The zone-average window still applies
+to both kinds. A per-request index uses actual destination zones,
 not prototype ownership. Each instance must match a direct unconditional 100%
 `M` reset in a resetting zone, with a positive maximum, at its saved birthplace.
 Birthplace and current room must be in the same actual zone. Mixed
@@ -214,7 +216,7 @@ shopkeepers, teachers, guild golems, ignored mobs, prototypes at or above
 capped at usable count minus one.
 
 ASK requires exactly one loaded instance globally (`mob_index.number == 1`),
-a cached level below `MAXLVL`, speaking ability in both cached and live forms,
+cached and live levels below `MAXLVL`, speaking ability in both forms,
 a live awake target, and a non-silent, non-underwater destination. Below
 accepted level 31, invisible/concealed/hidden/ectoplasmic ASK targets remain
 excluded even if the

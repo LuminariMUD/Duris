@@ -79,6 +79,18 @@ void run_map_payment(P_char player, int fee)
     ]
     subprocess.run([*compile_command, str(adapters), "-o", str(binary)], cwd=ROOT, check=True)
     scenarios = [(level, "normal", "kill") for level in (10, 11, 29, 30, 40, 41, 49, 50)]
+    # The target's prototype belongs to a different interval from its live zone,
+    # keeping the destination average fixed while checking each level separately.
+    scenarios += [(level, f"levels_{authored}_{live}", kind)
+                  for level in (11, 29, 30, 49)
+                  for kind in ("ask", "kill")
+                  for authored, live in (
+                      (level - 5, level), (level, level - 5),
+                      (level + 6, level), (level, level + 6),
+                      (level - 4, level), (level, level - 4),
+                      (level + 5, level), (level, level + 5),
+                      (61, level), (level, 61), (62, level), (level, 62),
+                      (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]

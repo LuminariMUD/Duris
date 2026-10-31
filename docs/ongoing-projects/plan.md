@@ -1,6 +1,6 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **implementation plan; no gameplay changes made**. Updated 2026-10-31.
+Status: **implementation in progress; ASK level chunk qualified**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
 - Branch: [branch/issue-500-eligibility-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-eligibility-plan), linked in the issue's Development section.
@@ -151,3 +151,24 @@ Estimate for **me to implement and locally qualify: 4–6 hours of active work**
 - 30–60 minutes: reference updates, builds, final review and commits.
 
 Allow up to **8 hours** if Bloodstone's attachment data or navigation-fixture separation needs additional work. This includes implementation and local validation, not just editing the selector. It excludes prerequisite merge/review waiting, deployment and production qualification.
+
+## Implementation evidence: ASK target levels
+
+The first chunk moves the authored/live level band from the shared ordinary-instance
+filter into KILL eligibility. ASK now checks both levels against `MAXLVL`, leaving
+zone eligibility and interaction checks in place. The reference describes this
+implemented rule; its route/geography sections await the next chunk.
+
+The extended native fixture first failed against the old source for a level-11
+ASK with authored target level 6 and live level 11. After the production change,
+all **296** live-target/creation/payment scenarios passed under ASan/UBSan,
+including 224 new authored/live level cases at accepted levels 11/29/30/49.
+Both the selector and accepted-target API are exercised with forced quest type;
+the destination zone average remains fixed while each target level varies.
+All 10 SQL-history cases also passed.
+
+Additional checks passed: `make -C src -j8`, dynamic policy contracts, XP feedback
+(MariaDB and flatfile), reward policy, 14 documentation checks, formatting and
+`git diff --check`. These results qualify the level chunk only; route removal,
+dual-region geography and the planned command/persistence journeys remain open.
+Current master `aa77a2030` was merged for build/compatibility qualification.
