@@ -473,8 +473,9 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             accepted = gameplay_snapshot(client, run_root)
             require(accepted["accepted_level"] == level,
                     f"requested gameplay level was unavailable: {accepted}")
-            attempts.append({"mob": accepted["mob"], "zone": accepted["zone"], "quota": accepted["quota"]})
-            if (accepted["type"] == kind and
+            attempts.append({"mob": accepted["mob"], "fixture": accepted["fixture_vnum"],
+                             "zone": accepted["zone"], "quota": accepted["quota"]})
+            if (accepted["mob"] == accepted["fixture_vnum"] and accepted["type"] == kind and
                     (kind != 1 or level != 29 or accepted["quota"] >= 2) and
                     (accepted["path"] or accepted.get("selector"))):
                 if kind == 2:
@@ -487,6 +488,10 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             # to the other type in a selected zone; KILL also needs a partial state.
             client.send("ask bartender abandon confirm")
             client.expect("You no longer have a task.", timeout=30)
+            # Sampling overrides are one-shot. Re-arm the prechecked fixture;
+            # an ordinary random fallback may have only one walkable instance.
+            client.send("chaos")
+            settled_gameplay_snapshot(client, run_root)
         else:
             raise AssertionError(f"no qualifying level-{level} type-{kind} task within eight purchases: {attempts}")
         baseline_items = {item["uid"] for item in accepted["items"]}

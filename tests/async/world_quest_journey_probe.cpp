@@ -521,6 +521,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "actor_level", GET_LEVEL(ch));
 	number(root, "profile_level", quest_gameplay_level);
 	number(root, "profile_kind", quest_gameplay_kind);
+	number(root, "fixture_vnum", quest_gameplay_fixture_vnum);
 	number(root, "history_target", last_target);
 	number(root, "items_busy", item_movement_transaction_player_busy(ch));
 
