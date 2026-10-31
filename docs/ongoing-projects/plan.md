@@ -1,6 +1,6 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **ASK ready in PR #520; geography/removal in draft PR #522, final journeys running**. Updated 2026-10-31.
+Status: **review fixes integrated; PR #522 final-head qualification running**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
 - Branch: [branch/issue-500-geography](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-geography), linked in the issue's Development section and stacked on [PR #520](https://github.com/LuminariMUD/Duris/pull/520).
@@ -25,7 +25,7 @@ Update the [bartender reference](../reference/BARTENDER_QUESTS.md), including as
 
 ## Non-goals
 
-- No reward, cost, wallet-publication, daily-allowance, completion-history, sharing-limit, quota, XP or random-selection balance changes. Preserve #513's midnight/abandonment repair.
+- No reward, cost, wallet-publication, daily-allowance, completion-history, sharing-limit, quota, XP or random-selection balance changes in the three-rule eligibility chunk. Preserve #513's midnight/abandonment repair. Separately authorized review repairs inherited from #520 are recorded below rather than reverted or duplicated.
 - Keep the existing level-11 minimum, ASK/KILL purchases at 11–49, KILL-only purchases at 50+, and mapless-zone minimum of 41.
 - Keep routine-reset/birthplace provenance, actual destination zone, live supply, speech, visibility, aggression, ASK interception, safe-room KILL restrictions, controlled/summoned exclusions and target history. Route-only checks must not become disguised target restrictions.
 - Retain genuine non-route replacement causes, earned progress, accepted level/type/quota, receiver, start time, purchased-map entitlement and legacy origin/replacement persistence. Do not resurrect already persisted replacement entitlements: saved state does not identify whether a past route rejection caused them.
@@ -306,6 +306,37 @@ through production policy. After partial restart the same explicit preparation
 pins the retained target; the fixture asserts every saved player/quest field
 is unchanged. This replaces reliance on a random wandering population, which
 could leave no ordinary-travel KILL completion fixture after the first ASK case.
+
+## Concurrent review integration and final-head qualification
+
+The full five-case matrix and reported-giver suites passed on **both backends**
+at implementation revision `f9b28d826`; their retained artifacts are
+`matrix-passed.json` and `reported-final-passed.json` under
+`bin/qualification/issue500/`. The runtime ASK targets were level 24 at accepted
+11 and level 20 at accepted 29. Both backends qualified real partial KILL
+save/restart, retained reward identities and ordinary outward/return commands.
+
+Before readiness, the remote stack advanced with concurrent review fixes.
+This checkout fast-forwarded those changes and merged the updated #520 parent
+in `75fb94e66`. The parent now includes durable item/history/recovery-receipt
+publication and retained final-kill entitlement; #522 adds ASK command-scene
+interceptor auditing independent of travel. Temporary target sleep/silence now
+blocks accepted ASK instead of issuing replacement. The integrated master also
+contains unrelated landed frag-cap and skill changes; those remain upstream work.
+
+On this integrated head, 300 native scenarios, 16 SQL-history cases, reward
+publication, XP feedback on both backends, reward/failure/remaining contracts,
+save-pipeline contracts, flatfile history/recovery, item snapshot codec, the
+server build, formatting and 14 documentation checks passed. Full/reported
+journeys are rerunning: the old-head runtime artifacts do not claim coverage
+of the newer reward/persistence code.
+
+The journey now checks completion allowance through a read-only copied player
+view at the level captured by the history admission, using the real allowance
+API. This preserves the exactly-one-consumption assertion when scalar XP later
+changes the actor's level; it neither changes the actor nor duplicates the
+allowance formula. All code and review changes are preserved, and the active
+worktree remains dedicated to this final qualification.
 
 The full matrix next reached a genuine scripted movement gate on its chosen
 level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object

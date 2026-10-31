@@ -560,6 +560,10 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 #endif
 
 	number(root, "completion_level", completion_level);
+	char_data completion_view = *ch;
+	completion_view.player.level = completion_level;
+	number(root, "completion_remaining_at_level",
+	       completion_level > 0 ? sql_world_quest_can_do_another(&completion_view) : -1);
 	number(root, "completion_target", completion_target);
 	cJSON_AddStringToObject(root, "reward_uid", std::to_string(completion_reward).c_str());
 	number(root, "reward_vnum", completion_reward_vnum);
