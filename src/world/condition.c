@@ -26,8 +26,11 @@
 #include "combat/damage.h"
 #include "combat/justice.h"
 #include "item/objmisc.h"
+#include "item/storage_lockers.h"
 #include "magic/spells.h"
 #include "world/weather.h"
+#include <memory>
+#include <vector>
 
 extern P_char character_list;
 extern P_desc descriptor_list;
@@ -142,22 +145,44 @@ int DamageOneItem(P_char ch, int dam_type, P_obj obj, bool destroy)
 	return destroy;
 }
 
-void MakeScrap(P_char ch, P_obj obj)
+bool MakeScrap(P_char ch, P_obj obj)
 {
 	char buf[MAX_STRING_LENGTH];
 	P_obj t, x;
 	int pos;
 
 	if (!ch || !obj || (ch->in_room == NOWHERE))
-		return;
+		return false;
 
-	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_CHAR);
-	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_ROOM);
+	P_obj source = OBJ_INSIDE(obj) ? obj->loc.inside : NULL;
+	LockerMovementAudit destroyed(ch, source, NULL, obj);
+	if (!destroyed.Ready())
+		return false;
+	std::vector<std::unique_ptr<LockerMovementAudit>> spilled;
+	try
+	{
+		if (source)
+			for (P_obj item = obj->contains; item; item = item->next_content)
+			{
+				auto audit = std::make_unique<LockerMovementAudit>(ch, obj, nullptr,
+										   item);
+				if (!audit->Ready())
+					return false;
+				spilled.push_back(std::move(audit));
+			}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
 
 	t = read_object(9, VIRTUAL);
 
 	if (!t)
-		return;
+		return false;
+
+	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_CHAR);
+	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_ROOM);
 
 	snprintf(buf, MAX_STRING_LENGTH, "Scraps from %s&n lie in a pile here.",
 		 obj->short_description);
@@ -265,17 +290,22 @@ void MakeScrap(P_char ch, P_obj obj)
 	set_obj_affected(t, 400, TAG_OBJ_DECAY, 0);
 	obj_to_room(t, ch->in_room);
 
+	size_t spill_index = 0;
 	while (obj->contains)
 	{
 		x = obj->contains;
 		obj_from_obj(x);
 		obj_to_room(x, ch->in_room);
+		if (source)
+			spilled[spill_index++]->Commit();
 	}
 
 	if (OBJ_FALLING(t))
 		falling_obj(t, 1, false);
 
+	destroyed.Commit();
 	extract_obj(obj);
+	return true;
 }
 
 void DamageAllStuff(P_char ch, int dam_type)

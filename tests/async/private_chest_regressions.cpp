@@ -20,6 +20,7 @@ persistence_mode persistence_mode_get()
 }
 static uint64_t uid = 1;
 static int event_ids_before_failure = -1;
+static bool refuse_scrap_prototype = false;
 extern "C" ssize_t __real_getrandom(void *, size_t, unsigned int);
 extern "C" ssize_t __wrap_getrandom(void *data, size_t length, unsigned int flags)
 {
@@ -89,8 +90,10 @@ void str_free(const char *s)
 {
 	free(const_cast<char *>(s));
 }
-P_obj read_object(int, int)
+P_obj read_object(int vnum, int)
 {
+	if (vnum == 9 && refuse_scrap_prototype)
+		return NULL;
 	auto p = new obj_data{};
 	p->type = ITEM_CONTAINER;
 	p->loc_p = LOC_NOWHERE;
@@ -133,6 +136,8 @@ void obj_from_obj(P_obj p)
 }
 void extract_obj(P_obj p, int)
 {
+	if (OBJ_INSIDE(p))
+		obj_from_obj(p);
 	while (p->contains)
 	{
 		auto child = p->contains;
@@ -143,6 +148,8 @@ void extract_obj(P_obj p, int)
 		free(p->name);
 	if (p->str_mask & STRUNG_DESC1)
 		free(p->description);
+	if (p->str_mask & STRUNG_DESC2)
+		free(p->short_description);
 	if (p->ex_description)
 	{
 		free(p->ex_description->keyword);
@@ -150,6 +157,28 @@ void extract_obj(P_obj p, int)
 		free(p->ex_description);
 	}
 	delete p;
+}
+void act(const char *, int, P_char, P_obj, void *, int) {}
+void set_obj_affected(P_obj, int, sh_int, sh_int) {}
+bool falling_obj(P_obj, int, bool)
+{
+	return false;
+}
+P_obj unequip_char(P_char, int, bool)
+{
+	return NULL;
+}
+int char_in_list(const P_char ch)
+{
+	return ch == character_list;
+}
+void obj_from_char(P_obj)
+{
+	assert(false);
+}
+int number(int low, int)
+{
+	return low;
 }
 void send_to_char_f(P_char, const char *format, ...)
 {
@@ -589,6 +618,63 @@ int main()
 		}
 		assert(!sql_chest_log_pending(7));
 		DB = saved_db;
+		// Scrapping a stored bag reserves the destroyed bag and each spilled root.
+		auto bag = read_object(1, REAL);
+		bag->name = const_cast<char *>("bag");
+		bag->short_description = const_cast<char *>("a damaged bag");
+		obj_to_obj(bag, object);
+		auto first = read_object(1, REAL);
+		auto second = read_object(1, REAL);
+		first->short_description = const_cast<char *>("a first item");
+		second->short_description = const_cast<char *>("a second item");
+		obj_to_obj(first, bag);
+		obj_to_obj(second, bag);
+		const auto before_scrap = audit_writes.size();
+		for (int failure = 0; failure < 3; ++failure)
+		{
+			event_ids_before_failure = failure;
+			assert(!MakeScrap(&actor, bag));
+			assert(OBJ_INSIDE(bag) && bag->contains == second &&
+			       second->next_content == first);
+			assert(!sql_chest_log_pending(7) && audit_writes.size() == before_scrap);
+		}
+		event_ids_before_failure = -1;
+		refuse_scrap_prototype = true;
+		assert(!MakeScrap(&actor, bag));
+		assert(OBJ_INSIDE(bag) && bag->contains == second && !sql_chest_log_pending(7) &&
+		       audit_writes.size() == before_scrap);
+		refuse_scrap_prototype = false;
+		const uint64_t bag_uid = bag->obj_uid;
+		assert(MakeScrap(&actor, bag));
+		assert(OBJ_ROOM(first) && OBJ_ROOM(second));
+		assert(audit_writes.size() == before_scrap + 3);
+		assert(audit_writes[before_scrap].first.find(
+			       "[uid " + std::to_string(second->obj_uid) + "]") !=
+		       std::string::npos);
+		assert(audit_writes[before_scrap + 1].first.find(
+			       "[uid " + std::to_string(first->obj_uid) + "]") !=
+		       std::string::npos);
+		assert(audit_writes[before_scrap + 2].first.find("[uid " + std::to_string(bag_uid) +
+								 "]") != std::string::npos);
+		for (size_t i = before_scrap; i < audit_writes.size(); ++i)
+		{
+			audit_writes[i].second->ok = true;
+			audit_writes[i].second->finished.store(true);
+		}
+		sql_chest_log_pulse();
+		assert(!sql_chest_log_pending(7));
+		// Remove the newly created scraps and the two spilled items from the fixture room.
+		auto scraps = world[0].contents;
+		while (scraps && (scraps == first || scraps == second || !scraps->name ||
+				  !strstr(scraps->name, "scraps")))
+			scraps = scraps->next_content;
+		assert(scraps && scraps->name && strstr(scraps->name, "scraps"));
+		obj_from_room(scraps);
+		extract_obj(scraps, TRUE);
+		obj_from_room(first);
+		extract_obj(first, TRUE);
+		obj_from_room(second);
+		extract_obj(second, TRUE);
 		// An abandoned operation releases its reservation and submits no false event.
 		const auto before_cancel = audit_writes.size();
 		{
