@@ -15,11 +15,11 @@ static pc_only_data pc{};
 static descriptor_data descriptor{};
 static acct_entry account{};
 P_desc descriptor_list;
+P_char character_list = &actor;
 static uint32_t reserved_chest_pid;
 static std::string reserved_chest_account;
 static int reserved_chest_racewar;
 
-static P_char live_actor = &actor;
 static bool reserved, refuse, fail_wallet;
 static sql_read_work_fn queued;
 static std::function<void(bool, const sql_rows &)> completed;
@@ -124,11 +124,7 @@ void currency_transaction_release_chest(uint32_t pid)
 	reserved_chest_pid = 0;
 	reserved_chest_account.clear();
 }
-P_char find_player_by_pid(int pid)
-{
-	assert(pid == 1);
-	return live_actor;
-}
+// LOOKUP_PRODUCTION
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
 	abort();
@@ -147,7 +143,7 @@ static void finish(bool lose_reply = false, bool disconnect = false)
 	execute(error ? "ROLLBACK" : "COMMIT");
 	if (disconnect)
 	{
-		live_actor = NULL;
+		character_list = NULL;
 		actor.desc = NULL;
 		descriptor_list = NULL;
 	}
@@ -187,7 +183,7 @@ static void reset()
 	GET_RACEWAR(&actor) = 1;
 	GET_PLATINUM(&actor) = 1000;
 	GET_BALANCE_PLATINUM(&actor) = 1000;
-	live_actor = &actor;
+	character_list = &actor;
 	payment = {};
 	payment.pid = 1;
 	payment.racewar = 1;
@@ -237,6 +233,7 @@ int main()
 	start("linkdead");
 	actor.desc = NULL;
 	descriptor_list = NULL;
+	assert(find_player_by_pid(1) == NULL && character_list == &actor);
 	finish();
 	assert(result_id > 0 && !result_offline && !reserved);
 	assert(GET_PLATINUM(&actor) == 500 && pc.wallet_revision == 1);

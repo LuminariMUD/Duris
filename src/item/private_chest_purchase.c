@@ -9,6 +9,8 @@
 #include <chrono>
 #include <memory>
 
+extern P_char character_list;
+
 namespace
 {
 struct purchase
@@ -210,6 +212,18 @@ void private_chest_purchase_pulse(void)
 			    const std::string outcome = rows[0][0];
 			    const bool committed = outcome == "created";
 			    P_char actor = find_player_by_pid(p->pid);
+			    if (!actor)
+			    {
+				    for (P_char current = character_list; current;
+					 current = current->next)
+				    {
+					    if (IS_PC(current) && GET_PID(current) == p->pid)
+					    {
+						    actor = current;
+						    break;
+					    }
+				    }
+			    }
 			    if (actor && (GET_RACEWAR(actor) != p->racewar ||
 					  (actor->desc && strcasecmp(get_account_name_safe(actor),
 								     p->account.c_str()))))
