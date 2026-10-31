@@ -10,6 +10,7 @@
 #include "world/zone_story_quest_runtime.h"
 #include "cmd/interp.h"
 #include "world/specs.prototypes.h"
+#include "sql/sql.h"
 
 #include <cassert>
 #include <cstring>
@@ -415,6 +416,7 @@ std::string render_daily(P_char, bool, std::string *)
 }
 }
 
+#ifndef WORLD_QUEST_SQL_HISTORY
 void sql_world_quest_finished(P_char, P_obj)
 {
 	++history_writes;
@@ -423,6 +425,7 @@ int sql_world_quest_can_do_another(P_char)
 {
 	return daily_remaining;
 }
+#endif
 void mark_player_dirty_components(int, player_component_mask_t component)
 {
 	assert(component == PLAYER_COMPONENT_STATUS);
@@ -512,6 +515,7 @@ void extract_char(P_char mob)
 	delete mob->only.npc;
 	delete mob;
 }
+#ifndef WORLD_QUEST_SQL_HISTORY
 int sql_world_quest_done_already(P_char, int vnum)
 {
 	assert(std::find(history_reads.begin(), history_reads.end(), vnum) == history_reads.end());
@@ -520,6 +524,12 @@ int sql_world_quest_done_already(P_char, int vnum)
 		return -1;
 	return fresh.count(vnum) ? 0 : 1;
 }
+#else
+void quest_test_history_empty(P_char);
+void quest_test_history_begin_rollover(P_char, int);
+void quest_test_history_publish(int, bool);
+void quest_test_history_advance();
+#endif
 void edge(int from, int dir, int to)
 {
 	room_direction_data value{};
@@ -719,6 +729,12 @@ int main(int argc, char **argv)
 		for (int n = 0; n < (mode == "quota" ? 2 : mode == "one_usable" ? 5 : 4); ++n)
 			spawn(0, 4, 4);
 		spawn(1, mode == "staging_release" ? 4 : 3, 3);
+		if (mode == "history_write_rollover")
+			spawn(0, 3,
+			      3); // Grant a quota above one before constructing partial progress.
+		if (mode == "history_write_rollover" && level >= 50)
+			spawn(1, 3,
+			      3); // A second KILL prototype remains after excluding the old target.
 		if (mode == "cross_zone_retry")
 			for (int n = 0; n < 2; ++n)
 				spawn(0, 1, 1)->specials.affected_by |= AFF_INVISIBLE;
@@ -782,6 +798,71 @@ int main(int argc, char **argv)
 		player.carrying = &hide_artifact;
 		hide_artifact.next_content = &regeneration_ring;
 	}
+#ifdef WORLD_QUEST_SQL_HISTORY
+	if (mode == "history_rollover" || mode == "history_same_day" || mode == "history_unready" ||
+	    mode == "history_failed_read" || mode == "history_write_rollover")
+	{
+		player.player.name = const_cast<char *>("Fixture");
+		command_giver = spawn(2, 0, 0);
+		GET_COPPER(&player) = 10000;
+		quest_test_history_empty(&player);
+		quest_creation_failure failure;
+		assert(createQuestForGiverVnum(&player, 9000, 1000, &failure));
+		assert(pc.quest_active && pc.quest_kill_how_many == 0);
+		pc.quest_started = time(nullptr) - 25 * 3600;
+		// Re-enter with this saved task while the history SELECT is outstanding.
+		// Its old-day result is delivered after midnight and after abandonment.
+		const bool unready = mode == "history_unready" || mode == "history_failed_read";
+		const bool progressed = mode == "history_write_rollover";
+		quest_test_history_begin_rollover(&player, unready ? 0 : 6);
+		if (progressed)
+		{
+			assert(pc.quest_kill_original > 1);
+			quest_test_history_publish(0, true);
+			quest_test_history_advance();
+			pc.quest_kill_how_many = 1;
+		}
+		std::string abandon = progressed ? "bartender abandon confirm" :
+						   "bartender abandon";
+		assert(world_quest(command_giver, &player, CMD_ASK, abandon.data()));
+		assert(!pc.quest_active && !pc.quest_replacement_due &&
+		       history_writes == (progressed ? 1 : 0));
+		const int wallet = GET_MONEY(&player);
+		if (!progressed && !unready)
+			quest_test_history_publish(mode == "history_rollover" ? 2 : 0, true);
+		if (mode == "history_failed_read")
+			quest_test_history_publish(0, false);
+		feedback.clear();
+		std::string request = "bartender quest";
+		assert(world_quest(command_giver, &player, CMD_ASK, request.data()));
+		if (mode == "history_same_day")
+		{
+			assert(!pc.quest_active && GET_MONEY(&player) == wallet);
+			assert(sql_world_quest_can_do_another(&player) == 0);
+			assert(feedback.find("any more quests") != std::string::npos);
+			std::cout << "SQL history same-day exhaustion: passed\n";
+			return 0;
+		}
+		if (unready)
+		{
+			assert(!pc.quest_active && GET_MONEY(&player) == wallet);
+			assert(feedback.find("history") != std::string::npos);
+			quest_test_history_publish(0, true);
+			assert(world_quest(command_giver, &player, CMD_ASK, request.data()));
+		}
+		if (!pc.quest_active)
+			std::cerr << "Regrant refused after successful abandonment: " << feedback
+				  << '\n';
+		assert(pc.quest_active && !pc.quest_replacement_due);
+		assert(GET_MONEY(&player) == wallet - 20 * level);
+		assert(sql_world_quest_can_do_another(&player) == (progressed ? 5 : 6));
+		assert(history_writes == (progressed ? 1 : 0));
+		if (!unready)
+			assert(sql_world_quest_done_already(&player, 999001) == 1);
+		std::cout << "SQL history " << mode << " abandon/regrant: passed\n";
+		return 0;
+	}
+#endif
 	if (mode == "validate")
 	{
 		using status = world_quest_target_status;
@@ -1105,7 +1186,9 @@ int main(int argc, char **argv)
 				ask("quest");
 				assert(!pc.quest_active && GET_MONEY(&player) == wallet &&
 				       history_writes == 1);
-				assert(feedback.find("any more quests") != std::string::npos);
+				assert(feedback.find(remaining < 0 ? "quest history" :
+								     "any more quests") !=
+				       std::string::npos);
 			}
 			daily_remaining = 1;
 		}

@@ -38,6 +38,7 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include "world/map.h"
 #include "world/world_singletons.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "item/item_movement_transaction.h"
 #ifdef __NO_MYSQL__
 #include "flatfile/flatfile_world_quest_history.h"
@@ -101,13 +102,60 @@ extern "C" void quest_gameplay_setup(P_char ch)
 			q.quest_started = time(nullptr) - 25 * 3600;
 		if (action == 2)
 		{
-			assert(q.quest_active && q.quest_type == FIND_AND_KILL);
+			assert(q.quest_active && q.quest_type == FIND_AND_KILL &&
+			       q.quest_kill_original > 1);
 			q.quest_kill_how_many = 1;
 		}
 		if (action == 3)
 			q.quest_origin_room = 0;
 		if (action == 4)
 			quest_journey_invalidate(ch);
+		if (action == 6)
+		{
+			const int allowance = sql_world_quest_can_do_another(ch);
+			assert(allowance > 0);
+			const int64_t yesterday = (time(nullptr) / 86400) * 86400 - 1;
+			for (int n = 0; n < allowance; ++n)
+			{
+#ifdef __NO_MYSQL__
+				std::string error;
+				assert(flatfile_world_quest_record(
+					       getenv("FLATFILE_STATE_DIR"), GET_PID(ch),
+					       2147483000 + n, GET_LEVEL(ch), yesterday,
+					       &error) == flatfile_world_quest_result::ok);
+#else
+				assert(sql_queue(
+					"INSERT INTO world_quest_accomplished "
+					"(pid,timestamp,quest_giver,player_name,player_level,quest_target,reward_vnum,reward_desc) "
+					"VALUES (%d,FROM_UNIXTIME(%lld),%d,'Taverek',%d,%d,0,'')",
+					GET_PID(ch), static_cast<long long>(yesterday),
+					q.quest_giver, GET_LEVEL(ch), 2147483000 + n));
+#endif
+			}
+#ifdef __NO_MYSQL__
+			FILE *ready = fopen("quest-history-ready.txt", "w");
+			assert(ready);
+			fputs("ready", ready);
+			fclose(ready);
+#else
+			// Equivalent to a SELECT executed before midnight whose rows are
+			// published to today's game thread. Only this disposable SQL writer
+			// session's clock is changed, then restored before the marker read.
+			assert(sql_queue("SET timestamp = %lld",
+					 static_cast<long long>(yesterday)));
+			sql_world_quest_history_load(ch);
+			assert(sql_queue("SET timestamp = 0"));
+			assert(sql_read("SELECT 1",
+					[](bool ok, const sql_rows &)
+					{
+						assert(ok);
+						FILE *ready = fopen("quest-history-ready.txt", "w");
+						assert(ready);
+						fputs("ready", ready);
+						fclose(ready);
+					}));
+#endif
+		}
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	}
 	if (placing)
@@ -299,6 +347,20 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 	number(root, "remaining", sql_world_quest_can_do_another(ch));
 	number(root, "history_done",
 	       last_target ? sql_world_quest_done_already(ch, last_target) : 0);
+	if (FILE *ready = fopen("quest-history-ready.txt", "r"))
+	{
+		fclose(ready);
+		number(root, "retained_history", sql_world_quest_done_already(ch, 2147483000));
+#ifdef __NO_MYSQL__
+		int yesterday_count = 0;
+		std::string error;
+		assert(flatfile_world_quest_count_day(getenv("FLATFILE_STATE_DIR"), GET_PID(ch), 50,
+						      (time(nullptr) / 86400) * 86400 - 1,
+						      &yesterday_count,
+						      &error) == flatfile_world_quest_result::ok);
+		number(root, "yesterday_history", yesterday_count);
+#endif
+	}
 	cJSON_AddStringToObject(root, "month", strip_ansi(month_name[time_info.month]).c_str());
 	cJSON *items = cJSON_AddArrayToObject(root, "items");
 	for (P_obj object = ch->carrying; object; object = object->next_content)

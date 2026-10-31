@@ -68,15 +68,16 @@ void run_map_payment(P_char player, int fee)
 '''
     )
     binary = work / "targets"
-    subprocess.run([
+    compile_command = [
         "g++", "-std=c++20", "-g", "-O1", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
         "-ffunction-sections", "-fdata-sections", "-fsanitize=address,undefined",
         "-fno-sanitize-recover=all", "-Isrc", "-Isrc/no_mysql", "-D__NO_MYSQL__",
-        "tests/async/world_quest_live_targets_harness.cpp", str(adapters), str(HARNESS_STUBS),
+        "tests/async/world_quest_live_targets_harness.cpp", str(HARNESS_STUBS),
         "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
         "src/core/safe_format.c",
-        "-Wl,--gc-sections", "-o", str(binary),
-    ], cwd=ROOT, check=True)
+        "-Wl,--gc-sections",
+    ]
+    subprocess.run([*compile_command, str(adapters), "-o", str(binary)], cwd=ROOT, check=True)
     scenarios = [(level, "normal", "kill") for level in (10, 11, 29, 30, 40, 41, 49, 50)]
     scenarios += [(30, "cosmetic", "ask")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
@@ -105,3 +106,110 @@ void run_map_payment(P_char player, int fee)
             raise AssertionError(f"{level} {mode} {kind}:\n{result.stdout}")
         print(result.stdout.strip().splitlines()[-1])
     print(f"{len(scenarios)} production live-target/creation/payment scenarios passed")
+
+    # Reuse the same production command/selector fixture with the real SQL
+    # history cache. Only the clock and SQL transport are controlled here.
+    sql = repo_source("sql/sql.c").read_text()
+    history_start = sql.index("struct world_quest_history\n")
+    history = sql[history_start:sql.index("const char *sql_select_IP_info(", history_start)]
+    sql_adapters = work / "sql_history_adapters.cpp"
+    sql_adapters.write_text(adapters.read_text() + r'''
+#include "sql/sql_async.h"
+#include <cstdarg>
+#include <cassert>
+#include <unordered_set>
+#include <unordered_map>
+extern int history_writes;
+static time_t history_clock = 20000LL * 86400 + 86399;
+static std::vector<int64_t> history_stamps;
+static std::function<void(bool, const sql_rows &)> history_callback;
+static sql_rows history_rows;
+static int history_level = 30;
+static time_t quest_test_time(time_t *out)
+{
+    if (out) *out = history_clock;
+    return history_clock;
+}
+std::string sql_format(const char *format, ...)
+{
+    char text[8192];
+    va_list args;
+    va_start(args, format);
+    const int size = vsnprintf(text, sizeof(text), format, args);
+    va_end(args);
+    assert(size >= 0 && static_cast<size_t>(size) < sizeof(text));
+    return text;
+}
+bool sql_read_at(persistence_query_site, std::string query,
+                 std::function<void(bool, const sql_rows &)> done)
+{
+    assert(!history_callback);
+    const bool timestamps = query.find("UNIX_TIMESTAMP(timestamp)") != std::string::npos;
+    assert(timestamps || query.find("TO_DAYS(timestamp)") != std::string::npos);
+    history_rows.clear();
+    int target = 999000;
+    for (int64_t stamp : history_stamps)
+        history_rows.push_back({{std::to_string(++target), std::to_string(history_level),
+            std::to_string(timestamps ? stamp : stamp / 86400 == history_clock / 86400)}});
+    history_callback = std::move(done);
+    return true;
+}
+bool sql_queue_at(persistence_query_site, const char *, ...)
+{
+    ++history_writes;
+    return true;
+}
+char *mysql_str(const char *text, char *out)
+{
+    strcpy(out, text);
+    return out;
+}
+P_char find_player_by_pid(int) { return nullptr; }
+int difficulty_scale_world_quest_allowance(int value) { return value; }
+#define time quest_test_time
+''' + history + r'''
+#undef time
+static void publish_history(bool ok = true)
+{
+    assert(history_callback);
+    auto callback = std::move(history_callback);
+    history_callback = {};
+    callback(ok, history_rows);
+}
+void quest_test_history_empty(P_char ch)
+{
+    history_level = GET_LEVEL(ch) >= 50 ? 30 : GET_LEVEL(ch);
+    history_stamps.clear();
+    sql_world_quest_history_load(ch);
+    publish_history();
+}
+void quest_test_history_begin_rollover(P_char ch, int completed)
+{
+    world_quest_histories.clear();
+    history_stamps.assign(completed, history_clock - 60);
+    sql_world_quest_history_load(ch);
+}
+void quest_test_history_advance()
+{
+    history_clock += 2;
+}
+void quest_test_history_publish(int seconds, bool ok)
+{
+    history_clock += seconds;
+    publish_history(ok);
+}
+''')
+    sql_binary = work / "sql-history-targets"
+    subprocess.run([*compile_command, "-DWORLD_QUEST_SQL_HISTORY", str(sql_adapters),
+                    "-o", str(sql_binary)], cwd=ROOT, check=True)
+    history_failures = []
+    for level in (30, 56):
+        for mode in ("history_rollover", "history_same_day", "history_unready",
+                     "history_failed_read", "history_write_rollover"):
+            result = subprocess.run([str(sql_binary), str(level), mode, "kill", share_limit],
+                                    cwd=work, text=True, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, timeout=15)
+            print(result.stdout)
+            if result.returncode:
+                history_failures.append((level, mode))
+    assert not history_failures, history_failures

@@ -2785,8 +2785,8 @@ struct world_quest_history
 static std::unordered_map<int, world_quest_history> world_quest_histories;
 static std::unordered_set<int> world_quest_histories_loading;
 
-// Days since the epoch in UTC, as TO_DAYS(NOW()) counts them: every connection runs in
-// UTC (sql_apply_session_contract()).
+// UTC days since the Unix epoch, matching UNIX_TIMESTAMP(timestamp). Every
+// connection runs in UTC (sql_apply_session_contract()).
 static long utc_day_number(void)
 {
 	return (long)(time(NULL) / 86400);
@@ -2799,7 +2799,7 @@ void sql_world_quest_history_load(P_char ch)
 		return;
 	const int pid = GET_PID(ch);
 	if (!sql_read(sql_format("SELECT quest_target, player_level, "
-				 "TO_DAYS(timestamp) = TO_DAYS(NOW()) "
+				 "UNIX_TIMESTAMP(timestamp) "
 				 "FROM world_quest_accomplished WHERE pid = %d",
 				 pid),
 		      [pid](bool ok, const sql_rows &rows)
@@ -2813,7 +2813,10 @@ void sql_world_quest_history_load(P_char ch)
 			      {
 				      if (row[0])
 					      history.targets.insert(atoi(row[0]));
-				      if (row[1] && row[2] && atoi(row[2]))
+				      // A read can finish on the game thread after midnight.
+				      // Count each timestamp against this cache's UTC day, not
+				      // the day on which the SELECT happened to execute.
+				      if (row[1] && row[2] && atoll(row[2]) / 86400 == history.day)
 				      {
 					      ++history.today_by_level[atoi(row[1])];
 					      ++history.today_total;
@@ -2861,9 +2864,12 @@ void sql_world_quest_finished(P_char ch, P_obj reward)
 	const auto found = world_quest_histories.find(GET_PID(ch));
 	if (found != world_quest_histories.end())
 	{
-		found->second.targets.insert(ch->only.pc->quest_mob_vnum);
-		++found->second.today_by_level[GET_LEVEL(ch)];
-		++found->second.today_total;
+		// Abandoning an old task may be the first history mutation today.
+		// Roll the counters forward before recording this completion.
+		auto &history = *world_quest_history_of(ch);
+		history.targets.insert(ch->only.pc->quest_mob_vnum);
+		++history.today_by_level[GET_LEVEL(ch)];
+		++history.today_total;
 	}
 	else
 	{

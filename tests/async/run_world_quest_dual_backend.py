@@ -40,8 +40,8 @@ GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
 if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
                              for case in GAMEPLAY_CASES):
     raise ValueError("unsupported focused gameplay cases")
-if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported"}:
-    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, audit, or reported")
+if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported", "history"}:
+    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, audit, reported, or history")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
 
@@ -652,7 +652,7 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     place(client, 30, 132560)
     for _ in range(8):
         accepted = purchase(client)
-        if accepted["type"] == 1:
+        if accepted["type"] == 1 and accepted["quota"] > 1:
             break
         # Preferred KILL can legitimately fall back to ASK in a sampled zone.
         client.send("ask bartender abandon")
@@ -707,6 +707,52 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     return client, {"matrix": results, "transitions": transitions,
                     "progressed": progressed, "pending": waiting, "replacement": replacement,
                     "bloodstone_gameplay": gameplay}
+
+
+def perform_history_regrant(client: MudClient, run_root: pathlib.Path, restart,
+                            database_environment) -> tuple[MudClient, dict]:
+    (run_root / "quest-gameplay-control.txt").write_text("30 1 4 132560\n")
+    (run_root / "quest-reported-setup.txt").write_text("0\n")
+    client.send("chaos")
+    before = settled_gameplay_snapshot(client, run_root)
+    client.send("ask bartender quest")
+    client.expect_any(("Go ask ", "Go kill "), timeout=30)
+    accepted = settled_gameplay_snapshot(client, run_root)
+    (run_root / "quest-reported-setup.txt").write_text("1\n")
+    client.send("chaos")
+    aged = settled_gameplay_snapshot(client, run_root)
+    (run_root / "quest-reported-setup.txt").write_text("6\n")
+    client.send("chaos")
+    deadline = time.monotonic() + 60
+    while not (run_root / "quest-history-ready.txt").exists():
+        require(time.monotonic() < deadline, "history fixture did not publish")
+        client._receive()
+    loaded = gameplay_snapshot(client, run_root)
+    client.send("ask bartender abandon")
+    client.expect("You no longer have a task.", timeout=30)
+    abandoned = settled_gameplay_snapshot(client, run_root)
+    client.send("ask bartender quest")
+    client.expect_any(("Go ask ", "Go kill ", "any more quests"), timeout=30)
+    regrant = settled_gameplay_snapshot(client, run_root)
+    require(regrant["active"], f"Tharnadia regrant refused with only yesterday's history: {loaded} -> {regrant}")
+    require(regrant["remaining"] == before["remaining"] and
+            regrant["wallet"] == abandoned["wallet"] - 600,
+            "history rollover changed allowance or purchase fee")
+    client.send("save")
+    client.expect("Save complete for Taverek.", timeout=120)
+    client = restart(client)
+    client.send("chaos")  # Reapply only the test actor's level after Chaos entry.
+    restored = settled_gameplay_snapshot(client, run_root)
+    require(all(restored[k] == regrant[k] for k in
+                ("active", "due", "mob", "type", "origin", "wallet", "remaining")),
+            "history-rollover regrant did not survive restart")
+    persisted = (restored["yesterday_history"] if database_environment is None else
+                 stored_gameplay_history(database_environment, restored))
+    require(persisted == before["remaining"] and restored["retained_history"] == 1,
+            "zero-progress abandonment wrote or lost completion history")
+    return client, {"before": before, "accepted": accepted, "aged": aged,
+                    "loaded": loaded, "abandoned": abandoned, "regrant": regrant,
+                    "restored": restored}
 
 
 def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) -> dict:
@@ -945,6 +991,14 @@ run
             client.expect("Save complete for Taverek.", timeout=120)
             client.send("look")
             client.expect("Mathorn's Bar", timeout=15)
+            if JOURNEY == "history":
+                client, history = perform_history_regrant(client, run_root, restart_gameplay,
+                                                           database_environment)
+                client.close()
+                client = None
+                stop_quest_server(process, pid_path, output_path)
+                return {"backend": backend, "journey": "history", "history": history,
+                        "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest()}
             if JOURNEY == "reported":
                 client, reported = perform_reported(client, run_root, restart_gameplay,
                                                      database_environment, plain_port)

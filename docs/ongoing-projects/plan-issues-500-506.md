@@ -1,6 +1,6 @@
 # Bartender quest bug fixes: issues #500 and #506
 
-Date: 2026-10-31. Status: implemented, locally qualified and ready for review.
+Date: 2026-10-31. Status: #500 implemented; #506 repair and proof in progress.
 Fix branch: `branch/issues-500-506-bartender-bugfixes`.
 Review: [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
 Source baseline: `b737db20210ff2d3e4eebccb212c9918b9b6f877` (`master` and
@@ -21,6 +21,143 @@ fee when selection fails. Preserve existing paid work and replacement entitlemen
 The original plan-only checkpoint is `9ef0f4203`; implementation evidence is
 recorded below as work proceeds. The two reports share verification, but #506 needs its own
 cause established; a #500 classifier fix is not evidence that #506 is resolved.
+
+## Reopened #506 work
+
+The user requires a demonstrated #506 repair on this branch. The earlier passing
+29/30 flows are controls, not completion. Trace every post-abandon refusal and
+construct the relevant states locally; obtaining the original player's state is
+not a prerequisite for this work.
+
+Outcome: reproduce a false refusal after abandonment, fix its owning path and
+prove regrant when funds, allowance, history and a suitable target permit it.
+Keep legitimate refusals, progressed-KILL history, replacement entitlement and
+refunds intact. Non-goals remain changes to quest policy, quotas, fees or reward
+selection. Expected owners are the existing bartender handler, history cache,
+native fixture and disposable journey; edit only where failing evidence points.
+
+The trace shows reset clears active/completed/origin/replacement fields.
+Two missing checks were constructed: Tharnadia purchases across levels
+11-56 (including the KILL-only range), and a history read started before a UTC
+day change but published afterward. Before this repair SQL returned a boolean "today"
+using query time and assigned the cache's day using callback time; the two could
+disagree. Proof must first fail against current code, then pass through the real
+bartender command path with the repaired implementation.
+
+Constructed failures now established:
+
+- The native fixture compiles the production SQL cache and bartender handler.
+  An old zero-progress task is abandoned successfully while a history read is
+  outstanding. Advancing the clock across UTC midnight before publishing its
+  old-day rows gives a false zero allowance and refuses regrant. The regression
+  failed with the original "any more quests" response and an inactive task.
+- The same refusal fails against the pre-fix full MariaDB server at the actual
+  Tharnadia giver. The disposable SQL writer's session clock makes the history
+  SELECT execute with the previous day's date, then is restored before a queued
+  completion marker. This faithfully constructs old-query-day/new-callback-day
+  results without waiting for midnight or modifying production state. All seeded
+  completion timestamps are yesterday; the old cache nevertheless reports zero
+  remaining after abandonment. Evidence: `bin/tests/issue506-mariadb-before.log`.
+- Additional native controls exposed two connected defects: unavailable history
+  was reported as exhausted allowance, and a progressed abandonment as the first
+  cache mutation after midnight lost its allowance charge when the next lookup
+  cleared the stale day's counters.
+
+The repair reads actual completion timestamps and counts them against the cache
+publication day, rolls an existing cache forward before recording progressed
+abandonment, and distinguishes unknown history from a known zero allowance in
+the existing refusal branch. No quota, fee, history exclusion or route rule is
+relaxed. All 72 original native scenarios plus ten production SQL-cache cases
+now pass: delayed rollover, real same-day exhaustion, pending read, failed read
+with retry, and progressed abandonment across rollover, each at 30 and 56. The
+high-level fixture includes a second suitable KILL prototype so target exclusion
+does not hide a counting defect. Completed target exclusions remain permanent.
+
+The actual-giver after-fix history journey passes on both backends, including
+save/restart: yesterday's records leave the current allowance at eight, paid
+zero-progress abandonment keeps eight, regrant succeeds with the normal fee,
+and the new task/wallet/eight old history records survive restart. The old
+MariaDB binary reported zero and refused that same constructed regrant.
+The SQL-only midnight race is now demonstrated through the actual SQL transport;
+flatfile is a compatibility control with equivalent past-day records.
+
+Refusal trace completed for the existing command path:
+
+- Completed work goes to its reward/giver path. Active work is described;
+  replacement-pending work uses the retained accepted type/level/progress and a
+  free replacement, with explicit confirmation to discard it. Reset after a
+  successful paid abandonment clears every assignment field before regrant.
+- Minimum level, genuinely exhausted allowance, insufficient funds and rejected
+  payment remain refusals without publishing a new task or losing a charge.
+  Unavailable history now names the history problem and can be retried; it is
+  not presented as a known empty allowance.
+- Selection failure preserves state and refunds its fee. The expanded Tharnadia
+  investigation tried 11,20,29,30,35,40,41,45,49,50,55,56 with fresh history and
+  funds. In the captured world, levels 50/55/56 had zero proved-reachable routine
+  KILL groups within their eligible bands, although hundreds existed elsewhere;
+  routes were below both work/room bounds. Those requests returned the fee and
+  left assignment inactive. This is the distinct target/route refusal under the
+  current KILL-only/ordinary-travel contract; changing that contract is outside
+  this repair. No universal high-level grant expectation was added to tests.
+
+Temporary high-level candidate/flight diagnostics were removed after accounting
+for that path. Evidence remains in `bin/tests/issue506-level-diagnostic.log` and
+`bin/tests/issue506-candidates-*.json`. The retained regression is the reproduced
+false allowance at the real giver, with positive/negative native controls;
+it does not manufacture target eligibility or waive a legitimate quota.
+
+The new `history` journey uses only disposable accounts/databases/state. Its
+SQL writer's session clock is restored before the completion marker. The first
+flatfile test reader incorrectly compared today's count with all past records;
+that assertion was corrected to verify yesterday's records via the owning
+history API and retain the completed-target exclusion across restart.
+Final full-gameplay/recovery and shared abandonment regression checks are running.
+
+The full MariaDB replay reached its final level-30 KILL case but hit the existing
+120-second combat limit against brownie 5711 at room 5766 (still fighting,
+target HP 211, quota 3). It did not fail a history/regrant assertion. The earlier
+cases and recovery checkpoints are retained in `bin/tests/issue506-mariadb-full.log`;
+the unchanged integration run is being repeated separately. Combat behavior and
+limits are not modified for this quest-history repair.
+
+The final native matrix (including all ten SQL cases), the new real-history
+journey on both backends, and the original `reported` abandonment/regrant suite
+on both backends pass. In both history runs, wallet values after aged abandonment
+and regrant are 9,999,333 and 9,998,733 copper, allowance stays eight and the task
+and permanent old-target exclusions survive restart. MariaDB's old binary
+instead reports zero remaining and refuses the purchase before charging it.
+
+Commands for the constructed history proof:
+
+```sh
+python3 tests/async/test_world_quest_target_retries.py
+DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=history DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue500_mariadb_final" python3 tests/async/run_world_quest_dual_backend.py
+DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=history DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue506_mariadb_final" python3 tests/async/run_world_quest_dual_backend.py
+DURIS_WORLD_QUEST_BACKEND=flatfile DURIS_WORLD_QUEST_JOURNEY=history DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue506_flatfile_final" python3 tests/async/run_world_quest_dual_backend.py
+```
+
+The old MariaDB command fails at regrant as required by the regression. The new
+commands pass. Their ignored records are `bin/tests/issue506-mariadb-before.log`,
+`issue506-mariadb-history-final.log`, `issue506-flatfile-history-final.log`, and
+`issue506-native-final.log`. Qualified binary SHA-256 values:
+
+- MariaDB: `ce6fc80d5967358768a30437ef75e5ea8a241679ee37a9e67ba5b24c5f37d4b9`.
+- Flatfile: `5f045a40bf37467040ccfa42934cfd83cf8726cac78d07b70e22509f0c0a13b7`.
+
+The fix stays in `src/sql/sql.c` and the existing allowance refusal in
+`src/specs/specs.mobile.c`. The native fixture reuses the production command/
+selector with the owning SQL cache bodies and a controlled clock/SQL transport;
+the actual MariaDB journey independently verifies the query and publication
+behavior. Both use the existing runners and disposable setup. No player repair,
+new service, schema field, retry framework or gameplay option was introduced.
+
+Final fixture review ensures progressed work is genuinely incomplete: one kill
+with quota above one. The recorded full-world fixtures had quotas four and seven;
+the native constructor now grants quota two before advancing its progress. The
+same legitimate native states were rerun against SQL bodies from baseline
+`787baebbc`: delayed-read refusal and lost first-day abandonment charge fail at
+both 30 and 56. The repaired source passes all ten cases. Baseline evidence is
+`bin/tests/issue506-baseline-final.log`.
 
 ## Non-goals
 

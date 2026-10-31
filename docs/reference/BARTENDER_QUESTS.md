@@ -72,8 +72,10 @@ randomize ASK/KILL order and try the other type if necessary; level 50+
 purchases select KILL only. There is no player command to request one kind.
 A purchase captures the real origin room and bartender VNUM before charging.
 Failed selection returns the fee. Purchase and sharing check allowance;
-completion consumes it. There is no elapsed-time quest deadline: the saved
-start time controls abandonment cost, not automatic expiry. Level changes do
+completion consumes it. An unavailable history read is reported separately from
+a known exhausted allowance and does not charge for a new task.
+There is no elapsed-time quest deadline: the saved start time controls abandonment
+cost, not automatic expiry. Level changes do
 not reroll the accepted type, target band, level, or kill quota.
 
 An ASK assignment completes when `do_ask()` reaches the matching NPC in the
@@ -457,6 +459,10 @@ the partial kill dirty; persistence then depends on another STATUS save trigger.
 
 Completion history is separate: SQL uses `world_quest_accomplished` with an
 asynchronous login/lazy-read cache; flatfile uses `<FLATFILE_ROOT>/players/<pid>.world-quests`.
+SQL history reads return completion timestamps and count them against the UTC day
+when the cache is published; a read finishing after midnight cannot consume the
+new day's allowance with yesterday's completions. A completion/confirmed
+abandonment rolls an existing cache to the current day before adding its count.
 Daily counts use UTC days and, below level 50, only completions at the character's
 current level; level 50+ uses the whole day's count. Records store current
 level when recorded, not accepted quest level. Leveling below 50 can therefore

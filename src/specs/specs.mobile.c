@@ -11255,7 +11255,13 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			return TRUE;
 		}
 
-		if (sql_world_quest_can_do_another(pl) < 1)
+		const int remaining = sql_world_quest_can_do_another(pl);
+		if (remaining < 0)
+		{
+			mobsay(ch, "I can't check your quest history right now. Please try again.");
+			return TRUE;
+		}
+		if (remaining == 0)
 		{
 			act("$n says, 'Sorry, I don't have any more quests for right now.'", TRUE,
 			    ch, 0, pl, TO_VICT);
