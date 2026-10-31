@@ -849,7 +849,7 @@ void delete_doubledollar(char *);
 
 char *item_condition(P_obj);
 int DamageOneItem(P_char, int, P_obj, bool);
-void MakeScrap(P_char, P_obj);
+bool MakeScrap(P_char, P_obj);
 void DamageAllStuff(P_char, int);
 void DamageStuff(P_char, int);
 void DestroyStuff(P_char, int);
