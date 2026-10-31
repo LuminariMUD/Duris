@@ -115,18 +115,17 @@ void init_cmdlog(void)
 	atexit(write_cmdlog);
 }
 
-/* Players' conversation is not logged (ADR 0003): a say, tell or other conversation command
- * keeps its command word in cmd.debug and drops its text. Returns the length to keep, or -1
- * to keep the whole line. */
-static int cmdlog_kept_length(const char *str)
+/* Keep private passwords out of command logs, including commands routed through
+ * at/force/order. cmd.debug also withholds direct conversation text (ADR 0003). */
+int command_log_kept_length(const char *str, bool hide_chat)
 {
 	char word[MAX_INPUT_LENGTH];
 	int begin = 0, length = 0;
 
-	while (str[begin] == ' ')
+	while (isspace(static_cast<unsigned char>(str[begin])))
 		begin++;
 	/* "'" and ":" are say and emote, with or without a space before the text. */
-	if (str[begin] == '\'' || str[begin] == ':')
+	if (hide_chat && (str[begin] == '\'' || str[begin] == ':'))
 		return begin + 1;
 	while (str[begin + length] > ' ' && length < (int)sizeof(word) - 1)
 	{
@@ -134,6 +133,8 @@ static int cmdlog_kept_length(const char *str)
 		length++;
 	}
 	word[length] = '\0';
+	if (!length)
+		return -1;
 	switch (old_search_block(word, 0, length, command, 2))
 	{
 	case CMD_SAY:
@@ -149,7 +150,29 @@ static int cmdlog_kept_length(const char *str)
 	case CMD_ACC:
 	case CMD_JESTROS:
 	case CMD_SHOUT:
+		return hide_chat ? begin + length : -1;
+	case CMD_OPEN:
 		return begin + length;
+	case CMD_EQUIPMENT:
+		one_argument(str + begin + length, word);
+		return !str_cmp(word, "chest") ? begin + length : -1;
+	case CMD_AT:
+	case CMD_FORCE:
+	case CMD_ORDER:
+	{
+		const char *nested = str + begin + length;
+		while (isspace(static_cast<unsigned char>(*nested)))
+			++nested;
+		if (!*nested)
+			return -1;
+		while (*nested && !isspace(static_cast<unsigned char>(*nested)))
+			++nested;
+		while (isspace(static_cast<unsigned char>(*nested)))
+			++nested;
+		// Preserve existing staff/conversation logging; only credentials recurse.
+		const int kept = command_log_kept_length(nested, false);
+		return kept < 0 ? -1 : static_cast<int>(nested - str) + kept;
+	}
 	default:
 		return -1;
 	}
@@ -177,7 +200,7 @@ void cmdlog(P_char ch, char *str)
 		tbuf[strlen(tbuf) - 1] = '\0';
 		char withheld[64]; // a command word and the note
 		const char *text = str;
-		int kept = cmdlog_kept_length(str);
+		int kept = command_log_kept_length(str, true);
 		if (kept >= 0)
 		{
 			static const char note[] = " <text withheld>";
