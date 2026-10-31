@@ -160,6 +160,10 @@ bool apply(P_char character, const currency_command_payload &payload,
 	     std::any_of(payload.bank_delta.amount.begin(), payload.bank_delta.amount.end(),
 			 [](int64_t delta) { return delta != 0; })))
 		return false;
+	if (reserved_world_quests.count(payload.pid) &&
+	    std::any_of(payload.wallet_delta.amount.begin(), payload.wallet_delta.amount.end(),
+			[](int64_t delta) { return delta < 0; }))
+		return false;
 	std::string account;
 	if (!player_account(character, &account) ||
 	    payload.pid != static_cast<uint32_t>(GET_PID(character)) ||
@@ -376,6 +380,7 @@ void currency_transaction_reset_for_tests(void)
 {
 	reserved_trade_pid = 0;
 	reserved_trade_payment = 0;
+	reserved_world_quests.clear();
 	reserved_chest_pid = 0;
 	reserved_chest_account.clear();
 	health = {};
@@ -384,7 +389,7 @@ void currency_transaction_reset_for_tests(void)
 bool currency_transaction_reserve_trade(P_char character, int64_t payment)
 {
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || reserved_trade_pid ||
-	    currency_transaction_chest_busy(character))
+	    currency_transaction_wallet_busy(character))
 		return false;
 	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
 					GET_GOLD(character), GET_PLATINUM(character) } };
@@ -503,6 +508,7 @@ bool currency_transaction_reserve_chest(P_char character)
 {
 	std::string account;
 	if (reserved_chest_pid || reserved_trade_pid || !player_account(character, &account) ||
+	    currency_transaction_wallet_busy(character) ||
 	    auction_transaction_player_busy(character) ||
 	    collector_transaction_player_busy(character) ||
 	    shop_trade_transaction_player_busy(character))
