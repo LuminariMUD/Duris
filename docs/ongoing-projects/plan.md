@@ -255,3 +255,11 @@ cannot mix probe signatures between its MariaDB and flatfile passes. A prior
 intermediate run's flatfile debugger stopped on that signature mismatch; this
 was not a server crash. Final `both` and `reported` runs use the corrected
 step synchronization. No production change was needed for these harness fixes.
+
+Exact step observation then identified the remaining concrete navigation error:
+the simplified walker admitted ocean sectors (for example 556132 -> 555732),
+which ordinary movement rejects. The walker now conservatively excludes ocean
+and hazardous planar terrain, as appropriate for its completion fixtures only.
+Production eligibility remains independent of these travel checks. Superseded
+reported runs were interrupted with normal cleanup; the corrected full/reported
+pair is the remaining completion gate.

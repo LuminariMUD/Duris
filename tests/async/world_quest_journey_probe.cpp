@@ -310,6 +310,24 @@ static journey_navigation navigation_routes(P_char ch)
 			    map_entry_barrier(ch, queue[next], to) != forced_block::none)
 				continue;
 			const auto &room = world[to];
+			switch (room.sector_type)
+			{
+			case SECT_OCEAN:
+			case SECT_FIREPLANE:
+			case SECT_AIR_PLANE:
+			case SECT_WATER_PLANE:
+			case SECT_EARTH_PLANE:
+			case SECT_ETHEREAL:
+			case SECT_ASTRAL:
+			case SECT_UNDRWLD_LIQMITH:
+			case SECT_NEG_PLANE:
+			case SECT_PLANE_OF_AVERNUS:
+			case SECT_LAVA:
+			case SECT_CASTLE_WALL:
+				continue;
+			default:
+				break;
+			}
 			if (IS_SET(zone_table[room.zone].flags, ZONE_CLOSED | ZONE_PRIVATE) ||
 			    IS_SET(room.room_flags, ROOM_PRIVATE | ROOM_LOCKER | ROOM_GUILD |
 							    ROOM_JAIL | ROOM_ATRIUM | ROOM_ARENA) ||
