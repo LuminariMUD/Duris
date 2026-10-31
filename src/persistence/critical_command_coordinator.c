@@ -196,6 +196,12 @@ player_save_apply_result execute(const writer_job &job)
 	{
 		applied = { critical_apply_outcome::retryable_failure, 0, 0 };
 	}
+	// A combat intent without a committed result must remain fenced, including
+	// corrupt authority state. Repair (or restart replay) retries the same ID;
+	// a committed rejection has a result payload and may be published to staff.
+	if (job.command.type == critical_command_type::combat_outcome &&
+	    applied.outcome == critical_apply_outcome::terminal_failure && !applied.result_size)
+		applied.outcome = critical_apply_outcome::retryable_failure;
 	// A lost connection or a lock wait goes back to the writer, which tries this
 	// command again before anything queued after it.
 	if (applied.outcome == critical_apply_outcome::retryable_failure ||
@@ -297,7 +303,7 @@ critical_submit_result reserve_locked(const std::string &identity, const critica
 	return critical_submit_result::accepted;
 }
 
-bool queue_on_writer(const std::string &identity, writer_job job)
+bool queue_on_writer(const std::string &identity, writer_job job, std::function<bool()> admit)
 {
 	const size_t bytes = job.command.payload.size() + sizeof(job);
 	uint64_t owner = 0;
@@ -308,9 +314,12 @@ bool queue_on_writer(const std::string &identity, writer_job job)
 	player_save_submit_result submitted = player_save_submit_result::unavailable;
 	try
 	{
-		submitted = persistence_writer_submit(persistence_job_kind::critical, owner, bytes,
-						      [job = std::move(job)]()
-						      { return execute(job); });
+		auto write = [job = std::move(job)]() { return execute(job); };
+		submitted = admit ? persistence_writer_submit_admitted(
+					    persistence_job_kind::critical, owner, bytes,
+					    std::move(write), std::move(admit)) :
+				    persistence_writer_submit(persistence_job_kind::critical, owner,
+							      bytes, std::move(write));
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -379,6 +388,12 @@ void critical_command_coordinator_shutdown(void)
 
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
+	return critical_command_coordinator_submit_admitted(std::move(command), {});
+}
+
+critical_submit_result critical_command_coordinator_submit_admitted(critical_command command,
+								    std::function<bool()> admit)
+{
 	const bool supplied_acceptance_time = command.accepted_at_usec != 0;
 	if (!supplied_acceptance_time)
 		command.accepted_at_usec = wall_now_usec();
@@ -430,8 +445,9 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 		if (reserved != critical_submit_result::accepted)
 			return reserved;
 	}
-	return queue_on_writer(identity, std::move(job)) ? critical_submit_result::accepted :
-							   critical_submit_result::unavailable;
+	return queue_on_writer(identity, std::move(job), std::move(admit)) ?
+		       critical_submit_result::accepted :
+		       critical_submit_result::unavailable;
 }
 
 size_t critical_command_coordinator_pulse(critical_completion *completions, size_t capacity)

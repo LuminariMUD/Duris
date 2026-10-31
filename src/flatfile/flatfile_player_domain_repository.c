@@ -17,6 +17,8 @@
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_store.h"
 #include "combat/combat_outcome_command.h"
+#include "combat/frag_cap_repository.h"
+#include "combat/frag_cap_config.h"
 #include "economy/currency_command.h"
 #include "world/epic_command.h"
 #include "world/zone_touch_command.h"
@@ -26,6 +28,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <filesystem>
 #include <array>
 #include <cerrno>
@@ -54,7 +57,7 @@ constexpr std::array<uint8_t, 8> artifact_pending_magic = { 'D', 'U', 'R', 'A', 
 constexpr const char *artifact_pending_filename = "artifact_guild_pending";
 constexpr unsigned int artifact_delivery_pending = 0x41470000;
 constexpr unsigned int artifact_delivery_acked = artifact_delivery_pending + 1;
-static_assert(COMBAT_OUTCOME_MAX_PARTICIPANTS * 2 + 2 <=
+static_assert(COMBAT_OUTCOME_MAX_PARTICIPANTS * 2 + 3 <=
 	      flatfile_authority_transaction_maximum_operations);
 static_assert(ZONE_TOUCH_MAX_PARTICIPANTS * 2 + 4 <=
 	      flatfile_authority_transaction_maximum_operations);
@@ -65,6 +68,13 @@ constexpr size_t domain_maximum_operations = DIVINE_EPIC_RECOVERY_MAX + 1;
 // Accommodate the declared receipt count, including complete combat results.
 constexpr size_t domain_maximum_bytes =
 	(FLATFILE_DOMAIN_RESULT_MAX_BYTES + 64) * domain_maximum_operations + 64 * 1024;
+// 40 player domains + delivery index, 40 child receipts + parent receipt,
+// the maximum cap snapshot, and 64 KiB for journal framing/filenames. Every
+// domain/index encoder is bounded above; receipt metadata/envelope fits 256 B.
+static_assert((COMBAT_OUTCOME_MAX_PARTICIPANTS + 1) *
+			      (domain_maximum_bytes + FLATFILE_DOMAIN_RESULT_MAX_BYTES + 256) +
+		      FRAG_CAP_MAX_BYTES + 64 * 1024 <=
+	      flatfile_authority_transaction_maximum_bytes);
 constexpr size_t transaction_maximum_records = COMBAT_OUTCOME_MAX_PARTICIPANTS * 2;
 constexpr size_t transaction_maximum_bytes =
 	domain_maximum_bytes * transaction_maximum_records + 4096;
@@ -1911,6 +1921,28 @@ critical_apply_result apply_combat_outcome_command(const std::string &root,
 	catch (const std::bad_alloc &)
 	{
 		return { critical_apply_outcome::retryable_failure, 0, ENOMEM };
+	}
+	if (!result_code)
+	{
+		frag_cap_state cap;
+		const auto loaded = frag_cap_flatfile_load_locked(root, lock, &cap);
+		if (loaded != frag_cap_store_result::ok)
+			return { loaded == frag_cap_store_result::io_error ?
+					 critical_apply_outcome::retryable_failure :
+					 critical_apply_outcome::terminal_failure,
+				 0,
+				 static_cast<unsigned int>(
+					 loaded == frag_cap_store_result::io_error ? EIO :
+										     EILSEQ) };
+		const uint64_t before = cap.revision;
+		const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+					    std::chrono::system_clock::now().time_since_epoch())
+					    .count();
+		if (!frag_cap_apply_combat(&cap, command, payload, now, frag_cap_config_policy()) ||
+		    (cap.revision != before &&
+		     frag_cap_flatfile_prepare(root, lock, cap, &operations) !=
+			     frag_cap_store_result::ok))
+			return { critical_apply_outcome::terminal_failure, 0, EILSEQ };
 	}
 	const auto committed =
 		flatfile_authority_transaction_commit_operations(root, lock, operations, &error);

@@ -255,14 +255,14 @@ path; the two classes are not interchangeable. Inspect those predicates rather
 than assuming all casters use mana or all spells use a spellbook.
 
 The maximum supported level is not the currently unlocked level.
-[frag_cap.cfg](../../lib/frag_cap.cfg) sets the current repository policy:
-floor 25, reset level 30, maximum 56, a three-day unlock timer, and a Hardcore
-allowance of two levels beyond the side cap, clamped to 56. The database's
-`level_cap` row holds live unlock state; qualifying frags and timers advance it.
-See [the cap implementation](../../src/combat/frag_cap_config.c),
-[the codebase progression reference](CODEBASE.md#frag-based-level-caps), and
-[limits.c](../../src/world/limits.c). The client-free SQL fallback uses the
-configured floor; it does not reproduce a live season's progression.
+[frag_cap.cfg](../../lib/frag_cap.cfg) configures the 72-hour Good/Evil frag race.
+Positive ordinary awards pool by chosen faction; the round leader receives a
+one-level normal-cap advantage, ties advance each old cap, and shared circles
+equalize them. Fresh seasons start 31/31 and finish 56/56. Hardcore retains its
++2 XP allowance bounded by 56, while ordinary XP stops at 50 and epic-stone
+requirements still apply. See [the engine](../../src/combat/frag_cap.c),
+[the progression reference](CODEBASE.md#frag-based-level-caps), and
+[limits.c](../../src/world/limits.c).
 
 ## Multiclassing
 

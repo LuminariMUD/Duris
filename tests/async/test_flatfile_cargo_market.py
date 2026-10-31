@@ -120,7 +120,7 @@ maintenance = subprocess.run(
         "-Isrc/ships",
         "-E",
         "-P",
-        rel("maintenance_repository.c"),
+        rel("maintenance_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
     ],
     cwd=ROOT,
     check=True,

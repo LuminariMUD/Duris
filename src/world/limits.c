@@ -1257,13 +1257,6 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		{
 			return 0;
 		}
-		// If they're ready to level and capped by the levelcap, then only give 2/3 exp.
-		if ((levelcap < 56) && (GET_LEVEL(ch) >= levelcap) &&
-		    (new_exp_table[GET_LEVEL(ch) + 1] <= GET_EXP(ch)))
-		{
-			progression_modifier_flags |= TELEMETRY_PROGRESSION_MODIFIER_OVER_LEVEL_CAP;
-			apply_exp_modifier(XP, base, exp_mods[EXPMOD_OVER_LEVEL_CAP]);
-		}
 	}
 
 	if (ch && victim && IS_PC(ch) && IS_PC(victim))
@@ -2112,5 +2105,6 @@ void update_exp_mods()
 	exp_mods[EXPMOD_PALADIN_VS_GOOD] = get_property("exp.factor.paladin.vsGood", 0.200);
 	exp_mods[EXPMOD_PALADIN_VS_EVIL] = get_property("exp.factor.paladin.vsEvil", 1.100);
 	exp_mods[EXPMOD_ANTIPALADIN_VS_GOOD] = get_property("exp.factor.antipaladin.vsGood", 1.050);
-	exp_mods[EXPMOD_OVER_LEVEL_CAP] = get_property("exp.factor.overCap", 0.700);
+	// Retain the historical telemetry/modifier slot; the cap no longer reduces XP.
+	exp_mods[EXPMOD_OVER_LEVEL_CAP] = 1.0;
 }

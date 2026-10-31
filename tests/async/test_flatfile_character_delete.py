@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-character-delete-test-") as 
         rel("flatfile_auction_repository.c"),
         rel("flatfile_boon_repository.c"),
         rel("flatfile_offline_message_repository.c"),
-        rel("flatfile_player_domain_repository.c"),
+        rel("flatfile_player_domain_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
         rel("flatfile_recipe_repository.c"),
         rel("flatfile_spellbook_repository.c"),
         rel("flatfile_ship_repository.c"),

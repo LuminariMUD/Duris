@@ -17,6 +17,8 @@
 #include "economy/divine_trade_repository.h"
 
 #include "combat/frag_cap_config.h"
+#include "combat/frag_cap_repository.h"
+#include "persistence/persistence_mode.h"
 #include "core/config.h"
 #include "core/defines.h"
 #include "persistence/persistence_observability.h"
@@ -337,132 +339,44 @@ maintenance_result execute_epic_modifiers(MYSQL *connection, const maintenance_r
 	return result;
 }
 
-// Runs a query and stores its first row in values, left empty when it returns none.
-bool query_first_row(MYSQL *connection, const std::string &sql, std::vector<std::string> *values)
-{
-	if (!execute_sql(connection, sql))
-		return false;
-	MYSQL_RES *rows = mysql_store_result(connection);
-	if (!rows)
-		return false;
-	values->clear();
-	if (MYSQL_ROW row = mysql_fetch_row(rows))
-		for (unsigned int index = 0; index < mysql_num_fields(rows); ++index)
-			values->push_back(row[index] ? row[index] : "");
-	mysql_free_result(rows);
-	return true;
-}
-
-// Once next_update has passed, the first frag since then by the side with more total frags
-// (by either side while the totals are level), of a victim at most unlock_victim_levels_below
-// the level open to all, unlocks one more level for that side if the kill's base frag share
-// meets the current unlock_minimum_share_points, using the recorded ally count so a
-// large group cannot unlock by ganging up on one victim. A level
-// that opens a spell circle (see get_max_circle()) or reaches the maximum opens to every
-// side instead. The next unlock waits unlock_timer_days from this one.
+// One shared clock; ordinary combat awards update its credit in their parent transaction.
 maintenance_result execute_level_cap(MYSQL *connection, const maintenance_request &request)
 {
-	if (request.value_count != 1 || request.values[0] <= 0)
+	if (request.value_count != 1 || request.values[0] <= 0 ||
+	    request.values[0] > INT64_MAX / 1000000)
 		return failure(request, maintenance_outcome::permanent_failure, EINVAL);
 	if (!begin_transaction(connection))
 		return sql_failure(connection, request);
-	bool already_applied = false;
-	if (!marker_matches_and_lock(connection, "maintenance_level_cap", request.work_id, 0,
-				     &already_applied))
-		return sql_failure(connection, request);
-	if (already_applied)
+	frag_cap_state state;
+	const auto loaded = frag_cap_sql_load(connection, &state, true);
+	if (loaded != frag_cap_store_result::ok)
 	{
-		if (!execute_sql(connection, "COMMIT"))
-			return sql_failure(connection, request);
-		return failure(request, maintenance_outcome::complete, 0);
+		execute_sql(connection, "ROLLBACK");
+		return failure(request,
+			       loaded == frag_cap_store_result::io_error ?
+				       maintenance_outcome::retryable_failure :
+				       maintenance_outcome::permanent_failure,
+			       EIO);
 	}
-	std::vector<std::string> row;
-	if (!before_deadline(request) ||
-	    !query_first_row(connection,
-			     "SELECT id,level,level_good,level_evil,UNIX_TIMESTAMP(next_update) "
-			     "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
-			     &row))
-		return sql_failure(connection, request);
-	const auto *config = frag_cap_config_get();
-	if (row.empty() || atoi(row[1].c_str()) >= config->cap_maximum_level ||
-	    request.values[0] < strtoll(row[4].c_str(), nullptr, 10))
+	const uint64_t before = state.revision;
+	const int64_t now = request.values[0] * 1000000;
+	// A combat transaction can open a round after this timer request was captured.
+	if ((now >= state.round_start && !frag_cap_settle(&state, now, frag_cap_config_policy())) ||
+	    (before != state.revision &&
+	     frag_cap_sql_save(connection, state) != frag_cap_store_result::ok))
 	{
-		if (!execute_sql(connection, "COMMIT"))
-			return sql_failure(connection, request);
-		return failure(request, maintenance_outcome::complete, 0);
+		execute_sql(connection, "ROLLBACK");
+		return failure(request, maintenance_outcome::retryable_failure, EIO);
 	}
-	const std::string id = row[0];
-	const int open_level = atoi(row[1].c_str());
-	int good_level = atoi(row[2].c_str());
-	int evil_level = atoi(row[3].c_str());
-	const int64_t next_update = strtoll(row[4].c_str(), nullptr, 10);
-
-	const std::string good = std::to_string(RACEWAR_GOOD), evil = std::to_string(RACEWAR_EVIL);
-	const std::string side_frags =
-		"SELECT COALESCE(SUM(total_frags),0) FROM frag_leaderboard WHERE level<=" +
-		std::to_string(MAXLVLMORTAL) + " AND racewar=";
-	if (!query_first_row(connection,
-			     "SELECT (" + side_frags + good + "),(" + side_frags + evil + ")",
-			     &row) ||
-	    row.empty())
-		return sql_failure(connection, request);
-	const int64_t good_frags = strtoll(row[0].c_str(), nullptr, 10);
-	const int64_t evil_frags = strtoll(row[1].c_str(), nullptr, 10);
-	const std::string leaders = good_frags > evil_frags ? good :
-				    evil_frags > good_frags ? evil :
-							      good + "," + evil;
-	if (!before_deadline(request) ||
-	    !query_first_row(
-		    connection,
-		    "SELECT f.racewar,UNIX_TIMESTAMP(o.created_at) FROM combat_outcome o "
-		    "JOIN pkill_info v ON v.event_id=o.pkill_event_id AND v.pid=o.victim_pid "
-		    "JOIN combat_outcome_participant p ON p.operation_id=o.operation_id "
-		    "AND p.frag_delta>0 JOIN frag_leaderboard f ON f.pid=p.pid "
-		    "WHERE o.killer_allies>0 AND o.killer_allies<=" +
-			    std::to_string(100 / config->unlock_minimum_share_points) +
-			    " AND o.created_at>=FROM_UNIXTIME(" + std::to_string(next_update) +
-			    ") AND v.level>=" +
-			    std::to_string(open_level - config->unlock_victim_levels_below) +
-			    " AND f.racewar IN (" + leaders +
-			    ") ORDER BY o.created_at,o.operation_id LIMIT 1",
-		    &row))
-		return sql_failure(connection, request);
-	if (row.empty())
+	if (!before_deadline(request))
 	{
-		if (!execute_sql(connection, "COMMIT"))
-			return sql_failure(connection, request);
-		return failure(request, maintenance_outcome::complete, 0);
+		execute_sql(connection, "ROLLBACK");
+		return failure(request, maintenance_outcome::retryable_failure, ETIMEDOUT);
 	}
-	const int side = atoi(row[0].c_str());
-	const int64_t frag_time = strtoll(row[1].c_str(), nullptr, 10);
-	int &side_level = side == RACEWAR_GOOD ? good_level : evil_level;
-	const int level = std::min(std::max(open_level, side_level) + 1, config->cap_maximum_level);
-	const bool for_all = level == config->cap_maximum_level || (level - 1) % 5 == 0;
-	if (!for_all)
-		side_level = level;
-	// From the unlock, not an older frag, so frags recorded before the job ran cannot chain
-	// unlocks; and at least a second on, so that with no timer the frag cannot unlock again.
-	const int64_t next_unlock = std::max(frag_time, request.values[0]) +
-				    std::max<int64_t>(1, 86400LL * config->unlock_timer_days);
-	if (!execute_sql(connection, "UPDATE level_cap SET level=" +
-					     std::to_string(for_all ? level : open_level) +
-					     ",level_good=" + std::to_string(good_level) +
-					     ",level_evil=" + std::to_string(evil_level) +
-					     ",next_update=FROM_UNIXTIME(" +
-					     std::to_string(next_unlock) + ") WHERE id=" + id))
-		return sql_failure(connection, request);
-	const bool level_cap_changed = mysql_affected_rows(connection) == 1;
-	if (!before_deadline(request) || !execute_sql(connection, "COMMIT"))
+	if (!execute_sql(connection, "COMMIT"))
 		return sql_failure(connection, request);
 	maintenance_result result = failure(request, maintenance_outcome::complete, 0);
-	if (level_cap_changed)
-	{
-		result.rows = 1;
-		result.value_count = 3;
-		result.values[0] = side;
-		result.values[1] = level;
-		result.values[2] = for_all;
-	}
+	result.rows = before != state.revision;
 	return result;
 }
 
@@ -1212,6 +1126,23 @@ maintenance_result maintenance_repository_execute(const maintenance_request &req
 		return result;
 	}
 #endif
+	if (request.job_id == maintenance_job_id::level_cap &&
+	    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		if (request.value_count != 1 || request.values[0] <= 0 ||
+		    request.values[0] > INT64_MAX / 1000000)
+			return failure(request, maintenance_outcome::permanent_failure, EINVAL);
+		const char *root = persistence_mode_flatfile_root();
+		const auto result = frag_cap_flatfile_tick(
+			root ? root : "", request.values[0] * 1000000, frag_cap_config_policy());
+		return failure(request,
+			       result == frag_cap_store_result::ok ?
+				       maintenance_outcome::complete :
+			       result == frag_cap_store_result::io_error ?
+				       maintenance_outcome::retryable_failure :
+				       maintenance_outcome::permanent_failure,
+			       result == frag_cap_store_result::ok ? 0 : EIO);
+	}
 	MYSQL *connection = sql_pool_acquire();
 	if (!connection)
 		return failure(request, maintenance_outcome::retryable_failure, EAGAIN);
