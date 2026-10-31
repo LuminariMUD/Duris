@@ -7,6 +7,7 @@
 #include "world/zone_story_quest_runtime.h"
 
 #include <cassert>
+#include <climits>
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
@@ -25,16 +26,26 @@ void send_to_char(const char *text, P_char)
 {
 	output += text;
 }
+void send_to_char_f(P_char, const char *format, ...)
+{
+	char text[4096];
+	va_list args;
+	va_start(args, format);
+	const int length = vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	assert(length >= 0 && (size_t)length < sizeof(text));
+	output += text;
+}
 void page_string(P_desc, char *text, int)
 {
 	output += text;
 }
-affected_type *get_spell_from_char(P_char ch, int type, void *, int)
+bool affected_by_spell(P_char ch, int type)
 {
 	for (affected_type *affect = ch->affected; affect; affect = affect->next)
 		if (affect->type == type)
-			return affect;
-	return nullptr;
+			return true;
+	return false;
 }
 char *one_argument(const char *text, char *word)
 {
@@ -127,6 +138,7 @@ static const fixture players[] = {
 	{ "Debtor", 1, 0, -200, 0, 0, 1000, -44000 },
 	{ "Veteran", 56, 0, 0, 50000000, 0, 100000000, 2500056000L },
 	{ "Epicmaster", 50, 0, 0, 0, 2000000001, 0, 200000050100L },
+	{ "Wideearner", 50, 0, 0, INT_MAX, INT_MAX, 0, 429496779400L },
 	{ "Badfrags", 10, 0, 100000, 0, 10, 0, 11000 },
 	{ "Badlosses", 10, 0, -100000, 0, 10, 0, 11000 },
 	{ "Alphatie", 10, 9999, 0, 0, 0, 0, 10000 },
@@ -156,6 +168,17 @@ static void check_live_scores()
 		assert(getLeaderBoardPtsWithShipFrags(&ch, player.ship_frags) == player.expected);
 		pc.epics = 0;
 		assert(getLeaderBoardPtsWithShipFrags(&ch, player.ship_frags) == player.expected);
+		// A stale duplicate cannot make the private score differ from SQL's MAX tag.
+		affected_type duplicate = earned;
+		duplicate.modifier = player.earned - 1;
+		duplicate.next = &earned;
+		ch.affected = &duplicate;
+		assert(getLeaderBoardPtsWithShipFrags(&ch, player.ship_frags) == player.expected);
+		earned.next = &duplicate;
+		duplicate.next = nullptr;
+		ch.affected = &earned;
+		assert(getLeaderBoardPtsWithShipFrags(&ch, player.ship_frags) == player.expected);
+		earned.next = nullptr;
 	}
 	ch.player.level = 10;
 	ch.points.curr_exp = -1;
@@ -185,6 +208,18 @@ static void check_live_scores()
 	ships[0].frags = 37;
 	assert(calculate_shipfrags(&ch) == 37);
 	assert(getLeaderBoardPts(&ch) == 13700);
+	// Widened scores must stay wide through both manual and periodic feudal updates.
+	ch.specials.position = STAT_NORMAL | POS_STANDING;
+	ch.affected = &earned;
+	earned.modifier = INT_MAX;
+	ships[0].frags = INT_MAX;
+	set_surname(&ch, 1);
+	assert(GET_SURNAME((&ch)) == SURNAME_KING);
+	CLEAR_SURNAME((&ch));
+	SET_SURNAME((&ch), SURNAME_SERF);
+	set_surname(&ch, 0);
+	assert(GET_SURNAME((&ch)) == SURNAME_KING);
+	ch.affected = nullptr;
 	ships[0].frags = -37;
 	assert(calculate_shipfrags(&ch) == 0);
 	ships[0].frags = 37;
@@ -214,17 +249,18 @@ static void check_database_scores(P_char viewer)
 			player.name, player.level, player.experience, player.frags, player.deaths));
 		execute(sql_format("INSERT INTO ships VALUES (LOWER('%s'),%d)", player.name,
 				   player.ship_frags));
-		// Duplicate earned tags and unrelated affects must not duplicate characters or add credit.
+		// Unequal duplicate tags and unrelated affects must not duplicate characters or add credit.
 		execute(sql_format(
 			"INSERT INTO player_affects VALUES (%d,%d,%d),(%d,%d,%d),(%d,1,99999999)",
-			pid, TAG_EPICS_GAINED, player.earned, pid, TAG_EPICS_GAINED, player.earned,
-			pid));
+			pid, TAG_EPICS_GAINED, player.earned, pid, TAG_EPICS_GAINED,
+			player.earned - 1, pid));
 	}
 	output.clear();
 	displayLeader(viewer, nullptr, 0);
-	const std::vector<std::string> expected_order = { "Epicmaster", "Veteran",   "Adventurer",
-							  "Badfrags",	"Badlosses", "Experience",
-							  "Alphatie",	"Betatie",   "Debtor" };
+	const std::vector<std::string> expected_order = { "Wideearner", "Epicmaster", "Veteran",
+							  "Adventurer", "Badfrags",   "Badlosses",
+							  "Experience", "Alphatie",   "Betatie",
+							  "Debtor" };
 	assert(standings.size() == expected_order.size());
 	for (size_t i = 0; i < standings.size(); ++i)
 	{

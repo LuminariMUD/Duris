@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='leaderboard-', dir=build) as directory:
         '-Isrc', '-I/usr/include/mysql',
         'tests/async/leaderboard_scoring_harness.cpp', 'src/world/hardcore.c',
         'src/world/hardcore_config.c', 'src/classes/drannak.c', 'src/ships/ship_utils.c',
-        'src/core/safe_format.c', '-Wl,--gc-sections', '-lmysqlclient', '-lbsd',
+        'src/core/safe_format.c', 'src/core/constant.c', '-Wl,--gc-sections', '-lmysqlclient', '-lbsd',
         '-o', str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30)

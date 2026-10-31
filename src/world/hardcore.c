@@ -300,8 +300,10 @@ long getLeaderBoardPtsWithShipFrags(P_char ch, int ship_frags)
 						 frags < config->score_invalid_frag_threshold ?
 					 frags :
 					 0;
-	const struct affected_type *earned = get_spell_from_char(ch, TAG_EPICS_GAINED);
-	const long epics = earned ? MAX(0, earned->modifier) : 0;
+	long epics = 0;
+	for (const struct affected_type *earned = ch->affected; earned; earned = earned->next)
+		if (earned->type == TAG_EPICS_GAINED)
+			epics = MAX(epics, earned->modifier);
 
 	// Frags are stored in hundredths; ship reputation and earned epics are whole units.
 	// Keep every term signed and wide, especially the unsigned death counter.

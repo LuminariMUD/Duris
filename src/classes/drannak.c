@@ -83,7 +83,7 @@ extern const surname_struct feudal_surnames[7];
  *   Inbetween King and Lightbringer there's an intentionally skipped spot such that the first 3 bits contain feudal,
  *   and the rest are achievement based.
  */
-static void update_feudal_surname(P_char ch, int points)
+static void update_feudal_surname(P_char ch, long points)
 {
 	int curr_surname;
 
@@ -104,7 +104,7 @@ static void update_feudal_surname(P_char ch, int points)
 
 void set_surname(P_char ch, int num)
 {
-	int points;
+	long points;
 
 	if (!IS_ALIVE(ch) || !IS_PC(ch))
 	{
