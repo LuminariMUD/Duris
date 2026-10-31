@@ -397,3 +397,7 @@ The earlier metadata MariaDB report is retained as
 `bin/qualification/issue490/metadata-mariadb-journey.json` rather than overwritten
 by the MySQL report. Bank/load and expanded command/funding/private-graph restart
 proof remain outstanding; no complete-goal claim or production operation is made.
+
+Published audit delivery: [PR #509](https://github.com/LuminariMUD/Duris/pull/509),
+`branch/issue-490-audit-admission`, targeting PR #507. Next: investigate the actual
+account replacement/new-character load path against purchase completion.
