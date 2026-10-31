@@ -1,6 +1,6 @@
 # Issue #508: a 72-hour Good/Evil frag race with guaranteed progression
 
-Status: **implemented and locally qualified; replacement PR stack being finalized**.
+Status: **implemented and locally qualified; PRs #519, #521 and #523 ready for review**.
 Updated 2026-10-31. Active checkout is `/home/aiwithapex/projects/duris-issue-508-faction`,
 branch `branch/issue-508-faction-runtime`. The owner authorized implementation of
 this revised contract. Merge, release, migration and production deployment remain
@@ -417,12 +417,13 @@ Replacement review stack:
 - [#521](https://github.com/LuminariMUD/Duris/pull/521), branch
   `branch/issue-508-faction-storage`, commit `9cd4a14ab`, base #519: both adapters,
   immutable migration 0057, compatibility contract and storage/reset tests.
-- Activation: `branch/issue-508-faction-runtime`, base #521. The final PR/commit
-  will be recorded here after publication. It contains real combat/maintenance,
-  boot/publication/readers, full XP banking, status/help and runtime regressions.
+- [#523](https://github.com/LuminariMUD/Duris/pull/523), branch
+  `branch/issue-508-faction-runtime`, activation commit `f6c7bc3af`, base #521:
+  real combat/maintenance, boot/publication/readers, full XP banking, status/help
+  and runtime regressions. A documentation-only follow-up records the final stack.
 
-The earlier #514/#515 drafts and plan review #518 are superseded by this stack;
-their branches/work remain preserved. Review the replacement stack, not those
+The earlier #514/#515 drafts and plan review #518 were closed as superseded,
+with replacement links; their branches/work remain preserved. Review the replacement stack, not those
 old personal-policy implementation diffs. No force rewrite, merge, release tag or
 production operation has occurred. Keep future checks proportional and reuse the
 qualified unchanged migration/receipt evidence rather than rerunning unrelated
