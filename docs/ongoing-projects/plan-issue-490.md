@@ -9,8 +9,8 @@ Plan checkout: `/home/aiwithapex/projects/duris-issue-490`,
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
 That checkout predates the merged runtime code and retains the reviewed plan.
 Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`,
-`branch/issue-490-bank-load`, stacked on `branch/issue-490-audit-admission`
-(PR #509), then `branch/issue-490-followup` (PR #507), based on master `b737db202`.
+`branch/issue-490-command-qualification`, stacked on `branch/issue-490-bank-load`
+(PR #510, head `fb5cd3051`), then PR #509 and PR #507, based on master `b737db202`.
 The maintained implementation handoff is `docs/ongoing-projects/plan-issue-490.md`
 in that checkout; the shared master `plan.md` belongs to unrelated work.
 
@@ -461,3 +461,60 @@ outstanding. The accepted behavior and completion criteria remain unchanged.
 Published bank/load delivery: [PR #510](https://github.com/LuminariMUD/Duris/pull/510),
 `branch/issue-490-bank-load`, targeting PR #509. Next delivery extends the existing
 real locker command journey and completes the acceptance audit.
+
+### Final qualification continuation checkpoint
+
+The three implementation deliveries are published for review: #507 -> #509 ->
+#510. They are not merged by this task. Current branch is
+`branch/issue-490-command-qualification`; no command-journey extension has been
+implemented yet on this branch. All prior build/test/tool sessions are terminal.
+No production operation, tag, deployment or goal-completion claim was made.
+
+Next work remains exactly section 3 plus the final acceptance audit:
+
+1. Extend the existing `test_mysql_locker_grant_journey.py`, keeping its actors,
+   database, idle journey and cold restart. Add SQL-plus-feedback assertions for
+   management/name/password/limit/no-refund and actual wallet/bank funding. Use
+   the existing disposable seed and normal in-game funding commands; never adjust
+   live cached balances via SQL. A separate visitor wallet/bank seed of 300/300
+   platinum can test combined-sufficient, individually-insufficient rejection
+   during its already-existing own-locker visit. A staff-funded owner wallet can
+   cover the first chest; a bank seed with small denominations plus enough whole
+   platinum covers bank change and fifth/sixth chest checks.
+2. Capture actual moved UIDs from the player inventory snapshots before/after
+   movement, then compare exact SQL actor/chest/action/item records. Keep the
+   existing equal-timestamp/replay case. Add real partial coin amounts, ordinary
+   bag EMPTY to/from the selected private chest, rejected private-A-to-private-B
+   EMPTY, and supported GET/select/PUT transfer. Deleted/recreated-name history
+   must retain the old numeric chest identity. No new journey framework is needed.
+3. Before the existing cold restart, leave one bag root with a child in the private
+   chest. Compare locker/chest IDs, UIDs and parent UID relationships across leave,
+   re-entry, restart and authorized retrieval. Keep public contents as controls.
+   The existing `contents()` query includes private rows, so update its expected
+   four-row baseline when adding the nested graph. Source-confirmed: the escort's
+   `m_itemCount` is public carried roots only (`PFileToLocker`), so existing
+   `enter(..., items=2)` controls do not count private roots/children.
+4. The real `locker_equipcmd` and `locker_chestcmd` both call the same
+   `locker_require_owner` predicate. Extend the existing native private fixture
+   where needed for actual canonical same-account/same-side and staff predicate
+   variants, and unavailable-chest deletion, rather than inventing simultaneous
+   account sessions. The real guild/owner/guest/side controls already have socket
+   proof. `OVERLORD` or `god_check` is the preserved staff rule.
+5. Run the completed command journey on disposable MariaDB 10.11 and MySQL 8.0,
+   and the final no-MySQL/public-storage journey where final sources affect it.
+   Reuse unchanged native/fault/migration proof; add a missing outcome in its
+   existing fixture only. Compare every acceptance item to actual test coverage,
+   update the handoff/help if needed, publish the qualification delivery stacked
+   on #510, verify all remote heads/PR state and keep the goal active until the
+   full objective is proven.
+
+Useful source details checked for this continuation: names are 1-32 ASCII-style
+letters/digits/underscore/hyphen; `public`, `chest`, `private` are rejected. Both
+create/password reject over 72 bytes. Management may report `A chest change is
+still pending` or `That chest is still being secured`; a bounded retry should
+handle these real asynchronous refusals instead of assuming admission is success.
+The existing staff coin syntax is `give 500 platinum <name>`; bank syntax is
+`deposit/withdraw <count> <denomination>`. Bag #96443 is the actual bottomless
+illithid bag (`bag` keyword), capacity 500, and the native container suite already
+uses its weight semantics. Do not relax item/carry restrictions to make a fixture
+pass; choose a valid ordinary fixture if a particular prototype is unsuitable.
