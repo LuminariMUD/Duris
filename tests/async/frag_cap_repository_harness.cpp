@@ -74,10 +74,8 @@ bool parent(int event, int64_t admitted_at, int64_t now, int points, bool rollba
 	frag_cap_state state;
 	assert(frag_cap_sql_load(connection, &state, true) == result::ok);
 	const frag_cap_award award = { 1, points };
-	const uint64_t before = state.revision;
 	assert(frag_cap_apply(&state, admitted_at, now, &award, 1));
-	if (state.revision != before)
-		assert(frag_cap_sql_save(connection, state) == result::ok);
+	assert(frag_cap_sql_save(connection, state) == result::ok);
 	sql(rollback ? "ROLLBACK" : "COMMIT");
 	return true;
 }
@@ -124,6 +122,11 @@ int main(int argc, char **argv)
 	assert(frag_cap_sql_adopt(connection, 56, start + hour, &restored) == result::ok);
 	sql("COMMIT");
 	assert(restored == state);
+	// Saving an unchanged after-image is a valid parent operation, not a missing row.
+	sql("START TRANSACTION");
+	assert(frag_cap_sql_save(connection, state) == result::ok);
+	sql("COMMIT");
+	assert(load(&restored) == result::ok && restored == state);
 	assert(parent(100, start, start, 5, true));
 	assert(load(&restored) == result::ok && restored == state);
 #endif
@@ -161,6 +164,9 @@ int main(int argc, char **argv)
 	state = restored;
 	assert(parent(3, start + 4 * hour, start + 60 * hour, 10));
 	assert(load(&restored) == result::ok && restored == state);
+	// A distinct parent event after qualification has no cap mutation but still commits.
+	assert(parent(4, start + 5 * hour, start + 5 * hour, 10));
+	assert(load(&restored) == result::ok && restored == state);
 #ifdef __NO_MYSQL__
 	assert(frag_cap_flatfile_tick(root, start + 48 * hour) == result::ok);
 	assert(load(&restored) == result::ok && restored.level == 32 && restored.earned.empty());
@@ -197,6 +203,7 @@ int main(int argc, char **argv)
 	assert(frag_cap_sql_adopt(connection, 25, start, &restored) == result::invalid);
 	sql("DELETE FROM level_cap");
 	assert(load(&restored) == result::invalid);
+	assert(frag_cap_sql_save(connection, state) == result::invalid);
 	mysql_close(connection);
 #endif
 	std::cout

@@ -199,8 +199,19 @@ frag_cap_store_result frag_cap_sql_save(MYSQL *connection, const frag_cap_state 
 				" WHERE id=1";
 	if (mysql_real_query(connection, sql.data(), sql.size()))
 		return frag_cap_store_result::io_error;
-	return mysql_affected_rows(connection) == 1 ? frag_cap_store_result::ok :
-						      frag_cap_store_result::invalid;
+	const auto affected = mysql_affected_rows(connection);
+	if (affected == 1)
+		return frag_cap_store_result::ok;
+	if (affected != 0)
+		return frag_cap_store_result::io_error;
+	// MySQL reports changed rows, so an identical snapshot also returns zero.
+	// Confirm the singleton exists and still contains the requested after-image.
+	frag_cap_state stored;
+	const auto loaded = frag_cap_sql_load(connection, &stored);
+	if (loaded != frag_cap_store_result::ok)
+		return loaded == frag_cap_store_result::not_found ? frag_cap_store_result::invalid :
+								    loaded;
+	return stored == state ? frag_cap_store_result::ok : frag_cap_store_result::invalid;
 #endif
 }
 
