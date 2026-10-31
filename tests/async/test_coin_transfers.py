@@ -13,9 +13,18 @@ HARNESS = r'''
 #include "currency_test_support.h"
 #include "net/comm.h"
 #include "classes/necromancy.h"
+#include "item/storage_lockers.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
+static bool refuse_audit;
+LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) { m_ready = !refuse_audit; }
+LockerMovementAudit::~LockerMovementAudit() {}
+void LockerMovementAudit::Commit() {}
+
+const char *coins_to_string(int,int,int,int,const char *) { return "coins"; }
+
 
 const int top_of_world = 1;
 const char *coin_names[] = {"copper","silver","gold","platinum"};
@@ -92,7 +101,7 @@ static void reset()
 {
     currency_transaction_reset_for_tests();
     order.clear(); feedback.clear(); characters.clear();
-    destination=nullptr;allocation_fails=placement_fails=false;
+    destination=nullptr;allocation_fails=placement_fails=refuse_audit=false;
     placed=extracted=announcements=dirty=alerts=0;
     invalid_account=nullptr;
 }
@@ -140,6 +149,18 @@ int main()
         } else if(action==coin_debit_action::put) {
             assert(bag.contains && bag.contains->value[2]==40);
         } else assert(placed==4 && created.value[2]==10);
+    }
+    // A refused audit for an existing pile restores the debited wallet once.
+    {
+        reset(); player sender(44),recipient(46);
+        auto context=payment(&sender.ch,&recipient.ch,coin_debit_action::put);
+        purse(&sender.ch,{0,0,40,0});
+        obj_data bag={},pile={};bag.obj_uid=300;bag.type=ITEM_CONTAINER;
+        pile.type=ITEM_MONEY;pile.value[2]=7;bag.contains=&pile;
+        obj_to_char(&bag,&sender.ch);destination=&bag;refuse_audit=true;
+        assert(submit_coin_debit(&sender.ch,context));
+        assert(GET_GOLD(&sender.ch)==40 && pile.value[2]==7 && placed==0);
+        assert(feedback.find("restor")!=std::string::npos);
     }
     // NPC recipient, self give, and staff no-debit credit.
     reset();player sender(44),recipient(46);

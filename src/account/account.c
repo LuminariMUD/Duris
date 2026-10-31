@@ -81,6 +81,7 @@
 #include "redis/redis_ship_legacy.h"
 
 #include <unordered_map>
+#include <unordered_set>
 #include <new>
 #include <string>
 #include <fstream>
@@ -331,6 +332,14 @@ bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_requ
 {
 	if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name || !request_out)
 		return false;
+	if (STATE(d) != CON_ACCT_DELETE_CHAR &&
+	    currency_transaction_chest_account_busy(d->account->acct_name))
+	{
+		SEND_TO_Q(
+			"Your chest purchase is still being secured; please try again shortly.\r\n",
+			d);
+		return false;
+	}
 	player_load_request request = {};
 	request.request_id = player_load_pipeline_next_request_id();
 	request.pid = c->pid;
@@ -506,22 +515,23 @@ void send_account_password_prompt(P_desc d)
 	STATE(d) = CON_GET_ACCT_PASSWD;
 }
 
-/*
- * Applies a password chosen through account recovery to `fresh`, the account the
- * caller has just read from the store, so a fence or credential change made after the
- * code was issued is honoured.  write_account copies it into every same-name session,
- * the requester's included.
- */
-account_recovery_apply_outcome account_apply_recovered_password(
+#ifndef __NO_MYSQL__
+/* Do not let a same-account save capture the old password while its replacement
+ * is on the writer. Cleared on the game thread after the transaction replies. */
+static std::unordered_set<std::string> account_recovery_writes;
+#endif
+
+/* Apply only the password, and acknowledge it only after durable storage. */
+void account_apply_recovered_password(
 	P_acct fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
-	P_desc keep_session)
+	P_desc keep_session, account_recovery_apply_done done)
 {
 	if (!fresh || !bcrypt_hash || !*bcrypt_hash || !expected_fingerprint)
-		return account_recovery_apply_outcome::load_failed;
+		return done(keep_session, account_recovery_apply_outcome::load_failed);
 
 	if (fresh->acct_blocked != 0)
-		return account_recovery_apply_outcome::fenced;
+		return done(keep_session, account_recovery_apply_outcome::fenced);
 
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
 	account_recovery_credential_fingerprint(fresh->acct_password, fresh->acct_email,
@@ -530,28 +540,106 @@ account_recovery_apply_outcome account_apply_recovered_password(
 		CRYPTO_memcmp(fingerprint, expected_fingerprint, ACCOUNT_RECOVERY_FINGERPRINT_LEN);
 	OPENSSL_cleanse(fingerprint, sizeof(fingerprint));
 	if (fingerprint_differs != 0)
-		return account_recovery_apply_outcome::superseded;
+		return done(keep_session, account_recovery_apply_outcome::superseded);
+
+	const std::string owner_name = fresh->acct_name;
+	const std::string password = bcrypt_hash;
+	const auto finish = [owner_name, password, done](P_desc requester,
+							 account_recovery_apply_outcome outcome)
+	{
+		if (outcome == account_recovery_apply_outcome::write_failed)
+		{
+			statuslog(56, "&+RALERT&n: account recovery save failed");
+			persistence_alert(AVATAR, "account", "redacted", "none", "none",
+					  "write_failed", NULL);
+		}
+		if (outcome == account_recovery_apply_outcome::ok)
+		{
+			for (P_desc session = descriptor_list; session; session = session->next)
+				if (session->account && session->account->acct_name &&
+				    !strcasecmp(owner_name.c_str(), session->account->acct_name))
+				{
+					if (session->account->acct_password)
+						FREE(session->account->acct_password);
+					session->account->acct_password = str_dup(password.c_str());
+				}
+			close_account_sessions_named(
+				owner_name.c_str(), requester,
+				"\r\nThe password for this account was just reset from another connection. "
+				"Disconnecting.\r\n");
+		}
+		done(requester, outcome);
+	};
+
+#ifndef __NO_MYSQL__
+	char canonical[ACCOUNT_RECOVERY_NAME_BUF];
+	if (!account_recovery_canonical_name(owner_name.c_str(), canonical) ||
+	    !account_recovery_writes.insert(canonical).second)
+		return finish(keep_session, account_recovery_apply_outcome::write_failed);
+
+	const std::string key = canonical;
+	const std::string name = escape_str(owner_name.c_str());
+	const std::string old_password = fresh->acct_password ? fresh->acct_password : "";
+	const std::string old_email = fresh->acct_email ? fresh->acct_email : "";
+	const std::string update =
+		sql_format("UPDATE accounts SET password='%s' WHERE account_name='%s'",
+			   escape_str(password.c_str()).c_str(), name.c_str());
+	const uint64_t wait_id = wait_for_writer(keep_session);
+	auto applied = std::make_shared<account_recovery_apply_outcome>(
+		account_recovery_apply_outcome::write_failed);
+	if (!sql_read_work(
+		    [name, old_password, old_email, password, update, applied](MYSQL *connection,
+									       sql_rows *)
+		    {
+			    *applied = account_recovery_apply_outcome::write_failed;
+			    sql_rows rows;
+			    if (const auto error = sql_select(
+					connection,
+					sql_format("SELECT password,email,blocked FROM accounts "
+						   "WHERE account_name='%s' FOR UPDATE",
+						   name.c_str()),
+					&rows))
+				    return error;
+			    if (rows.empty())
+				    *applied = account_recovery_apply_outcome::load_failed;
+			    else if (rows[0][2] && atoi(rows[0][2]) != 0)
+				    *applied = account_recovery_apply_outcome::fenced;
+			    else if (old_email != (rows[0][1] ? rows[0][1] : ""))
+				    *applied = account_recovery_apply_outcome::superseded;
+			    /* Recovery opts into replay after a lost COMMIT reply. This exact
+			     * salted hash identifies an already-applied retry. */
+			    else if (password == (rows[0][0] ? rows[0][0] : ""))
+				    *applied = account_recovery_apply_outcome::ok;
+			    else if (old_password != (rows[0][0] ? rows[0][0] : ""))
+				    *applied = account_recovery_apply_outcome::superseded;
+			    else
+			    {
+				    if (const auto error = sql_execute(connection, update))
+					    return error;
+				    *applied = account_recovery_apply_outcome::ok;
+			    }
+			    return 0U;
+		    },
+		    [key, wait_id, applied, finish](bool ok, const sql_rows &)
+		    {
+			    account_recovery_writes.erase(key);
+			    finish(writer_replied(wait_id),
+				   ok ? *applied : account_recovery_apply_outcome::write_failed);
+		    },
+		    true))
+	{
+		account_recovery_writes.erase(key);
+		finish(writer_replied(wait_id), account_recovery_apply_outcome::write_failed);
+	}
+#else
 
 	FREE(fresh->acct_password);
 	fresh->acct_password = str_dup(bcrypt_hash);
 
-	/* fresh is attached to no descriptor, so write_account's copy loop never touches
-	 * it: this string stays valid until the caller frees fresh. */
-	const char *const owner_name = fresh->acct_name;
-
-	if (write_account(fresh) != 1)
-	{
-		statuslog(56, "&+RALERT&n: account recovery save failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  NULL);
-		return account_recovery_apply_outcome::write_failed;
-	}
-
-	close_account_sessions_named(
-		owner_name, keep_session,
-		"\r\nThe password for this account was just reset from another connection. "
-		"Disconnecting.\r\n");
-	return account_recovery_apply_outcome::ok;
+	finish(keep_session, write_account(fresh) == 1 ?
+				     account_recovery_apply_outcome::ok :
+				     account_recovery_apply_outcome::write_failed);
+#endif
 }
 
 void select_accountname(P_desc d, char *arg)
@@ -2606,12 +2694,16 @@ bool save_account_character_departure(P_char ch)
 			return false;
 	}
 #else
-	if (!account && (good || evil))
-		return sql_queue(
-			"UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
-			"WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
-			good ? "last_good_char" : "last_evil_char",
-			good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch));
+	if (!good && !evil)
+		return true;
+	// A departure must survive a pending recovery and descriptor destruction.
+	// Queue only its timestamp, never a snapshot carrying the old password.
+	if (!sql_queue(
+		    "UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
+		    "WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
+		    good ? "last_good_char" : "last_evil_char",
+		    good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch)))
+		return false;
 #endif
 	if (!account)
 		return true;
@@ -2619,12 +2711,23 @@ bool save_account_character_departure(P_char ch)
 		account->acct_good = departed_at;
 	else if (evil)
 		account->acct_evil = departed_at;
-	const bool saved = write_account(account) == 1;
 #ifdef __NO_MYSQL__
+	const bool saved = write_account(account) == 1;
 	if (loaded)
 		flatfile_account_state_release(loaded);
-#endif
 	return saved;
+#else
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->account && d->account != account && d->account->acct_name &&
+		    account->acct_name && !strcasecmp(d->account->acct_name, account->acct_name))
+		{
+			if (good)
+				d->account->acct_good = departed_at;
+			else
+				d->account->acct_evil = departed_at;
+		}
+	return true;
+#endif
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds
@@ -3244,6 +3347,10 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 		return -1;
 
 #ifndef __NO_MYSQL__
+	char recovery_name[ACCOUNT_RECOVERY_NAME_BUF];
+	if (account_recovery_canonical_name(acct->acct_name, recovery_name) &&
+	    account_recovery_writes.count(recovery_name))
+		return -1;
 	if (!sql_save_account(acct))
 	{
 		logit(LOG_FILE, "sql_save_account failed");

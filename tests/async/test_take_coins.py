@@ -14,10 +14,18 @@ take = ACTOBJ[start:ACTOBJ.index("P_obj find_live_item_uid(", start)]
 HARNESS = r'''
 #include "currency_test_support.h"
 #include "net/comm.h"
+#include "item/storage_lockers.h"
 #include "classes/necromancy.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
+static bool refuse_audit;
+LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) { m_ready = !refuse_audit; }
+LockerMovementAudit::~LockerMovementAudit() {}
+void LockerMovementAudit::Commit() {}
+
+
 
 struct bulk_get_state { std::vector<std::string> haul; };
 static std::string actor_text, room_text;
@@ -101,6 +109,15 @@ int main()
     assert(!extracted && !relabels && !corpse_writes && actor_text.empty());
     coin_get_submission_options none = {};
     assert(!take_coins(&actor.ch,&refused,nullptr,TRUE,none));
+
+    // Audit refusal occurs before the currency credit or pile mutation.
+    reset(); player guarded(47);
+    obj_data guarded_pile={}; guarded_pile.type=ITEM_MONEY; guarded_pile.value[2]=3;
+    refuse_audit=true;
+    assert(!take_coins(&guarded.ch,&guarded_pile,&corpse,TRUE,all_of(guarded_pile)));
+    assert(GET_GOLD(&guarded.ch)==0 && guarded.pc.wallet_revision==0 && guarded_pile.value[2]==3);
+    assert(!extracted && !relabels && !corpse_writes && actor_text.empty());
+    refuse_audit=false;
 
     // Existing noncanonical coins, mixed piles, NPC and no-PID wallets all retain
     // their individual counts. No fallback may reinterpret them as a value.

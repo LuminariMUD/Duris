@@ -521,18 +521,19 @@ affect_from_char(victim, SKILL_SPELL_PENETRATION);
 }
 , { MAKE_DAM_MOD_PRED(){ const int casterRace = tutorial_mobile_mechanics_race(caster);
 const int victimRace = tutorial_mobile_mechanics_race(victim);
-if (casterRace > RACE_NONE && casterRace <= LAST_RACE && damageType >= 0 &&
-    damageType < LAST_SPLDAM_TYPE)
+// Damage types are one-based; racial property tables start at slot zero.
+if (casterRace > RACE_NONE && casterRace <= LAST_RACE && damageType >= SPLDAM_GENERIC &&
+    damageType <= LAST_SPLDAM_TYPE)
 {
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod += racial_spldam_offensive_factor[casterRace][damageType] - 1.0;
+	dam_mod->mod += racial_spldam_offensive_factor[casterRace][damageType - 1] - 1.0;
 }
 
-if (victimRace > RACE_NONE && victimRace <= LAST_RACE && damageType >= 0 &&
-    damageType < LAST_SPLDAM_TYPE)
+if (victimRace > RACE_NONE && victimRace <= LAST_RACE && damageType >= SPLDAM_GENERIC &&
+    damageType <= LAST_SPLDAM_TYPE)
 {
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod += racial_spldam_defensive_factor[victimRace][damageType] - 1.0;
+	dam_mod->mod += racial_spldam_defensive_factor[victimRace][damageType - 1] - 1.0;
 }
 }
 }

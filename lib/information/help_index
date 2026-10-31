@@ -2818,7 +2818,7 @@ function calls, except the "Kvark".
 See also: IMMORTALS, "ZONE GOD", WIZLIST, KVARK
 
 #
-COINS CURRENCY MONEY (General Information)
+COINS CURRENCY MONEY DOSH (General Information)
 ===========================================================================
 Currency on Duris takes the form of coinage, and there are four types to be
 found: &+Wplatinum&+w, &+Ygold&+w, &+csilver&+w, and &+ycopper&+w.&n
@@ -6730,7 +6730,7 @@ frags to be split among the grouped victors. Typing "fraglist"  will show
 a list of the top ten and lowest ten fraggers in the mud. Or, you may type
 "frag <racewarside>", "frag <classname>" or "<frag racename>".
 ===========================================================================
-See also: TROPHY
+See also: TROPHY, LEVEL CAP
 
 #
 "FROST BEACON" (Spell)
@@ -8540,7 +8540,9 @@ When you create a character on Duris you have the option of creating it as
 increased damage, have greater resistance to damage and have higher hp than
 non-hardcore characters. Hardcore characters also do not require the
 special "potions" as others do to move past level 50, they are able to
-simply exp right up to level 56. However they have a configured limited
+simply exp right up to level 56. Their XP advancement can use two levels
+beyond the faction cap, bounded by 56; see HELP LEVEL CAP.
+However they have a configured limited
 life-span and will cease to exist completely when that configured death limit
 is reached.
 ===========================================================================
@@ -10247,6 +10249,8 @@ This will place all items that have the max_wis stat in 2.chest.
 
 If you need the complete list of sort types, use "equip sort help" while
 inside the locker. The same information is available with "help equip sort".
+For named private chests, their permissions and storage availability, see
+"help chest".
 ===========================================================================
 See also: BANKS, GRANT
 
@@ -26006,21 +26010,38 @@ LEVEL CAP LVL CAP LVL LIMIT (General Information)
 ===========================================================================
 Syntax: fraglist
 
-Good and Evil unlock one level at a time. After the timer expires, the side
-leading in total frags must earn a fresh qualifying frag. With equal totals,
-either side can claim the unlock. The victim must be no more than five
-levels below the level open to all, and no more than five of the killer's
-side may be in the room, grouped or not.
+Everyone can reach level 31 through normal advancement. Good and Evil then
+race in fixed rounds of 72 real hours. Every positive ordinary PvP frag award
+adds to the recipient's chosen faction score. Neutral and undead races count
+for their chosen Good or Evil side. Death and frag losses do not subtract
+race points. Ship frags, arena scores and staff adjustments do not count.
 
-Intermediate levels open only for the winning side. Spell-circle levels
-31, 36, 41, 46, 51 and 56 open for all sides. Other sides always use the
-shared cap. Each unlock begins a three-day wait; waiting alone cannot
-unlock another level. Cap unlocks no longer grant an experience boon.
+At the deadline, the leading faction gets the next highest cap and the other
+faction gets the level immediately below it. A trailing winner can catch up
+and take the lead in one result. The normal faction caps stay at most one
+level apart. There is no minimum score: 0.20 beats 0.10, and no kill opens a
+level before the deadline.
 
-FRAGLIST shows the shared and side caps, totals and remaining timer.
-Hardcore may advance two levels beyond its side's cap, never beyond 56.
-The release preserves existing caps. Future season resets start at shared
-level 30 with no waiting period before the first qualifying frag.
+A tie raises EACH faction's existing cap by one, including a 0-0 tie on a
+quiet server. For example, Evil 32 / Good 31 becomes Evil 33 / Good 32 on a
+tie. At circle levels 36, 41, 46, 51 and 56, BOTH caps become that level,
+regardless of the race result. At 56 the clock ends. All round scores reset
+after each result; surplus never carries forward. Normal frag eligibility,
+sharing, losses and other rewards remain in effect.
+
+FRAGLIST shows both caps, this round's earned scores and its deadline.
+The displayed leader is provisional until the result is recorded. Pending
+or failed recording includes an operation reference; give it to staff for
+receipt recovery. Replays do not count again. Late outcomes from a closed
+round keep ordinary rewards but cannot change the closed race result.
+The saved clock and scores survive logout, restart and downtime.
+
+XP banks without a cap-specific penalty, within normal storage limits.
+Unlocks grant permission, not free levels: an appropriate positive XP gain
+can spend banked XP. The normal level-50 XP ceiling and epic-stone rules
+remain. Hardcore's XP allowance is faction cap +2, bounded by level 56.
+New seasons start at 31/31. Current-season activation preserves opened
+normal access and validates the previous cap range and deadline.
 ===========================================================================
 See also: FRAGS, HARDCORE
 #
@@ -26969,7 +26990,8 @@ Syntax: fraglist [normal | goodie | evil | undead | <race> | <class> | ship | gu
 Displays the current level-cap status, racewar frag totals, and the top
 and lowest player-kill (frag) leaderboards. You can abbreviate 'fraglist'
 as 'frag' and filter by side, race, class, 'ship' frags or 'guild' frags.
-Read 'help frag' and 'help frags' for how frags are earned and lost.
+Read 'help frag' and 'help frags' for rewards; 'help level cap' explains
+the shared clock and your personal contribution shown outside cached rankings.
 #
 Bard Songs
 Read 'help bard skills' for the Bard song and instrument progression
@@ -27168,9 +27190,32 @@ For a container chest, use "look in <chest>", "open <chest>",
 restrict access. A chest in the world does not by itself guarantee storage
 through a restart; use an authorized storage locker for saved equipment.
 
-There is no "chest create" command. The old guild "construct chest"
-feature is disabled. For worn chest armor, use "equipment" and
-"wear <armor> body"; the item must fit that slot and your character.
+Inside a MariaDB-backed locker, "eq chest list" lists private chests.
+Use "eq chest create <name> [password]" to buy one for 500 platinum
+(maximum five). Names use 1-32 letters, digits, underscores or hyphens.
+Reserved names: public, chest, private, in, from, with, the, on, at and to.
+Passwords are optional, case-sensitive, and limited to 72 bytes. Payment
+uses your purse if sufficient, otherwise your bank; short balances are
+not combined.
+
+Use "open <name> [password]" before looking in, putting into, getting
+from, or emptying a private chest. Only one private chest is open at a
+time. "close" revokes access; changing its password, disconnecting or
+leaving also closes it. Locker owners, staff and members of the owning
+guild are managers and can open without a password. Guild chests divide
+shared storage; they are not secret from fellow guild members. Guests
+still need permission to enter the locker and the chest password.
+
+Managers can use "eq chest password <name> <password|none>",
+"eq chest delete <name>" (empty chests only; no refund), and "eq log".
+Wait for the result of a purchase or management change before continuing.
+A pending save can keep you inside briefly: retry leaving once secured.
+Activity history records actual item and coin movements, including bulk
+and empty operations. Deleted chests retain their numeric identity there.
+
+Private-chest commands require the SQL backend. Flat-file lockers support
+public storage and sorting. The old guild "construct chest" is disabled.
+For chest armor, use "equipment" and "wear <armor> body".
 See also: LOCKER, EQUIPMENT, CONSTRUCT
 ===========================================================================
 
@@ -27259,3 +27304,244 @@ work against Golems, Dragons, Ghosts or phantasmal targets. Ki Strike
 abandons a combination in preparation. Finishing causes two rounds of lag.
 See also: MONK, SKILLS, KI STRIKE
 ===========================================================================
+
+#
+ENHANCE ENHANCEMENT ENHANCEMENTS (Command)
+===========================================================================
+Syntax: enhance <item>
+        enhance <item> <donor item or essence>
+
+Carry the item in your inventory. The one-item command improves every
+eligible positive superior stat by one step together, using the required
+crafting materials. If materials are missing, it lists the combined
+requirements and remaining enhancements without consuming anything.
+An item needs a matching higher template and cannot exceed its permitted
+stat cap, currently 150% of its base stat. Some item affects forbid enhancing.
+The item-value limit for your level is three times your character level.
+
+Superior enhancement costs 1 platinum plus 0.1 platinum per current item
+value, once per use, in addition to the listed materials. Materials must
+be carried directly. An eligible Chaos craft pouch supplies them without
+being consumed. This command changes your item; it is not a free preview
+when you already have the required supplies and money.
+
+The two-item form consumes a different donor item to seek a stronger
+replacement. Ordinary donors must have item value at least five below
+the source (guild insignia require at least the source value). Weapons
+need weapon donors or enhancement essences. Ordinary replacement costs
+1 platinum at item value 20 or below, otherwise 10 platinum. Luck affects
+the improvement; not every item has a suitable replacement.
+
+Essences instead add their named property and are consumed on success.
+Their fees are 1, 20 or 100 platinum by essence value (up to 20, up to 30,
+or above 30). Repeated applications of the same property have a limit.
+See also: CRAFT, SALVAGE, CHAOS POUCH
+===========================================================================
+
+#
+BAGS CONTAINERS (General Information)
+===========================================================================
+Use bags and other containers to organize carried items:
+    look in bag
+    open bag
+    put sword bag
+    get sword bag
+    get all bag
+    close bag
+
+Use a numbered name such as 2.bag when carrying several similar bags.
+Closed containers must be opened first; item count, weight, size and
+special container restrictions can prevent an item fitting. A quiver
+accepts its appropriate ammunition rather than arbitrary equipment.
+For shop-produced supplies, try 'buy ration bag 20'; the bag must be
+carried and able to accept them. Read 'help buy' for quantities and costs.
+See also: GET, PUT, OPEN, CLOSE, QUIVER, BUY
+===========================================================================
+
+#
+SAILING SAIL (General Information)
+===========================================================================
+Ship travel uses crew orders from aboard a ship you are permitted to
+control. Start with 'help ship basics' and 'help ship commands'.
+
+Use 'order maneuver <direction>' to leave a dock through its water rooms.
+On the open sea, 'order speed <speed>' and 'order heading <heading>' set
+your course. Headings use 0 for north, 90 east, 180 south and 270 west.
+'order sail <heading> <distance>' uses the ship's automatic course;
+'order sail off' cancels it. Turning and acceleration take time.
+
+Watch 'contacts', your ship's condition and nearby shores. Slow down
+before maneuvering into a dock; sailing straight into land can crash
+your ship. Combat can prevent docking or summoning a ship.
+See also: SHIP MOVEMENT, SHIP COMBAT, HEADING, JETTISON
+===========================================================================
+
+#
+ORDER JETTISON JETTISON (Command)
+===========================================================================
+Syntax: order jettison cargo [number of crates]
+        order jettison contraband [number of crates]
+
+From aboard a ship you can control, order the crew to throw cargo or
+contraband overboard. Omitting the number throws all of that type away.
+For example: order jettison cargo 5
+
+This reduces your load and may restore speed lost to overloading. It
+does not sell the crates or pay you. Some jettisoned goods can become
+floating salvage for other ships, so do not treat this as safe storage.
+See also: SHIP CARGO, SHIP COMMANDS, SALVAGE, SAILING
+===========================================================================
+
+#
+GUILD COMMANDS (General Information)
+===========================================================================
+Use 'society' for the guild command menu and 'help society' for syntax.
+'help society examples' gives worked examples. Available actions depend
+on your membership, guild rank and the action's requirements.
+
+Use 'gsay <message>' to speak to your guild. At a bank with locker access,
+'enter locker guild' enters the shared guild locker. Guildhall building
+uses 'construct'; read 'help construct' before spending guild funds.
+Read 'help guild' for guild organization and 'help rules' for play policy.
+See also: SOCIETY, GUILD, GSAY, CONSTRUCT, LOCKERS
+===========================================================================
+
+#
+INTERCEPT (Innate)
+===========================================================================
+Intercept is a passive Bounty Hunter Mercenary innate gained at level 31.
+It needs no typed command, mana or activation fee. While you are standing
+normally, it can catch an incoming melee attack from an opponent fighting
+you, twisting their arm and preventing that strike.
+
+Luck affects the chance. A successful intercept briefly halves the
+attacker's attack count under the current combat setting. It cannot
+intercept that attacker again while the same Intercept effect remains.
+It is not the same as a Swashbuckler's sword-and-dirk counterattack.
+See also: BOUNTY HUNTER, MERCENARY, LUCK, RAPIER AND DIRK
+===========================================================================
+
+#
+EPIC POINT EPIC POINTS (General Information)
+===========================================================================
+Epic points are a reward and training currency, separate from experience.
+Use 'score' to see your balance, total earned and current epic task.
+Read 'help epic' for rewards and level advancement, and 'help epics' for
+an overview. 'epic skills' locates teachers; 'help epic skill cost'
+explains their fees. Epic skill training begins at level 30, with each
+skill's own prerequisites and epic-point and platinum costs still required.
+See also: EPIC, EPICS, EPIC SKILLS, EPIC SKILL COST
+===========================================================================
+#
+Leaderboard
+Syntax: leaderboard
+        leaderboard quests [page]
+
+The main leaderboard ranks the top 20 mortal characters (levels 1-56).
+Staff characters are excluded. It shows rank, level, score, player frags,
+ship reputation, total earned epics and deaths. Ties sort by name.
+
+With the default scoring settings, the displayed score is:
+  10 per level + experience / 1,000,000 + 100 per full player frag
+  + 1 per ship-reputation point + 1 per earned epic - 0.25 per death.
+Experience is counted in complete blocks of 10,000 before scaling the
+score. Scores use the latest saved character and ship data.
+
+Player frags are displayed as full frags, including hundredths. Negative
+frags lower your score. Invalid stored frag totals contribute zero without
+removing the character from the board. Ship credit includes your owned
+ship even when it is outside the ship-frag top 20.
+
+Epics means the total earned shown by 'score', rather than your spendable
+balance: training skills or buying levels does not remove earned credit.
+Bottle epics do not count toward that earned total. Scoring weights can
+be changed by the Gods. 'score' shows your current leaderboard points;
+unsaved changes can take time to appear in the public standings.
+
+'leaderboard quests' shows the separate worldwide quest-completion ranking.
+See also: SCORE, FRAGLIST, SHIPFRAGS, EPICS, SERF.
+
+#
+"MINING" (General Information)
+Read 'help mine' for mining picks, deposits, ores, gems and minesight.
+
+#
+"CIRCLES" (General Information)
+Read 'help spell circle' for spell circles and their level requirements.
+The shared progression cap can restrict access: see 'help level cap'.
+
+#
+"ABORT CAST" (General Information)
+Use ABORT by itself to interrupt your current chant or power.
+Read 'help abort' for the command; 'abort cast' is a help lookup alias.
+
+#
+"ITEMS" (General Information)
+Read 'help equipment' for carrying and wearing equipment, 'help bags'
+for containers, and 'help item lore' for examining an item's properties.
+
+#
+"CHESTS LOCKERS" (General Information)
+Read 'help locker' for public and private locker chests, passwords,
+purchases, storage limits and history.
+
+#
+"BARD SPELLS SKILLS BARD" (General Information)
+Bards perform songs and play instruments. Read 'help bard skills' for
+their song and instrument progression, 'help songs' for song descriptions
+and 'help play' for performing with instruments.
+
+#
+"FLIGHTPATH FLIGHT PATH DRAGONFLIGHT FLIGHT SERVICE" (General Information)
+Read 'help flights' for learned destinations, discovery experience,
+tickets, ordinary fares and the separate epic-zone flight services.
+Use FLIGHTS anywhere, or LIST at a waiting flight carrier.
+
+#
+"ETHERMANCER SPECIALIZATION" (General Information)
+Ethermancers can specialize as Tempest Magus, Frost Magus or Star Magus.
+Read 'help ethermancer' and 'help specialization'. Eligibility also depends
+on race, level and teacher; SPECIALIZE shows your personal choices.
+
+#
+"HOLY COMBAT HOLY_COMBAT" (General Information)
+Holy Combat is listed as a passive Paladin innate from level 21.
+It has no activated command or separate combat effect in the current rules.
+Read 'help paladin skills' for the Paladin's combat skills and spells.
+
+#
+"JOIN" (General Information)
+JOIN is a context-specific interaction with creatures or objects, not
+a general group command. Read 'help follow' and 'help group' to travel
+with other adventurers; follow the local dialogue for special interactions.
+
+#
+"PALADIN EXPERIENCE" (General Information)
+Read 'help experience' for earning experience and advancing,
+'help paladin' for the class and 'help level cap' for progression limits.
+Your spell-circle progression is listed in 'help paladin skills'.
+
+#
+"PYROMANCER" (General Information)
+For fire specialization help, read 'help fire magus'.
+Pyromancer is not a current class or specialization name.
+
+#
+"ENCHANTMENTS" (General Information)
+Read 'help enchant' for placing an active spell on equipment,
+'help enchant weapon' for the spell, or 'help enhancements' for
+material-based equipment improvements. These are different systems.
+
+#
+"DONATE" (General Information)
+Syntax: donate <item>
+        donate all
+        donate all.<keyword>
+
+Donate carried equipment at the donation well. The command only works
+in the designated well room and requires the well to be present.
+Cursed items, artifacts, food, corpses and trash cannot be donated.
+Empty containers before donating them. This command gives equipment
+to the well; it does not make a real-money donation.
+
+See also: GET, EQUIPMENT

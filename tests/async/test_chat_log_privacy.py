@@ -32,18 +32,18 @@ assert found == ALLOWED, (sorted(found - ALLOWED), sorted(ALLOWED - found))
 
 # cmd.debug: the conversation commands keep their word and lose their text.
 debug = (SRC / "debug.c").read_text()
-start = debug.index("static int cmdlog_kept_length(")
+start = debug.index("int command_log_kept_length(")
 body = debug[start:debug.index("\nvoid cmdlog(", start)]
 cases = set(re.findall(r"case (CMD_[A-Z0-9_]+):", body))
 assert cases == {
     "CMD_SAY", "CMD_TELL", "CMD_REPLY", "CMD_WHISPER", "CMD_ASK", "CMD_EMOTE",
     "CMD_PROJECT", "CMD_BEEP", "CMD_GSAY", "CMD_GCC", "CMD_ACC", "CMD_JESTROS",
-    "CMD_SHOUT",
+    "CMD_SHOUT", "CMD_OPEN", "CMD_EQUIPMENT", "CMD_AT", "CMD_FORCE", "CMD_ORDER",
 }, sorted(cases)
 # "'" and ":" are say and emote even with the text glued on.
 assert "str[begin] == '\\'' || str[begin] == ':'" in body
 cmdlog = debug[debug.index("\nvoid cmdlog("):]
-assert "cmdlog_kept_length(str)" in cmdlog
+assert "command_log_kept_length(str, true)" in cmdlog
 assert '" <text withheld>"' in cmdlog
 
 print("chat log privacy contracts passed")

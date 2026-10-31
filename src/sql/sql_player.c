@@ -7,6 +7,7 @@
 #include <cmath>
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/unicode.h"
 #include "net/output_preference_codec.h"
 #include "world/db.h"
 #include "core/utils.h"
@@ -282,14 +283,25 @@ std::vector<std::string> sql_rename_character_statements(int, const char *, cons
 	return {};
 }
 
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int, int, const char *, int,
+								const char *)
+{
+	return {};
+}
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &, bool) {}
 bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*char_name*/,
 			    int /*action_type*/, const char * /*item_short*/)
 {
 	return false;
 }
-bool sql_save_private_chest_items(int /*locker_id*/, int /*chest_id*/, P_obj /*chest_obj*/)
+void sql_chest_log_pulse(void) {}
+bool sql_chest_log_pending(int)
 {
 	return false;
+}
+bool sql_chest_log_available(void)
+{
+	return true;
 }
 P_obj sql_locker_items_from_rows(const sql_rows & /*rows*/, int /*locker_id*/, int /*chest_id*/,
 				 P_obj /*chest_obj*/)
@@ -2111,42 +2123,116 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 // private chest functions
 // ============================================================================
 
+struct sql_chest_log_entry
+{
+	int locker_id;
+	std::string statement;
+	std::shared_ptr<sql_write_receipt> receipt;
+	bool ready = false;
+};
+namespace
+{
+std::vector<std::shared_ptr<sql_chest_log_entry>> chest_logs;
+}
+
+bool sql_chest_log_available(void)
+{
+	return chest_logs.size() < 4094;
+}
+bool sql_chest_log_pending(int locker_id)
+{
+	for (const auto &entry : chest_logs)
+		if (entry->locker_id == locker_id)
+			return true;
+	return false;
+}
+
+void sql_chest_log_pulse(void)
+{
+	size_t submitted = 0;
+	for (auto it = chest_logs.begin(); it != chest_logs.end();)
+	{
+		auto &entry = *it;
+		if (!entry->ready)
+		{
+			++it;
+			continue;
+		}
+		if (entry->receipt && entry->receipt->finished.load(std::memory_order_acquire))
+		{
+			if (entry->receipt->ok)
+			{
+				it = chest_logs.erase(it);
+				continue;
+			}
+			entry->receipt.reset();
+		}
+		if (!entry->receipt && submitted++ < 16)
+		{
+			auto receipt = std::make_shared<sql_write_receipt>();
+			if (sql_queue_statements({ entry->statement }, receipt))
+				entry->receipt = std::move(receipt);
+		}
+		++it;
+	}
+}
+
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int locker_id, int chest_id,
+								const char *char_name,
+								int action_type,
+								const char *item_short)
+{
+	if (!DB || locker_id <= 0 || !char_name || action_type < 1 || chest_logs.size() >= 4096)
+		return {};
+	critical_operation_id operation = {};
+	char hex[33];
+	if (!critical_operation_id_generate(&operation) ||
+	    !critical_operation_id_to_hex(operation, hex, sizeof(hex)))
+		return {};
+	std::string item = item_short ? item_short : "";
+	if (item.size() > 256)
+	{
+		size_t limit = 256;
+		while (limit && IS_UTF8_TAIL(item[limit]))
+			--limit;
+		item.resize(limit);
+	}
+	auto entry = std::make_shared<sql_chest_log_entry>();
+	entry->locker_id = locker_id;
+	entry->statement = sql_format(
+		"INSERT IGNORE INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short, event_id, logged_at) "
+		"VALUES (%d, %s, '%s', %d, %s, UNHEX('%s'), FROM_UNIXTIME(%lld))",
+		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
+		escape_str(char_name).c_str(), action_type,
+		item_short ? ("'" + escape_str(item.c_str()) + "'").c_str() : "NULL", hex,
+		static_cast<long long>(time(NULL)));
+	chest_logs.push_back(entry);
+	return entry;
+}
+
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &entry, bool success)
+{
+	if (!entry || entry->ready)
+		return;
+	if (!success)
+		chest_logs.erase(std::remove(chest_logs.begin(), chest_logs.end(), entry),
+				 chest_logs.end());
+	else
+	{
+		entry->ready = true;
+		sql_chest_log_pulse();
+	}
+}
+
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short)
 {
-	if (!DB || locker_id <= 0 || !char_name || action_type < 1)
+	auto entry =
+		sql_prepare_chest_activity(locker_id, chest_id, char_name, action_type, item_short);
+	if (!entry)
 		return false;
-	return sql_queue(
-		"INSERT INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short) "
-		"VALUES (%d, %s, '%s', %d, %s)",
-		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
-		escape_str(char_name).c_str(), action_type,
-		item_short ? ("'" + escape_str(item_short) + "'").c_str() : "NULL");
-}
-
-bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj)
-{
-	if (locker_id <= 0 || chest_id <= 0 || !chest_obj)
-		return false;
-
-	// The chest save goes to the one writer, behind any save still queued; a job it
-	// refuses is the caller's failure to report.
-	locker_chest_snapshot snapshot;
-	snapshot.locker_id = locker_id;
-	snapshot.chest_id = chest_id;
-	if (player_item_snapshot_contents_capture(chest_obj, &snapshot.items) !=
-	    player_snapshot_capture_result::ok)
-		return false;
-	// A private chest's key never matches its locker's public job.
-	const uint64_t owner = (static_cast<uint64_t>(chest_id) << 32) |
-			       static_cast<uint32_t>(locker_id);
-	const size_t bytes =
-		sizeof(snapshot) + snapshot.items.size() * sizeof(player_item_snapshot);
-	const player_save_submit_result submitted = persistence_writer_submit(
-		persistence_job_kind::locker, owner, bytes, [snapshot]()
-		{ return locker_chest_snapshot_repository_apply_from_pool(snapshot); });
-	return submitted == player_save_submit_result::accepted ||
-	       submitted == player_save_submit_result::replaced;
+	sql_finish_chest_activity(entry, true);
+	return true;
 }
 
 // single query corpse loading - all data in one query

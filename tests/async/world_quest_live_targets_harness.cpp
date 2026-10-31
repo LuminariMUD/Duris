@@ -7,9 +7,11 @@
 #include "combat/justice.h"
 #include "persistence/persistence_checkpoint.h"
 #include "economy/currency_transaction.h"
+#include "player/player_save_pipeline.h"
 #include "world/zone_story_quest_runtime.h"
 #include "cmd/interp.h"
 #include "world/specs.prototypes.h"
+#include "sql/sql.h"
 
 #include <cassert>
 #include <cstring>
@@ -20,9 +22,9 @@
 #include <string>
 #include <vector>
 
-room_data rooms[7]{};
+room_data rooms[10]{};
 P_room world = rooms;
-zone_data zones[3]{};
+zone_data zones[4]{};
 zone_data *zone_table = zones;
 int top_of_world = 6, top_of_zone_table = 2;
 index_data mobiles[70]{}, objects[6]{};
@@ -37,6 +39,11 @@ hometown_data hometowns[LAST_HOME]{};
 time_info_data time_info{};
 const char *month_name[] = { "Moon" };
 P_char character_list = nullptr;
+P_obj object_list = nullptr;
+void obj_to_char(P_obj, P_char)
+{
+	std::abort();
+}
 
 std::deque<room_direction_data> exits;
 std::vector<reset_com> commands;
@@ -48,10 +55,33 @@ std::set<int> fresh;
 std::vector<int> history_reads;
 std::string mode;
 int level, preferred_type, probe_reads = 0, object_reads = 0, dirty_marks = 0;
+int authored_target_level = -1, live_target_level = -1;
+int target_zone_average = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
+
+static int interceptor_calls = 0;
+int blocking_mobile(P_char, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+int blocking_room(int, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+int blocking_object(P_obj, P_char, int cmd, char *)
+{
+	++interceptor_calls;
+	return cmd == CMD_ASK;
+}
+bool training_dummy_is(P_char)
+{
+	return false;
+}
 
 int unknown_room(int, P_char, int, char *)
 {
@@ -74,6 +104,150 @@ int inn(int, P_char, int, char *)
 	std::abort();
 }
 int ship_shop_proc(int, P_char, int, char *)
+{
+	std::abort();
+}
+int crew_shop_proc(int, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_citizen(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_comwoman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_brat(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_holyman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_merchant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_guard(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squire(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_peddler(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_insane(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_executioner(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boss(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_timid(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_shady(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sinister(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_menacing(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_baron(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sparrow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squirrel(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_crow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_mountainman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_salesman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_nomad(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_homeless(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_servant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_gnoll(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_griffon(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boar(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_cub(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_stirge(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_barons_mistress(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_critter(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_fierce(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wolf(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wino(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_watcher(P_char, P_char, int, char *)
 {
 	std::abort();
 }
@@ -207,6 +381,26 @@ void ADD_MONEY(P_char ch, int value)
 	GET_COPPER(ch) += value;
 }
 int daily_remaining = 1, wallet_debits = 0, reward_claims = 0, history_writes = 0;
+static int64_t reserved_quest_fee = 0;
+bool currency_transaction_reserve_world_quest(P_char ch, int64_t fee)
+{
+	if (reserved_quest_fee || fee <= 0 || GET_MONEY(ch) < fee)
+		return false;
+	reserved_quest_fee = fee;
+	return true;
+}
+bool currency_transaction_publish_world_quest(P_char ch, int64_t fee)
+{
+	if (reserved_quest_fee != fee || GET_MONEY(ch) < fee)
+		return false;
+	GET_COPPER(ch) -= fee;
+	++wallet_debits;
+	return true;
+}
+void currency_transaction_release_world_quest(uint32_t)
+{
+	reserved_quest_fee = 0;
+}
 void (*during_payment)(P_char) = nullptr;
 bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency_reason_type,
 					      int64_t, critical_source_site,
@@ -271,14 +465,21 @@ std::string render_daily(P_char, bool, std::string *)
 }
 }
 
-void sql_world_quest_finished(P_char, P_obj)
+#ifndef WORLD_QUEST_SQL_HISTORY
+bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool, bool,
+				  const player_world_quest_reward &, int,
+				  std::function<bool(P_char)> committed)
 {
+	(void)reward;
 	++history_writes;
+	committed(ch);
+	return true;
 }
 int sql_world_quest_can_do_another(P_char)
 {
 	return daily_remaining;
 }
+#endif
 void mark_player_dirty_components(int, player_component_mask_t component)
 {
 	assert(component == PLAYER_COMPONENT_STATUS);
@@ -354,6 +555,10 @@ P_char read_mobile_probe(int nr, int type)
 	mob->only.npc->R_num = rnum;
 	mob->specials.act = ACT_ISNPC;
 	mob->player.level = mode == "no_level_window" && rnum == 2 ? 60 : level;
+	if (target_zone_average >= 0 && rnum == 2)
+		mob->player.level = target_zone_average;
+	if (authored_target_level >= 0 && rnum == (preferred_type == FIND_AND_ASK ? 1 : 0))
+		mob->player.level = authored_target_level;
 	mob->player.race = RACE_HUMAN;
 	GET_MAX_HIT(mob) = GET_HIT(mob) = 100;
 	GET_EXP(mob) = 100;
@@ -368,6 +573,7 @@ void extract_char(P_char mob)
 	delete mob->only.npc;
 	delete mob;
 }
+#ifndef WORLD_QUEST_SQL_HISTORY
 int sql_world_quest_done_already(P_char, int vnum)
 {
 	assert(std::find(history_reads.begin(), history_reads.end(), vnum) == history_reads.end());
@@ -376,6 +582,17 @@ int sql_world_quest_done_already(P_char, int vnum)
 		return -1;
 	return fresh.count(vnum) ? 0 : 1;
 }
+#else
+void quest_test_history_empty(P_char);
+void quest_test_history_begin_rollover(P_char, int);
+void quest_test_history_publish(int, bool);
+void quest_test_history_advance();
+void quest_test_refuse_history_writes();
+void quest_test_defer_history_write();
+void quest_test_finish_history_write(bool);
+void quest_test_park_history_read();
+void quest_test_publish_parked_history();
+#endif
 void edge(int from, int dir, int to)
 {
 	room_direction_data value{};
@@ -434,6 +651,19 @@ int main(int argc, char **argv)
 	level = std::stoi(argv[1]);
 	mode = argv[2];
 	preferred_type = std::string(argv[3]) == "ask" ? FIND_AND_ASK : FIND_AND_KILL;
+	const bool level_case = sscanf(mode.c_str(), "levels_%d_%d", &authored_target_level,
+				       &live_target_level) == 2;
+	const bool zone_average_case =
+		sscanf(mode.c_str(), "zone_average_%d", &target_zone_average) == 1;
+	int geographic_origin = 0;
+	char geographic_family[32]{};
+	const bool geographic_case = sscanf(mode.c_str(), "geography_%d_%31s", &geographic_origin,
+					    geographic_family) == 2;
+	if (geographic_case)
+	{
+		top_of_world = 9;
+		top_of_zone_table = 3;
+	}
 	fresh.insert(preferred_type == FIND_AND_ASK ? 1003 : 1002);
 	const bool budget_case = mode == "history_cap" || mode == "history_cap_zones" ||
 				 mode == "last_history" || mode == "last_history_zones" ||
@@ -453,7 +683,8 @@ int main(int argc, char **argv)
 		else
 			fresh.insert(mode == "history_cap" ? 1034 : 1033);
 	}
-	const int room_numbers[] = { 1000, 1001, 1099, 2000, 2099, 500001, 500002 };
+	const int room_numbers[] = { 1000,   1001,   1099,   2000,   2099,
+				     500001, 500002, 850045, 850046, 700002 };
 	for (int room = 0; room <= top_of_world; ++room)
 	{
 		rooms[room].number = room_numbers[room];
@@ -472,6 +703,7 @@ int main(int argc, char **argv)
 	zones[2].real_bottom = 5;
 	zones[2].real_top = 6;
 	zones[2].flags = ZONE_MAP;
+	rooms[4].room_flags = ROOM_PRIVATE; // Restricted holding room, independent of routes.
 	zones[0].reset_mode = zones[1].reset_mode = 2;
 	if (mode == "no_reset")
 		zones[0].reset_mode = 0;
@@ -503,6 +735,34 @@ int main(int argc, char **argv)
 	}
 	if (mode == "no_return")
 		rooms[3].dir_option[DIR_WEST] = nullptr;
+	if (geographic_case)
+	{
+		zones[3].number = 7000;
+		zones[3].flags = ZONE_MAP;
+		zones[3].real_bottom = 7;
+		zones[3].real_top = 9;
+		for (int room : { 7, 8, 9 })
+			rooms[room].zone = 3;
+		edge(0, DIR_DOWN, 7);
+		edge(7, DIR_NORTH, 8); // No return; the map component is geographical.
+		if (std::string(geographic_family) == "ambiguous_surface")
+			edge(0, DIR_NORTH,
+			     6); // Two surface identities, independently known Underdark.
+		else if (std::string(geographic_family) != "surface")
+		{
+			rooms[5].dir_option[DIR_EAST] = rooms[3].dir_option[DIR_WEST] = nullptr;
+			const int boundary = std::string(geographic_family) == "underdark" ? 8 :
+					     std::string(geographic_family) == "foreign_surface" ?
+											     6 :
+											     9;
+			edge(3, DIR_WEST, boundary);
+		}
+		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		rooms[5].funct = unknown_room;
+		rooms[3].sector_type =
+			SECT_NO_GROUND; // Target travel needs flight, not ASK speech.
+		rooms[5].sector_type = SECT_UNDERWATER; // Transit needs waterbreathing.
+	}
 	commands = { { 'M', false, 0, 6, 3, 100 },
 		     { 'M', false, 0, 6, 4, 100 },
 		     { 'M', false, 1, 1, 3, 100 } };
@@ -575,6 +835,15 @@ int main(int argc, char **argv)
 		for (int n = 0; n < (mode == "quota" ? 2 : mode == "one_usable" ? 5 : 4); ++n)
 			spawn(0, 4, 4);
 		spawn(1, mode == "staging_release" ? 4 : 3, 3);
+		if (mode == "history_write_rollover" || mode == "history_write_failure" ||
+		    mode == "history_write_pending" || mode == "history_stale_read")
+			spawn(0, 3,
+			      3); // Grant a quota above one before constructing partial progress.
+		if ((mode == "history_write_rollover" || mode == "history_write_failure" ||
+		     mode == "history_write_pending" || mode == "history_stale_read") &&
+		    level >= 50)
+			spawn(1, 3,
+			      3); // A second KILL prototype remains after excluding the old target.
 		if (mode == "cross_zone_retry")
 			for (int n = 0; n < 2; ++n)
 				spawn(0, 1, 1)->specials.affected_by |= AFF_INVISIBLE;
@@ -586,8 +855,13 @@ int main(int argc, char **argv)
 	const int boot_probes = probe_reads;
 	const int boot_objects = object_reads;
 	assert(boot_probes == top_of_mobt + 1);
-	assert(zones[0].avg_mob_level == level);
-	assert(zones[1].avg_mob_level == (mode == "no_level_window" ? 60 : level));
+	if (mode == "cosmetic")
+		mobiles[1].func.mob = bs_wino;
+	if (!level_case)
+		assert(zones[0].avg_mob_level == level);
+	assert(zones[1].avg_mob_level == (zone_average_case	    ? target_zone_average :
+					  mode == "no_level_window" ? 60 :
+								      level));
 	for (auto &owned : live)
 	{
 		auto mob = owned.get();
@@ -621,6 +895,8 @@ int main(int argc, char **argv)
 			if (mode == "sleeping")
 				SET_POS(mob, STAT_SLEEPING + POS_PRONE);
 		}
+		if (level_case && GET_RNUM(mob) == (preferred_type == FIND_AND_ASK ? 1 : 0))
+			mob->player.level = live_target_level;
 	}
 	if (mode == "safe")
 		rooms[3].room_flags |= ROOM_SAFE;
@@ -636,6 +912,179 @@ int main(int argc, char **argv)
 		player.carrying = &hide_artifact;
 		hide_artifact.next_content = &regeneration_ring;
 	}
+#ifdef WORLD_QUEST_SQL_HISTORY
+	if (mode == "history_rollover" || mode == "history_same_day" || mode == "history_unready" ||
+	    mode == "history_failed_read" || mode == "history_write_rollover" ||
+	    mode == "history_write_failure" || mode == "history_write_pending" ||
+	    mode == "history_stale_read")
+	{
+		player.player.name = const_cast<char *>("Fixture");
+		command_giver = spawn(2, 0, 0);
+		GET_COPPER(&player) = 10000;
+		quest_test_history_empty(&player);
+		quest_creation_failure failure;
+		assert(createQuestForGiverVnum(&player, 9000, 1000, &failure));
+		assert(pc.quest_active && pc.quest_kill_how_many == 0);
+		pc.quest_started = time(nullptr) - 25 * 3600;
+		// Re-enter with this saved task while the history SELECT is outstanding.
+		// Its old-day result is delivered after midnight and after abandonment.
+		const bool unready = mode == "history_unready" || mode == "history_failed_read";
+		const bool progressed =
+			mode == "history_write_rollover" || mode == "history_write_failure" ||
+			mode == "history_write_pending" || mode == "history_stale_read";
+		quest_test_history_begin_rollover(&player, unready ? 0 : 6);
+		if (progressed)
+		{
+			assert(pc.quest_kill_original > 1);
+			if (mode == "history_stale_read")
+				quest_test_park_history_read();
+			else
+				quest_test_history_publish(0, true);
+			quest_test_history_advance();
+			pc.quest_kill_how_many = 1;
+		}
+		std::string abandon = progressed ? "bartender abandon confirm" :
+						   "bartender abandon";
+		if (mode == "history_write_failure")
+			quest_test_refuse_history_writes();
+		if (mode == "history_write_pending")
+			quest_test_defer_history_write();
+		assert(world_quest(command_giver, &player, CMD_ASK, abandon.data()));
+		if (mode == "history_stale_read")
+		{
+			assert(!pc.quest_active && sql_world_quest_can_do_another(&player) == 5);
+			quest_test_publish_parked_history();
+			assert(sql_world_quest_can_do_another(&player) == 5);
+			return 0;
+		}
+		if (mode == "history_write_pending")
+		{
+			// Queue admission is not a database acknowledgement.
+			assert(pc.quest_active && pc.quest_kill_how_many == 1);
+			assert(history_writes == 1);
+			quest_test_finish_history_write(false);
+			assert(pc.quest_active &&
+			       player_save_pipeline_world_quest_pending(GET_PID(&player)));
+			quest_test_finish_history_write(true);
+			assert(!pc.quest_active &&
+			       !player_save_pipeline_world_quest_pending(GET_PID(&player)));
+			return 0;
+		}
+		if (mode == "history_write_failure")
+		{
+			assert(pc.quest_active && pc.quest_kill_how_many == 1);
+			assert(GET_MONEY(&player) == 10000);
+			assert(history_writes == 1);
+			return 0;
+		}
+		assert(!pc.quest_active && !pc.quest_replacement_due &&
+		       history_writes == (progressed ? 1 : 0));
+		const int wallet = GET_MONEY(&player);
+		if (!progressed && !unready)
+			quest_test_history_publish(mode == "history_rollover" ? 2 : 0, true);
+		if (mode == "history_failed_read")
+			quest_test_history_publish(0, false);
+		feedback.clear();
+		std::string request = "bartender quest";
+		assert(world_quest(command_giver, &player, CMD_ASK, request.data()));
+		if (mode == "history_same_day")
+		{
+			assert(!pc.quest_active && GET_MONEY(&player) == wallet);
+			assert(sql_world_quest_can_do_another(&player) == 0);
+			assert(feedback.find("any more quests") != std::string::npos);
+			std::cout << "SQL history same-day exhaustion: passed\n";
+			return 0;
+		}
+		if (unready)
+		{
+			assert(!pc.quest_active && GET_MONEY(&player) == wallet);
+			assert(feedback.find("history") != std::string::npos);
+			quest_test_history_publish(0, true);
+			assert(world_quest(command_giver, &player, CMD_ASK, request.data()));
+		}
+		if (!pc.quest_active)
+			std::cerr << "Regrant refused after successful abandonment: " << feedback
+				  << '\n';
+		assert(pc.quest_active && !pc.quest_replacement_due);
+		assert(GET_MONEY(&player) == wallet - 20 * level);
+		assert(sql_world_quest_can_do_another(&player) == (progressed ? 5 : 6));
+		assert(history_writes == (progressed ? 1 : 0));
+		if (!unready)
+			assert(sql_world_quest_done_already(&player, 999001) == 1);
+		std::cout << "SQL history " << mode << " abandon/regrant: passed\n";
+		return 0;
+	}
+#endif
+	if (geographic_case)
+	{
+		rooms[0].number = geographic_origin;
+		const bool expected = level >= 30 || std::string(geographic_family) == "surface" ||
+				      std::string(geographic_family) == "underdark";
+		world_quest_target target;
+		const auto failure = world_quest_policy_select_target(
+			&player, geographic_origin, level, target, preferred_type);
+		assert((failure == QUEST_CREATION_NO_FAILURE) == expected);
+		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
+		const auto accepted = world_quest_policy_check_target(
+			&player, geographic_origin, level, 20, vnum, preferred_type, 1);
+		const auto expected_status = expected ? world_quest_target_status::valid :
+					     std::string(geographic_family) == "ambiguous_surface" ?
+							world_quest_target_status::unproven :
+							world_quest_target_status::unavailable;
+		assert(accepted.status == expected_status);
+		if (expected_status == world_quest_target_status::unproven)
+		{
+			pc.quest_active = 1;
+			pc.quest_level = level;
+			pc.quest_origin_room = geographic_origin;
+			pc.quest_type = preferred_type;
+			pc.quest_zone_number = 20;
+			pc.quest_mob_vnum = vnum;
+			pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 1 : 0;
+			assert(world_quest_refresh(&player) == expected_status);
+			assert(pc.quest_active && !pc.quest_replacement_due &&
+			       pc.quest_level == level);
+		}
+		if (expected)
+		{
+			assert(target.mob_vnum == vnum && target.map_room == accepted.map_room);
+			player.player.level = 30;
+			assert(world_quest_policy_check_target(&player, geographic_origin, level,
+							       20, vnum, preferred_type, 1)
+				       .status == accepted.status);
+		}
+		std::cout << level << ' ' << mode << ' ' << argv[3]
+			  << " assignment geography passed\n";
+		return 0;
+	}
+	if (level_case || zone_average_case)
+	{
+		const bool expected =
+			zone_average_case ?
+				target_zone_average > level - 7 && target_zone_average < level + 5 :
+			preferred_type == FIND_AND_ASK ?
+				authored_target_level < MAXLVL && live_target_level < MAXLVL :
+				authored_target_level >= level - 4 &&
+					authored_target_level <= level + 5 &&
+					live_target_level >= level - 4 &&
+					live_target_level <= level + 5;
+		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
+		world_quest_target target;
+		const auto failure = world_quest_policy_select_target(&player, 1000, level, target,
+								      preferred_type);
+		assert((failure == QUEST_CREATION_NO_FAILURE) == expected);
+		if (expected)
+			assert(target.mob_vnum == vnum && target.type == preferred_type);
+		const auto accepted = world_quest_policy_check_target(&player, 1000, level, 20,
+								      vnum, preferred_type, 1);
+		assert(accepted.status == (expected ? world_quest_target_status::valid :
+						      world_quest_target_status::unavailable));
+		assert(zones[1].avg_mob_level ==
+			       (zone_average_case ? target_zone_average : level) &&
+		       dirty_marks == 0);
+		std::cout << level << ' ' << mode << ' ' << argv[3] << " level policy passed\n";
+		return 0;
+	}
 	if (mode == "validate")
 	{
 		using status = world_quest_target_status;
@@ -644,6 +1093,7 @@ int main(int argc, char **argv)
 		{
 			const auto before_actor = player;
 			const auto before_pc = pc;
+			const int before_dirty = dirty_marks;
 			const std::vector<room_data> before_rooms(world, world + top_of_world + 1);
 			const auto actual = world_quest_policy_check_target(
 				&player, origin, level, 20, vnum, preferred_type, needed);
@@ -651,12 +1101,12 @@ int main(int argc, char **argv)
 				std::cerr << "expected status " << static_cast<int>(expected_status)
 					  << " got " << static_cast<int>(actual.status) << '\n';
 			assert(actual.status == expected_status);
-			assert(actual.work <= WORLD_QUEST_MAX_ROUTE_WORK);
+			assert(actual.work <= WORLD_QUEST_MAX_TARGET_WORK);
 			assert(!memcmp(&before_actor, &player, sizeof(player)));
 			assert(!memcmp(&before_pc, &pc, sizeof(pc)));
 			assert(!memcmp(before_rooms.data(), world,
 				       before_rooms.size() * sizeof(room_data)));
-			assert(history_reads.empty() && dirty_marks == 0);
+			assert(history_reads.empty() && dirty_marks == before_dirty);
 			assert(probe_reads == boot_probes && object_reads == boot_objects);
 			return actual;
 		};
@@ -673,12 +1123,12 @@ int main(int argc, char **argv)
 		objects[0].func.obj = nullptr;
 
 		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		check(status::unavailable); // The accepted origin has no exit to its target.
+		check(status::valid); // A locked outward exit is irrelevant.
 		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
 		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
 		{
 			rooms[5].continent = 0;
-			check(status::unproven); // Missing geography alone cannot authorize a reroll.
+			check(status::valid); // Boot geography does not depend on current map conditions.
 			rooms[5].continent = CONT_GC;
 		}
 		check(status::needs_origin, 1, 0);
@@ -695,34 +1145,34 @@ int main(int argc, char **argv)
 		hide_artifact.R_num = 0;
 		objects[0].func.obj = unknown_object;
 		player.carrying = &hide_artifact;
-		check(status::unproven);
+		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
 		player.carrying = nullptr;
 		objects[0].func.obj = nullptr;
 		rooms[3].funct = unknown_room;
-		check(status::unproven);
+		check(preferred_type == FIND_AND_ASK ? status::unproven : status::valid);
 		rooms[3].funct = nullptr;
 		// An unrelated unknown branch cannot conceal a definitive final lock.
 		two_way(0, DIR_NORTH, 1, DIR_SOUTH);
 		rooms[1].funct = unknown_room;
 		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
-		check(status::unavailable);
+		check(status::valid);
 		rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
 		check(status::valid);
 		rooms[1].funct = nullptr;
 		rooms[3].dir_option[DIR_WEST]->exit_info |= EX_LOCKED;
-		check(status::unavailable); // A return path is required independently.
+		check(status::valid); // A return path is not required.
 		rooms[3].dir_option[DIR_WEST]->exit_info &= ~EX_LOCKED;
 		const int sector = rooms[3].sector_type;
 		rooms[3].sector_type = SECT_NO_GROUND;
 		if (level >= 30)
 		{
-			check(status::blocked); // Removing one's own flight is not a world invalidation.
+			check(status::valid); // Travel capabilities do not gate the target.
 			player.specials.affected_by |= AFF_FLY;
 			check(status::valid);
 			player.specials.affected_by &= ~AFF_FLY;
 		}
 		else
-			check(status::unavailable); // Gear cannot extend an accepted 11-29 contract.
+			check(status::valid); // Locality is independent of gear.
 		rooms[3].sector_type = sector;
 		if (preferred_type == FIND_AND_KILL)
 		{
@@ -753,7 +1203,74 @@ int main(int argc, char **argv)
 			mobiles[1].qst_func = world_quest;
 			check(status::unproven); // Known travel-safe does not mean ASK-safe.
 			mobiles[1].qst_func = nullptr;
+			// Execute the real command dispatcher to prove each blocker consumes ASK.
+			auto intercepted = [&]
+			{
+				const int calls = interceptor_calls;
+				check(status::unproven);
+				assert(interceptor_calls ==
+				       calls); // Policy must not run procedures.
+				world_quest_target rejected;
+				assert(world_quest_policy_select_target(&player, 1000, level,
+									rejected, FIND_AND_ASK) !=
+				       QUEST_CREATION_NO_FAILURE);
+				history_reads.clear();
+				move(&player, 3);
+				char message[] = "target message";
+				assert(special(&player, CMD_ASK, message));
+				assert(interceptor_calls > calls);
+				move(&player, 0);
+			};
+			mobiles[0].func.mob = blocking_mobile;
+			intercepted();
+			mobiles[0].func.mob = nullptr;
+			mobiles[0].qst_func = blocking_mobile;
+			intercepted();
+			mobiles[0].qst_func = nullptr;
+			rooms[3].funct = blocking_room;
+			intercepted();
+			rooms[3].funct = nullptr;
+			obj_data blocker{};
+			blocker.R_num = 0;
+			objects[0].func.obj = blocking_object;
+			player.carrying = &blocker;
+			intercepted();
+			player.carrying = nullptr;
+			player.equipment[0] = &blocker;
+			intercepted();
+			player.equipment[0] = nullptr;
+			rooms[3].contents = &blocker;
+			intercepted();
+			objects[0].func.obj = tracks;
+			check(status::valid); // Audited cosmetic objects still allow ASK.
+			rooms[3].contents = nullptr;
+			objects[0].func.obj = nullptr;
+			check(status::valid);
 			P_char ask = live.back().get();
+			pc.quest_active = 1;
+			pc.quest_level = level;
+			pc.quest_origin_room = 1000;
+			pc.quest_zone_number = 20;
+			pc.quest_mob_vnum = vnum;
+			pc.quest_type = FIND_AND_ASK;
+			for (bool sleep : { true, false })
+			{
+				if (sleep)
+					SET_POS(ask, STAT_SLEEPING | POS_PRONE);
+				else
+					ask->specials.affected_by2 |= AFF2_SILENCED;
+				check(status::blocked);
+				assert(world_quest_refresh(&player) == status::blocked);
+				assert(pc.quest_active && !pc.quest_replacement_due);
+				if (sleep)
+					SET_POS(ask, STAT_NORMAL | POS_STANDING);
+				else
+					ask->specials.affected_by2 &= ~AFF2_SILENCED;
+				assert(world_quest_refresh(&player) == status::valid);
+				assert(pc.quest_active && !pc.quest_replacement_due);
+			}
+			resetQuest(&player);
+			dirty_marks = 0;
 			move(ask, 2);
 			check(status::unavailable);
 			move(ask, 3);
@@ -764,9 +1281,8 @@ int main(int argc, char **argv)
 			check(status::unavailable);
 			rooms[3].room_flags &= ~ROOM_SILENT;
 		}
-		// Same accepted-target API, not just the raw route helper, fails
-		// unproven when its shared traversal exceeds the room bound.
-		std::vector<room_data> oversized(WORLD_QUEST_MAX_ROUTE_ROOMS + 8);
+		// The accepted-target API does not traverse a large unrelated graph.
+		std::vector<room_data> oversized(65536 + 8);
 		std::copy(std::begin(rooms), std::end(rooms), oversized.begin());
 		world = oversized.data();
 		top_of_world = static_cast<int>(oversized.size()) - 1;
@@ -777,7 +1293,7 @@ int main(int argc, char **argv)
 			edge(room == 7 ? 5 : room - 1, DIR_NORTH, room);
 			edge(room, DIR_SOUTH, room == 7 ? 5 : room - 1);
 		}
-		check(status::unproven);
+		check(status::valid);
 		world = rooms;
 		top_of_world = 6;
 
@@ -886,6 +1402,12 @@ int main(int argc, char **argv)
 		wallet_debits = reward_claims = history_writes = 0;
 		GET_COPPER(&player) = 10000;
 		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		ask("quest");
+		assert(pc.quest_active && !pc.quest_replacement_due && GET_MONEY(&player) == 10000);
+		assert(pc.quest_map_room == accepted.quest_map_room &&
+		       pc.quest_kill_how_many == accepted.quest_kill_how_many);
+		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		zones[1].flags |= ZONE_CLOSED; // Genuine target invalidation still grants recovery.
 		ask("abandon");
 		assert(!pc.quest_active && pc.quest_replacement_due && GET_MONEY(&player) == 10000);
 		assert((published_statuses == std::vector{ status::unavailable }));
@@ -895,7 +1417,7 @@ int main(int argc, char **argv)
 		assert(!memcmp(&pc, &waiting, sizeof(pc)));
 		ask("map");
 		assert(GET_MONEY(&player) == 10000 && wallet_debits == 0 && history_writes == 0);
-		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		zones[1].flags &= ~ZONE_CLOSED;
 		player.player.level = 10;
 		ask("quest"); // Continuation precedes new-purchase level and allowance gates.
 		assert(pc.quest_active && !pc.quest_replacement_due && GET_MONEY(&player) == 10000);
@@ -923,12 +1445,12 @@ int main(int argc, char **argv)
 			assert((published_statuses == std::vector{ status::blocked }));
 		}
 		player.specials.affected_by &= ~AFF_BLIND;
-		rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		zones[1].flags |= ZONE_CLOSED;
 		ask("abandon confirm");
 		assert(!pc.quest_active && !pc.quest_replacement_due &&
 		       GET_MONEY(&player) == paid_wallet && history_writes == 0 &&
 		       wallet_debits == 1);
-		rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		zones[1].flags &= ~ZONE_CLOSED;
 		pc = accepted;
 		pc.quest_accomplished = 1;
 		pc.quest_mob_vnum = 999999;
@@ -945,10 +1467,25 @@ int main(int argc, char **argv)
 		if (preferred_type == FIND_AND_KILL)
 		{
 			pc = accepted;
+			GET_COPPER(&player) = 0;
+			ask("abandon confirm");
+			assert(pc.quest_active && GET_MONEY(&player) == 0 && history_writes == 0);
 			GET_COPPER(&player) = 10000;
 			ask("abandon confirm");
 			assert(!pc.quest_active && GET_MONEY(&player) < 10000 &&
 			       history_writes == 1);
+			const int wallet = GET_MONEY(&player);
+			for (int remaining : { 0, -1 })
+			{
+				daily_remaining = remaining;
+				ask("quest");
+				assert(!pc.quest_active && GET_MONEY(&player) == wallet &&
+				       history_writes == 1);
+				assert(feedback.find(remaining < 0 ? "quest history" :
+								     "any more quests") !=
+				       std::string::npos);
+			}
+			daily_remaining = 1;
 		}
 		// Recipient proof cannot overwrite an existing replacement entitlement.
 		pc = accepted;
@@ -980,7 +1517,11 @@ int main(int argc, char **argv)
 		       !recipient_state.quest_active && pc.quest_shares_left == 2);
 		recipient_state.quest_replacement_due = 0;
 		history_reads.clear();
+		rooms[0].dir_option[DIR_EAST]->exit_info |= EX_LOCKED;
+		rooms[5].funct = unknown_room;
 		do_quest(&player, sharing.data(), 0);
+		rooms[0].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+		rooms[5].funct = nullptr;
 		assert(recipient_state.quest_active && recipient_state.quest_origin_room == 1000 &&
 		       recipient_state.quest_level == pc.quest_level &&
 		       recipient_state.quest_kill_original == pc.quest_kill_original &&
@@ -991,31 +1532,38 @@ int main(int argc, char **argv)
 		share_limit = 0;
 		// The world and actor can change after the debit is submitted, before
 		// the real completion callback decides whether to deliver the map.
-		for (bool route_changed : { false, true })
+		for (int change : { 0, 1, 2 })
 		{
 			pc = accepted;
 			pc.quest_map_bought = 0;
 			GET_COPPER(&player) = 10000;
 			map_calls = 0;
 			const int debits_before = wallet_debits;
-			during_payment = route_changed ? +[](P_char)
+			during_payment = change == 1 ? +[](P_char)
 			{ rooms[5].dir_option[DIR_EAST]->exit_info |= EX_LOCKED; } :
-							 +[](P_char actor)
+					 change == 2 ? +[](P_char)
+			{ zones[1].flags |= ZONE_CLOSED; } :
+						       +[](P_char actor)
 			{ actor->specials.affected_by |= AFF_BLIND; };
 			ask("map");
 			during_payment = nullptr;
-			assert(GET_MONEY(&player) == 10000 && wallet_debits == debits_before + 1);
-			assert(!pc.quest_map_bought && !pc.quest_map_room && map_calls == 0);
-			assert(pc.quest_active == !route_changed &&
-			       pc.quest_replacement_due == route_changed);
+			assert(GET_MONEY(&player) == (change == 1 ? 10000 - 10 * level : 10000) &&
+			       wallet_debits == debits_before + 1);
+			assert(pc.quest_map_bought == (change == 1) && map_calls == (change == 1));
+			assert(pc.quest_map_room == (change == 1 ? accepted.quest_map_room : 0));
+			assert(pc.quest_active == (change != 2) &&
+			       pc.quest_replacement_due == (change == 2));
 			assert(pc.quest_kill_how_many == accepted.quest_kill_how_many &&
 			       pc.quest_kill_original == accepted.quest_kill_original);
-			assert((published_statuses == std::vector{ route_changed ?
-									   status::unavailable :
-									   status::blocked }));
-			assert(feedback.find("You get your money back") != std::string::npos);
+			assert((published_statuses ==
+				std::vector{ change == 1 ? status::valid :
+					     change == 2 ? status::unavailable :
+							   status::blocked }));
+			assert((feedback.find("You get your money back") != std::string::npos) ==
+			       (change != 1));
 			player.specials.affected_by &= ~AFF_BLIND;
 			rooms[5].dir_option[DIR_EAST]->exit_info &= ~EX_LOCKED;
+			zones[1].flags &= ~ZONE_CLOSED;
 		}
 		// A paid quest grants four shares; sharing adds no fee and cannot relay.
 		share_limit = configured_share_limit;
@@ -1058,13 +1606,13 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	const bool expected = level >= 11 &&
-			      (mode == "normal" || mode == "gear" || mode == "quota" ||
-			       mode == "cross_zone_retry" || mode == "last_history" ||
-			       mode == "last_history_zones" || mode == "last_probe" ||
-			       (mode == "foreign" && level >= 30) ||
-			       (mode == "mapless" && level >= 41)) &&
-			      !(preferred_type == FIND_AND_ASK && level >= 50);
+	const bool expected =
+		level >= 11 &&
+		(mode == "normal" || mode == "gear" || mode == "quota" || mode == "cosmetic" ||
+		 mode == "no_return" || mode == "staging_release" || mode == "cross_zone_retry" ||
+		 mode == "last_history" || mode == "last_history_zones" || mode == "last_probe" ||
+		 (mode == "foreign" && level >= 30) || (mode == "mapless" && level >= 41)) &&
+		!(preferred_type == FIND_AND_ASK && level >= 50);
 	pc.quest_mob_vnum = 777;
 	pc.quest_kill_how_many = 2;
 	pc.quest_kill_original = 4;
@@ -1075,6 +1623,42 @@ int main(int argc, char **argv)
 	quest_creation_failure failure = QUEST_CREATION_NO_FAILURE;
 	const bool created = createQuestForGiverVnum(&player, 9000, 1000, &failure);
 	assert(created == expected);
+	if (mode == "cosmetic")
+	{
+		for (auto procedure :
+		     { bs_boss,	       bs_citizen,  bs_comwoman, bs_brat,     bs_holyman,
+		       bs_merchant,    bs_wino,	    bs_watcher,	 bs_guard,    bs_squire,
+		       bs_peddler,     bs_timid,    bs_shady,	 bs_sinister, bs_menacing,
+		       bs_executioner, bs_baron,    bs_sparrow,	 bs_squirrel, bs_crow,
+		       bs_mountainman, bs_salesman, bs_nomad,	 bs_insane,   bs_homeless,
+		       bs_servant,     bs_gnoll,    bs_griffon,	 bs_boar,     bs_cub,
+		       bs_stirge })
+		{
+			for (int dispatch = 0; dispatch < 3; ++dispatch)
+			{
+				mobiles[1].func.mob = dispatch == 0 ? procedure :
+						      dispatch == 1 ? nullptr :
+								      shop_keeper;
+				mobiles[1].qst_func = dispatch == 1 ? procedure : nullptr;
+				shops[0].func = dispatch == 2 ? procedure : nullptr;
+				assert(world_quest_policy_check_target(
+					       &player, 1000, level, zones[1].number,
+					       mobiles[1].virtual_number, FIND_AND_ASK, 1)
+					       .status == world_quest_target_status::valid);
+			}
+		}
+		for (auto procedure :
+		     { world_quest, quester, bs_barons_mistress, bs_critter, bs_wolf, bs_fierce })
+		{
+			mobiles[1].func.mob = procedure;
+			shops[0].func = nullptr;
+			assert(world_quest_policy_check_target(
+				       &player, 1000, level, zones[1].number,
+				       mobiles[1].virtual_number, FIND_AND_ASK, 1)
+				       .status != world_quest_target_status::valid);
+		}
+		mobiles[1].func.mob = bs_wino;
+	}
 	assert(player.in_room == 0 && probe_reads == boot_probes && object_reads == boot_objects);
 	assert(history_reads.size() <= WORLD_QUEST_MAX_HISTORY_CHECKS);
 	if (budget_case)

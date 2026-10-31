@@ -36,6 +36,7 @@ static std::vector<std::string> applied;
 static std::vector<std::string> told;
 static std::atomic<int> lost_connections{0};
 static std::atomic<bool> commit_held{false}, commit_reached{false};
+static std::atomic<int> uncertain_commits{0};
 
 void send_to_char(const char *text, P_char) { told.push_back(text); }
 
@@ -64,7 +65,7 @@ unsigned int sql_select(MYSQL *, const std::string &query, sql_rows *rows)
     return 0;
 }
 
-player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work)
+player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work, bool retry_ambiguous_commit)
 {
     const unsigned int error_code = work(reinterpret_cast<MYSQL *>(&connection));
     if (!error_code)
@@ -74,6 +75,11 @@ player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &wor
         {
             commit_reached.store(true);
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        if (uncertain_commits.load() > 0) {
+            --uncertain_commits;
+            return {retry_ambiguous_commit ? player_save_apply_outcome::ambiguous_commit
+                                          : player_save_apply_outcome::terminal_failure, 0, 2013};
         }
         return {player_save_apply_outcome::applied, 0, 0};
     }
@@ -209,6 +215,41 @@ int main()
     assert(allocation->finished.load() && !allocation->ok && allocation->error_code == ENOMEM);
     // No callback-queue allocation or SQL pulse is required to retain these outcomes.
     assert(sql_async_pulse() == 0);
+    // Default composed writes must never replay a possibly committed mutation.
+    uncertain_commits = 1;
+    int attempts = 0, replies = 0;
+    assert(sql_read_work([&](MYSQL *, sql_rows *) { ++attempts; return 0U; },
+                        [&](bool ok, const sql_rows &) { assert(!ok); ++replies; }));
+    wait_for_writer();
+    assert(attempts == 1 && replies == 0);
+    assert(sql_async_pulse() == 1 && replies == 1);
+
+    // Opted-in recovery stays fenced through an uncertain COMMIT and even a
+    // failed reconciliation query. Later writer jobs cannot overtake it.
+    uncertain_commits = 1;
+    attempts = replies = 0;
+    std::atomic<bool> reconciliation_held{true}, reconciliation_reached{false};
+    std::atomic<bool> later_ran{false};
+    assert(sql_read_work([&](MYSQL *, sql_rows *) {
+        if (++attempts == 2) return 1142U; // read temporarily unavailable
+        if (attempts == 3) {
+            reconciliation_reached = true;
+            while (reconciliation_held.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return 0U;
+    }, [&](bool ok, const sql_rows &) { assert(ok); ++replies; }, true));
+    assert(sql_queue_work([&](MYSQL *) { later_ran = true; return 0U; }));
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!reconciliation_reached.load()) {
+        assert(std::chrono::steady_clock::now() < deadline);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    assert(sql_async_pulse() == 0 && replies == 0 && !later_ran);
+    reconciliation_held = false;
+    wait_for_writer();
+    assert(attempts == 3 && later_ran);
+    assert(sql_async_pulse() == 1 && replies == 1);
     player_save_worker_shutdown();
     errno = 0;
     assert(!sql_queue_statements({"WRITE stopped"}, std::make_shared<sql_write_receipt>()));

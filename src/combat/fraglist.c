@@ -1,3 +1,5 @@
+#include "combat/frag_cap_runtime.h"
+#include "combat/combat_outcome_transaction.h"
 /****************************************************************************
  *
  *  File: fraglist.c                                            Part of Duris
@@ -133,29 +135,32 @@ static void check_frag_position(P_char ch)
 		return;
 
 	const uint64_t runtime_id = ch->runtime_id;
-	sql_read("(SELECT 'lead', char_name FROM frag_leaderboard "
-		 "WHERE deleted_at IS NULL AND total_frags > 0 "
-		 "ORDER BY total_frags DESC, id ASC LIMIT 1) UNION ALL "
-		 "(SELECT 'low', char_name FROM frag_leaderboard "
-		 "WHERE deleted_at IS NULL ORDER BY total_frags ASC LIMIT 1)",
-		 [runtime_id](bool ok, const sql_rows &rows)
-		 {
-			 P_char live = find_character_by_runtime_id(runtime_id);
-			 if (!ok || !live)
-				 return;
-			 bool lead = false, low = false;
-			 for (const sql_row &row : rows)
-				 if (row[0] && row[1] && isname(row[1], GET_NAME(live)))
-					 (strcmp(row[0], "lead") ? low : lead) = true;
-			 if (lead)
-				 SET_BIT(live->specials.act3, PLR3_FRAGLEAD);
-			 else
-				 REMOVE_BIT(live->specials.act3, PLR3_FRAGLEAD);
-			 if (low)
-				 SET_BIT(live->specials.act3, PLR3_FRAGLOW);
-			 else
-				 REMOVE_BIT(live->specials.act3, PLR3_FRAGLOW);
-		 });
+	sql_read(
+		sql_format(
+			"(SELECT 'lead', char_name FROM frag_leaderboard "
+			"WHERE deleted_at IS NULL AND level <= %d AND total_frags > 0 "
+			"ORDER BY total_frags DESC, id ASC LIMIT 1) UNION ALL "
+			"(SELECT 'low', char_name FROM frag_leaderboard "
+			"WHERE deleted_at IS NULL AND level <= %d ORDER BY total_frags ASC LIMIT 1)",
+			MAXLVLMORTAL, MAXLVLMORTAL),
+		[runtime_id](bool ok, const sql_rows &rows)
+		{
+			P_char live = find_character_by_runtime_id(runtime_id);
+			if (!ok || !live)
+				return;
+			bool lead = false, low = false;
+			for (const sql_row &row : rows)
+				if (row[0] && row[1] && isname(row[1], GET_NAME(live)))
+					(strcmp(row[0], "lead") ? low : lead) = true;
+			if (lead)
+				SET_BIT(live->specials.act3, PLR3_FRAGLEAD);
+			else
+				REMOVE_BIT(live->specials.act3, PLR3_FRAGLEAD);
+			if (low)
+				SET_BIT(live->specials.act3, PLR3_FRAGLOW);
+			else
+				REMOVE_BIT(live->specials.act3, PLR3_FRAGLOW);
+		});
 }
 
 // Shows the frag totals by side and the fraglist matching filter, both read on the writer.
@@ -171,32 +176,10 @@ static void show_fraglist(P_char ch, const std::string &filter)
 		},
 		[](P_char viewer, const sql_rows &rows)
 		{
-			char buf[65536], buf2[2048], name[256], before[1024], after[256];
+			char buf[65536], buf2[2048], name[256], totals[512];
 			int count;
-			int days, hours, mins, secs;
-
-			time_t cap_timer = fraglist_cap_header(rows, before, sizeof before, after,
-							       sizeof after);
-			cap_timer -= time(NULL);
-
-			if (cap_timer <= 0)
-			{
-				secs = mins = hours = days = 0;
-			}
-			else
-			{
-				secs = cap_timer % 60;
-				cap_timer /= 60;
-				mins = cap_timer % 60;
-				cap_timer /= 60;
-				hours = cap_timer % 24;
-				cap_timer /= 24;
-				days = cap_timer;
-			}
-
-			snprintf(buf, MAX_STRING_LENGTH,
-				 "%s%02d:%02d:%02d:%02d%s&+WTop Fraggers\n\n", before, days, hours,
-				 mins, secs, after);
+			fraglist_totals_header(rows, totals, sizeof(totals));
+			snprintf(buf, sizeof(buf), "%s&+WTop Fraggers\n\n", totals);
 
 			for (const char *tag : { "top", "low" })
 			{
@@ -240,6 +223,14 @@ void do_fraglist(P_char ch, char *arg, int /*cmd*/)
 
 	if (!IS_ALIVE(ch))
 		return;
+
+	send_to_char(frag_cap_runtime_status(GET_RACEWAR(ch),
+					     static_cast<int64_t>(time(nullptr)) * 1000000)
+			     .c_str(),
+		     ch, LOG_PUBLIC);
+	if (combat_outcome_transaction_credit_pending(GET_PID(ch)))
+		send_to_char("PvP credit pending; this status shows confirmed awards only.\r\n", ch,
+			     LOG_PUBLIC);
 
 	// for default view (no filter), use cache
 	if (!arg || !arg[0])

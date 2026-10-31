@@ -1,17 +1,44 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **planned; implementation has not started**. Updated 2026-10-30.
+Status: **planned; implementation has not started**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
 - Server branch: [branch/issue-498-gmcp-contracts](https://github.com/LuminariMUD/Duris/tree/branch/issue-498-gmcp-contracts), natively linked to #498 in GitHub Development.
 - Local worktree: /home/aiwithapex/projects/duris-issue-498.
-- Audited server baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479 (origin/master).
+- Audited server baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479 (original planning baseline).
 - Client reference: [immutable investigation](https://github.com/LuminariMUD/duris-client/blob/aa40a50cda789525dddddcce6f8056e53985a0bb/docs/ongoing-projects/protocol-interface-investigation.md), checked alongside both current issue bodies.
 
 The previous contents of this path are already preserved byte-for-byte in
 [plan-issue-420.md](plan-issue-420.md); comparison was performed before editing.
-This commit supplies the requested plan only. Estimates concern future work.
+The original planning commit supplied the plan only. Estimates concern future work.
+
+## Master integration - 2026-11-01
+
+Merged `origin/master` at `ee6f9fbf3` into this issue worktree. Runtime and
+test sources match that master exactly; #498 implementation remains unstarted.
+The only conflict was the shared plan path. This file retains the complete
+#498 plan; master's complete #500 handoff is preserved byte-for-byte in
+[plan-issue-500.md](plan-issue-500.md).
+
+The source findings and line numbers below describe the original planning
+baseline. Refresh them against the current owning source before implementation,
+especially account/session completion, the game-loop persistence phase and
+quest-result serialization, which changed upstream. The proposed contracts and
+implementation acceptance criteria remain pending.
+
+Merge validation passed: `make -C src -j4`; the GUI GMCP contract, prompt
+regression and input-receipt tests; game-loop phase and WebSocket protocol
+source contracts; staged formatting and whitespace checks; and both plans'
+relative links. No booted-game or real-Mudlet qualification is claimed by this
+merge. The implementation and measurement requirements below remain pending.
+
+Local analysis tooling: clang-tidy 18 automatically selected separately installed
+GCC 16 headers and failed inside their standard-library definitions. Selecting
+`--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13` through an ignored
+`CLANG_TIDY` wrapper uses the same GCC 13 installation as the successful build.
+The repository hook and its checks remain enabled; no game source is changed
+for this tooling mismatch.
 
 ## Outcome
 

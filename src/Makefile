@@ -131,6 +131,9 @@ OBJS =  $(SHIP_OBJS) \
 				 account/login_mode_banner.o \
 				 account/pwipe_launch.o \
 				 combat/frag_cap_config.o \
+				 combat/frag_cap.o \
+				 combat/frag_cap_repository.o \
+				 combat/frag_cap_runtime.o \
 				 cmd/actcomm.o \
 				 cmd/actinf.o \
 				 cmd/actmove.o \
@@ -159,7 +162,6 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact_population_flatfile.o \
 				 guild/artifact_population_recovery.o \
 				 guild/artifact_cache_codec.o \
-				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \
 				 redis/redis_connection.o \
 				 redis/redis_command_observability.o \
@@ -376,6 +378,7 @@ OBJS =  $(SHIP_OBJS) \
 				 combat/combat_outcome_command.o \
 				 combat/combat_outcome_repository.o \
 				 combat/combat_outcome_transaction.o \
+				 combat/combat_outcome_intent.o \
 				 guild/artifact_guild_command.o \
 				 guild/artifact_guild_repository.o \
 				 guild/artifact_guild_state.o \
@@ -514,6 +517,7 @@ OBJS =  $(SHIP_OBJS) \
 				 net/ssl.o \
 				 world/statistics.o \
 				 item/storage_lockers.o \
+				 item/private_chest_purchase.o \
 				 item/locker_identify.o \
 				 item/locker_receipt.o \
 				 persistence/locker_async.o \

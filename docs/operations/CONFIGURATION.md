@@ -652,6 +652,17 @@ typing `?` at the telnet password prompt, or through the WebSocket `request_rese
 from one bounded worker thread. The feature is off unless `MAIL_ENABLED=TRUE`; while it is
 off the password prompt is unchanged and `?` answers one not-available line.
 
+Recovery resets the password; it never retrieves or emails the old password. A successful
+reset requires a saved email address that the player can access. The success reply, code
+consumption and disconnection of other sessions happen only after the password is stored.
+On MariaDB the requesting connection waits asynchronously for COMMIT; the transaction
+rechecks the current password, email and blocked status under a row lock. Same-account
+snapshots are temporarily refused while this write is pending so they cannot restore the
+old password; character departure timestamps are queued separately. A lost COMMIT reply
+keeps the writer and account fenced until a retry reconciles the exact submitted password
+hash. A definite failed write keeps the code usable until its normal expiry, and a
+disconnected requester does not cancel an already submitted write.
+
 | Variable | Requirement | Meaning |
 | --- | --- | --- |
 | `MAIL_ENABLED` | Optional; `TRUE` or `FALSE` (case-insensitive), default `FALSE` | Enable switch. Unset, empty, or `FALSE` disables password reset by email; any other value is rejected. |

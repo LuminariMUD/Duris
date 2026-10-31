@@ -210,6 +210,13 @@ bool sql_queue_work_at(struct persistence_query_site site, sql_work work,
 bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 		      std::function<void(bool ok, const sql_rows &rows)> done)
 {
+	return sql_read_work_at(site, std::move(work), std::move(done), false);
+}
+
+bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
+		      std::function<void(bool ok, const sql_rows &rows)> done,
+		      bool retry_ambiguous_commit)
+{
 	if (!work || !done || !DB)
 		return false;
 	if (booting)
@@ -223,7 +230,8 @@ bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 	}
 	return submit(
 		site, sizeof(work),
-		[work = std::move(work), done = std::move(done)]()
+		[work = std::move(work), done = std::move(done), retry_ambiguous_commit,
+		 reconciling = false]() mutable
 		{
 			sql_rows rows;
 			const player_save_apply_result result = sql_work_repository_apply_from_pool(
@@ -231,8 +239,19 @@ bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 				{
 					rows.clear();
 					return work(connection, &rows);
-				});
-			// A lost connection is retried; any other outcome is final.
+				},
+				retry_ambiguous_commit);
+			// Once COMMIT is uncertain, a failed reconciliation is not proof of
+			// failure. Keep the writer ordered and withhold the callback until
+			// work can read and settle its result, even across a database outage.
+			reconciling |= result.outcome ==
+				       player_save_apply_outcome::ambiguous_commit;
+			if (reconciling && result.outcome != player_save_apply_outcome::applied)
+				return player_save_apply_result{
+					player_save_apply_outcome::retryable_failure, 0,
+					result.error_code
+				};
+			// A lost connection before COMMIT is safe to retry for every caller.
 			if (result.outcome == player_save_apply_outcome::retryable_failure)
 				return result;
 			try

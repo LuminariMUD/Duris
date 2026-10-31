@@ -34,6 +34,10 @@
 #include "persistence/persistence_checkpoint.h"
 #include "sql/sql_pool.h"
 #include "player/player_snapshot_repository.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_load_items.h"
+#include "player/player_save_pipeline.h"
+#include "net/unicode.h"
 #include "account/session_audit_transaction.h"
 #include "core/runtime_compatibility_contract.h"
 #include <algorithm>
@@ -84,6 +88,8 @@
 #include "magic/spells.h"
 #include "sql/sql_player.h"
 #include "combat/frag_cap_config.h"
+#include "combat/frag_cap_runtime.h"
+#include "combat/frag_cap_repository.h"
 #include "world/timers.h"
 #include "core/utility.h"
 #include <errno.h>
@@ -160,6 +166,247 @@ static int flat_sql_shop_trophy(P_obj obj)
 	return count;
 }
 
+struct world_quest_reward_publication
+{
+	int pid = 0;
+	bool reading = false;
+	bool ready = false;
+	std::vector<player_item_snapshot> items;
+	std::vector<item_ownership_runtime_entry> ownership;
+};
+
+static P_obj world_quest_find_reward(uint64_t uid)
+{
+	for (P_obj object = object_list; object; object = object->next)
+		if (object->obj_uid == uid)
+			return object;
+	return NULL;
+}
+
+static P_obj world_quest_restore_reward(const world_quest_reward_publication &state)
+{
+	std::vector<player_item_snapshot> items = state.items;
+	std::vector<player_load_item_identity> identities;
+	identities.reserve(items.size());
+	for (size_t index = 0; index < items.size(); ++index)
+	{
+		if (world_quest_find_reward(items[index].object_uid))
+			return NULL;
+		const auto ownership = std::find_if(
+			state.ownership.begin(), state.ownership.end(), [&](const auto &entry)
+			{ return entry.item_uid == items[index].object_uid; });
+		if (ownership == state.ownership.end())
+			return NULL;
+		player_load_item_identity identity{};
+		identity.database_id = index + 1;
+		identity.serialized_parent_id =
+			items[index].parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+				0 :
+				static_cast<uint64_t>(items[index].parent_index) + 1;
+		identity.quantity = 1;
+		identity.override_mask = PLAYER_LOAD_ITEM_OVERRIDE_ALL;
+		identity.item_uid = ownership->item_uid;
+		identity.root_item_uid = ownership->root_item_uid;
+		identity.parent_item_uid = ownership->parent_item_uid;
+		identity.owner = ownership->owner;
+		identity.item_revision = ownership->item_revision;
+		identity.owner_revision = ownership->owner_revision;
+		identity.state = ownership->state;
+		identities.push_back(identity);
+		items[index].equipment_slot = -1;
+	}
+	std::vector<P_obj> roots;
+	player_load_item_materialize_metrics metrics;
+	const item_owner_identity owner = { item_owner_type::player,
+					    static_cast<uint64_t>(state.pid), 0 };
+	if (!player_load_item_graph_materialize_detached(items, identities, owner,
+							 state.ownership.front().owner_revision,
+							 false, true, &roots, &metrics))
+		return NULL;
+	if (roots.size() == 1)
+		return roots.front();
+	for (P_obj root : roots)
+		extract_obj(root, FALSE);
+	return NULL;
+}
+
+static bool world_quest_publish_reward(P_char actor,
+				       const std::shared_ptr<world_quest_reward_publication> &state)
+{
+	if (!state || state->items.empty())
+		return true;
+	if (actor && !IS_ALIVE(actor))
+		return false;
+	P_obj root = world_quest_find_reward(state->items.front().object_uid);
+	if (!actor)
+	{
+		// The committed player item will be loaded on the next login.
+		if (!root)
+			return true;
+		if (!OBJ_NOWHERE(root))
+			return false;
+		extract_obj(root, FALSE);
+		return true;
+	}
+	if (!state->ready)
+	{
+#ifdef __NO_MYSQL__
+		uint64_t revision = 0;
+		std::vector<flatfile_item_ownership_record> records;
+		std::string error;
+		if (flatfile_item_repository_load_owner(
+			    persistence_mode_flatfile_root(),
+			    { item_owner_type::player, static_cast<uint64_t>(state->pid), 0 },
+			    &revision, &records, &error) != flatfile_item_repository_result::ok)
+			return false;
+		state->ownership.clear();
+		for (const auto &item : state->items)
+		{
+			auto found = std::find_if(records.begin(), records.end(),
+						  [&](const auto &record)
+						  { return record.item_uid == item.object_uid; });
+			if (found == records.end() || found->vnum != item.vnum ||
+			    found->state != item_custody_state::active)
+				return false;
+			item_ownership_runtime_entry entry{};
+			entry.item_uid = found->item_uid;
+			entry.root_item_uid = found->root_item_uid;
+			entry.parent_item_uid = found->parent_item_uid;
+			entry.owner = found->owner;
+			entry.item_revision = found->item_revision;
+			entry.vnum = found->vnum;
+			entry.state = found->state;
+			entry.owner_revision = revision;
+			state->ownership.push_back(entry);
+		}
+		state->ready = true;
+		return false;
+#else
+		if (state->reading)
+			return false;
+		std::string ids;
+		for (const auto &item : state->items)
+			ids += (ids.empty() ? "" : ",") + std::to_string(item.object_uid);
+		state->reading = true;
+		try
+		{
+			if (!sql_read(
+				    "SELECT i.item_uid,i.root_item_uid,COALESCE(i.parent_item_uid,0),"
+				    "i.owner_type,i.owner_id,i.owner_context_id,i.item_revision,i.vnum,i.state,"
+				    "COALESCE(r.revision,0) FROM item_current_owner i LEFT JOIN item_owner_revision r "
+				    "ON r.owner_type=i.owner_type AND r.owner_id=i.owner_id AND "
+				    "r.owner_context_id=i.owner_context_id WHERE i.item_uid IN (" +
+					    ids + ")",
+				    [state](bool ok, const sql_rows &rows)
+				    {
+					    state->reading = false;
+					    if (!ok || rows.size() != state->items.size())
+						    return;
+					    try
+					    {
+						    std::vector<item_ownership_runtime_entry>
+							    entries;
+						    entries.reserve(rows.size());
+						    for (const auto &row : rows)
+						    {
+							    for (size_t i = 0; i < 10; ++i)
+								    if (!row[i])
+									    return;
+							    const uint64_t uid =
+								    strtoull(row[0], nullptr, 10);
+							    auto item = std::find_if(
+								    state->items.begin(),
+								    state->items.end(),
+								    [uid](const auto &candidate) {
+									    return candidate
+											   .object_uid ==
+										   uid;
+								    });
+							    if (item == state->items.end() ||
+								strcmp(row[3], "1") ||
+								std::to_string(state->pid) !=
+									row[4] ||
+								strcmp(row[5], "0") ||
+								std::to_string(item->vnum) !=
+									row[7] ||
+								strcmp(row[8], "1"))
+								    return;
+							    const size_t index = static_cast<size_t>(
+								    item - state->items.begin());
+							    if (item->parent_index <
+									PLAYER_SNAPSHOT_NO_PARENT ||
+								item->parent_index >=
+									static_cast<int32_t>(index))
+								    return;
+							    const uint64_t parent =
+								    item->parent_index ==
+										    PLAYER_SNAPSHOT_NO_PARENT ?
+									    0 :
+									    state->items[item->parent_index]
+										    .object_uid;
+							    if (std::to_string(
+									state->items.front()
+										.object_uid) !=
+									row[1] ||
+								std::to_string(parent) != row[2])
+								    return;
+							    item_ownership_runtime_entry entry{};
+							    entry.item_uid = uid;
+							    entry.root_item_uid =
+								    strtoull(row[1], nullptr, 10);
+							    entry.parent_item_uid =
+								    strtoull(row[2], nullptr, 10);
+							    entry.owner = { item_owner_type::player,
+									    static_cast<uint64_t>(
+										    state->pid),
+									    0 };
+							    entry.item_revision =
+								    strtoull(row[6], nullptr, 10);
+							    entry.vnum = item->vnum;
+							    entry.state =
+								    item_custody_state::active;
+							    entry.owner_revision =
+								    strtoull(row[9], nullptr, 10);
+							    if (!entry.item_revision ||
+								!entry.owner_revision)
+								    return;
+							    entries.push_back(entry);
+						    }
+						    state->ownership = std::move(entries);
+						    state->ready = true;
+					    }
+					    catch (const std::bad_alloc &)
+					    {
+					    }
+				    }))
+				state->reading = false;
+		}
+		catch (const std::bad_alloc &)
+		{
+			state->reading = false;
+		}
+		return false;
+#endif
+	}
+	if (!item_ownership_runtime_hydrate_many_atomic(state->ownership.data(),
+							state->ownership.size()))
+	{
+		state->ready = false;
+		return false;
+	}
+	if (root && OBJ_CARRIED_BY(root, actor))
+		return true;
+	if (!root)
+		root = world_quest_restore_reward(*state);
+	if (!root || !OBJ_NOWHERE(root))
+		return false;
+	const uint64_t uid = root->obj_uid;
+	obj_to_char(root, actor);
+	root = world_quest_find_reward(uid);
+	return root && OBJ_CARRIED_BY(root, actor);
+}
+// End world quest reward publication.
+
 #ifdef __NO_MYSQL__
 MYSQL *DB = NULL;
 
@@ -217,21 +464,6 @@ int sql_shop_sell(P_char ch, P_obj obj, int value)
 {
 	return flat_sql_shop_sell(ch, obj, value);
 }
-void sql_world_quest_finished(P_char ch, P_obj /*obj*/)
-{
-	if (!ch || !IS_PC(ch) || !ch->only.pc || GET_PID(ch) <= 0 ||
-	    ch->only.pc->quest_mob_vnum <= 0)
-		return;
-	std::string error;
-	if (flatfile_world_quest_record(
-		    persistence_mode_flatfile_root(), static_cast<uint32_t>(GET_PID(ch)),
-		    ch->only.pc->quest_mob_vnum, GET_LEVEL(ch), static_cast<int64_t>(time(nullptr)),
-		    &error) != flatfile_world_quest_result::ok)
-		persistence_alert(AVATAR, "world_quest", "player", "unknown", "record",
-				  "flat_write_failed", "pid=%d error=%s", GET_PID(ch),
-				  error.c_str());
-}
-
 void sql_world_quest_history_load(P_char) {}
 
 int sql_world_quest_done_already(P_char ch, int quest_target)
@@ -456,12 +688,20 @@ bool sql_hydrate_item_owner_revisions(void)
 }
 void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
-	*open_level = *good_level = *evil_level = frag_cap_config_get()->cap_floor_level;
-	*next_update = 0;
+	const auto *state = frag_cap_runtime_state();
+	*open_level = state ? frag_cap_for_side(*state, frag_cap_side::none) : 0;
+	*good_level = state ? frag_cap_for_side(*state, frag_cap_side::good) : 0;
+	*evil_level = state ? frag_cap_for_side(*state, frag_cap_side::evil) : 0;
+	*next_update = state ? frag_cap_due_at(*state) / 1000000 : 0;
 }
-int sql_level_cap(int /*racewar_side*/)
+int sql_level_cap(int racewar_side)
 {
-	return frag_cap_config_get()->cap_floor_level;
+	const auto *state = frag_cap_runtime_state();
+	return state ? frag_cap_for_side(*state,
+					 racewar_side == RACEWAR_GOOD ? frag_cap_side::good :
+					 racewar_side == RACEWAR_EVIL ? frag_cap_side::evil :
+									frag_cap_side::none) :
+		       0;
 }
 void show_total_donated(P_char /*ch*/, const char * /*account_name*/) {}
 void sql_update_frag_leaderboard(P_char ch)
@@ -724,12 +964,14 @@ uint64_t sql_game_loop_query_count(void)
 {
 	return 0;
 }
-void sql_level_cap_reload(void) {}
+void sql_level_cap_reload(void)
+{
+	frag_cap_runtime_refresh();
+}
 #else
 
 static void sql_resetConnectTimes(void);
 static void sql_load_ip_activity(void);
-static void sql_load_level_cap(void);
 static void sql_load_recent_counts(void);
 static void sql_load_mud_info(void);
 static bool sql_verify_boot_database(void);
@@ -1543,7 +1785,6 @@ int initialize_mysql()
 
 	sql_resetConnectTimes();
 	sql_load_ip_activity();
-	sql_load_level_cap();
 	sql_load_recent_counts();
 	sql_load_mud_info();
 	sql_load_zones();
@@ -2389,83 +2630,28 @@ int sql_save_player_core(P_char ch)
 #define PROGRESS_FRAGS 1
 #define PROGRESS_EXP 2
 
-// The level_cap row, read at boot and again after the maintenance job changes it, so the
-// game never waits to read it.
-static struct
-{
-	bool loaded = false;
-	int level = 0;
-	int level_good = 0;
-	int level_evil = 0;
-	time_t next_update = 0;
-} level_cap_row;
-
-static void level_cap_row_publish(const char *level, const char *level_good, const char *level_evil,
-				  const char *next_update)
-{
-	level_cap_row.loaded = level && level_good && level_evil && next_update;
-	if (!level_cap_row.loaded)
-		return;
-	level_cap_row.level = atoi(level);
-	level_cap_row.level_good = atoi(level_good);
-	level_cap_row.level_evil = atoi(level_evil);
-	level_cap_row.next_update = atol(next_update);
-}
-
-static const char level_cap_query[] =
-	"SELECT level, level_good, level_evil, UNIX_TIMESTAMP(next_update) FROM level_cap";
-
-// Boot only: the game loop is not running yet.
-static void sql_load_level_cap(void)
-{
-	MYSQL_RES *db = db_query("%s", level_cap_query);
-	MYSQL_ROW row = db ? mysql_fetch_row(db) : NULL;
-	level_cap_row_publish(row ? row[0] : NULL, row ? row[1] : NULL, row ? row[2] : NULL,
-			      row ? row[3] : NULL);
-	if (db)
-		mysql_free_result(db);
-	if (!level_cap_row.loaded)
-		debug("sql_load_level_cap: Database read fail.");
-}
-
 void sql_level_cap_reload(void)
 {
-	sql_read(level_cap_query,
-		 [](bool ok, const sql_rows &rows)
-		 {
-			 if (ok && !rows.empty())
-				 level_cap_row_publish(rows[0][0], rows[0][1], rows[0][2],
-						       rows[0][3]);
-		 });
+	frag_cap_runtime_refresh();
 }
 
-// The level open to all, Good's and Evil's caps (the higher of that and the level the side
-// opened beyond it), all clamped to the configured range, and when the next level can be
-// unlocked.
 void get_level_cap_info(int *open_level, int *good_level, int *evil_level, time_t *next_update)
 {
-	const struct frag_cap_config *config = frag_cap_config_get();
-	const int open = level_cap_row.loaded ? level_cap_row.level : 0;
-	*open_level = std::clamp(open, config->cap_floor_level, config->cap_maximum_level);
-	*good_level = std::clamp(std::max(open, level_cap_row.level_good), config->cap_floor_level,
-				 config->cap_maximum_level);
-	*evil_level = std::clamp(std::max(open, level_cap_row.level_evil), config->cap_floor_level,
-				 config->cap_maximum_level);
-	*next_update = level_cap_row.loaded ? level_cap_row.next_update : 0;
+	const auto *state = frag_cap_runtime_state();
+	*open_level = state ? frag_cap_for_side(*state, frag_cap_side::none) : 0;
+	*good_level = state ? frag_cap_for_side(*state, frag_cap_side::good) : 0;
+	*evil_level = state ? frag_cap_for_side(*state, frag_cap_side::evil) : 0;
+	*next_update = state ? frag_cap_due_at(*state) / 1000000 : 0;
 }
 
-// Returns the highest level a mortal on racewar_side can reach; sides other than Good and
-// Evil have the level open to all.
 int sql_level_cap(int racewar_side)
 {
-	int open_level, good_level, evil_level;
-	time_t next_update;
-	get_level_cap_info(&open_level, &good_level, &evil_level, &next_update);
-	if (racewar_side == RACEWAR_GOOD)
-		return good_level;
-	if (racewar_side == RACEWAR_EVIL)
-		return evil_level;
-	return open_level;
+	const auto *state = frag_cap_runtime_state();
+	return state ? frag_cap_for_side(*state,
+					 racewar_side == RACEWAR_GOOD ? frag_cap_side::good :
+					 racewar_side == RACEWAR_EVIL ? frag_cap_side::evil :
+									frag_cap_side::none) :
+		       0;
 }
 
 /*
@@ -2772,7 +2958,7 @@ void sql_connectIP(P_char ch)
 }
 
 // Each character's world quest history, read when it enters the game and kept current
-// by sql_world_quest_finished(), so the quest checks never wait for the database.
+// by committed player snapshots, so quest checks never wait for the database.
 struct world_quest_history
 {
 	std::unordered_set<int> targets;
@@ -2784,9 +2970,10 @@ struct world_quest_history
 };
 static std::unordered_map<int, world_quest_history> world_quest_histories;
 static std::unordered_set<int> world_quest_histories_loading;
+static std::unordered_map<int, uint64_t> world_quest_history_generation;
 
-// Days since the epoch in UTC, as TO_DAYS(NOW()) counts them: every connection runs in
-// UTC (sql_apply_session_contract()).
+// UTC days since the Unix epoch, matching UNIX_TIMESTAMP(timestamp). Every
+// connection runs in UTC (sql_apply_session_contract()).
 static long utc_day_number(void)
 {
 	return (long)(time(NULL) / 86400);
@@ -2798,12 +2985,15 @@ void sql_world_quest_history_load(P_char ch)
 	    !world_quest_histories_loading.insert(GET_PID(ch)).second)
 		return;
 	const int pid = GET_PID(ch);
+	const uint64_t generation = world_quest_history_generation[pid];
 	if (!sql_read(sql_format("SELECT quest_target, player_level, "
-				 "TO_DAYS(timestamp) = TO_DAYS(NOW()) "
+				 "UNIX_TIMESTAMP(timestamp) "
 				 "FROM world_quest_accomplished WHERE pid = %d",
 				 pid),
-		      [pid](bool ok, const sql_rows &rows)
+		      [pid, generation](bool ok, const sql_rows &rows)
 		      {
+			      if (generation != world_quest_history_generation[pid])
+				      return;
 			      world_quest_histories_loading.erase(pid);
 			      if (!ok)
 				      return;
@@ -2813,7 +3003,10 @@ void sql_world_quest_history_load(P_char ch)
 			      {
 				      if (row[0])
 					      history.targets.insert(atoi(row[0]));
-				      if (row[1] && row[2] && atoi(row[2]))
+				      // A read can finish on the game thread after midnight.
+				      // Count each timestamp against this cache's UTC day, not
+				      // the day on which the SELECT happened to execute.
+				      if (row[1] && row[2] && atoll(row[2]) / 86400 == history.day)
 				      {
 					      ++history.today_by_level[atoi(row[1])];
 					      ++history.today_total;
@@ -2844,35 +3037,6 @@ static world_quest_history *world_quest_history_of(P_char ch)
 		found->second.day = utc_day_number();
 	}
 	return &found->second;
-}
-
-void sql_world_quest_finished(P_char ch, P_obj reward)
-{
-	char buf[MAX_STRING_LENGTH * 2 + 1];
-
-	int reward_vnum =
-		reward ? ((reward->R_num >= 0) ? obj_index[reward->R_num].virtual_number : 0) : 0;
-	char *reward_desc = reward ? mysql_str(reward->short_description, buf) : mysql_str("", buf);
-
-	sql_queue(
-		"INSERT INTO world_quest_accomplished (pid, timestamp, quest_giver, player_name, player_level, quest_target, reward_vnum, reward_desc) VALUES (%d, now(), %d, '%s', %d, %d, %d, '%s')",
-		GET_PID(ch), ch->only.pc->quest_giver, GET_NAME(ch), GET_LEVEL(ch),
-		ch->only.pc->quest_mob_vnum, reward_vnum, reward_desc);
-	const auto found = world_quest_histories.find(GET_PID(ch));
-	if (found != world_quest_histories.end())
-	{
-		found->second.targets.insert(ch->only.pc->quest_mob_vnum);
-		++found->second.today_by_level[GET_LEVEL(ch)];
-		++found->second.today_total;
-	}
-	else
-	{
-		// A read queued before this insert would miss it: queue one after it.
-		world_quest_histories_loading.erase(GET_PID(ch));
-		sql_world_quest_history_load(ch);
-	}
-
-	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 }
 
 int sql_world_quest_can_do_another(P_char ch)
@@ -5246,19 +5410,33 @@ bool sql_pwipe(int code_verify)
 		}
 		logit(LOG_DEBUG, "sql_pwipe: Resetting level_cap data... .. .");
 		send_to_all("Resetting level_cap data... .. .");
-		// No timer: the season's first qualifying frag unlocks the next level.
-		if (qry("UPDATE level_cap SET most_frags=0, racewar_leader=0, level=%d, level_good=0, level_evil=0, next_update=NOW()",
-			frag_cap_config_reset_level()))
+		if (!qry("START TRANSACTION"))
+			return FALSE;
+		MYSQL_RES *cap_reset = db_query(
+			"SELECT CAST(UNIX_TIMESTAMP(reset_started_at)*1000000 AS UNSIGNED) "
+			"FROM season_reset_state WHERE state_id=1 AND reset_status='resetting' FOR UPDATE");
+		MYSQL_ROW cap_reset_row = cap_reset ? mysql_fetch_row(cap_reset) : nullptr;
+		char *cap_reset_end = nullptr;
+		errno = 0;
+		const int64_t cap_reset_at = cap_reset_row && cap_reset_row[0] ?
+						     strtoll(cap_reset_row[0], &cap_reset_end, 10) :
+						     0;
+		const bool cap_reset_valid = cap_reset_at > 0 && !errno && cap_reset_end &&
+					     !*cap_reset_end;
+		if (cap_reset)
+			mysql_free_result(cap_reset);
+		if (!cap_reset_valid ||
+		    frag_cap_sql_reset_season(DB, cap_reset_at, frag_cap_config_policy()) !=
+			    frag_cap_store_result::ok ||
+		    !qry("UPDATE level_cap SET most_frags=0,racewar_leader=0 WHERE id=1") ||
+		    !qry("COMMIT"))
 		{
-			logit(LOG_DEBUG, "  success!");
-			send_to_all("  success!\n");
-		}
-		else
-		{
-			logit(LOG_DEBUG, "        failure!");
-			send_to_all("        failure!\n");
+			qry("ROLLBACK");
+			logit(LOG_STATUS,
+			      "sql_pwipe: Shared cap reset failed; reset remains fenced.");
 			return FALSE;
 		}
+
 		if (!(pwipe_recovery_epoch ?
 			      redis_recover_pwipe_state(pwipe_recovery_epoch - 1, true) :
 			      redis_clear_pwipe_state()))
@@ -5832,3 +6010,98 @@ bool sql_hydrate_item_owner_revisions(void)
 }
 
 #endif
+
+bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
+				  bool final_kill_reward, const player_world_quest_reward &values,
+				  int escrow_fee, std::function<bool(P_char)> committed)
+{
+	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 ||
+	    ch->only.pc->quest_mob_vnum <= 0 || !committed)
+		return false;
+	try
+	{
+		player_pending_world_quest quest;
+		quest.present = true;
+		quest.awaiting_reward = awaiting_reward;
+		quest.final_kill_reward = final_kill_reward;
+		quest.reward = values;
+		quest.escrow_fee = escrow_fee;
+		quest.target = ch->only.pc->quest_mob_vnum;
+		quest.level = GET_LEVEL(ch);
+		quest.giver = ch->only.pc->quest_giver;
+		quest.occurred_at = static_cast<int64_t>(time(NULL));
+		quest.player_name = GET_NAME(ch);
+		if (reward)
+		{
+			if (awaiting_reward &&
+			    (!OBJ_NOWHERE(reward) ||
+			     player_item_snapshot_tree_capture(reward, &quest.reward_items,
+							       &quest.reward_encoded_size) !=
+				     player_snapshot_capture_result::ok ||
+			     quest.reward_items.empty() ||
+			     std::any_of(quest.reward_items.begin(), quest.reward_items.end(),
+					 [](const player_item_snapshot &item)
+					 { return !item.object_uid || item.vnum <= 0; })))
+				return false;
+			quest.reward_vnum =
+				reward->R_num >= 0 ? obj_index[reward->R_num].virtual_number : 0;
+			quest.reward_description =
+				reward->short_description ? reward->short_description : "";
+			if (quest.reward_description.size() > 255)
+			{
+				size_t limit = 255;
+				while (limit && IS_UTF8_TAIL(quest.reward_description[limit]))
+					--limit;
+				quest.reward_description.resize(limit);
+			}
+		}
+		const int pid = GET_PID(ch);
+#ifndef __NO_MYSQL__
+		world_quest_history_generation.try_emplace(pid, 0);
+#endif
+		std::shared_ptr<world_quest_reward_publication> publication;
+		if (!quest.reward_items.empty())
+		{
+			publication = std::make_shared<world_quest_reward_publication>();
+			publication->pid = pid;
+			publication->items = quest.reward_items;
+		}
+		return player_save_pipeline_submit_world_quest(
+			ch, quest,
+			[pid, awaiting_reward, committed = std::move(committed), publication,
+			 invalidated = false](P_char actor,
+					      const player_pending_world_quest &) mutable
+			{
+#ifndef __NO_MYSQL__
+				if (!invalidated)
+				{
+					// A SELECT queued before the commit must not republish stale history.
+					++world_quest_history_generation.at(pid);
+					world_quest_histories_loading.erase(pid);
+					world_quest_histories.erase(pid);
+					try
+					{
+						if (actor)
+							sql_world_quest_history_load(actor);
+					}
+					catch (const std::bad_alloc &)
+					{
+						world_quest_histories_loading.erase(pid);
+					}
+					invalidated = true;
+				}
+#else
+				(void)pid;
+				(void)invalidated;
+#endif
+				if ((actor && awaiting_reward && !IS_ALIVE(actor)) ||
+				    !world_quest_publish_reward(actor, publication))
+					return false;
+				return committed(actor);
+			});
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+}

@@ -20,7 +20,7 @@ FLAT_ITEMS = (SRC / "flatfile_item_repository.c").read_text()
 DATABASE_TESTS = (ROOT / "tests/run_db_tests.sh").read_text()
 
 SOURCES = [
-    "flatfile_player_repository.c", "player_load_topology.c", "flatfile_identity_repository.c",
+    "flatfile_player_repository.c", "flatfile_world_quest_history.c", "player_load_topology.c", "flatfile_identity_repository.c",
     "flatfile_item_repository.c",
     "divine_trade.c", "divine_trade_command.c", "divine_trade_flatfile.c", "flatfile_cargo_repository.c", "flatfile_ship_repository.c", "item_claim.c", "dupe_log.c", "flatfile_collector_repository.c",
     "collector_command.c", "collector_codec.c", "collector_policy.c",
@@ -29,7 +29,7 @@ SOURCES = [
     "flatfile_artifact_repository.c", "flatfile_shop_trade_repository.c",
     "flatfile_shop_trade_materialization.c", "flatfile_shopkeeper_repository.c",
     "flatfile_auction_repository.c", "flatfile_boon_repository.c",
-    "flatfile_player_domain_repository.c", "flatfile_authority_transaction.c",
+    "flatfile_player_domain_repository.c", "frag_cap.c", "frag_cap_repository.c", "frag_cap_config.c", "flatfile_authority_transaction.c",
     "player_snapshot_codec.c", "flatfile_store.c", "item_transfer_command.c",
     "shop_trade_command.c", "critical_command.c",
     "epic_command.c", "zone_touch_command.c", "currency_command.c", "auction_command.c", "combat_outcome_command.c", "artifact_guild_command.c",

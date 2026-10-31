@@ -15,6 +15,7 @@
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "core/utils.h"
+#include "economy/currency_transaction.h"
 #include <ctype.h>
 #include <cerrno>
 #include <climits>
@@ -605,12 +606,14 @@ static void setbit_char(P_char ch, char *name, char *flag, char *val, int on_off
 	/* bleah, have to make exceptions now that mobs/pcs aren't the same */
 	if (flag)
 	{
-		if (IS_PC(ppl) && ppl->only.pc->divine_trade_payment_pending &&
+		if (IS_PC(ppl) &&
+		    (ppl->only.pc->divine_trade_payment_pending ||
+		     currency_transaction_wallet_busy(ppl)) &&
 		    (SAME_STRING(flag, "copper") || SAME_STRING(flag, "silver") ||
 		     SAME_STRING(flag, "gold") || SAME_STRING(flag, "platinum")))
 		{
 			send_to_char(
-				"Wait for that character's cargo trade to settle before setting coins.\r\n",
+				"Wait for that character's payment to settle before setting coins.\r\n",
 				ch);
 			return;
 		}

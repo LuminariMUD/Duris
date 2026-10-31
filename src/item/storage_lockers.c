@@ -41,6 +41,7 @@
 #include <time.h>
 #include <algorithm>
 #include <cerrno>
+#include <chrono>
 #include <mysql/mysqld_error.h>
 #include <set>
 #include <vector>
@@ -66,6 +67,10 @@
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_locker_repository.h"
 #include "player/player_load_items.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_snapshot_codec.h"
+#include "player/player_snapshot_repository.h"
+#include "item/private_chest_purchase.h"
 #include "item/item_movement_transaction.h"
 
 extern P_index obj_index;
@@ -367,6 +372,15 @@ static bool locker_handle_leave(P_char ch, StorageLocker *pLocker, int room, int
 
 	if (!ch || !pLocker || (ch != pLocker->GetLockerUser()))
 		return true;
+	if (pLocker->ChestWritePending() ||
+	    private_chest_purchase_locker_busy(pLocker->GetLockerId()) ||
+	    !pLocker->PrivateContentsDurable() || sql_chest_log_pending(pLocker->GetLockerId()))
+	{
+		send_to_char(
+			"Your private chests are still being secured. Please try leaving again shortly.\r\n",
+			ch);
+		return false;
+	}
 	if (item_movement_transaction_player_busy(ch))
 	{
 		send_to_char(
@@ -374,6 +388,8 @@ static bool locker_handle_leave(P_char ch, StorageLocker *pLocker, int room, int
 			ch);
 		return false;
 	}
+
+	pLocker->InvalidateChestAccess();
 
 	/* Move items from room/chests to the locker character for saving. */
 	P_char chLocker = pLocker->GetLockerChar();
@@ -519,13 +535,12 @@ static void locker_handle_postsave(P_char ch, StorageLocker *pLocker, int room)
 	/* if so, save the locker too */
 	if (!save_locker_char(ch, FALSE))
 	{
-		/* wasn't able to save the locker char.  This is bad, but can happen
-		   if the locker char was purged by a god, or idle rented.  the only way
-		   to deal with it is to eject the player from the locker */
+		// Keep the live room and contents when a private capture cannot be queued.
 		locker_log_save_failure(
-			pLocker, ch, pLocker->GetLockerChar(), "postsave-eject",
-			"locker save returned false; ejecting occupant from locker");
-		locker_eject_to_exit(ch, room);
+			pLocker, ch, pLocker->GetLockerChar(), "postsave-retained",
+			"locker save returned false; retaining live locker for retry");
+		send_to_char("Your locker save is pending. Please try saving again shortly.\r\n",
+			     ch);
 	}
 	else
 	{
@@ -548,10 +563,17 @@ static void locker_handle_postsave(P_char ch, StorageLocker *pLocker, int room)
 
 static StorageLocker *locker_current(P_char ch)
 {
-	if (!ch)
+	if (!ch || ch->in_room < 0 || ch->in_room > top_of_world ||
+	    !IS_ROOM(ch->in_room, ROOM_LOCKER))
 		return NULL;
 
 	return GetChestList(ch->in_room);
+}
+
+bool locker_private_contents_durable(P_char actor)
+{
+	StorageLocker *locker = locker_current(actor);
+	return !locker || !locker->LockerUserMatches(actor) || locker->PrivateContentsDurable();
 }
 
 static StorageLocker *locker_current_or_error(P_char ch, const char *message)
@@ -606,6 +628,122 @@ static bool locker_require_owner(StorageLocker *pLocker, P_char ch, const char *
 	return false;
 }
 
+static StorageLocker *locker_for_room_object(P_obj object)
+{
+	if (!object || !OBJ_ROOM(object) || object->loc.room < 0 ||
+	    object->loc.room > top_of_world || !IS_ROOM(object->loc.room, ROOM_LOCKER))
+		return NULL;
+	return GetChestList(object->loc.room);
+}
+
+bool locker_object_is_private_chest(P_obj object)
+{
+	StorageLocker *locker = locker_for_room_object(object);
+	LockerChest *chest = locker ? locker->FindChestForObject(object) : NULL;
+	return chest && chest->IsPrivateChest();
+}
+
+bool locker_container_access_allowed(P_char actor, P_obj container)
+{
+	if (!container)
+		return true;
+	while (OBJ_INSIDE(container))
+		container = container->loc.inside;
+	StorageLocker *locker = locker_for_room_object(container);
+	LockerChest *chest = locker ? locker->FindChestForObject(container) : NULL;
+	if (!chest)
+		return true;
+	if (!sql_chest_log_available())
+		return false;
+	if (!chest->IsPrivateChest())
+		return true;
+	return locker->LockerUserMatches(actor) && actor->desc &&
+	       actor->desc->connected == CON_PLAYING && !locker->ChestWritePending() &&
+	       actor->in_room == locker->GetRealRoom() &&
+	       locker->GetCurrentChestId() == chest->GetChestId() &&
+	       (!locker->CurrentChestOpenedAsManager() ||
+		locker_require_owner(locker, actor, NULL));
+}
+
+void locker_invalidate_chest_access(P_char actor)
+{
+	if (!actor || actor->in_room == NOWHERE || !IS_ROOM(actor->in_room, ROOM_LOCKER))
+		return;
+	StorageLocker *locker = locker_current(actor);
+	if (locker && locker->LockerUserMatches(actor))
+		locker->InvalidateChestAccess();
+}
+
+static bool locker_private_chests_available(P_char ch)
+{
+	if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+	{
+		send_to_char("Private chests and their activity log require SQL storage.\r\n", ch);
+		return false;
+	}
+	if (!DB)
+	{
+		send_to_char("Private chest storage is temporarily unavailable.\r\n", ch);
+		return false;
+	}
+	return true;
+}
+
+LockerMovementAudit::LockerMovementAudit(P_char actor, P_obj source, P_obj target, P_obj item,
+					 const char *description)
+{
+	if (!actor || persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
+		return;
+	P_obj containers[] = { source, target };
+	for (size_t i = 0; i < 2; ++i)
+	{
+		P_obj container = containers[i];
+		if (!container)
+			continue;
+		while (OBJ_INSIDE(container))
+			container = container->loc.inside;
+		StorageLocker *locker = locker_for_room_object(container);
+		LockerChest *chest = locker ? locker->FindChestForObject(container) : NULL;
+		if (!chest)
+			continue;
+		std::string text = description ? description :
+						 (item && item->short_description ?
+							  item->short_description :
+							  "item");
+		if (item && !description && item->type == ITEM_MONEY)
+			text = coins_to_string(item->value[3], item->value[2], item->value[1],
+					       item->value[0], "");
+		if (item && !description)
+			text = "[uid " + std::to_string(item->obj_uid) + "] " + text;
+		auto entry = sql_prepare_chest_activity(
+			locker->GetLockerId(),
+			chest->IsPrivateChest() ? chest->GetChestId() : locker->GetPublicChestId(),
+			GET_NAME(actor), i == 0 ? CHEST_ACTION_GET : CHEST_ACTION_PUT,
+			text.c_str());
+		if (!entry)
+		{
+			m_ready = false;
+			return;
+		}
+		m_entries.push_back(std::move(entry));
+	}
+}
+
+LockerMovementAudit::~LockerMovementAudit()
+{
+	for (const auto &entry : m_entries)
+		sql_finish_chest_activity(entry, false);
+}
+
+void LockerMovementAudit::Commit(void)
+{
+	if (!m_ready)
+		return;
+	for (const auto &entry : m_entries)
+		sql_finish_chest_activity(entry, true);
+	m_entries.clear();
+}
+
 static P_char locker_char_or_error(StorageLocker *pLocker, P_char ch, const char *message)
 {
 	if (!pLocker)
@@ -626,9 +764,12 @@ StorageLocker::StorageLocker(int rroom, P_char chLocker, P_char chUser)
 	, m_realRoom(rroom)
 	, m_chLocker(chLocker)
 	, m_chUser(chUser)
+	, m_userRuntimeId(chUser ? chUser->runtime_id : 0)
 	, m_userIsOwner(esc_locker_name_matches_player(GET_NAME(chLocker), chUser))
 	, m_bIValue(false)
 	, m_currentChestId(0)
+	, m_currentChestManager(false)
+	, m_chestAccessGeneration(0)
 	, m_lockerId(0)
 	, m_publicChestId(0)
 {
@@ -782,6 +923,7 @@ std::vector<PrivateChest *> StorageLocker::GetPrivateChests(void)
 
 void StorageLocker::RemovePrivateChest(PrivateChest *chest)
 {
+	InvalidateChestAccess();
 	for (LockerChest **link = &m_pChestList; *link; link = &(*link)->m_pNextInChain)
 		if (*link == chest)
 		{
@@ -1483,15 +1625,26 @@ bool StorageLocker::MakeChests(P_char ch, char *args)
 	{
 		if (bIsCustomChest)
 		{
-			if (NULL != m_pChestList)
+			// Only public filters belong in the combo. Private wrappers must
+			// remain visible to lookup, saving and the next sorting rebuild.
+			LockerChest *filters = NULL;
+			LockerChest **tail = &filters;
+			for (LockerChest **link = &m_pChestList; *link;)
 			{
-				// The combochest gets the chest list we have now...
-				ComboChest *pCombo = new ComboChest(m_pChestList);
-
-				// Which is then reset to nothing
-				m_pChestList = NULL;
-				// Insert the created combo
-				AddLockerChest(pCombo);
+				LockerChest *chest = *link;
+				if (chest->IsPrivateChest())
+					link = &chest->m_pNextInChain;
+				else
+				{
+					*link = chest->m_pNextInChain;
+					chest->m_pNextInChain = NULL;
+					*tail = chest;
+					tail = &chest->m_pNextInChain;
+				}
+			}
+			if (filters)
+			{
+				AddLockerChest(new ComboChest(filters));
 			}
 		}
 		// unsorted chest is ALWAYS present, and always the last chest
@@ -1503,7 +1656,8 @@ bool StorageLocker::MakeChests(P_char ch, char *args)
 		{
 			P_obj obj = p->CreateChestObject();
 
-			obj_to_room(obj, m_realRoom);
+			if (obj && OBJ_NOWHERE(obj))
+				obj_to_room(obj, m_realRoom);
 			p = p->m_pNextInChain;
 		}
 	}
@@ -1680,9 +1834,9 @@ bool ComboChest::ItemFits(P_obj obj)
 PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_hash)
 	: LockerChest(name, "in your private chest")
 	, m_chestId(chest_id)
-	, m_passwordHash(password_hash ? password_hash : "")
 {
 	strlcpy(m_chestName, name, sizeof(m_chestName));
+	m_chestKeyword = m_chestName;
 
 	m_pChestObject = read_object(m_chestVnum, VIRTUAL);
 	if (m_pChestObject)
@@ -1691,19 +1845,164 @@ PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_
 		m_pChestObject->cost = 0;
 		m_pChestObject->weight = 0;
 		m_pChestObject->condition = 100;
-		m_pChestObject->value[0] = chest_id;
+		// Capacity follows public locker storage; m_chestId holds the saved identity.
+		m_pChestObject->value[0] = -1;
 		m_pChestObject->value[1] = m_pChestObject->value[2] = m_pChestObject->value[3] = 0;
 		m_pChestObject->type = ITEM_CONTAINER;
-		m_pChestObject->str_mask |= (STRUNG_KEYS | STRUNG_DESC1);
+		m_pChestObject->str_mask |= STRUNG_KEYS;
 
 		char buf[MAX_STRING_LENGTH];
 		snprintf(buf, sizeof(buf), "chest %s private", name);
 		m_pChestObject->name = str_dup(buf);
-
-		snprintf(buf, sizeof(buf), "&+cA private chest labeled '&+W%s&+c'%s.&n", name,
-			 m_passwordHash.empty() ? "" : " &+Y(locked)&n");
-		m_pChestObject->description = str_dup(buf);
 	}
+	SetPasswordHash(password_hash);
+}
+
+void PrivateChest::SetPasswordHash(const char *hash)
+{
+	m_passwordHash = hash ? hash : "";
+	if (!m_pChestObject)
+		return;
+	char buf[MAX_STRING_LENGTH];
+	snprintf(buf, sizeof(buf), "&+cA private chest labeled '&+W%s&+c'%s.&n", m_chestName,
+		 m_passwordHash.empty() ? "" : " &+Y(locked)&n");
+	if (m_pChestObject->str_mask & STRUNG_DESC1)
+		str_free(m_pChestObject->description);
+	m_pChestObject->description = str_dup(buf);
+	m_pChestObject->str_mask |= STRUNG_DESC1;
+}
+
+bool PrivateChest::SaveContents(StorageLocker *locker, bool durable)
+{
+	auto snapshot = std::make_shared<locker_chest_snapshot>();
+	snapshot->locker_id = locker->GetLockerId();
+	snapshot->chest_id = m_chestId;
+	std::vector<uint8_t> contents;
+	if (!m_pChestObject ||
+	    player_item_snapshot_contents_capture(m_pChestObject, &snapshot->items) !=
+		    player_snapshot_capture_result::ok ||
+	    player_item_snapshot_list_encode(snapshot->items, &contents) !=
+		    player_snapshot_codec_result::ok)
+		return false;
+	// One immutable write and one latest capture per chest. A newer request may
+	// replace the waiting capture, but can never acknowledge an older write.
+	m_nextSnapshot = std::move(snapshot);
+	m_nextContents = std::move(contents);
+	if (!FlushContents())
+		return true;
+	const bool scheduled = locker->SchedulePrivateSave();
+	return !durable && scheduled;
+}
+
+bool PrivateChest::FlushContents(void)
+{
+	if (m_saveReceipt)
+	{
+		if (!m_saveReceipt->finished.load(std::memory_order_acquire))
+		{
+			if (m_nextSnapshot && m_nextContents == m_pendingContents)
+			{
+				m_nextSnapshot.reset();
+				m_nextContents.clear();
+			}
+			return true;
+		}
+		if (m_saveReceipt->ok)
+			m_savedContents = std::move(m_pendingContents);
+		else if (!m_nextSnapshot)
+		{
+			m_nextSnapshot = m_pendingSnapshot;
+			m_nextContents = std::move(m_pendingContents);
+		}
+		m_saveReceipt.reset();
+		m_pendingSnapshot.reset();
+	}
+	if (m_nextSnapshot && m_nextContents == m_savedContents)
+	{
+		m_nextSnapshot.reset();
+		m_nextContents.clear();
+	}
+	if (!m_nextSnapshot)
+		return false;
+	const auto snapshot = m_nextSnapshot;
+	auto receipt = std::make_shared<sql_write_receipt>();
+	const uint64_t owner = (static_cast<uint64_t>(snapshot->chest_id) << 32) |
+			       static_cast<uint32_t>(snapshot->locker_id);
+	const size_t bytes =
+		sizeof(*snapshot) + snapshot->items.size() * sizeof(player_item_snapshot);
+	const auto submitted = persistence_writer_submit(
+		persistence_job_kind::locker, owner, bytes,
+		[snapshot, receipt]()
+		{
+			player_save_apply_result result{};
+			try
+			{
+				result =
+					locker_chest_snapshot_repository_apply_from_pool(*snapshot);
+			}
+			catch (const std::bad_alloc &)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, ENOMEM };
+			}
+			catch (...)
+			{
+				result = { player_save_apply_outcome::terminal_failure, 0, EFAULT };
+			}
+			if (result.outcome != player_save_apply_outcome::retryable_failure &&
+			    result.outcome != player_save_apply_outcome::ambiguous_commit)
+			{
+				receipt->ok = result.outcome ==
+						      player_save_apply_outcome::applied ||
+					      result.outcome ==
+						      player_save_apply_outcome::already_applied;
+				receipt->finished.store(true, std::memory_order_release);
+			}
+			return result;
+		});
+	if (submitted == player_save_submit_result::accepted ||
+	    submitted == player_save_submit_result::replaced)
+	{
+		m_pendingSnapshot = std::move(m_nextSnapshot);
+		m_pendingContents = std::move(m_nextContents);
+		m_saveReceipt = std::move(receipt);
+	}
+	return true;
+}
+
+bool StorageLocker::SchedulePrivateSave(void)
+{
+	if (!m_chLocker)
+		return false;
+	if (get_scheduled_excluding_current(m_chLocker, event_savePrivateChests))
+		return true;
+	return add_event(event_savePrivateChests, WAIT_SEC, m_chLocker, NULL, NULL, 0, &m_realRoom,
+			 sizeof(m_realRoom))
+		.was_scheduled();
+}
+
+void StorageLocker::event_savePrivateChests(P_char chLocker, P_char, P_obj, void *data)
+{
+	const int room = *static_cast<const int *>(data);
+	if (room < 0 || room > top_of_world || !IS_ROOM(room, ROOM_LOCKER))
+		return;
+	StorageLocker *locker = GetChestList(room);
+	if (!locker || locker->GetLockerChar() != chLocker)
+		return;
+	bool pending = false;
+	for (PrivateChest *chest : locker->GetPrivateChests())
+		if (chest->FlushContents())
+			pending = true;
+	if (pending)
+		locker->SchedulePrivateSave();
+}
+
+bool StorageLocker::PrivateContentsDurable(void)
+{
+	bool durable = true;
+	for (PrivateChest *chest : GetPrivateChests())
+		if (!chest->SaveContents(this, true))
+			durable = false;
+	return durable;
 }
 
 bool EqApplyChest::ItemFits(P_obj obj)
@@ -3222,18 +3521,24 @@ static int create_new_locker(P_char ch, P_char locker, const sql_rows &rows)
 
 		if (world[realNum].description)
 			str_free(world[realNum].description);
-		world[realNum].description = str_dup(
-			"   You are in a private storage locker. Items dropped here will be saved.\r\n"
-			"\r\n"
-			"&+WCommands:&n\r\n"
-			"  eq sort <type>              - sort items\r\n"
-			"  eq chest list               - list your chests\r\n"
-			"  eq chest create <name> [pw] - create private chest (500p)\r\n"
-			"  eq chest delete <name>      - delete empty chest\r\n"
-			"  eq chest password <name> <pw|none>\r\n"
-			"  eq log                      - view activity log\r\n"
-			"  open <chest> [password]     - open a chest\r\n"
-			"  close                       - close current chest\r\n");
+		const char *description =
+			persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY ?
+				"   You are in a private storage locker. Items dropped here will be saved.\r\n"
+				"\r\n"
+				"  eq sort <type> - sort public storage\r\n"
+				"  Private chests and their activity log require SQL storage.\r\n" :
+				"   You are in a private storage locker. Items dropped here will be saved.\r\n"
+				"\r\n"
+				"&+WCommands:&n\r\n"
+				"  eq sort <type>              - sort items\r\n"
+				"  eq chest list               - list your chests\r\n"
+				"  eq chest create <name> [pw] - create private chest (500p)\r\n"
+				"  eq chest delete <name>      - delete empty chest\r\n"
+				"  eq chest password <name> <pw|none>\r\n"
+				"  eq log                      - view activity log\r\n"
+				"  open <chest> [password]     - open a chest\r\n"
+				"  close                       - close current chest\r\n";
+		world[realNum].description = str_dup(description);
 
 		strcpy(roomNameBuf, LOCKERS_DOORSIGN);
 		strcat(roomNameBuf, GET_NAME(ch));
@@ -3639,7 +3944,7 @@ bool StorageLocker::LockerToPFile(void)
 					      obj_index[chest_obj->R_num].virtual_number :
 					      -1,
 				      chest_obj->obj_uid, chest_contents, m_realRoom);
-			if (!sql_save_private_chest_items(m_lockerId, p->GetChestId(), chest_obj))
+			if (!static_cast<PrivateChest *>(p)->SaveContents(this, false))
 			{
 				logit(LOG_DEBUG,
 				      "LockerToPFile: failed to save private chest locker_id=%d chest_id=%d chest_vnum=%d chest_uid=%lu contains=%d",
@@ -3964,6 +4269,22 @@ static void locker_access_transferAccess(P_char chLocker, P_char ch)
 // private chest commands
 // ============================================================================
 
+// Keep management names literal instead of skipping words such as "from".
+static char *locker_chest_argument(char *arg, char *word)
+{
+	while (isspace(static_cast<unsigned char>(*arg)))
+		++arg;
+	while (*arg && !isspace(static_cast<unsigned char>(*arg)))
+	{
+		*word++ = LOWER(*arg);
+		++arg;
+	}
+	*word = '\0';
+	while (isspace(static_cast<unsigned char>(*arg)))
+		++arg;
+	return arg;
+}
+
 /* The id of the chest `name` names in the locker: a private chest, or "public". */
 static int locker_chest_id(StorageLocker *pLocker, const char *name)
 {
@@ -3973,9 +4294,141 @@ static int locker_chest_id(StorageLocker *pLocker, const char *name)
 	return chest ? chest->GetChestId() : 0;
 }
 
-/* Private chests live in memory while their locker is open: each change is made there
- * at once and queued on the persistence writer. A new chest's id comes from its row,
- * created on the writer. */
+namespace
+{
+struct chest_change
+{
+	int locker_id, chest_id, room;
+	uint64_t actor_id;
+	std::string name, hash;
+	bool remove, reading = false;
+	std::shared_ptr<sql_write_receipt> receipt;
+	std::chrono::steady_clock::time_point retry{};
+};
+std::vector<std::shared_ptr<chest_change>> chest_changes;
+}
+
+// A lost COMMIT response may still have applied. Reconcile the same ID before
+// releasing the room, changing memory, or acknowledging a management operation.
+void locker_chest_changes_pulse(void)
+{
+	for (const auto &change : chest_changes)
+	{
+		if (change->reading || !change->receipt->finished.load(std::memory_order_acquire) ||
+		    std::chrono::steady_clock::now() < change->retry)
+			continue;
+		change->reading = true;
+		if (!sql_read(
+			    sql_format(
+				    "SELECT password_hash FROM private_chests WHERE id=%d AND locker_id=%d AND is_public=0",
+				    change->chest_id, change->locker_id),
+			    [change](bool ok, const sql_rows &rows)
+			    {
+				    change->reading = false;
+				    if (!ok)
+				    {
+					    change->retry = std::chrono::steady_clock::now() +
+							    std::chrono::seconds(1);
+					    return;
+				    }
+				    StorageLocker *locker = GetChestList(change->room);
+				    bool requested = false;
+				    if (locker && locker->GetLockerId() == change->locker_id)
+				    {
+					    PrivateChest *chest =
+						    locker->FindPrivateChest(change->name.c_str());
+					    if (chest && chest->GetChestId() == change->chest_id)
+					    {
+						    const std::string hash =
+							    rows.empty() || !rows[0][0] ?
+								    "" :
+								    rows[0][0];
+						    requested =
+							    change->remove ?
+								    rows.empty() :
+								    !rows.empty() &&
+									    hash == change->hash;
+						    if (rows.empty())
+							    locker->RemovePrivateChest(chest);
+						    else
+							    chest->SetPasswordHash(
+								    hash.empty() ? NULL :
+										   hash.c_str());
+					    }
+					    locker->SetChestWritePending(false);
+				    }
+				    if (P_char actor =
+						find_character_by_runtime_id(change->actor_id))
+				    {
+					    if (!requested)
+						    send_to_char(
+							    "The chest change failed; the durable state has been restored.\r\n",
+							    actor);
+					    else
+						    send_to_char_f(
+							    actor,
+							    change->remove ?
+								    "Chest '%s' deleted.\r\n" :
+							    change->hash.empty() ?
+								    "Password removed from chest '%s'.\r\n" :
+								    "Password set for chest '%s'.\r\n",
+							    change->name.c_str());
+				    }
+				    chest_changes.erase(std::remove(chest_changes.begin(),
+								    chest_changes.end(), change),
+							chest_changes.end());
+			    }))
+		{
+			change->reading = false;
+			change->retry = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+		}
+	}
+}
+
+static void locker_change_chest(P_char actor, StorageLocker *locker, PrivateChest *chest,
+				const std::string &hash, bool remove)
+{
+	if (!chest->SaveContents(locker, true))
+	{
+		send_to_char("That chest is still being secured. Please try again shortly.\r\n",
+			     actor);
+		return;
+	}
+	auto change = std::make_shared<chest_change>();
+	change->locker_id = locker->GetLockerId();
+	change->chest_id = chest->GetChestId();
+	change->room = locker->GetRealRoom();
+	change->actor_id = actor->runtime_id;
+	change->name = chest->GetName();
+	change->hash = hash;
+	change->remove = remove;
+	change->receipt = std::make_shared<sql_write_receipt>();
+	std::vector<std::string> statements;
+	if (remove)
+	{
+		statements.push_back(
+			sql_format("DELETE FROM locker_items WHERE locker_id=%d AND chest_id=%d",
+				   change->locker_id, change->chest_id));
+		statements.push_back(sql_format(
+			"DELETE FROM private_chests WHERE id=%d AND locker_id=%d AND is_public=0",
+			change->chest_id, change->locker_id));
+	}
+	else
+		statements.push_back(sql_format(
+			"UPDATE private_chests SET password_hash=%s WHERE id=%d AND locker_id=%d AND is_public=0",
+			hash.empty() ? "NULL" : ("'" + escape_str(hash.c_str()) + "'").c_str(),
+			change->chest_id, change->locker_id));
+	if (!sql_queue_statements(std::move(statements), change->receipt))
+	{
+		send_to_char("That chest change could not be queued. Please try again.\r\n", actor);
+		return;
+	}
+	locker->SetChestWritePending(true);
+	chest_changes.push_back(std::move(change));
+}
+
+/* Private chests live in memory while their locker is open. Publish a metadata change
+ * only after its write/readback resolves; a purchase supplies its committed row ID. */
 static int locker_chestcmd(P_char ch, char *arg)
 {
 	if (!ch || !ch->desc)
@@ -3986,11 +4439,15 @@ static int locker_chestcmd(P_char ch, char *arg)
 		return TRUE;
 	}
 
+	if (!locker_private_chests_available(ch))
+		return TRUE;
+
 	if (!locker_require_owner(pLocker, ch, "Only the locker owner can manage chests.\r\n"))
 	{
 		return TRUE;
 	}
 
+	const uint64_t visit = pLocker->VisitId(), epoch = pLocker->GetChestAccessGeneration();
 	int locker_id = pLocker->GetLockerId();
 	if (locker_id <= 0)
 	{
@@ -3999,8 +4456,8 @@ static int locker_chestcmd(P_char ch, char *arg)
 	}
 
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH], arg3[MAX_INPUT_LENGTH];
-	arg = one_argument(arg, arg1);
-	arg = one_argument(arg, arg2);
+	arg = locker_chest_argument(arg, arg1);
+	arg = locker_chest_argument(arg, arg2);
 	strcpy(arg3, arg);
 
 	if (is_abbrev(arg1, "list") || !arg1[0])
@@ -4017,6 +4474,12 @@ static int locker_chestcmd(P_char ch, char *arg)
 		return TRUE;
 	}
 
+	if (pLocker->ChestWritePending() || private_chest_purchase_locker_busy(locker_id))
+	{
+		send_to_char("A chest change is still pending. Please wait.\r\n", ch);
+		return TRUE;
+	}
+
 	if (is_abbrev(arg1, "create"))
 	{
 		if (!arg2[0])
@@ -4024,18 +4487,32 @@ static int locker_chestcmd(P_char ch, char *arg)
 			send_to_char("Usage: eq chest create <name> [password]\r\n", ch);
 			return TRUE;
 		}
+		if (strlen(arg2) > 32 || !str_cmp(arg2, "public") || !str_cmp(arg2, "chest") ||
+		    !str_cmp(arg2, "private") || fill_word(arg2) ||
+		    !std::all_of(arg2, arg2 + strlen(arg2), [](unsigned char c)
+				 { return isalpha(c) || isdigit(c) || c == '_' || c == '-'; }))
+		{
+			send_to_char(
+				"Chest names must use 1-32 letters, digits, underscores or hyphens, and cannot be public, chest, private, in, from, with, the, on, at or to.\r\n",
+				ch);
+			return TRUE;
+		}
+
 		if (strlen(arg3) > BCRYPT_PASSWORD_MAX_BYTES)
 		{
 			send_to_char("Chest passwords must be at most 72 bytes.\r\n", ch);
 			return TRUE;
 		}
 
-		auto finish = [locker_id, name = std::string(arg2)](P_desc completed_desc, int,
-								    const char *hash)
+		auto finish = [locker_id, visit, epoch, name = std::string(arg2)](
+				      P_desc completed_desc, int, const char *hash)
 		{
 			P_char actor = completed_desc->character;
 			StorageLocker *locker = locker_current(actor);
 			if (!locker || locker->GetLockerId() != locker_id ||
+			    locker->VisitId() != visit ||
+			    locker->GetChestAccessGeneration() != epoch ||
+			    locker->ChestWritePending() ||
 			    !locker_require_owner(locker, actor,
 						  "Only the locker owner can manage chests.\r\n"))
 				return;
@@ -4045,106 +4522,46 @@ static int locker_chestcmd(P_char ch, char *arg)
 				return;
 			}
 			const std::string stored_hash = hash ? hash : "";
-			const std::string escaped_name = escape_str(name.c_str());
-			const std::string escaped_hash = hash ? "'" + escape_str(hash) + "'" :
-								std::string("NULL");
-			// The row is created on the writer, which counts the chests there.
-			if (!sql_read_work_for(
-				    actor,
-				    [locker_id, escaped_name, escaped_hash](
-					    MYSQL *connection, sql_rows *rows) -> unsigned int
+			const int room = locker->GetRealRoom();
+			if (!private_chest_purchase_start(
+				    actor, locker_id, name, stored_hash,
+				    [locker_id, room, name, stored_hash](P_char payer, int chest_id,
+									 const std::string &outcome)
 				    {
-					    sql_rows count;
-					    if (const unsigned int error_code = sql_select(
-							connection,
-							sql_format(
-								"SELECT COUNT(*) FROM private_chests "
-								"WHERE locker_id=%d AND is_public=0",
-								locker_id),
-							&count))
-						    return error_code;
-					    if (count.empty() || !count[0][0] ||
-						atoi(count[0][0]) >= 5)
-					    {
-						    rows->push_back(locker_outcome("full"));
-						    return 0;
-					    }
-					    const unsigned int error_code = sql_execute(
-						    connection,
-						    sql_format(
-							    "INSERT INTO private_chests (locker_id, chest_name, password_hash, is_public) "
-							    "VALUES (%d, '%s', %s, 0)",
-							    locker_id, escaped_name.c_str(),
-							    escaped_hash.c_str()));
-					    if (error_code == ER_DUP_ENTRY)
-					    {
-						    rows->push_back(locker_outcome("taken"));
-						    return 0;
-					    }
-					    rows->push_back(locker_outcome("created"));
-					    rows->back().fields.emplace_back(
-						    std::to_string(mysql_insert_id(connection)));
-					    return error_code;
-				    },
-				    [locker_id, name, stored_hash](P_char payer,
-								   const sql_rows &rows)
-				    {
-					    const char *outcome = rows.empty() ? "" : rows[0][0];
-					    if (!strcmp(outcome, "full"))
-					    {
-						    send_to_char(
-							    "You already have the maximum of 5 private chests.\r\n",
-							    payer);
-						    return;
-					    }
-					    if (strcmp(outcome, "created") || !rows[0][1])
-					    {
-						    send_to_char(
-							    "Failed to create chest. Name may already be in use.\r\n",
-							    payer);
-						    return;
-					    }
-					    const int chest_id = atoi(rows[0][1]);
-					    int chest_cost = 500000;
-					    if (GET_MONEY(payer) < chest_cost)
-					    {
-						    if (SUB_BALANCE(payer, chest_cost, 0) != 0)
-						    {
-							    sql_queue(
-								    "DELETE FROM private_chests WHERE id=%d AND is_public=0",
-								    chest_id);
-							    send_to_char(
-								    "The bank could not complete the chest payment.\r\n",
-								    payer);
-							    return;
-						    }
-					    }
-					    else
-						    SUB_MONEY(payer, chest_cost, 0);
-					    // The chest is in the room at once while the open_locker is open.
-					    StorageLocker *open_locker = locker_current(payer);
-					    if (open_locker &&
-						open_locker->GetLockerId() == locker_id &&
-						!open_locker->FindPrivateChest(name.c_str()))
+					    StorageLocker *current = GetChestList(room);
+					    if (chest_id > 0 && current &&
+						current->GetLockerId() == locker_id &&
+						!current->FindPrivateChest(name.c_str()))
 					    {
 						    PrivateChest *chest = new PrivateChest(
 							    chest_id, name.c_str(),
 							    stored_hash.empty() ?
 								    NULL :
 								    stored_hash.c_str());
-						    open_locker->AddPrivateChest(chest);
+						    current->AddPrivateChest(chest);
 						    if (chest->GetChestObj())
-							    obj_to_room(chest->GetChestObj(),
-									open_locker->GetRealRoom());
+							    obj_to_room(chest->GetChestObj(), room);
 					    }
-					    send_to_char_f(
-						    payer,
-						    "Private chest '%s' created for 500 platinum.%s\r\n",
-						    name.c_str(),
-						    stored_hash.empty() ? "" : " Password set.");
+					    if (!payer)
+						    return;
+					    if (chest_id > 0)
+						    send_to_char_f(
+							    payer,
+							    "Private chest '%s' created for 500 platinum.%s\r\n",
+							    name.c_str(),
+							    stored_hash.empty() ? "" :
+										  " Password set.");
+					    else if (outcome == "full")
+						    send_to_char(
+							    "You already have the maximum of 5 private chests.\r\n",
+							    payer);
+					    else
+						    send_to_char(
+							    "Failed to create chest. No payment was taken; check its name and your balances.\r\n",
+							    payer);
 				    }))
 				send_to_char(
-					"Failed to create chest. Name may already be in use.\r\n",
+					"The chest purchase is unavailable; check your purse or bank and try again.\r\n",
 					actor);
 		};
 		if (!arg3[0])
@@ -4188,15 +4605,7 @@ static int locker_chestcmd(P_char ch, char *arg)
 			return TRUE;
 		}
 
-		// Memory holds the chest empty, so its stored rows go with it.
-		const int chest_id = chest->GetChestId();
-		sql_queue_statements(
-			{ sql_format("DELETE FROM locker_items WHERE locker_id=%d AND chest_id=%d",
-				     locker_id, chest_id),
-			  sql_format("DELETE FROM private_chests WHERE id=%d AND is_public=0",
-				     chest_id) });
-		pLocker->RemovePrivateChest(chest);
-		send_to_char_f(ch, "Chest '%s' deleted.\r\n", arg2);
+		locker_change_chest(ch, pLocker, chest, "", true);
 		return TRUE;
 	}
 
@@ -4221,11 +4630,7 @@ static int locker_chestcmd(P_char ch, char *arg)
 
 		if (!arg3[0] || !strcasecmp(arg3, "none"))
 		{
-			chest->SetPasswordHash(NULL);
-			sql_queue(
-				"UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0",
-				chest_id);
-			send_to_char_f(ch, "Password removed from chest '%s'.\r\n", arg2);
+			locker_change_chest(ch, pLocker, chest, "", false);
 		}
 		else
 		{
@@ -4237,12 +4642,14 @@ static int locker_chestcmd(P_char ch, char *arg)
 			if (!password_async_start(
 				    ch->desc, password_work_submit(arg3, nullptr, nullptr, 0, 0),
 				    nullptr,
-				    [locker_id, chest_id, name = std::string(arg2)](
+				    [locker_id, chest_id, visit, epoch, name = std::string(arg2)](
 					    P_desc completed_desc, int, const char *hash)
 				    {
 					    P_char actor = completed_desc->character;
 					    StorageLocker *locker = locker_current(actor);
 					    if (!locker || locker->GetLockerId() != locker_id ||
+						locker->VisitId() != visit ||
+						locker->GetChestAccessGeneration() != epoch ||
 						locker_chest_id(locker, name.c_str()) != chest_id ||
 						!locker_require_owner(
 							locker, actor,
@@ -4255,14 +4662,13 @@ static int locker_chestcmd(P_char ch, char *arg)
 							    actor);
 						    return;
 					    }
-					    locker->FindPrivateChest(name.c_str())
-						    ->SetPasswordHash(hash);
-					    sql_queue(
-						    "UPDATE private_chests SET password_hash='%s' WHERE id=%d AND is_public=0",
-						    escape_str(hash).c_str(), chest_id);
-					    send_to_char_f(actor,
-							   "Password set for chest '%s'.\r\n",
-							   name.c_str());
+					    if (locker->ChestWritePending() ||
+						private_chest_purchase_locker_busy(locker_id))
+						    return;
+					    locker_change_chest(
+						    actor, locker,
+						    locker->FindPrivateChest(name.c_str()), hash,
+						    false);
 				    }))
 				send_to_char("Password service is busy; try again later.\r\n", ch);
 		}
@@ -4281,82 +4687,150 @@ static int locker_opencmd(P_char ch, char *arg)
 	if (!ch || !ch->desc)
 		return FALSE;
 	StorageLocker *pLocker = locker_current(ch);
-	if (!pLocker)
+	if (!pLocker || !pLocker->LockerUserMatches(ch))
 		return FALSE;
 
-	int locker_id = pLocker->GetLockerId();
+	if (pLocker->ChestWritePending())
+	{
+		send_to_char("A chest change is still pending. Please wait.\r\n", ch);
+		return TRUE;
+	}
+	const int locker_id = pLocker->GetLockerId();
 	if (locker_id <= 0)
 		return FALSE;
-
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH];
 	arg = one_argument(arg, arg1);
 	strcpy(arg2, arg);
-
 	if (!arg1[0])
 		return FALSE;
-
-	int chest_id = locker_chest_id(pLocker, arg1);
+	const int chest_id = locker_chest_id(pLocker, arg1);
 	if (chest_id <= 0)
 		return FALSE;
+	if (!locker_private_chests_available(ch))
+		return TRUE;
 
-	P_char locker_char = pLocker->GetLockerChar();
-	bool is_owner = locker_char && esc_locker_name_matches_player(GET_NAME(locker_char), ch);
-	auto finish = [locker_id, chest_id, name = std::string(arg1)](P_desc completed_desc,
-								      int valid, const char *)
+	PrivateChest *chest = pLocker->FindPrivateChest(arg1);
+	if (chest && !chest->GetChestObj())
+	{
+		send_to_char("That private chest is unavailable.\r\n", ch);
+		return TRUE;
+	}
+	pLocker->InvalidateChestAccess();
+	const uint64_t generation = pLocker->GetChestAccessGeneration();
+	const uint64_t chest_uid = chest ? chest->GetChestObj()->obj_uid : 0;
+	const bool manager = locker_require_owner(pLocker, ch, NULL);
+	const bool is_public = chest_id == pLocker->GetPublicChestId();
+	auto current_request = [locker_id, chest_id, chest_uid, generation,
+				name = std::string(arg1)](P_char actor) -> StorageLocker *
+	{
+		StorageLocker *locker = locker_current(actor);
+		if (!locker || !locker->LockerUserMatches(actor) || locker->ChestWritePending() ||
+		    locker->GetLockerId() != locker_id ||
+		    locker->GetChestAccessGeneration() != generation ||
+		    locker_chest_id(locker, name.c_str()) != chest_id)
+			return NULL;
+		PrivateChest *current = locker->FindPrivateChest(name.c_str());
+		if (chest_uid && (!current || !current->GetChestObj() ||
+				  current->GetChestObj()->obj_uid != chest_uid))
+			return NULL;
+		return locker;
+	};
+	auto finish = [current_request, locker_id, chest_id, manager, is_public,
+		       name = std::string(arg1)](P_desc completed_desc, int valid, const char *)
 	{
 		P_char actor = completed_desc->character;
-		StorageLocker *locker = locker_current(actor);
-		if (!locker || locker->GetLockerId() != locker_id ||
-		    locker_chest_id(locker, name.c_str()) != chest_id)
+		StorageLocker *locker = current_request(actor);
+		if (!locker || (manager && !locker_require_owner(locker, actor, NULL)))
 			return;
 		if (!valid)
 		{
-			send_to_char("Wrong password.\r\n", actor);
-			sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor),
-					       CHEST_ACTION_FAIL, NULL);
+			if (!sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor),
+						    CHEST_ACTION_FAIL, NULL))
+				send_to_char(
+					"Chest activity is unavailable. Please try again later.\r\n",
+					actor);
+			else
+				send_to_char("Wrong password.\r\n", actor);
 			return;
 		}
-		locker->SetCurrentChestId(chest_id);
+		if (!sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor), CHEST_ACTION_OPEN,
+					    NULL))
+		{
+			send_to_char("Chest activity is unavailable. Please try again later.\r\n",
+				     actor);
+			return;
+		}
+		locker->SetCurrentChestId(is_public ? 0 : chest_id, manager);
 		send_to_char_f(actor, "You open the '%s' chest.\r\n", name.c_str());
-		sql_log_chest_activity(locker_id, chest_id, GET_NAME(actor), CHEST_ACTION_OPEN,
-				       NULL);
 	};
-	if (is_owner)
+	if (manager)
 	{
 		finish(ch->desc, 1, nullptr);
 		return TRUE;
 	}
-	if (strlen(arg2) > BCRYPT_PASSWORD_MAX_BYTES)
+	const char *password = arg2;
+	while (isspace(static_cast<unsigned char>(*password)))
+		++password;
+	if (strlen(password) > BCRYPT_PASSWORD_MAX_BYTES)
 	{
 		finish(ch->desc, 0, nullptr);
 		return TRUE;
 	}
-	PrivateChest *chest = pLocker->FindPrivateChest(arg1);
 	const std::string hash = chest ? chest->GetPasswordHash() : std::string();
 	if (hash.empty() || !arg2[0])
 	{
-		finish(ch->desc, hash.empty() && !arg2[0], nullptr);
+		finish(ch->desc, hash.empty() && !*password, nullptr);
 		return TRUE;
 	}
 	bool submitted = password_async_start(
 		ch->desc, password_work_submit(arg2, hash.c_str(), nullptr, 1, 1), hash.c_str(),
-		[finish, name = std::string(arg1), hash](P_desc completed_desc, int valid,
-							 const char *upgrade)
+		[finish, current_request, name = std::string(arg1),
+		 hash](P_desc completed_desc, int valid, const char *upgrade)
 		{
-			// A racing password change fails closed; a rehash replaces the
-			// password it checked, never a newer one.
-			StorageLocker *locker = locker_current(completed_desc->character);
+			StorageLocker *locker = current_request(completed_desc->character);
 			PrivateChest *current = locker ? locker->FindPrivateChest(name.c_str()) :
 							 NULL;
 			const bool same = current && current->GetPasswordHash() == hash &&
 					  (!upgrade || is_bcrypt_hash(upgrade));
 			if (valid && same && upgrade)
 			{
-				current->SetPasswordHash(upgrade);
-				sql_queue(
-					"UPDATE private_chests SET password_hash='%s' WHERE id=%d AND password_hash='%s'",
-					escape_str(upgrade).c_str(), current->GetChestId(),
-					escape_str(hash.c_str()).c_str());
+				const int id = current->GetChestId(), room = locker->GetRealRoom();
+				const std::string replacement = upgrade;
+				const std::string escaped_replacement = escape_str(upgrade);
+				const std::string escaped_hash = escape_str(hash.c_str());
+				sql_read_work(
+					[id, escaped_hash, escaped_replacement](
+						MYSQL *connection, sql_rows *rows) -> unsigned int
+					{
+						const auto error = sql_execute(
+							connection,
+							sql_format(
+								"UPDATE private_chests SET password_hash='%s' WHERE id=%d AND password_hash='%s'",
+								escaped_replacement.c_str(), id,
+								escaped_hash.c_str()));
+						if (!error)
+							rows->push_back(locker_outcome(
+								mysql_affected_rows(connection) ?
+									"updated" :
+									"unchanged"));
+						return error;
+					},
+					[room, id, name, hash, replacement](bool ok,
+									    const sql_rows &rows)
+					{
+						StorageLocker *current_locker = GetChestList(room);
+						PrivateChest *target =
+							current_locker ?
+								current_locker->FindPrivateChest(
+									name.c_str()) :
+								NULL;
+						if (ok && !rows.empty() &&
+						    !strcmp(rows[0][0], "updated") && target &&
+						    target->GetChestId() == id &&
+						    target->GetPasswordHash() == hash)
+							target->SetPasswordHash(
+								replacement.c_str());
+					});
 			}
 			finish(completed_desc, valid && same, nullptr);
 		});
@@ -4365,21 +4839,25 @@ static int locker_opencmd(P_char ch, char *arg)
 	return TRUE;
 }
 
-static int locker_closecmd(P_char ch, char * /*arg*/)
+static int locker_closecmd(P_char ch, char *arg)
 {
 	StorageLocker *pLocker = locker_current(ch);
-	if (!pLocker)
+	if (!pLocker || !pLocker->LockerUserMatches(ch))
 		return FALSE;
-
-	if (pLocker->GetCurrentChestId() == 0)
+	char name[MAX_INPUT_LENGTH];
+	one_argument(arg, name);
+	if (name[0] && locker_chest_id(pLocker, name) != pLocker->GetCurrentChestId())
 		return FALSE;
-
-	int locker_id = pLocker->GetLockerId();
-	int chest_id = pLocker->GetCurrentChestId();
-
-	sql_log_chest_activity(locker_id, chest_id, GET_NAME(ch), CHEST_ACTION_CLOSE, NULL);
-	pLocker->SetCurrentChestId(0);
-	send_to_char("You close the chest.\r\n", ch);
+	const int chest_id = pLocker->GetCurrentChestId();
+	pLocker->InvalidateChestAccess();
+	if (!chest_id)
+		return FALSE;
+	if (!sql_log_chest_activity(pLocker->GetLockerId(), chest_id, GET_NAME(ch),
+				    CHEST_ACTION_CLOSE, NULL))
+		send_to_char("You close the chest, but its activity could not be recorded.\r\n",
+			     ch);
+	else
+		send_to_char("You close the chest.\r\n", ch);
 	return TRUE;
 }
 
@@ -4391,11 +4869,15 @@ static int locker_logcmd(P_char ch, char * /*arg*/)
 		return TRUE;
 	}
 
+	if (!locker_private_chests_available(ch))
+		return TRUE;
+
 	if (!locker_require_owner(pLocker, ch, "Only the locker owner can view the log.\r\n"))
 	{
 		return TRUE;
 	}
 
+	const uint64_t visit = pLocker->VisitId();
 	int locker_id = pLocker->GetLockerId();
 	if (locker_id <= 0)
 	{
@@ -4407,20 +4889,39 @@ static int locker_logcmd(P_char ch, char * /*arg*/)
 	if (!sql_read_for(
 		    ch,
 		    sql_format(
-			    "SELECT l.logged_at, l.char_name, l.action_type, c.chest_name, l.item_short "
+			    "SELECT l.logged_at, l.char_name, l.action_type, c.chest_name, l.item_short, l.chest_id "
 			    "FROM private_chest_log l "
 			    "LEFT JOIN private_chests c ON l.chest_id = c.id "
 			    "WHERE l.locker_id=%d "
-			    "ORDER BY l.logged_at DESC LIMIT 50",
+			    "ORDER BY l.logged_at DESC, l.id DESC LIMIT 50",
 			    locker_id),
-		    [](P_char viewer, const sql_rows &rows)
+		    [locker_id, visit](P_char viewer, const sql_rows &rows)
 		    {
+			    StorageLocker *current = locker_current(viewer);
+			    if (!current || !current->LockerUserMatches(viewer) ||
+				current->GetLockerId() != locker_id ||
+				current->VisitId() != visit ||
+				!locker_require_owner(current, viewer, NULL))
+				    return;
 			    send_to_char("&+WRecent locker activity:&n\r\n", viewer);
 			    for (const sql_row &row : rows)
+			    {
+				    const char *actions[] = {
+					    "unknown", "opened", "closed",
+					    "put",     "got",	 "failed to open"
+				    };
+				    const int action = row[2] ? atoi(row[2]) : 0;
+				    const std::string chest =
+					    row[3] ? row[3] :
+						     std::string("deleted chest #") +
+							     (row[5] ? row[5] : "?");
 				    send_to_char_f(viewer, "%s - %s %s %s%s%s\r\n",
 						   row[0] ? row[0] : "?", row[1] ? row[1] : "?",
-						   row[2] ? row[2] : "?", row[3] ? row[3] : "",
-						   row[4] ? ": " : "", row[4] ? row[4] : "");
+						   action >= 1 && action <= 5 ? actions[action] :
+										"unknown",
+						   chest.c_str(), row[4] ? ": " : "",
+						   row[4] ? row[4] : "");
+			    }
 		    }))
 		send_to_char("Error reading log.\r\n", ch);
 	return TRUE;

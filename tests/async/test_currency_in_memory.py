@@ -140,6 +140,72 @@ int main()
     currency_transaction_reset_for_tests();
     assert(currency_transaction_reserve_trade(&twin.ch,0));
     currency_transaction_release_trade(46);
+    // A chest receipt holds both the purchaser and every account/side peer.
+    for (P_char *busy : {&fixture_auction_pending, &fixture_collector_pending, &fixture_shop_pending}) {
+        *busy=&alice.ch;
+        assert(!currency_transaction_reserve_chest(&alice.ch));
+        *busy=nullptr;
+    }
+    assert(currency_transaction_reserve_chest(&alice.ch));
+    assert(currency_transaction_chest_busy(&alice.ch));
+    assert(currency_transaction_chest_busy(&twin.ch));
+    assert(currency_transaction_chest_account_busy("MONEY_ACCOUNT"));
+    assert(!currency_transaction_chest_account_busy("other_account"));
+    assert(!currency_transaction_chest_account_busy(nullptr));
+    assert(!currency_transaction_chest_busy(&stranger.ch));
+    const auto peer_wallet=wallet(&twin.ch);
+    assert(currency_transaction_submit_wallet_value(&twin.ch,1,
+      currency_reason_type::auction_pickup,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(last_committed && GET_COPPER(&twin.ch)==peer_wallet[0]+1);
+    currency_vector bank_credit{};bank_credit.amount[0]=1;
+    assert(!currency_transaction_submit(&twin.ch,{},bank_credit,currency_reason_type::bank_reward,0,
+      critical_source_site::command,critical_deadline_class::interactive,completion,nullptr,0));
+    assert(!currency_transaction_reserve_trade(&alice.ch,0));
+    currency_transaction_release_chest(999);
+    assert(currency_transaction_chest_busy(&alice.ch));
+    currency_command_result chest_result{};
+    chest_result.wallet.amount={1,2,3,4};
+    chest_result.wallet_revision=alice.pc.wallet_revision+1;
+    chest_result.bank.amount={5,6,7,8};
+    chest_result.bank_revision=alice.pc.bank_revision+1;
+    online[0]=nullptr; // The purchaser lost its descriptor before completion.
+    currency_transaction_publish_chest(&alice.ch,chest_result,true);
+    assert(GET_BALANCE_PLATINUM(&alice.ch)==8 && alice.pc.bank_revision==chest_result.bank_revision);
+    assert(wallet(&alice.ch)==chest_result.wallet.amount);
+    assert(alice.pc.wallet_revision==chest_result.wallet_revision);
+    assert(GET_BALANCE_PLATINUM(&twin.ch)==8);
+    assert(GET_COPPER(&twin.ch)==peer_wallet[0]+1);
+    GET_BALANCE_PLATINUM(&alice.ch)=99;
+    alice.pc.bank_revision=chest_result.bank_revision+1;
+    currency_transaction_publish_chest(&alice.ch,chest_result,true);
+    assert(GET_BALANCE_PLATINUM(&alice.ch)==99 && alice.pc.bank_revision==chest_result.bank_revision+1);
+    currency_transaction_release_chest(44);
+    assert(!currency_transaction_chest_busy(&twin.ch));
+    assert(!currency_transaction_chest_account_busy("money_account"));
+    // Bartender escrow is per-player, preserves unrelated credits, and cannot
+    // be spent or published twice while its quest transaction is pending.
+    GET_COPPER(&alice.ch)=100; GET_SILVER(&alice.ch)=GET_GOLD(&alice.ch)=GET_PLATINUM(&alice.ch)=0;
+    GET_COPPER(&twin.ch)=50; GET_SILVER(&twin.ch)=GET_GOLD(&twin.ch)=GET_PLATINUM(&twin.ch)=0;
+    assert(currency_transaction_reserve_world_quest(&alice.ch,80));
+    assert(currency_transaction_reserve_world_quest(&twin.ch,10));
+    assert(currency_transaction_wallet_busy(&alice.ch) && currency_transaction_wallet_busy(&twin.ch));
+    assert(!currency_transaction_wallet_busy(&stranger.ch));
+    assert(currency_transaction_reserve_trade(&stranger.ch,0));
+    currency_transaction_release_trade(GET_PID(&stranger.ch));
+    assert(currency_transaction_submit_wallet_value(&alice.ch,10,
+      currency_reason_type::wallet_reward,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(last_committed && GET_MONEY(&alice.ch)==110);
+    assert(!currency_transaction_submit_wallet_value(&alice.ch,-31,
+      currency_reason_type::wallet_spend,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(GET_MONEY(&alice.ch)==110);
+    assert(currency_transaction_publish_world_quest(&alice.ch,80));
+    assert(GET_MONEY(&alice.ch)==30 && !currency_transaction_wallet_busy(&alice.ch));
+    assert(!currency_transaction_publish_world_quest(&alice.ch,80));
+    assert(currency_transaction_wallet_busy(&twin.ch));
+    currency_transaction_release_world_quest(GET_PID(&twin.ch));
     return 0;
 }
 '''

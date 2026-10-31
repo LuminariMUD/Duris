@@ -163,10 +163,11 @@ SQL_CASE = r'''
 #include <string>
 P_desc descriptor_list=nullptr;
 static std::string queued;
+static bool queue_ok = true;
 bool sql_queue_at(persistence_query_site,const char *format,...) {
     char buffer[2048]; va_list args; va_start(args,format);
     vsnprintf(buffer,sizeof buffer,format,args); va_end(args);
-    queued=buffer; return true;
+    queued=buffer; return queue_ok;
 }
 int write_account(P_acct) { assert(false); return -1; }
 @DEPARTURE@
@@ -182,6 +183,25 @@ int main() {
     assert(queued.find("last_evil_char=")!=std::string::npos);
     queued.clear(); player.player.level=MAXLVL;
     assert(save_account_character_departure(&player) && queued.empty());
+    // Attached sessions use the same password-free write even when a full
+    // account snapshot is fenced, and publish only the departure timestamp.
+    descriptor_data desc{}, other{};
+    acct_entry account{}, sibling{};
+    account.acct_name = sibling.acct_name = const_cast<char *>("Fixture");
+    account.acct_password = const_cast<char *>("old");
+    sibling.acct_password = const_cast<char *>("different");
+    desc.account = &account; desc.next = &other; other.account = &sibling;
+    descriptor_list = &desc; player.desc = &desc; player.player.level = 10;
+    for (auto side : {RACEWAR_GOOD, RACEWAR_EVIL}) {
+        player.player.racewar = side;
+        assert(save_account_character_departure(&player));
+        assert(queued.find("password") == std::string::npos);
+        assert(account.acct_good == sibling.acct_good && account.acct_evil == sibling.acct_evil);
+        assert((side == RACEWAR_GOOD ? account.acct_good : account.acct_evil) >= time(nullptr)-1);
+        assert(std::string(sibling.acct_password) == "different");
+    }
+    queue_ok = false;
+    assert(!save_account_character_departure(&player));
 }
 '''
 

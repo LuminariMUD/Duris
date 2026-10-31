@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runtime and source contracts for the bounded consistent player-load pipeline."""
 
-from _paths import SRC, rel
+from _paths import SRC, rel, extract_function
 from contract_text import contains
 import subprocess
 import tempfile
@@ -222,6 +222,140 @@ int main()
     return 0;
 }
 '''
+
+# Exercise the actual duplicate-login block, request builder, bank publisher and
+# hydration statements. The load worker's database snapshot and its delivery are
+# controlled so a bank commit can cross the old read without concurrent sessions.
+bank_case = r"""
+P_desc descriptor_list;
+static bool bank_purchase_pending;
+bool currency_transaction_chest_account_busy(const char *account)
+{
+    return bank_purchase_pending && !strcasecmp(account, "load_account");
+}
+void gmcp_char_vitals(P_char) {}
+void write_to_q(const char *, txt_q *, int) {}
+void close_socket(P_desc old)
+{
+    if (old->character) old->character->desc = nullptr;
+    for (auto link = &descriptor_list; *link; link = &(*link)->next)
+        if (*link == old) { *link = old->next; break; }
+}
+void replace_account(P_desc d)
+{
+// DUPLICATE_LOGIN
+}
+// BUILD_ACCOUNT_REQUEST
+// BANK_PUBLICATION
+void hydrate_bank(P_char ch, const player_load_result &result)
+{
+// BANK_HYDRATION
+}
+struct bank_read_state
+{
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool started = false, release = false;
+    uint64_t platinum = 1000, revision = 1;
+};
+player_load_result bank_execute(const player_load_request &request, void *raw)
+{
+    auto &state = *static_cast<bank_read_state *>(raw);
+    std::unique_lock<std::mutex> lock(state.mutex);
+    player_load_result result{};
+    result.request_id = request.request_id;
+    result.pid = request.pid;
+    result.outcome = player_load_outcome::applied;
+    result.domains.bank[3] = state.platinum;
+    result.domains.bank_revision = state.revision;
+    state.started = true;
+    state.changed.notify_all();
+    state.changed.wait(lock, [&] { return state.release; });
+    return result;
+}
+void bank_replacement_case()
+{
+    acct_entry previous_account{}, incoming_account{}, unrelated_account{};
+    previous_account.acct_name = const_cast<char *>("load_account");
+    incoming_account.acct_name = const_cast<char *>("LOAD_ACCOUNT");
+    unrelated_account.acct_name = const_cast<char *>("another_account");
+    descriptor_data previous{}, incoming{}, unrelated{};
+    char_data purchaser{}, admitted{};
+    pc_only_data purchaser_pc{}, admitted_pc{};
+    purchaser.only.pc = &purchaser_pc;
+    admitted.only.pc = &admitted_pc;
+    purchaser_pc.pid = 111;
+    admitted_pc.pid = 222;
+    GET_RACEWAR(&purchaser) = GET_RACEWAR(&admitted) = 1;
+    previous.account = &previous_account;
+    previous.character = &purchaser;
+    previous.connected = CON_PLAYING;
+    purchaser.desc = &previous;
+    incoming.account = &incoming_account;
+    incoming.connected = CON_ACCT_CONFIRM_CHAR;
+    incoming.next = &previous;
+    descriptor_list = &incoming;
+    bank_purchase_pending = true;
+    replace_account(&incoming);
+    assert(incoming.next == nullptr && purchaser.desc == nullptr);
+    acct_chars selected{}; selected.pid = 222;
+    player_load_request request{};
+    unrelated.account = &unrelated_account;
+    assert(build_account_load_request(&unrelated, &selected, &request));
+    // Metadata-only account deletion is not an admission into the game.
+    incoming.connected = CON_ACCT_DELETE_CHAR;
+    assert(build_account_load_request(&incoming, &selected, &request));
+    incoming.connected = CON_ACCT_CONFIRM_CHAR;
+    bank_read_state state;
+    assert(player_load_pipeline_init(bank_execute, &state));
+    const bool started_before_commit = build_account_load_request(&incoming, &selected, &request);
+    if (started_before_commit)
+    {
+        incoming.connected = CON_PLAYER_LOAD;
+        assert(player_load_pipeline_submit(request) == player_load_submit_outcome::accepted);
+        std::unique_lock<std::mutex> lock(state.mutex);
+        assert(state.changed.wait_for(lock, std::chrono::seconds(2), [&] { return state.started; }));
+    }
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.platinum = 500;
+        state.revision = 2;
+    }
+    const AccountBankBalances committed{0, 0, 0, 500};
+    publish_account_bank_balances_revision("load_account", 1, &committed, 2);
+    bank_purchase_pending = false;
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        state.release = true;
+        state.changed.notify_all();
+    }
+    if (!started_before_commit)
+    {
+        assert(build_account_load_request(&incoming, &selected, &request));
+        assert(player_load_pipeline_submit(request) == player_load_submit_outcome::accepted);
+    }
+    player_load_result loaded{};
+    wait_until([&] { return player_load_pipeline_pulse(&loaded, 1) == 1; });
+    hydrate_bank(&admitted, loaded);
+    incoming.character = &admitted;
+    admitted.desc = &incoming;
+    incoming.connected = CON_PLAYING;
+    assert(GET_BALANCE_PLATINUM(&admitted) == 500 && admitted_pc.bank_revision == 2);
+    player_load_pipeline_reset_for_tests();
+    descriptor_list = nullptr;
+}
+"""
+duplicate_start = ACCOUNT.index("// Check for duplicate account login")
+duplicate_end = ACCOUNT.index("\techo_on(d);", duplicate_start)
+bank_case = bank_case.replace("// DUPLICATE_LOGIN", ACCOUNT[duplicate_start:duplicate_end])
+bank_case = bank_case.replace("// BUILD_ACCOUNT_REQUEST", extract_function("account/account.c", "bool build_account_load_request("))
+bank_case = bank_case.replace("// BANK_PUBLICATION", extract_function("core/utility.c", "void publish_account_bank_balances_revision("))
+bank_start = MATERIALIZE.index("\tGET_BALANCE_COPPER(ch) = result.domains.bank[0];")
+bank_end = MATERIALIZE.index("\tch->only.pc->epics", bank_start)
+bank_case = bank_case.replace("// BANK_HYDRATION", MATERIALIZE[bank_start:bank_end])
+HARNESS = HARNESS.replace('#include "player/player_load_pipeline.h"', '#include "player/player_load_pipeline.h"\n#include "core/prototypes.h"\n#include "core/utils.h"\n#include "account/account.h"\n#include "net/comm.h"\n#include "net/gmcp.h"\n#include "sql/sql_player.h"', 1)
+HARNESS = HARNESS.replace("int main()\n{", bank_case + "\nint main()\n{", 1)
+HARNESS = HARNESS.replace("    player_load_pipeline_reset_for_tests();\n    return 0;", "    player_load_pipeline_reset_for_tests();\n    bank_replacement_case();\n    return 0;", 1)
 
 
 with tempfile.TemporaryDirectory(prefix="duris-player-load-pipeline-") as temp_dir:

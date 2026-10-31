@@ -68,6 +68,8 @@ enum class persistence_job_kind : uint8_t
 	divine_boon,
 	// Native prepared artifact/guild delivery checks and ACKs.
 	artifact_delivery,
+	// Observe committed shared cap state for game-thread publication.
+	frag_cap,
 };
 
 enum class player_save_apply_outcome : uint8_t
@@ -141,6 +143,7 @@ using player_save_apply_fn = player_save_apply_result (*)(const player_snapshot 
 							  void *context);
 // Writes one sealed corpse, locker, saved room item or log job on the writer thread.
 using persistence_job_write_fn = std::function<player_save_apply_result()>;
+using persistence_job_admit_fn = std::function<bool()>;
 using persistence_job_owner = std::pair<persistence_job_kind, uint64_t>;
 
 bool player_save_worker_init(player_save_apply_fn apply, void *context);
@@ -154,6 +157,12 @@ player_save_submit_result player_save_worker_submit(player_snapshot snapshot);
 // Capacity refusal returns unavailable with errno=ENOSPC, preserving admitted jobs.
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
 						    size_t bytes, persistence_job_write_fn write);
+// Reserve queue storage before admission, then publish the job only if admission
+// succeeds. Runs on the caller with the writer mutex held; must not reenter it.
+player_save_submit_result persistence_writer_submit_admitted(persistence_job_kind kind,
+							     uint64_t owner, size_t bytes,
+							     persistence_job_write_fn write,
+							     persistence_job_admit_fn admit);
 size_t player_save_worker_pulse(player_save_completion *completions_out, size_t capacity);
 // True while this owner has a save queued or being written.
 bool player_save_worker_pid_pending(int pid);

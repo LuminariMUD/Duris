@@ -10695,26 +10695,28 @@ Epic Skills, Smelt, Forge
 Frag
 Frag - Last Edited: 2008-04-14 15:58:43 by Blaize
 =================================================
-See LEVEL CAP for side-specific unlocks, qualifying frags and the timer.
+See LEVEL CAP for the 72-hour Good/Evil race, ties and shared circle levels.
 
 Syntax:     frag
             frag <classname>
             frag <racename>
             frag <racewarsidename>
-The term "frag", originally taken from the Vietnam War, is when you kill
-another player. When you kill someone who is an opposite racewar side
-(a Human killing a Drow, etc) you get a frag if you are within 10 levels
-of them. When you are killed by someone who is an opposite racewar side
-(a Gnome being killed by a Ogre, ect) you lose a frag if within 10 levels
-of them. All frags are split between the group equally accounting for all
-the players of that side in the room. So, if you are with a group of five
-people and you kill one player, you will each receive .20 frags. Likewise,
-if you are alone and four others are in the room when you kill one player,
-you alone will receive .20 frags. Typing "fraglist" will show a list of
-the top ten and lowest ten fraggers in the mud. Or, you may type "frag
-<racewarside>", "frag <classname>" or "<frag racename>".
-Once a player has more than 20 frags, he or she will not gain frags for
-slaying anyone under level 40.
+Eligible mortal player kills against the opposing racewar side award frags.
+The victim must be at least level 20, and normally no more than ten levels
+below the credited killer; a victim with more than 2.00 frags bypasses that
+level-gap restriction. Arena and recently-fragged exclusions still apply.
+
+The base share is 1.00 divided by the non-staff players on the killer's side
+in the killer's room, including ungrouped bystanders. Only eligible present
+group recipients receive shares. Victim/recipient level modifiers can change
+the actual award. The victim loses one modified share, rather than the sum
+of all winner awards.
+
+Every positive ordinary award also adds to the recipient's chosen faction's
+72-hour race score. Faction scores pool across characters; losses do not
+subtract from the race. There is no minimum score required to win a round.
+See HELP LEVEL CAP for tied results and shared circles. FRAGLIST shows both
+current race scores and the separate historical frag rankings.
 
 ==See also==
 
@@ -13096,7 +13098,11 @@ lost by the death.
 Hardcore
 Hardcore - Last Edited: 2015-03-27 14:44:11 by gellz
 ====================================================
-When you create a character on Duris you have the option of creating it as Hardcore. These characters are enhanced in most areas such as they do increased damage, have greater resistance to damage and have higher hitpoints than non-hardcore characters. Hardcore characters also do not require the epics as others do to move past level 50, they are able to simply exp right up to level 56. However, there are no 'do-overs' with hardcores.  The character will cease to exist completely after only one death.
+Hardcore characters receive their configured combat and hitpoint bonuses.
+Their XP path can continue beyond the ordinary level-50 XP ceiling, up to their
+chosen faction cap plus two, bounded by level 56. This allowance is separate
+from the normal one-level Good/Evil cap gap. Read HELP LEVEL CAP for the race.
+A Hardcore character permanently dies when its configured death limit is reached.
 
 #0
 
@@ -28711,8 +28717,16 @@ their existing independent eligibility rules. Downtime skips missed hours.
 Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
-Damage, tanking, healing and kill shares qualify in your designated zone.
+Damage, tanking, healing, melee and kill shares qualify in your designated zone.
 Quest, resurrection, PvP and other non-combat EXP do not qualify.
+This adds 100% of eligible base EXP after reductions. Rest, racial and other
+bonuses are not doubled. Final award caps and remaining EXP storage still apply.
+With TOGGLE EXP enabled, kill EXP lines show (Divine Boon +N) when a positive
+Divine contribution survives rounding and caps. Other combat contributions
+are combined into one Divine Boon message per game tick. The number counts
+only the credited eligible base; it excludes any rounding difference between
+the precise Divine calculation and the legacy calculation without a boon.
+A fully capped award can therefore show no Divine contribution.
 Epic zone: +50% eligible epic-stone base payout for eight real hours.
 PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
@@ -28768,8 +28782,16 @@ their existing independent eligibility rules. Downtime skips missed hours.
 Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
-Damage, tanking, healing and kill shares qualify in your designated zone.
+Damage, tanking, healing, melee and kill shares qualify in your designated zone.
 Quest, resurrection, PvP and other non-combat EXP do not qualify.
+This adds 100% of eligible base EXP after reductions. Rest, racial and other
+bonuses are not doubled. Final award caps and remaining EXP storage still apply.
+With TOGGLE EXP enabled, kill EXP lines show (Divine Boon +N) when a positive
+Divine contribution survives rounding and caps. Other combat contributions
+are combined into one Divine Boon message per game tick. The number counts
+only the credited eligible base; it excludes any rounding difference between
+the precise Divine calculation and the legacy calculation without a boon.
+A fully capped award can therefore show no Divine contribution.
 Epic zone: +50% eligible epic-stone base payout for eight real hours.
 PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.

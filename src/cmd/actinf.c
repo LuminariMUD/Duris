@@ -36,6 +36,7 @@ using namespace std;
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include "combat/ctf.h"
 #include "world/epic.h"
 #include "economy/divine_boon_selection.h"
@@ -2848,6 +2849,12 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			// Found something
 			if (bits != 0)
 			{
+				if (!locker_container_access_allowed(ch, tmp_object))
+				{
+					send_to_char("You must open that private chest first.\n",
+						     ch);
+					return;
+				}
 				short_desc =
 					show_obj_to_char(tmp_object, ch, LISTOBJ_SHORTDESC, FALSE);
 				CAP(short_desc);
@@ -3727,6 +3734,12 @@ void do_examine(P_char ch, char *argument, int /*cmd*/)
 			     FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP | FIND_CHAR_ROOM |
 				     FIND_NO_TRACKS,
 			     ch, &tmp_char, &tmp_object);
+	}
+
+	if (tmp_object && !locker_container_access_allowed(ch, tmp_object))
+	{
+		send_to_char("You must open that private chest first.\n", ch);
+		return;
 	}
 
 	if (tmp_object && chaos_material_pouch_is_active(tmp_object))
@@ -6676,8 +6689,9 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, "\n");
 		send_to_char(buf, ch);
 
-		snprintf(buf, MAX_STRING_LENGTH, "&+LLea&+wder&+Wboard Points&n: &n%4ld&n ",
-			 (getLeaderBoardPts(ch) / 100));
+		snprintf(buf, MAX_STRING_LENGTH, "&+LLea&+wder&+Wboard Points&n: &n%.2f&n ",
+			 getLeaderBoardPts(ch) /
+				 (double)hardcore_config_get()->score_display_divisor);
 		strcat(buf, "\n");
 		send_to_char(buf, ch);
 	}

@@ -1,140 +1,62 @@
 #!/usr/bin/env python3
-"""Source contract for configurable frag-cap behavior."""
-from _paths import SRC
+"""Native cap configuration/adoption inputs and shared-policy wiring contracts."""
 from pathlib import Path
+import subprocess
+import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-LIB = ROOT / "lib"
+from _paths import ROOT, source
 
-config = (LIB / "frag_cap.cfg").read_text()
-header = (SRC / "frag_cap_config.h").read_text()
-impl = (SRC / "frag_cap_config.c").read_text()
-sql = (SRC / "sql.c").read_text()
-sql_h = (SRC / "sql.h").read_text()
-comm = (SRC / "comm.c").read_text()
-redis = (SRC / "redis.c").read_text()
-report_cache = (SRC / "redis_report_cache.c").read_text()
-fraglist = (SRC / "fraglist.c").read_text()
-limits = (SRC / "limits.c").read_text()
-makefile = (SRC / "Makefile").read_text()
-maintenance = (SRC / "maintenance_repository.c").read_text()
+PROBE = r'''
+#include "combat/frag_cap_config.h"
+#include <cassert>
+#include <cstdlib>
+void logit(const char *, const char *, ...) {}
+int main(int argc, char **argv)
+{
+    assert(argc == 4);
+    boot_frag_cap_config();
+    const auto *config = frag_cap_config_get();
+    const auto policy = frag_cap_config_policy();
+    assert(config->cap_floor_level == atoi(argv[1]));
+    assert(FRAG_CAP_INITIAL_LEVEL == 31 && FRAG_CAP_MAXIMUM_LEVEL == 56);
+    assert(config->legacy_maximum_level == atoi(argv[2]));
+    assert(policy.round_duration == atoll(argv[3]) * FRAG_CAP_HOUR);
+    assert(frag_cap_config_hardcore_level_cap(31) == 33);
+    assert(frag_cap_config_hardcore_level_cap(55) == 56);
+    assert(frag_cap_config_hardcore_level_cap(56) == 56);
+}
+'''
 
-assert "frag_cap_config.o" in makefile
-assert "boot_frag_cap_config" in comm
-assert "frag_cap_config.h" in sql
-assert "frag_cap_config_get" in sql
-assert "FRAG_LEVEL_RATIO" not in sql_h
-assert "FRAGS_TO_LEVEL" not in sql_h
+output = ROOT / "bin/tests"
+output.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="frag-cap-config-", dir=output) as directory:
+    root = Path(directory)
+    (root / "lib").mkdir()
+    probe = root / "probe.cpp"
+    probe.write_text(PROBE)
+    binary = root / "probe"
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc",
+                    str(probe), str(source("frag_cap_config.c")), "-o", str(binary)], cwd=ROOT, check=True)
 
-for key in (
-    "cap.floor.level",
-    "cap.reset.level",
-    "cap.maximum.level",
-    "timer.unlock.days",
-    "unlock.victim.levels.below.open",
-    "unlock.minimum.share.points",
-    "hardcore.levels.beyond.cap",
-):
-    assert key + "=" in config, key
-    assert '"' + key + '"' in impl, key
+    def check(text, expected):
+        if text is not None:
+            (root / "lib/frag_cap.cfg").write_text(text)
+        subprocess.run([str(binary), *map(str, expected)], cwd=root, check=True)
 
-for token in (
-    "cap_floor_level",
-    "cap_reset_level",
-    "cap_maximum_level",
-    "unlock_timer_days",
-    "unlock_victim_levels_below",
-    "unlock_minimum_share_points",
-    "hardcore_levels_beyond_cap",
-):
-    assert token in header, token
-    assert token in impl, token
+    check(None, (25,56,72))
+    check((ROOT / "lib/frag_cap.cfg").read_text(), (25,56,72))
+    check("cap.floor.level=45\ncap.maximum.level=50\ntimer.round.hours=36\n", (45,50,36))
+    check("cap.floor.level=57\ncap.maximum.level=57\ntimer.round.hours=0\n", (25,56,72))
 
-# Frag thresholds, per-level timers and the unlock boon are gone.
-for retired in (
-    "cap.frag.base.level", "cap.level.step", "cap.frags.per.level", "timer.default.days",
-    "timer.circle.level", "timer.level.5", "boon.duration.minutes", "boon.bonus",
-):
-    assert retired not in config, retired
-    assert retired not in impl, retired
-for retired in ("frags_for_level", "cap_level_from_frags", "frag_cap_config_timer_days",
-                "frag_cap_config_reset_timer_days", "boon_duration", "boon_bonus"):
-    assert retired not in header, retired
-    assert retired not in fraglist + report_cache + maintenance + sql, retired
-
-assert "cap.reset.level=30" in config
-assert "timer.unlock.days=3" in config
-assert "unlock.victim.levels.below.open=5" in config
-assert "unlock.minimum.share.points=20" in config
-assert "hardcore.levels.beyond.cap=2" in config
-assert "frag_cap_config_hardcore_level_cap" in limits
-assert "IS_HARDCORE(ch)" in limits
-assert "sql_level_cap(GET_RACEWAR(ch))" in limits
-
-# Each side has its own cap; other sides have the level open to all.
-level_cap = sql[sql.index("int sql_level_cap(int racewar_side)"):]
-level_cap = level_cap[:level_cap.index("\n}\n")]
-assert "RACEWAR_GOOD" in level_cap and "RACEWAR_EVIL" in level_cap
-assert "SELECT level, level_good, level_evil, UNIX_TIMESTAMP(next_update) FROM level_cap" in sql
-# A wipe opens cap.reset.level to all with no timer, so the first frag unlocks the next.
-assert "level=%d, level_good=0, level_evil=0, next_update=NOW()" in sql
-assert "frag_cap_config_reset_level" in sql
-for column in ("level_good", "level_evil"):
-    assert '{ "level_cap", "' + column + '" }' in sql
-
-# The maintenance job unlocks levels; the game keeps the row in memory and reads it
-# again when the job changed it, and announces the unlock.
-job = maintenance[maintenance.index("maintenance_result execute_level_cap("):]
-job = job[:job.index("\n}\n")]
-for token in (
-    "FROM level_cap ORDER BY id LIMIT 1 FOR UPDATE",
-    "request.values[0] < strtoll(row[4].c_str(), nullptr, 10)",
-    "COALESCE(SUM(total_frags),0) FROM frag_leaderboard",
-    "p.frag_delta>0",
-    "o.killer_allies>0 AND o.killer_allies<=",
-    "100 / config->unlock_minimum_share_points",
-    "v.level>=",
-    "unlock_victim_levels_below",
-    "ORDER BY o.created_at,o.operation_id LIMIT 1",
-    "(level - 1) % 5 == 0",
-    "unlock_timer_days",
-    "level_cap_changed",
-):
-    assert token in job, token
-assert "boons" not in job
-assert "maintenance_job_id::level_cap" in comm
-assert "sql_level_cap_reload();" in comm
-completion = comm[comm.index("result.job_id == maintenance_job_id::level_cap"):]
-completion = completion[:completion.index("// The jobs that change zone alignments")]
-assert "send_to_all(announcement)" in completion
-assert "boon_notify_snapshot" not in completion
-assert "sql_check_level_cap_periodic" not in sql + sql_h + comm
-
-# Both fraglist views share one header: each side's cap, each side's frag total and what
-# unlocks the next level.
-for view in (fraglist, report_cache):
-    assert "fraglist_cap_header(rows, before" in view
-cap_header = report_cache[report_cache.index("time_t fraglist_cap_header("):]
-cap_header = cap_header[:cap_header.index("\n}\n")]
-for token in ("get_level_cap_info(&open_level, &good_level, &evil_level",
-              "Goodies Total Frags", "unlock_victim_levels_below",
-              "100 / config->unlock_minimum_share_points",
-              "with at most %d of that side in the room"):
-    assert token in cap_header, token
-assert "SELECT 'total', racewar, SUM(total_frags)" in report_cache
-assert "frag_cap_config" not in redis
-
-# Record the unmodified denominator, including ungrouped allies. The maintenance
-# query applies today's threshold; the kill capture must not freeze it.
-command = (SRC / "combat_outcome_command.h").read_text()
-assert "uint32_t killer_allies;" in command
-fight = (SRC / "fight.c").read_text()
-award = fight[fight.index("static bool submit_pvp_outcome("):]
-award = award[:award.index("\n}\n")]
-assert "payload.killer_allies = static_cast<uint32_t>(allies);" in award
-assert "unlock_minimum_share_points" not in award
-assert award.index("payload.killer_allies =") < award.index("frag.evil.penalty")
-for retired in ("unlock.minimum.frag.points", "unlock_minimum_frag_points"):
-    assert retired not in config + header + impl + maintenance + report_cache, retired
-
-print("frag-cap configuration source contract passed")
+maintenance = source("maintenance_repository.c").read_text()
+for retired in ("unlock_victim_levels_below", "unlock_minimum_share_points", "killer_allies", "frag_leaderboard", "pkill_info"):
+    assert retired not in maintenance
+assert "frag_cap_flatfile_tick" in maintenance and "frag_cap_settle" in maintenance
+runtime = source("frag_cap_runtime.c").read_text()
+assert "persistence_writer_submit" in runtime and "pending->state.revision > published.revision" in runtime
+comm = source("comm.c").read_text()
+assert "frag_cap_runtime_boot" in comm and "frag_cap_runtime_pulse" in comm
+for producer in ("combat_outcome_repository.c", "flatfile_player_domain_repository.c"):
+    assert "frag_cap_apply_combat" in source(producer).read_text()
+assert "frag_cap_runtime_status" in source("fraglist.c").read_text()
+print("PASS frag-cap configuration: real defaults/overrides/validation, legacy floor, Hardcore bounds and shared wiring")

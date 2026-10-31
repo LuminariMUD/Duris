@@ -122,6 +122,43 @@ with tempfile.TemporaryDirectory(prefix="duris-chest-hash-") as temp_dir:
     assert finish_login(library.password_login_submit(b"incorrect", hashes[0], 1), hashes[0]) == (0, None)
     assert finish_login(library.password_login_submit(secret, hashes[0], 1), hashes[1]) == (0, None)
 
+    library.password_work_submit.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int, ctypes.c_int]
+    library.password_work_submit.restype = ctypes.c_void_p
+
+    def hashed(value):
+        pointer = library.bcrypt_hash_password(value)
+        assert pointer
+        result = ctypes.string_at(pointer)
+        libc.free(pointer)
+        return result
+
+    def chest_check(value, stored):
+        return finish_login(library.password_work_submit(value, stored, None, 1, 1), stored)
+
+    full_password = b"Q" * 72
+    full_hash = hashed(full_password)
+    assert chest_check(b" " + full_password, full_hash) == (1, None)
+    assert chest_check(b" " + full_password + b"x", full_hash) == (0, None)
+    old_password = b" " + secret
+    old_hash = hashed(old_password)
+    assert chest_check(old_password, old_hash) == (1, None)
+    assert chest_check(b" " + secret, hashes[0]) == (1, None)
+    assert chest_check(b" wrong", old_hash) == (0, None)
+    blank_legacy_hash = hashed(b" ")
+    assert chest_check(b" ", blank_legacy_hash) == (1, None)
+    # Raw legacy candidates must not exploit bcrypt's 72-byte truncation.
+    old_limit_hash = hashed(b" " + b"K" * 71)
+    assert chest_check(b" " + b"K" * 71, old_limit_hash) == (1, None)
+    assert chest_check(b" " + b"K" * 71 + b"x", old_limit_hash) == (0, None)
+    for candidate in (secret, old_password):
+        stored = hashlib.sha256(candidate).hexdigest().encode()
+        valid, upgrade = chest_check(old_password, stored)
+        assert valid == 1 and upgrade
+        assert library.bcrypt_verify_password(candidate, upgrade) == 1
+    assert finish_login(library.password_login_submit(old_password, old_hash, 1), old_hash) == (1, None)
+    assert finish_login(library.password_login_submit(secret, old_hash, 1), old_hash) == (0, None)
+    print("[PASS] private chest delimiter compatibility, full 72-byte credentials and bounded legacy verification")
+
     crypt = ctypes.CDLL("libcrypt.so.1")
     crypt.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
     crypt.crypt.restype = ctypes.c_char_p
@@ -173,17 +210,21 @@ print("[PASS] game-thread callers use the shared worker without synchronous bcry
 # Private chests are held in memory while their locker is open; each write is
 # queued on the writer and carries only a bcrypt hash.
 chests = storage[storage.index("static int locker_chestcmd(P_char ch, char *arg)\n{"):
-                 storage.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
+                 storage.index("static int locker_closecmd(P_char ch, char *arg)\n{")]
 create = chests[chests.index('if (is_abbrev(arg1, "create"))'):chests.index('if (is_abbrev(arg1, "delete"))')]
 setter = chests[chests.index('if (is_abbrev(arg1, "password"))'):
                 chests.index("static int locker_opencmd(P_char ch, char *arg)\n{")]
 verify = chests[chests.index("static int locker_opencmd(P_char ch, char *arg)\n{"):]
 assert "SHA2(" not in create + setter + verify
 assert "is_bcrypt_hash(hash)" in create and "is_bcrypt_hash(hash)" in setter
-assert "escape_str(hash)" in create and "escape_str(hash)" in setter
-assert "chest->SetPasswordHash(NULL)" in setter
-assert "UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0" in setter
-assert "SetPasswordHash(hash)" in setter
+purchase = (SRC / "private_chest_purchase.c").read_text()
+management = section(storage, "static void locker_change_chest(", "/* Private chests live in memory")
+assert "private_chest_purchase_start" in create and "stored_hash" in create
+assert "escape(p.hash)" in purchase and "mysql_real_escape_string(connection," in purchase
+assert "locker_change_chest(ch, pLocker, chest, \"\", false)" in setter
+assert contains(setter, "locker_change_chest(actor, locker,") and contains(setter, "hash, false)")
+assert "escape_str(hash.c_str())" in management and "sql_queue_statements" in management
+assert "SetPasswordHash" not in setter
 assert "Chest passwords must be at most 72 bytes." in storage
 assert "is_bcrypt_hash(upgrade)" in verify
 assert "WHERE id=%d AND password_hash='%s'" in verify

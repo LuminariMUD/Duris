@@ -19,6 +19,7 @@ prelude = r'''
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+
 #include <cstdarg>
 #include <cctype>
 #include <cerrno>
@@ -89,6 +90,14 @@ struct obj_data {
  struct { int room=0; obj_data *inside=nullptr; } loc;
 };
 using P_obj = obj_data *;
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
+struct LockerMovementAudit {
+    LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char * = nullptr) {}
+    bool Ready() const { return true; }
+    void Commit() {}
+};
+
+
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
 static std::unordered_map<uint64_t, P_obj> objects;
@@ -142,7 +151,8 @@ static bool checkgetput(P_char ch,P_obj obj) {
 static int64_t total_carried_weight(P_char) { return 0; }
 static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va_start(a,f); vsnprintf(b,n,f,a); va_end(a); }
 static int scrap_attempts=0;
-static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
+static bool refuse_scrap=false;
+static bool MakeScrap(P_char,P_obj) { ++scrap_attempts; return !refuse_scrap; }
 static void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
 static std::array<int32_t,CURRENCY_DENOMINATION_COUNT> wallet{};
 static bool credit_coins(P_char,const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> &amount) {
@@ -181,7 +191,7 @@ driver = r'''
 static const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> expected_wallet{0,0,4,0};
 static void reset() {
  bulk_gets.clear(); objects.clear(); rooms.clear(); output.clear();
- coin_attempts=scrap_attempts=0; fail_delivery=false; wallet={};
+ coin_attempts=scrap_attempts=0; fail_delivery=refuse_scrap=false; wallet={};
  trapped_uid=0; trap_effect=trap_calls=checked_after_trap=corpse_writes=0; live_actor=nullptr;
  die_on_delivery=throw_on_delivery=false;
 }
@@ -261,6 +271,14 @@ int main() {
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
   assert(output.find("Some contents were not acquired.")==std::string::npos);
   assert(bulk_gets.empty());
+ }
+ // A refused scrap stays in place and is reported as incomplete.
+ {
+  reset(); char_data actor; obj_data corpse,scrap; setup(&actor,&corpse,&scrap,nullptr);
+  scrap.condition=0; refuse_scrap=true;
+  start_bulk_get(&actor,&corpse,nullptr,true);
+  assert(scrap_attempts==1 && OBJ_INSIDE(&scrap) && corpse.contains==&scrap);
+  assert(output.find("could not be moved safely")!=std::string::npos && bulk_gets.empty());
  }
  // A ruined item is scrapped where it lies; the rest of the haul still comes.
  {
@@ -352,7 +370,7 @@ parts = [prelude, take('struct synchronous_get_item')+';', take('struct bulk_get
          take('static bulk_get_state *corpse_bulk_get('),
          take('static void announce_corpse_bulk_get('), take_coins,
          take('static bool get_can_continue('),
-         take('static void publish_container_get('), finalizers]
+         take('static bool publish_container_get('), finalizers]
 for name in ['static bool bulk_get_source_matches(', 'static void report_bulk_get(',
              'static void finish_bulk_get(', 'static P_obj resolve_synchronous_get_item(',
              'static bool take_bulk_get_items(', 'static void reject_bulk_get_object(',

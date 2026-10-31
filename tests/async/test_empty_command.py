@@ -19,6 +19,7 @@ PRELUDE = r'''
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
+
 #include <cstdarg>
 #include <string>
 #define FALSE 0
@@ -59,6 +60,15 @@ struct obj_data {
     struct { int room = 0; } loc;
 };
 using P_obj = obj_data *;
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
+static bool refuse_audit;
+struct LockerMovementAudit {
+    LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char * = nullptr) {}
+    bool Ready() const { return !refuse_audit; }
+    void Commit() {}
+};
+
+
 static std::string output;
 static int saves = 0;
 static void send_to_char(const char *text, P_char) { output += text; }
@@ -177,6 +187,13 @@ int main()
     fill(&corpse_source, loot, 1);
     start_empty(&actor, &corpse_source, &corpse);
     assert(count(&corpse) == 1 && corpse_saved == &corpse);
+    obj_data audit_source, audit_target, guarded_item;
+    audit_source.carrier=audit_target.carrier=&actor; audit_target.value[0]=10;
+    P_obj guarded_items[]={&guarded_item};fill(&audit_source,guarded_items,1);
+    output.clear();saves=0;refuse_audit=true;
+    start_empty(&actor,&audit_source,&audit_target);
+    assert(count(&audit_source)==1 && count(&audit_target)==0 && saves==0);
+    assert(output.find("You moved 0 items")!=std::string::npos);
     puts("empty command: full move, capacity stop, refused item, closed target and player "
          "corpse passed");
 }

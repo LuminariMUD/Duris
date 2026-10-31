@@ -110,16 +110,28 @@ Representative entry points by feature:
 
 ## Frag-based level caps
 
-A qualifying kill's base frag share is 1.00 frag divided by the killer's side in the
-room, including ungrouped mortals and excluding staff. The default
-`unlock.minimum.share.points=20` permits at most five allies. Maintenance compares
-the stored `combat_outcome.killer_allies` against the current setting; individual
-level and race modifiers still affect rewards, but do not affect eligibility.
+Good and Evil race in fixed 72-hour rounds from initial caps 31/31 to 56/56.
+All positive ordinary PvP awards pool into the recipient's captured faction.
+The leader at the deadline gets the next global cap and the other side the
+level below it. Ties, including 0-0, raise each old cap by one. Circle levels
+36/41/46/51/56 equalize both caps. There is no score target or early unlock;
+ordinary reward eligibility and sharing remain unchanged.
 
-Migration `0040_combat_outcome_allies` adds that count before the updated server boots.
-Old outcomes and replayed version-1 combat commands have count 0 (unknown) and cannot
-unlock a level. New commands use payload version 2; existing rewards and history are
-preserved. Follow the normal migration/backup procedure when deploying.
+[The common engine](../../src/combat/frag_cap.c) owns these transitions and a
+97-byte checksummed v2 snapshot. [Storage](../../src/combat/frag_cap_repository.c)
+commits scores with the parent combat receipt on both backends. The existing
+maintenance job settles the same authority and catches up empty rounds as ties.
+SQL projects the lower shared cap plus both side caps. Runtime publication is
+asynchronous; faction readers serve both normal XP and epic-stone checks.
+FRAGLIST renders live race status outside cached historical rankings.
+
+Migration `0057_shared_frag_cap` adds nullable snapshot storage without changing
+live caps. First activation validates the old effective cap range/deadline;
+see [the delivery plan](../ongoing-projects/plan-issue-508.md) for adoption, reset,
+rollback and exact qualification. XP banks at 100% of otherwise computed awards,
+within global/storage limits. The ordinary level-50 XP ceiling, epic requirements
+and Hardcore's bounded faction-cap +2 XP allowance remain. Cap changes grant no
+free character levels. Production activation is separate.
 
 ## Ships subsystem
 

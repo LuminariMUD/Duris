@@ -20,7 +20,9 @@
 
 #include "core/prototypes.h"
 #include "core/files.h"
+#include "item/storage_lockers.h"
 #include "economy/collector_death_enrollment.h"
+#include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
@@ -35,14 +37,27 @@
 #include <chrono>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 extern P_char character_list;
+extern P_room world;
 
 namespace
 {
 uint32_t trade_player_pid = 0;
 player_pending_trade_snapshot trade_capture;
+struct pending_world_quest_save
+{
+	player_pending_world_quest quest;
+	std::function<bool(P_char, const player_pending_world_quest &)> committed;
+	player_revision_t first_revision = 0;
+	std::shared_ptr<player_snapshot> latest;
+	std::chrono::steady_clock::time_point retry{};
+	bool durable = false;
+};
+std::unordered_map<int, std::shared_ptr<pending_world_quest_save>> pending_world_quests;
 
 /** Cache the explicit diagnostic switch for player-save capture and durability tracing. */
 bool trace_player_saves()
@@ -80,7 +95,8 @@ void retire_ended_player(int pid)
 {
 	player_revision_snapshot revision = {};
 	if (player_revision_snapshot_copy(pid, &revision) && revision.session_ended &&
-	    !live_player(pid) && !player_save_worker_pid_pending(pid))
+	    !live_player(pid) && !player_save_pipeline_world_quest_pending(pid) &&
+	    !player_save_worker_pid_pending(pid))
 		player_revision_forget(pid);
 }
 
@@ -115,7 +131,19 @@ void finish_completion(const player_save_completion &completion)
 	if (succeeded)
 	{
 		if (completion.kind == persistence_job_kind::player)
+		{
 			player_revision_record_written(completion.pid, completion.revision);
+			std::lock_guard<std::mutex> lock(pipeline_mutex);
+			auto pending = pending_world_quests.find(completion.pid);
+			if (pending != pending_world_quests.end() &&
+			    pending->second->first_revision &&
+			    completion.revision >= pending->second->first_revision &&
+			    completion.outcome != player_save_apply_outcome::stale_revision)
+			{
+				pending->second->durable = true;
+				pending->second->retry = {};
+			}
+		}
 		if (completion.kind == persistence_job_kind::corpse)
 			collector_death_enrollment_saved(completion.owner, completion.error_code);
 		return;
@@ -256,6 +284,22 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))
 		return player_save_pipeline_result::capture_failed;
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		auto pending = pending_world_quests.find(GET_PID(ch));
+		if (pending != pending_world_quests.end())
+		{
+			components |= PLAYER_COMPONENT_STATUS;
+			if (!pending->second->quest.reward_items.empty())
+				components |= PLAYER_COMPONENT_EQUIPMENT |
+					      PLAYER_COMPONENT_INVENTORY;
+		}
+	}
+	// The player snapshot removes absent inventory rows. Commit a private chest's
+	// destination first, including item captures added by a pending quest reward.
+	if ((components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    !locker_private_contents_durable(ch))
+		return player_save_pipeline_result::capture_failed;
 	player_snapshot snapshot;
 	if (player_snapshot_capture(ch, queued_revision, components, save_intent, room_vnum,
 				    &snapshot) != player_snapshot_capture_result::ok)
@@ -278,6 +322,116 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 			if (extra > PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound)
 				return player_save_pipeline_result::capture_failed;
 			snapshot.encoded_size_bound += extra;
+		}
+		auto pending = pending_world_quests.find(GET_PID(ch));
+		if (pending != pending_world_quests.end())
+		{
+			auto quest = pending->second->quest;
+			quest.before_quest = snapshot.quest_values;
+			for (const auto &row : snapshot.status_integers)
+			{
+				if (row.field == player_status_field::quest_origin_room)
+					quest.before_origin =
+						static_cast<int32_t>(row.signed_value);
+				else if (row.field == player_status_field::quest_replacement_due)
+					quest.before_replacement_due =
+						static_cast<int32_t>(row.signed_value);
+			}
+			const size_t extra = sizeof(quest) + quest.player_name.size() +
+					     quest.reward_description.size();
+			if (snapshot.encoded_size_bound > PLAYER_SNAPSHOT_MAX_BYTES ||
+			    extra > PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound)
+				return player_save_pipeline_result::capture_failed;
+			snapshot.encoded_size_bound += extra;
+			if (snapshot.items.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+			    snapshot.retained_items.rows.size() >
+				    PLAYER_SNAPSHOT_MAX_OBJECTS - snapshot.items.size() ||
+			    quest.reward_encoded_size >
+				    (PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound) / 2 ||
+			    quest.reward_items.size() > PLAYER_SNAPSHOT_MAX_OBJECTS -
+								snapshot.items.size() -
+								snapshot.retained_items.rows.size())
+				return player_save_pipeline_result::capture_failed;
+			snapshot.encoded_size_bound += 2 * quest.reward_encoded_size;
+			if (!quest.reward_items.empty())
+			{
+				std::unordered_set<uint64_t> ids;
+				for (const auto &item : snapshot.items)
+					if (item.object_uid)
+						ids.insert(item.object_uid);
+				const size_t offset = snapshot.items.size();
+				for (size_t index = 0; index < quest.reward_items.size(); ++index)
+				{
+					auto item = quest.reward_items[index];
+					if (!item.object_uid ||
+					    !ids.insert(item.object_uid).second ||
+					    item.parent_index < PLAYER_SNAPSHOT_NO_PARENT ||
+					    item.parent_index >= static_cast<int32_t>(index) ||
+					    (index &&
+					     item.parent_index == PLAYER_SNAPSHOT_NO_PARENT))
+						return player_save_pipeline_result::capture_failed;
+					if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+						item.parent_index += static_cast<int32_t>(offset);
+					snapshot.items.push_back(std::move(item));
+				}
+			}
+			snapshot.pending_world_quest = quest;
+			if (quest.escrow_fee)
+			{
+				currency_vector before{}, after{};
+				std::array<player_snapshot_integer *, 4> wallet{};
+				for (auto &row : snapshot.status_integers)
+					if (row.field >= player_status_field::copper &&
+					    row.field <= player_status_field::platinum)
+					{
+						const auto index =
+							static_cast<size_t>(row.field) -
+							static_cast<size_t>(
+								player_status_field::copper);
+						wallet[index] = &row;
+						before.amount[index] = row.signed_value;
+					}
+				if (std::any_of(wallet.begin(), wallet.end(),
+						[](const auto *row) { return !row; }) ||
+				    snapshot.wallet_revision == UINT64_MAX ||
+				    !currency_wallet_after_value(
+					    before, -static_cast<int64_t>(quest.escrow_fee),
+					    &after))
+					return player_save_pipeline_result::capture_failed;
+				snapshot.pending_world_quest.before_wallet = before.amount;
+				snapshot.pending_world_quest.before_wallet_revision =
+					snapshot.wallet_revision;
+				for (size_t index = 0; index < wallet.size(); ++index)
+					wallet[index]->signed_value = after.amount[index];
+				++snapshot.wallet_revision;
+			}
+			if (quest.awaiting_reward)
+			{
+				snapshot.quest_values[3] =
+					quest.final_kill_reward ?
+						PLAYER_WORLD_QUEST_KILL_REWARD_PENDING :
+						PLAYER_WORLD_QUEST_REWARD_PENDING;
+				// Once completed, receiver/share/kill counters are no longer used.
+				// The marker makes these fields a durable reward receipt until reset.
+				snapshot.quest_values[8] = quest.reward.experience;
+				snapshot.quest_values[9] = quest.reward.epic;
+				snapshot.quest_values[10] = quest.reward.money;
+			}
+			else
+			{
+				snapshot.quest_values.fill(0);
+				snapshot.quest_values[5] = -1;
+				for (auto &row : snapshot.status_integers)
+					if (row.field == player_status_field::quest_origin_room ||
+					    row.field == player_status_field::quest_replacement_due)
+					{
+						row.signed_value = 0;
+						row.unsigned_value = 0;
+					}
+			}
+			pending->second->latest = std::make_shared<player_snapshot>(snapshot);
+			if (!pending->second->first_revision)
+				pending->second->first_revision = queued_revision;
 		}
 	}
 	catch (const std::bad_alloc &)
@@ -371,6 +525,77 @@ void player_save_pipeline_pulse(void)
 		if (completed < PLAYER_SAVE_PIPELINE_PULSE_BUDGET)
 			break;
 	}
+	// A failed terminal save can outlive its actor. Retain the last immutable
+	// capture and retry it rather than dropping the pending history on logout.
+	std::vector<std::pair<int, std::shared_ptr<player_snapshot>>> retry;
+	std::vector<std::pair<int, std::shared_ptr<pending_world_quest_save>>> publish;
+	try
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		for (auto &[pid, pending] : pending_world_quests)
+			if (std::chrono::steady_clock::now() >= pending->retry)
+			{
+				if (pending->durable)
+					publish.emplace_back(pid, pending);
+				else if (accepting && health.initialized && pending->latest)
+					retry.emplace_back(pid, pending->latest);
+				pending->retry =
+					std::chrono::steady_clock::now() + std::chrono::seconds(1);
+			}
+	}
+	catch (const std::bad_alloc &)
+	{
+		return;
+	}
+	for (const auto &[pid, pending] : publish)
+	{
+		bool published = false;
+		try
+		{
+			published = pending->committed(live_player(pid), pending->quest);
+		}
+		catch (const std::bad_alloc &)
+		{
+			// Keep the committed after-image until publication can be retried.
+			std::lock_guard<std::mutex> lock(pipeline_mutex);
+			++health.capture_failures;
+		}
+		if (published)
+		{
+			{
+				std::lock_guard<std::mutex> lock(pipeline_mutex);
+				auto found = pending_world_quests.find(pid);
+				if (found != pending_world_quests.end() && found->second == pending)
+					pending_world_quests.erase(found);
+			}
+			retire_ended_player(pid);
+		}
+	}
+	for (const auto &[pid, snapshot] : retry)
+	{
+		if (player_save_worker_pid_pending(pid))
+			continue;
+		if (P_char actor = live_player(pid))
+		{
+			const int room = actor->in_room == NOWHERE ? NOWHERE :
+								     world[actor->in_room].number;
+			player_save_pipeline_request(actor, PLAYER_COMPONENT_STATUS, RENT_CRASH,
+						     room);
+		}
+		else
+		{
+			try
+			{
+				submit_snapshot(*snapshot);
+			}
+			catch (const std::bad_alloc &)
+			{
+				// Keep the immutable capture for the next retry.
+				std::lock_guard<std::mutex> lock(pipeline_mutex);
+				++health.submit_failures;
+			}
+		}
+	}
 }
 
 void player_save_pipeline_quiesce(void)
@@ -396,7 +621,12 @@ bool player_save_pipeline_drain(uint64_t timeout_msec)
 	const bool drained = persistence_writer_wait_idle(timeout_msec);
 	player_save_pipeline_pulse();
 	divine_boon_runtime_pulse();
-	const bool complete = drained && !divine_boon_runtime_pending();
+	bool quest_pending;
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		quest_pending = !pending_world_quests.empty();
+	}
+	const bool complete = drained && !divine_boon_runtime_pending() && !quest_pending;
 	if (!complete)
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -417,6 +647,16 @@ std::vector<persistence_job_owner> player_save_pipeline_finish(uint64_t deadline
 	// The job the writer was on when it stopped may have failed since the pulse.
 	player_save_pipeline_pulse();
 	std::vector<persistence_job_owner> left = persistence_writer_pending_owners();
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		for (const auto &[pid, pending] : pending_world_quests)
+		{
+			(void)pending;
+			const persistence_job_owner owner(persistence_job_kind::player, pid);
+			if (std::find(left.begin(), left.end(), owner) == left.end())
+				left.push_back(owner);
+		}
+	}
 	divine_boon_runtime_pulse();
 	if (divine_boon_runtime_pending())
 		left.emplace_back(persistence_job_kind::divine_boon, 1);
@@ -450,7 +690,8 @@ bool player_save_pipeline_load_held(int pid)
 		return false;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
-		if (trade_player_pid == static_cast<uint32_t>(pid))
+		if (trade_player_pid == static_cast<uint32_t>(pid) ||
+		    pending_world_quests.count(pid))
 			return true;
 	}
 	return player_save_worker_pid_pending(pid) ||
@@ -477,6 +718,58 @@ void player_save_pipeline_reset_for_tests(void)
 	accepting = false;
 	trade_player_pid = 0;
 	trade_capture = {};
+	pending_world_quests.clear();
+}
+
+bool player_save_pipeline_world_quest_pending(int pid)
+{
+	std::lock_guard<std::mutex> lock(pipeline_mutex);
+	return pending_world_quests.count(pid) != 0;
+}
+
+bool player_save_pipeline_submit_world_quest(
+	P_char ch, const player_pending_world_quest &quest,
+	std::function<bool(P_char, const player_pending_world_quest &)> committed)
+{
+	const auto required = PLAYER_COMPONENT_STATUS |
+			      (quest.reward_items.empty() ?
+				       0 :
+				       PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY);
+	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 || !quest.present || !committed ||
+	    (ch->only.pc->unloaded_components & required) || quest.escrow_fee < 0 ||
+	    quest.fallback_only || (quest.awaiting_reward && quest.escrow_fee) ||
+	    (quest.final_kill_reward && !quest.awaiting_reward) ||
+	    (!quest.awaiting_reward && !quest.reward_items.empty()) ||
+	    (quest.reward_items.empty() != (quest.reward_encoded_size == 0)))
+		return false;
+	const int pid = GET_PID(ch);
+	try
+	{
+		{
+			std::lock_guard<std::mutex> lock(pipeline_mutex);
+			if (!accepting || !health.initialized || pending_world_quests.count(pid) ||
+			    pending_world_quests.size() >= PLAYER_SAVE_PIPELINE_MAX_SNAPSHOTS)
+				return false;
+			pending_world_quests.emplace(
+				pid, std::make_shared<pending_world_quest_save>(
+					     quest, std::move(committed), 0, nullptr,
+					     std::chrono::steady_clock::time_point{}, false));
+		}
+		const int room = ch->in_room == NOWHERE ? NOWHERE : world[ch->in_room].number;
+		const auto result =
+			player_save_pipeline_request(ch, PLAYER_COMPONENT_STATUS, RENT_CRASH, room);
+		if (result == player_save_pipeline_result::queued ||
+		    result == player_save_pipeline_result::coalesced)
+			return true;
+	}
+	catch (const std::bad_alloc &)
+	{
+		std::lock_guard<std::mutex> lock(pipeline_mutex);
+		++health.capture_failures;
+	}
+	std::lock_guard<std::mutex> lock(pipeline_mutex);
+	pending_world_quests.erase(pid);
+	return false;
 }
 
 bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade_snapshot &trade)

@@ -15,20 +15,20 @@
 #ifndef DURIS_FRAG_CAP_CONFIG_H
 #define DURIS_FRAG_CAP_CONFIG_H
 
+#include "combat/frag_cap.h"
+
 struct frag_cap_config
 {
 	int cap_floor_level;
-	int cap_reset_level;
-	int cap_maximum_level;
-	int unlock_timer_days;
-	int unlock_victim_levels_below;
-	int unlock_minimum_share_points;
+	int legacy_maximum_level;
+	int round_hours;
 	int hardcore_levels_beyond_cap;
 };
 
 void boot_frag_cap_config(void);
 const struct frag_cap_config *frag_cap_config_get(void);
-int frag_cap_config_reset_level(void);
 int frag_cap_config_hardcore_level_cap(int normal_cap);
+
+frag_cap_policy frag_cap_config_policy(void);
 
 #endif

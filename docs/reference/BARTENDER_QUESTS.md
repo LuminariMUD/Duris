@@ -3,7 +3,7 @@
 Bartender quests are generated, paid ASK/KILL assignments handled by the
 `world_quest` NPC procedure. This is the standalone reference for their player
 commands, selection policy, rewards, recovery, persistence, configuration, and
-validation, checked against source revision `b2b6dfb7f` on 2026-10-30. The
+validation, updated for issue #500 on 2026-10-31. The
 configuration values describe this checkout, not a verified production runtime.
 
 Each character has its own assignment and completion history. These are separate
@@ -27,7 +27,7 @@ and [Verification](#verification) for executable checks.
   quest giver.
 - [world_quest_policy.c](../../src/world/world_quest_policy.c) and
   [world_quest_policy_math.h](../../src/world/world_quest_policy_math.h): cached
-  catalogs, reward pools, target suitability, route proofs, and selection bounds.
+  catalogs, reward pools, target suitability, geographic membership, and selection bounds.
 - [actcomm.c](../../src/cmd/actcomm.c) and
   [fight.c](../../src/combat/fight.c): the ASK and killer/group KILL hooks.
 - [sql.c](../../src/sql/sql.c) and
@@ -72,9 +72,11 @@ randomize ASK/KILL order and try the other type if necessary; level 50+
 purchases select KILL only. There is no player command to request one kind.
 A purchase captures the real origin room and bartender VNUM before charging.
 Failed selection returns the fee. Purchase and sharing check allowance;
-completion consumes it. There is no elapsed-time quest deadline: the saved
-start time controls abandonment cost, not automatic expiry. Level changes do
-not reroll the accepted type, target band, level, or kill quota.
+completion consumes it. An unavailable history read is reported separately from
+a known exhausted allowance and does not charge for a new task.
+There is no elapsed-time quest deadline: the saved start time controls abandonment
+cost, not automatic expiry. Level changes do
+not reroll the accepted type, target, scope level, or kill quota.
 
 An ASK assignment completes when `do_ask()` reaches the matching NPC in the
 advertised zone. Use `ask <target> <message>` with a nonempty message; the
@@ -102,7 +104,7 @@ saved accepted quest level, and `N` the original KILL quota.
   If it cannot be instantiated, `create_random_eq()` uses current level `C`.
   The resulting item has `ITEM_SECRET`, `ITEM_INVISIBLE`, and `ITEM_NODROP`
   removed and `ITEM_NOREPAIR` added. The KILL reward goes to the completing
-  character through the grant service, not onto a corpse or on every kill.
+  character through the player-save transaction, not onto a corpse or on every kill.
 - **XP:** `quest_exp_reward()` truncates `EXP_NOTCH(character) * band_multiplier`
   to an integer using current level `C`. A notch is
   `max(new_exp_table[C + 1] / 10, 1)` for mortal levels. ASK requests this full
@@ -125,20 +127,24 @@ Arena, guild, and safe-room checks can suppress XP. With `toggle experience`
 enabled, a positive mortal credit prints `Quest EXP:` using the actual credited
 amount. Ordinary combat XP is separate from the bartender per-kill award.
 
-Reward calls have an observable order: ASK/legacy claims attempt the item,
-mercenary money, and epics before XP; the final KILL applies per-kill XP before
-the item, money, and epics. A level change during that XP call can therefore
-affect subsequent current-level checks and the level recorded in history.
+Completion captures the scalar reward amounts at the completing interaction.
+The detached item, completion history, and a pending-reward marker commit together
+through the player-save transaction (MariaDB or the flatfile authority journal).
+The final KILL XP is credited before the remaining reward is calculated; the
+completed task retains those reward values for retry. Other remaining rewards
+and task reset wait for confirmed item publication. A rejected capture keeps the
+task recoverable; admitted work holds it against duplicate turn-ins and retries
+failed writes/publication. Failure to create an item also keeps the task and
+earned kills.
+If this happens on the final KILL, a completed-task marker lets a bartender
+retry the reward without requiring another kill or awarding that kill's XP twice.
 
-Item-grant acceptance is a queue/submission result, not proof of durable item
-delivery. An immediate submission rejection extracts the item and reports that
-the ownership authority is busy; failure to create any item returns no item.
-An accepted queued grant can settle later through the ownership service.
-The quest handler does not wait for an item-completion callback: it continues
-other rewards, requests a history record, and resets the task even when the
-item attempt failed. History-write failures likewise do not restore the quest.
-These operations form no atomic reward bundle and provide no quest-level retry
-entitlement for a missing item.
+If the process stops after commit but before publication, login restores the
+item from the saved inventory. The completed-task marker preserves the captured
+remaining scalar rewards for a bartender claim without creating another item
+or recording history again. The marker temporarily stores XP, epics and copper
+in the completed task's receiver, shares and credited-kill fields; these fields
+resume their ordinary meanings when the task is reset.
 
 ## Catalog, target, and route policy
 
@@ -195,13 +201,17 @@ guaranteed final target distribution after live eligibility/history failures.
 
 ### Live targets
 
-Targets use the inclusive level band `[L - 4, L + 5]` for both the cached
-prototype and live actor. A per-request index uses actual destination zones,
+KILL targets use the inclusive level band `[L - 4, L + 5]` for both the cached
+prototype and live actor. ASK targets instead require both levels below 62,
+without a player-relative level band. The zone-average window still applies
+to both kinds. A per-request index uses actual destination zones,
 not prototype ownership. Each instance must match a direct unconditional 100%
 `M` reset in a resetting zone, with a positive maximum, at its saved birthplace.
 Birthplace and current room must be in the same actual zone. Mixed
-conditional/rare/random-table sources and inaccessible staging births stay
-ineligible. Followers, mounts/other mastered mobs, summoned instances, charmed
+conditional/rare/random-table sources stay ineligible. Targets currently in
+restricted staging rooms are excluded; a private birthplace alone does not
+disqualify an ordinary-reset NPC currently in an eligible public room.
+Followers, mounts/other mastered mobs, summoned instances, charmed
 mobs, and conjured pets are excluded; targets must be alive with positive HP
 and at ground height (`z_cord == 0`). Both kinds need player-specific visibility.
 
@@ -212,39 +222,52 @@ shopkeepers, teachers, guild golems, ignored mobs, prototypes at or above
 capped at usable count minus one.
 
 ASK requires exactly one loaded instance globally (`mob_index.number == 1`),
-a cached level below `MAXLVL`, speaking ability in both cached and live forms,
+cached and live levels below `MAXLVL`, speaking ability in both forms,
 a live awake target, and a non-silent, non-underwater destination. Below
 accepted level 31, invisible/concealed/hidden/ectoplasmic ASK targets remain
 excluded even if the
 player could see them. The actor must be able to speak; aggression toward that
 actor and intercepting mobile/quest procedures reject a new assignment.
-A shopkeeper qualifies only when its resolved shop has no delegate procedure.
+A shopkeeper qualifies only when its resolved shop has no delegate procedure or
+an audited ambient Bloodstone delegate that ignores ASK. Actual quest interceptors and unaudited ASK handlers remain excluded.
+Travel procedures, including Quietus's crew-room LIST/HIRE procedure, are not
+quest eligibility checks.
 
-### Route proof and request bounds
+### Geography and request bounds
 
-One bounded read-only route context proves ordinary outbound and return travel
-from the captured origin to both the reset and current rooms. It follows
-ordinary exits, including closed, unspiked doors that can be opened. Secret,
-blocked, walled, locked, trapped, or castle/map-barred edges are excluded; keys
-do not authorize locked edges. Closed/private zones, restricted rooms, hazardous
-sectors, falls, currents, room affects, and unaudited procedures can prevent a
-proof. It does not invoke scripts, ferries, portals, movement commands, or combat.
+Assignment and accepted-task validation do not prove an outward or return route.
+Doors, locks, keys, secret exits, walls, barriers, traps, scripts, transport,
+terrain and flight/boat/waterbreathing requirements do not disqualify an
+otherwise eligible target. Players travel using normal game rules. No quest
+request executes movement or transport scripts.
 
-Accepted levels 11–29 stay in a resolved surface continent or directed
-Underdark map component, with interiors required to resolve to one region and
-reach a map boundary. They cannot use flight, boats, or waterbreathing to extend
-that contract. Level 30+ may use current flight/waterbreathing affects and a
-carried or equipped boat; this adds no ferry or teleport support.
-Unknown scripts and exhausted budgets cannot grant a new target. A proved
-route is an eligibility check, not a promise of safe combat or escort. The map
-entrance comes from the proved route and is cached before purchase; the map
-remains paid. Selection never spawns a prototype or moves the observer.
-Live target probes and completion-history checks each have a request-wide
-budget of 32; room/edge/actor work shares a two-million-operation bound and
-route graphs have a 65,536-room bound. Previously completed target VNUMs are
-excluded across ASK/KILL types, zones, and levels, using all retained history;
-a history-read error stops assignment. Bounded selection may report no usable
-target without having tried every possible target in the loaded world.
+Accepted levels 11–29 use the union of the origin's attached surface region
+and connected Underdark map component. Quietus (1734) and Bloodstone (74339)
+may assign targets in either local region. Level 30 removes this local scope
+restriction; it does not remove zone-average, target, reward or mapless rules.
+
+The boot catalog uses surface continent identities and undirected authored
+map-to-map adjacency for Underdark components, ignoring travel conditions.
+Interior zones attach to the nearest authored zone boundary for each family
+separately, allowing nearby connector zones without flooding every connected
+interior. Multiple entrances in the same region agree; tied boundaries in
+different regions remain unresolved for that family. Surface and Underdark
+attachments do not conflict. Interiors cannot merge Underdark components.
+Ambiguous geography preserves accepted work as unproven; a known matching
+family still permits the task even if the other family is ambiguous.
+Geographic membership applies to a target's actual zone, including disconnected
+rooms, without requiring a path to either its reset or current room.
+Closed/private destination zones and restricted current target rooms remain
+excluded, independently of transit conditions.
+
+Map hints use geographic entrances and identify a location, not a guaranteed
+route. Selection does not spawn a prototype or move the observer.
+Target probes and history checks each retain a request-wide limit of 32.
+Live-character/visibility/shop-check work retains a two-million-operation bound;
+there is no route-search or route-room budget. Previously completed target
+VNUMs stay excluded across types, zones and levels using all retained history.
+A history-read failure stops assignment. Bounded selection may report no
+usable target without trying every candidate in the loaded world.
 
 `createQuest()` distinguishes no eligible zone from no usable target. The
 payment continuation captures stable bartender/origin VNUMs rather than a live
@@ -255,8 +278,14 @@ persisted by the player's save.
 If catalog construction throws, it fails closed and latches the failure for
 that process. Requests do not rebuild the catalog or scan prototypes to bypass
 it. Content, reset provenance, reward-policy, and map-cache changes require a
-new boot catalog; live actor locations and current travel conditions are
-rechecked per request.
+new boot catalog; live actor locations and target interactions are rechecked per request.
+
+ASK checks the command interceptors at the target room: its room procedure,
+other awake NPC handlers, room objects, and the player's carried/equipped
+objects. Unknown handlers make an accepted task unproven and prevent new
+assignment until the interaction can be verified. Audited passive handlers
+remain eligible. This bounded audit never executes a procedure or checks the
+travel route.
 
 ## Recovery, maps, and sharing
 
@@ -266,36 +295,36 @@ rechecked per request.
 interactions, and no-argument GMCP status sends, including the initial status.
 A proven world-invalid incomplete quest becomes inactive with
 `quest_replacement_due=1`. Temporary player limitations,
-unknown scripts, and exhausted proof budgets do not alone cancel an assignment.
+unknown ASK handlers, and exhausted target-check budgets do not alone cancel an assignment.
 Completed legacy work remains claimable. Old assignments without an origin need
-rebinding at a real bartender before verified directions can be supplied.
+rebinding at a real bartender to establish their accepted local scope.
 
 The availability results distinguish:
 
-- `valid`: the remaining task is usable from its accepted origin now.
-- `blocked`: player conditions such as blindness, sleep, silence, or missing
-  travel abilities prevent use; the accepted task remains.
-- `unproven`: a script, aggression-dependent interaction, unresolved geography,
-  or work bound prevents a reliable verdict; the task remains.
+- `valid`: enough suitable targets meet the accepted scope and interaction rules.
+- `blocked`: current player/target conditions such as blindness, sleep or silence
+  prevent interaction; the accepted task remains.
+- `unproven`: an ASK handler, aggression-dependent interaction, unresolved geography,
+  or target-check bound prevents a reliable verdict; the task remains.
 - `needs_origin`: suitable work exists but the legacy task has no recorded
   origin. Ask a bartender to check it; a valid check binds that room as origin.
 - `unavailable`: the world cannot support the remaining work under this
   contract, for example a removed target, inadequate qualifying supply, or a
-  definitive outbound/return route loss. Refresh grants replacement entitlement.
+  geographic mismatch. Refresh grants replacement entitlement. Route changes
+  never grant replacement.
 
-A separate maximum-capability and optimistic-procedure pass distinguishes a
-hard world-route loss from missing player gear or an unproved script. All
-passes share the existing route-work bound. Accepted KILL supply is checked
-against remaining kills; the new-purchase minus-one rule is not applied again.
-Route proof uses the saved origin even after the character travels elsewhere.
+Accepted KILL supply is checked against remaining kills; the new-purchase
+minus-one rule is not applied again. Scope uses the saved accepted level and
+origin even after the character travels or levels. Validation uses one target
+check, with no capability-dependent route passes.
 
 Ask any real bartender for `quest` to redeem a replacement without a new fee or
 daily penalty, before the new-purchase level and allowance gates. Replacement
-still requires a provable target/route and loaded target-exclusion history.
+still requires an eligible target and loaded target-exclusion history.
 It retains accepted type/level, earned kills, original quota, receiver, remaining
 shares, purchased-map flag, and original start time. If no
 replacement qualifies, the entitlement remains. A successful replacement updates
-the target, zone, giver, origin, and proved map entrance to the new interaction;
+the target, zone, giver, origin, and geographic map entrance to the new interaction;
 the same target may be selected again if it has become usable. Retained kills
 do not award XP again. Returning supply does not automatically reactivate a
 pending entitlement: ask for `quest` to select the replacement.
@@ -318,14 +347,14 @@ original start time (including offline time), and `decay_hours` defaults to 24.
 At or beyond that period the multiplier stays at 1%, not zero. The
 `world.quest` difficulty dial does not scale map or abandonment charges.
 
-Buying a map requires a valid assignment and a verified entrance; it costs
-`10 * current_level` copper and can be done at any bartender. A route can be
+Buying a map requires a valid assignment and a known geographic entrance; it costs
+`10 * current_level` copper and can be done at any bartender. A target can be
 valid without a map
 entrance, in which case the bartender refuses the map without charging.
 A failed post-payment map check refunds the fee. Maps are a paid, repeatable
-view of the proved entrance, not a step-by-step route to the NPC. After buying
+view of the geographic entrance, not a step-by-step route to the NPC. After buying
 one, type `quest` to view it again without another fee. The purchase flag survives
-temporary blockage and free replacement; unproved directions are withheld until
+temporary interaction blockage and free replacement; hints are withheld until
 a later valid refresh.
 
 ### Sharing and kill credit
@@ -338,7 +367,7 @@ high/low bounds of the recipient's current level (inclusive ±6 in this checkout
 There is no separate recipient level-11 check in the sharing branch.
 
 The recipient needs remaining daily allowance, no retained completion for that
-target VNUM, and a usable target/route checked from the original accepted origin
+target VNUM, and a suitable target checked against the original accepted scope
 using the accepted level and remaining KILL count. An active assignment or
 replacement entitlement cannot be overwritten. Sharing copies the original
 giver, receiver, start time, type, level, target, origin, quota, and already
@@ -353,7 +382,7 @@ assignment. They need not have received those assignments through sharing.
 A PC-pet kill can reach that group path as well; the pet itself cannot hold a
 PC quest. Conjured-pet victims do not invoke this credit path. ASK credits only
 the character whose ask reaches the target. These hooks match type, target
-VNUM, and actual zone; they do not rerun route, level, reset-provenance, or
+VNUM, and actual zone; they do not rerun level, reset-provenance, or
 selection-suitability checks at completion time.
 
 ## Client status and maps
@@ -453,6 +482,10 @@ the partial kill dirty; persistence then depends on another STATUS save trigger.
 
 Completion history is separate: SQL uses `world_quest_accomplished` with an
 asynchronous login/lazy-read cache; flatfile uses `<FLATFILE_ROOT>/players/<pid>.world-quests`.
+SQL history reads return completion timestamps and count them against the UTC day
+when the cache is published; a read finishing after midnight cannot consume the
+new day's allowance with yesterday's completions. A completion/confirmed
+abandonment rolls an existing cache to the current day before adding its count.
 Daily counts use UTC days and, below level 50, only completions at the character's
 current level; level 50+ uses the whole day's count. Records store current
 level when recorded, not accepted quest level. Leveling below 50 can therefore
@@ -460,15 +493,14 @@ open allowance in the new level's bucket, but does not clear target exclusions.
 Successful completion and a paid abandonment of progressed KILL work create
 history; purchasing, sharing, and free replacement do not.
 
-SQL queues the history INSERT and updates its in-memory cache without waiting
-for durable database success. Flatfile writes a versioned, SHA-256-checked
-history under a per-player lock with atomic replacement, with a 100,000-entry
-limit; it stores target, level, and time rather than SQL's giver/reward details.
-Neither path makes history and the player's reset/rewards one transaction.
-The flatfile wrapper reports write failure through `persistence_alert()`;
-the SQL caller ignores the INSERT queue's return value. The task still clears
-on a history failure, and a restart can expose missing allowance/exclusion
-history. Target exclusions use all retained history.
+Completion history and the associated player after-image commit together in
+SQL or the flatfile authority journal. A progressed KILL abandonment reserves
+its fee until that transaction commits. If history cannot be written, a guarded
+fallback saves unrelated player changes with the pre-completion task and purse;
+a committed completion cannot be undone by replaying that fallback. Flatfile
+history is versioned and SHA-256 checked, with a 100,000-entry limit; it stores
+target, level, and time rather than SQL's giver/reward details. Target exclusions
+use all retained history.
 Unready SQL history and corrupt/unreadable flatfile history block new assignment
 and sharing checks. A genuinely absent flatfile history file starts as empty
 history. Current assignment snapshots do not reconstruct lost history.
@@ -486,7 +518,7 @@ Use the saved STATUS state when those omitted fields matter.
 For a refusal or missing reward, distinguish these cases:
 
 - No new task: check level, known remaining allowance, wallet value, catalog
-  readiness, local geography, and target/route/history eligibility. Levels 11–29
+  readiness, local geography, and target/history eligibility. Levels 11–29
   receive the combined "No suitable local task" refusal; higher-level feedback
   distinguishes no eligible zone from no suitable live target. A failed paid
   selection refunds the fee and publishes no new assignment.
@@ -494,9 +526,9 @@ For a refusal or missing reward, distinguish these cases:
   clearing work. The progress and map purchase are retained. A proved world
   invalidation offers the free replacement path instead of paid abandonment.
 - Missing reward item: check the ownership-service rejection/publication logs
-  as well as the quest completion history. SQL's recorded reward describes an
-  accepted item submission, not confirmation that delivery settled. Resetting
-  the assignment neither recreates the item nor reverses a completion record.
+  and quest completion history. A committed completion saves the reward item
+  and a recovery marker together; ask a bartender to claim remaining rewards
+  after reconnecting. Resetting the assignment does not reverse history.
 
 ## Verification
 
@@ -509,12 +541,13 @@ the owning source paths above as well. Run each focused script below with
 - [test_world_quest_dynamic_policy.py](../../tests/async/test_world_quest_dynamic_policy.py):
   source contracts for cached catalog/selection, plus executable policy math.
 - [test_world_quest_routes.py](../../tests/async/test_world_quest_routes.py):
-  production traversal on controlled room graphs, including directed returns,
-  geography, doors/barriers/traps, capabilities, procedures, and work bounds.
+  production geography on controlled authored graphs, including both regions,
+  one-way links, nearest boundaries, disconnected rooms, ambiguity and large worlds.
 - [test_world_quest_target_retries.py](../../tests/async/test_world_quest_target_retries.py):
   production creation, live target checks, bartender parsing/payment, sharing,
   legacy claims, and recovery against controlled world/reset fixtures. Its
-  71 scenarios also exercise level boundaries, history/probe caps, and refunds.
+  300 scenarios also exercise level/zone boundaries, geography, route immunity,
+  history/probe caps and refunds, followed by 10 SQL-history scenarios.
 - [test_world_quest_reward_policy.py](../../tests/async/test_world_quest_reward_policy.py):
   executable withholding math and source contracts for reward filtering,
   sharing limits, fees, and one-item completion policy.
@@ -540,6 +573,16 @@ case exercises paid maps, invalidation, relogin/restart, and durable free
 replacement. Test-only `DURIS_WORLD_QUEST_BACKEND` selects `mariadb`, `flatfile`,
 or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
+`reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
+reports, consent/sharing/maps with locked exits, restart state for both players,
+and Bloodstone ASK/KILL travel, using disposable fixtures. Sharing is enabled
+only in that run's private properties copy.
+`history` constructs yesterday-only completion history and an aged Tharnadia
+task, then checks real abandonment/regrant and restart. Its disposable MariaDB
+session clock constructs old-query-day/new-publication-day results and is
+restored before the completion marker; flatfile supplies the equivalent
+past-day-history control. `history-failure-restart` rejects history writes,
+credits an unrelated wallet change, and checks recovery through restart and retry.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 
@@ -551,8 +594,17 @@ DURIS_WORLD_QUEST_BACKEND=flatfile DURIS_WORLD_QUEST_JOURNEY=gameplay \
 
 That focused run qualifies one backend/case, not the full default matrix.
 The gameplay debugger sets the disposable Chaos actor's requested level and
-preferred first random quest kind, then inspects production route/provenance
-results without moving actors. Explicit `chaos questroom` commands place/fund
+selects an otherwise eligible zone/prototype with ordinary outward/return paths
+for completion testing. Production selection still validates the chosen target.
+Explicit fixture setup restores routine NPCs to their authored reset rooms and
+pins them against wandering, without changing levels, statistics, population
+counts or provenance. The same preparation runs after the partial-progress
+restart without changing saved player state.
+ASK completion fixtures use NPC levels outside the KILL band. The probe's
+navigation helper is independent of eligibility; special-travel assignments
+are covered by native policy fixtures. Tagged score requests synchronize
+observations with the command response and following prompt.
+Explicit `chaos questroom` commands place/fund
 the fixture at its bartender; outbound/return travel and target interactions
 use normal commands. The recovery probe deliberately closes eligible zones
 in memory to force invalidation and a no-candidate wait; a fresh server boot

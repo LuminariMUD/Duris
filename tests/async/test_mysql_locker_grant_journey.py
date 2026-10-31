@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -55,7 +56,8 @@ def run(binary):
                                            cwd=runtime, env=env, stdout=output, stderr=subprocess.STDOUT)
                 deadline = time.monotonic() + 180
                 while b'Entering game loop.' not in output_path.read_bytes()[offset:]:
-                    assert process.poll() is None and time.monotonic() < deadline, 'locker world failed to boot'
+                    assert process.poll() is None and time.monotonic() < deadline, ('locker world failed to boot: '
+                            + output_path.read_text(errors='replace')[-1800:])
                     time.sleep(.1)
 
             def stop():
@@ -119,7 +121,15 @@ def run(binary):
 
             def leave(name):
                 command(clients[name], 'open door')
-                act(name, 'north', 'applying magic locks')
+                deadline = time.monotonic() + 30
+                while True:
+                    clients[name].send('north')
+                    outcome, _ = clients[name].expect_any(('applying magic locks', 'private chests are still being secured'), timeout=30)
+                    if outcome == 'applying magic locks':
+                        command(clients[name], 'score')
+                        return
+                    assert time.monotonic() < deadline, 'private chest save never became durable'
+                    time.sleep(.1)
 
             def denied(name, target=OWNER):
                 response = act(name, 'enter locker ' + target, DENIED)
@@ -132,6 +142,47 @@ def run(binary):
                            f"WHERE l.locker_name IN ('{ACCOUNT_LOCKER}','{LEGACY_LOCKER}') "
                            "ORDER BY l.locker_name,li.obj_uid")
 
+            def manage(text, expected):
+                deadline = time.monotonic() + 30
+                client = clients[OWNER]
+                while True:
+                    evidence['last_command'] = OWNER + ': ' + text
+                    start = len(client.transcript)
+                    client.send(text)
+                    outcome, _ = client.expect_any((expected, 'still pending', 'still being secured'), timeout=30)
+                    command(client, 'score')
+                    if outcome == expected:
+                        return bytes(client.transcript[start:]).decode(errors='replace')
+                    assert time.monotonic() < deadline, 'management never became available'
+                    time.sleep(.1)
+
+            def funds(name):
+                act(name, 'save', 'Save complete for ' + name + '.')
+                values = sql("SELECT p.copper+10*p.silver+100*p.gold+1000*p.platinum,"
+                             "b.bank_copper+10*b.bank_silver+100*b.bank_gold+1000*b.bank_platinum "
+                             "FROM player_data p JOIN account_banks b ON b.account_name=p.account_name "
+                             f"AND b.racewar=p.racewar WHERE p.name='{name}'")
+                return tuple(map(int, values.split('\t')))
+
+            def inventory_uids(name, vnum=677):
+                act(name, 'save', 'Save complete for ' + name + '.')
+                return set(sql("SELECT i.obj_uid FROM player_items i JOIN player_data p ON p.pid=i.pid "
+                               f"WHERE p.name='{name}' AND i.vnum={vnum}").splitlines())
+
+            def movements():
+                rows = sql("SELECT a.char_name,a.chest_id,a.action_type,a.item_short "
+                           "FROM private_chest_log a JOIN lockers l ON l.id=a.locker_id "
+                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND a.action_type IN (3,4) ORDER BY a.id")
+                return [row.split('\t') for row in rows.splitlines()]
+
+            def private_graph():
+                rows = sql("SELECT c.id,i.obj_uid,COALESCE(parent.obj_uid,0),i.vnum "
+                           "FROM private_chests c JOIN lockers l ON l.id=c.locker_id "
+                           "JOIN locker_items i ON i.chest_id=c.id "
+                           "LEFT JOIN locker_items parent ON parent.id=i.container_id "
+                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND c.chest_name='vault' ORDER BY i.obj_uid")
+                return [tuple(map(int, row.split('\t'))) for row in rows.splitlines()]
+
             try:
                 boot()
                 for name, account in ACCOUNTS.items():
@@ -141,9 +192,21 @@ def run(binary):
                                              character=name, email=name.lower() + '@example.invalid')
                     act(name, 'save', 'Save complete for ' + name + '.')
                 stop()
-                sql(f"UPDATE player_data SET level=62,highest_level=62 WHERE name='{GOD}'")
+                sql(f"UPDATE player_data SET level=62,highest_level=62,platinum=5000 WHERE name='{GOD}'")
                 sql(f"UPDATE player_data SET level=20,highest_level=20,platinum=50 "
                     f"WHERE name IN ('{OWNER}','{VISITOR}','{OTHER}')")
+                # Funding fixtures are seeded offline; gameplay changes use real commands.
+                sql(f"UPDATE player_data SET platinum=300 WHERE name='{VISITOR}'")
+                sql("INSERT INTO account_banks(account_name,racewar,bank_copper,bank_silver,bank_gold,bank_platinum) "
+                    f"VALUES ('{ACCOUNTS[OWNER]}',1,3,2,3,4000),('{ACCOUNTS[VISITOR]}',1,0,0,0,300) "
+                    "ON DUPLICATE KEY UPDATE bank_copper=VALUES(bank_copper),bank_silver=VALUES(bank_silver),"
+                    "bank_gold=VALUES(bank_gold),bank_platinum=VALUES(bank_platinum)")
+                sql("INSERT INTO currency_bank_baseline(bank_id,opening_copper,opening_silver,"
+                    "opening_gold,opening_platinum,opening_revision) "
+                    "SELECT id,bank_copper,bank_silver,bank_gold,bank_platinum,bank_revision "
+                    f"FROM account_banks WHERE account_name IN ('{ACCOUNTS[OWNER]}','{ACCOUNTS[VISITOR]}') AND racewar=1 "
+                    "ON DUPLICATE KEY UPDATE opening_copper=VALUES(opening_copper),opening_silver=VALUES(opening_silver),"
+                    "opening_gold=VALUES(opening_gold),opening_platinum=VALUES(opening_platinum),opening_revision=VALUES(opening_revision)")
                 # A separate imported personal locker with stable ownership, not a converted account row.
                 sql("INSERT INTO lockers(locker_name,owner_pid,racewar,race) "
                     f"SELECT '{LEGACY_LOCKER}',pid,racewar,race FROM player_data WHERE name='{OWNER}'")
@@ -161,20 +224,121 @@ def run(binary):
                 denied(OTHER, OTHER + '.locker')
                 assert sql("SELECT COUNT(*) FROM lockers WHERE locker_name LIKE 'account.%'") == '0'
                 enter(VISITOR, 'AcCoUnT.Guestacct.1.LoCkEr', items=0)
+                insufficient = funds(VISITOR)
+                assert max(insufficient) < 500000 <= sum(insufficient), insufficient
+                act(VISITOR, 'eq chest create combinedfunds', 'purchase is unavailable')
+                assert funds(VISITOR) == insufficient
+                assert sql("SELECT COUNT(*) FROM private_chests c JOIN lockers l ON l.id=c.locker_id "
+                           "WHERE l.locker_name='account.guestacct.1.locker' AND c.is_public=0") == '0'
+                check('combined funds cannot pay when neither wallet nor bank covers the whole fee')
                 leave(VISITOR)
+                # Restore a light purse through the ATM; mortal movement spills over 200 coins.
+                act(VISITOR, 'deposit all', 'Your account contains:')
+                act(VISITOR, 'withdraw 50 platinum', 'Your account contains:')
                 assert sql("SELECT COUNT(*) FROM lockers WHERE locker_name='account.guestacct.1.locker'") == '1'
-                # The live starter-kit catalog may already supply a mace. Keep the
-                # two fixture lockers' marker counts independent of that catalog.
-                command(clients[OWNER], 'drop all.mace')
-                assert 'mace' not in command(clients[OWNER], 'inventory').lower()
+                # Keep the fixture's marker counts and free carrying slots independent
+                # of the live starter kit; private pickup checks use normal mortal limits.
+                command(clients[OWNER], 'drop all')
+                command(clients[VISITOR], 'drop all')
+                assert 'Nothing.' in command(clients[OWNER], 'inventory')
                 for _ in range(3):
                     command(clients[GOD], 'load obj 677')
                     act(GOD, 'give mace ' + OWNER, 'Ok.')
+                act(GOD, 'give 500 platinum ' + OWNER, 'Ok.')
                 enter(OWNER, OWNER, items=0)
                 assert sql(f"SELECT COUNT(*) FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'") == '1'
                 check('first named and mixed-case canonical owner entry creates only the authenticated account side')
                 act(OWNER, 'drop mace', 'You drop')
                 act(OWNER, 'grant add ' + VISITOR, 'given access')
+                wallet_before = funds(OWNER)
+                act(OWNER, 'eq chest create vault fixture-secret', "Private chest 'vault' created")
+                assert funds(OWNER) == (wallet_before[0] - 500000, wallet_before[1])
+                # Entry legitimately spilled some of the 500p funding onto this room's floor.
+                act(OWNER, 'get all.coins', 'You get')
+                locker_id = sql(f"SELECT id FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'")
+                chest_id = sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='vault'")
+                before = funds(OWNER)
+                manage('eq chest create denominations   ', "Private chest 'denominations' created")
+                assert funds(OWNER) == (before[0] + 323, before[1] - 500323)
+                assert sql(f"SELECT password_hash IS NULL FROM private_chests WHERE locker_id={locker_id} AND chest_name='denominations'") == '1'
+                assert sql(f"SELECT bank_copper,bank_silver,bank_gold,bank_platinum FROM account_banks "
+                           f"WHERE account_name='{ACCOUNTS[OWNER]}' AND racewar=1") == '0\t0\t0\t3500'
+                paid = funds(OWNER)
+                manage('eq chest delete denominations', "Chest 'denominations' deleted")
+                assert funds(OWNER) == paid
+                for invalid in ('public', 'chest', 'private', 'in', 'from', 'with', 'the', 'on', 'at', 'to', 'bad.name', 'x' * 33):
+                    manage('eq chest create ' + invalid, 'Chest names must use 1-32')
+                manage('eq chest create VAULT', 'Failed to create chest. No payment was taken')
+                manage('eq chest create toolong ' + 'P' * 73, 'at most 72 bytes')
+                manage('eq chest password vault ' + 'P' * 73, 'at most 72 bytes')
+                manage('eq chest delete public', 'Chest not found')
+                assert funds(OWNER) == paid
+                long_name = 'x' * 32
+                for name in ('staging', long_name, 'third', 'fourth'):
+                    manage('eq chest create ' + name, "Private chest '" + name + "' created")
+                assert 'Private chests: 5/5' in act(OWNER, 'eq chest list', 'Your chests:')
+                five_paid = funds(OWNER)
+                manage('eq chest create sixth', 'maximum of 5 private chests')
+                assert funds(OWNER) == five_paid
+                assert sql(f"SELECT COUNT(*) FROM private_chests WHERE locker_id={locker_id} AND is_public=0") == '5'
+                for name in (long_name, 'third', 'fourth'):
+                    manage('eq chest delete ' + name, "Chest '" + name + "' deleted")
+                assert funds(OWNER) == five_paid
+                assert sql(f"SELECT COUNT(*) FROM private_chests WHERE locker_id={locker_id} AND is_public=1") == '1'
+                staging_id = sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='staging'")
+                check('whole-wallet and whole-bank fees, denomination change, names, duplicate, five/six limit and no refund')
+                for password in ('P' * 72, 'replacement-secret', 'none'):
+                    manage('eq chest password vault ' + password, 'Password removed' if password == 'none' else 'Password set')
+                    stored = sql(f"SELECT COALESCE(password_hash,'') FROM private_chests WHERE id={chest_id}")
+                    assert (len(stored) == 60) if password != 'none' else stored == ''
+                    room = act(OWNER, 'look room', 'A private chest labeled')
+                    marker = next(line for line in room.splitlines() if "'vault'" in line and 'labeled' in line)
+                    assert ('(locked)' in marker) == (password != 'none'), marker
+                leave(OWNER)
+                enter(VISITOR, OWNER, items=1)
+                act(VISITOR, 'open vault', "You open the 'vault' chest")
+                act(VISITOR, 'close', 'You close the chest')
+                leave(VISITOR)
+                enter(OWNER, items=1)
+                manage('eq chest password vault fixture-secret', 'Password set')
+                check('real password set/change/remove, committed room marker and password-free guest open')
+                owner_inventory = inventory_uids(OWNER)
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'put mace vault', 'must open that private chest first')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'put mace vault', 'Ok.')
+                moved_uid, = owner_inventory - inventory_uids(OWNER)
+                manage('eq chest delete vault', 'non-empty or unavailable private chest')
+                assert 'mace' in act(OWNER, 'look in vault', 'contains:')
+                act(OWNER, 'get mace vault', 'You get')
+                act(OWNER, 'close', 'You close the chest')
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'eq log', 'Recent locker activity:')
+                locker_id = sql(f"SELECT id FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'")
+                chest_id = sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='vault'")
+                # Exact latest-50 membership/order when timestamps tie, including replay.
+                values = ','.join(f"({locker_id},{chest_id},'Orderprobe',3,'probe',"
+                                  f"UNHEX(LPAD(HEX({i}),32,'0')),'2030-01-01 00:00:00')"
+                                  for i in range(1, 61))
+                insert = "INSERT IGNORE INTO private_chest_log (locker_id,chest_id,char_name,action_type,item_short,event_id,logged_at) VALUES " + values
+                sql(insert)
+                sql(insert)
+                sql(f"UPDATE private_chest_log SET item_short=CONCAT('order-id-',id) "
+                    f"WHERE locker_id={locker_id} AND char_name='Orderprobe'")
+                assert sql(f"SELECT COUNT(*) FROM private_chest_log WHERE locker_id={locker_id} AND char_name='Orderprobe'") == '60'
+                expected_ids = sql(f"SELECT id FROM private_chest_log WHERE locker_id={locker_id} "
+                                   "AND char_name='Orderprobe' ORDER BY logged_at DESC,id DESC LIMIT 50").splitlines()
+                history = act(OWNER, 'eq log', 'Recent locker activity:')
+                assert re.findall(r'order-id-(\d+)', history) == expected_ids, history
+                sql(f"DELETE FROM private_chest_log WHERE locker_id={locker_id} AND char_name='Orderprobe'")
+                check('history returns the exact latest 50 IDs when timestamps tie; replay is deduplicated')
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + VISITOR, 'Ok.')
+                guest_uid, = inventory_uids(VISITOR)
+                owner_moves = movements()
+                assert [row[:3] for row in owner_moves] == [[OWNER, chest_id, '3'], [OWNER, chest_id, '4']], owner_moves
+                assert all(row[3].startswith('[uid ' + moved_uid + '] ') for row in owner_moves), owner_moves
+                check('owner must explicitly open private chest; single put/get and close use real commands')
                 help_text = act(OWNER, 'help locker', 'account locker takes precedence')
                 assert '<character>.locker' in help_text and 'account.<account>.<side>' in help_text
                 assert "account's" in act(OWNER, 'help grant', "account's")
@@ -186,7 +350,32 @@ def run(binary):
                 leave(OWNER)
                 denied(OTHER)  # Also safe while the owner's terminal locker save may be pending.
                 enter(VISITOR, 'VaUlToWnEr')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                act(VISITOR, 'get mace vault', 'must open that private chest first')
+                act(VISITOR, 'put mace vault', 'must open that private chest first')
+                act(VISITOR, 'eq chest list', 'Sort your own locker')
+                act(VISITOR, 'eq log', 'Sort your own locker')
+                act(VISITOR, 'open vault wrong-secret', 'Wrong password')
+                act(VISITOR, 'open vault fixture-secret', "You open the 'vault' chest")
+                act(VISITOR, 'put mace vault', 'Ok.')
+                assert 'mace' in act(VISITOR, 'look in vault', 'contains:')
+                command(clients[VISITOR], 'close door')
+                assert 'mace' in act(VISITOR, 'look in vault', 'contains:')
+                act(VISITOR, 'get mace vault', 'You get')
+                act(VISITOR, 'put all.mace vault', 'You put')
+                act(VISITOR, 'get all.mace vault', 'You get')
+                act(VISITOR, 'close', 'You close the chest')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                check('granted mortal guest: wrong/correct password, inspection/movement, management/log denial, ordinary door close')
                 leave(VISITOR)
+                assert sql("SELECT COUNT(*) FROM locker_items i JOIN private_chests c ON c.id=i.chest_id "
+                           "JOIN lockers l ON l.id=c.locker_id "
+                           f"WHERE l.locker_name='{ACCOUNT_LOCKER}' AND c.is_public=0") == '0'
+                audited = movements()
+                assert [row[:3] for row in audited] == [[OWNER, chest_id, '3'], [OWNER, chest_id, '4']] + [
+                    [VISITOR, chest_id, action] for action in ('3', '4', '3', '4')], audited
+                assert all(row[3].startswith('[uid ' + guest_uid + '] ') for row in audited[2:]), audited
+                check('exact owner/guest single/bulk item rows; rejected and automatic movements create no events')
                 check('mortal character grant -> leave -> mixed-case named account entry; occupancy privacy')
 
                 enter(OWNER, LEGACY_LOCKER, items=0)
@@ -255,7 +444,7 @@ def run(binary):
                 clients.pop(OWNER).close()
                 login(OWNER)
                 enter(OWNER, items=2)
-                assert command(clients[OWNER], 'look in chest').lower().count('mace') >= 1
+                assert command(clients[OWNER], 'look in unsorted').lower().count('mace') >= 1
                 leave(OWNER)
                 expected_contents = '\n'.join(sorted(previous_contents.splitlines() +
                                                      [f'{ACCOUNT_LOCKER}\t{marker_uid}\t677']))
@@ -269,8 +458,88 @@ def run(binary):
                 assert 'pid=0 intent=5' not in file_log
                 check('real idle disconnect preserves both locker UIDs, owner identity and re-entry')
 
+                # Exercise ordinary nested bags, both EMPTY directions, two-step private
+                # transfer and partial coins before leaving a filled private graph.
+                before_extended = movements()
+                for vnum, word in ((96443, 'bag'), (677, 'mace'), (677, 'mace')):
+                    command(clients[GOD], f'load obj {vnum}')
+                    act(GOD, 'give ' + word + ' ' + OWNER, 'Ok.')
+                bag_uid, = inventory_uids(OWNER, 96443)
+                carried_maces = inventory_uids(OWNER)
+                assert len(carried_maces) == 2, carried_maces
+                enter(OWNER, items=2)
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'put mace vault', 'Ok.')
+                transferred_uid, = carried_maces - inventory_uids(OWNER)
+                act(OWNER, 'empty vault staging', 'could not start')
+                act(OWNER, 'get mace vault', 'You get')
+                act(OWNER, 'open staging', "You open the 'staging' chest")
+                act(OWNER, 'put mace staging', 'Ok.')
+                act(OWNER, 'get mace staging', 'You get')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'put all.mace bag', 'You put')
+                act(OWNER, 'empty bag vault', 'You moved 2 items')
+                act(OWNER, 'empty vault bag', 'You moved 2 items')
+                act(OWNER, 'get mace bag', 'You get')
+                inventory_uids(OWNER)
+                child_uid = sql("SELECT child.obj_uid FROM player_items child "
+                                "JOIN player_items parent ON parent.id=child.container_id "
+                                f"WHERE parent.obj_uid={bag_uid}")
+                assert child_uid in carried_maces, child_uid
+                act(GOD, 'at ' + OWNER + ' give 4 copper ' + OWNER, 'Ok.')
+                act(OWNER, 'put 3 copper vault', 'coins into')
+                act(OWNER, 'put 1 copper vault', 'coins into')
+                act(OWNER, 'get coins vault', 'There were:')
+                act(OWNER, 'put 2 copper vault', 'coins into')
+                act(OWNER, 'get all.coins vault', 'You get')
+                act(OWNER, 'put bag vault', 'Ok.')
+                sorting = act(OWNER, 'eq sort wield body', 'gremlin')
+                assert 'Invalid sort option' not in sorting, sorting
+                assert 'mace' in act(OWNER, 'look in wield', 'contains:')
+                sorting = act(OWNER, 'eq sort none', 'gremlin')
+                assert 'Invalid sort option' not in sorting, sorting
+                assert 'bag' in act(OWNER, 'look in vault', 'contains:')
+                before_delete = funds(OWNER)
+                manage('eq chest delete staging', "Chest 'staging' deleted")
+                assert funds(OWNER) == before_delete
+                manage('eq chest create staging', "Private chest 'staging' created")
+                assert sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='staging'") != staging_id
+                history = act(OWNER, 'eq log', 'Recent locker activity:')
+                assert 'deleted chest #' + staging_id in history, history
+                leave(OWNER)
+                extended = movements()[len(before_extended):]
+                assert len(extended) == 14, extended
+                expected_first = [(chest_id, '3'), (chest_id, '4'), (staging_id, '3'), (staging_id, '4')]
+                assert [(row[1], row[2]) for row in extended[:4]] == expected_first, extended
+                assert all(row[3].startswith('[uid ' + transferred_uid + '] ') for row in extended[:4]), extended
+                for rows, action in ((extended[4:6], '3'), (extended[6:8], '4')):
+                    assert all(row[1:3] == [chest_id, action] for row in rows), rows
+                    assert {re.match(r'\[uid (\d+)\] ', row[3])[1] for row in rows} == carried_maces, rows
+                coins = extended[8:13]
+                assert [row[1:3] for row in coins] == [[chest_id, action] for action in ('3', '3', '4', '3', '4')], coins
+                coin_texts = [re.sub(r'^\[uid \d+\] ', '', re.sub(r'&(?:[+-].|[nN])', '', row[3])) for row in coins]
+                assert coin_texts == ['3c', '1c', '4c', '2c', '2c'], coins
+                assert extended[13][1:3] == [chest_id, '3'] and extended[13][3].startswith('[uid ' + bag_uid + '] '), extended
+                assert all(row[0] == OWNER for row in extended), extended
+                graph = sorted(((int(chest_id), int(bag_uid), 0, 96443),
+                                (int(chest_id), int(child_uid), int(bag_uid), 677)), key=lambda row: row[1])
+                assert private_graph() == graph, private_graph()
+                assert sql("SELECT COUNT(*)=COUNT(DISTINCT event_id) FROM private_chest_log "
+                           f"WHERE locker_id={locker_id}") == '1'
+                assert sql("SELECT COUNT(*) FROM private_chest_log "
+                           f"WHERE locker_id={locker_id} AND (item_short LIKE '%secret%' OR item_short LIKE '%$2%')") == '0'
+                enter(OWNER, items=2)
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                assert 'bag' in act(OWNER, 'look in vault', 'contains:')
+                leave(OWNER)
+                assert private_graph() == graph
+                evidence['private_graph_before_restart'] = graph
+                evidence['movement_rows_before_restart'] = movements()
+                check('exact nested/empty/partial-coin rows, no sorting/rejection events, deleted identity and filled private re-entry')
+
                 before_restart = contents()
-                assert len(before_restart.splitlines()) == 4, before_restart
+                assert len(before_restart.splitlines()) == 6, before_restart
                 grants = sql("SELECT owner,visitor FROM locker_access ORDER BY owner,visitor")
                 evidence['contents_before_restart'] = before_restart
                 evidence['grants_before_restart'] = grants
@@ -287,10 +556,30 @@ def run(binary):
                 denied(OTHER)  # A persisted direct grant never overrides racewar.
                 enter(OWNER, items=2)
                 denied(OTHER)  # No opposite-side occupant disclosure either.
+                assert private_graph() == graph
+                act(OWNER, 'look in vault', 'must open that private chest first')
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                act(OWNER, 'get bag vault', 'You get')
+                assert 'mace' in act(OWNER, 'look in bag', 'contains:')
+                assert inventory_uids(OWNER, 96443) == {bag_uid}
+                assert sql("SELECT child.obj_uid FROM player_items child JOIN player_items parent ON parent.id=child.container_id "
+                           f"WHERE parent.obj_uid={bag_uid}") == child_uid
+                act(OWNER, 'put bag vault', 'Ok.')
                 leave(OWNER)
                 enter(VISITOR, OWNER, items=2)
-                assert 'mace' in command(clients[VISITOR], 'look in chest')
+                assert 'mace' in command(clients[VISITOR], 'look in unsorted')
+                act(VISITOR, 'look in vault', 'must open that private chest first')
+                act(VISITOR, 'open vault fixture-secret', "You open the 'vault' chest")
+                act(VISITOR, 'get bag vault', 'You get')
+                assert 'mace' in act(VISITOR, 'look in bag', 'contains:')
+                act(VISITOR, 'put bag vault', 'Ok.')
                 leave(VISITOR)
+                assert private_graph() == graph
+                restarted_moves = movements()[-4:]
+                assert [row[:3] for row in restarted_moves] == [[name, chest_id, action] for name in (OWNER, VISITOR) for action in ('4','3')], restarted_moves
+                assert all(row[3].startswith('[uid ' + bag_uid + '] ') for row in restarted_moves), restarted_moves
+                evidence['root_movement_rows_after_restart'] = restarted_moves
+                check('filled nested private graph survives cold restart and authorized owner/guest retrieval with exact root UID history')
                 denied(VISITOR, LEGACY_LOCKER)
                 check('cold restart preserves both lockers and grants; opposite-side idle/occupied entry denied')
 
@@ -320,6 +609,10 @@ def run(binary):
                 denied(VISITOR, guild_target + '.locker')
                 enter(OWNER, guild_target.upper() + '.LoCkEr', items=0)
                 denied(VISITOR, guild_target + '.locker')
+                act(OWNER, 'eq chest create shared guild-secret', "Private chest 'shared' created")
+                act(OWNER, 'open shared', "You open the 'shared' chest")
+                act(OWNER, 'close', 'You close the chest')
+                check('guild member with management rights explicitly opens a password chest without its secret')
                 leave(OWNER)
                 command(clients[GOD], 'load obj 677')
                 act(GOD, 'give mace ' + OWNER, 'Ok.')
@@ -343,12 +636,56 @@ def run(binary):
                 assert sql(f"SELECT COUNT(*) FROM locker_access WHERE owner='{guild_target}.locker'") == '0'
                 assert contents() == before_restart
                 check('canonical guild membership, creation, contents and fees match guild; nonmember/prestige/parole gates hold')
+
+                # A failed private INSERT must not let a player checkpoint erase the
+                # previously saved inventory payload. Kill the server before recovery.
+                if inventory_uids(OWNER, 677):
+                    act(OWNER, 'drop all.mace', 'You drop')
+                command(clients[GOD], 'load obj 677')
+                act(GOD, 'give mace ' + OWNER, 'Ok.')
+                crash_uid, = inventory_uids(OWNER, 677)
+                act(OWNER, 'save', 'Save complete for ' + OWNER + '.')
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                enter(OWNER, items=2)
+                act(OWNER, 'open vault', "You open the 'vault' chest")
+                sql("""DELIMITER //
+                       CREATE TRIGGER reject_private_chest_checkpoint BEFORE INSERT ON locker_items
+                       FOR EACH ROW BEGIN
+                         IF NEW.chest_id=%s THEN
+                           SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='private chest checkpoint rejection';
+                         END IF;
+                       END//
+                       DELIMITER ;
+                    """ % chest_id)
+                act(OWNER, 'put mace vault', 'Ok.')
+                assert 'mace' not in command(clients[OWNER], 'inventory').lower()
+                save_start = len(clients[OWNER].transcript)
+                act(OWNER, 'save', 'Save queued for ' + OWNER + '.')
+                time.sleep(2)
+                command(clients[OWNER], 'score')
+                assert b'Save complete for ' + OWNER.encode() not in clients[OWNER].transcript[save_start:]
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                assert sql(f"SELECT COUNT(*) FROM locker_items WHERE obj_uid={crash_uid}") == '0'
+                process.kill()
+                process.wait(timeout=30)
+                process = None
+                for client in clients.values():
+                    client.close()
+                clients.clear()
+                boot()
+                login(OWNER)
+                login(GOD)
+                assert crash_uid in inventory_uids(OWNER, 677)
+                assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={crash_uid}") == '1'
+                assert sql(f"SELECT COUNT(*) FROM locker_items WHERE obj_uid={crash_uid}") == '0'
+                sql('DROP TRIGGER reject_private_chest_checkpoint')
+                check('failed private INSERT keeps saved source across rejected checkpoint and SIGKILL restart')
                 stop()
-                target = ROOT / 'bin/analysis/issue-234'
+                target = ROOT / 'bin/qualification/issue490'
                 target.mkdir(parents=True, exist_ok=True)
                 (target / 'journey.json').write_text(json.dumps(evidence, indent=2) + '\n')
             except Exception as error:
-                target = ROOT / 'bin/analysis/issue-234' / f'failure-{time.time_ns()}'
+                target = ROOT / 'bin/qualification/issue490' / f'failure-{time.time_ns()}'
                 target.mkdir(parents=True)
                 (target / 'evidence.json').write_text(json.dumps(evidence, indent=2) + '\n')
                 shutil.copy2(output_path, target / 'server.out')

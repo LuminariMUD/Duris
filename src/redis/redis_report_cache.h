@@ -43,10 +43,8 @@ bool redis_invalidate_fraglist(void);
 // leaderboard's top and lowest fraggers matching filter (SQL), as rows tagged 'top' and
 // 'low' (the tag, char_name and total_frags). For the writer.
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows);
-// The fraglist's level-cap header from those rows, split around its timer: before ends
-// with "Timer: " and after follows the timer. Returns when the next level can be unlocked.
-time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_size, char *after,
-			   size_t after_size);
+// Shared leaderboard totals only. Live cap/progress is rendered for each viewer.
+void fraglist_totals_header(const sql_rows &rows, char *output, size_t size);
 
 void redis_cache_epic_zones(void);
 void redis_cache_epic_zones_output(const char *output);

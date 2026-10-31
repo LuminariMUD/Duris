@@ -127,12 +127,14 @@ bool account_login_password_pulse(struct descriptor_data *d);
 /* Close every session on acct_name except one, sending notice (may be NULL) first. */
 void close_account_sessions_named(const char *acct_name, struct descriptor_data *except,
 				  const char *notice);
-/* Account recovery on a freshly read account: fence + fingerprint checks, hash swap,
- * write, kick others. */
-account_recovery_apply_outcome account_apply_recovered_password(
+/* Borrows fresh for the call; checks its fence and fingerprint, then applies the
+ * password durably before publishing it and disconnecting other sessions. */
+using account_recovery_apply_done =
+	std::function<void(struct descriptor_data *, account_recovery_apply_outcome)>;
+void account_apply_recovered_password(
 	struct acct_entry *fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
-	struct descriptor_data *keep_session);
+	struct descriptor_data *keep_session, account_recovery_apply_done done);
 /* Reads the named account: on the writer, behind the saves queued before it, while d
  * waits with its input held (MariaDB), or at once (flat-file). done runs while d is still
  * connected, with the account, which it then owns, or null when there is none; ok is

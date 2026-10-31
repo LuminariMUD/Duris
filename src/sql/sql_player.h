@@ -9,6 +9,7 @@
 #include "sql/sql_work.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -119,9 +120,17 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
 #define CHEST_ACTION_GET 4
 #define CHEST_ACTION_FAIL 5
 
+struct sql_chest_log_entry;
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int locker_id, int chest_id,
+								const char *char_name,
+								int action_type,
+								const char *item_short);
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &entry, bool success);
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short);
-bool sql_save_private_chest_items(int locker_id, int chest_id, P_obj chest_obj);
+void sql_chest_log_pulse(void);
+bool sql_chest_log_pending(int locker_id);
+bool sql_chest_log_available(void);
 // A locker's items from the rows its entry read on the writer (storage_lockers.c):
 // the chain of chest `chest_id`, or, with chest_obj, placed in that private chest.
 P_obj sql_locker_items_from_rows(const sql_rows &rows, int locker_id, int chest_id,

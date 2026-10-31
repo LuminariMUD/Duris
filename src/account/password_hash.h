@@ -35,7 +35,8 @@ extern "C"
 	struct password_login_job *password_login_submit(const char *password, const char *hash,
 							 int upgrade_legacy);
 	/* NULL hash selects hash-only; replacement hashes a new password only after
-	 * verification succeeds. sha256 selects the private-chest legacy format. */
+	 * verification succeeds. sha256 selects private-chest verification, including legacy
+	 * SHA-256 and leading command separators; each candidate is at most 72 bytes. */
 	struct password_login_job *password_work_submit(const char *password, const char *hash,
 							const char *replacement, int upgrade_legacy,
 							int sha256);

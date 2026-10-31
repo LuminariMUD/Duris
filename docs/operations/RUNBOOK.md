@@ -848,10 +848,33 @@ terminal mail failures means the relay, its credentials, or its certificate chai
 fix the relay or `MAIL_*` settings and restart; never work around it by weakening TLS
 verification, which the source contracts forbid.
 
+Before activating account recovery in production:
+
+1. Deploy the reviewed recovery changes and configure the `MAIL_*` settings in
+   [CONFIGURATION.md](CONFIGURATION.md#account-recovery-mail), respecting the `.env`
+   loader's shell-safety constraints. Recovery itself needs no schema migration.
+2. With owner approval for the configuration change and restart, set `MAIL_ENABLED=TRUE`
+   and restart normally. Confirm the enabled boot line; it proves configuration validation
+   and worker startup, not SMTP authentication or mailbox delivery.
+3. Use an authorized test account with an accessible saved email address. Enter its name
+   at the login screen, type `?`, retrieve the email, enter the code, choose and confirm a
+   new password, then log in with it. Confirm the old password fails and other sessions
+   for that account disconnect. The game never emails an existing password.
+4. Check the redacted mail outcome and completion lines. `sent` means the relay accepted
+   the message; confirm actual inbox delivery separately, including spam placement.
+   Do not paste reset codes, passwords or SMTP credentials into logs or tickets.
+5. To disable recovery, set `MAIL_ENABLED=FALSE` and restart. This discards outstanding
+   codes and queued mail; it does not undo passwords already saved. Accounts without an
+   accessible saved email address still require immortal assistance.
+
+Local qualification uses a fake SMTP relay and disposable storage. It does not certify
+the production relay credentials, trusted certificate chain or recipient-domain delivery.
+
 Useful checks:
 
 ```bash
 tail -f logs/log/status                 # boot + DB issues
+rg 'HOMETOWN ALARM:' logs/log/status     # alarm trigger, town/room, NPC vnum, race and pet master
 rg 'NEVENT BUDGET WINDOW' logs/log/status # deferred and late events, a line per 75 s
 rg 'telemetry_health' logs/log/status  # telemetry writer state and alerts
 ```

@@ -79,7 +79,8 @@ assert "nevent_periodic_continue_after(1);" in dirty
 
 surnames = function_body(drannak, "void event_update_surnames(")
 assert "SURNAME_UPDATE_BATCH_SIZE = 4" in surnames
-assert surnames.count("update_shipfrags();") == 1
+assert surnames.count("shipObjHash.get_first") == 1
+assert "shipfrags[" not in surnames
 assert "character->runtime_id" in surnames
 assert "find_character_by_runtime_id" in surnames
 assert "getLeaderBoardPtsWithShipFrags" in surnames
@@ -89,7 +90,8 @@ assert "long getLeaderBoardPtsWithShipFrags(" in hardcore
 ship_refresh = function_body(ship_base, "void update_shipfrags()")
 ship_score = function_body(drannak, "int calculate_shipfrags(")
 assert ship_refresh.count("shipObjHash.get_first") == 1
-assert "for (int i = 0; i < 20; i++)" in ship_score
+assert ship_score.count("shipObjHash.get_first") == 1
+assert "shipfrags[" not in ship_score
 
 complete = function_body(periodic, "void nevent_periodic_complete(")
 continuation = function_body(periodic, "void nevent_periodic_continue_after(")

@@ -20,6 +20,7 @@ bool divine_boon_cargo_eligible(const divine_boon_slot &)
 #include "player/player_snapshot_repository.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "sql/sql_player.h"
+#include "ships/ship_npc_ai.h"
 
 #include <cassert>
 #include <cerrno>
@@ -40,8 +41,11 @@ int eq_levistone_weight(const ShipData *)
 }
 const PortData ports[NUM_PORTS] = { { 111, "Customs Port", 0 } };
 static int inspection_rolls = 0;
-int number(int, int)
+static int theft_rolls = 0;
+int number(int low, int high)
 {
+	if (low == 40 && high == 60)
+		return theft_rolls++ % 2 ? 40 : 60;
 	++inspection_rolls;
 	return 0;
 }
@@ -53,7 +57,18 @@ void debug(const char *, ...) {}
 char buf[MAX_STRING_LENGTH];
 
 void act_to_all_in_ship(P_ship, const char *) {}
-void act_to_all_in_ship_f(P_ship, const char *, ...) {}
+static std::string ship_message;
+static P_ship message_ship;
+void act_to_all_in_ship_f(P_ship ship, const char *format, ...)
+{
+	char text[2048];
+	va_list args;
+	va_start(args, format);
+	vsnprintf(text, sizeof(text), format, args);
+	va_end(args);
+	ship_message = text;
+	message_ship = ship;
+}
 std::string strip_ansi(const char *value)
 {
 	return value;
@@ -202,8 +217,17 @@ static uint64_t market_generation = 0;
 static P_ship live_ship = nullptr;
 static player_pending_trade_snapshot captured_trade;
 static bool capture_reserved = false;
-const ShipTypeData ship_type_data[MAXSHIPCLASS] = { { ._mxcargo = 10 },
-						    { ._mxcargo = 10, ._kind = SHK_WARSHIP } };
+const ShipTypeData ship_type_data[MAXSHIPCLASS] = {
+	{ ._mxcargo = 10 },
+	{ ._mxcargo = 10, ._kind = SHK_WARSHIP },
+	{ ._mxweight = 55, ._mxcargo = 10, ._kind = SHK_MERCHANT },
+	{ ._mxweight = 75, ._mxcargo = 20, ._kind = SHK_MERCHANT }
+};
+NPCShipAI::NPCShipAI(P_ship s, P_char ch)
+	: ship(s)
+	, debug_char(ch)
+{
+}
 const divine_boon_state *divine_boon_runtime_state()
 {
 	return &schedule;
@@ -1010,6 +1034,43 @@ int main()
 	assert(divine_trade_runtime_save_busy(&linked_ship));
 	divine_trade_runtime_ship_saved(2);
 	assert(!divine_trade_runtime_save_busy(&linked_ship));
+
+	// Pirate theft retires both stolen and destroyed crates from the real book.
+	boon.id = 102;
+	auto raided = buy.book_after;
+	raided.boon_id = 102;
+	raided.first_full_hold = 20;
+	raided.lots[0].purchased_quantity = raided.lots[0].remaining_quantity = 20;
+	raided.lots[0].invoice_basis = raided.lots[0].remaining_basis = 2000;
+	boot_books = { raided };
+	ship.m_class = SH_KETCH;
+	for (auto &slot : ship.slot)
+		slot.clear();
+	ship.slot[0].type = SLOT_CARGO;
+	ship.slot[0].index = 2;
+	ship.slot[0].val0 = 20;
+	ship.slot[0].val1 = 2000;
+	ship.save_pending = false;
+	assert(divine_trade_runtime_boot(102));
+	ShipData pirate{};
+	pirate.m_class = SH_CLIPPER;
+	pirate.race = NPCSHIP;
+	pirate.target = &ship;
+	for (auto &slot : pirate.slot)
+		slot.clear();
+	NPCShipAI ai(&pirate);
+	ship_message.clear();
+	ai.steal_target_cargo();
+	assert(SHIP_CARGO_LOAD(&pirate) == 10 && pirate.slot[0].val1 == 0);
+	assert(ship.slot[0].val0 == 4 && ship.slot[0].val1 == 400 && ship.save_pending);
+	const auto after_raid = divine_trade_runtime_book(raided.account, 102);
+	assert(after_raid.lots.size() == 1 && after_raid.lots[0].remaining_quantity == 4 &&
+	       after_raid.lots[0].remaining_basis == 400 && after_raid.consumed == raided.consumed);
+	assert(message_ship == &ship &&
+	       ship_message.find("steal 10 crates and destroy 6") != std::string::npos);
+	assert(!divine_trade_runtime_save_busy(&ship));
+	write_ship(&ship);
+	assert(!ship.save_pending && !divine_trade_runtime_busy(&ship));
 
 	while (alice.ch.affected)
 	{

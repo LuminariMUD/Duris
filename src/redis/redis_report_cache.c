@@ -18,14 +18,12 @@
 #include "world/db.h"
 #include "core/structs.h"
 #include "world/epic.h"
-#include "combat/frag_cap_config.h"
 #include "core/prototypes.h"
 #include "redis/redis_cache_store.h"
 #include "redis/redis_command_observability.h"
 #include "redis/redis_connection.h"
 #include "redis/redis_key_registry.h"
 #include "redis/redis_namespace.h"
-#include "persistence/report_cache_codec.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -285,18 +283,11 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 		return NULL;
 
 	output[0] = '\0';
-	char buf[2048], name[256], before[1024], after[256];
+	char buf[2048], name[256], totals[512];
 	int frags, count;
 	float fragnum;
-
-	const time_t cap_deadline =
-		fraglist_cap_header(rows, before, sizeof before, after, sizeof after);
-	if (cap_deadline <= 0)
-	{
-		free(output);
-		return NULL;
-	}
-	snprintf(output, 65536, "%s&+WTop Fraggers\n\n", after);
+	fraglist_totals_header(rows, totals, sizeof(totals));
+	snprintf(output, 65536, "FRAGLIST2\n%s&+WTop Fraggers\n\n", totals);
 
 	count = 0;
 	for (const sql_row &row : rows)
@@ -341,11 +332,7 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 	}
 
 	strcat(output, "\r\n");
-	char *payload = report_cache_countdown_encode(before, output,
-						      static_cast<uint64_t>(time(NULL)),
-						      static_cast<uint64_t>(cap_deadline));
-	free(output);
-	return payload;
+	return output;
 }
 #endif
 
@@ -354,26 +341,27 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
 {
 	const std::string where = filter && *filter ? std::string(" AND ") + filter : "";
-	return !sql_select(connection,
-			   "SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
-			   "GROUP BY racewar",
-			   rows) &&
-	       !sql_select(
+	return !sql_select(
 		       connection,
-		       sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
-				  "WHERE deleted_at IS NULL%s ORDER BY total_frags DESC LIMIT %d",
-				  where.c_str(), max_frag_size),
+		       sql_format("SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
+				  "WHERE level <= %d GROUP BY racewar",
+				  MAXLVLMORTAL),
 		       rows) &&
-	       !sql_select(
-		       connection,
-		       sql_format("SELECT 'low', char_name, total_frags FROM frag_leaderboard "
-				  "WHERE deleted_at IS NULL%s ORDER BY total_frags ASC LIMIT %d",
-				  where.c_str(), max_frag_size),
-		       rows);
+	       !sql_select(connection,
+			   sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
+				      "WHERE deleted_at IS NULL AND level <= %d%s "
+				      "ORDER BY total_frags DESC LIMIT %d",
+				      MAXLVLMORTAL, where.c_str(), max_frag_size),
+			   rows) &&
+	       !sql_select(connection,
+			   sql_format("SELECT 'low', char_name, total_frags FROM frag_leaderboard "
+				      "WHERE deleted_at IS NULL AND level <= %d%s "
+				      "ORDER BY total_frags ASC LIMIT %d",
+				      MAXLVLMORTAL, where.c_str(), max_frag_size),
+			   rows);
 }
 
-time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_size, char *after,
-			   size_t after_size)
+void fraglist_totals_header(const sql_rows &rows, char *output, size_t size)
 {
 	long totals[MAX_RACEWAR] = { 0 };
 	for (const sql_row &row : rows)
@@ -383,25 +371,9 @@ time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_siz
 			if (racewar >= 0 && racewar < MAX_RACEWAR)
 				totals[racewar] = atol(row[2]);
 		}
-	int open_level, good_level, evil_level;
-	time_t next_update;
-	get_level_cap_info(&open_level, &good_level, &evil_level, &next_update);
-	snprintf(before, before_size,
-		 "&+YFrag Level Cap:&+w %d - All, &+Y%d&+w - Good, &+R%d&+w - Evil\n"
-		 "&+WGoodies Total Frags - &+w%.2f, &+REvils Total Frags - &+w%.2f\n"
-		 "&+YTimer:&+w ",
-		 open_level, good_level, evil_level, totals[RACEWAR_GOOD] / 100.0,
-		 totals[RACEWAR_EVIL] / 100.0);
-	const struct frag_cap_config *config = frag_cap_config_get();
-	if (open_level >= config->cap_maximum_level)
-		snprintf(after, after_size, "&+Y, all levels are open&n\n\n");
-	else
-		snprintf(after, after_size,
-			 "&+Y, then a frag of a level %d+ foe by the leading side (either side if "
-			 "tied), with at most %d of that side in the room, unlocks a level&n\n\n",
-			 open_level - config->unlock_victim_levels_below,
-			 100 / config->unlock_minimum_share_points);
-	return next_update;
+	snprintf(output, size,
+		 "&+WGoodies Total Frags - &+w%.2f, &+REvils Total Frags - &+w%.2f&n\n\n",
+		 totals[RACEWAR_GOOD] / 100.0, totals[RACEWAR_EVIL] / 100.0);
 }
 
 bool redis_report_cache_configure(const char *key_namespace, uint64_t epoch)
@@ -559,8 +531,11 @@ char *redis_get_fraglist(void)
 		return NULL;
 	const auto render = [](const char *payload, void *) -> char *
 	{
-		return report_cache_countdown_render(payload, static_cast<uint64_t>(time(NULL)),
-						     fraglist_cache_ttl_seconds);
+		// Redis owns freshness (TTL). Reject the retired cap/countdown framing.
+		constexpr char marker[] = "FRAGLIST2\n";
+		return payload && !strncmp(payload, marker, sizeof(marker) - 1) ?
+			       strdup(payload + sizeof(marker) - 1) :
+			       nullptr;
 	};
 	return redis_cache_store_transform(fraglist_key, render, NULL);
 #endif
