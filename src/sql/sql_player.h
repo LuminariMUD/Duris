@@ -9,6 +9,7 @@
 #include "sql/sql_work.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,12 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id);
 #define CHEST_ACTION_GET 4
 #define CHEST_ACTION_FAIL 5
 
+struct sql_chest_log_entry;
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int locker_id, int chest_id,
+								const char *char_name,
+								int action_type,
+								const char *item_short);
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &entry, bool success);
 bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
 			    const char *item_short);
 void sql_chest_log_pulse(void);

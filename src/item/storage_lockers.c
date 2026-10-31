@@ -683,29 +683,59 @@ static bool locker_private_chests_available(P_char ch)
 	return true;
 }
 
-void locker_record_movement(P_char actor, P_obj container, P_obj item, bool deposit,
-			    const char *description)
+LockerMovementAudit::LockerMovementAudit(P_char actor, P_obj source, P_obj target, P_obj item,
+					 const char *description)
 {
-	if (!container)
+	if (!actor || persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		return;
-	while (OBJ_INSIDE(container))
-		container = container->loc.inside;
-	StorageLocker *locker = locker_for_room_object(container);
-	LockerChest *chest = locker ? locker->FindChestForObject(container) : NULL;
-	if (!actor || !chest)
+	P_obj containers[] = { source, target };
+	for (size_t i = 0; i < 2; ++i)
+	{
+		P_obj container = containers[i];
+		if (!container)
+			continue;
+		while (OBJ_INSIDE(container))
+			container = container->loc.inside;
+		StorageLocker *locker = locker_for_room_object(container);
+		LockerChest *chest = locker ? locker->FindChestForObject(container) : NULL;
+		if (!chest)
+			continue;
+		std::string text = description ? description :
+						 (item && item->short_description ?
+							  item->short_description :
+							  "item");
+		if (item && !description && item->type == ITEM_MONEY)
+			text = coins_to_string(item->value[3], item->value[2], item->value[1],
+					       item->value[0], "");
+		if (item && !description)
+			text = "[uid " + std::to_string(item->obj_uid) + "] " + text;
+		auto entry = sql_prepare_chest_activity(
+			locker->GetLockerId(),
+			chest->IsPrivateChest() ? chest->GetChestId() : locker->GetPublicChestId(),
+			GET_NAME(actor), i == 0 ? CHEST_ACTION_GET : CHEST_ACTION_PUT,
+			text.c_str());
+		if (!entry)
+		{
+			m_ready = false;
+			return;
+		}
+		m_entries.push_back(std::move(entry));
+	}
+}
+
+LockerMovementAudit::~LockerMovementAudit()
+{
+	for (const auto &entry : m_entries)
+		sql_finish_chest_activity(entry, false);
+}
+
+void LockerMovementAudit::Commit(void)
+{
+	if (!m_ready)
 		return;
-	std::string text =
-		description ? description :
-			      (item && item->short_description ? item->short_description : "item");
-	if (item && !description && item->type == ITEM_MONEY)
-		text = coins_to_string(item->value[3], item->value[2], item->value[1],
-				       item->value[0], "");
-	if (item && !description)
-		text = "[uid " + std::to_string(item->obj_uid) + "] " + text;
-	sql_log_chest_activity(
-		locker->GetLockerId(),
-		chest->IsPrivateChest() ? chest->GetChestId() : locker->GetPublicChestId(),
-		GET_NAME(actor), deposit ? CHEST_ACTION_PUT : CHEST_ACTION_GET, text.c_str());
+	for (const auto &entry : m_entries)
+		sql_finish_chest_activity(entry, true);
+	m_entries.clear();
 }
 
 static P_char locker_char_or_error(StorageLocker *pLocker, P_char ch, const char *message)

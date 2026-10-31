@@ -9,7 +9,8 @@ Plan checkout: `/home/aiwithapex/projects/duris-issue-490`,
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
 That checkout predates the merged runtime code and retains the reviewed plan.
 Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`,
-`branch/issue-490-followup`, based on refreshed `origin/master` at `b737db202`.
+`branch/issue-490-audit-admission`, stacked on `branch/issue-490-followup`
+(PR #507), whose source baseline is refreshed master `b737db202`.
 The maintained implementation handoff is `docs/ongoing-projects/plan-issue-490.md`
 in that checkout; the shared master `plan.md` belongs to unrelated work.
 
@@ -344,3 +345,55 @@ are still integration questions, not fixed or disproved by this first delivery.
 Published first delivery: [PR #507](https://github.com/LuminariMUD/Duris/pull/507),
 `branch/issue-490-followup`, targeting master. The next dependent delivery will
 resolve audit admission using the existing movement and SQL fixtures.
+
+### Audit admission continuation (active)
+
+Active branch is now `branch/issue-490-audit-admission` in the follow-up checkout,
+stacked on PR #507 (`branch/issue-490-followup`, head `6a6182b0b`). The refreshed
+fault test controls the production event-ID generator through a linker wrapper;
+on the prior code it reproduced admission despite generation failure.
+
+The repair uses the existing SQL audit queue: reserve one/two immutable records
+before an item/coin/empty mutation; a small scoped `LockerMovementAudit` cancels
+uncommitted attempts and marks records ready only after successful movement.
+Prepared records count toward the same queue bound, cannot reach the writer, and
+release on failure. The existing SQL retry, deduplication and departure fence stay
+in force. Ordinary containers and flat-file public storage need no audit ticket.
+No new writer, schema, global cache or domain-command service is introduced.
+
+The production private-chest fixture passes controlled ID refusal, abandoned
+reservation, failure of the second record in a private-to-public move and accepted
+paired records, alongside its existing refusal/retry/metadata/save cases. The
+server build passes. The affected command fixtures are being extended/run to
+prove no item/coin mutation on refused admission (and wallet refund for coin-put
+publication after debit). This is work in progress, not a completed delivery.
+Bank/load and full command/funding/filled-private cold restart remain open.
+
+Audit-admission qualification completed on 2026-10-31:
+
+- Production private-chest ASan/UBSan regression passes event-ID failure, second-ID
+  failure, abandonment without publication, accepted paired events and the full
+  queue's last-slot case (no false first event or leaked reservation). Its existing
+  refused-writer/failed-receipt/retry checks still pass.
+- Actual put/get, whole/partial coin pickup, coin debit/publication/refund, empty
+  and corpse-haul fixtures pass. Added controlled admission refusal proves no
+  movement/credit/pile mutation; old-money PUT restores its prior wallet once.
+- `test_private_chest_lifecycle.py`: all 25 cases; container/weight: all 24 cases.
+- Disposable MySQL 8.0 locker command journey: all 14 groups pass, including exact
+  history ordering, real private transfers, idle save and cold restart. Report:
+  `bin/qualification/issue490/audit-admission-mysql-journey.json`; binary SHA256
+  `26e80815fa214f8c1be9e3a698db3b64c3fcf0725c3df86815e13325388e9b85`.
+- Fresh no-MySQL artifact build plus flat-file unsupported-private/public-storage
+  and restart journey pass (`audit-admission-flatfile-journey.log`).
+- Final `make -C src -j6` passes (`audit-admission-build-final.log`), as do four
+  item-command pipeline contracts, item-in-memory/account-bound/password contracts,
+  all 14 documentation contracts, changed-line formatting and Clang-Tidy 22.
+
+The socket/flat-file journeys precede only final formatting and preservation of
+`item_get_rejected` after a failed container delivery. The affected rejection
+boundary was rerun under ASan/UBSan (get finalizers and corpse haul), with a final
+successful server build; unchanged successful runtime paths reuse those journeys.
+The earlier metadata MariaDB report is retained as
+`bin/qualification/issue490/metadata-mariadb-journey.json` rather than overwritten
+by the MySQL report. Bank/load and expanded command/funding/private-graph restart
+proof remain outstanding; no complete-goal claim or production operation is made.

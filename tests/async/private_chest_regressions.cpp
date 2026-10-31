@@ -19,6 +19,19 @@ persistence_mode persistence_mode_get()
 	return PERSISTENCE_MODE_MARIADB_PRIMARY;
 }
 static uint64_t uid = 1;
+static int event_ids_before_failure = -1;
+extern "C" ssize_t __real_getrandom(void *, size_t, unsigned int);
+extern "C" ssize_t __wrap_getrandom(void *data, size_t length, unsigned int flags)
+{
+	if (event_ids_before_failure == 0)
+	{
+		errno = EIO;
+		return -1;
+	}
+	if (event_ids_before_failure > 0)
+		--event_ids_before_failure;
+	return __real_getrandom(data, length, flags);
+}
 static std::string output;
 static bool refuse = false;
 static player_save_apply_outcome write_outcome = player_save_apply_outcome::applied;
@@ -542,7 +555,9 @@ int main()
 			std::string label = retained.substr(prefix.size()) + character + "tail";
 			item->short_description = label.data();
 			const auto before = audit_writes.size();
-			locker_record_movement(&actor, object, item, true);
+			LockerMovementAudit audit(&actor, NULL, object, item);
+			assert(audit.Ready());
+			audit.Commit();
 			assert(audit_writes.size() == before + 1);
 			assert(audit_writes.back().first.find("'" + retained + "'") !=
 			       std::string::npos);
@@ -555,6 +570,71 @@ int main()
 			assert(!sql_chest_log_pending(7));
 		}
 		item->short_description = NULL;
+		// The movement gate must not admit an operation whose audit cannot be retained.
+		locker.SetCurrentChestId(55);
+		event_ids_before_failure = 0;
+		assert(locker_container_access_allowed(&actor, object));
+		{
+			LockerMovementAudit audit(&actor, NULL, object, item);
+			assert(!audit.Ready());
+		}
+		assert(!sql_chest_log_pending(7));
+		event_ids_before_failure = -1;
+		// An abandoned operation releases its reservation and submits no false event.
+		const auto before_cancel = audit_writes.size();
+		{
+			LockerMovementAudit audit(&actor, object, NULL, item);
+			assert(audit.Ready() && sql_chest_log_pending(7));
+			sql_chest_log_pulse();
+			assert(audit_writes.size() == before_cancel);
+		}
+		assert(!sql_chest_log_pending(7));
+		// Use the registered public wrapper for the supported private-to-public empty.
+		P_obj public_object = NULL;
+		for (auto candidate = world[0].contents; candidate;
+		     candidate = candidate->next_content)
+			if (auto registered = locker.FindChestForObject(candidate);
+			    registered && !registered->IsPrivateChest())
+				public_object = candidate;
+		assert(public_object);
+		event_ids_before_failure = 1;
+		{
+			LockerMovementAudit audit(&actor, object, public_object, item);
+			assert(!audit.Ready());
+		}
+		assert(!sql_chest_log_pending(7) && audit_writes.size() == before_cancel);
+		event_ids_before_failure = -1;
+		{
+			LockerMovementAudit audit(&actor, object, public_object, item);
+			assert(audit.Ready());
+			audit.Commit();
+		}
+		assert(audit_writes.size() == before_cancel + 2);
+		for (auto &write : audit_writes)
+		{
+			write.second->ok = true;
+			write.second->finished.store(true);
+		}
+		sql_chest_log_pulse();
+		assert(!sql_chest_log_pending(7));
+		// A two-sided move cannot consume the last slot and leave a false first event.
+		std::vector<std::shared_ptr<sql_chest_log_entry>> held;
+		for (int i = 0; i < 4095; ++i)
+		{
+			auto entry = sql_prepare_chest_activity(7, 55, "owner", CHEST_ACTION_PUT,
+								"held");
+			assert(entry);
+			held.push_back(std::move(entry));
+		}
+		const auto before_full = audit_writes.size();
+		{
+			LockerMovementAudit audit(&actor, object, public_object, item);
+			assert(!audit.Ready());
+		}
+		for (const auto &entry : held)
+			sql_finish_chest_activity(entry, false);
+		assert(audit_writes.size() == before_full && !sql_chest_log_pending(7) &&
+		       sql_chest_log_available());
 		// History renders the stored ID even after a later chest reuses the name.
 		locker_logcmd(&actor, NULL);
 		assert(log_done);

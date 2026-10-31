@@ -283,6 +283,12 @@ std::vector<std::string> sql_rename_character_statements(int, const char *, cons
 	return {};
 }
 
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int, int, const char *, int,
+								const char *)
+{
+	return {};
+}
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &, bool) {}
 bool sql_log_chest_activity(int /*locker_id*/, int /*chest_id*/, const char * /*char_name*/,
 			    int /*action_type*/, const char * /*item_short*/)
 {
@@ -2117,15 +2123,16 @@ std::string sql_delete_locker_statement(int owner_pid, int owner_assoc_id)
 // private chest functions
 // ============================================================================
 
-namespace
-{
-struct pending_chest_log
+struct sql_chest_log_entry
 {
 	int locker_id;
 	std::string statement;
 	std::shared_ptr<sql_write_receipt> receipt;
+	bool ready = false;
 };
-std::vector<pending_chest_log> chest_logs;
+namespace
+{
+std::vector<std::shared_ptr<sql_chest_log_entry>> chest_logs;
 }
 
 bool sql_chest_log_available(void)
@@ -2135,7 +2142,7 @@ bool sql_chest_log_available(void)
 bool sql_chest_log_pending(int locker_id)
 {
 	for (const auto &entry : chest_logs)
-		if (entry.locker_id == locker_id)
+		if (entry->locker_id == locker_id)
 			return true;
 	return false;
 }
@@ -2145,35 +2152,43 @@ void sql_chest_log_pulse(void)
 	size_t submitted = 0;
 	for (auto it = chest_logs.begin(); it != chest_logs.end();)
 	{
-		if (it->receipt && it->receipt->finished.load(std::memory_order_acquire))
+		auto &entry = *it;
+		if (!entry->ready)
 		{
-			if (it->receipt->ok)
+			++it;
+			continue;
+		}
+		if (entry->receipt && entry->receipt->finished.load(std::memory_order_acquire))
+		{
+			if (entry->receipt->ok)
 			{
 				it = chest_logs.erase(it);
 				continue;
 			}
-			it->receipt.reset();
+			entry->receipt.reset();
 		}
-		if (!it->receipt && submitted++ < 16)
+		if (!entry->receipt && submitted++ < 16)
 		{
 			auto receipt = std::make_shared<sql_write_receipt>();
-			if (sql_queue_statements({ it->statement }, receipt))
-				it->receipt = std::move(receipt);
+			if (sql_queue_statements({ entry->statement }, receipt))
+				entry->receipt = std::move(receipt);
 		}
 		++it;
 	}
 }
 
-bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
-			    const char *item_short)
+std::shared_ptr<sql_chest_log_entry> sql_prepare_chest_activity(int locker_id, int chest_id,
+								const char *char_name,
+								int action_type,
+								const char *item_short)
 {
 	if (!DB || locker_id <= 0 || !char_name || action_type < 1 || chest_logs.size() >= 4096)
-		return false;
+		return {};
 	critical_operation_id operation = {};
 	char hex[33];
 	if (!critical_operation_id_generate(&operation) ||
 	    !critical_operation_id_to_hex(operation, hex, sizeof(hex)))
-		return false;
+		return {};
 	std::string item = item_short ? item_short : "";
 	if (item.size() > 256)
 	{
@@ -2182,17 +2197,41 @@ bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, 
 			--limit;
 		item.resize(limit);
 	}
-	chest_logs.push_back(
-		{ locker_id,
-		  sql_format(
-			  "INSERT IGNORE INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short, event_id, logged_at) "
-			  "VALUES (%d, %s, '%s', %d, %s, UNHEX('%s'), FROM_UNIXTIME(%lld))",
-			  locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
-			  escape_str(char_name).c_str(), action_type,
-			  item_short ? ("'" + escape_str(item.c_str()) + "'").c_str() : "NULL", hex,
-			  static_cast<long long>(time(NULL))),
-		  {} });
-	sql_chest_log_pulse();
+	auto entry = std::make_shared<sql_chest_log_entry>();
+	entry->locker_id = locker_id;
+	entry->statement = sql_format(
+		"INSERT IGNORE INTO private_chest_log (locker_id, chest_id, char_name, action_type, item_short, event_id, logged_at) "
+		"VALUES (%d, %s, '%s', %d, %s, UNHEX('%s'), FROM_UNIXTIME(%lld))",
+		locker_id, chest_id > 0 ? std::to_string(chest_id).c_str() : "NULL",
+		escape_str(char_name).c_str(), action_type,
+		item_short ? ("'" + escape_str(item.c_str()) + "'").c_str() : "NULL", hex,
+		static_cast<long long>(time(NULL)));
+	chest_logs.push_back(entry);
+	return entry;
+}
+
+void sql_finish_chest_activity(const std::shared_ptr<sql_chest_log_entry> &entry, bool success)
+{
+	if (!entry || entry->ready)
+		return;
+	if (!success)
+		chest_logs.erase(std::remove(chest_logs.begin(), chest_logs.end(), entry),
+				 chest_logs.end());
+	else
+	{
+		entry->ready = true;
+		sql_chest_log_pulse();
+	}
+}
+
+bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, int action_type,
+			    const char *item_short)
+{
+	auto entry =
+		sql_prepare_chest_activity(locker_id, chest_id, char_name, action_type, item_short);
+	if (!entry)
+		return false;
+	sql_finish_chest_activity(entry, true);
 	return true;
 }
 

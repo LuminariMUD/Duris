@@ -361,12 +361,15 @@ static bool take_coins(P_char actor, P_obj money, P_obj container, int showit,
 			std::min(money->value[index], std::max(options.amount_limit[index], 0));
 		emptied = emptied && got[index] == money->value[index];
 	}
-	if (!locker_container_access_allowed(actor, container) || !credit_coins(actor, got))
+	if (!locker_container_access_allowed(actor, container))
+		return false;
+	const std::string coins = coins_to_string(got[3], got[2], got[1], got[0], "&+y");
+	LockerMovementAudit audit(actor, container, NULL, NULL, coins.c_str());
+	if (!audit.Ready() || !credit_coins(actor, got))
 		return false;
 	for (size_t index = 0; index < got.size(); ++index)
 		money->value[index] -= got[index];
-	const std::string coins = coins_to_string(got[3], got[2], got[1], got[0], "&+y");
-	locker_record_movement(actor, container, NULL, false, coins.c_str());
+	audit.Commit();
 	if (bulk_get_state *haul = container ? corpse_bulk_get(actor, container->obj_uid) : NULL)
 		haul->haul.push_back(coins);
 	else
@@ -407,10 +410,12 @@ static bool get_can_continue(P_char actor, uint64_t runtime_id, int room, P_obj 
 			       (OBJ_ROOM(container) && container->loc.room == room)));
 }
 
-static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool slip)
+static bool publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool slip)
 {
+	LockerMovementAudit audit(ch, s_obj, NULL, o_obj);
+	if (!audit.Ready())
+		return false;
 	obj_from_obj(o_obj);
-	locker_record_movement(ch, s_obj, o_obj, false);
 
 #if USE_SPACE
 	s_obj->space -= GET_OBJ_SPACE(o_obj);
@@ -434,6 +439,7 @@ static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 			act("$n gets $p from $P.", 1, ch, o_obj, s_obj, TO_ROOM);
 	}
 	obj_to_char(o_obj, ch);
+	audit.Commit();
 	if (haul)
 	{
 		P_obj delivered = find_live_item_uid(picked_uid);
@@ -447,6 +453,7 @@ static void publish_container_get(P_char ch, P_obj o_obj, P_obj s_obj, int showi
 				"An accepted item could not be delivered to your inventory.\r\n");
 		}
 	}
+	return true;
 }
 
 static void report_coin_get_rejection(P_char actor, P_obj container)
@@ -616,7 +623,9 @@ publish_after_ack:
 			s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 			s_obj ? OBJ_VNUM(s_obj) : -1);
 
-		if (!credit_coins(ch, { got_c, got_s, got_g, got_p }))
+		const std::string chest_coins = coins_to_string(got_p, got_g, got_s, got_c, "");
+		LockerMovementAudit audit(ch, s_obj, NULL, NULL, chest_coins.c_str());
+		if (!audit.Ready() || !credit_coins(ch, { got_c, got_s, got_g, got_p }))
 		{
 			GETDBG_LOG(
 				"GETDBG[get-coins-empty]: ch=%s room=%d obj=%s [%d] uid=%lu total=%lld showit=%d slip=%d container=%s [%d]",
@@ -630,9 +639,8 @@ publish_after_ack:
 			send_to_char("You can't carry any of the coins.\r\n", ch);
 			return;
 		}
-		const std::string chest_coins = coins_to_string(got_p, got_g, got_s, got_c, "");
-		locker_record_movement(ch, s_obj, NULL, false, chest_coins.c_str());
 		o_obj->value[3] = o_obj->value[2] = o_obj->value[1] = o_obj->value[0] = 0;
+		audit.Commit();
 		if (total_value > 999999)
 		{
 			const char *coins = coins_to_string(got_p, got_g, got_s, got_c, "&+y");
@@ -796,7 +804,11 @@ publish_after_ack:
 		}
 
 		item_get_rejected = false;
-		publish_container_get(ch, o_obj, s_obj, showit, slip);
+		if (!publish_container_get(ch, o_obj, s_obj, showit, slip))
+		{
+			item_get_rejected = true;
+			return;
+		}
 	}
 	else
 	{
@@ -2836,11 +2848,14 @@ bool publish_transient_coin_put(P_char actor, P_obj container, P_obj old_money,
 {
 	if (old_money)
 	{
-		add_coins(old_money, context.amount[0], context.amount[1], context.amount[2],
-			  context.amount[3]);
 		const std::string coins = coins_to_string(context.amount[3], context.amount[2],
 							  context.amount[1], context.amount[0], "");
-		locker_record_movement(actor, container, NULL, true, coins.c_str());
+		LockerMovementAudit audit(actor, NULL, container, NULL, coins.c_str());
+		if (!audit.Ready())
+			return false;
+		add_coins(old_money, context.amount[0], context.amount[1], context.amount[2],
+			  context.amount[3]);
+		audit.Commit();
 		finish_coin_put_publication(actor, container, context);
 		return true;
 	}
@@ -3902,6 +3917,9 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 					if (reject_put_trap(ch, o_obj, trap_rejected) ||
 					    !locker_container_access_allowed(ch, s_obj))
 						return FALSE;
+					LockerMovementAudit audit(ch, NULL, s_obj, o_obj);
+					if (!audit.Ready())
+						return FALSE;
 					if (showit)
 						send_to_char("Ok.\r\n", ch);
 					if (OBJ_CARRIED(o_obj))
@@ -3919,7 +3937,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 						 */
 						obj_from_char(o_obj);
 						obj_to_obj(o_obj, s_obj);
-						locker_record_movement(ch, s_obj, o_obj, true);
+						audit.Commit();
 						s_obj->value[3]++;
 					}
 					else
@@ -3929,7 +3947,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 						 * Do we need obj_from_room???(s_obj, ....);
 						 */
 						obj_to_obj(o_obj, s_obj);
-						locker_record_movement(ch, s_obj, o_obj, true);
+						audit.Commit();
 						/*
 						 * Do we need obj_to_room???(s_obj, ch);
 						 */
@@ -4013,6 +4031,9 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 						if (reject_put_trap(ch, o_obj, trap_rejected) ||
 						    !locker_container_access_allowed(ch, s_obj))
 							return FALSE;
+						LockerMovementAudit audit(ch, NULL, s_obj, o_obj);
+						if (!audit.Ready())
+							return FALSE;
 						if (showit)
 							send_to_char("Ok.\r\n", ch);
 						if (OBJ_CARRIED(o_obj))
@@ -4030,8 +4051,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 							 */
 							obj_from_char(o_obj);
 							obj_to_obj(o_obj, s_obj);
-							locker_record_movement(ch, s_obj, o_obj,
-									       true);
+							audit.Commit();
 #if USE_SPACE
 							s_obj->space += GET_OBJ_SPACE(o_obj);
 #endif
@@ -4044,8 +4064,7 @@ bool put(P_char ch, P_obj o_obj, P_obj s_obj, int showit, bool *trap_rejected)
 							 */
 							obj_from_room(o_obj);
 							obj_to_obj(o_obj, s_obj);
-							locker_record_movement(ch, s_obj, o_obj,
-									       true);
+							audit.Commit();
 						}
 
 						if (IS_TRUSTED(ch))
@@ -7786,10 +7805,12 @@ void start_empty(P_char actor, P_obj source, P_obj target)
 		if (!locker_container_access_allowed(actor, source) ||
 		    !locker_container_access_allowed(actor, target))
 			break;
+		LockerMovementAudit audit(actor, source, target, content);
+		if (!audit.Ready())
+			break;
 		obj_from_obj(content);
 		obj_to_obj(content, target);
-		locker_record_movement(actor, source, content, false);
-		locker_record_movement(actor, target, content, true);
+		audit.Commit();
 		if (GET_ITEM_TYPE(target) == ITEM_QUIVER)
 			++target->value[3];
 		++moved;
