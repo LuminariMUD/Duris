@@ -21,35 +21,16 @@
 #include "core/structs.h"
 #include "world/world_quest.h"
 
-// Describes a route under the supplied player facts. It is not, by itself, a
-// verdict that an accepted assignment is invalidated by the world.
-enum class world_quest_route_status
+// Geographic identities, independent of player capabilities or travel routes.
+// Zero means that family has no unambiguous attachment.
+struct world_quest_region
 {
-	available,
-	unavailable,
-	unproven,
+	int surface = 0;
+	int underdark = 0;
+	bool uncertain = false; // Conflicting boundaries in at least one family.
 };
 
-// Build and reuse only within one command. Room IDs are rnums; the result has
-// no live pointers. Reverse links prove a directed return journey.
-struct world_quest_route_context
-{
-	struct room
-	{
-		int map_entrance = NOWHERE;
-		bool returns_to_origin = false;
-		std::vector<int> incoming;
-	};
-	std::unordered_map<int, room> rooms;
-	size_t work = 0;
-	bool exhausted = false;
-	bool uncertain = false;
-};
-
-world_quest_route_context world_quest_policy_routes(P_char ch, int origin_vnum, int accepted_level);
-world_quest_route_status world_quest_policy_route(const world_quest_route_context &context,
-						  int room);
-int world_quest_policy_map_room(const world_quest_route_context &context, int room);
+world_quest_region world_quest_policy_region(int room);
 
 struct world_quest_target
 {

@@ -208,6 +208,11 @@ def setup_run_root(run_root: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path, 
     for directory in ("areas", "docs"):
         (run_root / directory).symlink_to(ROOT / directory, target_is_directory=True)
     shutil.copytree(ROOT / "lib", run_root / "lib")
+    if JOURNEY == "reported":
+        # Exercise the supported sharing path without changing repository settings.
+        properties = run_root / "lib" / "duris.properties"
+        properties.write_text(properties.read_text().replace("world.quest.share.max=0",
+                                                             "world.quest.share.max=2"))
     (run_root / "logs" / "log").mkdir(parents=True)
     (run_root / "logs" / "log" / ".gitignore").write_text("*\n!.gitignore\n")
     journals = run_root / "journals"
@@ -287,11 +292,13 @@ def collect_logs(run_root: pathlib.Path) -> str:
 # Test-only debugger setup and native-state inspection. Recovery closes
 # disposable zones; quest transitions, payments, saves and loads use real commands.
 RECOVERY_PROBE_PATH = ROOT / "tests/async/world_quest_journey_probe.cpp"
+RECOVERY_PROBE_SOURCE = RECOVERY_PROBE_PATH.read_text()
 
 JOURNEY_FIELDS = (
     "active", "replacement_due", "origin", "level", "type", "mob", "zone", "started",
     "receiver", "shares", "kills", "quota", "map_room", "map_bought", "wallet", "xp",
 )
+snapshot_request = 0
 
 
 def read_journey_states(run_root: pathlib.Path) -> list[dict]:
@@ -304,14 +311,23 @@ def read_journey_states(run_root: pathlib.Path) -> list[dict]:
 
 
 def gameplay_snapshot(client: MudClient, run_root: pathlib.Path) -> dict:
+    global snapshot_request
+    snapshot_request += 1
+    request = f"questprobe_{snapshot_request}"
     path = run_root / "quest-gameplay.json"
-    old = json.loads(path.read_text()) if path.exists() else None
-    client.send("score")
+    # Consume the preceding command's complete output, then synchronize this
+    # explicitly tagged SCORE through its response and following prompt.
+    while client._receive():
+        pass
+    client.pending.clear()
+    client.send("score " + request)
+    client.expect("Score information for", timeout=30)
+    client.expect("Pos:", timeout=30)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if path.exists():
             current = json.loads(path.read_text())
-            if old is None or (current["pid"], current["sequence"]) != (old["pid"], old["sequence"]):
+            if current.get("request") == request:
                 client._receive()
                 return current
         client._receive()
@@ -352,11 +368,10 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
             else:
                 raise AssertionError(f"ordinary combat did not resolve: {state}")
             continue
-        require(not state["route_exhausted"], "navigation route budget exhausted")
         if state.get("selector"):
             return state, steps
         path = state["path"]
-        if not path and state["route_uncertain"] and route_waits < 30:
+        if not path and route_waits < 30:
             route_waits += 1
             time.sleep(1)
             continue
@@ -387,10 +402,11 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
             steps += len(batch)
         elif observed["fighting"]:
             prefix = [batch[0]["from"]] + [step["to"] for step in batch]
-            require(observed["room"] in prefix, f"combat displaced the journey off its route: {observed}")
+            require(observed["room"] in prefix,
+                    f"combat displaced the journey off its path: {observed}")
             steps += prefix.index(observed["room"])
         else:
-            raise AssertionError(f"ordinary commands diverged from the proved route: expected {batch[-1]}, got {observed}")
+            raise AssertionError(f"ordinary commands diverged from {batch[-1]}: {observed}")
     raise AssertionError("target navigation exceeded 1,200 ordinary steps")
 
 
@@ -448,6 +464,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
         if before["active"] or before["due"]:
             client.send("ask bartender abandon confirm")
             client.expect("You no longer have a task.", timeout=30)
+            client.send("chaos")  # Prepare the now-inactive case's target fixture.
+            before = settled_gameplay_snapshot(client, run_root)
         attempts = []
         for _ in range(8):
             client.send("ask bartender quest")
@@ -455,14 +473,26 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             accepted = gameplay_snapshot(client, run_root)
             require(accepted["accepted_level"] == level,
                     f"requested gameplay level was unavailable: {accepted}")
-            attempts.append({"mob": accepted["mob"], "zone": accepted["zone"], "quota": accepted["quota"]})
-            if accepted["type"] == kind and (kind != 1 or level != 29 or accepted["quota"] >= 2):
+            attempts.append({"mob": accepted["mob"], "fixture": accepted["fixture_vnum"],
+                             "zone": accepted["zone"], "quota": accepted["quota"]})
+            if (accepted["mob"] == accepted["fixture_vnum"] and
+                    accepted["zone"] == accepted["fixture_zone"] and accepted["type"] == kind and
+                    (kind != 1 or level != 29 or accepted["quota"] >= 2) and
+                    (accepted["path"] or accepted.get("selector"))):
+                if kind == 2:
+                    require(accepted["target_level"] < level - 4 or
+                            accepted["target_level"] > level + 5,
+                            "ASK completion fixture did not exercise the restored level range")
                 break
             # Only fixture preparation: pay the ordinary abandonment fee before
             # making any progress. The preferred kind can legitimately fall back
             # to the other type in a selected zone; KILL also needs a partial state.
             client.send("ask bartender abandon confirm")
             client.expect("You no longer have a task.", timeout=30)
+            # Sampling overrides are one-shot. Re-arm the prechecked fixture;
+            # an ordinary random fallback may have only one walkable instance.
+            client.send("chaos")
+            settled_gameplay_snapshot(client, run_root)
         else:
             raise AssertionError(f"no qualifying level-{level} type-{kind} task within eight purchases: {attempts}")
         baseline_items = {item["uid"] for item in accepted["items"]}
@@ -490,12 +520,14 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 for _ in range(120):
                     time.sleep(1)
                     current = gameplay_snapshot(client, run_root)
-                    if (not current["active"] or current["kills"] > previous["kills"] or
+                    if (not current["active"] or current["accomplished"] or
+                            current["kills"] > previous["kills"] or
                             not current["fighting"]):
                         break
                 else:
                     raise AssertionError(f"ordinary target combat did not resolve: {current}")
-                if current["active"] and current["kills"] == previous["kills"]:
+                if (current["active"] and not current["accomplished"] and
+                        current["kills"] == previous["kills"]):
                     continue
                 target = current
 
@@ -503,6 +535,14 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 if outcome == "No-one by that name here...":
                     continue
                 current = gameplay_snapshot(client, run_root)
+            if kind == 1 and current["active"] and current["accomplished"]:
+                # The final kill stays active while its durable reward is published.
+                # History may already be committed; this is not partial progress.
+                deadline = time.monotonic() + 30
+                while current["active"] and time.monotonic() < deadline:
+                    time.sleep(0.1)
+                    current = settled_gameplay_snapshot(client, run_root)
+                require(not current["active"], "final KILL reward publication did not finish")
             if not current["active"]:
                 completed = current
                 break
@@ -510,7 +550,11 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                     f"combat made no legitimate quest progress: {current}")
             require(current["quota"] == accepted["quota"] and current["history_done"] == 0,
                     "partial combat altered quota or consumed history")
-            require(current["remaining"] == previous["remaining"], "partial combat used a quest allowance")
+            require(stored_gameplay_history(database_environment, current) == history_before,
+                    "partial combat wrote a completion-history entry")
+            if current["actor_level"] == previous["actor_level"]:
+                require(current["remaining"] == previous["remaining"],
+                        "partial combat changed allowance without a level change")
             require(current["progress_xp"] > previous["progress_xp"], "partial combat awarded no actual XP")
             partials.append(current)
             if not partial_persisted and level == 29 and (29, 1) in cases:
@@ -526,12 +570,21 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                         "wallet", "xp")
                 require(all(saved[k] == restored[k] for k in kept),
                         f"partial state did not survive restart: {saved} -> {restored}")
+                # Restore only NPC fixture positions after world reload. Keep
+                # the reconnected actor's actual level and all saved quest data.
+                (run_root / "quest-gameplay-control.txt").write_text(
+                    f"{restored['actor_level']} {kind} 1 {origin}\n")
+                client.send("chaos")
+                pinned = settled_gameplay_snapshot(client, run_root)
+                require(all(restored[k] == pinned[k] for k in kept),
+                        "NPC fixture preparation changed saved player state")
+                (run_root / "quest-gameplay-control.txt").write_text(f"{level} {kind} 1 {origin}\n")
                 held_rewards = rewards & {item["uid"] for item in saved["items"]}
                 require(not rewards or held_rewards and held_rewards <= {item["uid"] for item in restored["items"]},
                         "held earlier quest rewards did not persist")
                 partials.append({"saved": saved, "restored": restored})
                 partial_persisted = True
-                current = restored
+                current = pinned
             previous = current
         else:
             raise AssertionError("quest did not complete within forty real interactions")
@@ -540,7 +593,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
         require(completed["history_done"] == 1, f"completion history missing: {completed}")
         require(completed["progress_xp"] > previous["progress_xp"], "real completion awarded no XP")
         require(completed["completion_target"] == accepted["mob"] and
-                completed["remaining"] == max(completed["completion_remaining"] - 1, 0) and
+                completed["completion_remaining_at_level"] ==
+                max(completed["completion_remaining"] - 1, 0) and
                 completed["completion_calls"] == previous["completion_calls"] + 1,
                 "completion did not use exactly one allowance at its actual level")
         new_items = [item for item in completed["items"]
@@ -616,7 +670,7 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
                 for level in (29, 30):
                     before = place(actor, level, origin)
                     granted = purchase(actor)
-                    expected = level == 30 or origin == 132560
+                    expected = True  # Both attached regions are valid below 30 too.
                     require(bool(granted["active"]) == expected,
                             f"unexpected {side} giver {origin}/{level} result: {granted}")
                     require(before["wallet"] - granted["wallet"] == (level * 20 if expected else 0),
@@ -629,8 +683,65 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     finally:
         observer.close()
 
+    # Real consent/share/map commands, with every exit at the giver locked in
+    # disposable memory. Both copied and paid state must survive a server restart.
+    partner = MudClient(port, source_host="127.0.0.3")
+    try:
+        create_character(partner, expected_room=None, account="Shareacct", character="Nimerek",
+                         hometown="p")
+        partner.send("wear all")
+        place(partner, 29, 1734)
+        place(client, 29, 1734)
+        shared_source = purchase(client)
+        setup(7)
+        partner.send("consent Taverek")
+        partner.expect("You attempt to give consent", timeout=30)
+        client.expect("has just given you", timeout=30)
+        client.send("quest share Nimerek")
+        client.expect("You've shared your quest.", timeout=30)
+        partner.expect("You receive a quest.", timeout=30)
+        shared = settled_gameplay_snapshot(partner, run_root)
+        source_after_share = settled_gameplay_snapshot(client, run_root)
+        copied = ("origin", "accepted_level", "type", "mob", "zone", "kills", "quota",
+                  "giver", "receiver", "started")
+        require(all(shared[k] == shared_source[k] for k in copied) and shared["active"] and
+                source_after_share["shares"] == shared_source["shares"] - 1 and
+                source_after_share["wallet"] == shared_source["wallet"],
+                "locked-route share changed copied work, wallet or share count")
+        partner.send("ask bartender map")
+        partner.expect("will now show you additional information", timeout=30)
+        mapped = settled_gameplay_snapshot(partner, run_root)
+        require(mapped["map_bought"] and mapped["wallet"] == shared["wallet"] - 290 and
+                mapped["remaining"] == shared["remaining"] and not mapped["due"],
+                "locked-route map purchase changed entitlement/history or charged incorrectly")
+        partner.send("save")
+        partner.expect("Save complete for Nimerek.", timeout=120)
+        client.send("save")
+        client.expect("Save complete for Taverek.", timeout=120)
+        partner.close()
+        client = restart(client)
+        client.send("chaos")  # Reapply current actor level only; no setup action is pending.
+        partner = reconnect_character(port, expected_room=None, account="Shareacct",
+                                      character="Nimerek", source_host="127.0.0.3")
+        partner.expect("Pos:", timeout=60)
+        partner.send("chaos")
+        restored_share = settled_gameplay_snapshot(partner, run_root)
+        restored_source = settled_gameplay_snapshot(client, run_root)
+        persisted = (*copied, "map_bought", "map_room", "wallet", "remaining", "shares")
+        require(all(restored_share[k] == mapped[k] for k in persisted) and
+                all(restored_source[k] == source_after_share[k] for k in persisted),
+                "shared quest/map or source share count changed across restart")
+        sharing = {"source": shared_source, "shared": shared, "mapped": mapped,
+                   "restored": restored_share, "restored_source": restored_source}
+        for actor in (client, partner):
+            actor.send("ask bartender abandon")
+            actor.expect("You no longer have a task.", timeout=30)
+    finally:
+        partner.close()
+
     transitions = []
-    for origin, level in ((1734, 30), (74339, 30), (132560, 29), (132560, 30)):
+    for origin, level in ((1734, 29), (1734, 30), (74339, 29), (74339, 30),
+                          (132560, 29), (132560, 30)):
         before = place(client, level, origin)
         accepted = purchase(client)
         aged = setup(1)
@@ -718,6 +829,7 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     client, gameplay = perform_gameplay(client, run_root, restart, database_environment,
                                        origin=74339, cases=((30, 2), (30, 1)))
     return client, {"matrix": results, "transitions": transitions,
+                    "sharing": sharing,
                     "progressed": progressed, "pending": waiting, "replacement": replacement,
                     "bloodstone_gameplay": gameplay}
 
@@ -776,7 +888,7 @@ def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) ->
         if place:
             actor.send(f"chaos questroom {BARTENDER_ROOM}")
             actor.expect("Quest-room test funds committed.", timeout=60)
-        actor.send("score")
+        actor.send("score questprobe")
         deadline = time.monotonic() + 120
         while not path.exists():
             require(time.monotonic() < deadline, "loaded-world audit did not arrive")
@@ -797,7 +909,7 @@ def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) ->
         require(any(x["level"] == 29 and x["failure"] == 0 for x in evil["origins"]),
                 "loaded Evil origins lost every usable level-29 target")
         require(any(x["level"] == 29 and x["underdark_map_rooms"] > 0 for x in evil["origins"]),
-                "no ordinary level-29 Underdark origin route was proved")
+                "no level-29 origin has an attached Underdark region")
 
         # Disable every sampling/RNG/history breakpoint before timing real commands.
         # The idle debugger performs no stops inside this measurement window.
@@ -888,7 +1000,7 @@ def perform_history_write_failure(client: MudClient, run_root: pathlib.Path, res
                     "restart fault case did not retain a pending completion")
             # A separate credit while the history writer is failing must not
             # be lost when the player disconnects and the server restarts.
-            (run_root / "quest-reported-setup.txt").write_text("7\n")
+            (run_root / "quest-reported-setup.txt").write_text("8\n")
             client.send("chaos")
             credited = gameplay_snapshot(client, run_root)
             require(credited["wallet"] == before["wallet"] + 1000,
@@ -939,7 +1051,7 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         gdb_path = run_root / "quest.gdb"
         probe_source = run_root / "recovery_probe.cpp"
         probe_binary = run_root / "recovery_probe.so"
-        probe_source.write_text(RECOVERY_PROBE_PATH.read_text())
+        probe_source.write_text(RECOVERY_PROBE_SOURCE)
         flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
                  subprocess.check_output(["mysql_config", "--cflags"], text=True).split())
         built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
@@ -983,12 +1095,20 @@ else
 disable $kind_break
 disable $history_break
 end
+if quest_gameplay_stage == 1
+enable $fixture_zone_break
+enable $fixture_suggest_break
+else
+disable $fixture_zone_break
+disable $fixture_suggest_break
+end
 end
 tbreak main
 commands
 silent
 python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))
 set $probe=(void*)dlopen("{probe_binary}",2)
+set quest_gameplay_passive_mobile=(void*)&'(anonymous namespace)::passive_quest_mobile_proc'
 call (void)quest_gameplay_read_control()
 apply_journey_mode
 continue
@@ -997,6 +1117,10 @@ break *do_chaos
 commands
 silent
 call (void)quest_gameplay_setup((char_data*)$rdi)
+if quest_gameplay_stage == 1
+call (void)quest_gameplay_prepare_mobiles((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+call (void)quest_gameplay_choose_fixture((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+end
 apply_journey_mode
 continue
 end
@@ -1021,11 +1145,13 @@ break *do_score
 set $plan_break=$bpnum
 commands
 silent
+if (int)strncmp((char*)$rsi,"questprobe",10) == 0
 if quest_gameplay_stage == 3
 call (void)quest_gameplay_setup((char_data*)$rdi)
 call (void)quest_world_audit((char_data*)$rdi)
 else
-call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)',(char*)$rsi)
+end
 end
 continue
 end
@@ -1042,6 +1168,26 @@ commands
 silent
 if required_type == 0 && quest_gameplay_kind > 0
 set first_type=quest_gameplay_kind
+end
+continue
+end
+break *world_quest_policy_select_zone
+set $fixture_zone_break=$bpnum
+commands
+silent
+if quest_gameplay_fixture_selected == 0 && quest_gameplay_fixture_zone >= 0
+set quest_gameplay_fixture_selected=1
+return quest_gameplay_fixture_zone
+end
+continue
+end
+break '(anonymous namespace)::quest_target_request::suggest(int, int, int)'
+set $fixture_suggest_break=$bpnum
+commands
+silent
+if quest_gameplay_fixture_suggested == 0 && quest_gameplay_fixture_vnum > 0
+set quest_gameplay_fixture_suggested=1
+return quest_gameplay_fixture_vnum
 end
 continue
 end

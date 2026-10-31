@@ -1,14 +1,15 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **implementation in progress; ASK level chunk qualified**. Updated 2026-10-31.
+Status: **implementation and local qualification complete**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
-- Branch: [branch/issue-500-eligibility-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-eligibility-plan), linked in the issue's Development section.
-- Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
-- Audited source/base: `807c6d8dce8be4102d43c91950c80548a58f7f02`, the current head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513), `branch/issues-500-506-bartender-bugfixes`.
+- Integration review: [PR #522](https://github.com/LuminariMUD/Duris/pull/522), targeting master; source branch `branch/issue-500-geography`.
+- Qualified source: `4572474ac`, including settled master `964cd61cd` and the inherited #520/#526 repairs.
+- Qualification checkout: `/home/aiwithapex/projects/duris-pr522-fixes`. The earlier implementation checkout and its evidence remain at `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
+- Original planning baseline: `807c6d8dce8be4102d43c91950c80548a58f7f02`, then the head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
 - Method: the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
 
-PR #513 is open, so this is a dependent branch. Its procedure/allowance fixes are prerequisites, not new changes belonging to this plan. Review the new diff against #513 while it is open; integrate the prerequisite and current master before final implementation qualification without duplicating or discarding its work. Master advanced during planning from `9ad734e9e` to `aa77a2030`; this plan remains pinned to the inspected #513 head. Keep #500 open until implementation and acceptance are complete. #506 remains tracked by #513; this branch introduces no new allowance work.
+The #513 prerequisites and ASK chunk landed through #520 (`809cfe0e8`). The follow-up #526 (`d6582ec27`) preserves unrelated player changes through failed history writes and credits final-kill XP before calculating the remaining reward. This branch includes both repairs and settled master `964cd61cd`. All three #500 behavior changes and their local acceptance checks are complete; #506 is already completed. The intermediate planning and qualification checkpoints below are historical and are superseded by the final record at the end.
 
 The previous shared plan is already preserved byte-for-byte in [plan-issue-420.md](plan-issue-420.md); comparison passed before replacement. The separate [#500/#506 qualification record](plan-issues-500-506.md) remains intact. Its former geography decisions and the issue's archived investigation are historical evidence, not the current task list.
 
@@ -24,7 +25,7 @@ Update the [bartender reference](../reference/BARTENDER_QUESTS.md), including as
 
 ## Non-goals
 
-- No reward, cost, wallet-publication, daily-allowance, completion-history, sharing-limit, quota, XP or random-selection balance changes. Preserve #513's midnight/abandonment repair.
+- No reward, cost, wallet-publication, daily-allowance, completion-history, sharing-limit, quota, XP or random-selection balance changes in the three-rule eligibility chunk. Preserve #513's midnight/abandonment repair. Separately authorized review repairs inherited from #520 are recorded below rather than reverted or duplicated.
 - Keep the existing level-11 minimum, ASK/KILL purchases at 11–49, KILL-only purchases at 50+, and mapless-zone minimum of 41.
 - Keep routine-reset/birthplace provenance, actual destination zone, live supply, speech, visibility, aggression, ASK interception, safe-room KILL restrictions, controlled/summoned exclusions and target history. Route-only checks must not become disguised target restrictions.
 - Retain genuine non-route replacement causes, earned progress, accepted level/type/quota, receiver, start time, purchased-map entitlement and legacy origin/replacement persistence. Do not resurrect already persisted replacement entitlements: saved state does not identify whether a past route rejection caused them.
@@ -172,3 +173,229 @@ Additional checks passed: `make -C src -j8`, dynamic policy contracts, XP feedba
 `git diff --check`. These results qualify the level chunk only; route removal,
 dual-region geography and the planned command/persistence journeys remain open.
 Current master `aa77a2030` was merged for build/compatibility qualification.
+
+## Implementation evidence: route removal and both regions (in progress)
+
+The second chunk replaces the route builder and all three capability passes
+with boot-time geography and one accepted-target interaction/supply check.
+The production route API and route limits are removed. Target-check bounds,
+actual restricted current target locations, provenance and ASK interaction rules
+remain. Maps use geographic zone entrances; travel changes no longer clear
+them or invalidate a task. Refusal messages now describe target/scope state.
+
+The attachment decision is now concrete: gather authored map boundaries and
+interior-zone adjacency, then resolve the nearest boundary **separately for
+surface and Underdark**. The map-only Underdark graph uses undirected
+connectivity, ignoring movement flags; interior connectors cannot merge map
+components. Ties between different identities remain unresolved for that family.
+This avoids flooding all 5,165 connected Bloodstone interior rooms and requires
+no special-case origin table, new configuration or travel simulation.
+
+The disposable **flatfile loaded-world audit passed**. Both 1734 and 74339
+resolve to surface region 2 and Underdark component 239868 in that boot's rnums.
+Both Good and Evil observers received eligible tasks at 11/29/30 from both
+origins. Component rnums are process-local evidence, not persisted identifiers.
+The geometry harness passes mixed/nearest boundaries, incoming/one-way edges,
+disconnected rooms, unrelated surface/Underdark rejection, ambiguity, unchanged
+world memory and a graph larger than the old route limit.
+
+The expanded native suite passed **284** scenarios and 10 SQL-history cases,
+including the final terrain-fixture addition. It covers named-origin synthetic
+ASK/KILL geography at 11/29/30/56, broad ASK and KILL levels at 11/29/30/49/56,
+strict zone-average endpoints, refresh/sharing/map-payment route immunity and
+genuine target invalidation. The old distribution-room fixture is now explicitly
+private: its rejection proves location policy rather than a missing path.
+The journey probe now has its own ordinary-exit navigation helper; assignment
+is independent of whether that test helper can walk the target.
+
+`make -C src -j8`, dynamic/reward/failure/remaining contracts, geography,
+formatting, whitespace and 14 documentation checks passed. The first `reported`
+and `both` journey runs failed in their ordinary-exit navigator after accepting
+valid broader-pool targets: one walked into a map barrier, and one could not
+reach remaining targets after restart. This did not justify restoring route
+eligibility. The test navigator now uses the actual read-only map-barrier
+predicate, and gameplay sampling explicitly chooses otherwise eligible fixtures
+with ordinary outward/return paths for their routine instances and birthplaces.
+Debugger hooks select that zone/prototype; production validation, publication,
+payments, movement, ASK/KILL, reward and persistence still execute normally.
+Special-travel acceptance is independently covered by native fixtures.
+
+The reported suite also enables sharing only in its disposable properties copy,
+then exercises actual CONSENT, QUEST SHARE and paid MAP with the giver's exits
+locked. It saves/restarts both source and recipient and compares copied work,
+paid map, purse, allowance and remaining shares. Fresh `reported` and `both`
+runs on both backends are underway; completion still requires their results.
+
+The next journey attempts exposed two further fixture defects: snapshots could
+observe a partially processed movement batch, and the newly created sharing
+recipient had not equipped its visibility gear. Navigation now synchronizes
+every movement/preparation command through its prompt, and score observations
+use tagged requests plus their response/prompt. The recipient uses normal
+`wear all` before consenting. The ASK completion sampler now specifically
+selects an eligible target outside the KILL band and records its live level;
+a focused 11/29 ASK journey on both backends supplements the full matrix.
+These are test changes, not production travel restrictions. All current journey
+results remain pending; draft #522 must not be marked ready before they pass.
+
+Further qualification isolated stale queued score observations: snapshots now
+carry a unique request identifier, and the reader accepts only its own response.
+The broad ASK run completed its level-11 case. Its first level-29 fixture used
+a safe room, where existing reward rules legitimately suppress XP; completion
+fixtures now avoid safe/arena/guild locations when proving positive XP. No
+reward rule changed. Fresh full, reported and focused ASK runs are in progress;
+the required final result is still both backends passing every planned journey.
+Baseline, native and failed-journey logs are retained locally under
+`bin/qualification/issue500/` and are not tracked.
+
+The walker now observes each authored destination before submitting the next
+movement command, with a bounded wait and an exact room assertion. A prompt or
+batch-end score alone did not establish that every requested step had finished.
+The runner also freezes its probe source at startup so editing the checkout
+cannot mix probe signatures between its MariaDB and flatfile passes. A prior
+intermediate run's flatfile debugger stopped on that signature mismatch; this
+was not a server crash. Final `both` and `reported` runs use the corrected
+step synchronization. No production change was needed for these harness fixes.
+
+Exact step observation then identified the remaining concrete navigation error:
+the simplified walker admitted ocean sectors (for example 556132 -> 555732),
+which ordinary movement rejects. The walker now conservatively excludes ocean
+and hazardous planar terrain, as appropriate for its completion fixtures only.
+Production eligibility remains independent of these travel checks. Superseded
+reported runs were interrupted with normal cleanup; the corrected full/reported
+pair is the remaining completion gate.
+
+Ablation after that diagnosis removes the temporary per-step polling: the
+failure was an inadmissible ocean edge in test navigation, not evidence for a
+new movement-publication protocol. The final walker retains ordered batches,
+unique score request IDs, response/prompt synchronization and an exact end-room
+assertion (or a checked combat interruption). The stricter reported run already
+in flight may finish with per-step assertions; the final full run qualifies the
+batched reader on both backends. No eligibility or acceptance requirement is
+weakened by removing the diagnostic polling.
+
+Final source review added a regression for a tied surface boundary alongside a
+known Underdark attachment. It reproduced an incorrect `unavailable` verdict
+for the unmatched surface task. The geographic cache now retains an uncertainty
+bit: known matches still work, while an unresolved mismatch remains `unproven`
+and `world_quest_refresh()` keeps the accepted task instead of granting a reroll.
+All **300** native scenarios and 10 SQL-history cases pass, including the new
+negative control and the durable-state transition. The geography harness and
+fresh server build also pass. Fresh full/reported backend runs use this final
+production repair.
+
+The earlier full run completed both level-11 and level-29 kinds, including the
+partial KILL restart, before its level-30 fixture leveled to 31. Its remaining
+allowance then legitimately changed because history is counted per current
+level below 50 (`sql_world_quest_can_do_another`). The regression now checks
+that partial combat writes no history, and checks equal remaining allowance
+when the actor level is unchanged. No allowance policy was changed.
+
+Final ablation also removes the carried-over private-birthplace restriction:
+the player interacts at the live target room, not its spawn room. Routine M-reset
+provenance and same-zone birthplace checks remain, but a public live target is
+not rejected just because it was born in a private holding room. The existing
+staging-release case now proves that positive behavior; NPCs currently in private
+holding rooms remain excluded. The fresh build and all 300 native/10 SQL-history
+cases pass with this final policy.
+
+To make completion inputs deterministic, explicit disposable setup now restores
+routine NPCs in the requested target pool to their authored birth rooms and sets
+their sentinel flag. It does not spawn prototypes or alter levels, statistics,
+population counts or reset provenance. Targets are then selected and validated
+through production policy. After partial restart the same explicit preparation
+pins the retained target; the fixture asserts every saved player/quest field
+is unchanged. This replaces reliance on a random wandering population, which
+could leave no ordinary-travel KILL completion fixture after the first ASK case.
+
+## Concurrent review integration and final-head qualification
+
+The full five-case matrix and reported-giver suites passed on **both backends**
+at implementation revision `f9b28d826`; their retained artifacts are
+`matrix-passed.json` and `reported-final-passed.json` under
+`bin/qualification/issue500/`. The runtime ASK targets were level 24 at accepted
+11 and level 20 at accepted 29. Both backends qualified real partial KILL
+save/restart, retained reward identities and ordinary outward/return commands.
+
+Before readiness, the remote stack advanced with concurrent review fixes.
+This checkout fast-forwarded those changes and merged the updated #520 parent
+in `75fb94e66`. The parent now includes durable item/history/recovery-receipt
+publication and retained final-kill entitlement; #522 adds ASK command-scene
+interceptor auditing independent of travel. Temporary target sleep/silence now
+blocks accepted ASK instead of issuing replacement. The integrated master also
+contains unrelated landed frag-cap and skill changes; those remain upstream work.
+
+On this integrated head, 300 native scenarios, 16 SQL-history cases, reward
+publication, XP feedback on both backends, reward/failure/remaining contracts,
+save-pipeline contracts, flatfile history/recovery, item snapshot codec, the
+server build, formatting and 14 documentation checks passed. Full/reported
+journeys are rerunning: the old-head runtime artifacts do not claim coverage
+of the newer reward/persistence code.
+
+The journey now checks completion allowance through a read-only copied player
+view at the level captured by the history admission, using the real allowance
+API. This preserves the exactly-one-consumption assertion when scalar XP later
+changes the actor's level; it neither changes the actor nor duplicates the
+allowance formula. All code and review changes are preserved, and the active
+worktree remains dedicated to this final qualification.
+
+The full matrix next reached a genuine scripted movement gate on its chosen
+level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object
+movement handlers and room affects when selecting ordinary completion fixtures,
+reusing the production Bloodstone passive-handler predicate through the existing
+debugger mechanism rather than copying that allowlist. This test-only screening
+does not restore travel gating to production. The new full run is in progress.
+
+**Reported-giver qualification passed on both backends.** For each backend the
+result includes all 10 Good/Evil named-giver grant cases, six saved/restarted
+abandon/regrant sequences, actual consent/share/map with locked giver exits and
+both players' retained state after restart, progressed-abandon history, legacy
+origin binding, durable free replacement, and Bloodstone level-30 ASK/KILL
+completion and ordinary return travel. The recipient restores an active level-29
+task from origin 1734, paid map, original receiver and no onward shares.
+Evidence: `bin/qualification/issue500/reported-passed.json` (ignored).
+The reported run used stricter per-step movement observation; the final full
+matrix still must qualify the simplified batched walker and 11/29 cases.
+
+## Final integration and qualification — 2026-10-31
+
+Both backend builds pass on settled master `964cd61cd` with the #522 changes.
+The master integration preserves the qualified quest, reward, player-save and
+currency implementations byte-for-byte; conflicts were duplicated #526 squash
+ancestry in a comment and the test setup action number. The independent-credit
+fixture uses action 8, retaining action 7 for locked-exit sharing.
+
+Fresh combined checks pass: assignment/refresh/share/map/type/geography and
+SQL-history regressions under ASan/UBSan; reward publication; XP and the level-25
+mercenary boundary/retry; reward/remaining/failure contracts; player-save retry
+and offline retention; currency/auction escrow; flatfile player/history and item
+codec; and disposable MariaDB save/claim rollback, replay and reward custody.
+Formatting, staged clang-tidy, documentation checks and whitespace checks pass.
+
+The `reported` journey passes on MariaDB and flatfile, covering named givers,
+locked-exit sharing/maps, saved abandonment/regrant, history, replacement and
+Bloodstone ASK/KILL completion. The default five-case `both` matrix passes on
+both backends: 11:2, 11:1, 29:1, 29:2 and 30:1, including real movement/combat,
+out-of-band ASK completion, partial KILL save/restart, rewards, history, relogin
+and restart. The MariaDB `history-failure-restart` journey also passes: an
+independent 1,000-copper credit survives rejected history writes and restart;
+retry charges the fee and records history exactly once.
+
+The first combined journeys exposed a test synchronization gap while final-KILL
+history was committed but its reward callback had not cleared the live task.
+The journey now waits on the completion marker with a timeout. A later MariaDB
+matrix selected an ordinary random fallback after an unsuitable purchase and
+could reach only one thorncat; its other resets were in an outbound-only load
+room. Retries now repeat the existing explicit fixture preparation and require
+the exact prechecked prototype and actual zone. No production eligibility,
+quota, NPC count, combat limits or credit was changed. The corrected MariaDB
+matrix passes at `4572474ac`; the flatfile matrix and both reported passes use
+`b1babb49e`, whose production quest/reward/save/currency code is unchanged by the
+settled-master integration and the subsequent fixture-only edits.
+
+Ignored evidence is under `bin/merge522/` in the qualification checkout: native
+and save logs, `flatfile/final-{reported,both}.log`,
+`mariadb/final-reported.log`, `mariadb/final-history-failure-restart.log`, and
+`mariadb/final-both-fixture-identity.log`. Earlier failed/interrupted runs remain
+separate. Final cleanup retains this evidence in the main checkout's ignored
+merge-campaign directory. No production operation, deployment or release tag
+was part of this qualification.
