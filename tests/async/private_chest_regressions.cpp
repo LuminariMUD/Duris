@@ -580,6 +580,15 @@ int main()
 		}
 		assert(!sql_chest_log_pending(7));
 		event_ids_before_failure = -1;
+		// A disconnected database must reject before any movement is published.
+		MYSQL *saved_db = DB;
+		DB = NULL;
+		{
+			LockerMovementAudit audit(&actor, object, NULL, item);
+			assert(!audit.Ready());
+		}
+		assert(!sql_chest_log_pending(7));
+		DB = saved_db;
 		// An abandoned operation releases its reservation and submits no false event.
 		const auto before_cancel = audit_writes.size();
 		{
