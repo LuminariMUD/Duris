@@ -186,9 +186,11 @@ static int completion_remaining = -1, completion_level = 0, completion_target = 
 static int completion_calls = 0;
 static uint64_t completion_reward = 0;
 static int completion_reward_vnum = 0;
-extern "C" void quest_gameplay_history(P_char ch, P_obj reward)
+extern "C" void quest_gameplay_history(P_char ch, const void *raw_rewards)
 {
 	assert(ch && IS_PC(ch));
+	const auto &rewards = *static_cast<const std::vector<P_obj> *>(raw_rewards);
+	P_obj reward = rewards.empty() ? nullptr : rewards.front();
 	++completion_calls;
 	completion_remaining = sql_world_quest_can_do_another(ch);
 	completion_level = GET_LEVEL(ch);
