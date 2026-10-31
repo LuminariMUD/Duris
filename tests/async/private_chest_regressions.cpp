@@ -469,8 +469,10 @@ int main()
 		for (int pass = 0; pass < 4; ++pass)
 		{
 			locker.NukeLockerChests();
-			char args[] = "custom weapon armor";
+			char args[] = "custom wield body";
+			output.clear();
 			assert(locker.MakeChests(&actor, args));
+			assert(output.find("Invalid sort option") == std::string::npos);
 			assert(locker.GetPrivateChests().size() == 1);
 			assert(locker.FindPrivateChest("VAULT") == chest);
 			assert(locker.FindChestForObject(object) == chest);

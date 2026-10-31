@@ -106,7 +106,7 @@ LOCKER_COMMANDS = (
     ('put mace vault', 'open that private chest first'),
     ('open vault', "You open the 'vault' chest."),
     ('put mace vault', 'Ok.'),
-    ('eq sort custom weapon armor', 'Pos: standing >'),
+    ('eq sort custom wield body', 'gremlin'),
     ('look in vault', 'mace'),
     ('close', 'You close the chest.'),
     ('look in vault', 'open that private chest first'),
@@ -250,7 +250,9 @@ def leave_locker(client):
 def run_commands(client, commands):
     for command, answer in commands:
         client.send(command)
-        client.expect(answer, timeout=30)
+        response = client.expect(answer, timeout=30)
+        if command.startswith('eq sort '):
+            assert 'Invalid sort option' not in response, response
 
 
 def run(server):
