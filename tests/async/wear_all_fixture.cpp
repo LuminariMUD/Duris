@@ -30,7 +30,7 @@ void send_to_char(const char *s, P_char)
 {
 	message += s;
 }
-void MakeScrap(P_char, P_obj)
+bool MakeScrap(P_char, P_obj)
 {
 	assert(false);
 }

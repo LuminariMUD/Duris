@@ -53,7 +53,7 @@ P_index mob_index=indexes;
 int top_of_objt=2;
 static int trap_effect=1, trap_calls=0, pickups=0, reports=0, waits=0, corpse_writes=0;
 static bool item_get_ack_publication=false, item_get_rejected=false;
-static bool crumble=false, refuse_coins=false;
+static bool crumble=false, refuse_coins=false, refuse_scrap=false;
 static bool refuse_audit;
 LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) { m_ready=!refuse_audit; }
 LockerMovementAudit::~LockerMovementAudit() {}
@@ -90,7 +90,7 @@ obj_affect *get_obj_affect(P_obj,int) { return nullptr; }
 int obj_affect_time(P_obj,obj_affect *) { return 0; }
 int GET_CLASS(P_char,unsigned int) { return 0; }
 void CharWait(P_char ch,int) { assert(IS_ALIVE(ch)); ++waits; }
-void MakeScrap(P_char,P_obj) {}
+bool MakeScrap(P_char,P_obj) { return !refuse_scrap; }
 void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
 void redis_remove_floor_drop(unsigned long) {}
 void mark_player_dirty_components(int,player_component_mask_t) {}
@@ -227,6 +227,19 @@ int main() {
   }
   if(mode!=5 && mode!=6) delete item;
   if(npc) delete pc; else delete actor.only.pc;
+ }
+ // Single get reports refused scrapping without moving the damaged object.
+ {
+  char_data actor{}; pc_only_data pc{}; descriptor_data descriptor{};
+  actor.only.pc=&pc; actor.desc=&descriptor; actor.in_room=1;
+  actor.specials.position=POS_STANDING|STAT_NORMAL; character_list=&actor;
+  obj_data chest{}, damaged{}; chest.loc_p=LOC_ROOM; chest.loc.room=1;
+  damaged.loc_p=LOC_INSIDE; damaged.loc.inside=&chest; damaged.condition=0;
+  refuse_scrap=true; output.clear();
+  get(&actor,&damaged,&chest,TRUE);
+  assert(item_get_rejected && OBJ_INSIDE(&damaged));
+  assert(output.find("could not be moved safely")!=std::string::npos);
+  refuse_scrap=false;
  }
  refuse_audit=false;
  puts("pickup finalizers: death, survival, teleport, sleep, ioun, crumble, coins, refusals and NPC pickup passed");
