@@ -708,14 +708,24 @@ int main() {
     // award captured at completion, not the later level's reward formula.
     for (bool final_kill : {false, true}) {
         reset(); defer_history = true;
+        // Completion remains prominent even with XP feedback disabled.
+        if (final_kill) player.specials.act2 = 0;
         if (final_kill) { pc.quest_kill_how_many = 4; quest_kill(&player, &mob); }
         else { pc.quest_type = FIND_AND_ASK; quest_full_reward(&player, &mob, FIND_AND_ASK); }
         assert(deferred_history && pc.quest_active == 1 &&
                player.points.curr_exp == (final_kill ? 260 : 0));
+        assert(output.find("QUEST COMPLETE") == std::string::npos);
         player.player.level = 30;
         auto complete = std::move(deferred_history); deferred_history = {};
         complete(&player);
         assert(player.points.curr_exp == (final_kill ? 260 : 1300) && pc.quest_active == 0);
+        if (final_kill) {
+            assert(output.find(
+                "\r\n&+Y================ QUEST COMPLETE ================&n\r\n"
+                "&+WFor completing your quest you receive a reward&+W in your inventory.&n\r\n"
+                "&+WCongratulations, you finished your quest!&n\r\n"
+                "&+Y================================================&n\r\n\r\n") != std::string::npos);
+        }
     }
     // Preserve each original high-level epic roll boundary.
     reset(); player.player.level = 56;

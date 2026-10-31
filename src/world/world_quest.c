@@ -236,10 +236,14 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 		mobsay(quest_mob,
 		       "Thanks for bringing me the message. Here is a little something for your trouble.");
 	}
+	if (final_kill)
+		send_to_char("\r\n&+Y================ QUEST COMPLETE ================&n\r\n", ch);
 	const bool reward_granted = reward && OBJ_CARRIED_BY(reward, ch);
 	if (reward_granted && final_kill)
-		send_to_char_f(ch, "For completing your quest you receive %s&n.\r\n",
-			       reward->short_description);
+		send_to_char_f(
+			ch,
+			"&+WFor completing your quest you receive %s&+W in your inventory.&n\r\n",
+			reward->short_description);
 	else if (reward_granted && quest_mob)
 	{
 		act("$n gives you $q ", TRUE, quest_mob, reward, ch, TO_VICT);
@@ -252,7 +256,9 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 	{
 		wizlog(56, "%s finished quest target %d (kill quest)", GET_NAME(ch),
 		       ch->only.pc->quest_mob_vnum);
-		send_to_char("&+WCongratulations&n&n&+W, you finished your quest!&n\r\n", ch);
+		send_to_char("&+WCongratulations, you finished your quest!&n\r\n"
+			     "&+Y================================================&n\r\n\r\n",
+			     ch);
 		if (values.experience)
 			gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
 	}
