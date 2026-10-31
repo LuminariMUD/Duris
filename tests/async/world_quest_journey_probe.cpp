@@ -522,6 +522,9 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "profile_level", quest_gameplay_level);
 	number(root, "profile_kind", quest_gameplay_kind);
 	number(root, "fixture_vnum", quest_gameplay_fixture_vnum);
+	number(root, "fixture_zone",
+	       quest_gameplay_fixture_zone >= 0 ? zone_table[quest_gameplay_fixture_zone].number :
+						  -1);
 	number(root, "history_target", last_target);
 	number(root, "items_busy", item_movement_transaction_player_busy(ch));
 

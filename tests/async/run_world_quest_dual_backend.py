@@ -475,7 +475,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                     f"requested gameplay level was unavailable: {accepted}")
             attempts.append({"mob": accepted["mob"], "fixture": accepted["fixture_vnum"],
                              "zone": accepted["zone"], "quota": accepted["quota"]})
-            if (accepted["mob"] == accepted["fixture_vnum"] and accepted["type"] == kind and
+            if (accepted["mob"] == accepted["fixture_vnum"] and
+                    accepted["zone"] == accepted["fixture_zone"] and accepted["type"] == kind and
                     (kind != 1 or level != 29 or accepted["quota"] >= 2) and
                     (accepted["path"] or accepted.get("selector"))):
                 if kind == 2:
