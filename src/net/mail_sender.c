@@ -412,7 +412,10 @@ mail_outcome mail_sender_classify(int curl_code, long smtp_code)
 			return mail_outcome::retryable_failure;
 		if (smtp_code >= 200 && smtp_code <= 399 && curl_code == CURLE_OK)
 			return mail_outcome::sent;
-		return mail_outcome::terminal_failure;
+		/* A greeting or intermediate success is not the failure: classify the
+		 * transport error that interrupted the rest of the exchange below. */
+		if (smtp_code < 200 || smtp_code > 399)
+			return mail_outcome::terminal_failure;
 	}
 	switch (curl_code)
 	{

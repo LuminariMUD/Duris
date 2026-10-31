@@ -94,6 +94,9 @@ class FakeSmtpServer:
             if verb in (b"EHLO", b"HELO"):
                 client.sendall(b"250-fake\r\n250-SIZE 35882577\r\n250 8BITMIME\r\n")
             elif verb == b"MAIL":
+                if self.mode == "stall_after_ehlo":
+                    self._stop.wait(10)
+                    return
                 client.sendall(b"250 OK\r\n")
             elif verb == b"RCPT":
                 client.sendall(b"550 no\r\n" if self.mode == "rcpt550" else b"250 OK\r\n")
@@ -300,6 +303,20 @@ with tempfile.TemporaryDirectory(prefix="duris-smtp-live-") as temporary:
     )
     expect(elapsed < 3.0 + 3.0, f"stall: wall time {elapsed:.1f} s stays within timeout + 3 s")
     expect(fake.connections == 1, "stall: exactly one connection")
+
+    # Intermediate 250 replies must not turn a transport timeout into a terminal failure.
+    with FakeSmtpServer("stall_after_ehlo") as fake:
+        completed, _ = run_harness(binary, fake.port, code_file, "direct", total_timeout_ms=1000)
+    outcome, curl_code, smtp_code = parse_result(completed.stdout)
+    expect((outcome, curl_code, smtp_code) == (RETRYABLE, CURLE_OPERATION_TIMEDOUT, 250),
+           "timeout after EHLO remains retryable")
+
+    # Production TLS policy must fail closed when the relay cannot upgrade.
+    with FakeSmtpServer("ok") as fake:
+        completed, _ = run_harness(binary, fake.port, code_file, "tls")
+    outcome, curl_code, smtp_code = parse_result(completed.stdout)
+    expect(outcome == TERMINAL and curl_code != 0, "missing STARTTLS fails the send")
+    expect(not fake.data, "TLS failure sent no reset code")
 
     # ---- CRLF in the recipient never reaches the wire ----
     with FakeSmtpServer("ok") as fake:

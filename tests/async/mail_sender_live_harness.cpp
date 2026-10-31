@@ -8,6 +8,7 @@
  *   mail_sender_live_harness <host> <port> <from> <to> <code-file> <section> [total-ms]
  *
  *   direct  render a message and call mail_sender_send_libcurl once
+ *   tls     require STARTTLS; a plaintext-only relay must fail before DATA
  *   worker  init / submit / pulse / shutdown round trip through the worker thread
  *   crlf    a recipient carrying CRLF: render refuses, send_libcurl refuses before libcurl
  *
@@ -136,8 +137,9 @@ int main(int argc, char **argv)
 	}
 	std::string body = render_body(dashed(code));
 
-	if (section == "direct")
+	if (section == "direct" || section == "tls")
 	{
+		config.tls = section == "tls";
 		mail_job job;
 		job.request_id = 1;
 		job.to = to;
@@ -147,7 +149,7 @@ int main(int argc, char **argv)
 		const mail_result result = mail_sender_send_libcurl(job, config, nullptr);
 		OPENSSL_cleanse(job.message.data(), job.message.size());
 		print_result(result);
-		passed("direct");
+		passed(section.c_str());
 	}
 	else if (section == "worker")
 	{

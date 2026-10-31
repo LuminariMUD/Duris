@@ -379,7 +379,7 @@ def test_code_entry_texts() -> None:
 
 def test_log_hygiene() -> None:
     apply_body = function_body(
-        account, r"account_recovery_apply_outcome\s+account_apply_recovered_password\s*\("
+        account, r"void\s+account_apply_recovered_password\s*\("
     ) or ""
     for label, text in (
         ("account_recovery.c", core),
@@ -703,14 +703,14 @@ def test_account_c() -> None:
     )
     apply_body = body_of(
         account,
-        r"account_recovery_apply_outcome\s+account_apply_recovered_password\s*\(",
+        r"void\s+account_apply_recovered_password\s*\(",
         "account_apply_recovered_password",
     )
     check(
         ordered(apply_body, "acct_blocked != 0",
-                "account_recovery_credential_fingerprint(", "CRYPTO_memcmp(", "write_account(",
-                "close_account_sessions_named("),
-        "apply on the fresh account: fence -> fingerprint -> write -> kick sessions, in that order",
+                "account_recovery_credential_fingerprint(", "CRYPTO_memcmp(", "close_account_sessions_named(",
+                "sql_read_work(", "write_account("),
+        "apply checks fence and fingerprint before defining the post-commit reply and submitting storage",
     )
     check("superseded" in apply_body, "apply reports superseded on a fingerprint mismatch (C7)")
     flattened = re.sub(r"\s+", " ", apply_body)
@@ -725,7 +725,7 @@ def test_account_c() -> None:
         "apply never touches acct_name after write_account( (C2 use-after-free)",
     )
     complete = body_of(
-        core, r"account_recovery_complete_outcome\s+account_recovery_complete\s*\(",
+        core, r"void\s+account_recovery_complete\s*\(",
         "account_recovery_complete",
     )
     apply_at = complete.find("account_apply_recovered_password(")
@@ -761,10 +761,10 @@ def test_attempt_counter_ownership() -> None:
         nanny, r"\bvoid\s+account_recovery_descriptor_cleanse\s*\(",
         "account_recovery_descriptor_cleanse",
     )
-    ws_complete = function_body(ws, r"\bvoid\s+ws_cmd_complete_reset\s*\(") or ""
+    ws_complete = function_body(ws, r"\bstatic\s+void\s+ws_complete_reset_reply\s*\(") or ""
     check(
         closed.count(literal) == 1 and finish.count(literal) == 1 and ws_complete.count(literal) == 1,
-        "descriptor_closed, finish_reset (ok branch) and ws_cmd_complete_reset each zero it once",
+        "descriptor_closed, finish_reset (ok branch) and ws_complete_reset_reply each zero it once",
     )
     check(
         literal not in cleanse and "OPENSSL_cleanse(d->account_recovery_code" in cleanse
@@ -773,7 +773,7 @@ def test_attempt_counter_ownership() -> None:
         "descriptor_cleanse scrubs the code and frees the hash but keeps the attempt count",
     )
     check(
-        ordered(finish, "account_recovery_complete(", "account_recovery_descriptor_cleanse(",
+        ordered(finish, "account_recovery_descriptor_cleanse(",
                 "account_recovery_complete_outcome::ok", literal),
         "finish_reset zeroes attempts only on the ok branch, after cleansing",
     )

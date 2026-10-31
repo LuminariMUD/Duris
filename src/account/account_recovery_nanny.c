@@ -279,17 +279,14 @@ void account_recovery_new_password(P_desc d, char *arg)
 	OPENSSL_cleanse(arg, strlen(arg));
 }
 
-/* Completes the reset once the account has been read afresh. */
-static void finish_reset(P_desc completed_desc, P_acct fresh)
+/* Reports the durable result; the connection may have closed while saving. */
+static void finish_reset(P_desc completed_desc, account_recovery_complete_outcome outcome)
 {
-	const account_recovery_complete_outcome outcome = account_recovery_complete(
-		completed_desc->account->acct_name, completed_desc->account_recovery_code,
-		completed_desc->account_recovery_pending_hash, completed_desc, fresh);
-	free_account(fresh);
+	if (!completed_desc)
+		return;
 
-	/* On success write_account copied the new password into
-	 * completed_desc->account and reallocated its strings; the acct_entry itself is still
-	 * ours.  Only descriptor-owned state is touched now. */
+	/* The apply callback has already published a successful save into the account.
+	 * Only descriptor-owned state is touched here. */
 	account_recovery_descriptor_cleanse(completed_desc);
 
 	switch (outcome)
@@ -305,8 +302,7 @@ static void finish_reset(P_desc completed_desc, P_acct fresh)
 	case account_recovery_complete_outcome::rejected:
 	case account_recovery_complete_outcome::fenced:
 	case account_recovery_complete_outcome::superseded:
-		/* fenced and superseded share the text on purpose: no disclosure to a code
-		 * holder; the token is dead either way. */
+		/* Fenced and superseded share one answer; the token is dead either way. */
 		SEND_TO_Q("\r\nYour reset code stopped being valid while you were typing (it "
 			  "expired, was cancelled, or a newer code was requested). Press ? at the "
 			  "password prompt to start again.\r\n",
@@ -381,7 +377,14 @@ void account_recovery_verify_new_password(P_desc d, char *arg)
 			    /* Read the account afresh, behind every save queued before it. */
 			    account_read(completed_desc, completed_desc->account->acct_name,
 					 [](P_desc reader, bool, P_acct fresh)
-					 { finish_reset(reader, fresh); });
+					 {
+						 account_recovery_complete(
+							 reader->account->acct_name,
+							 reader->account_recovery_code,
+							 reader->account_recovery_pending_hash,
+							 reader, fresh, finish_reset);
+						 free_account(fresh);
+					 });
 		    }))
 	{
 		SEND_TO_Q("Password service is busy; please try again.\r\n", d);

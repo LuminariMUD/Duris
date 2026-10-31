@@ -402,8 +402,20 @@ python3 tests/async/test_account_recovery_journey.py
 ```
 
 The harnesses never print a reset code or an address; a captured code reaches the driver
-only through a temporary file. TLS/STARTTLS and SMTP AUTH are not exercised (the fake relay
-is plaintext on loopback, which the configuration rules permit), so those fixtures do not qualify a real relay.
+only through a temporary file. The SMTP test also verifies refusal when STARTTLS is
+required but unavailable, and timeout classification after a successful greeting.
+Successful TLS negotiation and SMTP AUTH are not exercised, so these fixtures do not
+qualify a real relay.
+
+The MariaDB journey uses a disposable database and the same fake relay. It checks telnet
+and unauthenticated WebSocket recovery, failed writes and same-code retry, single use,
+session revocation, restart persistence, account fences changed while saving, loop
+responsiveness, disconnects and concurrent logout during the transaction. It runs in
+`make test-db`, or directly after a MariaDB build:
+
+```bash
+tests/async/with_disposable_mariadb.sh python3 tests/async/test_account_recovery_mysql_journey.py --server bin/server/dms_new
+```
 
 ### Lifecycle and privacy contracts
 

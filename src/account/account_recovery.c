@@ -641,14 +641,12 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 	return account_recovery_check_outcome::rejected;
 }
 
-account_recovery_complete_outcome account_recovery_complete(const char *acct_name,
-							    const char *normalized_code,
-							    const char *new_bcrypt_hash,
-							    struct descriptor_data *keep_session,
-							    struct acct_entry *fresh)
+void account_recovery_complete(const char *acct_name, const char *normalized_code,
+			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			       struct acct_entry *fresh, account_recovery_done done)
 {
 	if (!is_bcrypt_hash(new_bcrypt_hash))
-		return account_recovery_complete_outcome::bad_hash;
+		return done(keep_session, account_recovery_complete_outcome::bad_hash);
 
 	/* The apply helper's write_account reallocates every same-name descriptor's account
 	 * strings, and on telnet acct_name IS one of them: canonicalise first, and after the
@@ -657,7 +655,7 @@ account_recovery_complete_outcome account_recovery_complete(const char *acct_nam
 	if (!account_recovery_canonical_name(acct_name, name))
 	{
 		++health.complete_rejected;
-		return account_recovery_complete_outcome::rejected;
+		return done(keep_session, account_recovery_complete_outcome::rejected);
 	}
 	const time_t now = now_time();
 	auto found = entries.find(name);
@@ -671,47 +669,59 @@ account_recovery_complete_outcome account_recovery_complete(const char *acct_nam
 	if (!valid)
 	{
 		++health.complete_rejected;
-		return account_recovery_complete_outcome::rejected;
+		return done(keep_session, account_recovery_complete_outcome::rejected);
 	}
 
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
 	memcpy(fingerprint, found->second.fingerprint, sizeof fingerprint);
-	const account_recovery_apply_outcome applied =
-		account_apply_recovered_password(fresh, new_bcrypt_hash, fingerprint, keep_session);
-
-	/* The same stack hygiene the module's other two fingerprint copies keep. */
+	const uint64_t request_id = found->second.request_id;
+	account_apply_recovered_password(
+		fresh, new_bcrypt_hash, fingerprint, keep_session,
+		[name = std::string(name), request_id, done](descriptor_data *requester,
+							     account_recovery_apply_outcome applied)
+		{
+			/* A delayed reply must not consume a replacement code issued in the meantime. */
+			auto found = entries.find(name);
+			recovery_entry *entry =
+				found != entries.end() && found->second.request_id == request_id ?
+					&found->second :
+					nullptr;
+			switch (applied)
+			{
+			case account_recovery_apply_outcome::ok:
+				if (entry)
+					kill_token(
+						entry); /* single use; the tombstone keeps the cooldown */
+				++health.completed;
+				logit(LOG_PLAYER, "account recovery completed (account=redacted)");
+				statuslog(
+					56,
+					"account password reset by email completed (account=redacted)");
+				return done(requester, account_recovery_complete_outcome::ok);
+			case account_recovery_apply_outcome::fenced:
+				if (entry)
+					kill_token(entry);
+				++health.fenced;
+				return done(requester, account_recovery_complete_outcome::fenced);
+			case account_recovery_apply_outcome::superseded:
+				if (entry)
+					kill_token(entry);
+				++health.superseded;
+				return done(requester,
+					    account_recovery_complete_outcome::superseded);
+			case account_recovery_apply_outcome::load_failed:
+				++health.load_failed; /* token kept: the player retries with the same code */
+				return done(requester,
+					    account_recovery_complete_outcome::load_failed);
+			case account_recovery_apply_outcome::write_failed:
+				++health.write_failed;
+				return done(requester,
+					    account_recovery_complete_outcome::write_failed);
+			}
+			++health.write_failed;
+			done(requester, account_recovery_complete_outcome::write_failed);
+		});
 	OPENSSL_cleanse(fingerprint, sizeof fingerprint);
-
-	found = entries.find(name);
-	recovery_entry *entry = found != entries.end() ? &found->second : nullptr;
-	switch (applied)
-	{
-	case account_recovery_apply_outcome::ok:
-		if (entry)
-			kill_token(entry); /* single use; the tombstone keeps the cooldown */
-		++health.completed;
-		logit(LOG_PLAYER, "account recovery completed (account=redacted)");
-		statuslog(56, "account password reset by email completed (account=redacted)");
-		return account_recovery_complete_outcome::ok;
-	case account_recovery_apply_outcome::fenced:
-		if (entry)
-			kill_token(entry);
-		++health.fenced;
-		return account_recovery_complete_outcome::fenced;
-	case account_recovery_apply_outcome::superseded:
-		if (entry)
-			kill_token(entry);
-		++health.superseded;
-		return account_recovery_complete_outcome::superseded;
-	case account_recovery_apply_outcome::load_failed:
-		++health.load_failed; /* token kept: the player retries with the same code */
-		return account_recovery_complete_outcome::load_failed;
-	case account_recovery_apply_outcome::write_failed:
-		++health.write_failed;
-		return account_recovery_complete_outcome::write_failed;
-	}
-	++health.write_failed;
-	return account_recovery_complete_outcome::write_failed;
 }
 
 void account_recovery_invalidate(const char *acct_name)

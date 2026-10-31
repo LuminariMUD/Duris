@@ -3052,6 +3052,30 @@ void ws_cmd_request_reset(struct descriptor_data *d, cJSON *data)
 		     });
 }
 
+static void ws_complete_reset_reply(P_desc reader, account_recovery_complete_outcome outcome)
+{
+	if (!reader)
+		return;
+	switch (outcome)
+	{
+	case account_recovery_complete_outcome::ok:
+		reader->account_recovery_attempts = 0;
+		/* The client follows up with an ordinary login. */
+		ws_send_account_message(reader, "reset_completed", NULL, NULL);
+		break;
+	case account_recovery_complete_outcome::load_failed:
+	case account_recovery_complete_outcome::write_failed:
+		ws_send_account_message(reader, "error", NULL, "Failed to save password change");
+		break;
+	case account_recovery_complete_outcome::rejected:
+	case account_recovery_complete_outcome::fenced:
+	case account_recovery_complete_outcome::superseded:
+	case account_recovery_complete_outcome::bad_hash:
+		ws_send_account_message(reader, "error", NULL, "Invalid or expired reset code");
+		break;
+	}
+}
+
 /*
  * Finish a reset: check the code, then hash and apply the new password.  Every
  * code-related failure is the one "Invalid or expired reset code" text, and the
@@ -3144,40 +3168,16 @@ void ws_cmd_complete_reset(struct descriptor_data *d, cJSON *data)
 			    }
 
 			    /* The account is read afresh, behind every save queued before it. */
-			    account_read(
-				    completed_desc, name.c_str(),
-				    [name, code, hash = std::string(hash)](P_desc reader, bool,
-									   P_acct fresh)
-				    {
-					    const auto outcome = account_recovery_complete(
-						    name.c_str(), code.get(), hash.c_str(), reader,
-						    fresh);
-					    free_account(fresh);
-					    switch (outcome)
-					    {
-					    case account_recovery_complete_outcome::ok:
-						    reader->account_recovery_attempts = 0;
-						    /* Not logged in here: the client follows up with an
-						     * ordinary login. */
-						    ws_send_account_message(
-							    reader, "reset_completed", NULL, NULL);
-						    break;
-					    case account_recovery_complete_outcome::load_failed:
-					    case account_recovery_complete_outcome::write_failed:
-						    ws_send_account_message(
-							    reader, "error", NULL,
-							    "Failed to save password change");
-						    break;
-					    case account_recovery_complete_outcome::rejected:
-					    case account_recovery_complete_outcome::fenced:
-					    case account_recovery_complete_outcome::superseded:
-					    case account_recovery_complete_outcome::bad_hash:
-						    ws_send_account_message(
-							    reader, "error", NULL,
-							    "Invalid or expired reset code");
-						    break;
-					    }
-				    });
+			    account_read(completed_desc, name.c_str(),
+					 [name, code, hash = std::string(hash)](P_desc reader, bool,
+										P_acct fresh)
+					 {
+						 account_recovery_complete(name.c_str(), code.get(),
+									   hash.c_str(), reader,
+									   fresh,
+									   ws_complete_reset_reply);
+						 free_account(fresh);
+					 });
 		    }))
 		ws_send_account_message(d, "error", NULL,
 					"Password service is busy; try again later");
