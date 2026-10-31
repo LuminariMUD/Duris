@@ -28,8 +28,7 @@ constexpr double WORLD_QUEST_LEVEL_FIT_SCALE = 6.0;
 constexpr int WORLD_QUEST_MAX_TARGET_PROBES = 32;
 constexpr int WORLD_QUEST_MAX_HISTORY_CHECKS = 32;
 constexpr int WORLD_QUEST_LOCAL_MAX_LEVEL = 29;
-constexpr size_t WORLD_QUEST_MAX_ROUTE_ROOMS = 65536;
-constexpr size_t WORLD_QUEST_MAX_ROUTE_WORK = 2000000;
+constexpr size_t WORLD_QUEST_MAX_TARGET_WORK = 2000000;
 
 inline int world_quest_truncated_average_level(int64_t level_sum, int64_t sample_count)
 {
