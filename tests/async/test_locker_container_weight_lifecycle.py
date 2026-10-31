@@ -41,6 +41,7 @@ commands = "\n".join(extract_function("cmd/actobj.c", signature) for signature i
 ))
 chests = "\n".join(extract_function("item/storage_lockers.c", signature) for signature in (
     "PrivateChest::PrivateChest(",
+    "void PrivateChest::SetPasswordHash(",
     "bool locker_eq_type_fits_for_storage(",
     "bool ComboChest::ItemFits(",
     "bool EqApplyChest::ItemFits(",

@@ -344,7 +344,7 @@ class PrivateChest : public LockerChest
 	const char *GetName(void) { return m_chestName; };
 	// Memory holds the chest's password: empty for none.
 	const std::string &GetPasswordHash(void) { return m_passwordHash; };
-	void SetPasswordHash(const char *hash) { m_passwordHash = hash ? hash : ""; };
+	void SetPasswordHash(const char *hash);
 	bool SaveContents(StorageLocker *locker, bool durable);
 	// Submit/acknowledge retained captures; true while work remains.
 	bool FlushContents(void);

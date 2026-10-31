@@ -7,6 +7,7 @@
 #include <cmath>
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/unicode.h"
 #include "net/output_preference_codec.h"
 #include "world/db.h"
 #include "core/utils.h"
@@ -2173,7 +2174,14 @@ bool sql_log_chest_activity(int locker_id, int chest_id, const char *char_name, 
 	if (!critical_operation_id_generate(&operation) ||
 	    !critical_operation_id_to_hex(operation, hex, sizeof(hex)))
 		return false;
-	const std::string item = item_short ? std::string(item_short).substr(0, 256) : "";
+	std::string item = item_short ? item_short : "";
+	if (item.size() > 256)
+	{
+		size_t limit = 256;
+		while (limit && IS_UTF8_TAIL(item[limit]))
+			--limit;
+		item.resize(limit);
+	}
 	chest_logs.push_back(
 		{ locker_id,
 		  sql_format(

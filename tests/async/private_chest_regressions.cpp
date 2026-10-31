@@ -1,6 +1,7 @@
 // The production registry, sorting, authorization and receipt code is compiled
 // intact. Only world/prototype, capture and writer/SQL services are controlled.
 #include "item/storage_lockers.c"
+#include "net/unicode.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdlib>
@@ -56,6 +57,7 @@ static std::shared_ptr<sql_write_receipt> management_receipt;
 static std::function<void(bool, const sql_rows &)> read_done;
 static password_completion password_done;
 static std::function<void(P_char, const sql_rows &)> log_done;
+static std::string log_query;
 
 void logit(const char *, const char *, ...) {}
 void *__malloc(size_t n, const char *, const char *, int)
@@ -220,9 +222,10 @@ bool sql_read_at(persistence_query_site, std::string,
 	read_done = std::move(done);
 	return true;
 }
-bool sql_read_for_at(persistence_query_site, P_char, std::string,
+bool sql_read_for_at(persistence_query_site, P_char, std::string query,
 		     std::function<void(P_char, const sql_rows &)> done)
 {
+	log_query = std::move(query);
 	log_done = std::move(done);
 	return true;
 }
@@ -243,6 +246,11 @@ password_login_job *password_work_submit(const char *, const char *, const char 
 int is_bcrypt_hash(const char *)
 {
 	return true;
+}
+char *coins_to_string(int, int, int, int, const char *)
+{
+	assert(false && "fixture expects item movement, not money conversion");
+	return NULL;
 }
 std::string escape_str(const char *s)
 {
@@ -353,6 +361,7 @@ int main()
 		borrowed.assign(10000, 'x');
 		locker.AddPrivateChest(chest);
 		auto object = chest->GetChestObj();
+		assert(strstr(object->description, "(locked)"));
 		obj_to_room(object, 0);
 		auto item = read_object(1, REAL);
 		item->weight = 42;
@@ -505,9 +514,52 @@ int main()
 		finish_management(true, hash_row("new"));
 		assert(chest->GetPasswordHash() == "new");
 		assert(output.find("Password set") != std::string::npos);
+		// Only acknowledged metadata changes update the password-presence display.
+		locker_change_chest(&actor, &locker, chest, "", false);
+		assert(chest->GetPasswordHash() == "new" &&
+		       strstr(object->description, "(locked)"));
+		finish_management(false, hash_row("new"));
+		assert(chest->GetPasswordHash() == "new" &&
+		       strstr(object->description, "(locked)"));
+		locker_change_chest(&actor, &locker, chest, "", false);
+		finish_management(true, hash_row(NULL));
+		assert(chest->GetPasswordHash().empty() &&
+		       !strstr(object->description, "(locked)"));
+		locker_change_chest(&actor, &locker, chest, "new", false);
+		assert(!strstr(object->description, "(locked)"));
+		finish_management(false, hash_row(NULL));
+		assert(chest->GetPasswordHash().empty() &&
+		       !strstr(object->description, "(locked)"));
+		locker_change_chest(&actor, &locker, chest, "new", false);
+		finish_management(true, hash_row("new"));
+		assert(chest->GetPasswordHash() == "new" &&
+		       strstr(object->description, "(locked)"));
+		// Preserve the stable UID and complete UTF-8 characters within the SQL bound.
+		const std::string prefix = "[uid " + std::to_string(item->obj_uid) + "] ";
+		for (const char *character : { "\xC3\xA9", "\xE2\x82\xAC", "\xF0\x9F\x98\x80" })
+		{
+			const std::string retained = prefix + std::string(255 - prefix.size(), 'x');
+			std::string label = retained.substr(prefix.size()) + character + "tail";
+			item->short_description = label.data();
+			const auto before = audit_writes.size();
+			locker_record_movement(&actor, object, item, true);
+			assert(audit_writes.size() == before + 1);
+			assert(audit_writes.back().first.find("'" + retained + "'") !=
+			       std::string::npos);
+			for (auto &write : audit_writes)
+			{
+				write.second->ok = true;
+				write.second->finished.store(true);
+			}
+			sql_chest_log_pulse();
+			assert(!sql_chest_log_pending(7));
+		}
+		item->short_description = NULL;
 		// History renders the stored ID even after a later chest reuses the name.
 		locker_logcmd(&actor, NULL);
 		assert(log_done);
+		assert(log_query.find("ORDER BY l.logged_at DESC, l.id DESC LIMIT 50") !=
+		       std::string::npos);
 		sql_row row;
 		row.fields = { "now", "owner", "3", std::nullopt, "an item", "55" };
 		output.clear();

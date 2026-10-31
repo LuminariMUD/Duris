@@ -21,6 +21,7 @@ bodies = extract_function("cmd/interp.c", "char *one_argument(") + "\n" + "\n".j
     "std::vector<PrivateChest *> StorageLocker::GetPrivateChests(",
     "void StorageLocker::RemovePrivateChest(",
     "PrivateChest::PrivateChest(",
+    "void PrivateChest::SetPasswordHash(",
     "static sql_row locker_outcome(",
     "static int locker_chest_id(",
     "static int locker_opencmd(P_char ch, char *arg)\n{",
@@ -64,6 +65,7 @@ static std::vector<int> events;
 const unsigned LockerChest::m_chestVnum = 173;
 
 char *str_dup(const char *value) { return strdup(value); }
+void str_free(const char *value) { free(const_cast<char *>(value)); }
 int fill_word(char *) { return 0; }
 void *__malloc(size_t n, const char *, const char *, int) { return calloc(1, n); }
 void send_to_char(const char *s, P_char) { feedback += s; }

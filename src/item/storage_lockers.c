@@ -701,7 +701,7 @@ void locker_record_movement(P_char actor, P_obj container, P_obj item, bool depo
 		text = coins_to_string(item->value[3], item->value[2], item->value[1],
 				       item->value[0], "");
 	if (item && !description)
-		text += " [uid " + std::to_string(item->obj_uid) + "]";
+		text = "[uid " + std::to_string(item->obj_uid) + "] " + text;
 	sql_log_chest_activity(
 		locker->GetLockerId(),
 		chest->IsPrivateChest() ? chest->GetChestId() : locker->GetPublicChestId(),
@@ -1798,7 +1798,6 @@ bool ComboChest::ItemFits(P_obj obj)
 PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_hash)
 	: LockerChest(name, "in your private chest")
 	, m_chestId(chest_id)
-	, m_passwordHash(password_hash ? password_hash : "")
 {
 	strlcpy(m_chestName, name, sizeof(m_chestName));
 	m_chestKeyword = m_chestName;
@@ -1814,16 +1813,27 @@ PrivateChest::PrivateChest(int chest_id, const char *name, const char *password_
 		m_pChestObject->value[0] = -1;
 		m_pChestObject->value[1] = m_pChestObject->value[2] = m_pChestObject->value[3] = 0;
 		m_pChestObject->type = ITEM_CONTAINER;
-		m_pChestObject->str_mask |= (STRUNG_KEYS | STRUNG_DESC1);
+		m_pChestObject->str_mask |= STRUNG_KEYS;
 
 		char buf[MAX_STRING_LENGTH];
 		snprintf(buf, sizeof(buf), "chest %s private", name);
 		m_pChestObject->name = str_dup(buf);
-
-		snprintf(buf, sizeof(buf), "&+cA private chest labeled '&+W%s&+c'%s.&n", name,
-			 m_passwordHash.empty() ? "" : " &+Y(locked)&n");
-		m_pChestObject->description = str_dup(buf);
 	}
+	SetPasswordHash(password_hash);
+}
+
+void PrivateChest::SetPasswordHash(const char *hash)
+{
+	m_passwordHash = hash ? hash : "";
+	if (!m_pChestObject)
+		return;
+	char buf[MAX_STRING_LENGTH];
+	snprintf(buf, sizeof(buf), "&+cA private chest labeled '&+W%s&+c'%s.&n", m_chestName,
+		 m_passwordHash.empty() ? "" : " &+Y(locked)&n");
+	if (m_pChestObject->str_mask & STRUNG_DESC1)
+		str_free(m_pChestObject->description);
+	m_pChestObject->description = str_dup(buf);
+	m_pChestObject->str_mask |= STRUNG_DESC1;
 }
 
 bool PrivateChest::SaveContents(StorageLocker *locker, bool durable)
@@ -4817,7 +4827,7 @@ static int locker_logcmd(P_char ch, char * /*arg*/)
 			    "FROM private_chest_log l "
 			    "LEFT JOIN private_chests c ON l.chest_id = c.id "
 			    "WHERE l.locker_id=%d "
-			    "ORDER BY l.logged_at DESC LIMIT 50",
+			    "ORDER BY l.logged_at DESC, l.id DESC LIMIT 50",
 			    locker_id),
 		    [locker_id, visit](P_char viewer, const sql_rows &rows)
 		    {
