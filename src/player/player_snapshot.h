@@ -277,6 +277,8 @@ constexpr int PLAYER_WORLD_QUEST_REWARD_PENDING = 2;
 constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_PENDING = 3;
 // Last kill credited, but item creation/save admission still needs a bartender retry.
 constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED = 4;
+// Final kill XP is credited; remaining reward values are retained for history retry.
+constexpr int PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING = 5;
 
 struct player_world_quest_reward
 {
@@ -301,6 +303,15 @@ struct player_pending_world_quest
 	bool awaiting_reward = false;
 	bool final_kill_reward = false;
 	player_world_quest_reward reward{};
+	int32_t escrow_fee = 0;
+	// The pre-completion state lets unrelated changes remain durable when the
+	// completion transaction fails. Used only by the save repositories.
+	bool fallback_only = false;
+	std::array<int32_t, 14> before_quest{};
+	int32_t before_origin = 0;
+	int32_t before_replacement_due = 0;
+	std::array<int64_t, 4> before_wallet{};
+	uint64_t before_wallet_revision = 0;
 	// Detached reward roots are claimed with the same player after-image.
 	std::vector<player_item_snapshot> reward_items{};
 	size_t reward_encoded_size = 0;

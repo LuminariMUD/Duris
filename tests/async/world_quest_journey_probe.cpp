@@ -123,6 +123,8 @@ extern "C" void quest_gameplay_setup(P_char ch)
 			for (auto *edge : world[ch->in_room].dir_option)
 				if (edge)
 					edge->exit_info |= EX_LOCKED;
+		if (action == 8)
+			ADD_MONEY(ch, 1000);
 		if (action == 6)
 		{
 			const int allowance = sql_world_quest_can_do_another(ch);

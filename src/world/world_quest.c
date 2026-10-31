@@ -179,9 +179,7 @@ int quest_exp_reward(P_char ch, int /*type*/)
 static player_world_quest_reward world_quest_prepare_reward(P_char ch, int type, bool final_kill)
 {
 	player_world_quest_reward reward;
-	reward.experience = quest_exp_reward(ch, type);
-	if (final_kill)
-		reward.experience /= ch->only.pc->quest_kill_original;
+	reward.experience = final_kill ? 0 : quest_exp_reward(ch, type);
 	if (GET_CLASS(ch, CLASS_MERCENARY) && GET_LEVEL(ch) > 24)
 		reward.money = GET_LEVEL(ch) * 1256 + number(1, 500);
 	reward.epic = quest_epic_reward_amount(ch);
@@ -255,7 +253,8 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 		wizlog(56, "%s finished quest target %d (kill quest)", GET_NAME(ch),
 		       ch->only.pc->quest_mob_vnum);
 		send_to_char("&+WCongratulations&n&n&+W, you finished your quest!&n\r\n", ch);
-		gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
+		if (values.experience)
+			gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
 	}
 
 	if (values.money > 0)
@@ -296,32 +295,54 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool final_kill)
 {
 	P_obj reward = quest_item_reward(ch);
+	const bool retrying_kill = final_kill && ch->only.pc->quest_accomplished ==
+							 PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
+	const player_world_quest_reward values =
+		retrying_kill ? player_world_quest_reward{ ch->only.pc->quest_receiver,
+							   ch->only.pc->quest_shares_left,
+							   ch->only.pc->quest_kill_how_many } :
+				world_quest_prepare_reward(ch, type, final_kill);
+	if (final_kill && !retrying_kill)
+	{
+		ch->only.pc->quest_accomplished = PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
+		ch->only.pc->quest_receiver = values.experience;
+		ch->only.pc->quest_shares_left = values.epic;
+		ch->only.pc->quest_kill_how_many = values.money;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	}
 	if (reward && IS_OBJ_STAT2(reward, ITEM2_CRUMBLELOOT) && !IS_TRUSTED(ch))
 	{
 		extract_obj(reward, FALSE);
-		send_to_char("The quest reward is unavailable; your task was not changed.\r\n", ch);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"The quest reward is unavailable; your task was not changed.\r\n",
+			ch);
 		return false;
 	}
 	if (!reward || !reward->obj_uid)
 	{
 		if (reward)
 			extract_obj(reward, FALSE);
-		send_to_char("The quest reward is unavailable; your task was not changed.\r\n", ch);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"The quest reward is unavailable; your task was not changed.\r\n",
+			ch);
 		return false;
 	}
-	const auto values = world_quest_prepare_reward(ch, type, final_kill);
 	const uint64_t reward_uid = reward ? reward->obj_uid : 0;
 	const uint64_t mob_id = quest_mob ? quest_mob->runtime_id : 0;
 	const int target = ch->only.pc->quest_mob_vnum;
 	const int started = ch->only.pc->quest_started;
 	if (!sql_world_quest_finish_async(
-		    ch, reward, true, final_kill, values,
+		    ch, reward, true, final_kill, values, 0,
 		    [reward_uid, mob_id, target, started, type, final_kill, values](P_char actor)
 		    {
 			    if (!actor || !actor->only.pc || !actor->only.pc->quest_active ||
 				actor->only.pc->quest_mob_vnum != target ||
 				actor->only.pc->quest_started != started)
-				    return;
+				    return true;
 			    actor->only.pc->quest_accomplished =
 				    final_kill ? PLAYER_WORLD_QUEST_KILL_REWARD_PENDING :
 						 PLAYER_WORLD_QUEST_REWARD_PENDING;
@@ -331,12 +352,16 @@ static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool
 			    world_quest_deliver_reward(actor, mob, type, final_kill,
 						       world_quest_reward_by_uid(reward_uid), false,
 						       values);
+			    return true;
 		    }))
 	{
 		if (reward)
 			extract_obj(reward, FALSE);
-		send_to_char("Your quest history is unavailable; your task was not changed.\r\n",
-			     ch);
+		send_to_char(
+			final_kill ?
+				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
+				"Your quest history is unavailable; your task was not changed.\r\n",
+			ch);
 		return false;
 	}
 	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
@@ -349,6 +374,16 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 	if (!IS_ALIVE(ch) || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)))
 		return;
 	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED)
+	{
+		// Older unsecured records predate the credited-XP recovery state.
+		if (ch->only.pc->quest_kill_original <= 0)
+			return;
+		gain_exp(ch, NULL,
+			 quest_exp_reward(ch, FIND_AND_KILL) / ch->only.pc->quest_kill_original,
+			 EXP_WORLD_QUEST);
+	}
+	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED ||
+	    ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING)
 	{
 		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
 		return;
@@ -413,17 +448,13 @@ void quest_kill(P_char ch, P_char quest_mob)
 		ch->only.pc->quest_kill_original = ch->only.pc->quest_kill_how_many;
 	}
 
+	gain_exp(ch, NULL, exp_gain / ch->only.pc->quest_kill_original, EXP_WORLD_QUEST);
 	if (ch->only.pc->quest_kill_how_many - ch->only.pc->quest_kill_original == 0)
 	{
-		if (!world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true))
-		{
-			ch->only.pc->quest_accomplished = PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED;
-			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
-		}
+		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
 	}
 	else
 	{
-		gain_exp(ch, NULL, exp_gain / ch->only.pc->quest_kill_original, EXP_WORLD_QUEST);
 		send_to_char(
 			"&+YCongratulations&+y, you found the right mob, but you're not done yet.\r\n",
 			ch);

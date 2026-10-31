@@ -6043,7 +6043,7 @@ bool sql_hydrate_item_owner_revisions(void)
 
 bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
 				  bool final_kill_reward, const player_world_quest_reward &values,
-				  std::function<void(P_char)> committed)
+				  int escrow_fee, std::function<bool(P_char)> committed)
 {
 	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 ||
 	    ch->only.pc->quest_mob_vnum <= 0 || !committed)
@@ -6055,6 +6055,7 @@ bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
 		quest.awaiting_reward = awaiting_reward;
 		quest.final_kill_reward = final_kill_reward;
 		quest.reward = values;
+		quest.escrow_fee = escrow_fee;
 		quest.target = ch->only.pc->quest_mob_vnum;
 		quest.level = GET_LEVEL(ch);
 		quest.giver = ch->only.pc->quest_giver;
@@ -6126,8 +6127,7 @@ bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
 				if ((actor && awaiting_reward && !IS_ALIVE(actor)) ||
 				    !world_quest_publish_reward(actor, publication))
 					return false;
-				committed(actor);
-				return true;
+				return committed(actor);
 			});
 	}
 	catch (const std::bad_alloc &)
