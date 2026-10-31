@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bug Triage"
+  short_description: "Check Duris bugs against master, issues, and open PRs"
+  default_prompt: "Use $bug-triage to review lib/reports/bugs against current master, existing issues, and open PRs, file valid untracked defects, and safely clear processed or invalid reports."
