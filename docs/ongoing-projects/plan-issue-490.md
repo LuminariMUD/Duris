@@ -9,8 +9,8 @@ Plan checkout: `/home/aiwithapex/projects/duris-issue-490`,
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
 That checkout predates the merged runtime code and retains the reviewed plan.
 Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`,
-`branch/issue-490-bank-load`, stacked on `branch/issue-490-audit-admission`
-(PR #509), then `branch/issue-490-followup` (PR #507), based on master `b737db202`.
+`branch/issue-490-password-parsing`, stacked on `branch/issue-490-bank-load`
+(PR #510, head `fb5cd3051`), then PR #509 and PR #507, based on master `b737db202`.
 The maintained implementation handoff is `docs/ongoing-projects/plan-issue-490.md`
 in that checkout; the shared master `plan.md` belongs to unrelated work.
 
@@ -461,3 +461,115 @@ outstanding. The accepted behavior and completion criteria remain unchanged.
 Published bank/load delivery: [PR #510](https://github.com/LuminariMUD/Duris/pull/510),
 `branch/issue-490-bank-load`, targeting PR #509. Next delivery extends the existing
 real locker command journey and completes the acceptance audit.
+
+### Final qualification continuation checkpoint
+
+The three implementation deliveries are published for review: #507 -> #509 ->
+#510. They are not merged by this task. Current branch is
+`branch/issue-490-command-qualification`; no command-journey extension has been
+implemented yet on this branch. All prior build/test/tool sessions are terminal.
+No production operation, tag, deployment or goal-completion claim was made.
+
+Next work remains exactly section 3 plus the final acceptance audit:
+
+1. Extend the existing `test_mysql_locker_grant_journey.py`, keeping its actors,
+   database, idle journey and cold restart. Add SQL-plus-feedback assertions for
+   management/name/password/limit/no-refund and actual wallet/bank funding. Use
+   the existing disposable seed and normal in-game funding commands; never adjust
+   live cached balances via SQL. A separate visitor wallet/bank seed of 300/300
+   platinum can test combined-sufficient, individually-insufficient rejection
+   during its already-existing own-locker visit. A staff-funded owner wallet can
+   cover the first chest; a bank seed with small denominations plus enough whole
+   platinum covers bank change and fifth/sixth chest checks.
+2. Capture actual moved UIDs from the player inventory snapshots before/after
+   movement, then compare exact SQL actor/chest/action/item records. Keep the
+   existing equal-timestamp/replay case. Add real partial coin amounts, ordinary
+   bag EMPTY to/from the selected private chest, rejected private-A-to-private-B
+   EMPTY, and supported GET/select/PUT transfer. Deleted/recreated-name history
+   must retain the old numeric chest identity. No new journey framework is needed.
+3. Before the existing cold restart, leave one bag root with a child in the private
+   chest. Compare locker/chest IDs, UIDs and parent UID relationships across leave,
+   re-entry, restart and authorized retrieval. Keep public contents as controls.
+   The existing `contents()` query includes private rows, so update its expected
+   four-row baseline when adding the nested graph. Source-confirmed: the escort's
+   `m_itemCount` is public carried roots only (`PFileToLocker`), so existing
+   `enter(..., items=2)` controls do not count private roots/children.
+4. The real `locker_equipcmd` and `locker_chestcmd` both call the same
+   `locker_require_owner` predicate. Extend the existing native private fixture
+   where needed for actual canonical same-account/same-side and staff predicate
+   variants, and unavailable-chest deletion, rather than inventing simultaneous
+   account sessions. The real guild/owner/guest/side controls already have socket
+   proof. `OVERLORD` or `god_check` is the preserved staff rule.
+5. Run the completed command journey on disposable MariaDB 10.11 and MySQL 8.0,
+   and the final no-MySQL/public-storage journey where final sources affect it.
+   Reuse unchanged native/fault/migration proof; add a missing outcome in its
+   existing fixture only. Compare every acceptance item to actual test coverage,
+   update the handoff/help if needed, publish the qualification delivery stacked
+   on #510, verify all remote heads/PR state and keep the goal active until the
+   full objective is proven.
+
+Useful source details checked for this continuation: names are 1-32 ASCII-style
+letters/digits/underscore/hyphen; `public`, `chest`, `private` are rejected. Both
+create/password reject over 72 bytes. Management may report `A chest change is
+still pending` or `That chest is still being secured`; a bounded retry should
+handle these real asynchronous refusals instead of assuming admission is success.
+The existing staff coin syntax is `give 500 platinum <name>`; bank syntax is
+`deposit/withdraw <count> <denomination>`. Bag #96443 is the actual bottomless
+illithid bag (`bag` keyword), capacity 500, and the native container suite already
+uses its weight semantics. Do not relax item/carry restrictions to make a fixture
+pass; choose a valid ordinary fixture if a particular prototype is unsuitable.
+
+### Password parsing defect found by complete commands
+
+The expanded MariaDB journey passed the new actual wallet/bank/change, combined
+insufficiency, name, duplicate, fifth/sixth and no-refund cases, then reproduced
+rejection of an actual 72-byte password. `one_argument()` leaves the separator
+at the start of its remainder. The old handler counted/hashed that separator;
+`password ... none` also compared the untrimmed remainder and hashed it instead
+of removing the password. The native fixture had hidden this by trimming in its
+parser stub. It now compiles the real argument/filler parsing code.
+
+A literal parser handles the two management words (operation and chest name);
+creation rejects the existing filler words so names/passwords cannot silently
+shift position. Leading password separators are removed before create/set and
+before interpreting the `none` sentinel or checking the payload length. OPEN
+retains its raw remainder for existing credentials; the existing private password
+worker checks the normalized candidate, then the legacy raw candidate, each
+bounded to 72 bytes. It upgrades SHA-256 using the candidate actually verified.
+Account password semantics and the C API stay unchanged. No credential rewrite,
+migration, plaintext logging or game-thread bcrypt is introduced.
+
+The real worker regression first failed on a separator plus a 72-byte credential;
+it now passes current/prefixed bcrypt, both SHA-256 forms/upgrades, wrong input,
+72/73-byte boundaries, prevention of legacy bcrypt prefix truncation and unchanged
+account whitespace behavior. The native production registry/controller fixture
+passes real parser/72-byte create/set, `none` removal, reserved filler names,
+actual same-account/staff role checks and unavailable deletion. All 25 lifecycle
+cases and `make -C src -j6` pass. Maintained chest help now states the real bounds,
+reserved names and guild policy. Active source delivery branch is
+`branch/issue-490-password-parsing`; the expanded command journey remains
+uncommitted for its subsequent qualification delivery. Complete two-engine journey
+and the final acceptance audit are still outstanding.
+
+Parser ablation: ordinary OPEN/door word parsing stays on the original function;
+only management needs literal words. The helper consumes management separators
+once, so no duplicate trimming is required there. Existing separator-only stored
+credentials remain verifiable through the raw worker fallback; account whitespace
+semantics and the private 72-byte bound have executable controls. The latest
+native suites, final MariaDB build, fresh no-MySQL locker journey and flat-file
+private-data preservation fixture pass. The extended SQL journey has also passed
+management/password/access/audit/idle groups. Its fixture was adjusted to collect
+legitimate mortal coin spills and to fund exact copper while already in the room;
+production carrying/coin rules are unchanged. Final SQL journey runs remain due.
+
+Password source delivery qualification: the final worker suite, all 25 lifecycle
+cases and the expanded production registry/controller ASan/UBSan fixture pass.
+`password-parsing-build-final.log` records the final successful server build.
+The real MariaDB journey has passed the corrected 72-byte set/change/removal,
+password-free guest open, all reserved-name cases, exact history ordering, owner/
+guest movements and idle save. Complete journey qualification is still separate
+work; its pending test-file changes are intentionally not in this source commit.
+The fresh no-MySQL build/public-storage restart journey and flat-file repository
+private-record preservation checks pass; management-only token parsing does not
+run for unsupported flat-file private commands. Help and documentation contracts
+are current. No production state or stored credentials were rewritten.
