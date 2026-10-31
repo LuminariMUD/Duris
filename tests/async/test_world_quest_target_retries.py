@@ -96,7 +96,8 @@ void run_map_payment(P_char player, int fee)
                   for origin in (1734, 74339)
                   for level in (11, 29, 30, 56)
                   for kind in ("ask", "kill")
-                  for family in ("surface", "underdark", "foreign_surface", "foreign_underdark")]
+                  for family in ("surface", "underdark", "foreign_surface", "foreign_underdark",
+                                 "ambiguous_surface")]
     scenarios += [(29, f"zone_average_{average}", kind)
                   for average in (22, 23, 33, 34) for kind in ("ask", "kill")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]

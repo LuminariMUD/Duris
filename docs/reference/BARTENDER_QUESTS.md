@@ -247,6 +247,8 @@ separately, allowing nearby connector zones without flooding every connected
 interior. Multiple entrances in the same region agree; tied boundaries in
 different regions remain unresolved for that family. Surface and Underdark
 attachments do not conflict. Interiors cannot merge Underdark components.
+Ambiguous geography preserves accepted work as unproven; a known matching
+family still permits the task even if the other family is ambiguous.
 Geographic membership applies to a target's actual zone, including disconnected
 rooms, without requiring a path to either its reset or current room.
 Closed/private destination zones and restricted target/reset rooms remain
@@ -532,7 +534,7 @@ the owning source paths above as well. Run each focused script below with
 - [test_world_quest_target_retries.py](../../tests/async/test_world_quest_target_retries.py):
   production creation, live target checks, bartender parsing/payment, sharing,
   legacy claims, and recovery against controlled world/reset fixtures. Its
-  284 scenarios also exercise level/zone boundaries, geography, route immunity,
+  300 scenarios also exercise level/zone boundaries, geography, route immunity,
   history/probe caps and refunds, followed by 10 SQL-history scenarios.
 - [test_world_quest_reward_policy.py](../../tests/async/test_world_quest_reward_policy.py):
   executable withholding math and source contracts for reward filtering,

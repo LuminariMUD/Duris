@@ -27,6 +27,7 @@ struct world_quest_region
 {
 	int surface = 0;
 	int underdark = 0;
+	bool uncertain = false; // Conflicting boundaries in at least one family.
 };
 
 world_quest_region world_quest_policy_region(int room);

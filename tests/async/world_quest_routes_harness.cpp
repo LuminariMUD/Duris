@@ -91,6 +91,7 @@ int main()
 	edge(0, DIR_NORTH, 8); // Ambiguous surface, independently known Underdark.
 	build_geography();
 	assert(quest_region_for_room(0).surface == 0);
+	assert(quest_region_for_room(0).uncertain);
 	assert(quest_local_match(0, 7) && !quest_local_match(0, 6));
 	fixture(65536 + 8); // No old route-size budget participates.
 	verify();

@@ -273,6 +273,23 @@ in flight may finish with per-step assertions; the final full run qualifies the
 batched reader on both backends. No eligibility or acceptance requirement is
 weakened by removing the diagnostic polling.
 
+Final source review added a regression for a tied surface boundary alongside a
+known Underdark attachment. It reproduced an incorrect `unavailable` verdict
+for the unmatched surface task. The geographic cache now retains an uncertainty
+bit: known matches still work, while an unresolved mismatch remains `unproven`
+and `world_quest_refresh()` keeps the accepted task instead of granting a reroll.
+All **300** native scenarios and 10 SQL-history cases pass, including the new
+negative control and the durable-state transition. The geography harness and
+fresh server build also pass. Fresh full/reported backend runs use this final
+production repair.
+
+The earlier full run completed both level-11 and level-29 kinds, including the
+partial KILL restart, before its level-30 fixture leveled to 31. Its remaining
+allowance then legitimately changed because history is counted per current
+level below 50 (`sql_world_quest_can_do_another`). The regression now checks
+that partial combat writes no history, and checks equal remaining allowance
+when the actor level is unchanged. No allowance policy was changed.
+
 The full matrix next reached a genuine scripted movement gate on its chosen
 level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object
 movement handlers and room affects when selecting ordinary completion fixtures,

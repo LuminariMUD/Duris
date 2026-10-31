@@ -519,7 +519,11 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                     f"combat made no legitimate quest progress: {current}")
             require(current["quota"] == accepted["quota"] and current["history_done"] == 0,
                     "partial combat altered quota or consumed history")
-            require(current["remaining"] == previous["remaining"], "partial combat used a quest allowance")
+            require(stored_gameplay_history(database_environment, current) == history_before,
+                    "partial combat wrote a completion-history entry")
+            if current["actor_level"] == previous["actor_level"]:
+                require(current["remaining"] == previous["remaining"],
+                        "partial combat changed allowance without a level change")
             require(current["progress_xp"] > previous["progress_xp"], "partial combat awarded no actual XP")
             partials.append(current)
             if not partial_persisted and level == 29 and (29, 1) in cases:

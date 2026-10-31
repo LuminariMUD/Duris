@@ -198,6 +198,8 @@ void build_geography()
 						(underdark ? region.underdark : region.surface) =
 							*regions.begin();
 					}
+					else
+						quest_geography[zone].region.uncertain = true;
 					break;
 				}
 				frontier = std::move(next);
@@ -962,7 +964,13 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 	for (const auto &candidate : candidates)
 	{
 		if (!request.local(candidate.mob))
+		{
+			const auto destination = quest_region_for_room(candidate.mob->in_room);
+			if (region.uncertain || destination.uncertain ||
+			    (!destination.surface && !destination.underdark))
+				++uncertain;
 			continue;
+		}
 		if (candidate.interaction == status::valid)
 		{
 			if (valid++ == 0)

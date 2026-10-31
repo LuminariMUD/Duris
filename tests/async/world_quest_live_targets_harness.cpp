@@ -688,7 +688,10 @@ int main(int argc, char **argv)
 			rooms[room].zone = 3;
 		edge(0, DIR_DOWN, 7);
 		edge(7, DIR_NORTH, 8); // No return; the map component is geographical.
-		if (std::string(geographic_family) != "surface")
+		if (std::string(geographic_family) == "ambiguous_surface")
+			edge(0, DIR_NORTH,
+			     6); // Two surface identities, independently known Underdark.
+		else if (std::string(geographic_family) != "surface")
 		{
 			rooms[5].dir_option[DIR_EAST] = rooms[3].dir_option[DIR_WEST] = nullptr;
 			const int boundary = std::string(geographic_family) == "underdark" ? 8 :
@@ -926,8 +929,24 @@ int main(int argc, char **argv)
 		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
 		const auto accepted = world_quest_policy_check_target(
 			&player, geographic_origin, level, 20, vnum, preferred_type, 1);
-		assert(accepted.status == (expected ? world_quest_target_status::valid :
-						      world_quest_target_status::unavailable));
+		const auto expected_status = expected ? world_quest_target_status::valid :
+					     std::string(geographic_family) == "ambiguous_surface" ?
+							world_quest_target_status::unproven :
+							world_quest_target_status::unavailable;
+		assert(accepted.status == expected_status);
+		if (expected_status == world_quest_target_status::unproven)
+		{
+			pc.quest_active = 1;
+			pc.quest_level = level;
+			pc.quest_origin_room = geographic_origin;
+			pc.quest_type = preferred_type;
+			pc.quest_zone_number = 20;
+			pc.quest_mob_vnum = vnum;
+			pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 1 : 0;
+			assert(world_quest_refresh(&player) == expected_status);
+			assert(pc.quest_active && !pc.quest_replacement_due &&
+			       pc.quest_level == level);
+		}
 		if (expected)
 		{
 			assert(target.mob_vnum == vnum && target.map_room == accepted.map_room);
