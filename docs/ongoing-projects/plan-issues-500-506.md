@@ -1,6 +1,6 @@
 # Bartender quest bug fixes: issues #500 and #506
 
-Date: 2026-10-31. Status: #500 implemented; #506 repair and proof in progress.
+Date: 2026-10-31. Status: #500 and #506 repairs implemented and locally verified.
 Fix branch: `branch/issues-500-506-bartender-bugfixes`.
 Review: [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
 Source baseline: `b737db20210ff2d3e4eebccb212c9918b9b6f877` (`master` and
@@ -18,16 +18,16 @@ target can obtain work at the reported giver. A legitimate refusal retains the
 correct quest/history state, gives consistent feedback, and returns any purchase
 fee when selection fails. Preserve existing paid work and replacement entitlement.
 
-The original plan-only checkpoint is `9ef0f4203`; implementation evidence is
-recorded below as work proceeds. The two reports share verification, but #506 needs its own
-cause established; a #500 classifier fix is not evidence that #506 is resolved.
+The original plan-only checkpoint is `9ef0f4203`. The reports have separate
+demonstrated causes: #500's procedure classification and #506's SQL history-day
+bookkeeping. Their repairs and executable evidence are recorded below.
 
-## Reopened #506 work
+## #506 repair and proof
 
-The user requires a demonstrated #506 repair on this branch. The earlier passing
-29/30 flows are controls, not completion. Trace every post-abandon refusal and
-construct the relevant states locally; obtaining the original player's state is
-not a prerequisite for this work.
+The earlier passing 29/30 flows did not cover history publication across a date
+boundary. Investigation constructed the missing states locally and reproduced
+the refusal through the actual giver without requiring the original player's
+records or a timed midnight reproduction.
 
 Outcome: reproduce a false refusal after abandonment, fix its owning path and
 prove regrant when funds, allowance, history and a suitable target permit it.
@@ -111,7 +111,8 @@ SQL writer's session clock is restored before the completion marker. The first
 flatfile test reader incorrectly compared today's count with all past records;
 that assertion was corrected to verify yesterday's records via the owning
 history API and retain the completed-target exclusion across restart.
-Final full-gameplay/recovery and shared abandonment regression checks are running.
+Shared abandonment regression checks pass on both backends. Full MariaDB
+gameplay/recovery validation is recorded below.
 
 The full MariaDB replay reached its final level-30 KILL case but hit the existing
 120-second combat limit against brownie 5711 at room 5766 (still fighting,
@@ -401,7 +402,7 @@ These are baseline controls, not reproduction or qualification of the three
 reported giver flows. No gameplay implementation, full server build, full-world
 journey, database mutation or production validation was performed for this plan.
 
-## Implementation evidence, 2026-10-31
+## Earlier #500 implementation and qualification, 2026-10-31
 
 Started from clean branch commit `9ef0f4203`. Added failing route regressions for
 the Quietus crew room and Bloodstone wino/watcher at origin, intermediate and
@@ -524,9 +525,9 @@ DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=audit DURIS_WORLD_QU
 ```
 
 Ignored logs are `bin/tests/issue500-*-final*.log`; the earlier diagnostic
-evidence is under `bin/tests/bartender-fix/`. #506's original production refusal
-has not been reproduced or identified. Keep it open; the qualified transitions
-do not establish the unknown original cause. No production operation occurred.
+evidence is under `bin/tests/bartender-fix/`. At this earlier checkpoint, #506
+had no demonstrated repair. That disposition is superseded by the constructed
+history-cache failure and repair above. No production operation occurred.
 
 The final binaries also pass the complete existing `both` gameplay/recovery
 journey on each backend: ASK and KILL at 11/29, KILL at 30, ordinary outbound and
@@ -555,8 +556,9 @@ Final ablation keeps one private explicit procedure classification shared by
 its two real consumers, the crew-room allowance, existing executable fixtures
 and the existing dual-backend runner. It drops policy redesign, callback removal,
 new registries, new schema/configuration and a speculative Tharnadia state patch.
-Broader mechanics choices and the unidentified original #506 refusal remain
-open. The PR references both reports without automatic issue closure.
+Broader mechanics choices remain open. The #506 follow-up above supplies the
+separate demonstrated repair. The PR references both reports without automatic
+issue closure before review/merge.
 
 Additional completion commands passed:
 
@@ -575,6 +577,45 @@ git diff --check
 Implementation commit: `579f2401a2fd33089748754f06bb96f49f080b29`.
 Master advanced to `9ad734e9e60b0938181f85cd20cdb9614a14adc8` during
 qualification. The read-only `git merge-tree --write-tree origin/master HEAD`
-check is clean, and GitHub reports PR #513 mergeable and non-draft. The PR's
-eight changed files are limited to the bartender policy, existing regressions/
-runner, reference and this plan. Concurrent unrelated work is excluded.
+check was clean, and GitHub reported PR #513 mergeable and non-draft at this
+earlier handoff. Its eight files covered #500; the #506 follow-up additionally
+touches the history cache, existing bartender handler and feedback regression.
+Concurrent unrelated work is excluded.
+
+## #506 final qualification and handoff
+
+Implementation commit: `c4d335fe6` (same dedicated branch and PR #513).
+The full MariaDB rerun passes all five gameplay cases (ASK/KILL at 11 and 29,
+KILL at 30), normal outbound/return travel, real completion/rewards/history,
+partial-progress restart and recovery/relogin/restart. It completed three server
+boots with binary hash `ce6fc80d5967358768a30437ef75e5ea8a241679ee37a9e67ba5b24c5f37d4b9`.
+The prior combat-timeout run is retained; neither code nor timeout was loosened.
+Final success is `bin/tests/issue506-mariadb-full-rerun.log`.
+
+```sh
+DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=both DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue506_mariadb_final" python3 tests/async/run_world_quest_dual_backend.py
+DURIS_WORLD_QUEST_BACKEND=mariadb DURIS_WORLD_QUEST_JOURNEY=reported DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue506_mariadb_final" python3 tests/async/run_world_quest_dual_backend.py
+DURIS_WORLD_QUEST_BACKEND=flatfile DURIS_WORLD_QUEST_JOURNEY=reported DURIS_WORLD_QUEST_BINARY="$PWD/bin/server/dms_issue506_flatfile_final" python3 tests/async/run_world_quest_dual_backend.py
+```
+
+Both `reported` runs pass the ten giver cases, four aged abandonment/regrant
+restart sequences, legitimate incomplete progressed-KILL confirmation/history,
+legacy origin and durable free replacement, plus real Bloodstone ASK/KILL travel
+and completion. Their logs are `bin/tests/issue506-mariadb-reported.log` and
+`bin/tests/issue506-flatfile-reported.log`. The new `history` runs on both backends
+and 72+10 native scenarios pass as documented above.
+
+Also passed: `test_world_quest_routes.py`, `test_world_quest_dynamic_policy.py`,
+`test_world_quest_failure_feedback.py`, `test_world_quest_remaining_unloaded.py`,
+`test_flatfile_world_quest_history.py`, Python compilation, all 14 documentation
+checks, `make -C src` and both backend builds, formatting, whitespace and the
+staged clang-tidy hook with the installed GCC 13 headers. The earlier complete
+flatfile gameplay matrix remains valid for its unchanged history implementation;
+the new flatfile history and reported journeys qualify the shared handler change.
+
+The final diff repairs the demonstrated false refusal and preserves legitimate
+restrictions. It adds no schema, gameplay option, service or broad persistence
+redesign. The precise original character state is not claimed recovered; the
+reproducible contract violation is repaired and proved before/after. #506 can
+track this fix through review/merge rather than wait for that historical state.
+No production deployment or player-data repair was performed.

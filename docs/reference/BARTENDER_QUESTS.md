@@ -552,6 +552,11 @@ or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
 `reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
 reports, restart state and Bloodstone ASK/KILL travel, using disposable fixtures.
+`history` constructs yesterday-only completion history and an aged Tharnadia
+task, then checks real abandonment/regrant and restart. Its disposable MariaDB
+session clock constructs old-query-day/new-publication-day results and is
+restored before the completion marker; flatfile supplies the equivalent
+past-day-history control.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 
