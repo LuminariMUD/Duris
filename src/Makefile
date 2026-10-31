@@ -133,6 +133,7 @@ OBJS =  $(SHIP_OBJS) \
 				 combat/frag_cap_config.o \
 				 combat/frag_cap.o \
 				 combat/frag_cap_repository.o \
+				 combat/frag_cap_runtime.o \
 				 cmd/actcomm.o \
 				 cmd/actinf.o \
 				 cmd/actmove.o \
@@ -161,7 +162,6 @@ OBJS =  $(SHIP_OBJS) \
 				 guild/artifact_population_flatfile.o \
 				 guild/artifact_population_recovery.o \
 				 guild/artifact_cache_codec.o \
-				 persistence/report_cache_codec.o \
 				 economy/donation_event.o \
 				 redis/redis_connection.o \
 				 redis/redis_command_observability.o \

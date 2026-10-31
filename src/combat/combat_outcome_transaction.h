@@ -47,6 +47,7 @@ critical_outbox_delivery_result
 combat_outcome_transaction_outbox_delivery(const critical_outbox_record &record, void *context);
 void combat_outcome_transaction_publish_outbox(void);
 combat_outcome_health combat_outcome_transaction_health_copy(void);
+bool combat_outcome_transaction_credit_pending(uint32_t pid);
 void combat_outcome_transaction_reset_for_tests(void);
 
 #endif

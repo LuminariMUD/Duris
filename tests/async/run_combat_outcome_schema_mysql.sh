@@ -46,7 +46,7 @@ g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Wer
     src/persistence/critical_command.c src/world/epic_command.c src/economy/currency_command.c \
     src/item/item_transfer_command.c src/item/item_transfer_repository.c src/item/item_claim_repository.c src/persistence/persistence_observability.c src/item/item_claim.c src/persistence/dupe_log.c src/economy/auction_command.c \
     src/sql/item_extra_descr_codec.c tests/async/item_extra_descr_codec_sql_escape_stub.cpp \
-    src/economy/auction_repository.c src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c \
+    src/economy/auction_repository.c src/combat/combat_outcome_command.c src/combat/combat_outcome_repository.c src/combat/frag_cap.c src/combat/frag_cap_repository.c src/combat/frag_cap_config.c \
     src/guild/artifact_guild_command.c src/guild/artifact_guild_repository.c \
     src/economy/boon_reward_command.c src/economy/boon_reward_repository.c \
     src/world/zone_touch_command.c src/world/zone_touch_repository.c \
@@ -55,7 +55,7 @@ g++ -std=c++20 -ffunction-sections -fdata-sections -Wall -Wextra -Wpedantic -Wer
     src/economy/collector_command.c src/economy/collector_codec.c \
     src/economy/collector_policy.c src/economy/collector_repository.c \
     src/economy/divine_trade.c src/economy/divine_trade_command.c src/economy/divine_trade_repository.c \
-    src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections \
+    src/persistence/critical_command_repository.c "${MYSQL_LIBS[@]}" -lcrypto -Wl,--gc-sections,--wrap=mysql_real_query,--wrap=mysql_errno \
     -o "$ROOT/bin/tests/combat_outcome_mysql_harness"
 "$ROOT/bin/tests/combat_outcome_mysql_harness"
 

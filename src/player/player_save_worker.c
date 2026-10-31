@@ -336,6 +336,8 @@ const char *persistence_job_kind_name(persistence_job_kind kind)
 		return "divine_boon";
 	case persistence_job_kind::artifact_delivery:
 		return "artifact_delivery";
+	case persistence_job_kind::frag_cap:
+		return "frag_cap";
 	}
 	return "unknown";
 }

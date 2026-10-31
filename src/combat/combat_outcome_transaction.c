@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "combat/combat_outcome_transaction.h"
+#include "combat/frag_cap_runtime.h"
 
 #include "redis/redis_report_cache.h"
 #include "economy/currency_transaction.h"
@@ -157,6 +158,17 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 	}
 	++health.submitted;
 	apply_live(payload);
+	char reference[CRITICAL_COMMAND_ID_BYTES * 2 + 1];
+	critical_operation_id_to_hex(operation_id, reference, sizeof(reference));
+	for (size_t index = 0; index < payload.participant_count; ++index)
+		if (payload.participants[index].frag_delta > 0)
+			if (P_char character = find_player_by_pid(payload.participants[index].pid))
+			{
+				char message[192];
+				snprintf(message, sizeof(message),
+					 "PvP credit pending (operation %s).\r\n", reference);
+				send_to_char(message, character, LOG_PUBLIC);
+			}
 	health.max_participants =
 		std::max<uint64_t>(health.max_participants, payload.participant_count);
 	health.pending = pending.size();
@@ -172,6 +184,10 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 		return;
 	for (size_t index = 0; index < count; ++index)
 	{
+		if (completions[index].type == critical_command_type::combat_outcome &&
+		    (completions[index].outcome == critical_apply_outcome::applied ||
+		     completions[index].outcome == critical_apply_outcome::already_applied))
+			frag_cap_runtime_refresh();
 		auto found = pending.find(operation_key(completions[index].operation_id));
 		if (found == pending.end())
 			continue;
@@ -234,6 +250,28 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 			++health.rejected;
 			if (!decoded)
 				++health.malformed_completions;
+			char reference[CRITICAL_COMMAND_ID_BYTES * 2 + 1];
+			critical_operation_id_to_hex(completions[index].operation_id, reference,
+						     sizeof(reference));
+			persistence_alert(
+				AVATAR, "combat_outcome", "redacted", reference, "none",
+				"pvp_credit_failed",
+				"error=%u; inspect retained critical receipt before retry",
+				completions[index].error_code);
+			for (size_t participant = 0;
+			     participant < found->second.payload.participant_count; ++participant)
+				if (found->second.payload.participants[participant].frag_delta > 0)
+					if (P_char character = find_player_by_pid(
+						    found->second.payload.participants[participant]
+							    .pid))
+					{
+						char message[256];
+						snprintf(
+							message, sizeof(message),
+							"PvP credit recording failed (operation %s). Contact staff with this reference for receipt recovery.\r\n",
+							reference);
+						send_to_char(message, character, LOG_PUBLIC);
+					}
 		}
 		if (found->second.completion)
 			found->second.completion(committed,
@@ -298,9 +336,23 @@ void combat_outcome_transaction_publish_outbox(void)
 	}
 	if (publish)
 	{
+		frag_cap_runtime_refresh();
 		redis_invalidate_fraglist();
 		critical_outbox_resume();
 	}
+}
+
+bool combat_outcome_transaction_credit_pending(uint32_t pid)
+{
+	for (const auto &[key, entry] : pending)
+	{
+		(void)key;
+		for (size_t index = 0; index < entry.payload.participant_count; ++index)
+			if (entry.payload.participants[index].pid == pid &&
+			    entry.payload.participants[index].frag_delta > 0)
+				return true;
+	}
+	return false;
 }
 
 combat_outcome_health combat_outcome_transaction_health_copy(void)

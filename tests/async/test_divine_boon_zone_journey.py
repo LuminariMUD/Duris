@@ -45,12 +45,12 @@ def build_campaign_helper(output):
              'src/economy/divine_trade_repository.c','src/economy/divine_trade_flatfile.c',
              'src/flatfile/flatfile_ship_repository.c','src/flatfile/flatfile_identity_repository.c',
              'src/flatfile/flatfile_player_snapshot_file.c','src/player/player_snapshot_codec.c',
-             'src/flatfile/flatfile_player_domain_repository.c', 'src/economy/divine_boon_delivery.c',
+             'src/flatfile/flatfile_player_domain_repository.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c', 'src/economy/divine_boon_delivery.c',
              'src/combat/combat_outcome_command.c', 'src/world/zone_touch_command.c',
              'src/guild/artifact_guild_command.c',
              'src/flatfile/flatfile_authority_transaction.c','src/flatfile/flatfile_store.c',
              'src/persistence/critical_command.c']
-    subprocess.run(['g++','-std=c++20','-g','-Og','-ffunction-sections','-fdata-sections',
+    subprocess.run(['g++', "tests/async/harness_stubs.cpp",'-std=c++20','-g','-Og','-ffunction-sections','-fdata-sections',
                     '-Isrc','-I/usr/include/mysql',*sources,'-Wl,--gc-sections','-lcrypto',
                     '-lmysqlclient','-pthread','-o',str(output)],cwd=ROOT,check=True)
 
@@ -258,7 +258,7 @@ def run(backend, binary):
                 helper = runtime / 'zone-fixture'
                 flags = shlex.split(subprocess.check_output(['mysql_config', '--cflags'], text=True))
                 libraries = shlex.split(subprocess.check_output(['mysql_config', '--libs'], text=True))
-                subprocess.run(['g++', '-std=c++20', '-Isrc', *flags, 'tests/async/divine_boon_zone_fixture.cpp',
+                subprocess.run(['g++', "tests/async/harness_stubs.cpp", '-std=c++20', '-Isrc', *flags, 'tests/async/divine_boon_zone_fixture.cpp',
                     'src/economy/divine_boon.c', 'src/economy/divine_boon_repository.c',
                     'src/flatfile/flatfile_authority_transaction.c', 'src/flatfile/flatfile_store.c',
                     '-lcrypto', '-pthread', *libraries, '-o', str(helper)], cwd=ROOT, check=True)

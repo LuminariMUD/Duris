@@ -1,3 +1,5 @@
+#include "combat/frag_cap_repository.h"
+#include <chrono>
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "combat/combat_outcome_command.h"
 #include "world/epic_command.h"
@@ -219,6 +221,13 @@ int main(int argc, char **argv)
 	fs::permissions(root / "players", fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(root, fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(domains, fs::perms::owner_all, fs::perm_options::replace);
+	const int64_t cap_start = std::chrono::duration_cast<std::chrono::microseconds>(
+					  std::chrono::system_clock::now().time_since_epoch())
+					  .count();
+	frag_cap_state cap;
+	require(frag_cap_flatfile_adopt(root.string(), 25, cap_start, &cap) ==
+			frag_cap_store_result::ok,
+		"cap activation failed");
 
 	std::string error;
 	flatfile_player_domain_record source = baseline(42);
@@ -809,7 +818,7 @@ int main(int argc, char **argv)
 		critical_command command;
 		require(combat_outcome_command_build(&command, id, payload),
 			"full-group build failed");
-		command.accepted_at_usec = 1;
+		command.accepted_at_usec = cap_start;
 		const auto first = flatfile_player_domain_apply(root.string(), command);
 		combat_outcome_result result{};
 		require(first.outcome == critical_apply_outcome::applied &&
@@ -830,6 +839,61 @@ int main(int argc, char **argv)
 				replay.result_size == first.result_size &&
 				replay.result_payload == first.result_payload,
 			"full-group replay changed its result");
+		require(frag_cap_flatfile_load(root.string(), &cap) == frag_cap_store_result::ok &&
+				cap.earned[0] == 100 && cap.earned[1] == 0 && cap.level == 31,
+			"twenty ordinary five-point awards did not pool by faction");
+		const auto partial = cap;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+					critical_apply_outcome::already_applied &&
+				frag_cap_flatfile_load(root.string(), &cap) ==
+					frag_cap_store_result::ok &&
+				cap == partial,
+			"combat replay duplicated cap credit");
+		for (int pass = 0; pass < 3; ++pass)
+		{
+			id.bytes[0] = 121 + pass;
+			require(combat_outcome_command_build(&command, id, payload),
+				"cap contribution build failed");
+			command.accepted_at_usec = cap_start;
+			if (pass < 2)
+			{
+				const char *fault =
+					pass == 0 ?
+						"DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT" :
+						"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL";
+				require(setenv(fault, "1", 1) == 0, "fault setup failed");
+				require(flatfile_player_domain_apply(root.string(), command)
+							.outcome ==
+						critical_apply_outcome::retryable_failure,
+					"interrupted combat unexpectedly succeeded");
+				require(unsetenv(fault) == 0, "fault cleanup failed");
+				require(frag_cap_flatfile_load(root.string(), &cap) ==
+							frag_cap_store_result::ok &&
+						cap.earned[0] == (pass == 0 ? 100 : 300),
+					"cap split from combat receipt on recovery");
+			}
+			const auto applied = flatfile_player_domain_apply(root.string(), command);
+			require(applied.outcome ==
+					(pass == 1 ? critical_apply_outcome::already_applied :
+						     critical_apply_outcome::applied),
+				"cap combat retry failed");
+		}
+		require(frag_cap_flatfile_load(root.string(), &cap) == frag_cap_store_result::ok &&
+				cap.earned[0] == 400 && cap.level == 31,
+			"four full-group events were not counted completely");
+		const auto secured = cap;
+		require(flatfile_player_domain_apply(root.string(), command).outcome ==
+					critical_apply_outcome::already_applied &&
+				frag_cap_flatfile_load(root.string(), &cap) ==
+					frag_cap_store_result::ok &&
+				cap == secured,
+			"secured combat replay changed qualification");
+		require(frag_cap_flatfile_tick(root.string(), cap.deadline) ==
+					frag_cap_store_result::ok &&
+				frag_cap_flatfile_load(root.string(), &cap) ==
+					frag_cap_store_result::ok &&
+				cap.level == 32 && cap.earned == (std::array<uint64_t, 2>{}),
+			"qualified cap did not open on the durable timer");
 	}
 
 	const fs::path player = domains / "player-42.domain";

@@ -111,6 +111,8 @@
 #include "account/account_reward_config.h"
 #include "account/pwipe_launch.h"
 #include "combat/frag_cap_config.h"
+#include "combat/frag_cap_runtime.h"
+#include <chrono>
 #include "world/hardcore_config.h"
 #include "item/random_equipment_config.h"
 #include "account/creation_availability_config.h"
@@ -281,25 +283,8 @@ static void maintenance_handle_completions(const maintenance_result *results, si
 					      "maintenance job=auction_due_scan outcome=submit_failed actor=redacted");
 		}
 		if (result.job_id == maintenance_job_id::level_cap &&
-		    result.outcome == maintenance_outcome::complete && result.rows > 0)
-		{
-			sql_level_cap_reload();
-			redis_invalidate_fraglist();
-			const int side = static_cast<int>(result.values[0]);
-			if (result.value_count == 3 &&
-			    (side == RACEWAR_GOOD || side == RACEWAR_EVIL))
-			{
-				char announcement[MAX_STRING_LENGTH];
-				snprintf(
-					announcement, sizeof(announcement),
-					"&+YThe level cap rises!&n The forces of &+%c%s&n have unlocked "
-					"&+Wlevel %d&n %s.\r\n",
-					racewar_color[side].color, racewar_color[side].name,
-					static_cast<int>(result.values[1]),
-					result.values[2] ? "for everyone" : "for their side");
-				send_to_all(announcement);
-			}
-		}
+		    result.outcome == maintenance_outcome::complete)
+			frag_cap_runtime_refresh();
 		// The jobs that change zone alignments and rarity: memory reads them again.
 		if ((result.job_id == maintenance_job_id::epic_zone_balance ||
 		     result.job_id == maintenance_job_id::epic_zone_modifiers) &&
@@ -1032,6 +1017,14 @@ int run_the_game(int port, int sslport)
 	}
 
 	boot_db(mini_mode);
+	if (!frag_cap_runtime_boot(std::chrono::duration_cast<std::chrono::microseconds>(
+					   std::chrono::system_clock::now().time_since_epoch())
+					   .count()))
+	{
+		logit(LOG_STATUS,
+		      "Shared frag-cap authority unavailable; refusing gameplay startup.");
+		return EXIT_FAILURE;
+	}
 	// Minimal test worlds normally omit the collector prototype. A deliberately
 	// complete fixture may include it so the real service can be exercised without
 	// booting the production world; ordinary minimal boots stay silent and inert.
@@ -2353,6 +2346,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		critical_gameplay_publish_outbox();
 		player_save_pipeline_pulse();
 		divine_boon_runtime_pulse();
+		frag_cap_runtime_pulse();
 		divine_boon_selection_pulse(static_cast<int64_t>(time(nullptr)));
 		persistence_pulse_character_saves();
 		player_load_result load_completions[32] = {};

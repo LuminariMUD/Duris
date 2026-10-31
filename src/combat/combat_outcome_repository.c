@@ -13,6 +13,8 @@
  ****************************************************************************/
 
 #include "combat/combat_outcome_repository.h"
+#include "combat/frag_cap_repository.h"
+#include "combat/frag_cap_config.h"
 
 #include "world/epic_command.h"
 #include "guild/artifact_guild_repository.h"
@@ -20,6 +22,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <climits>
 #include <cstring>
 #include <limits>
@@ -413,6 +416,20 @@ bool combat_outcome_repository_execute(MYSQL *connection, const critical_command
 	for (const auto &child : payload.artifact_deliveries)
 		if (!artifact_guild_repository_prepare_delivery(connection, child))
 			return false;
+	frag_cap_state cap;
+	const auto loaded = frag_cap_sql_load(connection, &cap, true);
+	const uint64_t before = cap.revision;
+	const int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+				    std::chrono::system_clock::now().time_since_epoch())
+				    .count();
+	if (loaded != frag_cap_store_result::ok ||
+	    !frag_cap_apply_combat(&cap, command, payload, now, frag_cap_config_policy()) ||
+	    (cap.revision != before &&
+	     frag_cap_sql_save(connection, cap) != frag_cap_store_result::ok))
+	{
+		errno = loaded == frag_cap_store_result::io_error ? EIO : EILSEQ;
+		return false;
+	}
 	*mutation_applied = true;
 	return true;
 }

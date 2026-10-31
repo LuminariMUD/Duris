@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
     binary = temporary_path / "flatfile_player_domain_test"
     compile_result = subprocess.run(
         [
-            "g++",
+            "g++", "tests/async/harness_stubs.cpp",
             "-std=c++20",
             "-Wall",
             "-Wextra",
@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
             "-Isrc",
             "-Isrc/no_mysql",
             "tests/async/flatfile_player_domain_repository_harness.cpp",
-            rel("flatfile_player_domain_repository.c"),
+            rel("flatfile_player_domain_repository.c"), rel("frag_cap.c"), rel("frag_cap_repository.c"), rel("frag_cap_config.c"),
             rel("flatfile_player_snapshot_file.c"), rel("player_snapshot_codec.c"),
             rel("flatfile_authority_transaction.c"),
             rel("flatfile_store.c"),

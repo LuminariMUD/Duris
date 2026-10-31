@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const struct frag_cap_config defaults = { 25, 30, 56, 3, 5, 20, 2 };
+static const struct frag_cap_config defaults = { 25, 56, 72, 2 };
 
 static struct frag_cap_config active;
 static bool config_initialized;
@@ -66,11 +66,8 @@ static void apply_value(const char *key, const char *value)
 	}
 
 	INT_KEY("cap.floor.level", cap_floor_level, 1, MAXLVLMORTAL)
-	INT_KEY("cap.reset.level", cap_reset_level, 1, MAXLVLMORTAL)
-	INT_KEY("cap.maximum.level", cap_maximum_level, 1, MAXLVLMORTAL)
-	INT_KEY("timer.unlock.days", unlock_timer_days, 0, 3650)
-	INT_KEY("unlock.victim.levels.below.open", unlock_victim_levels_below, 0, MAXLVLMORTAL)
-	INT_KEY("unlock.minimum.share.points", unlock_minimum_share_points, 1, 100)
+	INT_KEY("cap.maximum.level", legacy_maximum_level, 1, MAXLVLMORTAL)
+	INT_KEY("timer.round.hours", round_hours, 1, 3650 * 24)
 	INT_KEY("hardcore.levels.beyond.cap", hardcore_levels_beyond_cap, 0, 56)
 
 #undef INT_KEY
@@ -103,20 +100,16 @@ void boot_frag_cap_config(void)
 	}
 	fclose(fp);
 
-	if (active.cap_floor_level > active.cap_reset_level ||
-	    active.cap_reset_level > active.cap_maximum_level)
+	if (active.cap_floor_level > active.legacy_maximum_level)
 	{
-		logit(LOG_STATUS, "Invalid frag-cap level ordering; restoring level defaults.");
+		logit(LOG_STATUS, "Invalid legacy cap range; restoring defaults.");
 		active.cap_floor_level = defaults.cap_floor_level;
-		active.cap_reset_level = defaults.cap_reset_level;
-		active.cap_maximum_level = defaults.cap_maximum_level;
+		active.legacy_maximum_level = defaults.legacy_maximum_level;
 	}
-
 	logit(LOG_STATUS,
-	      "Loaded frag-cap config: floor %d, reset %d, ceiling %d, unlock timer %d days, unlock victim at most %d levels below the open cap, minimum base frag share %d points, hardcore allowance %d.",
-	      active.cap_floor_level, active.cap_reset_level, active.cap_maximum_level,
-	      active.unlock_timer_days, active.unlock_victim_levels_below,
-	      active.unlock_minimum_share_points, active.hardcore_levels_beyond_cap);
+	      "Loaded frag-cap config: legacy floor %d, legacy maximum %d, round %d hours, hardcore allowance %d.",
+	      active.cap_floor_level, active.legacy_maximum_level, active.round_hours,
+	      active.hardcore_levels_beyond_cap);
 }
 
 const struct frag_cap_config *frag_cap_config_get(void)
@@ -126,13 +119,14 @@ const struct frag_cap_config *frag_cap_config_get(void)
 	return &active;
 }
 
-int frag_cap_config_reset_level(void)
-{
-	return frag_cap_config_get()->cap_reset_level;
-}
-
 int frag_cap_config_hardcore_level_cap(int normal_cap)
 {
 	int level_cap = normal_cap + frag_cap_config_get()->hardcore_levels_beyond_cap;
 	return (level_cap > MAXLVLMORTAL) ? MAXLVLMORTAL : level_cap;
+}
+
+frag_cap_policy frag_cap_config_policy(void)
+{
+	const auto *config = frag_cap_config_get();
+	return { config->round_hours * FRAG_CAP_HOUR };
 }
