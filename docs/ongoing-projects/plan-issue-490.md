@@ -275,7 +275,7 @@ added group saves a mace to `player_items`, rejects its `locker_items` INSERT,
 issues PUT and SAVE, asserts the source row remains and no destination row lands,
 then SIGKILLs and cold-restarts the server. The same UID returns to inventory.
 The current full-tree server build passes; its binary SHA256 is
-`460e938617d413c488f203bc24fbf0dc13c46373e18ebe2f70569bd43e592521`.
+`30718e21b9a838fbd723f6bb309e99608e8ec35abf79100cc23f907c1bc56c8b`.
 The new group was first run before the unrelated #522 master merge on MariaDB;
 the final-tree build and save fixture passed after the merge, and MySQL ran with
 the final tree's chest/save source. No production data or server was touched.
@@ -289,6 +289,16 @@ later retry with dirty components retained. The SQL game-loop journey passes wit
 zero game-loop query sites; the fresh no-MySQL locker build/journey passes.
 `python3 tests/async/test_currency_in_memory.py` passes after restoring the
 world-quest wallet interlocks dropped by the initial master merge.
+
+An older unresolved P1 review on dependency #510 was also valid: the purchase
+callback's `find_player_by_pid` searches playing descriptors only. The callback
+now falls back to the retained live character list by stable PID before
+publishing committed wallet/bank balances. The purchase SQL fixture embeds the
+production descriptor lookup and models both retained linkdead and extracted
+actors. `tests/async/with_disposable_mariadb.sh python3
+tests/async/run_private_chest_purchase_mysql.py` passes on MariaDB 10.11 and,
+with `TEST_DB_IMAGE=mysql:8.0`, on MySQL 8.0. The final-tree server build and
+player-load/currency fixtures pass after this carry-forward.
 
 ### Controlled purchase and unchanged container proof
 
