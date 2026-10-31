@@ -196,6 +196,12 @@ player_save_apply_result execute(const writer_job &job)
 	{
 		applied = { critical_apply_outcome::retryable_failure, 0, 0 };
 	}
+	// A combat intent without a committed result must remain fenced, including
+	// corrupt authority state. Repair (or restart replay) retries the same ID;
+	// a committed rejection has a result payload and may be published to staff.
+	if (job.command.type == critical_command_type::combat_outcome &&
+	    applied.outcome == critical_apply_outcome::terminal_failure && !applied.result_size)
+		applied.outcome = critical_apply_outcome::retryable_failure;
 	// A lost connection or a lock wait goes back to the writer, which tries this
 	// command again before anything queued after it.
 	if (applied.outcome == critical_apply_outcome::retryable_failure ||

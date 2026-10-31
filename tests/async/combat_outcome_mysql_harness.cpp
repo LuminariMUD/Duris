@@ -1,4 +1,5 @@
 #include "combat/frag_cap_repository.h"
+#include "combat_intent_recovery_checks.h"
 #include <chrono>
 #include "combat/combat_outcome_command.h"
 #include "persistence/critical_command_repository.h"
@@ -533,8 +534,21 @@ int main()
 			       cap.earned == (std::array<uint64_t, 2>{}) && cap.level == 31);
 			execute(db, "DROP TRIGGER reject_cap_fixture");
 		}
-		assert(critical_command_repository_apply(db, contribution).outcome ==
-		       critical_apply_outcome::applied);
+		if (!pass)
+		{
+			const auto snapshot = text_value(db, "SELECT HEX(snapshot) FROM level_cap");
+			check_combat_intent_recovery(
+				contribution, [&](const auto &cmd)
+				{ return critical_command_repository_apply(db, cmd); },
+				[&] { execute(db, "UPDATE level_cap SET snapshot=UNHEX('00')"); },
+				[&] {
+					execute(db, "UPDATE level_cap SET snapshot=UNHEX('" +
+							    snapshot + "')");
+				});
+		}
+		else
+			assert(critical_command_repository_apply(db, contribution).outcome ==
+			       critical_apply_outcome::applied);
 		assert(frag_cap_sql_load(db, &cap) == frag_cap_store_result::ok);
 		assert(cap.level == 31 && cap.earned[0] == static_cast<uint64_t>((pass + 1) * 5));
 		const auto confirmed = cap;
@@ -559,6 +573,44 @@ int main()
 	assert(frag_cap_sql_load(db, &cap) == frag_cap_store_result::ok && cap == committed_cap);
 	std::cout
 		<< "lost COMMIT acknowledgement: receipt recovery preserves exactly-once faction credit\n";
+	MYSQL *blocker = mysql_init(nullptr);
+	assert(blocker &&
+	       mysql_real_connect(blocker, getenv("DB_HOST"), getenv("DB_USER"),
+				  getenv("DB_PASSWD"), getenv("DB_NAME"), port, nullptr, 0));
+	execute(db, "SET SESSION innodb_lock_wait_timeout=1");
+	for (const auto &lock_sql :
+	     { "SELECT pid FROM player_data WHERE pid=" + killer + " FOR UPDATE",
+	       "SELECT pid FROM combat_frag_ledger WHERE pid=" + killer +
+		       " AND frag_revision=(SELECT frag_revision FROM player_data WHERE pid=" +
+		       killer + ") FOR UPDATE",
+	       "SELECT pid FROM epic_ledger WHERE pid=" + killer +
+		       " AND epic_revision=(SELECT epic_revision FROM player_data WHERE pid=" +
+		       killer + ") FOR UPDATE" })
+	{
+		critical_operation_id locked_id;
+		assert(critical_operation_id_generate(&locked_id));
+		critical_command locked;
+		assert(combat_outcome_command_build(&locked, locked_id, credit));
+		locked.accepted_at_usec = cap_start;
+		execute(blocker, "START TRANSACTION");
+		execute(blocker, lock_sql);
+		MYSQL_RES *rows = mysql_store_result(blocker);
+		assert(rows && mysql_num_rows(rows) >= 1);
+		mysql_free_result(rows);
+		const auto before = scalar(db, "SELECT COUNT(*) FROM critical_operation_inbox");
+		const auto timed_out = critical_command_repository_apply(db, locked);
+		assert(timed_out.outcome == critical_apply_outcome::retryable_failure &&
+		       timed_out.error_code == 1205);
+		assert(scalar(db, "SELECT COUNT(*) FROM critical_operation_inbox") == before);
+		execute(blocker, "ROLLBACK");
+		assert(critical_command_repository_apply(db, locked).outcome ==
+		       critical_apply_outcome::applied);
+		assert(critical_command_repository_apply(db, locked).outcome ==
+		       critical_apply_outcome::already_applied);
+	}
+	mysql_close(blocker);
+	std::cout
+		<< "enqueue crash, corrupt-cap repair, and player/frag/epic lock-timeout recovery passed\n";
 	cleanup(db);
 	mysql_close(db);
 	std::cout

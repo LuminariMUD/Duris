@@ -378,6 +378,7 @@ OBJS =  $(SHIP_OBJS) \
 				 combat/combat_outcome_command.o \
 				 combat/combat_outcome_repository.o \
 				 combat/combat_outcome_transaction.o \
+				 combat/combat_outcome_intent.o \
 				 guild/artifact_guild_command.o \
 				 guild/artifact_guild_repository.o \
 				 guild/artifact_guild_state.o \

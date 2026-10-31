@@ -16,6 +16,7 @@
 #define COMBAT_OUTCOME_TRANSACTION_H
 
 #include "combat/combat_outcome_command.h"
+#include "combat/combat_outcome_intent.h"
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_outbox.h"
 #include "core/prototypes.h"
@@ -24,7 +25,7 @@ using combat_outcome_completion_fn = void (*)(bool committed, const combat_outco
 					      unsigned int error_code,
 					      const combat_outcome_payload &payload);
 
-constexpr size_t COMBAT_OUTCOME_PENDING_MAX = 128;
+constexpr size_t COMBAT_OUTCOME_PENDING_MAX = COMBAT_OUTCOME_INTENT_MAX;
 
 struct combat_outcome_health
 {
@@ -37,6 +38,9 @@ struct combat_outcome_health
 	uint64_t max_participants;
 	uint64_t oldest_age_msec;
 };
+
+bool combat_outcome_transaction_init(const char *journal_directory);
+void combat_outcome_transaction_pulse();
 
 bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 				       combat_outcome_completion_fn completion,

@@ -41,10 +41,15 @@ struct pending_combat_outcome
 	combat_outcome_payload payload;
 	combat_outcome_completion_fn completion;
 	uint64_t submitted_at_msec;
+	critical_command command;
+	bool queued = false;
+	bool publish_live = false;
 };
 
 std::unordered_map<std::string, pending_combat_outcome> pending;
 combat_outcome_health health = {};
+bool intent_ready = false;
+size_t intent_count = 0;
 std::mutex outbox_mutex;
 std::unordered_map<uint64_t, bool> outbox_publications;
 
@@ -95,11 +100,79 @@ void apply_live(const combat_outcome_payload &payload)
 }
 } // namespace
 
+bool combat_outcome_transaction_init(const char *journal_directory)
+{
+	std::vector<critical_command> retained;
+	if (!combat_outcome_intent_init(journal_directory, &retained))
+		return false;
+	intent_count = retained.size();
+	for (auto &command : retained)
+	{
+		combat_outcome_payload payload;
+		if (!combat_outcome_command_decode_payload(command, &payload) ||
+		    !artifact_guild_delivery_reserve(payload.artifact_deliveries))
+		{
+			for (auto &[key, entry] : pending)
+			{
+				(void)key;
+				artifact_guild_delivery_complete(entry.payload.artifact_deliveries,
+								 false);
+			}
+			pending.clear();
+			combat_outcome_intent_shutdown();
+			return false;
+		}
+		const auto key = operation_key(command.operation_id);
+		pending.emplace(key, pending_combat_outcome{ std::move(payload), nullptr,
+							     monotonic_msec(), std::move(command),
+							     false });
+	}
+	intent_ready = true;
+	combat_outcome_transaction_pulse();
+	return true;
+}
+
+void combat_outcome_transaction_pulse()
+{
+	if (!intent_ready)
+		return;
+	// Refused queue admission must not let a later captured outcome overtake it.
+	std::vector<pending_combat_outcome *> waiting;
+	for (auto &[key, entry] : pending)
+	{
+		(void)key;
+		if (!entry.queued)
+			waiting.push_back(&entry);
+	}
+	std::sort(waiting.begin(), waiting.end(), [](const auto *left, const auto *right)
+		  { return left->command.accepted_at_usec < right->command.accepted_at_usec; });
+	for (auto *entry : waiting)
+	{
+		try
+		{
+			entry->queued = critical_submit_result_keeps_operation(
+				critical_command_coordinator_submit(entry->command));
+		}
+		catch (const std::bad_alloc &)
+		{
+			entry->queued = false;
+		}
+		if (!entry->queued)
+			break; // The fsynced intent remains admitted and will retry next pulse.
+		if (entry->publish_live)
+		{
+			entry->publish_live = false;
+			// Its saves must queue after the parent command.
+			apply_live(entry->payload);
+		}
+	}
+}
+
 bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 				       combat_outcome_completion_fn completion,
 				       critical_operation_id *submitted_operation_id)
 {
-	if (pending.size() >= COMBAT_OUTCOME_PENDING_MAX ||
+	if (!intent_ready || intent_count >= COMBAT_OUTCOME_PENDING_MAX ||
 	    payload.participant_count > COMBAT_OUTCOME_MAX_PARTICIPANTS)
 		return false;
 	critical_operation_id operation_id = {};
@@ -138,10 +211,13 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 			return false;
 		reserved = true;
 		key = operation_key(operation_id);
-		pending.emplace(key,
-				pending_combat_outcome{ prepared, completion, monotonic_msec() });
-		const auto submitted = critical_command_coordinator_submit(std::move(command));
-		if (!critical_submit_result_keeps_operation(submitted))
+		command.accepted_at_usec =
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch())
+				.count();
+		pending.emplace(key, pending_combat_outcome{ prepared, completion, monotonic_msec(),
+							     std::move(command), false, true });
+		if (!combat_outcome_intent_write(pending.at(key).command))
 		{
 			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
 			pending.erase(key);
@@ -156,8 +232,9 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 		pending.erase(key);
 		return false;
 	}
+	++intent_count;
 	++health.submitted;
-	apply_live(payload);
+	combat_outcome_transaction_pulse();
 	char reference[CRITICAL_COMMAND_ID_BYTES * 2 + 1];
 	critical_operation_id_to_hex(operation_id, reference, sizeof(reference));
 	for (size_t index = 0; index < payload.participant_count; ++index)
@@ -244,7 +321,16 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 			artifact_guild_delivery_complete(found->second.payload.artifact_deliveries,
 							 committed);
 		if (committed)
+		{
 			++health.committed;
+			if (combat_outcome_intent_complete(completions[index].operation_id))
+				--intent_count;
+			else
+				persistence_alert(
+					AVATAR, "combat_outcome", "redacted", "none", "none",
+					"committed_intent_retained",
+					"journal finalization failed; retain evidence for restart replay");
+		}
 		else
 		{
 			++health.rejected;
@@ -256,8 +342,9 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 			persistence_alert(
 				AVATAR, "combat_outcome", "redacted", reference, "none",
 				"pvp_credit_failed",
-				"error=%u; inspect retained critical receipt before retry",
-				completions[index].error_code);
+				"error=%u; full combat intent retained; committed rejection receipt=%s",
+				completions[index].error_code,
+				completions[index].result_size ? "yes" : "no");
 			for (size_t participant = 0;
 			     participant < found->second.payload.participant_count; ++participant)
 				if (found->second.payload.participants[participant].frag_delta > 0)
@@ -268,7 +355,7 @@ void combat_outcome_transaction_handle_completions(const critical_completion *co
 						char message[256];
 						snprintf(
 							message, sizeof(message),
-							"PvP credit recording failed (operation %s). Contact staff with this reference for receipt recovery.\r\n",
+							"PvP credit recording failed (operation %s). Contact staff with this reference; the combat intent is retained for recovery.\r\n",
 							reference);
 						send_to_char(message, character, LOG_PUBLIC);
 					}
@@ -372,6 +459,9 @@ combat_outcome_health combat_outcome_transaction_health_copy(void)
 void combat_outcome_transaction_reset_for_tests(void)
 {
 	pending.clear();
+	combat_outcome_intent_shutdown();
+	intent_ready = false;
+	intent_count = 0;
 	health = {};
 	std::lock_guard<std::mutex> lock(outbox_mutex);
 	outbox_publications.clear();

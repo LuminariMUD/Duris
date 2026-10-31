@@ -1220,6 +1220,10 @@ int run_the_game(int port, int sslport)
 	if (!locker_identify_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
 		logit(LOG_STATUS,
 		      "Locker identification unavailable: receipt storage could not initialize.");
+	if (!combat_outcome_transaction_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
+		persistence_alert(AVATAR, "combat_outcome", "pipeline", "none", "none",
+				  "intent_recovery_failed",
+				  "PvP credit admission disabled; inspect combat-intents");
 	critical_command_coordinator_set_drain_observer(critical_gameplay_handle_completions);
 	if (!mini_mode)
 	{
@@ -2341,6 +2345,7 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 	const size_t critical_completion_count =
 		critical_command_coordinator_pulse(critical_completions, 64);
 	critical_gameplay_handle_completions(critical_completions, critical_completion_count);
+	combat_outcome_transaction_pulse();
 	if (!(pulse % 2))
 	{
 		critical_gameplay_publish_outbox();

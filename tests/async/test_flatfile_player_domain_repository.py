@@ -8,7 +8,8 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as temporary:
+(ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-", dir=ROOT / "bin/tests") as temporary:
     temporary_path = pathlib.Path(temporary)
     binary = temporary_path / "flatfile_player_domain_test"
     compile_result = subprocess.run(
@@ -31,7 +32,9 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-player-domain-test-") as tem
             rel("epic_command.c"), rel("zone_touch_command.c"),
             rel("currency_command.c"),
             rel("combat_outcome_command.c"), rel("artifact_guild_command.c"),
-            rel("critical_command.c"),
+            rel("critical_command.c"), rel("combat_outcome_intent.c"),
+            rel("critical_command_coordinator.c"), rel("player_save_worker.c"), rel("persistence_observability.c"),
+            "-lz",
             "-lcrypto",
             "-pthread",
             "-o",

@@ -1,3 +1,5 @@
+#include "combat_intent_recovery_checks.h"
+#include "flatfile/flatfile_store.h"
 #include "combat/frag_cap_repository.h"
 #include <chrono>
 #include "flatfile/flatfile_player_domain_repository.h"
@@ -819,7 +821,25 @@ int main(int argc, char **argv)
 		require(combat_outcome_command_build(&command, id, payload),
 			"full-group build failed");
 		command.accepted_at_usec = cap_start;
-		const auto first = flatfile_player_domain_apply(root.string(), command);
+		std::vector<uint8_t> saved_cap;
+		require(flatfile_read(domains.string(), "frag-cap.state", 1024, &saved_cap,
+				      &error) == flatfile_read_result::ok,
+			"cap backup failed");
+		const auto first = check_combat_intent_recovery(
+			command, [&](const auto &cmd)
+			{ return flatfile_player_domain_apply(root.string(), cmd); },
+			[&]
+			{
+				require(flatfile_atomic_write(domains.string(), "frag-cap.state",
+							      { 0 }, &error),
+					"corruption failed");
+			},
+			[&]
+			{
+				require(flatfile_atomic_write(domains.string(), "frag-cap.state",
+							      saved_cap, &error),
+					"repair failed");
+			});
 		combat_outcome_result result{};
 		require(first.outcome == critical_apply_outcome::applied &&
 				first.result_size == 8192 &&
