@@ -1,9 +1,10 @@
 # Issue #508: a 72-hour Good/Evil frag race with guaranteed progression
 
-Status: **implemented and locally qualified; PRs #519, #521 and #523 ready for review**.
+Status: **implemented and locally qualified; foundations #519/#521/#527 merged and runtime #523 qualified on current master**.
 Updated 2026-10-31. Active checkout is `/home/aiwithapex/projects/duris-issue-508-faction`,
 branch `branch/issue-508-faction-runtime`. The owner authorized implementation of
-this revised contract. Merge, release, migration and production deployment remain
+this revised contract. The final integration includes master `731069715` and the
+review repair `3b0312f7a`. Release, migration and production deployment remain
 separate. Earlier personal-policy work is preserved in the original checkout.
 
 The controlling decisions are the owner's latest clarification in this chat:
@@ -592,3 +593,51 @@ The branch is suitable for a squash merge when approved. No release tag is warra
 for an unmerged feature. Git maintenance used `gc --no-prune` with cruft packs, retaining
 unreachable recovery objects. Unrelated worktrees and their changes were preserved.
 No production operation or hosted-CI wait was used for qualification.
+
+## Final merge qualification and admission boundary — 2026-10-31
+
+Current master `731069715` was merged without source conflicts, retaining the
+landed #527 identical-snapshot storage repair and #520/#522/#526 quest fixes.
+Both MariaDB and flatfile server builds pass. The quest XP regression also
+passes on both backends, preserving the newly landed reward/level-boundary work.
+
+The remaining deferred-admission review finding is fixed in `3b0312f7a`.
+New combat captures reserve writer capacity and queue storage before an admission
+callback syncs the complete checksummed intent. The writer cannot execute that
+job before admission finishes. A full/unavailable queue declines the capture
+through the existing busy/no-rewards path, without an admitted intent, pending
+credit acknowledgement or later faction score. Accepted ordinary frags, epics
+and blood money publish synchronously before submission returns, and later
+player saves remain behind the parent command. Only already-durable boot replay
+can wait for queue capacity; new captures cannot overtake those older commands.
+This removes the accepted-but-unpaid interval without an offline reward store,
+new authority, journal format or migration.
+
+The expanded actual-adapter regression rejects the old successful-deferred path
+at the pre-fix integration revision `52e101413`. Both backend variants pass after
+the repair under ASan/UBSan. They cover a participant disappearing after capacity
+refusal, exactly-once ordinary rewards before disconnect after successful
+admission, retained replay ordering and no duplicate live reward after restart.
+The native writer/coordinator tests pass capacity refusal before the admission
+callback, queue/index allocation failure, callback refusal/exception cleanup,
+participant-fence release and parent-before-save FIFO ordering.
+
+Additional fresh checks pass: all 455 cap transitions, cap runtime/configuration,
+combat codec/cutover, maintenance, report cache, player-save pipeline, both
+prepared-reward publication variants, flatfile player-domain corruption/repair
+and replay, and the disposable MariaDB combat suite including contention,
+rollback, lost acknowledgement, full-group results and restart replay. Both
+loaded-world journeys pass real PvP through receipt, maintenance, distinct caps,
+legitimate banked-XP advancement and saved restart, plus quiet 33/32 and circle
+36/36 results. The MariaDB journey uses the disposable wrapper and private Redis.
+
+Ignored evidence is under `bin/merge523/`; key logs are `worker-final.log`,
+`coordinator-final.log`, `delivery-final.log`, `admission-before-fix.log`,
+`combat-mariadb.log`, `flatfile-domain.log`, `journey-flatfile.log` and
+`journey-mariadb-disposable.log`. The first unwrapped MariaDB journey invocation
+failed its required TEST_DB_HOST setup before boot; the disposable invocation
+passed. Formatting, staged clang-tidy, whitespace and all documentation checks
+pass. Cleanup retains the evidence in the main checkout's ignored merge-campaign
+folder. Migration 0057 and a persistent writable CRITICAL_COMMAND_JOURNAL_DIR
+remain deployment prerequisites. No production operation, deployment, news
+publication or release tag occurred.
