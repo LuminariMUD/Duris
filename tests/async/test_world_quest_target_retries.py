@@ -52,6 +52,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
             ("specs.mobile.c", "static void world_quest_report_creation_failure("),
             ("specs.mobile.c", "static void world_quest_refund_payment("),
             ("specs.mobile.c", "static void world_quest_payment_committed("),
+            ("specs.mobile.c", "static bool world_quest_begin_progressed_abandon("),
             ("specs.mobile.c", "int world_quest(P_char"),
         )) + r'''
 void run_payment(P_char player, int origin, int fee, bool committed)

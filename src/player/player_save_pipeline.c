@@ -21,6 +21,7 @@
 #include "core/prototypes.h"
 #include "core/files.h"
 #include "economy/collector_death_enrollment.h"
+#include "economy/currency_value.h"
 #include "economy/divine_boon_runtime.h"
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
@@ -319,7 +320,17 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 		auto pending = pending_world_quests.find(GET_PID(ch));
 		if (pending != pending_world_quests.end())
 		{
-			const auto &quest = pending->second->quest;
+			auto quest = pending->second->quest;
+			quest.before_quest = snapshot.quest_values;
+			for (const auto &row : snapshot.status_integers)
+			{
+				if (row.field == player_status_field::quest_origin_room)
+					quest.before_origin =
+						static_cast<int32_t>(row.signed_value);
+				else if (row.field == player_status_field::quest_replacement_due)
+					quest.before_replacement_due =
+						static_cast<int32_t>(row.signed_value);
+			}
 			const size_t extra = sizeof(quest) + quest.player_name.size() +
 					     quest.reward_description.size();
 			if (snapshot.encoded_size_bound > PLAYER_SNAPSHOT_MAX_BYTES ||
@@ -359,6 +370,35 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 				}
 			}
 			snapshot.pending_world_quest = quest;
+			if (quest.escrow_fee)
+			{
+				currency_vector before{}, after{};
+				std::array<player_snapshot_integer *, 4> wallet{};
+				for (auto &row : snapshot.status_integers)
+					if (row.field >= player_status_field::copper &&
+					    row.field <= player_status_field::platinum)
+					{
+						const auto index =
+							static_cast<size_t>(row.field) -
+							static_cast<size_t>(
+								player_status_field::copper);
+						wallet[index] = &row;
+						before.amount[index] = row.signed_value;
+					}
+				if (std::any_of(wallet.begin(), wallet.end(),
+						[](const auto *row) { return !row; }) ||
+				    snapshot.wallet_revision == UINT64_MAX ||
+				    !currency_wallet_after_value(
+					    before, -static_cast<int64_t>(quest.escrow_fee),
+					    &after))
+					return player_save_pipeline_result::capture_failed;
+				snapshot.pending_world_quest.before_wallet = before.amount;
+				snapshot.pending_world_quest.before_wallet_revision =
+					snapshot.wallet_revision;
+				for (size_t index = 0; index < wallet.size(); ++index)
+					wallet[index]->signed_value = after.amount[index];
+				++snapshot.wallet_revision;
+			}
 			if (quest.awaiting_reward)
 			{
 				snapshot.quest_values[3] =
@@ -690,7 +730,8 @@ bool player_save_pipeline_submit_world_quest(
 				       0 :
 				       PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY);
 	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 || !quest.present || !committed ||
-	    (ch->only.pc->unloaded_components & required) ||
+	    (ch->only.pc->unloaded_components & required) || quest.escrow_fee < 0 ||
+	    quest.fallback_only || (quest.awaiting_reward && quest.escrow_fee) ||
 	    (quest.final_kill_reward && !quest.awaiting_reward) ||
 	    (!quest.awaiting_reward && !quest.reward_items.empty()) ||
 	    (quest.reward_items.empty() != (quest.reward_encoded_size == 0)))

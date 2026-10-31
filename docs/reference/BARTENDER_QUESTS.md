@@ -130,10 +130,12 @@ amount. Ordinary combat XP is separate from the bartender per-kill award.
 Completion captures the scalar reward amounts at the completing interaction.
 The detached item, completion history, and a pending-reward marker commit together
 through the player-save transaction (MariaDB or the flatfile authority journal).
-Only confirmed item publication allows the remaining XP, money, epics, feedback,
-and task reset. A rejected capture leaves the task intact; admitted work holds
-the task against duplicate turn-ins and retries failed writes/publication.
-Failure to create an item also keeps the task and earned kills.
+The final KILL XP is credited before the remaining reward is calculated; the
+completed task retains those reward values for retry. Other remaining rewards
+and task reset wait for confirmed item publication. A rejected capture keeps the
+task recoverable; admitted work holds it against duplicate turn-ins and retries
+failed writes/publication. Failure to create an item also keeps the task and
+earned kills.
 If this happens on the final KILL, a completed-task marker lets a bartender
 retry the reward without requiring another kill or awarding that kill's XP twice.
 
@@ -474,15 +476,14 @@ open allowance in the new level's bucket, but does not clear target exclusions.
 Successful completion and a paid abandonment of progressed KILL work create
 history; purchasing, sharing, and free replacement do not.
 
-SQL queues the history INSERT and updates its in-memory cache without waiting
-for durable database success. Flatfile writes a versioned, SHA-256-checked
-history under a per-player lock with atomic replacement, with a 100,000-entry
-limit; it stores target, level, and time rather than SQL's giver/reward details.
-Neither path makes history and the player's reset/rewards one transaction.
-The flatfile wrapper reports write failure through `persistence_alert()`;
-the SQL caller ignores the INSERT queue's return value. The task still clears
-on a history failure, and a restart can expose missing allowance/exclusion
-history. Target exclusions use all retained history.
+Completion history and the associated player after-image commit together in
+SQL or the flatfile authority journal. A progressed KILL abandonment reserves
+its fee until that transaction commits. If history cannot be written, a guarded
+fallback saves unrelated player changes with the pre-completion task and purse;
+a committed completion cannot be undone by replaying that fallback. Flatfile
+history is versioned and SHA-256 checked, with a 100,000-entry limit; it stores
+target, level, and time rather than SQL's giver/reward details. Target exclusions
+use all retained history.
 Unready SQL history and corrupt/unreadable flatfile history block new assignment
 and sharing checks. A genuinely absent flatfile history file starts as empty
 history. Current assignment snapshots do not reconstruct lost history.
@@ -508,9 +509,9 @@ For a refusal or missing reward, distinguish these cases:
   clearing work. The progress and map purchase are retained. A proved world
   invalidation offers the free replacement path instead of paid abandonment.
 - Missing reward item: check the ownership-service rejection/publication logs
-  as well as the quest completion history. SQL's recorded reward describes an
-  accepted item submission, not confirmation that delivery settled. Resetting
-  the assignment neither recreates the item nor reverses a completion record.
+  and quest completion history. A committed completion saves the reward item
+  and a recovery marker together; ask a bartender to claim remaining rewards
+  after reconnecting. Resetting the assignment does not reverse history.
 
 ## Verification
 
@@ -560,7 +561,8 @@ reports, restart state and Bloodstone ASK/KILL travel, using disposable fixtures
 task, then checks real abandonment/regrant and restart. Its disposable MariaDB
 session clock constructs old-query-day/new-publication-day results and is
 restored before the completion marker; flatfile supplies the equivalent
-past-day-history control.
+past-day-history control. `history-failure-restart` rejects history writes,
+credits an unrelated wallet change, and checks recovery through restart and retry.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 

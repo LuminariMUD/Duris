@@ -359,6 +359,26 @@ void ADD_MONEY(P_char ch, int value)
 	GET_COPPER(ch) += value;
 }
 int daily_remaining = 1, wallet_debits = 0, reward_claims = 0, history_writes = 0;
+static int64_t reserved_quest_fee = 0;
+bool currency_transaction_reserve_world_quest(P_char ch, int64_t fee)
+{
+	if (reserved_quest_fee || fee <= 0 || GET_MONEY(ch) < fee)
+		return false;
+	reserved_quest_fee = fee;
+	return true;
+}
+bool currency_transaction_publish_world_quest(P_char ch, int64_t fee)
+{
+	if (reserved_quest_fee != fee || GET_MONEY(ch) < fee)
+		return false;
+	GET_COPPER(ch) -= fee;
+	++wallet_debits;
+	return true;
+}
+void currency_transaction_release_world_quest(uint32_t)
+{
+	reserved_quest_fee = 0;
+}
 void (*during_payment)(P_char) = nullptr;
 bool currency_transaction_submit_wallet_value(P_char ch, int64_t value, currency_reason_type,
 					      int64_t, critical_source_site,
@@ -425,8 +445,8 @@ std::string render_daily(P_char, bool, std::string *)
 
 #ifndef WORLD_QUEST_SQL_HISTORY
 bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool, bool,
-				  const player_world_quest_reward &,
-				  std::function<void(P_char)> committed)
+				  const player_world_quest_reward &, int,
+				  std::function<bool(P_char)> committed)
 {
 	(void)reward;
 	++history_writes;

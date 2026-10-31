@@ -40,7 +40,7 @@ GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
 if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
                              for case in GAMEPLAY_CASES):
     raise ValueError("unsupported focused gameplay cases")
-if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported", "history"}:
+if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
     raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, audit, reported, or history")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
@@ -418,6 +418,19 @@ def stored_gameplay_history(environment: dict[str, str] | None, state: dict) -> 
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
     require(result.returncode == 0, "could not read disposable completion history")
     return int(result.stdout.strip())
+
+
+def execute_disposable_sql(environment: dict[str, str], query: str) -> None:
+    require(environment is not None and environment["DB_HOST"] == "127.0.0.1",
+            "fault test requires the isolated loopback database")
+    result = subprocess.run([
+        "mysql", "--protocol=tcp", "--ssl=0", "-h", environment["DB_HOST"],
+        "-P", environment["DB_PORT"], "-u", environment["DB_USER"],
+        environment["DB_NAME"], "-e", query,
+    ], env={**environment, "MYSQL_PWD": environment["DB_PASSWD"]},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+    require(result.returncode == 0, "disposable fault setup failed: " + result.stderr)
+
 
 
 def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
@@ -824,6 +837,92 @@ def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) ->
         observer.close()
 
 
+def perform_history_write_failure(client: MudClient, run_root: pathlib.Path, restart,
+                                  database_environment: dict[str, str],
+                                  restart_while_failed: bool = False) -> tuple[MudClient, dict]:
+    """A terminal INSERT failure must not clear or charge a progressed quest."""
+    require(database_environment is not None and database_environment["DB_HOST"] == "127.0.0.1",
+            "history failure test requires the isolated loopback database")
+
+    def sql(query: str) -> None:
+        execute_disposable_sql(database_environment, query)
+
+    (run_root / "quest-gameplay-control.txt").write_text("30 1 4 132560\n")
+    (run_root / "quest-reported-setup.txt").write_text("0\n")
+    client.send("chaos")
+    settled_gameplay_snapshot(client, run_root)
+    for _ in range(8):
+        client.send("ask bartender quest")
+        client.expect_any(("Go ask ", "Go kill "), timeout=30)
+        accepted = settled_gameplay_snapshot(client, run_root)
+        if accepted["type"] == 1 and accepted["quota"] > 1:
+            break
+        client.send("ask bartender abandon")
+        client.expect("You no longer have a task.", timeout=30)
+    else:
+        raise AssertionError("no qualifying progressed KILL quest")
+    (run_root / "quest-reported-setup.txt").write_text("2\n")
+    client.send("chaos")
+    before = settled_gameplay_snapshot(client, run_root)
+    client.send("save")
+    client.expect("Save complete for Taverek.", timeout=120)
+    history_before = stored_gameplay_history(database_environment, before)
+    sql("CREATE TRIGGER quest_history_refusal BEFORE INSERT ON world_quest_accomplished "
+        "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='fixture history failure'")
+    try:
+        client.send("ask bartender abandon confirm")
+        outcome, _ = client.expect_any(("You no longer have a task.",
+                                        "Your quest history is unavailable",
+                                        "quest history is still being secured"), timeout=60)
+        require(outcome != "You no longer have a task.",
+                "abandonment was finalized before the rejected history write")
+        if outcome == "Your quest history is unavailable":
+            unchanged = settled_gameplay_snapshot(client, run_root)
+            require(unchanged["active"] and unchanged["kills"] == before["kills"] and
+                    unchanged["wallet"] == before["wallet"],
+                    "failed history write changed quest progress or wallet")
+        require(stored_gameplay_history(database_environment, before) == history_before,
+                "a rejected history write appeared durable")
+        if restart_while_failed:
+            require(outcome == "quest history is still being secured",
+                    "restart fault case did not retain a pending completion")
+            # A separate credit while the history writer is failing must not
+            # be lost when the player disconnects and the server restarts.
+            (run_root / "quest-reported-setup.txt").write_text("7\n")
+            client.send("chaos")
+            credited = gameplay_snapshot(client, run_root)
+            require(credited["wallet"] == before["wallet"] + 1000,
+                    "fixture did not apply the independent pending credit")
+            client = restart(client, lambda: sql("DROP TRIGGER IF EXISTS quest_history_refusal"))
+            client.send("chaos")
+            restored_before = settled_gameplay_snapshot(client, run_root)
+            require(restored_before["active"] and restored_before["kills"] == before["kills"] and
+                    restored_before["wallet"] == before["wallet"] + 1000 and
+                    stored_gameplay_history(database_environment, restored_before) == history_before,
+                    "failed pending completion changed durable state across restart")
+    finally:
+        sql("DROP TRIGGER IF EXISTS quest_history_refusal")
+    if outcome == "Your quest history is unavailable" or restart_while_failed:
+        client.send("ask bartender abandon confirm")
+    client.expect("You no longer have a task.", timeout=90)
+    after = settled_gameplay_snapshot(client, run_root)
+    expected_wallet = before["wallet"] - 67 + (1000 if restart_while_failed else 0)
+    require(not after["active"] and after["wallet"] == expected_wallet and
+            after["remaining"] == before["remaining"] - 1,
+            "recovery did not charge exactly once and consume exactly one allowance")
+    require(stored_gameplay_history(database_environment, after) == history_before + 1,
+            "recovery did not persist exactly one history row")
+    client.send("save")
+    client.expect("Save complete for Taverek.", timeout=120)
+    client = restart(client)
+    restored = settled_gameplay_snapshot(client, run_root)
+    require(not restored["active"] and restored["wallet"] == after["wallet"] and
+            stored_gameplay_history(database_environment, restored) == history_before + 1,
+            "recovered abandonment did not survive restart")
+    return client, {"before": before, "after": after, "restored": restored,
+                    "history_before": history_before, "outcome": outcome}
+
+
 def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathlib.Path,
                           database_environment: dict[str, str] | None) -> dict:
     with tempfile.TemporaryDirectory(prefix=f"world-quest-{backend}-run-", dir=ROOT / "bin/tests") as run_tmp:
@@ -960,11 +1059,13 @@ run
         process = launch()
         client = None
 
-        def restart_gameplay(current: MudClient) -> MudClient:
+        def restart_gameplay(current: MudClient, while_down=None) -> MudClient:
             nonlocal process, client
             current.close()
             client = None
             stop_quest_server(process, pid_path, output_path)
+            if while_down:
+                while_down()
             process = launch(restarted=True)
             wait_for_boot(process, output_path)
             client = reconnect_character(plain_port, expected_room=None)
@@ -998,6 +1099,16 @@ run
                 client = None
                 stop_quest_server(process, pid_path, output_path)
                 return {"backend": backend, "journey": "history", "history": history,
+                        "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest()}
+            if JOURNEY in {"history-failure", "history-failure-restart"}:
+                require(backend == "mariadb", "history-failure requires MariaDB")
+                client, result = perform_history_write_failure(client, run_root, restart_gameplay,
+                                                                 database_environment,
+                                                                 JOURNEY == "history-failure-restart")
+                client.close()
+                client = None
+                stop_quest_server(process, pid_path, output_path)
+                return {"backend": backend, "journey": "history-failure", "result": result,
                         "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest()}
             if JOURNEY == "reported":
                 client, reported = perform_reported(client, run_root, restart_gameplay,

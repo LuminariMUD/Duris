@@ -2148,15 +2148,55 @@ int main(int argc, char **argv)
 		"quest retry duplicated completion");
 	quest.revision = 2;
 	++quest.pending_world_quest.occurred_at;
-	quest.items[0].object_uid = 7001002;
-	quest.pending_world_quest.reward_items = quest.items;
+	// An unrelated item was acquired while the conflicting completion is pending.
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001003;
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001002;
+	quest.pending_world_quest.reward_items = { quest.items.back() };
+	quest.pending_world_quest.before_quest = quest.quest_values;
+	quest.pending_world_quest.before_quest[3] = 0;
 	require(flatfile_player_snapshot_apply(quest_root.string(), quest, &error).outcome ==
 			player_save_apply_outcome::terminal_failure,
 		"conflicting quest completion accepted");
 	require(flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt, &error) ==
 				flatfile_player_load_result::ok &&
-			receipt.revision == 1 && receipt.items[0].object_uid == 7001001,
-		"failed history changed player/reward");
+			receipt.revision == 2 && receipt.items.size() == 2 &&
+			receipt.items[0].object_uid == 7001001 &&
+			receipt.items[1].object_uid == 7001003 && receipt.quest_values[3] == 0,
+		"failed history lost unrelated item or exposed staged reward");
+
+	// A stale fee after-image must not complete history while silently retaining a newer purse.
+	auto advanced = quest;
+	advanced.pending_world_quest = {};
+	advanced.items.pop_back();
+	advanced.revision = 3;
+	advanced.wallet_revision = 10;
+	require(flatfile_player_snapshot_apply(quest_root.string(), advanced, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"newer wallet baseline");
+	auto stale_quest = advanced;
+	stale_quest.revision = 4;
+	stale_quest.wallet_revision = 2;
+	stale_quest.pending_world_quest = {
+		true, 25002, 30, 9000, 0, 1800000002, "QuestTester", ""
+	};
+	stale_quest.pending_world_quest.before_quest = stale_quest.quest_values;
+	stale_quest.pending_world_quest.escrow_fee = 1;
+	stale_quest.pending_world_quest.before_wallet_revision = 1;
+	stale_quest.pending_world_quest.before_wallet = { 11, 12, 13, 14 };
+	require(flatfile_player_snapshot_apply(quest_root.string(), stale_quest, &error).outcome ==
+			player_save_apply_outcome::retryable_failure,
+		"stale quest wallet completed without the reserved fee");
+	bool stale_recorded = false;
+	require(flatfile_world_quest_completed(quest_root.c_str(), quest_pid, 25002,
+					       &stale_recorded,
+					       &error) == flatfile_world_quest_result::ok &&
+			!stale_recorded &&
+			flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt,
+						      &error) == flatfile_player_load_result::ok &&
+			receipt.wallet_revision == 10,
+		"stale quest changed newer wallet or recorded completion");
 
 	const fs::path snapshot_path = players / "42.snapshot";
 	player_snapshot paid = make_status(13, 51, 1201);

@@ -853,6 +853,23 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 							const player_snapshot &captured,
 							std::string *error)
 {
+	if (captured.pending_world_quest.present && !captured.pending_world_quest.fallback_only)
+	{
+		try
+		{
+			player_snapshot fallback;
+			if (!player_snapshot_world_quest_fallback(captured, &fallback))
+				return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+			const auto saved = flatfile_player_snapshot_apply(root, fallback, error);
+			if (saved.outcome != player_save_apply_outcome::applied &&
+			    saved.outcome != player_save_apply_outcome::already_applied)
+				return saved;
+		}
+		catch (const std::bad_alloc &)
+		{
+			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
+		}
+	}
 	std::unique_ptr<player_snapshot> revised;
 	if (player_snapshot_trade_pending(captured))
 	{
@@ -890,6 +907,18 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	player_save_apply_result locked = lock_authority();
 	if (locked.outcome != player_save_apply_outcome::applied)
 		return locked;
+	if (snapshot.pending_world_quest.present && snapshot.pending_world_quest.fallback_only)
+	{
+		const auto &quest = snapshot.pending_world_quest;
+		bool committed = false;
+		const auto found = flatfile_world_quest_record_matches(
+			root, *authority, snapshot.pid, quest.target, quest.level,
+			quest.occurred_at, &committed, error);
+		if (found != flatfile_world_quest_result::ok)
+			return { player_save_apply_outcome::retryable_failure, 0, EIO };
+		if (committed)
+			return { player_save_apply_outcome::already_applied, snapshot.revision, 0 };
+	}
 	bool unresolved_trade = false;
 	if (revised)
 	{
@@ -1096,7 +1125,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		delivered_changed = retired == flatfile_shop_trade_materialization_result::ok;
 	}
 	flatfile_authority_operation quest_history;
-	if (snapshot.pending_world_quest.present)
+	if (snapshot.pending_world_quest.present && !snapshot.pending_world_quest.fallback_only)
 	{
 		const auto &quest = snapshot.pending_world_quest;
 		if (!(snapshot.components & PLAYER_COMPONENT_STATUS) || quest.target <= 0 ||
@@ -1146,6 +1175,10 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_player_domain_result::ok)
 			return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
+		if (snapshot.pending_world_quest.present &&
+		    !snapshot.pending_world_quest.fallback_only &&
+		    balances.wallet_revision != snapshot.wallet_revision)
+			return { player_save_apply_outcome::retryable_failure, 0, EAGAIN };
 		materialized.wallet_revision = balances.wallet_revision;
 		for (auto &row : materialized.status_integers)
 			if (row.field >= player_status_field::copper &&
@@ -1165,7 +1198,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	std::vector<flatfile_authority_operation> operations;
 	try
 	{
-		if (snapshot.pending_world_quest.present)
+		if (snapshot.pending_world_quest.present &&
+		    !snapshot.pending_world_quest.fallback_only)
 			operations.push_back(std::move(quest_history));
 		if (claim_changed)
 			operations.push_back(std::move(claimed));
