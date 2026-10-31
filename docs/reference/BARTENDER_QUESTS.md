@@ -104,7 +104,7 @@ saved accepted quest level, and `N` the original KILL quota.
   If it cannot be instantiated, `create_random_eq()` uses current level `C`.
   The resulting item has `ITEM_SECRET`, `ITEM_INVISIBLE`, and `ITEM_NODROP`
   removed and `ITEM_NOREPAIR` added. The KILL reward goes to the completing
-  character through the grant service, not onto a corpse or on every kill.
+  character through the player-save transaction, not onto a corpse or on every kill.
 - **XP:** `quest_exp_reward()` truncates `EXP_NOTCH(character) * band_multiplier`
   to an integer using current level `C`. A notch is
   `max(new_exp_table[C + 1] / 10, 1)` for mortal levels. ASK requests this full
@@ -127,20 +127,20 @@ Arena, guild, and safe-room checks can suppress XP. With `toggle experience`
 enabled, a positive mortal credit prints `Quest EXP:` using the actual credited
 amount. Ordinary combat XP is separate from the bartender per-kill award.
 
-Reward calls have an observable order: ASK/legacy claims attempt the item,
-mercenary money, and epics before XP; the final KILL applies per-kill XP before
-the item, money, and epics. A level change during that XP call can therefore
-affect subsequent current-level checks and the level recorded in history.
+Completion captures the scalar reward amounts at the completing interaction.
+The detached item, completion history, and a pending-reward marker commit together
+through the player-save transaction (MariaDB or the flatfile authority journal).
+Only confirmed item publication allows the remaining XP, money, epics, feedback,
+and task reset. A rejected capture leaves the task intact; admitted work holds
+the task against duplicate turn-ins and retries failed writes/publication.
+Failure to create an item also keeps the task and earned kills.
 
-Item-grant acceptance is a queue/submission result, not proof of durable item
-delivery. An immediate submission rejection extracts the item and reports that
-the ownership authority is busy; failure to create any item returns no item.
-An accepted queued grant can settle later through the ownership service.
-The quest handler does not wait for an item-completion callback: it continues
-other rewards, requests a history record, and resets the task even when the
-item attempt failed. History-write failures likewise do not restore the quest.
-These operations form no atomic reward bundle and provide no quest-level retry
-entitlement for a missing item.
+If the process stops after commit but before publication, login restores the
+item from the saved inventory. The completed-task marker preserves the captured
+remaining scalar rewards for a bartender claim without creating another item
+or recording history again. The marker temporarily stores XP, epics and copper
+in the completed task's receiver, shares and credited-kill fields; these fields
+resume their ordinary meanings when the task is reset.
 
 ## Catalog, target, and route policy
 

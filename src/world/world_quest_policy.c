@@ -1059,7 +1059,6 @@ struct quest_target_request
 			       !IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
 		if (mob_index[GET_RNUM(mob)].number != 1 || !profile.can_speak ||
 		    profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL || !CAN_SPEAK(mob) ||
-		    !IS_AWAKE(mob) || IS_AFFECTED2(mob, AFF2_SILENCED) ||
 		    IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
 		    IS_SET(zone_table[world[room].zone].flags, ZONE_SILENT) ||
 		    world[room].sector_type == SECT_UNDERWATER ||
@@ -1082,7 +1081,9 @@ struct quest_target_request
 	bool type_eligible(P_char mob, int type)
 	{
 		return world_type_eligible(mob, type) &&
-		       (type != FIND_AND_ASK || (actor_can_ask() && handlers_eligible(mob)));
+		       (type != FIND_AND_ASK ||
+			(IS_AWAKE(mob) && !IS_AFFECTED2(mob, AFF2_SILENCED) && actor_can_ask() &&
+			 handlers_eligible(mob)));
 	}
 
 	int suggest(int zone, int type, int minimum)
@@ -1204,7 +1205,9 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 					continue;
 				status interaction = status::valid;
 				if (request.controlled(mob) ||
-				    (type == FIND_AND_ASK && !request.actor_can_ask()))
+				    (type == FIND_AND_ASK &&
+				     (!request.actor_can_ask() || !IS_AWAKE(mob) ||
+				      IS_AFFECTED2(mob, AFF2_SILENCED))))
 					interaction = status::blocked;
 				else if (type == FIND_AND_ASK && !request.handlers_eligible(mob))
 					interaction = status::unproven;

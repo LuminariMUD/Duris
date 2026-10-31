@@ -25,6 +25,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n'
         '#include "persistence/persistence_checkpoint.h"\n'
         '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
+        '#include "player/player_save_pipeline.h"\n'
         '#include "net/gmcp.h"\n#include "world/world_quest_policy_math.h"\n'
         '#include <ctime>\n#include "cmd/interp.h"\n#include "core/utility.h"\n#include "net/comm.h"\n#include "world/zone_story_quest_runtime.h"\n'
         'extern P_room world;\nextern P_index obj_index;\nextern zone_data *zone_table;\n'
@@ -124,9 +125,17 @@ void run_map_payment(P_char player, int fee)
     sql = repo_source("sql/sql.c").read_text()
     history_start = sql.index("struct world_quest_history\n")
     history = sql[history_start:sql.index("const char *sql_select_IP_info(", history_start)]
+    publication_start = sql.index("struct world_quest_reward_publication\n")
+    publication = sql[publication_start:sql.index("// End world quest reward publication.", publication_start)]
+    finish = sql[sql.index("bool sql_world_quest_finish_async("):]
+    history += "\n#undef __NO_MYSQL__\n" + publication + finish + "\n#define __NO_MYSQL__\n"
     sql_adapters = work / "sql_history_adapters.cpp"
     sql_adapters.write_text(adapters.read_text() + r'''
 #include "sql/sql_async.h"
+#include "net/unicode.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_load_items.h"
+#include "item/item_ownership_runtime.h"
 #include <cstdarg>
 #include <cassert>
 #include <unordered_set>
@@ -134,9 +143,29 @@ void run_map_payment(P_char player, int fee)
 extern int history_writes;
 static time_t history_clock = 20000LL * 86400 + 86399;
 static std::vector<int64_t> history_stamps;
+static std::vector<player_pending_world_quest> history_extra;
 static std::function<void(bool, const sql_rows &)> history_callback;
 static sql_rows history_rows;
+static std::function<void(bool, const sql_rows &)> parked_history_callback;
+static sql_rows parked_history_rows;
 static int history_level = 30;
+static bool history_reject_writes = false;
+static bool history_defer_writes = false;
+static P_char history_pending_actor = nullptr;
+static player_pending_world_quest history_pending_quest;
+static std::function<bool(P_char, const player_pending_world_quest &)> history_pending_done;
+extern P_obj object_list;
+bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *, size_t)
+{
+    return false;
+}
+bool player_load_item_graph_materialize_detached(
+    const std::vector<player_item_snapshot> &, const std::vector<player_load_item_identity> &,
+    const item_owner_identity &, uint64_t, bool, bool, std::vector<P_obj> *,
+    player_load_item_materialize_metrics *)
+{
+    return false;
+}
 static time_t quest_test_time(time_t *out)
 {
     if (out) *out = history_clock;
@@ -163,13 +192,16 @@ bool sql_read_at(persistence_query_site, std::string query,
     for (int64_t stamp : history_stamps)
         history_rows.push_back({{std::to_string(++target), std::to_string(history_level),
             std::to_string(timestamps ? stamp : stamp / 86400 == history_clock / 86400)}});
+    for (const auto &quest : history_extra)
+        history_rows.push_back({{std::to_string(quest.target), std::to_string(quest.level),
+            std::to_string(timestamps ? quest.occurred_at : quest.occurred_at / 86400 == history_clock / 86400)}});
     history_callback = std::move(done);
     return true;
 }
 bool sql_queue_at(persistence_query_site, const char *, ...)
 {
     ++history_writes;
-    return true;
+    return !history_reject_writes;
 }
 char *mysql_str(const char *text, char *out)
 {
@@ -188,22 +220,78 @@ static void publish_history(bool ok = true)
     history_callback = {};
     callback(ok, history_rows);
 }
+bool player_save_pipeline_world_quest_pending(int)
+{
+    return bool(history_pending_done);
+}
+player_snapshot_capture_result player_item_snapshot_tree_capture(
+    P_obj, std::vector<player_item_snapshot> *, size_t *)
+{
+    return player_snapshot_capture_result::invalid_identity;
+}
+void quest_test_finish_history_write(bool committed)
+{
+    assert(history_pending_done);
+    if (!committed) return; // the real pipeline retains and retries the capture
+    auto done = std::move(history_pending_done);
+    history_pending_done = {};
+    history_extra.push_back(history_pending_quest);
+    assert(done(history_pending_actor, history_pending_quest));
+    if (history_callback) publish_history();
+}
+bool player_save_pipeline_submit_world_quest(
+    P_char ch, const player_pending_world_quest &quest,
+    std::function<bool(P_char, const player_pending_world_quest &)> done)
+{
+    ++history_writes;
+    if (history_reject_writes) return false;
+    assert(!history_pending_done);
+    history_pending_actor = ch;
+    history_pending_quest = quest;
+    history_pending_done = std::move(done);
+    if (!history_defer_writes) quest_test_finish_history_write(true);
+    return true;
+}
 void quest_test_history_empty(P_char ch)
 {
     history_level = GET_LEVEL(ch) >= 50 ? 30 : GET_LEVEL(ch);
     history_stamps.clear();
+    history_extra.clear();
     sql_world_quest_history_load(ch);
     publish_history();
 }
 void quest_test_history_begin_rollover(P_char ch, int completed)
 {
     world_quest_histories.clear();
+    history_extra.clear();
     history_stamps.assign(completed, history_clock - 60);
     sql_world_quest_history_load(ch);
 }
 void quest_test_history_advance()
 {
     history_clock += 2;
+}
+void quest_test_refuse_history_writes()
+{
+    history_reject_writes = true;
+}
+void quest_test_defer_history_write()
+{
+    history_defer_writes = true;
+}
+void quest_test_park_history_read()
+{
+    assert(history_callback && !parked_history_callback);
+    parked_history_callback = std::move(history_callback);
+    history_callback = {};
+    parked_history_rows = history_rows;
+}
+void quest_test_publish_parked_history()
+{
+    assert(parked_history_callback);
+    auto callback = std::move(parked_history_callback);
+    parked_history_callback = {};
+    callback(true, parked_history_rows);
 }
 void quest_test_history_publish(int seconds, bool ok)
 {
@@ -217,7 +305,8 @@ void quest_test_history_publish(int seconds, bool ok)
     history_failures = []
     for level in (30, 56):
         for mode in ("history_rollover", "history_same_day", "history_unready",
-                     "history_failed_read", "history_write_rollover"):
+                     "history_failed_read", "history_write_rollover", "history_write_failure",
+                     "history_write_pending", "history_stale_read"):
             result = subprocess.run([str(sql_binary), str(level), mode, "kill", share_limit],
                                     cwd=work, text=True, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, timeout=15)

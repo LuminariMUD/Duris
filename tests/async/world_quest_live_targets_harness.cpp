@@ -7,6 +7,7 @@
 #include "combat/justice.h"
 #include "persistence/persistence_checkpoint.h"
 #include "economy/currency_transaction.h"
+#include "player/player_save_pipeline.h"
 #include "world/zone_story_quest_runtime.h"
 #include "cmd/interp.h"
 #include "world/specs.prototypes.h"
@@ -38,6 +39,11 @@ hometown_data hometowns[LAST_HOME]{};
 time_info_data time_info{};
 const char *month_name[] = { "Moon" };
 P_char character_list = nullptr;
+P_obj object_list = nullptr;
+void obj_to_char(P_obj, P_char)
+{
+	std::abort();
+}
 
 std::deque<room_direction_data> exits;
 std::vector<reset_com> commands;
@@ -418,9 +424,19 @@ std::string render_daily(P_char, bool, std::string *)
 }
 
 #ifndef WORLD_QUEST_SQL_HISTORY
-void sql_world_quest_finished(P_char, P_obj)
+bool sql_world_quest_finished(P_char, P_obj)
 {
 	++history_writes;
+	return true;
+}
+bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool, bool,
+				  const player_world_quest_reward &,
+				  std::function<void(P_char)> committed)
+{
+	if (!sql_world_quest_finished(ch, reward))
+		return false;
+	committed(ch);
+	return true;
 }
 int sql_world_quest_can_do_another(P_char)
 {
@@ -532,6 +548,11 @@ void quest_test_history_empty(P_char);
 void quest_test_history_begin_rollover(P_char, int);
 void quest_test_history_publish(int, bool);
 void quest_test_history_advance();
+void quest_test_refuse_history_writes();
+void quest_test_defer_history_write();
+void quest_test_finish_history_write(bool);
+void quest_test_park_history_read();
+void quest_test_publish_parked_history();
 #endif
 void edge(int from, int dir, int to)
 {
@@ -734,10 +755,13 @@ int main(int argc, char **argv)
 		for (int n = 0; n < (mode == "quota" ? 2 : mode == "one_usable" ? 5 : 4); ++n)
 			spawn(0, 4, 4);
 		spawn(1, mode == "staging_release" ? 4 : 3, 3);
-		if (mode == "history_write_rollover")
+		if (mode == "history_write_rollover" || mode == "history_write_failure" ||
+		    mode == "history_write_pending" || mode == "history_stale_read")
 			spawn(0, 3,
 			      3); // Grant a quota above one before constructing partial progress.
-		if (mode == "history_write_rollover" && level >= 50)
+		if ((mode == "history_write_rollover" || mode == "history_write_failure" ||
+		     mode == "history_write_pending" || mode == "history_stale_read") &&
+		    level >= 50)
 			spawn(1, 3,
 			      3); // A second KILL prototype remains after excluding the old target.
 		if (mode == "cross_zone_retry")
@@ -808,7 +832,9 @@ int main(int argc, char **argv)
 	}
 #ifdef WORLD_QUEST_SQL_HISTORY
 	if (mode == "history_rollover" || mode == "history_same_day" || mode == "history_unready" ||
-	    mode == "history_failed_read" || mode == "history_write_rollover")
+	    mode == "history_failed_read" || mode == "history_write_rollover" ||
+	    mode == "history_write_failure" || mode == "history_write_pending" ||
+	    mode == "history_stale_read")
 	{
 		player.player.name = const_cast<char *>("Fixture");
 		command_giver = spawn(2, 0, 0);
@@ -821,18 +847,54 @@ int main(int argc, char **argv)
 		// Re-enter with this saved task while the history SELECT is outstanding.
 		// Its old-day result is delivered after midnight and after abandonment.
 		const bool unready = mode == "history_unready" || mode == "history_failed_read";
-		const bool progressed = mode == "history_write_rollover";
+		const bool progressed =
+			mode == "history_write_rollover" || mode == "history_write_failure" ||
+			mode == "history_write_pending" || mode == "history_stale_read";
 		quest_test_history_begin_rollover(&player, unready ? 0 : 6);
 		if (progressed)
 		{
 			assert(pc.quest_kill_original > 1);
-			quest_test_history_publish(0, true);
+			if (mode == "history_stale_read")
+				quest_test_park_history_read();
+			else
+				quest_test_history_publish(0, true);
 			quest_test_history_advance();
 			pc.quest_kill_how_many = 1;
 		}
 		std::string abandon = progressed ? "bartender abandon confirm" :
 						   "bartender abandon";
+		if (mode == "history_write_failure")
+			quest_test_refuse_history_writes();
+		if (mode == "history_write_pending")
+			quest_test_defer_history_write();
 		assert(world_quest(command_giver, &player, CMD_ASK, abandon.data()));
+		if (mode == "history_stale_read")
+		{
+			assert(!pc.quest_active && sql_world_quest_can_do_another(&player) == 5);
+			quest_test_publish_parked_history();
+			assert(sql_world_quest_can_do_another(&player) == 5);
+			return 0;
+		}
+		if (mode == "history_write_pending")
+		{
+			// Queue admission is not a database acknowledgement.
+			assert(pc.quest_active && pc.quest_kill_how_many == 1);
+			assert(history_writes == 1);
+			quest_test_finish_history_write(false);
+			assert(pc.quest_active &&
+			       player_save_pipeline_world_quest_pending(GET_PID(&player)));
+			quest_test_finish_history_write(true);
+			assert(!pc.quest_active &&
+			       !player_save_pipeline_world_quest_pending(GET_PID(&player)));
+			return 0;
+		}
+		if (mode == "history_write_failure")
+		{
+			assert(pc.quest_active && pc.quest_kill_how_many == 1);
+			assert(GET_MONEY(&player) == 10000);
+			assert(history_writes == 1);
+			return 0;
+		}
 		assert(!pc.quest_active && !pc.quest_replacement_due &&
 		       history_writes == (progressed ? 1 : 0));
 		const int wallet = GET_MONEY(&player);
@@ -903,6 +965,7 @@ int main(int argc, char **argv)
 		{
 			const auto before_actor = player;
 			const auto before_pc = pc;
+			const int before_dirty = dirty_marks;
 			const std::vector<room_data> before_rooms(world, world + top_of_world + 1);
 			const auto actual = world_quest_policy_check_target(
 				&player, origin, level, 20, vnum, preferred_type, needed);
@@ -915,7 +978,7 @@ int main(int argc, char **argv)
 			assert(!memcmp(&before_pc, &pc, sizeof(pc)));
 			assert(!memcmp(before_rooms.data(), world,
 				       before_rooms.size() * sizeof(room_data)));
-			assert(history_reads.empty() && dirty_marks == 0);
+			assert(history_reads.empty() && dirty_marks == before_dirty);
 			assert(probe_reads == boot_probes && object_reads == boot_objects);
 			return actual;
 		};
@@ -1013,6 +1076,30 @@ int main(int argc, char **argv)
 			check(status::unproven); // Known travel-safe does not mean ASK-safe.
 			mobiles[1].qst_func = nullptr;
 			P_char ask = live.back().get();
+			pc.quest_active = 1;
+			pc.quest_level = level;
+			pc.quest_origin_room = 1000;
+			pc.quest_zone_number = 20;
+			pc.quest_mob_vnum = vnum;
+			pc.quest_type = FIND_AND_ASK;
+			for (bool sleep : { true, false })
+			{
+				if (sleep)
+					SET_POS(ask, STAT_SLEEPING | POS_PRONE);
+				else
+					ask->specials.affected_by2 |= AFF2_SILENCED;
+				check(status::blocked);
+				assert(world_quest_refresh(&player) == status::blocked);
+				assert(pc.quest_active && !pc.quest_replacement_due);
+				if (sleep)
+					SET_POS(ask, STAT_NORMAL | POS_STANDING);
+				else
+					ask->specials.affected_by2 &= ~AFF2_SILENCED;
+				assert(world_quest_refresh(&player) == status::valid);
+				assert(pc.quest_active && !pc.quest_replacement_due);
+			}
+			resetQuest(&player);
+			dirty_marks = 0;
 			move(ask, 2);
 			check(status::unavailable);
 			move(ask, 3);

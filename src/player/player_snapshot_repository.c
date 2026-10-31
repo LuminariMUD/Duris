@@ -259,6 +259,57 @@ bool status_time_field(player_status_field field)
 	       field == player_status_field::time_unspecialized;
 }
 
+query_result apply_world_quest_history(MYSQL *connection, const player_snapshot &snapshot)
+{
+	const auto &quest = snapshot.pending_world_quest;
+	if (!quest.present)
+		return { true, 0 };
+	if (!(snapshot.components & PLAYER_COMPONENT_STATUS) || quest.target <= 0 ||
+	    quest.level <= 0 || quest.giver < 0 || quest.occurred_at <= 0 ||
+	    quest.player_name.empty() || (quest.final_kill_reward && !quest.awaiting_reward) ||
+	    (!quest.awaiting_reward && !quest.reward_items.empty()) ||
+	    (quest.reward_items.empty() != (quest.reward_encoded_size == 0)) ||
+	    (!quest.reward_items.empty() &&
+	     (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) !=
+		     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
+		return { false, EINVAL };
+	// The player row is locked by ensure_player_row(). A target is never issued
+	// twice to one character, but a retry must match the actual event rather than
+	// silently treating an older, unrelated row as this completion.
+	const std::string pid = std::to_string(snapshot.pid);
+	const std::string target = std::to_string(quest.target);
+	sql_rows existing;
+	const auto error =
+		sql_select(connection,
+			   "SELECT UNIX_TIMESTAMP(timestamp),quest_giver,player_name,player_level,"
+			   "reward_vnum,reward_desc FROM world_quest_accomplished WHERE pid=" +
+				   pid + " AND quest_target=" + target + " FOR UPDATE",
+			   &existing);
+	if (error)
+		return { false, error };
+	if (!existing.empty())
+	{
+		for (const auto &row : existing)
+			if (row[0] && row[1] && row[2] && row[3] && row[4] && row[5] &&
+			    std::to_string(quest.occurred_at) == row[0] &&
+			    std::to_string(quest.giver) == row[1] && quest.player_name == row[2] &&
+			    std::to_string(quest.level) == row[3] &&
+			    std::to_string(quest.reward_vnum) == row[4] &&
+			    quest.reward_description == row[5])
+				return { true, 0 };
+		return { false, EEXIST };
+	}
+	return execute(
+		connection,
+		"INSERT INTO world_quest_accomplished (pid,timestamp,quest_giver,player_name,"
+		"player_level,quest_target,reward_vnum,reward_desc) VALUES (" +
+			pid + ",FROM_UNIXTIME(" + std::to_string(quest.occurred_at) + ")," +
+			std::to_string(quest.giver) + "," + quote(connection, quest.player_name) +
+			"," + std::to_string(quest.level) + "," + target + "," +
+			std::to_string(quest.reward_vnum) + "," +
+			quote(connection, quest.reward_description) + ")");
+}
+
 query_result apply_status(MYSQL *connection, const player_snapshot &snapshot, bool wallet_current)
 {
 	std::ostringstream sql;
@@ -650,6 +701,74 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 {
 	const item_owner_identity owner = { item_owner_type::player,
 					    static_cast<uint64_t>(snapshot.pid), 0 };
+	const auto &reward = snapshot.pending_world_quest.reward_items;
+	if (snapshot.pending_world_quest.present && !reward.empty())
+	{
+		if (reward.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+		    reward.size() > snapshot.items.size())
+			return { false, EINVAL };
+		const size_t offset = snapshot.items.size() - reward.size();
+		struct expected_reward
+		{
+			uint64_t root, parent;
+			int vnum;
+		};
+		std::unordered_map<uint64_t, expected_reward> expected;
+		std::vector<uint64_t> roots;
+		std::string ids;
+		for (size_t index = 0; index < reward.size(); ++index)
+		{
+			const auto &item = reward[index];
+			const auto &captured = snapshot.items[offset + index];
+			if (!item.object_uid || item.vnum <= 0 ||
+			    item.parent_index < PLAYER_SNAPSHOT_NO_PARENT ||
+			    item.parent_index >= static_cast<int32_t>(index) ||
+			    captured.object_uid != item.object_uid || captured.vnum != item.vnum ||
+			    captured.parent_index !=
+				    (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+					     PLAYER_SNAPSHOT_NO_PARENT :
+					     item.parent_index + static_cast<int32_t>(offset)))
+				return { false, EINVAL };
+			const uint64_t root = item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+						      item.object_uid :
+						      roots[item.parent_index];
+			const uint64_t parent = item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+							0 :
+							reward[item.parent_index].object_uid;
+			if (!expected.emplace(item.object_uid,
+					      expected_reward{ root, parent, item.vnum })
+				     .second)
+				return { false, EINVAL };
+			roots.push_back(root);
+			ids += (ids.empty() ? "" : ",") + std::to_string(item.object_uid);
+		}
+		sql_rows existing;
+		const auto error = sql_select(
+			connection,
+			"SELECT item_uid,root_item_uid,COALESCE(parent_item_uid,0),owner_type,owner_id,"
+			"owner_context_id,vnum,state FROM item_current_owner WHERE item_uid IN (" +
+				ids + ") FOR UPDATE",
+			&existing);
+		if (error)
+			return { false, error };
+		for (const auto &row : existing)
+		{
+			if (!row[0] || !row[1] || !row[2] || !row[3] || !row[4] || !row[5] ||
+			    !row[6] || !row[7])
+				return { false, EILSEQ };
+			const auto found = expected.find(strtoull(row[0], nullptr, 10));
+			if (found == expected.end() ||
+			    std::to_string(found->second.root) != row[1] ||
+			    std::to_string(found->second.parent) != row[2] ||
+			    std::to_string(static_cast<unsigned>(item_owner_type::player)) !=
+				    row[3] ||
+			    std::to_string(snapshot.pid) != row[4] || strcmp(row[5], "0") ||
+			    std::to_string(found->second.vnum) != row[6] ||
+			    std::to_string(static_cast<unsigned>(item_custody_state::active)) !=
+				    row[7])
+				return { false, EILSEQ };
+		}
+	}
 	std::string retained_ids;
 	query_result result = retained_player_rows(connection, snapshot, &retained_ids);
 	if (!result.ok)
@@ -659,6 +778,17 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 			     snapshot.save_intent == RENT_INN);
 	if (!result.ok)
 		return result;
+	if (snapshot.pending_world_quest.present &&
+	    !snapshot.pending_world_quest.reward_items.empty())
+	{
+		std::unordered_set<uint64_t> retained;
+		for (const auto &item : written)
+			if (item.object_uid)
+				retained.insert(item.object_uid);
+		for (const auto &item : snapshot.pending_world_quest.reward_items)
+			if (!item.object_uid || !retained.count(item.object_uid))
+				return { false, EILSEQ };
+	}
 	// Replace active roots while retained source components keep their original IDs.
 	result = execute(connection,
 			 "DELETE FROM player_items WHERE pid=" + std::to_string(snapshot.pid) +
@@ -1051,6 +1181,9 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	// component while leaving a newer committed purse untouched.
 	const bool wallet_current = !unresolved_trade &&
 				    snapshot.wallet_revision >= stored_wallet_revision;
+	if (query.ok && snapshot.pending_world_quest.present &&
+	    (!status_current || !wallet_current))
+		query = { false, EAGAIN };
 	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{
 		const auto rolled_back = execute(connection, "ROLLBACK");
@@ -1062,6 +1195,8 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		query = apply_components(
 			connection, snapshot, &claims, status_current, wallet_current,
 			unresolved_trade && captured.pending_trade.has_cargo_effect);
+	if (query.ok)
+		query = apply_world_quest_history(connection, snapshot);
 	if (query.ok && created)
 		query = insert_opening_baselines(connection, snapshot.pid);
 	if (query.ok)
