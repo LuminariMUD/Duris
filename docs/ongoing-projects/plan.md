@@ -1,9 +1,9 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **implementation in progress; ASK level chunk qualified**. Updated 2026-10-31.
+Status: **ASK chunk ready in PR #520; geography/removal qualification in progress**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
-- Branch: [branch/issue-500-eligibility-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-eligibility-plan), linked in the issue's Development section.
+- Branch: [branch/issue-500-geography](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-geography), linked in the issue's Development section and stacked on [PR #520](https://github.com/LuminariMUD/Duris/pull/520).
 - Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
 - Audited source/base: `807c6d8dce8be4102d43c91950c80548a58f7f02`, the current head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513), `branch/issues-500-506-bartender-bugfixes`.
 - Method: the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
@@ -172,3 +172,55 @@ Additional checks passed: `make -C src -j8`, dynamic policy contracts, XP feedba
 `git diff --check`. These results qualify the level chunk only; route removal,
 dual-region geography and the planned command/persistence journeys remain open.
 Current master `aa77a2030` was merged for build/compatibility qualification.
+
+## Implementation evidence: route removal and both regions (in progress)
+
+The second chunk replaces the route builder and all three capability passes
+with boot-time geography and one accepted-target interaction/supply check.
+The production route API and route limits are removed. Target-check bounds,
+actual restricted destination/reset rooms, provenance and ASK interaction rules
+remain. Maps use geographic zone entrances; travel changes no longer clear
+them or invalidate a task. Refusal messages now describe target/scope state.
+
+The attachment decision is now concrete: gather authored map boundaries and
+interior-zone adjacency, then resolve the nearest boundary **separately for
+surface and Underdark**. The map-only Underdark graph uses undirected
+connectivity, ignoring movement flags; interior connectors cannot merge map
+components. Ties between different identities remain unresolved for that family.
+This avoids flooding all 5,165 connected Bloodstone interior rooms and requires
+no special-case origin table, new configuration or travel simulation.
+
+The disposable **flatfile loaded-world audit passed**. Both 1734 and 74339
+resolve to surface region 2 and Underdark component 239868 in that boot's rnums.
+Both Good and Evil observers received eligible tasks at 11/29/30 from both
+origins. Component rnums are process-local evidence, not persisted identifiers.
+The geometry harness passes mixed/nearest boundaries, incoming/one-way edges,
+disconnected rooms, unrelated surface/Underdark rejection, ambiguity, unchanged
+world memory and a graph larger than the old route limit.
+
+The expanded native suite passed **284** scenarios and 10 SQL-history cases,
+including the final terrain-fixture addition. It covers named-origin synthetic
+ASK/KILL geography at 11/29/30/56, broad ASK and KILL levels at 11/29/30/49/56,
+strict zone-average endpoints, refresh/sharing/map-payment route immunity and
+genuine target invalidation. The old distribution-room fixture is now explicitly
+private: its rejection proves location policy rather than a missing path.
+The journey probe now has its own ordinary-exit navigation helper; assignment
+is independent of whether that test helper can walk the target.
+
+`make -C src -j8`, dynamic/reward/failure/remaining contracts, geography,
+formatting, whitespace and 14 documentation checks passed. The first `reported`
+and `both` journey runs failed in their ordinary-exit navigator after accepting
+valid broader-pool targets: one walked into a map barrier, and one could not
+reach remaining targets after restart. This did not justify restoring route
+eligibility. The test navigator now uses the actual read-only map-barrier
+predicate, and gameplay sampling explicitly chooses otherwise eligible fixtures
+with ordinary outward/return paths for their routine instances and birthplaces.
+Debugger hooks select that zone/prototype; production validation, publication,
+payments, movement, ASK/KILL, reward and persistence still execute normally.
+Special-travel acceptance is independently covered by native fixtures.
+
+The reported suite also enables sharing only in its disposable properties copy,
+then exercises actual CONSENT, QUEST SHARE and paid MAP with the giver's exits
+locked. It saves/restarts both source and recipient and compares copied work,
+paid map, purse, allowance and remaining shares. Fresh `reported` and `both`
+runs on both backends are underway; completion still requires their results.

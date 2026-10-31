@@ -10851,7 +10851,7 @@ static void world_quest_report_creation_failure(P_char pl, quest_creation_failur
 	if (GET_LEVEL(pl) >= WORLD_QUEST_MIN_LEVEL && GET_LEVEL(pl) <= WORLD_QUEST_LOCAL_MAX_LEVEL)
 	{
 		send_to_char(
-			"No suitable local task is available by ordinary travel right now. Please come back later.\r\n",
+			"No suitable local task is available right now. Please come back later.\r\n",
 			pl);
 		return;
 	}
@@ -10968,7 +10968,7 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 		send_to_char("You hand over the money.\r\n", pl);
 		send_to_char("Take a quick peek at this note:\r\n", pl);
-		// World state and travel abilities may change while payment is pending.
+		// Target availability may change while payment is pending.
 		const auto availability = world_quest_refresh(pl);
 		if (!quest_buy_map(pl, availability))
 		{

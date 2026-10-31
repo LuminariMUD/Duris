@@ -82,7 +82,7 @@ void run_map_payment(P_char player, int fee)
     # The target's prototype belongs to a different interval from its live zone,
     # keeping the destination average fixed while checking each level separately.
     scenarios += [(level, f"levels_{authored}_{live}", kind)
-                  for level in (11, 29, 30, 49)
+                  for level in (11, 29, 30, 49, 56)
                   for kind in ("ask", "kill")
                   for authored, live in (
                       (level - 5, level), (level, level - 5),
@@ -92,6 +92,13 @@ void run_map_payment(P_char player, int fee)
                       (61, level), (level, 61), (62, level), (level, 62),
                       (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
+    scenarios += [(level, f"geography_{origin}_{family}", kind)
+                  for origin in (1734, 74339)
+                  for level in (11, 29, 30, 56)
+                  for kind in ("ask", "kill")
+                  for family in ("surface", "underdark", "foreign_surface", "foreign_underdark")]
+    scenarios += [(29, f"zone_average_{average}", kind)
+                  for average in (22, 23, 33, 34) for kind in ("ask", "kill")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]
     scenarios += [(level, "gear", kind) for level in (11, 29, 56) for kind in ("ask", "kill")]
