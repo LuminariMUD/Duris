@@ -113,7 +113,8 @@ def test_kill_quests_pay_one_reward_on_completion() -> None:
     assert "quest_kill_original + 1) <= 2" not in kill
     done = kill[kill.index("quest_kill_how_many - ch->only.pc->quest_kill_original == 0"):]
     assert "world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true)" in done
-    assert "--ch->only.pc->quest_kill_how_many" in done
+    assert "PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED" in done
+    assert "--ch->only.pc->quest_kill_how_many" not in done
     start = extract_function("world_quest.c", "static bool world_quest_start_reward(")
     assert start.count("quest_item_reward(ch)") == 1
     assert start.index("sql_world_quest_finish_async(") < start.index("world_quest_deliver_reward(")
