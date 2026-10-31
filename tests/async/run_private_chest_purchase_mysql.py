@@ -23,7 +23,9 @@ try:
             ("core/utility.c", "void publish_account_bank_balances_revision("),
             ("economy/currency_transaction.c", "void currency_transaction_publish_chest("),
         ))
-        source.write_text((ROOT / "tests/async/private_chest_purchase_mysql.cpp").read_text().replace("// PUBLICATION_PRODUCTION", production))
+        source.write_text((ROOT / "tests/async/private_chest_purchase_mysql.cpp").read_text()
+                          .replace("// PUBLICATION_PRODUCTION", production)
+                          .replace("// LOOKUP_PRODUCTION", extract_function("core/utility.c", "P_char find_player_by_pid(")))
         subprocess.run(["g++", "-std=c++20", "-g", "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections", "-Isrc", "-I/usr/include/mysql", str(source), "-lmysqlclient", "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], cwd=ROOT, env=env, check=True, timeout=30)
 finally:
