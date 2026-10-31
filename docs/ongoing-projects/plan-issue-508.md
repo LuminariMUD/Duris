@@ -1,506 +1,486 @@
-# Issue #508: shared progression with earned PvP acceleration
+# Issue #508: a 72-hour Good/Evil frag race with guaranteed progression
 
-Status: **implementation in progress; rules PR open, storage chunk qualified locally**.
-Updated 2026-10-31. No gameplay cutover or production operation has occurred.
-Delivery target: **270 minutes of implementation/qualification plus 30 minutes contingency**.
-The target is a tested, reviewable change; production deployment is separate.
+Status: **approved policy revised; this pass updates and reviews the plan only**.
+Updated 2026-10-31. The code and tests in the implementation worktree still contain
+parts of the superseded personal-acceleration policy. They are not qualified for
+this contract. No gameplay implementation, merge, release or production operation
+is authorized by this planning-only pass.
 
-Sources: [issue #508](https://github.com/LuminariMUD/Duris/issues/508),
-[history](https://github.com/LuminariMUD/Duris/issues/508#issuecomment-6542566134),
-and the [concrete proposal](https://github.com/LuminariMUD/Duris/issues/508#issuecomment-6542754060).
-Prepared using the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
+The controlling decisions are the owner's latest clarification in this chat:
+positive PvP frags pool by chosen Good/Evil faction during each three-day round;
+the leading faction receives the next cap; a tie, including zero frags, advances
+both existing caps; circle levels equalize the caps. The owner accepted the
+follow-up interpretation that there is **no minimum 1.00-frag threshold**.
 
-Research baseline: `b737db20210ff2d3e4eebccb212c9918b9b6f877`.
-The dedicated implementation checkout is now `/home/aiwithapex/projects/duris-issue-508`
-on `branch/issue-508-frag-progression`, based on freshly fetched master
-`9ad734e9e60b0938181f85cd20cdb9614a14adc8`. Implementation is underway here;
-the separate bartender task remains in its original checkout.
+[Issue #508](https://github.com/LuminariMUD/Duris/issues/508) remains the tracking
+issue. Its [earlier proposal](https://github.com/LuminariMUD/Duris/issues/508#issuecomment-6542754060)
+is historical context and is superseded where it conflicts with this document.
+The reported original +1.00-frag incident still lacks an identified event; this
+policy change does not retrospectively explain that incident.
 
-The newer base includes [#511](https://github.com/LuminariMUD/Duris/pull/511),
-which excludes staff from frag rankings and side totals, and
-[#512](https://github.com/LuminariMUD/Duris/pull/512), which fixes player leaderboard
-scoring. Preserve those changes while removing standings from cap qualification.
-The proposed progression contract is unchanged. Recheck master and migration
-numbering before implementation.
+Prepared with the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
 
-## Outcome and boundaries
+## Outcome, boundaries and current scope
 
-Everyone can reach level 31 through their normal advancement requirements.
-Thereafter one shared cap opens one level every 72 real hours, or as early as
-48 hours when any character earns 0.20 ordinary PvP frags during the round.
-Small positive awards accumulate per character; earned progress survives death,
-logout and restart. A quiet server still progresses.
+**Outcome:** everyone can reach level 31 through normal advancement. Each regular
+72-hour round advances the highest normal faction cap by one. Good and Evil are
+never more than one normal-cap level apart; shared circle levels remove the gap.
+A quiet server progresses through zero-score ties. Fresh-season pacing is 15 days
+from 31 to shared 36 and 75 days to shared 56, excluding service/publication delays.
 
-Deliver the complete contract below on MariaDB and flatfile gameplay builds,
-with truthful status, durable credit, replay protection and a safe current-season
-transition. Keep the existing level-56 maximum, Hardcore's bounded +2 XP allowance,
-ordinary level-50 XP ceiling and normal epic-stone requirements.
+**Retained behavior:** ordinary PvP eligibility, sharing, victim losses, epic and
+blood-money rewards, artifacts, achievements, Divine Boons, account policy,
+character levels/balances, and normal XP/epic-stone requirements. Keep full banking
+of otherwise awarded XP within existing global/storage limits, the ordinary
+level-50 XP ceiling, and Hardcore's +2 XP allowance bounded by 56. The one-level
+invariant applies to normal faction caps, not actual character levels or the
+additional Hardcore allowance.
 
-This work changes cap progression and removes the cap-specific XP penalty.
-Keep normal frag eligibility, sharing, victim losses, epic/blood-money/artifact
-rewards, achievements and Divine Boons. Do not change quests, gear, combat balance,
-account policy, character save formats or the persistence architecture. No new
-faction XP boon, additional currency, damage-contribution scoring, new service,
-general scheduler, production wipe or unrelated cleanup.
+**Non-goals:** quest/gear/combat-balance changes, a third faction, faction XP boons,
+new currency, new services/schedulers, personal contribution targets, damage-based
+scoring, production wipes, or a second persistence/reward queue.
 
-The rules engine and native tests now exist. Storage, gameplay wiring and the
-remaining proof below are still required; the engine alone does not change gameplay.
+**This pass's file and proof:** update this plan, inspect owning source and the
+existing PR stack, check the policy mathematically and validate document links.
+Preserve all pending source/test/help edits. Implementation below is future work;
+planning verification is not evidence that the server already follows these rules.
 
 ## Fixed gameplay contract
 
-1. **One shared cap:** fresh season 31, maximum 56. All intermediate and circle
-   levels open to every side. Standings remain a leaderboard, not a permission
-   to level. All mortal racewar sides can contribute normally awarded PvP frags.
-2. **One round:** normal earliest deadline = start + 48 hours; automatic deadline
-   = start + 72 hours. If the contribution threshold is first durably confirmed
-   at `Q`, due time = `min(automatic, max(earliest, Q))`. Without `Q`, use automatic.
-   Advance one level at the effective due time and begin the next round there.
-3. **Actual earned credit:** add positive ordinary combat `frag_delta` values
-   in integer hundredths per PID, capped at the 20-point target. One +0.20,
-   two +0.10 or four +0.05 awards to the same character qualify. Different PIDs,
-   including alts, never pool. Negative deltas do not subtract earned credit.
-   Ignore administrative adjustments, ship frags and arena scores.
-4. **Bank only this round:** credit earned before hour 48 is remembered. More
-   kills after qualification retain their ordinary rewards but buy no extra
-   speed or future credit. Apply an entire combat event to one round, then
-   evaluate its newly earned acceleration. No participant or surplus from that
-   event may spill into the next round.
-5. **Boundaries and recovery:** settle already-due transitions before assigning
-   a new event; an admission exactly at a deadline belongs to the new round.
-   A late event whose admission belongs to an already-closed round keeps its
-   normal rewards but adds no credit to the current round. A replay adds nothing.
-   Downtime catches up elapsed deadlines, never fresh waits from reboot time.
-   At most 25 advances are possible from 31 to 56.
-6. **One reward definition:** remove cap-specific faction-leader,
-   shared-cap-minus-five, room-population and base-share checks. Keep the ordinary
-   award producer's restrictions. Twenty people each awarded +0.05 from one
-   victim do not qualify; four ordinary +0.05 awards to one person do.
-7. **XP remains useful:** remove the over-cap 0.70 multiplier. Bank 100% of XP
-   otherwise awarded after ordinary modifiers, respecting global/storage limits.
-   Do not restore the former twice-next-level storage guard or grant free levels.
+1. **Fresh season and cadence.** Both normal caps begin at 31. The first regular
+   result occurs 72 real hours after the round starts, then every 72 hours.
+   Reaching any score never opens a level early. Maximum normal cap is 56.
+2. **Two faction scores.** Sum positive ordinary combat `frag_delta` awards, in
+   integer hundredths, into Good or Evil according to each recipient's chosen
+   faction captured with the combat outcome. Neutral and undead races participate
+   on their chosen Good/Evil side; race identity and alignment are not extra
+   scoreboards. Different characters, including alts, pool into their faction.
+3. **Earned points, not balances.** All qualifying positive awards during the
+   round count toward its final result. Negative victim deltas never subtract
+   earned race points. Historical leaderboard balances, administrative changes,
+   ship frags and arena scores do not decide this race. Ordinary reward eligibility
+   remains the sole award definition; no new victim-level, ally-count or minimum
+   individual-share gate is added.
+4. **No target to reach.** Compare the two complete round scores at its deadline.
+   A 0.01 lead wins. A score of 0.20 beats 0.10. There is no 0.20 personal target,
+   1.00 faction minimum, or score ceiling at which counting stops. A provisional
+   leader can be overtaken until the round closes.
+5. **Decisive result.** Let `N = max(Good cap, Evil cap) + 1`. The winning faction
+   receives normal cap `N`; the other receives `N - 1`. A trailing winner can jump
+   two cap levels while the former leader holds its cap. Repeated wins raise the
+   other faction too, so the gap cannot grow beyond one.
+6. **Tied result.** Increase each faction's own existing normal cap by one. This
+   includes both positive-score ties and 0-0. A tie preserves an existing one-level
+   lead; it does not normally equalize the factions.
+7. **Circle override and terminal state.** Whenever `N` is 36, 41, 46, 51 or 56,
+   both caps become `N`, regardless of winner or tie. Fresh 31 is already shared.
+   At 56 both are equal and the progression clock stops; ordinary PvP rewards
+   continue. Apply this override before the normal winner/tie assignment.
+8. **One event, one round.** Reset both race scores after every result. No score,
+   participant remainder or surplus carries forward. Score the whole combat
+   outcome atomically with its parent receipt; a replay adds nothing.
+9. **Durable boundaries.** Use the command's stable `accepted_at_usec` and a
+   persisted policy/season cutoff. Settle already-due rounds under the store lock
+   before assigning a newly applied event. An admission exactly at the deadline
+   belongs to the new round. A delayed event admitted to an already-ended round
+   keeps its normal rewards but cannot alter a closed winner or score a later
+   round. Pre-cutover and future-invalid admissions add no race points. This
+   retains the earlier plan's late-receipt rule; pending recording is not a
+   confirmed race contribution.
+10. **Fixed-time recovery.** The next round starts at the previous effective
+    deadline, not when a late worker or reboot happens. Downtime settles the saved
+    round once using its committed scores, then any later elapsed empty rounds as
+    zero-score ties. Never reuse an earlier score or invent historical PvP. There
+    are at most 25 advances from a fresh 31 to 56.
+11. **Permission to advance.** Cap changes grant no character levels or currency.
+    An appropriate positive XP action can spend banked XP up to that character's
+    faction allowance; ordinary XP and epic-stone requirements still apply.
 
-Fresh-season cap timing is 50 days to 56 with early qualification every round,
-75 days with no PvP, excluding service failures. These are proposed pacing values,
-not evidence of an optimal live balance.
+### Required examples
 
-## Source findings that determine the implementation
+All pairs below are **Evil / Good normal caps**. Each arrow is one round ending.
 
-- [Combat capture](../../src/combat/fight.c), `submit_pvp_outcome()`, already computes
-  final integer awards. [The coordinator](../../src/persistence/critical_command_coordinator.c)
-  captures `critical_command.accepted_at_usec` once and preserves it on retry;
-  it is serialized with the command. Use that durable admission timestamp for
-  round membership. Do not use the mutable leaderboard or SQL insertion time.
-- [MariaDB combat](../../src/combat/combat_outcome_repository.c) runs within the
-  [critical repository](../../src/persistence/critical_command_repository.c)'s
-  existing inbox/outbox transaction. A repeated operation returns its receipt.
-- [Flatfile combat](../../src/flatfile/flatfile_player_domain_repository.c),
-  `apply_combat_outcome_command()`, checks its receipt first, holds the existing
-  authority lock, and atomically commits its prepared writes with that receipt.
-  It can add the cap after-image to the same commit.
-- [Cap maintenance](../../src/persistence/maintenance_repository.c) already has a
-  [240-pulse job](../../src/persistence/maintenance_scheduler.c). Its flatfile
-  dispatcher currently falls through to SQL for this job. Add a direct flatfile
-  route before connection acquisition; keep this scheduler.
-- [Cap readers](../../src/sql/sql.c) cache SQL state, while the client-free branch
-  simply returns the configured floor. That stub is not backend parity.
-- [Divine state storage](../../src/economy/divine_boon_repository.c) supplies a nearby
-  small versioned-snapshot/flatfile-authority pattern. Reuse the underlying
-  [atomic store](../../src/flatfile/flatfile_authority_transaction.h), not the
-  boon feature or its legacy/draining state machine.
-- [Fraglist](../../src/combat/fraglist.c) has cached and uncached output through
-  [report caching](../../src/redis/redis_report_cache.c). Personal round progress
-  must be rendered for the requesting player, outside shared cached text.
-- [XP banking](../../src/world/limits.c), the existing cap tests and combat
-  fixtures already provide most regression boundaries.
+- Repeated Evil wins: `31/31 -> 32/31 -> 33/32 -> 34/33 -> 35/34 -> 36/36`.
+- Good wins from `32/31`: `32/33`; Evil remains at 32 while Good catches up and leads.
+- Evil wins from `32/31`: `33/32`; Good advances without winning that round.
+- Either a positive tie or 0-0 from `32/31`: `33/32`, preserving the existing lead.
+- A tie from equal caps `31/31`: `32/32`; repeated quiet rounds reach `36/36` in 15 days.
+- Any result from `35/34` or `34/35`: `36/36`; any result from `55/54`: `56/56`.
+- Twenty eligible winners each awarded +0.05 contribute **1.00 to their faction**.
+  Four +0.05 awards to one character contribute 0.20 to that same faction; neither
+  pattern has a separate qualification gate.
 
-## Ablation decisions
+A faction can hold its cap for one round when it loses the lead. The guarantee is
+one global progression step per round with a maximum one-level normal-cap gap,
+not that every faction advances on every decisive result.
 
-**Keep one shared transition engine and one saved snapshot.** Both backends need
-the same rules. Two small source/header pairs are justified: proposed
-`src/combat/frag_cap.c/.h` for state, transitions, bounded codec and published
-read state; `src/combat/frag_cap_repository.c/.h` for the two concrete storage
-routes and refresh wiring. Keep configuration in the existing
-[frag_cap_config](../../src/combat/frag_cap_config.c) module.
+## Ablation and the smallest implementation
 
-**Attach credit to the parent combat transaction.** This removes the need for a
-second reward queue, another operation-ID ledger, callback-only recovery, and a
-scan of old SQL/flatfile combat history. Existing receipt deduplication is the
-proof that credit is applied once. Credit must not be written only from the
-game-thread completion callback: a crash after the parent commit would lose it.
+Keep the existing three concrete owners: [the rules engine](../../src/combat/frag_cap.c),
+[storage adapters](../../src/combat/frag_cap_repository.c), and the locally added
+`src/combat/frag_cap_runtime.c/.h` for boot/writer observation/game-thread publication.
+Keep the existing maintenance job, critical admission timestamp, parent receipts,
+SQL transaction and flatfile authority lock. Keep the XP-banking change and the
+existing full-world test helpers. No new combat command or payload version is
+needed: `combat_outcome_participant.racewar` already captures `GET_RACEWAR(ch)`.
 
-**Reuse the existing timer, admission timestamp, writer and store locks.** No
-new background thread, clock framework, critical command type, combat payload
-version, global combat resource key or per-player save fields are required by
-this design. Backend locks serialize the small cap mutation with timer updates.
+Replace the old policy rather than add a selectable second mode. Drop the PID
+credit map, 65,536-contributor limit, personal target, qualification timestamp,
+earliest/automatic dual deadlines, 48-hour acceleration, and per-player progress
+UI. Two exact faction counters replace the population-sized map. Retain ordinary
+combat/history fields and numeric telemetry IDs needed for replay compatibility.
 
-**Drop optional layers.** No feature-mode matrix, historical frag backfill,
-per-side cap compatibility engine, personalized Redis keys, dashboards, new boon
-or generalized repository abstraction. Retain old receipt/history fields and
-numeric enum values where replay/telemetry compatibility needs them.
+Use one 72-hour round duration in the existing configuration/policy module. Remove
+obsolete threshold and acceleration settings. Persist the active start/deadline;
+reboot or a configuration edit must not retime a published round. No additional
+scoring or tie-break options are needed for the accepted contract.
 
-**Keep both backends and the real journey in the first delivery.** The 4–5-hour
-target cannot be met by silently substituting a SQL-only patch, a model-only
-test, or a reset-setting edit for the accepted proposal.
+### One bounded snapshot and one transition engine
 
-## Small state and transaction design
+The new snapshot needs:
 
-### Snapshot
+- a version/policy identity and monotonic revision;
+- the highest normal cap `top`, and which faction has the one-level advantage
+  (`Good`, `Evil`, or `none`);
+- policy/season credit cutoff, current round start and one closing deadline;
+- two nonnegative integer earned-point totals, Good and Evil.
 
-One versioned object contains:
+Derive caps: the leading faction has `top`, the other `top - 1`; with no advantage
+both have `top`. At 31 and every shared circle, the advantage is `none`. Do not
+maintain independent cap counters that can drift apart.
 
-- revision and shared cap;
-- persisted credit-admission cutoff for this policy/season;
-- current round start, earliest and automatic deadlines;
-- this round's target points and qualification timestamp (zero until secured);
-- the current round's PID-to-earned-points map.
+On each elapsed deadline:
 
-Store deadlines/target for the active round so a restart or changed boot setting
-cannot retime an already published round. New settings apply when a new round
-starts. Values are integer points/timestamps, not floating-point frag arithmetic.
-Clamp earned points at the target; once secured, the display needs only the
-secured state, so the partial-credit map can be cleared. Clear it on every unlock.
+```text
+if top == 56: stop
+next = top + 1
+if next is a shared circle: advantage = none
+else if Good points > Evil points: advantage = Good
+else if Evil points > Good points: advantage = Evil
+else: retain the existing advantage
 
-Use a bounded, validated codec following the existing domain-file conventions.
-Reject corruption or overflow visibly; never truncate another player's credit.
-Keep the supported population bound and full-combat after-image byte/operation
-budgets explicit in tests. Avoid a player-count tuning option.
+top = next
+clear both scores
+round_start = the deadline just settled
+next_deadline = round_start + 72 hours, or inactive at 56
+```
 
-For SQL, add **one nullable snapshot column to the existing singleton
-`level_cap` row**, through the next additive immutable migration. The snapshot
-becomes the sole progression authority once initialized. Keep `level` and
-`next_update` as projections for existing readers/tools, updated in the same
-transaction; old side/leader fields stop controlling gameplay. Leave old history
-intact. For flatfile, save the same encoded snapshot under the selected season's
-`domains/frag-cap.state`. No additional table or store is needed.
+Retaining the advantage on a tie is exactly equivalent to adding one to each old
+cap. Keeping one `top` and one advantage also enforces the one-level invariant.
+Do not cap scores at 100 points: that would turn unequal high scores into false
+ties. Use checked integer accumulation and a small checksummed codec; corruption
+or overflow must fail visibly without partially committing rewards/points.
 
-### Applying an event
+Change the snapshot format/version deliberately. Existing personal-acceleration
+snapshots cannot be reinterpreted as faction scores: they did not retain each
+contributor's faction at capture. No production use of that intermediate format
+is evidenced by this task. Before activation, inventory actual target snapshots.
+If a real intermediate-policy authority exists, provide a guarded one-time
+conversion that preserves opened access and adopts the first deadline under the
+cutover rules below, with new race scores zeroed. Unknown/corrupt formats must not
+be treated as missing state. Do not retain two live policy engines or reconstruct
+faction credit from today's player records.
 
-After the existing parent-receipt check, under the backend's existing transaction
-or authority lock:
+### Atomic combat scoring and timer settlement
 
-1. Read the current authoritative snapshot; settle elapsed deadlines using one
-   captured current timestamp. Copy the latest state, not a game-thread cache.
-2. Check the command's stable admission against the policy cutoff and current
-   round interval. Exclude pre-cutover, already-closed-round and future-invalid
-   events from cap credit without changing their legitimate ordinary rewards.
-3. Apply all positive participant deltas to that round atomically. Set the
-   qualification timestamp once, using the authority decision time captured for
-   the successful transaction; it becomes confirmed with that commit. Do not use
-   a later callback time or replace the timestamp on a replay.
-4. Settle an unlock now due because of that qualification. No remaining
-   participants in the same event are applied again to the newly opened round.
-5. Persist the cap state together with the normal combat receipt. On SQL this is
-   the caller's existing transaction: the helper must not begin/commit another.
-   On flatfile append its after-image under the borrowed authority lock; do not
-   reacquire the lock or commit a standalone file first.
+After the existing parent-receipt replay check, while holding the existing SQL
+transaction or recovered flatfile authority lock:
 
-A rollback loses both receipt and credit. An ambiguous commit resolves through
-the existing receipt path. A restart loads the committed state. Recount the
-flatfile transaction's current 82-operation bound when adding the extra image,
-and adjust only the proven maximum; retain the full-group regression.
+1. Load the latest authoritative snapshot, capture one decision time, and settle
+   every elapsed deadline, comparing the saved round only once.
+2. Validate admission against the cutoff and current half-open round interval
+   `[round_start, deadline)`. Exclude late/pre-cutover/future-invalid credit while
+   preserving legitimate ordinary rewards.
+3. Sum every positive participant award into its captured Good/Evil bucket. Do
+   not infer a side from race, current leaderboard rank or a later login. Historical
+   side enum values do not create a third counter or get silently remapped.
+4. Save the new snapshot with the parent combat receipt. There is no immediate
+   threshold-triggered unlock after the event. SQL helpers borrow the caller's
+   transaction; flatfile adds its after-image to the same prepared operations.
 
-### Timer and publication
+Rollback loses both receipt and race points. Ambiguous commits resolve through
+existing receipt recovery. The normal maintenance job takes the same state lock
+and applies the same deadline transition. Duplicate ticks are naturally idempotent.
+Timer/combat contention must have executable boundary tests, including delayed
+receipts, rather than relying only on a model of the rules.
 
-The existing maintenance job loads/settles/saves the same snapshot under the same
-store lock. Repeating a tick against an already-settled timestamp is naturally
-idempotent. Use effective deadlines for catch-up, not the worker's late arrival.
-Check deadlines before every advance, stop at 56, and never reuse cleared credit.
+The current pending flatfile patch allows 83 operations: the previous 82 plus one
+cap image. Keep the full 40-participant regression and explicit after-image byte
+budget; recompute the snapshot bound for the new small state. No new ledger,
+global combat key, player field or persistence thread is justified.
 
-Boot must validate/adopt the snapshot before ordinary progression is admitted.
-A missing flatfile snapshot may be initialized once; corruption or I/O failure
-must not masquerade as a new season. Preserve known state through transient reads.
+### SQL projections and common readers
 
-After a confirmed combat write or timer result, request a coalesced asynchronous
-refresh on the existing persistence writer. Publish on the game thread only if
-the loaded revision is newer. A boot read recovers committed-but-unpublished
-changes. Repeated refreshes must not regress a cap or repeat the same live
-announcement. This refresh is observation, not a second mutation/reward queue.
+Reuse immutable [0057_shared_frag_cap](../../migrations/immutable/0057_shared_frag_cap.sql),
+sequence 58, which adds one nullable MEDIUMBLOB to the existing singleton. The
+column is suitable for the revised snapshot; no new SQL schema is required merely
+because the serialized policy changes. Do not edit sealed migrations or fabricate
+new fingerprints. Recheck migration numbering before future implementation.
 
-Make `get_level_cap_info()`, `sql_level_cap()` and both backend branches read
-that common published state. Keep their public signatures where consumers need
-them; return the shared cap for every side. Retire the old unlock query and
-fixed-floor flatfile behavior. The steady-state game loop must perform no
-synchronous SQL or filesystem I/O.
+The snapshot is the sole authority. In the same transaction publish projections:
+`level = min(Good cap, Evil cap)`, `level_good = Good cap`, `level_evil = Evil cap`,
+and `next_update = the round deadline` (inactive terminal representation at 56).
+Using the highest cap for `level` would incorrectly grant it to both sides through
+legacy max(shared, side) readers. Retired lifetime-frag/leader fields do not select
+the round result. Keep historical rows intact.
 
-## Current-season adoption and resets
+`sql_level_cap(side)` must select the confirmed Good/Evil cap. `get_level_cap_info()`
+returns the common lower cap plus both effective faction caps and the deadline.
+Both MariaDB and client-free paths use the same published state. XP and epic-stone
+callers already pass `GET_RACEWAR(ch)`; retain their ordinary advancement checks.
+The steady-state game loop performs no synchronous SQL/filesystem cap reads.
 
-The schema migration adds storage; it does not guess the live cap or clock.
-On first activation, after validating the actual legacy inputs and draining
-relevant old work, adopt once under the authority lock:
+### Publication, status and help
 
-- Let `M` be the highest effective normal cap already open. Use
-  `C = min(56, max(31, M))`. SQL supplies its live shared/side values; the legacy
-  flatfile build supplies its previously configured effective floor, captured
-  before replacing the configuration. Do not infer it from new defaults.
-- If `C == 56`, retire the clock.
-- If `M < 31`, opening 31 is the transition unlock; start normal deadlines now.
-- Otherwise take the earlier of the valid old next-unlock timestamp and
-  `now + 72h` as the first automatic deadline. Its earliest opportunity is up to
-  24h earlier, never before activation. If the inherited deadline has expired,
-  open one shared level immediately, then start a normal round.
-- Start credit at activation; do not replay old-season kills or invent missing
-  historical rounds. Repeated initialization reads the saved result unchanged.
+Retain the coalesced observation on the existing writer and publish only newer
+revisions on the game thread. A committed result survives lost publication/restart;
+transient reads retain confirmed state. Boot validates/adopts before gameplay.
+Announce newly confirmed faction caps once, with both caps named. If several
+missed rounds are caught up, a combined final-state announcement is sufficient;
+boot recovery is quiet. Do not infer a winning score/result from counters already
+cleared for the next round, and do not announce a provisional leader as secured.
 
-Preserve character levels, banked XP and frag balances. Persist the actual chosen
-cap/deadlines and include them in the eventual deployment handoff.
+FRAGLIST must show both normal faction caps, the two **current-round earned**
+scores, the remaining 72-hour deadline and the current provisional leader or tie.
+Explain that ties advance each existing cap and circle levels equalize them.
+Keep the lifetime/current-balance leaderboard clearly distinct from this round's
+race. Render current cap/race status outside the shared cached rankings; the
+existing raw leaderboard cache and its old-format rejection can remain. Personal
+pending/failure feedback still carries the combat operation reference for recovery;
+there is no personal progress target. At 56, stop showing an unlock race/requirement.
 
-Wire a new 31/48h/72h state into the existing SQL pwipe reset after its writer
-drain, preserving its season/reset-recovery fencing. Flatfile fresh-season
-initialization belongs to the selected fresh season root; if a maintained reset
-reuses a root, it must replace this snapshot too. Do not build a new wipe command.
-Test that a resumed reset cannot reset the clock again or admit an old operation.
+Update `lib/information/help_index`, `docs/reference/CODEBASE.md`,
+`docs/reference/CLASSES.md` and `lib/frag_cap.cfg` during implementation. They still
+contain superseded wording in the pending patch and are not revised in this pass.
+Hardcore help must state that its +2 XP allowance is separate from the normal
+one-level faction gap. No news publication or production help sync is implied.
 
-The migration must be guarded/re-runnable, with the normal manifest, bootstrap,
-runtime-compatibility fingerprints and documentation updates. Allocate its number
-from current master during implementation; do not reserve a stale number here.
-Production migration/reset/deployment still requires owner authorization.
-An application rollback must preserve already opened caps and account for the
-new authority; merely booting an old flatfile binary would restore its old floor.
+## Current-season adoption, fresh resets and rollback
 
-## Work sequence: 4½-hour target
+Retain the earlier plan's preserve-access cutover promise. This is a one-time
+transition exception; all regular new-policy rounds last 72 hours.
 
-These are elapsed implementation targets, not permission to omit a failing gate.
-Start slow builds/test prerequisites early, and batch independent tool work.
-No sub-agent delegation is assumed.
+- Before replacing configuration, capture the actual old effective normal caps,
+  floor **and maximum**, the old next-unlock timestamp and relevant pending work.
+  SQL inputs must reflect the legacy clamping rules, not just the largest raw row
+  value. Flatfile needs its previously effective floor. Validate these inputs;
+  never infer a customized old maximum from the new fixed-56 default.
+- Let `M` be the highest validated effective normal cap already open, excluding
+  Hardcore's allowance. Set both new normal caps to `C = min(56, max(31, M))`,
+  with no advantage and zero race scores. This preserves previously opened access
+  and provides equal starting caps for the new contest. It is not a normal tie
+  result. Preserve character levels, banked XP and ordinary frag balances.
+- If `C == 56`, retire the clock. If `M < 31`, opening 31 is the transition unlock;
+  start the first full 72-hour round at activation.
+- Otherwise retain the earlier of the valid old deadline and `activation + 72h`
+  for the first result. There is no earlier acceleration deadline. If the old
+  deadline has already expired, process exactly one zero-score tied result at
+  activation, then start a full new round. Do not invent a chain of old rounds.
+- Set credit cutoff to activation. Do not count pre-policy outcomes, transfer the
+  old personal-credit map or backfill historical faction scores. Repeated adoption
+  returns the saved state and never resets a deadline. Record actual chosen caps,
+  cutoff and deadline in the deployment handoff when deployment is authorized.
 
-### 0–20 minutes: isolate, freeze inputs, establish the thin slice
+SQL pwipe keeps its existing writer drain and epoch/recovery fence. Initialize
+31/31, no advantage and zero scores using the persisted `reset_started_at` as the
+new cutoff/start, with deadline +72h. Retrying/resuming that same reset must not
+move the clock or admit an old-season operation. Keep the native reset-handoff
+regression and the focused repository reset tests.
 
-Create the isolated implementation checkout. Recheck source/migration drift and
-the linked proposal. Confirm the single-row SQL adoption inputs and the flatfile
-parent-receipt/borrowed-lock insertion point. Prepare disposable fixtures and
-start the first build/prerequisite work. Reuse existing build output/cache where
-safe; never overwrite the other task's source or mixed-backend objects.
+Flatfile `shutdown pwipe` remains unsupported by the existing runbook. Use a
+selected fresh authority root for a new season and initialize 31/31 there. The
+existing missing-state adoption input must explicitly reflect fresh-season 31
+(e.g. `cap.floor.level=31` for that root), rather than reuse an old season's higher
+legacy floor. Do not erase/reuse an old root to manufacture a fresh season, and
+do not add a new wipe system to this work.
 
-### 20–55 minutes: state/rules and native tests
+Migration, production reset and deployment require owner authorization. Before
+activation, an application rollback may leave the additive nullable column. After
+activation, preserve the new snapshot/read path in any qualified rollback build
+or use a forward fix. An old flatfile binary ignores this state and restores its
+old floor; old SQL maintenance only updates projections. Neither is a safe way to
+run an activated race. Never restore a lower cap or clear scores as a shortcut.
 
-Implement the shared transitions/codec and updated configuration. Extend the
-existing cap test driver, or add one focused native state test if its SQL-only
-driver is the wrong home. Inject `now` into the production transition function;
-do not add a production clock command or use multi-day sleeps.
+## Source alignment review and work remaining
 
-Prove the basic threshold, timing, event-boundary and cutover cases before I/O.
-This locks down one rules implementation for both adapters.
+Reviewed against the current checkout on 2026-10-31:
 
-### 55–125 minutes: atomic credit and persistent clock on both backends
+- **Engine/codec/config:** `frag_cap.c/.h` still implements one shared cap,
+  per-PID points and acceleration. Replace that policy and its versioned state
+  with the rules above; update `frag_cap_config.c/.h`. Preserve useful time bounds,
+  atomic preparation, codec validation and the explicit-now test seam.
+- **Combat adapters:** both real parent transaction hooks already exist in the
+  pending patch. `frag_cap_apply_combat()` currently passes PID/points and discards
+  the captured `racewar`; route Good/Evil scores using that existing field. The
+  capture owner is [fight.c](../../src/combat/fight.c). No reward producer redesign.
+- **Storage/adoption:** transaction borrowing, atomic journal preparation and
+  migration 0057 are reusable. `frag_cap_sql_save()` currently zeros both side
+  projections; change them as specified. Fix the identified legacy-maximum
+  adoption edge before enabling the revised policy.
+- **Timer/publication:** the pending flatfile maintenance route, existing scheduler,
+  and asynchronous runtime observer are reusable. Change the settlement result,
+  status and announcement semantics; remove the acceleration-secured path.
+- **Readers/XP:** both `sql_level_cap()` branches currently ignore the side and
+  return the same cap. Restore side selection from the new authority. Retain the
+  full-XP banking change and test both [XP](../../src/world/limits.c) and
+  [epic-stone](../../src/world/epic.c) consumption of the selected faction cap.
+- **Player/reference text:** the pending help/config/reference changes still say
+  shared access, personal progress and acceleration. Rewrite those at activation;
+  keep cached ranking text free of current race/cap data.
+- **Tests:** existing policy, storage, publication and journey harnesses use the
+  earlier contract. Revise behavior assertions and fixtures, not just output
+  strings. In particular, the old cross-PID non-pooling and twenty-winner failure
+  assertions must become faction-pooling cases.
 
-Add the nullable SQL snapshot storage and flatfile state adapters. Connect credit
-inside both existing combat transactions and route flatfile cap maintenance
-before SQL connection acquisition. Add boot adoption, ordinary reset and receipt
-replay tests. Use parent receipts and stable admission time; keep codecs/result
-formats compatible.
+Current character-creation/capture code retains historical side enums, but the
+accepted live policy has two chosen factions. Use captured chosen side consistently
+for neutral/undead races and add representative regressions; do not derive credit
+from historical race labels or turn this into an account-policy refactor.
 
-**Checkpoint at 125 minutes:** partial credit must survive a native store reopen,
-and replay must add nothing on both backends. If this is not true, the 4–5-hour
-target is at risk. Resolve the demonstrated missing path before adding UI polish;
-do not replace it with in-memory or SQL-only behavior.
+## Focused future qualification
 
-### 125–160 minutes: readers, feedback, XP and help
+These are implementation acceptance gates, not claims completed by this plan edit:
 
-Connect committed-state publication and all cap readers. Render the shared
-earliest/automatic countdown and viewer progress outside the shared Redis payload;
-cover both cached and uncached fraglist paths. Reuse existing combat feedback and
-operator alerts for pending/failing recording, with an operation reference for
-recovery. Do not add an offline-mail or diagnostics subsystem.
+- [ ] Fresh 31/31; first and later regular results at 72 hours; no early opening or
+      minimum frag threshold; positive-score and zero-score ties.
+- [ ] All examples above; repeated/alternating winners, trailing winner +2,
+      ties preserving the existing lead, every circle override, terminal 56/56.
+- [ ] Across all reachable cap states: neither cap decreases, normal gap <=1,
+      highest cap advances once per elapsed round, 15/75-day schedules.
+- [ ] Positive faction pooling across PIDs/alts; twenty +5 awards =100 points;
+      exact ties; less-than-one-frag wins; all scores continue counting; checked
+      overflow, negative/zero/non-PvP exclusions and unchanged ordinary rewards.
+- [ ] Captured Good/Evil choice for neutral/undead races; historical leaderboard
+      leadership and current frag balances cannot change a round result.
+- [ ] Stable admission/cutoff, exact-deadline membership, whole-event assignment,
+      no carry, late closed-round outcomes, replay and timer/combat contention.
+- [ ] SQL rollback/ambiguous commit and flatfile interrupted journal/image recovery;
+      reopen/restart, corruption, bounded full-group images and missing-state errors.
+- [ ] Downtime: saved scores decide one round, later elapsed empty rounds tie;
+      fixed deadlines, no score reuse, no extra transition from duplicate ticks.
+- [ ] Legacy caps below 31, divergent caps, customized old floor/maximum,
+      earlier/future/expired deadline, existing 56, repeated adoption and any real
+      intermediate-format conversion identified during authorized target inventory.
+- [ ] Fresh SQL reset and resumed cutoff/clock fencing; fresh flatfile root;
+      preserved earned levels/balances and rejection of old-season credit.
+- [ ] Correct faction readers for normal XP and epic stones; full XP banking,
+      global/storage/overflow bounds, ordinary XP ceiling 50 and Hardcore +2<=56.
+- [ ] Cached/uncached current race status, provisional leadership/ties, pending and
+      failure feedback, confirmed-state retention, no older-revision regression or
+      duplicated announcements.
+- [ ] A real loaded-world PvP -> durable faction score -> normal maintenance ->
+      distinct faction caps -> legitimate banked-XP advancement -> restart journey
+      on MariaDB and flatfile. Include a no-PvP tied-round case; use the existing
+      fixture's offline deadline seeding, never a gameplay clock command.
 
-Remove the cap-specific XP modifier from its actual application path and retire
-its unused configuration; preserve historical telemetry IDs if compatibility
-requires them. Update cap/frag/Hardcore help and the progression reference.
-Build both backends in separate existing build roots/output paths.
-
-### 160–240 minutes: executable, storage and gameplay proof
-
-Run the focused suites below. Extend existing native combat/cap fixtures rather
-than writing another persistence test framework. Include migration repeat and
-compatibility checks and a small full-server PvP/restart journey on both backends.
-
-Use the existing full-world setup/client/authority helpers from
-[test_divine_boon_zone_journey.py](../../tests/async/test_divine_boon_zone_journey.py)
-and its imports. A small focused `test_frag_cap_journey.py` may reuse these helpers;
-it should not rerun unrelated cargo/boon/quest campaigns. Minimal combat fixtures
-currently skip the maintenance scheduler, so they alone cannot prove the live
-timer. Seed an isolated round close to its real deadline before boot, then let
-normal PvP, maintenance, status and XP commands drive the transitions.
-
-### 240–270 minutes: ablate the diff and finish the handoff
-
-Check that the old cap updater has no live caller, both backends use one engine,
-and no gameplay path still consults leader/victim/ally predicates. Remove dead
-knobs introduced/replaced by this change without deleting historical receipts.
-
-Finish formatting, relevant documentation/link checks and the change review.
-Record exact commands/results and any material qualification limit in this plan
-and the eventual PR. A ready change includes the adoption/reset instructions.
-
-### 270–300 minutes: contingency
-
-Use only for real build/test/integration findings. At 300 minutes, report actual
-remaining work and revise the estimate if necessary; keep required semantics and
-proof intact. Do not call incomplete work complete to hit the time target.
-Full burn-in, broad unrelated regressions, CI waiting and production deployment
-are not substitutes for, or additions to, the focused delivery gate.
-
-## Focused verification and ownership
-
-Extend these existing tests at their relevant seams:
-
-- [Cap SQL lifecycle](../../tests/async/run_level_cap_mysql.py) and its
-  [native harness](../../tests/async/level_cap_mysql_harness.cpp): real timer,
-  credit, cutover, missing-state/error and transaction races.
-- [SQL combat receipts](../../tests/async/run_combat_outcome_schema_mysql.sh) and
-  [flatfile domain harness](../../tests/async/flatfile_player_domain_repository_harness.cpp):
-  credit in the parent commit, full groups, repeated operation, ambiguous commit,
-  interrupted flatfile commit/recovery and reopen.
-- [Combat codec/cutover](../../tests/async/test_combat_outcome_transactional_cutover.py)
-  and [normal awards](../../tests/async/test_pvp_group_rewards.py): preserve legacy
-  receipt/payload behavior and normal reward calculations.
-- [XP feedback/banking](../../tests/async/test_world_quest_xp_feedback.py):
-  over-cap award becomes 100% of otherwise computed XP; banked XP stays locked
-  until the shared cap permits it, with global ceilings/overflow handling intact.
-- [Hardcore](../../tests/async/test_hardcore_config_runtime.py),
-  [configuration contract](../../tests/async/test_frag_cap_config_contract.py),
-  [singleton](../../tests/async/test_level_cap_singleton_contract.py) and
-  [cache codec](../../tests/async/test_report_cache_codec.py): update obsolete
-  assertions, not merely their expected strings.
-- [Migration engines](../../tests/async/run_migration_runner_engines.py),
-  [runtime compatibility](../../tests/async/test_runtime_boot_compatibility.py)
-  and [immutable runner](../../tests/async/test_immutable_migration_runner.py):
-  follow the repository's existing schema-fingerprint workflow; do not invent
-  hashes or edit prior migrations.
-- The focused full-server journey: a real qualifying mortal PvP death records
-  normal frags and round credit; fraglist shows the same progress on both paths;
-  normal maintenance opens the shared level; a legitimate positive XP action
-  spends banked XP within that cap; restart/re-entry preserves state.
-
-Representative commands from the implementation checkout:
+Reuse the existing focused entry points after updating their policy assertions:
 
 ```sh
-make -C src -j4
+python3 tests/async/test_frag_cap.py
 python3 tests/async/test_frag_cap_config_contract.py
-python3 tests/async/test_level_cap_singleton_contract.py
-python3 tests/async/test_pvp_group_rewards.py
-python3 tests/async/test_combat_outcome_transactional_cutover.py
+python3 tests/async/test_frag_cap_repository.py
+python3 tests/async/test_frag_cap_runtime.py
 python3 tests/async/test_flatfile_player_domain_repository.py
 python3 tests/async/test_world_quest_xp_feedback.py
-python3 tests/async/test_hardcore_config_runtime.py
 python3 tests/async/test_report_cache_codec.py
+python3 tests/async/test_maintenance_scheduler.py
 bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_level_cap_mysql.py
+TEST_DB_IMAGE=mysql:8.0 bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_level_cap_mysql.py
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_frag_cap_repository.py --mysql
 bash tests/async/with_disposable_mariadb.sh bash tests/async/run_combat_outcome_schema_mysql.sh
-python3 tests/async/test_runtime_boot_compatibility.py
-python3 tests/async/test_immutable_migration_runner.py
-python3 tests/async/run_migration_runner_engines.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_flatfile
+python3 tests/async/test_frag_cap_journey.py --backend flatfile --server bin/server/dms_flatfile
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_frag_cap_journey.py --backend mariadb --server bin/server/dms_new
 ./scripts/format.sh --check
 ```
 
-Also build/run the flatfile server with the existing
-[server build helpers](../../tests/async/server_build_artifacts.py), run the new
-native policy and focused journey cases, and repeat the relevant SQL lifecycle
-on supported MySQL 8.0. Record their exact entry points once implemented.
-All database/character fixtures must be disposable; do not source production
-credentials or operate on existing players. Do not rebuild or rerun already-green
-unrelated suites without a new reason.
+Use the existing award/codec, Hardcore, singleton, migration/runtime-contract and
+reset-handoff tests when their owners change. Reuse valid unchanged schema and
+ordinary-reward evidence below. No full burn-in, CI waiting or unrelated campaign
+rerun is required for this policy revision. Build separate backend objects/binaries;
+all fixtures remain disposable and must not source production credentials.
 
-Required scenario checklist:
+## Git and continuation handoff
 
-- [ ] Fresh 31; all sides share caps; 56 ceiling; Hardcore +2; ordinary XP/epic limits.
-- [ ] 19/20-point boundary; same-PID accumulation; no cross-PID/alt pooling.
-- [ ] Twenty +5 winners do not qualify; four +5 awards to one PID do.
-- [ ] Negative deltas never erase progress; zero/non-PvP/arena awards do not add it.
-- [ ] Qualification at hour 1/47 opens at 48, hour 60 opens when confirmed,
-      no qualification opens at 72; exact boundary belongs to the new round.
-- [ ] Whole-event consumption, surplus disposal, delayed closed-round receipt,
-      unchanged qualification time on replay and multiple qualifying recipients.
-- [ ] Rollback/ambiguous commit, lost publication, reopen/restart, corrupted state,
-      timer-versus-combat contention and no silent fallback/reset.
-- [ ] Elapsed-time catch-up without reusing credit; 50/75-day schedules.
-- [ ] M below 31, divergent old side caps, earlier/future/expired old deadline,
-      existing 56, repeated adoption and resumed season reset.
-- [ ] Cached/uncached per-viewer status; pending/failure feedback; no repeated
-      live announcement or older-revision publication.
-- [ ] Real PvP → receipt → maintenance → shared cap → XP advancement → restart
-      on both backends.
+Implementation checkout: `/home/aiwithapex/projects/duris-issue-508`.
+Current working branch: `branch/issue-508-frag-cap-runtime`, based on `a68089af2`.
+It contains the intentionally preserved uncommitted activation/help/test work,
+including `frag_cap_runtime.c/.h`, `frag_cap_journey_fixture.cpp`,
+`frag_cap_runtime_harness.cpp`, `test_frag_cap_journey.py` and
+`test_frag_cap_runtime.py`. Do not discard or accidentally commit that work during
+this plan-only task. Other worktrees, including bartender work, remain separate.
 
-## Completion record
+Existing stack:
 
-Planning verification: issue/proposal re-read; owning source and transaction
-boundaries inspected. The earlier 18-assertion policy model is useful input but
-does not qualify a server implementation.
+- [#514](https://github.com/LuminariMUD/Duris/pull/514), head
+  `branch/issue-508-frag-progression` at `422a9e7cc`, base `master`: rules/codec and
+  original plan. It still implements the superseded personal policy.
+- [#515](https://github.com/LuminariMUD/Duris/pull/515), head
+  `branch/issue-508-frag-cap-storage` at `a68089af2`, base #514: storage/migration.
+  Its transport is reusable, but tests/adoption/projections need the new contract.
 
-Passed the maintained Markdown link/anchor check for the new plan:
-`python3 tests/async/test_documentation_contract.py DocumentationContractTest.test_maintained_markdown_links_and_anchors_resolve`.
+These are not ready to merge as the accepted faction-race implementation. Keep
+implementation PRs in draft pending rescoping, and publish the revised plan as a
+separate documentation-only review branch, `branch/issue-508-faction-race-plan`,
+based on #515. The local runtime branch may contain the same plan commit while
+its implementation remains uncommitted. No release tag belongs to this step.
 
-### Chunk 1: shared rules and snapshot
+After a later request to implement: revise the rules/codec/config and native cases;
+then the faction adapters/adoption/projections; then runtime/readers/help and real
+journeys. Keep focused commits and reviewable dependent PRs as each chunk passes.
+Update PR titles/bodies to the final policy and maintain the stack without force
+rewriting existing history. Inspect upstream/migration drift first. Rough remaining
+implementation/qualification estimate is 3-5 hours, subject to actual findings;
+the earlier minute-by-minute plan for the superseded policy is retired.
 
-Outcome: one engine implementing the fixed contract for both backends. Files:
-`src/combat/frag_cap.c/.h`, `src/Makefile`, and
-`tests/async/frag_cap_harness.cpp` / `test_frag_cap.py`. Non-goals for this chunk:
-storage adapters, runtime publication, configuration cutover and player feedback.
-Those remain mandatory in dependent chunks. Ablation retained only pure state
-transitions and the common codec; replay identity stays in the parent receipt,
-with no new operation ledger, scheduler, clock abstraction or player fields.
+## Evidence retained from the earlier implementation
 
-- Passed `python3 tests/async/test_frag_cap.py`: native executable tests for
-  19/20 points, same-PID accumulation, negative deltas, twenty +5 recipients,
-  two +10/four +5 events, hour 1/47/48/60 qualification, exact 72-hour admission,
-  delayed/pre-cutover/future-invalid admissions, whole-event consumption,
-  immutable qualification, quiet/active schedules, catch-up, adoption and ceiling.
-- Snapshot timestamps use Unix **microseconds**, matching durable admission.
-  SHA-256 protects the versioned encoding. Maximum 65,536 active partial-credit
-  contributors; exact maximum encoded size **393,318 bytes**. Overflow fails the
-  preparation without modifying its input; no balance is evicted or truncated.
-- Codec tests cover every single-byte corruption, truncation, unsupported version,
-  maximum population, invalid state and revision/time overflow. A future adapter
-  must surface these failures and keep rewards/credit in the same transaction.
-- Passed `make -C src -j4` and `make -C src -j4 PERSISTENCE_BACKEND=flatfile
-  DMS_BINARY=../bin/server/dms_flatfile` with separate backend objects/binaries.
-- Passed `./scripts/format.sh --check`, `git diff --cached --check`, and
-  `python3 tests/async/test_documentation_contract.py
-  DocumentationContractTest.test_maintained_markdown_links_and_anchors_resolve`.
-- **Not yet proven:** parent-receipt replay, database/flatfile persistence,
-  publication, reset fencing, XP/help/status, and real gameplay journeys.
+The following checks passed for the earlier shared-cap policy. They provide
+reusable storage/transport and unchanged-behavior evidence, **not faction-race
+qualification**. Results and failure/retry history are in local
+`bin/tests/issue-508-*.log`; build artifacts/world outputs are ignored and uncommitted.
 
-Rules PR: [#514](https://github.com/LuminariMUD/Duris/pull/514), head
-`branch/issue-508-frag-progression` at `422a9e7cc`, base `master`.
-No release tag belongs to these preparatory changes; deployment remains separate.
+- Rules/codec and both backend builds passed in #514; native ASan/UBSan storage,
+  adoption, rollback/reopen/replay and corruption passed in #515 on flatfile,
+  MariaDB 10.11 and MySQL 8.0. Both SQL legs used the real bootstrap/migration
+  runner, repeated migration 0057 and verified measured runtime fingerprints.
+- Pending real combat hooks passed `test_flatfile_player_domain_repository.py`
+  and `run_combat_outcome_schema_mysql.sh`, including full groups, receipt replay,
+  rollback after prepared rewards, and interrupted flatfile recovery.
+- Pending `run_level_cap_mysql.py` passed on MariaDB and MySQL 8.0. The updated
+  reset adapter tests passed both engines. The native `run_pwipe_handoff_mysql.py`
+  run exited successfully, covering fencing, retry/lost acknowledgements and the
+  new reset clock. Its optional full-server cold-recovery leg was not requested.
+- Both earlier loaded-world `test_frag_cap_journey.py` legs passed ordinary PvP,
+  maintenance, cap permission, banked XP and saved restart; the SQL leg also used
+  a private Redis instance for cached/uncached views. Their personal-score/shared
+  cap expectations must be replaced before they prove the accepted policy.
+- Publication under ASan/UBSan, full XP feedback/banking on both variants, ordinary
+  PvP rewards/codec, Hardcore config, singleton, cache framing, maintenance,
+  lifecycle inventory and maintained documentation links passed. Preserve evidence
+  for unchanged paths and rerun only affected checks or required completion gates.
+- `make -j4 world` generated the missing local world files for the isolated
+  journeys. No tracked area files, production data or credentials were changed.
 
-### Chunk 2: durable storage adapters and additive schema
+## This planning review's completion record
 
-Current checkout remains `/home/aiwithapex/projects/duris-issue-508`, now on
-`branch/issue-508-frag-cap-storage`, based on chunk 1. This chunk adds
-`src/combat/frag_cap_repository.c/.h`, native storage tests and immutable migration
-`0057_shared_frag_cap` (sequence 58). The snapshot is a nullable MEDIUMBLOB on the
-existing singleton. Old migrations and baseline bootstrap SQL stay immutable;
-fresh bootstraps reach the same shape through the maintained migration runner.
-The manifest, compiled compatibility contract and measured MariaDB/MySQL metadata
-fingerprints are synchronized. No new table, player field or receipt ledger.
+The accepted requirements, implementation owners, migration/reset/rollback rules,
+examples, and future acceptance cases have been reconciled above. Existing source
+and open-PR metadata were inspected; their remaining policy mismatches are explicit.
+An independent planning model checked **455 scored transitions across 66 reachable
+states**, including sub-frag wins, positive/zero ties, alternating/repeated leaders,
+monotonic caps, gap <=1, circle overrides, terminal 56 and 15/75-day schedules.
+It compared the compressed top/advantage representation with the literal two-cap
+rules. This is a policy consistency check, not a production C++ test.
 
-The adapter borrows the caller's SQL transaction or already-recovered flatfile
-authority lock. The flatfile preparer only appends an after-image; no nested lock
-or separate cap commit. Boot adoption is idempotent and refuses corruption or a
-missing/invalid SQL singleton. Timer updates use the same lock and engine.
+Passed `python3 tests/async/test_documentation_contract.py
+DocumentationContractTest.test_maintained_markdown_links_and_anchors_resolve` and
+`git diff --check -- docs/ongoing-projects/plan-issue-508.md`. Every relative link
+in this plan resolves in the committed base, so the plan review does not depend
+on unpublished implementation files. The final policy sections were checked
+against the accepted examples, scoring, timing, circle and advancement rules.
+All 73 pre-existing non-plan paths were verified byte-for-byte unchanged.
 
-Proof:
-
-- Passed `python3 tests/async/test_frag_cap_repository.py`, compiled with ASan/UBSan:
-  durable partial credit, reopen, parent-receipt replay, interrupted journal/image
-  recovery, failure before commit, immutable qualification, timer and corruption.
-- Passed `bash tests/async/with_disposable_mariadb.sh python3
-  tests/async/test_frag_cap_repository.py --mysql` on disposable MariaDB 10.11.
-- Passed the same command with `TEST_DB_IMAGE=mysql:8.0` on disposable MySQL 8.0.
-  Both initialize from bootstrap through the real migration runner, repeat the
-  runner, repeat the new additive migration, verify preserved legacy values and
-  validate the full runtime metadata fingerprint. SQL tests prove parent rollback,
-  deduplication, legacy side-cap adoption, corruption and missing-row refusal.
-- Passed both server builds with the commands recorded in chunk 1.
-- Passed `python3 tests/async/test_runtime_boot_compatibility.py` (7 tests) and
-  `python3 tests/async/test_immutable_migration_runner.py` (26 tests).
-
-The parent in these adapter tests is a small native receipt fixture. **Actual
-combat transaction integration and gameplay are not yet qualified.** This is a
-preparatory storage PR; it must not be reported as feature completion.
-
-Next: open the storage PR stacked on #514, then activate the policy in a dependent
-chunk: attach both real combat paths, route both maintenance paths, add boot
-adoption/publication, reset fencing, shared readers/status, XP/help and journeys.
-The original scenario checklist remains the completion gate. Reuse the focused
-two-engine migration/metadata proof above rather than rerunning unrelated Nexus,
-artifact and shop campaigns from `run_migration_runner_engines.py` for one column.
+The plan-only commit/PR will be recorded in the Git handoff when published.
+Gameplay implementation remains a later task.
