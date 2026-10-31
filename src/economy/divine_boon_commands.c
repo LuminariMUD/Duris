@@ -60,7 +60,7 @@ const char *reward_label(divine_boon_category category)
 	switch (category)
 	{
 	case divine_boon_category::experience:
-		return "200% Experience";
+		return "200% Base Experience";
 	case divine_boon_category::epic:
 		return "+50% Epic Points";
 	case divine_boon_category::cargo:
@@ -263,6 +263,9 @@ void do_divine_boon(P_char ch, char *argument, int /*cmd*/)
 	if (divine_boon_runtime_pending())
 		send_to_char("&+YRotation update awaiting durable confirmation.&n\r\n", ch);
 	player_next_hour(ch, *state, now);
+	send_to_char("&+LExperience boons add 100% of eligible base combat XP.&n\r\n"
+		     "&+LOther bonuses are not doubled; normal XP caps still apply.&n\r\n",
+		     ch);
 	send_to_char("&+LBenefits are automatic. Type HELP DIVINE BOONS for rules.&n\r\n", ch);
 }
 

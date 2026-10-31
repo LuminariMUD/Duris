@@ -6689,8 +6689,9 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, "\n");
 		send_to_char(buf, ch);
 
-		snprintf(buf, MAX_STRING_LENGTH, "&+LLea&+wder&+Wboard Points&n: &n%4ld&n ",
-			 (getLeaderBoardPts(ch) / 100));
+		snprintf(buf, MAX_STRING_LENGTH, "&+LLea&+wder&+Wboard Points&n: &n%.2f&n ",
+			 getLeaderBoardPts(ch) /
+				 (double)hardcore_config_get()->score_display_divisor);
 		strcat(buf, "\n");
 		send_to_char(buf, ch);
 	}

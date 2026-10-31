@@ -133,29 +133,32 @@ static void check_frag_position(P_char ch)
 		return;
 
 	const uint64_t runtime_id = ch->runtime_id;
-	sql_read("(SELECT 'lead', char_name FROM frag_leaderboard "
-		 "WHERE deleted_at IS NULL AND total_frags > 0 "
-		 "ORDER BY total_frags DESC, id ASC LIMIT 1) UNION ALL "
-		 "(SELECT 'low', char_name FROM frag_leaderboard "
-		 "WHERE deleted_at IS NULL ORDER BY total_frags ASC LIMIT 1)",
-		 [runtime_id](bool ok, const sql_rows &rows)
-		 {
-			 P_char live = find_character_by_runtime_id(runtime_id);
-			 if (!ok || !live)
-				 return;
-			 bool lead = false, low = false;
-			 for (const sql_row &row : rows)
-				 if (row[0] && row[1] && isname(row[1], GET_NAME(live)))
-					 (strcmp(row[0], "lead") ? low : lead) = true;
-			 if (lead)
-				 SET_BIT(live->specials.act3, PLR3_FRAGLEAD);
-			 else
-				 REMOVE_BIT(live->specials.act3, PLR3_FRAGLEAD);
-			 if (low)
-				 SET_BIT(live->specials.act3, PLR3_FRAGLOW);
-			 else
-				 REMOVE_BIT(live->specials.act3, PLR3_FRAGLOW);
-		 });
+	sql_read(
+		sql_format(
+			"(SELECT 'lead', char_name FROM frag_leaderboard "
+			"WHERE deleted_at IS NULL AND level <= %d AND total_frags > 0 "
+			"ORDER BY total_frags DESC, id ASC LIMIT 1) UNION ALL "
+			"(SELECT 'low', char_name FROM frag_leaderboard "
+			"WHERE deleted_at IS NULL AND level <= %d ORDER BY total_frags ASC LIMIT 1)",
+			MAXLVLMORTAL, MAXLVLMORTAL),
+		[runtime_id](bool ok, const sql_rows &rows)
+		{
+			P_char live = find_character_by_runtime_id(runtime_id);
+			if (!ok || !live)
+				return;
+			bool lead = false, low = false;
+			for (const sql_row &row : rows)
+				if (row[0] && row[1] && isname(row[1], GET_NAME(live)))
+					(strcmp(row[0], "lead") ? low : lead) = true;
+			if (lead)
+				SET_BIT(live->specials.act3, PLR3_FRAGLEAD);
+			else
+				REMOVE_BIT(live->specials.act3, PLR3_FRAGLEAD);
+			if (low)
+				SET_BIT(live->specials.act3, PLR3_FRAGLOW);
+			else
+				REMOVE_BIT(live->specials.act3, PLR3_FRAGLOW);
+		});
 }
 
 // Shows the frag totals by side and the fraglist matching filter, both read on the writer.

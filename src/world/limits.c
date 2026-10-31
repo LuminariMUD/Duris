@@ -883,7 +883,17 @@ void clear_title(P_char ch)
 	}
 }
 
-void display_gain(P_char ch, int gain, int type)
+static void display_divine_experience(P_char ch)
+{
+	const uint64_t pending = ch->only.pc->divine_experience_pending;
+	ch->only.pc->divine_experience_pending = 0;
+	if (pending && IS_SET(ch->specials.act2, PLR2_EXP) && GET_LEVEL(ch) < MINLVLIMMORTAL &&
+	    ch->in_room >= 0 && ch->in_room <= top_of_world)
+		send_to_char_f(ch, "&+CDivine Boon:&+G +%llu combat EXP this tick.&n\r\n",
+			       static_cast<unsigned long long>(pending));
+}
+
+void display_gain(P_char ch, int gain, int type, int divine_credit = 0)
 {
 	char buffer[MAX_STRING_LENGTH];
 
@@ -902,9 +912,18 @@ void display_gain(P_char ch, int gain, int type)
 		logexp("%s gained %d (%d) experience. points.curr_exp = %d, needed for level = %ld\n",
 		       GET_NAME(ch), gain, type, GET_EXP(ch), new_exp_table[GET_LEVEL(ch) + 1]);
 	}
+	if (!IS_SET(ch->specials.act2, PLR2_EXP))
+		ch->only.pc->divine_experience_pending = 0;
+	else if (divine_credit > 0 && (type == EXP_DAMAGE || type == EXP_TANKING ||
+				       type == EXP_HEALING || type == EXP_MELEE))
+		ch->only.pc->divine_experience_pending += divine_credit;
 	if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_KILL && gain != 0)
 	{
-		snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d \r\n", gain);
+		if (divine_credit > 0)
+			snprintf(buffer, MAX_STRING_LENGTH,
+				 "&+CEXP:&+G %d &+C(Divine Boon +%d)&+G \r\n", gain, divine_credit);
+		else
+			snprintf(buffer, MAX_STRING_LENGTH, "&+CEXP:&+G %d \r\n", gain);
 		send_to_char(buffer, ch);
 	}
 	else if (IS_SET(ch->specials.act2, PLR2_EXP) && type == EXP_WORLD_QUEST && gain > 0 &&
@@ -1624,6 +1643,13 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			*base *= std::min(1.0, difficulty_multiplier(DIFFICULTY_EXP_EARNED));
 	}
 
+	// Attribute only the added eligible base, using the SAME precision path without
+	// that addition. The legacy float path can differ by 1 XP even before Divine;
+	// that rounding difference is not part of the displayed Divine contribution.
+	// Feedback alone clamps this comparator through the existing final limits.
+	const bool pre_divine_representable = std::isfinite(XP) && XP >= 0 &&
+					      XP <= std::numeric_limits<int>::max();
+	const int pre_divine_xp = divine && pre_divine_representable ? (int)XP : 0;
 	if (divine)
 		XP += eligible_base;
 	// Reject non-finite or unrepresentable Divine awards before integer conversion.
@@ -1670,6 +1696,19 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 		mark_player_dirty_components(GET_PID(ch), components);
 	}
 	const int after_exp = GET_EXP(ch);
+	int divine_credited_xp = 0;
+	if (divine && credited_xp > 0 && pre_divine_representable)
+	{
+		const int range = new_exp_table[GET_LEVEL(ch) + 1] / 3;
+		const int pre_divine_capped = BOUNDED(-range, pre_divine_xp, range);
+		const std::int64_t ceiling =
+			std::min<std::int64_t>(global_exp_limit, std::numeric_limits<int>::max());
+		const std::int64_t remaining =
+			std::max<std::int64_t>(0, ceiling - static_cast<std::int64_t>(before_exp));
+		const int pre_divine_credited =
+			static_cast<int>(std::min<std::int64_t>(pre_divine_capped, remaining));
+		divine_credited_xp = std::max(0, credited_xp - pre_divine_credited);
+	}
 	(void)telemetry_runtime_game_progression(
 		ch, ch->desc,
 		telemetry_progression_make_experience(
@@ -1679,7 +1718,8 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 			static_cast<std::uint16_t>(GET_LEVEL(ch)), progression_modifier_flags,
 			TELEMETRY_QUALITY_NONE));
 	// Mortals see only XP actually credited; staff retain the hypothetical award log.
-	display_gain(ch, GET_LEVEL(ch) >= MINLVLIMMORTAL ? XP_final : credited_xp, type);
+	display_gain(ch, GET_LEVEL(ch) >= MINLVLIMMORTAL ? XP_final : credited_xp, type,
+		     divine_credited_xp);
 	if (GET_LEVEL(ch) >= MINLVLIMMORTAL)
 	{
 		return 0;
@@ -1877,6 +1917,8 @@ void point_update(void)
 
 		if (i->desc && (i->desc->connected != CON_PLAYING))
 			continue;
+
+		display_divine_experience(i);
 
 		if (affected_by_spell(i, TAG_EPIC_TASK_PENDING))
 			epic_choose_new_epic_task(i);
