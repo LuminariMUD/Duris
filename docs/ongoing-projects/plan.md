@@ -1,15 +1,15 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **review fixes integrated; PR #522 final-head qualification running**. Updated 2026-10-31.
+Status: **implementation and local qualification complete**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
-- Branch: [branch/issue-500-geography](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-geography), linked in the issue's Development section and stacked on [PR #520](https://github.com/LuminariMUD/Duris/pull/520).
-- Current review: [draft PR #522](https://github.com/LuminariMUD/Duris/pull/522).
-- Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
-- Audited source/base: `807c6d8dce8be4102d43c91950c80548a58f7f02`, the current head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513), `branch/issues-500-506-bartender-bugfixes`.
+- Integration review: [PR #522](https://github.com/LuminariMUD/Duris/pull/522), targeting master; source branch `branch/issue-500-geography`.
+- Qualified source: `4572474ac`, including settled master `964cd61cd` and the inherited #520/#526 repairs.
+- Qualification checkout: `/home/aiwithapex/projects/duris-pr522-fixes`. The earlier implementation checkout and its evidence remain at `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
+- Original planning baseline: `807c6d8dce8be4102d43c91950c80548a58f7f02`, then the head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
 - Method: the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
 
-PR #513 is open, so this is a dependent branch. Its procedure/allowance fixes are prerequisites, not new changes belonging to this plan. Review the new diff against #513 while it is open; integrate the prerequisite and current master before final implementation qualification without duplicating or discarding its work. Master advanced during planning from `9ad734e9e` to `aa77a2030`; this plan remains pinned to the inspected #513 head. Keep #500 open until implementation and acceptance are complete. #506 remains tracked by #513; this branch introduces no new allowance work.
+The #513 prerequisites and ASK chunk landed through #520 (`809cfe0e8`). The follow-up #526 (`d6582ec27`) preserves unrelated player changes through failed history writes and credits final-kill XP before calculating the remaining reward. This branch includes both repairs and settled master `964cd61cd`. All three #500 behavior changes and their local acceptance checks are complete; #506 is already completed. The intermediate planning and qualification checkpoints below are historical and are superseded by the final record at the end.
 
 The previous shared plan is already preserved byte-for-byte in [plan-issue-420.md](plan-issue-420.md); comparison passed before replacement. The separate [#500/#506 qualification record](plan-issues-500-506.md) remains intact. Its former geography decisions and the issue's archived investigation are historical evidence, not the current task list.
 
@@ -355,3 +355,47 @@ task from origin 1734, paid map, original receiver and no onward shares.
 Evidence: `bin/qualification/issue500/reported-passed.json` (ignored).
 The reported run used stricter per-step movement observation; the final full
 matrix still must qualify the simplified batched walker and 11/29 cases.
+
+## Final integration and qualification — 2026-10-31
+
+Both backend builds pass on settled master `964cd61cd` with the #522 changes.
+The master integration preserves the qualified quest, reward, player-save and
+currency implementations byte-for-byte; conflicts were duplicated #526 squash
+ancestry in a comment and the test setup action number. The independent-credit
+fixture uses action 8, retaining action 7 for locked-exit sharing.
+
+Fresh combined checks pass: assignment/refresh/share/map/type/geography and
+SQL-history regressions under ASan/UBSan; reward publication; XP and the level-25
+mercenary boundary/retry; reward/remaining/failure contracts; player-save retry
+and offline retention; currency/auction escrow; flatfile player/history and item
+codec; and disposable MariaDB save/claim rollback, replay and reward custody.
+Formatting, staged clang-tidy, documentation checks and whitespace checks pass.
+
+The `reported` journey passes on MariaDB and flatfile, covering named givers,
+locked-exit sharing/maps, saved abandonment/regrant, history, replacement and
+Bloodstone ASK/KILL completion. The default five-case `both` matrix passes on
+both backends: 11:2, 11:1, 29:1, 29:2 and 30:1, including real movement/combat,
+out-of-band ASK completion, partial KILL save/restart, rewards, history, relogin
+and restart. The MariaDB `history-failure-restart` journey also passes: an
+independent 1,000-copper credit survives rejected history writes and restart;
+retry charges the fee and records history exactly once.
+
+The first combined journeys exposed a test synchronization gap while final-KILL
+history was committed but its reward callback had not cleared the live task.
+The journey now waits on the completion marker with a timeout. A later MariaDB
+matrix selected an ordinary random fallback after an unsuitable purchase and
+could reach only one thorncat; its other resets were in an outbound-only load
+room. Retries now repeat the existing explicit fixture preparation and require
+the exact prechecked prototype and actual zone. No production eligibility,
+quota, NPC count, combat limits or credit was changed. The corrected MariaDB
+matrix passes at `4572474ac`; the flatfile matrix and both reported passes use
+`b1babb49e`, whose production quest/reward/save/currency code is unchanged by the
+settled-master integration and the subsequent fixture-only edits.
+
+Ignored evidence is under `bin/merge522/` in the qualification checkout: native
+and save logs, `flatfile/final-{reported,both}.log`,
+`mariadb/final-reported.log`, `mariadb/final-history-failure-restart.log`, and
+`mariadb/final-both-fixture-identity.log`. Earlier failed/interrupted runs remain
+separate. Final cleanup retains this evidence in the main checkout's ignored
+merge-campaign directory. No production operation, deployment or release tag
+was part of this qualification.
