@@ -74,10 +74,8 @@ bool parent(int event, int64_t admitted_at, int64_t now, int points, bool rollba
 	frag_cap_state state;
 	assert(frag_cap_sql_load(connection, &state, true) == result::ok);
 	const frag_cap_award award = { frag_cap_side::good, points };
-	const uint64_t before = state.revision;
 	assert(frag_cap_apply(&state, admitted_at, now, &award, 1));
-	if (state.revision != before)
-		assert(frag_cap_sql_save(connection, state) == result::ok);
+	assert(frag_cap_sql_save(connection, state) == result::ok);
 	sql(rollback ? "ROLLBACK" : "COMMIT");
 	return true;
 }
@@ -124,6 +122,11 @@ int main(int argc, char **argv)
 	assert(frag_cap_sql_adopt(connection, 56, 56, start + hour, &restored) == result::ok);
 	sql("COMMIT");
 	assert(restored == state);
+	// An unchanged singleton is still a successful save.
+	sql("START TRANSACTION");
+	assert(frag_cap_sql_save(connection, state) == result::ok);
+	sql("COMMIT");
+	assert(load(&restored) == result::ok && restored == state);
 	assert(parent(100, start, start, 5, true));
 	assert(load(&restored) == result::ok && restored == state);
 #endif
@@ -198,6 +201,9 @@ int main(int argc, char **argv)
 	const frag_cap_award old_award = { frag_cap_side::good, 100 };
 	assert(frag_cap_apply(&restored, reset_started - 1, reset_started, &old_award, 1));
 	assert(restored == reset_state);
+	// A distinct old parent event records its receipt while leaving the cap unchanged.
+	assert(parent(4, reset_started - 1, reset_started, 100));
+	assert(load(&restored) == result::ok && restored == reset_state);
 	sql("UPDATE level_cap SET snapshot=NULL,level=56,level_good=55,level_evil=54,next_update=FROM_UNIXTIME(1800003600)");
 	sql("START TRANSACTION");
 	assert(frag_cap_sql_adopt(connection, 25, 40, start, &state) == result::ok &&
@@ -239,6 +245,7 @@ int main(int argc, char **argv)
 	assert(frag_cap_sql_adopt(connection, 25, 56, start, &restored) == result::invalid);
 	sql("DELETE FROM level_cap");
 	assert(load(&restored) == result::invalid);
+	assert(frag_cap_sql_save(connection, state) == result::invalid);
 	mysql_close(connection);
 #endif
 	std::cout
