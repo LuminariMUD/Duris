@@ -930,7 +930,7 @@ call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::
 end
 continue
 end
-break *sql_world_quest_finished
+break *sql_world_quest_finish_async
 set $history_break=$bpnum
 commands
 silent

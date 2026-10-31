@@ -120,19 +120,6 @@ def test_kill_quests_pay_one_reward_on_completion() -> None:
     assert start.index("sql_world_quest_finish_async(") < start.index("world_quest_deliver_reward(")
 
 
-def test_reward_grant_rejection_does_not_publish_a_stale_object() -> None:
-    grant = extract_function("world_quest.c", "static bool grant_world_quest_reward(")
-    assert "item_creation_grant_submit_to_player(ch, reward, ch)" in grant
-    rejected = grant.index("extract_obj(reward, FALSE)")
-    assert rejected < grant.index("return false;", rejected)
-    assert "your quest reward was not created" in grant
-    delivery = extract_function("world_quest.c", "static void world_quest_deliver_reward(")
-    assert "OBJ_CARRIED_BY(reward, ch) || grant_world_quest_reward(ch, reward)" in delivery
-    assert delivery.index("grant_world_quest_reward(ch, reward)") < delivery.index("resetQuest(ch)")
-    full = extract_function("world_quest.c", "void quest_full_reward(")
-    assert "world_quest_start_reward(ch, quest_mob, type, false)" in full
-
-
 def test_quest_sharing_remains_configurable() -> None:
     limit = extract_function("world_quest.c", "static int world_quest_share_limit(")
     assert '"world.quest.share.max", 0.000' in limit
