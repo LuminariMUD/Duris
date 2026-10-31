@@ -1,7 +1,8 @@
 # Bartender quest bug fixes: issues #500 and #506
 
-Date: 2026-10-31. Status: implemented and locally qualified; review preparation.
+Date: 2026-10-31. Status: implemented, locally qualified and ready for review.
 Fix branch: `branch/issues-500-506-bartender-bugfixes`.
+Review: [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
 Source baseline: `b737db20210ff2d3e4eebccb212c9918b9b6f877` (`master` and
 freshly fetched `origin/master`).
 
@@ -433,3 +434,10 @@ make -s -C src DMS_BINARY="$PWD/bin/server/dms_issue500_mariadb_final" -j4
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
+
+Implementation commit: `579f2401a2fd33089748754f06bb96f49f080b29`.
+Master advanced to `9ad734e9e60b0938181f85cd20cdb9614a14adc8` during
+qualification. The read-only `git merge-tree --write-tree origin/master HEAD`
+check is clean, and GitHub reports PR #513 mergeable and non-draft. The PR's
+eight changed files are limited to the bartender policy, existing regressions/
+runner, reference and this plan. Concurrent unrelated work is excluded.
