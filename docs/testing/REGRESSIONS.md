@@ -11,6 +11,36 @@ own schema. Flat-file journeys take a server built with
 Four of these sections note that the full-server path was never driven under sanitizers; no
 journey does that yet.
 
+## Private locker registry, access, receipts and audit (#490 / #497)
+
+`python3 tests/async/test_private_chest_regressions.py` compiles the production
+sorting, wrapper registry, actor/visit access, password continuation, private-save
+receipt, management reconciliation and audit code under ASan/UBSan. It controls
+world/prototype, item capture and writer/SQL boundaries; it is not a server journey.
+The fixture keeps private identity/contents across repeated custom sorting, rejects
+stale or borrowed access, retains failed/refused snapshots, publishes management
+only after readback, retries an audit event with the same ID, and renders deleted
+chest IDs. The existing container/weight regression covers real transfer admission.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/run_private_chest_purchase_mysql.py`
+executes the production purchase transaction/controller on disposable InnoDB. It
+checks atomic wallet/bank payment, rollback after insertion, queue refusal, lost
+COMMIT response, extracted purchaser, duplicate name, limit and stale revision.
+Repeat with `TEST_DB_IMAGE=mysql:8.0` for MySQL. Currency preparation/publication
+is a controlled boundary here; `test_currency_in_memory.py` executes that module.
+The existing game-loop-query journey exercises the actual locker command path,
+custom sorting and saved item/history routing through leave and re-entry. The
+journey injects a terminal private-save rejection on disposable MariaDB/MySQL,
+verifies the actor and contents remain live, then removes the fault and proves
+retry/re-entry. After the fault is removed, it requires automatic persistence
+before any further save or exit. The native fixture also holds an older write in
+flight and verifies that only the newest retained capture is flushed, without
+reading later unsaved live changes; refusal, predecessor failure and exceptions
+retain retry data. The journey catches a movement visibility pass ignoring a veto.
+`test_private_chest_lifecycle.py` carries the 25 access/role/backend and durable
+legacy-upgrade cases from the consolidated #502/#503 stack.
+
+
 ## Combat callbacks and terminal locker departure (#430)
 
 `python3 tests/async/test_combat_edge_cases_runtime.py` runs the production combat
@@ -1273,7 +1303,9 @@ covers the real naming function, not the live reveal-true-name spell command.
 belongs to the zone with the highest first vnum (zone number × 100) at or below its giver's
 vnum, which is the area its giver comes from: an area's mobs run past its first hundred
 vnums and past its top room. `zone_for_giver_vnum()` and `scripts/zone_story_quest_catalog.py`
-use the same rule, so the checked-in catalog snapshot matches the runtime catalog. The
+use the same zone rule. Snapshot freshness is separately checked against the
+current area sources using the comparison in
+[the catalog reference](../reference/ZONE_STORY_QUEST_CATALOG.md). The
 heavens givers (zone 0) stay on zone 1, because the catalog needs a positive zone. Zones
 with equal counts are ordered by the name a player reads: color codes are skipped as
 `strip_ansi()` skips them, and case is ignored. `achievements zone <area>` finds an area by
@@ -1290,7 +1322,7 @@ The production harness maps givers past a zone's first hundred vnums and past it
 The catalog test checks a Winterhaven giver and a Tower of Darkness giver in the real world
 files. The feature harness ties seven zones with real colored names. The lookup test runs
 the command's lookup with the real `is_abbrev()`, `strip_ansi()` and `skip_spaces()` on the
-text `one_argument()` hands it. No test completes a quest on a running server.
+text `one_argument()` hands it. These four tests do not complete a quest on a running server.
 
 ## Addresses kept 30 days after their last use
 
@@ -2057,8 +2089,8 @@ python3 tests/async/test_world_quest_xp_feedback.py
 
 The test compiles `gain_exp()`, `display_gain()`, `quest_kill()` and `quest_full_reward()`
 from the source on both backends and checks the line for kills, turn-ins, every cap and
-exit that credits nothing, and an immortal, whose staff log it reads. No test turns in a
-quest on a running server.
+exit that credits nothing, and an immortal, whose staff log it reads. This focused
+test does not turn in a quest on a running server; separate world-quest journeys do.
 
 ## Random drop message for a pet's kill
 

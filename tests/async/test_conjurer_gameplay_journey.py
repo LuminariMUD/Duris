@@ -285,8 +285,14 @@ PH 0 0 -1
             text = command(staff, 'stat mob guardian')
             assert re.search(r'Fighting:\s*---', text), text
             command(staff, 'transfer Hydrion')
-            time.sleep(10)
-            text = command(staff, 'stat mob guardian')
+            # Aggression runs on the mundane event and can include a calming delay.
+            deadline = time.monotonic() + 30
+            while True:
+                text = command(staff, 'stat mob guardian')
+                if not re.search(r'Fighting:\s*---', text):
+                    break
+                assert time.monotonic() < deadline, text
+                time.sleep(.25)
             assert re.search(r'Fighting:\s*Hydrion', text), text
             command(staff, 'purge guardian')
             assert 'Regression Arena' in command(air, 'down')

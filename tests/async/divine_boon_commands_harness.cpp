@@ -164,9 +164,12 @@ int main()
 	auto shown = invoke(&player, "");
 	assert(shown.starts_with(
 		"&+YThe Gods of Duris have given you and your allies the following boons:&n\r\n"));
-	assert(shown.find("&+G[1] 200% Experience&n") != string::npos);
+	assert(shown.find("&+G[1] 200% Base Experience&n") != string::npos);
 	assert(shown.find("&+C[3] +25% Cargo & Contraband&n") != string::npos);
 	assert(shown.find("&+R[4] +50% PvP Epic Points&n") != string::npos);
+	assert(shown.find("Experience boons add 100% of eligible base combat XP.") != string::npos);
+	assert(shown.find("Other bonuses are not doubled; normal XP caps still apply.") !=
+	       string::npos);
 	assert(shown.find("&+RNative coloured dungeon&n") != string::npos);
 	assert(shown.find("Frags against Evil racewar") != string::npos);
 	assert(shown.find("&+CSource&n") != string::npos &&
@@ -226,7 +229,7 @@ int main()
 	player.player.racewar = RACEWAR_NEUTRAL;
 	shown = invoke(&player, "");
 	assert(shown.find("PvP Epic Points") == string::npos &&
-	       shown.find("200% Experience") == string::npos &&
+	       shown.find("200% Base Experience") == string::npos &&
 	       shown.find("+25% Cargo & Contraband") != string::npos);
 	eligible = false;
 	shown = invoke(&player, "");

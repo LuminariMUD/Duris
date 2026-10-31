@@ -19,6 +19,7 @@ prelude = r'''
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+
 #include <cstdarg>
 #include <cctype>
 #include <cerrno>
@@ -89,6 +90,9 @@ struct obj_data {
  struct { int room=0; obj_data *inside=nullptr; } loc;
 };
 using P_obj = obj_data *;
+bool locker_container_access_allowed(P_char, P_obj) { return true; }
+void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
 static std::unordered_map<uint64_t, P_obj> objects;
@@ -144,8 +148,14 @@ static void checked_snprintf(char *b,size_t n,const char *f,...) { va_list a; va
 static int scrap_attempts=0;
 static void MakeScrap(P_char,P_obj) { ++scrap_attempts; }
 static void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
-static int wallet=0;
-static bool credit_coins(P_char,int64_t value) { wallet+=static_cast<int>(value); return value>0; }
+static std::array<int32_t,CURRENCY_DENOMINATION_COUNT> wallet{};
+static bool credit_coins(P_char,const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> &amount) {
+ bool any=false;
+ for(size_t i=0; i<amount.size(); ++i) {
+  assert(amount[i]>=0); wallet[i]+=amount[i]; any=any || amount[i];
+ }
+ return any;
+}
 static void extract_obj(P_obj o,int) { objects.erase(o->obj_uid); o->location=0; }
 static void add_coins(P_obj,int,int,int,int) {}
 static const char *coins_to_string(int p,int g,int s,int c,const char *) {
@@ -172,9 +182,10 @@ static void do_get_finalize_room_item(P_char ch,P_obj o,bool &found,int &total) 
 '''
 
 driver = r'''
+static const std::array<int32_t,CURRENCY_DENOMINATION_COUNT> expected_wallet{0,0,4,0};
 static void reset() {
  bulk_gets.clear(); objects.clear(); rooms.clear(); output.clear();
- coin_attempts=scrap_attempts=0; fail_delivery=false; wallet=0;
+ coin_attempts=scrap_attempts=0; fail_delivery=false; wallet={};
  trapped_uid=0; trap_effect=trap_calls=checked_after_trap=corpse_writes=0; live_actor=nullptr;
  die_on_delivery=throw_on_delivery=false;
 }
@@ -248,7 +259,7 @@ int main() {
   reset(); char_data actor; obj_data corpse,dagger,coins; setup(&actor,&corpse,&dagger,&coins);
   start_bulk_get(&actor,&corpse,nullptr,player_corpse);
   assert(output.find("You begin pulling") == 0 && !rooms[1].empty());
-  assert(OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==400);
+  assert(OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==expected_wallet);
   assert(output.find("You finish sorting your haul from the corpse of a frost giant.")!=std::string::npos);
   assert(output.find("Haul:\r\n  a dagger\r\n")!=std::string::npos);
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
@@ -261,7 +272,7 @@ int main() {
   scrap.condition=0; dagger.obj_uid=53; dagger.location=2; dagger.loc.inside=&corpse;
   dagger.next_content=&scrap; corpse.contains=&dagger; objects[53]=&dagger;
   start_bulk_get(&actor,&corpse,nullptr,false);
-  assert(scrap_attempts==1 && OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==400);
+  assert(scrap_attempts==1 && OBJ_CARRIED_BY(&dagger,&actor) && coin_attempts==1 && wallet==expected_wallet);
   assert(bulk_gets.empty());
  }
  char_data actor; obj_data corpse,dagger,coins;
@@ -278,7 +289,7 @@ int main() {
   first_item.next_content=&second_item; second_item.next_content=&later_coins;
   objects[53]=&second_item;
   start_bulk_get(&full_actor,&full_corpse,nullptr,player_corpse);
-  assert(coin_attempts==1 && wallet==400);
+  assert(coin_attempts==1 && wallet==expected_wallet);
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n")!=std::string::npos);
   assert(output.find("You can't carry any more.\r\n") ==
@@ -310,7 +321,7 @@ int main() {
   reset(); setup(&actor,&corpse,&dagger,&coins);
   if(!mixed) corpse.contains=&coins;
   start_bulk_get(&actor,&corpse,nullptr,false);
-  assert(coin_attempts==1 && wallet==400);
+  assert(coin_attempts==1 && wallet==expected_wallet);
   assert(output.find("  0p 4g 0s 0c")!=std::string::npos && bulk_gets.empty());
  }
  // A later pile with nothing to take keeps the delivered equipment and first pile,
@@ -319,7 +330,7 @@ int main() {
  later.obj_uid=53; later.type=ITEM_MONEY; later.location=2; later.loc.inside=&corpse;
  coins.next_content=&later; objects[53]=&later;
  start_bulk_get(&actor,&corpse,nullptr,false);
- assert(coin_attempts==2 && wallet==400);
+ assert(coin_attempts==2 && wallet==expected_wallet);
  assert(output.find("  a dagger")!=std::string::npos && output.find("  0p 4g 0s 0c")!=std::string::npos);
  assert(output.find("Some contents were not acquired.")!=std::string::npos && bulk_gets.empty());
  // The helper is PC-only. The strict PID macro above aborts for a real NPC,

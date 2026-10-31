@@ -738,6 +738,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "47767f2f2110f99179be5ae51a04e1250fa2380cdf4e5b6a4d2eb885e46999bb",
       "verify_checksum": "344a942d5d7122aa55470cc77b11220fa55d0fff73d87e0dc937da70e823713a"
+    },
+    {
+      "id": "0056_private_chest_receipts",
+      "sequence": 57,
+      "description": "Commit private chest purchases with payment and deduplicate retried audit events",
+      "apply": "immutable/0056_private_chest_receipts.sql",
+      "verify": "immutable/0056_private_chest_receipts.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "c45fd75d0332eb756e067746bf8430ed251ea9261ef83abb0cdc9a9e50d9144c",
+      "verify_checksum": "4c6f51ac4ab2e8dc7ee96028d11cf877bc05689d92a4c85303c3536394916d3d"
     }
   ],
   "engine_verifiers": [

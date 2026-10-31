@@ -39,6 +39,8 @@ struct pending_trade
 	int64_t escrow = 0;
 	// A sale's item, taken out of the seller's inventory at submit.
 	P_obj held = nullptr;
+	shop_trade_prepare_fn prepare = nullptr;
+	bool publication_failed = false;
 };
 
 std::unordered_map<std::string, pending_trade> pending;
@@ -107,12 +109,15 @@ bool publish_ownership(const shop_trade_payload &payload, const shop_trade_resul
 	else
 		return false;
 	transfer.reason_id = payload.shop_id;
-	transfer.selected_item_uid = payload.selected_item_uid;
+	transfer.multi_root = payload.multi_root;
+	transfer.selected_item_uid = payload.multi_root ? 0 : payload.selected_item_uid;
 	transfer.target_root_item_uid = payload.target_root_item_uid ?
 						payload.target_root_item_uid :
 						payload.selected_item_uid;
 	transfer.target_parent_item_uid = payload.target_parent_item_uid;
 	transfer.expected_target_parent_revision = payload.expected_target_parent_revision;
+	if (payload.multi_root && !payload.target_parent_item_uid)
+		transfer.target_root_item_uid = 0;
 	transfer.item_count = payload.item_count;
 	for (size_t index = 0; index < payload.item_count; ++index)
 		transfer.items[index] = { payload.items[index].item_uid,
@@ -150,6 +155,23 @@ bool publish(std::unordered_map<std::string, pending_trade>::iterator found, P_c
 	const bool committed = decoded &&
 			       (entry.completed.outcome == critical_apply_outcome::applied ||
 				entry.completed.outcome == critical_apply_outcome::already_applied);
+	if (committed && entry.payload.multi_root &&
+	    (result.action != entry.payload.action ||
+	     result.item_count != entry.payload.item_count ||
+	     !std::equal(result.item_uids.begin(), result.item_uids.begin() + result.item_count,
+			 entry.payload.items.begin(),
+			 [](uint64_t uid, const auto &item) { return uid == item.item_uid; })))
+		return false;
+	if (committed && entry.prepare && !entry.prepare(character, entry.payload, result))
+	{
+		if (!entry.publication_failed)
+		{
+			entry.publication_failed = true;
+			send_to_char("Your purchase committed and is awaiting safe delivery.\r\n",
+				     character);
+		}
+		return false;
+	}
 	bool published =
 		decoded &&
 		(!committed || shop_trade_runtime_can_advance(entry.payload.shop_id,
@@ -169,10 +191,14 @@ bool publish(std::unordered_map<std::string, pending_trade>::iterator found, P_c
 			critical_deadline_class::interactive, nullptr, nullptr, 0);
 	if (published && committed)
 		published = publish_ownership(entry.payload, result);
+	// Both publications run on the game thread without yielding. Once ownership
+	// is applied, this already-validated shop revision advances in the same call.
 	if (published && committed)
 		published = shop_trade_runtime_advance(entry.payload.shop_id,
 						       entry.payload.expected_shop_revision,
 						       result.shop_revision);
+	if (committed && entry.payload.multi_root && !published)
+		return false;
 	// A refused sale gives its item back; a committed one the completion hands to the
 	// shopkeeper, and one that cannot be published is gone from the seller either way.
 	// The item may have been extracted while it was held.
@@ -194,8 +220,11 @@ bool publish(std::unordered_map<std::string, pending_trade>::iterator found, P_c
 } // namespace
 
 bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &payload,
-				   shop_trade_completion_fn completion)
+				   shop_trade_completion_fn completion,
+				   shop_trade_prepare_fn prepare)
 {
+	if (character && currency_transaction_chest_busy(character))
+		return false;
 	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
 	    static_cast<uint32_t>(GET_PID(character)) != payload.player_pid ||
 	    pending.size() >= SHOP_TRADE_PENDING_MAX || player_pending(payload.player_pid))
@@ -224,10 +253,14 @@ bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &p
 	const std::string key = operation_key(operation_id);
 	try
 	{
-		pending.emplace(
-			key,
-			pending_trade{
-				payload.player_pid, payload, completion, false, {}, escrow, held });
+		pending.emplace(key, pending_trade{ payload.player_pid,
+						    payload,
+						    completion,
+						    false,
+						    {},
+						    escrow,
+						    held,
+						    prepare });
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -240,16 +273,21 @@ bool shop_trade_transaction_submit(P_char character, const shop_trade_payload &p
 	}
 	if (escrow)
 	{
+		const uint64_t wallet_revision = character->only.pc->wallet_revision;
 		if (!currency_transaction_submit_wallet_value(
 			    character, -escrow, currency_reason_type::wallet_spend, payload.shop_id,
 			    critical_source_site::command, critical_deadline_class::interactive,
-			    nullptr, nullptr, 0))
+			    nullptr, nullptr, 0) ||
+		    (payload.multi_root && character->only.pc->wallet_revision == wallet_revision))
 		{
 			pending.erase(key);
 			return false;
 		}
 		currency_transaction_save_first(character);
 	}
+	else if (payload.multi_root && payload.target_parent_item_uid)
+		// Free purchases need the bag's snapshot just as paid purchases do.
+		currency_transaction_save_first(character);
 	const auto submitted = critical_command_coordinator_submit(std::move(command));
 	if (!critical_submit_result_keeps_operation(submitted))
 	{
@@ -298,7 +336,8 @@ void shop_trade_transaction_player_ready(P_char character)
 					  });
 		if (found == pending.end())
 			break;
-		publish(found, character);
+		if (!publish(found, character))
+			break;
 	}
 }
 
@@ -306,6 +345,19 @@ bool shop_trade_transaction_player_busy(P_char character)
 {
 	return character && !IS_NPC(character) && GET_PID(character) > 0 &&
 	       player_pending(static_cast<uint32_t>(GET_PID(character)));
+}
+
+bool shop_trade_transaction_blocks_commands(P_char character)
+{
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0)
+		return false;
+	return std::any_of(pending.begin(), pending.end(),
+			   [&](const auto &entry)
+			   {
+				   return entry.second.player_pid ==
+						  static_cast<uint32_t>(GET_PID(character)) &&
+					  entry.second.payload.multi_root;
+			   });
 }
 
 void shop_trade_transaction_reset_for_tests(void)

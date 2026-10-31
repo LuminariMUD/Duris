@@ -36,6 +36,7 @@ using namespace std;
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include "combat/ctf.h"
 #include "world/epic.h"
 #include "economy/divine_boon_selection.h"
@@ -2848,6 +2849,12 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			// Found something
 			if (bits != 0)
 			{
+				if (!locker_container_access_allowed(ch, tmp_object))
+				{
+					send_to_char("You must open that private chest first.\n",
+						     ch);
+					return;
+				}
 				short_desc =
 					show_obj_to_char(tmp_object, ch, LISTOBJ_SHORTDESC, FALSE);
 				CAP(short_desc);
@@ -3727,6 +3734,12 @@ void do_examine(P_char ch, char *argument, int /*cmd*/)
 			     FIND_OBJ_INV | FIND_OBJ_ROOM | FIND_OBJ_EQUIP | FIND_CHAR_ROOM |
 				     FIND_NO_TRACKS,
 			     ch, &tmp_char, &tmp_object);
+	}
+
+	if (tmp_object && !locker_container_access_allowed(ch, tmp_object))
+	{
+		send_to_char("You must open that private chest first.\n", ch);
+		return;
 	}
 
 	if (tmp_object && chaos_material_pouch_is_active(tmp_object))
@@ -7751,7 +7764,7 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				 MAX_STRING_LENGTH - strlen(who_output),
 				 "\nThere are %d visible &+rgod(s)&n on.\n", who_gods_size);
 		strcpy(buf, "");
-		if (who_list_size > 0)
+		if (who_list_size > 0 || IS_TRUSTED(ch))
 		{
 			strcat(who_output, "\n Listing of the Mortals!\n"
 					   "-=-=-=-=-=-=-=-=-=-=-=-=-\n");
@@ -7877,11 +7890,28 @@ void do_who(P_char ch, char *argument, int /*cmd*/)
 				}
 			}
 
-			checked_snprintf(
-				who_output + strlen(who_output),
-				MAX_STRING_LENGTH - strlen(who_output),
-				"\nThere are %d &+gmortal(s)&n on.\n\n&+cTotal visible players: %d.&N\n",
-				who_list_size, who_list_size + who_gods_size);
+			checked_snprintf(who_output + strlen(who_output),
+					 MAX_STRING_LENGTH - strlen(who_output),
+					 "\nThere are %d &+gmortal(s)&n on.", who_list_size);
+			if (IS_TRUSTED(ch))
+			{
+				int good_count = 0, evil_count = 0;
+				for (j = 0; j < who_list_size; j++)
+				{
+					if (IS_RACEWAR_EVIL(who_list[j]))
+						evil_count++;
+					else if (IS_RACEWAR_GOOD(who_list[j]))
+						good_count++;
+				}
+				checked_snprintf(who_output + strlen(who_output),
+						 MAX_STRING_LENGTH - strlen(who_output),
+						 "  %d &+Revil(s)&n, %d &+Ygood(s)&n.", evil_count,
+						 good_count);
+			}
+			checked_snprintf(who_output + strlen(who_output),
+					 MAX_STRING_LENGTH - strlen(who_output),
+					 "\n\n&+cTotal visible players: %d.&N\n",
+					 who_list_size + who_gods_size);
 			if (IS_TRUSTED(ch))
 			{
 				checked_snprintf(who_output + strlen(who_output),

@@ -173,17 +173,21 @@ print("[PASS] game-thread callers use the shared worker without synchronous bcry
 # Private chests are held in memory while their locker is open; each write is
 # queued on the writer and carries only a bcrypt hash.
 chests = storage[storage.index("static int locker_chestcmd(P_char ch, char *arg)\n{"):
-                 storage.index("static int locker_closecmd(P_char ch, char * /*arg*/)\n{")]
+                 storage.index("static int locker_closecmd(P_char ch, char *arg)\n{")]
 create = chests[chests.index('if (is_abbrev(arg1, "create"))'):chests.index('if (is_abbrev(arg1, "delete"))')]
 setter = chests[chests.index('if (is_abbrev(arg1, "password"))'):
                 chests.index("static int locker_opencmd(P_char ch, char *arg)\n{")]
 verify = chests[chests.index("static int locker_opencmd(P_char ch, char *arg)\n{"):]
 assert "SHA2(" not in create + setter + verify
 assert "is_bcrypt_hash(hash)" in create and "is_bcrypt_hash(hash)" in setter
-assert "escape_str(hash)" in create and "escape_str(hash)" in setter
-assert "chest->SetPasswordHash(NULL)" in setter
-assert "UPDATE private_chests SET password_hash=NULL WHERE id=%d AND is_public=0" in setter
-assert "SetPasswordHash(hash)" in setter
+purchase = (SRC / "private_chest_purchase.c").read_text()
+management = section(storage, "static void locker_change_chest(", "/* Private chests live in memory")
+assert "private_chest_purchase_start" in create and "stored_hash" in create
+assert "escape(p.hash)" in purchase and "mysql_real_escape_string(connection," in purchase
+assert "locker_change_chest(ch, pLocker, chest, \"\", false)" in setter
+assert contains(setter, "locker_change_chest(actor, locker,") and contains(setter, "hash, false)")
+assert "escape_str(hash.c_str())" in management and "sql_queue_statements" in management
+assert "SetPasswordHash" not in setter
 assert "Chest passwords must be at most 72 bytes." in storage
 assert "is_bcrypt_hash(upgrade)" in verify
 assert "WHERE id=%d AND password_hash='%s'" in verify

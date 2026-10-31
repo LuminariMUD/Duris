@@ -852,6 +852,7 @@ Useful checks:
 
 ```bash
 tail -f logs/log/status                 # boot + DB issues
+rg 'HOMETOWN ALARM:' logs/log/status     # alarm trigger, town/room, NPC vnum, race and pet master
 rg 'NEVENT BUDGET WINDOW' logs/log/status # deferred and late events, a line per 75 s
 rg 'telemetry_health' logs/log/status  # telemetry writer state and alerts
 ```

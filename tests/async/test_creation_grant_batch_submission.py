@@ -31,6 +31,7 @@ START_GRANT = function_body(MOVEMENT, "bool start_creation_grant(", last=True)
 PRE_ENTRY_BATCH = function_body(
     MOVEMENT, "bool item_creation_grant_submit_batch_to_player_before_entry("
 )
+QUEUE_BATCH = function_body(MOVEMENT, "static bool queue_creation_batch(")
 CANCEL = function_body(MOVEMENT, "void item_creation_grant_cancel_batch_before_entry(")
 
 assert "capture_absent(" in BATCH_SUBMIT
@@ -40,10 +41,13 @@ assert "submit_grant_batch(" in START_GRANT
 assert "creation_grant_conflicts" in START_GRANT
 assert "reconcile_creation_grant_batch" in MOVEMENT
 assert "player_load_item_graph_materialize_creation" in MOVEMENT
-assert "reject_is_transient" in PRE_ENTRY_BATCH
-assert "queue.batch_submission = true" in PRE_ENTRY_BATCH
+assert "allow_pre_entry && reject_is_transient" in QUEUE_BATCH
+assert "queue.batch_submission = true" in QUEUE_BATCH
 assert "queue.batch_submission ? queue.requests.size()" in CANCEL
 assert "ITEM_CREATION_GRANT_MAX_ROOTS" in MOVEMENT_HEADER
-assert "count > ITEM_CREATION_GRANT_MAX_ROOTS" in PRE_ENTRY_BATCH
+assert "count > ITEM_CREATION_GRANT_MAX_ROOTS" in QUEUE_BATCH
 
 print("[PASS] detached starter roots use one creation batch submission")
+
+assert "nullptr, true, nullptr" in PRE_ENTRY_BATCH
+assert "item_creation_grant_submit_batch_to_player(" in MOVEMENT_HEADER

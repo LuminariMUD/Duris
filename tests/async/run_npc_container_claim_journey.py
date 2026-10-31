@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce and verify NPC container claims on a disposable flat-file game server."""
+"""Verify NPC container custody and floor pickup messages on a disposable server."""
 import os
 from pathlib import Path
 import re
@@ -22,8 +22,38 @@ def run(binary: Path, expect_abort: bool = False) -> None:
             object_path = game / "areas_mini/mini.obj"
             objects = object_path.read_text()
             assert objects.count("12 28 0 0 7 0 0 16385 0 0 0") == 1
-            object_path.write_text(objects.replace("12 28 0 0 7 0 0 16385 0 0 0",
-                                                   "12 28 0 0 7 0 0 1 0 0 0"))
+            objects = objects.replace("12 28 0 0 7 0 0 16385 0 0 0",
+                                      "12 28 0 0 7 0 0 1 0 0 0")
+            # Loading adds HOLD to every takeable object. The token denies Human
+            # equipment use (last field = 1) so this NPC leaves it in inventory.
+            floor_objects = """#22802
+scavengertunic tunic~
+a scavenger test tunic~
+A scavenger test tunic lies here.~
+~
+9 16 0 0 7 0 0 9 0 0 0
+5 0 0 0 0 0 0 0
+1 500 100
+#22803
+scavengertoken token~
+a scavenger test token~
+A scavenger test token lies here.~
+~
+12 16 0 0 7 0 0 1 0 0 1
+0 0 0 0 0 0 0 0
+1 500 100
+"""
+            assert objects.count("$~") == 1
+            object_path.write_text(objects.replace("$~", floor_objects + "$~"))
+            # Separate floor cases from the container and its earlier scavenger.
+            world_path = game / "areas_mini/mini.wld"
+            world_path.write_text(world_path.read_text().replace("$~", """#22802
+The Scavenger Floor~
+A quiet room for observing scavenger floor pickups.
+~
+1 0 0
+S
+$~"""))
             journey.generate_certificate(game)
             mobile_path = game / "areas_mini/mini.mob"
             mobile_path.write_text(mobile_path.read_text().replace("$~", """#22801
@@ -31,7 +61,7 @@ claim scavenger~
 a claim scavenger~
 A claim scavenger waits here.~
 ~
-4 0 0 0 0 0 0 0 S
+6 0 0 0 0 0 0 0 S
 PH 0 0 -1
 10 0 0 20d1+400 2d1+1
 0.0.0.0 0
@@ -159,6 +189,42 @@ $~"""))
                     room = client.expect("Pos: standing >", timeout=10)
                     assert "backpack lies here" in room and "frequent flier miles" not in room, room
                     print("fixed: NPC carries item; container empty; server alive", flush=True)
+                    prompt = "Pos: standing >"
+
+                    def command(line: str, receipt: str) -> str:
+                        client.send(line)
+                        return client.expect(receipt, timeout=20) + client.expect(prompt, timeout=20)
+
+                    command("goto 22802", "The Scavenger Floor")
+                    command("load char 22801", "claim scavenger")
+                    command("setattr scavenger int 103", "OK.")
+                    floor_start = len(client.transcript)
+                    for vnum, keyword, description, equipped in (
+                        (22802, "scavengertunic", "a scavenger test tunic", True),
+                        (22803, "scavengertoken", "a scavenger test token", False),
+                    ):
+                        command(f"load obj {vnum}", description)
+                        command(f"drop {keyword}", f"You drop {description}.")
+                        pickup = f"A claim scavenger gets {description}."
+                        client.expect(pickup, timeout=90)
+                        if equipped:
+                            client.expect(f"A claim scavenger shrugs into {description}.", timeout=10)
+                        location = "equipped by" if equipped else "carried by"
+                        stat = command(f"stat obj {keyword}", "Location:")
+                        assert f"{location} claim scavenger" in stat, stat
+                        print(f"floor: {pickup} -> {location} claim scavenger", flush=True)
+                    observed = client.transcript[floor_start:].decode(errors="replace")
+                    for description in ("a scavenger test tunic", "a scavenger test token"):
+                        pickup = f"A claim scavenger gets {description}."
+                        assert observed.count(pickup) == 1, observed
+                    wear = "A claim scavenger shrugs into a scavenger test tunic."
+                    assert observed.count(wear) == 1, observed
+                    assert observed.index("A claim scavenger gets a scavenger test tunic.") < observed.index(wear), observed
+                    token_lines = [line for line in observed.splitlines()
+                                   if line.startswith("A claim scavenger") and "scavenger test token" in line]
+                    assert token_lines == ["A claim scavenger gets a scavenger test token."], observed
+                    assert process.poll() is None, output_path.read_text(errors="replace")[-3000:]
+                    print("floor: exactly one pickup per object; pickup precedes real wear; token stays in inventory", flush=True)
             except Exception:
                 print("server tail:", output_path.read_text(errors="replace")[-2000:], flush=True)
                 print("logs tail:", journey.runtime_logs(game)[-2000:], flush=True)

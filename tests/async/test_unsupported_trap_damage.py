@@ -46,6 +46,7 @@ bool damage(P_char, P_char, double, int) { ++effects; return true; }
     extract_function('trap.c', 'static bool trap_damage_supported(') + \
     extract_function('trap.c', 'static bool trap_target_eligible(') + \
     extract_function('trap.c', 'void trapdamage(') + \
+    extract_function('trap.c', 'bool movement_trap_trigger(') + \
     extract_function('trap.c', 'bool checkmovetrap(') + \
     extract_function('trap.c', 'bool checkgetput(') + \
     extract_function('trap.c', 'bool checkopen(') + r'''

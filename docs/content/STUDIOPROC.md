@@ -62,13 +62,13 @@ zone stops being a code change. The cost is one new data file in
 on-touch, on-wear and on-flee are all `CMD <that verb>`. Adding a verb
 to the engine adds a trigger type for free, with no change here.
 
-Three things the engine never dispatches anywhere needed one call each:
+Three post-action events need dedicated StudioProc dispatch calls:
 
 | hook | why nothing existing works |
 |---|---|
 | speech (`actcomm.c`) | `special()` runs *before* the command, so a reply issued from there prints above the player's own "You say", and returning TRUE swallows the say entirely. The hook runs after the words land, so a reply reads as a reply. |
 | give (`actobj.c`) | `special(CMD_GIVE)` fires pre-transfer with the raw argument string. The mob cannot tell which object it was handed, and "give all" never resolves. This runs post-transfer with the actual object. |
-| kill (`fight.c`) | `CMD_DEATH` tells the victim. Nothing anywhere tells the killer that it killed — `nq_char_death()` exists at nq.c:845 with zero call sites. |
+| kill (`fight.c`) | `CMD_DEATH` tells the victim, and `nq_char_death()` serves the separate XML quest engine. Neither dispatches a StudioProc kill trigger. |
 
 Placement is load-bearing in each case. The give hook is the last
 statement of `do_give()` because a GIVE trigger may purge the mob; it
@@ -196,10 +196,13 @@ quiet rather than racing.
 "Don't we already have this" is the right first question, so it was
 asked before the code was written.
 
-The tree has three quest-shaped data systems — `quest.c` (`.qst`:
-keyword→message, give→reward on quester mobs), `nq.c` (XML quests, which
-already hook say at actcomm.c:1127/1209 and give at actobj.c:2855) and
-`world_quest.c` — plus `mobpatrol.c`, `ACT_SCAVENGER`, the `AGGR_`
+The tree has separate static NPC, XML, and bartender quest engines:
+`quest.c` (`.qst`: keyword→message, give→reward on quester mobs), `nq.c`
+(XML actors/actions, hooked from ask, ordinary whisper, object give, and PC
+kills, but without a registered loading command), and `world_quest.c`.
+Tracking/dailies and epic progression have their own state as described in the
+[quest-system reference](../reference/QUEST_SYSTEMS.md). Other existing behavior
+includes `mobpatrol.c`, `ACT_SCAVENGER`, the `AGGR_`
 aggression words, an `ITEM_SPAWNER` constant (defines.h:138) with no
 implementation behind it, and `mob_prog_data` structs (structs.h:2107-2116)
 with no implementation anywhere, which suggests a mobprog layer was

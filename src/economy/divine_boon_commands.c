@@ -263,7 +263,9 @@ void do_divine_boon(P_char ch, char *argument, int /*cmd*/)
 	if (divine_boon_runtime_pending())
 		send_to_char("&+YRotation update awaiting durable confirmation.&n\r\n", ch);
 	player_next_hour(ch, *state, now);
-	send_to_char("&+LExperience boons add 100% of eligible base combat XP; other bonuses are not doubled and normal XP caps still apply.&n\r\n", ch);
+	send_to_char("&+LExperience boons add 100% of eligible base combat XP.&n\r\n"
+		     "&+LOther bonuses are not doubled; normal XP caps still apply.&n\r\n",
+		     ch);
 	send_to_char("&+LBenefits are automatic. Type HELP DIVINE BOONS for rules.&n\r\n", ch);
 }
 

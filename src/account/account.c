@@ -25,6 +25,7 @@
 #include "world/zone_touch_transaction.h"
 #include "cmd/interp.h"
 #include "sql/sql.h"
+#include "sql/sql_async.h"
 #include "economy/auction_transaction.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/collector_service.h"
@@ -70,6 +71,7 @@
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/persistence_observability.h"
 #include "flatfile/flatfile_account_adapter.h"
+#include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_account_delete.h"
 #include "persistence/persistence_mode.h"
 #include "ships/ships.h"
@@ -2572,6 +2574,57 @@ int sync_account_character_projection(P_char player, int room, int persist)
 	character->last_save = time(NULL);
 
 	return !persist || write_account(player->desc->account) == 1;
+}
+
+/** Persist the last played side at departure, including detached characters. */
+bool save_account_character_departure(P_char ch)
+{
+	P_acct account = ch->desc ? ch->desc->account : nullptr;
+	for (P_desc d = descriptor_list; !account && d; d = d->next)
+		for (acct_chars *entry = d->account ? d->account->acct_character_list : nullptr;
+		     entry; entry = entry->next)
+			if (entry->pid == GET_PID(ch))
+			{
+				account = d->account;
+				break;
+			}
+	const bool good = !IS_TRUSTED(ch) && IS_RACEWAR_GOOD(ch);
+	const bool evil = !IS_TRUSTED(ch) && IS_RACEWAR_EVIL(ch);
+	const long departed_at = time(nullptr);
+#ifdef __NO_MYSQL__
+	P_acct loaded = nullptr;
+	if (!account && (good || evil))
+	{
+		flatfile_identity_record identity;
+		std::string error;
+		const char *root = persistence_mode_flatfile_root();
+		if (!root || flatfile_identity_lookup_pid(root, GET_PID(ch), &identity, &error) !=
+				     flatfile_identity_result::ok)
+			return false;
+		account = loaded = flatfile_account_state_load(identity.account.c_str(), &error);
+		if (!account)
+			return false;
+	}
+#else
+	if (!account && (good || evil))
+		return sql_queue(
+			"UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
+			"WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
+			good ? "last_good_char" : "last_evil_char",
+			good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch));
+#endif
+	if (!account)
+		return true;
+	if (good)
+		account->acct_good = departed_at;
+	else if (evil)
+		account->acct_evil = departed_at;
+	const bool saved = write_account(account) == 1;
+#ifdef __NO_MYSQL__
+	if (loaded)
+		flatfile_account_state_release(loaded);
+#endif
+	return saved;
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds

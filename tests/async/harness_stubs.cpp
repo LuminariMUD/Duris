@@ -5,7 +5,9 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "account/account.h"
 #include "economy/boon_reward_transaction.h"
+#include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_guild_delivery.h"
 #include "guild/artifact_guild_state.h"
@@ -20,8 +22,22 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
+{
+	return false;
+}
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
+// Isolated terminal-save fixtures have no account projection or departure state.
+// Account lifecycle tests link the real implementation or supply their own boundary.
+HARNESS_STUB int sync_account_character_projection(P_char, int, int)
+{
+	return 1;
+}
+HARNESS_STUB bool save_account_character_departure(P_char)
+{
+	return true;
+}
 // Ordinary NPC fixtures use their own race. Tutorial profile/parity coverage
 // links the real lookup, including the full-world read_mobile_probe comparison.
 HARNESS_STUB int tutorial_mobile_mechanics_race(char_data *ch)
@@ -231,4 +247,40 @@ HARNESS_STUB artifact_guild_capture_status artifact_guild_state_prepare_delivery
 	P_char, int, int, const critical_operation_id &, critical_command *)
 {
 	return artifact_guild_capture_status::unavailable;
+}
+
+// Ordinary-container fixtures have no live locker registry. The private-chest
+// regression links production access and audit routing instead of these boundaries.
+HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
+{
+	return true;
+}
+HARNESS_STUB void locker_record_movement(P_char, P_obj, P_obj, bool, const char *) {}
+HARNESS_STUB bool currency_transaction_chest_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool locker_object_is_private_chest(P_obj)
+{
+	return false;
+}
+HARNESS_STUB bool sql_chest_log_available(void)
+{
+	return true;
+}
+
+HARNESS_STUB bool auction_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool collector_transaction_player_busy(P_char)
+{
+	return false;
+}
+
+HARNESS_STUB bool shop_trade_transaction_player_busy(P_char)
+{
+	return false;
 }

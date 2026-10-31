@@ -89,6 +89,12 @@ void currency_transaction_save_first(P_char character);
 bool currency_transaction_publish_trade(P_char character, int64_t payment);
 bool currency_transaction_reserve_trade(P_char character, int64_t payment);
 void currency_transaction_release_trade(uint32_t pid);
+// Hold an account/side and its purchaser's wallet until the atomic chest receipt resolves.
+bool currency_transaction_reserve_chest(P_char character);
+void currency_transaction_release_chest(uint32_t pid);
+void currency_transaction_publish_chest(P_char character, const currency_command_result &result,
+					bool bank_changes);
+bool currency_transaction_chest_busy(P_char character);
 currency_transaction_health currency_transaction_health_copy(void);
 void currency_transaction_reset_for_tests(void);
 

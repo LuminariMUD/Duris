@@ -2143,6 +2143,11 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	if (queued == player_save_pipeline_result::queued ||
 	    queued == player_save_pipeline_result::coalesced)
 	{
+		// The caller returns to the account menu before detaching the character.
+		if (!sync_account_character_projection(ch, room, FALSE))
+			persistence_alert(AVATAR, "account", "redacted", "none", "none",
+					  "write_failed",
+					  "terminal character projection save failed");
 		if (struct deferred_save_slot *slot = find_deferred_save_slot(GET_PID(ch)))
 			memset(slot, 0, sizeof(*slot));
 		clear_manual_save_status(GET_PID(ch));
@@ -2151,6 +2156,10 @@ bool persistence_save_character_terminal(P_char ch, int type)
 		persistence_alert(AVATAR, "player_save", "terminal", "none", "none", "queue_failed",
 				  "pid=%d intent=%d outcome=%u", GET_PID(ch), type,
 				  (unsigned)queued);
+	// Even a rejected character snapshot must not turn a departure into a side-switch bypass.
+	if (!save_account_character_departure(ch))
+		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
+				  "departure account save failed");
 	return true;
 }
 
@@ -3800,7 +3809,8 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 				ncoins = vcoins;
 			}
 			percent -= ncoins;
-			if (IS_PC(victim) && victim->only.pc->divine_trade_payment_pending)
+			if (IS_PC(victim) && (victim->only.pc->divine_trade_payment_pending ||
+					      currency_transaction_chest_busy(victim)))
 				failed = TRUE;
 
 			if (!failed)

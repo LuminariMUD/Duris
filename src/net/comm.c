@@ -44,6 +44,7 @@
 #include "cmd/interp.h"
 #include "core/utility.h"
 #include "core/utils.h"
+#include "item/storage_lockers.h"
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -102,6 +103,8 @@
 #include "economy/crafting.h"
 #include "account/account_recovery.h"
 #include "item/locker_identify.h"
+#include "item/private_chest_purchase.h"
+#include "item/storage_lockers.h"
 #include "cmd/information_cache.h"
 #include "cmd/help_cache.h"
 #include "account/password_hash.h"
@@ -399,6 +402,9 @@ static void critical_gameplay_handle_completions(const critical_completion *comp
 	for (size_t index = 0; index < count; ++index)
 		persistence_critical_failure(AVATAR, completions[index]);
 	locker_identify_pulse();
+	private_chest_purchase_pulse();
+	sql_chest_log_pulse();
+	locker_chest_changes_pulse();
 	item_movement_transaction_handle_completions(completions, count);
 	shop_trade_transaction_handle_completions(completions, count);
 	auction_transaction_handle_completions(completions, count);
@@ -1475,7 +1481,8 @@ static int get_playing_cmd_from_q(P_char character, struct txt_q *queue, char *d
 			collector_transaction_player_busy(character) ||
 			collector_service_player_busy(character),
 		collector_transaction_player_busy(character) ||
-			collector_service_player_busy(character));
+			collector_service_player_busy(character) ||
+			currency_transaction_chest_busy(character));
 }
 
 /** Keep abort reachable during casting, active item use and shoreline preparation. */
@@ -3559,6 +3566,9 @@ static void forget_hostname(int descriptor);
 
 void close_socket(struct descriptor_data *d)
 {
+	locker_invalidate_chest_access(d->character);
+	locker_invalidate_chest_access(d->original);
+
 	struct descriptor_data *tmp;
 	int is_morphed = d->character ? IS_MORPH(d->character) : 0;
 	if (d && d->player_load_request_id)

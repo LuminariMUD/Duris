@@ -56,9 +56,9 @@ bool collector_transaction_item_busy(uint64_t) { return false; }
 bool collector_service_player_busy(P_char) { return false; }
 void collector_catalog_cache_invalidate(void) {}
 void extract_obj(P_obj, int) {}
-void obj_from_char(P_obj) {}
+void obj_from_char(P_obj object) { object->loc_p = LOC_NOWHERE; }
 void obj_to_char(P_obj object, P_char ch) { object->loc_p = LOC_CARRIED; object->loc.carrying = ch; }
-void obj_to_obj(P_obj, P_obj) {}
+void obj_to_obj(P_obj object, P_obj container) { object->loc_p = LOC_INSIDE; object->loc.inside = container; }
 void obj_to_room(P_obj, int) {}
 void mark_player_dirty_components(int, player_component_mask_t) {}
 P_char find_player_by_pid(int pid) { return character_list && GET_PID(character_list) == pid ? character_list : nullptr; }
@@ -318,8 +318,96 @@ static void terminal_output_matrix()
         assert(ga_count == (websocket ? 0 : 1));
     }
 }
+static int batch_callbacks;
+static bool batch_expected;
+static void batch_done(P_char, bool committed, const item_transfer_result &, unsigned,
+                       const uint8_t *context, size_t context_size)
+{
+    assert(context_size == 1 && context[0] == 73 && committed == batch_expected);
+    ++batch_callbacks;
+}
+static void container_batch_matrix()
+{
+    indexes[0].virtual_number = 100;
+    for (bool committed : {false, true})
+    for (int count : {1, 2, 12, 13, 20, 50})
+    {
+        item_movement_transaction_reset_for_tests();
+        item_ownership_runtime_reset();
+        char_data actor{}; pc_only_data pc{}; descriptor_data descriptor{};
+        pc.pid = 42; actor.only.pc = &pc; actor.desc = &descriptor;
+        descriptor.character = &actor; descriptor.connected = CON_PLAYING;
+        character_list = &actor;
+        obj_data bag{};
+        bag.obj_uid = 700; bag.type = ITEM_CONTAINER;
+        bag.loc_p = LOC_CARRIED; bag.loc.carrying = &actor;
+        std::vector<obj_data> items(static_cast<size_t>(count));
+        std::vector<P_obj> roots;
+        object_list = &bag;
+        for (int index = count - 1; index >= 0; --index)
+        {
+            auto &item = items[static_cast<size_t>(index)];
+            item.obj_uid = 100 + static_cast<uint64_t>(index);
+            item.R_num = 0; item.loc_p = LOC_NOWHERE;
+            item.next = object_list; object_list = &item;
+        }
+        for (auto &item : items) roots.push_back(&item);
+        const item_owner_identity owner{item_owner_type::player, 42, 0};
+        assert(item_ownership_runtime_hydrate_owner({item_owner_type::system, 0, 0}, 1));
+        assert(item_ownership_runtime_hydrate_owner(owner, 7));
+        assert(item_ownership_runtime_hydrate({700, 700, 0, owner, 1, 7, 100, item_custody_state::active}));
+        batch_callbacks = 0; batch_expected = committed;
+        const uint8_t context = 73;
+        assert(item_creation_grant_submit_batch_to_player(&actor, roots.data(), roots.size(), &actor,
+                                                         &bag, batch_done, &context, 1));
+        item_transfer_payload payload{};
+        assert(item_transfer_command_decode_payload(submitted, &payload));
+        assert(payload.multi_root && payload.item_count == count && payload.target_parent_item_uid == 700);
+        assert(item_creation_grant_blocks_commands(&actor) && batch_callbacks == 0);
+        for (const auto &item : items) assert(OBJ_NOWHERE(&item));
+        critical_completion completion{};
+        completion.operation_id = submitted.operation_id;
+        completion.outcome = committed ? critical_apply_outcome::applied : critical_apply_outcome::terminal_failure;
+        item_transfer_result result{100, static_cast<uint16_t>(count), 2, 8, 1, 0};
+        std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded{};
+        assert(item_transfer_command_encode_result(result, &encoded));
+        completion.result_size = encoded.size();
+        std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+        if (committed) bag.loc_p = LOC_NOWHERE;
+        item_movement_transaction_handle_completions(&completion, 1);
+        if (committed)
+        {
+            assert(batch_callbacks == 0 && item_creation_grant_blocks_commands(&actor));
+            for (const auto &item : items) assert(OBJ_NOWHERE(&item));
+            bag.loc_p = LOC_CARRIED;
+            item_movement_transaction_player_ready(&actor);
+        }
+        assert(batch_callbacks == 1 && !item_movement_transaction_player_busy(&actor));
+        assert(!item_creation_grant_blocks_commands(&actor));
+        item_movement_transaction_handle_completions(&completion, 1);
+        assert(batch_callbacks == 1);
+        if (committed)
+            for (const auto &item : items)
+            {
+                assert(OBJ_INSIDE_OBJ(&item, &bag));
+                item_ownership_runtime_entry entry{};
+                assert(item_ownership_runtime_lookup(item.obj_uid, &entry));
+                assert(entry.root_item_uid == 700 && entry.parent_item_uid == 700);
+            }
+        item_movement_transaction_reset_for_tests();
+        while (descriptor.output.head)
+        {
+            auto *block = descriptor.output.head;
+            descriptor.output.head = block->next;
+            free(block->text);
+            free(block);
+        }
+        object_list = nullptr; character_list = nullptr;
+    }
+}
 int main()
 {
+    container_batch_matrix();
     assert(publish_news("transport news\n"));
     for (bool ws : {false, true})
     for (bool compact : {false, true})
