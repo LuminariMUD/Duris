@@ -22,10 +22,13 @@ assert "someone of your experience" in feedback
 assert "grab a few levels and come back" in feedback
 assert "You need to reach level 11" in world_quest
 level_gate = world_quest.index("if (GET_LEVEL(pl) < WORLD_QUEST_MIN_LEVEL)")
-quota_check = world_quest.index("if (sql_world_quest_can_do_another(pl) < 1)")
+quota_check = world_quest.index("const int remaining = sql_world_quest_can_do_another(pl);")
+unknown = world_quest.index("if (remaining < 0)", quota_check)
+exhausted = world_quest.index("if (remaining == 0)", unknown)
 fee_calculation = world_quest.index('get_property("world.quest.cost.per.level", 20.000)')
 fee_deduction = world_quest.index("currency_transaction_submit_wallet_value(", fee_calculation)
-assert level_gate < quota_check < fee_calculation < fee_deduction
+assert level_gate < quota_check < unknown < exhausted < fee_calculation < fee_deduction
+assert "can't check your quest history" in world_quest[unknown:exhausted]
 
 assert "SUB_MONEY(pl, temp, 0);" not in world_quest
 assert "currency_transaction_submit_wallet_value" in world_quest

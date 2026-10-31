@@ -89,6 +89,11 @@ void currency_transaction_save_first(P_char character);
 bool currency_transaction_publish_trade(P_char character, int64_t payment);
 bool currency_transaction_reserve_trade(P_char character, int64_t payment);
 void currency_transaction_release_trade(uint32_t pid);
+// Reserve one player's pending bartender fee without debiting it before commit.
+bool currency_transaction_reserve_world_quest(P_char character, int64_t fee);
+bool currency_transaction_publish_world_quest(P_char character, int64_t fee);
+void currency_transaction_release_world_quest(uint32_t pid);
+bool currency_transaction_wallet_busy(P_char character);
 // Hold an account/side and its purchaser's wallet until the atomic chest receipt resolves.
 bool currency_transaction_reserve_chest(P_char character);
 void currency_transaction_release_chest(uint32_t pid);

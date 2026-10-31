@@ -35,7 +35,9 @@
 #include <climits>
 #include <cerrno>
 #include <cstring>
+#include <new>
 #include <string>
+#include <unordered_map>
 
 extern P_room world;
 
@@ -45,6 +47,7 @@ currency_transaction_health health = {};
 
 uint32_t reserved_trade_pid;
 int64_t reserved_trade_payment;
+std::unordered_map<uint32_t, int64_t> reserved_world_quests;
 uint32_t reserved_chest_pid = 0;
 std::string reserved_chest_account;
 int reserved_chest_racewar = 0;
@@ -421,6 +424,65 @@ bool currency_transaction_publish_trade(P_char character, int64_t payment)
 	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
 	gmcp_char_vitals(character);
 	return true;
+}
+
+bool currency_transaction_reserve_world_quest(P_char character, int64_t fee)
+try
+{
+	if (!character || IS_NPC(character) || !character->only.pc || GET_PID(character) <= 0 ||
+	    fee <= 0 || character->only.pc->wallet_revision == UINT64_MAX ||
+	    currency_transaction_wallet_busy(character) ||
+	    reserved_trade_pid == static_cast<uint32_t>(GET_PID(character)) ||
+	    auction_transaction_player_busy(character) ||
+	    collector_transaction_player_busy(character) ||
+	    shop_trade_transaction_player_busy(character))
+		return false;
+	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
+					GET_GOLD(character), GET_PLATINUM(character) } };
+	currency_vector after;
+	return currency_wallet_after_value(before, -fee, &after) &&
+	       reserved_world_quests.emplace(static_cast<uint32_t>(GET_PID(character)), fee).second;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
+}
+
+void currency_transaction_release_world_quest(uint32_t pid)
+{
+	reserved_world_quests.erase(pid);
+}
+
+bool currency_transaction_publish_world_quest(P_char character, int64_t fee)
+{
+	if (!character || IS_NPC(character) || !character->only.pc || GET_PID(character) <= 0 ||
+	    character->only.pc->wallet_revision == UINT64_MAX ||
+	    currency_transaction_chest_busy(character))
+		return false;
+	auto reserved = reserved_world_quests.find(static_cast<uint32_t>(GET_PID(character)));
+	if (reserved == reserved_world_quests.end() || reserved->second != fee)
+		return false;
+	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
+					GET_GOLD(character), GET_PLATINUM(character) } };
+	currency_vector after;
+	if (!currency_wallet_after_value(before, -fee, &after))
+		return false;
+	GET_COPPER(character) = static_cast<int>(after.amount[0]);
+	GET_SILVER(character) = static_cast<int>(after.amount[1]);
+	GET_GOLD(character) = static_cast<int>(after.amount[2]);
+	GET_PLATINUM(character) = static_cast<int>(after.amount[3]);
+	++character->only.pc->wallet_revision;
+	reserved_world_quests.erase(reserved);
+	mark_player_dirty_components(GET_PID(character), PLAYER_COMPONENT_STATUS);
+	gmcp_char_vitals(character);
+	return true;
+}
+
+bool currency_transaction_wallet_busy(P_char character)
+{
+	return currency_transaction_chest_busy(character) ||
+	       (character && IS_PC(character) && GET_PID(character) > 0 &&
+		reserved_world_quests.count(static_cast<uint32_t>(GET_PID(character))));
 }
 
 bool currency_transaction_chest_account_busy(const char *account_name)

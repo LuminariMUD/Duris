@@ -28711,8 +28711,16 @@ their existing independent eligibility rules. Downtime skips missed hours.
 Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
-Damage, tanking, healing and kill shares qualify in your designated zone.
+Damage, tanking, healing, melee and kill shares qualify in your designated zone.
 Quest, resurrection, PvP and other non-combat EXP do not qualify.
+This adds 100% of eligible base EXP after reductions. Rest, racial and other
+bonuses are not doubled. Final award caps and remaining EXP storage still apply.
+With TOGGLE EXP enabled, kill EXP lines show (Divine Boon +N) when a positive
+Divine contribution survives rounding and caps. Other combat contributions
+are combined into one Divine Boon message per game tick. The number counts
+only the credited eligible base; it excludes any rounding difference between
+the precise Divine calculation and the legacy calculation without a boon.
+A fully capped award can therefore show no Divine contribution.
 Epic zone: +50% eligible epic-stone base payout for eight real hours.
 PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
@@ -28768,8 +28776,16 @@ their existing independent eligibility rules. Downtime skips missed hours.
 Absolute expiry times survive restart.
 
 Zone EXP: 200% of eligible NPC combat base EXP for eight real hours.
-Damage, tanking, healing and kill shares qualify in your designated zone.
+Damage, tanking, healing, melee and kill shares qualify in your designated zone.
 Quest, resurrection, PvP and other non-combat EXP do not qualify.
+This adds 100% of eligible base EXP after reductions. Rest, racial and other
+bonuses are not doubled. Final award caps and remaining EXP storage still apply.
+With TOGGLE EXP enabled, kill EXP lines show (Divine Boon +N) when a positive
+Divine contribution survives rounding and caps. Other combat contributions
+are combined into one Divine Boon message per game tick. The number counts
+only the credited eligible base; it excludes any rounding difference between
+the precise Divine calculation and the legacy calculation without a boon.
+A fully capped award can therefore show no Divine contribution.
 Epic zone: +50% eligible epic-stone base payout for eight real hours.
 PvP: +50% legitimate nonzero opposing Good/Evil epic awards for four hours.
 Normal level, repeat-victim, frag and final reward limits still apply.
