@@ -329,7 +329,9 @@ bool valid_trade_tag(const player_snapshot &snapshot)
 
 bool valid_metadata(const player_snapshot &snapshot)
 {
-	if (!valid_trade_tag(snapshot))
+	// This tag is a SQL transaction input, not part of the persisted flat-file
+	// snapshot codec. Never silently encode an after-image without its history.
+	if (snapshot.pending_world_quest.present || !valid_trade_tag(snapshot))
 		return false;
 	return snapshot.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION && snapshot.pid > 0 &&
 	       snapshot.revision && snapshot.components &&
@@ -996,4 +998,52 @@ try
 catch (const std::bad_alloc &)
 {
 	return player_snapshot_codec_result::allocation_failure;
+}
+
+// Preserve unrelated state without publishing a quest completion or staged reward.
+bool player_snapshot_world_quest_fallback(const player_snapshot &captured, player_snapshot *result)
+{
+	const auto &pending = captured.pending_world_quest;
+	if (!result || !pending.present || pending.fallback_only ||
+	    !(captured.components & PLAYER_COMPONENT_STATUS) || pending.target <= 0 ||
+	    pending.level <= 0 || pending.giver < 0 || pending.occurred_at <= 0 ||
+	    pending.player_name.empty() || pending.escrow_fee < 0 ||
+	    (pending.awaiting_reward && pending.escrow_fee) ||
+	    (pending.final_kill_reward && !pending.awaiting_reward) ||
+	    (!pending.awaiting_reward && !pending.reward_items.empty()) ||
+	    (pending.reward_items.empty() != (pending.reward_encoded_size == 0)) ||
+	    (!pending.reward_items.empty() &&
+	     (captured.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) !=
+		     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
+		return false;
+	*result = captured;
+	auto &quest = result->pending_world_quest;
+	result->quest_values = quest.before_quest;
+	if (quest.reward_items.size() > result->items.size())
+		return false;
+	const size_t offset = result->items.size() - quest.reward_items.size();
+	for (size_t index = 0; index < quest.reward_items.size(); ++index)
+		if (!quest.reward_items[index].object_uid ||
+		    result->items[offset + index].object_uid !=
+			    quest.reward_items[index].object_uid)
+			return false;
+	result->items.resize(offset);
+	for (auto &row : result->status_integers)
+	{
+		if (row.field == player_status_field::quest_origin_room)
+			row.signed_value = quest.before_origin;
+		else if (row.field == player_status_field::quest_replacement_due)
+			row.signed_value = quest.before_replacement_due;
+		else if (quest.escrow_fee && row.field >= player_status_field::copper &&
+			 row.field <= player_status_field::platinum)
+		{
+			const size_t index = static_cast<size_t>(row.field) -
+					     static_cast<size_t>(player_status_field::copper);
+			row.signed_value = quest.before_wallet[index];
+		}
+	}
+	if (quest.escrow_fee)
+		result->wallet_revision = quest.before_wallet_revision;
+	quest.fallback_only = true;
+	return true;
 }

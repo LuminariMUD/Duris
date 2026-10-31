@@ -39,6 +39,7 @@ struct hardcore_config
 	int score_level_points;
 	int score_experience_divisor;
 	int score_frag_points;
+	int score_epic_points;
 	int score_multiclass_multiplier;
 	int score_killer_bonus;
 	int score_death_penalty_points;

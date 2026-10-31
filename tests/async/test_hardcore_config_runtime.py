@@ -33,6 +33,7 @@ int main(int argc, char **argv)
                config->bonus_hp_per_level == 2 &&
                config->score_death_penalty_points == 25 &&
                config->score_display_divisor == 100 &&
+               config->score_epic_points == 100 &&
                config->disable_in_ctf &&
                hardcore_config_death_is_final(1) &&
                !hardcore_config_death_is_final(0) &&
@@ -44,6 +45,7 @@ int main(int argc, char **argv)
            config->bonus_hp_per_level == 7 &&
            config->score_death_penalty_points == 40 &&
            config->score_display_divisor == 250 &&
+           config->score_epic_points == 300 &&
            !config->disable_in_ctf &&
            !hardcore_config_death_is_final(1) &&
            hardcore_config_death_is_final(5) &&
@@ -53,6 +55,7 @@ int main(int argc, char **argv)
     return config->death_max_count == 1 &&
            config->bonus_hp_per_level == 2 &&
            config->score_display_divisor == 100 &&
+           config->score_epic_points == 100 &&
            hardcore_config_death_is_final(1) ? 0 : 1;
 }
 '''
@@ -88,6 +91,7 @@ with tempfile.TemporaryDirectory(prefix="hardcore-config-runtime-") as directory
     overridden = overridden.replace("bonus.hp.per.level=2", "bonus.hp.per.level=7")
     overridden = overridden.replace("score.death.penalty.points=25", "score.death.penalty.points=40")
     overridden = overridden.replace("score.display.divisor=100", "score.display.divisor=250")
+    overridden = overridden.replace("score.epic.points=100", "score.epic.points=300")
     overridden = overridden.replace("mode.disable.in.ctf=true", "mode.disable.in.ctf=false")
     overridden = overridden.replace("level.loss.protected.at=50", "level.loss.protected.at=52")
     (root / "lib/hardcore.cfg").write_text(overridden)
@@ -96,6 +100,7 @@ with tempfile.TemporaryDirectory(prefix="hardcore-config-runtime-") as directory
     invalid = overridden.replace("death.max.count=5", "death.max.count=0")
     invalid = invalid.replace("bonus.hp.per.level=7", "bonus.hp.per.level=101")
     invalid = invalid.replace("score.display.divisor=250", "score.display.divisor=0")
+    invalid = invalid.replace("score.epic.points=300", "score.epic.points=-1")
     (root / "lib/hardcore.cfg").write_text(invalid)
     subprocess.run([str(binary), "invalid", "bounds"], cwd=root, check=True)
 

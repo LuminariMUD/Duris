@@ -19,11 +19,22 @@
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
 #include "economy/divine_trade_runtime.h"
+#include "economy/currency_transaction.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Fixtures without the player-save pipeline have no pending quest transition.
+HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)
+{
+	return false;
+}
+HARNESS_STUB bool currency_transaction_chest_busy(P_char);
+HARNESS_STUB bool currency_transaction_wallet_busy(P_char ch)
+{
+	return currency_transaction_chest_busy(ch);
+}
 HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 {
 	return false;

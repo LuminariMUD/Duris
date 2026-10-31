@@ -168,7 +168,7 @@ bool submit(P_char character, const auction_command_payload &payload,
 	    auction_completion_fn completion, critical_source_site source,
 	    critical_deadline_class deadline)
 {
-	if (character && currency_transaction_chest_busy(character))
+	if (character && currency_transaction_wallet_busy(character))
 		return false;
 	if (pending.size() >= AUCTION_PENDING_MAX ||
 	    (payload.actor_pid && (!character || IS_NPC(character) ||

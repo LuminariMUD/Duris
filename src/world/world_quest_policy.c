@@ -79,6 +79,22 @@ enum class quest_route_mode
 	potential,
 };
 
+// Audited Bloodstone ambient ticks. Each ignores nonzero commands (apart
+// from periodic registration) and only speaks or performs cosmetic actions.
+// They neither gate ordinary travel/doors nor intercept ASK.
+bool passive_quest_mobile_proc(mob_proc_type proc)
+{
+	return proc == bs_boss || proc == bs_citizen || proc == bs_comwoman || proc == bs_brat ||
+	       proc == bs_holyman || proc == bs_merchant || proc == bs_wino || proc == bs_watcher ||
+	       proc == bs_guard || proc == bs_squire || proc == bs_peddler || proc == bs_timid ||
+	       proc == bs_shady || proc == bs_sinister || proc == bs_menacing ||
+	       proc == bs_executioner || proc == bs_baron || proc == bs_sparrow ||
+	       proc == bs_squirrel || proc == bs_crow || proc == bs_mountainman ||
+	       proc == bs_salesman || proc == bs_nomad || proc == bs_insane ||
+	       proc == bs_homeless || proc == bs_servant || proc == bs_gnoll ||
+	       proc == bs_griffon || proc == bs_boar || proc == bs_cub || proc == bs_stirge;
+}
+
 struct quest_route_builder
 {
 	using rooms = std::unordered_map<int, world_quest_route_context::room>;
@@ -130,7 +146,8 @@ struct quest_route_builder
 				return false;
 			proc = shop_index[shop].func;
 		}
-		return !proc || proc == world_quest || proc == quester;
+		return !proc || proc == world_quest || proc == quester ||
+		       passive_quest_mobile_proc(proc);
 	}
 
 	bool ordinary_object_proc(obj_proc_type proc) const
@@ -201,10 +218,11 @@ struct quest_route_builder
 			return result;
 		const auto &entry = world[room];
 		result.status = world_quest_route_status::unproven;
-		// inn and ship_shop_proc explicitly ignore movement, door commands and
+		// These room shops explicitly ignore movement, door commands and
 		// arrival/departure hooks. Other procedures require a source audit.
 		if (mode != quest_route_mode::potential &&
-		    ((entry.funct && entry.funct != inn && entry.funct != ship_shop_proc) ||
+		    ((entry.funct && entry.funct != inn && entry.funct != ship_shop_proc &&
+		      entry.funct != crew_shop_proc) ||
 		     entry.chance_fall || entry.current_speed || entry.affected))
 			return result;
 		for (P_char person = entry.people; person; person = person->next_in_room)
@@ -982,9 +1000,7 @@ struct quest_target_request
 		       world[source->room].number == GET_BIRTHPLACE(mob) &&
 		       world[source->room].zone == world[mob->in_room].zone &&
 		       source->profile->vnum == GET_VNUM(mob) &&
-		       static_zone_eligibility(world[mob->in_room].zone, level) &&
-		       source->profile->level >= level - 4 && source->profile->level <= level + 5 &&
-		       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5;
+		       static_zone_eligibility(world[mob->in_room].zone, level);
 	}
 
 	bool reachable(P_char mob) const
@@ -1010,7 +1026,7 @@ struct quest_target_request
 
 	bool ask_handler(P_char mob, mob_proc_type proc)
 	{
-		if (!proc)
+		if (!proc || passive_quest_mobile_proc(proc))
 			return true;
 		if (proc != shop_keeper)
 			return false;
@@ -1021,8 +1037,9 @@ struct quest_target_request
 			return false;
 		const int shop = singleton_shop_id(mob);
 		// Travel-safe quest handlers may consume ASK before do_ask reaches
-		// quest_ask. A shop with no delegate explicitly ignores ASK.
-		return shop >= 0 && shop < number_of_shops && !shop_index[shop].func;
+		// quest_ask. Only an absent or audited passive shop delegate ignores it.
+		return shop >= 0 && shop < number_of_shops &&
+		       (!shop_index[shop].func || passive_quest_mobile_proc(shop_index[shop].func));
 	}
 
 	bool world_type_eligible(P_char mob, int type)
@@ -1032,15 +1049,16 @@ struct quest_target_request
 		if (mob->specials.z_cord != 0)
 			return false;
 		if (type == FIND_AND_KILL)
-			return profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
+			return profile.level >= level - 4 && profile.level <= level + 5 &&
+			       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5 &&
+			       profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
 			       GET_EXP(mob) > 0 && !IS_SHOPKEEPER(mob) &&
 			       !IS_SET(mob->specials.act,
 				       ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE) &&
 			       !IS_SET(world[room].room_flags, ROOM_SAFE) &&
 			       !IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
 		if (mob_index[GET_RNUM(mob)].number != 1 || !profile.can_speak ||
-		    profile.level >= MAXLVL || !CAN_SPEAK(mob) || !IS_AWAKE(mob) ||
-		    IS_AFFECTED2(mob, AFF2_SILENCED) ||
+		    profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL || !CAN_SPEAK(mob) ||
 		    IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
 		    IS_SET(zone_table[world[room].zone].flags, ZONE_SILENT) ||
 		    world[room].sector_type == SECT_UNDERWATER ||
@@ -1063,7 +1081,9 @@ struct quest_target_request
 	bool type_eligible(P_char mob, int type)
 	{
 		return world_type_eligible(mob, type) &&
-		       (type != FIND_AND_ASK || (actor_can_ask() && handlers_eligible(mob)));
+		       (type != FIND_AND_ASK ||
+			(IS_AWAKE(mob) && !IS_AFFECTED2(mob, AFF2_SILENCED) && actor_can_ask() &&
+			 handlers_eligible(mob)));
 	}
 
 	int suggest(int zone, int type, int minimum)
@@ -1185,7 +1205,9 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 					continue;
 				status interaction = status::valid;
 				if (request.controlled(mob) ||
-				    (type == FIND_AND_ASK && !request.actor_can_ask()))
+				    (type == FIND_AND_ASK &&
+				     (!request.actor_can_ask() || !IS_AWAKE(mob) ||
+				      IS_AFFECTED2(mob, AFF2_SILENCED))))
 					interaction = status::blocked;
 				else if (type == FIND_AND_ASK && !request.handlers_eligible(mob))
 					interaction = status::unproven;
