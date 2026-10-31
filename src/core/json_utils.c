@@ -21,6 +21,7 @@
 #include "ships/ships.h"
 #include "classes/specializations.h"
 #include "magic/spells.h"
+#include "player/player_snapshot.h"
 
 /* externs */
 extern const char *class_abbrevs[];
@@ -1221,8 +1222,16 @@ char *json_build_quest_status(struct char_data *ch, world_quest_target_status st
 		else if (ch->only.pc->quest_type == FIND_AND_KILL)
 		{
 			cJSON_AddStringToObject(root, "type", "kill");
+			const bool pending_reward =
+				ch->only.pc->quest_accomplished ==
+					PLAYER_WORLD_QUEST_REWARD_PENDING ||
+				ch->only.pc->quest_accomplished ==
+					PLAYER_WORLD_QUEST_KILL_REWARD_PENDING ||
+				ch->only.pc->quest_accomplished ==
+					PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
 			cJSON_AddNumberToObject(root, "killCount",
-						ch->only.pc->quest_kill_how_many);
+						pending_reward ? ch->only.pc->quest_kill_original :
+								 ch->only.pc->quest_kill_how_many);
 			cJSON_AddNumberToObject(root, "killRequired",
 						ch->only.pc->quest_kill_original);
 		}

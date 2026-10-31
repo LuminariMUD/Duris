@@ -899,6 +899,147 @@ int main()
 	std::cout
 		<< "[PASS] rent placements, replay, recovery intents, partial saves and SQL rollback\n";
 
+	// History and its player's quest after-image must be one transaction. A
+	// rejected INSERT must not leave the task cleared; replay must not duplicate it.
+	execute(test_connection, "INSERT INTO player_data(pid,name,quest_active,quest_mob_vnum) "
+				 "VALUES (77777,'QuestProbe',1,15001)");
+	auto quest = snapshot_for(77777, 400000, "QuestProbe");
+	quest.components = PLAYER_COMPONENT_STATUS;
+	quest.pending_world_quest = { true, 15001,	30,	      9000,
+				      0,    1800000000, "QuestProbe", "a witness's reward" };
+	quest.pending_world_quest.before_quest[0] = 1;
+	quest.pending_world_quest.before_quest[1] = 15001;
+	quest.pending_world_quest.escrow_fee = 67;
+	quest.pending_world_quest.before_wallet = { 1000, 0, 0, 0 };
+	quest.pending_world_quest.before_wallet_revision = 0;
+	quest.wallet_revision = 1;
+	quest.status_integers.push_back({ player_status_field::copper, 3, 0, false });
+	quest.status_integers.push_back({ player_status_field::silver, 3, 0, false });
+	quest.status_integers.push_back({ player_status_field::gold, 9, 0, false });
+	quest.status_integers.push_back({ player_status_field::platinum, 0, 0, false });
+	execute(test_connection,
+		"CREATE TRIGGER reject_quest_history BEFORE INSERT ON world_quest_accomplished "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='quest rollback probe'");
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"history refusal accepted the player snapshot");
+	require(scalar(test_connection, "SELECT quest_active FROM player_data WHERE pid=77777") ==
+				"1" &&
+			scalar(test_connection, "SELECT copper FROM player_data WHERE pid=77777") ==
+				"1000" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777") ==
+				"0",
+		"history refusal cleared the quest or inserted a row");
+	execute(test_connection, "DROP TRIGGER reject_quest_history");
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+			player_save_apply_outcome::applied,
+		"quest snapshot did not commit after the failure was removed");
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT quest_active FROM player_data WHERE pid=77777") == "0" &&
+			scalar(test_connection,
+			       "SELECT CONCAT(copper,':',silver,':',gold,':',platinum) FROM player_data WHERE pid=77777") ==
+				"3:3:9:0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15001") ==
+				"1" &&
+			scalar(test_connection,
+			       "SELECT reward_desc FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15001") ==
+				"a witness's reward",
+		"quest snapshot replay lost status, duplicated history or altered its text");
+	execute(test_connection, "UPDATE player_data SET quest_active=1 WHERE pid=77777");
+	++quest.pending_world_quest.occurred_at;
+	++quest.revision;
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT quest_active FROM player_data WHERE pid=77777") == "1",
+		"an unrelated older completion was mistaken for this retry");
+	--quest.pending_world_quest.occurred_at;
+	execute(test_connection,
+		"UPDATE player_data SET wallet_revision=5,quest_active=1 WHERE pid=77777");
+	quest.pending_world_quest.target = 15002;
+	++quest.revision;
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT quest_active FROM player_data WHERE pid=77777") == "1" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15002") ==
+				"0",
+		"stale wallet snapshot committed a quest completion");
+	std::cout
+		<< "[PASS] quest status/history transaction, rejection, replay and stale wallet\n";
+
+	execute(test_connection,
+		"UPDATE player_data SET wallet_revision=0,quest_active=1 WHERE pid=77777");
+	quest.components = PLAYER_COMPONENT_STATUS | PLAYER_COMPONENT_EQUIPMENT |
+			   PLAYER_COMPONENT_INVENTORY;
+	quest.quest_values[0] = 1;
+	quest.quest_values[1] = 15003;
+	quest.quest_values[3] = PLAYER_WORLD_QUEST_REWARD_PENDING;
+	quest.pending_world_quest.target = 15003;
+	quest.pending_world_quest.awaiting_reward = true;
+	quest.pending_world_quest.escrow_fee = 0;
+	quest.pending_world_quest.before_quest[1] = 15003;
+	quest.pending_world_quest.reward_items = { item(15003001, 1001, -1) };
+	quest.pending_world_quest.reward_encoded_size = 1024;
+	quest.items = { item(15003002, 1002, -1), quest.pending_world_quest.reward_items[0] };
+	++quest.revision;
+	execute(test_connection,
+		"CREATE TRIGGER reject_quest_history BEFORE INSERT ON world_quest_accomplished "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='reward rollback probe'");
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM item_current_owner WHERE item_uid=15003001") ==
+				"0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003001") ==
+				"0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003002") ==
+				"1" &&
+			owner_of(15003002) == "1:77777:0:1:15003002:0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15003") ==
+				"0",
+		"history failure left a reward claim or payload behind");
+	execute(test_connection, "DROP TRIGGER reject_quest_history");
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::applied &&
+			player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT quest_accomplished FROM player_data WHERE pid=77777") ==
+				"2" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003001") ==
+				"1" &&
+			owner_of(15003001) == "1:77777:0:1:15003001:0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15003") ==
+				"1",
+		"reward, history and recoverable quest marker did not commit once");
+	execute(test_connection,
+		"INSERT INTO item_current_owner (item_uid,root_item_uid,owner_type,owner_id,"
+		"owner_context_id,item_revision,vnum,state) VALUES (15004001,15004001,1,2,0,1,1001,1)");
+	quest.pending_world_quest.target = 15004;
+	quest.pending_world_quest.reward_items = { item(15004001, 1001, -1) };
+	quest.items = { item(15003002, 1002, -1), item(15003001, 1001, -1),
+			quest.pending_world_quest.reward_items[0] };
+	++quest.revision;
+	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			owner_of(15004001) == "1:2:0:1:15004001:0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15004") ==
+				"0",
+		"a colliding reward UID stole another owner's item or recorded history");
+	std::cout << "[PASS] quest reward custody, history, rollback, replay and UID collision\n";
+
 	mysql_close(test_connection);
 	mysql_library_end();
 	std::cout << "player save claim MariaDB leg passed\n";

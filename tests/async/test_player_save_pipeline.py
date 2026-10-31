@@ -152,6 +152,7 @@ player_snapshot_capture_result player_snapshot_capture(P_char ch, player_revisio
     snapshot->pid = GET_PID(ch);
     snapshot->revision = revision;
     snapshot->components = components;
+    snapshot->wallet_revision = ch->only.pc->wallet_revision;
     capture_budget budget;
     if ((components & PLAYER_COMPONENT_STATUS) && !capture_status(ch, *snapshot, budget, save_intent))
         return player_snapshot_capture_result::limit_exceeded;
@@ -320,6 +321,197 @@ int main()
     // A save completed before logout is retired by extraction, including unsaved dirt.
     player_save_pipeline_end_session(44);
     assert(!player_revision_snapshot_copy(44, &revision));
+
+    // A quest transition retains the full terminal capture through write
+    // failures, holds reload, and publishes only after the history/status
+    // after-image commits even if its actor has departed.
+    player dave(45);
+    dave.pc.quest_active = 1;
+    dave.pc.quest_mob_vnum = 15001;
+    dave.pc.quest_origin_room = 16633;
+    dave.pc.quest_replacement_due = 1;
+    dave.ch.next = character_list;
+    character_list = &dave.ch;
+    assert(player_revision_hydrate(45, 0));
+    player_pending_world_quest quest{true,15001,30,9000,0,1800000000,"Dave",""};
+    int quest_callbacks = 0;
+    bool callback_was_offline = false;
+    persistence_writer_quiesce();
+    assert(!player_save_pipeline_submit_world_quest(&dave.ch, quest,
+        [&](P_char, const player_pending_world_quest &) { ++quest_callbacks; return true; }));
+    assert(!player_save_pipeline_world_quest_pending(45) && quest_callbacks == 0);
+    persistence_writer_resume();
+    state.failures[45] = 2;
+    hold_writer(true);
+    assert(player_save_pipeline_submit_world_quest(&dave.ch, quest,
+        [&](P_char actor, const player_pending_world_quest &record) {
+            ++quest_callbacks; callback_was_offline = !actor;
+            assert(record.target == 15001);
+            return true;
+        }));
+    wait_until_held();
+    assert(player_save_pipeline_world_quest_pending(45) && dave.pc.quest_active == 1);
+    assert(player_save_pipeline_request(&dave.ch, PLAYER_CHECKPOINT_COMPONENT_ALL,
+                                        RENT_QUIT, 3001) == player_save_pipeline_result::queued);
+    character_list = dave.ch.next;
+    player_save_pipeline_end_session(45);
+    assert(player_save_pipeline_load_held(45));
+    hold_writer(false);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(quest_callbacks == 0 && player_save_pipeline_world_quest_pending(45));
+    const auto quest_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (player_save_pipeline_world_quest_pending(45) &&
+           std::chrono::steady_clock::now() < quest_deadline) {
+        player_save_pipeline_pulse();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    assert(!player_save_pipeline_world_quest_pending(45) && quest_callbacks == 1 &&
+           callback_was_offline && !player_save_pipeline_load_held(45));
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        const auto &saved = state.committed.at(45);
+        assert(saved.pending_world_quest.present && saved.pending_world_quest.target == 15001);
+        assert(saved.quest_values[0] == 0 && saved.quest_values[1] == 0 &&
+               saved.quest_values[5] == -1);
+        for (const auto &row : saved.status_integers)
+            if (row.field == player_status_field::quest_origin_room ||
+                row.field == player_status_field::quest_replacement_due)
+                assert(row.signed_value == 0 && row.unsigned_value == 0);
+    }
+
+    // A rewarded completion instead persists the active task as accomplished,
+    // so a disconnect before reward publication can recover it on login.
+    player erin(46);
+    erin.pc.quest_active = 1;
+    erin.pc.quest_mob_vnum = 15002;
+    erin.pc.quest_started = 1234;
+    erin.pc.quest_origin_room = 16633;
+    erin.ch.next = character_list;
+    character_list = &erin.ch;
+    assert(player_revision_hydrate(46, 0));
+    auto reward_quest = quest;
+    reward_quest.target = 15002;
+    reward_quest.awaiting_reward = true;
+    reward_quest.reward = {260, 3, 400};
+    player_item_snapshot reward_root{}, reward_child{};
+    reward_root.object_uid=9001; reward_root.vnum=1001;
+    reward_root.parent_index=PLAYER_SNAPSHOT_NO_PARENT;
+    reward_child.object_uid=9002; reward_child.vnum=1002; reward_child.parent_index=0;
+    reward_quest.reward_items={reward_root,reward_child};
+    reward_quest.reward_encoded_size=1024;
+    int reward_callbacks = 0;
+    hold_writer(true);
+    assert(player_save_pipeline_submit_world_quest(&erin.ch, reward_quest,
+        [&](P_char actor, const player_pending_world_quest &record) {
+            assert(actor == &erin.ch && record.awaiting_reward);
+            return ++reward_callbacks > 1; // first live publication refuses
+        }));
+    wait_until_held();
+    assert(erin.pc.quest_active == 1 && erin.pc.quest_accomplished == 0 &&
+           reward_callbacks == 0);
+    hold_writer(false);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert(reward_callbacks == 1 && player_save_pipeline_world_quest_pending(46) &&
+           player_save_pipeline_load_held(46));
+    // A save during refused publication still carries the detached reward.
+    assert(player_save_pipeline_request(&erin.ch, PLAYER_COMPONENT_STATUS, RENT_CRASH, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    const auto publication_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (player_save_pipeline_world_quest_pending(46) &&
+           std::chrono::steady_clock::now() < publication_deadline) {
+        player_save_pipeline_pulse();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    assert(reward_callbacks >= 2 && !player_save_pipeline_world_quest_pending(46));
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        const auto &saved = state.committed.at(46);
+        assert(saved.pending_world_quest.awaiting_reward && saved.quest_values[0] == 1 &&
+               saved.quest_values[1] == 15002 &&
+               saved.quest_values[3] == PLAYER_WORLD_QUEST_REWARD_PENDING &&
+               saved.quest_values[4] == 1234 && saved.quest_values[8] == 260 &&
+               saved.quest_values[9] == 3 && saved.quest_values[10] == 400);
+        assert((saved.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) ==
+               (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));
+        assert(saved.items.size() == 2 && saved.items[0].object_uid == 9001 &&
+               saved.items[1].object_uid == 9002 && saved.items[1].parent_index == 0);
+    }
+    character_list = erin.ch.next;
+
+    // An escrowed fee is only present in the committed after-image; fallback
+    // keeps the exact captured denominations and revision.
+    player frank(47);
+    frank.pc.quest_active=1; frank.pc.quest_mob_vnum=15003;
+    frank.pc.wallet_revision=10; GET_COPPER(&frank.ch)=100;
+    frank.ch.next=character_list; character_list=&frank.ch;
+    assert(player_revision_hydrate(47, 0));
+    auto paid_quest=quest; paid_quest.target=15003; paid_quest.escrow_fee=67;
+    int paid_callbacks=0;
+    hold_writer(true);
+    assert(player_save_pipeline_submit_world_quest(&frank.ch,paid_quest,
+        [&](P_char actor,const player_pending_world_quest &) {
+            assert(actor==&frank.ch); ++paid_callbacks; return true;
+        }));
+    wait_until_held();
+    assert(GET_COPPER(&frank.ch)==100 && frank.pc.wallet_revision==10 && paid_callbacks==0);
+    hold_writer(false); assert(persistence_writer_wait_idle(5000)); player_save_pipeline_pulse();
+    assert(paid_callbacks==1);
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        const auto &saved=state.committed.at(47);
+        assert(saved.pending_world_quest.before_quest[0]==1 &&
+               saved.pending_world_quest.before_quest[1]==15003 &&
+               saved.pending_world_quest.before_wallet==(std::array<int64_t,4>{100,0,0,0}) &&
+               saved.pending_world_quest.before_wallet_revision==10 && saved.wallet_revision==11);
+        std::array<int64_t,4> after{};
+        for (const auto &row : saved.status_integers)
+            if (row.field>=player_status_field::copper && row.field<=player_status_field::platinum)
+                after[static_cast<size_t>(row.field)-static_cast<size_t>(player_status_field::copper)] = row.signed_value;
+        assert((after==std::array<int64_t,4>{3,3,0,0}));
+    }
+    character_list=frank.ch.next;
+
+    // A later independent credit is captured even if the actor disconnects
+    // before a refused quest save is retried.
+    player grace(48);
+    grace.pc.quest_active=1; grace.pc.quest_mob_vnum=15004;
+    grace.pc.wallet_revision=20; GET_COPPER(&grace.ch)=100;
+    grace.ch.next=character_list; character_list=&grace.ch;
+    assert(player_revision_hydrate(48,0));
+    auto offline_paid=quest; offline_paid.target=15004; offline_paid.escrow_fee=67;
+    int offline_paid_callbacks=0;
+    state.failures[48]=2; hold_writer(true);
+    assert(player_save_pipeline_submit_world_quest(&grace.ch,offline_paid,
+        [&](P_char actor,const player_pending_world_quest &) {
+            assert(!actor); ++offline_paid_callbacks; return true;
+        }));
+    wait_until_held();
+    GET_COPPER(&grace.ch)+=10; ++grace.pc.wallet_revision;
+    assert(player_save_pipeline_request(&grace.ch,PLAYER_CHECKPOINT_COMPONENT_ALL,
+                                        RENT_QUIT,3001)==player_save_pipeline_result::queued);
+    character_list=grace.ch.next; player_save_pipeline_end_session(48);
+    hold_writer(false); assert(persistence_writer_wait_idle(5000)); player_save_pipeline_pulse();
+    const auto offline_deadline=std::chrono::steady_clock::now()+std::chrono::seconds(5);
+    while (player_save_pipeline_world_quest_pending(48) &&
+           std::chrono::steady_clock::now()<offline_deadline) {
+        player_save_pipeline_pulse(); std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    assert(offline_paid_callbacks==1 && !player_save_pipeline_world_quest_pending(48));
+    {
+        std::lock_guard<std::mutex> lock(state.mutex);
+        const auto &saved=state.committed.at(48);
+        assert(saved.pending_world_quest.before_wallet==(std::array<int64_t,4>{110,0,0,0}) &&
+               saved.pending_world_quest.before_wallet_revision==21 && saved.wallet_revision==22);
+        std::array<int64_t,4> after{};
+        for (const auto &row : saved.status_integers)
+            if (row.field>=player_status_field::copper && row.field<=player_status_field::platinum)
+                after[static_cast<size_t>(row.field)-static_cast<size_t>(player_status_field::copper)] = row.signed_value;
+        assert((after==std::array<int64_t,4>{3,4,0,0}));
+    }
 
     // A new/offline character is not in character_list yet; its baseline save still
     // needs a written acknowledgement and a revision entry for the session to use.

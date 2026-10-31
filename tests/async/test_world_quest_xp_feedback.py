@@ -48,6 +48,7 @@ PRELUDE = r'''
 #include "world/experience_share.h"
 #include "item/trophy.h"
 #include "item/item_movement_transaction.h"
+#include "player/player_save_pipeline.h"
 #include "sql/sql.h"
 #include "telemetry/telemetry_runtime.h"
 #include <cassert>
@@ -84,7 +85,11 @@ int rested_tag = 0, dirty = 0, epics = 0, finished = 0;
 P_char rested_only = nullptr;
 bool in_test_group = false;
 double epic_percent = 0;
-bool grant_allowed = true;
+bool missing_reward = false;
+bool history_allowed = true;
+bool defer_history = false;
+std::function<void(P_char)> deferred_history;
+bool player_save_pipeline_world_quest_pending(int) { return bool(deferred_history); }
 int maximum_exp_level = 20, death_cutoff = -1;
 double death_penalty = 0.10;
 P_char last_recipient = nullptr;
@@ -93,6 +98,7 @@ bool conjure_valid = false;
 bool recipe_known = false;
 bool sql_has_spellbook_mob(int, int) { return recipe_known; }
 int conjure_roll = 0, conjure_intelligence = 100;
+int last_random_low = 0, last_random_high = 0;
 std::vector<P_char> learned_minions, failed_learning;
 affected_type containment_affect{};
 std::string containment_wear_off_char, containment_wear_off_room;
@@ -202,17 +208,33 @@ void mobsay(P_char, const char *) {}
 void do_action(P_char, char *, int) {}
 char *coin_stringv(int, int) { static char text[] = "coins"; return text; }
 int number(int low, int high) {
+    last_random_low = low; last_random_high = high;
     if (conjure_roll && low == 1 && high == conjure_intelligence) return conjure_roll;
     return low;
 }
 void ADD_MONEY(P_char, int) { assert(false); }
-P_obj quest_item_reward(P_char) { return &reward; }
-static bool grant_world_quest_reward(P_char, P_obj, int = 0, bool = false) {
-    return grant_allowed;
+P_obj quest_item_reward(P_char) {
+    if (missing_reward) return nullptr;
+    reward.obj_uid=1000; reward.loc_p=LOC_NOWHERE; reward.next=nullptr; object_list=&reward;
+    return &reward;
 }
 bool item_movement_transaction_player_busy(P_char) { return false; }
-void quest_epic_reward(P_char, int) { ++epics; }
-void sql_world_quest_finished(P_char, P_obj) { ++finished; }
+void quest_epic_reward(P_char, int, int) { ++epics; }
+player_world_quest_reward captured_reward{};
+bool sql_world_quest_finish_async(P_char ch, P_obj object, bool, bool,
+                                  const player_world_quest_reward &values, int,
+                                  std::function<bool(P_char)> committed) {
+    captured_reward = values;
+    ++finished; if (!history_allowed) return false;
+    auto publish = [object, committed = std::move(committed)](P_char actor) {
+        if (object) { object->loc_p=LOC_CARRIED; object->loc.carrying=actor; }
+        committed(actor);
+    };
+    if (defer_history) deferred_history=std::move(publish); else publish(ch);
+    return true;
+}
+P_char find_character_by_runtime_id(uint64_t) { return nullptr; }
+void extract_obj(P_obj, int) { object_list=nullptr; }
 void resetQuest(P_char ch) {
     ch->only.pc->quest_active = 0;
     ch->only.pc->quest_mob_vnum = 0;
@@ -258,6 +280,11 @@ int main() {
         output.clear();
         exp_log.clear();
         dirty = epics = finished = 0;
+        history_allowed = true;
+        defer_history = false;
+        deferred_history = {};
+        pc.divine_experience_pending = 0;
+        other_pc.divine_experience_pending = 0;
         pc.quest_active = 1;
         pc.quest_mob_vnum = 55;
         pc.quest_type = FIND_AND_KILL;
@@ -594,6 +621,113 @@ int main() {
     assert(player.points.curr_exp == 1300 && finished == 1 && epics == 1);
     quest_line(1300);
     assert(output.find("You gain some experience.") != std::string::npos);
+
+    // A refused history event cannot silently clear a normal completed task either.
+    reset();
+    history_allowed = false;
+    pc.quest_type = FIND_AND_ASK;
+    quest_full_reward(&player, &mob, FIND_AND_ASK);
+    assert(finished == 1 && pc.quest_active == 1);
+
+    reset(); missing_reward = true;
+    quest_full_reward(&player, &mob, FIND_AND_ASK);
+    assert(finished == 0 && pc.quest_active == 1 && player.points.curr_exp == 0);
+    reset(); missing_reward = true; pc.quest_kill_how_many = 4;
+    quest_kill(&player, &mob);
+    assert(finished == 0 && pc.quest_active == 1 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING &&
+           player.points.curr_exp == 260);
+    quest_kill(&player, &mob);
+    assert(player.points.curr_exp == 260 && finished == 0);
+    missing_reward = false;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(finished == 1 && pc.quest_active == 0 && player.points.curr_exp == 260);
+    // A reward that would crumble on publication is refused before history.
+    reset(); reward.extra2_flags = ITEM2_CRUMBLELOOT;
+    quest_full_reward(&player, &mob, FIND_AND_ASK);
+    assert(finished == 0 && pc.quest_active == 1 && object_list == nullptr);
+    reward.extra2_flags = 0;
+
+    // Refusing the final KILL history must not award repeatable final-kill XP.
+    reset();
+    history_allowed = false;
+    pc.quest_kill_how_many = 4;
+    quest_kill(&player, &mob);
+    assert(finished == 1 && pc.quest_active == 1 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING &&
+           player.points.curr_exp == 260);
+    quest_kill(&player, &mob);
+    assert(player.points.curr_exp == 260 && finished == 1);
+    history_allowed = true;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(finished == 2 && pc.quest_active == 0 && player.points.curr_exp == 260);
+
+    // A final kill crossing level 25 computes the mercenary payout at the new level.
+    reset();
+    player.player.level = 24;
+    player.player.m_class = CLASS_MERCENARY;
+    player.points.curr_exp = 9900;
+    maximum_exp_level = 25;
+    new_exp_table[25] = 10000;
+    pc.quest_kill_how_many = 4;
+    history_allowed = false;
+    quest_kill(&player, &mob);
+    assert(player.player.level == 25 && pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING);
+    assert(captured_reward.money == 25 * 1256 + 1);
+    const int already_credited = player.points.curr_exp;
+    history_allowed = true;
+    defer_history = true;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(player.points.curr_exp == already_credited && captured_reward.money == 25 * 1256 + 1);
+    deferred_history = {};
+    player.player.m_class = 0;
+    maximum_exp_level = 20;
+
+    // An older unsecured receipt has not yet received final-kill XP.
+    reset();
+    pc.quest_accomplished = PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED;
+    pc.quest_kill_how_many = 5;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(player.points.curr_exp == 260 && finished == 1 && pc.quest_active == 0);
+
+    // A committed marker survives loss of the live callback: the item was
+    // already saved, and only the captured remaining rewards are applied.
+    for (int marker : { PLAYER_WORLD_QUEST_REWARD_PENDING,
+                        PLAYER_WORLD_QUEST_KILL_REWARD_PENDING }) {
+        reset();
+        pc.quest_accomplished = marker;
+        pc.quest_receiver = marker == PLAYER_WORLD_QUEST_REWARD_PENDING ? 1300 : 260;
+        pc.quest_shares_left = 0; pc.quest_kill_how_many = 0;
+        object_list = nullptr;
+        quest_full_reward(&player, &mob, FIND_AND_ASK);
+        assert(player.points.curr_exp == (marker == PLAYER_WORLD_QUEST_REWARD_PENDING ? 1300 : 260));
+        assert(finished == 0 && pc.quest_active == 0 && object_list == nullptr);
+    }
+
+    // An acknowledgement delivered after the player's level changes uses the
+    // award captured at completion, not the later level's reward formula.
+    for (bool final_kill : {false, true}) {
+        reset(); defer_history = true;
+        if (final_kill) { pc.quest_kill_how_many = 4; quest_kill(&player, &mob); }
+        else { pc.quest_type = FIND_AND_ASK; quest_full_reward(&player, &mob, FIND_AND_ASK); }
+        assert(deferred_history && pc.quest_active == 1 &&
+               player.points.curr_exp == (final_kill ? 260 : 0));
+        player.player.level = 30;
+        auto complete = std::move(deferred_history); deferred_history = {};
+        complete(&player);
+        assert(player.points.curr_exp == (final_kill ? 260 : 1300) && pc.quest_active == 0);
+    }
+    // Preserve each original high-level epic roll boundary.
+    reset(); player.player.level = 56;
+    for (int level = 46; level <= 55; ++level) {
+        pc.quest_level = level;
+        assert(quest_epic_reward_amount(&player) == level - 45);
+        assert(last_random_low == level - 45 &&
+               last_random_high == (level == 54 ? 10 : std::min(level - 43, 11)));
+    }
+    pc.quest_level = 56;
+    assert(quest_epic_reward_amount(&player) == 15);
+    pc.quest_level = 0;
 
     reset();
     assert(gain_exp(&player, &mob, 100, EXP_KILL) == 100);
@@ -995,6 +1129,111 @@ int main() {
     assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
     assert(player.points.curr_exp == 0);
 
+    // Feedback uses the credited eligible base on the precise path, not the
+    // off/on difference that also includes legacy float rounding. Each source
+    // starts with 100 ordinary XP and 100 eligible base after its share math.
+    for (int kind : {EXP_KILL, EXP_KILL_BONUS, EXP_DAMAGE, EXP_TANKING,
+                     EXP_HEALING, EXP_MELEE}) {
+        for (int scenario = 0; scenario < 11; ++scenario) {
+            reset_divine();
+            player.group = &tank_group;
+            other.in_room = player.in_room;
+            player.specials.fighting = &mob;
+            const bool kill = kind == EXP_KILL || kind == EXP_KILL_BONUS;
+            const int value = kind == EXP_TANKING ? 300 :
+                              kind == EXP_HEALING ? 40 : kind == EXP_MELEE ? 25 : 100;
+            int expected = 200, bonus = 100;
+            if (scenario == 1) { divine_enabled = false; expected = 100; bonus = 0; }
+            if (scenario == 2) player.specials.act2 = 0;
+            if (scenario == 3) { new_exp_table[21] = 300; expected = 100; bonus = 0; }
+            if (scenario == 4) { new_exp_table[21] = 450; expected = 150; bonus = 50; }
+            if (scenario == 5) { player.points.curr_exp = global_exp_limit - 100; expected = 100; bonus = 0; }
+            if (scenario == 6) { player.points.curr_exp = global_exp_limit - 150; expected = 150; bonus = 50; }
+            if (scenario == 7) { player.points.curr_exp = global_exp_limit; expected = bonus = 0; }
+            if (scenario == 8 || scenario == 9) {
+                global_exp_limit = static_cast<long>(INT_MAX) + 1000;
+                player.points.curr_exp = INT_MAX - (scenario == 8 ? 100 : 150);
+                expected = scenario == 8 ? 100 : 150;
+                bonus = scenario == 8 ? 0 : 50;
+            }
+            if (scenario == 10) { target_eligible = false; expected = 100; bonus = 0; }
+            const int before = player.points.curr_exp;
+            P_char victim = kind == EXP_HEALING ? &player : &mob;
+            assert(gain_exp(&player, victim, value, kind) == expected);
+            assert(player.points.curr_exp - before == expected);
+            if (scenario == 2) {
+                assert(output.empty() && pc.divine_experience_pending == 0);
+            } else if (kill) {
+                const std::string line = expected ? "&+CEXP:&+G " + std::to_string(expected) +
+                    (bonus ? " &+C(Divine Boon +" + std::to_string(bonus) + ")&+G" : "") + " \r\n" : "";
+                assert(output == line);
+                assert(pc.divine_experience_pending == 0);
+            } else {
+                assert(output.empty()); // Never emit a fresh line on each hit.
+                assert(pc.divine_experience_pending == static_cast<uint64_t>(bonus));
+            }
+            output.clear();
+            display_divine_experience(&player);
+            const std::string summary = !kill && bonus && scenario != 2 ?
+                "&+CDivine Boon:&+G +" + std::to_string(bonus) + " combat EXP this tick.&n\r\n" : "";
+            assert(output == summary);
+            assert(pc.divine_experience_pending == 0);
+            display_divine_experience(&player);
+            assert(output == summary); // A pulse cannot publish the same credit twice.
+        }
+    }
+    reset_divine();
+    for (int hit = 0; hit < 100; ++hit)
+        assert(gain_exp(&player, &mob, 10, EXP_DAMAGE) == 20);
+    assert(output.empty());
+    display_divine_experience(&player);
+    assert(output == "&+CDivine Boon:&+G +1000 combat EXP this tick.&n\r\n");
+    // Opting out before the pulse also discards an already accumulated notice.
+    output.clear();
+    assert(gain_exp(&player, &mob, 10, EXP_DAMAGE) == 20);
+    player.specials.act2 = 0;
+    display_divine_experience(&player);
+    assert(output.empty() && pc.divine_experience_pending == 0);
+    player.specials.act2 = PLR2_EXP;
+    display_divine_experience(&player);
+    assert(output.empty());
+
+    // The controlled Newhaven configuration from #479: the additional 1 XP in
+    // the off/on delta is precision recovery, not an extra unit of Divine base.
+    reset_divine();
+    new_exp_table[21] = 400000;
+    exp_mods[EXPMOD_GLOBAL] = 0.5f;
+    racial_exp_mods[RACE_HUMAN] = 1.3f;
+    divine_enabled = false;
+    assert(gain_exp(&player, &mob, 6000, EXP_KILL) == 3899);
+    assert(output == "&+CEXP:&+G 3899 \r\n");
+    player.points.curr_exp = 0;
+    output.clear();
+    divine_enabled = true;
+    assert(gain_exp(&player, &mob, 6000, EXP_KILL) == 6900);
+    assert(output == "&+CEXP:&+G 6900 &+C(Divine Boon +3000)&+G \r\n");
+    // Fractional base may contribute the unit crossing the final integer floor.
+    reset_divine();
+    racial_exp_mods[RACE_HUMAN] = 0.75f;
+    nexus_percent = 0.1;
+    assert(gain_exp(&player, &mob, 101, EXP_KILL) == 159);
+    assert(output == "&+CEXP:&+G 159 &+C(Divine Boon +76)&+G \r\n");
+    reset_divine();
+    assert(gain_exp_combat_share(&player, &mob, 0.25, 0, EXP_DAMAGE) == 1);
+    display_divine_experience(&player);
+    assert(output.empty()); // Positive base that rounds away earns no notice.
+    reset_divine();
+    player.player.level = MINLVLIMMORTAL;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    assert(output.find("Divine Boon") == std::string::npos);
+    assert(pc.divine_experience_pending == 0);
+    for (int kind : {EXP_QUEST, EXP_WORLD_QUEST, EXP_RESURRECT}) {
+        reset_divine();
+        assert(gain_exp(&player, nullptr, 100, kind) == 100);
+        display_divine_experience(&player);
+        assert(output.find("Divine Boon") == std::string::npos);
+    }
+
     // Exercise learning through both production kill_gain branches. Enumerating
     // every possible roll proves the strict threshold and Charisma cap survive.
     affected_type contained{};
@@ -1136,6 +1375,7 @@ def main() -> None:
             "void advance_level(P_char ch)",
             "void advance_to_level(",
             "void illithid_advance_level(",
+            "static void display_divine_experience(",
             "void display_gain(",
             "int exp_level_percent_modifier(",
         )
@@ -1150,7 +1390,10 @@ def main() -> None:
     functions += [extract_function("limits.c", "int gain_exp_combat_share(")]
     functions += [extract_function("limits.c", "int gain_exp(")]
     functions += [extract_function("world_quest.c", signature) for signature in (
-        "int quest_exp_reward(", "void quest_full_reward(",
+        "static int quest_epic_reward_amount(", "int quest_exp_reward(",
+        "static player_world_quest_reward world_quest_prepare_reward(",
+        "static P_obj world_quest_reward_by_uid(", "static void world_quest_deliver_reward(",
+        "static bool world_quest_start_reward(", "void quest_full_reward(",
         "static bool world_quest_matches_target(", "void quest_ask(", "void quest_kill(")]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
     functions += [extract_function("magic.c", "void spell_contain_being(")]

@@ -273,6 +273,49 @@ struct player_pending_trade_snapshot
 	player_affect_snapshot cargo_effect{};
 };
 constexpr int16_t PLAYER_TRADE_CARGO_AFFECT = 2110;
+constexpr int PLAYER_WORLD_QUEST_REWARD_PENDING = 2;
+constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_PENDING = 3;
+// Last kill credited, but item creation/save admission still needs a bartender retry.
+constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED = 4;
+// Final kill XP is credited; remaining reward values are retained for history retry.
+constexpr int PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING = 5;
+
+struct player_world_quest_reward
+{
+	int32_t experience = 0;
+	int32_t epic = 0;
+	int32_t money = 0;
+};
+
+// An admitted quest completion travels with its player's status after-image.
+// It is applied in the same SQL transaction as that status, not independently.
+struct player_pending_world_quest
+{
+	bool present = false;
+	int32_t target = 0;
+	int32_t level = 0;
+	int32_t giver = 0;
+	int32_t reward_vnum = 0;
+	int64_t occurred_at = 0;
+	std::string player_name;
+	std::string reward_description;
+	// A completed task may still need its reward after a restart.
+	bool awaiting_reward = false;
+	bool final_kill_reward = false;
+	player_world_quest_reward reward{};
+	int32_t escrow_fee = 0;
+	// The pre-completion state lets unrelated changes remain durable when the
+	// completion transaction fails. Used only by the SQL save repository.
+	bool fallback_only = false;
+	std::array<int32_t, 14> before_quest{};
+	int32_t before_origin = 0;
+	int32_t before_replacement_due = 0;
+	std::array<int64_t, 4> before_wallet{};
+	uint64_t before_wallet_revision = 0;
+	// Detached reward roots are claimed with the same player after-image.
+	std::vector<player_item_snapshot> reward_items{};
+	size_t reward_encoded_size = 0;
+};
 
 struct player_snapshot
 {
@@ -306,6 +349,7 @@ struct player_snapshot
 	// existing counter prevents an older capture overwriting a committed payment.
 	uint64_t wallet_revision = 0;
 	player_pending_trade_snapshot pending_trade{};
+	player_pending_world_quest pending_world_quest{};
 };
 
 #endif

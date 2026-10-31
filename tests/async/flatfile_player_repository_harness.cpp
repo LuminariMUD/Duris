@@ -1,5 +1,6 @@
 #include "economy/divine_trade_repository.h"
 #include "player/player_snapshot_codec.h"
+#include "flatfile/flatfile_world_quest_history.h"
 #include <openssl/sha.h>
 #include "flatfile/flatfile_ship_repository.h"
 #include "flatfile/flatfile_cargo_repository.h"
@@ -2090,6 +2091,112 @@ int main(int argc, char **argv)
 				settled.domains.epics == paid_credit.domains.epics + 300,
 			"mixed award checkpoint lost or duplicated credit");
 	}
+
+	// Reward custody, retry marker and history survive one interrupted authority commit.
+	const auto quest_root = root / "reward";
+	for (const auto &directory : { quest_root, quest_root / "players", quest_root / "domains",
+				       quest_root / "identities", quest_root / "identities/names" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	auto quest = make_full(1);
+	int quest_pid = 0;
+	require(flatfile_identity_allocate_pid(quest_root.string(), &quest_pid, &error) ==
+			flatfile_identity_result::ok,
+		"quest identity allocation");
+	require(flatfile_identity_claim(quest_root.string(), quest_pid, "QuestTester",
+					"Account-One", &error) == flatfile_identity_result::ok,
+		"quest identity");
+	quest.pid = quest_pid;
+	for (auto &row : quest.status_strings)
+		if (row.field == player_status_string_field::name)
+			row.value = "QuestTester";
+	quest.pets.clear();
+	quest.items.resize(1);
+	quest.items[0].object_uid = 7001001;
+	quest.items[0].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	quest.items[0].equipment_slot = -1;
+	quest.quest_values[0] = 1;
+	quest.quest_values[3] = PLAYER_WORLD_QUEST_REWARD_PENDING;
+	quest.pending_world_quest = { true,	  25001,	 30,	  9000, quest.items[0].vnum,
+				      1800000000, "QuestTester", "reward" };
+	quest.pending_world_quest.awaiting_reward = true;
+	quest.pending_world_quest.reward_items = quest.items;
+	quest.pending_world_quest.reward_encoded_size = 1024;
+	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
+	const auto quest_fault = flatfile_player_snapshot_apply(quest_root.string(), quest, &error);
+	require(quest_fault.outcome == player_save_apply_outcome::retryable_failure,
+		"quest journal interruption: outcome=" +
+			std::to_string(static_cast<int>(quest_fault.outcome)) +
+			" errno=" + std::to_string(quest_fault.error_code) + " " + error);
+	unsetenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL");
+	require(flatfile_player_snapshot_apply(quest_root.string(), quest, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"quest reward recovery: " + error);
+	player_snapshot receipt{};
+	require(flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt, &error) ==
+				flatfile_player_load_result::ok &&
+			receipt.items.size() == 1 && receipt.items[0].object_uid == 7001001 &&
+			receipt.quest_values[3] == PLAYER_WORLD_QUEST_REWARD_PENDING &&
+			!receipt.pending_world_quest.present,
+		"quest receipt or reward did not reload");
+	int count = 0;
+	require(flatfile_world_quest_count_day(quest_root.c_str(), quest_pid, 30, 1800000000,
+					       &count, &error) == flatfile_world_quest_result::ok &&
+			count == 1,
+		"quest retry duplicated completion");
+	quest.revision = 2;
+	++quest.pending_world_quest.occurred_at;
+	// An unrelated item was acquired while the conflicting completion is pending.
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001003;
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001002;
+	quest.pending_world_quest.reward_items = { quest.items.back() };
+	quest.pending_world_quest.before_quest = quest.quest_values;
+	quest.pending_world_quest.before_quest[3] = 0;
+	require(flatfile_player_snapshot_apply(quest_root.string(), quest, &error).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"conflicting quest completion accepted");
+	require(flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt, &error) ==
+				flatfile_player_load_result::ok &&
+			receipt.revision == 2 && receipt.items.size() == 2 &&
+			receipt.items[0].object_uid == 7001001 &&
+			receipt.items[1].object_uid == 7001003 && receipt.quest_values[3] == 0,
+		"failed history lost unrelated item or exposed staged reward");
+
+	// A stale fee after-image must not complete history while silently retaining a newer purse.
+	auto advanced = quest;
+	advanced.pending_world_quest = {};
+	advanced.items.pop_back();
+	advanced.revision = 3;
+	advanced.wallet_revision = 10;
+	require(flatfile_player_snapshot_apply(quest_root.string(), advanced, &error).outcome ==
+			player_save_apply_outcome::applied,
+		"newer wallet baseline");
+	auto stale_quest = advanced;
+	stale_quest.revision = 4;
+	stale_quest.wallet_revision = 2;
+	stale_quest.pending_world_quest = {
+		true, 25002, 30, 9000, 0, 1800000002, "QuestTester", ""
+	};
+	stale_quest.pending_world_quest.before_quest = stale_quest.quest_values;
+	stale_quest.pending_world_quest.escrow_fee = 1;
+	stale_quest.pending_world_quest.before_wallet_revision = 1;
+	stale_quest.pending_world_quest.before_wallet = { 11, 12, 13, 14 };
+	require(flatfile_player_snapshot_apply(quest_root.string(), stale_quest, &error).outcome ==
+			player_save_apply_outcome::retryable_failure,
+		"stale quest wallet completed without the reserved fee");
+	bool stale_recorded = false;
+	require(flatfile_world_quest_completed(quest_root.c_str(), quest_pid, 25002,
+					       &stale_recorded,
+					       &error) == flatfile_world_quest_result::ok &&
+			!stale_recorded &&
+			flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt,
+						      &error) == flatfile_player_load_result::ok &&
+			receipt.wallet_revision == 10,
+		"stale quest changed newer wallet or recorded completion");
 
 	const fs::path snapshot_path = players / "42.snapshot";
 	player_snapshot paid = make_status(13, 51, 1201);

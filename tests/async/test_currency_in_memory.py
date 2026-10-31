@@ -183,6 +183,29 @@ int main()
     currency_transaction_release_chest(44);
     assert(!currency_transaction_chest_busy(&twin.ch));
     assert(!currency_transaction_chest_account_busy("money_account"));
+    // Bartender escrow is per-player, preserves unrelated credits, and cannot
+    // be spent or published twice while its quest transaction is pending.
+    GET_COPPER(&alice.ch)=100; GET_SILVER(&alice.ch)=GET_GOLD(&alice.ch)=GET_PLATINUM(&alice.ch)=0;
+    GET_COPPER(&twin.ch)=50; GET_SILVER(&twin.ch)=GET_GOLD(&twin.ch)=GET_PLATINUM(&twin.ch)=0;
+    assert(currency_transaction_reserve_world_quest(&alice.ch,80));
+    assert(currency_transaction_reserve_world_quest(&twin.ch,10));
+    assert(currency_transaction_wallet_busy(&alice.ch) && currency_transaction_wallet_busy(&twin.ch));
+    assert(!currency_transaction_wallet_busy(&stranger.ch));
+    assert(currency_transaction_reserve_trade(&stranger.ch,0));
+    currency_transaction_release_trade(GET_PID(&stranger.ch));
+    assert(currency_transaction_submit_wallet_value(&alice.ch,10,
+      currency_reason_type::wallet_reward,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(last_committed && GET_MONEY(&alice.ch)==110);
+    assert(!currency_transaction_submit_wallet_value(&alice.ch,-31,
+      currency_reason_type::wallet_spend,0,critical_source_site::command,
+      critical_deadline_class::interactive,completion,nullptr,0));
+    assert(GET_MONEY(&alice.ch)==110);
+    assert(currency_transaction_publish_world_quest(&alice.ch,80));
+    assert(GET_MONEY(&alice.ch)==30 && !currency_transaction_wallet_busy(&alice.ch));
+    assert(!currency_transaction_publish_world_quest(&alice.ch,80));
+    assert(currency_transaction_wallet_busy(&twin.ch));
+    currency_transaction_release_world_quest(GET_PID(&twin.ch));
     return 0;
 }
 '''

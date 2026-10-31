@@ -131,6 +131,8 @@ OBJS =  $(SHIP_OBJS) \
 				 account/login_mode_banner.o \
 				 account/pwipe_launch.o \
 				 combat/frag_cap_config.o \
+				 combat/frag_cap.o \
+				 combat/frag_cap_repository.o \
 				 cmd/actcomm.o \
 				 cmd/actinf.o \
 				 cmd/actmove.o \

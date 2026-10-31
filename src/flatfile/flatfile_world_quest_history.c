@@ -231,6 +231,65 @@ flatfile_world_quest_result public_result(load_result result)
 }
 } // namespace
 
+flatfile_world_quest_result
+flatfile_world_quest_prepare_record(const std::string &root, const flatfile_authority_lock &lock,
+				    uint32_t pid, int quest_target, int player_level,
+				    int64_t occurred_at, flatfile_authority_operation *operation,
+				    std::string *error)
+{
+	history_entry added{ quest_target, player_level, occurred_at };
+	if (!operation || !pid || !lock.matches(root) || !valid_entry(added))
+		return flatfile_world_quest_result::invalid;
+	std::vector<history_entry> history;
+	const auto loaded = load_history(history_directory(root.c_str()), pid, &history, error);
+	if (loaded == load_result::corrupt || loaded == load_result::io_error)
+		return public_result(loaded);
+	const auto existing = std::find_if(history.begin(), history.end(),
+					   [quest_target](const auto &entry)
+					   { return entry.quest_target == quest_target; });
+	if (existing != history.end())
+	{
+		if (existing->player_level != player_level || existing->occurred_at != occurred_at)
+			return flatfile_world_quest_result::invalid;
+	}
+	else
+	{
+		if (history.size() >= history_maximum_entries)
+			return flatfile_world_quest_result::invalid;
+		history.push_back(added);
+	}
+	*operation = {};
+	operation->store = flatfile_authority_store::players;
+	operation->filename = history_filename(pid);
+	return encode_history(history, &operation->bytes) ? flatfile_world_quest_result::ok :
+							    flatfile_world_quest_result::io_error;
+}
+
+flatfile_world_quest_result flatfile_world_quest_record_matches(const std::string &root,
+								const flatfile_authority_lock &lock,
+								uint32_t pid, int target, int level,
+								int64_t occurred_at, bool *matches,
+								std::string *error)
+{
+	if (!pid || !matches || !lock.matches(root))
+		return flatfile_world_quest_result::invalid;
+	*matches = false;
+	std::vector<history_entry> history;
+	const auto loaded = load_history(history_directory(root.c_str()), pid, &history, error);
+	if (loaded == load_result::not_found)
+		return flatfile_world_quest_result::ok;
+	if (loaded != load_result::ok)
+		return public_result(loaded);
+	*matches = std::any_of(history.begin(), history.end(),
+			       [&](const auto &entry)
+			       {
+				       return entry.quest_target == target &&
+					      entry.player_level == level &&
+					      entry.occurred_at == occurred_at;
+			       });
+	return flatfile_world_quest_result::ok;
+}
+
 flatfile_world_quest_result flatfile_world_quest_record(const char *root, uint32_t pid,
 							int quest_target, int player_level,
 							int64_t occurred_at, std::string *error)
