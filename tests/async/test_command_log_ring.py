@@ -182,19 +182,20 @@ int main(int argc, char **argv)
         type("equipment with chest password vault filler-secret");
         type("at 1200 open vault at-secret");
         type("force Tanen eq chest password vault force-secret");
+        type("force From open vault filler-target-secret");
         type("order follower at 1200 open vault nested-secret");
         type("eq sort wield");
         type("force Tanen look around");
     });
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     written = lines();
-    assert(written.size() == 10);
-    for (int i = 0; i < 8; ++i) {
+    assert(written.size() == 11);
+    for (int i = 0; i < 9; ++i) {
         assert(written[i].find("secret") == std::string::npos);
         assert(written[i].find("<text withheld>") != std::string::npos);
     }
-    assert(written[8].find("eq sort wield") != std::string::npos);
-    assert(written[9].find("force Tanen look around") != std::string::npos);
+    assert(written[9].find("eq sort wield") != std::string::npos);
+    assert(written[10].find("force Tanen look around") != std::string::npos);
 
     // A one-letter command is kept; an empty line leaves no entry. cmdlog() tested the
     // byte after the first, so it dropped "n" and read stale bytes past an empty line.
@@ -226,7 +227,7 @@ int main(int argc, char **argv)
     victim.player.name = const_cast<char *>("Victim");
     descriptor_data session{}; session.character = &victim;
     session.connected = CON_PLAYING; descriptor_list = &session;
-    for (const char *target : { "Victim", "all" })
+    for (const char *target : { "Victim", "all", "From" })
         for (const char *payload : { "eq chest password vault force-secret",
                                     "at 1200 open vault routed-secret", "look at floor",
                                     "say public words", "'public words" }) {

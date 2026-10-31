@@ -160,9 +160,15 @@ int command_log_kept_length(const char *str, bool hide_chat)
 	case CMD_FORCE:
 	case CMD_ORDER:
 	{
-		const char *nested = one_argument(str + begin + length, word);
-		if (!nested || !*word)
+		const char *nested = str + begin + length;
+		while (isspace(static_cast<unsigned char>(*nested)))
+			++nested;
+		if (!*nested)
 			return -1;
+		while (*nested && !isspace(static_cast<unsigned char>(*nested)))
+			++nested;
+		while (isspace(static_cast<unsigned char>(*nested)))
+			++nested;
 		// Preserve existing staff/conversation logging; only credentials recurse.
 		const int kept = command_log_kept_length(nested, false);
 		return kept < 0 ? -1 : static_cast<int>(nested - str) + kept;
