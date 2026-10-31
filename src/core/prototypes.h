@@ -905,6 +905,8 @@ int InsertIntoFile(const char *filename, const char *text);
 /* debug.c */
 
 void cmdlog(P_char, char *);
+// Prefix to retain in a command log, or -1 for the complete line.
+int command_log_kept_length(const char *str, bool hide_chat);
 void do_debug(P_char, char *, int);
 void do_mreport(P_char, char *, int);
 void hour_debug(void);
