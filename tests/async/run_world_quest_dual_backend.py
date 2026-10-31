@@ -514,6 +514,14 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 if outcome == "No-one by that name here...":
                     continue
                 current = gameplay_snapshot(client, run_root)
+            if kind == 1 and current["active"] and current["kills"] == current["quota"]:
+                # The final kill stays active while its durable reward is published.
+                # History may already be committed; this is not partial progress.
+                deadline = time.monotonic() + 30
+                while current["active"] and time.monotonic() < deadline:
+                    time.sleep(0.1)
+                    current = settled_gameplay_snapshot(client, run_root)
+                require(not current["active"], "final KILL reward publication did not finish")
             if not current["active"]:
                 completed = current
                 break
