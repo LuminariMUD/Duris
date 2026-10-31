@@ -1,4 +1,4 @@
 interface:
   display_name: "Deploy Production"
   short_description: "Pull, migrate, clean-build, reboot, and verify Duris"
-  default_prompt: "Use $deploy-production to pull master, finish every captured help/bug disposition and required issue filing, clear rejected unclear entries safely, deploy with a full three-minute player countdown, verify the game, and commit/push verified news, help sources, and feedback cleanup to master."
+  default_prompt: "Use $deploy-production to pull master, run $help-update, $bug-triage, and $news-update, clear processed feedback safely at the restart, deploy with a full three-minute player countdown, verify the game, and commit/push verified content and cleanup to master."
