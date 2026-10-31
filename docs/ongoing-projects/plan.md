@@ -6,7 +6,8 @@ Status: **planned; implementation has not started**. Updated 2026-11-01.
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
 - Server branch: [branch/issue-498-gmcp-contracts](https://github.com/LuminariMUD/Duris/tree/branch/issue-498-gmcp-contracts), natively linked to #498 in GitHub Development.
 - Local worktree: /home/aiwithapex/projects/duris-issue-498.
-- Audited server baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479 (original planning baseline).
+- Audited runtime baseline: ee6f9fbf344b3828c896d0ba032128c43b0b9f9d (merged master; reviewed in branch head `94bc675ee`).
+- Original planning baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479; retained only for change comparison and historical test evidence.
 - Client reference: [immutable investigation](https://github.com/LuminariMUD/duris-client/blob/aa40a50cda789525dddddcce6f8056e53985a0bb/docs/ongoing-projects/protocol-interface-investigation.md), checked alongside both current issue bodies.
 
 The previous contents of this path are already preserved byte-for-byte in
@@ -21,11 +22,12 @@ The only conflict was the shared plan path. This file retains the complete
 #498 plan; master's complete #500 handoff is preserved byte-for-byte in
 [plan-issue-500.md](plan-issue-500.md).
 
-The source findings and line numbers below describe the original planning
-baseline. Refresh them against the current owning source before implementation,
-especially account/session completion, the game-loop persistence phase and
-quest-result serialization, which changed upstream. The proposed contracts and
-implementation acceptance criteria remain pending.
+Re-audited the original-to-merged-master delta against the current owning
+source and both live issue bodies on 2026-11-01. The findings and line numbers
+below now describe `ee6f9fbf3`. The seven core contracts remain unimplemented;
+upstream changes affect session admission, durable item/reward publication,
+container access, command gates and the workload baseline. The implementation
+steps and proof below account for those changes without adding new streams.
 
 Merge validation passed: `make -C src -j4`; the GUI GMCP contract, prompt
 regression and input-receipt tests; game-loop phase and WebSocket protocol
@@ -33,12 +35,10 @@ source contracts; staged formatting and whitespace checks; and both plans'
 relative links. No booted-game or real-Mudlet qualification is claimed by this
 merge. The implementation and measurement requirements below remain pending.
 
-Local analysis tooling: clang-tidy 18 automatically selected separately installed
-GCC 16 headers and failed inside their standard-library definitions. Selecting
-`--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13` through an ignored
-`CLANG_TIDY` wrapper uses the same GCC 13 installation as the successful build.
-The repository hook and its checks remain enabled; no game source is changed
-for this tooling mismatch.
+Local analysis tooling: the merge's normal hook passed with clang-tidy 18
+explicitly selecting `--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`, the
+build compiler's installation. Its automatic GCC 16 header selection failed.
+The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Outcome
 
@@ -70,8 +70,10 @@ investigation until reproduced and verified in the client.
 
 ## Findings from the owning source
 
-Paths and line numbers refer to the baseline above. These were checked directly;
-the issues and client investigation are inputs, not proof.
+Paths and line numbers refer to merged master `ee6f9fbf3`. Changed owners were
+re-read; 22 unchanged protocol/gameplay/reference files were also compared
+byte-for-byte with the original planning baseline. The issues and client
+investigation are inputs, not proof of implementation.
 
 1. **Negotiation/bootstrap already exist.**
    [gmcp.c](../../src/net/gmcp.c):58-86,125-237,286-307 handles DO/DONT,
@@ -83,14 +85,20 @@ the issues and client investigation are inputs, not proof.
    a descriptor policy without bypassing that preference for gameplay data.
 
 2. **WebSockets share the bootstrap.**
-   [account.c](../../src/account/account.c):2208,
+   [account.c](../../src/account/account.c):2296,
    [nanny.c](../../src/account/nanny.c):2215,
-   [actoth.c](../../src/cmd/actoth.c):5810-5813 and
+   [actoth.c](../../src/cmd/actoth.c):5811-5814 and
    [ws_handlers.c](../../src/net/ws_handlers.c):1057-1068 reach the same sender.
    Account/nanny have several direct state and character assignments, including
    pre-entry cancellation and switched originals. No protocol session generation
    exists. Hook semantic boundaries; do not increment generation from bootstrap
-   or mechanically replace every STATE assignment.
+   or mechanically replace every STATE assignment. Account recovery now
+   acknowledges successful resets only after durable storage through account.c's
+   account_apply_recovered_password() and ws_handlers.c's ws_complete_reset_reply();
+   reset_completed is not a
+   character attachment. Preserve writer_wait_id/descriptor-liveness handling
+   and same-account session closure. build_account_load_request() also refuses
+   character admission while that account's chest purchase is pending.
 
 3. **Combat is immediate and attacker-centric.**
    gmcp.c:1013-1108 creates target/optional round, no tank; end sends target:null.
@@ -107,7 +115,7 @@ the issues and client investigation are inputs, not proof.
 4. **Time has small mutation boundaries.**
    [weather.c](../../src/world/weather.c):75-99 advances time_info.hour and the
    calendar; astral_clock_setMapModifiers() owns hourly map/announcement rules.
-   [actinf.c](../../src/cmd/actinf.c):6981-7090 contains staff "time N" and the
+   [actinf.c](../../src/cmd/actinf.c):6995-7104 contains staff "time N" and the
    ordinary do_time() path that can schedule autoreboot. The field is hour,
    not hours. Publish after normalized mutation; serialization must only read.
 
@@ -123,6 +131,16 @@ the issues and client investigation are inputs, not proof.
    do_inventory(), do_equipment(), get_equipment_list(), list_obj_to_char()
    and show_obj_to_char() own visibility, anatomy, duplicate presentation and
    wraithform policy; raw object fields do not automatically preserve it.
+   Upstream get/put/look/examine/empty now enforce
+   locker_container_access_allowed(); LockerMovementAudit admission can refuse
+   movement or MakeScrap() before mutation. Preserve those boundaries and the
+   non-takeable private-chest policy in item_command_policy.c.
+   [sql.c](../../src/sql/sql.c):233 onward owns world_quest_publish_reward():
+   a reward can remain detached after its durable save, then hydrate/attach or
+   restore for a live actor, or leave durable custody for later login. The
+   committed callback in [player_save_pipeline.c](../../src/player/player_save_pipeline.c):531-575
+   may retry after actor departure. Protocol dirtiness belongs to completed
+   live publication, not reward creation, save admission or an internal counter.
 
 6. **Completion owners already know useful outcomes.**
    do_bash()/do_rescue() delegate to bash()/rescue() in
@@ -135,13 +153,13 @@ the issues and client investigation are inputs, not proof.
    [mining.c](../../src/economy/mining.c):286,385,802 separates command and
    delayed results. [events.c](../../src/world/events.c):368 onward owns
    CharWait; [affects.c](../../src/magic/affects.c):1938-1960 creates hidden
-   short affects. [json_utils.c](../../src/core/json_utils.c):1008-1068 excludes
+   short affects. [json_utils.c](../../src/core/json_utils.c):1009-1074 excludes
    AFFTYPE_NOSHOW and already exports visible duration seconds. Reuse those
    owners instead of input labels/output matching or exposing internal tags.
 
 7. **Requested results can reuse existing decisions.**
-   actinf.c:9778-10050 performs scan detection/RNG and temporary room traversal.
-   do_who():7430 onward filters by level, morph, trust, faction, anonymity,
+   actinf.c:9792-10064 performs scan detection/RNG and temporary room traversal.
+   do_who():7444 onward filters by level, morph, trust, faction, anonymity,
    host and displayed fields/counts.
    [tradeskill.c](../../src/economy/tradeskill.c):2546-2608 holds actual dice
    results inside the roll loop. [ship_combat.c](../../src/ships/ship_combat.c):196
@@ -153,8 +171,12 @@ the issues and client investigation are inputs, not proof.
 8. **Flush names are not construction/measurement guarantees.**
    gmcp.c:660-728 shares contact payloads by vessel/verification variant but
    builds personalized own-ship info before hashing.
-   [comm.c](../../src/net/comm.c):2323-2381 times GMCP plus saves, lockers,
-   completion routing and caches as "gmcp_flush".
+   [comm.c](../../src/net/comm.c):2327-2388 still flushes GMCP first, then
+   runs durable completions and save publication. Its "gmcp_flush" span includes
+   the new chest/combat-outcome/frag-cap pulse work alongside existing account
+   recovery, saves and caches. sql_async_pulse() runs after that span and can
+   publish further changes. Count protocol work at construction/delivery sites;
+   mutations after the state flush must remain dirty for the next flush.
    [latency_trace.h](../../src/persistence/latency_trace.h) has bounded
    count/total/max/top samples, not a full percentile distribution.
    [GAME_LOOP_PHASES.md](../network/GAME_LOOP_PHASES.md) fixes phase ordering;
@@ -169,6 +191,12 @@ the issues and client investigation are inputs, not proof.
    disclosure delay. [public-population.md](../guides/public-population.md)
    explains why public MSSP/live population is withheld. A new stream must not
    revive it or add periodic report generation.
+   Existing Quest.Status now normalizes killCount during pending reward/history
+   stages in json_utils.c:1225-1242; world_quest_start_reward() temporarily reuses
+   quest_kill_how_many for money. Preserve that serializer instead of exporting
+   raw quest fields. gmcp_quest_status()/gmcp_quest_map() retain availability,
+   paid-map and completion clears; reuse the current geographic policy without
+   another eligibility traversal or new quest stream.
 
 ## Contract decisions and bounds
 
@@ -186,7 +214,8 @@ fallback retirement. This is coordination, not a new approval ceremony.
   Proposed Duris.Capabilities advertises only working schemas and effective
   stream state; proposed Duris.Subscribe controls interest in new streams.
   Support means decodable; interest means currently wanted. Unsubscribe clears
-  pending work, stops construction and explicitly invalidates client state.
+  pending protocol work, stops construction and explicitly invalidates client
+  state.
 - Gate before JSON/list work: negotiation, effective preference, support,
   interest, then dirty/request state. Session/Capabilities control remains
   available to capable negotiated clients to report preference disable/enable;
@@ -203,7 +232,8 @@ fallback retirement. This is coordination, not a new approval ceremony.
 - Events carry generation, event sequence, kind/outcome, permitted actor/target
   and small known reason codes. Preserve each actual event in order; do not
   coalesce it like state. No replay/exactly-once promise across disconnect.
-  Char.Input remains only a dequeue receipt.
+  Char.Input remains only a dequeue receipt. Never include typed arguments,
+  account recovery secrets or chest credentials in these payloads.
 - Time v1 carries hour 0-23 and phase: dawn 04-08, day 09-15, dusk 16-18,
   night 19-03. Optional calendar indexing/year offset must be specified if
   retained. Cooldowns use monotonic server milliseconds and remaining
@@ -228,9 +258,14 @@ fallback retirement. This is coordination, not a new approval ceremony.
   revisions, never a silently truncated list. Invalidate item-state continuations
   on owner, visibility or mutation changes. Requested command results retain
   values captured during their authorized pass; pagination must not repeat a
-  scan, random decision or identification. Cancel all old-character work on
-  session change. No borrowed item pointers survive extraction; construction,
-  captured results and pending work must also have explicit total bounds.
+  scan, random decision or identification. Cancel old-character pending pages/
+  snapshots on session change and suppress late event construction for that
+  generation. Already queued output stays in FIFO order before the session
+  boundary; never cancel durable gameplay transactions or their offline
+  recovery. Completion delivery must match the current character/generation,
+  with a fresh snapshot on later entry. No borrowed item pointers survive
+  extraction; construction, captured results and pending protocol work must
+  also have explicit total bounds.
 
 ## Implementation sequence, files and proof
 
@@ -240,8 +275,16 @@ Advertise a feature only after its real path works.
 
 ### 1. Baseline, contracts and gating (2-3 active hours)
 
-- Freeze serialized fixtures, seeds, populations and workloads at the baseline;
-  record construction counts, bytes and latency before runtime changes.
+- Freeze serialized fixtures, seeds, populations and workloads at `ee6f9fbf3`,
+  not the original planning revision; record construction counts, bytes and
+  latency before runtime changes. Recapture the existing Quest.Status fixtures
+  with pending rewards/history represented through the current serializer.
+- For booted tests use the maintained disposable backend authority/setup helpers
+  (test_flight_network_journey.authority and run_world_quest_dual_backend.setup_run_root).
+  Honor current migration/runtime manifests, including SQL migrations 0056/0057
+  where applicable. Startup now requires successful frag_cap_runtime_boot(),
+  including minimal worlds; do not bypass it or add a second fixture bootstrap.
+  This is local/dev qualification setup, not new migration or production work.
 - Add narrow support/interest/control state in src/net/gmcp.c/h and
   src/core/structs.h; initialize/free/reset it on descriptor creation/close/
   recovery. No new persistent preference/configuration service.
@@ -258,7 +301,10 @@ Advertise a feature only after its real path works.
 - Hook attach/detach/account/chargen/playing in account.c, nanny.c, comm.c,
   ws_handlers.c and actual quit/return/switch paths. Audit failed load,
   pre-entry cancel, link-dead reconnect, copyover, morph and switched originals.
-  Send invalidation before character pointers are released.
+  Send invalidation before character pointers are released. Preserve existing
+  chest-access invalidation in close_socket() and writer/account admission
+  gates. Hook actual attachment/completion, not an accepted load/reset request;
+  password-reset completion stays in account state until ordinary login.
 - Bootstrap order: capabilities/effective streams, session boundary, then
   compatible snapshots. Same-socket detach sends character:null before new
   character data. Re-enable resends state without advancing entry generation;
@@ -269,8 +315,13 @@ Advertise a feature only after its real path works.
 - Defer optional calendar expansion/shutdown countdown metadata; neither is
   needed for the required clock/phase UI. Do not advertise them.
 - Proof: initial/late negotiation, repeated DO, re-enable, A -> account -> B,
-  failed attach, chargen cancel, reconnect/copyover, morph/switch identity and
-  phase boundaries. Assert serialization never calls do_time/shutdown/storage.
+  failed attach, chest-purchase admission refusal, chargen cancel, reconnect/
+  copyover, morph/switch identity and phase boundaries. Include a disconnect or
+  account replacement while recovery/publication is pending: no late packet
+  enters another character's generation and durable work still completes.
+  Retain the existing account-recovery contract/native tests and extend the
+  disposable recovery journey only where new lifecycle assertions need it.
+  Assert serialization never calls do_time/shutdown/storage.
 
 ### 3. Combat, observers and damage events (3-5 active hours)
 
@@ -317,15 +368,28 @@ Advertise a feature only after its real path works.
   publish transient terminal-save unequips or partial get-all. Audit src/item
   transaction publication plus core/files.c and persistence restoration; emit
   after authoritative commit/publication, not speculative ownership changes.
+  Include sql.c's world_quest_publish_reward(), player-save committed callbacks
+  and reward restoration. A durable reward is not visible inventory until live
+  attachment finishes; offline completion must not target the departed socket.
+  Do not call the reward publication helper or read its repository to serialize.
 - Serialize subscribed dirty/requested top-level lists with bounded pages/work.
   Nested contents remain explicitly requested with current owner, visibility
-  and normal container-access eligibility. No recursive push, polling or deltas.
-- Files: gmcp.c/h, json_utils.c/h, handler.c, necessary item/publication owners
-  and actinf.c presentation policy. Share a read-only presentation helper only
-  if text/JSON truly share policy; do not invoke a printing command to serialize.
+  and normal container-access eligibility, including the current locker gate.
+  Invalidate pending pages if access changes. Owner lists do not become a
+  private-chest contents API; no recursive push, polling or deltas.
+- Files: gmcp.c/h, json_utils.c/h, handler.c, sql.c, player_save_pipeline.c,
+  necessary item/publication owners and actinf.c presentation policy. Share a
+  read-only presentation helper only if text/JSON truly share policy; do not
+  invoke a printing command to serialize.
 - Proof: empties, 3,000-item staff lists, duplicates/selectors, get/drop/give/
   get-all, wear/remove/disarm, containers, rename/repair, visibility, save/load,
   async success/failure/replay, extraction between pages and unsubscribe.
+  Cover deferred quest reward attachment/reconstruction, logout before its
+  publication and exactly one visible inventory revision after retry; refused
+  chest access/audit/scrapping must not invent a mutation or expose contents.
+  Extend the existing committed-reward publication and SQL chest regression/
+  lifecycle harnesses for these paths. Verify ordinary inventory/reward restore
+  on MariaDB and flatfile; private chests remain SQL-only.
   Assert one completed bulk revision and no extra persistence or hidden data.
 
 ### 5. Actions, activity, cooldowns and notices (5-8 active hours)
@@ -363,7 +427,9 @@ Advertise a feature only after its real path works.
 - First emit negotiated JSON alongside the existing authorized command.
   No GMCP handler directly calls gameplay functions. Any later transport
   request must enqueue the same command through normal wait/eligibility/
-  input rules, with bounded pending request state.
+  input rules, with bounded pending request state. Preserve comm.c's current
+  get_playing_cmd_from_q() transaction/chest gate, shared-bank reservations and
+  account writer waits; a new request must not skip them as a "read-only" shortcut.
 - Player scan: collect actual successful detections, including "here",
   directions/distances and explicit empty/failure, inside the existing pass.
   Restore ch->in_room before delivery. Preserve visibility/RNG count and order;
@@ -397,7 +463,13 @@ Advertise a feature only after its real path works.
   focused GMCP tests, relevant new gameplay/persistence tests,
   test_game_loop_phase_contract.py and applicable public-population/output/
   command-queue tests. Register new regressions if runner discovery needs it.
-  All compiled artifacts remain under bin/.
+  Reuse test_world_quest_reward_publication.py, test_private_chest_regressions.py,
+  test_private_chest_lifecycle.py and test_account_recovery_contract.py where
+  their publication/lifecycle owners are touched; extend their real-path proof
+  instead of introducing a general notification or persistence test framework.
+  Retain test_item_movement_input_queue.py/test_transaction_input_queue.py for
+  any new request dispatch. These are implementation checks, not claims that
+  this plan review ran gameplay journeys. All compiled artifacts remain under bin/.
 - Cover initial/late negotiation, repeated bootstrap, reconnect/copyover,
   same-socket switches, disable/re-enable, support/interest changes, null/empty,
   stale revisions/duplicate events, slow consumers/overflow, legacy and
@@ -418,7 +490,10 @@ Advertise a feature only after its real path works.
 
 ## Measured overhead gate
 
-Use this baseline, existing loop timing/trace tooling and workload runners.
+Use merged-master `ee6f9fbf3` as the before baseline, with existing loop timing/
+trace tooling and workload runners. Match frag-cap round/deadline state and
+pending/retrying transactions as well as population/commands in each pair;
+original-planning timings would omit newly landed game-loop work.
 Add narrow protocol construction/send counters and a qualification workload
 where missing, not a new observability service or synchronous logging.
 
@@ -492,10 +567,13 @@ event frameworks, durable replay, periodic catalogs, optional shutdown/calendar
 fields and catalogs without current consumers. Item paging stays because
 staff can really carry 3,000 items; independent pending state stays because
 saves clear persistence flags. No feature is justified by a constant alone.
+The post-merge review keeps those decisions and reuses upstream admission,
+publication, custody and recovery paths; it adds no parallel transaction owner,
+notification framework, chest stream or frag-cap feature.
 
 ## Planning validation and my implementation estimate
 
-Run on the unmodified runtime baseline in this worktree:
+Original planning checks on `2b2b6fb2d` (2026-10-30):
 
 - python3 tests/async/test_gui_gmcp_contract.py — PASS; production serializers,
   wire/send/bootstrap/bridge fixtures with substituted world services.
@@ -505,9 +583,14 @@ Run on the unmodified runtime baseline in this worktree:
   dequeue/sequence/privacy checks.
 - Existing plan versus plan-issue-420.md — identical before replacement.
 
-This planning commit changes no C/C++; no full build, booted-game reproduction,
-new-contract fixture, overhead comparison or real-Mudlet check is claimed.
-Those remain the implementation deliverables above.
+The original planning commit changed no C/C++ and did not qualify a booted
+game, new contract, overhead comparison or real Mudlet. The later merge's build
+and focused baseline checks are recorded above. This post-merge review changes
+only this plan; it reuses those results because runtime/test sources are still
+identical to `ee6f9fbf3`. Review checks passed for current source anchors,
+relative links and named test paths, preserved scope/bounds and `git diff --check`.
+Those checks validate this document, not implementation. All new-contract
+gameplay/client/performance deliverables remain pending.
 
 My estimate as implementing agent is **24-38 active working hours**, including
 focused gameplay tests, fixture/scenario coordination, measurement and docs.
