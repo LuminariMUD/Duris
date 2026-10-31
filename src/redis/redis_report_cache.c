@@ -354,22 +354,24 @@ static char *fraglist_cache_payload(const sql_rows &rows)
 bool fraglist_leaders(MYSQL *connection, const char *filter, sql_rows *rows)
 {
 	const std::string where = filter && *filter ? std::string(" AND ") + filter : "";
-	return !sql_select(connection,
-			   "SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
-			   "GROUP BY racewar",
-			   rows) &&
-	       !sql_select(
+	return !sql_select(
 		       connection,
-		       sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
-				  "WHERE deleted_at IS NULL%s ORDER BY total_frags DESC LIMIT %d",
-				  where.c_str(), max_frag_size),
+		       sql_format("SELECT 'total', racewar, SUM(total_frags) FROM frag_leaderboard "
+				  "WHERE level <= %d GROUP BY racewar",
+				  MAXLVLMORTAL),
 		       rows) &&
-	       !sql_select(
-		       connection,
-		       sql_format("SELECT 'low', char_name, total_frags FROM frag_leaderboard "
-				  "WHERE deleted_at IS NULL%s ORDER BY total_frags ASC LIMIT %d",
-				  where.c_str(), max_frag_size),
-		       rows);
+	       !sql_select(connection,
+			   sql_format("SELECT 'top', char_name, total_frags FROM frag_leaderboard "
+				      "WHERE deleted_at IS NULL AND level <= %d%s "
+				      "ORDER BY total_frags DESC LIMIT %d",
+				      MAXLVLMORTAL, where.c_str(), max_frag_size),
+			   rows) &&
+	       !sql_select(connection,
+			   sql_format("SELECT 'low', char_name, total_frags FROM frag_leaderboard "
+				      "WHERE deleted_at IS NULL AND level <= %d%s "
+				      "ORDER BY total_frags ASC LIMIT %d",
+				      MAXLVLMORTAL, where.c_str(), max_frag_size),
+			   rows);
 }
 
 time_t fraglist_cap_header(const sql_rows &rows, char *before, size_t before_size, char *after,

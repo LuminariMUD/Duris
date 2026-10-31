@@ -17,6 +17,7 @@
 #include "economy/divine_trade_repository.h"
 
 #include "combat/frag_cap_config.h"
+#include "core/config.h"
 #include "core/defines.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
@@ -398,7 +399,8 @@ maintenance_result execute_level_cap(MYSQL *connection, const maintenance_reques
 
 	const std::string good = std::to_string(RACEWAR_GOOD), evil = std::to_string(RACEWAR_EVIL);
 	const std::string side_frags =
-		"SELECT COALESCE(SUM(total_frags),0) FROM frag_leaderboard WHERE racewar=";
+		"SELECT COALESCE(SUM(total_frags),0) FROM frag_leaderboard WHERE level<=" +
+		std::to_string(MAXLVLMORTAL) + " AND racewar=";
 	if (!query_first_row(connection,
 			     "SELECT (" + side_frags + good + "),(" + side_frags + evil + ")",
 			     &row) ||
