@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 struct char_data;
@@ -71,6 +72,13 @@ bool player_save_pipeline_init(void);
 void player_save_pipeline_shutdown(void);
 bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade_snapshot &trade);
 void player_save_pipeline_release_trade(uint32_t pid);
+// Submit a quest's post-completion status and history as one player save.
+// Return true once committed state is published; false retains it for retry.
+// The callback must tolerate a departed actor.
+bool player_save_pipeline_submit_world_quest(
+	P_char ch, const player_pending_world_quest &quest,
+	std::function<bool(P_char, const player_pending_world_quest &)> committed);
+bool player_save_pipeline_world_quest_pending(int pid);
 bool player_save_pipeline_mark(int pid, player_component_mask_t components);
 player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int save_intent,
 								  int room_vnum);

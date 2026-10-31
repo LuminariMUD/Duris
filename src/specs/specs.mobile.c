@@ -30,6 +30,7 @@
 #include "classes/necromancy.h"
 #include "economy/nexus_stones.h"
 #include "economy/currency_transaction.h"
+#include "player/player_save_pipeline.h"
 #include "combat/range.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
@@ -1572,7 +1573,7 @@ int money_changer(P_char me, P_char ch, int cmd, char *arg)
 	 * else cmd == CMD_EXCHANGE
 	 */
 	if (IS_PC(ch) &&
-	    (ch->only.pc->divine_trade_payment_pending || currency_transaction_chest_busy(ch)))
+	    (ch->only.pc->divine_trade_payment_pending || currency_transaction_wallet_busy(ch)))
 	{
 		send_to_char("Your purse is settling a payment. Try the exchange shortly.\r\n", ch);
 		return TRUE;
@@ -10851,7 +10852,7 @@ static void world_quest_report_creation_failure(P_char pl, quest_creation_failur
 	if (GET_LEVEL(pl) >= WORLD_QUEST_MIN_LEVEL && GET_LEVEL(pl) <= WORLD_QUEST_LOCAL_MAX_LEVEL)
 	{
 		send_to_char(
-			"No suitable local task is available by ordinary travel right now. Please come back later.\r\n",
+			"No suitable local task is available right now. Please come back later.\r\n",
 			pl);
 		return;
 	}
@@ -10945,13 +10946,17 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 			world_quest_refund_payment(pl, payment.fee);
 			return;
 		}
-		send_to_char("You hand over the money.\r\n", pl);
-		send_to_char("You no longer have a task.\r\n", pl);
 		// Make it so pl doesn't get the same quest again; once you fail, you fail.
 		// This also makes the quest count as one of today's quests.
 		if (pl->only.pc->quest_type == FIND_AND_KILL &&
 		    pl->only.pc->quest_kill_how_many > 0)
-			sql_world_quest_finished(pl, 0);
+		{
+			// A progressed task must use the reserved, atomic history path.
+			world_quest_refund_payment(pl, payment.fee);
+			return;
+		}
+		send_to_char("You hand over the money.\r\n", pl);
+		send_to_char("You no longer have a task.\r\n", pl);
 		resetQuest(pl);
 		gmcp_quest_status(pl);
 		return;
@@ -10968,7 +10973,7 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 		}
 		send_to_char("You hand over the money.\r\n", pl);
 		send_to_char("Take a quick peek at this note:\r\n", pl);
-		// World state and travel abilities may change while payment is pending.
+		// Target availability may change while payment is pending.
 		const auto availability = world_quest_refresh(pl);
 		if (!quest_buy_map(pl, availability))
 		{
@@ -11010,6 +11015,41 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 	}
 }
 
+static bool world_quest_begin_progressed_abandon(P_char actor, int fee)
+{
+	if (!currency_transaction_reserve_world_quest(actor, fee))
+		return false;
+	const uint32_t pid = static_cast<uint32_t>(GET_PID(actor));
+	const int target = actor->only.pc->quest_mob_vnum;
+	const int started = actor->only.pc->quest_started;
+	if (!sql_world_quest_finish_async(
+		    actor, NULL, false, false, {}, fee,
+		    [pid, target, started, fee](P_char player)
+		    {
+			    if (player && (!player->only.pc || !player->only.pc->quest_active ||
+					   player->only.pc->quest_mob_vnum != target ||
+					   player->only.pc->quest_started != started ||
+					   !currency_transaction_publish_world_quest(player, fee)))
+				    return false;
+			    currency_transaction_release_world_quest(pid);
+			    if (player)
+			    {
+				    send_to_char("You hand over the money.\r\n", player);
+				    send_to_char("You no longer have a task.\r\n", player);
+				    resetQuest(player);
+				    gmcp_quest_status(player);
+			    }
+			    return true;
+		    }))
+	{
+		currency_transaction_release_world_quest(pid);
+		return false;
+	}
+	if (player_save_pipeline_world_quest_pending(pid))
+		send_to_char("Your quest history is still being secured.\r\n", actor);
+	return true;
+}
+
 int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 {
 	char buf[MAX_INPUT_LENGTH];
@@ -11045,6 +11085,11 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		const bool requesting = isname(what, "quest") || isname(arg, "q");
 		if (!abandoning && !mapping && !requesting)
 			return FALSE;
+		if (player_save_pipeline_world_quest_pending(GET_PID(pl)))
+		{
+			send_to_char("Your quest history is still being secured.\r\n", pl);
+			return TRUE;
+		}
 		const auto availability = world_quest_refresh(pl, world[ch->in_room].number);
 		if (pl->only.pc->quest_replacement_due)
 		{
@@ -11143,6 +11188,15 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 				send_to_char("You dont have that much money...\r\n", pl);
 				return (TRUE);
 			}
+			if (pl->only.pc->quest_type == FIND_AND_KILL &&
+			    pl->only.pc->quest_kill_how_many > 0)
+			{
+				if (!world_quest_begin_progressed_abandon(pl, temp))
+					send_to_char(
+						"Your quest history is unavailable; your task was not changed.\r\n",
+						pl);
+				return TRUE;
+			}
 
 			const world_quest_payment_context payment = {
 				world_quest_payment_action::abandon, temp, GET_VNUM(ch),
@@ -11233,7 +11287,12 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		if (!isname(what, "quest") && !isname(arg, "q"))
 			return FALSE;
 
-		if (pl->only.pc->quest_accomplished && pl->only.pc->quest_giver == GET_VNUM(ch))
+		if (pl->only.pc->quest_accomplished &&
+		    (pl->only.pc->quest_giver == GET_VNUM(ch) ||
+		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_REWARD_PENDING ||
+		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_PENDING ||
+		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED ||
+		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING))
 		{
 			act("$n says, 'Woah, nice work! Congratulations!'", TRUE, ch, 0, pl,
 			    TO_VICT);
@@ -11255,7 +11314,13 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			return TRUE;
 		}
 
-		if (sql_world_quest_can_do_another(pl) < 1)
+		const int remaining = sql_world_quest_can_do_another(pl);
+		if (remaining < 0)
+		{
+			mobsay(ch, "I can't check your quest history right now. Please try again.");
+			return TRUE;
+		}
+		if (remaining == 0)
 		{
 			act("$n says, 'Sorry, I don't have any more quests for right now.'", TRUE,
 			    ch, 0, pl, TO_VICT);
@@ -16269,7 +16334,7 @@ int smelter(P_char ch, P_char pl, int cmd, char *argument)
 				return FALSE;
 			}
 			if (IS_PC(pl) && (pl->only.pc->divine_trade_payment_pending ||
-					  currency_transaction_chest_busy(pl)))
+					  currency_transaction_wallet_busy(pl)))
 			{
 				send_to_char(
 					"Your purse is settling a payment. Try the payment shortly.\r\n",

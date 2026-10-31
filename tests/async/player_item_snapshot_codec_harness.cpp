@@ -321,6 +321,11 @@ int main(int argc, char **argv)
 			read_back.status_integers.size() == PLAYER_SNAPSHOT_MAX_ROWS,
 		"a snapshot list at the row limit did not round trip");
 	snapshot.status_integers.clear();
+	snapshot.pending_world_quest.present = true;
+	require(player_snapshot_encode(snapshot, &encoded) ==
+			player_snapshot_codec_result::invalid_value,
+		"SQL-only pending quest history was silently omitted from the snapshot");
+	snapshot.pending_world_quest.present = false;
 	snapshot.pid = 0;
 	require(player_snapshot_encode(snapshot, &encoded) ==
 			player_snapshot_codec_result::invalid_value,

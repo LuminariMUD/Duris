@@ -15,18 +15,12 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
-#include "combat/forced_movement.h"
-#include "combat/justice.h"
-#include "combat/trap.h"
-#include "economy/tradeskill.h"
-#include "item/objmisc.h"
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "world/db.h"
 #include "world/map.h"
 #include "world/specs.prototypes.h"
 #include "world/world_singletons.h"
-#include "ships/ships.h"
 #include "world/world_quest_policy.h"
 #include "world/world_quest_policy_math.h"
 
@@ -61,9 +55,15 @@ namespace
 {
 constexpr int WORLD_QUEST_MAX_ZONE_NUMBER = 4000;
 
-bool quest_spend_work(world_quest_route_context &context, size_t amount = 1)
+struct quest_work
 {
-	if (context.exhausted || amount > WORLD_QUEST_MAX_ROUTE_WORK - context.work)
+	size_t work = 0;
+	bool exhausted = false;
+};
+
+bool quest_spend_work(quest_work &context, size_t amount = 1)
+{
+	if (context.exhausted || amount > WORLD_QUEST_MAX_TARGET_WORK - context.work)
 	{
 		context.exhausted = true;
 		return false;
@@ -72,445 +72,180 @@ bool quest_spend_work(world_quest_route_context &context, size_t amount = 1)
 	return true;
 }
 
-enum class quest_route_mode
+struct quest_zone_geography
 {
-	current,
-	capable,
-	potential,
+	world_quest_region region;
+	std::vector<int> entrances;
 };
 
-struct quest_route_builder
+std::vector<quest_zone_geography> quest_geography;
+std::vector<int> quest_underdark;
+
+bool quest_valid_room(int room)
 {
-	using rooms = std::unordered_map<int, world_quest_route_context::room>;
-	struct room_check
+	return room >= 0 && room <= top_of_world && world[room].zone <= top_of_zone_table;
+}
+
+world_quest_region quest_map_region(int room)
+{
+	if (!quest_valid_room(room) || !IS_MAP_ROOM(room))
+		return {};
+	if (IS_SURFACE_MAP(room))
+		return { world[room].continent > 0 && world[room].continent <= NUM_CONTINENTS ?
+				 world[room].continent :
+				 0,
+			 0 };
+	if (IS_UD_MAP(room))
+		return { 0, quest_underdark[room] };
+	return {};
+}
+
+// Geography uses authored adjacency only. No player facts, movement predicates,
+// reverse-route proof, scripts, flags, terrain or request work budget participate.
+void build_geography()
+{
+	quest_geography.assign(top_of_zone_table + 1, {});
+	quest_underdark.assign(top_of_world + 1, 0);
+	std::vector<int> parent(top_of_world + 1);
+	for (int room = 0; room <= top_of_world; ++room)
+		parent[room] = room;
+	auto root = [&](int room)
 	{
-		world_quest_route_status status = world_quest_route_status::unavailable;
-		size_t objects = 0;
-		unsigned trapped_directions = 0;
+		while (parent[room] != room)
+		{
+			parent[room] = parent[parent[room]];
+			room = parent[room];
+		}
+		return room;
 	};
-	P_char ch;
-	int level;
-	quest_route_mode mode;
-	world_quest_route_context &context;
-	std::unordered_map<int, room_check> checked;
-	std::unordered_map<int, int> geography;
-	bool flight = false, boat = false, waterbreath = false;
-	int local_region = 0;
-	quest_route_builder(P_char actor, int accepted_level, quest_route_mode route_mode,
-			    world_quest_route_context &request)
-		: ch(actor)
-		, level(accepted_level)
-		, mode(route_mode)
-		, context(request)
+	for (int room = 0; room <= top_of_world; ++room)
+		if (quest_valid_room(room) && IS_MAP_ROOM(room) && IS_UD_MAP(room))
+			for (const auto *edge : world[room].dir_option)
+				if (edge && quest_valid_room(edge->to_room) &&
+				    IS_MAP_ROOM(edge->to_room) && IS_UD_MAP(edge->to_room))
+				{
+					const int first = root(room), second = root(edge->to_room);
+					parent[std::max(first, second)] = std::min(first, second);
+				}
+	for (int room = 0; room <= top_of_world; ++room)
+		if (quest_valid_room(room) && IS_MAP_ROOM(room) && IS_UD_MAP(room))
+			quest_underdark[room] = root(room) + 1;
+
+	std::vector<std::vector<int>> neighbors(top_of_zone_table + 1);
+	for (int room = 0; room <= top_of_world; ++room)
 	{
-	}
-
-	bool spend(size_t amount = 1) { return quest_spend_work(context, amount); }
-
-	bool valid_room(int room) const
-	{
-		return room >= 0 && room <= top_of_world && world[room].zone <= top_of_zone_table;
-	}
-
-	void unknown() { context.uncertain = true; }
-
-	bool ordinary_mobile_proc(P_char mob, mob_proc_type proc)
-	{
-		// This classifies travel/door commands, not ASK. quester explicitly
-		// handles ASK/TELL/GIVE only, and world_quest handles ASK only.
-		if (proc == shop_keeper)
+		if (!quest_valid_room(room))
+			continue;
+		for (const auto *edge : world[room].dir_option)
 		{
-			const size_t lookup_work = mob->only.npc->shopkeeper_shop_id < 0 ?
-							   static_cast<size_t>(number_of_shops) :
-							   1;
-			if (!spend(lookup_work))
-				return false;
-			const int shop = singleton_shop_id(mob);
-			if (shop < 0 || shop >= number_of_shops)
-				return false;
-			proc = shop_index[shop].func;
-		}
-		return !proc || proc == world_quest || proc == quester;
-	}
-
-	bool ordinary_object_proc(obj_proc_type proc) const
-	{
-		// board explicitly handles writing/reading/look/examine/removal only.
-		// The hide artifact handles SAY; the regeneration ring handles RUB
-		// and periodic ticks. Tracks and blood stains only handle decay or
-		// cosmetic ticks; ordinary movement/combat creates them on the route.
-		// None consumes travel, door or ASK commands.
-		return !proc || proc == board || proc == artifact_hide ||
-		       proc == ring_of_regeneration || proc == tracks || proc == blood_stains;
-	}
-
-	bool ordinary_space(int room) const
-	{
-		if (!valid_room(room))
-			return false;
-		const auto &entry = world[room];
-		const auto &zone = zone_table[entry.zone];
-		if (IS_SET(zone.flags, ZONE_CLOSED | ZONE_PRIVATE) ||
-		    IS_SET(entry.room_flags, ROOM_LOCKER | ROOM_PRIVATE | ROOM_ARENA | ROOM_GUILD |
-						     ROOM_JAIL | ROOM_ATRIUM))
-			return false;
-		if (zone.hometown < 0 || zone.hometown > LAST_HOME ||
-		    (mode == quest_route_mode::current && zone.hometown &&
-		     PC_NOTWELCOME(ch, zone.hometown)))
-			return false;
-		if ((IS_SET(entry.room_flags, ROOM_UNDERWATER) && !waterbreath) ||
-		    ((entry.sector_type == SECT_UNDERWATER ||
-		      entry.sector_type == SECT_UNDERWATER_GR) &&
-		     !waterbreath) ||
-		    ((entry.sector_type == SECT_NO_GROUND ||
-		      entry.sector_type == SECT_UNDRWLD_NOGROUND) &&
-		     !flight) ||
-		    ((entry.sector_type == SECT_WATER_NOSWIM ||
-		      entry.sector_type == SECT_UNDRWLD_NOSWIM) &&
-		     !boat && !flight))
-			return false;
-		switch (entry.sector_type)
-		{
-		case SECT_FIREPLANE:
-		case SECT_OCEAN:
-		case SECT_AIR_PLANE:
-		case SECT_WATER_PLANE:
-		case SECT_EARTH_PLANE:
-		case SECT_ETHEREAL:
-		case SECT_ASTRAL:
-		case SECT_UNDRWLD_LIQMITH:
-		case SECT_NEG_PLANE:
-		case SECT_PLANE_OF_AVERNUS:
-		case SECT_LAVA:
-		case SECT_CASTLE_WALL:
-			return false;
-		case SECT_UNDRWLD_LOWCEIL:
-			// can_enter_room permits an ordinary kneel/crawl here. No actor
-			// posture is changed while proving that the route is usable.
-			return true;
-		default:
-			break;
-		}
-		return true;
-	}
-
-	room_check inspect_room(int room)
-	{
-		room_check result;
-		if (!ordinary_space(room))
-			return result;
-		const auto &entry = world[room];
-		result.status = world_quest_route_status::unproven;
-		// inn and ship_shop_proc explicitly ignore movement, door commands and
-		// arrival/departure hooks. Other procedures require a source audit.
-		if (mode != quest_route_mode::potential &&
-		    ((entry.funct && entry.funct != inn && entry.funct != ship_shop_proc) ||
-		     entry.chance_fall || entry.current_speed || entry.affected))
-			return result;
-		for (P_char person = entry.people; person; person = person->next_in_room)
-		{
-			if (!spend())
-				return result;
-			if (person == ch)
+			if (!edge || !quest_valid_room(edge->to_room))
 				continue;
-			// Occupied single-file movement can depend on list order, combat,
-			// crawling and a retry. Do not pretend the graph alone proves it.
-			if (mode != quest_route_mode::potential &&
-			    IS_SET(entry.room_flags, ROOM_SINGLE_FILE))
-				return result;
-			if (!IS_NPC(person))
-				continue;
-			const int rnum = GET_RNUM(person);
-			if (mode != quest_route_mode::potential &&
-			    (rnum < 0 || rnum > top_of_mobt ||
-			     !ordinary_mobile_proc(person, mob_index[rnum].func.mob) ||
-			     !ordinary_mobile_proc(person, mob_index[rnum].qst_func)))
-				return result;
-		}
-		for (P_obj object = entry.contents; object; object = object->next_content)
-		{
-			if (!spend())
-				return result;
-			++result.objects;
-			if (mode != quest_route_mode::potential && object->R_num >= 0 &&
-			    object->R_num <= top_of_objt &&
-			    !ordinary_object_proc(obj_index[object->R_num].func.obj))
-				return result;
-			for (int direction = 0; direction < NUM_EXITS; ++direction)
-				if (movement_trap_trigger(object, direction))
-					result.trapped_directions |= 1u << direction;
-		}
-		result.status = world_quest_route_status::available;
-		return result;
-	}
-
-	const room_check &room(int rnum)
-	{
-		const auto found = checked.find(rnum);
-		if (found != checked.end())
-			return found->second;
-		if (checked.size() >= WORLD_QUEST_MAX_ROUTE_ROOMS)
-			context.exhausted = true;
-		return checked
-			.emplace(rnum, context.exhausted ?
-					       room_check{ world_quest_route_status::unproven } :
-					       inspect_room(rnum))
-			.first->second;
-	}
-
-	bool connection(int from, int direction)
-	{
-		if (!spend() || !valid_room(from))
-			return false;
-		const auto *edge = world[from].dir_option[direction];
-		if (!edge || !valid_room(edge->to_room) ||
-		    IS_SET(edge->exit_info, EX_SECRET | EX_BLOCKED | EX_WALLED | EX_LOCKED) ||
-		    (IS_SET(edge->exit_info, EX_CLOSED) &&
-		     (!IS_SET(edge->exit_info, EX_ISDOOR) || IS_SET(edge->exit_info, EX_SPIKED))) ||
-		    check_castle_walls(from, edge->to_room) ||
-		    map_entry_barrier(ch, from, edge->to_room) != forced_block::none)
-			return false;
-		return ordinary_space(from) && ordinary_space(edge->to_room);
-	}
-
-	bool exit(int from, int direction)
-	{
-		if (!connection(from, direction))
-			return false;
-		const auto *edge = world[from].dir_option[direction];
-		const auto &source = room(from);
-		const auto &target = room(edge->to_room);
-		if (source.status == world_quest_route_status::unproven ||
-		    target.status == world_quest_route_status::unproven)
-			unknown();
-		if (source.status != world_quest_route_status::available ||
-		    target.status != world_quest_route_status::available ||
-		    (source.trapped_directions & (1u << direction)))
-			return false;
-		// check_wall is read-only; charge its bounded object walk to this same
-		// request rather than introducing a second wall implementation.
-		return spend(source.objects) && !check_wall(from, direction);
-	}
-
-	void expand(int origin, rooms &visited, bool underdark_only)
-	{
-		visited.try_emplace(origin);
-		std::vector<int> queue{ origin };
-		for (size_t next = 0; next < queue.size() && !context.exhausted; ++next)
-		{
-			const int from = queue[next];
-			for (int direction = 0; direction < NUM_EXITS; ++direction)
+			const int to = edge->to_room;
+			const int from_zone = world[room].zone, to_zone = world[to].zone;
+			if (!IS_MAP_ROOM(room) && IS_MAP_ROOM(to))
+				quest_geography[from_zone].entrances.push_back(to);
+			else if (IS_MAP_ROOM(room) && !IS_MAP_ROOM(to))
+				quest_geography[to_zone].entrances.push_back(room);
+			else if (!IS_MAP_ROOM(room) && !IS_MAP_ROOM(to) && from_zone != to_zone)
 			{
-				if (!(underdark_only ? connection(from, direction) :
-						       exit(from, direction)))
-					continue;
-				const int to = world[from].dir_option[direction]->to_room;
-				if (underdark_only ?
-					    !IS_UD_MAP(to) || !IS_MAP_ROOM(to) :
-					    level <= WORLD_QUEST_LOCAL_MAX_LEVEL && local_region &&
-						    region(to) != local_region)
-					continue;
-				if (visited.size() >= WORLD_QUEST_MAX_ROUTE_ROOMS &&
-				    !visited.count(to))
-				{
-					context.exhausted = true;
-					return;
-				}
-				auto [found, inserted] = visited.try_emplace(to);
-				if (inserted)
-				{
-					found->second.map_entrance =
-						IS_MAP_ROOM(from) && !IS_MAP_ROOM(to) ?
-							from :
-							visited.at(from).map_entrance;
-					queue.push_back(to);
-				}
-				found->second.incoming.push_back(from);
+				neighbors[from_zone].push_back(to_zone);
+				neighbors[to_zone].push_back(from_zone);
 			}
 		}
 	}
-
-	void mark_returns(int origin, rooms &visited)
+	for (auto &entry : quest_geography)
 	{
-		visited.at(origin).returns_to_origin = true;
-		std::vector<int> queue{ origin };
-		for (size_t next = 0; next < queue.size() && !context.exhausted; ++next)
-			for (int from : visited.at(queue[next]).incoming)
-			{
-				if (!spend())
-					return;
-				auto &entry = visited.at(from);
-				if (!entry.returns_to_origin)
-				{
-					entry.returns_to_origin = true;
-					queue.push_back(from);
-				}
-			}
+		std::sort(entry.entrances.begin(), entry.entrances.end());
+		entry.entrances.erase(std::unique(entry.entrances.begin(), entry.entrances.end()),
+				      entry.entrances.end());
 	}
-
-	int region(int origin)
-	{
-		if (!valid_room(origin))
-			return 0;
-		if (IS_SURFACE_MAP(origin) && IS_MAP_ROOM(origin))
-			return world[origin].continent > 0 &&
-					       world[origin].continent <= NUM_CONTINENTS ?
-				       world[origin].continent :
-				       0;
-		if (const auto found = geography.find(origin); found != geography.end())
-			return found->second;
-		if (IS_UD_MAP(origin) && IS_MAP_ROOM(origin))
+	// Resolve each family at its nearest authored zone boundary. This admits a
+	// town's adjacent connector without flooding all connected interior areas.
+	// Tied boundaries in different regions stay ambiguous rather than expanding
+	// the local contract. Surface and Underdark never compete with each other.
+	for (int zone = 0; zone <= top_of_zone_table; ++zone)
+		for (bool underdark : { false, true })
 		{
-			rooms component;
-			expand(origin, component, true);
-			mark_returns(origin, component);
-			// Only the directed map component containing this origin shares its
-			// identity. An interior cannot merge disconnected Underdark maps.
-			for (const auto &[rnum, entry] : component)
-				if (entry.returns_to_origin)
-					geography[rnum] = -origin - 1;
-			return context.exhausted ? 0 : geography[origin];
-		}
-		if (IS_MAP_ROOM(origin))
-			return 0;
-		std::unordered_set<int> seen{ origin };
-		std::vector<int> queue{ origin };
-		int resolved = 0;
-		bool conflicting = false;
-		for (size_t next = 0; next < queue.size() && !context.exhausted; ++next)
-		{
-			for (int direction = 0; direction < NUM_EXITS; ++direction)
+			std::vector<bool> seen(top_of_zone_table + 1, false);
+			std::vector<int> frontier{ zone };
+			seen[zone] = true;
+			while (!frontier.empty())
 			{
-				if (!connection(queue[next], direction))
-					continue;
-				const int to = world[queue[next]].dir_option[direction]->to_room;
-				const auto cached = geography.find(to);
-				if (IS_MAP_ROOM(to) || cached != geography.end())
+				std::unordered_set<int> regions;
+				std::vector<int> next;
+				for (int current : frontier)
 				{
-					const int boundary = cached != geography.end() ?
-								     cached->second :
-								     region(to);
-					if (!boundary || (resolved && resolved != boundary))
-						conflicting = true;
-					else
-						resolved = boundary;
-				}
-				else if (seen.insert(to).second)
-				{
-					if (seen.size() > WORLD_QUEST_MAX_ROUTE_ROOMS)
+					for (int entrance : quest_geography[current].entrances)
 					{
-						context.exhausted = true;
-						break;
+						const auto region = quest_map_region(entrance);
+						const int identity = underdark ? region.underdark :
+										 region.surface;
+						if (identity > 0)
+							regions.insert(identity);
 					}
-					queue.push_back(to);
+					for (int neighbor : neighbors[current])
+						if (!seen[neighbor])
+						{
+							seen[neighbor] = true;
+							next.push_back(neighbor);
+						}
 				}
+				if (!regions.empty())
+				{
+					if (regions.size() == 1)
+					{
+						auto &region = quest_geography[zone].region;
+						(underdark ? region.underdark : region.surface) =
+							*regions.begin();
+					}
+					else
+						quest_geography[zone].region.uncertain = true;
+					break;
+				}
+				frontier = std::move(next);
 			}
 		}
-		if (conflicting || context.exhausted)
-			resolved = 0;
-		if (resolved)
-			for (int rnum : queue)
-				geography[rnum] = resolved;
-		else
-			geography[origin] = 0;
-		return resolved;
-	}
+}
 
-	void build(int origin)
-	{
-		if (level > WORLD_QUEST_LOCAL_MAX_LEVEL)
-		{
-			flight = mode != quest_route_mode::current || IS_AFFECTED(ch, AFF_FLY);
-			waterbreath = mode != quest_route_mode::current ||
-				      IS_AFFECTED(ch, AFF_WATERBREATH);
-			boat = mode != quest_route_mode::current;
-			for (int slot = 0; slot < MAX_WEAR; ++slot)
-				boat = boat || (ch->equipment[slot] &&
-						ch->equipment[slot]->type == ITEM_BOAT);
-		}
-		// Inventory/equipment procedures intercept commands before room exits.
-		for (P_obj object = ch->carrying; object; object = object->next_content)
-		{
-			if (!spend())
-				return;
-			if (level > WORLD_QUEST_LOCAL_MAX_LEVEL && object->type == ITEM_BOAT)
-				boat = true;
-			if (mode != quest_route_mode::potential && object->R_num >= 0 &&
-			    object->R_num <= top_of_objt &&
-			    !ordinary_object_proc(obj_index[object->R_num].func.obj))
-			{
-				unknown();
-				return;
-			}
-		}
-		for (int slot = 0; slot < MAX_WEAR; ++slot)
-			if (mode != quest_route_mode::potential && ch->equipment[slot] &&
-			    ch->equipment[slot]->R_num >= 0 &&
-			    ch->equipment[slot]->R_num <= top_of_objt &&
-			    !ordinary_object_proc(obj_index[ch->equipment[slot]->R_num].func.obj))
-			{
-				unknown();
-				return;
-			}
-		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL)
-		{
-			local_region = region(origin);
-			// The potential pass can disprove every route even when a locked
-			// origin prevents resolving geography. A path in this relaxed
-			// graph yields only unproven, never a valid assignment.
-			if (!local_region && mode != quest_route_mode::potential)
-			{
-				unknown();
-				return;
-			}
-		}
-		if (room(origin).status != world_quest_route_status::available)
-		{
-			if (room(origin).status == world_quest_route_status::unproven)
-				unknown();
-			return;
-		}
-		expand(origin, context.rooms, false);
-		mark_returns(origin, context.rooms);
-		if (level <= WORLD_QUEST_LOCAL_MAX_LEVEL && !IS_MAP_ROOM(origin) &&
-		    mode != quest_route_mode::potential)
-		{
-			// Geography considers potential ordinary connections through a town,
-			// so an unknown shop in a side street cannot erase a proved region.
-			// At least one map boundary must also have an actual proved route.
-			const bool reached_map = std::any_of(context.rooms.begin(),
-							     context.rooms.end(),
-							     [](const auto &entry)
-							     { return IS_MAP_ROOM(entry.first); });
-			if (!reached_map)
-			{
-				context.rooms.clear();
-				unknown();
-			}
-		}
-	}
-};
-
-world_quest_route_context quest_build_routes(P_char ch, int origin_vnum, int level,
-					     quest_route_mode mode, size_t work = 0)
+world_quest_region quest_region_for_room(int room)
 {
-	world_quest_route_context context;
-	context.work = work;
-	if (!ch || IS_NPC(ch) || !world || !zone_table || level < WORLD_QUEST_MIN_LEVEL ||
-	    level >= TOTALLVLS)
-	{
-		context.uncertain = true;
-		return context;
-	}
-	const int origin = origin_vnum > 0 ? real_room(origin_vnum) : NOWHERE;
-	if (origin < 0 || origin > top_of_world)
-	{
-		context.uncertain = true;
-		return context;
-	}
-	quest_route_builder builder(ch, level, mode, context);
-	builder.build(origin);
-	return context;
+	if (!quest_valid_room(room))
+		return {};
+	return IS_MAP_ROOM(room) ? quest_map_region(room) :
+				   quest_geography[world[room].zone].region;
+}
+
+bool quest_local_match(int origin, int destination)
+{
+	const auto first = quest_region_for_room(origin);
+	const auto second = quest_region_for_room(destination);
+	return (first.surface > 0 && first.surface == second.surface) ||
+	       (first.underdark > 0 && first.underdark == second.underdark);
+}
+
+bool quest_target_location(int room)
+{
+	if (!quest_valid_room(room))
+		return false;
+	return !IS_SET(zone_table[world[room].zone].flags, ZONE_CLOSED | ZONE_PRIVATE) &&
+	       !IS_SET(world[room].room_flags, ROOM_LOCKER | ROOM_PRIVATE | ROOM_ARENA |
+						       ROOM_GUILD | ROOM_JAIL | ROOM_ATRIUM);
+}
+
+// Audited Bloodstone ambient ticks. Each ignores nonzero commands (apart
+// from periodic registration) and only speaks or performs cosmetic actions.
+// They neither gate ordinary travel/doors nor intercept ASK.
+bool passive_quest_mobile_proc(mob_proc_type proc)
+{
+	return proc == bs_boss || proc == bs_citizen || proc == bs_comwoman || proc == bs_brat ||
+	       proc == bs_holyman || proc == bs_merchant || proc == bs_wino || proc == bs_watcher ||
+	       proc == bs_guard || proc == bs_squire || proc == bs_peddler || proc == bs_timid ||
+	       proc == bs_shady || proc == bs_sinister || proc == bs_menacing ||
+	       proc == bs_executioner || proc == bs_baron || proc == bs_sparrow ||
+	       proc == bs_squirrel || proc == bs_crow || proc == bs_mountainman ||
+	       proc == bs_salesman || proc == bs_nomad || proc == bs_insane ||
+	       proc == bs_homeless || proc == bs_servant || proc == bs_gnoll ||
+	       proc == bs_griffon || proc == bs_boar || proc == bs_cub || proc == bs_stirge;
 }
 
 constexpr int WORLD_QUEST_EXPLICIT_DENY_ZONES[] = {
@@ -927,7 +662,8 @@ struct quest_target_request
 {
 	P_char actor;
 	int level;
-	world_quest_route_context routes;
+	quest_work work;
+	int origin_room;
 	std::map<int, std::map<int, std::vector<P_char>>> mobs;
 	std::unordered_map<int, size_t> population;
 	int probes = WORLD_QUEST_MAX_TARGET_PROBES;
@@ -938,14 +674,11 @@ struct quest_target_request
 	quest_target_request(P_char ch, int origin, int accepted_level, int accepted_target = 0)
 		: actor(ch)
 		, level(accepted_level)
-		, routes(accepted_target ? world_quest_route_context{} :
-					   world_quest_policy_routes(ch, origin, accepted_level))
+		, origin_room(origin > 0 ? real_room(origin) : NOWHERE)
 	{
-		if (routes.exhausted || (!accepted_target && routes.rooms.empty()))
-			return;
 		for (P_char mob = character_list; mob; mob = mob->next)
 		{
-			if (!quest_spend_work(routes))
+			if (!quest_spend_work(work))
 				break;
 			if (mob->in_room >= 0 && mob->in_room <= top_of_world)
 				++population[mob->in_room];
@@ -960,7 +693,7 @@ struct quest_target_request
 			if (match)
 				mobs[world[mob->in_room].zone][GET_RNUM(mob)].push_back(mob);
 		}
-		if (routes.exhausted)
+		if (work.exhausted)
 			mobs.clear();
 	}
 
@@ -983,21 +716,28 @@ struct quest_target_request
 		       world[source->room].zone == world[mob->in_room].zone &&
 		       source->profile->vnum == GET_VNUM(mob) &&
 		       static_zone_eligibility(world[mob->in_room].zone, level) &&
-		       source->profile->level >= level - 4 && source->profile->level <= level + 5 &&
-		       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5;
+		       quest_target_location(mob->in_room);
 	}
 
-	bool reachable(P_char mob) const
+	bool local(P_char mob) const
 	{
-		return world_quest_policy_route(routes, routine_source(mob)->room) ==
-			       world_quest_route_status::available &&
-		       world_quest_policy_route(routes, mob->in_room) ==
-			       world_quest_route_status::available;
+		return level > WORLD_QUEST_LOCAL_MAX_LEVEL ||
+		       quest_local_match(origin_room, mob->in_room);
+	}
+
+	int map_room(P_char mob) const
+	{
+		const auto &entrances = quest_geography[world[mob->in_room].zone].entrances;
+		for (int entrance : entrances)
+			if (level > WORLD_QUEST_LOCAL_MAX_LEVEL ||
+			    quest_local_match(origin_room, entrance))
+				return entrance;
+		return NOWHERE;
 	}
 
 	bool common(P_char mob) const
 	{
-		return ordinary_instance(mob) && !controlled(mob) && reachable(mob);
+		return ordinary_instance(mob) && !controlled(mob) && local(mob);
 	}
 
 	bool actor_can_ask() const
@@ -1010,19 +750,20 @@ struct quest_target_request
 
 	bool ask_handler(P_char mob, mob_proc_type proc)
 	{
-		if (!proc)
+		if (!proc || passive_quest_mobile_proc(proc))
 			return true;
 		if (proc != shop_keeper)
 			return false;
 		const size_t lookup_work = mob->only.npc->shopkeeper_shop_id < 0 ?
 						   static_cast<size_t>(number_of_shops) :
 						   1;
-		if (!quest_spend_work(routes, lookup_work))
+		if (!quest_spend_work(work, lookup_work))
 			return false;
 		const int shop = singleton_shop_id(mob);
 		// Travel-safe quest handlers may consume ASK before do_ask reaches
-		// quest_ask. A shop with no delegate explicitly ignores ASK.
-		return shop >= 0 && shop < number_of_shops && !shop_index[shop].func;
+		// quest_ask. Only an absent or audited passive shop delegate ignores it.
+		return shop >= 0 && shop < number_of_shops &&
+		       (!shop_index[shop].func || passive_quest_mobile_proc(shop_index[shop].func));
 	}
 
 	bool world_type_eligible(P_char mob, int type)
@@ -1032,15 +773,16 @@ struct quest_target_request
 		if (mob->specials.z_cord != 0)
 			return false;
 		if (type == FIND_AND_KILL)
-			return profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
+			return profile.level >= level - 4 && profile.level <= level + 5 &&
+			       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5 &&
+			       profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
 			       GET_EXP(mob) > 0 && !IS_SHOPKEEPER(mob) &&
 			       !IS_SET(mob->specials.act,
 				       ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE) &&
 			       !IS_SET(world[room].room_flags, ROOM_SAFE) &&
 			       !IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
 		if (mob_index[GET_RNUM(mob)].number != 1 || !profile.can_speak ||
-		    profile.level >= MAXLVL || !CAN_SPEAK(mob) || !IS_AWAKE(mob) ||
-		    IS_AFFECTED2(mob, AFF2_SILENCED) ||
+		    profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL || !CAN_SPEAK(mob) ||
 		    IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
 		    IS_SET(zone_table[world[room].zone].flags, ZONE_SILENT) ||
 		    world[room].sector_type == SECT_UNDERWATER ||
@@ -1056,14 +798,58 @@ struct quest_target_request
 
 	bool handlers_eligible(P_char mob)
 	{
-		return ask_handler(mob, mob_index[GET_RNUM(mob)].func.mob) &&
-		       ask_handler(mob, mob_index[GET_RNUM(mob)].qst_func);
+		// special() offers ASK to the whole interaction scene before do_ask.
+		// Audit that scene without executing scripts or proving a travel route.
+		const auto &room = world[mob->in_room];
+		if (room.funct && room.funct != inn && room.funct != ship_shop_proc &&
+		    room.funct != crew_shop_proc)
+			return false;
+		auto object_handler = [&](P_obj object)
+		{
+			if (!object)
+				return true;
+			if (!quest_spend_work(work))
+				return false;
+			if (object->R_num < 0)
+				return true;
+			if (object->R_num > top_of_objt)
+				return false;
+			const auto proc = obj_index[object->R_num].func.obj;
+			return !proc || proc == board || proc == artifact_hide ||
+			       proc == ring_of_regeneration || proc == tracks ||
+			       proc == blood_stains;
+		};
+		for (P_obj object = actor->carrying; object; object = object->next_content)
+			if (!object_handler(object))
+				return false;
+		for (P_obj object : actor->equipment)
+			if (!object_handler(object))
+				return false;
+		for (P_obj object = room.contents; object; object = object->next_content)
+			if (!object_handler(object))
+				return false;
+		for (P_char person = room.people; person; person = person->next_in_room)
+		{
+			if (!quest_spend_work(work))
+				return false;
+			if (person == actor || !IS_NPC(person) || !IS_ALIVE(person) ||
+			    !IS_AWAKE(person))
+				continue;
+			const int rnum = GET_RNUM(person);
+			if (rnum < 0 || rnum > top_of_mobt ||
+			    !ask_handler(person, mob_index[rnum].func.mob) ||
+			    !ask_handler(person, mob_index[rnum].qst_func))
+				return false;
+		}
+		return true;
 	}
 
 	bool type_eligible(P_char mob, int type)
 	{
 		return world_type_eligible(mob, type) &&
-		       (type != FIND_AND_ASK || (actor_can_ask() && handlers_eligible(mob)));
+		       (type != FIND_AND_ASK ||
+			(IS_AWAKE(mob) && !IS_AFFECTED2(mob, AFF2_SILENCED) && actor_can_ask() &&
+			 handlers_eligible(mob)));
 	}
 
 	int suggest(int zone, int type, int minimum)
@@ -1072,7 +858,7 @@ struct quest_target_request
 		const auto &excluded = tried[zone];
 		for (const auto &[rnum, instances] : mobs.at(zone))
 		{
-			if (!quest_spend_work(routes))
+			if (!quest_spend_work(work))
 				break;
 			const int vnum = mob_index[rnum].virtual_number;
 			if (std::find(excluded.begin(), excluded.end(), vnum) != excluded.end())
@@ -1084,7 +870,7 @@ struct quest_target_request
 			int count = 0;
 			for (P_char mob : instances)
 			{
-				if (!quest_spend_work(routes))
+				if (!quest_spend_work(work))
 					break;
 				if (common(mob) && type_eligible(mob, type))
 					++count;
@@ -1093,7 +879,7 @@ struct quest_target_request
 			    (type == FIND_AND_ASK && count == 1))
 				candidates.push_back(vnum);
 		}
-		if (routes.exhausted || candidates.empty())
+		if (work.exhausted || candidates.empty())
 			return -1;
 		return candidates[number(0, static_cast<int>(candidates.size()) - 1)];
 	}
@@ -1113,24 +899,23 @@ struct quest_target_request
 		checked.type = type;
 		for (P_char mob : prototype->second)
 		{
-			if (!quest_spend_work(routes))
+			if (!quest_spend_work(work))
 				break;
 			if (!common(mob) || !type_eligible(mob, type))
 				continue;
 			// Bound the lighting/aura walks in the existing visibility
 			// predicate as well as this request's one live-character scan.
-			if (!quest_spend_work(routes, 8 * (population.at(mob->in_room) + 1)))
+			if (!quest_spend_work(work, 8 * (population.at(mob->in_room) + 1)))
 				break;
 			if (!ac_can_see_from(actor, mob, mob->in_room))
 				continue;
 			if (type == FIND_AND_ASK && aggressive_to_at(mob, actor, mob->in_room))
 				continue;
 			if (checked.usable_count++ == 0)
-				checked.map_room =
-					world_quest_policy_map_room(routes, mob->in_room);
+				checked.map_room = map_room(mob);
 		}
-		if (routes.exhausted || (type == FIND_AND_KILL ? checked.usable_count < minimum :
-								 checked.usable_count != 1))
+		if (work.exhausted || (type == FIND_AND_KILL ? checked.usable_count < minimum :
+							       checked.usable_count != 1))
 			return false;
 		target = checked;
 		return true;
@@ -1160,10 +945,10 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 	auto finish = [&](status value)
 	{
 		result.status = value;
-		result.work = request.routes.work;
+		result.work = request.work.work;
 		return result;
 	};
-	if (request.routes.exhausted)
+	if (request.work.exhausted)
 		return finish(status::unproven);
 	struct candidate
 	{
@@ -1178,21 +963,23 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 			(void)rnum;
 			for (P_char mob : instances)
 			{
-				if (!quest_spend_work(request.routes))
+				if (!quest_spend_work(request.work))
 					return finish(status::unproven);
 				if (!request.ordinary_instance(mob) ||
 				    !request.world_type_eligible(mob, type))
 					continue;
 				status interaction = status::valid;
 				if (request.controlled(mob) ||
-				    (type == FIND_AND_ASK && !request.actor_can_ask()))
+				    (type == FIND_AND_ASK &&
+				     (!request.actor_can_ask() || !IS_AWAKE(mob) ||
+				      IS_AFFECTED2(mob, AFF2_SILENCED))))
 					interaction = status::blocked;
 				else if (type == FIND_AND_ASK && !request.handlers_eligible(mob))
 					interaction = status::unproven;
 				else
 				{
 					if (!quest_spend_work(
-						    request.routes,
+						    request.work,
 						    8 * (request.population.at(mob->in_room) + 1)))
 						return finish(status::unproven);
 					if (!ac_can_see_from(ch, mob, mob->in_room))
@@ -1206,7 +993,7 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 				candidates.push_back({ mob, interaction });
 			}
 		}
-	if (request.routes.exhausted)
+	if (request.work.exhausted)
 		return finish(status::unproven);
 	if (static_cast<int>(candidates.size()) < needed)
 		return finish(status::unavailable);
@@ -1215,71 +1002,42 @@ world_quest_target_check world_quest_policy_check_target(P_char ch, int origin_v
 	if (real_room(origin_vnum) < 0)
 		return finish(status::unavailable);
 
-	const size_t scan_work = request.routes.work;
-	for (quest_route_mode mode :
-	     { quest_route_mode::current, quest_route_mode::capable, quest_route_mode::potential })
+	const auto region = quest_region_for_room(request.origin_room);
+	if (accepted_level <= WORLD_QUEST_LOCAL_MAX_LEVEL && !region.surface && !region.underdark)
+		return finish(status::unproven);
+	int valid = 0, blocked = 0, uncertain = 0;
+	for (const auto &candidate : candidates)
 	{
-		request.routes = quest_build_routes(
-			ch, origin_vnum, accepted_level, mode,
-			mode == quest_route_mode::current ? scan_work : request.routes.work);
-		if (request.routes.exhausted)
-			return finish(status::unproven);
-		int valid = 0, blocked = 0, uncertain = 0, possible = 0;
-		for (const auto &candidate : candidates)
+		if (!request.local(candidate.mob))
 		{
-			if (!quest_spend_work(request.routes))
-				return finish(status::unproven);
-			if (!request.reachable(candidate.mob))
-				continue;
-			++possible;
-			if (candidate.interaction == status::valid)
-			{
-				if (valid++ == 0 && mode == quest_route_mode::current)
-					result.map_room = world_quest_policy_map_room(
-						request.routes, candidate.mob->in_room);
-			}
-			else if (candidate.interaction == status::blocked)
-				++blocked;
-			else
+			const auto destination = quest_region_for_room(candidate.mob->in_room);
+			if (region.uncertain || destination.uncertain ||
+			    (!destination.surface && !destination.underdark))
 				++uncertain;
+			continue;
 		}
-		if (mode == quest_route_mode::current && valid >= needed)
-			return finish(status::valid);
-		if (mode != quest_route_mode::potential)
+		if (candidate.interaction == status::valid)
 		{
-			if (valid + blocked >= needed)
-				return finish(status::blocked);
-			if (valid + blocked + uncertain >= needed)
-				return finish(status::unproven);
+			if (valid++ == 0)
+				result.map_room = request.map_room(candidate.mob);
 		}
-		else if (!request.routes.uncertain && possible < needed)
-			return finish(status::unavailable);
+		else if (candidate.interaction == status::blocked)
+			++blocked;
+		else
+			++uncertain;
 	}
-	return finish(status::unproven);
+	if (valid >= needed)
+		return finish(status::valid);
+	if (valid + blocked >= needed)
+		return finish(status::blocked);
+	if (valid + blocked + uncertain >= needed)
+		return finish(status::unproven);
+	return finish(status::unavailable);
 }
 
-world_quest_route_context world_quest_policy_routes(P_char ch, int origin_vnum, int accepted_level)
+world_quest_region world_quest_policy_region(int room)
 {
-	return quest_build_routes(ch, origin_vnum, accepted_level, quest_route_mode::current);
-}
-
-world_quest_route_status world_quest_policy_route(const world_quest_route_context &context,
-						  int room)
-{
-	if (context.exhausted)
-		return world_quest_route_status::unproven;
-	const auto found = context.rooms.find(room);
-	if (found != context.rooms.end() && found->second.returns_to_origin)
-		return world_quest_route_status::available;
-	return context.uncertain ? world_quest_route_status::unproven :
-				   world_quest_route_status::unavailable;
-}
-
-int world_quest_policy_map_room(const world_quest_route_context &context, int room)
-{
-	if (world_quest_policy_route(context, room) != world_quest_route_status::available)
-		return NOWHERE;
-	return context.rooms.at(room).map_entrance;
+	return world_quest_policy_bootstrap() ? quest_region_for_room(room) : world_quest_region{};
 }
 
 bool world_quest_policy_bootstrap()
@@ -1298,6 +1056,7 @@ bool world_quest_policy_bootstrap()
 		quest_zones.resize(static_cast<size_t>(top_of_zone_table + 1));
 		for (int zone = 0; zone <= top_of_zone_table; ++zone)
 			quest_zones[zone].number = zone_table[zone].number;
+		build_geography();
 		build_intervals();
 		load_mobile_profiles();
 		for (quest_zone_profile &zone : quest_zones)
@@ -1460,7 +1219,7 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 		(void)mobs;
 		remaining_zones.push_back(zone);
 	}
-	while (!remaining_zones.empty() && request.probes > 0 && !request.routes.exhausted)
+	while (!remaining_zones.empty() && request.probes > 0 && !request.work.exhausted)
 	{
 		const int zone = world_quest_policy_select_zone(accepted_level, remaining_zones);
 		if (zone < 0)
@@ -1477,7 +1236,7 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 						 first_type :
 						 (first_type == FIND_AND_KILL ? FIND_AND_ASK :
 										FIND_AND_KILL);
-			while (request.probes > 0 && !request.routes.exhausted)
+			while (request.probes > 0 && !request.work.exhausted)
 			{
 				const int minimum = needed > 0		  ? needed :
 						    type == FIND_AND_KILL ? 2 :

@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -203,6 +204,24 @@ def run(binary):
                 act(OWNER, 'close', 'You close the chest')
                 act(OWNER, 'look in vault', 'must open that private chest first')
                 act(OWNER, 'eq log', 'Recent locker activity:')
+                locker_id = sql(f"SELECT id FROM lockers WHERE locker_name='{ACCOUNT_LOCKER}'")
+                chest_id = sql(f"SELECT id FROM private_chests WHERE locker_id={locker_id} AND chest_name='vault'")
+                # Exact latest-50 membership/order when timestamps tie, including replay.
+                values = ','.join(f"({locker_id},{chest_id},'Orderprobe',3,'probe',"
+                                  f"UNHEX(LPAD(HEX({i}),32,'0')),'2030-01-01 00:00:00')"
+                                  for i in range(1, 61))
+                insert = "INSERT IGNORE INTO private_chest_log (locker_id,chest_id,char_name,action_type,item_short,event_id,logged_at) VALUES " + values
+                sql(insert)
+                sql(insert)
+                sql(f"UPDATE private_chest_log SET item_short=CONCAT('order-id-',id) "
+                    f"WHERE locker_id={locker_id} AND char_name='Orderprobe'")
+                assert sql(f"SELECT COUNT(*) FROM private_chest_log WHERE locker_id={locker_id} AND char_name='Orderprobe'") == '60'
+                expected_ids = sql(f"SELECT id FROM private_chest_log WHERE locker_id={locker_id} "
+                                   "AND char_name='Orderprobe' ORDER BY logged_at DESC,id DESC LIMIT 50").splitlines()
+                history = act(OWNER, 'eq log', 'Recent locker activity:')
+                assert re.findall(r'order-id-(\d+)', history) == expected_ids, history
+                sql(f"DELETE FROM private_chest_log WHERE locker_id={locker_id} AND char_name='Orderprobe'")
+                check('history returns the exact latest 50 IDs when timestamps tie; replay is deduplicated')
                 command(clients[GOD], 'load obj 677')
                 act(GOD, 'give mace ' + VISITOR, 'Ok.')
                 check('owner must explicitly open private chest; single put/get and close use real commands')

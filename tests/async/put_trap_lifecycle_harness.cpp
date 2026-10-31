@@ -23,6 +23,13 @@ P_char character_list;
 static P_char actor;
 static P_obj container, item, sibling;
 static int calls, mode, transfers, publications, saves;
+static bool refuse_audit;
+LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *)
+{
+	m_ready = !refuse_audit;
+}
+LockerMovementAudit::~LockerMovementAudit() {}
+void LockerMovementAudit::Commit() {}
 
 P_char find_character_by_runtime_id(uint64_t id)
 {
@@ -299,5 +306,11 @@ int main()
 	container->trap_charge = 2;
 	item->trap_charge = 0;
 	assert(put(actor, item, container, TRUE) && !calls && container->trap_charge == 2);
+	reset();
+	item->trap_charge = 0;
+	refuse_audit = true;
+	assert(!put(actor, item, container, TRUE));
+	assert(!transfers && !publications && actor->carrying == item);
+	refuse_audit = false;
 	clear();
 }

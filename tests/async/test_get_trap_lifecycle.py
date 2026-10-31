@@ -53,7 +53,12 @@ P_index mob_index=indexes;
 int top_of_objt=2;
 static int trap_effect=1, trap_calls=0, pickups=0, reports=0, waits=0, corpse_writes=0;
 static bool item_get_ack_publication=false, item_get_rejected=false;
-static bool crumble=false, refuse_coins=false;
+static bool crumble=false, refuse_coins=false, refuse_scrap=false;
+static bool refuse_audit;
+LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) { m_ready=!refuse_audit; }
+LockerMovementAudit::~LockerMovementAudit() {}
+void LockerMovementAudit::Commit() {}
+
 static int slip_skill=0, equipment_checks=0;
 static std::string output, audit;
 static std::vector<std::string> events;
@@ -85,7 +90,7 @@ obj_affect *get_obj_affect(P_obj,int) { return nullptr; }
 int obj_affect_time(P_obj,obj_affect *) { return 0; }
 int GET_CLASS(P_char,unsigned int) { return 0; }
 void CharWait(P_char ch,int) { assert(IS_ALIVE(ch)); ++waits; }
-void MakeScrap(P_char,P_obj) {}
+bool MakeScrap(P_char,P_obj) { return !refuse_scrap; }
 void writeCorpse(P_obj corpse) { assert(corpse); ++corpse_writes; }
 void redis_remove_floor_drop(unsigned long) {}
 void mark_player_dirty_components(int,player_component_mask_t) {}
@@ -134,7 +139,7 @@ parts=[prelude, trap_definitions,
        take('struct coin_get_submission_options')+';',
        'static std::unordered_map<uint32_t,bulk_get_state> bulk_gets;',
        take('static bulk_get_state *corpse_bulk_get('),
-       take('static void publish_container_get('),
+       take('static bool publish_container_get('),
        take('static void report_coin_get_rejection('),
        extract_function('trap.c','static bool trap_damage_supported('),
        extract_function('trap.c','static bool trap_target_eligible('),
@@ -163,10 +168,10 @@ parts.append(r'''
 int main() {
  // Modes: surviving/lethal/teleport/sleep traps, delivery, crumble, whole/partial/
  // capped coins, bound/no-loot/hitched refusal, and wallet refusal.
- for(bool npc : {false,true}) for(bool container : {false,true}) for(int mode=0; mode<13; ++mode) {
+ for(bool npc : {false,true}) for(bool container : {false,true}) for(int mode=0; mode<16; ++mode) {
   if(npc && mode!=4) continue;
-  if((mode==7 || mode==8) && !container) continue;
-  trap_effect=mode; crumble=mode==5; refuse_coins=mode==12;
+  if((mode==7 || mode==8 || mode>=13) && !container) continue;
+  trap_effect=mode; crumble=mode==5; refuse_coins=mode==12; refuse_audit=mode>=13;
   trap_calls=pickups=reports=waits=corpse_writes=0; output.clear(); audit.clear();
   pc_only_data *pc=new pc_only_data{}; char_data actor{}; descriptor_data descriptor{};
   actor.only.pc=pc; actor.runtime_id=1; actor.in_room=1; actor.desc=&descriptor;
@@ -189,7 +194,7 @@ int main() {
   item->trap_eff=TRAP_EFF_OBJECT; item->trap_charge=mode<4?1:0;
   item->next=&corpse; object_list=item;
   coin_get_submission_options options{};
-  if((mode>=6 && mode<=8) || mode==12) {
+  if((mode>=6 && mode<=8) || mode==12 || mode>=14) {
    item->type=ITEM_MONEY;
    item->value[0]=4; item->value[1]=3; item->value[2]=5; item->value[3]=1;
    options.has_amount_limit=true; options.amount_limit={mode==8?9:1,2,3,0};
@@ -198,7 +203,7 @@ int main() {
   if(mode==10) item->extra2_flags=ITEM2_NOLOOT;
   if(mode==11) item->hitched_to=&actor;
   bool found=false; int total=0;
-  if(container) do_get_finalize_container_success(&actor,&actor,&corpse,item,total,found,true,"post",(mode==7 || mode==8)?&options:nullptr);
+  if(container) do_get_finalize_container_success(&actor,&actor,&corpse,item,total,found,true,"post",(mode==7 || mode==8 || mode==15)?&options:nullptr);
   else do_get_finalize_room_item(&actor,item,found,total);
   if(mode<4 || mode>=9) {
    assert(!found && total==0 && pickups==0 && reports==0 && waits==0);
@@ -223,6 +228,20 @@ int main() {
   if(mode!=5 && mode!=6) delete item;
   if(npc) delete pc; else delete actor.only.pc;
  }
+ // Single get reports refused scrapping without moving the damaged object.
+ {
+  char_data actor{}; pc_only_data pc{}; descriptor_data descriptor{};
+  actor.only.pc=&pc; actor.desc=&descriptor; actor.in_room=1;
+  actor.specials.position=POS_STANDING|STAT_NORMAL; character_list=&actor;
+  obj_data chest{}, damaged{}; chest.loc_p=LOC_ROOM; chest.loc.room=1;
+  damaged.loc_p=LOC_INSIDE; damaged.loc.inside=&chest; damaged.condition=0;
+  refuse_scrap=true; output.clear();
+  get(&actor,&damaged,&chest,TRUE);
+  assert(item_get_rejected && OBJ_INSIDE(&damaged));
+  assert(output.find("could not be moved safely")!=std::string::npos);
+  refuse_scrap=false;
+ }
+ refuse_audit=false;
  puts("pickup finalizers: death, survival, teleport, sleep, ioun, crumble, coins, refusals and NPC pickup passed");
  // Real floor caller: wearable, inventory-only, bound/no-loot/hitched/trap
  // refusals, extracted delivery, consumed money, and successful Slip.

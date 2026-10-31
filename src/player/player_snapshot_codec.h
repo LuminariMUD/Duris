@@ -35,6 +35,8 @@ enum class player_snapshot_codec_result : uint8_t
 bool player_snapshot_divine_delivery_sequence(const player_snapshot &snapshot, uint64_t *sequence);
 // Partial status operations that do not touch money do not advance its revision.
 bool player_snapshot_writes_wallet(const player_snapshot &snapshot);
+// Preserve unrelated state while a completion is retried.
+bool player_snapshot_world_quest_fallback(const player_snapshot &captured, player_snapshot *result);
 // One affect row, shared with compound cargo settlement. Its enclosing payload
 // owns the wire version, independently of full player snapshots.
 player_snapshot_codec_result player_affect_snapshot_encode(const player_affect_snapshot &affect,

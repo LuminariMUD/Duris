@@ -41,6 +41,7 @@ commands = "\n".join(extract_function("cmd/actobj.c", signature) for signature i
 ))
 chests = "\n".join(extract_function("item/storage_lockers.c", signature) for signature in (
     "PrivateChest::PrivateChest(",
+    "void PrivateChest::SetPasswordHash(",
     "bool locker_eq_type_fits_for_storage(",
     "bool ComboChest::ItemFits(",
     "bool EqApplyChest::ItemFits(",
@@ -90,7 +91,6 @@ static room_data rooms[2];
 P_room world = rooms;
 const unsigned LockerChest::m_chestVnum = 173;
 bool locker_container_access_allowed(P_char, P_obj) { return true; }
-void locker_record_movement(P_char, P_obj, P_obj, bool, const char *) {}
 extern const struct race_names race_names_table[];
 const struct race_names race_names_table[] = {{"human", "human", "human", "hum"}};
 // Include the unmodified #96443 Illithid and #83185 Shield Dwarves bag shells.

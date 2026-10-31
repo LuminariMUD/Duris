@@ -849,7 +849,7 @@ void delete_doubledollar(char *);
 
 char *item_condition(P_obj);
 int DamageOneItem(P_char, int, P_obj, bool);
-void MakeScrap(P_char, P_obj);
+bool MakeScrap(P_char, P_obj);
 void DamageAllStuff(P_char, int);
 void DamageStuff(P_char, int);
 void DestroyStuff(P_char, int);
@@ -2056,8 +2056,6 @@ void show_string(struct descriptor_data *, const char *);
 /* storage_lockers.c */
 
 bool locker_container_access_allowed(P_char actor, P_obj container);
-void locker_record_movement(P_char actor, P_obj container, P_obj item, bool deposit,
-			    const char *description = NULL);
 bool locker_leave_for_extraction(P_char ch);
 bool personal_locker_in_use(const char *char_name);
 void for_debug_print_char_list(P_char ch);

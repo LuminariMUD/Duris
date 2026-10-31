@@ -5,7 +5,9 @@
 // that counts calls, keeps the output or returns a value) replaces it at link time. A
 // harness therefore keeps a local stub only where it must behave differently.
 #include "core/prototypes.h"
+#include "core/utils.h"
 #include "account/account.h"
+#include "item/storage_lockers.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -17,11 +19,22 @@
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
 #include "economy/divine_trade_runtime.h"
+#include "economy/currency_transaction.h"
 
 #include <cstdlib>
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Fixtures without the player-save pipeline have no pending quest transition.
+HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)
+{
+	return false;
+}
+HARNESS_STUB bool currency_transaction_chest_busy(P_char);
+HARNESS_STUB bool currency_transaction_wallet_busy(P_char ch)
+{
+	return currency_transaction_chest_busy(ch);
+}
 HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 {
 	return false;
@@ -255,7 +268,9 @@ HARNESS_STUB bool locker_container_access_allowed(P_char, P_obj)
 {
 	return true;
 }
-HARNESS_STUB void locker_record_movement(P_char, P_obj, P_obj, bool, const char *) {}
+HARNESS_STUB LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) {}
+HARNESS_STUB LockerMovementAudit::~LockerMovementAudit() {}
+HARNESS_STUB void LockerMovementAudit::Commit(void) {}
 HARNESS_STUB bool currency_transaction_chest_busy(P_char)
 {
 	return false;

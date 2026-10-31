@@ -50,7 +50,7 @@ with lock as publication:
                 "-Isrc",
                 "-Isrc/no_mysql",
                 "tests/async/flatfile_player_repository_harness.cpp",
-                rel("flatfile_player_repository.c"),
+                rel("flatfile_player_repository.c"), rel("flatfile_world_quest_history.c"),
                 rel("player_load_topology.c"),
                 rel("flatfile_identity_repository.c"),
                 rel("flatfile_item_repository.c"),

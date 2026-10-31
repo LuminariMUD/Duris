@@ -116,9 +116,9 @@ char *str_dup(const char *text) { return text ? strdup(text) : nullptr; }
 void str_free(const char *text) { free(const_cast<char *>(text)); }
 int barb(P_obj, P_char, int, char *) { std::abort(); }
 void free_obj(P_obj);
-void MakeScrap(P_char, P_obj object) {
+bool MakeScrap(P_char, P_obj object) {
     assert(object->condition <= 0 && object->loc_p == LOC_NOWHERE);
-    ++scrapped; free_obj(object);
+    ++scrapped; free_obj(object); return true;
 }
 int melee_damage(P_char, P_char victim, double, int, damage_messages *messages, int *) {
     ++damage_calls;
