@@ -9,6 +9,21 @@ Duris has two deliberately separate histories:
   the baseline. Every post-baseline step receives one ordered ID, apply file,
   verifier, compatibility label, and exact SHA-256 hashes.
 
+## Online chest receipts and shared frag storage (0056/0057)
+
+`run --online-chest-frag` accepts only the sealed 58-step manifest ending in
+`0056_private_chest_receipts` and `0057_shared_frag_cap`. Earlier steps must
+already be applied. Production target confirmation, allow-list, fresh backup,
+advisory lock, exact checksums, ordered history and success-last verification
+remain required. The October 31 production review found MariaDB 11.8.6 and
+InnoDB/Dynamic private_chests (31 rows), private_chest_log (empty), and level_cap
+(one row), with the additions absent. Existing writers name their columns;
+nullable receipt IDs and snapshot preserve their behavior. The runner strengthens
+only these sealed ALTERs to ALTER ONLINE TABLE (LOCK=NONE), using INPLACE for
+the receipt columns/indexes and INSTANT for the nullable snapshot. One-second
+metadata/row-lock waits fail without stopping services. Verify runtime compatibility
+before installing the new server. Immutable files and ledger checksums stay intact.
+
 ## Online bartender recovery (0055)
 
 `run --online-world-quest` accepts only the sealed 56-step manifest ending in

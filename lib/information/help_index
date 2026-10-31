@@ -27460,3 +27460,88 @@ unsaved changes can take time to appear in the public standings.
 
 'leaderboard quests' shows the separate worldwide quest-completion ranking.
 See also: SCORE, FRAGLIST, SHIPFRAGS, EPICS, SERF.
+
+#
+"MINING" (General Information)
+Read 'help mine' for mining picks, deposits, ores, gems and minesight.
+
+#
+"CIRCLES" (General Information)
+Read 'help spell circle' for spell circles and their level requirements.
+The shared progression cap can restrict access: see 'help level cap'.
+
+#
+"ABORT CAST" (General Information)
+Use ABORT by itself to interrupt your current chant or power.
+Read 'help abort' for the command; 'abort cast' is a help lookup alias.
+
+#
+"ITEMS" (General Information)
+Read 'help equipment' for carrying and wearing equipment, 'help bags'
+for containers, and 'help item lore' for examining an item's properties.
+
+#
+"CHESTS LOCKERS" (General Information)
+Read 'help locker' for public and private locker chests, passwords,
+purchases, storage limits and history.
+
+#
+"BARD SPELLS SKILLS BARD" (General Information)
+Bards perform songs and play instruments. Read 'help bard skills' for
+their song and instrument progression, 'help songs' for song descriptions
+and 'help play' for performing with instruments.
+
+#
+"FLIGHTPATH FLIGHT PATH DRAGONFLIGHT FLIGHT SERVICE" (General Information)
+Read 'help flights' for learned destinations, discovery experience,
+tickets, ordinary fares and the separate epic-zone flight services.
+Use FLIGHTS anywhere, or LIST at a waiting flight carrier.
+
+#
+"ETHERMANCER SPECIALIZATION" (General Information)
+Ethermancers can specialize as Tempest Magus, Frost Magus or Star Magus.
+Read 'help ethermancer' and 'help specialization'. Eligibility also depends
+on race, level and teacher; SPECIALIZE shows your personal choices.
+
+#
+"HOLY COMBAT HOLY_COMBAT" (General Information)
+Holy Combat is listed as a passive Paladin innate from level 21.
+It has no activated command or separate combat effect in the current rules.
+Read 'help paladin skills' for the Paladin's combat skills and spells.
+
+#
+"JOIN" (General Information)
+JOIN is a context-specific interaction with creatures or objects, not
+a general group command. Read 'help follow' and 'help group' to travel
+with other adventurers; follow the local dialogue for special interactions.
+
+#
+"PALADIN EXPERIENCE" (General Information)
+Read 'help experience' for earning experience and advancing,
+'help paladin' for the class and 'help level cap' for progression limits.
+Your spell-circle progression is listed in 'help paladin skills'.
+
+#
+"PYROMANCER" (General Information)
+For fire specialization help, read 'help fire magus'.
+Pyromancer is not a current class or specialization name.
+
+#
+"ENCHANTMENTS" (General Information)
+Read 'help enchant' for placing an active spell on equipment,
+'help enchant weapon' for the spell, or 'help enhancements' for
+material-based equipment improvements. These are different systems.
+
+#
+"DONATE" (General Information)
+Syntax: donate <item>
+        donate all
+        donate all.<keyword>
+
+Donate carried equipment at the donation well. The command only works
+in the designated well room and requires the well to be present.
+Cursed items, artifacts, food, corpses and trash cannot be donated.
+Empty containers before donating them. This command gives equipment
+to the well; it does not make a real-money donation.
+
+See also: GET, EQUIPMENT

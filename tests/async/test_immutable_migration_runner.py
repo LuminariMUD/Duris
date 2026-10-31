@@ -678,6 +678,56 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("requires run", result.stderr)
 
+    def test_online_chest_frag_scope_and_lock_mode(self):
+        manifest = runner.load_manifest()
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            for target, path in ((None, backup), ("127.0.0.1/other", backup), ("127.0.0.1/duris", None)):
+                with self.assertRaises(runner.MigrationContractError):
+                    runner.MysqlExecutor(manifest, target, path, online_chest_frag=True)
+            for index in (-2, -1):
+                for field in ("apply_checksum", "verify_checksum"):
+                    steps = list(manifest.migrations)
+                    steps[index] = runner.replace(steps[index], **{field: "0" * 64})
+                    with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                        runner.MysqlExecutor(runner.replace(manifest, migrations=tuple(steps)),
+                                             "127.0.0.1/duris", backup, online_chest_frag=True)
+            with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                runner.MysqlExecutor(runner.replace(manifest, migrations=manifest.migrations[:-1]),
+                                     "127.0.0.1/duris", backup, online_chest_frag=True)
+            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup, online_chest_frag=True)
+            for step, tables, algorithm in (
+                    (manifest.migrations[-2], ("private_chests", "private_chest_log"), b"INPLACE"),
+                    (manifest.migrations[-1], ("level_cap",), b"INSTANT")):
+                original = step.apply_path.read_bytes()
+                with mock.patch.object(executor, "sql", side_effect=["11.8.6-MariaDB"] +
+                                       ["InnoDB"] * len(tables) + [""]) as sql:
+                    executor.apply(step)
+                    payload = sql.call_args.args[1]
+                    self.assertIn(b"alter_algorithm='" + algorithm + b"'", payload)
+                    self.assertIn(b"lock_wait_timeout=1", payload)
+                    self.assertIn(b"innodb_lock_wait_timeout=1", payload)
+                    for table in tables:
+                        self.assertIn(f"ALTER ONLINE TABLE {table} ".encode(), payload)
+                    self.assertEqual(step.apply_path.read_bytes(), original)
+                for version, engine in (("10.11.14-MariaDB", "InnoDB"), ("11.8.6-MariaDB", "MyISAM")):
+                    with mock.patch.object(executor, "sql", side_effect=[version, engine]):
+                        with self.assertRaises(runner.MigrationContractError):
+                            executor.apply(step)
+                with mock.patch.object(executor, "sql", side_effect=["11.8.6-MariaDB"] +
+                                       ["InnoDB"] * len(tables) + [runner.MigrationContractError("lock timeout")]):
+                    with self.assertRaisesRegex(runner.MigrationContractError, "lock timeout"):
+                        executor.apply(step)
+            with mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    executor.apply(manifest.migrations[-3])
+                sql.assert_not_called()
+
     def test_online_world_quest_scope_and_lock_mode(self):
         current = runner.load_manifest()
         manifest = runner.replace(current, migrations=current.migrations[:56])

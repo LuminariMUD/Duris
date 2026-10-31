@@ -5,10 +5,102 @@
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
       The slate is clean. The grudges survived. Make your mark.
 &+W======================================================================&n
-&+WUpdated: October 30, 2026&n
+&+WUpdated: October 31, 2026&n
 
-Welcome back! Bring your crew, stock your bags and take the open road.
+Welcome back! Race for your faction, secure your loot and visit the tavern.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R10/30/26 - 10/31/26&n &+L-&n &+YThree days to win your faction's next level&n
+&+W----------------------------------------------------------------------&n
+
+&+CThe Good and Evil frag race&n
+&+Y-&n Everyone can advance normally to &+Ylevel 31&n. Beyond that, Good and
+  Evil race in fixed &+Y72-hour rounds&n. Positive ordinary PvP frag awards
+  add to your chosen faction's score; deaths do not subtract race points.
+  Ship frags, arena scores and staff adjustments do not count.
+&+Y-&n At the deadline, the winner gets the next cap and the other side gets
+  the level below it. Even a small lead wins; kills cannot open it early.
+  A tie raises each side's existing cap by one, including a quiet 0-0 round.
+  At &+Y36, 41, 46, 51 and 56&n, both sides receive the same circle level.
+  Scores reset each round; the clock ends at 56. Read &+C'help level cap'&n.
+&+Y-&n &+C'fraglist'&n shows both caps, current race scores and the deadline,
+  alongside the separate historical rankings. Scores and the clock survive
+  restarts. Late credit keeps its ordinary rewards without changing a
+  closed round. A trailing faction can catch up and take the lead.
+&+Y-&n XP banks within the normal storage limits without a cap-specific
+  penalty. An unlock permits advancement; it does not grant a free level.
+  The ordinary level-50 XP ceiling and epic-stone rules still apply.
+  Hardcore's XP allowance is its faction cap plus &+Ytwo&n, up to level 56.
+  Existing opened normal access is preserved when adopting these rules.
+
+&+CPrivate chests, fewer unpleasant surprises&n
+&+Y-&n Inside your locker, use &+C'eq chest list'&n and
+  &+C'eq chest create <name> [password]'&n. A chest costs &+Y500 platinum&n;
+  you may have five. Payment uses your purse if sufficient, otherwise
+  your bank; short balances are not combined. Wait for the result.
+&+Y-&n Use &+C'open <name> [password]'&n before looking into or moving items
+  or coins through a private chest. Only one stays open at a time.
+  Closing it, changing its password, leaving or disconnecting ends access.
+  Owners, staff and members of the owning guild can manage guild chests;
+  fellow guild members are not locked out by a chest password.
+&+Y-&n Managers can change passwords with
+  &+C'eq chest password <name> <password|none>'&n, delete empty chests
+  with &+C'eq chest delete <name>'&n, and review &+C'eq log'&n. Deletion
+  gives no refund. Activity history covers actual item and coin movements,
+  including bulk transfers, emptying and damaged items that are scrapped.
+  Deleted chests keep their identity in history.
+&+Y-&n Chest names use 1-32 letters, digits, underscores or hyphens; reserved
+  command words are refused. Passwords are case-sensitive, may contain
+  spaces and are limited to &+Y72 bytes&n. Existing longer credentials
+  remain usable, and chest credentials are hidden from command logs.
+&+Y-&n Locker saves now preserve nested contents and prevent older character
+  saves from reclaiming moved items. Chest purchases keep the right purse
+  or bank balance when account details change. A save in progress can hold
+  you inside briefly; retry leaving after it finishes. Read &+C'help locker'&n.
+  Private chests require database-backed lockers; public storage remains
+  available with the flat-file backend.
+
+&+CTavern work follows geography, not a promised safe road&n
+&+Y-&n Bartender quests no longer require proof of a route there and back.
+  Locked doors, boats, flight, keys or unfamiliar travel scripts no longer
+  disqualify a task, sharing or an existing target by themselves. You still
+  have to solve the journey using the ordinary movement rules.
+&+Y-&n From &+Y11-29&n, local quests can use both the attached surface region
+  and its connected Underdark region. From &+Y30&n, broader scope applies.
+  Find-and-talk ASK targets no longer use the KILL level band: eligible
+  NPCs below level 62 may qualify, while zone and interaction checks remain.
+  These rules replace the route guarantees in the older news below.
+&+Y-&n Quest completion and progressed abandonment now secure history with
+  their rewards or payment. Waiting on history no longer overwrites newer
+  movement, equipment, coins or spell slots. Pending work tells you to
+  retry; wait for its result. Read &+C'help quest'&n for current rules.
+
+&+CStandings and rewards you can read&n
+&+Y-&n &+C'leaderboard'&n excludes staff and counts full player frags correctly,
+  including hundredths and negative totals. Ship credit includes owned
+  ships outside the ship-frag top 20. Epic credit uses total earned epics,
+  so spending them does not erase it; bottle epics do not count as earned.
+  &+C'score'&n and the board use consistent units and show fractional points.
+  Saved standings can lag unsaved changes. Read &+C'help leaderboard'&n.
+&+Y-&n Staff also leave historical frag rankings, leader titles and side
+  totals. Those totals remain separate from the new three-day race scores.
+&+Y-&n With &+C'toggle exp on'&n, eligible kills show the credited
+  &+C'Divine Boon +...'&n contribution. Other combat contributions combine
+  into one notice per game tick. The boon adds eligible base XP rather
+  than multiplying every other bonus; caps still apply. Its label is
+  &+Y200% Base Experience&n. Read &+C'help divine boons'&n.
+
+&+CNew signs on the library shelves&n
+&+Y-&n Try &+C'help mining'&n, &+C'help circles'&n, &+C'help abort cast'&n,
+  &+C'help items'&n and &+C'help chests'&n for pointers to existing guides.
+  &+C'help flight service'&n explains where to find flight-network help.
+&+Y-&n &+C'help bard spells'&n and &+C'help skills bard'&n point to songs and
+  instruments. &+C'help ethermancer specialization'&n lists your choices;
+  &+C'help pyromancer'&n directs fire-magic readers to Fire Magus.
+&+Y-&n &+C'help donate'&n explains equipment donations at the well;
+  &+C'help enchantments'&n separates enchanting from enhancements.
+  &+C'help holy combat'&n explains the listed passive innate, while
+  &+C'help paladin experience'&n and &+C'help join'&n point to useful commands.
 
 &+R10/30/26&n &+L-&n &+YBring friends, fill bags, keep your coins&n
 &+W----------------------------------------------------------------------&n
