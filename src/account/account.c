@@ -331,6 +331,14 @@ bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_requ
 {
 	if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name || !request_out)
 		return false;
+	if (STATE(d) != CON_ACCT_DELETE_CHAR &&
+	    currency_transaction_chest_account_busy(d->account->acct_name))
+	{
+		SEND_TO_Q(
+			"Your chest purchase is still being secured; please try again shortly.\r\n",
+			d);
+		return false;
+	}
 	player_load_request request = {};
 	request.request_id = player_load_pipeline_next_request_id();
 	request.pid = c->pid;

@@ -9,8 +9,8 @@ Plan checkout: `/home/aiwithapex/projects/duris-issue-490`,
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
 That checkout predates the merged runtime code and retains the reviewed plan.
 Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`,
-`branch/issue-490-audit-admission`, stacked on `branch/issue-490-followup`
-(PR #507), whose source baseline is refreshed master `b737db202`.
+`branch/issue-490-bank-load`, stacked on `branch/issue-490-audit-admission`
+(PR #509), then `branch/issue-490-followup` (PR #507), based on master `b737db202`.
 The maintained implementation handoff is `docs/ongoing-projects/plan-issue-490.md`
 in that checkout; the shared master `plan.md` belongs to unrelated work.
 
@@ -401,3 +401,59 @@ proof remain outstanding; no complete-goal claim or production operation is made
 Published audit delivery: [PR #509](https://github.com/LuminariMUD/Duris/pull/509),
 `branch/issue-490-audit-admission`, targeting PR #507. Next: investigate the actual
 account replacement/new-character load path against purchase completion.
+
+### Bank/load continuation (active)
+
+Current branch: `branch/issue-490-bank-load`, stacked on PR #509 (parent head
+`8a6af45c2`), same follow-up checkout. Focused fault cases reproduced three actual
+boundaries before repair: (1) real `get_account_name_safe()` returns Unknown after
+socket detachment, causing the purchase callback to discard a still-live purchaser;
+(2) the real currency publisher skips a disconnected purchaser's bank fields;
+(3) the actual duplicate-login block plus request builder admits a different
+character's read before purchase completion, while bank publication skips its
+loading descriptor. The held old snapshot then hydrates the old bank revision.
+
+The purchase SQL fixture now compiles the production identity getter, shared-bank
+publisher and chest balance publisher, retaining controlled payment preparation,
+writer delivery and actor lifetimes. The load pipeline fixture compiles the actual
+account replacement block, request builder, bank publisher and bank-hydration
+statements, with a controlled database read delayed across completion. It models
+one old socket replaced by one new socket, not simultaneous active account users.
+
+Repair: retain the purchaser's stable PID/racewar when linkdead, still reject a
+mismatched connected account/side; publish its acknowledged bank directly with a
+revision guard. Fresh game loads for the pending purchase's account refuse until
+the receipt resolves, then retry against committed data. Other accounts and
+metadata-only deletion loads continue. No cache, new writer, schema extension,
+global login barrier or snapshot replay service is needed. The existing bank/peer
+wallet interlocks stay in force. Qualification and remaining full journey proof
+are still in progress.
+
+Bank/load qualification completed on 2026-10-31:
+
+- The expanded load pipeline case first failed by admitting bank revision 1 / 1000
+  platinum after revision 2 / 500 platinum committed. It now passes: this account's
+  fresh game load refuses while the receipt is pending and reads revision 2 on
+  retry. The real account replacement block has removed the prior descriptor;
+  unrelated accounts and metadata-only deletion loads remain admitted.
+- The real currency ASan/UBSan fixture first failed for a disconnected purchaser's
+  bank. It now passes direct purchaser publication, older-result revision fencing,
+  account-busy identity/release and all existing peer wallet-credit interlocks.
+- The expanded SQL purchase fixture first failed with a retained linkdead buyer
+  misclassified as absent. Final MariaDB 10.11 and MySQL 8.0 runs pass, compiling
+  the actual identity getter, bank publisher and currency publisher. Tests include
+  linkdead wallet completion, disconnected bank completion after a lost COMMIT
+  response, extracted actors, changed connected account/side controls, rollback,
+  writer refusal, duplicate/collation/limit conflicts and denomination change.
+- `make -C src -j6` passes (`bank-load-build.log`); currency transaction contracts
+  (9), racewar policy/runtime contracts, account-menu contracts, load pipeline,
+  currency in-memory and all 14 documentation contracts pass. The commit hook
+  runs formatting and Clang-Tidy 22.
+
+Logs: `bin/qualification/issue490/bank-load-baseline-purchase.log`,
+`bank-load-purchase-mariadb.log`, `bank-load-purchase-mysql.log` and the build log.
+The load fixture controls the read worker and applies the production bank hydration
+statements; it is focused integration proof, not a new whole-socket delayed-login
+journey. Full management/funding, exact movement-row assertions and filled nested
+private graph cold-restart/retrieval proof in the existing command journey remain
+outstanding. The accepted behavior and completion criteria remain unchanged.
