@@ -263,3 +263,12 @@ and hazardous planar terrain, as appropriate for its completion fixtures only.
 Production eligibility remains independent of these travel checks. Superseded
 reported runs were interrupted with normal cleanup; the corrected full/reported
 pair is the remaining completion gate.
+
+Ablation after that diagnosis removes the temporary per-step polling: the
+failure was an inadmissible ocean edge in test navigation, not evidence for a
+new movement-publication protocol. The final walker retains ordered batches,
+unique score request IDs, response/prompt synchronization and an exact end-room
+assertion (or a checked combat interruption). The stricter reported run already
+in flight may finish with per-step assertions; the final full run qualifies the
+batched reader on both backends. No eligibility or acceptance requirement is
+weakened by removing the diagnostic polling.

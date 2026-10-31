@@ -76,7 +76,7 @@ completion consumes it. An unavailable history read is reported separately from
 a known exhausted allowance and does not charge for a new task.
 There is no elapsed-time quest deadline: the saved start time controls abandonment
 cost, not automatic expiry. Level changes do
-not reroll the accepted type, target band, level, or kill quota.
+not reroll the accepted type, target, scope level, or kill quota.
 
 An ASK assignment completes when `do_ask()` reaches the matching NPC in the
 advertised zone. Use `ask <target> <message>` with a nonempty message; the

@@ -390,34 +390,23 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
         for step in batch:
             if step["crawl"] and posture != 2:
                 client.send("kneel")
-                client.expect("Pos:", timeout=30)
                 posture = 2
             elif not step["crawl"] and posture != 3:
                 client.send("stand")
-                client.expect("Pos:", timeout=30)
                 posture = 3
             if step["closed"]:
                 client.send("open " + step["direction"])
-                client.expect("Pos:", timeout=30)
             client.send(step["direction"])
-            client.expect("Pos:", timeout=30)
-            observed = gameplay_snapshot(client, run_root)
-            deadline = time.monotonic() + 15
-            # Movement publication can lag its command response. Observe each
-            # destination before submitting the next move rather than letting
-            # read-only SCORE overtake deferred movement.
-            while observed["room"] == step["from"] and not observed["fighting"]:
-                require(time.monotonic() < deadline,
-                        f"ordinary movement did not reach {step}: {observed}")
-                observed = gameplay_snapshot(client, run_root)
-            if observed["room"] == step["to"]:
-                steps += 1
-            elif observed["fighting"]:
-                require(observed["room"] == step["from"],
-                        f"combat displaced the journey off its path: {observed}")
-                break
-            else:
-                raise AssertionError(f"ordinary command diverged from {step}: {observed}")
+        observed = gameplay_snapshot(client, run_root)
+        if observed["room"] == batch[-1]["to"]:
+            steps += len(batch)
+        elif observed["fighting"]:
+            prefix = [batch[0]["from"]] + [step["to"] for step in batch]
+            require(observed["room"] in prefix,
+                    f"combat displaced the journey off its path: {observed}")
+            steps += prefix.index(observed["room"])
+        else:
+            raise AssertionError(f"ordinary commands diverged from {batch[-1]}: {observed}")
     raise AssertionError("target navigation exceeded 1,200 ordinary steps")
 
 
