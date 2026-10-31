@@ -1,6 +1,7 @@
 # Issue #508: shared progression with earned PvP acceleration
 
-Status: **plan only; implementation has not started**. Updated 2026-10-31.
+Status: **implementation in progress; shared rules/codec chunk qualified locally**.
+Updated 2026-10-31. No gameplay cutover or production operation has occurred.
 Delivery target: **270 minutes of implementation/qualification plus 30 minutes contingency**.
 The target is a tested, reviewable change; production deployment is separate.
 
@@ -12,7 +13,7 @@ Prepared using the repository's [ablation skill](../../.agents/skills/ablation/S
 Research baseline: `b737db20210ff2d3e4eebccb212c9918b9b6f877`.
 The dedicated implementation checkout is now `/home/aiwithapex/projects/duris-issue-508`
 on `branch/issue-508-frag-progression`, based on freshly fetched master
-`9ad734e9e60b0938181f85cd20cdb9614a14adc8`. Only this plan is committed here;
+`9ad734e9e60b0938181f85cd20cdb9614a14adc8`. Implementation is underway here;
 the separate bartender task remains in its original checkout.
 
 The newer base includes [#511](https://github.com/LuminariMUD/Duris/pull/511),
@@ -42,8 +43,8 @@ account policy, character save formats or the persistence architecture. No new
 faction XP boon, additional currency, damage-contribution scoring, new service,
 general scheduler, production wipe or unrelated cleanup.
 
-The only file created by this planning task is this document. The implementation
-files and proof below are the handoff, not claims that changes or tests already exist.
+The rules engine and native tests now exist. Storage, gameplay wiring and the
+remaining proof below are still required; the engine alone does not change gameplay.
 
 ## Fixed gameplay contract
 
@@ -427,7 +428,36 @@ does not qualify a server implementation.
 Passed the maintained Markdown link/anchor check for the new plan:
 `python3 tests/async/test_documentation_contract.py DocumentationContractTest.test_maintained_markdown_links_and_anchors_resolve`.
 
-Implementation checks remain **not run**. Fill in revision, changed files,
-native/database/build/journey results, adoption values and remaining risks as
-the implementation proceeds. Documentation-only validation of this plan must
-not be presented as completion of the gameplay work.
+### Chunk 1: shared rules and snapshot
+
+Outcome: one engine implementing the fixed contract for both backends. Files:
+`src/combat/frag_cap.c/.h`, `src/Makefile`, and
+`tests/async/frag_cap_harness.cpp` / `test_frag_cap.py`. Non-goals for this chunk:
+storage adapters, runtime publication, configuration cutover and player feedback.
+Those remain mandatory in dependent chunks. Ablation retained only pure state
+transitions and the common codec; replay identity stays in the parent receipt,
+with no new operation ledger, scheduler, clock abstraction or player fields.
+
+- Passed `python3 tests/async/test_frag_cap.py`: native executable tests for
+  19/20 points, same-PID accumulation, negative deltas, twenty +5 recipients,
+  two +10/four +5 events, hour 1/47/48/60 qualification, exact 72-hour admission,
+  delayed/pre-cutover/future-invalid admissions, whole-event consumption,
+  immutable qualification, quiet/active schedules, catch-up, adoption and ceiling.
+- Snapshot timestamps use Unix **microseconds**, matching durable admission.
+  SHA-256 protects the versioned encoding. Maximum 65,536 active partial-credit
+  contributors; exact maximum encoded size **393,318 bytes**. Overflow fails the
+  preparation without modifying its input; no balance is evicted or truncated.
+- Codec tests cover every single-byte corruption, truncation, unsupported version,
+  maximum population, invalid state and revision/time overflow. A future adapter
+  must surface these failures and keep rewards/credit in the same transaction.
+- Passed `make -C src -j4` and `make -C src -j4 PERSISTENCE_BACKEND=flatfile
+  DMS_BINARY=../bin/server/dms_flatfile` with separate backend objects/binaries.
+- Passed `./scripts/format.sh --check`, `git diff --cached --check`, and
+  `python3 tests/async/test_documentation_contract.py
+  DocumentationContractTest.test_maintained_markdown_links_and_anchors_resolve`.
+- **Not yet proven:** parent-receipt replay, database/flatfile persistence,
+  publication, reset fencing, XP/help/status, and real gameplay journeys.
+
+Next: open the focused rules PR, then stack the atomic storage/runtime integration
+on a dependent branch. Keep the PR bases and exact test results here. No release
+tag belongs to this preparatory change; production deployment remains separate.
