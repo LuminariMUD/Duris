@@ -573,3 +573,21 @@ The fresh no-MySQL build/public-storage restart journey and flat-file repository
 private-record preservation checks pass; management-only token parsing does not
 run for unsupported flat-file private commands. Help and documentation contracts
 are current. No production state or stored credentials were rewritten.
+
+### Command-log privacy continuation
+
+The final acceptance audit reproduced chest credentials in the default-enabled
+command ring and all three forced-command log sinks. The existing command-log
+filter now withholds private OPEN/equipment commands, including abbreviations
+and nested AT/FORCE/ORDER commands. FORCE logs use that same filter, while
+execution retains its original input and unrelated staff diagnostics remain.
+No additional logging service, setting or credential storage is added.
+
+The expanded existing command-ring regression compiles the real parser/table
+and FORCE handler, and passes persisted-ring, exit/crash, all three forced log
+sinks, unchanged execution, and ordinary-command/conversation controls. The
+chat-privacy policy regression and MariaDB server build pass. Complete locker
+journeys already pass all 20 groups on both MariaDB 10.11 and MySQL 8.0, including
+filled nested private cold restart; those pending qualification changes remain
+in the qualification checkout. Real socket log-privacy and the final handoff
+audit remain in progress. Delivery branch: branch/issue-490-command-privacy.

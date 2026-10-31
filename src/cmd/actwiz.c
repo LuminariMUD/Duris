@@ -5027,10 +5027,20 @@ void do_force(P_char ch, char *argument, int /*cmd*/)
 	level = MIN(62, GET_LEVEL(ch));
 
 	half_chop(argument, name, to_force);
-
 	if (!*name || !*to_force)
+	{
 		send_to_char("Who do you wish to force to do what?\n", ch);
-	else if (str_cmp("all", name))
+		return;
+	}
+	std::string logged_command = to_force;
+	const int kept = command_log_kept_length(to_force, false);
+	if (kept >= 0)
+	{
+		logged_command.resize(kept);
+		logged_command += " <text withheld>";
+	}
+
+	if (str_cmp("all", name))
 	{
 		if (!(vict = get_char_vis(ch, name)))
 		{
@@ -5069,13 +5079,14 @@ void do_force(P_char ch, char *argument, int /*cmd*/)
 				act(buf, FALSE, ch, 0, vict, TO_VICT);
 				if (level < 62)
 					wizlog(GET_LEVEL(ch), "%s has forced %s to '%s' [%d/%d]",
-					       GET_NAME(ch), GET_NAME(vict), to_force,
+					       GET_NAME(ch), GET_NAME(vict), logged_command.c_str(),
 					       world[ch->in_room].number,
 					       world[vict->in_room].number);
 				logit(LOG_FORCE, "%s has forced %s to '%s' [%d/%d]", GET_NAME(ch),
-				      GET_NAME(vict), to_force, world[ch->in_room].number,
-				      world[vict->in_room].number);
-				sql_log(ch, WIZLOG, "Forced %s to '%s'", GET_NAME(vict), to_force);
+				      GET_NAME(vict), logged_command.c_str(),
+				      world[ch->in_room].number, world[vict->in_room].number);
+				sql_log(ch, WIZLOG, "Forced %s to '%s'", GET_NAME(vict),
+					logged_command.c_str());
 				send_to_char("Ok.\n", ch);
 				forced_command = 1;
 				command_interpreter(vict, to_force);
@@ -5085,9 +5096,9 @@ void do_force(P_char ch, char *argument, int /*cmd*/)
 	}
 	else
 	{ /* force all  */
-		wizlog(level, "%s has forced all to '%s'", GET_NAME(ch), to_force);
-		logit(LOG_FORCE, "%s has forced all to '%s'", GET_NAME(ch), to_force);
-		sql_log(ch, WIZLOG, "Forced all to '%s'", to_force);
+		wizlog(level, "%s has forced all to '%s'", GET_NAME(ch), logged_command.c_str());
+		logit(LOG_FORCE, "%s has forced all to '%s'", GET_NAME(ch), logged_command.c_str());
+		sql_log(ch, WIZLOG, "Forced all to '%s'", logged_command.c_str());
 		for (i = descriptor_list; i; i = i->next)
 			if (i->character != ch && !i->connected)
 			{
