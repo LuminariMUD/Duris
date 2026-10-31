@@ -363,6 +363,8 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 	std::map<std::pair<int, int>, int> candidates;
 	for (P_char mob = character_list; mob; mob = mob->next)
 		if (IS_NPC(mob) && IS_ALIVE(mob) && returns.count(mob->in_room) && source(mob) &&
+		    !IS_SET(world[mob->in_room].room_flags, ROOM_SAFE | ROOM_ARENA | ROOM_GUILD) &&
+		    !IS_SET(zone_table[world[mob->in_room].zone].flags, ZONE_SAFE) &&
 		    (quest_gameplay_kind != FIND_AND_KILL ||
 		     (GET_LEVEL(mob) >= quest_gameplay_level - 4 &&
 		      GET_LEVEL(mob) <= quest_gameplay_level + 5)) &&
@@ -401,7 +403,7 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 	assert(false && "no eligible ordinary-travel gameplay fixture");
 }
 
-extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
+extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const char *request)
 {
 	assert(ch && IS_PC(ch));
 	using lookup_type = const void *(*)(P_char);
@@ -412,6 +414,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 	if (q.quest_active)
 		last_target = q.quest_mob_vnum;
 	cJSON *root = cJSON_CreateObject();
+	cJSON_AddStringToObject(root, "request", request);
 	number(root, "sequence", ++sequence);
 	number(root, "pid", getpid());
 	number(root, "actor_level", GET_LEVEL(ch));

@@ -236,3 +236,13 @@ selects an eligible target outside the KILL band and records its live level;
 a focused 11/29 ASK journey on both backends supplements the full matrix.
 These are test changes, not production travel restrictions. All current journey
 results remain pending; draft #522 must not be marked ready before they pass.
+
+Further qualification isolated stale queued score observations: snapshots now
+carry a unique request identifier, and the reader accepts only its own response.
+The broad ASK run completed its level-11 case. Its first level-29 fixture used
+a safe room, where existing reward rules legitimately suppress XP; completion
+fixtures now avoid safe/arena/guild locations when proving positive XP. No
+reward rule changed. Fresh full, reported and focused ASK runs are in progress;
+the required final result is still both backends passing every planned journey.
+Baseline, native and failed-journey logs are retained locally under
+`bin/qualification/issue500/` and are not tracked.

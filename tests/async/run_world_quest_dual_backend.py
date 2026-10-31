@@ -297,6 +297,7 @@ JOURNEY_FIELDS = (
     "active", "replacement_due", "origin", "level", "type", "mob", "zone", "started",
     "receiver", "shares", "kills", "quota", "map_room", "map_bought", "wallet", "xp",
 )
+snapshot_request = 0
 
 
 def read_journey_states(run_root: pathlib.Path) -> list[dict]:
@@ -309,21 +310,23 @@ def read_journey_states(run_root: pathlib.Path) -> list[dict]:
 
 
 def gameplay_snapshot(client: MudClient, run_root: pathlib.Path) -> dict:
+    global snapshot_request
+    snapshot_request += 1
+    request = f"questprobe_{snapshot_request}"
     path = run_root / "quest-gameplay.json"
-    old = json.loads(path.read_text()) if path.exists() else None
     # Consume the preceding command's complete output, then synchronize this
     # explicitly tagged SCORE through its response and following prompt.
     while client._receive():
         pass
     client.pending.clear()
-    client.send("score questprobe")
+    client.send("score " + request)
     client.expect("Score information for", timeout=30)
     client.expect("Pos:", timeout=30)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if path.exists():
             current = json.loads(path.read_text())
-            if old is None or (current["pid"], current["sequence"]) != (old["pid"], old["sequence"]):
+            if current.get("request") == request:
                 client._receive()
                 return current
         client._receive()
@@ -1011,12 +1014,12 @@ break *do_score
 set $plan_break=$bpnum
 commands
 silent
-if (int)strcmp((char*)$rsi,"questprobe") == 0
+if (int)strncmp((char*)$rsi,"questprobe",10) == 0
 if quest_gameplay_stage == 3
 call (void)quest_gameplay_setup((char_data*)$rdi)
 call (void)quest_world_audit((char_data*)$rdi)
 else
-call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)',(char*)$rsi)
 end
 end
 continue
