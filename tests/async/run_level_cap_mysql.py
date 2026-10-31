@@ -10,9 +10,10 @@ totals level, the first qualifying frag unlocks 31 for every side and starts the
 three-day timer. A frag before the timer ends does
 nothing. After it, only the side with more total frags unlocks: the other side's and the
 undead's frags are passed over, and the leader's next frag unlocks one level for that side
-alone. A level that opens a spell circle opens to every side, and 56 ends it. Frags
-recorded before the job ran unlock one level, not one per old frag. With no timer, the frag
-that unlocks a level cannot unlock another, even when the job runs in its second.
+alone. Staff scores never affect the leading side. A level that opens a spell circle opens
+to every side, and 56 ends it. Frags recorded before the job ran unlock one level, not one
+per old frag. With no timer, the frag that unlocks a level cannot unlock another, even
+when the job runs in its second.
 Run through with_disposable_mariadb.sh.
 """
 from pathlib import Path
@@ -116,9 +117,12 @@ INSERT INTO combat_outcome_participant (operation_id, participant_index, pid, ro
             return operation
 
         sql(f"""
-INSERT INTO frag_leaderboard (pid, account_name, char_name, total_frags, racewar) VALUES
-  ({GOOD}, 'a', 'Goodone', 0, 1), ({EVIL}, 'b', 'Evilone', 0, 2),
-  ({UNDEAD}, 'c', 'Lichone', 0, 3), ({GOOD_TWO}, 'd', 'Goodtwo', 0, 1);
+INSERT INTO frag_leaderboard (pid, account_name, char_name, total_frags, racewar, level) VALUES
+  ({GOOD}, 'a', 'Goodone', 0, 1, 56), ({EVIL}, 'b', 'Evilone', 0, 2, 30),
+  ({UNDEAD}, 'c', 'Lichone', 0, 3, 30), ({GOOD_TWO}, 'd', 'Goodtwo', 0, 1, 30);
+INSERT INTO frag_leaderboard (pid, account_name, char_name, total_frags, racewar, level) VALUES
+  (9001, 'staffgood', 'Staffgood', 1000000, 1, 57),
+  (9002, 'staffevil', 'Staffevil', -1000000, 2, 62);
 UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, level_evil=0,
   next_update=FROM_UNIXTIME({WIPE});
 """)
@@ -138,8 +142,8 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
         for index in range(2, 21):
             pid = 100 + index
             sql(f"INSERT INTO frag_leaderboard "
-                f"(pid, account_name, char_name, total_frags, racewar) "
-                f"VALUES ({pid}, 'group{index}', 'Winner{index}', 0, 1);")
+                f"(pid, account_name, char_name, total_frags, racewar, level) "
+                f"VALUES ({pid}, 'group{index}', 'Winner{index}', 0, 1, 30);")
             sql(f"INSERT INTO combat_outcome_participant "
                 f"(operation_id,participant_index,pid,role,flags,frag_delta,epic_delta,"
                 f"wallet_delta_copper,frag_after,frag_revision,epic_revision,"
@@ -156,7 +160,7 @@ UPDATE level_cap SET most_frags=0, racewar_leader=0, level=30, level_good=0, lev
         assert job(WIPE + 250) == 'complete 1 2 31 1'
         timer = WIPE + 250 + 3 * DAY
         assert cap() == f'31\t0\t0\t{timer}', cap()
-        print('[PASS] the base share and the minimum victim level open 31 to all',
+        print('[PASS] mortal totals ignore staff; the base share and victim level open 31 to all',
               flush=True)
 
         kill(WIPE + 300, GOOD, EVIL, 31)
