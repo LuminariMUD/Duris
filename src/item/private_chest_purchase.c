@@ -217,7 +217,8 @@ void private_chest_purchase_pulse(void)
 				    for (P_char current = character_list; current;
 					 current = current->next)
 				    {
-					    if (IS_PC(current) && GET_PID(current) == p->pid)
+					    if (IS_PC(current) &&
+						static_cast<uint32_t>(GET_PID(current)) == p->pid)
 					    {
 						    actor = current;
 						    break;
