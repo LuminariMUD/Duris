@@ -12,7 +12,8 @@ description: >-
 
 Execute the six steps below in the existing production checkout. An explicit
 request to deploy authorizes the production migrations, missing-help authoring
-and publication, bug-report investigation and necessary GitHub issue creation,
+and publication, website help-submission reviews and their normal notifications,
+bug-report investigation and necessary GitHub issue creation,
 clearing processed feedback (including unclear requests rejected after investigation),
 build, scheduled in-game reboot, and final commit/push of verified news, help sources,
 and feedback cleanup directly to `master` described here. Do not
@@ -88,15 +89,15 @@ Consult subsystem documentation only for the operations that actually apply.
 - Record existing staged and unstaged changes in news, help sources (including
   `lib/information/help_index`), and feedback paths before editing. Step 6 commits
   this deployment's verified changes to all of them, preserving unrelated work.
-- Before preparing news, follow
-  [player feedback](references/player-feedback.md) to snapshot `lib/etc/help`
-  and `lib/reports/bugs`, investigate missing-help requests, and author and
-  publish useful missing topics or aliases end to end. Also update help affected
-  by the release. Finish help publication and player-visible lookup verification
-  before writing its news coverage. Give every captured query a final disposition;
-  reject and clear unclear input after investigation. Finish source research instead
-  of treating it as an external blocker.
-- Follow [news-update](../news-update/SKILL.md) to prepare
+- Invoke [$help-update](../help-update/SKILL.md) before preparing news to
+  process `lib/etc/help`, review website Help Suggestions, and update help affected
+  by the release. Pass the confirmed production target, pulled revision, backup,
+  and recovery directory.
+  Require recorded review decisions and verified publication/lookups for accepted
+  content from both sources; retain website review history, the log cleanup record
+  for step 4, and maintained source changes for step 6. A verified request for
+  revisions completes that submission's review while awaiting its author.
+- Invoke [$news-update](../news-update/SKILL.md) to prepare
   `lib/information/news` for missing player-facing changes in the release.
   Supply the verified help additions from this deployment as an explicit extra
   content source alongside the GitHub history inventory; they may be local source
@@ -110,14 +111,11 @@ Consult subsystem documentation only for the operations that actually apply.
   `--local --news-only`. Answer its normal confirmation under the deployment
   authorization. Do not use `--clean` or repeat a bulk help import to publish
   news. Verify stored news bytes; boot will refresh its cache.
-- Process bug reports using [player feedback](references/player-feedback.md)
-  after the pull, independently of help/news. Finish every captured report's
-  disposition and required GitHub issue creation before announcing the restart.
-  Search existing issues and PRs, verify coverage or file actionable untracked
-  defects, and reject unclear reports after investigation. A missing
-  reproduction or uncertain root cause alone does not justify discarding an
-  actionable report. Triage is a required deliverable, not optional follow-up;
-  it does not authorize unrelated bug fixes or belong in player news.
+- Invoke [$bug-triage](../bug-triage/SKILL.md) after the pull, independently
+  of help/news, with the runtime target, pulled revision, and recovery directory.
+  Require completed dispositions and verified issue filing before announcing
+  the restart. It checks current master, existing issues, and open PRs; retain
+  its cleanup record for step 4. Triage is a required deliverable.
 - Complete other setup required by the pulled release before the build. An
   in-game reboot does not replace the existing launcher or systemd environment;
   account for an actual change to either, rather than assuming it takes effect.
@@ -260,16 +258,11 @@ its restart boundary. Do not restart after a failed build.
 
 ### Retire processed feedback at the existing restart boundary
 
-Prepare the [feedback cleanup](references/player-feedback.md#clear-processed-feedback)
-before announcing the reboot. Serialize it with the launcher so it runs only
-after the old child and its log writer have exited and before a new child can
-write reports. Use the already-required restart or proven offline-migration
-window; do not add a shutdown for housekeeping. Re-read the files, remove only
-processed snapshot entries, including rejected unclear reports, and preserve later
-arrivals. Keep this operation short; research, issue creation, and help publication
-belong in step 2. Restore the launcher's normal operation promptly even if cleanup
-fails. If a safe handoff cannot be established, retain the files and report cleanup
-as pending instead of racing the running writers.
+Use the cleanup records returned by `$help-update` and `$bug-triage` and the shared
+[feedback cleanup procedure](../references/player-feedback.md#clear-processed-feedback).
+Prepare it before announcing the reboot and execute it at the already-required
+restart or proven offline-migration boundary. Restore normal launching promptly
+even if cleanup fails; report each file's verified result for steps 5 and 6.
 
 ### Normal reboot as Veridian (no offline migration)
 
@@ -317,7 +310,7 @@ schema. Report unresolved failures with the actual service state. Deployment
 completion requires a healthy rebuilt game, finished feedback dispositions and
 cleanup, verified content, and the commit/push in step 6. Report the revision,
 migrations/content changed, build result, and restart/log/health result concisely.
-Include help topics added, bug dispositions
+Include help topics added, website suggestion IDs and review outcomes, bug dispositions
 and created/existing issue or PR links, and whether each feedback file was cleared
 or retains new arrivals or entries blocked by a concrete failed operation. Count
 rejected unclear entries as processed, not pending. Do not call the deployment

@@ -72,8 +72,10 @@ randomize ASK/KILL order and try the other type if necessary; level 50+
 purchases select KILL only. There is no player command to request one kind.
 A purchase captures the real origin room and bartender VNUM before charging.
 Failed selection returns the fee. Purchase and sharing check allowance;
-completion consumes it. There is no elapsed-time quest deadline: the saved
-start time controls abandonment cost, not automatic expiry. Level changes do
+completion consumes it. An unavailable history read is reported separately from
+a known exhausted allowance and does not charge for a new task.
+There is no elapsed-time quest deadline: the saved start time controls abandonment
+cost, not automatic expiry. Level changes do
 not reroll the accepted type, target band, level, or kill quota.
 
 An ASK assignment completes when `do_ask()` reaches the matching NPC in the
@@ -102,7 +104,7 @@ saved accepted quest level, and `N` the original KILL quota.
   If it cannot be instantiated, `create_random_eq()` uses current level `C`.
   The resulting item has `ITEM_SECRET`, `ITEM_INVISIBLE`, and `ITEM_NODROP`
   removed and `ITEM_NOREPAIR` added. The KILL reward goes to the completing
-  character through the grant service, not onto a corpse or on every kill.
+  character through the player-save transaction, not onto a corpse or on every kill.
 - **XP:** `quest_exp_reward()` truncates `EXP_NOTCH(character) * band_multiplier`
   to an integer using current level `C`. A notch is
   `max(new_exp_table[C + 1] / 10, 1)` for mortal levels. ASK requests this full
@@ -125,20 +127,22 @@ Arena, guild, and safe-room checks can suppress XP. With `toggle experience`
 enabled, a positive mortal credit prints `Quest EXP:` using the actual credited
 amount. Ordinary combat XP is separate from the bartender per-kill award.
 
-Reward calls have an observable order: ASK/legacy claims attempt the item,
-mercenary money, and epics before XP; the final KILL applies per-kill XP before
-the item, money, and epics. A level change during that XP call can therefore
-affect subsequent current-level checks and the level recorded in history.
+Completion captures the scalar reward amounts at the completing interaction.
+The detached item, completion history, and a pending-reward marker commit together
+through the player-save transaction (MariaDB or the flatfile authority journal).
+Only confirmed item publication allows the remaining XP, money, epics, feedback,
+and task reset. A rejected capture leaves the task intact; admitted work holds
+the task against duplicate turn-ins and retries failed writes/publication.
+Failure to create an item also keeps the task and earned kills.
+If this happens on the final KILL, a completed-task marker lets a bartender
+retry the reward without requiring another kill or awarding that kill's XP twice.
 
-Item-grant acceptance is a queue/submission result, not proof of durable item
-delivery. An immediate submission rejection extracts the item and reports that
-the ownership authority is busy; failure to create any item returns no item.
-An accepted queued grant can settle later through the ownership service.
-The quest handler does not wait for an item-completion callback: it continues
-other rewards, requests a history record, and resets the task even when the
-item attempt failed. History-write failures likewise do not restore the quest.
-These operations form no atomic reward bundle and provide no quest-level retry
-entitlement for a missing item.
+If the process stops after commit but before publication, login restores the
+item from the saved inventory. The completed-task marker preserves the captured
+remaining scalar rewards for a bartender claim without creating another item
+or recording history again. The marker temporarily stores XP, epics and copper
+in the completed task's receiver, shares and credited-kill fields; these fields
+resume their ordinary meanings when the task is reset.
 
 ## Catalog, target, and route policy
 
@@ -195,8 +199,10 @@ guaranteed final target distribution after live eligibility/history failures.
 
 ### Live targets
 
-Targets use the inclusive level band `[L - 4, L + 5]` for both the cached
-prototype and live actor. A per-request index uses actual destination zones,
+KILL targets use the inclusive level band `[L - 4, L + 5]` for both the cached
+prototype and live actor. ASK targets instead require both levels below 62,
+without a player-relative level band. The zone-average window still applies
+to both kinds. A per-request index uses actual destination zones,
 not prototype ownership. Each instance must match a direct unconditional 100%
 `M` reset in a resetting zone, with a positive maximum, at its saved birthplace.
 Birthplace and current room must be in the same actual zone. Mixed
@@ -212,13 +218,17 @@ shopkeepers, teachers, guild golems, ignored mobs, prototypes at or above
 capped at usable count minus one.
 
 ASK requires exactly one loaded instance globally (`mob_index.number == 1`),
-a cached level below `MAXLVL`, speaking ability in both cached and live forms,
+cached and live levels below `MAXLVL`, speaking ability in both forms,
 a live awake target, and a non-silent, non-underwater destination. Below
 accepted level 31, invisible/concealed/hidden/ectoplasmic ASK targets remain
 excluded even if the
 player could see them. The actor must be able to speak; aggression toward that
 actor and intercepting mobile/quest procedures reject a new assignment.
-A shopkeeper qualifies only when its resolved shop has no delegate procedure.
+A shopkeeper qualifies only when its resolved shop has no delegate procedure or
+an audited ambient Bloodstone delegate that ignores ASK. These same cosmetic
+handlers can be walked past; actual quest interceptors and unaudited handlers
+remain excluded. Quietus's crew-room LIST/HIRE procedure also permits ordinary
+route proof.
 
 ### Route proof and request bounds
 
@@ -453,6 +463,10 @@ the partial kill dirty; persistence then depends on another STATUS save trigger.
 
 Completion history is separate: SQL uses `world_quest_accomplished` with an
 asynchronous login/lazy-read cache; flatfile uses `<FLATFILE_ROOT>/players/<pid>.world-quests`.
+SQL history reads return completion timestamps and count them against the UTC day
+when the cache is published; a read finishing after midnight cannot consume the
+new day's allowance with yesterday's completions. A completion/confirmed
+abandonment rolls an existing cache to the current day before adding its count.
 Daily counts use UTC days and, below level 50, only completions at the character's
 current level; level 50+ uses the whole day's count. Records store current
 level when recorded, not accepted quest level. Leveling below 50 can therefore
@@ -540,6 +554,13 @@ case exercises paid maps, invalidation, relogin/restart, and durable free
 replacement. Test-only `DURIS_WORLD_QUEST_BACKEND` selects `mariadb`, `flatfile`,
 or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
+`reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
+reports, restart state and Bloodstone ASK/KILL travel, using disposable fixtures.
+`history` constructs yesterday-only completion history and an aged Tharnadia
+task, then checks real abandonment/regrant and restart. Its disposable MariaDB
+session clock constructs old-query-day/new-publication-day results and is
+restored before the completion marker; flatfile supplies the equivalent
+past-day-history control.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 

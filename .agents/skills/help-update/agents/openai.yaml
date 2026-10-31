@@ -1,0 +1,4 @@
+interface:
+  display_name: "Help Update"
+  short_description: "Review missing help and website submissions, then publish"
+  default_prompt: "Use $help-update to process lib/etc/help and website Help Suggestions, approve, reject, or request revisions through the review workflow, publish verified help into maintained sources and the game, and safely clear processed log entries."

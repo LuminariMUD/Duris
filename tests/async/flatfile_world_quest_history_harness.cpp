@@ -1,5 +1,10 @@
 #include "flatfile/flatfile_world_quest_history.h"
 #include "sql/sql.h"
+#include "player/player_snapshot_capture.h"
+#include "player/player_load_items.h"
+#include "flatfile/flatfile_item_repository.h"
+#include "player/player_save_pipeline.h"
+#include "player/player_snapshot.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -43,6 +48,51 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 {
 }
 
+P_obj object_list = nullptr;
+P_index obj_index = nullptr;
+bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *, size_t)
+{
+	std::abort();
+}
+void obj_to_char(P_obj, P_char)
+{
+	std::abort();
+}
+void extract_obj(P_obj, int)
+{
+	std::abort();
+}
+player_snapshot_capture_result
+player_item_snapshot_tree_capture(P_obj, std::vector<player_item_snapshot> *, size_t *)
+{
+	std::abort();
+}
+bool player_load_item_graph_materialize_detached(const std::vector<player_item_snapshot> &,
+						 const std::vector<player_load_item_identity> &,
+						 const item_owner_identity &, uint64_t, bool, bool,
+						 std::vector<P_obj> *,
+						 player_load_item_materialize_metrics *)
+{
+	std::abort();
+}
+flatfile_item_repository_result
+flatfile_item_repository_load_owner(const std::string &, const item_owner_identity &, uint64_t *,
+				    std::vector<flatfile_item_ownership_record> *, std::string *)
+{
+	std::abort();
+}
+
+bool player_save_pipeline_submit_world_quest(
+	P_char ch, const player_pending_world_quest &quest,
+	std::function<bool(P_char, const player_pending_world_quest &)> committed)
+{
+	std::string error;
+	if (flatfile_world_quest_record(persistence_mode_flatfile_root(), ch->only.pc->pid,
+					quest.target, quest.level, quest.occurred_at,
+					&error) != flatfile_world_quest_result::ok)
+		return false;
+	return committed(ch, quest);
+}
 int main(int argc, char **argv)
 {
 	require(argc == 2, "state root argument required");
@@ -95,12 +145,14 @@ int main(int argc, char **argv)
 	require(sql_world_quest_can_do_another(&player) == 2,
 		"missing SQL-compatible history did not return the configured allowance");
 	pc.quest_mob_vnum = 2001;
-	sql_world_quest_finished(&player, nullptr);
+	require(sql_world_quest_finish_async(&player, nullptr, false, false, {}, [](P_char) {}),
+		"first completion was refused");
 	require(sql_world_quest_done_already(&player, 2001) == 1 &&
 			sql_world_quest_can_do_another(&player) == 1,
 		"first SQL-compatible completion was not retained or counted");
 	pc.quest_mob_vnum = 2002;
-	sql_world_quest_finished(&player, nullptr);
+	require(sql_world_quest_finish_async(&player, nullptr, false, false, {}, [](P_char) {}),
+		"second completion was refused");
 	require(sql_world_quest_can_do_another(&player) == 0,
 		"daily world-quest allowance was not exhausted");
 	player.player.level = 31;

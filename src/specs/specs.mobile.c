@@ -30,6 +30,7 @@
 #include "classes/necromancy.h"
 #include "economy/nexus_stones.h"
 #include "economy/currency_transaction.h"
+#include "player/player_save_pipeline.h"
 #include "combat/range.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
@@ -10945,13 +10946,39 @@ static void world_quest_payment_committed(P_char pl, bool committed,
 			world_quest_refund_payment(pl, payment.fee);
 			return;
 		}
-		send_to_char("You hand over the money.\r\n", pl);
-		send_to_char("You no longer have a task.\r\n", pl);
 		// Make it so pl doesn't get the same quest again; once you fail, you fail.
 		// This also makes the quest count as one of today's quests.
 		if (pl->only.pc->quest_type == FIND_AND_KILL &&
 		    pl->only.pc->quest_kill_how_many > 0)
-			sql_world_quest_finished(pl, 0);
+		{
+			const int target = pl->only.pc->quest_mob_vnum;
+			const int started = pl->only.pc->quest_started;
+			if (!sql_world_quest_finish_async(
+				    pl, NULL, false, false, {},
+				    [target, started](P_char actor)
+				    {
+					    if (!actor || !actor->only.pc ||
+						!actor->only.pc->quest_active ||
+						actor->only.pc->quest_mob_vnum != target ||
+						actor->only.pc->quest_started != started)
+						    return;
+					    send_to_char("You hand over the money.\r\n", actor);
+					    send_to_char("You no longer have a task.\r\n", actor);
+					    resetQuest(actor);
+					    gmcp_quest_status(actor);
+				    }))
+			{
+				send_to_char(
+					"Your quest history is unavailable; your task was not changed.\r\n",
+					pl);
+				world_quest_refund_payment(pl, payment.fee);
+			}
+			else if (player_save_pipeline_world_quest_pending(GET_PID(pl)))
+				send_to_char("Your quest history is still being secured.\r\n", pl);
+			return;
+		}
+		send_to_char("You hand over the money.\r\n", pl);
+		send_to_char("You no longer have a task.\r\n", pl);
 		resetQuest(pl);
 		gmcp_quest_status(pl);
 		return;
@@ -11045,6 +11072,11 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 		const bool requesting = isname(what, "quest") || isname(arg, "q");
 		if (!abandoning && !mapping && !requesting)
 			return FALSE;
+		if (player_save_pipeline_world_quest_pending(GET_PID(pl)))
+		{
+			send_to_char("Your quest history is still being secured.\r\n", pl);
+			return TRUE;
+		}
 		const auto availability = world_quest_refresh(pl, world[ch->in_room].number);
 		if (pl->only.pc->quest_replacement_due)
 		{
@@ -11255,7 +11287,13 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 			return TRUE;
 		}
 
-		if (sql_world_quest_can_do_another(pl) < 1)
+		const int remaining = sql_world_quest_can_do_another(pl);
+		if (remaining < 0)
+		{
+			mobsay(ch, "I can't check your quest history right now. Please try again.");
+			return TRUE;
+		}
+		if (remaining == 0)
 		{
 			act("$n says, 'Sorry, I don't have any more quests for right now.'", TRUE,
 			    ch, 0, pl, TO_VICT);

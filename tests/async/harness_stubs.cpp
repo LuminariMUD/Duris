@@ -24,6 +24,11 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Fixtures without the player-save pipeline have no pending quest transition.
+HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)
+{
+	return false;
+}
 HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 {
 	return false;

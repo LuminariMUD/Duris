@@ -57,6 +57,7 @@ JSON_HARNESS = r'''
 #include "core/utils.h"
 #include "world/world_quest.h"
 #include "world/world_quest_policy.h"
+#include "player/player_save_pipeline.h"
 #include "world/zone_story_quest_runtime.h"
 #include "persistence/persistence_checkpoint.h"
 #include <cassert>
