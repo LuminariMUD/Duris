@@ -177,11 +177,31 @@ struct login_password_worker
 			job->started = true;
 			lock.unlock();
 			const bool bcrypt = is_bcrypt_hash(job->hash);
+			const char *password = job->password;
 			if (job->hash_only)
 				job->valid = 1;
-			else if (job->sha256 && !bcrypt)
-				job->valid =
-					password_verify_legacy_sha256(job->password, job->hash);
+			else if (job->sha256)
+			{
+				// Private commands formerly hashed their leading argument separators.
+				// Keep those credentials usable without truncating either candidate.
+				while (isspace(static_cast<unsigned char>(*password)))
+					++password;
+				auto verify = [job, bcrypt](const char *candidate)
+				{
+					if (strlen(candidate) > BCRYPT_PASSWORD_MAX_BYTES)
+						return 0;
+					return bcrypt ? bcrypt_verify_password(candidate,
+									       job->hash) :
+							password_verify_legacy_sha256(candidate,
+										      job->hash);
+				};
+				job->valid = verify(password);
+				if (!job->valid && password != job->password)
+				{
+					password = job->password;
+					job->valid = verify(password);
+				}
+			}
 			else if (bcrypt)
 				job->valid = bcrypt_verify_password(job->password, job->hash);
 			else
@@ -203,7 +223,7 @@ struct login_password_worker
 			if (job->valid &&
 			    (job->hash_only || job->replace || (!bcrypt && job->upgrade_legacy)))
 				job->new_hash = bcrypt_hash_password(
-					job->replace ? job->replacement : job->password);
+					job->replace ? job->replacement : password);
 			OPENSSL_cleanse(job->replacement, sizeof(job->replacement));
 			OPENSSL_cleanse(job->password, sizeof(job->password));
 			lock.lock();
