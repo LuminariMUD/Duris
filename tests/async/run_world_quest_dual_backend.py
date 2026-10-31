@@ -574,7 +574,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
         require(completed["history_done"] == 1, f"completion history missing: {completed}")
         require(completed["progress_xp"] > previous["progress_xp"], "real completion awarded no XP")
         require(completed["completion_target"] == accepted["mob"] and
-                completed["remaining"] == max(completed["completion_remaining"] - 1, 0) and
+                completed["completion_remaining_at_level"] ==
+                max(completed["completion_remaining"] - 1, 0) and
                 completed["completion_calls"] == previous["completion_calls"] + 1,
                 "completion did not use exactly one allowance at its actual level")
         new_items = [item for item in completed["items"]
