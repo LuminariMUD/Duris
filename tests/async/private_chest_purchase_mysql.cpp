@@ -1,6 +1,8 @@
 // Production purchase transaction and controller against disposable InnoDB.
 #include "item/private_chest_purchase.c"
 #include "sql/sql_player.h"
+#include "account/account.h"
+#include "player/player_snapshot.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdlib>
@@ -10,6 +12,13 @@
 MYSQL *DB;
 static char_data actor{};
 static pc_only_data pc{};
+static descriptor_data descriptor{};
+static acct_entry account{};
+P_desc descriptor_list;
+static uint32_t reserved_chest_pid;
+static std::string reserved_chest_account;
+static int reserved_chest_racewar;
+
 static P_char live_actor = &actor;
 static bool reserved, refuse, fail_wallet;
 static sql_read_work_fn queued;
@@ -103,53 +112,30 @@ bool currency_transaction_reserve_chest(P_char)
 {
 	assert(!reserved);
 	reserved = true;
+	reserved_chest_pid = 1;
+	reserved_chest_account = "buyer";
+	reserved_chest_racewar = 1;
 	return true;
 }
 void currency_transaction_release_chest(uint32_t pid)
 {
 	assert(pid == 1 && reserved);
 	reserved = false;
+	reserved_chest_pid = 0;
+	reserved_chest_account.clear();
 }
 P_char find_player_by_pid(int pid)
 {
 	assert(pid == 1);
 	return live_actor;
 }
-const char *get_account_name_safe(P_char)
+[[noreturn]] int panic_corruption_int(const char *, const char *, ...)
 {
-	return "buyer";
+	abort();
 }
 void mark_player_dirty_components(int, uint64_t) {}
 void gmcp_char_vitals(P_char) {}
-void publish_account_bank_balances_revision(const char *, int, const AccountBankBalances *bank,
-					    uint64_t revision)
-{
-	GET_BALANCE_COPPER(&actor) = bank->copper;
-	GET_BALANCE_SILVER(&actor) = bank->silver;
-	GET_BALANCE_GOLD(&actor) = bank->gold;
-	GET_BALANCE_PLATINUM(&actor) = bank->platinum;
-	pc.bank_revision = revision;
-}
-void currency_transaction_publish_chest(P_char ch, const currency_command_result &result,
-					bool bank_changes)
-{
-	if (ch)
-	{
-		GET_COPPER(ch) = result.wallet.amount[0];
-		GET_SILVER(ch) = result.wallet.amount[1];
-		GET_GOLD(ch) = result.wallet.amount[2];
-		GET_PLATINUM(ch) = result.wallet.amount[3];
-		ch->only.pc->wallet_revision = result.wallet_revision;
-	}
-	if (bank_changes)
-	{
-		AccountBankBalances b{ static_cast<int>(result.bank.amount[0]),
-				       static_cast<int>(result.bank.amount[1]),
-				       static_cast<int>(result.bank.amount[2]),
-				       static_cast<int>(result.bank.amount[3]) };
-		publish_account_bank_balances_revision("buyer", 1, &b, result.bank_revision);
-	}
-}
+// PUBLICATION_PRODUCTION
 static void finish(bool lose_reply = false, bool disconnect = false)
 {
 	assert(queued);
@@ -160,7 +146,11 @@ static void finish(bool lose_reply = false, bool disconnect = false)
 	auto error = work(DB, &rows);
 	execute(error ? "ROLLBACK" : "COMMIT");
 	if (disconnect)
+	{
 		live_actor = NULL;
+		actor.desc = NULL;
+		descriptor_list = NULL;
+	}
 	auto done = std::move(completed);
 	completed = {};
 	done(!error && !lose_reply, rows);
@@ -185,6 +175,14 @@ static void reset()
 	execute("UPDATE account_banks SET bank_copper=0,bank_silver=0,bank_gold=0,bank_platinum=1000,bank_revision=0");
 	pc = {};
 	actor.only.pc = &pc;
+	descriptor = {};
+	account = {};
+	account.acct_name = const_cast<char *>("buyer");
+	descriptor.account = &account;
+	descriptor.character = &actor;
+	descriptor.connected = CON_PLAYING;
+	actor.desc = &descriptor;
+	descriptor_list = &descriptor;
 	pc.pid = 1;
 	GET_RACEWAR(&actor) = 1;
 	GET_PLATINUM(&actor) = 1000;
@@ -236,6 +234,26 @@ int main()
 	assert(result_id > 0 && result_offline && !reserved);
 	assert(scalar("SELECT platinum FROM player_data") == 500);
 	reset();
+	start("linkdead");
+	actor.desc = NULL;
+	descriptor_list = NULL;
+	finish();
+	assert(result_id > 0 && !result_offline && !reserved);
+	assert(GET_PLATINUM(&actor) == 500 && pc.wallet_revision == 1);
+	assert(scalar("SELECT platinum FROM player_data") == GET_PLATINUM(&actor));
+	for (bool changed_side : { false, true })
+	{
+		reset();
+		start("changed_identity");
+		if (changed_side)
+			GET_RACEWAR(&actor) = 2;
+		else
+			account.acct_name = const_cast<char *>("other_account");
+		finish();
+		assert(result_id > 0 && result_offline && !reserved);
+		assert(GET_PLATINUM(&actor) == 1000 && pc.wallet_revision == 0);
+	}
+	reset();
 	refuse = true;
 	start("refused");
 	assert(!queued && result_id == -1);
@@ -284,12 +302,15 @@ int main()
 	payment.wallet_delta.amount = { 1, 2, 3, 0 };
 	payment.bank_delta.amount = { -1, -2, -3, -500 };
 	start("bank");
+	actor.desc = NULL;
+	descriptor_list = NULL;
 	finish(true);
 	pending->retry = {};
 	private_chest_purchase_pulse();
 	finish();
 	assert(result_id > 0 && GET_COPPER(&actor) == 101 && GET_SILVER(&actor) == 2 &&
 	       GET_GOLD(&actor) == 3);
+	assert(GET_BALANCE_PLATINUM(&actor) == 0 && pc.bank_revision == 1 && !result_offline);
 	assert(scalar("SELECT bank_platinum FROM account_banks") == 0 &&
 	       scalar("SELECT bank_revision FROM account_banks") == 1);
 	mysql_close(DB);

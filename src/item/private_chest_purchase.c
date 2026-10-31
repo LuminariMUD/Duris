@@ -210,9 +210,9 @@ void private_chest_purchase_pulse(void)
 			    const std::string outcome = rows[0][0];
 			    const bool committed = outcome == "created";
 			    P_char actor = find_player_by_pid(p->pid);
-			    if (actor &&
-				(GET_RACEWAR(actor) != p->racewar ||
-				 strcasecmp(get_account_name_safe(actor), p->account.c_str())))
+			    if (actor && (GET_RACEWAR(actor) != p->racewar ||
+					  (actor->desc && strcasecmp(get_account_name_safe(actor),
+								     p->account.c_str()))))
 				    actor = NULL;
 			    if (committed)
 			    {

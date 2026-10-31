@@ -423,12 +423,18 @@ bool currency_transaction_publish_trade(P_char character, int64_t payment)
 	return true;
 }
 
+bool currency_transaction_chest_account_busy(const char *account_name)
+{
+	return reserved_chest_pid && account_name &&
+	       !strcasecmp(account_name, reserved_chest_account.c_str());
+}
+
 bool currency_transaction_chest_busy(P_char character)
 {
 	return reserved_chest_pid && character && !IS_NPC(character) &&
 	       (static_cast<uint32_t>(GET_PID(character)) == reserved_chest_pid ||
 		(GET_RACEWAR(character) == reserved_chest_racewar &&
-		 !strcasecmp(get_account_name_safe(character), reserved_chest_account.c_str())));
+		 currency_transaction_chest_account_busy(get_account_name_safe(character))));
 }
 
 bool currency_transaction_reserve_chest(P_char character)
@@ -466,6 +472,15 @@ void currency_transaction_publish_chest(P_char character, const currency_command
 		GET_GOLD(character) = static_cast<int>(result.wallet.amount[2]);
 		GET_PLATINUM(character) = static_cast<int>(result.wallet.amount[3]);
 		character->only.pc->wallet_revision = result.wallet_revision;
+		// A disconnected purchaser has no descriptor for shared-bank publication.
+		if (bank_changes && result.bank_revision >= character->only.pc->bank_revision)
+		{
+			GET_BALANCE_COPPER(character) = static_cast<int>(result.bank.amount[0]);
+			GET_BALANCE_SILVER(character) = static_cast<int>(result.bank.amount[1]);
+			GET_BALANCE_GOLD(character) = static_cast<int>(result.bank.amount[2]);
+			GET_BALANCE_PLATINUM(character) = static_cast<int>(result.bank.amount[3]);
+			character->only.pc->bank_revision = result.bank_revision;
+		}
 		mark_player_dirty_components(reserved_chest_pid, PLAYER_COMPONENT_STATUS);
 		gmcp_char_vitals(character);
 	}

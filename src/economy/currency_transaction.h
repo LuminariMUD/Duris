@@ -95,6 +95,8 @@ void currency_transaction_release_chest(uint32_t pid);
 void currency_transaction_publish_chest(P_char character, const currency_command_result &result,
 					bool bank_changes);
 bool currency_transaction_chest_busy(P_char character);
+// Fresh account loads wait until the chest receipt resolves its bank balance.
+bool currency_transaction_chest_account_busy(const char *account_name);
 currency_transaction_health currency_transaction_health_copy(void);
 void currency_transaction_reset_for_tests(void);
 
