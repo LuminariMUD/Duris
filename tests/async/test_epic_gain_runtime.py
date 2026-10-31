@@ -304,7 +304,7 @@ def test_epic_boon_publication() -> None:
                         'src/economy/boon_shop_command.c', 'src/economy/currency_command.c',
                         'src/combat/combat_outcome_command.c', 'src/guild/artifact_guild_command.c',
                         'src/flatfile/flatfile_boon_repository.c',
-                        'src/flatfile/flatfile_player_domain_repository.c',
+                        'src/flatfile/flatfile_player_domain_repository.c', 'src/combat/frag_cap.c', 'src/combat/frag_cap_repository.c', 'src/combat/frag_cap_config.c',
                         'src/flatfile/flatfile_authority_transaction.c', 'src/flatfile/flatfile_store.c',
                         'src/persistence/critical_command.c', str(HARNESS_STUBS),
                         '-Wl,--gc-sections', '-Wl,--wrap=getrandom', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True)
