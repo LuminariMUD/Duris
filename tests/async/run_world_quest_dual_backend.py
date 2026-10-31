@@ -292,6 +292,7 @@ def collect_logs(run_root: pathlib.Path) -> str:
 # Test-only debugger setup and native-state inspection. Recovery closes
 # disposable zones; quest transitions, payments, saves and loads use real commands.
 RECOVERY_PROBE_PATH = ROOT / "tests/async/world_quest_journey_probe.cpp"
+RECOVERY_PROBE_SOURCE = RECOVERY_PROBE_PATH.read_text()
 
 JOURNEY_FIELDS = (
     "active", "replacement_due", "origin", "level", "type", "mob", "zone", "started",
@@ -400,15 +401,23 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
                 client.expect("Pos:", timeout=30)
             client.send(step["direction"])
             client.expect("Pos:", timeout=30)
-        observed = gameplay_snapshot(client, run_root)
-        if observed["room"] == batch[-1]["to"]:
-            steps += len(batch)
-        elif observed["fighting"]:
-            prefix = [batch[0]["from"]] + [step["to"] for step in batch]
-            require(observed["room"] in prefix, f"combat displaced the journey off its route: {observed}")
-            steps += prefix.index(observed["room"])
-        else:
-            raise AssertionError(f"ordinary commands diverged from the proved route: expected {batch[-1]}, got {observed}")
+            observed = gameplay_snapshot(client, run_root)
+            deadline = time.monotonic() + 15
+            # Movement publication can lag its command response. Observe each
+            # destination before submitting the next move rather than letting
+            # read-only SCORE overtake deferred movement.
+            while observed["room"] == step["from"] and not observed["fighting"]:
+                require(time.monotonic() < deadline,
+                        f"ordinary movement did not reach {step}: {observed}")
+                observed = gameplay_snapshot(client, run_root)
+            if observed["room"] == step["to"]:
+                steps += 1
+            elif observed["fighting"]:
+                require(observed["room"] == step["from"],
+                        f"combat displaced the journey off its path: {observed}")
+                break
+            else:
+                raise AssertionError(f"ordinary command diverged from {step}: {observed}")
     raise AssertionError("target navigation exceeded 1,200 ordinary steps")
 
 
@@ -922,7 +931,7 @@ def perform_quest_journey(binary: pathlib.Path, backend: str, state_root: pathli
         gdb_path = run_root / "quest.gdb"
         probe_source = run_root / "recovery_probe.cpp"
         probe_binary = run_root / "recovery_probe.so"
-        probe_source.write_text(RECOVERY_PROBE_PATH.read_text())
+        probe_source.write_text(RECOVERY_PROBE_SOURCE)
         flags = (["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else
                  subprocess.check_output(["mysql_config", "--cflags"], text=True).split())
         built = run(["g++", "-std=c++20", "-g", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",

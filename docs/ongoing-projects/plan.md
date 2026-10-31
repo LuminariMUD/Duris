@@ -246,3 +246,12 @@ reward rule changed. Fresh full, reported and focused ASK runs are in progress;
 the required final result is still both backends passing every planned journey.
 Baseline, native and failed-journey logs are retained locally under
 `bin/qualification/issue500/` and are not tracked.
+
+The walker now observes each authored destination before submitting the next
+movement command, with a bounded wait and an exact room assertion. A prompt or
+batch-end score alone did not establish that every requested step had finished.
+The runner also freezes its probe source at startup so editing the checkout
+cannot mix probe signatures between its MariaDB and flatfile passes. A prior
+intermediate run's flatfile debugger stopped on that signature mismatch; this
+was not a server crash. Final `both` and `reported` runs use the corrected
+step synchronization. No production change was needed for these harness fixes.
