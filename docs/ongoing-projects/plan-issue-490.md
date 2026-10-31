@@ -1,22 +1,22 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **review findings addressed; ready for review**.
-Updated 2026-10-31. #507 and #509 are merged; the remaining stack is prepared for review.
+Status: **implementation complete and locally qualified**.
+Updated 2026-10-31. #507, #509, #510, #516 and #524 are merged.
 Issue: [#490](https://github.com/LuminariMUD/Duris/issues/490).
 Merged baseline: [#497](https://github.com/LuminariMUD/Duris/pull/497),
 `b737db20210ff2d3e4eebccb212c9918b9b6f877`.
 
 ## Current checkout and delivery
 
-Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`.
-Delivery branch: `branch/issue-490-command-qualification`, targeting
-`branch/issue-490-command-privacy` ([#524](https://github.com/LuminariMUD/Duris/pull/524)).
+Temporary integration checkout: `/home/aiwithapex/projects/duris-issue-490-followup`.
+Delivery branch: `branch/issue-490-command-qualification` ([#525](https://github.com/LuminariMUD/Duris/pull/525)),
+targeting `master` after the qualified prerequisites above.
 This file is the maintained implementation handoff. The original reviewed
 `docs/ongoing-projects/plan.md` in `/home/aiwithapex/projects/duris-issue-490`
 is mirrored only if unchanged since the last checkpoint. Master's shared
 `docs/ongoing-projects/plan.md` belongs to other work.
 
-Review order:
+Integration order:
 
 1. [#507](https://github.com/LuminariMUD/Duris/pull/507): room password marker,
    deterministic latest-50 ordering, UID-preserving UTF-8 audit text and audit
@@ -360,3 +360,44 @@ implemented and covered above. Owner review/merging and separately authorized
 production delivery remain subsequent actions. Do not restart the superseded
 10-16-hour backlog, add the dropped command framework, or repeat broad green
 qualification without a changed path or unresolved finding.
+
+### Final merge qualification, 2026-10-31
+
+Prerequisites #510, #516 and #524 landed in order as squash commits
+`087b3399e`, `6f2b61292` and `9ee89cdc2`. Their source heads were carried
+forward with ordinary merges. Each squash-ancestry merge followed a whole-tree
+comparison proving master already matched the carried parent. Applying #525's
+original feature patch to that master reproduced the integrated tree exactly.
+
+Fresh complete MariaDB 10.11 and MySQL 8.0 locker journeys each pass all **21
+groups**, including failed private INSERT, refused player save, SIGKILL and
+cold-restart UID recovery. These runs used integrated head `9a9998e57`, binary
+SHA256 `2d1d706eed5c241bbc919468c6d621042d09ee1368e64934c5cdaa764e691908`.
+Their separate transcripts are `bin/merge525/journey-mariadb.log` and
+`journey-mysql.log`. The shared journey report contains the exact graph/history
+assertions; its last writer is the MySQL run.
+
+The integration audit then reproduced one remaining component-ordering gap:
+a pending detached quest reward adds item components to a status-only save
+after the initial chest barrier. Commit `59690c4ad` moves the same barrier after
+component expansion, before capture. The added regression fails on the prior
+code and passes after the move, with the status revision retained on refusal.
+The combat publication fixture now supplies its explicitly empty locker context
+when compiling the production checkpoint function.
+
+After this correction, the player-save pipeline, both real combat-adapter
+ASan/UBSan variants, fresh MariaDB server build, fresh no-MySQL locker/restart
+journey and MariaDB SQL game-loop journey pass. The latter lists zero remaining
+query sites. The full SQL locker journeys above are reused for the unchanged
+locker commands and persistence paths; the newly expanded quest item path is
+covered by the focused executable regression. The corrected server binary
+SHA256 is `9653f5a2e2364c541b4113e0ed2dff9420442dbf123fb260b18d46feacea7f3b`.
+Native private-chest lifecycle/registry, command-ring/FORCE privacy, chat policy,
+world-quest routes, all 14 documentation contracts and the migration contract
+also pass. Changed-line formatting, Clang-Tidy and `git diff --check` pass.
+
+No CI wait, production operation, release tag or deployment is part of this
+integration. Cleanup preserves raw validation evidence and source bundles under
+`/home/aiwithapex/projects/duris/bin/merge-campaign-20261031-01a192ad/`
+before removing clean temporary worktrees. Unrelated dirty work, private recovery
+material and explicitly retained implementation evidence remain in place.
