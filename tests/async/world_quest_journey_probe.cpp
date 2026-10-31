@@ -37,6 +37,8 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include "world/handler.h"
 #include "world/map.h"
 #include "world/world_singletons.h"
+#include "world/specs.prototypes.h"
+#include "combat/forced_movement.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "item/item_movement_transaction.h"
@@ -47,6 +49,8 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include <algorithm>
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
+#include <map>
 #include <string>
 #include <unistd.h>
 #include <dlfcn.h>
@@ -67,6 +71,11 @@ extern "C"
 	int quest_gameplay_stage = 0;
 	int quest_gameplay_level = 11;
 	int quest_gameplay_origin = 16633;
+	int quest_gameplay_fixture_zone = -1;
+	int quest_gameplay_fixture_vnum = 0;
+	int quest_gameplay_fixture_selected = 0;
+	int quest_gameplay_fixture_suggested = 0;
+	void *quest_gameplay_passive_mobile = nullptr;
 }
 extern "C" void quest_gameplay_read_control()
 {
@@ -111,6 +120,10 @@ extern "C" void quest_gameplay_setup(P_char ch)
 		if (action == 4)
 			quest_journey_invalidate(ch);
 		if (action == 7)
+			for (auto *edge : world[ch->in_room].dir_option)
+				if (edge)
+					edge->exit_info |= EX_LOCKED;
+		if (action == 8)
 			ADD_MONEY(ch, 1000);
 		if (action == 6)
 		{
@@ -269,7 +282,229 @@ static void inventory_item(cJSON *items, P_obj object)
 		inventory_item(items, child);
 }
 
-extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
+// Navigation belongs to this disposable journey, not quest eligibility.
+// This searches ordinary authored exits from the actor's current room and then
+// lets real movement commands establish whether the selected fixture is walkable.
+struct journey_navigation
+{
+	std::unordered_map<int, std::vector<int>> rooms;
+	size_t work = 0;
+};
+
+static journey_navigation navigation_routes(P_char ch)
+{
+	journey_navigation result;
+	const auto passive =
+		reinterpret_cast<bool (*)(mob_proc_type)>(quest_gameplay_passive_mobile);
+	assert(passive);
+	std::unordered_map<int, bool> checked;
+	auto ordinary_room = [&](int room)
+	{
+		if (const auto found = checked.find(room); found != checked.end())
+			return found->second;
+		const auto &entry = world[room];
+		bool ordinary = !entry.affected &&
+				(!entry.funct || entry.funct == inn ||
+				 entry.funct == crew_shop_proc || entry.funct == ship_shop_proc);
+		for (P_char person = entry.people; person && ordinary;
+		     person = person->next_in_room)
+			if (IS_NPC(person))
+				for (mob_proc_type proc : { mob_index[GET_RNUM(person)].func.mob,
+							    mob_index[GET_RNUM(person)].qst_func })
+				{
+					if (proc == shop_keeper)
+					{
+						const int shop = singleton_shop_id(person);
+						if (shop < 0 || shop >= number_of_shops)
+						{
+							ordinary = false;
+							continue;
+						}
+						proc = shop_index[shop].func;
+					}
+					ordinary = ordinary && (!proc || proc == world_quest ||
+								proc == quester || passive(proc));
+				}
+		for (P_obj object = entry.contents; object && ordinary;
+		     object = object->next_content)
+			if (object->R_num >= 0)
+			{
+				const auto proc = obj_index[object->R_num].func.obj;
+				ordinary = !proc || proc == board || proc == artifact_hide ||
+					   proc == ring_of_regeneration || proc == tracks ||
+					   proc == blood_stains;
+			}
+		checked[room] = ordinary;
+		return ordinary;
+	};
+	result.rooms.try_emplace(ch->in_room);
+	std::vector<int> queue{ ch->in_room };
+	bool boat = false;
+	for (P_obj object = ch->carrying; object; object = object->next_content)
+		boat = boat || object->type == ITEM_BOAT;
+	for (P_obj object : ch->equipment)
+		boat = boat || (object && object->type == ITEM_BOAT);
+	for (size_t next = 0; next < queue.size(); ++next)
+		for (int direction = 0; direction < NUM_EXITS; ++direction)
+		{
+			const auto *edge = world[queue[next]].dir_option[direction];
+			++result.work;
+			if (!edge || edge->to_room < 0 || edge->to_room > top_of_world ||
+			    IS_SET(edge->exit_info,
+				   EX_LOCKED | EX_SECRET | EX_BLOCKED | EX_WALLED | EX_SPIKED))
+				continue;
+			const int to = edge->to_room;
+			if (!ordinary_room(queue[next]) || !ordinary_room(to) ||
+			    check_wall(queue[next], direction))
+				continue;
+			if (check_castle_walls(queue[next], to) ||
+			    map_entry_barrier(ch, queue[next], to) != forced_block::none)
+				continue;
+			const auto &room = world[to];
+			switch (room.sector_type)
+			{
+			case SECT_OCEAN:
+			case SECT_FIREPLANE:
+			case SECT_AIR_PLANE:
+			case SECT_WATER_PLANE:
+			case SECT_EARTH_PLANE:
+			case SECT_ETHEREAL:
+			case SECT_ASTRAL:
+			case SECT_UNDRWLD_LIQMITH:
+			case SECT_NEG_PLANE:
+			case SECT_PLANE_OF_AVERNUS:
+			case SECT_LAVA:
+			case SECT_CASTLE_WALL:
+				continue;
+			default:
+				break;
+			}
+			if (IS_SET(zone_table[room.zone].flags, ZONE_CLOSED | ZONE_PRIVATE) ||
+			    IS_SET(room.room_flags, ROOM_PRIVATE | ROOM_LOCKER | ROOM_GUILD |
+							    ROOM_JAIL | ROOM_ATRIUM | ROOM_ARENA) ||
+			    room.chance_fall || room.current_speed ||
+			    ((room.sector_type == SECT_NO_GROUND ||
+			      room.sector_type == SECT_UNDRWLD_NOGROUND) &&
+			     !IS_AFFECTED(ch, AFF_FLY)) ||
+			    ((room.sector_type == SECT_WATER_NOSWIM ||
+			      room.sector_type == SECT_UNDRWLD_NOSWIM) &&
+			     !boat && !IS_AFFECTED(ch, AFF_FLY)) ||
+			    ((IS_SET(room.room_flags, ROOM_UNDERWATER) ||
+			      room.sector_type == SECT_UNDERWATER ||
+			      room.sector_type == SECT_UNDERWATER_GR) &&
+			     !IS_AFFECTED(ch, AFF_WATERBREATH)))
+				continue;
+			auto [found, inserted] = result.rooms.try_emplace(to);
+			found->second.push_back(queue[next]);
+			if (inserted)
+				queue.push_back(to);
+		}
+	return result;
+}
+
+// Explicit disposable setup: restore routine target inputs to authored reset
+// positions and stop wandering. Do not change levels, stats, counts or provenance.
+extern "C" void quest_gameplay_prepare_mobiles(P_char ch, const void *source_lookup)
+{
+	using lookup_type = const void *(*)(P_char);
+	const auto source = reinterpret_cast<lookup_type>(const_cast<void *>(source_lookup));
+	const auto &quest = *ch->only.pc;
+	for (P_char mob = character_list; mob; mob = mob->next)
+	{
+		if (!IS_NPC(mob) || !IS_ALIVE(mob) || !source(mob))
+			continue;
+		const int birthplace = real_room(GET_BIRTHPLACE(mob));
+		if (birthplace < 0 || birthplace > top_of_world)
+			continue;
+		if (quest.quest_active ? GET_VNUM(mob) != quest.quest_mob_vnum :
+		    quest_gameplay_kind == FIND_AND_KILL ?
+					 GET_LEVEL(mob) < quest_gameplay_level - 4 ||
+						 GET_LEVEL(mob) > quest_gameplay_level + 5 :
+					 mob_index[GET_RNUM(mob)].number != 1)
+			continue;
+		SET_BIT(mob->specials.act, ACT_SENTINEL);
+		if (mob->in_room != birthplace)
+		{
+			if (mob->in_room >= 0)
+				char_from_room(mob);
+			char_to_room(mob, birthplace, 0);
+		}
+	}
+}
+
+// Pick an otherwise eligible, not previously completed fixture whose routine
+// instances and birthplaces lie on ordinary outward/return paths. Only the
+// debugger's gameplay sampling uses this; production eligibility stays broader.
+extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_lookup)
+{
+	using lookup_type = const void *(*)(P_char);
+	const auto source = reinterpret_cast<lookup_type>(const_cast<void *>(source_lookup));
+	quest_gameplay_fixture_zone = -1;
+	quest_gameplay_fixture_vnum = 0;
+	quest_gameplay_fixture_selected = quest_gameplay_fixture_suggested = 0;
+	if (ch->only.pc->quest_active)
+		return;
+	const auto navigation = navigation_routes(ch);
+	std::unordered_set<int> returns{ ch->in_room };
+	std::vector<int> queue{ ch->in_room };
+	for (size_t next = 0; next < queue.size(); ++next)
+		for (int from : navigation.rooms.at(queue[next]))
+			if (returns.insert(from).second)
+				queue.push_back(from);
+	std::unordered_map<int, std::vector<int>> outgoing;
+	for (const auto &[to, incoming] : navigation.rooms)
+		for (int from : incoming)
+			outgoing[from].push_back(to);
+	std::unordered_map<int, int> distances{ { ch->in_room, 0 } };
+	queue = { ch->in_room };
+	for (size_t next = 0; next < queue.size(); ++next)
+		for (int to : outgoing[queue[next]])
+			if (distances.emplace(to, distances.at(queue[next]) + 1).second)
+				queue.push_back(to);
+	std::map<std::pair<int, int>, int> candidates;
+	for (P_char mob = character_list; mob; mob = mob->next)
+		if (IS_NPC(mob) && IS_ALIVE(mob) && returns.count(mob->in_room) && source(mob) &&
+		    !IS_SET(world[mob->in_room].room_flags, ROOM_SAFE | ROOM_ARENA | ROOM_GUILD) &&
+		    !IS_SET(zone_table[world[mob->in_room].zone].flags, ZONE_SAFE) &&
+		    (quest_gameplay_kind != FIND_AND_KILL ||
+		     (GET_LEVEL(mob) >= quest_gameplay_level - 4 &&
+		      GET_LEVEL(mob) <= quest_gameplay_level + 5)) &&
+		    (quest_gameplay_kind != FIND_AND_ASK ||
+		     (mob_index[GET_RNUM(mob)].number == 1 &&
+		      (GET_LEVEL(mob) < quest_gameplay_level - 4 ||
+		       GET_LEVEL(mob) > quest_gameplay_level + 5))))
+			candidates[{ distances.at(mob->in_room), GET_VNUM(mob) }] =
+				zone_table[world[mob->in_room].zone].number;
+	std::unordered_set<int> checked;
+	for (const auto &[key, zone] : candidates)
+	{
+		const int vnum = key.second;
+		if (!checked.insert(vnum).second || sql_world_quest_done_already(ch, vnum) != 0)
+			continue;
+		bool walkable = true;
+		for (P_char mob = character_list; mob; mob = mob->next)
+			if (IS_NPC(mob) && GET_VNUM(mob) == vnum && source(mob) &&
+			    mob->in_room >= 0 && mob->in_room <= top_of_world &&
+			    zone_table[world[mob->in_room].zone].number == zone &&
+			    (!returns.count(mob->in_room) ||
+			     !returns.count(real_room(GET_BIRTHPLACE(mob)))))
+				walkable = false;
+		const int needed = quest_gameplay_kind == FIND_AND_ASK ? 1 :
+				   quest_gameplay_level == 29	       ? 3 :
+									 2;
+		if (!walkable ||
+		    world_quest_policy_check_target(ch, quest_gameplay_origin, quest_gameplay_level,
+						    zone, vnum, quest_gameplay_kind, needed)
+				    .status != world_quest_target_status::valid)
+			continue;
+		quest_gameplay_fixture_zone = real_zone(zone);
+		quest_gameplay_fixture_vnum = vnum;
+		return;
+	}
+	assert(false && "no eligible ordinary-travel gameplay fixture");
+}
+
+extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const char *request)
 {
 	assert(ch && IS_PC(ch));
 	using lookup_type = const void *(*)(P_char);
@@ -280,11 +515,16 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 	if (q.quest_active)
 		last_target = q.quest_mob_vnum;
 	cJSON *root = cJSON_CreateObject();
+	cJSON_AddStringToObject(root, "request", request);
 	number(root, "sequence", ++sequence);
 	number(root, "pid", getpid());
 	number(root, "actor_level", GET_LEVEL(ch));
 	number(root, "profile_level", quest_gameplay_level);
 	number(root, "profile_kind", quest_gameplay_kind);
+	number(root, "fixture_vnum", quest_gameplay_fixture_vnum);
+	number(root, "fixture_zone",
+	       quest_gameplay_fixture_zone >= 0 ? zone_table[quest_gameplay_fixture_zone].number :
+						  -1);
 	number(root, "history_target", last_target);
 	number(root, "items_busy", item_movement_transaction_player_busy(ch));
 
@@ -326,11 +566,16 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 #endif
 
 	number(root, "completion_level", completion_level);
+	char_data completion_view = *ch;
+	completion_view.player.level = completion_level;
+	number(root, "completion_remaining_at_level",
+	       completion_level > 0 ? sql_world_quest_can_do_another(&completion_view) : -1);
 	number(root, "completion_target", completion_target);
 	cJSON_AddStringToObject(root, "reward_uid", std::to_string(completion_reward).c_str());
 	number(root, "reward_vnum", completion_reward_vnum);
 
 	number(root, "active", q.quest_active);
+	number(root, "accomplished", q.quest_accomplished);
 	number(root, "due", q.quest_replacement_due);
 	number(root, "accepted_level", q.quest_level);
 	number(root, "type", q.quest_type);
@@ -373,13 +618,10 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 
 	const int origin = q.quest_active ? q.quest_origin_room : quest_gameplay_origin;
 	number(root, "route_origin", origin);
-	const int level = q.quest_active ? q.quest_level : quest_gameplay_level;
 	const auto start = std::chrono::steady_clock::now();
-	const auto routes = world_quest_policy_routes(ch, origin, level);
+	const auto routes = navigation_routes(ch);
 	number(root, "route_work", routes.work);
 	number(root, "route_rooms", routes.rooms.size());
-	number(root, "route_exhausted", routes.exhausted);
-	number(root, "route_uncertain", routes.uncertain);
 	number(root, "route_us",
 	       std::chrono::duration_cast<std::chrono::microseconds>(
 		       std::chrono::steady_clock::now() - start)
@@ -403,20 +645,17 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 			    zone_table[world[mob->in_room].zone].number != q.quest_zone_number ||
 			    GET_HIT(mob) <= 0 || mob->following || GET_MASTER(mob) ||
 			    IS_AFFECTED(mob, AFF_CHARM) || !source(mob) ||
-			    world_quest_policy_route(routes, real_room(GET_BIRTHPLACE(mob))) !=
-				    world_quest_route_status::available ||
-			    world_quest_policy_route(routes, mob->in_room) !=
-				    world_quest_route_status::available ||
+
 			    !ac_can_see_from(ch, mob, mob->in_room))
 				continue;
 			targets[mob->in_room].push_back(mob);
+			if (q.quest_type == FIND_AND_ASK)
+				number(root, "target_level", GET_LEVEL(mob));
 		}
 	std::unordered_map<int, std::vector<int>> outgoing;
-	for (const auto &[to, room] : routes.rooms)
-		if (room.returns_to_origin)
-			for (int from : room.incoming)
-				if (routes.rooms.at(from).returns_to_origin)
-					outgoing[from].push_back(to);
+	for (const auto &[to, incoming] : routes.rooms)
+		for (int from : incoming)
+			outgoing[from].push_back(to);
 	std::unordered_map<int, int> previous{ { ch->in_room, NOWHERE } };
 	std::vector<int> queue{ ch->in_room };
 	int destination = NOWHERE;
@@ -531,18 +770,18 @@ extern "C" void quest_world_audit(P_char ch)
 			number(entry, "giver", GET_VNUM(giver));
 			number(entry, "home", home);
 			number(entry, "level", level);
-			const auto routes =
-				world_quest_policy_routes(ch, world[giver->in_room].number, level);
-			number(entry, "rooms", routes.rooms.size());
-			number(entry, "work", routes.work);
-			number(entry, "exhausted", routes.exhausted);
-			number(entry, "uncertain", routes.uncertain);
+			const auto origin_region = world_quest_policy_region(giver->in_room);
+			number(entry, "surface_region", origin_region.surface);
+			number(entry, "underdark_region", origin_region.underdark);
 			int underdark = 0, surface = 0;
-			for (const auto &[room, info] : routes.rooms)
-				if (info.returns_to_origin && IS_MAP_ROOM(room))
+			for (int room = 0; room <= top_of_world; ++room)
+				if (IS_MAP_ROOM(room))
 				{
-					underdark += IS_UD_MAP(room);
-					surface += IS_SURFACE_MAP(room);
+					const auto region = world_quest_policy_region(room);
+					underdark += region.underdark > 0 &&
+						     region.underdark == origin_region.underdark;
+					surface += region.surface > 0 &&
+						   region.surface == origin_region.surface;
 				}
 			number(entry, "underdark_map_rooms", underdark);
 			number(entry, "surface_map_rooms", surface);
@@ -557,8 +796,13 @@ extern "C" void quest_world_audit(P_char ch)
 				    GET_LEVEL(mob) <= level + 5 &&
 				    std::find(zones.begin(), zones.end(),
 					      world[mob->in_room].zone) != zones.end() &&
-				    world_quest_policy_route(routes, mob->in_room) ==
-					    world_quest_route_status::available)
+				    (level >= 30 ||
+				     (origin_region.surface > 0 &&
+				      origin_region.surface ==
+					      world_quest_policy_region(mob->in_room).surface) ||
+				     (origin_region.underdark > 0 &&
+				      origin_region.underdark ==
+					      world_quest_policy_region(mob->in_room).underdark)))
 					++live_level_zone;
 			number(entry, "live_level_zone", live_level_zone);
 
@@ -571,7 +815,7 @@ extern "C" void quest_world_audit(P_char ch)
 			number(entry, "usable", target.usable_count);
 			if (target.zone >= 0)
 				number(entry, "zone", zone_table[target.zone].number);
-			if (routes.rooms.empty())
+			if (!origin_region.surface && !origin_region.underdark)
 				cJSON_AddItemToObject(entry, "origin_details",
 						      room_diagnostic(giver->in_room, ch));
 			cJSON_AddItemToArray(origins, entry);

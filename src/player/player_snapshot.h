@@ -305,7 +305,7 @@ struct player_pending_world_quest
 	player_world_quest_reward reward{};
 	int32_t escrow_fee = 0;
 	// The pre-completion state lets unrelated changes remain durable when the
-	// completion transaction fails. Used only by the SQL save repository.
+	// completion transaction fails. Used only by the save repositories.
 	bool fallback_only = false;
 	std::array<int32_t, 14> before_quest{};
 	int32_t before_origin = 0;

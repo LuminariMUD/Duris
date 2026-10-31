@@ -750,7 +750,7 @@ void do_quest(P_char ch, char *args, int /*cmd*/)
 			if (recipient.status != world_quest_target_status::valid)
 			{
 				send_to_char(
-					"Your fellow adventurer cannot currently use this task's route or target.\r\n",
+					"Your fellow adventurer cannot currently use this task's target.\r\n",
 					ch);
 				return;
 			}
@@ -815,9 +815,9 @@ void world_quest_describe(P_char ch, world_quest_target_status availability)
 	{
 		const char *message =
 			availability == status::blocked ?
-				"Your task is temporarily blocked by your current condition or travel abilities." :
+				"Your task is temporarily blocked by your current condition." :
 			availability == status::needs_origin ?
-				"This older task needs a bartender to check its travel origin." :
+				"This older task needs a bartender to check its local scope." :
 				"I cannot prove that your task is usable right now. Ask a bartender to check it.";
 		send_to_char(message, ch);
 		send_to_char("\r\nYour task and earned progress have been kept.\r\n", ch);

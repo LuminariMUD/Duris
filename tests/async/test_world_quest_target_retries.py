@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         '#include "core/prototypes.h"\n#include "core/utils.h"\n'
         '#include "magic/spells.h"\n#include "world/map.h"\n'
         '#include "world/weather.h"\n#include "combat/justice.h"\n'
-        '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n'
+        '#include "world/world_quest_policy.h"\n#include "world/difficulty.h"\n#include "world/buildings.h"\n'
         '#include "persistence/persistence_checkpoint.h"\n'
         '#include "economy/currency_transaction.h"\n#include "sql/sql.h"\n'
         '#include "player/player_save_pipeline.h"\n'
@@ -34,6 +34,7 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
             ("cmd/interp.c", "void half_chop("),
+            ("cmd/interp.c", "bool special("),
             ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
             ("world/outposts.c", "bool check_castle_walls("),
             ("combat/range.c", "int check_wall("),
@@ -84,7 +85,7 @@ void run_map_payment(P_char player, int fee)
     # The target's prototype belongs to a different interval from its live zone,
     # keeping the destination average fixed while checking each level separately.
     scenarios += [(level, f"levels_{authored}_{live}", kind)
-                  for level in (11, 29, 30, 49)
+                  for level in (11, 29, 30, 49, 56)
                   for kind in ("ask", "kill")
                   for authored, live in (
                       (level - 5, level), (level, level - 5),
@@ -94,6 +95,14 @@ void run_map_payment(P_char player, int fee)
                       (61, level), (level, 61), (62, level), (level, 62),
                       (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
+    scenarios += [(level, f"geography_{origin}_{family}", kind)
+                  for origin in (1734, 74339)
+                  for level in (11, 29, 30, 56)
+                  for kind in ("ask", "kill")
+                  for family in ("surface", "underdark", "foreign_surface", "foreign_underdark",
+                                 "ambiguous_surface")]
+    scenarios += [(29, f"zone_average_{average}", kind)
+                  for average in (22, 23, 33, 34) for kind in ("ask", "kill")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]
     scenarios += [(level, "gear", kind) for level in (11, 29, 56) for kind in ("ask", "kill")]
