@@ -4263,6 +4263,22 @@ static void locker_access_transferAccess(P_char chLocker, P_char ch)
 // private chest commands
 // ============================================================================
 
+// Keep management names literal instead of skipping words such as "from".
+static char *locker_chest_argument(char *arg, char *word)
+{
+	while (isspace(static_cast<unsigned char>(*arg)))
+		++arg;
+	while (*arg && !isspace(static_cast<unsigned char>(*arg)))
+	{
+		*word++ = LOWER(*arg);
+		++arg;
+	}
+	*word = '\0';
+	while (isspace(static_cast<unsigned char>(*arg)))
+		++arg;
+	return arg;
+}
+
 /* The id of the chest `name` names in the locker: a private chest, or "public". */
 static int locker_chest_id(StorageLocker *pLocker, const char *name)
 {
@@ -4405,9 +4421,8 @@ static void locker_change_chest(P_char actor, StorageLocker *locker, PrivateChes
 	chest_changes.push_back(std::move(change));
 }
 
-/* Private chests live in memory while their locker is open: each change is made there
- * at once and queued on the persistence writer. A new chest's id comes from its row,
- * created on the writer. */
+/* Private chests live in memory while their locker is open. Publish a metadata change
+ * only after its write/readback resolves; a purchase supplies its committed row ID. */
 static int locker_chestcmd(P_char ch, char *arg)
 {
 	if (!ch || !ch->desc)
@@ -4435,8 +4450,8 @@ static int locker_chestcmd(P_char ch, char *arg)
 	}
 
 	char arg1[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH], arg3[MAX_INPUT_LENGTH];
-	arg = one_argument(arg, arg1);
-	arg = one_argument(arg, arg2);
+	arg = locker_chest_argument(arg, arg1);
+	arg = locker_chest_argument(arg, arg2);
 	strcpy(arg3, arg);
 
 	if (is_abbrev(arg1, "list") || !arg1[0])
@@ -4467,12 +4482,12 @@ static int locker_chestcmd(P_char ch, char *arg)
 			return TRUE;
 		}
 		if (strlen(arg2) > 32 || !str_cmp(arg2, "public") || !str_cmp(arg2, "chest") ||
-		    !str_cmp(arg2, "private") ||
+		    !str_cmp(arg2, "private") || fill_word(arg2) ||
 		    !std::all_of(arg2, arg2 + strlen(arg2), [](unsigned char c)
 				 { return isalpha(c) || isdigit(c) || c == '_' || c == '-'; }))
 		{
 			send_to_char(
-				"Chest names must use 1-32 letters, digits, underscores or hyphens, and cannot be public, chest or private.\r\n",
+				"Chest names must use 1-32 letters, digits, underscores or hyphens, and cannot be public, chest, private, in, from, with, the, on, at or to.\r\n",
 				ch);
 			return TRUE;
 		}
@@ -4738,7 +4753,10 @@ static int locker_opencmd(P_char ch, char *arg)
 		finish(ch->desc, 1, nullptr);
 		return TRUE;
 	}
-	if (strlen(arg2) > BCRYPT_PASSWORD_MAX_BYTES)
+	const char *password = arg2;
+	while (isspace(static_cast<unsigned char>(*password)))
+		++password;
+	if (strlen(password) > BCRYPT_PASSWORD_MAX_BYTES)
 	{
 		finish(ch->desc, 0, nullptr);
 		return TRUE;
@@ -4746,7 +4764,7 @@ static int locker_opencmd(P_char ch, char *arg)
 	const std::string hash = chest ? chest->GetPasswordHash() : std::string();
 	if (hash.empty() || !arg2[0])
 	{
-		finish(ch->desc, hash.empty() && !arg2[0], nullptr);
+		finish(ch->desc, hash.empty() && !*password, nullptr);
 		return TRUE;
 	}
 	bool submitted = password_async_start(

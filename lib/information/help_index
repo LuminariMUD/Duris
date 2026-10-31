@@ -27172,15 +27172,19 @@ through a restart; use an authorized storage locker for saved equipment.
 
 Inside a MariaDB-backed locker, "eq chest list" lists private chests.
 Use "eq chest create <name> [password]" to buy one for 500 platinum
-(maximum five). Names use 1-32 letters, digits, underscores or hyphens;
-public, chest and private are reserved names. Payment uses your whole
-purse if sufficient, otherwise your bank; short balances are not combined.
+(maximum five). Names use 1-32 letters, digits, underscores or hyphens.
+Reserved names: public, chest, private, in, from, with, the, on, at and to.
+Passwords are optional, case-sensitive, and limited to 72 bytes. Payment
+uses your purse if sufficient, otherwise your bank; short balances are
+not combined.
 
 Use "open <name> [password]" before looking in, putting into, getting
 from, or emptying a private chest. Only one private chest is open at a
 time. "close" revokes access; changing its password, disconnecting or
-leaving also closes it. Locker managers can open without a password.
-Guests still need permission to enter the locker and the chest password.
+leaving also closes it. Locker owners, staff and members of the owning
+guild are managers and can open without a password. Guild chests divide
+shared storage; they are not secret from fellow guild members. Guests
+still need permission to enter the locker and the chest password.
 
 Managers can use "eq chest password <name> <password|none>",
 "eq chest delete <name>" (empty chests only; no refund), and "eq log".

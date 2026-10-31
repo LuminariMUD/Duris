@@ -63,12 +63,14 @@ static void private_tick()
 }
 static std::vector<int> written_weights;
 static bool throw_write;
+static bool refuse_object;
 
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
 static std::vector<std::pair<std::string, std::shared_ptr<sql_write_receipt>>> audit_writes;
 static std::shared_ptr<sql_write_receipt> management_receipt;
 static std::function<void(bool, const sql_rows &)> read_done;
 static password_completion password_done;
+static std::string password_input;
 static std::function<void(P_char, const sql_rows &)> log_done;
 static std::string log_query;
 
@@ -91,6 +93,8 @@ void str_free(const char *s)
 }
 P_obj read_object(int, int)
 {
+	if (refuse_object)
+		return NULL;
 	auto p = new obj_data{};
 	p->type = ITEM_CONTAINER;
 	p->loc_p = LOC_NOWHERE;
@@ -151,6 +155,10 @@ void extract_obj(P_obj p, int)
 	}
 	delete p;
 }
+void send_to_char(const char *text, P_char)
+{
+	output += text;
+}
 void send_to_char_f(P_char, const char *format, ...)
 {
 	char text[4096];
@@ -179,9 +187,16 @@ int god_check(char *)
 {
 	return false;
 }
-const char *get_account_name_safe(P_char)
+// ACCOUNT_IDENTITY
+bool private_chest_purchase_locker_busy(int)
 {
-	return "fixture";
+	return false;
+}
+bool private_chest_purchase_start(P_char, int, const std::string &, const std::string &,
+				  private_chest_purchase_completion)
+{
+	assert(false && "these command cases must not submit a purchase");
+	return false;
 }
 
 bool persistence_trace = false;
@@ -252,8 +267,9 @@ bool password_async_start(P_desc, password_login_job *, const char *, password_c
 	password_done = std::move(done);
 	return true;
 }
-password_login_job *password_work_submit(const char *, const char *, const char *, int, int)
+password_login_job *password_work_submit(const char *password, const char *, const char *, int, int)
 {
+	password_input = password;
 	return NULL;
 }
 int is_bcrypt_hash(const char *)
@@ -277,17 +293,7 @@ bool is_abbrev(const char *a, const char *b)
 {
 	return *a && !strncasecmp(a, b, strlen(a));
 }
-char *one_argument(const char *s, char *dest)
-{
-	while (isspace(*s))
-		++s;
-	while (*s && !isspace(*s))
-		*dest++ = *s++;
-	*dest = 0;
-	while (isspace(*s))
-		++s;
-	return const_cast<char *>(s);
-}
+// COMMAND_ARGUMENTS
 std::string sql_format(const char *format, ...)
 {
 	char text[8192];
@@ -356,6 +362,11 @@ int main()
 	actor.desc = &desc;
 	desc.character = &actor;
 	desc.connected = CON_PLAYING;
+	acct_entry owner_account{}, guest_account{};
+	owner_account.acct_name = const_cast<char *>("fixture");
+	guest_account.acct_name = const_cast<char *>("guest_account");
+	desc.account = &owner_account;
+	guest_desc.account = &guest_account;
 	guest.desc = &guest_desc;
 	guest_desc.character = &guest;
 	guest_desc.connected = CON_PLAYING;
@@ -380,6 +391,81 @@ int main()
 		item->weight = 42;
 		obj_to_obj(item, object);
 		assert(std::string(chest->m_chestKeyword) == "vault");
+		// Execute the real management controller with the preserved role predicate.
+		auto list = [&](bool allowed)
+		{
+			output.clear();
+			char args[] = "list";
+			assert(locker_chestcmd(&actor, args));
+			assert((output.find("Your chests") != std::string::npos) == allowed);
+		};
+		list(true); // personal owner
+		for (const char *reserved : { "in", "from", "with", "the", "on", "at", "to" })
+		{
+			std::string args = std::string("create ") + reserved + " private-token";
+			output.clear();
+			assert(locker_chestcmd(&actor, args.data()));
+			assert(output.find("Chest names must use") != std::string::npos &&
+			       !password_done);
+		}
+		for (const char *operation : { "create boundary ", "password vault " })
+		{
+			std::string args = std::string(operation) + std::string(72, 'Q');
+			assert(locker_chestcmd(&actor, args.data()));
+			assert(password_done && password_input == std::string(72, 'Q'));
+			password_done = {};
+			args += 'Q';
+			output.clear();
+			assert(locker_chestcmd(&actor, args.data()));
+			assert(!password_done &&
+			       output.find("at most 72 bytes") != std::string::npos);
+		}
+		actor.player.name = const_cast<char *>("visitor");
+		char legacy_separator_password[] = "vault ";
+		assert(locker_opencmd(&actor, legacy_separator_password));
+		assert(password_done && password_input == " ");
+		password_done = {};
+		actor.player.name = const_cast<char *>("owner");
+		avatar.player.name = const_cast<char *>("account.fixture.1.locker");
+		actor.player.name = const_cast<char *>("Anotherchar");
+		GET_RACEWAR(&actor) = 1;
+		list(true); // another character on the owning account and side
+		char opening_as_manager[] = "vault";
+		assert(locker_opencmd(&actor, opening_as_manager));
+		assert(locker.GetCurrentChestId() == 55 && !password_done);
+		GET_RACEWAR(&actor) = 2;
+		list(false);
+		assert(!locker_container_access_allowed(&actor, object));
+		GET_RACEWAR(&actor) = 1;
+		desc.account = &guest_account;
+		list(false);
+		actor.player.level = OVERLORD;
+		list(true);
+		assert(locker_opencmd(&actor, opening_as_manager));
+		assert(locker_container_access_allowed(&actor, object));
+		actor.player.level = 1;
+		assert(!locker_container_access_allowed(&actor, object));
+		desc.account = &owner_account;
+		actor.player.name = const_cast<char *>("owner");
+		avatar.player.name = const_cast<char *>("owner.locker");
+		locker.InvalidateChestAccess();
+		for (auto &write : audit_writes)
+		{
+			write.second->ok = true;
+			write.second->finished.store(true);
+		}
+		sql_chest_log_pulse();
+		refuse_object = true;
+		auto unavailable = new PrivateChest(56, "unavailable", NULL);
+		refuse_object = false;
+		locker.AddPrivateChest(unavailable);
+		output.clear();
+		char remove_unavailable[] = "delete unavailable";
+		assert(locker_chestcmd(&actor, remove_unavailable));
+		assert(output.find("non-empty or unavailable") != std::string::npos);
+		assert(locker.FindPrivateChest("unavailable") == unavailable &&
+		       !management_receipt);
+		locker.RemovePrivateChest(unavailable);
 		for (int pass = 0; pass < 4; ++pass)
 		{
 			locker.NukeLockerChests();
@@ -534,7 +620,8 @@ int main()
 		finish_management(false, hash_row("new"));
 		assert(chest->GetPasswordHash() == "new" &&
 		       strstr(object->description, "(locked)"));
-		locker_change_chest(&actor, &locker, chest, "", false);
+		char remove_password[] = "password vault none";
+		assert(locker_chestcmd(&actor, remove_password) && !password_done);
 		finish_management(true, hash_row(NULL));
 		assert(chest->GetPasswordHash().empty() &&
 		       !strstr(object->description, "(locked)"));
