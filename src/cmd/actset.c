@@ -608,7 +608,7 @@ static void setbit_char(P_char ch, char *name, char *flag, char *val, int on_off
 	{
 		if (IS_PC(ppl) &&
 		    (ppl->only.pc->divine_trade_payment_pending ||
-		     currency_transaction_chest_busy(ppl)) &&
+		     currency_transaction_wallet_busy(ppl)) &&
 		    (SAME_STRING(flag, "copper") || SAME_STRING(flag, "silver") ||
 		     SAME_STRING(flag, "gold") || SAME_STRING(flag, "platinum")))
 		{

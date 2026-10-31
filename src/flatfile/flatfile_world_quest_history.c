@@ -265,6 +265,31 @@ flatfile_world_quest_prepare_record(const std::string &root, const flatfile_auth
 							    flatfile_world_quest_result::io_error;
 }
 
+flatfile_world_quest_result flatfile_world_quest_record_matches(const std::string &root,
+								const flatfile_authority_lock &lock,
+								uint32_t pid, int target, int level,
+								int64_t occurred_at, bool *matches,
+								std::string *error)
+{
+	if (!pid || !matches || !lock.matches(root))
+		return flatfile_world_quest_result::invalid;
+	*matches = false;
+	std::vector<history_entry> history;
+	const auto loaded = load_history(history_directory(root.c_str()), pid, &history, error);
+	if (loaded == load_result::not_found)
+		return flatfile_world_quest_result::ok;
+	if (loaded != load_result::ok)
+		return public_result(loaded);
+	*matches = std::any_of(history.begin(), history.end(),
+			       [&](const auto &entry)
+			       {
+				       return entry.quest_target == target &&
+					      entry.player_level == level &&
+					      entry.occurred_at == occurred_at;
+			       });
+	return flatfile_world_quest_result::ok;
+}
+
 flatfile_world_quest_result flatfile_world_quest_record(const char *root, uint32_t pid,
 							int quest_target, int player_level,
 							int64_t occurred_at, std::string *error)

@@ -220,9 +220,11 @@ P_obj quest_item_reward(P_char) {
 }
 bool item_movement_transaction_player_busy(P_char) { return false; }
 void quest_epic_reward(P_char, int, int) { ++epics; }
+player_world_quest_reward captured_reward{};
 bool sql_world_quest_finish_async(P_char ch, P_obj object, bool, bool,
-                                  const player_world_quest_reward &,
-                                  std::function<void(P_char)> committed) {
+                                  const player_world_quest_reward &values, int,
+                                  std::function<bool(P_char)> committed) {
+    captured_reward = values;
     ++finished; if (!history_allowed) return false;
     auto publish = [object, committed = std::move(committed)](P_char actor) {
         if (object) { object->loc_p=LOC_CARRIED; object->loc.carrying=actor; }
@@ -632,11 +634,11 @@ int main() {
     assert(finished == 0 && pc.quest_active == 1 && player.points.curr_exp == 0);
     reset(); missing_reward = true; pc.quest_kill_how_many = 4;
     quest_kill(&player, &mob);
-    assert(finished == 0 && pc.quest_active == 1 && pc.quest_kill_how_many == 5 &&
-           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED &&
-           player.points.curr_exp == 0);
+    assert(finished == 0 && pc.quest_active == 1 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING &&
+           player.points.curr_exp == 260);
     quest_kill(&player, &mob);
-    assert(pc.quest_kill_how_many == 5 && finished == 0);
+    assert(player.points.curr_exp == 260 && finished == 0);
     missing_reward = false;
     quest_full_reward(&player, &mob, FIND_AND_KILL);
     assert(finished == 1 && pc.quest_active == 0 && player.points.curr_exp == 260);
@@ -651,9 +653,42 @@ int main() {
     history_allowed = false;
     pc.quest_kill_how_many = 4;
     quest_kill(&player, &mob);
-    assert(finished == 1 && pc.quest_active == 1 && pc.quest_kill_how_many == 5 &&
-           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED &&
-           player.points.curr_exp == 0);
+    assert(finished == 1 && pc.quest_active == 1 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING &&
+           player.points.curr_exp == 260);
+    quest_kill(&player, &mob);
+    assert(player.points.curr_exp == 260 && finished == 1);
+    history_allowed = true;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(finished == 2 && pc.quest_active == 0 && player.points.curr_exp == 260);
+
+    // A final kill crossing level 25 computes the mercenary payout at the new level.
+    reset();
+    player.player.level = 24;
+    player.player.m_class = CLASS_MERCENARY;
+    player.points.curr_exp = 9900;
+    maximum_exp_level = 25;
+    new_exp_table[25] = 10000;
+    pc.quest_kill_how_many = 4;
+    history_allowed = false;
+    quest_kill(&player, &mob);
+    assert(player.player.level == 25 && pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING);
+    assert(captured_reward.money == 25 * 1256 + 1);
+    const int already_credited = player.points.curr_exp;
+    history_allowed = true;
+    defer_history = true;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(player.points.curr_exp == already_credited && captured_reward.money == 25 * 1256 + 1);
+    deferred_history = {};
+    player.player.m_class = 0;
+    maximum_exp_level = 20;
+
+    // An older unsecured receipt has not yet received final-kill XP.
+    reset();
+    pc.quest_accomplished = PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED;
+    pc.quest_kill_how_many = 5;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(player.points.curr_exp == 260 && finished == 1 && pc.quest_active == 0);
 
     // A committed marker survives loss of the live callback: the item was
     // already saved, and only the captured remaining rewards are applied.
@@ -675,7 +710,8 @@ int main() {
         reset(); defer_history = true;
         if (final_kill) { pc.quest_kill_how_many = 4; quest_kill(&player, &mob); }
         else { pc.quest_type = FIND_AND_ASK; quest_full_reward(&player, &mob, FIND_AND_ASK); }
-        assert(deferred_history && pc.quest_active == 1 && player.points.curr_exp == 0);
+        assert(deferred_history && pc.quest_active == 1 &&
+               player.points.curr_exp == (final_kill ? 260 : 0));
         player.player.level = 30;
         auto complete = std::move(deferred_history); deferred_history = {};
         complete(&player);

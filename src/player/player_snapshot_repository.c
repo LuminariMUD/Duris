@@ -259,20 +259,17 @@ bool status_time_field(player_status_field field)
 	       field == player_status_field::time_unspecialized;
 }
 
-query_result apply_world_quest_history(MYSQL *connection, const player_snapshot &snapshot)
+enum class world_quest_history_match
+{
+	absent,
+	same,
+	different
+};
+
+query_result find_world_quest_history(MYSQL *connection, const player_snapshot &snapshot,
+				      world_quest_history_match *match)
 {
 	const auto &quest = snapshot.pending_world_quest;
-	if (!quest.present)
-		return { true, 0 };
-	if (!(snapshot.components & PLAYER_COMPONENT_STATUS) || quest.target <= 0 ||
-	    quest.level <= 0 || quest.giver < 0 || quest.occurred_at <= 0 ||
-	    quest.player_name.empty() || (quest.final_kill_reward && !quest.awaiting_reward) ||
-	    (!quest.awaiting_reward && !quest.reward_items.empty()) ||
-	    (quest.reward_items.empty() != (quest.reward_encoded_size == 0)) ||
-	    (!quest.reward_items.empty() &&
-	     (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) !=
-		     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
-		return { false, EINVAL };
 	// The player row is locked by ensure_player_row(). A target is never issued
 	// twice to one character, but a retry must match the actual event rather than
 	// silently treating an older, unrelated row as this completion.
@@ -287,8 +284,10 @@ query_result apply_world_quest_history(MYSQL *connection, const player_snapshot 
 			   &existing);
 	if (error)
 		return { false, error };
+	*match = world_quest_history_match::absent;
 	if (!existing.empty())
 	{
+		*match = world_quest_history_match::different;
 		for (const auto &row : existing)
 			if (row[0] && row[1] && row[2] && row[3] && row[4] && row[5] &&
 			    std::to_string(quest.occurred_at) == row[0] &&
@@ -296,9 +295,36 @@ query_result apply_world_quest_history(MYSQL *connection, const player_snapshot 
 			    std::to_string(quest.level) == row[3] &&
 			    std::to_string(quest.reward_vnum) == row[4] &&
 			    quest.reward_description == row[5])
-				return { true, 0 };
-		return { false, EEXIST };
+			{
+				*match = world_quest_history_match::same;
+				break;
+			}
 	}
+	return { true, 0 };
+}
+
+query_result apply_world_quest_history(MYSQL *connection, const player_snapshot &snapshot)
+{
+	const auto &quest = snapshot.pending_world_quest;
+	if (!quest.present || quest.fallback_only)
+		return { true, 0 };
+	if (!(snapshot.components & PLAYER_COMPONENT_STATUS) || quest.target <= 0 ||
+	    quest.level <= 0 || quest.giver < 0 || quest.occurred_at <= 0 ||
+	    quest.player_name.empty() || (quest.final_kill_reward && !quest.awaiting_reward) ||
+	    (!quest.awaiting_reward && !quest.reward_items.empty()) ||
+	    (quest.reward_items.empty() != (quest.reward_encoded_size == 0)) ||
+	    (!quest.reward_items.empty() &&
+	     (snapshot.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) !=
+		     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)))
+		return { false, EINVAL };
+	world_quest_history_match match;
+	const auto found = find_world_quest_history(connection, snapshot, &match);
+	if (!found.ok || match == world_quest_history_match::same)
+		return found;
+	if (match == world_quest_history_match::different)
+		return { false, EEXIST };
+	const std::string pid = std::to_string(snapshot.pid);
+	const std::string target = std::to_string(quest.target);
 	return execute(
 		connection,
 		"INSERT INTO world_quest_accomplished (pid,timestamp,quest_giver,player_name,"
@@ -702,7 +728,8 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 	const item_owner_identity owner = { item_owner_type::player,
 					    static_cast<uint64_t>(snapshot.pid), 0 };
 	const auto &reward = snapshot.pending_world_quest.reward_items;
-	if (snapshot.pending_world_quest.present && !reward.empty())
+	if (snapshot.pending_world_quest.present && !snapshot.pending_world_quest.fallback_only &&
+	    !reward.empty())
 	{
 		if (reward.size() > PLAYER_SNAPSHOT_MAX_OBJECTS ||
 		    reward.size() > snapshot.items.size())
@@ -778,7 +805,7 @@ query_result apply_items(MYSQL *connection, const player_snapshot &snapshot,
 			     snapshot.save_intent == RENT_INN);
 	if (!result.ok)
 		return result;
-	if (snapshot.pending_world_quest.present &&
+	if (snapshot.pending_world_quest.present && !snapshot.pending_world_quest.fallback_only &&
 	    !snapshot.pending_world_quest.reward_items.empty())
 	{
 		std::unordered_set<uint64_t> retained;
@@ -1119,6 +1146,26 @@ query_result settle_pending_trade(MYSQL *connection, player_snapshot *snapshot)
 
 player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot &captured)
 {
+	if (captured.pending_world_quest.present && !captured.pending_world_quest.fallback_only)
+	{
+		try
+		{
+			// Save unrelated live state first with the quest and wallet as they
+			// were before completion. If the history INSERT fails, logout or
+			// shutdown must not discard those unrelated changes.
+			player_snapshot fallback;
+			if (!player_snapshot_world_quest_fallback(captured, &fallback))
+				return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+			const auto saved = apply_snapshot(connection, fallback);
+			if (saved.outcome != player_save_apply_outcome::applied &&
+			    saved.outcome != player_save_apply_outcome::already_applied)
+				return saved;
+		}
+		catch (const std::bad_alloc &)
+		{
+			return failure(ENOMEM);
+		}
+	}
 	std::unique_ptr<player_snapshot> revised;
 	if (player_snapshot_trade_pending(captured))
 	{
@@ -1170,6 +1217,22 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	if (query.ok)
 		query = ensure_player_row(connection, snapshot, &created, &stored_revision,
 					  &stored_delivery_sequence, &stored_wallet_revision);
+	if (query.ok && snapshot.pending_world_quest.present &&
+	    snapshot.pending_world_quest.fallback_only)
+	{
+		world_quest_history_match match;
+		query = find_world_quest_history(connection, snapshot, &match);
+		if (query.ok && match == world_quest_history_match::same)
+		{
+			const auto rolled_back = execute(connection, "ROLLBACK");
+			return rolled_back.ok ?
+				       player_save_apply_result{
+					       player_save_apply_outcome::already_applied,
+					       stored_revision, 0
+				       } :
+				       failure(rolled_back.error_code);
+		}
+	}
 	if (query.ok && (snapshot.components & PLAYER_COMPONENT_STATUS) &&
 	    delivered_sequence > stored_delivery_sequence &&
 	    std::none_of(snapshot.status_integers.begin(), snapshot.status_integers.end(),
@@ -1182,7 +1245,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	const bool wallet_current = !unresolved_trade &&
 				    snapshot.wallet_revision >= stored_wallet_revision;
 	if (query.ok && snapshot.pending_world_quest.present &&
-	    (!status_current || !wallet_current))
+	    (!status_current || (!snapshot.pending_world_quest.fallback_only && !wallet_current)))
 		query = { false, EAGAIN };
 	if (query.ok && snapshot.components == PLAYER_COMPONENT_STATUS && !status_current)
 	{

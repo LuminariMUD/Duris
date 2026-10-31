@@ -110,6 +110,8 @@ extern "C" void quest_gameplay_setup(P_char ch)
 			q.quest_origin_room = 0;
 		if (action == 4)
 			quest_journey_invalidate(ch);
+		if (action == 7)
+			ADD_MONEY(ch, 1000);
 		if (action == 6)
 		{
 			const int allowance = sql_world_quest_can_do_another(ch);
