@@ -413,18 +413,21 @@ this plan-only task. Other worktrees, including bartender work, remain separate.
 
 Existing stack:
 
-- [#514](https://github.com/LuminariMUD/Duris/pull/514), head
+- Draft [#514](https://github.com/LuminariMUD/Duris/pull/514), head
   `branch/issue-508-frag-progression` at `422a9e7cc`, base `master`: rules/codec and
   original plan. It still implements the superseded personal policy.
-- [#515](https://github.com/LuminariMUD/Duris/pull/515), head
+- Draft [#515](https://github.com/LuminariMUD/Duris/pull/515), head
   `branch/issue-508-frag-cap-storage` at `a68089af2`, base #514: storage/migration.
   Its transport is reusable, but tests/adoption/projections need the new contract.
 
-These are not ready to merge as the accepted faction-race implementation. Keep
-implementation PRs in draft pending rescoping, and publish the revised plan as a
-separate documentation-only review branch, `branch/issue-508-faction-race-plan`,
-based on #515. The local runtime branch may contain the same plan commit while
-its implementation remains uncommitted. No release tag belongs to this step.
+These are not ready to merge as the accepted faction-race implementation. Both
+were returned to draft and their descriptions now point to the accepted plan.
+The documentation-only review is [#518](https://github.com/LuminariMUD/Duris/pull/518),
+head `branch/issue-508-faction-race-plan`, base #515. Policy revision commit
+`36b2270c3` changes only this document. The local runtime branch contains the same
+plan commit while its implementation remains uncommitted. No release tag belongs
+to this step. Future implementation must rescope the parent PRs before this stack
+is treated as the new gameplay feature.
 
 After a later request to implement: revise the rules/codec/config and native cases;
 then the faction adapters/adoption/projections; then runtime/readers/help and real
@@ -482,5 +485,6 @@ on unpublished implementation files. The final policy sections were checked
 against the accepted examples, scoring, timing, circle and advancement rules.
 All 73 pre-existing non-plan paths were verified byte-for-byte unchanged.
 
-The plan-only commit/PR will be recorded in the Git handoff when published.
-Gameplay implementation remains a later task.
+The reviewed plan is committed and pushed in [#518](https://github.com/LuminariMUD/Duris/pull/518).
+The superseded implementation PRs #514/#515 are drafts with an explicit policy
+revision notice. Gameplay implementation remains a later task.
