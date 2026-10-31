@@ -632,9 +632,14 @@ int main() {
     assert(finished == 0 && pc.quest_active == 1 && player.points.curr_exp == 0);
     reset(); missing_reward = true; pc.quest_kill_how_many = 4;
     quest_kill(&player, &mob);
-    assert(finished == 0 && pc.quest_active == 1 && pc.quest_kill_how_many == 4 &&
+    assert(finished == 0 && pc.quest_active == 1 && pc.quest_kill_how_many == 5 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED &&
            player.points.curr_exp == 0);
+    quest_kill(&player, &mob);
+    assert(pc.quest_kill_how_many == 5 && finished == 0);
     missing_reward = false;
+    quest_full_reward(&player, &mob, FIND_AND_KILL);
+    assert(finished == 1 && pc.quest_active == 0 && player.points.curr_exp == 260);
     // A reward that would crumble on publication is refused before history.
     reset(); reward.extra2_flags = ITEM2_CRUMBLELOOT;
     quest_full_reward(&player, &mob, FIND_AND_ASK);
@@ -646,7 +651,8 @@ int main() {
     history_allowed = false;
     pc.quest_kill_how_many = 4;
     quest_kill(&player, &mob);
-    assert(finished == 1 && pc.quest_active == 1 && pc.quest_kill_how_many == 4 &&
+    assert(finished == 1 && pc.quest_active == 1 && pc.quest_kill_how_many == 5 &&
+           pc.quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED &&
            player.points.curr_exp == 0);
 
     // A committed marker survives loss of the live callback: the item was

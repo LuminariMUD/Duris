@@ -348,6 +348,11 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 {
 	if (!IS_ALIVE(ch) || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)))
 		return;
+	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED)
+	{
+		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
+		return;
+	}
 	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_REWARD_PENDING ||
 	    ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_PENDING)
 	{
@@ -411,7 +416,10 @@ void quest_kill(P_char ch, P_char quest_mob)
 	if (ch->only.pc->quest_kill_how_many - ch->only.pc->quest_kill_original == 0)
 	{
 		if (!world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true))
-			--ch->only.pc->quest_kill_how_many;
+		{
+			ch->only.pc->quest_accomplished = PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED;
+			mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+		}
 	}
 	else
 	{

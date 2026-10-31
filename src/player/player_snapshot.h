@@ -275,6 +275,8 @@ struct player_pending_trade_snapshot
 constexpr int16_t PLAYER_TRADE_CARGO_AFFECT = 2110;
 constexpr int PLAYER_WORLD_QUEST_REWARD_PENDING = 2;
 constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_PENDING = 3;
+// Last kill credited, but item creation/save admission still needs a bartender retry.
+constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED = 4;
 
 struct player_world_quest_reward
 {
