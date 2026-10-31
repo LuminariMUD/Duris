@@ -426,16 +426,15 @@ def run(server):
         for table in ('account_bound_rewards', 'account_bound_reward_summons'):
             left = scalar('SELECT COUNT(*) FROM ' + table)
             assert left == '0', f'{table} still holds {left} rows'
-        # The dropped stone's row landed through the writer (on the ground, or on Raoul if he
-        # picked it up). The cleared one's ground row is gone; Raoul picking it up later
-        # tracks it again, on him.
+        # Both physical stones remain tracked after the refused clear. Raoul may
+        # pick either one up; its row can identify the ground or the mobile.
         rows = subprocess.run(mysql + [database], text=True, env=environment, check=True,
                               capture_output=True,
                               input='SELECT vnum, owned, locType FROM artifacts ORDER BY vnum'
                               ).stdout.split()
-        artifacts, cleared = rows[:3], rows[3:]
+        artifacts, retained = rows[:3], rows[3:]
         assert artifacts in (['900', 'N', '4'], ['900', 'N', '2']), rows
-        assert cleared in ([], ['901', 'N', '2']), rows
+        assert retained in (['901', 'N', '4'], ['901', 'N', '2']), rows
         # artifact_domain_state repeats the row and its soul, which the guild feed checks.
         domain = subprocess.run(mysql + [database], text=True, env=environment, check=True,
                                 capture_output=True,
