@@ -272,3 +272,21 @@ assertion (or a checked combat interruption). The stricter reported run already
 in flight may finish with per-step assertions; the final full run qualifies the
 batched reader on both backends. No eligibility or acceptance requirement is
 weakened by removing the diagnostic polling.
+
+The full matrix next reached a genuine scripted movement gate on its chosen
+level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object
+movement handlers and room affects when selecting ordinary completion fixtures,
+reusing the production Bloodstone passive-handler predicate through the existing
+debugger mechanism rather than copying that allowlist. This test-only screening
+does not restore travel gating to production. The new full run is in progress.
+
+**Reported-giver qualification passed on both backends.** For each backend the
+result includes all 10 Good/Evil named-giver grant cases, six saved/restarted
+abandon/regrant sequences, actual consent/share/map with locked giver exits and
+both players' retained state after restart, progressed-abandon history, legacy
+origin binding, durable free replacement, and Bloodstone level-30 ASK/KILL
+completion and ordinary return travel. The recipient restores an active level-29
+task from origin 1734, paid map, original receiver and no onward shares.
+Evidence: `bin/qualification/issue500/reported-passed.json` (ignored).
+The reported run used stricter per-step movement observation; the final full
+matrix still must qualify the simplified batched walker and 11/29 cases.

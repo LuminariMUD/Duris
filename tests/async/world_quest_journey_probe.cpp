@@ -37,6 +37,7 @@ extern "C" void quest_journey_invalidate(P_char ch)
 #include "world/handler.h"
 #include "world/map.h"
 #include "world/world_singletons.h"
+#include "world/specs.prototypes.h"
 #include "combat/forced_movement.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
@@ -74,6 +75,7 @@ extern "C"
 	int quest_gameplay_fixture_vnum = 0;
 	int quest_gameplay_fixture_selected = 0;
 	int quest_gameplay_fixture_suggested = 0;
+	void *quest_gameplay_passive_mobile = nullptr;
 }
 extern "C" void quest_gameplay_read_control()
 {
@@ -290,6 +292,49 @@ struct journey_navigation
 static journey_navigation navigation_routes(P_char ch)
 {
 	journey_navigation result;
+	const auto passive =
+		reinterpret_cast<bool (*)(mob_proc_type)>(quest_gameplay_passive_mobile);
+	assert(passive);
+	std::unordered_map<int, bool> checked;
+	auto ordinary_room = [&](int room)
+	{
+		if (const auto found = checked.find(room); found != checked.end())
+			return found->second;
+		const auto &entry = world[room];
+		bool ordinary = !entry.affected &&
+				(!entry.funct || entry.funct == inn ||
+				 entry.funct == crew_shop_proc || entry.funct == ship_shop_proc);
+		for (P_char person = entry.people; person && ordinary;
+		     person = person->next_in_room)
+			if (IS_NPC(person))
+				for (mob_proc_type proc : { mob_index[GET_RNUM(person)].func.mob,
+							    mob_index[GET_RNUM(person)].qst_func })
+				{
+					if (proc == shop_keeper)
+					{
+						const int shop = singleton_shop_id(person);
+						if (shop < 0 || shop >= number_of_shops)
+						{
+							ordinary = false;
+							continue;
+						}
+						proc = shop_index[shop].func;
+					}
+					ordinary = ordinary && (!proc || proc == world_quest ||
+								proc == quester || passive(proc));
+				}
+		for (P_obj object = entry.contents; object && ordinary;
+		     object = object->next_content)
+			if (object->R_num >= 0)
+			{
+				const auto proc = obj_index[object->R_num].func.obj;
+				ordinary = !proc || proc == board || proc == artifact_hide ||
+					   proc == ring_of_regeneration || proc == tracks ||
+					   proc == blood_stains;
+			}
+		checked[room] = ordinary;
+		return ordinary;
+	};
 	result.rooms.try_emplace(ch->in_room);
 	std::vector<int> queue{ ch->in_room };
 	bool boat = false;
@@ -298,14 +343,18 @@ static journey_navigation navigation_routes(P_char ch)
 	for (P_obj object : ch->equipment)
 		boat = boat || (object && object->type == ITEM_BOAT);
 	for (size_t next = 0; next < queue.size(); ++next)
-		for (const auto *edge : world[queue[next]].dir_option)
+		for (int direction = 0; direction < NUM_EXITS; ++direction)
 		{
+			const auto *edge = world[queue[next]].dir_option[direction];
 			++result.work;
 			if (!edge || edge->to_room < 0 || edge->to_room > top_of_world ||
 			    IS_SET(edge->exit_info,
 				   EX_LOCKED | EX_SECRET | EX_BLOCKED | EX_WALLED | EX_SPIKED))
 				continue;
 			const int to = edge->to_room;
+			if (!ordinary_room(queue[next]) || !ordinary_room(to) ||
+			    check_wall(queue[next], direction))
+				continue;
 			if (check_castle_walls(queue[next], to) ||
 			    map_entry_barrier(ch, queue[next], to) != forced_block::none)
 				continue;

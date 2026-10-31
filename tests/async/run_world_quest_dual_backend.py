@@ -977,6 +977,7 @@ commands
 silent
 python open({str(pid_path)!r}, 'w').write(str(gdb.selected_inferior().pid))
 set $probe=(void*)dlopen("{probe_binary}",2)
+set quest_gameplay_passive_mobile=(void*)&'(anonymous namespace)::passive_quest_mobile_proc'
 call (void)quest_gameplay_read_control()
 apply_journey_mode
 continue
