@@ -457,3 +457,7 @@ statements; it is focused integration proof, not a new whole-socket delayed-logi
 journey. Full management/funding, exact movement-row assertions and filled nested
 private graph cold-restart/retrieval proof in the existing command journey remain
 outstanding. The accepted behavior and completion criteria remain unchanged.
+
+Published bank/load delivery: [PR #510](https://github.com/LuminariMUD/Duris/pull/510),
+`branch/issue-490-bank-load`, targeting PR #509. Next delivery extends the existing
+real locker command journey and completes the acceptance audit.
