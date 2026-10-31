@@ -258,6 +258,8 @@ int main() {
         output.clear();
         exp_log.clear();
         dirty = epics = finished = 0;
+        pc.divine_experience_pending = 0;
+        other_pc.divine_experience_pending = 0;
         pc.quest_active = 1;
         pc.quest_mob_vnum = 55;
         pc.quest_type = FIND_AND_KILL;
@@ -995,6 +997,111 @@ int main() {
     assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
     assert(player.points.curr_exp == 0);
 
+    // Feedback uses the credited eligible base on the precise path, not the
+    // off/on difference that also includes legacy float rounding. Each source
+    // starts with 100 ordinary XP and 100 eligible base after its share math.
+    for (int kind : {EXP_KILL, EXP_KILL_BONUS, EXP_DAMAGE, EXP_TANKING,
+                     EXP_HEALING, EXP_MELEE}) {
+        for (int scenario = 0; scenario < 11; ++scenario) {
+            reset_divine();
+            player.group = &tank_group;
+            other.in_room = player.in_room;
+            player.specials.fighting = &mob;
+            const bool kill = kind == EXP_KILL || kind == EXP_KILL_BONUS;
+            const int value = kind == EXP_TANKING ? 300 :
+                              kind == EXP_HEALING ? 40 : kind == EXP_MELEE ? 25 : 100;
+            int expected = 200, bonus = 100;
+            if (scenario == 1) { divine_enabled = false; expected = 100; bonus = 0; }
+            if (scenario == 2) player.specials.act2 = 0;
+            if (scenario == 3) { new_exp_table[21] = 300; expected = 100; bonus = 0; }
+            if (scenario == 4) { new_exp_table[21] = 450; expected = 150; bonus = 50; }
+            if (scenario == 5) { player.points.curr_exp = global_exp_limit - 100; expected = 100; bonus = 0; }
+            if (scenario == 6) { player.points.curr_exp = global_exp_limit - 150; expected = 150; bonus = 50; }
+            if (scenario == 7) { player.points.curr_exp = global_exp_limit; expected = bonus = 0; }
+            if (scenario == 8 || scenario == 9) {
+                global_exp_limit = static_cast<long>(INT_MAX) + 1000;
+                player.points.curr_exp = INT_MAX - (scenario == 8 ? 100 : 150);
+                expected = scenario == 8 ? 100 : 150;
+                bonus = scenario == 8 ? 0 : 50;
+            }
+            if (scenario == 10) { target_eligible = false; expected = 100; bonus = 0; }
+            const int before = player.points.curr_exp;
+            P_char victim = kind == EXP_HEALING ? &player : &mob;
+            assert(gain_exp(&player, victim, value, kind) == expected);
+            assert(player.points.curr_exp - before == expected);
+            if (scenario == 2) {
+                assert(output.empty() && pc.divine_experience_pending == 0);
+            } else if (kill) {
+                const std::string line = expected ? "&+CEXP:&+G " + std::to_string(expected) +
+                    (bonus ? " &+C(Divine Boon +" + std::to_string(bonus) + ")&+G" : "") + " \r\n" : "";
+                assert(output == line);
+                assert(pc.divine_experience_pending == 0);
+            } else {
+                assert(output.empty()); // Never emit a fresh line on each hit.
+                assert(pc.divine_experience_pending == static_cast<uint64_t>(bonus));
+            }
+            output.clear();
+            display_divine_experience(&player);
+            const std::string summary = !kill && bonus && scenario != 2 ?
+                "&+CDivine Boon:&+G +" + std::to_string(bonus) + " combat EXP this tick.&n\r\n" : "";
+            assert(output == summary);
+            assert(pc.divine_experience_pending == 0);
+            display_divine_experience(&player);
+            assert(output == summary); // A pulse cannot publish the same credit twice.
+        }
+    }
+    reset_divine();
+    for (int hit = 0; hit < 100; ++hit)
+        assert(gain_exp(&player, &mob, 10, EXP_DAMAGE) == 20);
+    assert(output.empty());
+    display_divine_experience(&player);
+    assert(output == "&+CDivine Boon:&+G +1000 combat EXP this tick.&n\r\n");
+    // Opting out before the pulse also discards an already accumulated notice.
+    output.clear();
+    assert(gain_exp(&player, &mob, 10, EXP_DAMAGE) == 20);
+    player.specials.act2 = 0;
+    display_divine_experience(&player);
+    assert(output.empty() && pc.divine_experience_pending == 0);
+    player.specials.act2 = PLR2_EXP;
+    display_divine_experience(&player);
+    assert(output.empty());
+
+    // The controlled Newhaven configuration from #479: the additional 1 XP in
+    // the off/on delta is precision recovery, not an extra unit of Divine base.
+    reset_divine();
+    new_exp_table[21] = 400000;
+    exp_mods[EXPMOD_GLOBAL] = 0.5f;
+    racial_exp_mods[RACE_HUMAN] = 1.3f;
+    divine_enabled = false;
+    assert(gain_exp(&player, &mob, 6000, EXP_KILL) == 3899);
+    assert(output == "&+CEXP:&+G 3899 \r\n");
+    player.points.curr_exp = 0;
+    output.clear();
+    divine_enabled = true;
+    assert(gain_exp(&player, &mob, 6000, EXP_KILL) == 6900);
+    assert(output == "&+CEXP:&+G 6900 &+C(Divine Boon +3000)&+G \r\n");
+    // Fractional base may contribute the unit crossing the final integer floor.
+    reset_divine();
+    racial_exp_mods[RACE_HUMAN] = 0.75f;
+    nexus_percent = 0.1;
+    assert(gain_exp(&player, &mob, 101, EXP_KILL) == 159);
+    assert(output == "&+CEXP:&+G 159 &+C(Divine Boon +76)&+G \r\n");
+    reset_divine();
+    assert(gain_exp_combat_share(&player, &mob, 0.25, 0, EXP_DAMAGE) == 1);
+    display_divine_experience(&player);
+    assert(output.empty()); // Positive base that rounds away earns no notice.
+    reset_divine();
+    player.player.level = MINLVLIMMORTAL;
+    assert(gain_exp(&player, &mob, 100, EXP_KILL) == 0);
+    assert(output.find("Divine Boon") == std::string::npos);
+    assert(pc.divine_experience_pending == 0);
+    for (int kind : {EXP_QUEST, EXP_WORLD_QUEST, EXP_RESURRECT}) {
+        reset_divine();
+        assert(gain_exp(&player, nullptr, 100, kind) == 100);
+        display_divine_experience(&player);
+        assert(output.find("Divine Boon") == std::string::npos);
+    }
+
     // Exercise learning through both production kill_gain branches. Enumerating
     // every possible roll proves the strict threshold and Charisma cap survive.
     affected_type contained{};
@@ -1136,6 +1243,7 @@ def main() -> None:
             "void advance_level(P_char ch)",
             "void advance_to_level(",
             "void illithid_advance_level(",
+            "static void display_divine_experience(",
             "void display_gain(",
             "int exp_level_percent_modifier(",
         )
