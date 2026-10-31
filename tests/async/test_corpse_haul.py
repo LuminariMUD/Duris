@@ -91,7 +91,12 @@ struct obj_data {
 };
 using P_obj = obj_data *;
 bool locker_container_access_allowed(P_char, P_obj) { return true; }
-void locker_record_movement(P_char, P_obj, P_obj, bool, const char * = nullptr) {}
+struct LockerMovementAudit {
+    LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char * = nullptr) {}
+    bool Ready() const { return true; }
+    void Commit() {}
+};
+
 
 static struct { P_obj contents=nullptr; } world[8];
 static int top_of_objt=50;
@@ -356,7 +361,7 @@ parts = [prelude, take('struct synchronous_get_item')+';', take('struct bulk_get
          take('static bulk_get_state *corpse_bulk_get('),
          take('static void announce_corpse_bulk_get('), take_coins,
          take('static bool get_can_continue('),
-         take('static void publish_container_get('), finalizers]
+         take('static bool publish_container_get('), finalizers]
 for name in ['static bool bulk_get_source_matches(', 'static void report_bulk_get(',
              'static void finish_bulk_get(', 'static P_obj resolve_synchronous_get_item(',
              'static bool take_bulk_get_items(', 'static void reject_bulk_get_object(',
