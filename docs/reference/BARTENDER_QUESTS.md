@@ -134,6 +134,8 @@ Only confirmed item publication allows the remaining XP, money, epics, feedback,
 and task reset. A rejected capture leaves the task intact; admitted work holds
 the task against duplicate turn-ins and retries failed writes/publication.
 Failure to create an item also keeps the task and earned kills.
+If this happens on the final KILL, a completed-task marker lets a bartender
+retry the reward without requiring another kill or awarding that kill's XP twice.
 
 If the process stops after commit but before publication, login restores the
 item from the saved inventory. The completed-task marker preserves the captured
