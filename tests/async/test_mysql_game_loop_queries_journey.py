@@ -95,7 +95,7 @@ COMMANDS = (
 LOCKER_COMMANDS = (
     ('load obj 3097', 'Pos: standing >'),
     ('enter locker', 'this cost you'),
-    ('eq chest create vault', "Private chest 'vault' created"),
+    ('eq chest create vault logging-fixture-secret', "Private chest 'vault' created"),
     ('eq chest list', 'Private chests: 1/5'),
     ('open vault', "You open the 'vault' chest."),
     ('close', 'You close the chest.'),
@@ -107,9 +107,11 @@ LOCKER_COMMANDS = (
     ('open vault', "You open the 'vault' chest."),
     ('put mace vault', 'Ok.'),
     ('eq sort custom wield body', 'gremlin'),
+    ('examine vault', 'mace'),
     ('look in vault', 'mace'),
     ('close', 'You close the chest.'),
     ('look in vault', 'open that private chest first'),
+    ('examine vault', 'open that private chest first'),
     ('load obj 677', 'Pos: standing >'),
     ('drop mace', 'Pos: standing >'),
 )
@@ -253,6 +255,8 @@ def run_commands(client, commands):
         response = client.expect(answer, timeout=30)
         if command.startswith('eq sort '):
             assert 'Invalid sort option' not in response, response
+        if command == 'examine vault' and 'open that private chest first' in answer:
+            assert 'mace' not in response, response
 
 
 def run(server):
@@ -466,6 +470,7 @@ def run(server):
         logs = output_path.read_text(errors='replace') + '\n'.join(
             path.read_text(errors='replace') for path in (runtime / 'logs/log').glob('*')
             if path.is_file())
+        assert 'logging-fixture-secret' not in logs, 'a chest password leaked into runtime logs'
         desync = re.findall(r'.*(?:people list|duplicate insertion).*', logs)
         assert not desync, f'a character and its room disagree: {desync}'
         sites = sorted(set(re.findall(r'game loop query site (\S+) (\S+) \((\w+)\)', logs)))

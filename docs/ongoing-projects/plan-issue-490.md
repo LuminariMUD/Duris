@@ -1,79 +1,104 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **focused follow-up active; baseline implementation merged**.
-Updated 2026-10-31. Implementation resumed by the owner after the plan review.
-Issue: [Duris #490](https://github.com/LuminariMUD/Duris/issues/490).
-Merged implementation: [PR #497](https://github.com/LuminariMUD/Duris/pull/497).
-Inspected source: `master` at `b737db20210ff2d3e4eebccb212c9918b9b6f877`.
-Plan checkout: `/home/aiwithapex/projects/duris-issue-490`,
+Status: **complete and ready for review**.
+Updated 2026-10-31. Work is prepared for review; follow-up PRs remain open.
+Issue: [#490](https://github.com/LuminariMUD/Duris/issues/490).
+Merged baseline: [#497](https://github.com/LuminariMUD/Duris/pull/497),
+`b737db20210ff2d3e4eebccb212c9918b9b6f877`.
+
+## Current checkout and delivery
+
+Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`.
+Delivery branch: `branch/issue-490-command-qualification`, targeting
+`branch/issue-490-command-privacy` ([#524](https://github.com/LuminariMUD/Duris/pull/524)).
+This file is the maintained implementation handoff. The original reviewed
+`docs/ongoing-projects/plan.md` in `/home/aiwithapex/projects/duris-issue-490`
+is mirrored only if unchanged since the last checkpoint. Master's shared
+`docs/ongoing-projects/plan.md` belongs to other work.
+
+Review order:
+
+1. [#507](https://github.com/LuminariMUD/Duris/pull/507): room password marker,
+   deterministic latest-50 ordering, UID-preserving UTF-8 audit text and audit
+   admission before movement. The admission commits originally delivered as
+   #509 were integrated into #507 by the separate review continuation.
+2. [#509](https://github.com/LuminariMUD/Duris/pull/509): the review continuation's
+   damaged-item scrapping fix reserves history for the destroyed item and spilled
+   contents before mutation, and propagates refusal to single/bulk GET.
+3. [#510](https://github.com/LuminariMUD/Duris/pull/510): linkdead payment completion,
+   revision-guarded bank publication and the existing purchase reservation's
+   account-load fence.
+4. [#516](https://github.com/LuminariMUD/Duris/pull/516): literal management words,
+   correct 72-byte password boundaries and `none` removal, compatible verification
+   of old raw-remainder credentials, and maintained help.
+5. [#524](https://github.com/LuminariMUD/Duris/pull/524): credentials withheld from
+   debug-ring and FORCE log sinks, including nested command wrappers, while
+   execution receives unchanged input.
+6. The qualification branch above: expanded real management/payment/history/
+   nested cold-restart journey, missing/overlength/stale OPEN cases, valid sorting,
+   real EXAMINE access and persisted-log privacy proof, plus this handoff.
+
+The published dependent branches were synchronized with the reviewed #509 commits
+using ordinary merges, without rewriting history. Every runtime source in the
+final qualification tree matches the synchronized #524 head. The qualification
+PR adds tests and documentation only.
+
+[#517](https://github.com/LuminariMUD/Duris/pull/517) independently corrected the
+SQL journey's stale artifact-clear oracle and has already merged into master.
+The same original fixture correction remains in this branch's ancestry. It
+requires a protected physical stone to remain tracked, at its legitimate floor
+or mobile location; disappearance is no longer accepted. No artifact runtime
+source was changed for that fixture correction.
+
+Published stack refs at this checkpoint:
+
+- `branch/issue-490-followup`: `189227546437`.
+- `branch/issue-490-audit-admission`: `54e19ed63ccc`.
+- `branch/issue-490-bank-load`: `bd68742331e6`.
+- `branch/issue-490-password-parsing`: `1659208660d4`.
+- `branch/issue-490-command-privacy`: `26b3991d9c07`.
+
+Original paused checkout `/home/aiwithapex/projects/duris-issue-490` remains on
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
-That checkout predates the merged runtime code and retains the reviewed plan.
-Active checkout: `/home/aiwithapex/projects/duris-issue-490-followup`,
-`branch/issue-490-password-parsing`, stacked on `branch/issue-490-bank-load`
-(PR #510, head `fb5cd3051`), then PR #509 and PR #507, based on master `b737db202`.
-The maintained implementation handoff is `docs/ongoing-projects/plan-issue-490.md`
-in that checkout; the shared master `plan.md` belongs to unrelated work.
+Its [reviewed plan and original history](https://github.com/LuminariMUD/Duris/blob/cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b/docs/ongoing-projects/plan.md)
+and the archived #497 qualified checkout remain intact. Unrelated worktrees,
+credentials, player data and production were preserved.
 
-## Outcome and current baseline
+## Outcome, scope and implementation
 
-Keep the full private-chest workflow and acceptance criteria below, reuse the
-merged implementation, and finish only the source-confirmed defects and missing
-proof. The original plan, pause checkpoint and qualification history remain in
-[the immutable reviewed snapshot](https://github.com/LuminariMUD/Duris/blob/cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b/docs/ongoing-projects/plan.md).
-The original behavior contract and acceptance coverage are retained below.
+Deliver the original behavior and acceptance criteria below through the existing
+locker registry, purchase transaction, write receipts, password worker, bounded
+audit queue and immutable private-item snapshot path. Keep the 500-platinum fee,
+five-chest limit, guild policy, explicit open requirement and public storage.
 
-Live GitHub state checked on 2026-10-31:
+Dropped the proposed `private_chest_command.c/.h`, multiplexed codec, new critical
+command registration and speculative snapshot/schema extension: the existing
+transaction/receipt paths already supply those responsibilities. There is no new
+service, cache, backend fallback, multi-open state, nested-targeting feature or
+production migration in this follow-up. Existing additive
+`0056_private_chest_receipts` remains the required baseline (manifest sequence 57).
 
-- #497 merged on 2026-10-30 as `b737db202`; it includes access, payment,
-  management, audit and private-save work, not just the initial capacity fix.
-- #502 is merged; #503 is closed and its access work is incorporated into #497.
-- #490 is closed as completed. Closure is not proof of every original test case.
-- The old "durability implementation not started", open-stack handoff and
-  **10-16 hours remaining** estimate are superseded. Do not restart that backlog.
+Current implementation owners:
 
-The merged [implementation record](https://github.com/LuminariMUD/Duris/blob/b737db20210ff2d3e4eebccb212c9918b9b6f877/docs/ongoing-projects/plan-issue-490.md)
-records prior builds, SQL engine qualification and broad regressions. Its
-"ready for review"/"PR remains open" wording predates the merge. Preserve its
-valid results as historical evidence, with the coverage limits identified here.
-For any later implementation, start a narrow branch from refreshed master;
-retain the paused branch and other worktrees as history. Do not replay or
-reimplement the superseded stack.
-
-## Non-goals and ablation decisions
-
-The owner has authorized runtime fixes, focused proof and review-ready PRs for
-this follow-up. Production operations and deployment remain separate work. Retain existing price, permissions,
-capacity, backend support, saved identities and data. No general ACL service,
-flat-file private gameplay, new writer, global bank cache, configurable limits,
-repository-wide cleanup or full burn-in is needed by this review.
-
-Use these existing mechanisms:
-
-- `storage_lockers.c/.h`: one occupant/visit, one selected chest, shared access
-  checks, password worker, wrapper registry and credential invalidation.
-- `private_chest_purchase.c`: one immutable purchase on the existing SQL writer;
-  chest creation, exact wallet/bank payment and `purchase_operation` receipt
-  commit together. The same operation reconciles a lost reply. Currency
-  reservation and wallet revisions already protect the affected balances/saves.
-- `locker_change_chest()` and `locker_chest_changes_pulse()`: existing write
-  receipt plus authoritative readback for metadata/deletion; existing guarded
-  legacy rehash. Keep these result checks and the locker departure fence.
-- `sql_log_chest_activity()` and its pulse: retained bounded audit work,
-  deduplicated by `event_id`, with departure held until acknowledgement.
-- `PrivateChest::SaveContents()/FlushContents()`: one immutable in-flight capture
-  and one latest waiting capture, scheduled through the existing owner event.
-
-Drop the proposed new `private_chest_command.c/.h`, multiplexed command codec,
-critical-command dispatch registration and speculative snapshot-schema extension.
-Those are suggested mechanisms, not required outcomes, and the merged paths
-already supply the underlying transactions and receipts. Keep the existing
-additive `0056_private_chest_receipts` migration (manifest sequence 57); do not
-add a second receipt table, rewrite it, or migrate production during this work.
-
-Reuse the existing native fixtures and SQL/socket journeys. Do not create another
-journey framework or repeat the 898-test/98-database-leg qualification merely
-because this plan changed. Extend proof where the original contract is not yet
-covered; preserve the failure/restart checks that correctness actually needs.
+- `src/item/storage_lockers.c/.h`: registry, manager/guest access, selection and
+  lifecycle, committed metadata/room marker, deterministic history and the
+  movement-audit reservation guard. `src/sql/sql_player.c`: bounded immutable
+  activity admission, cancellation, deduplicated retry and acknowledgement.
+- `src/cmd/actobj.c`: existing item/coin/empty handlers reserve before mutation
+  and publish after success; refusals preserve contents/refund prepared coins.
+  `src/world/condition.c` applies the same admission rule to damaged-item scraps.
+- `src/item/private_chest_purchase.c`, `src/economy/currency_transaction.c`,
+  `src/account/account.c`, `src/player/player_load_pipeline.c`: captured purchase
+  identity, disconnected publication, bank revisions and pending-account load
+  admission. Other account loads and metadata-only deletion remain available;
+  independent peer wallet credits remain untouched.
+- `src/account/password_hash.c`: private normalized/raw credential compatibility through
+  the existing asynchronous worker. Account-password semantics and public C ABI
+  remain unchanged; no credential rewrite is performed.
+- `src/core/debug.c`, `src/core/prototypes.h`, `src/cmd/actwiz.c`: shared existing
+  command-log filter for private credentials and the FORCE logging sinks.
+- Existing native/SQL/socket fixtures are extended, not replaced by another
+  framework. the locker entry in `lib/information/help_index` documents the actual bounds and guild policy.
 
 ## Proposed behavior contract
 
@@ -115,124 +140,6 @@ claim that the issue or current help has already established all these rules.
   optional passwords up to 72 bytes, bcrypt and guarded legacy upgrades,
   empty-only deletion, no deletion refund, and latest-50 log viewing.
 
-## Files and smallest remaining sequence
-
-All source references here are to inspected master `b737db202`, not the old
-plan checkout. The findings below distinguish visible source defects from
-integration questions and missing test coverage.
-
-### 1. Finish the small source-confirmed behavior gaps
-
-- **Password-presence display:** `PrivateChest` constructs its room description
-  from the initial hash (`storage_lockers.c`, constructor), while
-  `SetPasswordHash()` in `storage_lockers.h` only replaces the string. Committed
-  password set/removal therefore leaves the displayed "(locked)" marker stale
-  until recreation. Update that owned description at the existing metadata
-  publication boundary, using one rendering path. Extend the existing management
-  regression for set/remove and failed write; verify both hash and room text.
-- **Stable latest-50 history:** `locker_logcmd()` orders only by `logged_at`,
-  whose stored timestamp has second precision. Add the existing unique log `id`
-  as the tie-breaker (`logged_at DESC, id DESC`). No new column/index is required
-  for deterministic ordering. In the existing SQL fixture, compare the actual
-  latest 50 IDs with more than 50 events sharing a timestamp, including a replay.
-- **Item identity survives truncation:** `locker_record_movement()` appends the
-  UID after the full description; `sql_log_chest_activity()` then takes the first
-  256 bytes. Item descriptions can be 512 characters in the existing schema, so
-  the stable UID can be discarded. Keep the UID within the stored bound and
-  truncate only display text, preserving valid text encoding. Extend the current
-  audit fixture with a long description and assert the stored UID. No new audit
-  schema or redundant item-identity service is needed.
-
-Expected production files for those fixes: `src/item/storage_lockers.c/.h` and,
-only if needed for the bounded audit text, `src/sql/sql_player.c`. Extend
-`tests/async/private_chest_regressions.cpp` and existing SQL/command fixtures;
-add no standalone framework. These are planned repairs, not fixes made by this
-review.
-
-### 2. Resolve two specific integration questions before adding machinery
-
-- **Audit admission:** the movement hook ignores the bool returned by
-  `sql_log_chest_activity()`. The shared access predicate checks queue capacity,
-  but event-ID generation can also reject admission. Retrying an already-retained
-  statement does not prove admission cannot lose a successful movement. Extend
-  the existing native movement/audit fixture to control that failure boundary.
-  If it confirms loss, prepare only the required one/two event records before
-  the move, cancel on failed movement, and publish after success using the same
-  queue. A new durable domain command is unnecessary.
-- **Bank completion versus character load:** the purchase publishes to
-  `CON_PLAYING` descriptors (`utility.c::publish_account_bank_balances_revision`),
-  while `player_load_materialize.c` applies the read worker's bank snapshot.
-  The configured load hold is PID-based and does not directly cover the chest
-  reservation. Normal account login disconnects the prior account session;
-  model that actual replacement/reconnect route, not invented simultaneous
-  sessions. Use the existing load/account fixture to delay a bank snapshot across
-  purchase completion and assert the admitted character sees the committed bank
-  revision. This remains an integration question, not a reproduced loss. Add a
-  targeted refresh/fence only if the real path fails; no global cache or global
-  login barrier is justified in advance.
-
-The relevant existing owners are `src/economy/currency_transaction.c`,
-`src/item/private_chest_purchase.c`, `src/account/account.c` and
-`src/player/player_load_materialize.c`. Touch them only if the focused case
-establishes a defect. Preserve unrelated peer wallet credits and existing
-auction/collector/shop interlocks.
-
-### 3. Complete command and persistence proof in the existing journey
-
-`test_mysql_locker_grant_journey.py` exercises real owner/guest/guild access and
-bulk transfers, but explicitly empties the private chest before its restart.
-Its surviving UIDs are public contents. `test_mysql_game_loop_queries_journey.py`
-proves filled private re-entry and retained-save retry, but does not cold-restart
-that filled private graph. The native SQL purchase fixture controls payment
-preparation/publication; it does not replace real funding/management commands.
-
-Extend `test_mysql_locker_grant_journey.py` once, reusing its actors, database,
-server and existing cold restart:
-
-- Exercise actual list/create/password set/change/remove/delete commands, bounded
-  and reserved names, duplicates, fifth/sixth chest, empty-only deletion and no
-  refund. Assert SQL plus user-visible results; run funding cases with whole
-  wallet, whole bank and denomination change, and reject two insufficient
-  individual sources even when their sum covers the fee.
-- Leave a nested item graph in a private chest before that restart. Compare its
-  locker/chest IDs, root/child UIDs and parent relationships after save, re-entry,
-  cold restart and authorized retrieval, alongside public storage controls.
-- Check exact movement audit rows (actor, chest, item UID or actual coin amount),
-  partial/bulk/empty success and rejection, no sorting events, deleted identity,
-  and password/log permissions. Aggregate nonzero row counts are insufficient.
-
-Keep `run_private_chest_purchase_mysql.py` for deterministic rollback, refused
-admission, lost COMMIT reply, offline completion, duplicate/limit/revision and
-bank-change cases. Keep `test_mysql_game_loop_queries_journey.py` for private
-write failure, departure veto and background retry. Extend an existing fixture
-only for a missing outcome; do not repeat the same fault in every test layer.
-Keep flat-file public-storage/restart and serialized-private-data preservation
-proof; rerun them when a changed path affects those guarantees.
-
-**Reachability clarification:** one private chest can be open at a time. Direct
-private-A-to-private-B `empty` must be rejected; the supported transfer is GET
-from A, select B, then PUT. `do_empty()` resolves room/inventory containers and
-rejects identical source/target; it does not expose arbitrary nested-container
-addressing. Cover nested bags as transferred roots and retained item graphs.
-Do not add multi-open state or a new nested-targeting feature to manufacture a
-successful test. The cross-chest acceptance below includes rejection of the
-unsupported direct move and correct records for the supported two-step move.
-
-### 4. Qualify the affected paths and stop
-
-Run the extended real command journey on disposable MariaDB 10.11 and MySQL 8.0.
-Run only the affected native/SQL failure tests while iterating; after C/C++ edits,
-`make -C src`, changed-line formatting and the relevant documentation/runtime
-contracts remain required. Reuse unchanged qualified builds and tests when their
-source/behavior remains applicable; retain explicit limits when it does not.
-
-Update the issue-specific handoff and maintained help only where final behavior
-or its status changes. A focused follow-up can be reviewed separately from the
-merged #497. No full-system rewrite, new stacked foundation PR or production
-operation is required. Estimate the remaining work from these concrete checks
-and any reproduced load/admission failure; the superseded 10-16-hour estimate
-is not a current forecast or a basis for promising a shorter runtime completion.
-
 ## Proof and acceptance coverage
 
 Completion requires all of the following; a green hash/helper suite is insufficient:
@@ -270,324 +177,146 @@ Completion requires all of the following; a green hash/helper suite is insuffici
   and preserved pre-existing private records. A missing engine leg remains
   explicitly unqualified; it is not replaced by compilation or mocked SQL.
 
-## Verification for this plan review
+## Qualification evidence and exact limits
 
-On inspected master `b737db202`, rerun successfully on 2026-10-31:
+Evidence lives under `bin/qualification/issue490/` in the active checkout;
+compiled artifacts, runtime data and logs are untracked and must stay out of Git.
+The commands below are run from that checkout. The SQL wrapper starts disposable
+containers and never sources the local `.env`.
 
-- `python3 tests/async/test_private_chest_lifecycle.py`: all 25 lifecycle cases.
-- `python3 tests/async/test_private_chest_regressions.py`: registry, save receipts,
-  immutable/coalesced retries, actor access, stale opens, management and history.
-- `python3 tests/async/test_currency_in_memory.py`: currency calculations,
-  reservations, shared-bank publication and independent peer wallet credits.
-- `python3 tests/async/test_locker_container_weight_lifecycle.py`: all 24 cases.
+### Real commands, payments, audit and cold restart
 
-These are executable native fixtures with controlled services, not new proof of
-complete socket commands or SQL/cold-restart behavior. Prior MariaDB/MySQL and
-flat-file runs are recorded in the merged handoff; this review inspected their
-coverage and did not rerun them. No runtime code, server build, migration, production
-state, branch history or external issue/PR was changed by this review.
+`bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py`
+and its `TEST_DB_IMAGE=mysql:8.0` counterpart passed **all 20 groups each**.
+Reports: `complete-command-mariadb.json` and `complete-command-mysql.json`;
+matching `.log` files retain the outputs. Both used binary SHA256
+`402c869ac2db6bb146c32784164347e83eb78c93a628beb21a0c5d3bc8438138`, runtime source
+at `28f194ae4` before the later logging-only repair and reviewed scrap repair.
 
-Plan completion checks passed in the plan checkout (14 documentation tests and
-no whitespace errors):
+Those real owner/guest/staff/guild journeys assert wallet-only and bank-only fees,
+exact denomination change, individually insufficient sources despite sufficient
+combined funds, names 32/33 bytes, duplicates/reserved/filler names, fifth/sixth
+chests, nonempty refusal, no refund, 72/73-byte passwords, set/change/remove and
+committed room markers. They cover existing entry/ownership/grant/racewar rules,
+explicit open, denied guest management/history, ordinary door close, idle rent,
+reconnect and cold restart.
 
-    python3 tests/async/test_documentation_contract.py
-    git diff --check
+Movement checks compare exact actors, numeric chest IDs, root item UIDs and coin
+amounts; latest-50 checks compare actual IDs with tied timestamps and replay.
+A nested bag and child retain chest ID, root/child UIDs, parent UID and vnum
+across save, leave/re-entry, cold restart and actual owner/guest GET+PUT. Public
+contents and grants are controls. Deleted-name reuse retains the old numeric
+identity in history; rejected, automatic and sorting movements add no success.
+MySQL's JSON also dumps exact movement rows; MariaDB passed the identical
+assertions before that diagnostic-only dump was added.
 
-The retained behavior-contract and acceptance sections were compared against
-`cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b` and match verbatim. Only this plan is
-edited; the prior snapshot and the existing
-`plan-issue-420.md` archive remain intact.
+Reachability: only one private chest is selected. Direct private-A-to-B EMPTY is
+rejected; GET A, select B, PUT is the supported transfer and has exact history.
+GET has no player amount/denomination syntax. Real partial PUT adds 1 copper to
+an existing 3-copper pile and logs 1, followed by actual single/bulk GET of 4/2.
+Internal selected-amount GET is covered by the existing native coin fixture.
+No quantity-GET or nested-targeting feature was added to manufacture coverage.
 
-## Follow-up progress
+### Final integrated source and failure/privacy journeys
 
-2026-10-31: refreshed origin/master and confirmed the merged #497 baseline.
-Created the isolated follow-up checkout above; preserved all prior branches and
-worktrees. Outcome: finish every remaining behavior and proof requirement in this
-plan. Non-goals and ablation decisions remain in force. First delivery: the three
-source-confirmed display/history/identity fixes, extending existing native/SQL
-fixtures and the required build. Audit admission, bank/load and complete command
-journeys remain open until their own evidence proves the accepted outcomes.
+`make -C src -j6` passed (`integrated-build.log`). Final runtime source includes
+both reviewed #509 and #524. The complete 20-group journeys above are reused for
+unchanged behavior; the final affected paths are qualified as follows.
 
-### First follow-up delivery: metadata and history
+`bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_game_loop_queries_journey.py`
+and `TEST_DB_IMAGE=mysql:8.0` are the final socket checks. Their
+`integrated-game-loop-{mariadb,mysql}.log/.json` record status and binary SHA256.
+They use a real passworded chest, open/closed EXAMINE and LOOK controls, actual
+valid `custom wield body` sorting, private INSERT rejection while public saves
+continue, retained contents/departure veto, immutable background retry after
+fault removal, re-entry and shutdown drain. Runtime logs must omit the supplied
+password; game-loop query sites must remain zero. Both final integrated engine runs pass with zero game-loop SQL sites. Their
+binary SHA256 is `25d9c108e2574bd685323e5803ce29c9cbe42a38b734b949c8a8470cb0e8dccd`.
 
-Implemented the three source-confirmed fixes in section 1. `SetPasswordHash()`
-now owns the one description-rendering path used by construction and committed
-metadata readback; rejected/failed changes retain the previous marker. History
-orders by timestamp then unique row ID. Item audit text starts with its UID and
-SQL truncation preserves complete UTF-8 characters within 256 bytes. No schema,
-new policy or new persistence service is required.
+`python3 tests/async/test_private_chest_regressions.py` passes the production
+ASan/UBSan registry/controller fixture, real parser/role checks, unavailable
+management, long UTF-8/UID text, metadata receipts, history and valid sorting.
+Audit admission controls cover unavailable DB, event-ID failure (including the
+second paired ID), full/last-slot queue, cancellation, paired publication,
+writer failure/retry and reviewed damaged-item reservations/scrap creation.
+The integration preserved both fixture allocation-failure controls.
 
-Proof on 2026-10-31:
+`python3 tests/async/test_private_chest_lifecycle.py` passes **28 cases** under
+ASan/UBSan, including newly explicit missing/overlength passwords and an older
+pending OPEN arriving after a newer password-free selection. Earlier cases cover
+wrong/legacy credentials, guarded upgrade failure/staleness, changed hash, close,
+role/visit/actor changes, selection, deletion/recreation, disconnect, public
+furniture, ordinary doors, backend denial and asynchronous history access.
 
-- The expanded native regression first failed on the old implementation after
-  acknowledged password removal left `(locked)` visible. The final production
-  registry/receipt/metadata/audit fixture passes under ASan/UBSan, including
-  failed writes, successful set/removal and long 2/3/4-byte UTF-8 item descriptions.
-- `test_private_chest_lifecycle.py`: all 25 ASan/UBSan cases pass; the existing
-  source extractor now includes the moved setter and its ordinary string service.
-- `test_locker_container_weight_lifecycle.py`: all 24 ASan/UBSan cases pass;
-  its existing source extractor also includes the setter.
-- `make -C src -j6` passes, including a final incremental build after formatting.
-- `with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py`
-  passes all 14 groups. The added real `eq log` case compares the exact latest 50
-  IDs from 60 equal-timestamp events, including a deduplicated replay; the original
-  owner/guest/guild, idle-save and cold-restart cases remain intact.
-- All 14 documentation tests and `git diff --check` pass. The commit hook runs
-  changed-line formatting and Clang-Tidy 22.
+`python3 tests/async/test_private_chest_password_hardening.py` passes the real
+worker's full 72-byte normalized credential, bounded legacy raw candidates,
+bcrypt/SHA-256 upgrades, separator-only legacy input, wrong/overlong rejection
+and account-whitespace controls.
 
-Evidence stays in ignored `bin/qualification/issue490/`: `followup-build.log`,
-`followup-build-final.log`, `followup-mariadb-journey.log` and `journey.json`.
-The MariaDB journey binary SHA256 is `4bbe046fba84bc9d411afdf2f93b4e570a26c1d6dc1e9e4aa82983a0e20dd263`.
-The MySQL leg and the expanded management/funding/filled-private-restart journey
-remain due for the complete follow-up. Audit admission and bank/load behavior
-are still integration questions, not fixed or disproved by this first delivery.
+`python3 tests/async/test_command_log_ring.py` passes persisted ring/exit/crash
+privacy using the real command table/parser and FORCE handler, abbreviations,
+filler words, nested AT/FORCE/ORDER, all three forced-command log sinks and
+single/all targets. Execution receives the exact original command; ordinary
+commands/staff conversation logging retain their established behavior.
+`python3 tests/async/test_chat_log_privacy.py` passes the existing policy contract.
+The five latest native outputs are `integrated-*.log` named for each test.
 
-Published first delivery: [PR #507](https://github.com/LuminariMUD/Duris/pull/507),
-`branch/issue-490-followup`, targeting master. The next dependent delivery will
-resolve audit admission using the existing movement and SQL fixtures.
+### Controlled purchase and unchanged container proof
 
-### Audit admission continuation (active)
+`python3 tests/async/test_currency_in_memory.py` and the existing
+player-load fixture qualified actual account replacement, request building,
+publication and hydration, including an old 1000-platinum/revision-1 read delayed
+across a committed 500-platinum/revision-2 bank. Fresh loads for the pending
+account wait; other accounts/deletion and peer wallet credits are controls.
 
-Active branch is now `branch/issue-490-audit-admission` in the follow-up checkout,
-stacked on PR #507 (`branch/issue-490-followup`, head `6a6182b0b`). The refreshed
-fault test controls the production event-ID generator through a linker wrapper;
-on the prior code it reproduced admission despite generation failure.
+`tests/async/run_private_chest_purchase_mysql.py` passed against disposable
+MariaDB 10.11 and MySQL 8.0 using the actual purchaser identity/balance publisher:
+linkdead wallet and bank completion, extracted actor, changed connected account/
+side, refused submission, rollback, duplicate/limit/revision cases, denomination
+change, and lost COMMIT reply/recovery without double charge. Evidence:
+`bank-load-purchase-mariadb.log`, `bank-load-purchase-mysql.log`, plus the native
+fixtures named in #510. These paths are unchanged by the later parser/logger fixes.
 
-The repair uses the existing SQL audit queue: reserve one/two immutable records
-before an item/coin/empty mutation; a small scoped `LockerMovementAudit` cancels
-uncommitted attempts and marks records ready only after successful movement.
-Prepared records count toward the same queue bound, cannot reach the writer, and
-release on failure. The existing SQL retry, deduplication and departure fence stay
-in force. Ordinary containers and flat-file public storage need no audit ticket.
-No new writer, schema, global cache or domain-command service is introduced.
+The existing 24-case locker/container weight lifecycle matrix qualified IDs 10
+and 100/high IDs, single/bulk behavior, nested weight and ordinary finite/carrying
+limits. Affected coin/item/empty/trap/corpse command fixtures passed after audit
+admission; the reviewed scrap change also has single/bulk refusal proof in #509.
+`USE_SPACE` is hardcoded 0 in maintained `actobj.c`; no supported enabled variant
+requires a speculative new sentinel path.
 
-The production private-chest fixture passes controlled ID refusal, abandoned
-reservation, failure of the second record in a private-to-public move and accepted
-paired records, alongside its existing refusal/retry/metadata/save cases. The
-server build passes. The affected command fixtures are being extended/run to
-prove no item/coin mutation on refused admission (and wallet refund for coin-put
-publication after debit). This is work in progress, not a completed delivery.
-Bank/load and full command/funding/filled-private cold restart remain open.
+### Flat-file, contracts and delivery limits
 
-Audit-admission qualification completed on 2026-10-31:
+`python3 tests/async/test_flatfile_locker_journey.py` builds a fresh no-MySQL
+server and exercises unsupported private operations before hashing/payment/
+selection plus public sorting, guild/account storage and restart. Final output:
+`integrated-flatfile-journey.log`. The final fresh build (86.107 seconds) and full journey pass.
+`python3 tests/async/test_flatfile_locker_repository.py` previously passed
+preservation of pre-existing private IDs, metadata, hashes and nested item graphs
+across two public saves. The later logger and SQL scrap-admission changes do not
+change that serialization path; do not rerun it just to repeat green evidence.
 
-- Production private-chest ASan/UBSan regression passes event-ID failure, second-ID
-  failure, abandonment without publication, accepted paired events and the full
-  queue's last-slot case (no false first event or leaked reservation). Its existing
-  refused-writer/failed-receipt/retry checks still pass.
-- Actual put/get, whole/partial coin pickup, coin debit/publication/refund, empty
-  and corpse-haul fixtures pass. Added controlled admission refusal proves no
-  movement/credit/pile mutation; old-money PUT restores its prior wallet once.
-- `test_private_chest_lifecycle.py`: all 25 cases; container/weight: all 24 cases.
-- Disposable MySQL 8.0 locker command journey: all 14 groups pass, including exact
-  history ordering, real private transfers, idle save and cold restart. Report:
-  `bin/qualification/issue490/audit-admission-mysql-journey.json`; binary SHA256
-  `26e80815fa214f8c1be9e3a698db3b64c3fcf0725c3df86815e13325388e9b85`.
-- Fresh no-MySQL artifact build plus flat-file unsupported-private/public-storage
-  and restart journey pass (`audit-admission-flatfile-journey.log`).
-- Final `make -C src -j6` passes (`audit-admission-build-final.log`), as do four
-  item-command pipeline contracts, item-in-memory/account-bound/password contracts,
-  all 14 documentation contracts, changed-line formatting and Clang-Tidy 22.
+`python3 scripts/validate_runtime_compatibility.py` passes: 200 tables,
+head `0056_private_chest_receipts`, maintained MariaDB/MySQL fingerprints.
+`python3 tests/async/test_persistence_migration_contract.py` passes.
+`python3 tests/async/test_documentation_contract.py`, changed-line formatting,
+Clang-Tidy 22 and `git diff --check` are final delivery gates. Final gates pass; no generated artifacts are committed.
 
-The socket/flat-file journeys precede only final formatting and preservation of
-`item_get_rejected` after a failed container delivery. The affected rejection
-boundary was rerun under ASan/UBSan (get finalizers and corpse haul), with a final
-successful server build; unchanged successful runtime paths reuse those journeys.
-The earlier metadata MariaDB report is retained as
-`bin/qualification/issue490/metadata-mariadb-journey.json` rather than overwritten
-by the MySQL report. Bank/load and expanded command/funding/private-graph restart
-proof remain outstanding; no complete-goal claim or production operation is made.
+The baseline #497's broad 898-test/98-database-leg evidence is historical, not a
+claim that those suites were rerun here. No full burn-in, hosted-CI wait,
+production migration, deployment or live-player acceptance is part of this
+review-ready objective. Original #490 is already closed; it was not reopened.
+Master has advanced independently; its unrelated source changes are not claimed
+as tested by this checkout. Any later merge/deployment must qualify its exact tree
+and retain the existing production owner boundary.
 
-Published audit delivery: [PR #509](https://github.com/LuminariMUD/Duris/pull/509),
-`branch/issue-490-audit-admission`, targeting PR #507. Next: investigate the actual
-account replacement/new-character load path against purchase completion.
+## Handoff and remaining work
 
-### Bank/load continuation (active)
+No required implementation or qualification work remains for this review-ready
+objective. The final branch contains the synchronized source dependencies and
+only the necessary qualification/documentation diff above #524.
 
-Current branch: `branch/issue-490-bank-load`, stacked on PR #509 (parent head
-`8a6af45c2`), same follow-up checkout. Focused fault cases reproduced three actual
-boundaries before repair: (1) real `get_account_name_safe()` returns Unknown after
-socket detachment, causing the purchase callback to discard a still-live purchaser;
-(2) the real currency publisher skips a disconnected purchaser's bank fields;
-(3) the actual duplicate-login block plus request builder admits a different
-character's read before purchase completion, while bank publication skips its
-loading descriptor. The held old snapshot then hydrates the old bank revision.
-
-The purchase SQL fixture now compiles the production identity getter, shared-bank
-publisher and chest balance publisher, retaining controlled payment preparation,
-writer delivery and actor lifetimes. The load pipeline fixture compiles the actual
-account replacement block, request builder, bank publisher and bank-hydration
-statements, with a controlled database read delayed across completion. It models
-one old socket replaced by one new socket, not simultaneous active account users.
-
-Repair: retain the purchaser's stable PID/racewar when linkdead, still reject a
-mismatched connected account/side; publish its acknowledged bank directly with a
-revision guard. Fresh game loads for the pending purchase's account refuse until
-the receipt resolves, then retry against committed data. Other accounts and
-metadata-only deletion loads continue. No cache, new writer, schema extension,
-global login barrier or snapshot replay service is needed. The existing bank/peer
-wallet interlocks stay in force. Qualification and remaining full journey proof
-are still in progress.
-
-Bank/load qualification completed on 2026-10-31:
-
-- The expanded load pipeline case first failed by admitting bank revision 1 / 1000
-  platinum after revision 2 / 500 platinum committed. It now passes: this account's
-  fresh game load refuses while the receipt is pending and reads revision 2 on
-  retry. The real account replacement block has removed the prior descriptor;
-  unrelated accounts and metadata-only deletion loads remain admitted.
-- The real currency ASan/UBSan fixture first failed for a disconnected purchaser's
-  bank. It now passes direct purchaser publication, older-result revision fencing,
-  account-busy identity/release and all existing peer wallet-credit interlocks.
-- The expanded SQL purchase fixture first failed with a retained linkdead buyer
-  misclassified as absent. Final MariaDB 10.11 and MySQL 8.0 runs pass, compiling
-  the actual identity getter, bank publisher and currency publisher. Tests include
-  linkdead wallet completion, disconnected bank completion after a lost COMMIT
-  response, extracted actors, changed connected account/side controls, rollback,
-  writer refusal, duplicate/collation/limit conflicts and denomination change.
-- `make -C src -j6` passes (`bank-load-build.log`); currency transaction contracts
-  (9), racewar policy/runtime contracts, account-menu contracts, load pipeline,
-  currency in-memory and all 14 documentation contracts pass. The commit hook
-  runs formatting and Clang-Tidy 22.
-
-Logs: `bin/qualification/issue490/bank-load-baseline-purchase.log`,
-`bank-load-purchase-mariadb.log`, `bank-load-purchase-mysql.log` and the build log.
-The load fixture controls the read worker and applies the production bank hydration
-statements; it is focused integration proof, not a new whole-socket delayed-login
-journey. Full management/funding, exact movement-row assertions and filled nested
-private graph cold-restart/retrieval proof in the existing command journey remain
-outstanding. The accepted behavior and completion criteria remain unchanged.
-
-Published bank/load delivery: [PR #510](https://github.com/LuminariMUD/Duris/pull/510),
-`branch/issue-490-bank-load`, targeting PR #509. Next delivery extends the existing
-real locker command journey and completes the acceptance audit.
-
-### Final qualification continuation checkpoint
-
-The three implementation deliveries are published for review: #507 -> #509 ->
-#510. They are not merged by this task. Current branch is
-`branch/issue-490-command-qualification`; no command-journey extension has been
-implemented yet on this branch. All prior build/test/tool sessions are terminal.
-No production operation, tag, deployment or goal-completion claim was made.
-
-Next work remains exactly section 3 plus the final acceptance audit:
-
-1. Extend the existing `test_mysql_locker_grant_journey.py`, keeping its actors,
-   database, idle journey and cold restart. Add SQL-plus-feedback assertions for
-   management/name/password/limit/no-refund and actual wallet/bank funding. Use
-   the existing disposable seed and normal in-game funding commands; never adjust
-   live cached balances via SQL. A separate visitor wallet/bank seed of 300/300
-   platinum can test combined-sufficient, individually-insufficient rejection
-   during its already-existing own-locker visit. A staff-funded owner wallet can
-   cover the first chest; a bank seed with small denominations plus enough whole
-   platinum covers bank change and fifth/sixth chest checks.
-2. Capture actual moved UIDs from the player inventory snapshots before/after
-   movement, then compare exact SQL actor/chest/action/item records. Keep the
-   existing equal-timestamp/replay case. Add real partial coin amounts, ordinary
-   bag EMPTY to/from the selected private chest, rejected private-A-to-private-B
-   EMPTY, and supported GET/select/PUT transfer. Deleted/recreated-name history
-   must retain the old numeric chest identity. No new journey framework is needed.
-3. Before the existing cold restart, leave one bag root with a child in the private
-   chest. Compare locker/chest IDs, UIDs and parent UID relationships across leave,
-   re-entry, restart and authorized retrieval. Keep public contents as controls.
-   The existing `contents()` query includes private rows, so update its expected
-   four-row baseline when adding the nested graph. Source-confirmed: the escort's
-   `m_itemCount` is public carried roots only (`PFileToLocker`), so existing
-   `enter(..., items=2)` controls do not count private roots/children.
-4. The real `locker_equipcmd` and `locker_chestcmd` both call the same
-   `locker_require_owner` predicate. Extend the existing native private fixture
-   where needed for actual canonical same-account/same-side and staff predicate
-   variants, and unavailable-chest deletion, rather than inventing simultaneous
-   account sessions. The real guild/owner/guest/side controls already have socket
-   proof. `OVERLORD` or `god_check` is the preserved staff rule.
-5. Run the completed command journey on disposable MariaDB 10.11 and MySQL 8.0,
-   and the final no-MySQL/public-storage journey where final sources affect it.
-   Reuse unchanged native/fault/migration proof; add a missing outcome in its
-   existing fixture only. Compare every acceptance item to actual test coverage,
-   update the handoff/help if needed, publish the qualification delivery stacked
-   on #510, verify all remote heads/PR state and keep the goal active until the
-   full objective is proven.
-
-Useful source details checked for this continuation: names are 1-32 ASCII-style
-letters/digits/underscore/hyphen; `public`, `chest`, `private` are rejected. Both
-create/password reject over 72 bytes. Management may report `A chest change is
-still pending` or `That chest is still being secured`; a bounded retry should
-handle these real asynchronous refusals instead of assuming admission is success.
-The existing staff coin syntax is `give 500 platinum <name>`; bank syntax is
-`deposit/withdraw <count> <denomination>`. Bag #96443 is the actual bottomless
-illithid bag (`bag` keyword), capacity 500, and the native container suite already
-uses its weight semantics. Do not relax item/carry restrictions to make a fixture
-pass; choose a valid ordinary fixture if a particular prototype is unsuitable.
-
-### Password parsing defect found by complete commands
-
-The expanded MariaDB journey passed the new actual wallet/bank/change, combined
-insufficiency, name, duplicate, fifth/sixth and no-refund cases, then reproduced
-rejection of an actual 72-byte password. `one_argument()` leaves the separator
-at the start of its remainder. The old handler counted/hashed that separator;
-`password ... none` also compared the untrimmed remainder and hashed it instead
-of removing the password. The native fixture had hidden this by trimming in its
-parser stub. It now compiles the real argument/filler parsing code.
-
-A literal parser handles the two management words (operation and chest name);
-creation rejects the existing filler words so names/passwords cannot silently
-shift position. Leading password separators are removed before create/set and
-before interpreting the `none` sentinel or checking the payload length. OPEN
-retains its raw remainder for existing credentials; the existing private password
-worker checks the normalized candidate, then the legacy raw candidate, each
-bounded to 72 bytes. It upgrades SHA-256 using the candidate actually verified.
-Account password semantics and the C API stay unchanged. No credential rewrite,
-migration, plaintext logging or game-thread bcrypt is introduced.
-
-The real worker regression first failed on a separator plus a 72-byte credential;
-it now passes current/prefixed bcrypt, both SHA-256 forms/upgrades, wrong input,
-72/73-byte boundaries, prevention of legacy bcrypt prefix truncation and unchanged
-account whitespace behavior. The native production registry/controller fixture
-passes real parser/72-byte create/set, `none` removal, reserved filler names,
-actual same-account/staff role checks and unavailable deletion. All 25 lifecycle
-cases and `make -C src -j6` pass. Maintained chest help now states the real bounds,
-reserved names and guild policy. Active source delivery branch is
-`branch/issue-490-password-parsing`; the expanded command journey remains
-uncommitted for its subsequent qualification delivery. Complete two-engine journey
-and the final acceptance audit are still outstanding.
-
-Parser ablation: ordinary OPEN/door word parsing stays on the original function;
-only management needs literal words. The helper consumes management separators
-once, so no duplicate trimming is required there. Existing separator-only stored
-credentials remain verifiable through the raw worker fallback; account whitespace
-semantics and the private 72-byte bound have executable controls. The latest
-native suites, final MariaDB build, fresh no-MySQL locker journey and flat-file
-private-data preservation fixture pass. The extended SQL journey has also passed
-management/password/access/audit/idle groups. Its fixture was adjusted to collect
-legitimate mortal coin spills and to fund exact copper while already in the room;
-production carrying/coin rules are unchanged. Final SQL journey runs remain due.
-
-Password source delivery qualification: the final worker suite, all 25 lifecycle
-cases and the expanded production registry/controller ASan/UBSan fixture pass.
-`password-parsing-build-final.log` records the final successful server build.
-The real MariaDB journey has passed the corrected 72-byte set/change/removal,
-password-free guest open, all reserved-name cases, exact history ordering, owner/
-guest movements and idle save. Complete journey qualification is still separate
-work; its pending test-file changes are intentionally not in this source commit.
-The fresh no-MySQL build/public-storage restart journey and flat-file repository
-private-record preservation checks pass; management-only token parsing does not
-run for unsupported flat-file private commands. Help and documentation contracts
-are current. No production state or stored credentials were rewritten.
-
-### Command-log privacy continuation
-
-The final acceptance audit reproduced chest credentials in the default-enabled
-command ring and all three forced-command log sinks. The existing command-log
-filter now withholds private OPEN/equipment commands, including abbreviations
-and nested AT/FORCE/ORDER commands. FORCE logs use that same filter, while
-execution retains its original input and unrelated staff diagnostics remain.
-No additional logging service, setting or credential storage is added.
-
-The expanded existing command-ring regression compiles the real parser/table
-and FORCE handler, and passes persisted-ring, exit/crash, all three forced log
-sinks, unchanged execution, and ordinary-command/conversation controls. The
-chat-privacy policy regression and MariaDB server build pass. Complete locker
-journeys already pass all 20 groups on both MariaDB 10.11 and MySQL 8.0, including
-filled nested private cold restart; those pending qualification changes remain
-in the qualification checkout. Real socket log-privacy and the final handoff
-audit remain in progress. Delivery branch: branch/issue-490-command-privacy.
+Review the focused PRs in dependency order. Their required follow-up work is
+implemented and covered above. Owner review/merging and separately authorized
+production delivery remain subsequent actions. Do not restart the superseded
+10-16-hour backlog, add the dropped command framework, or repeat broad green
+qualification without a changed path or unresolved finding.

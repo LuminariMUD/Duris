@@ -203,6 +203,17 @@ static void run(const std::string &mode) {
         assert(feedback.find(flat_backend ? "require SQL storage" : "temporarily unavailable") != std::string::npos);
         return;
     }
+    if (mode == "missing" || mode == "overlength") {
+        locker.SetCurrentChestId(10);
+        std::string request = "vault";
+        if (mode == "overlength") request += " " + std::string(73, 'Q');
+        assert(locker_opencmd(&actor, request.data()));
+        assert(!completion && locker.GetCurrentChestId() == 0);
+        assert(!locker_container_access_allowed(&actor, &inner));
+        assert(feedback.find("Wrong password") != std::string::npos);
+        assert(events.size() == 1 && events[0] == CHEST_ACTION_FAIL);
+        return;
+    }
     char request[] = "vault correct";
     assert(locker_opencmd(&actor, request));
     if (manager) {
@@ -213,6 +224,20 @@ static void run(const std::string &mode) {
         return;
     }
     assert(completion);
+    if (mode == "superseded-open") {
+        auto delayed = std::move(completion);
+        completion = {};
+        auto *other = new PrivateChest(11, "other", nullptr);
+        locker.AddPrivateChest(other); obj_to_room(other->GetChestObj(), 0);
+        char another[] = "other";
+        assert(locker_opencmd(&actor, another) && !completion);
+        const auto published = events;
+        delayed(&descriptor, 1, nullptr);
+        assert(locker.GetCurrentChestId() == 11 && events == published);
+        assert(!locker_container_access_allowed(&actor, chest->GetChestObj()));
+        assert(locker_container_access_allowed(&actor, other->GetChestObj()));
+        return;
+    }
     if (mode == "close-pending") {
         char no_arg[] = "";
         locker_closecmd(&actor, no_arg);
@@ -303,7 +328,7 @@ with tempfile.TemporaryDirectory(prefix="private-chest-lifecycle-", dir=build) a
         str(HARNESS_STUBS), "-lbsd", "-lmysqlclient", "-o", str(binary),
     ], check=True)
     failures = []
-    for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "changed-hash", "close-pending", "recreated",
+    for case in ("rehash", "rehash-failed", "rehash-stale", "open", "wrong", "missing", "overlength", "changed-hash", "close-pending", "superseded-open", "recreated",
                  "stale-user", "close", "close-door", "disconnect", "select-other",
                  "manager", "role-revoked", "flatfile", "sql-unavailable",
                  "log", "log-role-revoked", "log-visit-replaced", "log-other-user",
