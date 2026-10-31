@@ -333,13 +333,13 @@ At or beyond that period the multiplier stays at 1%, not zero. The
 `world.quest` difficulty dial does not scale map or abandonment charges.
 
 Buying a map requires a valid assignment and a known geographic entrance; it costs
-`10 * current_level` copper and can be done at any bartender. A route can be
+`10 * current_level` copper and can be done at any bartender. A target can be
 valid without a map
 entrance, in which case the bartender refuses the map without charging.
 A failed post-payment map check refunds the fee. Maps are a paid, repeatable
-view of the proved entrance, not a step-by-step route to the NPC. After buying
+view of the geographic entrance, not a step-by-step route to the NPC. After buying
 one, type `quest` to view it again without another fee. The purchase flag survives
-temporary blockage and free replacement; unproved directions are withheld until
+temporary interaction blockage and free replacement; hints are withheld until
 a later valid refresh.
 
 ### Sharing and kill credit
@@ -352,7 +352,7 @@ high/low bounds of the recipient's current level (inclusive ±6 in this checkout
 There is no separate recipient level-11 check in the sharing branch.
 
 The recipient needs remaining daily allowance, no retained completion for that
-target VNUM, and a usable target/route checked from the original accepted origin
+target VNUM, and a suitable target checked against the original accepted scope
 using the accepted level and remaining KILL count. An active assignment or
 replacement entitlement cannot be overwritten. Sharing copies the original
 giver, receiver, start time, type, level, target, origin, quota, and already
@@ -367,7 +367,7 @@ assignment. They need not have received those assignments through sharing.
 A PC-pet kill can reach that group path as well; the pet itself cannot hold a
 PC quest. Conjured-pet victims do not invoke this credit path. ASK credits only
 the character whose ask reaches the target. These hooks match type, target
-VNUM, and actual zone; they do not rerun route, level, reset-provenance, or
+VNUM, and actual zone; they do not rerun level, reset-provenance, or
 selection-suitability checks at completion time.
 
 ## Client status and maps
@@ -504,7 +504,7 @@ Use the saved STATUS state when those omitted fields matter.
 For a refusal or missing reward, distinguish these cases:
 
 - No new task: check level, known remaining allowance, wallet value, catalog
-  readiness, local geography, and target/route/history eligibility. Levels 11–29
+  readiness, local geography, and target/history eligibility. Levels 11–29
   receive the combined "No suitable local task" refusal; higher-level feedback
   distinguishes no eligible zone from no suitable live target. A failed paid
   selection refunds the fee and publishes no new assignment.
@@ -527,12 +527,13 @@ the owning source paths above as well. Run each focused script below with
 - [test_world_quest_dynamic_policy.py](../../tests/async/test_world_quest_dynamic_policy.py):
   source contracts for cached catalog/selection, plus executable policy math.
 - [test_world_quest_routes.py](../../tests/async/test_world_quest_routes.py):
-  production traversal on controlled room graphs, including directed returns,
-  geography, doors/barriers/traps, capabilities, procedures, and work bounds.
+  production geography on controlled authored graphs, including both regions,
+  one-way links, nearest boundaries, disconnected rooms, ambiguity and large worlds.
 - [test_world_quest_target_retries.py](../../tests/async/test_world_quest_target_retries.py):
   production creation, live target checks, bartender parsing/payment, sharing,
   legacy claims, and recovery against controlled world/reset fixtures. Its
-  71 scenarios also exercise level boundaries, history/probe caps, and refunds.
+  284 scenarios also exercise level/zone boundaries, geography, route immunity,
+  history/probe caps and refunds, followed by 10 SQL-history scenarios.
 - [test_world_quest_reward_policy.py](../../tests/async/test_world_quest_reward_policy.py):
   executable withholding math and source contracts for reward filtering,
   sharing limits, fees, and one-item completion policy.
@@ -559,7 +560,9 @@ replacement. Test-only `DURIS_WORLD_QUEST_BACKEND` selects `mariadb`, `flatfile`
 or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
 `reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
-reports, restart state and Bloodstone ASK/KILL travel, using disposable fixtures.
+reports, consent/sharing/maps with locked exits, restart state for both players,
+and Bloodstone ASK/KILL travel, using disposable fixtures. Sharing is enabled
+only in that run's private properties copy.
 `history` constructs yesterday-only completion history and an aged Tharnadia
 task, then checks real abandonment/regrant and restart. Its disposable MariaDB
 session clock constructs old-query-day/new-publication-day results and is
@@ -576,8 +579,13 @@ DURIS_WORLD_QUEST_BACKEND=flatfile DURIS_WORLD_QUEST_JOURNEY=gameplay \
 
 That focused run qualifies one backend/case, not the full default matrix.
 The gameplay debugger sets the disposable Chaos actor's requested level and
-preferred first random quest kind, then inspects production route/provenance
-results without moving actors. Explicit `chaos questroom` commands place/fund
+selects an otherwise eligible zone/prototype with ordinary outward/return paths
+for completion testing. Production selection still validates the chosen target.
+ASK completion fixtures use NPC levels outside the KILL band. The probe's
+navigation helper is independent of eligibility; special-travel assignments
+are covered by native policy fixtures. Tagged score requests synchronize
+observations with the command response and following prompt.
+Explicit `chaos questroom` commands place/fund
 the fixture at its bartender; outbound/return travel and target interactions
 use normal commands. The recovery probe deliberately closes eligible zones
 in memory to force invalidation and a no-candidate wait; a fresh server boot

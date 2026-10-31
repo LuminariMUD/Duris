@@ -366,7 +366,10 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 		    (quest_gameplay_kind != FIND_AND_KILL ||
 		     (GET_LEVEL(mob) >= quest_gameplay_level - 4 &&
 		      GET_LEVEL(mob) <= quest_gameplay_level + 5)) &&
-		    (quest_gameplay_kind != FIND_AND_ASK || mob_index[GET_RNUM(mob)].number == 1))
+		    (quest_gameplay_kind != FIND_AND_ASK ||
+		     (mob_index[GET_RNUM(mob)].number == 1 &&
+		      (GET_LEVEL(mob) < quest_gameplay_level - 4 ||
+		       GET_LEVEL(mob) > quest_gameplay_level + 5))))
 			candidates[{ distances.at(mob->in_room), GET_VNUM(mob) }] =
 				zone_table[world[mob->in_room].zone].number;
 	std::unordered_set<int> checked;
@@ -533,6 +536,8 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 			    !ac_can_see_from(ch, mob, mob->in_room))
 				continue;
 			targets[mob->in_room].push_back(mob);
+			if (q.quest_type == FIND_AND_ASK)
+				number(root, "target_level", GET_LEVEL(mob));
 		}
 	std::unordered_map<int, std::vector<int>> outgoing;
 	for (const auto &[to, incoming] : routes.rooms)

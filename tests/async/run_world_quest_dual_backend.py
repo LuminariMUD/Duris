@@ -311,7 +311,14 @@ def read_journey_states(run_root: pathlib.Path) -> list[dict]:
 def gameplay_snapshot(client: MudClient, run_root: pathlib.Path) -> dict:
     path = run_root / "quest-gameplay.json"
     old = json.loads(path.read_text()) if path.exists() else None
-    client.send("score")
+    # Consume the preceding command's complete output, then synchronize this
+    # explicitly tagged SCORE through its response and following prompt.
+    while client._receive():
+        pass
+    client.pending.clear()
+    client.send("score questprobe")
+    client.expect("Score information for", timeout=30)
+    client.expect("Pos:", timeout=30)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if path.exists():
@@ -379,13 +386,17 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
         for step in batch:
             if step["crawl"] and posture != 2:
                 client.send("kneel")
+                client.expect("Pos:", timeout=30)
                 posture = 2
             elif not step["crawl"] and posture != 3:
                 client.send("stand")
+                client.expect("Pos:", timeout=30)
                 posture = 3
             if step["closed"]:
                 client.send("open " + step["direction"])
+                client.expect("Pos:", timeout=30)
             client.send(step["direction"])
+            client.expect("Pos:", timeout=30)
         observed = gameplay_snapshot(client, run_root)
         if observed["room"] == batch[-1]["to"]:
             steps += len(batch)
@@ -450,6 +461,10 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             if (accepted["type"] == kind and
                     (kind != 1 or level != 29 or accepted["quota"] >= 2) and
                     (accepted["path"] or accepted.get("selector"))):
+                if kind == 2:
+                    require(accepted["target_level"] < level - 4 or
+                            accepted["target_level"] > level + 5,
+                            "ASK completion fixture did not exercise the restored level range")
                 break
             # Only fixture preparation: pay the ordinary abandonment fee before
             # making any progress. The preferred kind can legitimately fall back
@@ -628,6 +643,7 @@ def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
     try:
         create_character(partner, expected_room=None, account="Shareacct", character="Nimerek",
                          hometown="p")
+        partner.send("wear all")
         place(partner, 29, 1734)
         place(client, 29, 1734)
         shared_source = purchase(client)
@@ -826,7 +842,7 @@ def perform_world_audit(client: MudClient, run_root: pathlib.Path, port: int) ->
         if place:
             actor.send(f"chaos questroom {BARTENDER_ROOM}")
             actor.expect("Quest-room test funds committed.", timeout=60)
-        actor.send("score")
+        actor.send("score questprobe")
         deadline = time.monotonic() + 120
         while not path.exists():
             require(time.monotonic() < deadline, "loaded-world audit did not arrive")
@@ -995,11 +1011,13 @@ break *do_score
 set $plan_break=$bpnum
 commands
 silent
+if (int)strcmp((char*)$rsi,"questprobe") == 0
 if quest_gameplay_stage == 3
 call (void)quest_gameplay_setup((char_data*)$rdi)
 call (void)quest_world_audit((char_data*)$rdi)
 else
 call (void)quest_gameplay_plan((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
+end
 end
 continue
 end

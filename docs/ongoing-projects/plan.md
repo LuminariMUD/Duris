@@ -1,9 +1,10 @@
 # Issue #500: bartender eligibility without travel proof
 
-Status: **ASK chunk ready in PR #520; geography/removal qualification in progress**. Updated 2026-10-31.
+Status: **ASK ready in PR #520; geography/removal in draft PR #522, final journeys running**. Updated 2026-10-31.
 
 - Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
 - Branch: [branch/issue-500-geography](https://github.com/LuminariMUD/Duris/tree/branch/issue-500-geography), linked in the issue's Development section and stacked on [PR #520](https://github.com/LuminariMUD/Duris/pull/520).
+- Current review: [draft PR #522](https://github.com/LuminariMUD/Duris/pull/522).
 - Local worktree: `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
 - Audited source/base: `807c6d8dce8be4102d43c91950c80548a58f7f02`, the current head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513), `branch/issues-500-506-bartender-bugfixes`.
 - Method: the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
@@ -224,3 +225,14 @@ then exercises actual CONSENT, QUEST SHARE and paid MAP with the giver's exits
 locked. It saves/restarts both source and recipient and compares copied work,
 paid map, purse, allowance and remaining shares. Fresh `reported` and `both`
 runs on both backends are underway; completion still requires their results.
+
+The next journey attempts exposed two further fixture defects: snapshots could
+observe a partially processed movement batch, and the newly created sharing
+recipient had not equipped its visibility gear. Navigation now synchronizes
+every movement/preparation command through its prompt, and score observations
+use tagged requests plus their response/prompt. The recipient uses normal
+`wear all` before consenting. The ASK completion sampler now specifically
+selects an eligible target outside the KILL band and records its live level;
+a focused 11/29 ASK journey on both backends supplements the full matrix.
+These are test changes, not production travel restrictions. All current journey
+results remain pending; draft #522 must not be marked ready before they pass.
