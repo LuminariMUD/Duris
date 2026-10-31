@@ -1,7 +1,7 @@
 # Issue #490: complete private locker chest behavior
 
-Status: **complete and ready for review**.
-Updated 2026-10-31. Work is prepared for review; follow-up PRs remain open.
+Status: **review findings addressed; ready for review**.
+Updated 2026-10-31. #507 and #509 are merged; the remaining stack is prepared for review.
 Issue: [#490](https://github.com/LuminariMUD/Duris/issues/490).
 Merged baseline: [#497](https://github.com/LuminariMUD/Duris/pull/497),
 `b737db20210ff2d3e4eebccb212c9918b9b6f877`.
@@ -38,10 +38,10 @@ Review order:
    nested cold-restart journey, missing/overlength/stale OPEN cases, valid sorting,
    real EXAMINE access and persisted-log privacy proof, plus this handoff.
 
-The published dependent branches were synchronized with the reviewed #509 commits
-using ordinary merges, without rewriting history. Every runtime source in the
-final qualification tree matches the synchronized #524 head. The qualification
-PR adds tests and documentation only.
+The published dependent branches were synchronized with reviewed #509 and current
+master through ordinary merges. #524 now owns the literal wrapper-target logging
+repair. #525 also contains the player/chest custody and OPEN/CLOSE audit repairs
+found in its review, with focused and real restart regressions.
 
 [#517](https://github.com/LuminariMUD/Duris/pull/517) independently corrected the
 SQL journey's stale artifact-clear oracle and has already merged into master.
@@ -50,13 +50,9 @@ requires a protected physical stone to remain tracked, at its legitimate floor
 or mobile location; disappearance is no longer accepted. No artifact runtime
 source was changed for that fixture correction.
 
-Published stack refs at this checkpoint:
-
-- `branch/issue-490-followup`: `189227546437`.
-- `branch/issue-490-audit-admission`: `54e19ed63ccc`.
-- `branch/issue-490-bank-load`: `bd68742331e6`.
-- `branch/issue-490-password-parsing`: `1659208660d4`.
-- `branch/issue-490-command-privacy`: `26b3991d9c07`.
+Current open stack: #510 targets master; #516 targets #510; #524 targets #516;
+#525 targets #524. These branch refs carry master through #522. No release tag
+or history rewrite was needed before review.
 
 Original paused checkout `/home/aiwithapex/projects/duris-issue-490` remains on
 `branch/issue-490-chest-durability` at `cc1ed03d72ff7f5b480ffe86e0c0976cfa90708b`.
@@ -217,11 +213,11 @@ an existing 3-copper pile and logs 1, followed by actual single/bulk GET of 4/2.
 Internal selected-amount GET is covered by the existing native coin fixture.
 No quantity-GET or nested-targeting feature was added to manufacture coverage.
 
-### Final integrated source and failure/privacy journeys
+### Earlier integrated source and failure/privacy journeys
 
-`make -C src -j6` passed (`integrated-build.log`). Final runtime source includes
-both reviewed #509 and #524. The complete 20-group journeys above are reused for
-unchanged behavior; the final affected paths are qualified as follows.
+`make -C src -j6` passed (`integrated-build.log`). At that checkpoint the
+runtime source included reviewed #509 and #524. The complete 20-group journeys
+above were reused for unchanged behavior; affected paths were qualified as follows.
 
 `bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_game_loop_queries_journey.py`
 and `TEST_DB_IMAGE=mysql:8.0` are the final socket checks. Their
@@ -230,7 +226,7 @@ They use a real passworded chest, open/closed EXAMINE and LOOK controls, actual
 valid `custom wield body` sorting, private INSERT rejection while public saves
 continue, retained contents/departure veto, immutable background retry after
 fault removal, re-entry and shutdown drain. Runtime logs must omit the supplied
-password; game-loop query sites must remain zero. Both final integrated engine runs pass with zero game-loop SQL sites. Their
+password; game-loop query sites must remain zero. Both runs at that checkpoint passed with zero game-loop SQL sites. Their
 binary SHA256 is `25d9c108e2574bd685323e5803ce29c9cbe42a38b734b949c8a8470cb0e8dccd`.
 
 `python3 tests/async/test_private_chest_regressions.py` passes the production
@@ -241,7 +237,7 @@ second paired ID), full/last-slot queue, cancellation, paired publication,
 writer failure/retry and reviewed damaged-item reservations/scrap creation.
 The integration preserved both fixture allocation-failure controls.
 
-`python3 tests/async/test_private_chest_lifecycle.py` passes **28 cases** under
+`python3 tests/async/test_private_chest_lifecycle.py` passed **28 cases** under
 ASan/UBSan, including newly explicit missing/overlength passwords and an older
 pending OPEN arriving after a newer password-free selection. Earlier cases cover
 wrong/legacy credentials, guarded upgrade failure/staleness, changed hash, close,
@@ -260,6 +256,39 @@ single/all targets. Execution receives the exact original command; ordinary
 commands/staff conversation logging retain their established behavior.
 `python3 tests/async/test_chat_log_privacy.py` passes the existing policy contract.
 The five latest native outputs are `integrated-*.log` named for each test.
+
+### PR #525 review repairs on current master
+
+The review of `2720128ba` identified three valid runtime defects. A player item
+checkpoint could delete a saved source UID while its private-chest INSERT was
+still failing. The checkpoint path now waits for the existing private chest
+receipt before queuing equipment/inventory replacement; refusal retains the dirty
+player components and the saved source payload. OPEN and failed OPEN now admit
+the required activity before reporting success or failure; a refused OPEN leaves
+access closed. CLOSE always revokes access and explicitly reports an audit
+admission failure. FORCE/AT/ORDER logging consumes its wrapper target literally,
+matching `half_chop`, so filler-word targets cannot expose nested credentials.
+
+`tests/async/with_disposable_mariadb.sh python3 tests/async/test_mysql_locker_grant_journey.py`
+and the `TEST_DB_IMAGE=mysql:8.0` equivalent each pass all **21 groups**. The
+added group saves a mace to `player_items`, rejects its `locker_items` INSERT,
+issues PUT and SAVE, asserts the source row remains and no destination row lands,
+then SIGKILLs and cold-restarts the server. The same UID returns to inventory.
+The current full-tree server build passes; its binary SHA256 is
+`460e938617d413c488f203bc24fbf0dc13c46373e18ebe2f70569bd43e592521`.
+The new group was first run before the unrelated #522 master merge on MariaDB;
+the final-tree build and save fixture passed after the merge, and MySQL ran with
+the final tree's chest/save source. No production data or server was touched.
+
+`python3 tests/async/test_private_chest_lifecycle.py` passes 31 cases including
+false audit admission for OPEN, failed OPEN and CLOSE.
+`python3 tests/async/test_command_log_ring.py` passes the persisted-ring
+filler-target FORCE regression and all forced log sinks.
+`python3 tests/async/test_player_save_pipeline.py` passes refused item capture and
+later retry with dirty components retained. The SQL game-loop journey passes with
+zero game-loop query sites; the fresh no-MySQL locker build/journey passes.
+`python3 tests/async/test_currency_in_memory.py` passes after restoring the
+world-quest wallet interlocks dropped by the initial master merge.
 
 ### Controlled purchase and unchanged container proof
 
@@ -296,7 +325,7 @@ across two public saves. The later logger and SQL scrap-admission changes do not
 change that serialization path; do not rerun it just to repeat green evidence.
 
 `python3 scripts/validate_runtime_compatibility.py` passes: 200 tables,
-head `0056_private_chest_receipts`, maintained MariaDB/MySQL fingerprints.
+head `0057_shared_frag_cap`, maintained MariaDB/MySQL fingerprints.
 `python3 tests/async/test_persistence_migration_contract.py` passes.
 `python3 tests/async/test_documentation_contract.py`, changed-line formatting,
 Clang-Tidy 22 and `git diff --check` are final delivery gates. Final gates pass; no generated artifacts are committed.
@@ -305,15 +334,16 @@ The baseline #497's broad 898-test/98-database-leg evidence is historical, not a
 claim that those suites were rerun here. No full burn-in, hosted-CI wait,
 production migration, deployment or live-player acceptance is part of this
 review-ready objective. Original #490 is already closed; it was not reopened.
-Master has advanced independently; its unrelated source changes are not claimed
-as tested by this checkout. Any later merge/deployment must qualify its exact tree
-and retain the existing production owner boundary.
+Current master through #522 is carried into the stack. The final source builds
+locally; its unrelated master behavior is covered by the route fixture and existing
+master evidence. Later merges/deployment must qualify their exact tree and retain
+the existing production owner boundary.
 
 ## Handoff and remaining work
 
 No required implementation or qualification work remains for this review-ready
-objective. The final branch contains the synchronized source dependencies and
-only the necessary qualification/documentation diff above #524.
+objective. The final branch contains the synchronized source dependencies, focused
+runtime review repairs, and their qualification above #524.
 
 Review the focused PRs in dependency order. Their required follow-up work is
 implemented and covered above. Owner review/merging and separately authorized
