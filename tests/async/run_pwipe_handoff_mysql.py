@@ -81,6 +81,8 @@ def run(server=None):
                              rewards_source.index("\n#ifndef __NO_MYSQL__\nstatic void dissolve_reward_containers")]
     native.write_text('''#include <mysql/mysql.h>
 #include "economy/divine_boon_repository.h"
+#include "combat/frag_cap_repository.h"
+#include "combat/frag_cap_config.h"
 #include "guild/artifact_identity.h"
 #include "guild/artifact_guild_repository.h"
 #include "economy/divine_trade_repository.h"
@@ -173,7 +175,6 @@ void logit(const char *, const char *format, ...) {
     va_list args; va_start(args, format); vfprintf(stderr, format, args); va_end(args); fputc(10, stderr);
 }
 void send_to_all(const char *) {}
-int frag_cap_config_reset_level() { return 26; }
 bool pwipe_quiesce_writers() { return true; }
 unsigned int writer_resumes = 0;
 void pwipe_resume_writers() { ++writer_resumes; }
@@ -589,7 +590,7 @@ int main(int argc, char **argv) {
         wiper = root / "Players/wipers/wipe_it_all"
         shutil.copy2(ROOT / "Players/wipers/wipe_it_all", wiper)
         original = wiper.read_text()
-        (root / "lib/frag_cap.cfg").write_text("cap.reset.level=37\n")
+        (root / "lib/frag_cap.cfg").write_text("timer.round.hours=72\n")
         reward_config = root / "lib/account_rewards.cfg"
         reward_config.write_text("pwipe.preserve=true\n")
         recovery_canary = root / "Players/a/recovery-keep"
@@ -761,8 +762,8 @@ int main(int argc, char **argv) {
         assert int(sql("SELECT next_uid FROM item_uid_allocator WHERE allocator_id=1")) == allocator_before + 4
         print("Ordinary item custody/revision/baseline retained unchanged; actual loader finds no old payload, fresh Overlord has no old graph, allocator grants only new UIDs", flush=True)
         assert sql("SELECT alignment FROM zones WHERE number=900") == "0"
-        assert sql("SELECT CONCAT_WS(':',most_frags,racewar_leader,level,level_good,level_evil) FROM level_cap WHERE id=1") == "0:0:26:0:0"
-        assert sql("SELECT next_update BETWEEN NOW()-INTERVAL 5 MINUTE AND NOW() FROM level_cap WHERE id=1") == "1"
+        assert sql("SELECT CONCAT_WS(':',most_frags,racewar_leader,level,level_good,level_evil) FROM level_cap WHERE id=1") == "0:0:31:31:31"
+        assert sql("SELECT next_update=DATE_ADD(reset_started_at,INTERVAL 72 HOUR) - INTERVAL MICROSECOND(reset_started_at) MICROSECOND FROM level_cap JOIN season_reset_state ON state_id=1 WHERE id=1") == "1"
         assert sql("SELECT CONCAT_WS(':',owner_id,level,walls,archers,resources,applied_resources,hitpoints,territory,portal_room,golems,meurtriere,scouts) "
                    "FROM outposts WHERE id=910001") == "0:8:1:0:0:0:300000:0:0:0:0:0"
         assert sql("SELECT CONCAT_WS(':',name,room_vnum,align,stat_affect,affect_amount,last_touched_at IS NULL,bonus) "
@@ -921,7 +922,7 @@ int main(int argc, char **argv) {
             recover(3, 55)
             assert sql("SELECT CONCAT(season_epoch,':',reset_status,':',roster_recreated,':',"
                        "reset_completed_at IS NOT NULL) FROM season_reset_state") == "3:resetting:1:1"
-            assert sql("SELECT level FROM level_cap") == "37"
+            assert sql("SELECT level FROM level_cap") == "31"
             resumed_roster = sql("SELECT pid,name,level,active FROM player_data ORDER BY pid")
             assert resumed_roster != roster_before
             recover(3, 55)

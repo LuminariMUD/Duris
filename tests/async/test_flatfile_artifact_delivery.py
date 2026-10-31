@@ -8,7 +8,7 @@ from _paths import ROOT
 sources = ["tests/async/flatfile_artifact_delivery_harness.cpp",
     "src/flatfile/flatfile_artifact_guild_delivery.c",
     "src/guild/artifact_guild_delivery.c",
-    "src/flatfile/flatfile_player_domain_repository.c",
+    "src/flatfile/flatfile_player_domain_repository.c", "src/combat/frag_cap.c", "src/combat/frag_cap_repository.c", "src/combat/frag_cap_config.c",
     "src/flatfile/flatfile_artifact_repository.c",
     "src/flatfile/flatfile_association_repository.c",
     "src/flatfile/flatfile_player_snapshot_file.c", "src/player/player_snapshot_codec.c",
@@ -20,7 +20,7 @@ sources = ["tests/async/flatfile_artifact_delivery_harness.cpp",
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="artifact-delivery-", dir=ROOT / "bin/tests") as temporary:
     binary = Path(temporary) / "delivery"
-    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
+    subprocess.run(["g++", "tests/async/harness_stubs.cpp", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=undefined", "-fno-sanitize-recover=all", "-g", "-O1",
         "-D__NO_MYSQL__", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST", "-Isrc", "-Isrc/no_mysql",
         *sources, "-lcrypto", "-pthread", "-o", str(binary)], cwd=ROOT, check=True)

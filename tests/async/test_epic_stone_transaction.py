@@ -165,7 +165,7 @@ SQL_SOURCES = [
     "item/item_transfer_command.c", "item/item_transfer_repository.c", "item/item_claim_repository.c", "item/item_claim.c",
     "persistence/dupe_log.c", "persistence/persistence_observability.c",
     "economy/auction_command.c", "economy/auction_repository.c",
-    "combat/combat_outcome_command.c", "combat/combat_outcome_repository.c",
+    "combat/combat_outcome_command.c", "combat/combat_outcome_repository.c", "combat/frag_cap.c", "combat/frag_cap_repository.c", "combat/frag_cap_config.c",
     "guild/artifact_guild_command.c", "guild/artifact_guild_repository.c",
     "economy/boon_reward_command.c", "economy/boon_reward_repository.c",
     "world/zone_touch_command.c", "world/zone_touch_repository.c",

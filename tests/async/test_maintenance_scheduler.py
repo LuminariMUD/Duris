@@ -458,10 +458,10 @@ for copyover_contract in (
     assert copyover_contract in COPYOVER
 for repository_contract in (
     "ORDER BY id LIMIT ", "before_deadline(request)",
-    "maintenance_level_cap", "maintenance_cargo", "maintenance_boon",
-    "level_cap_changed", "mysql_affected_rows(connection) == 1",
+    "frag_cap_sql_load", "maintenance_cargo", "maintenance_boon",
+    "frag_cap_settle", "frag_cap_sql_save(connection, state)",
     "atomic_replace", "sql_pool_acquire()",
 ):
     assert repository_contract in REPOSITORY
-assert "result.outcome == maintenance_outcome::complete && result.rows > 0" in COMM
+assert "frag_cap_runtime_refresh();" in COMM
 print("bounded maintenance scheduler contracts passed")
