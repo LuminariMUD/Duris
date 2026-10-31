@@ -400,6 +400,36 @@ static journey_navigation navigation_routes(P_char ch)
 	return result;
 }
 
+// Explicit disposable setup: restore routine target inputs to authored reset
+// positions and stop wandering. Do not change levels, stats, counts or provenance.
+extern "C" void quest_gameplay_prepare_mobiles(P_char ch, const void *source_lookup)
+{
+	using lookup_type = const void *(*)(P_char);
+	const auto source = reinterpret_cast<lookup_type>(const_cast<void *>(source_lookup));
+	const auto &quest = *ch->only.pc;
+	for (P_char mob = character_list; mob; mob = mob->next)
+	{
+		if (!IS_NPC(mob) || !IS_ALIVE(mob) || !source(mob))
+			continue;
+		const int birthplace = real_room(GET_BIRTHPLACE(mob));
+		if (birthplace < 0 || birthplace > top_of_world)
+			continue;
+		if (quest.quest_active ? GET_VNUM(mob) != quest.quest_mob_vnum :
+		    quest_gameplay_kind == FIND_AND_KILL ?
+					 GET_LEVEL(mob) < quest_gameplay_level - 4 ||
+						 GET_LEVEL(mob) > quest_gameplay_level + 5 :
+					 mob_index[GET_RNUM(mob)].number != 1)
+			continue;
+		SET_BIT(mob->specials.act, ACT_SENTINEL);
+		if (mob->in_room != birthplace)
+		{
+			if (mob->in_room >= 0)
+				char_from_room(mob);
+			char_to_room(mob, birthplace, 0);
+		}
+	}
+}
+
 // Pick an otherwise eligible, not previously completed fixture whose routine
 // instances and birthplaces lie on ordinary outward/return paths. Only the
 // debugger's gameplay sampling uses this; production eligibility stays broader.
@@ -410,6 +440,8 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 	quest_gameplay_fixture_zone = -1;
 	quest_gameplay_fixture_vnum = 0;
 	quest_gameplay_fixture_selected = quest_gameplay_fixture_suggested = 0;
+	if (ch->only.pc->quest_active)
+		return;
 	const auto navigation = navigation_routes(ch);
 	std::unordered_set<int> returns{ ch->in_room };
 	std::vector<int> queue{ ch->in_room };

@@ -451,6 +451,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
         if before["active"] or before["due"]:
             client.send("ask bartender abandon confirm")
             client.expect("You no longer have a task.", timeout=30)
+            client.send("chaos")  # Prepare the now-inactive case's target fixture.
+            before = settled_gameplay_snapshot(client, run_root)
         attempts = []
         for _ in range(8):
             client.send("ask bartender quest")
@@ -539,12 +541,21 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                         "wallet", "xp")
                 require(all(saved[k] == restored[k] for k in kept),
                         f"partial state did not survive restart: {saved} -> {restored}")
+                # Restore only NPC fixture positions after world reload. Keep
+                # the reconnected actor's actual level and all saved quest data.
+                (run_root / "quest-gameplay-control.txt").write_text(
+                    f"{restored['actor_level']} {kind} 1 {origin}\n")
+                client.send("chaos")
+                pinned = settled_gameplay_snapshot(client, run_root)
+                require(all(restored[k] == pinned[k] for k in kept),
+                        "NPC fixture preparation changed saved player state")
+                (run_root / "quest-gameplay-control.txt").write_text(f"{level} {kind} 1 {origin}\n")
                 held_rewards = rewards & {item["uid"] for item in saved["items"]}
                 require(not rewards or held_rewards and held_rewards <= {item["uid"] for item in restored["items"]},
                         "held earlier quest rewards did not persist")
                 partials.append({"saved": saved, "restored": restored})
                 partial_persisted = True
-                current = restored
+                current = pinned
             previous = current
         else:
             raise AssertionError("quest did not complete within forty real interactions")
@@ -991,6 +1002,7 @@ commands
 silent
 call (void)quest_gameplay_setup((char_data*)$rdi)
 if quest_gameplay_stage == 1
+call (void)quest_gameplay_prepare_mobiles((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
 call (void)quest_gameplay_choose_fixture((char_data*)$rdi,(void*)&'(anonymous namespace)::routine_source(char_data*)')
 end
 apply_journey_mode

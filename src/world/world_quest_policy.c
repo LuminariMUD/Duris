@@ -716,7 +716,7 @@ struct quest_target_request
 		       world[source->room].zone == world[mob->in_room].zone &&
 		       source->profile->vnum == GET_VNUM(mob) &&
 		       static_zone_eligibility(world[mob->in_room].zone, level) &&
-		       quest_target_location(source->room) && quest_target_location(mob->in_room);
+		       quest_target_location(mob->in_room);
 	}
 
 	bool local(P_char mob) const

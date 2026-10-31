@@ -1594,8 +1594,8 @@ int main(int argc, char **argv)
 	const bool expected =
 		level >= 11 &&
 		(mode == "normal" || mode == "gear" || mode == "quota" || mode == "cosmetic" ||
-		 mode == "no_return" || mode == "cross_zone_retry" || mode == "last_history" ||
-		 mode == "last_history_zones" || mode == "last_probe" ||
+		 mode == "no_return" || mode == "staging_release" || mode == "cross_zone_retry" ||
+		 mode == "last_history" || mode == "last_history_zones" || mode == "last_probe" ||
 		 (mode == "foreign" && level >= 30) || (mode == "mapless" && level >= 41)) &&
 		!(preferred_type == FIND_AND_ASK && level >= 50);
 	pc.quest_mob_vnum = 777;
