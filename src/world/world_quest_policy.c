@@ -79,6 +79,22 @@ enum class quest_route_mode
 	potential,
 };
 
+// Audited Bloodstone ambient ticks. Each ignores nonzero commands (apart
+// from periodic registration) and only speaks or performs cosmetic actions.
+// They neither gate ordinary travel/doors nor intercept ASK.
+bool passive_quest_mobile_proc(mob_proc_type proc)
+{
+	return proc == bs_boss || proc == bs_citizen || proc == bs_comwoman || proc == bs_brat ||
+	       proc == bs_holyman || proc == bs_merchant || proc == bs_wino || proc == bs_watcher ||
+	       proc == bs_guard || proc == bs_squire || proc == bs_peddler || proc == bs_timid ||
+	       proc == bs_shady || proc == bs_sinister || proc == bs_menacing ||
+	       proc == bs_executioner || proc == bs_baron || proc == bs_sparrow ||
+	       proc == bs_squirrel || proc == bs_crow || proc == bs_mountainman ||
+	       proc == bs_salesman || proc == bs_nomad || proc == bs_insane ||
+	       proc == bs_homeless || proc == bs_servant || proc == bs_gnoll ||
+	       proc == bs_griffon || proc == bs_boar || proc == bs_cub || proc == bs_stirge;
+}
+
 struct quest_route_builder
 {
 	using rooms = std::unordered_map<int, world_quest_route_context::room>;
@@ -130,7 +146,8 @@ struct quest_route_builder
 				return false;
 			proc = shop_index[shop].func;
 		}
-		return !proc || proc == world_quest || proc == quester;
+		return !proc || proc == world_quest || proc == quester ||
+		       passive_quest_mobile_proc(proc);
 	}
 
 	bool ordinary_object_proc(obj_proc_type proc) const
@@ -201,10 +218,11 @@ struct quest_route_builder
 			return result;
 		const auto &entry = world[room];
 		result.status = world_quest_route_status::unproven;
-		// inn and ship_shop_proc explicitly ignore movement, door commands and
+		// These room shops explicitly ignore movement, door commands and
 		// arrival/departure hooks. Other procedures require a source audit.
 		if (mode != quest_route_mode::potential &&
-		    ((entry.funct && entry.funct != inn && entry.funct != ship_shop_proc) ||
+		    ((entry.funct && entry.funct != inn && entry.funct != ship_shop_proc &&
+		      entry.funct != crew_shop_proc) ||
 		     entry.chance_fall || entry.current_speed || entry.affected))
 			return result;
 		for (P_char person = entry.people; person; person = person->next_in_room)
@@ -1010,7 +1028,7 @@ struct quest_target_request
 
 	bool ask_handler(P_char mob, mob_proc_type proc)
 	{
-		if (!proc)
+		if (!proc || passive_quest_mobile_proc(proc))
 			return true;
 		if (proc != shop_keeper)
 			return false;
@@ -1021,8 +1039,9 @@ struct quest_target_request
 			return false;
 		const int shop = singleton_shop_id(mob);
 		// Travel-safe quest handlers may consume ASK before do_ask reaches
-		// quest_ask. A shop with no delegate explicitly ignores ASK.
-		return shop >= 0 && shop < number_of_shops && !shop_index[shop].func;
+		// quest_ask. Only an absent or audited passive shop delegate ignores it.
+		return shop >= 0 && shop < number_of_shops &&
+		       (!shop_index[shop].func || passive_quest_mobile_proc(shop_index[shop].func));
 	}
 
 	bool world_type_eligible(P_char mob, int type)

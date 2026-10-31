@@ -3,6 +3,7 @@
 #include "core/utils.h"
 #include "world/world_quest_policy.h"
 #include "world/world_quest_policy_math.h"
+#include "persistence/persistence_checkpoint.h"
 #include <cstdio>
 #include <cassert>
 #include <vector>
@@ -64,22 +65,58 @@ extern "C"
 	int quest_gameplay_kind = 0;
 	int quest_gameplay_stage = 0;
 	int quest_gameplay_level = 11;
+	int quest_gameplay_origin = 16633;
 }
 extern "C" void quest_gameplay_read_control()
 {
 	FILE *input = fopen("quest-gameplay-control.txt", "r");
 	if (!input)
 		return;
-	const int read = fscanf(input, "%d %d %d", &quest_gameplay_level, &quest_gameplay_kind,
-				&quest_gameplay_stage);
+	quest_gameplay_origin = 16633;
+	const int read = fscanf(input, "%d %d %d %d", &quest_gameplay_level, &quest_gameplay_kind,
+				&quest_gameplay_stage, &quest_gameplay_origin);
 	fclose(input);
-	assert(read == 3);
+	assert(read == 3 || read == 4);
 }
 extern "C" void quest_gameplay_setup(P_char ch)
 {
 	assert(ch && IS_PC(ch));
 	quest_gameplay_read_control();
 	ch->player.level = quest_gameplay_level;
+	bool placing = quest_gameplay_stage == 1 && quest_gameplay_origin != 16633;
+	if (quest_gameplay_stage == 4)
+	{
+		// Explicit disposable-fixture setup only. Gameplay/state transitions
+		// after this point run through the normal command/payment handlers.
+		FILE *input = fopen("quest-reported-setup.txt", "r");
+		if (!input)
+			return;
+		int action = 0;
+		assert(fscanf(input, "%d", &action) == 1);
+		fclose(input);
+		assert(remove("quest-reported-setup.txt") == 0);
+		placing = action == 0;
+		auto &q = *ch->only.pc;
+		if (action == 1 || action == 2)
+			q.quest_started = time(nullptr) - 25 * 3600;
+		if (action == 2)
+		{
+			assert(q.quest_active && q.quest_type == FIND_AND_KILL);
+			q.quest_kill_how_many = 1;
+		}
+		if (action == 3)
+			q.quest_origin_room = 0;
+		if (action == 4)
+			quest_journey_invalidate(ch);
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	}
+	if (placing)
+	{
+		char_from_room(ch);
+		char_to_room(ch, real_room(quest_gameplay_origin), 0);
+		if (GET_MONEY(ch) < 10000000)
+			ADD_MONEY(ch, 10000000 - GET_MONEY(ch));
+	}
 }
 
 static int completion_remaining = -1, completion_level = 0, completion_target = 0;
@@ -121,6 +158,16 @@ static cJSON *room_diagnostic(int room, P_char viewer)
 	number(data, "current", world[room].current_speed);
 	number(data, "fall", world[room].chance_fall);
 	number(data, "sector", world[room].sector_type);
+	cJSON *exits = cJSON_AddArrayToObject(data, "exits");
+	for (int direction = 0; direction < NUM_EXITS; ++direction)
+		if (const auto *edge = world[room].dir_option[direction])
+		{
+			cJSON *entry = cJSON_CreateObject();
+			number(entry, "direction", direction);
+			number(entry, "to", world[edge->to_room].number);
+			number(entry, "flags", edge->exit_info);
+			cJSON_AddItemToArray(exits, entry);
+		}
 	cJSON_AddStringToObject(data, "flags", std::to_string(world[room].room_flags).c_str());
 	cJSON_AddStringToObject(data, "procedure",
 				procedure_name(reinterpret_cast<const void *>(world[room].funct)));
@@ -244,6 +291,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 	number(root, "map_bought", q.quest_map_bought);
 	number(root, "map_room", q.quest_map_room);
 	number(root, "origin", q.quest_origin_room);
+	number(root, "giver", q.quest_giver);
 	number(root, "receiver", q.quest_receiver);
 	number(root, "shares", q.quest_shares_left);
 	number(root, "started", q.quest_started);
@@ -259,7 +307,8 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 		if (object)
 			inventory_item(items, object);
 
-	const int origin = q.quest_active ? q.quest_origin_room : 16633;
+	const int origin = q.quest_active ? q.quest_origin_room : quest_gameplay_origin;
+	number(root, "route_origin", origin);
 	const int level = q.quest_active ? q.quest_level : quest_gameplay_level;
 	const auto start = std::chrono::steady_clock::now();
 	const auto routes = world_quest_policy_routes(ch, origin, level);
@@ -274,7 +323,6 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup)
 
 	if (routes.rooms.empty())
 	{
-		number(root, "origin", origin);
 		cJSON_AddItemToObject(root, "current_room_details",
 				      room_diagnostic(ch->in_room, ch));
 		if (real_room(origin) >= 0)
@@ -407,7 +455,10 @@ extern "C" void quest_world_audit(P_char ch)
 		    (shop < 0 || shop >= number_of_shops || shop_index[shop].func != world_quest))
 			continue;
 		const int home = zone_table[world[giver->in_room].zone].hometown;
-		if (home < 1 || home > LAST_HOME || PC_NOTWELCOME(ch, home))
+		const bool reported = GET_VNUM(giver) == 1709 || GET_VNUM(giver) == 74060 ||
+				      GET_VNUM(giver) == 132555;
+		if ((!reported && home < 1) || home > LAST_HOME ||
+		    (home > 0 && PC_NOTWELCOME(ch, home)))
 			continue;
 		for (int level : { 11, 29, 30 })
 		{

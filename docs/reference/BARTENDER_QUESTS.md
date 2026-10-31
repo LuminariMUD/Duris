@@ -218,7 +218,11 @@ accepted level 31, invisible/concealed/hidden/ectoplasmic ASK targets remain
 excluded even if the
 player could see them. The actor must be able to speak; aggression toward that
 actor and intercepting mobile/quest procedures reject a new assignment.
-A shopkeeper qualifies only when its resolved shop has no delegate procedure.
+A shopkeeper qualifies only when its resolved shop has no delegate procedure or
+an audited ambient Bloodstone delegate that ignores ASK. These same cosmetic
+handlers can be walked past; actual quest interceptors and unaudited handlers
+remain excluded. Quietus's crew-room LIST/HIRE procedure also permits ordinary
+route proof.
 
 ### Route proof and request bounds
 
@@ -540,6 +544,8 @@ case exercises paid maps, invalidation, relogin/restart, and durable free
 replacement. Test-only `DURIS_WORLD_QUEST_BACKEND` selects `mariadb`, `flatfile`,
 or `both` (default). `DURIS_WORLD_QUEST_JOURNEY` selects `recovery`, `gameplay`,
 `both` (default), or `audit` for the loaded-world audit/observer timing pass.
+`reported` checks the Quietus, Bloodstone and Tharnadia purchase/abandon/regrant
+reports, restart state and Bloodstone ASK/KILL travel, using disposable fixtures.
 Focused gameplay cases can be selected with `DURIS_WORLD_QUEST_GAMEPLAY_CASES=30:1`;
 the full matrix is `11:2,11:1,29:1,29:2,30:1` (KILL=1, ASK=2). For example:
 

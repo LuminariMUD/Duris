@@ -77,6 +77,150 @@ int ship_shop_proc(int, P_char, int, char *)
 {
 	std::abort();
 }
+int crew_shop_proc(int, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_citizen(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_comwoman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_brat(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_holyman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_merchant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_guard(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squire(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_peddler(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_insane(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_executioner(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boss(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_timid(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_shady(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sinister(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_menacing(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_baron(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_sparrow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_squirrel(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_crow(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_mountainman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_salesman(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_nomad(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_homeless(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_servant(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_gnoll(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_griffon(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_boar(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_cub(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_stirge(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_barons_mistress(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_critter(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_fierce(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wolf(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_wino(P_char, P_char, int, char *)
+{
+	std::abort();
+}
+int bs_watcher(P_char, P_char, int, char *)
+{
+	std::abort();
+}
 int quester(P_char, P_char, int, char *)
 {
 	std::abort();
@@ -586,6 +730,8 @@ int main(int argc, char **argv)
 	const int boot_probes = probe_reads;
 	const int boot_objects = object_reads;
 	assert(boot_probes == top_of_mobt + 1);
+	if (mode == "cosmetic")
+		mobiles[1].func.mob = bs_wino;
 	assert(zones[0].avg_mob_level == level);
 	assert(zones[1].avg_mob_level == (mode == "no_level_window" ? 60 : level));
 	for (auto &owned : live)
@@ -945,10 +1091,23 @@ int main(int argc, char **argv)
 		if (preferred_type == FIND_AND_KILL)
 		{
 			pc = accepted;
+			GET_COPPER(&player) = 0;
+			ask("abandon confirm");
+			assert(pc.quest_active && GET_MONEY(&player) == 0 && history_writes == 0);
 			GET_COPPER(&player) = 10000;
 			ask("abandon confirm");
 			assert(!pc.quest_active && GET_MONEY(&player) < 10000 &&
 			       history_writes == 1);
+			const int wallet = GET_MONEY(&player);
+			for (int remaining : { 0, -1 })
+			{
+				daily_remaining = remaining;
+				ask("quest");
+				assert(!pc.quest_active && GET_MONEY(&player) == wallet &&
+				       history_writes == 1);
+				assert(feedback.find("any more quests") != std::string::npos);
+			}
+			daily_remaining = 1;
 		}
 		// Recipient proof cannot overwrite an existing replacement entitlement.
 		pc = accepted;
@@ -1060,9 +1219,9 @@ int main(int argc, char **argv)
 
 	const bool expected = level >= 11 &&
 			      (mode == "normal" || mode == "gear" || mode == "quota" ||
-			       mode == "cross_zone_retry" || mode == "last_history" ||
-			       mode == "last_history_zones" || mode == "last_probe" ||
-			       (mode == "foreign" && level >= 30) ||
+			       mode == "cosmetic" || mode == "cross_zone_retry" ||
+			       mode == "last_history" || mode == "last_history_zones" ||
+			       mode == "last_probe" || (mode == "foreign" && level >= 30) ||
 			       (mode == "mapless" && level >= 41)) &&
 			      !(preferred_type == FIND_AND_ASK && level >= 50);
 	pc.quest_mob_vnum = 777;
@@ -1075,6 +1234,42 @@ int main(int argc, char **argv)
 	quest_creation_failure failure = QUEST_CREATION_NO_FAILURE;
 	const bool created = createQuestForGiverVnum(&player, 9000, 1000, &failure);
 	assert(created == expected);
+	if (mode == "cosmetic")
+	{
+		for (auto procedure :
+		     { bs_boss,	       bs_citizen,  bs_comwoman, bs_brat,     bs_holyman,
+		       bs_merchant,    bs_wino,	    bs_watcher,	 bs_guard,    bs_squire,
+		       bs_peddler,     bs_timid,    bs_shady,	 bs_sinister, bs_menacing,
+		       bs_executioner, bs_baron,    bs_sparrow,	 bs_squirrel, bs_crow,
+		       bs_mountainman, bs_salesman, bs_nomad,	 bs_insane,   bs_homeless,
+		       bs_servant,     bs_gnoll,    bs_griffon,	 bs_boar,     bs_cub,
+		       bs_stirge })
+		{
+			for (int dispatch = 0; dispatch < 3; ++dispatch)
+			{
+				mobiles[1].func.mob = dispatch == 0 ? procedure :
+						      dispatch == 1 ? nullptr :
+								      shop_keeper;
+				mobiles[1].qst_func = dispatch == 1 ? procedure : nullptr;
+				shops[0].func = dispatch == 2 ? procedure : nullptr;
+				assert(world_quest_policy_check_target(
+					       &player, 1000, level, zones[1].number,
+					       mobiles[1].virtual_number, FIND_AND_ASK, 1)
+					       .status == world_quest_target_status::valid);
+			}
+		}
+		for (auto procedure :
+		     { world_quest, quester, bs_barons_mistress, bs_critter, bs_wolf, bs_fierce })
+		{
+			mobiles[1].func.mob = procedure;
+			shops[0].func = nullptr;
+			assert(world_quest_policy_check_target(
+				       &player, 1000, level, zones[1].number,
+				       mobiles[1].virtual_number, FIND_AND_ASK, 1)
+				       .status != world_quest_target_status::valid);
+		}
+		mobiles[1].func.mob = bs_wino;
+	}
 	assert(player.in_room == 0 && probe_reads == boot_probes && object_reads == boot_objects);
 	assert(history_reads.size() <= WORLD_QUEST_MAX_HISTORY_CHECKS);
 	if (budget_case)

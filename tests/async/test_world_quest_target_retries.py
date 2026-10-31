@@ -78,6 +78,7 @@ void run_map_payment(P_char player, int fee)
         "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     scenarios = [(level, "normal", "kill") for level in (10, 11, 29, 30, 40, 41, 49, 50)]
+    scenarios += [(30, "cosmetic", "ask")]
     scenarios += [(level, "validate", kind) for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "normal", "ask") for level in (11, 29, 30, 49, 50)]
     scenarios += [(level, "gear", kind) for level in (11, 29, 56) for kind in ("ask", "kill")]
