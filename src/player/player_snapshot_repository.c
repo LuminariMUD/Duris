@@ -1659,7 +1659,8 @@ player_save_apply_result apply_log_entry(MYSQL *connection, const log_entry_snap
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
 
-player_save_apply_result apply_sql_work(MYSQL *connection, const sql_work &work)
+player_save_apply_result apply_sql_work(MYSQL *connection, const sql_work &work,
+					bool retry_ambiguous_commit = false)
 {
 	query_result query = execute(connection, "START TRANSACTION");
 	if (!query.ok)
@@ -1674,7 +1675,9 @@ player_save_apply_result apply_sql_work(MYSQL *connection, const sql_work &work)
 	if (query.ok)
 		return { player_save_apply_outcome::applied, 0, 0 };
 	if (connection_error(query.error_code))
-		return { player_save_apply_outcome::terminal_failure, 0, query.error_code };
+		return { retry_ambiguous_commit ? player_save_apply_outcome::ambiguous_commit :
+						  player_save_apply_outcome::terminal_failure,
+			 0, query.error_code };
 	execute(connection, "ROLLBACK");
 	return failure(query.error_code);
 }
@@ -1858,11 +1861,14 @@ player_save_apply_result sql_work_repository_apply(MYSQL *connection, const sql_
 	return apply_sql_work(connection, work);
 }
 
-player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work)
+player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work,
+							     bool retry_ambiguous_commit)
 {
 	if (!work)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	return apply_with_pool([&](MYSQL *connection) { return apply_sql_work(connection, work); });
+	return apply_with_pool(
+		[&](MYSQL *connection)
+		{ return apply_sql_work(connection, work, retry_ambiguous_commit); });
 }
 
 player_save_apply_result bank_delta_repository_apply(MYSQL *connection,

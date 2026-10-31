@@ -9,10 +9,12 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 import uuid
 
 import test_account_recovery_journey as journey
+import test_flatfile_combat_journey as combat
 from test_character_stat_choice_journey import WebSocketClient
 
 
@@ -71,12 +73,20 @@ def run(binary):
         raise AssertionError("reset never reached its transaction")
 
     @contextmanager
-    def boot():
+    def boot(extra_environment=None):
+        def prepare(runtime):
+            # Match the other gameplay journeys' short, isolated camping timer.
+            properties = runtime / "lib/duris.properties"
+            text = properties.read_text()
+            assert "camp.timer=9.000" in text
+            properties.write_text(text.replace("camp.timer=9.000", "camp.timer=2.000"))
+
         smtp = journey.FakeSmtpServer()
         try:
             with journey.IsolatedServer(binary, dict(environment, MAIL_ENABLED="TRUE",
                     MAIL_HOST=host, MAIL_PORT=str(smtp.port), MAIL_TLS="FALSE",
-                    MAIL_FROM=journey.MAIL_FROM)) as server:
+                    MAIL_FROM=journey.MAIL_FROM, **(extra_environment or {})),
+                    prepare_run_root=prepare) as server:
                 try:
                     yield server, smtp
                     server.shutdown()
@@ -196,17 +206,89 @@ def run(binary):
                 client.close()
         print("PASS: delayed transaction keeps the game responsive and rechecks account fences", flush=True)
 
+        build = journey.ROOT / "bin/tests"
+        build.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="recovery-commit-", dir=build) as tmp:
+            runtime = Path(tmp)
+            preload = runtime / "commit-fault.so"
+            subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
+                            "tests/async/account_recovery_commit_fault.c", "-ldl", "-o", str(preload)],
+                           cwd=journey.ROOT, check=True)
+            arm = runtime / "commit-fault"
+            reached = Path(str(arm) + ".reached")
+            for mode, old, new in (("before", journey.OLD_PASSWORD, journey.NEW_PASSWORD),
+                                   ("after", journey.NEW_PASSWORD, journey.OLD_PASSWORD)):
+                with boot({"LD_PRELOAD": str(preload),
+                           "DURIS_TEST_RECOVERY_COMMIT_FAULT": str(arm)}) as (server, smtp):
+                    other = journey.MudClient(server.plain_port)
+                    journey.enter_account_name(other)
+                    other.expect(journey.ENABLED_PROMPT)
+                    journey.login_to_menu(other, old)
+                    client, code = reset_client(server, smtp)
+                    original = stored_password()
+                    try:
+                        arm.write_text(mode)
+                        choose_password(client, code, new)
+                        deadline = time.monotonic() + 20
+                        while not reached.exists():
+                            assert time.monotonic() < deadline, "COMMIT fault was not reached"
+                            time.sleep(0.05)
+                        committed = stored_password()
+                        assert (committed == original) == (mode == "before")
+                        # A successful database write alone cannot acknowledge the
+                        # reset or disconnect its other session before reconciliation.
+                        other.send("")
+                        other.expect("Please select an option")
+                        client._receive()
+                        assert journey.PASSWORD_CHANGED.encode() not in client.transcript
+                        arm.unlink()
+                        client.expect(journey.PASSWORD_CHANGED)
+                        client.expect(journey.ENABLED_PROMPT)
+                        other.expect("password for this account was just reset")
+                        if mode == "after":
+                            assert stored_password() == committed, "replay replaced the submitted hash"
+                        else:
+                            assert stored_password() != original
+                        journey.login_to_menu(client, new)
+                        journey.leave_account_menu(client)
+                        # The code is consumed only after the reconciled completion.
+                        retry = journey.MudClient(server.plain_port)
+                        try:
+                            journey.enter_account_name(retry)
+                            retry.expect(journey.ENABLED_PROMPT)
+                            retry.send("?")
+                            retry.expect(journey.CODE_PROMPT)
+                            retry.send(code)
+                            retry.expect("That code was not accepted")
+                        finally:
+                            retry.close()
+                    finally:
+                        arm.unlink(missing_ok=True)
+                        reached.unlink(missing_ok=True)
+                        client.close()
+                        other.close()
+        print("PASS: lost COMMIT replies before/after application reconcile and revoke sessions", flush=True)
+
         with boot() as (server, smtp):
-            other = journey.MudClient(server.plain_port)
-            journey.enter_account_name(other)
-            other.expect(journey.ENABLED_PROMPT)
-            journey.login_to_menu(other, journey.OLD_PASSWORD)
+            other = combat.MudClient(server.plain_port)
+            combat.create_character(other, expected_room=None, account=journey.ACCOUNT,
+                                    existing_account=True)
+            other.send("save")
+            other.expect(f"Save complete for {combat.CHARACTER}.")
+            other.send("look")
+            other.expect("Obvious exits")
+            sql(f"UPDATE accounts SET last_good_char=FROM_UNIXTIME(1) "
+                f"WHERE account_name='{journey.ACCOUNT}'")
             client, code = reset_client(server, smtp)
             original = stored_password()
             with account_lock():
                 choose_password(client, code, journey.NEW_PASSWORD)
                 wait_for_reset_write()
-                # A logout must not queue a stale account snapshot behind the reset.
+                departed_at = int(time.time())
+                other.send("quit")
+                other.expect("ACCOUNT MENU", timeout=60)
+                # Departure must persist after both connections are gone, without
+                # queueing a stale password snapshot behind the reset.
                 other.send("0")
                 other.expect("Thank you for playing!")
                 other.close()
@@ -218,9 +300,11 @@ def run(binary):
                 journey.enter_account_name(client)
                 client.expect(journey.ENABLED_PROMPT)
                 journey.login_to_menu(client, journey.NEW_PASSWORD)
+                assert int(sql("SELECT UNIX_TIMESTAMP(last_good_char) FROM accounts "
+                               f"WHERE account_name='{journey.ACCOUNT}'")) >= departed_at
             finally:
                 client.close()
-        print("PASS: requester disconnect and concurrent logout preserve the committed password", flush=True)
+        print("PASS: concurrent character departure preserves its cooldown timestamp and reset password", flush=True)
     finally:
         sql("DROP DATABASE " + database, False)
 

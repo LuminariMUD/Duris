@@ -410,7 +410,9 @@ qualify a real relay.
 The MariaDB journey uses a disposable database and the same fake relay. It checks telnet
 and unauthenticated WebSocket recovery, failed writes and same-code retry, single use,
 session revocation, restart persistence, account fences changed while saving, loop
-responsiveness, disconnects and concurrent logout during the transaction. It runs in
+responsiveness, lost COMMIT replies before and after application, and cooldown timestamp
+durability when a character quits and disconnects during recovery. The COMMIT fault is a
+test-only interposer loaded into the isolated server. The journey runs in
 `make test-db`, or directly after a MariaDB build:
 
 ```bash

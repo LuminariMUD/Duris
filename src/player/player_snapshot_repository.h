@@ -138,10 +138,12 @@ player_save_apply_result log_entry_repository_apply(MYSQL *connection,
 player_save_apply_result log_entry_repository_apply_from_pool(const log_entry_snapshot &entry);
 
 // SQL work the game thread queued (sql_async.c), run in one transaction. `work` returns
-// 0 or the MySQL error that failed it. A commit whose outcome is unknown is not retried:
-// running it again could apply it twice.
+// 0 or the MySQL error that failed it. Unknown commits are terminal by default:
+// running work again could apply it twice. Only replay-safe work may opt into
+// ambiguous_commit, which requires reconciliation before acknowledging the job.
 player_save_apply_result sql_work_repository_apply(MYSQL *connection, const sql_work &work);
-player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work);
+player_save_apply_result sql_work_repository_apply_from_pool(const sql_work &work,
+							     bool retry_ambiguous_commit = false);
 
 // A change to one account's bank on one side, added to what account_banks holds (the
 // characters of an account share its bank). The row is created when missing.

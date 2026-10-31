@@ -606,8 +606,8 @@ void account_apply_recovered_password(
 				    *applied = account_recovery_apply_outcome::fenced;
 			    else if (old_email != (rows[0][1] ? rows[0][1] : ""))
 				    *applied = account_recovery_apply_outcome::superseded;
-			    /* The writer retries a lost connection, including a lost COMMIT reply.
-			     * This exact salted hash identifies an already-applied retry. */
+			    /* Recovery opts into replay after a lost COMMIT reply. This exact
+			     * salted hash identifies an already-applied retry. */
 			    else if (password == (rows[0][0] ? rows[0][0] : ""))
 				    *applied = account_recovery_apply_outcome::ok;
 			    else if (old_password != (rows[0][0] ? rows[0][0] : ""))
@@ -625,7 +625,8 @@ void account_apply_recovered_password(
 			    account_recovery_writes.erase(key);
 			    finish(writer_replied(wait_id),
 				   ok ? *applied : account_recovery_apply_outcome::write_failed);
-		    }))
+		    },
+		    true))
 	{
 		account_recovery_writes.erase(key);
 		finish(writer_replied(wait_id), account_recovery_apply_outcome::write_failed);
@@ -2693,12 +2694,16 @@ bool save_account_character_departure(P_char ch)
 			return false;
 	}
 #else
-	if (!account && (good || evil))
-		return sql_queue(
-			"UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
-			"WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
-			good ? "last_good_char" : "last_evil_char",
-			good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch));
+	if (!good && !evil)
+		return true;
+	// A departure must survive a pending recovery and descriptor destruction.
+	// Queue only its timestamp, never a snapshot carrying the old password.
+	if (!sql_queue(
+		    "UPDATE accounts SET %s=GREATEST(COALESCE(%s,FROM_UNIXTIME(0)),FROM_UNIXTIME(%ld)) "
+		    "WHERE account_name=(SELECT account_name FROM player_data WHERE pid=%d AND active=1)",
+		    good ? "last_good_char" : "last_evil_char",
+		    good ? "last_good_char" : "last_evil_char", departed_at, GET_PID(ch)))
+		return false;
 #endif
 	if (!account)
 		return true;
@@ -2706,12 +2711,23 @@ bool save_account_character_departure(P_char ch)
 		account->acct_good = departed_at;
 	else if (evil)
 		account->acct_evil = departed_at;
-	const bool saved = write_account(account) == 1;
 #ifdef __NO_MYSQL__
+	const bool saved = write_account(account) == 1;
 	if (loaded)
 		flatfile_account_state_release(loaded);
-#endif
 	return saved;
+#else
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->account && d->account != account && d->account->acct_name &&
+		    account->acct_name && !strcasecmp(d->account->acct_name, account->acct_name))
+		{
+			if (good)
+				d->account->acct_good = departed_at;
+			else
+				d->account->acct_evil = departed_at;
+		}
+	return true;
+#endif
 }
 
 /* A session waiting for the writer holds its input (comm.c) until the reply, which finds
