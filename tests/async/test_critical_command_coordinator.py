@@ -243,6 +243,21 @@ int main()
     assert(player_save_worker_init(apply_save, nullptr));
     assert(critical_command_coordinator_init(apply, &state));
     release(&apply_state::hold_save, true);
+    // Refused writer capacity must not publish a durable admission. A failed
+    // admission must release its coordinator reservation and participant fences.
+    auto admission_probe = make_command(67, {{critical_entity_type::player, 67}});
+    unsigned admissions = 0;
+    persistence_writer_quiesce();
+    assert(critical_command_coordinator_submit_admitted(admission_probe,
+        [&] { ++admissions; return true; }) == critical_submit_result::unavailable);
+    assert(admissions == 0 &&
+           !critical_command_coordinator_is_fenced({critical_entity_type::player, 67}, nullptr));
+    persistence_writer_resume();
+    assert(critical_command_coordinator_submit_admitted(admission_probe,
+        [&] { ++admissions; return false; }) == critical_submit_result::unavailable);
+    assert(admissions == 1 &&
+           !critical_command_coordinator_is_fenced({critical_entity_type::player, 67}, nullptr));
+    assert(critical_command_coordinator_health_copy().inflight == 0);
     assert(player_save_worker_submit(save_of(1)) == player_save_submit_result::accepted);
     wait_until([] { std::lock_guard<std::mutex> lock(state.mutex); return state.save_held; });
     critical_command a = make_command(

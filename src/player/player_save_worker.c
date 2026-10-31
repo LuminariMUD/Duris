@@ -241,7 +241,7 @@ void writer_main()
 	writer_idle.notify_all();
 }
 
-player_save_submit_result enqueue(queued_job job)
+player_save_submit_result enqueue(queued_job job, persistence_job_admit_fn admit = {})
 {
 	std::lock_guard<std::mutex> lock(worker_mutex);
 	if (!health.running || stop_requested || !accepting)
@@ -251,7 +251,7 @@ player_save_submit_result enqueue(queued_job job)
 	}
 	const persistence_job_owner key = { job.kind, job.owner };
 	const auto found = queued_by_owner.find(key);
-	const bool replace_tail = found != queued_by_owner.end() &&
+	const bool replace_tail = !admit && found != queued_by_owner.end() &&
 				  found->second == std::prev(queue.end());
 	const size_t retained_bytes = queued_bytes + (inflight ? inflight->bytes : 0) -
 				      (replace_tail ? found->second->bytes : 0);
@@ -278,6 +278,8 @@ player_save_submit_result enqueue(queued_job job)
 		}
 		else
 		{
+			const auto previous = found == queued_by_owner.end() ? queue.end() :
+									       found->second;
 			queue.push_back(std::move(job));
 			try
 			{
@@ -285,6 +287,27 @@ player_save_submit_result enqueue(queued_job job)
 			}
 			catch (...)
 			{
+				queue.pop_back();
+				throw;
+			}
+			try
+			{
+				if (admit && !admit())
+				{
+					if (previous == queue.end())
+						queued_by_owner.erase(key);
+					else
+						queued_by_owner.find(key)->second = previous;
+					queue.pop_back();
+					return player_save_submit_result::unavailable;
+				}
+			}
+			catch (...)
+			{
+				if (previous == queue.end())
+					queued_by_owner.erase(key);
+				else
+					queued_by_owner.find(key)->second = previous;
 				queue.pop_back();
 				throw;
 			}
@@ -425,6 +448,14 @@ player_save_submit_result player_save_worker_submit(player_snapshot snapshot)
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind, uint64_t owner,
 						    size_t bytes, persistence_job_write_fn write)
 {
+	return persistence_writer_submit_admitted(kind, owner, bytes, std::move(write), {});
+}
+
+player_save_submit_result persistence_writer_submit_admitted(persistence_job_kind kind,
+							     uint64_t owner, size_t bytes,
+							     persistence_job_write_fn write,
+							     persistence_job_admit_fn admit)
+{
 	if (kind == persistence_job_kind::player || !owner || !write)
 		return player_save_submit_result::invalid;
 	// Value-initialized: the job carries no snapshot, whose bool would otherwise be
@@ -434,7 +465,7 @@ player_save_submit_result persistence_writer_submit(persistence_job_kind kind, u
 	job.owner = owner;
 	job.bytes = bytes;
 	job.write = std::move(write);
-	return enqueue(std::move(job));
+	return enqueue(std::move(job), std::move(admit));
 }
 
 size_t player_save_worker_pulse(player_save_completion *completions_out, size_t capacity)

@@ -306,8 +306,15 @@ Zone trophies, the epic bonus window and the completed-zone reads at login read 
 ledger. Flat-file records the operation only.
 
 A PvP outcome changes the participants' ordinary frags, epics and blood money after its
-intent is durable and the parent is queued, so related saves follow the parent. Prepared
-Divine awards retain their existing committed-delivery path. Its command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
+intent is durable and the parent is queued, so related saves follow the parent.
+New submissions reserve writer capacity and queue storage before the admission
+callback syncs the full intent. That callback runs before the writer can execute the
+job. Capacity refusal creates no admitted intent and follows the existing busy/no-rewards
+path, rather than accepting ordinary credit for a later descriptor lookup. On success,
+ordinary awards publish synchronously before submission returns. Boot replay can still
+wait for capacity without republishing already-live balances; new submissions cannot
+overtake those older retained commands.
+Prepared Divine awards retain their existing committed-delivery path. The command records the kill (`pkill_event`, `pkill_info`, `combat_outcome`), continues the
 frag and epic ledgers the same way, and updates the frag leaderboard; it is no longer fenced
 on the participants' revisions. An epic stone's awards are added in memory when the touch
 commits, once per participant (a participant who left gets theirs on return), and the

@@ -43,7 +43,6 @@ struct pending_combat_outcome
 	uint64_t submitted_at_msec;
 	critical_command command;
 	bool queued = false;
-	bool publish_live = false;
 };
 
 std::unordered_map<std::string, pending_combat_outcome> pending;
@@ -159,12 +158,6 @@ void combat_outcome_transaction_pulse()
 		}
 		if (!entry->queued)
 			break; // The fsynced intent remains admitted and will retry next pulse.
-		if (entry->publish_live)
-		{
-			entry->publish_live = false;
-			// Its saves must queue after the parent command.
-			apply_live(entry->payload);
-		}
 	}
 }
 
@@ -173,7 +166,9 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 				       critical_operation_id *submitted_operation_id)
 {
 	if (!intent_ready || intent_count >= COMBAT_OUTCOME_PENDING_MAX ||
-	    payload.participant_count > COMBAT_OUTCOME_MAX_PARTICIPANTS)
+	    payload.participant_count > COMBAT_OUTCOME_MAX_PARTICIPANTS ||
+	    std::any_of(pending.begin(), pending.end(),
+			[](const auto &entry) { return !entry.second.queued; }))
 		return false;
 	critical_operation_id operation_id = {};
 	if (!critical_operation_id_generate(&operation_id))
@@ -216,8 +211,13 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 				std::chrono::system_clock::now().time_since_epoch())
 				.count();
 		pending.emplace(key, pending_combat_outcome{ prepared, completion, monotonic_msec(),
-							     std::move(command), false, true });
-		if (!combat_outcome_intent_write(pending.at(key).command))
+							     std::move(command), false });
+		auto &entry = pending.at(key);
+		entry.queued = critical_submit_result_keeps_operation(
+			critical_command_coordinator_submit_admitted(
+				entry.command,
+				[&entry]() { return combat_outcome_intent_write(entry.command); }));
+		if (!entry.queued)
 		{
 			artifact_guild_delivery_complete(prepared.artifact_deliveries, false);
 			pending.erase(key);
@@ -234,7 +234,8 @@ bool combat_outcome_transaction_submit(const combat_outcome_payload &payload,
 	}
 	++intent_count;
 	++health.submitted;
-	combat_outcome_transaction_pulse();
+	// The parent is durable and queued before any participant can leave or save.
+	apply_live(prepared);
 	char reference[CRITICAL_COMMAND_ID_BYTES * 2 + 1];
 	critical_operation_id_to_hex(operation_id, reference, sizeof(reference));
 	for (size_t index = 0; index < payload.participant_count; ++index)

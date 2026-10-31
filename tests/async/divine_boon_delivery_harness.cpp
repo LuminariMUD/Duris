@@ -4,6 +4,7 @@
 #include "combat/combat_outcome_command.h"
 #include "combat/combat_outcome_transaction.h"
 #include "economy/currency_transaction.h"
+#include "economy/currency_value.h"
 #include "guild/artifact_guild_transaction.h"
 #include "guild/artifact_guild_state.h"
 #include "core/prototypes.h"
@@ -20,6 +21,9 @@
 #include "persistence/persistence_observability.h"
 
 #include <cassert>
+#include <chrono>
+#include <unordered_set>
+#include <unordered_map>
 #include <filesystem>
 #include "flatfile/flatfile_store.h"
 #include <cerrno>
@@ -50,7 +54,9 @@ bool worker_pending = false, command_pending = false;
 critical_command submitted;
 std::string combat_journal;
 bool combat_queue_available = true;
+bool player_available = true;
 std::mutex pipeline_mutex;
+// PENDING_WORLD_QUEST_STATE
 uint32_t trade_player_pid = 0;
 player_pending_trade_snapshot trade_capture;
 player_save_pipeline_health health;
@@ -140,11 +146,21 @@ critical_submit_result critical_command_coordinator_submit(critical_command comm
 	submitted = std::move(command);
 	return critical_submit_result::accepted;
 }
-bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
-					      critical_source_site, critical_deadline_class,
-					      currency_completion_fn, const void *, size_t)
+critical_submit_result critical_command_coordinator_submit_admitted(critical_command command,
+								    std::function<bool()> admit)
 {
-	std::abort(); // These prepared-epic cases contain no wallet award.
+	if (!combat_queue_available)
+		return critical_submit_result::unavailable;
+	assert(admit());
+	return critical_command_coordinator_submit(std::move(command));
+}
+bool currency_transaction_submit_wallet_value(P_char actor, int64_t amount, currency_reason_type,
+					      int64_t, critical_source_site,
+					      critical_deadline_class, currency_completion_fn,
+					      const void *, size_t)
+{
+	GET_COPPER(actor) += amount;
+	return true;
 }
 bool artifact_guild_transaction_submit(P_char, const critical_operation_id &, int, int)
 {
@@ -197,7 +213,7 @@ int writeCharacter(P_char ch, int intent, int room)
 }
 P_char find_player_by_pid(int pid)
 {
-	return pid == 1 ? &player : nullptr;
+	return player_available && pid == 1 ? &player : nullptr;
 }
 void mark_player_dirty_components(int, player_component_mask_t) {}
 void epic_bonus_hydrate(P_char)
@@ -488,7 +504,11 @@ int main(int argc, char **argv)
 	const auto before_restart = submitted;
 	assert(pc.frags == live_frags + 3);
 	combat_outcome_transaction_reset_for_tests();
+	combat_queue_available = false;
 	assert(combat_outcome_transaction_init(argv[1]));
+	assert(!combat_outcome_transaction_submit(payload, nullptr, nullptr));
+	combat_queue_available = true;
+	combat_outcome_transaction_pulse();
 	assert(critical_command_equal(submitted, before_restart));
 	assert(pc.frags == live_frags + 3 && combat_outcome_transaction_health_copy().pending == 1);
 	assert(combat_outcome_intent_complete(restart_id));
@@ -496,15 +516,44 @@ int main(int argc, char **argv)
 	assert(combat_outcome_transaction_init(argv[1]));
 	assert(combat_outcome_transaction_health_copy().pending == 0);
 	pc.frags = live_frags;
+	// Queue refusal is not admission: it must not leave accepted ordinary credit
+	// waiting for a descriptor that may disappear before capacity returns.
+	auto ordinary = ordinary_payload;
+	ordinary.participants[0].flags = COMBAT_PARTICIPANT_IN_ROOM;
+	ordinary.participants[0].frag_delta = 3;
+	ordinary.participants[0].epic_delta = 25;
+	ordinary.participants[0].wallet_delta_copper = 100;
+	strcpy(ordinary.participants[0].account_name.data(), "Pvpaccount");
+	combat_queue_available = false;
+	assert(!combat_outcome_transaction_submit(ordinary, nullptr, nullptr));
+	assert(combat_outcome_transaction_health_copy().pending == 0 && pc.frags == live_frags &&
+	       pc.epics == 100 && GET_COPPER(&player) == 0);
+	player_available = false;
+	combat_queue_available = true;
+	combat_outcome_transaction_pulse();
+	assert(combat_outcome_transaction_health_copy().pending == 0 && pc.frags == live_frags &&
+	       pc.epics == 100 && GET_COPPER(&player) == 0);
+	player_available = true;
+	critical_operation_id ordinary_id;
+	assert(combat_outcome_transaction_submit(ordinary, nullptr, &ordinary_id));
+	assert(pc.frags == live_frags + 3 && pc.epics == 125 && GET_COPPER(&player) == 100);
+	player_available = false;
+	combat_outcome_transaction_pulse();
+	assert(pc.frags == live_frags + 3 && pc.epics == 125 && GET_COPPER(&player) == 100);
+	assert(combat_outcome_intent_complete(ordinary_id));
+	combat_outcome_transaction_reset_for_tests();
+	assert(combat_outcome_transaction_init(argv[1]));
+	player_available = true;
+	pc.frags = live_frags;
+	pc.epics = 100;
+	GET_COPPER(&player) = 0;
 	// A rejected parent never publishes epic or artifact rewards.
 	critical_operation_id rejected;
 	combat_queue_available = false;
-	assert(combat_outcome_transaction_submit(payload, nullptr, &rejected));
-	const auto durable_admission = submitted;
-	assert(combat_outcome_transaction_health_copy().pending == 1 && pc.epics == 100);
+	assert(!combat_outcome_transaction_submit(payload, nullptr, &rejected));
+	assert(combat_outcome_transaction_health_copy().pending == 0 && pc.epics == 100);
 	combat_queue_available = true;
-	combat_outcome_transaction_pulse();
-	assert(critical_command_equal(durable_admission, submitted));
+	assert(combat_outcome_transaction_submit(payload, nullptr, &rejected));
 	critical_completion failure = {};
 	failure.operation_id = rejected;
 	failure.outcome = critical_apply_outcome::terminal_failure;
