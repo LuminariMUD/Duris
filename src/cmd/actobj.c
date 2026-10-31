@@ -518,7 +518,9 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 			OBJ_VNUM(o_obj), o_obj->obj_uid, o_obj->condition, showit ? 1 : 0,
 			s_obj && s_obj->short_description ? s_obj->short_description : "(none)",
 			s_obj ? OBJ_VNUM(s_obj) : -1);
-		MakeScrap(ch, o_obj);
+		if (!MakeScrap(ch, o_obj))
+			send_to_char("That item could not be moved safely; please try again.\r\n",
+				     ch);
 		return;
 	}
 
@@ -1448,9 +1450,17 @@ static bool take_bulk_get_items(P_char actor, bulk_get_state &state, P_obj conta
 		}
 		if (selected.scrap)
 		{
-			announce_corpse_bulk_get(actor, state, container);
-			MakeScrap(actor, object);
-			++state.total;
+			if (MakeScrap(actor, object))
+			{
+				announce_corpse_bulk_get(actor, state, container);
+				++state.total;
+			}
+			else
+			{
+				state.failed = true;
+				state.rejections.emplace_back(
+					"A damaged item could not be moved safely; please try again.\r\n");
+			}
 			continue;
 		}
 		coin_get_submission_options coin_options = {};
