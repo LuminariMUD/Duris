@@ -446,17 +446,12 @@ std::string render_daily(P_char, bool, std::string *)
 }
 
 #ifndef WORLD_QUEST_SQL_HISTORY
-bool sql_world_quest_finished(P_char, P_obj)
-{
-	++history_writes;
-	return true;
-}
 bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool, bool,
 				  const player_world_quest_reward &,
 				  std::function<void(P_char)> committed)
 {
-	if (!sql_world_quest_finished(ch, reward))
-		return false;
+	(void)reward;
+	++history_writes;
 	committed(ch);
 	return true;
 }

@@ -1039,7 +1039,7 @@ end
 end
 continue
 end
-break *sql_world_quest_finished
+break *sql_world_quest_finish_async
 set $history_break=$bpnum
 commands
 silent
