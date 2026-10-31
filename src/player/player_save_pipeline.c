@@ -280,12 +280,6 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 		++health.unchanged;
 		return player_save_pipeline_result::unchanged;
 	}
-	// The player snapshot removes absent inventory rows. Commit a private chest's
-	// destination first, so a failed chest write cannot erase the last saved copy.
-	if ((revision.unacknowledged_components &
-	     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
-	    !locker_private_contents_durable(ch))
-		return player_save_pipeline_result::capture_failed;
 	player_revision_t queued_revision = 0;
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))
@@ -301,6 +295,11 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 					      PLAYER_COMPONENT_INVENTORY;
 		}
 	}
+	// The player snapshot removes absent inventory rows. Commit a private chest's
+	// destination first, including item captures added by a pending quest reward.
+	if ((components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&
+	    !locker_private_contents_durable(ch))
+		return player_save_pipeline_result::capture_failed;
 	player_snapshot snapshot;
 	if (player_snapshot_capture(ch, queued_revision, components, save_intent, room_vnum,
 				    &snapshot) != player_snapshot_capture_result::ok)

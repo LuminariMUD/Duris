@@ -403,6 +403,15 @@ int main()
     reward_quest.reward_items={reward_root,reward_child};
     reward_quest.reward_encoded_size=1024;
     int reward_callbacks = 0;
+    // Detached quest rewards add item components to an otherwise status-only
+    // request, so they must also wait for the private chest destination.
+    locker_ready = false;
+    assert(!player_save_pipeline_submit_world_quest(&erin.ch, reward_quest,
+        [&](P_char, const player_pending_world_quest &) { ++reward_callbacks; return true; }));
+    assert(!player_save_pipeline_world_quest_pending(46) && reward_callbacks == 0);
+    assert(player_revision_snapshot_copy(46, &revision));
+    assert(revision.unacknowledged_components == PLAYER_COMPONENT_STATUS);
+    locker_ready = true;
     hold_writer(true);
     assert(player_save_pipeline_submit_world_quest(&erin.ch, reward_quest,
         [&](P_char actor, const player_pending_world_quest &record) {
