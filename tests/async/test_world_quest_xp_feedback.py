@@ -221,13 +221,14 @@ P_obj quest_item_reward(P_char) {
 bool item_movement_transaction_player_busy(P_char) { return false; }
 void quest_epic_reward(P_char, int, int) { ++epics; }
 player_world_quest_reward captured_reward{};
-bool sql_world_quest_finish_async(P_char ch, P_obj object, bool, bool,
+bool sql_world_quest_finish_async(P_char ch, const std::vector<P_obj> &objects, bool, bool,
                                   const player_world_quest_reward &values, int,
                                   std::function<bool(P_char)> committed) {
     captured_reward = values;
     ++finished; if (!history_allowed) return false;
-    auto publish = [object, committed = std::move(committed)](P_char actor) {
-        if (object) { object->loc_p=LOC_CARRIED; object->loc.carrying=actor; }
+    auto publish = [objects, committed = std::move(committed)](P_char actor) {
+        for (auto object : objects)
+            if (object) { object->loc_p=LOC_CARRIED; object->loc.carrying=actor; }
         committed(actor);
     };
     if (defer_history) deferred_history=std::move(publish); else publish(ch);

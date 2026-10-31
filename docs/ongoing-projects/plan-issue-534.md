@@ -1,14 +1,18 @@
 # Issue #534: bartender KILL bonus items and configurable withholding
 
-Status: **implementation in progress; withholding chunk qualified locally**. Updated 2026-11-01.
+Status: **implementation in progress; withholding and batch foundation ready for review**. Updated 2026-11-01.
 Issue: [Duris #534](https://github.com/LuminariMUD/Duris/issues/534).
 
 ## Current implementation handoff
 
-- Worktree: `/home/aiwithapex/projects/duris-issue-534-withholding`.
-  Branch: `branch/issue-534-withholding`, based on fetched `origin/master`
-  `0678df92a13991c4b0f7787863b80770ed8f42e0`. This is the authoritative working
+- Worktree: `/home/aiwithapex/projects/duris-issue-534-kill-rewards`.
+  Branch: `branch/issue-534-kill-rewards`, stacked on the withholding commit
+  `adbac1a9857f12f77cd2d8c27c4b79e9cf01eaab`. This is the authoritative working
   copy of this plan. The original checkout and all its staged work are preserved.
+- Parent worktree: `/home/aiwithapex/projects/duris-issue-534-withholding`,
+  branch `branch/issue-534-withholding`, originally based on master
+  `0678df92a13991c4b0f7787863b80770ed8f42e0`.
+  [PR #535](https://github.com/LuminariMUD/Duris/pull/535) is open for review.
 - **Outcome:** deliver the specified bonus formula, personal recoverable batches,
   and 5–25% withholding with the 20% default. **Non-goals:** release/deployment,
   historical backfill, fixed iValue caps, and new configuration infrastructure.
@@ -43,9 +47,54 @@ Issue: [Duris #534](https://github.com/LuminariMUD/Duris/issues/534).
   describe the older planning checkout and are superseded. Do not add another
   flatfile pending-file protocol or history reconciler. Pending state constants
   also changed: unsecured is 4 and history-pending is 5 on this baseline.
-- Remaining: publish chunk 1, implement saved quantity decisions and multi-root
+- Remaining: publish the batch foundation, implement saved quantity decisions and multi-root
   delivery/recovery on both backends, extend their focused tests/journeys, and
   publish dependent PRs. The complete goal remains open until those are qualified.
+
+### Batch foundation checkpoint
+
+The completion API now accepts a vector of detached roots, captures their trees
+with remapped parent indexes, and admits the graph through one existing
+completion transaction. The save pipeline now accepts multiple roots. Publication
+checks each root's recorded ancestry, validates/restores all roots before new
+attachments, recognizes roots already held by the actor, and cleans up all
+detached roots for an offline actor. Restore materializes only the missing tree.
+The existing SQL and flatfile repositories already handle multi-root graphs;
+no new persistence protocol or migration is needed for this foundation.
+
+Current gameplay still requests its original one-item batch. Bonus quantity
+selection, its saved field/migration, and batch player feedback are the next
+chunk; this foundation does not claim the requested reward formula is enabled.
+
+Passed on the foundation:
+
+- ASan/UBSan production publication and capture harness for SQL and flatfile,
+  including two roots with children, a wrong root identity, failure on the second
+  capture without submitting a partial graph, missing-root restoration, an
+  already-attached root, repeat publication, offline cleanup, and wrong location.
+- Save-pipeline regression with a second root and a save while publication is
+  refused; reward-policy, XP feedback, target retries, and flatfile history tests.
+- `tests/async/run_player_save_claim_mysql.sh` in its disposable MariaDB: two
+  reward roots plus a child, history rollback, exact custody, replay, stale
+  wallet rejection, UID collision, load filtering, and retained-state checks.
+- MariaDB and flatfile server builds. Logs and SQL evidence are under
+  `bin/qualification/issue534/` in this worktree.
+
+The flatfile repository suite initially failed at `prepare PvP receipt`, before
+reaching the quest fixture. The fixture never bootstrapped shared frag-cap state.
+That independent five-line setup repair passes the unchanged full suite and is
+published separately as [PR #538](https://github.com/LuminariMUD/Duris/pull/538),
+branch `branch/fix-flatfile-quest-test-bootstrap`, commit `6df741257`.
+Its equivalent commit `49b5435c1` is included here to unblock batch qualification.
+The expanded multi-root flatfile fixture now passes, including the interrupted
+authority commit, reload, single history count, and failed-history fallback
+retaining unrelated items. `test_world_quest_remaining_unloaded.py`,
+`test_player_item_snapshot_codec.py`, all 14 documentation checks, formatting,
+and whitespace checks also pass.
+
+No release tag has been created: these are review branches, not releases.
+Master advanced separately through account recovery and racial-spell repairs;
+those changes are not imported as uncommitted dependencies.
 
 The requested change is one guaranteed completion item plus an independent 10%
 bonus-item roll for each required kill after the first, and a configurable
