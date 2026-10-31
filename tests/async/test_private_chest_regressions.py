@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory(prefix="private-chests-", dir=build) as tmp:
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
                     "-Wl,--gc-sections", "-Wl,--wrap=getrandom", "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2",
                     str(source), "src/persistence/critical_command.c",
-                    "src/player/player_snapshot_codec.c", str(HARNESS_STUBS),
+                    "src/player/player_snapshot_codec.c", "src/world/condition.c", str(HARNESS_STUBS),
                     "-lbsd", "-lmysqlclient", "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30,
                    env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
