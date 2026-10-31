@@ -85,13 +85,15 @@ std::string applied_name;
 std::string applied_hash;
 unsigned char applied_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN] = {};
 struct descriptor_data *applied_keep = nullptr;
+bool defer_apply = false;
+account_recovery_apply_done pending_apply;
 } // namespace
 
 /* account.c's helper, scripted: records what the core handed it and answers as told. */
-account_recovery_apply_outcome account_apply_recovered_password(
+void account_apply_recovered_password(
 	struct acct_entry *fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
-	struct descriptor_data *keep_session)
+	struct descriptor_data *keep_session, account_recovery_apply_done done)
 {
 	++apply_calls;
 	applied_name = fresh && fresh->acct_name ? fresh->acct_name : "";
@@ -101,7 +103,10 @@ account_recovery_apply_outcome account_apply_recovered_password(
 	else
 		memset(applied_fingerprint, 0, sizeof applied_fingerprint);
 	applied_keep = keep_session;
-	return scripted_apply;
+	if (defer_apply)
+		pending_apply = std::move(done);
+	else
+		done(keep_session, scripted_apply);
 }
 
 namespace
@@ -311,7 +316,12 @@ account_recovery_complete_outcome complete(const std::string &name, const char *
 	/* The account the caller has just read, handed through to the apply helper. */
 	acct_entry fresh = {};
 	fresh.acct_name = const_cast<char *>(name.c_str());
-	return account_recovery_complete(name.c_str(), normalized, hash, nullptr, &fresh);
+	account_recovery_complete_outcome outcome = account_recovery_complete_outcome::rejected;
+	account_recovery_complete(name.c_str(), normalized, hash, nullptr, &fresh,
+				  [&outcome](descriptor_data *,
+					     account_recovery_complete_outcome completed)
+				  { outcome = completed; });
+	return outcome;
 }
 
 /* The 8-8-8-8 form the mail body carries, back to the 32 hex digits the core checks. */
@@ -376,6 +386,8 @@ void fresh()
 	}
 	mode = send_mode::sent;
 	scripted_apply = account_recovery_apply_outcome::ok;
+	defer_apply = false;
+	pending_apply = nullptr;
 	apply_calls = 0;
 	fake_now = base_time;
 	account_recovery_set_clock_for_tests(fake_clock);
@@ -424,6 +436,9 @@ void section_classify()
 	require(mail_sender_classify(CURLE_OPERATION_TIMEDOUT, 0) ==
 			mail_outcome::retryable_failure,
 		"a timeout must be retryable");
+	require(mail_sender_classify(CURLE_OPERATION_TIMEDOUT, 250) ==
+			mail_outcome::retryable_failure,
+		"a timeout after EHLO must remain retryable");
 	require(mail_sender_classify(CURLE_PEER_FAILED_VERIFICATION, 0) ==
 			mail_outcome::terminal_failure,
 		"a failed certificate check must be terminal");
@@ -731,6 +746,53 @@ void section_f_two_phase_complete()
 		"a non-bcrypt hash was not refused");
 	OPENSSL_cleanse(normalized, sizeof normalized);
 	passed("f_two_phase_complete");
+}
+
+void section_deferred_completion()
+{
+	fresh();
+	request("Foxtrot", "foxtrot@duris.test", 0, next_host());
+	settle();
+	const std::string code = code_from(captured_at(0).message);
+	char normalized[ACCOUNT_RECOVERY_CODE_BUF] = {};
+	require(check("Foxtrot", code, normalized) == account_recovery_check_outcome::accepted,
+		"deferred code was not accepted");
+	acct_entry account = {};
+	account.acct_name = const_cast<char *>("Foxtrot");
+	bool replied = false;
+	account_recovery_complete_outcome outcome = account_recovery_complete_outcome::rejected;
+	const auto done =
+		[&replied, &outcome](descriptor_data *, account_recovery_complete_outcome result)
+	{
+		replied = true;
+		outcome = result;
+	};
+	defer_apply = true;
+	account_recovery_complete("Foxtrot", normalized, bcrypt_shaped_hash, nullptr, &account,
+				  done);
+	require(!replied && account_recovery_health_copy().completed == 0,
+		"queue admission acknowledged a password change");
+	pending_apply(nullptr, account_recovery_apply_outcome::write_failed);
+	require(replied && outcome == account_recovery_complete_outcome::write_failed,
+		"durable failure was not reported");
+	require(check("Foxtrot", code, normalized) == account_recovery_check_outcome::accepted,
+		"failed write consumed the code");
+	replied = false;
+	account_recovery_complete("Foxtrot", normalized, bcrypt_shaped_hash, nullptr, &account,
+				  done);
+	/* A newer request may arrive while the writer is stalled. */
+	fake_now += ACCOUNT_RECOVERY_COOLDOWN_SEC + 1;
+	request("Foxtrot", "foxtrot@duris.test", 0, next_host());
+	settle();
+	const std::string replacement = code_from(captured_at(1).message);
+	pending_apply(nullptr, account_recovery_apply_outcome::ok);
+	require(replied && outcome == account_recovery_complete_outcome::ok &&
+			account_recovery_health_copy().completed == 1,
+		"durable success was not acknowledged");
+	require(check("Foxtrot", replacement) == account_recovery_check_outcome::accepted,
+		"a delayed reply consumed a newer request");
+	OPENSSL_cleanse(normalized, sizeof normalized);
+	passed("deferred_completion");
 }
 
 void section_g_fenced_and_superseded()
@@ -1166,6 +1228,7 @@ int main(int argc, char **argv)
 	section_d_check_normalises_without_consuming();
 	section_e_token_attempt_cap();
 	section_f_two_phase_complete();
+	section_deferred_completion();
 	section_g_fenced_and_superseded();
 	section_h_failures_keep_token();
 	section_i_expiry_and_sweep();

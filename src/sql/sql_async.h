@@ -76,6 +76,11 @@ bool sql_read_for_at(struct persistence_query_site site, P_char ch, std::string 
 using sql_read_work_fn = std::function<unsigned int(MYSQL *connection, sql_rows *rows)>;
 bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
 		      std::function<void(bool ok, const sql_rows &rows)> done);
+// Opt in only when work can recognize its own committed result and safely replay.
+// An uncertain COMMIT keeps its place on the writer until reconciliation succeeds.
+bool sql_read_work_at(struct persistence_query_site site, sql_read_work_fn work,
+		      std::function<void(bool ok, const sql_rows &rows)> done,
+		      bool retry_ambiguous_commit);
 bool sql_read_work_for_at(struct persistence_query_site site, P_char ch, sql_read_work_fn work,
 			  std::function<void(P_char ch, const sql_rows &rows)> done);
 // Boot is over: called once, where the writer is started.

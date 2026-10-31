@@ -34,6 +34,7 @@ EXPECTED_SECTIONS = (
     "d_check_normalises_without_consuming",
     "e_token_attempt_cap",
     "f_two_phase_complete",
+    "deferred_completion",
     "g_fenced_and_superseded",
     "h_failures_keep_token",
     "i_expiry_and_sweep",

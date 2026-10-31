@@ -20,13 +20,14 @@
  * Value-taking core (src/account/account_recovery.c, MAIN THREAD ONLY) plus the
  * telnet adapter (src/account/account_recovery_nanny.c).  This header is reached
  * by every translation unit in the tree (core/structs.h -> account/account.h ->
- * here), so it stays include-light: C headers only and a forward declaration of
+ * here), so it stays include-light: basic types, callbacks and a forward declaration of
  * descriptor_data.  Nothing here touches libcurl.
  */
 
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
+#include <functional>
 
 struct descriptor_data;
 struct acct_entry;
@@ -123,12 +124,13 @@ account_recovery_request(const char *acct_name, const char *acct_email_or_null, 
 account_recovery_check_outcome
 account_recovery_check(const char *acct_name, const char *typed_code,
 		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF]);
-/* fresh is the account the caller has just read (account_read()), or null. */
-account_recovery_complete_outcome account_recovery_complete(const char *acct_name,
-							    const char *normalized_code,
-							    const char *new_bcrypt_hash,
-							    struct descriptor_data *keep_session,
-							    struct acct_entry *fresh);
+using account_recovery_done =
+	std::function<void(struct descriptor_data *, account_recovery_complete_outcome)>;
+/* fresh is borrowed for this call. done runs after durable application, with a null
+ * descriptor if the requesting connection closed while the writer was working. */
+void account_recovery_complete(const char *acct_name, const char *normalized_code,
+			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			       struct acct_entry *fresh, account_recovery_done done);
 void account_recovery_invalidate(const char *acct_name);
 void account_recovery_forget(const char *acct_name);
 size_t account_recovery_pulse(void);

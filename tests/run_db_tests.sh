@@ -50,6 +50,7 @@ telemetry_posthog_gameplay python3 tests/async/run_telemetry_player_journey.py -
 saved_item_allocator $DB python3 tests/async/run_saved_item_allocator_journey.py $SERVER
 mysql_combat $DB python3 tests/async/test_mysql_combat_journey.py --server $SERVER
 coin_denominations $DB python3 tests/async/test_mysql_coin_denomination_journey.py --server $SERVER
+account_recovery $DB python3 tests/async/test_account_recovery_mysql_journey.py --server $SERVER
 flight_network $DB python3 tests/async/test_flight_network_journey.py --backend mariadb --server $SERVER
 death_level_projection $DB python3 tests/async/run_death_level_projection_journey.py --backend mariadb --binary $SERVER --output bin/tests/db/death-level-projection
 world_restart_copyover $DB python3 tests/async/run_world_restart_journey.py $SERVER copyover
