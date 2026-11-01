@@ -878,6 +878,7 @@ static void combat_contract(bool websocket)
 				assert(cJSON_IsNull(subject));
 			else
 			{
+				assert(cJSON_IsObject(subject));
 				assert(std::string(cJSON_GetStringValue(
 					       cJSON_GetObjectItem(subject, "name"))) == name);
 				assert(cJSON_GetObjectItem(subject, "healthPercent")->valueint ==
@@ -891,6 +892,23 @@ static void combat_contract(bool websocket)
 	check("wolf", 80, "Ally", 5);
 	assert(payload(&d, "Combat.Update").find("kneeling") != std::string::npos);
 	emit(&d, "Combat.Update", "combat-subjects");
+	// raw_damage publishes before damage() establishes the first combat relationship.
+	viewer.specials.fighting = enemy.specials.fighting = nullptr;
+	applied_damage_notice(&viewer, &enemy, 8);
+	check("wolf", 80, nullptr, 0);
+	assert(payload(&d, "Combat.Update").find("\"damage\":8") != std::string::npos);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	// A lethal first hit can finish without ever establishing that relationship.
+	enemy.points.hit = -11;
+	applied_damage_notice(&viewer, &enemy, 111);
+	check("wolf", 0, nullptr, 0);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	enemy.points.hit = 80;
+	viewer.specials.fighting = &enemy;
+	enemy.specials.fighting = &tank;
+	gmcp_flush_combat(&d);
 	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
 	cJSON_InitHooks(&hooks);
 	const auto stable_count = count();

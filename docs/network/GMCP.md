@@ -188,10 +188,14 @@ revision baseline. Other legacy consumers use their usual reconnect/bootstrap
 reset; no historical replay is implied. State-only JSON stays below 4 KiB.
 
 The optional legacy `round` remains a per-applied-hit compatibility field, not a
-complete battle log or aggregated combat round. State-only updates never repeat
-it. Secondary-hit events, known damage type/critical metadata and the negotiated
-event sequence/budget contract remain required in the next dependent PR. This
-state slice does not claim those events or the reported client HP symptom fixed.
+complete battle log or aggregated combat round. Before the first combat
+relationship is established, its immediate snapshot uses the struck victim as
+the target, including a lethal first hit. The next periodic snapshot follows the
+current relationship and clears absent subjects. State-only updates never repeat
+the round. Secondary-hit events, known damage type/critical metadata and the
+negotiated event sequence/budget contract remain required in the next dependent
+PR. This state slice does not claim those events or the reported client HP
+symptom fixed.
 
 ## Proof and remaining qualification
 
