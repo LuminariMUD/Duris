@@ -19,6 +19,9 @@ SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
 in the same local worktree. Keep #558 unmerged for review until the stack is ready.
 Flat-file PR: [#561](https://github.com/LuminariMUD/Duris/pull/561),
 `branch/issue-555-flatfile-stock`, based on #559.
+Current checkout/qualification continuation: `branch/issue-555-stock-qualification`
+in `/home/aiwithapex/projects/duris-issue-555`, based on #561. Its qualification
+work is still in progress and has no PR yet.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
@@ -102,10 +105,38 @@ Additional flat-file evidence:
 - Development builds for MariaDB and client-free flat-file mode pass. The latter
   executable is `bin/server/dms_flatfile`; logs are under `bin/issue-555-*.log`.
 
-Next: run the full-world no-trade restart control, then add and execute the
-buy/save/reboot acceptance journeys for both modes, including recovery controls.
-The worktree has no generated `areas/world.*` data yet; prepare isolated generated
-world data for those journeys rather than use stale unverified area output.
+Full-world no-trade restart control now passes. Exact command:
+
+```sh
+python3 tests/async/run_shop_bootstrap_journey.py \
+  --server bin/server/dms_flatfile \
+  --areas bin/qualification/issue-555-world/areas \
+  --output bin/qualification/issue-555-bootstrap.json
+```
+
+The two boots produced the same 1,148,381-byte shop catalog, SHA-256
+`7f5991653983a599e44979cd2a30a8ae79e924344bb233dd697edc656cba400b`.
+The server binary SHA-256 is
+`c5bf8285fb54abff16f69bd388698e687f2537e49a5f23588b3213828ca5a455`.
+The runner now accepts an explicit isolated area directory; default behavior is
+unchanged. Evidence JSON and its log are under `bin/qualification/`.
+
+Generated area files are isolated at `bin/qualification/issue-555-world/areas`.
+They were produced by `make -C areas/src -j4`, then running the seven resulting
+`bin/areas/tools/make_{mob,obj,qst,shp,trg,wld,zon}` binaries in that private area
+directory, with authored inputs symlinked from this checkout. Each private
+`tworld.*` output was renamed to `world.*`. `world.tab` and `world.weather` are
+symlinked to the tracked sources. No generated `areas/world.*` output in the
+checkout was modified. Build/generation logs are in `bin/issue-555-area-*.log`.
+
+Next: add and execute the buy/save/reboot acceptance journeys for both modes,
+including recovery controls and saved UID/property checks. Reuse
+`test_flatfile_combat_journey.py` for character creation/login and offline staff
+promotion, and `test_flight_network_journey.py::authority()` for disposable
+backend setup. The latter's MariaDB leg runs under
+`tests/async/with_disposable_mariadb.sh`; it does not use checkout credentials.
+The existing flight journey demonstrates a real staff/ordinary-player fixture,
+normal shutdown/restart, and copyover. Preserve those boundaries for this work.
 The isolated restore tests do not yet prove the complete buy/save/reboot path.
 No production operation or release tag has occurred.
 
