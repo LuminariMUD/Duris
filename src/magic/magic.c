@@ -10485,6 +10485,7 @@ void spell_reveal_true_name(int /*level*/, P_char ch, char * /*arg*/, int /*type
 
 	if (newname)
 	{
+		gmcp_item_changed(obj);
 		send_to_char("You glean the true nature of the item and rename it thusly.\n", ch);
 	}
 	else // this could happen..

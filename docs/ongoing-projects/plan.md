@@ -129,3 +129,7 @@ booted item journey and one ASK reward/restoration journey per backend passed.
 Evidence: `owner-items-parent-wire.json`, `owner-items-parent-*-restore.json`.
 The short cost check uses the existing latency tracer with a `gmcp_protocol`
 span ending before storage/completion work; the old `gmcp_flush` span includes it.
+
+PR #547 review follow-up: knockout/recovery now changes the item visibility
+filter; reveal-true-name updates notify through the existing setter/publication
+path. Both stale-view failures were reproduced in the GMCP sanitizer harness.

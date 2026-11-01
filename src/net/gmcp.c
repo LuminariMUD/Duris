@@ -1929,7 +1929,8 @@ static uint32_t gmcp_items_filter(P_char ch)
 	       (IS_AFFECTED(ch, AFF_DETECT_INVISIBLE) ? 4U : 0U) |
 	       (has_innate(ch, INNATE_OPHIDIAN_EYES) ? 8U : 0U) | (GET_LEVEL(ch) > 45 ? 16U : 0U) |
 	       (IS_TRUSTED(ch) ? 32U : 0U) | (IS_PC(ch) ? 64U : 0U) |
-	       (IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ? 128U : 0U);
+	       (IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ? 128U : 0U) |
+	       (IS_AFFECTED(ch, AFF_KNOCKED_OUT) ? 256U : 0U);
 }
 
 // Match look-in presentation, without opening containers or invoking commands.
