@@ -29,7 +29,7 @@ regression in `tests/async/test_shopkeeper_boot.py`. Main records a running mark
 before world boot and a clean marker after shutdown completes. Only a preceding
 clean marker plus a cold boot permits `shopkeeper_boot_restock()`. Copyover and
 Redis world restoration (including a clean world-preserving restart) retain
-recovery semantics. The eligibility is not yet connected to stock movement.
+recovery semantics. The boot facade now passes eligibility to both restorers.
 
 The marker is private runtime data in `shopkeeper-boot/state`, relative to the
 server data directory, ignored by Git. It reuses the existing atomic, synced
@@ -140,6 +140,30 @@ The existing flight journey demonstrates a real staff/ordinary-player fixture,
 normal shutdown/restart, and copyover. Preserve those boundaries for this work.
 The isolated restore tests do not yet prove the complete buy/save/reboot path.
 No production operation or release tag has occurred.
+
+### Gameplay qualification in progress
+
+The real journey exposed an existing SQL loader gap: the writer persists
+`shopkeeper_items.obj_uid`, but the loader omitted that column and allocated new
+identities for unsold stock. Qualification now restores the saved UID and rejects
+duplicate/invalid stored UIDs before publication. Legacy snapshots without a UID
+retain their existing fresh-allocation behavior. This repair is required by the
+accepted unsold/resale identity contract; it needs no schema migration.
+
+The production SQL restore harness now covers 15 scenarios, including positive
+saved-UID assertions, malformed/duplicate UID cleanup, legacy UID absence, shared
+and ambiguous refill bindings, missing snapshots, and saved container contents.
+`test_shopkeeper_save_runtime.py` and `test_shopkeeper_retry_policy.py` also pass.
+The development MariaDB build with the UID repair passes; its log is
+`bin/issue-555-uid-build.log`.
+
+`run_shop_reboot_stock_journey.py` and `shop_stock_inspector.cpp` are being added
+on the qualification branch. The journey uses Maggeynel's actual shop plus the
+existing disposable shop fixture extended with repeated finite roots and a
+container child. Its inspector selects both room and keeper identity because the
+fixture room also contains other shops. SQL snapshots are checkpointed through a
+real produced purchase after restore; observing only the durable rows before that
+normal trade checkpoint can still show the old sold-out snapshot.
 
 ## Outcome
 

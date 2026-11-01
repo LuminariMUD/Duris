@@ -3345,7 +3345,7 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 		"SELECT si.id, si.shopkeeper_id, si.vnum, si.equip_slot, si.weight, si.cost, si.timer, "
 		"si.extra_flags, si.value0, si.value1, si.value2, si.value3, si.value4, si.value5, "
 		"si.value6, si.value7, si.name, si.short_descr, si.description, si.action_descr, si.container_id, "
-		"si.wear_flags, si.item_type, si.item_material, si.bitvector1, si.bitvector2, si.bitvector3, si.bitvector4, si.bitvector5 "
+		"si.wear_flags, si.item_type, si.item_material, si.bitvector1, si.bitvector2, si.bitvector3, si.bitvector4, si.bitvector5, si.obj_uid "
 		"FROM shopkeeper_items si "
 		"INNER JOIN shopkeepers s ON si.shopkeeper_id = s.id "
 		"WHERE (%d < 0 OR s.shop_id=%d) ORDER BY si.shopkeeper_id, si.id",
@@ -3356,6 +3356,7 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 		return false;
 	}
 	{
+		std::unordered_set<unsigned long> restored_uids;
 		while ((row = mysql_fetch_row(result)))
 		{
 			int item_id = atoi(row[0]);
@@ -3391,6 +3392,27 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 			}
 
 			int equip_slot = atoi(row[3]);
+			if (row[29] && *row[29])
+			{
+				char *end = nullptr;
+				errno = 0;
+				const unsigned long uid = strtoul(row[29], &end, 10);
+				if (errno || !uid || row[29][0] < '1' || row[29][0] > '9' || *end)
+				{
+					extract_obj(obj);
+					mysql_free_result(result);
+					discard_shopkeeper_restore_stage(keepers, all_items, false);
+					return false;
+				}
+				obj->obj_uid = uid;
+			}
+			if (!restored_uids.insert(obj->obj_uid).second)
+			{
+				extract_obj(obj);
+				mysql_free_result(result);
+				discard_shopkeeper_restore_stage(keepers, all_items, false);
+				return false;
+			}
 			int container_id = row[20] ? atoi(row[20]) : 0;
 			if (equip_slot < 0 || equip_slot > MAX_WEAR || container_id < 0)
 			{
