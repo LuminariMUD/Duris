@@ -2,6 +2,57 @@
 
 Status: implemented and locally qualified; review stack is ready. Updated 2026-11-01.
 
+## Resale review fix
+
+PR #562's review exposed a paid resale purchase that printed success but lost
+the item: its preserved UID already existed in custody, while the SQL checkout
+submitted it as a new creation. Finite SQL checkout now moves the existing object
+directly to the player, following the accepted memory-authority persistence rule.
+Payment and delivery happen in the same game-loop call. The shop's outgoing
+snapshot is queued before the buyer's snapshot, retaining the existing crash
+policy rather than introducing a new transaction or minting a replacement UID.
+
+Shop snapshots now claim their saved graphs through the same SQL claim writer as
+other owners. Restoration filters superseded shop rows against custody, promotes
+retained contents past stale containers, and checks duplicate UIDs only after
+filtering. Legacy resale custody that still names the seller is accepted only
+when that seller's saved inventory no longer contains the UID. An unavailable
+legacy-ownership query aborts restoration without publishing a partial catalog.
+No migration or production operation is needed.
+
+Focused validation passes: 21 ASan/UBSan SQL population/restore scenarios;
+`run_player_save_claim_mysql.sh` on disposable MariaDB, including shop graph
+claims replacing the seller's custody; the production shop save/flush runner;
+dirty-shop retries; player-save claim checks; live flat-file route contracts;
+both backend builds; Python compilation; formatting and whitespace checks.
+
+The extended reboot-stock gameplay journey verifies that legacy resale survives,
+an ordinary paid repurchase delivers its original UID, saving does not charge
+again, and an insufficient-funds refusal leaves stock and wallet unchanged.
+Its MariaDB and flat-file legs pass, including the existing refill, repeated
+reboot, native copyover, SIGKILL and clean-stop recovery controls. The final
+MariaDB rerun against the stale-duplicate ordering fix also passes.
+Final qualified binary SHA-256 values: MariaDB
+`720b0801a29e27e1a84ad10c3f7051fe43e8e2a15a96b8f3f85ec425ee1c170e`;
+flat-file
+`f64148e097ca71698d594121c636e0235c54d11053e70a82dd8400598aaed6ca`.
+Evidence is under `bin/qualification/resale-fix-*.json` and accompanying logs;
+the checks and build logs use the `bin/resale-fix-*` prefix.
+
+```sh
+python3 tests/async/test_shopkeeper_population.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_shopkeeper_save_runtime.py
+python3 tests/async/test_dirty_shopkeeper_retry.py
+python3 tests/async/test_player_save_claim.py
+python3 tests/async/test_shop_trade_live_route.py
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_reboot_stock_journey.py --backend mariadb --server bin/server/dms_new --report bin/qualification/resale-fix-mariadb-final.json
+python3 tests/async/run_shop_reboot_stock_journey.py --backend flatfile --server bin/server/dms_resale_flatfile --report bin/qualification/resale-fix-flatfile.json
+```
+
+The qualification below predates this review fix; its original binary hashes
+remain historical evidence for that earlier implementation.
+
 - Issue: [#555 — reboot-only shop stock is discarded](https://github.com/LuminariMUD/Duris/issues/555).
 - Current branch: [branch/issue-555-stock-qualification](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-stock-qualification).
 - Local worktree: `/home/aiwithapex/projects/duris-issue-555`.
