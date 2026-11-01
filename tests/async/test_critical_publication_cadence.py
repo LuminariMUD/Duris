@@ -62,6 +62,8 @@ SPY(sql_async_pulse)
 SPY(divine_trade_runtime_retire_pulse)
 SPY(sql_ship_write_pulse)
 SPY(artifact_guild_transaction_pulse)
+SPY(combat_outcome_transaction_pulse)
+SPY(frag_cap_runtime_pulse)
 SPY(sql_mud_info_refresh)
 static void divine_boon_selection_pulse(int64_t) { calls.emplace_back("selection"); }
 static size_t player_load_pipeline_pulse(player_load_result *, size_t) {
@@ -125,10 +127,12 @@ static void tick(int number) {
                     "gmcp_flush_dirty_ship_contacts", "gmcp_flush_dirty_ship_info",
                     "flush_pending_ship_saves", "retry_unplaced_ships", "locker_async_pulse"};
     expected.emplace_back("critical");
+    expected.emplace_back("combat_outcome_transaction_pulse");
     if (!(pulse % 2)) {
         const std::vector<std::string> periodic = {
             "critical_gameplay_publish_outbox", "player_save_pipeline_pulse",
-            "divine_boon_runtime_pulse", "selection", "persistence_pulse_character_saves", "loads",
+            "divine_boon_runtime_pulse", "frag_cap_runtime_pulse", "selection",
+            "persistence_pulse_character_saves", "loads",
             "information_cache_pulse", "help_cache_pulse", "collector_catalog_cache_pulse",
             "collector_maintenance_pulse", "collector_presence_pulse", "collector_service_pulse",
             "account_recovery_pulse", "redis_world_recovery_pulse"};
