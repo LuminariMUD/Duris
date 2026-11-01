@@ -3676,6 +3676,8 @@ void extract_char_after_terminal_save(P_char ch)
 		logit(LOG_EXIT, "No ch in extract_char_after_terminal_save");
 		return;
 	}
+	if (!locker_leave_for_extraction(ch))
+		return;
 
 	if (ch->telemetry_session_sequence != 0U)
 	{

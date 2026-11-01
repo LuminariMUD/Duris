@@ -30,7 +30,8 @@ static std::vector<std::vector<uint64_t>> written;
 static std::vector<uint64_t> carried;
 static std::vector<std::string> alerts;
 static int saves, conditions, population, ejections, holder_extractions;
-static bool refuse_queue, fail_write, fail_capture;
+static int socket_closes, account_departures, session_exits, save_room;
+static bool refuse_queue, fail_write, fail_capture, refuse_leave;
 static time_t now = 1000;
 extern "C" int sql_pool_is_active(void)
 {
@@ -114,13 +115,36 @@ void extract_char(P_char ch)
 			break;
 		}
 }
-void extract_char_after_terminal_save(P_char ch)
+static int locker_exit_room(P_char, int)
 {
-	// Boundary representing locker_handle_leave: the full journey exercises it.
+	return 2;
+}
+void char_from_room(P_char ch)
+{
 	assert(ch == active->GetLockerUser());
-	ch->in_room = 2;
+	if (refuse_leave)
+		return;
 	assert(locker_async_mark_dirty(active->GetLockerChar(), ch, 1, "idle-leave"));
-	extract_char(ch);
+	rooms[1].people = nullptr;
+	ch->in_room = NOWHERE;
+}
+bool char_to_room(P_char ch, int room, int direction)
+{
+	assert(room == 2 && direction == -2);
+	ch->in_room = room;
+	return true;
+}
+telemetry_capture_result telemetry_runtime_game_session_exit(P_char ch, P_desc,
+							     telemetry_session_end_reason)
+{
+	++session_exits;
+	ch->telemetry_session_sequence = 0;
+	return {};
+}
+bool save_account_character_departure(P_char)
+{
+	++account_departures;
+	return true;
 }
 telemetry_capture_result telemetry_runtime_game_context(P_char, P_desc)
 {
@@ -153,6 +177,7 @@ void update_ingame_racewar(int side)
 }
 void close_socket(P_desc d)
 {
+	++socket_closes;
 	assert(persistence_save_character_terminal(d->character, RENT_CRASH));
 	d->character->desc = nullptr;
 }
@@ -161,10 +186,11 @@ int calculate_save_room(P_char, int, int room)
 	return room;
 }
 player_save_pipeline_result player_save_pipeline_request(P_char ch, player_component_mask_t, int,
-							 int)
+							 int room)
 {
 	assert(GET_PID(ch) > 0);
 	++saves;
+	save_room = room;
 	return player_save_pipeline_result::queued;
 }
 // PRODUCTION_SLOT
@@ -248,6 +274,11 @@ int main()
 		user.only.pc = &user_pc;
 		user.player.racewar = 1;
 		user.in_room = 1;
+		rooms[1].people = &user;
+		user.telemetry_session_sequence = 42;
+		obj_data inventory{}, equipment{};
+		user.carrying = &inventory;
+		user.equipment[0] = &equipment;
 		descriptor_data desc{};
 		desc.connected = CON_PLAYING;
 		desc.account = &account;
@@ -279,9 +310,32 @@ int main()
 		assert(writer.size() == 1);
 		carried.push_back(202);
 		user.specials.timer = 15;
+		socket_closes = account_departures = session_exits = 0;
+		refuse_leave = true;
+		for (int attempt = 0; attempt < 2; ++attempt)
+		{
+			point_update();
+			assert(user.desc == &desc && desc.character == &user);
+			assert(user.in_room == 1 && rooms[1].people == &user);
+			assert(active->GetLockerUser() == &user &&
+			       active->GetLockerChar() == &holder);
+			assert(user.carrying == &inventory && user.equipment[0] == &equipment);
+			assert((carried == std::vector<uint64_t>{ 101, 202 }));
+			assert(saves == 1 && population == 0 && !holder_extractions);
+			assert(!socket_closes && !account_departures && !session_exits);
+			assert(user.telemetry_session_sequence == 42);
+			assert(!IS_SET(user.runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED));
+		}
+		refuse_leave = false;
 		point_update();
 		assert(!user.desc && character_list == &holder);
 		assert(saves == 3 && population == -1 && ejections == 0);
+		// Disconnect publishes RENT_CRASH, then idle removal publishes RENT_LINKDEAD.
+		assert(socket_closes == 1 && account_departures == 2 && session_exits == 1);
+		assert(save_room == 2 && user.telemetry_session_sequence == 0);
+		assert(IS_SET(user.runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED));
+		point_update();
+		assert(population == -1 && saves == 3 && account_departures == 2);
 		assert(holder_extractions == 0 && locker_async_name_busy(locker_name));
 		complete_job();
 		assert(holder_extractions == 0 && writer.size() == 1);
@@ -289,7 +343,7 @@ int main()
 		assert((written == std::vector<std::vector<uint64_t>>{ { 101 }, { 101, 202 } }));
 		assert(holder_extractions == 1 && !character_list &&
 		       !locker_async_name_busy(locker_name));
-		puts("PASS: both idle list orders preserve the latest generation through disconnect");
+		puts("PASS: refused idle passes retain player state; retry departs once with the latest locker generation");
 
 		// Dirty, queue-refused, capture-failed and write-failed terminal holders
 		// all survive point_update until the retry actually commits.

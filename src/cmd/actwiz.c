@@ -13215,7 +13215,7 @@ void do_account(P_char ch, char *arg, int /*cmd*/)
  * Usage: extractlink <name> - extract specific ghost character
  *        extractlink all    - extract all ghost characters
  */
-static void extractlink_attempt(P_char ch, P_char vict)
+static bool extractlink_attempt(P_char ch, P_char vict)
 {
 	char victim_name[MAX_INPUT_LENGTH];
 	char buf[MAX_STRING_LENGTH];
@@ -13231,6 +13231,16 @@ static void extractlink_attempt(P_char ch, P_char vict)
 	if (dangling_descriptor)
 		vict->desc = NULL;
 
+	if (!locker_leave_for_extraction(vict))
+	{
+		snprintf(
+			buf, sizeof(buf),
+			"Deferred ghost: %s. Locker departure is not ready; try again shortly.\r\n",
+			victim_name);
+		send_to_char(buf, ch);
+		return false;
+	}
+
 	persistence_save_character_terminal(vict, RENT_LINKDEAD);
 
 	extract_char_after_terminal_save(vict);
@@ -13238,6 +13248,7 @@ static void extractlink_attempt(P_char ch, P_char vict)
 	logit(LOG_WIZ, "%s extracted ghost character %s", GET_NAME(ch), victim_name);
 	snprintf(buf, sizeof(buf), "Extracted ghost: %s.\r\n", victim_name);
 	send_to_char(buf, ch);
+	return true;
 }
 
 void do_extractlink(P_char ch, char *argument, int /*cmd*/)
@@ -13307,9 +13318,8 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 		}
 
 		ghosts++;
-		// The save is queued and the ghost always leaves (persistence reset step 7).
-		extractlink_attempt(ch, vict);
-		extracted++;
+		if (extractlink_attempt(ch, vict))
+			extracted++;
 	}
 
 	if (extract_all)
@@ -13319,9 +13329,10 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 				     ch);
 		else
 		{
-			snprintf(buf, sizeof(buf),
-				 "extractlink all complete: %d ghost%s found; %d extracted.\r\n",
-				 ghosts, ghosts == 1 ? "" : "s", extracted);
+			snprintf(
+				buf, sizeof(buf),
+				"extractlink all complete: %d ghost%s found; %d extracted; %d deferred.\r\n",
+				ghosts, ghosts == 1 ? "" : "s", extracted, ghosts - extracted);
 			send_to_char(buf, ch);
 		}
 		return;
@@ -13335,11 +13346,12 @@ void do_extractlink(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	snprintf(buf, sizeof(buf),
-		 "extractlink result: %d match%s; %d ghost%s found; %d extracted; %d connected; "
-		 "%d excluded.\r\n",
-		 matches, matches == 1 ? "" : "es", ghosts, ghosts == 1 ? "" : "s", extracted,
-		 connected, excluded);
+	snprintf(
+		buf, sizeof(buf),
+		"extractlink result: %d match%s; %d ghost%s found; %d extracted; %d deferred; %d connected; "
+		"%d excluded.\r\n",
+		matches, matches == 1 ? "" : "es", ghosts, ghosts == 1 ? "" : "s", extracted,
+		ghosts - extracted, connected, excluded);
 	send_to_char(buf, ch);
 }
 

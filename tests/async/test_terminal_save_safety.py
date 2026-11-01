@@ -110,7 +110,7 @@ checks["flat terminal saves queue except the first baseline"] = all(
 
 # Ghost extraction shares one fail-closed terminal-save helper across the named
 # and bulk command paths, and extraction remains ordered after that save gate.
-ghost_extract = extract_function("actwiz.c", "static void extractlink_attempt(P_char ch")
+ghost_extract = extract_function("actwiz.c", "static bool extractlink_attempt(P_char ch")
 checks["ghost extraction gate"] = (
     ghost_extract.count("persistence_save_character_terminal(vict, RENT_LINKDEAD)") == 1
     and ghost_extract.index("persistence_save_character_terminal(vict, RENT_LINKDEAD)")
