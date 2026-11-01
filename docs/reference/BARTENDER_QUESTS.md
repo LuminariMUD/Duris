@@ -468,8 +468,13 @@ differ; in particular `world.quest.share.max` falls back to 0 but this file sets
   Its C++ fallback is 1.0. `world.quest.cost.abandon.time=24` is the decay
   period in hours (also fallback 24).
 - `world.quest.reward.top.withheld.percent=20` is read while building the boot
-  catalog as an integer clamped to 0–100; 0 disables top-value withholding.
-  Changing it requires rebuilding that catalog at boot.
+  catalog. Its inclusive range is 5–25%; the missing-key default is 20%.
+  Finite values are clamped before integer conversion, and fractional values
+  truncate toward zero. Nonfinite values use 20% with a diagnostic. The catalog
+  startup message reports the effective percentage. Changing the property
+  requires restarting the server to rebuild the catalog; a property reload
+  alone does not change the pools. Boundary ties and small-pool rounding can
+  withhold more than the configured fraction.
 
 The checked-in `difficulty.dial.world.quest=5` is neutral (multiplier 1).
 The [difficulty functions](../../src/world/difficulty.c)

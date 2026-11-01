@@ -62,6 +62,32 @@ int main() {
 ''', "duris-world-quest-ceiling-")
 
 
+def test_withholding_configuration_bounds() -> None:
+    _run_harness(r'''
+#include "world/world_quest_policy_math.h"
+#include <cassert>
+#include <limits>
+int main() {
+    for (int percent = 5; percent <= 25; ++percent)
+        assert(world_quest_reward_withheld_percent(percent) == percent);
+    assert(world_quest_reward_withheld_percent(-100) == 5);
+    assert(world_quest_reward_withheld_percent(0) == 5);
+    assert(world_quest_reward_withheld_percent(100) == 25);
+    assert(world_quest_reward_withheld_percent(17.9) == 17);
+    assert(world_quest_reward_withheld_percent(4.9) == 5);
+    assert(world_quest_reward_withheld_percent(std::numeric_limits<double>::max()) == 25);
+    assert(world_quest_reward_withheld_percent(std::numeric_limits<double>::infinity()) == 20);
+    assert(world_quest_reward_withheld_percent(-std::numeric_limits<double>::infinity()) == 20);
+    assert(world_quest_reward_withheld_percent(std::numeric_limits<double>::quiet_NaN()) == 20);
+    std::vector<int> values;
+    for (int value = 1; value <= 20; ++value) values.push_back(value);
+    assert(world_quest_reward_value_ceiling(values, 5) == 20);
+    assert(world_quest_reward_value_ceiling(values, 20) == 17);
+    assert(world_quest_reward_value_ceiling(values, 25) == 16);
+}
+''', "duris-world-quest-withholding-")
+
+
 def test_catalog_never_offers_quest_items() -> None:
     collect = extract_function("world/world_quest_policy.c",
                                "std::unordered_set<int> collect_quest_item_vnums(")
@@ -78,7 +104,8 @@ def test_catalog_never_offers_quest_items() -> None:
 def test_catalog_withholds_top_value_items_before_pools_and_scores() -> None:
     load = extract_function("world/world_quest_policy.c", "void load_reward_profiles(")
     assert '"world.quest.reward.top.withheld.percent", 20.000' in load
-    ceiling = load.index("world_quest_reward_value_ceiling(values, withheld_percent)")
+    assert "world_quest_reward_withheld_percent(configured)" in load
+    ceiling = load.index("world_quest_reward_value_ceiling(values, withheld.percent)")
     assert "if (reward.ivalue >= ceiling)" in load
     # Unleveled pool, per-level pools and the zone scores' inputs all come after it.
     assert ceiling < load.index("zone.reward_vnums.push_back(reward.vnum);")
@@ -154,6 +181,7 @@ def test_properties_ship_the_documented_defaults() -> None:
 if __name__ == "__main__":
     tests = [
         test_value_ceiling_withholds_the_most_valuable_share,
+        test_withholding_configuration_bounds,
         test_catalog_never_offers_quest_items,
         test_catalog_withholds_top_value_items_before_pools_and_scores,
         test_nofear_block_reads_the_fourth_affect_field,
