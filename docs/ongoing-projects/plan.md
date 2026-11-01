@@ -1,117 +1,194 @@
-# Issue #498: small server delivery for Mudlet #26
+# Issue #537: combat-intent backup recovery plan
 
-Updated 2026-11-01. **Revised delivery completed and ready for review.**
-This completes the selected first delivery, not all candidates in
-[server #498](https://github.com/LuminariMUD/Duris/issues/498) or
-[client #26](https://github.com/LuminariMUD/duris-client/issues/26).
+Updated 2026-11-01. Work item: [#537](https://github.com/LuminariMUD/Duris/issues/537).
+Branch: [branch/issue-537-backup-plan](https://github.com/LuminariMUD/Duris/tree/branch/issue-537-backup-plan).
+Worktree: `/home/aiwithapex/projects/duris-issue-537-plan`.
+Reviewed baseline: `0a972227636b66c4e0c98900b1120c25ac181353` (`origin/master`).
 
-## Outcome and scope
+## Outcome
 
-Provide structured time, session boundaries, combat target/tank and outgoing
-applied damage, and visible owner inventory/equipment. Reuse existing values,
-flushes and publishers, with bounded optional work and a concrete client handoff.
-No action/cooldown framework, extra storage calls or broad qualification campaign.
+A normally booted supported game can publish and restore persistence generations
+containing locker receipts and durable combat outcomes, with strict validation and
+correct replay across the authority snapshot. Complete the issue only when an
+authorized production check proves publication, schedule advancement, and backup
+and health success inside the configured two-hour recovery-point objective (RPO).
 
-1. Time/capabilities and session/combat: server PRs
-   [#542](https://github.com/LuminariMUD/Duris/pull/542),
-   [#544](https://github.com/LuminariMUD/Duris/pull/544),
-   [#545](https://github.com/LuminariMUD/Duris/pull/545) and
-   [#546](https://github.com/LuminariMUD/Duris/pull/546) are merged into master.
-2. Owner items: [#547](https://github.com/LuminariMUD/Duris/pull/547) is squash-merged
-   into master as `35dc321cb`. It includes bounded pages, native selectors, requested nested
-   contents, epoch/access cancellation and completed publication. Uninterested/
-   unchanged lists build no JSON. Open/close, transfer, editor, condition and
-   rename owners notify. All five review findings are fixed, including finite-light
-   burnout and item selectors inside carried/worn containers.
-3. Cost evidence: [#548](https://github.com/LuminariMUD/Duris/pull/548) now targets
-   master and carries the merged #547 fixes. Three lines add `gmcp_protocol` to the existing tracer before storage
-   work. The [wire document](../network/GMCP.md#short-local-cost-check--2026-11-01)
-   records the short matched results and their limits. No new measurement service.
-4. Client handoff: [client #28](https://github.com/LuminariMUD/duris-client/pull/28)
-   is ready against `branch/protocol-interface-improvements`. It provides real
-   generated fixtures, source selection/fallback and page/lifecycle rules, and
-   points to existing ship, status/vitals, affects, quest and chat packets.
-   Client UI/automation adoption is separate from this server delivery.
+**Current status:** the implementation is already on master through
+[PR #551](https://github.com/LuminariMUD/Duris/pull/551), squash commit
+`601fdf646ad65d6dc16fc9df9f1175b1250d2411`. Its relevant implementation,
+documentation and test files are unchanged at this baseline. This plan therefore
+retains that implementation and targets the remaining verification and operational
+acceptance. The issue's receipt-only description describes its older incident
+checkout, not current master. No production state was inspected for this plan;
+the issue's October 31 inventory, ages, capacity and service status are historical
+reports, not fresh measurements. PR #551 also explicitly leaves production
+acceptance pending.
 
-## Proof and stopping rule
+**Non-goals:** no storage migration, schema or policy changes, replacement backup
+system, retry/backoff redesign, replication setup, enabling recurring restore
+drills, retention changes, live evidence deletion, full burn-in or unrelated
+combat behavior changes. Production operations require separate authorization;
+this request covers planning, an isolated checkout and publishing the plan.
 
-**Files:** GMCP/item publication/presentation owners and existing focused tests;
-three-line timing attribution; wire/plan docs; client capture/fixtures/handoff.
-**Non-goals:** deployment, release tag, production operations, full burn-in,
-CI wait, client runtime migration or completing every candidate in the issues.
-**Proof:** reuse valid recorded results; the required affected checks below pass.
-No further regression/hardening phase is required for this selected delivery.
+## Verified code paths and storage contract
 
-- Both backend builds passed after parent integration and the focused review fixes:
-  `make -C src -j4`; separate `PERSISTENCE_BACKEND=flatfile` build to
-  `bin/server/dms_flatfile`. Formatting/normal changed-line tidy hooks passed.
-- `python3 tests/async/test_gui_gmcp_contract.py --sanitize`: both transports,
-  bounded 3,000-item pages/search, 100-descriptor fairness, selectors, access,
-  editor/queue/allocation retry, disarm/repair/temporary-save and committed reward
-  retry/replay/logout. Review regressions cover knockout recovery and both true-name
-  rename paths; the worn-container get lookup also resolves item selectors. Parser fuzz's 11,540,402 sanitizer executions remain valid:
-  later changes do not change item parsing.
-- `python3 tests/async/test_gmcp_control_journey.py --server bin/server/dms_flatfile`:
-  normal Telnet/WebSocket dispatch, lifecycle, combat and native item commands pass.
-  The merged parent's WebSocket regression and reward-publication tests pass.
-- Focused `run_world_quest_dual_backend.py` gameplay leg (`11:2`, one ASK quest and
-  restart per backend) passed on MariaDB and flatfile after reward-batch integration.
-  Container audit/access/capacity refusal, crumbleloot, player-load and documentation
-  checks passed. Their unchanged paths were not rerun unnecessarily.
-- Short cost check: five approximately 75-second windows per binary, one descriptor,
-  3,000 objects, idle/uninterested, disabled, combat, subscribed items and slow reader.
-  Zero overruns; delivery protocol max 669 us; whole-tick max 1.078 ms. See the wire
-  document for averages, source/binary hashes, memory behavior and limitations.
-- `python3 scripts/capture_server_gmcp.py --server /home/aiwithapex/projects/duris-issue-498`
-  in the client handoff checkout: producer passed; 26 source hashes match and 12
-  phases include the new contracts plus existing populated/clear cases.
-- Real Mudlet `python3 scripts/mudlet_test.py run --scenario server-wire` passed
-  (`20261101T102603Z-38eccfe8-server-wire`); populated/clear screenshots inspected.
-  The stale target-HP test expectation was corrected to the captured 32 percent.
-  This proves existing wire decode/clears, not adoption of new handlers or an HP
-  widget symptom fix. Fixture/docs-only work needs no package release/version bump.
+- [Startup](../../src/net/comm.c) initializes locker identification and combat
+  transactions with the same `CRITICAL_COMMAND_JOURNAL_DIR` (lines 1220-1223).
+  [The native intent store](../../src/combat/combat_outcome_intent.c) creates
+  `combat-intents/` with mode 0700 and holds its empty `.service-lock`. A normal
+  boot therefore needs backup support even before any combat command exists.
+- [The native atomic writer](../../src/flatfile/flatfile_store.c) publishes a
+  command by writing `.<operation-id>.intent.tmp.<pid>.<sequence>` at mode 0600,
+  syncing it, and renaming it to `<operation-id>.intent`. Completion renames that
+  file to `<operation-id>.recorded` and syncs the directory. Pending commands
+  replay on initialization; completed files remain reconciliation evidence.
+- [Capture](../../scripts/persistence_backup.py) already recognizes the empty
+  lock and both durable extensions with a nonzero lowercase 32-digit hexadecimal
+  operation ID. It bounds durable files to the native 8 MiB payload + 128 KiB
+  envelope + 32-byte SHA-256 limit and checks their appended checksum. Existing
+  path checks enforce custodian ownership, private permissions, regular files,
+  single links, and no symlinks; capacity and free-space limits remain active.
+  The locker/retired-journal compatibility rules remain supported.
+- Capture omits only recognized unpublished atomic-write names after checking
+  their file metadata. It does not copy partial temporary bytes, remove live
+  temporaries, skip arbitrary dotfiles, or omit durable combat evidence. Unknown
+  files, nested directories, unsafe metadata, invalid IDs/sizes, nonempty locks
+  and bad checksums reject the generation. A rename race can fail the attempt
+  safely; staging is removed, the old generation survives, and the existing next
+  schedule evaluation retries without an advanced completion timestamp.
+- `backup()` freezes combat evidence **before** either the MariaDB dump or the
+  flatfile authority copy. A captured `.recorded` marker then cannot suppress a
+  commit missing from that later snapshot. A captured `.intent` remains pending
+  even if the live game completes it during capture: restored repository replay
+  applies a missing commit or recognizes its existing operation receipt.
+  [Combat completion](../../src/combat/combat_outcome_transaction.c) only records
+  completion after a committed result. Locker receipts retain their separate
+  after-snapshot copy and existing payment-in-flight check.
+- [Restore](../../scripts/persistence_restore.py) verifies generation hashes,
+  copies journals into a fresh isolated candidate, and invokes
+  [the native qualifier](../../scripts/qualify_flatfile_restore.cpp) with
+  `--receipts` before either backend boots. The qualifier uses the shared
+  `combat_outcome_intent_read()` for pending **and completed** files: checksum,
+  bounded command/payload decoding, admission timestamp and filename identity
+  must agree. It also rejects duplicate operation IDs, more than 128 pending
+  intents, temporaries in a published generation, and unsafe entries. Preflight
+  validates without replaying or renaming evidence; candidate service boot
+  performs recovery. The [qualifier builder](../../scripts/build_restore_qualifier.py)
+  includes the shared reader. Older generations with no combat directory remain
+  supported.
+- [BACKUPS.md](../operations/BACKUPS.md) already documents this storage contract,
+  snapshot ordering, race/retry behavior, native qualification and isolated tests.
+  `schedule()` advances `schedule.json.completed` only after an `ok` scheduled
+  capture; a direct `backup` invocation alone does not advance that schedule.
+  `status()` measures RPO age from the newest generation's capture-start time.
 
-Ablation: retained the useful implemented interfaces, their focused proof and
-one small cost check; removed the requirement to finish all future candidates
-before publishing. Every delivered chunk is committed, pushed and in a review PR.
+## Delivery steps and acceptance coverage
 
-## Handoff and remaining follow-ups
+1. **Retain the delivered implementation.** The first five issue checkboxes have
+   paths in current master: storage validation and transient handling in
+   `persistence_backup.py`; ordering and replay in the capture/restore/native
+   owners above; focused tests below; updated `BACKUPS.md`. Do not reimplement
+   the old validator or cherry-pick #551 again. If later evidence exposes a gap
+   in an acceptance criterion, make the smallest change in its existing owner
+   and extend its existing regression before revising this plan's status.
 
-Server worktree: `/home/aiwithapex/projects/duris-issue-498`.
-Owner-items merge: `35dc321cb`; qualified head `a7533f937` is retained locally as
-`branch/archive-pr547-qualified-20261101`.
-Current branch: `branch/issue-498-delivery-evidence` (#548).
-Client handoff worktree: `/home/aiwithapex/projects/durisclient-issue26-server-handoff`,
-branch `branch/issue-26-server-handoff` (fixture fix `2115d9b`).
-Other checkouts/dirty work and the original reference are preserved. Do not recreate
-deleted parent branches. PR #548 and client #28 remain open; no production operation
-or release tag was performed.
+2. **Verify with the existing fixtures and preserve evidence.** Fresh focused
+   checks on this baseline passed:
 
-The #547 merge tree exactly matches its qualified head. Its full local regression
-sweep and repaired-test reruns, sanitizer/booted selector journeys and both backend
-builds are recorded in the PR's merge-readiness comment. That qualification remains
-under `/home/aiwithapex/projects/duris-pr547-review/bin/qualification/pr547/`.
-After carrying it into #548, the child diff remains the timing span and two documents;
-the recorded cost/capture evidence below retains its original source hashes.
+   ```sh
+   python3 tests/async/test_combat_intent_backup.py -v
+   python3 tests/async/test_persistence_backup.py
+   python3 tests/async/test_backup_review_remediations.py
+   ```
 
-Local ignored proof: `bin/qualification/issue498/owner-items-parent-wire.json`,
-`owner-items-parent-*-restore.json`, `owner-review-*.log`, `delivery-*.log`,
-`short-cost/{run.py,baseline.json,feature.json,*-latency.log}`. The original
-`baseline-881/` remains intact; the matching client-free reference build lives
-under `short-cost/baseline-flatfile/`. World generation is shared: prepare once,
-then run isolated backend legs. Do not run `make world` concurrently.
+   Results: **7 + 43 + 17 = 67 passed**. The first command builds the native
+   writer/qualifier fixture and proves held boot-lock capture, pending/completed
+   bytes, recognized temporary omission, invalid-entry rejection, failed rename
+   cleanup/retry, schedule/health success, and representative backup/restore
+   journeys. Native repository outcomes are `applied` when the commit missed
+   the authority snapshot and `already_applied` when it preceded it; repeated
+   replay is idempotent and source/generation inventories stay unchanged.
 
-WHO, scan, dice and identify remain possible small authorized-command-result PRs.
-Actions, cooldown/activity tracking, richer score/skills, affect reasons, observer
-notices, epic reports, weather and chargen extensions are deferred. Select a real
-client consumer before adding any. Preserve text fallback for unavailable features.
-The reported player/pet/opponent HP symptom remains unverified in a real game.
-Review/merge/deployment and these follow-ups are separate work, not missing steps
-in the completed revised server delivery.
+   Limits: that focused journey substitutes candidate service boot and the
+   dedicated-filesystem guard. Its MariaDB ordering case uses synthetic dump
+   bytes. It does not independently prove a real MariaDB import or game boot.
+   PR #551 records both backend builds and these two real disposable integration
+   tests passing for the unchanged implementation:
 
-Final review correction `a33f4a09e` routes worn-container `get` through the existing
-selector-aware matcher. Its native regression fails before the fix and passes
-afterwards; both backend builds pass. The lookup does not run in the measured
-cost workload, so the recorded timing evidence is reused. Client fixtures were
-recaptured with the extra command-owner hash; existing populated/clear wire
-inputs differ only in the chat timestamp, preserving the real-Mudlet evidence.
+   ```sh
+   DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py \
+     PersistenceRecoveryIntegration.test_combat_intents_backup_restore_and_isolated_service_replay \
+     PersistenceRecoveryIntegration.test_mariadb_full_dump_schema_history_values_and_isolated_service_boot
+   ```
+
+   Reuse that reported integration evidence for this documentation-only change;
+   it was not rerun here. If an implementation fix or relevant dependency change
+   makes it stale, build both server backends and the native fixture, then rerun
+   these selected cases on disposable Linux with mount/unshare privileges,
+   private MariaDB daemons and bounded restore storage as documented in
+   `test_persistence_backup_integration.py`. Never load a production environment
+   for those tests. For any C/C++ change run `./scripts/format.sh --check` and
+   `make -C src`, plus the affected native tests. No hosted CI wait is required.
+
+3. **After explicit production authorization, establish the actual rollout state.**
+   Read the effective backup/health units, their checkout and environment-file
+   paths, current policy, journal metadata, newest generation/status receipt and
+   `schedule.json.completed`. Check whether the effective backup scripts already
+   include #551 and whether any changed native qualifier/server executable needs
+   building or deployment. Follow the normal deployment procedure only for the
+   changes still absent; a source merge does not prove deployment. Preserve
+   private configuration and all live evidence. No database migration is required
+   by #551. Do not delete/unlock `.service-lock` or manufacture combat events.
+
+4. **Prove recovery through the scheduled path.** Let a due timer evaluation run,
+   or invoke its existing `schedule` entry point only within the authorized
+   operation. Record the before/after generation IDs, capture-start/completion
+   times, manifest/readback verification and completion receipt, then establish:
+
+   - A new complete generation publishes successfully with `result: ok`, and its
+     combat evidence satisfies the supported storage contract.
+   - `schedule.json.completed` advances for that successful due capture, and a
+     subsequent evaluation follows the configured interval instead of retrying
+     capture every minute.
+   - Both the effective backup and health units finish successfully and their
+     outputs report `ok`; the newest capture-start age is within the configured
+     7,200-second RPO. Check actual results, not merely timer activation.
+   - The game remains healthy. Retain known-good generations and apply only the
+     already-approved retention policy. If the run fails, retain redacted error
+     evidence and investigate the actual failing phase without relaxing validation.
+
+5. **Close only with operational evidence.** Post the authorized rollout revision,
+   new generation, schedule advancement, UTC check times and backup/health results
+   to #537. Keep it open until these facts are recorded; do not use a closing
+   keyword on the plan PR. A production restore drill, replication and any
+   reconciliation are separate decisions; the isolated fixture supplies the
+   requested representative backup/restore proof.
+
+## Files and ablation decisions
+
+This plan delivery changes `docs/ongoing-projects/plan.md` and preserves its prior
+#498 handoff unchanged as [plan-issue-498.md](plan-issue-498.md). No runtime code,
+configuration, credentials, player data or operational state changes are needed.
+The original dirty checkout and existing #537 implementation worktree are left
+untouched.
+
+For any demonstrated remaining defect, edit only the existing capture/restore,
+native reader/qualifier or focused test owner identified above; update
+`BACKUPS.md` only if its contract changes. Keep both durable file types, private
+metadata checks, pre-snapshot combat capture and native qualification: removing
+any loses a traced acceptance requirement. Reuse the existing retry path, fixture
+and reported integration results. Drop duplicate implementation, new validators,
+new test infrastructure and scheduler redesign: current paths already satisfy
+those needs. No acceptance criterion is dropped to reduce scope.
+
+## Estimate for me to finish implementation
+
+The code and documentation implementation is already merged; **no additional
+coding is currently indicated**. Fresh focused verification is complete above.
+Allow **30-60 minutes of my active work** for the remaining authorized production
+state check, any script/qualifier update still needed, one due capture, health
+checks and issue evidence, excluding approval and time waiting for the configured
+schedule. If a fresh isolated full integration run is needed, allow another
+**45-90 minutes**, including backend builds. If live evidence reveals a new defect,
+re-estimate from that concrete failure. These are estimates, not evidence that
+production is recovered.
