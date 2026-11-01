@@ -9,6 +9,16 @@ Duris has two deliberately separate histories:
   the baseline. Every post-baseline step receives one ordered ID, apply file,
   verifier, compatibility label, and exact SHA-256 hashes.
 
+## Bartender reward counts (0058)
+
+`0058_world_quest_reward_count` adds `player_data.quest_reward_item_count` as a
+signed integer with default zero. Existing completed quests retain their legacy
+one-item entitlement; new completions save the rolled quantity with their reward
+batch. The guarded migration preserves saved decisions when rerun. Apply it
+before starting the new server. Snapshot version 14 reads older snapshots with
+a zero default; an older binary cannot read version 14 snapshots. The previously
+sealed online modes below do not authorize this new migration or a 59-step head.
+
 ## Online chest receipts and shared frag storage (0056/0057)
 
 `run --online-chest-frag` accepts only the sealed 58-step manifest ending in

@@ -145,14 +145,14 @@ int main(int argc, char **argv)
 	require(sql_world_quest_can_do_another(&player) == 2,
 		"missing SQL-compatible history did not return the configured allowance");
 	pc.quest_mob_vnum = 2001;
-	require(sql_world_quest_finish_async(&player, nullptr, false, false, {}, 0,
+	require(sql_world_quest_finish_async(&player, {}, false, false, {}, 0,
 					     [](P_char) { return true; }),
 		"first completion was refused");
 	require(sql_world_quest_done_already(&player, 2001) == 1 &&
 			sql_world_quest_can_do_another(&player) == 1,
 		"first SQL-compatible completion was not retained or counted");
 	pc.quest_mob_vnum = 2002;
-	require(sql_world_quest_finish_async(&player, nullptr, false, false, {}, 0,
+	require(sql_world_quest_finish_async(&player, {}, false, false, {}, 0,
 					     [](P_char) { return true; }),
 		"second completion was refused");
 	require(sql_world_quest_can_do_another(&player) == 0,

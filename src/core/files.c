@@ -2127,6 +2127,7 @@ int restoreStatus(char *buf, P_char ch)
 	// Legacy pfiles contain no accepted origin or replacement entitlement.
 	ch->only.pc->quest_origin_room = 0;
 	ch->only.pc->quest_replacement_due = 0;
+	ch->only.pc->quest_reward_item_count = 0;
 	if (stat_vers > 41)
 	{
 		ch->only.pc->quest_active = GET_INTE(buf);

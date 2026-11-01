@@ -1349,6 +1349,7 @@ struct pc_only_data
 	// Kept outside the legacy 14-value quest payload in player snapshots.
 	int quest_origin_room; // VNUM; zero for quests accepted before origin tracking.
 	int quest_replacement_due;
+	int quest_reward_item_count; // Frozen completion quantity; zero for legacy/unrolled tasks.
 
 	long unsigned int last_ip;
 	int skillpoints;
