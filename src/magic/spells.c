@@ -26,6 +26,7 @@
 #include "world/specs.prototypes.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
+#include "persistence/persistence_checkpoint.h"
 
 /*
    external variables
@@ -3098,6 +3099,10 @@ void spell_rest(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		send_to_char("Your target seems to have died.\n", ch);
 		return;
 	}
+
+	// Every living target is granted, upgraded or refreshed below.
+	if (IS_PC(victim) && GET_PID(victim) > 0)
+		mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_AFFECTS);
 
 	if ((afp = get_spell_from_char(victim, TAG_WELLRESTED)) != NULL)
 	{
