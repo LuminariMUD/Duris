@@ -7,9 +7,13 @@ and [server #498](https://github.com/LuminariMUD/Duris/issues/498) remains follo
 this delivery does not close either whole issue.
 
 Worktree: `/home/aiwithapex/projects/duris-issue-498`
-Branch: `branch/issue-498-owner-items`
-Resumed from `c422427fe`. Item completion is locally qualified and being published.
-Remaining delivery work: parent integration, short cost check, fixtures and handoff.
+Item PR branch: `branch/issue-498-owner-items`
+Current delivery/evidence branch: `branch/issue-498-delivery-evidence`
+Owner-item completion is committed/pushed as `0d5a1ac2d` plus parent integration
+`8918c4a65`, ready in [PR #547](https://github.com/LuminariMUD/Duris/pull/547).
+Remaining delivery work: short cost check, fixtures and handoff. Parent PRs are
+being merged by another agent; leave those branches alone and retarget #547 to
+master once the merged source is integrated.
 Parent `1f9920ac2` now includes reviewed WebSocket/combat fixes and upstream
 bartender reward batches. Revalidate the affected publisher/GUI paths and focused
 restoration leg against this integration; retain unrelated proof.
@@ -119,3 +123,9 @@ shipping that set. Preserve deferred work and evidence; do not discard code.
 - The original local plan simplification and pause-handoff deletion predated this
   implementation run and are preserved. Other worktrees remain untouched. No
   owner-items commit/push/PR or production deployment has occurred in this run.
+
+Resume progress: the integrated builds, GMCP sanitizer/WebSocket/publisher tests,
+booted item journey and one ASK reward/restoration journey per backend passed.
+Evidence: `owner-items-parent-wire.json`, `owner-items-parent-*-restore.json`.
+The short cost check uses the existing latency tracer with a `gmcp_protocol`
+span ending before storage/completion work; the old `gmcp_flush` span includes it.
