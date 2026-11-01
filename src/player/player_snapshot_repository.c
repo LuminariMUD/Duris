@@ -1497,7 +1497,7 @@ player_save_apply_result apply_shopkeeper(MYSQL *connection, const flatfile_shop
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
 	return apply_owner_write(
 		connection,
-		[&](std::vector<claimed_graph> *)
+		[&](std::vector<claimed_graph> *claims)
 		{
 			const std::string shop_id = std::to_string(shop.shop_id);
 			query_result result = execute(
@@ -1528,8 +1528,14 @@ player_save_apply_result apply_shopkeeper(MYSQL *connection, const flatfile_shop
 				if (!(result = execute(connection, sql.str())).ok)
 					return result;
 			}
-			return insert_item_rows(connection, shop.items, keeper,
-						shopkeeper_item_tables);
+			std::vector<player_item_snapshot> written;
+			result = claim_graph(connection,
+					     { item_owner_type::shopkeeper,
+					       item_shopkeeper_owner_id(shop.shop_id), 0 },
+					     shop.items, claims, &written);
+			return result.ok ? insert_item_rows(connection, written, keeper,
+							    shopkeeper_item_tables) :
+					   result;
 		});
 }
 

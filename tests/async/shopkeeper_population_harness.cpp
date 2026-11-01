@@ -8,6 +8,7 @@
 #include <vector>
 #include <unordered_set>
 #include <cerrno>
+#include <cstdint>
 
 #include "economy/shopkeeper_save_policy.h"
 
@@ -302,11 +303,27 @@ bool sql_load_item_extra_descr_from_table(int, P_obj, const char *)
 {
 	return true;
 }
+std::unordered_set<unsigned long> foreign_uids;
+uint64_t matching_shop_owner = 0;
+uint64_t item_shopkeeper_owner_id(uint32_t shop)
+{
+	return uint64_t(shop) + 1;
+}
+bool sql_persistence_item_owner_matches_identity(unsigned long long uid, const char *type,
+						 unsigned long long owner,
+						 unsigned long long context, const char *)
+{
+	assert(!strcmp(type, "shopkeeper") && owner > 0 && context == 0);
+	if (matching_shop_owner && uid == 1001)
+		return owner == matching_shop_owner;
+	return !foreign_uids.count(uid);
+}
 
 // Fake MySQL results own strings until mysql_free_result(), as the real API does.
 using Rows = std::vector<std::vector<std::string>>;
 Rows saved_keepers, saved_items, saved_affects, saved_item_affects;
 bool fail_affects_query = false;
+bool legacy_resale = false, fail_owner_query = false;
 struct MYSQL_RES
 {
 	Rows rows;
@@ -317,10 +334,14 @@ using MYSQL_ROW = char **;
 bool DB = true;
 MYSQL_RES *db_query(const char *query, ...)
 {
+	if (fail_owner_query && strstr(query, "FROM item_current_owner own"))
+		return nullptr;
 	if (fail_affects_query && strstr(query, "FROM shopkeeper_affects sa"))
 		return nullptr;
 	Rows rows;
-	if (strstr(query, "SELECT shop_id"))
+	if (strstr(query, "FROM item_current_owner own"))
+		rows = legacy_resale ? Rows{ { "1" } } : Rows{};
+	else if (strstr(query, "SELECT shop_id"))
 		rows = saved_keepers;
 	else if (strstr(query, "FROM shopkeeper_item_affects sia"))
 		rows = saved_item_affects;
@@ -590,6 +611,49 @@ int main(int argc, char **argv)
 		assert(has_item(second, 91) == (scenario == "refill-shared"));
 		assert(shop_index[0].dirty && shop_index[1].dirty);
 		assert(mob_index[0].number == 6);
+	}
+	else if (scenario == "stale-root" || scenario == "stale-tree" || scenario == "stale-child")
+	{
+		saved_keepers = { { "0", "10", "100", "200" } };
+		add_item(10, 70);
+		add_item(10, 71);
+		saved_items[1][20] = "1";
+		add_item(10, 72, 1);
+		foreign_uids.insert(scenario == "stale-child" ? 1002 : 1001);
+		if (scenario == "stale-tree")
+			foreign_uids.insert(1002);
+		assert(sql_restore_shopkeepers());
+		P_char keeper = world[0].people;
+		assert(keeper && keeper->equipment[0]->obj_uid == 1003);
+		if (scenario == "stale-tree")
+			assert(!keeper->carrying);
+		else if (scenario == "stale-root")
+			assert(keeper->carrying->obj_uid == 1002 && !keeper->carrying->contains);
+		else
+			assert(keeper->carrying->obj_uid == 1001 && !keeper->carrying->contains);
+	}
+	else if (scenario == "stale-duplicate")
+	{
+		saved_keepers = { { "0", "10", "100", "200" }, { "1", "11", "100", "201" } };
+		add_item(10, 70);
+		add_item(11, 70);
+		saved_items[1][29] = saved_items[0][29];
+		matching_shop_owner = 1;
+		assert(sql_restore_shopkeepers());
+		assert(world[0].people->carrying->obj_uid == 1001 && !world[1].people->carrying);
+	}
+	else if (scenario == "resale-legacy" || scenario == "ownership-failure")
+	{
+		saved_keepers = { { "0", "10", "100", "200" } };
+		add_item(10, 70);
+		foreign_uids.insert(1001);
+		legacy_resale = scenario == "resale-legacy";
+		fail_owner_query = !legacy_resale;
+		assert(sql_restore_shopkeepers() == legacy_resale);
+		if (legacy_resale)
+			assert(world[0].people->carrying->obj_uid == 1001);
+		else
+			assert(!character_list && objects.empty() && !world[0].people);
 	}
 	else if (scenario == "uid-legacy")
 	{

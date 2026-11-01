@@ -992,7 +992,7 @@ P_obj get_selling_obj(P_char ch, char *name, P_char keeper, int shop_nr, int msg
 void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 {
 	char argm[MAX_INPUT_LENGTH], arg2[MAX_INPUT_LENGTH], arg3[MAX_INPUT_LENGTH];
-	P_obj temp1, gem = NULL, container;
+	P_obj temp1, gem = NULL;
 	int i = 0, sale;
 	float cost_factor;
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -1206,17 +1206,13 @@ void shopping_buy(char *arg, P_char ch, P_char keeper, int shop_nr)
 	/* Test if producing shop !   */
 	obj_from_char(temp1);
 	SET_BIT(temp1->extra2_flags, ITEM2_STOREITEM);
-	container = NULL;
-	container = purchase_destination;
-	if (!item_creation_grant_submit_to_player(ch, temp1, ch, container))
-	{
-		extract_obj(temp1, FALSE);
-		send_to_char(
-			"The ownership authority is busy; the purchased item was not created.\r\n",
-			ch);
-		return;
-	}
+	// Finite stock already exists. Move its identity in memory, like the other
+	// ordinary handovers, rather than trying to create the same UID again.
+	obj_to_char(temp1, ch);
+	// Queue the departing owner first. A crash may lose an unwritten handover,
+	// but the player's later claim must never resurrect the shop's stale copy.
 	writeShopKeeper(keeper, shop_nr);
+	currency_transaction_save_first(ch);
 	return;
 }
 

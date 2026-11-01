@@ -6,6 +6,7 @@ Use a disposable authority; checkout credentials and running servers are unused.
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path
 import shutil
 import signal
@@ -98,6 +99,12 @@ def run(binary, backend, report):
                 player.expect(receipt, timeout=60)
                 command(player, "score")
 
+            def wallet():
+                score = command(player, "score")
+                coins = re.search(r"Coins carried:\s*(\d+) platinum\s+(\d+) gold\s+(\d+) silver\s+(\d+) copper", score)
+                assert coins, score
+                return sum(int(amount) * value for amount, value in zip(coins.groups(), (1000, 100, 10, 1)))
+
             def visit(room):
                 assert "No room exists" not in command(god, f"goto {room}")
                 command(god, "setbit room here flag ROOM_MAGIC_LIGHT 1")
@@ -181,12 +188,41 @@ def run(binary, backend, report):
                 retained_trinket = roots(partial, TRINKET)
                 save(god, GOD)
                 stop()
+                if sql:
+                    # Simulate an existing deployment's resale row: old shop saves
+                    # left custody with the seller after its player row was gone.
+                    uid = resale[0]["uid"]
+                    assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={uid}") == "0"
+                    sql(f"UPDATE item_current_owner SET owner_type=1,owner_id=(SELECT pid FROM player_data WHERE name='{PLAYER}'),owner_context_id=0 WHERE item_uid={uid}")
                 boot()
                 god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                 visit(ROOM)
                 refilled = settled_stock(ROOM, {BAG: 1, TRINKET: 2, SMALL_BAG: 1, POTION: 1})
                 assert roots(refilled, SMALL_BAG) == unsold
                 assert roots(refilled, POTION) == resale
+                for denomination in ("platinum", "gold", "silver", "copper"):
+                    command(god, f"setbit char {PLAYER} {denomination} 0")
+                before = wallet()
+                refused = command(player, "buy yellow")
+                assert "You now have" not in refused and wallet() == before
+                assert roots(stock(ROOM), POTION) == resale
+                command(god, f"setbit char {PLAYER} platinum 100000")
+                before = wallet()
+                action("buy yellow", "You now have a yellow potion")
+                assert "yellow potion" in command(player, "inventory").lower()
+                paid = wallet()
+                assert 0 < paid < before
+                save(player, PLAYER)
+                assert wallet() == paid
+                settled_stock(ROOM, {POTION: 0})
+                if sql:
+                    uid = resale[0]["uid"]
+                    assert sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={uid}") == "1"
+                    assert sql(f"SELECT owner_type FROM item_current_owner WHERE item_uid={uid}") == "1"
+                action("sell yellow", "The shopkeeper gives you")
+                save(player, PLAYER)
+                settled_stock(ROOM, {POTION: 1})
+                evidence["checks"].append("legacy resale survives; paid repurchase delivers the same UID once; refused purchase keeps stock and wallet")
                 assert all(item in roots(refilled, TRINKET) for item in retained_trinket)
                 bag = roots(refilled, BAG)[0]
                 assert any(item["parent"] == bag["uid"] and item["vnum"] == TRINKET for item in refilled)
