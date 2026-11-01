@@ -17,6 +17,7 @@
 #include <ctype.h>
 #include <mysql.h>
 #include <openssl/hmac.h>
+#include <openssl/rand.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +50,7 @@ static bool gmcp_queue(struct descriptor_data *d, const char *package, const cha
 static uint64_t gmcp_clock_revision;
 static int gmcp_clock_hour = -1;
 static char gmcp_clock_json[128];
+static char gmcp_session_process[33];
 
 static bool gmcp_streaming_enabled(P_desc d)
 {
@@ -56,11 +58,99 @@ static bool gmcp_streaming_enabled(P_desc d)
 	       (!d->character || !PLR3_FLAGGED(GET_TRUE_CHAR(d->character), PLR3_NOGMCP));
 }
 
+enum class gmcp_session_phase : unsigned char
+{
+	account,
+	chargen,
+	playing
+};
+
+static P_char gmcp_session_player(P_desc d)
+{
+	P_char player = d ? GET_TRUE_CHAR_D(d) : nullptr;
+	return player && IS_PC(player) ? player : nullptr;
+}
+
+static bool gmcp_session_supported(P_desc d)
+{
+	return d && d->gmcp_enabled &&
+	       (d->gmcp_supports & (GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_SESSION)) ==
+		       (GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_SESSION);
+}
+
+static gmcp_session_phase gmcp_session_current_phase(P_desc d)
+{
+	if (STATE(d) == CON_PLAYING && d->character && gmcp_session_player(d))
+		return gmcp_session_phase::playing;
+	if (d->websocket && d->chargen_phase != CHARGEN_UNSTARTED)
+		return gmcp_session_phase::chargen;
+	switch (STATE(d))
+	{
+	case CON_ACCT_NEW_CHAR:
+	case CON_ACCT_NEW_CHAR_NAME:
+	case CON_APPROPRIATE_NAME:
+	case CON_NEW_NAME:
+	case CON_NAME_CONF:
+	case CON_GET_SEX:
+	case CON_GET_RACE:
+	case CON_GET_CLASS:
+	case CON_HARDCORE:
+	case CON_NEWBIE:
+	case CON_STAT_METHOD:
+	case CON_REROLL:
+	case CON_BONUS1:
+	case CON_BONUS2:
+	case CON_BONUS3:
+	case CON_BONUS4:
+	case CON_BONUS5:
+	case CON_SWAPSTATYN:
+	case CON_SWAPSTAT:
+	case CON_ALIGN:
+	case CON_HOMETOWN:
+	case CON_KEEPCHAR:
+	case CON_RMOTD:
+	case CON_ACCEPTWAIT:
+		return gmcp_session_phase::chargen;
+	default:
+		return gmcp_session_phase::account;
+	}
+}
+
+static void gmcp_session_observe(P_desc d)
+{
+	const auto phase = gmcp_session_current_phase(d);
+	const bool playing = phase == gmcp_session_phase::playing;
+	const uint64_t player = playing ? gmcp_session_player(d)->runtime_id : 0;
+	const uint64_t body = playing ? d->character->runtime_id : 0;
+	const bool entry = playing && (d->gmcp_session_state != static_cast<unsigned char>(phase) ||
+				       d->gmcp_session_player != player);
+	const bool changed = d->gmcp_session_state != static_cast<unsigned char>(phase) ||
+			     d->gmcp_session_player != player || d->gmcp_session_body != body;
+	if (entry)
+	{
+		++d->gmcp_session_generation;
+		d->gmcp_session_body_revision = 1;
+		d->gmcp_session_resumed = false;
+	}
+	else if (playing && body != d->gmcp_session_body)
+		++d->gmcp_session_body_revision;
+	if (d->gmcp_session_state != static_cast<unsigned char>(phase) || entry)
+		d->gmcp_time_revision = 0;
+	if (changed)
+	{
+		if (playing && gmcp_session_supported(d))
+			d->gmcp_initial_state_pending = true;
+		d->gmcp_session_state = static_cast<unsigned char>(phase);
+		d->gmcp_session_player = player;
+		d->gmcp_session_body = body;
+		d->gmcp_session_pending = true;
+	}
+}
+
 static bool gmcp_time_active(P_desc d)
 {
 	return gmcp_streaming_enabled(d) && STATE(d) == CON_PLAYING && d->character &&
-	       (!IS_NPC(d->character) || IS_MORPH(d->character)) &&
-	       (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) &&
+	       gmcp_session_player(d) && (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) &&
 	       (d->gmcp_supports & d->gmcp_interests & GMCP_SUPPORT_TIME);
 }
 
@@ -68,9 +158,11 @@ void gmcp_preferences_changed(P_desc d)
 {
 	if (!d)
 		return;
-	if (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES)
+	if (d->gmcp_enabled && (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
 		d->gmcp_control_pending = true;
 	d->gmcp_time_revision = 0;
+	if (gmcp_session_supported(d))
+		d->gmcp_session_pending = true;
 }
 
 static void gmcp_flush_capabilities(P_desc d)
@@ -87,21 +179,135 @@ static void gmcp_flush_capabilities(P_desc d)
 	if (!d->gmcp_control_pending)
 		return;
 	char json[512];
-	const int length =
-		snprintf(json, sizeof(json),
-			 "{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
-			 "\"Duris.Subscribe\":1,\"Duris.Time\":1},\"supported\":[%s],"
-			 "\"interested\":[%s],\"active\":[%s]}",
-			 gmcp_streaming_enabled(d) ? "true" : "false",
-			 d->gmcp_supports & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
-			 d->gmcp_interests & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
-			 gmcp_time_active(d) ? "\"Duris.Time\"" : "");
+	const int length = snprintf(
+		json, sizeof(json),
+		"{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
+		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1},\"supported\":[%s],"
+		"\"interested\":[%s],\"active\":[%s],\"control\":[%s]}",
+		gmcp_streaming_enabled(d) ? "true" : "false",
+		d->gmcp_supports & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
+		d->gmcp_interests & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
+		gmcp_time_active(d) ? "\"Duris.Time\"" : "",
+		gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
 	if (length > 0 && static_cast<size_t>(length) < sizeof(json) &&
 	    gmcp_queue(d, "Duris.Capabilities", json))
 	{
 		d->gmcp_control_pending = false;
 		d->gmcp_active_streams = active;
 	}
+}
+
+static bool gmcp_session_nonce(char (&output)[33])
+{
+	if (output[0])
+		return true;
+	unsigned char nonce[16];
+	if (RAND_bytes(nonce, sizeof(nonce)) != 1)
+		return false;
+	for (size_t index = 0; index < sizeof(nonce); ++index)
+		snprintf(output + index * 2, 3, "%02x", nonce[index]);
+	return true;
+}
+
+static bool gmcp_session_send(P_desc d, gmcp_session_phase phase, uint64_t generation)
+{
+	if (!gmcp_session_nonce(d->gmcp_session_context) ||
+	    !gmcp_session_nonce(gmcp_session_process))
+		return false;
+	cJSON *root = cJSON_CreateObject();
+	if (!root)
+		return false;
+	char counter[21];
+	snprintf(counter, sizeof(counter), "%llu", static_cast<unsigned long long>(generation));
+	cJSON *character = phase == gmcp_session_phase::playing ? cJSON_CreateObject() :
+								  cJSON_CreateNull();
+	bool valid = character &&
+		     cJSON_AddStringToObject(root, "context", d->gmcp_session_context) &&
+		     cJSON_AddStringToObject(root, "process", gmcp_session_process) &&
+		     cJSON_AddStringToObject(root, "generation", counter) &&
+		     cJSON_AddStringToObject(root, "state",
+					     phase == gmcp_session_phase::playing ? "playing" :
+					     phase == gmcp_session_phase::chargen ? "chargen" :
+										    "account") &&
+		     cJSON_AddBoolToObject(root, "resumed", d->gmcp_session_resumed);
+	if (valid && phase == gmcp_session_phase::playing)
+	{
+		char name[MAX_NAME_LENGTH + 1];
+		strlcpy(name, GET_NAME(gmcp_session_player(d)), sizeof(name));
+		snprintf(counter, sizeof(counter), "%llu",
+			 static_cast<unsigned long long>(d->gmcp_session_body_revision));
+		valid = cJSON_AddStringToObject(character, "name", name) &&
+			cJSON_AddStringToObject(character, "bodyRevision", counter);
+	}
+	if (!valid || !cJSON_AddItemToObject(root, "character", character))
+	{
+		cJSON_Delete(character);
+		cJSON_Delete(root);
+		return false;
+	}
+	char *json = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	if (!json)
+		return false;
+	const bool accepted = gmcp_queue(d, "Duris.Session", json);
+	free(json);
+	return accepted;
+}
+
+static void gmcp_flush_session(P_desc d)
+{
+	if (d->write_failed || !gmcp_session_supported(d) || !d->gmcp_session_pending ||
+	    d->gmcp_control_pending)
+		return;
+	const auto phase = static_cast<gmcp_session_phase>(d->gmcp_session_state);
+	if (d->gmcp_session_sent &&
+	    d->gmcp_session_sent_state == static_cast<unsigned char>(gmcp_session_phase::playing) &&
+	    (phase != gmcp_session_phase::playing ||
+	     d->gmcp_session_sent_generation != d->gmcp_session_generation))
+	{
+		const auto clear =
+			phase == gmcp_session_phase::playing ? gmcp_session_phase::account : phase;
+		if (!gmcp_session_send(d, clear, d->gmcp_session_sent_generation))
+			return;
+		d->gmcp_session_sent_state = static_cast<unsigned char>(clear);
+		if (phase != gmcp_session_phase::playing &&
+		    d->gmcp_session_sent_generation == d->gmcp_session_generation)
+		{
+			d->gmcp_session_pending = false;
+			return;
+		}
+	}
+	if (!gmcp_session_send(d, phase, d->gmcp_session_generation))
+		return;
+	d->gmcp_session_sent = true;
+	d->gmcp_session_sent_state = static_cast<unsigned char>(phase);
+	d->gmcp_session_sent_generation = d->gmcp_session_generation;
+	d->gmcp_session_pending = false;
+}
+
+void gmcp_session_update(P_desc d)
+{
+	if (!d)
+		return;
+	gmcp_session_observe(d);
+	gmcp_flush_capabilities(d);
+	gmcp_flush_session(d);
+}
+
+void gmcp_session_restored(P_desc d)
+{
+	d->gmcp_session_state = static_cast<unsigned char>(gmcp_session_phase::playing);
+	d->gmcp_session_player = gmcp_session_player(d)->runtime_id;
+	d->gmcp_session_body = d->character->runtime_id;
+	if (!d->gmcp_session_generation)
+		d->gmcp_session_generation = 1;
+	if (!d->gmcp_session_body_revision)
+		d->gmcp_session_body_revision = 1;
+	d->gmcp_session_resumed = true;
+	d->gmcp_session_pending = true;
+	d->gmcp_session_sent = false;
+	d->gmcp_initial_state_pending = d->gmcp_enabled != 0;
+	gmcp_preferences_changed(d);
 }
 
 void gmcp_time_changed(void)
@@ -118,21 +324,24 @@ void gmcp_time_changed(void)
 static void gmcp_flush_time(P_desc d)
 {
 	// No JSON construction, clock work or traversal for an uninterested descriptor.
-	if (!gmcp_time_active(d) || d->gmcp_control_pending)
+	if (!gmcp_time_active(d) || d->gmcp_control_pending ||
+	    (gmcp_session_supported(d) && d->gmcp_session_pending))
 		return;
 	gmcp_time_changed();
 	if (d->gmcp_time_revision == gmcp_clock_revision)
 		return;
 	if (!gmcp_clock_json[0])
 	{
+		if (!gmcp_session_nonce(gmcp_session_process))
+			return;
 		const char *phase = gmcp_clock_hour >= 4 && gmcp_clock_hour <= 8   ? "dawn" :
 				    gmcp_clock_hour >= 9 && gmcp_clock_hour <= 15  ? "day" :
 				    gmcp_clock_hour >= 16 && gmcp_clock_hour <= 18 ? "dusk" :
 										     "night";
 		snprintf(gmcp_clock_json, sizeof(gmcp_clock_json),
-			 "{\"revision\":\"%llu\",\"hour\":%d,\"phase\":\"%s\"}",
+			 "{\"revision\":\"%llu\",\"hour\":%d,\"phase\":\"%s\",\"process\":\"%s\"}",
 			 static_cast<unsigned long long>(gmcp_clock_revision), gmcp_clock_hour,
-			 phase);
+			 phase, gmcp_session_process);
 	}
 	if (gmcp_queue(d, "Duris.Time", gmcp_clock_json))
 		d->gmcp_time_revision = gmcp_clock_revision;
@@ -218,13 +427,15 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 			requested |= GMCP_SUPPORT_CAPABILITIES;
 		else if (!strcmp(entry->valuestring, "Duris.Time 1"))
 			requested |= GMCP_SUPPORT_TIME;
+		else if (!strcmp(entry->valuestring, "Duris.Session 1"))
+			requested |= GMCP_SUPPORT_SESSION;
 	}
 	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
 	if (kind == gmcp_control_kind::subscribe)
 	{
 		if (!had_control)
 			return;
-		d->gmcp_interests = requested & d->gmcp_supports & GMCP_SUPPORT_TIME;
+		d->gmcp_interests = requested & d->gmcp_supports & GMCP_INTEREST_STREAMS;
 	}
 	else
 	{
@@ -241,6 +452,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 	d->gmcp_control_pending = d->gmcp_control_pending || had_control ||
 				  (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES);
 	d->gmcp_time_revision = 0;
+	if (gmcp_session_supported(d))
+		d->gmcp_session_pending = true;
 }
 
 static bool gmcp_handle_control(P_desc d, const char *data, size_t len)
@@ -337,7 +550,7 @@ void gmcp_flush_initial_states(void)
 			gmcp_send_initial_state(d->character);
 		}
 		else
-			gmcp_flush_capabilities(d);
+			gmcp_session_update(d);
 		gmcp_flush_time(d);
 	}
 }
@@ -506,6 +719,20 @@ static bool gmcp_queue(struct descriptor_data *d, const char *package, const cha
 		return false;
 	if (d->write_failed)
 		return false;
+	if (gmcp_session_supported(d) && strcmp(package, "Duris.Capabilities") &&
+	    strcmp(package, "Duris.Session"))
+	{
+		gmcp_session_update(d);
+		if (d->gmcp_control_pending || d->gmcp_session_pending)
+		{
+			d->gmcp_initial_state_pending = STATE(d) == CON_PLAYING;
+			return false;
+		}
+		if (d->gmcp_session_state !=
+			    static_cast<unsigned char>(gmcp_session_phase::playing) &&
+		    strncmp(package, "Core.", 5) && strcmp(package, "Char.Input"))
+			return false;
+	}
 
 	if (d->websocket)
 	{
@@ -551,14 +778,16 @@ void gmcp_send_initial_state(struct char_data *ch)
 	if (ch && ch->desc)
 	{
 		gmcp_preferences_changed(ch->desc);
-		gmcp_flush_capabilities(ch->desc);
-		if (ch->desc->gmcp_control_pending)
+		gmcp_session_update(ch->desc);
+		if (ch->desc->gmcp_control_pending ||
+		    (gmcp_session_supported(ch->desc) && ch->desc->gmcp_session_pending))
 		{
 			ch->desc->gmcp_initial_state_pending = true;
 			return;
 		}
 	}
-	if (!GMCP_ENABLED(ch) || (IS_NPC(ch) && !IS_MORPH(ch)))
+	if (!GMCP_ENABLED(ch) ||
+	    (IS_NPC(ch) && !IS_MORPH(ch) && (!ch->desc->original || IS_NPC(ch->desc->original))))
 		return;
 	ch->desc->gmcp_initial_state_pending = false;
 	ch->desc->gmcp_quest_map_sent = 0;

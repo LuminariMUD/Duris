@@ -51,7 +51,7 @@ int main() {
         assert(copyover_has_durable_shopkeepers() == (version>=13));
     }
     assert(remove(COPYOVER_FILE)==0);
-    puts("copyover versions 12-17: record widths and durable shopkeeper provenance PASS");
+    puts("copyover versions 12-18: record widths and durable shopkeeper provenance PASS");
 }
 '''
 db = (ROOT / "src/world/db.c").read_text()

@@ -14,7 +14,9 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path)
+parser.add_argument('--sanitize', action='store_true')
 args = parser.parse_args()
+sanitizers = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie'] if args.sanitize else []
 functions = [
     ('utility.c', 'string strip_ansi('),
     ('ship_utils.c', 'char *ShipSlot::get_status_str('),
@@ -54,6 +56,7 @@ functions = [
     ('world_quest.c', 'void show_map_at('),
     ('utility.c', 'int IS_MORPH('),
     ('ws_handlers.c', 'void ws_send_full_game_state('),
+    ('ws_handlers.c', 'static void ws_reset_chargen('),
 ]
 # MAP_AUTOMAP already suppresses text; mutating websocket would change framing.
 comm = source('comm.c').read_text()
@@ -80,10 +83,12 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     parser_source = gmcp[gmcp.index('void gmcp_handle_input('):gmcp.index('/* core gmcp send')]
     sender_source = gmcp[gmcp.index('/* core gmcp send'):gmcp.index('/* Bootstrap state')]
     (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
-        + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n')
+        + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n'
+        + '\nvoid rejected_creation(P_desc d, P_char ch) { account_racewar_admission admission{};\n'
+        + extract_function('ws_handlers.c', 'if (!account_commit_character_admission(d, ch, false, &admission))') + '\n}\n')
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-        '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
+        *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
         str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')), str(HARNESS_STUBS),
         '-Wl,--gc-sections', '-lcjson', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
     result = subprocess.run([str(binary)], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30)

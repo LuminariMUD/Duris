@@ -152,5 +152,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 		}
 	}
 
+	descriptor_list = &d;
+	gmcp_flush_initial_states();
+	descriptor_list = nullptr;
 	return 0;
 }

@@ -1623,6 +1623,8 @@ static void dispatch_session_input(P_desc descriptor, P_char character, char *in
 	case session_input_route::authentication_pending:
 		return;
 	}
+	if (route == session_input_route::nanny && is_desc_valid(descriptor))
+		gmcp_session_update(descriptor);
 	command_latency_record(latency, &event,
 			       latency_trace_elapsed_us(started_us, loop_monotonic_us()));
 }

@@ -1815,6 +1815,18 @@ struct descriptor_data
 	uint32_t gmcp_active_streams; // Last accepted control snapshot.
 	bool gmcp_control_pending;
 	uint64_t gmcp_time_revision;
+	uint64_t gmcp_session_generation;
+	uint64_t gmcp_session_player; // Runtime identities are never sent as player IDs.
+	uint64_t gmcp_session_body;
+	uint64_t gmcp_session_body_revision;
+	uint64_t gmcp_session_sent_generation;
+	unsigned char gmcp_session_state;
+	unsigned char gmcp_session_sent_state;
+	bool gmcp_session_pending;
+	bool gmcp_session_sent;
+	bool gmcp_session_resumed;
+	char gmcp_session_context[33]; // Opaque connection context; no account identity.
+
 	uint64_t gmcp_request_refill_ms[2];
 	unsigned char gmcp_request_tokens[2];
 	bool gmcp_command_receipts; // Opt-in, session-local input dequeue observation.

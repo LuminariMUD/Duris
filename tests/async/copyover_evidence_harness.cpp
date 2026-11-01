@@ -72,6 +72,42 @@ static void write_bytes(const std::string &path, const std::vector<char> &bytes)
 	output.write(bytes.data(), bytes.size());
 	assert(output.good());
 }
+
+static std::vector<char> descriptor_image(int version, const copyover_desc &desc)
+{
+	static_assert(offsetof(copyover_desc, gmcp_supports) == 660,
+		      "versions 12-17 have a frozen 660-byte descriptor record");
+	copyover_header header{};
+	memcpy(header.magic, COPYOVER_MAGIC, 4);
+	header.version = version;
+	header.num_descriptors = 1;
+	FILE *file = tmpfile();
+	assert(file);
+	assert(fwrite(&header, sizeof(header), 1, file) == 1);
+	const int sockets[3] = { -1, -1, -1 };
+	assert(fwrite(sockets, sizeof(sockets), 1, file) == 1);
+	assert(fwrite(&desc, copyover_desc_bytes_for_version(version), 1, file) == 1);
+	if (version >= 15)
+	{
+		telemetry_copyover_header telemetry{};
+		memcpy(telemetry.magic, "TLMY", 4);
+		telemetry.version = 1;
+		telemetry.count = 1;
+		telemetry_copyover_entry entry{};
+		entry.fd = desc.fd;
+		strcpy(entry.player_name, desc.player_name);
+		assert(fwrite(&telemetry, sizeof(telemetry), 1, file) == 1);
+		assert(fwrite(&entry, sizeof(entry), 1, file) == 1);
+	}
+	const auto size = ftell(file);
+	assert(size > 0);
+	rewind(file);
+	std::vector<char> bytes(static_cast<size_t>(size));
+	assert(fread(bytes.data(), bytes.size(), 1, file) == 1);
+	fclose(file);
+	return bytes;
+}
+
 static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count = 80,
 			       int inventory_count = 300)
 {
@@ -123,7 +159,7 @@ static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count 
 		affects[index].next = index + 1 < affects.size() ? &affects[index + 1] : nullptr;
 	}
 	mob.affected = affects.data();
-	if (version == COPYOVER_VERSION)
+	if (version >= 17)
 	{
 		const unsigned before = short_updates;
 		assert(write_mob_entry(file, &mob) && write_mob_affects(file, &mob) &&
@@ -216,6 +252,61 @@ int main(int argc, char **argv)
 	mobs[0].virtual_number = 2000;
 	const std::string path = "copyover.dat", claimed = path + ".recovering";
 	const auto valid = image();
+
+	if (std::string(argv[1]) == "protocol")
+	{
+		copyover_desc desc{};
+		desc.fd = 17;
+		strcpy(desc.player_name, "Tester");
+		desc.gmcp_enabled = 1;
+		desc.gmcp_supports = 7;
+		desc.gmcp_interests = 2;
+		desc.gmcp_session_generation = 9007199254740993ULL;
+		desc.gmcp_session_body_revision = 4;
+		desc.gmcp_command_receipts = 1;
+		desc.gmcp_input_sequence = 12345678901234567890ULL;
+		strcpy(desc.gmcp_session_context, "0123456789abcdef0123456789abcdef");
+		copyover_boot_snapshot snapshot;
+		for (int version = 12; version <= COPYOVER_VERSION; ++version)
+		{
+			const auto bytes = descriptor_image(version, desc);
+			write_bytes(path, bytes);
+			assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
+			copyover_desc decoded{};
+			memcpy(&decoded,
+			       snapshot.bytes.data() + sizeof(copyover_header) + 3 * sizeof(int),
+			       copyover_desc_bytes_for_version(version));
+			assert(decoded.fd == 17 && decoded.gmcp_enabled == 1 &&
+			       !strcmp(decoded.player_name, "Tester"));
+			if (version < 18)
+				assert(!decoded.gmcp_supports && !decoded.gmcp_session_context[0] &&
+				       !decoded.gmcp_session_generation);
+			else
+			{
+				assert(decoded.gmcp_supports == 7 && decoded.gmcp_interests == 2);
+				assert(decoded.gmcp_session_generation == 9007199254740993ULL &&
+				       decoded.gmcp_session_body_revision == 4);
+				assert(decoded.gmcp_input_sequence == 12345678901234567890ULL &&
+				       decoded.gmcp_command_receipts == 1);
+				assert(!strcmp(decoded.gmcp_session_context,
+					       desc.gmcp_session_context));
+			}
+		}
+		auto invalid = desc;
+		invalid.gmcp_command_receipts = 2;
+		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		invalid = desc;
+		memset(invalid.gmcp_session_context, 'a', sizeof(invalid.gmcp_session_context));
+		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		invalid = desc;
+		invalid.gmcp_session_context[10] = 'z';
+		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		std::cout << "copyover descriptor protocol versions 12-18 passed\n";
+		return 0;
+	}
 	if (std::string(argv[1]) == "formats")
 	{
 		copyover_boot_snapshot snapshot;
@@ -232,14 +323,13 @@ int main(int argc, char **argv)
 			assert(copyover_decode_mob(snapshot.bytes.data() + span.offset, span.size,
 						   version, &mob, &used) &&
 			       used == span.size);
-			assert(mob.affects.size() == (version == COPYOVER_VERSION ? 79 : 80) &&
+			assert(mob.affects.size() == (version >= 17 ? 79 : 80) &&
 			       mob.inventory.size() == 300);
 			assert(mob.mob.shopkeeper_shop_id == (version < 16 ? -1 : 7));
 			artifact_recovery_population population;
 			assert(!artifact_population_read_copyover(snapshot, &population));
 			assert(population.mobs.size() == 1 &&
-			       population.items.size() ==
-				       (version == COPYOVER_VERSION ? 303 : 302));
+			       population.items.size() == (version >= 17 ? 303 : 302));
 			for (const auto &row : population.items)
 				if (row.domain == artifact_payload_domain::copyover_reconstruction)
 					assert(!row.item_uid &&
@@ -252,7 +342,7 @@ int main(int argc, char **argv)
 			       child.custody.item_revision == 9 &&
 			       child.payload_owner.type == item_owner_type::corpse &&
 			       child.payload_owner.id == 77);
-			if (version == COPYOVER_VERSION)
+			if (version >= 17)
 			{
 				copyover_carried_item expected;
 				memset(&expected, 0, sizeof(expected));

@@ -1742,6 +1742,8 @@ P_char morph(P_char ch, int rnum, int mode)
 	SET_BIT(ch->specials.act, PLR_MORPH);
 
 	mob->only.npc->orig_char = ch;
+	if (mob->desc)
+		gmcp_session_update(mob->desc);
 	/*
 	 * Void is probably a safe place to PC for time being... assuming no
 	 * idiot gods don't fuck off in there
@@ -1825,6 +1827,7 @@ P_char un_morph(P_char mob)
 		 * clean up the desc...
 		 */
 		ch->desc->original = 0;
+		gmcp_session_update(ch->desc);
 		// The snoops on the shapechanged body end with it. They are the player's: each
 		// target notice and audit row names the player, who has the link back (ADR 0003).
 		for (snoop_by_data *node = ch->desc->snoop.snoop_by_list; node; node = node->next)

@@ -2434,6 +2434,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		d->character = NULL;
 		ch->desc = NULL;
 		free_char(ch);
+		ws_reset_chargen(d);
 		STATE(d) = CON_ACCT_SELECT_CHAR;
 		ws_send_auth_success(d, d->account->acct_name);
 		return;
@@ -3921,6 +3922,8 @@ void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 		if (!strcmp(cmd, entry.name))
 		{
 			entry.handler(d, data);
+			if (entry.handler != ws_cmd_game && is_desc_valid(d))
+				gmcp_session_update(d);
 			return;
 		}
 	}
