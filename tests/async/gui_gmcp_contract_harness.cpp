@@ -667,6 +667,7 @@ static void session_contract(P_char actor, bool websocket)
 	body.runtime_id = 200;
 	body.desc = &d;
 	body.player.name = const_cast<char *>("borrowed body");
+	body.in_room = actor->in_room;
 	body.points.hit = 37;
 	body.points.max_hit = 80;
 	d.original = actor;
@@ -678,6 +679,14 @@ static void session_contract(P_char actor, bool websocket)
 	assert(packages[&d].back() == "Char.Vitals");
 	check("playing", "1", "Tester", "2");
 	assert(d.gmcp_session_generation == 1);
+	const auto before_bootstrap = packages[&d].size();
+	gmcp_flush_initial_states();
+	assert(!d.gmcp_initial_state_pending);
+	const auto &body_packets = packages[&d];
+	for (const char *package : { "Char.Vitals", "Char.Affects", "Room.Info" })
+		assert(std::find(body_packets.begin() + before_bootstrap, body_packets.end(),
+				 package) != body_packets.end());
+	check("playing", "1", "Tester", "2");
 	d.character = actor;
 	d.original = nullptr;
 	actor->desc = &d;

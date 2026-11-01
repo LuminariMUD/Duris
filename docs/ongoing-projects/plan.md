@@ -42,6 +42,12 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- PR #544 review fix: a Session-aware player switching into an ordinary NPC now
+  receives the compatible bootstrap after its body revision. The native regression
+  fails on the reviewed guard and passes with player-owned NPCs admitted; the
+  live switch journey also requires Vitals, Affects and Room.Info before return.
+  Uncontrolled NPCs remain excluded from player bootstrap.
+
 - PR #542 review fix: capability invalidation remains pending until accepted
   by the transport, including duplicate support-removal requests in one burst
   and further requests while its queue retry is pending. The real parser/send

@@ -786,7 +786,8 @@ void gmcp_send_initial_state(struct char_data *ch)
 			return;
 		}
 	}
-	if (!GMCP_ENABLED(ch) || (IS_NPC(ch) && !IS_MORPH(ch)))
+	if (!GMCP_ENABLED(ch) ||
+	    (IS_NPC(ch) && !IS_MORPH(ch) && (!ch->desc->original || IS_NPC(ch->desc->original))))
 		return;
 	ch->desc->gmcp_initial_state_pending = false;
 	ch->desc->gmcp_quest_map_sent = 0;
