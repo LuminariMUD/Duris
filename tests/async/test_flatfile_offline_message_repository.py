@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import extract_function, rel
 import pathlib
 import subprocess
 import tempfile
@@ -50,18 +50,16 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-offline-") as temporary:
         raise SystemExit(run_result.stdout)
     print(run_result.stdout.strip())
 
-sql_source = (SRC / "sql.c").read_text()
-no_mysql = sql_source[
-    sql_source.index("#ifdef __NO_MYSQL__") : sql_source.index(
-        "#else", sql_source.index("#ifdef __NO_MYSQL__")
-    )
-]
+flatfile_route = "\n".join(extract_function("sql.c", signature) for signature in (
+    "static bool enqueue_flat_offline_message(",
+    "void send_to_pid_offline(const char *message, int pid)",
+    "void send_offline_messages(P_char ch)",
+))
+assert "enqueue_flat_offline_message(message, pid);" in flatfile_route
 for token in (
     "flatfile_offline_message_enqueue",
     "flatfile_offline_message_list",
     "flatfile_offline_message_acknowledge",
 ):
-    if token not in no_mysql:
+    if token not in flatfile_route:
         raise SystemExit(f"client-free offline route is missing {token}")
-if "void send_to_pid_offline(const char * /*msg*/" in no_mysql:
-    raise SystemExit("client-free offline message route is still a no-op")
