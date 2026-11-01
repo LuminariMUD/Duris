@@ -658,6 +658,63 @@ bool static_zone_eligibility(int zone, int level)
 	return profile.reward_count[level] > 0;
 }
 
+enum quest_rejection
+{
+	rejected_instance,
+	rejected_source,
+	rejected_zone,
+	rejected_location,
+	rejected_controlled,
+	rejected_nonlocal,
+	rejected_altitude,
+	rejected_kill_rules,
+	rejected_ask_population,
+	rejected_ask_speech_level,
+	rejected_ask_environment,
+	rejected_ask_hidden,
+	rejected_sleeping,
+	rejected_silenced,
+	rejected_actor_speech,
+	rejected_room_handler,
+	rejected_actor_object_handler,
+	rejected_room_object_handler,
+	rejected_mobile_handler,
+	rejected_visibility,
+	rejected_aggression,
+	rejected_supply,
+	rejected_completed,
+	rejected_history_limit,
+	quest_rejection_count,
+};
+
+constexpr const char *quest_rejection_names[] = {
+	"invalid_instance",
+	"reset_source",
+	"zone",
+	"location",
+	"controlled",
+	"nonlocal",
+	"altitude",
+	"kill_rules",
+	"ask_population",
+	"ask_speech_level",
+	"ask_environment",
+	"ask_hidden",
+	"sleeping",
+	"silenced",
+	"actor_speech",
+	"room_handler",
+	"actor_object_handler",
+	"room_object_handler",
+	"mobile_handler",
+	"visibility",
+	"aggression",
+	"supply",
+	"completed",
+	"history_limit",
+};
+static_assert(std::size(quest_rejection_names) == quest_rejection_count);
+
 struct quest_target_request
 {
 	P_char actor;
@@ -670,6 +727,21 @@ struct quest_target_request
 	int history_checks = WORLD_QUEST_MAX_HISTORY_CHECKS;
 	std::unordered_map<int, int> history;
 	std::map<int, std::vector<int>> tried;
+	// Predicate failures can count the same instance on multiple passes. Keep
+	// fixed-size counters and one example per reason; never log inside the scan.
+	std::array<size_t, quest_rejection_count> rejected{};
+	std::array<int, quest_rejection_count> examples{};
+	size_t scanned = 0;
+	int zones_tried = 0;
+	int last_target = 0;
+	const char *history_state = "not_checked";
+
+	bool reject(quest_rejection reason, int example = 0)
+	{
+		if (rejected[reason]++ == 0)
+			examples[reason] = example;
+		return false;
+	}
 
 	quest_target_request(P_char ch, int origin, int accepted_level, int accepted_target = 0)
 		: actor(ch)
@@ -680,6 +752,7 @@ struct quest_target_request
 		{
 			if (!quest_spend_work(work))
 				break;
+			++scanned;
 			if (mob->in_room >= 0 && mob->in_room <= top_of_world)
 				++population[mob->in_room];
 			const bool match = accepted_target ?
@@ -704,19 +777,23 @@ struct quest_target_request
 		       affected_by_spell(mob, TAG_CONJURED_PET);
 	}
 
-	bool ordinary_instance(P_char mob) const
+	bool ordinary_instance(P_char mob)
 	{
 		if (!IS_NPC(mob) || !IS_ALIVE(mob) || mob->in_room < 0 ||
 		    mob->in_room > top_of_world || GET_RNUM(mob) < 0 ||
 		    GET_RNUM(mob) > top_of_mobt || GET_HIT(mob) <= 0)
-			return false;
+			return reject(rejected_instance);
 		const auto *source = routine_source(mob);
-		return source && source->room >= 0 && source->room <= top_of_world &&
-		       world[source->room].number == GET_BIRTHPLACE(mob) &&
-		       world[source->room].zone == world[mob->in_room].zone &&
-		       source->profile->vnum == GET_VNUM(mob) &&
-		       static_zone_eligibility(world[mob->in_room].zone, level) &&
-		       quest_target_location(mob->in_room);
+		if (!source || source->room < 0 || source->room > top_of_world ||
+		    world[source->room].number != GET_BIRTHPLACE(mob) ||
+		    world[source->room].zone != world[mob->in_room].zone ||
+		    source->profile->vnum != GET_VNUM(mob))
+			return reject(rejected_source, GET_VNUM(mob));
+		if (!static_zone_eligibility(world[mob->in_room].zone, level))
+			return reject(rejected_zone, zone_table[world[mob->in_room].zone].number);
+		if (!quest_target_location(mob->in_room))
+			return reject(rejected_location, world[mob->in_room].number);
+		return true;
 	}
 
 	bool local(P_char mob) const
@@ -735,9 +812,15 @@ struct quest_target_request
 		return NOWHERE;
 	}
 
-	bool common(P_char mob) const
+	bool common(P_char mob)
 	{
-		return ordinary_instance(mob) && !controlled(mob) && local(mob);
+		if (!ordinary_instance(mob))
+			return false;
+		if (controlled(mob))
+			return reject(rejected_controlled, GET_VNUM(mob));
+		if (!local(mob))
+			return reject(rejected_nonlocal, GET_VNUM(mob));
+		return true;
 	}
 
 	bool actor_can_ask() const
@@ -771,28 +854,35 @@ struct quest_target_request
 		const auto &profile = *routine_source(mob)->profile;
 		const int room = mob->in_room;
 		if (mob->specials.z_cord != 0)
-			return false;
+			return reject(rejected_altitude, GET_VNUM(mob));
 		if (type == FIND_AND_KILL)
-			return profile.level >= level - 4 && profile.level <= level + 5 &&
-			       GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5 &&
-			       profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
-			       GET_EXP(mob) > 0 && !IS_SHOPKEEPER(mob) &&
-			       !IS_SET(mob->specials.act,
-				       ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE) &&
-			       !IS_SET(world[room].room_flags, ROOM_SAFE) &&
-			       !IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
-		if (mob_index[GET_RNUM(mob)].number != 1 || !profile.can_speak ||
-		    profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL || !CAN_SPEAK(mob) ||
-		    IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
+		{
+			const bool eligible =
+				profile.level >= level - 4 && profile.level <= level + 5 &&
+				GET_LEVEL(mob) >= level - 4 && GET_LEVEL(mob) <= level + 5 &&
+				profile.combat_eligible && GET_MAX_HIT(mob) > 1 &&
+				GET_EXP(mob) > 0 && !IS_SHOPKEEPER(mob) &&
+				!IS_SET(mob->specials.act,
+					ACT_TEACHER | ACT_GUILD_GOLEM | ACT_IGNORE) &&
+				!IS_SET(world[room].room_flags, ROOM_SAFE) &&
+				!IS_SET(zone_table[world[room].zone].flags, ZONE_SAFE);
+			return eligible || reject(rejected_kill_rules, GET_VNUM(mob));
+		}
+		if (mob_index[GET_RNUM(mob)].number != 1)
+			return reject(rejected_ask_population, GET_VNUM(mob));
+		if (!profile.can_speak || profile.level >= MAXLVL || GET_LEVEL(mob) >= MAXLVL ||
+		    !CAN_SPEAK(mob))
+			return reject(rejected_ask_speech_level, GET_VNUM(mob));
+		if (IS_SET(world[room].room_flags, ROOM_SILENT | ROOM_UNDERWATER) ||
 		    IS_SET(zone_table[world[room].zone].flags, ZONE_SILENT) ||
 		    world[room].sector_type == SECT_UNDERWATER ||
 		    world[room].sector_type == SECT_UNDERWATER_GR)
-			return false;
+			return reject(rejected_ask_environment, world[room].number);
 		if (level < 31 && (profile.invisible || profile.hidden ||
 				   IS_AFFECTED(mob, AFF_INVISIBLE | AFF_HIDE) ||
 				   IS_AFFECTED2(mob, AFF2_CONCEALMENT) ||
 				   IS_AFFECTED3(mob, AFF3_ECTOPLASMIC_FORM)))
-			return false;
+			return reject(rejected_ask_hidden, GET_VNUM(mob));
 		return true;
 	}
 
@@ -803,8 +893,8 @@ struct quest_target_request
 		const auto &room = world[mob->in_room];
 		if (room.funct && room.funct != inn && room.funct != ship_shop_proc &&
 		    room.funct != crew_shop_proc)
-			return false;
-		auto object_handler = [&](P_obj object)
+			return reject(rejected_room_handler, room.number);
+		auto object_handler = [&](P_obj object, quest_rejection reason)
 		{
 			if (!object)
 				return true;
@@ -813,20 +903,21 @@ struct quest_target_request
 			if (object->R_num < 0)
 				return true;
 			if (object->R_num > top_of_objt)
-				return false;
+				return reject(reason, -1);
 			const auto proc = obj_index[object->R_num].func.obj;
-			return !proc || proc == board || proc == artifact_hide ||
-			       proc == ring_of_regeneration || proc == tracks ||
-			       proc == blood_stains;
+			if (!proc || proc == board || proc == artifact_hide ||
+			    proc == ring_of_regeneration || proc == tracks || proc == blood_stains)
+				return true;
+			return reject(reason, obj_index[object->R_num].virtual_number);
 		};
 		for (P_obj object = actor->carrying; object; object = object->next_content)
-			if (!object_handler(object))
+			if (!object_handler(object, rejected_actor_object_handler))
 				return false;
 		for (P_obj object : actor->equipment)
-			if (!object_handler(object))
+			if (!object_handler(object, rejected_actor_object_handler))
 				return false;
 		for (P_obj object = room.contents; object; object = object->next_content)
-			if (!object_handler(object))
+			if (!object_handler(object, rejected_room_object_handler))
 				return false;
 		for (P_char person = room.people; person; person = person->next_in_room)
 		{
@@ -839,17 +930,28 @@ struct quest_target_request
 			if (rnum < 0 || rnum > top_of_mobt ||
 			    !ask_handler(person, mob_index[rnum].func.mob) ||
 			    !ask_handler(person, mob_index[rnum].qst_func))
-				return false;
+				return work.exhausted ? false :
+							reject(rejected_mobile_handler,
+							       rnum >= 0 && rnum <= top_of_mobt ?
+								       GET_VNUM(person) :
+								       -1);
 		}
 		return true;
 	}
 
 	bool type_eligible(P_char mob, int type)
 	{
-		return world_type_eligible(mob, type) &&
-		       (type != FIND_AND_ASK ||
-			(IS_AWAKE(mob) && !IS_AFFECTED2(mob, AFF2_SILENCED) && actor_can_ask() &&
-			 handlers_eligible(mob)));
+		if (!world_type_eligible(mob, type))
+			return false;
+		if (type != FIND_AND_ASK)
+			return true;
+		if (!IS_AWAKE(mob))
+			return reject(rejected_sleeping, GET_VNUM(mob));
+		if (IS_AFFECTED2(mob, AFF2_SILENCED))
+			return reject(rejected_silenced, GET_VNUM(mob));
+		if (!actor_can_ask())
+			return reject(rejected_actor_speech);
+		return handlers_eligible(mob);
 	}
 
 	int suggest(int zone, int type, int minimum)
@@ -864,9 +966,13 @@ struct quest_target_request
 			if (std::find(excluded.begin(), excluded.end(), vnum) != excluded.end())
 				continue;
 			const auto completed = history.find(vnum);
-			if ((completed != history.end() && completed->second > 0) ||
-			    (completed == history.end() && history_checks <= 0))
+			if (completed != history.end() && completed->second > 0)
 				continue;
+			if (completed == history.end() && history_checks <= 0)
+			{
+				reject(rejected_history_limit, vnum);
+				continue;
+			}
 			int count = 0;
 			for (P_char mob : instances)
 			{
@@ -878,6 +984,8 @@ struct quest_target_request
 			if ((type == FIND_AND_KILL && count >= minimum) ||
 			    (type == FIND_AND_ASK && count == 1))
 				candidates.push_back(vnum);
+			else
+				reject(rejected_supply, vnum);
 		}
 		if (work.exhausted || candidates.empty())
 			return -1;
@@ -908,9 +1016,15 @@ struct quest_target_request
 			if (!quest_spend_work(work, 8 * (population.at(mob->in_room) + 1)))
 				break;
 			if (!ac_can_see_from(actor, mob, mob->in_room))
+			{
+				reject(rejected_visibility, vnum);
 				continue;
+			}
 			if (type == FIND_AND_ASK && aggressive_to_at(mob, actor, mob->in_room))
+			{
+				reject(rejected_aggression, vnum);
 				continue;
+			}
 			if (checked.usable_count++ == 0)
 				checked.map_room = map_room(mob);
 		}
@@ -1200,17 +1314,61 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 							int required_type, int needed)
 {
 	target = {};
+	auto failed = [&](quest_creation_failure failure, const char *reason,
+			  const quest_target_request *request = nullptr)
+	{
+		if (ch && IS_PC(ch) && ch->only.pc->quest_replacement_due)
+		{
+			std::string rejections;
+			if (request)
+				for (size_t index = 0; index < quest_rejection_count; ++index)
+					if (request->rejected[index])
+					{
+						char entry[128];
+						snprintf(entry, sizeof(entry),
+							 "%s%s=%zu(example=%d)",
+							 rejections.empty() ? "" : ",",
+							 quest_rejection_names[index],
+							 request->rejected[index],
+							 request->examples[index]);
+						rejections += entry;
+					}
+			const auto region = request ? quest_region_for_room(request->origin_room) :
+						      world_quest_region{};
+			logit(LOG_STATUS,
+			      "World quest replacement failed: pid=%d stage=selection reason=%s "
+			      "current_level=%d accepted_level=%d selection_level=%d "
+			      "type=%d needed=%d old_target=%d "
+			      "origin=%d surface=%d underdark=%d uncertain=%d scanned=%zu "
+			      "candidate_zones=%zu zones_tried=%d last_target=%d history=%s "
+			      "probes_left=%d history_checks_left=%d work=%zu work_exhausted=%d "
+			      "rejections={%s}",
+			      GET_PID(ch), reason, GET_LEVEL(ch), ch->only.pc->quest_level,
+			      accepted_level, required_type, needed, ch->only.pc->quest_mob_vnum,
+			      origin_vnum, region.surface, region.underdark, region.uncertain,
+			      request ? request->scanned : size_t{ 0 },
+			      request ? request->mobs.size() : size_t{ 0 },
+			      request ? request->zones_tried : 0,
+			      request ? request->last_target : 0,
+			      request ? request->history_state : "not_checked",
+			      request ? request->probes : WORLD_QUEST_MAX_TARGET_PROBES,
+			      request ? request->history_checks : WORLD_QUEST_MAX_HISTORY_CHECKS,
+			      request ? request->work.work : size_t{ 0 },
+			      request && request->work.exhausted, rejections.c_str());
+		}
+		return failure;
+	};
 	if (!ch || IS_NPC(ch) || origin_vnum <= 0 || real_room(origin_vnum) == NOWHERE ||
 	    (required_type && required_type != FIND_AND_KILL && required_type != FIND_AND_ASK) ||
 	    needed < 0)
-		return QUEST_CREATION_INVALID_ACTOR;
+		return failed(QUEST_CREATION_INVALID_ACTOR, "invalid_request");
 	if (!world_quest_policy_bootstrap())
-		return QUEST_CREATION_NO_ELIGIBLE_ZONE;
+		return failed(QUEST_CREATION_NO_ELIGIBLE_ZONE, "catalog_unavailable");
 	bool eligible_zone = false;
 	for (int zone = 0; zone <= top_of_zone_table; ++zone)
 		eligible_zone = eligible_zone || static_zone_eligibility(zone, accepted_level);
 	if (!eligible_zone)
-		return QUEST_CREATION_NO_ELIGIBLE_ZONE;
+		return failed(QUEST_CREATION_NO_ELIGIBLE_ZONE, "no_eligible_zone");
 
 	quest_target_request request(ch, origin_vnum, accepted_level);
 	std::vector<int> remaining_zones;
@@ -1224,6 +1382,7 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 		const int zone = world_quest_policy_select_zone(accepted_level, remaining_zones);
 		if (zone < 0)
 			break;
+		++request.zones_tried;
 		remaining_zones.erase(
 			std::find(remaining_zones.begin(), remaining_zones.end(), zone));
 		const int first_type = required_type	   ? required_type :
@@ -1244,6 +1403,7 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 				const int vnum = request.suggest(zone, type, minimum);
 				if (vnum <= 0)
 					break;
+				request.last_target = vnum;
 				request.tried[zone].push_back(vnum);
 				auto completed = request.history.find(vnum);
 				if (completed == request.history.end())
@@ -1251,11 +1411,19 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 					--request.history_checks;
 					const int done = sql_world_quest_done_already(ch, vnum);
 					if (done < 0)
-						return QUEST_CREATION_NO_ELIGIBLE_TARGET;
+					{
+						request.history_state = "unavailable";
+						return failed(QUEST_CREATION_NO_ELIGIBLE_TARGET,
+							      "history_unavailable", &request);
+					}
+					request.history_state = "ready";
 					completed = request.history.emplace(vnum, done).first;
 				}
 				if (completed->second > 0)
+				{
+					request.reject(rejected_completed, vnum);
 					continue;
+				}
 				// Do the real live check after the history read, immediately
 				// before publishing the assignment. No prototype probe or
 				// movement/interaction command is run on this path.
@@ -1264,7 +1432,11 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 			}
 		}
 	}
-	return QUEST_CREATION_NO_ELIGIBLE_TARGET;
+	const char *reason = request.work.exhausted		      ? "work_budget_exhausted" :
+			     request.probes <= 0		      ? "probe_budget_exhausted" :
+			     request.rejected[rejected_history_limit] ? "history_budget_exhausted" :
+									"no_eligible_target";
+	return failed(QUEST_CREATION_NO_ELIGIBLE_TARGET, reason, &request);
 }
 
 int world_quest_policy_random_item(int zone_number)

@@ -42,6 +42,15 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- Review stack root: [PR #542](https://github.com/LuminariMUD/Duris/pull/542),
+  branch/issue-498-gmcp-contracts. Control/time commit `998a1639b` is published;
+  dependent chunks will use their own branches and target their immediate parent.
+- Master advanced to `881853d21` during qualification (quest replacement policy
+  and diagnostics). It merged cleanly. Recheck builds, the production GMCP
+  harness and the updated quest-target regression before publishing that merge.
+  The initial `ee6f9fbf3` artifacts stay historical; matched final overhead must
+  use the updated upstream baseline to avoid attributing quest-policy changes
+  to the protocol work.
 - First review chunk (ready for review): bounded Core.Supports.Set/Add/Remove, Capabilities and
   explicit Subscribe, plus the shared cached Duris.Time stream. The existing
   GUI harness now runs the real parser/control/send paths and additional time/

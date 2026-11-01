@@ -14,6 +14,8 @@
 #include "sql/sql.h"
 
 #include <cassert>
+#include <cstdarg>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <iostream>
@@ -59,6 +61,7 @@ int authored_target_level = -1, live_target_level = -1;
 int target_zone_average = -1;
 int shown_map = NOWHERE, map_calls = 0;
 std::string feedback;
+std::vector<std::string> replacement_logs;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
 
@@ -284,7 +287,19 @@ int singleton_shop_id(P_char)
 {
 	return 0;
 }
-void logit(const char *, const char *, ...) {}
+void logit(const char *destination, const char *format, ...)
+{
+	if (strncmp(format, "World quest replacement failed:", 31))
+		return;
+	assert(!strcmp(destination, LOG_STATUS));
+	char text[4096];
+	va_list arguments;
+	va_start(arguments, format);
+	const int length = vsnprintf(text, sizeof(text), format, arguments);
+	va_end(arguments);
+	assert(length >= 0 && static_cast<size_t>(length) < sizeof(text));
+	replacement_logs.emplace_back(text);
+}
 bool has_innate(P_char, int)
 {
 	return false;
@@ -912,6 +927,146 @@ int main(int argc, char **argv)
 		player.carrying = &hide_artifact;
 		hide_artifact.next_content = &regeneration_ring;
 	}
+#ifndef WORLD_QUEST_SQL_HISTORY
+	if (mode == "diagnostics")
+	{
+		// A retained level-23 ASK on a now-level-31 player, through the real
+		// replacement entry point. Each refusal must preserve all saved work.
+		P_char target = live.back().get();
+		P_char giver = spawn(2, 0, 0);
+		player.player.level = 31;
+		pc.quest_replacement_due = 1;
+		pc.quest_level = 23;
+		pc.quest_type = FIND_AND_ASK;
+		pc.quest_mob_vnum = 777;
+		pc.quest_map_bought = 1;
+		pc.quest_started = 12345;
+		auto refuses = [&](const char *reason, const char *detail = "stage=selection")
+		{
+			const auto before = pc;
+			const int before_dirty = dirty_marks;
+			replacement_logs.clear();
+			history_reads.clear();
+			assert(!world_quest_replace(&player, giver));
+			assert(!memcmp(&pc, &before, sizeof(pc)) && dirty_marks == before_dirty);
+			assert(replacement_logs.size() == 1);
+			const auto &message = replacement_logs.front();
+			assert(message.find(reason) != std::string::npos);
+			assert(message.find(detail) != std::string::npos);
+			assert(message.find("pid=42") != std::string::npos);
+			assert(interceptor_calls == 0 && probe_reads == boot_probes &&
+			       object_reads == boot_objects);
+		};
+		player.specials.affected_by2 |= AFF2_SILENCED;
+		refuses("actor_speech=", "history=not_checked");
+		assert(replacement_logs.front().find(
+			       "current_level=31 accepted_level=23 selection_level=31 type=2 needed=1") !=
+		       std::string::npos);
+		assert(replacement_logs.front().find("origin=1000 surface=") != std::string::npos);
+		player.specials.affected_by2 &= ~AFF2_SILENCED;
+
+		obj_data blocker{};
+		blocker.R_num = 0;
+		objects[0].func.obj = blocking_object;
+		player.carrying = &blocker;
+		refuses("actor_object_handler=",
+			("example=" + std::to_string(objects[0].virtual_number)).c_str());
+		player.carrying = nullptr;
+		player.equipment[0] = &blocker;
+		refuses("actor_object_handler=");
+		player.equipment[0] = nullptr;
+		rooms[3].contents = &blocker;
+		refuses("room_object_handler=");
+		rooms[3].contents = nullptr;
+		objects[0].func.obj = nullptr;
+		rooms[3].funct = blocking_room;
+		refuses("room_handler=", "example=2000");
+		rooms[3].funct = nullptr;
+		mobiles[1].func.mob = blocking_mobile;
+		refuses("mobile_handler=", "example=1003");
+		mobiles[1].func.mob = nullptr;
+		SET_POS(target, STAT_SLEEPING | POS_PRONE);
+		refuses("sleeping=");
+		SET_POS(target, STAT_NORMAL | POS_STANDING);
+		++mobiles[1].number;
+		refuses("ask_population=");
+		--mobiles[1].number;
+		player.specials.affected_by |= AFF_BLIND;
+		refuses("visibility=", "history=ready");
+		player.specials.affected_by &= ~AFF_BLIND;
+		target->only.npc->aggro_flags = AGGR_ALL;
+		refuses("aggression=");
+		target->only.npc->aggro_flags = 0;
+		fresh.clear();
+		refuses("completed=", "history=ready");
+		fresh.insert(1003);
+		mode = "history_error";
+		refuses("reason=history_unavailable", "history=unavailable");
+		mode = "diagnostics";
+
+		// Exhaust the existing bounded object walk without allocating millions
+		// of fixtures. The diagnostic must not walk the list a second time.
+		player.carrying = &blocker;
+		blocker.next_content = &blocker;
+		refuses("reason=work_budget_exhausted", "work_exhausted=1");
+		player.carrying = nullptr;
+		blocker.next_content = nullptr;
+		pc.quest_type = 99;
+		refuses("reason=invalid_request");
+		pc.quest_type = FIND_AND_KILL;
+		refuses("reason=no_remaining_work", "stage=precondition");
+		pc.quest_type = FIND_AND_ASK;
+		player.player.level = 1;
+		refuses("reason=no_eligible_zone");
+		player.player.level = level;
+		move(giver, 1);
+		refuses("reason=giver_not_present", "stage=precondition");
+		move(giver, 0);
+		replacement_logs.clear();
+		history_reads.clear();
+		assert(world_quest_replace(&player, giver));
+		assert(replacement_logs.empty() && !pc.quest_replacement_due &&
+		       pc.quest_level == level && pc.quest_map_bought && pc.quest_started == 12345);
+		std::cout << "replacement diagnostics and preserved entitlement: passed\n";
+		return 0;
+	}
+	if (mode == "replacement_level")
+	{
+		P_char giver = spawn(2, 0, 0);
+		pc.quest_replacement_due = 1;
+		pc.quest_level = level == 23 ? 30 : 23;
+		pc.quest_type = preferred_type;
+		pc.quest_mob_vnum = 777;
+		pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 3 : 0;
+		pc.quest_kill_how_many = preferred_type == FIND_AND_KILL ? 2 : 0;
+		pc.quest_receiver = 999;
+		pc.quest_shares_left = 2;
+		pc.quest_map_bought = 1;
+		pc.quest_started = 12345;
+		const auto accepted = pc;
+		player.specials.affected_by |= AFF_BLIND;
+		assert(!world_quest_replace(&player, giver));
+		assert(!memcmp(&pc, &accepted, sizeof(pc)) && dirty_marks == 0);
+		player.specials.affected_by &= ~AFF_BLIND;
+		history_reads.clear();
+		assert(world_quest_replace(&player, giver));
+		assert(pc.quest_level == player.player.level && pc.quest_active &&
+		       !pc.quest_replacement_due && dirty_marks == 1);
+		assert(pc.quest_type == accepted.quest_type &&
+		       pc.quest_kill_original == accepted.quest_kill_original &&
+		       pc.quest_kill_how_many == accepted.quest_kill_how_many &&
+		       pc.quest_receiver == accepted.quest_receiver &&
+		       pc.quest_shares_left == accepted.quest_shares_left &&
+		       pc.quest_map_bought == accepted.quest_map_bought &&
+		       pc.quest_started == accepted.quest_started);
+		// Validation reads the saved level too: an upgraded target must stay valid.
+		assert(world_quest_refresh(&player) == world_quest_target_status::valid);
+		assert(pc.quest_active && !pc.quest_replacement_due && dirty_marks == 1);
+		std::cout << "replacement level " << accepted.quest_level << " -> " << level << ' '
+			  << argv[3] << ": passed\n";
+		return 0;
+	}
+#endif
 #ifdef WORLD_QUEST_SQL_HISTORY
 	if (mode == "history_rollover" || mode == "history_same_day" || mode == "history_unready" ||
 	    mode == "history_failed_read" || mode == "history_write_rollover" ||
@@ -999,6 +1154,20 @@ int main(int argc, char **argv)
 		{
 			assert(!pc.quest_active && GET_MONEY(&player) == wallet);
 			assert(feedback.find("history") != std::string::npos);
+			// The same unavailable SQL cache must be identifiable on the free
+			// replacement path, which bypasses the normal purchase history gate.
+			const auto before_replacement = pc;
+			pc.quest_replacement_due = 1;
+			pc.quest_type = FIND_AND_KILL;
+			pc.quest_level = level;
+			pc.quest_kill_original = 1;
+			replacement_logs.clear();
+			assert(!world_quest_replace(&player, command_giver));
+			assert(replacement_logs.size() == 1 &&
+			       replacement_logs.front().find("reason=history_unavailable") !=
+				       std::string::npos);
+			assert(pc.quest_replacement_due && GET_MONEY(&player) == wallet);
+			pc = before_replacement;
 			quest_test_history_publish(0, true);
 			assert(world_quest(command_giver, &player, CMD_ASK, request.data()));
 		}
@@ -1419,14 +1588,16 @@ int main(int argc, char **argv)
 		assert(GET_MONEY(&player) == 10000 && wallet_debits == 0 && history_writes == 0);
 		zones[1].flags &= ~ZONE_CLOSED;
 		player.player.level = 10;
-		ask("quest"); // Continuation precedes new-purchase level and allowance gates.
+		ask("quest"); // No current-level targets below the selector's minimum level.
+		assert(!memcmp(&pc, &waiting, sizeof(pc)) && GET_MONEY(&player) == 10000);
+		player.player.level = level;
+		ask("quest"); // Replacement still bypasses payment and daily allowance gates.
 		assert(pc.quest_active && !pc.quest_replacement_due && GET_MONEY(&player) == 10000);
 		assert(pc.quest_level == level && pc.quest_type == preferred_type &&
 		       pc.quest_kill_original == accepted.quest_kill_original &&
 		       pc.quest_kill_how_many == accepted.quest_kill_how_many &&
 		       pc.quest_shares_left == 2 && pc.quest_map_bought == 1);
 		assert(wallet_debits == 0 && reward_claims == 0 && history_writes == 0);
-		player.player.level = level;
 		daily_remaining = 1;
 		pc.quest_map_bought = 0;
 		map_calls = 0;
@@ -1623,6 +1794,14 @@ int main(int argc, char **argv)
 	quest_creation_failure failure = QUEST_CREATION_NO_FAILURE;
 	const bool created = createQuestForGiverVnum(&player, 9000, 1000, &failure);
 	assert(created == expected);
+	if (mode == "history_cap" || mode == "history_cap_zones")
+		assert(replacement_logs.size() == 1 &&
+		       replacement_logs.front().find("reason=history_budget_exhausted") !=
+			       std::string::npos);
+	if (mode == "probe_cap" || mode == "probe_cap_zones")
+		assert(replacement_logs.size() == 1 &&
+		       replacement_logs.front().find("reason=probe_budget_exhausted") !=
+			       std::string::npos);
 	if (mode == "cosmetic")
 	{
 		for (auto procedure :
