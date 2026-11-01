@@ -19,6 +19,18 @@ before starting the new server. Snapshot version 14 reads older snapshots with
 a zero default; an older binary cannot read version 14 snapshots. The previously
 sealed online modes below do not authorize this new migration or a 59-step head.
 
+`run --online-quest-reward-count` accepts only the sealed 59-step manifest ending
+at `0058_world_quest_reward_count`, with all 58 earlier steps already applied.
+It retains production target confirmation, allow-list, fresh backup, advisory
+lock, checksums, ordered history and success-last verification. The November 1
+live review found MariaDB 11.8.6 and InnoDB/Dynamic `player_data`, with the new
+column absent. Existing readers and writers name their columns, so the
+default-zero tail column preserves their behavior. The runner strengthens only
+the sealed ALTER to `ALTER ONLINE TABLE`, requires INSTANT DDL and LOCK=NONE,
+and bounds metadata/row-lock waits to one second. Unsupported DDL or a lock
+timeout leaves services running. Hold the backup job lock across DDL so a
+schema-aware backup cannot straddle it, then verify runtime compatibility.
+
 ## Online chest receipts and shared frag storage (0056/0057)
 
 `run --online-chest-frag` accepts only the sealed 58-step manifest ending in

@@ -79,6 +79,9 @@ ONLINE_PWIPE_ROSTER_VERIFY = "5bc71cbd1a39cd1a036e2d907c9002cc7ff8f082c914d07948
 ONLINE_WORLD_QUEST_ID = "0055_world_quest_recovery"
 ONLINE_WORLD_QUEST_APPLY = "47767f2f2110f99179be5ae51a04e1250fa2380cdf4e5b6a4d2eb885e46999bb"
 ONLINE_WORLD_QUEST_VERIFY = "344a942d5d7122aa55470cc77b11220fa55d0fff73d87e0dc937da70e823713a"
+ONLINE_QUEST_REWARD_COUNT_ID = "0058_world_quest_reward_count"
+ONLINE_QUEST_REWARD_COUNT_APPLY = "d2ec137c50a0e5e4c91af6090c2e07c92959de4c192974c92088d716b040ccef"
+ONLINE_QUEST_REWARD_COUNT_VERIFY = "dc73918bc2426edbc0a607b4577eb6e86b9cec72b43f9d4c5346424013651316"
 ONLINE_DIVINE_BOON = (
     ("0048_divine_boon_state",
      "7c84955a35a6f34e4618773b2f08c2470219a54a982b0bf3e5a161ece78d0a68",
@@ -412,7 +415,8 @@ class MysqlExecutor:
                  online_divine_trade: bool = False,
                  online_pwipe_roster: bool = False,
                  online_world_quest: bool = False,
-                 online_chest_frag: bool = False):
+                 online_chest_frag: bool = False,
+                 online_quest_reward_count: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
@@ -457,7 +461,7 @@ class MysqlExecutor:
                 online_player_updates, online_artifact_pvp, online_nexus_phase1,
                 online_artifact_rejections, online_divine_boon, online_outbox_expectations,
                 online_divine_trade, online_pwipe_roster, online_world_quest,
-                online_chest_frag)) > 1:
+                online_chest_frag, online_quest_reward_count)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
         for enabled, count, pair in (
                 (online_player_updates, 43, ONLINE_PLAYER_UPDATES),
@@ -476,7 +480,7 @@ class MysqlExecutor:
             self.online_table = "player_data"
         if (online_level_cap_sides or online_combat_outcome_allies or online_nexus_phase1 or
                 online_artifact_rejections or online_outbox_expectations or online_pwipe_roster or
-                online_world_quest):
+                online_world_quest or online_quest_reward_count):
             if online_level_cap_sides:
                 reviewed = (ONLINE_LEVEL_CAP_ID, ONLINE_LEVEL_CAP_APPLY, ONLINE_LEVEL_CAP_VERIFY)
                 count, self.online_table = 39, "level_cap"
@@ -495,6 +499,10 @@ class MysqlExecutor:
                 reviewed = (ONLINE_WORLD_QUEST_ID, ONLINE_WORLD_QUEST_APPLY,
                             ONLINE_WORLD_QUEST_VERIFY)
                 count, self.online_table = 56, "player_data"
+            elif online_quest_reward_count:
+                reviewed = (ONLINE_QUEST_REWARD_COUNT_ID, ONLINE_QUEST_REWARD_COUNT_APPLY,
+                            ONLINE_QUEST_REWARD_COUNT_VERIFY)
+                count, self.online_table = 59, "player_data"
             elif online_pwipe_roster:
                 reviewed = (ONLINE_PWIPE_ROSTER_ID, ONLINE_PWIPE_ROSTER_APPLY,
                             ONLINE_PWIPE_ROSTER_VERIFY)
@@ -740,7 +748,7 @@ class MysqlExecutor:
                     payload = payload.replace(old, old.replace(b"ALTER TABLE", b"ALTER ONLINE TABLE"))
             if (self.online_artifact_pvp or
                     reviewed.migration_id in {ONLINE_ARTIFACT_REJECTIONS_ID, ONLINE_PWIPE_ROSTER_ID,
-                                             ONLINE_WORLD_QUEST_ID} or
+                                             ONLINE_WORLD_QUEST_ID, ONLINE_QUEST_REWARD_COUNT_ID} or
                     (self.online_divine_boon and migration.sequence == 49)):
                 # Strengthen only the sealed statements to LOCK=NONE. NOCOPY
                 # permits the unique index but refuses a clustered-table rebuild.
@@ -877,6 +885,9 @@ def main() -> int:
     online.add_argument("--online-world-quest", action="store_true",
                         help="apply only reviewed 0055 on MariaDB 11.8 using online INSTANT DDL; "
                              "requires production confirmation, backup and compatible live writers")
+    online.add_argument("--online-quest-reward-count", action="store_true",
+                        help="apply only reviewed 0058 on MariaDB 11.8 using online INSTANT DDL; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
@@ -887,7 +898,8 @@ def main() -> int:
                 arguments.online_nexus_phase1 or arguments.online_artifact_rejections or
                 arguments.online_divine_boon or arguments.online_outbox_expectations or
                 arguments.online_divine_trade or arguments.online_pwipe_roster or
-                arguments.online_world_quest or arguments.online_chest_frag) and \
+                arguments.online_world_quest or arguments.online_chest_frag or
+                arguments.online_quest_reward_count) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -910,7 +922,8 @@ def main() -> int:
                                  arguments.online_nexus_phase1, arguments.online_artifact_rejections,
                                  arguments.online_divine_boon, arguments.online_outbox_expectations,
                                  arguments.online_divine_trade, arguments.online_pwipe_roster,
-                                 arguments.online_world_quest, arguments.online_chest_frag)
+                                 arguments.online_world_quest, arguments.online_chest_frag,
+                                 arguments.online_quest_reward_count)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")

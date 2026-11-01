@@ -787,6 +787,79 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("requires run", result.stderr)
 
+    def test_online_quest_reward_count_scope_and_lock_mode(self):
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:59])
+        step = manifest.migrations[-1]
+        self.assertEqual(step.migration_id, "0058_world_quest_reward_count")
+        environment = {
+            "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
+            "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
+            "DB_ALLOWED_TARGETS": "127.0.0.1/duris",
+        }
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, environment, clear=True):
+            backup = self.make_production_backup(Path(temporary))
+            for target, path in ((None, backup), ("127.0.0.1/other", backup), ("127.0.0.1/duris", None)):
+                with self.assertRaises(runner.MigrationContractError):
+                    runner.MysqlExecutor(manifest, target, path, online_quest_reward_count=True)
+            with mock.patch.dict(os.environ, {"DB_ALLOWED_TARGETS": ""}):
+                with self.assertRaisesRegex(runner.MigrationContractError, "allow-listed"):
+                    runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                         online_quest_reward_count=True)
+            for field in ("apply_checksum", "verify_checksum"):
+                steps = manifest.migrations[:-1] + (runner.replace(step, **{field: "0" * 64}),)
+                with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                    runner.MysqlExecutor(runner.replace(manifest, migrations=steps),
+                                         "127.0.0.1/duris", backup, online_quest_reward_count=True)
+            for steps in (manifest.migrations[:-1], manifest.migrations + (step,)):
+                with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                    runner.MysqlExecutor(runner.replace(manifest, migrations=steps),
+                                         "127.0.0.1/duris", backup, online_quest_reward_count=True)
+            with self.assertRaisesRegex(runner.MigrationContractError, "select only one"):
+                runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                     online_quest_reward_count=True, online_world_quest=True)
+            executor = runner.MysqlExecutor(manifest, "127.0.0.1/duris", backup,
+                                           online_quest_reward_count=True)
+            original = step.apply_path.read_bytes()
+            with mock.patch.object(executor, "sql", side_effect=["11.8.6-MariaDB", "InnoDB", ""]) as sql:
+                executor.apply(step)
+                self.assertIn("TABLE_NAME='player_data'", sql.call_args_list[1].args[0])
+                self.assertEqual(sql.call_args.args[1],
+                                 b"SET SESSION alter_algorithm='INSTANT';\n"
+                                 b"SET SESSION lock_wait_timeout=1;\n"
+                                 b"SET SESSION innodb_lock_wait_timeout=1;\n" +
+                                 original.replace(b"'ALTER TABLE ", b"'ALTER ONLINE TABLE "))
+            self.assertEqual(step.apply_path.read_bytes(), original)
+            for version, engine in (("10.11.14-MariaDB", "InnoDB"), ("11.8.6-MariaDB", "MyISAM")):
+                with mock.patch.object(executor, "sql", side_effect=[version, engine]):
+                    with self.assertRaises(runner.MigrationContractError):
+                        executor.apply(step)
+            with mock.patch.object(executor, "sql", side_effect=["11.8.6-MariaDB", "InnoDB",
+                    runner.MigrationContractError("lock timeout")]):
+                with self.assertRaisesRegex(runner.MigrationContractError, "lock timeout"):
+                    executor.apply(step)
+            with mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    executor.apply(manifest.migrations[-2])
+                sql.assert_not_called()
+            # A pending earlier migration must fail before applying any SQL.
+            with mock.patch.object(executor, "acquire_lock"), \
+                    mock.patch.object(executor, "release_lock"), \
+                    mock.patch.object(executor, "require_baseline"), \
+                    mock.patch.object(executor, "applied", return_value=[
+                        runner.AppliedMigration(item.migration_id, item.sequence, item.description,
+                                                item.apply_checksum, item.verify_checksum,
+                                                item.compatibility, manifest.runner_version)
+                        for item in manifest.migrations[:-2]]), \
+                    mock.patch.object(executor, "sql") as sql:
+                with self.assertRaisesRegex(runner.MigrationContractError, "only reviewed"):
+                    runner.run_pending(manifest, executor)
+                sql.assert_not_called()
+        result = subprocess.run([sys.executable, str(ROOT / "scripts/migration_runner.py"),
+                                 "inspect", "--online-quest-reward-count"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("requires run", result.stderr)
+
     def test_online_divine_trade_scope_and_lock_mode(self):
         current = runner.load_manifest()
         manifest = runner.replace(current, migrations=current.migrations[:52])
