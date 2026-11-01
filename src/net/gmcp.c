@@ -1727,7 +1727,7 @@ void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messa
 	}
 	gmcp_session_update(d);
 	if (d->gmcp_control_pending || (gmcp_session_supported(d) && d->gmcp_session_pending) ||
-	    d->gmcp_event_count >= 64 || !gmcp_session_nonce(d->gmcp_session_context) ||
+	    !gmcp_session_nonce(d->gmcp_session_context) ||
 	    !gmcp_session_nonce(gmcp_session_process))
 	{
 		// Events cannot be coalesced or silently retried as the next hit. Existing
@@ -1769,8 +1769,14 @@ void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messa
 	const size_t payload_bytes = json ? strlen(json) : 0;
 	// Reserve room for either transport's framing/envelope as well as JSON.
 	const size_t bytes = payload_bytes + 128;
-	if (!json || payload_bytes > 4096 || bytes > 65536 - d->gmcp_event_bytes ||
-	    !gmcp_queue(d, "Duris.Combat", json))
+	if (d->gmcp_event_count >= 64 || (json && bytes > 65536 - d->gmcp_event_bytes))
+	{
+		// Optional event overload ends the subscription, not the gameplay connection.
+		d->gmcp_interests &= ~GMCP_SUPPORT_COMBAT;
+		d->gmcp_control_pending = true;
+		d->gmcp_combat_state_sent = false;
+	}
+	else if (!json || payload_bytes > 4096 || !gmcp_queue(d, "Duris.Combat", json))
 		d->write_failed = true;
 	else
 	{

@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **control/time, lifecycle and combat state ready in PRs #542/#544/#545; damage events in progress**. Updated 2026-11-01.
+Status: **control/time, lifecycle, combat state and damage events ready in PRs #542/#544/#545/#546**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -42,7 +42,14 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
-- Applied-damage slice in progress: Duris.Combat 1 requires explicit support and
+- Review integration: merged master `af8908ae3` through the GMCP stack, retaining
+  the parent branches and review history. Fixed shared WebSocket NPC accounting,
+  rejected-creation chargen cleanup, legacy first-hit victim snapshots and
+  combat-event quota teardown. The focused production-path sanitizer regressions
+  cover the repairs; the unrelated dirty checkout and owner-item continuation
+  were left untouched. Merge #542, #544, #545 and #546 in order, preserving commits
+  while descendants remain stacked. No release tag or production operation.
+- Applied-damage slice: Duris.Combat 1 requires explicit support and
   interest; active consumers receive each outgoing applied hit in the existing
   FIFO and no duplicate legacy round. Damage uses the actual before/after HP
   delta after gameplay caps/conversion, including secondary victims. Per-delivery
@@ -51,8 +58,11 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
   prevent nested spell procs changing the caller's metadata. No gameplay RNG call.
   Events carry context/process/generation/body revision and string sequence.
   Each interval permits 64 events/64 KiB including conservative envelope reserve;
-  allocation, queue or budget failure invalidates the connection rather than
-  silently dropping history. State retains its separate coalescing/retry behavior.
+  quota exhaustion cancels the combat-event subscription, retains gameplay and
+  other streams, and publishes a retryable capability invalidation followed by a
+  fresh combat snapshot. Explicit resubscription continues the event sequence
+  without replay. Allocation/transport queue failure still invalidates the
+  connection. State retains its separate coalescing/retry behavior.
   The native ASan/UBSan event cases pass actual fractional HP conversion,
   secondary/primary identity, masked labels, source metadata delivery copies,
   known/unknown critical, FIFO count/sequence, both bounds, 45 allocation budgets,
@@ -377,8 +387,9 @@ fallback retirement. This is coordination, not a new approval ceremony.
   options. Bound strings/collections before construction and final encoded size.
 - Reuse existing bounded Telnet/WebSocket FIFOs and failure/close behavior,
   avoiding a second event queue. Events are never silently overwritten;
-  exhausting event/transport limits uses the documented overflow/connection
-  reset policy. Preserve control-message room when transport permits final
+  exhausting the combat-event quota cancels that subscription with a control
+  invalidation and state resync; transport failures retain connection teardown.
+  Preserve control-message room when transport permits final
   invalidation. Test it: state resync cannot reconstruct missed dice/history.
 - Large item/WHO/scan results use bounded pages with revision, continuation and
   complete semantics; ordinary lists fit one page. Replace only completed

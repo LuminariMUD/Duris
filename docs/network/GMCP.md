@@ -234,9 +234,15 @@ a new process scope and sequence baseline while retaining the Session entry key.
 At most 64 events/64 KiB are accepted per descriptor between the existing
 (two-pulse) flushes. Byte accounting reserves 128 bytes per event for transport
 framing/envelope; each JSON payload is bounded below 4 KiB. There is no second
-event queue. If allocation, queue admission or these limits prevent retaining an
-event, the existing write-failure teardown invalidates the connection. Reconnect
-resynchronizes state and offers no historical replay or exactly-once guarantee.
+event queue. Reaching either quota cancels only the combat-event subscription.
+The next control flush removes it from the Capabilities interested/active arrays
+and refreshes Combat.Update, after any previously accepted FIFO events. Gameplay
+and other streams continue. Clients must treat the event history as incomplete;
+an explicit new Subscribe can restart events, with the sequence continuing and
+no replay of the lost hit. A rejected control invalidation stays pending for retry.
+Allocation or transport queue failure still uses the existing write-failure
+teardown. Reconnect resynchronizes state and offers no historical replay or
+exactly-once guarantee.
 Unsubscribe, preference disable or transport disable stops new event construction;
 previously queued FIFO events precede the control invalidation. An active event
 consumer never receives the same hit through the legacy `round` representation.
