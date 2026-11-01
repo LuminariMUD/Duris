@@ -361,3 +361,53 @@ The existing latency trace reports `gmcp_protocol` around the initial/item, room
 and ship protocol flushes, ending before queued ship saves and other persistence
 completion work. The older `gmcp_flush` span includes that additional work and
 must not be treated as serialization time. Both use the existing bounded tracer.
+
+## Short local cost check — 2026-11-01
+
+A matched reference/delivery check used the existing isolated minimal-world
+helpers, one staff descriptor, two combat NPCs and a controlled NPC carrying
+3,000 equal objects. Both binaries used g++ 13.3, development `-Og`, and the
+client-free flatfile backend on the same WSL host. A setup window was discarded;
+each case then collected 300 ticks and 150 protocol flushes over about 75 seconds.
+Cases ran sequentially against each binary. The new trace span uses the existing
+bounded statistics, with one extra clock read/record per protocol flush.
+
+Measured whole-tick averages (reference -> delivery), followed by delivery
+protocol average/max, all in microseconds:
+
+- Idle, items uninterested: 221 -> 211; protocol 6/10.
+- GMCP disabled: 195 -> 219; protocol 7/66.
+- Active combat: 227 -> 236; protocol 8/37.
+- Subscribed 3,000-item owner: 218 -> 244; protocol 55/669.
+- Nonreading peer with repeated resync requests: 211 -> 245; protocol 95/576.
+
+There were zero tick overruns in either run. The largest delivery tick was
+1,078 us (1.078 ms), against the existing 250 ms tick deadline. Idle/uninterested
+item JSON construction is separately asserted by the native allocation-count
+regression; existing legacy packets still run normally. Whole-process CPU was
+0.08-0.09 seconds per delivery window, versus 0.06-0.09 for the reference.
+The nonreading window's peak RSS was 37,708 KiB, versus 36,628 KiB for the preceding
+item window. The existing Telnet writer caps pending output at 1 MiB and tears
+down on overflow (`net/mccp.c`, `raw_write_to_descriptor`); the item stream adds
+one bounded in-progress page rather than another output queue. The suspended
+peer was not read during that window, so zero received bytes is not zero output,
+and this check does not measure a transport queue peak or successful delivery.
+
+This is a short local check, not a production capacity or percentile claim.
+There is one active descriptor; the existing separate native 100-descriptor test
+proves fair scheduling/page limits, not loaded-game timing. The reference predates
+some merged non-protocol fixes, and whole-loop deltas include those changes;
+`gmcp_protocol` isolates the delivered protocol work. No p95/p99 was collected.
+No material deadline/CPU cost was observed at this workload; larger deployments
+still depend on their real population, world and packet interest.
+
+Reference source: `881853d21f3d44f4e4c1c8853f330f1e4eb621d1`; binary SHA-256
+`d36c21621faa164f7c75cc5336765b99fd2d3fdf39eb7643a38fd39fffe10611`. Delivery source:
+`c532b739c755b3a36591a47b7fa3b17bf6c13ea8`; binary SHA-256
+`cd8de89073b509a34b68a4de7c31ca874c7a42d69f33265eaea9414a47f24601`.
+
+The local driver, configuration, raw latency summaries and result JSON remain
+under ignored `bin/qualification/issue498/short-cost/`. The driver is
+`python3 bin/qualification/issue498/short-cost/run.py`; it reuses the existing
+minimal-server, character, promotion and combat fixtures and preserves completed
+legs. No general benchmark framework or periodic telemetry service was added.
