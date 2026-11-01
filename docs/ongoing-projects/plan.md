@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **control/time and lifecycle ready in PRs #542/#544; combat slice in progress**. Updated 2026-11-01.
+Status: **control/time, lifecycle, combat state and damage events ready in PRs #542/#544/#545/#546**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -42,6 +42,39 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- Review integration: merged master `af8908ae3` through the GMCP stack, retaining
+  the parent branches and review history. Fixed shared WebSocket NPC accounting,
+  rejected-creation chargen cleanup, legacy first-hit victim snapshots and
+  combat-event quota teardown. The focused production-path sanitizer regressions
+  cover the repairs; the unrelated dirty checkout and owner-item continuation
+  were left untouched. Merge #542, #544, #545 and #546 in order, preserving commits
+  while descendants remain stacked. No release tag or production operation.
+- Applied-damage slice: Duris.Combat 1 requires explicit support and
+  interest; active consumers receive each outgoing applied hit in the existing
+  FIFO and no duplicate legacy round. Damage uses the actual before/after HP
+  delta after gameplay caps/conversion, including secondary victims. Per-delivery
+  message metadata carries spell/physical kind and the existing melee/archery
+  critical result; unprovided critical is null. Copies at the damage boundary
+  prevent nested spell procs changing the caller's metadata. No gameplay RNG call.
+  Events carry context/process/generation/body revision and string sequence.
+  Each interval permits 64 events/64 KiB including conservative envelope reserve;
+  quota exhaustion cancels the combat-event subscription, retains gameplay and
+  other streams, and publishes a retryable capability invalidation followed by a
+  fresh combat snapshot. Explicit resubscription continues the event sequence
+  without replay. Allocation/transport queue failure still invalidates the
+  connection. State retains its separate coalescing/retry behavior.
+  The native ASan/UBSan event cases pass actual fractional HP conversion,
+  secondary/primary identity, masked labels, source metadata delivery copies,
+  known/unknown critical, FIFO count/sequence, both bounds, 45 allocation budgets,
+  queue failure, 64-bit sequence and disabled construction on both transports.
+  Both builds, physical-layer/death-result/missile regressions, prompt/phase/docs
+  checks and 2,386,264 sanitizer fuzz executions pass. The booted journey passes
+  subscribed physical damage with a known critical boolean, no duplicate legacy
+  round, and matching current context/process/generation/body identifiers.
+- PR #545's fuzz harness now supplies the viewer helpers used by combat state.
+  Its isolated link failure was reproduced, repaired and qualified with 1,389,773
+  sanitizer fuzz executions, then pushed separately as `49fc1cf25`.
+
 - Combat state slice: extend legacy Combat.Update with authoritative room-local
   target/tank, explicit nulls, viewer masking and accepted-output revisions.
   The mutation audit found direct HP writes across regeneration, affects,
@@ -66,10 +99,12 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
   `fe9477140` is published. Both server builds, sanitizer/native lifetime and
   allocation/queue cases, live Telnet/WebSocket A/account/B/failed-entry/body
   switch/reconnect, and original-socket uncompressed/MCCP copyover pass.
-- Current implementation branch: branch/issue-498-combat-state, based on PR
-  #544's head. The next focused PR targets branch/issue-498-session-lifecycle.
-  Add authoritative target/tank state, room-local coalesced observer refresh and
-  actual applied-damage events with recipient masking; keep self vitals separate.
+- Combat state is ready for review in [PR #545](https://github.com/LuminariMUD/Duris/pull/545),
+  based on PR #544; implementation `1424da65b` is published and mergeable.
+- Current implementation branch: branch/issue-498-combat-events, based on PR
+  #545's head. The next focused PR targets branch/issue-498-combat-state.
+  Add opt-in actual applied-damage events with known metadata, recipient masking,
+  event ordering/bounds and no primary-target mutation or duplicate legacy round.
   Remaining inventory, actions/results, client/real-Mudlet and matched overhead
   gates are still required. No issue completion or HP-symptom fix is claimed.
 - PR #544 review fix: a Session-aware player switching into an ordinary NPC now
@@ -352,8 +387,9 @@ fallback retirement. This is coordination, not a new approval ceremony.
   options. Bound strings/collections before construction and final encoded size.
 - Reuse existing bounded Telnet/WebSocket FIFOs and failure/close behavior,
   avoiding a second event queue. Events are never silently overwritten;
-  exhausting event/transport limits uses the documented overflow/connection
-  reset policy. Preserve control-message room when transport permits final
+  exhausting the combat-event quota cancels that subscription with a control
+  invalidation and state resync; transport failures retain connection teardown.
+  Preserve control-message room when transport permits final
   invalidation. Test it: state resync cannot reconstruct missed dice/history.
 - Large item/WHO/scan results use bounded pages with revision, continuation and
   complete semantics; ordinary lists fit one page. Replace only completed

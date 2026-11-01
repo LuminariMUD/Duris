@@ -1829,6 +1829,9 @@ struct descriptor_data
 	gmcp_combat_subject gmcp_combat_subjects[2];
 	uint64_t gmcp_combat_revision;
 	bool gmcp_combat_state_sent;
+	uint64_t gmcp_event_sequence;
+	uint32_t gmcp_event_bytes;
+	unsigned gmcp_event_count;
 	uint64_t gmcp_session_generation;
 	uint64_t gmcp_session_player; // Runtime identities are never sent as player IDs.
 	uint64_t gmcp_session_body;
@@ -1927,6 +1930,10 @@ struct damage_messages
 	const char *death_room = nullptr;
 	int type = 0;
 	P_obj obj = nullptr;
+	// Authoritative delivery metadata; zero means the caller did not supply a kind.
+	int damage_kind = 0;
+	bool critical_known = false;
+	bool critical = false;
 };
 
 struct msg_type

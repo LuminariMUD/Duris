@@ -4397,7 +4397,10 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 	// ugly hack - we smuggle damage_type for eq poofing messages on 8 highest bits
 	messages->type |= type << 24;
-	result = raw_damage(ch, victim, dam, (RAWDAM_DEFAULT ^ flags) | RAWDAM_NOWARD, messages,
+	damage_messages delivery = *messages;
+	delivery.damage_kind = type;
+	delivery.critical_known = false;
+	result = raw_damage(ch, victim, dam, (RAWDAM_DEFAULT ^ flags) | RAWDAM_NOWARD, &delivery,
 			    damAccumulator);
 
 	if (type == SPLDAM_ACID && !number(0, 3))
@@ -5093,7 +5096,9 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 
 	messages->type |= 1 << 24;
 
-	result = raw_damage(ch, victim, dam, RAWDAM_DEFAULT | flags | RAWDAM_NOWARD, messages,
+	damage_messages delivery = *messages;
+	delivery.damage_kind = -1; // The physical reduction pipeline, independent of damage text.
+	result = raw_damage(ch, victim, dam, RAWDAM_DEFAULT | flags | RAWDAM_NOWARD, &delivery,
 			    damAccumulator);
 
 	if (result != DAM_NONEDEAD)
@@ -5745,19 +5750,14 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 			{
 				dam = GET_HIT(victim) + 11;
 			}
+			const int hit_before = GET_HIT(victim);
 			GET_HIT(victim) -= dam;
 			telemetry_runtime_game_combat_damage(
 				ch, victim, dam > 0.0 ? static_cast<std::uint64_t>(dam) : 0U, 0U);
 
 			/* Send GMCP updates for combat */
-			gmcp_char_vitals(victim); /* Update victim's vitals */
-			if (victim != ch)
-			{
-				if (GET_OPPONENT(ch) && GET_OPPONENT(ch) != victim)
-					gmcp_combat_target(ch, GET_OPPONENT(ch));
-				else
-					gmcp_combat_update(ch, victim, (int)dam, "unknown", 0);
-			}
+			gmcp_char_vitals(victim);
+			gmcp_combat_damage(ch, victim, hit_before - GET_HIT(victim), messages);
 		}
 
 		if (IS_PC(victim) && victim->desc &&
@@ -7549,6 +7549,8 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 
 	//!!!
 	// | RAWDAM_NOEXP,   // hitting yields normal exp -Odorf &messages)
+	messages.critical_known = true;
+	messages.critical = sic == -1;
 	if (melee_damage(ch, victim, dam,
 			 (msg == MSG_HIT ? PHSDAM_TOUCH : PHSDAM_HELLFIRE | PHSDAM_BATTLETIDE),
 			 &messages, damAccumulator) != DAM_NONEDEAD)

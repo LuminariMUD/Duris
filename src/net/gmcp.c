@@ -28,6 +28,7 @@
 #include "world/map.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
+#include "combat/damage.h"
 #include "sql/sql.h"
 #include "net/websocket.h"
 #include "net/ws_auth.h"
@@ -149,11 +150,17 @@ static void gmcp_session_observe(P_desc d)
 	}
 }
 
+static uint32_t gmcp_gameplay_streams(P_desc d)
+{
+	if (!gmcp_streaming_enabled(d) || STATE(d) != CON_PLAYING || !d->character ||
+	    !gmcp_session_player(d) || !(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
+		return 0;
+	return d->gmcp_supports & d->gmcp_interests & GMCP_INTEREST_STREAMS;
+}
+
 static bool gmcp_time_active(P_desc d)
 {
-	return gmcp_streaming_enabled(d) && STATE(d) == CON_PLAYING && d->character &&
-	       gmcp_session_player(d) && (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) &&
-	       (d->gmcp_supports & d->gmcp_interests & GMCP_SUPPORT_TIME);
+	return gmcp_gameplay_streams(d) & GMCP_SUPPORT_TIME;
 }
 
 void gmcp_preferences_changed(P_desc d)
@@ -172,7 +179,7 @@ static void gmcp_flush_capabilities(P_desc d)
 	if (!d || !d->gmcp_enabled || d->write_failed ||
 	    (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) && !d->gmcp_control_pending))
 		return;
-	const uint32_t active = gmcp_time_active(d) ? GMCP_SUPPORT_TIME : 0;
+	const uint32_t active = gmcp_gameplay_streams(d);
 	if (active != d->gmcp_active_streams)
 	{
 		d->gmcp_control_pending = true;
@@ -180,17 +187,24 @@ static void gmcp_flush_capabilities(P_desc d)
 	}
 	if (!d->gmcp_control_pending)
 		return;
+	const auto names = [](uint32_t streams)
+	{
+		std::string result = streams & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "";
+		if (streams & GMCP_SUPPORT_COMBAT)
+			result += (result.empty() ? "" : ",") + std::string("\"Duris.Combat\"");
+		return result;
+	};
+	const std::string supported = names(d->gmcp_supports);
+	const std::string interested = names(d->gmcp_interests);
+	const std::string active_names = names(active);
 	char json[512];
 	const int length = snprintf(
 		json, sizeof(json),
 		"{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
-		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1},\"supported\":[%s],"
+		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1},\"supported\":[%s],"
 		"\"interested\":[%s],\"active\":[%s],\"control\":[%s]}",
-		gmcp_streaming_enabled(d) ? "true" : "false",
-		d->gmcp_supports & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
-		d->gmcp_interests & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
-		gmcp_time_active(d) ? "\"Duris.Time\"" : "",
-		gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
+		gmcp_streaming_enabled(d) ? "true" : "false", supported.c_str(), interested.c_str(),
+		active_names.c_str(), gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
 	if (length > 0 && static_cast<size_t>(length) < sizeof(json) &&
 	    gmcp_queue(d, "Duris.Capabilities", json))
 	{
@@ -431,6 +445,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 			requested |= GMCP_SUPPORT_TIME;
 		else if (!strcmp(entry->valuestring, "Duris.Session 1"))
 			requested |= GMCP_SUPPORT_SESSION;
+		else if (!strcmp(entry->valuestring, "Duris.Combat 1"))
+			requested |= GMCP_SUPPORT_COMBAT;
 	}
 	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
 	if (kind == gmcp_control_kind::subscribe)
@@ -546,6 +562,8 @@ void gmcp_flush_initial_states(void)
 {
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
+		d->gmcp_event_count = 0;
+		d->gmcp_event_bytes = 0;
 		if (d->gmcp_initial_state_pending && STATE(d) == CON_PLAYING)
 		{
 			d->gmcp_initial_state_pending = false;
@@ -1681,6 +1699,93 @@ void gmcp_combat_target(struct char_data *ch, struct char_data *victim)
 void gmcp_combat_end(struct char_data *ch)
 {
 	gmcp_combat_publish(ch, true);
+}
+
+static const char *gmcp_damage_kind(int kind)
+{
+	const char *kinds[] = { "unknown", "generic", "fire",	  "cold", "lightning",
+				"gas",	   "acid",    "negative", "holy", "psionic",
+				"spirit",  "sound",   "earth" };
+	return kind == -1			     ? "physical" :
+	       kind >= 0 && kind <= LAST_SPLDAM_TYPE ? kinds[kind] :
+						       "unknown";
+}
+
+void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messages *messages)
+{
+	if (!GMCP_ENABLED(ch) || !victim || victim == ch || damage <= 0)
+		return;
+	P_desc d = ch->desc;
+	if (!(gmcp_gameplay_streams(d) & GMCP_SUPPORT_COMBAT))
+	{
+		// Preserve the legacy primary-only round, without claiming a complete hit log.
+		if (GET_OPPONENT(ch) && GET_OPPONENT(ch) != victim)
+			gmcp_combat_target(ch, GET_OPPONENT(ch));
+		else
+			gmcp_combat_update(ch, victim, damage, "unknown", 0);
+		return;
+	}
+	gmcp_session_update(d);
+	if (d->gmcp_control_pending || (gmcp_session_supported(d) && d->gmcp_session_pending) ||
+	    !gmcp_session_nonce(d->gmcp_session_context) ||
+	    !gmcp_session_nonce(gmcp_session_process))
+	{
+		// Events cannot be coalesced or silently retried as the next hit. Existing
+		// connection teardown invalidates the stream; reconnect has no event replay.
+		d->write_failed = true;
+		return;
+	}
+	const auto target = gmcp_combat_sample(ch, victim);
+	const auto actor = gmcp_combat_sample(ch, ch);
+	cJSON *root = cJSON_CreateObject();
+	char sequence[32], generation[32], body[32];
+	const uint64_t next = d->gmcp_event_sequence + 1;
+	snprintf(sequence, sizeof(sequence), "%llu", static_cast<unsigned long long>(next));
+	snprintf(generation, sizeof(generation), "%llu",
+		 static_cast<unsigned long long>(d->gmcp_session_generation));
+	snprintf(body, sizeof(body), "%llu",
+		 static_cast<unsigned long long>(d->gmcp_session_body_revision));
+	bool complete =
+		root && cJSON_AddNumberToObject(root, "version", 1) &&
+		cJSON_AddStringToObject(root, "context", d->gmcp_session_context) &&
+		cJSON_AddStringToObject(root, "process", gmcp_session_process) &&
+		cJSON_AddStringToObject(root, "generation", generation) &&
+		cJSON_AddStringToObject(root, "bodyRevision", body) &&
+		cJSON_AddStringToObject(root, "sequence", sequence) &&
+		cJSON_AddStringToObject(root, "kind", "damage") &&
+		cJSON_AddStringToObject(root, "outcome", "applied") &&
+		cJSON_AddStringToObject(root, "actor", actor.name) &&
+		(target.present ? cJSON_AddStringToObject(root, "target", target.name) :
+				  cJSON_AddNullToObject(root, "target")) &&
+		cJSON_AddBoolToObject(root, "primary", victim == GET_OPPONENT(ch)) &&
+		cJSON_AddNumberToObject(root, "damage", damage) &&
+		cJSON_AddStringToObject(root, "damageType",
+					gmcp_damage_kind(messages ? messages->damage_kind : 0)) &&
+		(messages && messages->critical_known ?
+			 cJSON_AddBoolToObject(root, "critical", messages->critical) :
+			 cJSON_AddNullToObject(root, "critical"));
+	char *json = complete ? cJSON_PrintUnformatted(root) : nullptr;
+	cJSON_Delete(root);
+	const size_t payload_bytes = json ? strlen(json) : 0;
+	// Reserve room for either transport's framing/envelope as well as JSON.
+	const size_t bytes = payload_bytes + 128;
+	if (d->gmcp_event_count >= 64 || (json && bytes > 65536 - d->gmcp_event_bytes))
+	{
+		// Optional event overload ends the subscription, not the gameplay connection.
+		d->gmcp_interests &= ~GMCP_SUPPORT_COMBAT;
+		d->gmcp_control_pending = true;
+		d->gmcp_combat_state_sent = false;
+	}
+	else if (!json || payload_bytes > 4096 || !gmcp_queue(d, "Duris.Combat", json))
+		d->write_failed = true;
+	else
+	{
+		d->gmcp_event_sequence = next;
+		++d->gmcp_event_count;
+		d->gmcp_event_bytes += bytes;
+		gmcp_combat_target(ch, GET_OPPONENT(ch));
+	}
+	free(json);
 }
 
 // End combat snapshots.

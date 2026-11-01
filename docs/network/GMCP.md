@@ -4,8 +4,8 @@ The same packages use Telnet GMCP subnegotiation and the existing WebSocket
 `{type:"gmcp", package, data}` envelope. Legacy gameplay packages keep their
 existing defaults. New versioned streams require explicit support and interest.
 This document describes the implemented control, time, lifecycle and combat
-state slices of issue #498. Applied-damage events, item, action and command-result
-work remains pending.
+state/damage slices of issue #498. Item, action and command-result work remains
+pending.
 
 ## Negotiation and interest
 
@@ -50,7 +50,7 @@ changes, playing-eligibility changes, initial character snapshots and preference
 re-enable/disable:
 
 ```json
-{"version":1,"enabled":true,"features":{"Duris.Capabilities":1,"Duris.Subscribe":1,"Duris.Time":1,"Duris.Session":1},"supported":["Duris.Time"],"interested":["Duris.Time"],"active":["Duris.Time"],"control":["Duris.Session"]}
+{"version":1,"enabled":true,"features":{"Duris.Capabilities":1,"Duris.Subscribe":1,"Duris.Time":1,"Duris.Session":1,"Duris.Combat":1},"supported":["Duris.Time"],"interested":["Duris.Time"],"active":["Duris.Time"],"control":["Duris.Session"]}
 ```
 
 `features` lists implemented contracts only. `supported` and `interested` list
@@ -192,10 +192,60 @@ complete battle log or aggregated combat round. Before the first combat
 relationship is established, its immediate snapshot uses the struck victim as
 the target, including a lethal first hit. The next periodic snapshot follows the
 current relationship and clears absent subjects. State-only updates never repeat
-the round. Secondary-hit events, known damage type/critical metadata and the
-negotiated event sequence/budget contract remain required in the next dependent
-PR. This state slice does not claim those events or the reported client HP
-symptom fixed.
+the round. Active Duris.Combat subscribers receive damage only through that event package;
+their Combat.Update packets contain state without `round`. Other clients retain
+the legacy primary-only round behavior. This does not claim the reported client
+HP symptom fixed; real widget qualification remains required.
+
+## Duris.Combat, version 1
+
+Advertise `Duris.Combat 1`, then include it in the replacement Subscribe array.
+It is independent of Time and is never enabled just by WebSocket or support.
+Each packet is one outgoing applied-damage event against another character:
+
+```json
+{"version":1,"context":"0123456789abcdef0123456789abcdef","process":"fedcba9876543210fedcba9876543210","generation":"1","bodyRevision":"1","sequence":"12","kind":"damage","outcome":"applied","actor":"Tester","target":"wolf","primary":false,"damage":17,"damageType":"physical","critical":true}
+```
+
+`damage` is whole HP actually removed, measured after the normal damage caps
+and the engine's fractional-to-integer HP conversion. Positive applied hits only;
+self-damage, misses, mitigation attempts and direct scripted HP assignments are
+outside this stream. Secondary victims still produce an event and do not change
+the primary opponent; `primary` compares the actual victim with that opponent.
+Target/tank state continues independently through Combat.Update.
+
+Actor/target names use the same bounded viewer policy as combat state. Unseen
+local targets are `someone`; a victim outside the viewer's room has `target:null`
+rather than disclosing a remote identity. No vnum, global runtime ID, raw command
+or typed argument is exposed. `damageType` is physical, generic, fire, cold,
+lightning, gas, acid, negative, holy, psionic, spirit, sound, earth or unknown,
+as supplied by the authoritative physical/spell/raw delivery path. `critical`
+is true/false only when the existing melee/archery calculation supplied its
+result, otherwise null. Delivery does not roll, notch, recompute damage or alter
+combat rules. Nested spell damage cannot overwrite the caller's metadata.
+
+Context/process/generation/body revision scope the event. `sequence` is a
+lossless decimal string increasing for each accepted event on this connection
+and process. It does not equal a combat-state revision. Events enter the existing
+transport FIFO immediately, in order; the following coalesced state may summarize
+several events. State/bootstrap resync never replays history. Hotboot establishes
+a new process scope and sequence baseline while retaining the Session entry key.
+
+At most 64 events/64 KiB are accepted per descriptor between the existing
+(two-pulse) flushes. Byte accounting reserves 128 bytes per event for transport
+framing/envelope; each JSON payload is bounded below 4 KiB. There is no second
+event queue. Reaching either quota cancels only the combat-event subscription.
+The next control flush removes it from the Capabilities interested/active arrays
+and refreshes Combat.Update, after any previously accepted FIFO events. Gameplay
+and other streams continue. Clients must treat the event history as incomplete;
+an explicit new Subscribe can restart events, with the sequence continuing and
+no replay of the lost hit. A rejected control invalidation stays pending for retry.
+Allocation or transport queue failure still uses the existing write-failure
+teardown. Reconnect resynchronizes state and offers no historical replay or
+exactly-once guarantee.
+Unsubscribe, preference disable or transport disable stops new event construction;
+previously queued FIFO events precede the control invalidation. An active event
+consumer never receives the same hit through the legacy `round` representation.
 
 ## Proof and remaining qualification
 

@@ -11,6 +11,7 @@
 #include "ships/ships.h"
 #include "world/db.h"
 #include "magic/spells.h"
+#include "combat/damage.h"
 #include "guild/assocs.h"
 #include <cassert>
 #include <cstdio>
@@ -346,6 +347,12 @@ bool save_dirty_shopkeepers(bool)
 	return true;
 }
 
+static damage_messages captured_damage;
+int raw_damage(P_char, P_char, double, uint, damage_messages *messages, int *)
+{
+	captured_damage = *messages;
+	return DAM_NONEDEAD;
+}
 #include "production.inc"
 
 static std::string payload(P_desc d, const char *package)
@@ -895,12 +902,12 @@ static void combat_contract(bool websocket)
 	// raw_damage publishes before damage() establishes the first combat relationship.
 	viewer.specials.fighting = enemy.specials.fighting = nullptr;
 	applied_damage_notice(&viewer, &enemy, 8);
-	check("wolf", 80, nullptr, 0);
+	check("wolf", 72, nullptr, 0);
 	assert(payload(&d, "Combat.Update").find("\"damage\":8") != std::string::npos);
 	gmcp_flush_combat(&d);
 	check(nullptr, 0, nullptr, 0);
 	// A lethal first hit can finish without ever establishing that relationship.
-	enemy.points.hit = -11;
+	enemy.points.hit = 10;
 	applied_damage_notice(&viewer, &enemy, 111);
 	check("wolf", 0, nullptr, 0);
 	gmcp_flush_combat(&d);
@@ -1026,10 +1033,200 @@ static void combat_contract(bool websocket)
 	descriptor_list = saved_list;
 }
 
+static void combat_events_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{}, primary{}, secondary{};
+	pc_only_data actor_pc{}, primary_pc{}, secondary_pc{};
+	actor.only.pc = &actor_pc;
+	primary.only.pc = &primary_pc;
+	secondary.only.pc = &secondary_pc;
+	actor.runtime_id = 21;
+	primary.runtime_id = 22;
+	secondary.runtime_id = 23;
+	actor.player.name = const_cast<char *>("Actor");
+	primary.player.name = const_cast<char *>("Primary");
+	secondary.player.name = const_cast<char *>("Secondary");
+	actor.in_room = primary.in_room = secondary.in_room = 1;
+	actor.points.hit = primary.points.hit = secondary.points.hit = 100;
+	actor.points.max_hit = primary.points.max_hit = secondary.points.max_hit = 100;
+	actor.specials.fighting = &primary;
+	descriptor_data d{};
+	const auto reset = [&]
+	{
+		d = descriptor_data{};
+		d.websocket = websocket;
+		d.character = &actor;
+		d.connected = CON_PLAYING;
+		d.gmcp_enabled = 1;
+		d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_SESSION |
+				  GMCP_SUPPORT_COMBAT;
+		d.gmcp_interests = GMCP_SUPPORT_COMBAT;
+		actor.desc = &d;
+		descriptor_list = &d;
+		gmcp_session_update(&d);
+	};
+	reset();
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES;
+	d.gmcp_interests = 0;
+	const char supports[] = "Core.Supports.Add [\"Duris.Session 1\",\"Duris.Combat 1\"]";
+	gmcp_handle_input(&d, supports, sizeof(supports) - 1);
+	assert(d.gmcp_supports & GMCP_SUPPORT_COMBAT);
+	assert(!d.gmcp_interests);
+	const char subscribe[] = "Duris.Subscribe [\"Duris.Combat 1\"]";
+	gmcp_handle_input(&d, subscribe, sizeof(subscribe) - 1);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_interests == GMCP_SUPPORT_COMBAT);
+	assert(payload(&d, "Duris.Capabilities").find("\"active\":[\"Duris.Combat\"]") !=
+	       std::string::npos);
+	const auto count = [&]
+	{ return std::count(packages[&d].begin(), packages[&d].end(), "Duris.Combat"); };
+	damage_messages hit{};
+	hit.damage_kind = -1;
+	hit.critical_known = hit.critical = true;
+	capture_spell_delivery(&actor, &primary, 10, SPLDAM_FIRE, 0, &hit);
+	assert(captured_damage.damage_kind == SPLDAM_FIRE && !captured_damage.critical_known);
+	assert(hit.damage_kind == -1 && hit.critical_known && hit.critical);
+	capture_physical_delivery(&actor, &primary, 10, 0, &hit);
+	assert(captured_damage.damage_kind == -1 && captured_damage.critical_known &&
+	       captured_damage.critical);
+	const auto before = packages[&d].size();
+	applied_damage_notice(&actor, &secondary, 17, &hit);
+	assert(actor.specials.fighting == &primary && secondary.points.hit == 83);
+	assert(packages[&d].size() == before + 1 && packages[&d].back() == "Duris.Combat");
+	cJSON *json = cJSON_Parse(payload(&d, "Duris.Combat").c_str());
+	assert(cJSON_GetObjectItem(json, "damage")->valueint == 17);
+	assert(cJSON_IsFalse(cJSON_GetObjectItem(json, "primary")));
+	assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "critical")));
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "damageType"))) ==
+	       "physical");
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "target"))) ==
+	       "Secondary");
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "sequence"))) == "1");
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "generation"))) == "1");
+	assert(std::strlen(cJSON_GetStringValue(cJSON_GetObjectItem(json, "context"))) == 32);
+	cJSON_Delete(json);
+	emit(&d, "Duris.Combat", "damage-secondary");
+	// Execute the authoritative no-kill/death caps before measuring the applied delta.
+	secondary.points.hit = 10;
+	applied_damage_notice(&actor, &secondary, 100, &hit, RAWDAM_NOKILL);
+	assert(secondary.points.hit == 1);
+	json = cJSON_Parse(payload(&d, "Duris.Combat").c_str());
+	assert(cJSON_GetObjectItem(json, "damage")->valueint == 9);
+	cJSON_Delete(json);
+	secondary.points.hit = 10;
+	applied_damage_notice(&actor, &secondary, 1000, &hit);
+	assert(secondary.points.hit == -11);
+	json = cJSON_Parse(payload(&d, "Duris.Combat").c_str());
+	assert(cJSON_GetObjectItem(json, "damage")->valueint == 21);
+	cJSON_Delete(json);
+	secondary.points.hit = 100;
+	// Production HP compound assignment removes two whole HP for a 1.9 input.
+	applied_damage_notice(&actor, &secondary, 1.9);
+	json = cJSON_Parse(payload(&d, "Duris.Combat").c_str());
+	assert(cJSON_GetObjectItem(json, "damage")->valueint == 2);
+	assert(cJSON_IsNull(cJSON_GetObjectItem(json, "critical")));
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "damageType"))) ==
+	       "unknown");
+	cJSON_Delete(json);
+	concealed = &secondary;
+	gmcp_combat_damage(&actor, &secondary, 3, nullptr);
+	assert(payload(&d, "Duris.Combat").find("someone") != std::string::npos);
+	assert(payload(&d, "Duris.Combat").find("Secondary") == std::string::npos);
+	concealed = nullptr;
+	hit.damage_kind = SPLDAM_FIRE;
+	hit.critical = false;
+	gmcp_combat_damage(&actor, &primary, 8, &hit);
+	json = cJSON_Parse(payload(&d, "Duris.Combat").c_str());
+	assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "primary")));
+	assert(cJSON_IsFalse(cJSON_GetObjectItem(json, "critical")));
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(json, "damageType"))) ==
+	       "fire");
+	cJSON_Delete(json);
+	const auto events = count();
+	gmcp_flush_initial_states();
+	assert(count() == events && d.gmcp_event_count == 0);
+	assert(payload(&d, "Combat.Update").find("Primary") != std::string::npos);
+	assert(payload(&d, "Combat.Update").find("round") == std::string::npos);
+	// Each event is retained in FIFO order; state resync never replays events.
+	for (int n = 0; n < 64; ++n)
+		gmcp_combat_damage(&actor, &primary, n + 1, &hit);
+	assert(count() == events + 64 && d.gmcp_event_count == 64 && d.gmcp_event_bytes < 65536);
+	const auto stopped_sequence = d.gmcp_event_sequence;
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && count() == events + 64);
+	assert(!(d.gmcp_interests & GMCP_SUPPORT_COMBAT) && d.gmcp_control_pending);
+	assert(d.gmcp_event_sequence == stopped_sequence);
+	const auto stopped = packages[&d].size();
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && !d.gmcp_control_pending && !d.gmcp_active_streams);
+	assert(packages[&d][stopped] == "Duris.Capabilities");
+	assert(packages[&d].back() == "Combat.Update");
+	assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") != std::string::npos);
+	assert(payload(&d, "Combat.Update").find("Primary") != std::string::npos);
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && count() == events + 64);
+	// Only an explicit new Subscribe restarts events; it never replays the lost hit.
+	control_clock_us += 1000000;
+	gmcp_handle_input(&d, subscribe, sizeof(subscribe) - 1);
+	gmcp_flush_initial_states();
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && count() == events + 65);
+	assert(d.gmcp_event_sequence == stopped_sequence + 1);
+	reset();
+	d.gmcp_supports |= GMCP_SUPPORT_TIME;
+	d.gmcp_interests |= GMCP_SUPPORT_TIME;
+	d.gmcp_event_bytes = 65536;
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && !d.gmcp_event_sequence);
+	assert(d.gmcp_interests == GMCP_SUPPORT_TIME && d.gmcp_control_pending);
+	queue_reject = true;
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && d.gmcp_control_pending);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && !d.gmcp_control_pending);
+	assert(d.gmcp_active_streams == GMCP_SUPPORT_TIME);
+	reset();
+	d.gmcp_event_sequence = 9007199254740992ULL;
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(payload(&d, "Duris.Combat").find("\"sequence\":\"9007199254740993\"") !=
+	       std::string::npos);
+	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
+	cJSON_InitHooks(&hooks);
+	for (int budget = 0; budget < 45; ++budget)
+	{
+		reset();
+		json_allocation_budget = budget;
+		const auto previous = count();
+		gmcp_combat_damage(&actor, &primary, 1, &hit);
+		json_allocation_budget = -1;
+		assert(count() == previous + (d.write_failed ? 0 : 1));
+		assert(d.gmcp_event_sequence == (d.write_failed ? 0U : 1U));
+	}
+	reset();
+	queue_reject = true;
+	const auto rejected = count();
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	queue_reject = false;
+	assert(d.write_failed && count() == rejected && !d.gmcp_event_sequence);
+	reset();
+	d.gmcp_enabled = 0;
+	const auto disabled_allocations = json_allocation_calls;
+	const auto disabled_visibility = visibility_checks;
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(json_allocation_calls == disabled_allocations &&
+	       visibility_checks == disabled_visibility);
+	cJSON_InitHooks(nullptr);
+	descriptor_list = saved_list;
+}
+
 int main()
 {
 	combat_contract(false);
 	combat_contract(true);
+	combat_events_contract(false);
+	combat_events_contract(true);
 	wire.clear();
 	ws_wire.clear();
 	packages.clear();
