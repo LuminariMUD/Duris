@@ -1175,7 +1175,8 @@ static bool do_get_container_preflight(P_char ch, P_obj s_obj, bool &corpse_flag
 
 static P_obj do_get_container_resolve_item(P_char ch, P_obj s_obj, char *arg1, bool carried)
 {
-	if (carried)
+	// Owned-container keywords work without sight; snapshot selectors require visibility.
+	if (carried && strncasecmp(arg1, "@i:", 3))
 		return get_obj_in_list(arg1, s_obj->contains);
 
 	return get_obj_in_list_vis(ch, arg1, s_obj->contains);
