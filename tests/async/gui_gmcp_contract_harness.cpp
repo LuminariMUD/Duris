@@ -3,27 +3,43 @@
 #include "core/utils.h"
 #include "core/json_utils.h"
 #include "net/gmcp.h"
+#include "net/comm.h"
+#include "item/item_actions.h"
+#include "item/encumbrance_policy.h"
 #include "net/websocket.h"
 #include "net/ws_auth.h"
 #include "persistence/latency_trace.h"
+#include "item/item_ownership_runtime.h"
+#include "player/player_load_items.h"
+#include "sql/sql_async.h"
+#include <memory>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include "ships/ships.h"
 #include "world/db.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
+#include "item/random_equipment.h"
+#include "world/vnum.obj.h"
 #include "guild/assocs.h"
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <cmath>
 
+void __free(void *memory, const char *, int)
+{
+	std::free(memory);
+}
 static room_data rooms[3];
 P_room world = rooms;
+P_obj object_list;
 // Selector rules have their own native round-trip harness. This fixture checks
 // that Room.Info carries the result through its normal serializer/framing path.
 bool get_char_room_target(P_char, P_char target, char *out, size_t capacity)
@@ -34,6 +50,7 @@ static zone_data zones[1];
 zone_data *zone_table = zones;
 const int top_of_world = 3;
 P_desc descriptor_list;
+const char *where[MAX_WEAR] = { "slot" };
 ContactData contacts[MAXSHIPS];
 const ShipTypeData ship_type_data[MAXSHIPCLASS] = { []
 						    {
@@ -80,9 +97,10 @@ char *get_class_string(P_char, char *buf)
 	std::strcpy(buf, "Warrior");
 	return buf;
 }
+static int item_vision = 1;
 int get_vis_mode(P_char, int)
 {
-	return 0;
+	return item_vision;
 }
 static P_char concealed;
 static int visibility_checks;
@@ -95,9 +113,17 @@ char *PERS(P_char subject, P_char, int, bool)
 {
 	return GET_NAME(subject);
 }
-bool ac_can_see_obj(P_char, P_obj, int)
+static P_obj denied_container;
+bool locker_container_access_allowed(P_char, P_obj object)
 {
-	return true;
+	return object != denied_container;
+}
+static P_obj concealed_item;
+static unsigned item_visibility_checks;
+bool ac_can_see_obj(P_char ch, P_obj object, int)
+{
+	++item_visibility_checks;
+	return object != concealed_item && !IS_AFFECTED(ch, AFF_KNOCKED_OUT);
 }
 static int websockets;
 const class_names class_names_table[64] = { { "Warrior", "Warrior", "War", 'W' } };
@@ -352,6 +378,107 @@ int raw_damage(P_char, P_char, double, uint, damage_messages *messages, int *)
 {
 	captured_damage = *messages;
 	return DAM_NONEDEAD;
+}
+void item_actions_source_leaving(P_obj) {}
+int fill_word(char *)
+{
+	return 0;
+}
+int GET_CLASS(P_char ch, uint cls)
+{
+	return (ch->player.m_class & cls) != 0;
+}
+char *str_dup(const char *value)
+{
+	return strdup(value);
+}
+static P_char disarm_target;
+static int disarm_roll = 1;
+int GET_CHAR_SKILL_P(P_char, int)
+{
+	return 100;
+}
+int number(int, int)
+{
+	return disarm_roll;
+}
+int STAT_INDEX(int value)
+{
+	return value;
+}
+int generic_find(const char *, int, P_char, P_char *, P_obj *)
+{
+	return 0;
+}
+P_char get_char_room_vis(P_char, const char *)
+{
+	return disarm_target;
+}
+void trapdamage(P_char, P_obj)
+{
+	assert(false);
+}
+void act(const char *, int, P_char, P_obj, void *, int) {}
+void send_to_char(const char *, P_char) {}
+void strip_holy_sword(P_char) {}
+void CharWait(P_char, int) {}
+void set_short_affected_by(P_char, int, int) {}
+void set_fighting(P_char ch, P_char victim)
+{
+	ch->specials.fighting = victim;
+}
+void all_affects(P_char, int) {}
+void balance_affects(P_char) {}
+void clear_links(P_char, P_obj, int) {}
+int char_light(P_char)
+{
+	return 0;
+}
+int room_light(int, int)
+{
+	return 0;
+}
+static void mark_char_or_owner_dirty(P_char) {}
+// The committed-reward publisher is real; only storage/attachment services are
+// controlled. Native command journeys separately exercise the attachment owners.
+static std::function<void(bool, const sql_rows &)> reward_read_done;
+static bool reward_hydrate = true;
+static unsigned reward_reads, reward_attachments, reward_extractions;
+bool sql_read_at(persistence_query_site, std::string,
+		 std::function<void(bool, const sql_rows &)> done)
+{
+	assert(!reward_read_done);
+	++reward_reads;
+	reward_read_done = std::move(done);
+	return true;
+}
+bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *, size_t)
+{
+	return reward_hydrate;
+}
+void obj_to_char(P_obj object, P_char actor)
+{
+	assert(OBJ_NOWHERE(object));
+	++reward_attachments;
+	object->loc_p = LOC_CARRIED;
+	object->loc.carrying = actor;
+	object->next_content = actor->carrying;
+	actor->carrying = object;
+	gmcp_items_changed(actor);
+}
+void extract_obj(P_obj object, int)
+{
+	assert(object == object_list && OBJ_NOWHERE(object));
+	++reward_extractions;
+	object_list = object->next;
+}
+bool player_load_item_graph_materialize_detached(const std::vector<player_item_snapshot> &,
+						 const std::vector<player_load_item_identity> &,
+						 const item_owner_identity &, uint64_t, bool, bool,
+						 std::vector<P_obj> *,
+						 player_load_item_materialize_metrics *)
+{
+	return false; // Restoration itself is covered by the publication/load harnesses.
 }
 #include "production.inc"
 
@@ -1221,8 +1348,758 @@ static void combat_events_contract(bool websocket)
 	descriptor_list = saved_list;
 }
 
+static void items_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{}, other{};
+	pc_only_data pc{}, other_pc{};
+	actor.only.pc = &pc;
+	other.only.pc = &other_pc;
+	actor.runtime_id = 300;
+	actor.player.name = const_cast<char *>("Collector");
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	descriptor_data d{};
+	d.descriptor = 51;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &actor;
+	actor.desc = &d;
+	descriptor_list = &d;
+	std::vector<obj_data> inventory(3000);
+	for (size_t i = 0; i < inventory.size(); ++i)
+	{
+		auto &object = inventory[i];
+		object.obj_uid = 9007199254740993ULL + i;
+		object.name = const_cast<char *>("sword red blade");
+		object.short_description = const_cast<char *>("a &+Rred&n blade");
+		object.condition = 75;
+		object.extra_flags = ITEM_GLOW;
+		object.loc_p = LOC_CARRIED;
+		object.loc.carrying = &actor;
+		object.next_content = i + 1 < inventory.size() ? &inventory[i + 1] : nullptr;
+	}
+	actor.carrying = inventory.data();
+	const char supports[] =
+		"Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Session 1\",\"Char.Items 1\"]";
+	gmcp_handle_input(&d, supports, sizeof(supports) - 1);
+	gmcp_flush_initial_states();
+	assert(!d.gmcp_items_started); // Support alone never constructs an owner list.
+	const char subscribe[] = "Duris.Subscribe [\"Char.Items 1\"]";
+	gmcp_handle_input(&d, subscribe, sizeof(subscribe) - 1);
+	std::set<std::string> selectors;
+	std::vector<std::string> first_selectors;
+	size_t rows = 0;
+	unsigned expected_page = 0;
+	std::string revision;
+	for (unsigned flush = 0; flush < 100; ++flush)
+	{
+		const auto previous = deliveries[&d].size();
+		gmcp_flush_initial_states();
+		unsigned pages = 0;
+		for (size_t i = previous; i < deliveries[&d].size(); ++i)
+		{
+			const auto &[package, payload] = deliveries[&d][i];
+			if (package != "Char.Items.List")
+				continue;
+			++pages;
+			assert(payload.size() <= 16384);
+			assert(payload.find("vnum") == std::string::npos &&
+			       payload.find("cost") == std::string::npos);
+			cJSON *json = cJSON_Parse(payload.c_str());
+			const std::string location =
+				cJSON_GetStringValue(cJSON_GetObjectItem(json, "location"));
+			const std::string current_revision =
+				cJSON_GetStringValue(cJSON_GetObjectItem(json, "revision"));
+			if (revision.empty())
+				revision = current_revision;
+			assert(revision == current_revision);
+			cJSON *items = cJSON_GetObjectItem(json, "items");
+			assert(cJSON_GetArraySize(items) <= 128);
+			assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "available")));
+			if (location == "inv")
+			{
+				assert(cJSON_GetObjectItem(json, "page")->valueint ==
+				       static_cast<int>(expected_page++));
+				for (cJSON *row = items->child; row; row = row->next)
+				{
+					assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(
+						       row, "description"))) == "a red blade");
+					assert(cJSON_GetObjectItem(row, "quantity")->valueint == 1);
+					const std::string selector = cJSON_GetStringValue(
+						cJSON_GetObjectItem(row, "selector"));
+					assert(selectors.insert(selector).second);
+					if (first_selectors.size() < 2)
+						first_selectors.push_back(selector);
+					++rows;
+				}
+				if (cJSON_IsTrue(cJSON_GetObjectItem(json, "complete")))
+					assert(rows == inventory.size());
+			}
+			else
+				assert(location == "eq" && !cJSON_GetArraySize(items) &&
+				       cJSON_IsTrue(cJSON_GetObjectItem(json, "complete")));
+			cJSON_Delete(json);
+		}
+		assert(pages <= 1);
+		if (d.gmcp_items_started && d.gmcp_items_location == 2)
+			break;
+	}
+	assert(rows == 3000 && d.gmcp_items_location == 2 && d.gmcp_items_revision == 1);
+	assert(get_obj_in_list_vis(&actor, first_selectors[0].c_str(), actor.carrying, false) ==
+	       &inventory[0]);
+	assert(get_obj_in_list_vis(&actor, first_selectors[1].c_str(), actor.carrying, false) ==
+	       &inventory[1]);
+	assert(!gmcp_item_selector_matches(&other, &inventory[0], first_selectors[0].c_str()));
+	const char refresh[] = "Char.Items.Get []";
+	gmcp_handle_input(&d, refresh, sizeof(refresh) - 1);
+	assert(!d.gmcp_items_started);
+	gmcp_handle_input(&d, refresh, sizeof(refresh) - 1);
+	assert(!d.gmcp_request_tokens[2]);
+	// One pair of coalesced resync requests produces one replacement revision.
+	while (!d.gmcp_items_started || d.gmcp_items_location < 2)
+		gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == 2);
+	const auto revision_before_flood = d.gmcp_items_revision;
+	gmcp_handle_input(&d, refresh, sizeof(refresh) - 1);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision_before_flood);
+	const auto stable_packets = deliveries[&d].size();
+	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
+	cJSON_InitHooks(&hooks);
+	const auto allocations = json_allocation_calls;
+	for (int n = 0; n < 10; ++n)
+		gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == stable_packets && json_allocation_calls == allocations);
+	// Setters observe actual changes and ignore no-ops, without persistence work.
+	const auto epoch = actor.gmcp_items_epoch;
+	set_obj_condition(&inventory[0], 75);
+	set_obj_extra_flags(&inventory[0], ITEM_GLOW);
+	assert(actor.gmcp_items_epoch == epoch);
+	set_obj_condition(&inventory[0], 25);
+	assert(actor.gmcp_items_epoch == epoch + 1 && !d.gmcp_items_started);
+	set_obj_extra2_flags(&inventory[0], ITEM2_MAGIC);
+	assert(actor.gmcp_items_epoch == epoch + 2);
+	// Mutation invalidates old selectors immediately and coalesces before flush.
+	for (int n = 0; n < 20; ++n)
+		gmcp_items_changed(&actor);
+	assert(!gmcp_item_selector_matches(&actor, &inventory[0], first_selectors[0].c_str()));
+	inventory[0].name = first_selectors[0].data();
+	assert(!get_obj_in_list_vis(&actor, first_selectors[0].c_str(), actor.carrying, false));
+	inventory[0].name = const_cast<char *>("sword red blade");
+	assert(get_obj_in_list_vis(&actor, "sword", actor.carrying, false) == &inventory[0]);
+	actor.carrying = &inventory[1];
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == 3 && d.gmcp_items_location == 0);
+	// Freeing an unlinked cursor between pages is safe: reset occurs before reuse.
+	actor.carrying = nullptr;
+	gmcp_items_changed(&actor);
+	inventory.clear();
+	inventory.shrink_to_fit();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_location == 1);
+	cJSON *empty = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+	assert(cJSON_GetArraySize(cJSON_GetObjectItem(empty, "items")) == 0);
+	assert(cJSON_IsTrue(cJSON_GetObjectItem(empty, "complete")));
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-empty");
+	cJSON_Delete(empty);
+	obj_data worn{};
+	worn.obj_uid = 77;
+	worn.name = const_cast<char *>("blade");
+	worn.short_description = const_cast<char *>("a blade");
+	worn.loc_p = LOC_WORN;
+	worn.loc.wearing = &actor;
+	actor.equipment[WIELD] = &worn;
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	cJSON *equipment = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+	cJSON *row = cJSON_GetArrayItem(cJSON_GetObjectItem(equipment, "items"), 0);
+	std::string selector = cJSON_GetStringValue(cJSON_GetObjectItem(row, "selector"));
+	assert(cJSON_GetObjectItem(row, "slot")->valueint == WIELD);
+	char selected[96];
+	strlcpy(selected, selector.c_str(), sizeof(selected));
+	assert(get_obj_equipped(&actor, selected) == &worn);
+	int slot;
+	assert(get_object_in_equip(&actor, selected, &slot) == &worn && slot == WIELD);
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-equipment");
+	cJSON_Delete(equipment);
+	// Finite lights illuminate when worn, but not in inventory or nested lists.
+	worn.type = ITEM_LIGHT;
+	worn.value[2] = 2;
+	cJSON *carried_light = gmcp_item_row(&actor, &worn, -1, d.gmcp_items_scope);
+	assert(cJSON_GetArraySize(cJSON_GetObjectItem(carried_light, "flags")) == 0);
+	cJSON_Delete(carried_light);
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("illuminating") != std::string::npos);
+	const auto burning_epoch = actor.gmcp_items_epoch;
+	const auto burning_revision = d.gmcp_items_revision;
+	const auto burning_packets = deliveries[&d].size();
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(worn.value[2] == 1 && actor.gmcp_items_epoch == burning_epoch &&
+	       d.gmcp_items_revision == burning_revision &&
+	       deliveries[&d].size() == burning_packets);
+	update_char_objects(&actor);
+	assert(worn.value[2] == 0 && actor.gmcp_items_epoch == burning_epoch + 1);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == burning_revision + 1 &&
+	       payload(&d, "Char.Items.List").find("illuminating") == std::string::npos);
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(actor.gmcp_items_epoch == burning_epoch + 1 &&
+	       d.gmcp_items_revision == burning_revision + 1);
+	concealed_item = &worn;
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	equipment = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+	row = cJSON_GetArrayItem(cJSON_GetObjectItem(equipment, "items"), 0);
+	assert(cJSON_IsNull(cJSON_GetObjectItem(row, "selector")));
+	assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(row, "description"))) ==
+	       "Something.");
+	cJSON_Delete(equipment);
+	assert(!get_obj_equipped(&actor, selected));
+	concealed_item = nullptr;
+	const auto before_knockout = d.gmcp_items_revision;
+	actor.specials.affected_by |= AFF_KNOCKED_OUT;
+	assert(!gmcp_item_selector_matches(&actor, &worn, selected));
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("Something.") != std::string::npos);
+	actor.specials.affected_by &= ~AFF_KNOCKED_OUT; // Position and item epoch stay unchanged.
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_knockout + 2);
+	assert(payload(&d, "Char.Items.List").find("a blade") != std::string::npos);
+	// Deferred native edits publish no partial row and notify the current holder.
+	P_obj saved_objects = object_list;
+	object_list = &worn;
+	worn.next = nullptr;
+	descriptor_data second_editor{};
+	d.next = &second_editor;
+	d.str = &worn.short_description;
+	second_editor.str = &worn.name;
+	gmcp_item_edit_begin(&d, &worn);
+	gmcp_item_edit_begin(&second_editor, &worn);
+	assert(worn.gmcp_items_editors == 2);
+	gmcp_flush_initial_states(); // empty inv may complete, eq waits for the edited item
+	const auto before_edit = deliveries[&d].size();
+	gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == before_edit && d.gmcp_items_location == 1);
+	actor.equipment[WIELD] = nullptr;
+	worn.loc_p = LOC_CARRIED;
+	worn.loc.carrying = &other;
+	other.carrying = &worn;
+	const auto previous_owner = actor.gmcp_items_epoch;
+	const auto current_owner = other.gmcp_items_epoch;
+	gmcp_item_edit_done(&d);
+	assert(worn.gmcp_items_editors == 1 && actor.gmcp_items_epoch == previous_owner);
+	assert(other.gmcp_items_epoch == current_owner + 1);
+	gmcp_item_edit_done(&second_editor);
+	assert(!worn.gmcp_items_editors && other.gmcp_items_epoch == current_owner + 2);
+	worn.loc_p = LOC_WORN;
+	worn.loc.wearing = &actor;
+	actor.equipment[WIELD] = &worn;
+	gmcp_item_edit_begin(&d, &worn);
+	gmcp_item_edit_extracted(&worn);
+	assert(!d.str && !d.gmcp_item_edit_uid && !worn.gmcp_items_editors);
+	d.next = nullptr;
+	object_list = saved_objects;
+	actor.specials.affected_by |= AFF_WRAITHFORM;
+	gmcp_flush_initial_states();
+	cJSON *unavailable = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+	assert(cJSON_IsFalse(cJSON_GetObjectItem(unavailable, "available")));
+	assert(cJSON_IsTrue(cJSON_GetObjectItem(unavailable, "complete")));
+	cJSON_Delete(unavailable);
+	actor.specials.affected_by &= ~AFF_WRAITHFORM;
+	gmcp_flush_initial_states();
+	queue_reject = true;
+	const auto page = d.gmcp_items_page;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_page == page);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_location == 2);
+	const char unsubscribe[] = "Duris.Subscribe []";
+	control_clock_us += 1000000;
+	gmcp_handle_input(&d, unsubscribe, sizeof(unsubscribe) - 1);
+	gmcp_flush_initial_states();
+	assert(!d.gmcp_items_started && !d.gmcp_items_scope[0]);
+	// Allocation failures retain the exact page/cursor and retry a complete object.
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	actor.specials.affected_by &= ~AFF_WRAITHFORM;
+	gmcp_session_update(&d);
+	gmcp_items_reset(&d);
+	gmcp_flush_items_page(&d); // empty inventory, then equipment
+	for (int budget = 0; budget < 70; ++budget)
+	{
+		d.gmcp_items_location = 1;
+		d.gmcp_items_index = d.gmcp_items_page = 0;
+		json_allocation_budget = budget;
+		gmcp_flush_items_page(&d);
+		const bool pending = d.gmcp_items_location == 1;
+		if (pending)
+			assert(!d.gmcp_items_index && !d.gmcp_items_page);
+		json_allocation_budget = -1;
+		gmcp_flush_items_page(&d);
+		assert(d.gmcp_items_location == 2);
+	}
+	cJSON_InitHooks(nullptr);
+	descriptor_list = saved_list;
+}
+
+static void nested_items_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{};
+	pc_only_data pc{};
+	actor.only.pc = &pc;
+	actor.runtime_id = 350;
+	actor.player.name = const_cast<char *>("Nestedcollector");
+	actor.in_room = 1;
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	descriptor_data d{};
+	d.descriptor = 52;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &actor;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	actor.desc = &d;
+	descriptor_list = &d;
+	obj_data bag{}, inner{}, hidden{}, worn{}, worn_item{};
+	bag.obj_uid = 501;
+	bag.name = const_cast<char *>("bag");
+	bag.short_description = const_cast<char *>("a bag");
+	bag.type = ITEM_CONTAINER;
+	bag.loc_p = LOC_CARRIED;
+	bag.loc.carrying = &actor;
+	actor.carrying = &bag;
+	inner = bag;
+	inner.obj_uid = 502;
+	inner.short_description = const_cast<char *>("an inner bag");
+	inner.loc_p = LOC_INSIDE;
+	inner.loc.inside = &bag;
+	bag.contains = &inner;
+	hidden = inner;
+	hidden.obj_uid = 503;
+	hidden.short_description = const_cast<char *>("hidden item");
+	hidden.type = ITEM_OTHER;
+	hidden.name = const_cast<char *>("hidden");
+	inner.next_content = &hidden;
+	worn = bag;
+	worn.obj_uid = 504;
+	worn.loc_p = LOC_WORN;
+	worn.loc.wearing = &actor;
+	worn_item = inner;
+	worn_item.obj_uid = 505;
+	worn_item.loc.inside = &worn;
+	worn_item.next_content = nullptr;
+	worn.contains = &worn_item;
+	actor.equipment[WIELD] = &worn;
+	concealed_item = &hidden;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_location == 2);
+	const auto token = [&](uint64_t uid)
+	{ return "@i:" + std::string(d.gmcp_items_scope) + ":" + std::to_string(uid); };
+	const auto request = [&](const std::string &value)
+	{
+		control_clock_us += 1000000;
+		if (websocket)
+		{
+			const std::string raw =
+				"{\"type\":\"gmcp\",\"package\":\"Char.Items.Get\",\"data\":" +
+				value + "}";
+			cJSON *message = cJSON_Parse(raw.c_str());
+			assert(gmcp_handle_control_json(&d, message, raw.data(), raw.size(),
+							raw.data() + raw.size()));
+			cJSON_Delete(message);
+		}
+		else
+		{
+			const std::string raw = "Char.Items.Get " + value;
+			gmcp_handle_input(&d, raw.data(), raw.size());
+		}
+	};
+	const auto finish = [&](bool available, int count)
+	{
+		for (unsigned n = 0; n < 100 && d.gmcp_items_location != 2; ++n)
+			gmcp_flush_initial_states();
+		assert(d.gmcp_items_location == 2);
+		cJSON *json = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+		assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "complete")));
+		assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "available")) == available);
+		assert(cJSON_GetArraySize(cJSON_GetObjectItem(json, "items")) == count);
+		cJSON_Delete(json);
+	};
+	const auto get = [&](uint64_t uid) { request("[\"" + token(uid) + "\"]"); };
+	get(bag.obj_uid);
+	finish(true, 1); // Hidden siblings are omitted; a request never recursively pushes.
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-nested");
+	assert(payload(&d, "Char.Items.List").find("an inner bag") != std::string::npos);
+	char item_selector[96];
+	strlcpy(item_selector, token(inner.obj_uid).c_str(), sizeof(item_selector));
+	P_obj selected_bag =
+		get_obj_in_list_vis(&actor, token(bag.obj_uid).c_str(), actor.carrying, false);
+	assert(selected_bag == &bag);
+	assert(do_get_container_resolve_item(&actor, selected_bag, item_selector, true) == &inner);
+	char keyword[] = "hidden";
+	assert(do_get_container_resolve_item(&actor, &bag, keyword, true) == &hidden);
+	assert(!do_get_container_resolve_item(&actor, &bag, keyword, false));
+	strlcpy(item_selector, token(hidden.obj_uid).c_str(), sizeof(item_selector));
+	assert(!do_get_container_resolve_item(&actor, &bag, item_selector, true));
+	get(inner.obj_uid);
+	finish(true, 0); // Explicit known-empty nested state.
+	get(worn.obj_uid);
+	finish(true, 1); // Equipped containers use the same owner search.
+	char worn_selector[96];
+	strlcpy(worn_selector, token(worn.obj_uid).c_str(), sizeof(worn_selector));
+	assert(do_get_obj_in_equipment_vis(&actor, worn_selector) == &worn);
+	strlcpy(item_selector, token(worn_item.obj_uid).c_str(), sizeof(item_selector));
+	assert(do_get_container_resolve_item(&actor,
+					     do_get_obj_in_equipment_vis(&actor, worn_selector),
+					     item_selector, true) == &worn_item);
+	get(9999);
+	finish(false, 0); // Missing/cross-owner/room-only identity reveals no contents.
+	bag.value[1] = CONT_CLOSED;
+	get(bag.obj_uid);
+	finish(false, 0);
+	get(inner.obj_uid);
+	finish(false, 0); // Cannot traverse a closed ancestor.
+	bag.extra2_flags = ITEM2_TRANSPARENT;
+	get(bag.obj_uid);
+	finish(true, 1); // Native look-in permits transparent closed containers.
+	denied_container = &bag;
+	get(bag.obj_uid);
+	finish(false, 0); // Locker policy still wins over transparency.
+	denied_container = nullptr;
+	bag.value[1] = 0;
+	item_vision = 3;
+	get(bag.obj_uid);
+	finish(false, 0);
+	item_vision = 1;
+	// Malformed, overlong, noncanonical, stale and multi-target requests do nothing.
+	const auto revision = d.gmcp_items_revision;
+	for (const auto &bad : std::vector<std::string>{
+		     "[1]", "[\"bad\"]", "[\"" + token(1) + "x\"]",
+		     "[\"" + token(1) + "8446744073709551616\"]", "[\"" + token(1) + "\",\"x\"]" })
+		request(bad);
+	assert(d.gmcp_items_revision == revision && d.gmcp_items_location == 2);
+	// Large nested lists use the same bounded page, retry and cancellation owners.
+	std::vector<obj_data> contents(3000);
+	for (size_t i = 0; i < contents.size(); ++i)
+	{
+		auto &object = contents[i];
+		object.obj_uid = 600 + i;
+		object.short_description = const_cast<char *>("a nested item");
+		object.loc_p = LOC_INSIDE;
+		object.loc.inside = &inner;
+		object.next_content = i + 1 < contents.size() ? &contents[i + 1] : nullptr;
+	}
+	inner.contains = contents.data();
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	get(inner.obj_uid);
+	gmcp_flush_initial_states(); // bounded search, no page construction in the same slot
+	const auto before = deliveries[&d].size();
+	queue_reject = true;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_page == 0 && deliveries[&d].size() == before);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_page == 1 && d.gmcp_items_location == 5);
+	// Access can change without a save flag or item epoch (e.g. locker policy).
+	denied_container = &bag;
+	finish(false, 0);
+	denied_container = nullptr;
+	// Search across a large tree is bounded too, including ascents.
+	get(worn.obj_uid);
+	const auto checks = item_visibility_checks;
+	const auto packets_before_search = deliveries[&d].size();
+	gmcp_flush_initial_states();
+	assert(item_visibility_checks - checks <= 128);
+	assert(deliveries[&d].size() == packets_before_search && d.gmcp_items_location == 3);
+	finish(true, 1);
+	get(inner.obj_uid);
+	gmcp_flush_initial_states();
+	const auto stale = token(inner.obj_uid);
+	// Canonical detach/extract notifications retire both search and page pointers.
+	inner.contains = nullptr;
+	gmcp_items_changed(&actor);
+	contents.clear();
+	contents.shrink_to_fit();
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(!gmcp_item_selector_matches(&actor, &inner, stale.c_str()));
+	strlcpy(item_selector, stale.c_str(), sizeof(item_selector));
+	assert(!do_get_container_resolve_item(&actor, &bag, item_selector, true));
+	const auto after_mutation = d.gmcp_items_revision;
+	request("[\"" + stale + "\"]");
+	assert(d.gmcp_items_revision == after_mutation);
+	concealed_item = nullptr;
+	descriptor_list = saved_list;
+}
+
+static void item_reward_publication_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	P_obj saved_objects = object_list;
+	char_data actor{};
+	pc_only_data pc{};
+	actor.only.pc = &pc;
+	actor.runtime_id = 370;
+	actor.player.name = const_cast<char *>("Rewardcollector");
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	descriptor_data d{};
+	d.descriptor = 53;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &actor;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	actor.desc = &d;
+	descriptor_list = &d;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto packets = deliveries[&d].size();
+	const auto revision = d.gmcp_items_revision;
+	auto state = std::make_shared<world_quest_reward_publication>();
+	state->pid = 42;
+	player_item_snapshot item{};
+	item.object_uid = 100;
+	item.vnum = 1001;
+	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	state->items = { item };
+	obj_data reward{};
+	reward.obj_uid = 100;
+	reward.short_description = const_cast<char *>("a committed reward");
+	reward.loc_p = LOC_NOWHERE;
+	object_list = &reward;
+	const auto finish_read = [&](bool ok, const char *owner = "42")
+	{
+		assert(reward_read_done);
+		auto done = std::move(reward_read_done);
+		reward_read_done = {};
+		done(ok, { { { "100", "100", "0", "1", owner, "0", "1", "1001", "1", "7" } } });
+	};
+	assert(!world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == packets); // detached reward is never serialized
+	finish_read(false);
+	assert(!world_quest_publish_reward(&actor, state));
+	finish_read(true, "99");
+	assert(!state->ready && !world_quest_publish_reward(&actor, state));
+	finish_read(true);
+	reward_hydrate = false;
+	assert(!world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == packets && d.gmcp_items_revision == revision);
+	reward_hydrate = true;
+	assert(!world_quest_publish_reward(&actor, state));
+	finish_read(true);
+	const auto attachments = reward_attachments;
+	assert(world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	const auto visible = payload(&d, "Char.Items.List");
+	assert(visible.find("a committed reward") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision + 1 && deliveries[&d].size() == packets + 2);
+	assert(reward_attachments == attachments + 1);
+	const auto reads = reward_reads;
+	const auto epoch = actor.gmcp_items_epoch;
+	assert(world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(reward_reads == reads && actor.gmcp_items_epoch == epoch &&
+	       reward_attachments == attachments + 1 && deliveries[&d].size() == packets + 2);
+	// A late read owns no character pointer; logout leaves durable recovery intact.
+	reward.loc_p = LOC_NOWHERE;
+	actor.carrying = nullptr;
+	state->ready = false;
+	assert(!world_quest_publish_reward(&actor, state));
+	d.character = nullptr;
+	actor.desc = nullptr;
+	const auto extractions = reward_extractions;
+	assert(world_quest_publish_reward(nullptr, state));
+	assert(reward_extractions == extractions + 1 && !object_list);
+	finish_read(true);
+	assert(world_quest_publish_reward(nullptr, state));
+	assert(reward_attachments == attachments + 1);
+	object_list = saved_objects;
+	descriptor_list = saved_list;
+}
+
+static void item_disarm_repair_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{}, victim{};
+	pc_only_data pc{}, victim_pc{};
+	actor.only.pc = &pc;
+	victim.only.pc = &victim_pc;
+	actor.runtime_id = 379;
+	actor.player.name = const_cast<char *>("Disarmer");
+	victim.runtime_id = 380;
+	victim.player.name = const_cast<char *>("Victim");
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	SET_POS(&victim, STAT_NORMAL | POS_STANDING);
+	actor.specials.fighting = &victim;
+	disarm_target = &victim;
+	descriptor_data d{};
+	d.descriptor = 54;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &victim;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	victim.desc = &d;
+	descriptor_list = &d;
+	obj_data weapon{}, own_weapon{};
+	weapon.obj_uid = 800;
+	weapon.name = const_cast<char *>("sword");
+	weapon.short_description = const_cast<char *>("a sword");
+	weapon.type = ITEM_WEAPON;
+	weapon.loc_p = LOC_WORN;
+	weapon.loc.wearing = &victim;
+	victim.equipment[WIELD] = &weapon;
+	actor.equipment[WIELD] = &own_weapon;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto epoch = victim.gmcp_items_epoch;
+	const auto revision = d.gmcp_items_revision;
+	assert(unequip_char(&victim, WIELD, true) == &weapon);
+	assert(victim.gmcp_items_epoch == epoch); // Temporary terminal-save removal is silent.
+	victim.equipment[WIELD] = &weapon;
+	weapon.loc_p = LOC_WORN;
+	weapon.loc.wearing = &victim;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision);
+	char command[] = "victim sword";
+	disarm_roll = 1;
+	do_disarm(&actor, command, 0);
+	assert(!victim.equipment[WIELD] && OBJ_CARRIED_BY(&weapon, &victim));
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("a sword") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision + 1); // Both movement halves coalesce.
+	set_obj_condition(&weapon, 25);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto damaged = d.gmcp_items_revision;
+	spell_repair_one_item(50, &victim, nullptr, 0, nullptr, &weapon);
+	assert(weapon.condition == 100);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("25%") == std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == damaged + 1);
+	spell_repair_one_item(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == damaged + 1); // Healthy repair is no mutation.
+	P_index saved_index = obj_index;
+	index_data names[1]{};
+	obj_index = names;
+	names[0].virtual_number = VOBJ_RANDOM_WEAPON;
+	weapon.value[5] = spells_data[0].spell;
+	const auto before_reveal = d.gmcp_items_revision;
+	spell_reveal_true_name(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find(strip_ansi(spells_data[0].name)) !=
+	       std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_reveal + 1);
+	const auto revealed_epoch = victim.gmcp_items_epoch;
+	assert(!identify_random(&weapon) && victim.gmcp_items_epoch == revealed_epoch);
+	std::free(weapon.short_description);
+	weapon.str_mask = 0;
+	weapon.name = const_cast<char *>("_id_");
+	weapon.short_description = const_cast<char *>("a concealed blade");
+	names[0].virtual_number = 1;
+	extra_descr_data hidden_name{};
+	hidden_name.keyword = const_cast<char *>("_id_short_");
+	hidden_name.description = const_cast<char *>("a revealed blade\rignored suffix");
+	weapon.ex_description = &hidden_name;
+	spell_reveal_true_name(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("a revealed blade") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_reveal + 2);
+	std::free(weapon.short_description);
+	obj_index = saved_index;
+	disarm_target = nullptr;
+	descriptor_list = saved_list;
+}
+
+static void items_fairness_contract()
+{
+	P_desc saved_list = descriptor_list;
+	std::vector<descriptor_data> descriptors(100);
+	std::vector<char_data> actors(100);
+	std::vector<pc_only_data> players(100);
+	for (size_t i = 0; i < descriptors.size(); ++i)
+	{
+		auto &d = descriptors[i];
+		auto &ch = actors[i];
+		ch.only.pc = &players[i];
+		ch.runtime_id = 1000 + i;
+		ch.player.name = const_cast<char *>("Participant");
+		ch.desc = &d;
+		ch.in_room = 1;
+		SET_POS((&ch), STAT_NORMAL | POS_STANDING);
+		d.descriptor = 200 + i;
+		d.character = &ch;
+		d.connected = CON_PLAYING;
+		d.gmcp_enabled = 1;
+		d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+		d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+		d.next = i + 1 < descriptors.size() ? &descriptors[i + 1] : nullptr;
+	}
+	descriptor_list = descriptors.data();
+	const auto pages = [&]
+	{
+		size_t count = 0;
+		for (auto &d : descriptors)
+			count += std::count(packages[&d].begin(), packages[&d].end(),
+					    "Char.Items.List");
+		return count;
+	};
+	for (int n = 0; n < 25; ++n)
+	{
+		const auto before = pages();
+		gmcp_flush_initial_states();
+		assert(pages() <= before + 8);
+		if (n == 12)
+			for (const auto &d : descriptors)
+				assert(d.gmcp_items_started); // no participant starves behind early descriptors
+	}
+	for (const auto &d : descriptors)
+		assert(d.gmcp_items_location == 2);
+	assert(pages() == 200);
+	descriptor_list = saved_list;
+}
+
 int main()
 {
+	for (auto &label : where)
+		label = "wielded";
+	items_contract(false);
+	items_contract(true);
+	nested_items_contract(false);
+	nested_items_contract(true);
+	item_reward_publication_contract(false);
+	item_reward_publication_contract(true);
+	item_disarm_repair_contract(false);
+	item_disarm_repair_contract(true);
+	items_fairness_contract();
 	combat_contract(false);
 	combat_contract(true);
 	combat_events_contract(false);

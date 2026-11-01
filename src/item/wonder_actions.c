@@ -249,7 +249,8 @@ class wonder_adapter final : public item_action_adapter
 						     actor);
 				else
 				{
-					REMOVE_BIT(source->extra_flags, ITEM_SECRET);
+					set_obj_extra_flags(source,
+							    source->extra_flags & ~(ITEM_SECRET));
 					obj_to_room(gem, identity.origin_room);
 				}
 			}

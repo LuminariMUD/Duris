@@ -4,8 +4,8 @@ The same packages use Telnet GMCP subnegotiation and the existing WebSocket
 `{type:"gmcp", package, data}` envelope. Legacy gameplay packages keep their
 existing defaults. New versioned streams require explicit support and interest.
 This document describes the implemented control, time, lifecycle and combat
-state/damage slices of issue #498. Item, action and command-result work remains
-pending.
+state/damage and owner-item slices of issue #498. Requested nested contents use
+the same bounded owner-item scheduler. Actions and command results remain pending.
 
 ## Negotiation and interest
 
@@ -50,7 +50,7 @@ changes, playing-eligibility changes, initial character snapshots and preference
 re-enable/disable:
 
 ```json
-{"version":1,"enabled":true,"features":{"Duris.Capabilities":1,"Duris.Subscribe":1,"Duris.Time":1,"Duris.Session":1,"Duris.Combat":1},"supported":["Duris.Time"],"interested":["Duris.Time"],"active":["Duris.Time"],"control":["Duris.Session"]}
+{"version":1,"enabled":true,"features":{"Duris.Capabilities":1,"Duris.Subscribe":1,"Duris.Time":1,"Duris.Session":1,"Duris.Combat":1,"Char.Items":1,"Char.Items.Get":1},"supported":["Duris.Time"],"interested":["Duris.Time"],"active":["Duris.Time"],"control":["Duris.Session"]}
 ```
 
 `features` lists implemented contracts only. `supported` and `interested` list
@@ -246,6 +246,96 @@ exactly-once guarantee.
 Unsubscribe, preference disable or transport disable stops new event construction;
 previously queued FIFO events precede the control invalidation. An active event
 consumer never receives the same hit through the legacy `round` representation.
+
+## Char.Items, version 1 (owner inventory and equipment)
+
+Advertise `Char.Items 1` and include it in Subscribe to receive the controlled
+body's visible inventory/equipment. These are independent of Time and Combat.
+`Char.Items.Get []` requests a replacement of both top-level lists. It has an
+independent burst-two/refill-one-per-second bucket and the same bounded control
+parser. Malformed requests change no state; unsupported, uninterested
+and pre-entry requests stop before additional parsing/construction. WebSocket
+uses the already decoded envelope, as with the other control requests.
+
+Each `Char.Items.List` packet is one page of a full replacement for its location:
+
+```json
+{"version":1,"context":"0123456789abcdef0123456789abcdef","process":"fedcba9876543210fedcba9876543210","generation":"1","bodyRevision":"1","revision":"7","location":"inv","page":0,"available":true,"items":[{"description":"a red blade","quantity":1,"slot":null,"selector":"@i:abcdef0123456789abcdef0123456789:9007199254740993","condition":" [75%]","flags":["glowing"]}],"complete":true}
+```
+
+Locations are `inv` and `eq`. Pages start at zero, are contiguous within a
+location/revision, and replace that location only when `complete:true` arrives.
+Clients stage earlier pages; an incomplete empty page is not an empty inventory.
+A newer revision's page zero discards older unfinished staging. Revisions are
+lossless decimal strings shared by both locations in one replacement cycle.
+Session process/body boundaries also discard old views, pages and selectors.
+A new top-level revision's page zero also invalidates every previously requested
+nested view. A mutation/re-enable/resync generates a new selector scope.
+Bootstrap, re-enable and Get resync may replace state without advancing Session's
+entry generation. No prior item snapshot or event history is replayed.
+
+`available:false` invalidates that location rather than claiming ownership is
+empty: wraithform has no inventory/equipment presentation, and the native
+inventory/equipment posture gates differ. An available completed `items:[]` is
+an authoritative empty *visible* list. Inventory omits unseen/hitched objects;
+unseen equipped slots retain the normal `Something.` placeholder with no
+selector or condition. No hidden contents, vnum, identification statistics,
+artifact timer or storage record is included.
+
+Each real object has quantity one. Descriptions are plain text bounded to 383
+bytes. Equipment includes its numeric worn `slot` and established text `slotName`.
+`condition` reuses the ordinary display string (empty when no damage indicator
+is shown), rather than inventing a precise hidden healthy condition. Flags are
+an allowlist of normally visible invisible/glowing/humming/illuminating/magic
+markers; magic still requires the viewer's normal detection privilege.
+
+Selectors are opaque snapshot-scoped words accepted by the existing object
+lookup paths, including ordinary wear/remove/drop/give commands. The `@i:`
+namespace never falls back to an item keyword, including after expiry. Identity
+is lossless text, and the random scope changes on replacement; clients must not
+parse it as a global identifier or retain it as a cross-snapshot target. Resolution
+requires the current connection/body, mutation epoch, visibility policy and owner,
+then the native command's ordinary list/access/action gates still apply. Tokens
+are convenience targets, not permission grants. A stale token is rejected rather
+than selecting another duplicate. Ordinary keyword/ordinal targeting is unchanged.
+
+The existing two-pulse pass emits at most one 16 KiB page per descriptor and eight
+page attempts globally, rotating participants. Each page inspects at most 128
+entries, including hidden entries; no recursive push or periodic world-item scan
+is added. Unchanged/uninterested lists construct nothing. Accepted FIFO admission
+alone advances the cursor; allocation or queue failure retries the same page.
+Any ownership, presentation, body or relevant visibility mutation invalidates the
+cursor and selectors before reuse. A completed bulk operation coalesces into one
+replacement, independently of persistence dirty flags and save acknowledgements.
+
+Publication observes real attachment/removal/equip/container/property owners.
+Detached rewards are absent until the existing durable publisher attaches them;
+serialization never reads a repository, calls that publisher, or cancels its
+pending/offline work. Native string edits hold their item row until completion;
+completion resolves the item's UID once and notifies its current holder, including
+a transfer during editing. Ordinary extraction adds no editor scan; an edited
+object retires its native editor pointers before its strings are released.
+
+After both top-level lists complete, `Char.Items.Get ["<selector>"]` requests only
+that container's direct visible contents. The response uses that exact selector
+as `location`, starts at page zero, and has a newer revision. The selector scope
+stays valid across nested requests until an item/body/visibility mutation or
+resync. A container returned in a requested page may itself be requested; nothing
+is pushed recursively. Each connection keeps only its latest pending request;
+sending another abandons the earlier request and its staging. Reject malformed,
+stale-scope, multi-selector and premature requests without changing state.
+
+The existing scheduler searches only owned inventory/equipment trees, at most
+128 traversal steps per work slot (including ascents), then pages in later slots.
+It never scans the world object list or constructs an unbounded captured result.
+Normal look-in posture, vision, object visibility, closed/transparent-container
+and locker authorization apply. Missing/inaccessible/non-container targets return
+one `available:false,items:[],complete:true` page; they never claim a known-empty
+container. Authorization is checked again before each page, including ancestors.
+Access revocation during a request produces an unavailable page, while a normal
+item mutation cancels it in favor of fresh top-level state and selectors. Native
+open/close and staff container-flag edits retire the old scope. Private chests
+remain room/storage owned and gain no contents API through this owner-only stream.
 
 ## Proof and remaining qualification
 

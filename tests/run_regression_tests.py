@@ -55,6 +55,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_flatfile_first_session_currency.py",
         "test_flatfile_full_world_boot.py",
         "test_flight_network_journey.py",
+        "test_frag_cap_journey.py",
         "test_generated_npc_journey.py",
         "test_gith_monk_journey.py",
         "test_hostname_files_journey.py",
@@ -71,13 +72,15 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
     }
 )
 
-# The MySQL playtime journey needs a disposable database and --server, and invokes its
-# repository probe with that database's environment. make test-db runs it; the generic
+# The MySQL playtime and account recovery journeys need a disposable database and --server.
+# The playtime journey invokes its repository probe with that database's environment.
+# make test-db runs them; the generic
 # test-all runner invokes every discovered script with no arguments.
 # The Discord game journey similarly needs an external Node checkout via --node-driver.
 # The artifact population reader requires the disposable SQL fixture in test-db.
 MANUAL_ONLY_TEST_NAMES = frozenset(
     {
+        "test_account_recovery_mysql_journey.py",
         "test_artifact_population_repository.py",
         "test_discord_game_journey.py",
         "test_epic_task_catalog_mysql.py",

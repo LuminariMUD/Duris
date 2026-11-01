@@ -459,7 +459,7 @@ int very_angry_npc(P_char ch, P_char pl, int cmd, char * /*arg*/)
 		{
 			obj_to_room(headgear, pl->in_room);
 			// And hide the headgear.. the only item that will remain, fallen from the decapitated head.
-			SET_BIT(headgear->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(headgear, headgear->extra_flags | (ITEM_SECRET));
 		}
 		// Create / Drop head in room.
 		head = read_object(8, VIRTUAL);

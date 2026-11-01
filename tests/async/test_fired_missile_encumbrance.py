@@ -39,6 +39,7 @@ strings = "\n".join(extract_function("classes/salchemist.c", signature) for sign
 strings += "\n" + extract_function("world/db.c", "void free_obj(")
 harness = r'''
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "core/utils.h"
 #include "net/comm.h"

@@ -2,6 +2,7 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_association_repository.h"
 #include "combat/combat_outcome_command.h"
+#include "combat/frag_cap_repository.h"
 #include "world/zone_touch_command.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
@@ -109,6 +110,8 @@ int main(int argc, char **argv)
 		fs::permissions(path, fs::perms::owner_all, fs::perm_options::replace);
 	}
 	std::string error;
+	frag_cap_state cap;
+	assert(frag_cap_flatfile_adopt(root.string(), 25, 1, &cap) == frag_cap_store_result::ok);
 	for (int pid : { 42, 43 })
 	{
 		flatfile_player_domain_record player;

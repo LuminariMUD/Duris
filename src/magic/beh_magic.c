@@ -375,7 +375,9 @@ void spell_beholder_disintegrate(int level, P_char ch, P_char victim, P_obj obj)
 						obj = victim->equipment[i];
 
 						if (!IS_ARTIFACT(obj) &&
-						    ((obj->condition -= number(1, 10)) < 1))
+						    (set_obj_condition(obj, obj->condition -
+										    number(1, 10)) <
+						     1))
 						{
 							act("$N&n's $q&n turns red hot, disappearing in a puff of smoke!",
 							    TRUE, ch, obj, victim, TO_VICT);

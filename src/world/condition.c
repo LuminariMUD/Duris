@@ -117,7 +117,7 @@ int DamageOneItem(P_char ch, int dam_type, P_obj obj, bool destroy)
 
 	num = BOUNDED(1, num, 10);
 
-	obj->condition -= num;
+	set_obj_condition(obj, obj->condition - (num));
 
 	if (obj->condition < 0)
 	{

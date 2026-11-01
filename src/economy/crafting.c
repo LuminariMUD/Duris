@@ -917,7 +917,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 
 		SET_BIT(tobj->extra2_flags, ITEM2_CRAFTED);
 		SET_BIT(tobj->extra_flags, ITEM_NOREPAIR);
-		REMOVE_BIT(tobj->extra_flags, ITEM_SECRET);
+		set_obj_extra_flags(tobj, tobj->extra_flags & ~(ITEM_SECRET));
 		snprintf(keywords, sizeof keywords, "%s %s tradeskill", tobj->name, GET_NAME(ch));
 
 		snprintf(tempdesc, sizeof tempdesc, "%s", tobj->short_description);
@@ -1494,7 +1494,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 		notch_skill(ch, SKILL_FORGE, 50);
 		SET_BIT(obj->extra2_flags, ITEM2_CRAFTED);
 		SET_BIT(obj->extra_flags, ITEM_NOREPAIR);
-		REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+		set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 
 		snprintf(keywords, sizeof keywords, "%s %s tradeskill", obj->name, GET_NAME(ch));
 		snprintf(short_desc, sizeof short_desc, "%s &+ymade by&n &+r%s&n",

@@ -498,6 +498,7 @@ struct arti_data
 struct obj_data
 {
 	unsigned long obj_uid; /* unique item identifier          */
+	unsigned gmcp_items_editors; // Pending native string edits; no partial item view.
 	long g_key; /* Key generated upon creation     */
 	int R_num; /* Where in data-base               */
 	::byte type; /* Type of item                     */
@@ -1552,6 +1553,7 @@ struct char_data
 	struct char_obj_link_data *obj_linked;
 	unsigned int runtime_flags;
 	uint64_t runtime_id; /* process-local identity; changes whenever storage is reused */
+	uint64_t gmcp_items_epoch; // Live presentation changes; independent of save dirtiness.
 	uint64_t durable_pet_uid; /* stable corpse-derived follower custody identity */
 	uint32_t durable_pet_owner_pid; /* survives loss of the live master link */
 	/* Telemetry identity is runtime-only and intentionally not persisted. */
@@ -1829,6 +1831,20 @@ struct descriptor_data
 	gmcp_combat_subject gmcp_combat_subjects[2];
 	uint64_t gmcp_combat_revision;
 	bool gmcp_combat_state_sent;
+	uint64_t gmcp_items_epoch;
+	uint64_t gmcp_items_body;
+	uint64_t gmcp_items_revision;
+	uint32_t gmcp_items_filter;
+	P_obj gmcp_items_cursor; // Used only while the captured body/epoch still match.
+	P_obj gmcp_items_container; // Same epoch guard as the page/search cursor.
+	uint64_t gmcp_items_requested_uid;
+	bool gmcp_items_ascending;
+	unsigned gmcp_items_index;
+	unsigned gmcp_items_page;
+	unsigned char gmcp_items_location;
+	bool gmcp_items_started;
+	char gmcp_items_scope[33];
+	uint64_t gmcp_item_edit_uid;
 	uint64_t gmcp_event_sequence;
 	uint32_t gmcp_event_bytes;
 	unsigned gmcp_event_count;
@@ -1844,8 +1860,8 @@ struct descriptor_data
 	bool gmcp_session_resumed;
 	char gmcp_session_context[33]; // Opaque connection context; no account identity.
 
-	uint64_t gmcp_request_refill_ms[2];
-	unsigned char gmcp_request_tokens[2];
+	uint64_t gmcp_request_refill_ms[3];
+	unsigned char gmcp_request_tokens[3];
 	bool gmcp_command_receipts; // Opt-in, session-local input dequeue observation.
 	uint64_t gmcp_input_sequence;
 	int mssp_sent;

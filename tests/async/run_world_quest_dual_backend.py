@@ -461,6 +461,24 @@ def execute_disposable_sql(environment: dict[str, str], query: str) -> None:
 def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                      database_environment, *, origin: int = BARTENDER_ROOM,
                      cases=GAMEPLAY_CASES, recover_pending=None) -> tuple[MudClient, list[dict]]:
+    from test_gmcp_control_journey import send_telnet, wait_telnet, telnet_packets, drain
+
+    def enable_items(connection):
+        connection.socket.sendall(b"\xff\xfd\xc9")
+        send_telnet(connection, "Core.Supports.Set", ["Duris.Capabilities 1", "Char.Items 1"])
+        wait_telnet(connection, "Duris.Capabilities")
+        send_telnet(connection, "Duris.Subscribe", ["Char.Items 1"])
+        wait_telnet(connection, "Char.Items.List")
+
+    def item_snapshot(connection):
+        drain(connection)
+        after = len(telnet_packets(connection))
+        send_telnet(connection, "Char.Items.Get", [])
+        return {location: wait_telnet(connection, "Char.Items.List", after,
+                    lambda state: state["location"] == location and state["complete"])
+                for location in ("inv", "eq")}
+
+    enable_items(client)
     results = []
     partial_persisted = False
     rewards = set()
@@ -575,6 +593,7 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 require(saved["active"] and saved["kills"] < saved["quota"],
                         "combat completed before the partial checkpoint")
                 client = restart(client)
+                enable_items(client)
                 restored = settled_gameplay_snapshot(client, run_root)
                 kept = ("active", "due", "accepted_level", "type", "mob", "zone", "kills",
                         "quota", "map_bought", "map_room", "origin", "receiver", "shares", "started",
@@ -614,6 +633,11 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 len(new_items) == len(reward_uids),
                 f"level {level} kind {kind} mob {accepted['mob']} completion reward missing: {new_items}; state={completed}")
         rewards.update(reward_uids)
+        visible_items = item_snapshot(client)
+        for uid in reward_uids:
+            reward_rows = [row for row in visible_items["inv"]["items"]
+                           if (row.get("selector") or "").endswith(":" + str(uid))]
+            require(len(reward_rows) == 1, "committed reward missing or duplicated in owner item wire snapshot")
         client.send("save")
         client.expect("Save complete for Taverek.", timeout=120)
         deadline = time.monotonic() + 30
@@ -626,10 +650,25 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                         "return_steps": return_steps, "attempts": attempts, "accepted": accepted,
                         "target": target, "partials": partials, "reward": new_items[0],
                         "rewards": new_items,
-                        "completed": completed, "returned": returned})
+                        "completed": completed, "returned": returned, "gmcp_items": visible_items})
         (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
     require((29, 1) not in cases or partial_persisted,
             "no real partial-progress restart was qualified")
+    # One focused restart proves ordinary equipment plus all completed rewards.
+    client.send("save")
+    client.expect("Save complete for Taverek.", timeout=120)
+    before_items = item_snapshot(client)
+    client = restart(client)
+    enable_items(client)
+    restored_items = item_snapshot(client)
+    for location in ("inv", "eq"):
+        def presentation(state):
+            return sorted(json.dumps({key: value for key, value in row.items() if key != "selector"},
+                                     sort_keys=True) for row in state["items"])
+        require(presentation(before_items[location]) == presentation(restored_items[location]),
+                f"{location} item presentation changed across ordinary/reward restoration")
+    results[-1]["gmcp_restored_items"] = restored_items
+    (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
     return client, results
 
 

@@ -349,7 +349,8 @@ int wand_of_wonder(P_obj obj, P_char ch, int cmd, char *arg)
 					}
 					else
 					{
-						REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+						set_obj_extra_flags(obj, obj->extra_flags &
+										 ~(ITEM_SECRET));
 						obj_to_room(gems, ch->in_room);
 					}
 				}

@@ -25,6 +25,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "world/handler.h"
 #include "net/gmcp.h"
 #include "player/news.h"
 #include "cmd/information_cache.h"
@@ -681,7 +682,7 @@ P_obj get_object_in_equip_vis(P_char ch, char *arg, int *j)
 	for ((*j) = 0; (*j) < MAX_WEAR; (*j)++)
 		if (ch->equipment[(*j)])
 			if (CAN_SEE_OBJ(ch, ch->equipment[(*j)]))
-				if (isname(arg, ch->equipment[(*j)]->name))
+				if (obj_name_matches(ch, ch->equipment[(*j)], arg))
 					return (ch->equipment[(*j)]);
 
 	return (0);
@@ -691,7 +692,7 @@ P_obj get_object_in_equip(P_char ch, char *arg, int *j)
 {
 	for ((*j) = 0; (*j) < MAX_WEAR; (*j)++)
 		if (ch->equipment[(*j)])
-			if (isname(arg, ch->equipment[(*j)]->name))
+			if (obj_name_matches(ch, ch->equipment[(*j)], arg))
 				return (ch->equipment[(*j)]);
 
 	return (0);

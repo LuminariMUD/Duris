@@ -212,7 +212,7 @@ int chyron_search_obj(P_obj obj, P_char ch, int cmd, char *arg)
 			obj_from_room(obj);
 			obj_to_char(obj, ch);
 			// put the new object in there and hide it
-			SET_BIT(newobj->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(newobj, newobj->extra_flags | (ITEM_SECRET));
 			obj_to_room(newobj, ch->in_room);
 			return TRUE;
 		}

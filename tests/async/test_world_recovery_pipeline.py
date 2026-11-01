@@ -33,6 +33,7 @@ def section(text: str, start: str, end: str) -> str:
 
 HARNESS = r'''
 #include "world/world_recovery_pipeline.h"
+#include "world/handler.h"
 #include "core/utils.h"
 #include "item/storage_lockers.h"
 #include "core/prototypes.h"

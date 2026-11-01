@@ -10,9 +10,14 @@ from _paths import ROOT, source, extract_function
 sql = source("sql/sql.c").read_text()
 start = sql.index("struct world_quest_reward_publication\n")
 end = sql.index("// End world quest reward publication.", start)
-production = sql[start:end]
+production = (
+    extract_function('gmcp.c', 'static void gmcp_items_reset(P_desc d)\n{') + '\n' +
+    extract_function('gmcp.c', 'void gmcp_items_changed(P_char ch)\n{') + '\n' +
+    sql[start:end]
+)
 prelude = r'''
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/utils.h"
 #include "item/item_ownership_runtime.h"
 #include "player/player_load_items.h"
@@ -49,6 +54,7 @@ bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_ent
 void obj_to_char(P_obj object, P_char actor) {
     assert(OBJ_NOWHERE(object)); ++attachments;
     object->loc_p = LOC_CARRIED; object->loc.carrying = actor;
+    gmcp_items_changed(actor);
 }
 void extract_obj(P_obj object, int gone) {
     assert(OBJ_NOWHERE(object) && !gone); ++extractions;
@@ -111,7 +117,7 @@ int main() {
     assert(!world_quest_publish_reward(&actor,state));
     finish(true);
     assert(world_quest_publish_reward(&actor,state) && OBJ_CARRIED_BY(&root,&actor));
-    assert(attachments==1 && hydrations==2);
+    assert(attachments==1 && hydrations==2 && actor.gmcp_items_epoch==1);
     assert(world_quest_publish_reward(&actor,state) && attachments==1);
 
     // A departed actor leaves the durable reward for login, without a stale body.

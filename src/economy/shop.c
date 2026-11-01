@@ -1840,9 +1840,9 @@ void shopping_repair(char *arg, P_char ch, P_char keeper, int shop_nr)
 				else
 					ave = BOUNDED(0, MAX(obj->condition, 50 + obj->condition),
 						      100);
-				obj->condition = number(ave, 100);
+				set_obj_condition(obj, number(ave, 100));
 				if (obj->condition < 100)
-					obj->condition = 100;
+					set_obj_condition(obj, 100);
 				mobsay(keeper, "All fixed!");
 			}
 		}

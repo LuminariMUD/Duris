@@ -12,11 +12,36 @@
 #include "ships/ships.h"
 #include "world/map.h"
 #include <cstdint>
+#include <cstdlib>
 #include <cjson/cJSON.h>
 
+void __free(void *memory, const char *, int)
+{
+	std::free(memory);
+}
 P_desc descriptor_list = nullptr;
+const char *where[MAX_WEAR] = {};
+int get_vis_mode(P_char, int)
+{
+	return 1;
+}
+bool ac_can_see_obj(P_char, P_obj, int)
+{
+	return true;
+}
+bool has_innate(P_char, int)
+{
+	return false;
+}
+char *item_condition(P_obj)
+{
+	static char condition[] = "";
+	return condition;
+}
+
 time_info_data time_info{};
 P_room world = nullptr;
+P_obj object_list = nullptr;
 int top_of_world = -1;
 struct zone_data *zone_table = nullptr;
 extern const struct class_names class_names_table[] = {};

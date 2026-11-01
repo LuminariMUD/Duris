@@ -1124,7 +1124,7 @@ void epic_finish_stone_touch(const zone_touch_result &result)
 		act("A storm of &+Bblue energy&n erupts from $p!", FALSE, 0, obj, 0, TO_ROOM);
 		act("$p flashes brightly then blurs, and remains still and powerless.", FALSE, 0,
 		    obj, 0, TO_ROOM);
-		REMOVE_BIT(obj->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(obj, obj->extra2_flags & ~(ITEM2_MAGIC));
 	}
 	if (result.record_zone && !result.recovered_claim)
 	{
@@ -1231,7 +1231,7 @@ int epic_stone(P_obj obj, P_char ch, int cmd, char *arg)
 			act("A sick noise emanates from $p, and a large crack runs down the side! Something was misplaced!",
 			    FALSE, ch, obj, 0, TO_ROOM);
 
-			REMOVE_BIT(obj->extra2_flags, ITEM2_MAGIC);
+			set_obj_extra2_flags(obj, obj->extra2_flags & ~(ITEM2_MAGIC));
 			return TRUE;
 		}
 		/*

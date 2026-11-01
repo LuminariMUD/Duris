@@ -569,7 +569,7 @@ bool nexus_stone_touch(P_obj stone, P_char ch)
 
 	if (!IS_TRUSTED(ch))
 	{
-		REMOVE_BIT(stone->extra_flags, ITEM_HUM);
+		set_obj_extra_flags(stone, stone->extra_flags & ~(ITEM_HUM));
 	}
 
 	bool turned = false;
@@ -675,7 +675,7 @@ bool nexus_stone_touch(P_obj stone, P_char ch)
 
 void event_nexus_stone_hum(P_char /*__ch*/, P_char /*__victim*/, P_obj stone, void * /*data*/)
 {
-	SET_BIT(stone->extra_flags, ITEM_HUM);
+	set_obj_extra_flags(stone, stone->extra_flags | (ITEM_HUM));
 	act(ns_messages[_STONE_HUM], FALSE, 0, stone, 0, TO_ROOM);
 }
 
@@ -725,7 +725,7 @@ int nexus_stone(P_obj stone, P_char ch, int cmd, char *arg)
 		send_to_char("Stone timers reset.\n", ch);
 		STONE_TIMER(stone) = 0;
 		STONE_TURN_TIMER(stone) = 0;
-		SET_BIT(stone->extra_flags, ITEM_HUM);
+		set_obj_extra_flags(stone, stone->extra_flags | (ITEM_HUM));
 		return TRUE;
 	}
 
@@ -1450,7 +1450,7 @@ bool load_nexus_stone(int stone_id, const char *stone_name, int room_vnum, int a
 	STONE_ID(stone) = stone_id;
 	STONE_ALIGN(stone) = align;
 
-	SET_BIT(stone->extra_flags, ITEM_HUM);
+	set_obj_extra_flags(stone, stone->extra_flags | (ITEM_HUM));
 
 	STONE_TIMER(stone) = 0;
 	STONE_TURN_TIMER(stone) = 0;

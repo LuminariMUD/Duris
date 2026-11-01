@@ -12,6 +12,7 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
+#include "world/handler.h"
 #include "world/events.h"
 #include "world/transport.h"
 #include "cmd/interp.h"
@@ -1028,7 +1029,7 @@ static P_obj do_get_obj_in_equipment_vis(P_char ch, char *name)
 	{
 		P_obj obj = ch->equipment[i];
 
-		if (obj && CAN_SEE_OBJ(ch, obj) && isname(name_ptr, obj->name))
+		if (obj && CAN_SEE_OBJ(ch, obj) && obj_name_matches(ch, obj, name_ptr))
 		{
 			matched++;
 			if (matched == match_num)
@@ -1174,7 +1175,8 @@ static bool do_get_container_preflight(P_char ch, P_obj s_obj, bool &corpse_flag
 
 static P_obj do_get_container_resolve_item(P_char ch, P_obj s_obj, char *arg1, bool carried)
 {
-	if (carried)
+	// Owned-container keywords work without sight; snapshot selectors require visibility.
+	if (carried && strncasecmp(arg1, "@i:", 3))
 		return get_obj_in_list(arg1, s_obj->contains);
 
 	return get_obj_in_list_vis(ch, arg1, s_obj->contains);
@@ -7521,7 +7523,7 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 		}
 		else if (IS_SET(k->extra_flags, ITEM_SECRET) && find_chance(ch))
 		{
-			REMOVE_BIT(k->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(k, k->extra_flags & ~(ITEM_SECRET));
 			if (CAN_SEE_OBJ(ch, k))
 			{ /*
 			   * Was it found?
@@ -7541,7 +7543,7 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 			else /*
 			      * Make it secret again
 			      */
-				SET_BIT(k->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(k, k->extra_flags | (ITEM_SECRET));
 		}
 	}
 

@@ -8,6 +8,7 @@
  */
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -1017,6 +1018,8 @@ void string_add(struct descriptor_data *d, char *str)
 	}
 	else if (!num)
 		strcat(*d->str, "\r\n");
+	if (!d->str)
+		gmcp_item_edit_done(d);
 }
 
 /* interpret an argument for do_string */
@@ -1067,7 +1070,7 @@ void do_string(P_char ch, char *arg, int cmd)
 	char name[MAX_STRING_LENGTH], string[MAX_STRING_LENGTH];
 	int field, type;
 	P_char mob;
-	P_obj obj;
+	P_obj obj = nullptr;
 	struct extra_descr_data *ed, *tmp;
 
 	name[0] = '\0';
@@ -1366,6 +1369,13 @@ void do_string(P_char ch, char *arg, int cmd)
 		send_to_char("Enter string (/s saves /h for help)\r\n\r\n", ch);
 		*ch->desc->str = 0;
 		ch->desc->max_str = length[field - 1];
+	}
+	if (obj && (field == 1 || field == 2))
+	{
+		if (*string)
+			gmcp_item_changed(obj);
+		else
+			gmcp_item_edit_begin(ch->desc, obj);
 	}
 }
 

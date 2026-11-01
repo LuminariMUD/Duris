@@ -3567,6 +3567,7 @@ static void forget_hostname(int descriptor);
 
 void close_socket(struct descriptor_data *d)
 {
+	gmcp_item_edit_done(d);
 	locker_invalidate_chest_access(d->character);
 	locker_invalidate_chest_access(d->original);
 

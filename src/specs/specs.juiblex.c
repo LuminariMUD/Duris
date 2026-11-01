@@ -235,12 +235,12 @@ void event_flow_amulet_vibrate(P_char /*ch*/, P_char /*victim*/, P_obj obj, void
 	if (OBJ_WORN(obj) && obj->loc.wearing)
 	{
 		act("$p &+rvibrates&+b quietly.&n", FALSE, obj->loc.wearing, obj, 0, TO_CHAR);
-		SET_BIT(obj->extra_flags, ITEM_HUM);
+		set_obj_extra_flags(obj, obj->extra_flags | (ITEM_HUM));
 	}
 	else
 	{
 		act("&+bThe $q &+rvibrates &+bquietly.&n", FALSE, 0, obj, 0, TO_NOTVICT);
-		SET_BIT(obj->extra_flags, ITEM_HUM);
+		set_obj_extra_flags(obj, obj->extra_flags | (ITEM_HUM));
 	}
 }
 
@@ -313,7 +313,7 @@ int flow_amulet(P_obj obj, P_char ch, int cmd, char *arg)
 					}
 				}
 				obj->timer[0] = curr_time;
-				REMOVE_BIT(obj->extra_flags, ITEM_HUM);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_HUM));
 				disarm_obj_nevents(obj, event_flow_amulet_vibrate);
 				add_event(event_flow_amulet_vibrate, 350 * WAIT_SEC, 0, 0, obj, 0,
 					  0, 0);

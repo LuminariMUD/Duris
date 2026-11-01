@@ -2428,10 +2428,10 @@ void recalculate_obj_extra(P_obj obj)
 	if (!t_af)
 		return;
 
-	obj->extra2_flags = t_af->extra2;
-
+	unsigned extra2 = t_af->extra2;
 	for (t_af = obj->affects; t_af; t_af = t_af->next)
-		obj->extra2_flags |= t_af->extra2;
+		extra2 |= t_af->extra2;
+	set_obj_extra2_flags(obj, extra2);
 }
 
 void obj_affect_remove(P_obj obj, struct obj_affect *af)
@@ -2447,7 +2447,7 @@ void obj_affect_remove(P_obj obj, struct obj_affect *af)
 	// This should fix a crash bug that occurs when an item's condition < 0.
 	if (obj->condition < 0)
 	{
-		obj->condition = 1;
+		set_obj_condition(obj, 1);
 	}
 
 	// Find the assoicated event and disarm it
@@ -2577,7 +2577,7 @@ void set_obj_affected_extra(P_obj obj, int time, sh_int spell, sh_int data, ulon
 	if (extra2 && !get_obj_affect(obj, TAG_ALTERED_EXTRA2) && spell != TAG_ALTERED_EXTRA2)
 		set_obj_affected_extra(obj, -1, TAG_ALTERED_EXTRA2, 0, obj->extra2_flags);
 
-	obj->extra2_flags |= extra2;
+	set_obj_extra2_flags(obj, obj->extra2_flags | extra2);
 
 	if (time >= 0)
 	{
@@ -3773,7 +3773,7 @@ bool falling_obj(P_obj obj, int speed, bool caller_is_event)
 				act("$p crashes into the ground from above!", TRUE, 0, obj, 0,
 				    TO_ROOM);
 				if (!IS_ARTIFACT(obj))
-					obj->condition -= dam / 10;
+					set_obj_condition(obj, obj->condition - (dam / 10));
 				// Add object damage/destroy, also hit people, here
 				return FALSE;
 			}

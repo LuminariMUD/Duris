@@ -28,6 +28,7 @@ harness = r'''
 #include "persistence/copyover.h"
 #include "core/mm.h"
 #include "net/ttype.h"
+#include "net/gmcp.h"
 #include <cassert>
 #include <climits>
 #include <cstring>
@@ -72,8 +73,11 @@ P_char copyover_load_player(const char *name, P_desc, std::string *) {
 
 @UPDATE_POPULATION@
 
+void gmcp_session_restored(P_desc) {}
+@DESC_BYTES@
 bool restore_descriptors(FILE *fp, int count) {
     copyover_header header = {};
+    header.version = COPYOVER_VERSION;
     header.num_descriptors = count;
     copyover_desc desc_entry = {};
     P_desc d;
@@ -335,6 +339,7 @@ for marker, code in {
     '@WHO@': who,
     '@UPDATE_POPULATION@': extract_function('nanny.c', 'void update_ingame_racewar('),
     '@RESTORE@': restore,
+    '@DESC_BYTES@': extract_function('copyover.c', 'static size_t copyover_desc_bytes_for_version('),
 }.items():
     harness = harness.replace(marker, code)
 

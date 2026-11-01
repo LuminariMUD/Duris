@@ -27,6 +27,7 @@ def section(text: str, start: str, end: str) -> str:
 
 HARNESS = r'''
 #include "player/player_save_pipeline.h"
+#include "net/gmcp.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_capture.h"
 #include "player/player_snapshot_codec.h"

@@ -78,6 +78,7 @@ expected_resource_intensive = {
     "test_flatfile_first_session_currency.py",
     "test_flatfile_full_world_boot.py",
     "test_flight_network_journey.py",
+    "test_frag_cap_journey.py",
     "test_generated_npc_journey.py",
     "test_gith_monk_journey.py",
     "test_hostname_files_journey.py",
@@ -94,6 +95,7 @@ expected_resource_intensive = {
 }
 assert runner.RESOURCE_INTENSIVE_TEST_NAMES == expected_resource_intensive
 assert runner.MANUAL_ONLY_TEST_NAMES == {
+    "test_account_recovery_mysql_journey.py",
     "test_artifact_population_repository.py",
     "test_discord_game_journey.py",
     "test_epic_task_catalog_mysql.py",
