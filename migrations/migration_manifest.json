@@ -758,6 +758,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "c462a873548d8c24987ac00964a88445fc6f0590eaabfbb7a2a8b42922818742",
       "verify_checksum": "6656fbbf70210957aa306640f5ab2b519c10cb9f9dbac5bf5d3337ba5b02fc8d"
+    },
+    {
+      "id": "0058_world_quest_reward_count",
+      "sequence": 59,
+      "description": "Freeze bartender item reward quantities across completion retries",
+      "apply": "immutable/0058_world_quest_reward_count.sql",
+      "verify": "immutable/0058_world_quest_reward_count.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "d2ec137c50a0e5e4c91af6090c2e07c92959de4c192974c92088d716b040ccef",
+      "verify_checksum": "dc73918bc2426edbc0a607b4577eb6e86b9cec72b43f9d4c5346424013651316"
     }
   ],
   "engine_verifiers": [

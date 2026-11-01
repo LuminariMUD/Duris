@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 13;
+constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 14;
 constexpr size_t PLAYER_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 constexpr size_t PLAYER_SNAPSHOT_MAX_ROWS = 8192;
 constexpr size_t PLAYER_SNAPSHOT_MAX_OBJECTS = 4096;
@@ -111,10 +111,11 @@ enum class player_status_field : uint16_t
 	divine_boon_delivery_seq,
 	quest_origin_room,
 	quest_replacement_due,
+	quest_reward_item_count,
 };
 
 constexpr size_t PLAYER_STATUS_INTEGER_COUNT =
-	static_cast<size_t>(player_status_field::quest_replacement_due) + 1;
+	static_cast<size_t>(player_status_field::quest_reward_item_count) + 1;
 
 enum class player_status_string_field : uint8_t
 {

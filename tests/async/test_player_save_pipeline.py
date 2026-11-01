@@ -396,11 +396,12 @@ int main()
     reward_quest.target = 15002;
     reward_quest.awaiting_reward = true;
     reward_quest.reward = {260, 3, 400};
-    player_item_snapshot reward_root{}, reward_child{};
+    player_item_snapshot reward_root{}, reward_child{}, reward_bonus{};
     reward_root.object_uid=9001; reward_root.vnum=1001;
     reward_root.parent_index=PLAYER_SNAPSHOT_NO_PARENT;
     reward_child.object_uid=9002; reward_child.vnum=1002; reward_child.parent_index=0;
-    reward_quest.reward_items={reward_root,reward_child};
+    reward_bonus=reward_root; reward_bonus.object_uid=9003;
+    reward_quest.reward_items={reward_root,reward_child,reward_bonus};
     reward_quest.reward_encoded_size=1024;
     int reward_callbacks = 0;
     // Detached quest rewards add item components to an otherwise status-only
@@ -448,8 +449,10 @@ int main()
                saved.quest_values[9] == 3 && saved.quest_values[10] == 400);
         assert((saved.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) ==
                (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY));
-        assert(saved.items.size() == 2 && saved.items[0].object_uid == 9001 &&
-               saved.items[1].object_uid == 9002 && saved.items[1].parent_index == 0);
+        assert(saved.items.size() == 3 && saved.items[0].object_uid == 9001 &&
+               saved.items[1].object_uid == 9002 && saved.items[1].parent_index == 0 &&
+               saved.items[2].object_uid == 9003 &&
+               saved.items[2].parent_index == PLAYER_SNAPSHOT_NO_PARENT);
     }
     character_list = erin.ch.next;
 

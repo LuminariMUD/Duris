@@ -10,6 +10,9 @@ Worktree: `/home/aiwithapex/projects/duris-issue-498`
 Branch: `branch/issue-498-owner-items`
 Resumed from `c422427fe`. Item completion is locally qualified and being published.
 Remaining delivery work: parent integration, short cost check, fixtures and handoff.
+Parent `1f9920ac2` now includes reviewed WebSocket/combat fixes and upstream
+bartender reward batches. Revalidate the affected publisher/GUI paths and focused
+restoration leg against this integration; retain unrelated proof.
 
 ## Deliver
 

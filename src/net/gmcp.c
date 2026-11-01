@@ -1650,7 +1650,8 @@ static cJSON *gmcp_combat_json(const gmcp_combat_subject &view)
 }
 
 static void gmcp_combat_publish(P_char ch, bool force, int damage = 0,
-				const char *damage_type = nullptr, int critical = 0)
+				const char *damage_type = nullptr, int critical = 0,
+				P_char hit_victim = nullptr)
 {
 	if (!GMCP_ENABLED(ch) || STATE(ch->desc) != CON_PLAYING || !gmcp_session_player(ch->desc) ||
 	    ch->desc->write_failed)
@@ -1660,6 +1661,8 @@ static void gmcp_combat_publish(P_char ch, bool force, int damage = 0,
 	if (d->gmcp_control_pending || (gmcp_session_supported(d) && d->gmcp_session_pending))
 		return;
 	P_char target = GET_OPPONENT(ch);
+	if (!target)
+		target = hit_victim;
 	if (target && (ch->in_room < 0 || target->in_room != ch->in_room))
 		target = nullptr;
 	const gmcp_combat_subject views[2] = {
@@ -1725,12 +1728,12 @@ static void gmcp_flush_combat(P_desc d)
 		gmcp_combat_publish(d->character, false);
 }
 
-/* Legacy per-hit round: state always describes the current primary relationship. */
+/* Preserve the first hit's victim before damage() establishes the relationship. */
 void gmcp_combat_update(struct char_data *ch, struct char_data *victim, int damage,
 			const char *damage_type, int critical)
 {
 	if (victim)
-		gmcp_combat_publish(ch, true, damage, damage_type, critical);
+		gmcp_combat_publish(ch, true, damage, damage_type, critical, victim);
 }
 
 /* Relationship changes coalesce with health and posture at the next flush. */
@@ -1773,7 +1776,7 @@ void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messa
 	}
 	gmcp_session_update(d);
 	if (d->gmcp_control_pending || (gmcp_session_supported(d) && d->gmcp_session_pending) ||
-	    d->gmcp_event_count >= 64 || !gmcp_session_nonce(d->gmcp_session_context) ||
+	    !gmcp_session_nonce(d->gmcp_session_context) ||
 	    !gmcp_session_nonce(gmcp_session_process))
 	{
 		// Events cannot be coalesced or silently retried as the next hit. Existing
@@ -1815,8 +1818,14 @@ void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messa
 	const size_t payload_bytes = json ? strlen(json) : 0;
 	// Reserve room for either transport's framing/envelope as well as JSON.
 	const size_t bytes = payload_bytes + 128;
-	if (!json || payload_bytes > 4096 || bytes > 65536 - d->gmcp_event_bytes ||
-	    !gmcp_queue(d, "Duris.Combat", json))
+	if (d->gmcp_event_count >= 64 || (json && bytes > 65536 - d->gmcp_event_bytes))
+	{
+		// Optional event overload ends the subscription, not the gameplay connection.
+		d->gmcp_interests &= ~GMCP_SUPPORT_COMBAT;
+		d->gmcp_control_pending = true;
+		d->gmcp_combat_state_sent = false;
+	}
+	else if (!json || payload_bytes > 4096 || !gmcp_queue(d, "Duris.Combat", json))
 		d->write_failed = true;
 	else
 	{

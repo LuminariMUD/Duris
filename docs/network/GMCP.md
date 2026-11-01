@@ -188,8 +188,11 @@ revision baseline. Other legacy consumers use their usual reconnect/bootstrap
 reset; no historical replay is implied. State-only JSON stays below 4 KiB.
 
 The optional legacy `round` remains a per-applied-hit compatibility field, not a
-complete battle log or aggregated combat round. State-only updates never repeat
-it. Active Duris.Combat subscribers receive damage only through that event package;
+complete battle log or aggregated combat round. Before the first combat
+relationship is established, its immediate snapshot uses the struck victim as
+the target, including a lethal first hit. The next periodic snapshot follows the
+current relationship and clears absent subjects. State-only updates never repeat
+the round. Active Duris.Combat subscribers receive damage only through that event package;
 their Combat.Update packets contain state without `round`. Other clients retain
 the legacy primary-only round behavior. This does not claim the reported client
 HP symptom fixed; real widget qualification remains required.
@@ -231,9 +234,15 @@ a new process scope and sequence baseline while retaining the Session entry key.
 At most 64 events/64 KiB are accepted per descriptor between the existing
 (two-pulse) flushes. Byte accounting reserves 128 bytes per event for transport
 framing/envelope; each JSON payload is bounded below 4 KiB. There is no second
-event queue. If allocation, queue admission or these limits prevent retaining an
-event, the existing write-failure teardown invalidates the connection. Reconnect
-resynchronizes state and offers no historical replay or exactly-once guarantee.
+event queue. Reaching either quota cancels only the combat-event subscription.
+The next control flush removes it from the Capabilities interested/active arrays
+and refreshes Combat.Update, after any previously accepted FIFO events. Gameplay
+and other streams continue. Clients must treat the event history as incomplete;
+an explicit new Subscribe can restart events, with the sequence continuing and
+no replay of the lost hit. A rejected control invalidation stays pending for retry.
+Allocation or transport queue failure still uses the existing write-failure
+teardown. Reconnect resynchronizes state and offers no historical replay or
+exactly-once guarantee.
 Unsubscribe, preference disable or transport disable stops new event construction;
 previously queued FIFO events precede the control invalidation. An active event
 consumer never receives the same hit through the legacy `round` representation.

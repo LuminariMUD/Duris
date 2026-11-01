@@ -172,6 +172,27 @@ static void *bounded_json_allocate(size_t size)
 	return std::malloc(size);
 }
 static bool queue_reject;
+static unsigned creation_menus;
+bool account_commit_character_admission(P_desc d, P_char ch, bool, account_racewar_admission *)
+{
+	assert(d->character == ch && d->chargen_phase == CHARGEN_READY);
+	return false;
+}
+void account_format_racewar_denial(const account_racewar_admission *, char *out, size_t size)
+{
+	snprintf(out, size, "Admission rejected");
+}
+void ws_send_system(P_desc, const char *, const char *) {}
+void item_creation_grant_cancel_batch_before_entry(P_char) {}
+void free_char(P_char ch)
+{
+	assert(!ch->desc);
+}
+void ws_send_auth_success(P_desc d, const char *)
+{
+	assert(STATE(d) == CON_ACCT_SELECT_CHAR && !d->character);
+	++creation_menus;
+}
 static std::map<P_desc, std::vector<std::string>> packages;
 static std::map<P_desc, std::vector<std::pair<std::string, std::string>>> deliveries;
 
@@ -753,6 +774,22 @@ static void session_contract(P_char actor, bool websocket)
 	d.connected = CON_ACCT_SELECT_CHAR;
 	gmcp_session_update(&d);
 	check("account", "0", nullptr);
+	if (websocket)
+	{
+		acct_entry account{};
+		d.account = &account;
+		d.chargen_phase = CHARGEN_READY;
+		d.character = actor;
+		actor->desc = &d;
+		gmcp_session_update(&d);
+		check("chargen", "0", nullptr);
+		const auto menus = creation_menus;
+		rejected_creation(&d, actor);
+		assert(creation_menus == menus + 1 && d.chargen_phase == CHARGEN_UNSTARTED);
+		gmcp_session_update(&d);
+		check("account", "0", nullptr);
+		d.account = nullptr;
+	}
 	d.character = actor;
 	actor->desc = &d;
 	d.connected = CON_PLAYING;
@@ -969,6 +1006,7 @@ static void combat_contract(bool websocket)
 				assert(cJSON_IsNull(subject));
 			else
 			{
+				assert(cJSON_IsObject(subject));
 				assert(std::string(cJSON_GetStringValue(
 					       cJSON_GetObjectItem(subject, "name"))) == name);
 				assert(cJSON_GetObjectItem(subject, "healthPercent")->valueint ==
@@ -982,6 +1020,23 @@ static void combat_contract(bool websocket)
 	check("wolf", 80, "Ally", 5);
 	assert(payload(&d, "Combat.Update").find("kneeling") != std::string::npos);
 	emit(&d, "Combat.Update", "combat-subjects");
+	// raw_damage publishes before damage() establishes the first combat relationship.
+	viewer.specials.fighting = enemy.specials.fighting = nullptr;
+	applied_damage_notice(&viewer, &enemy, 8);
+	check("wolf", 72, nullptr, 0);
+	assert(payload(&d, "Combat.Update").find("\"damage\":8") != std::string::npos);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	// A lethal first hit can finish without ever establishing that relationship.
+	enemy.points.hit = 10;
+	applied_damage_notice(&viewer, &enemy, 111);
+	check("wolf", 0, nullptr, 0);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	enemy.points.hit = 80;
+	viewer.specials.fighting = &enemy;
+	enemy.specials.fighting = &tank;
+	gmcp_flush_combat(&d);
 	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
 	cJSON_InitHooks(&hooks);
 	const auto stable_count = count();
@@ -1218,12 +1273,41 @@ static void combat_events_contract(bool websocket)
 	for (int n = 0; n < 64; ++n)
 		gmcp_combat_damage(&actor, &primary, n + 1, &hit);
 	assert(count() == events + 64 && d.gmcp_event_count == 64 && d.gmcp_event_bytes < 65536);
+	const auto stopped_sequence = d.gmcp_event_sequence;
 	gmcp_combat_damage(&actor, &primary, 1, &hit);
-	assert(d.write_failed && count() == events + 64);
+	assert(!d.write_failed && count() == events + 64);
+	assert(!(d.gmcp_interests & GMCP_SUPPORT_COMBAT) && d.gmcp_control_pending);
+	assert(d.gmcp_event_sequence == stopped_sequence);
+	const auto stopped = packages[&d].size();
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && !d.gmcp_control_pending && !d.gmcp_active_streams);
+	assert(packages[&d][stopped] == "Duris.Capabilities");
+	assert(packages[&d].back() == "Combat.Update");
+	assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") != std::string::npos);
+	assert(payload(&d, "Combat.Update").find("Primary") != std::string::npos);
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && count() == events + 64);
+	// Only an explicit new Subscribe restarts events; it never replays the lost hit.
+	control_clock_us += 1000000;
+	gmcp_handle_input(&d, subscribe, sizeof(subscribe) - 1);
+	gmcp_flush_initial_states();
+	gmcp_combat_damage(&actor, &primary, 1, &hit);
+	assert(!d.write_failed && count() == events + 65);
+	assert(d.gmcp_event_sequence == stopped_sequence + 1);
 	reset();
+	d.gmcp_supports |= GMCP_SUPPORT_TIME;
+	d.gmcp_interests |= GMCP_SUPPORT_TIME;
 	d.gmcp_event_bytes = 65536;
 	gmcp_combat_damage(&actor, &primary, 1, &hit);
-	assert(d.write_failed && !d.gmcp_event_sequence);
+	assert(!d.write_failed && !d.gmcp_event_sequence);
+	assert(d.gmcp_interests == GMCP_SUPPORT_TIME && d.gmcp_control_pending);
+	queue_reject = true;
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && d.gmcp_control_pending);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(!d.write_failed && !d.gmcp_control_pending);
+	assert(d.gmcp_active_streams == GMCP_SUPPORT_TIME);
 	reset();
 	d.gmcp_event_sequence = 9007199254740992ULL;
 	gmcp_combat_damage(&actor, &primary, 1, &hit);
@@ -1411,6 +1495,8 @@ static void items_contract(bool websocket)
 	cJSON *empty = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
 	assert(cJSON_GetArraySize(cJSON_GetObjectItem(empty, "items")) == 0);
 	assert(cJSON_IsTrue(cJSON_GetObjectItem(empty, "complete")));
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-empty");
 	cJSON_Delete(empty);
 	obj_data worn{};
 	worn.obj_uid = 77;
@@ -1431,6 +1517,8 @@ static void items_contract(bool websocket)
 	assert(get_obj_equipped(&actor, selected) == &worn);
 	int slot;
 	assert(get_object_in_equip(&actor, selected, &slot) == &worn && slot == WIELD);
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-equipment");
 	cJSON_Delete(equipment);
 	concealed_item = &worn;
 	gmcp_items_changed(&actor);
@@ -1605,6 +1693,8 @@ static void nested_items_contract(bool websocket)
 	const auto get = [&](uint64_t uid) { request("[\"" + token(uid) + "\"]"); };
 	get(bag.obj_uid);
 	finish(true, 1); // Hidden siblings are omitted; a request never recursively pushes.
+	if (!websocket)
+		emit(&d, "Char.Items.List", "items-nested");
 	assert(payload(&d, "Char.Items.List").find("an inner bag") != std::string::npos);
 	get(inner.obj_uid);
 	finish(true, 0); // Explicit known-empty nested state.
