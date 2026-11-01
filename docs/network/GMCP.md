@@ -411,3 +411,7 @@ under ignored `bin/qualification/issue498/short-cost/`. The driver is
 `python3 bin/qualification/issue498/short-cost/run.py`; it reuses the existing
 minimal-server, character, promotion and combat fixtures and preserves completed
 legs. No general benchmark framework or periodic telemetry service was added.
+
+After this measurement, the focused worn-container selector lookup was corrected
+without changing any measured flush/workload path. Its native regression and
+both builds pass; the short timing evidence remains applicable.

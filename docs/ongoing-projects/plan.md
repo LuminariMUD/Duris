@@ -48,7 +48,7 @@ No further regression/hardening phase is required for this selected delivery.
   bounded 3,000-item pages/search, 100-descriptor fairness, selectors, access,
   editor/queue/allocation retry, disarm/repair/temporary-save and committed reward
   retry/replay/logout. Review regressions cover knockout recovery and both true-name
-  rename paths. Parser fuzz's 11,540,402 sanitizer executions remain valid:
+  rename paths; the worn-container get lookup also resolves item selectors. Parser fuzz's 11,540,402 sanitizer executions remain valid:
   later changes do not change item parsing.
 - `python3 tests/async/test_gmcp_control_journey.py --server bin/server/dms_flatfile`:
   normal Telnet/WebSocket dispatch, lifecycle, combat and native item commands pass.
@@ -62,7 +62,7 @@ No further regression/hardening phase is required for this selected delivery.
   Zero overruns; delivery protocol max 669 us; whole-tick max 1.078 ms. See the wire
   document for averages, source/binary hashes, memory behavior and limitations.
 - `python3 scripts/capture_server_gmcp.py --server /home/aiwithapex/projects/duris-issue-498`
-  in the client handoff checkout: producer passed; 25 source hashes match and 12
+  in the client handoff checkout: producer passed; 26 source hashes match and 12
   phases include the new contracts plus existing populated/clear cases.
 - Real Mudlet `python3 scripts/mudlet_test.py run --scenario server-wire` passed
   (`20261101T102603Z-38eccfe8-server-wire`); populated/clear screenshots inspected.
@@ -77,7 +77,7 @@ before publishing. Every delivered chunk is committed, pushed and in a review PR
 ## Handoff and remaining follow-ups
 
 Server worktree: `/home/aiwithapex/projects/duris-issue-498`.
-Item branch: `branch/issue-498-owner-items` (review fixes `524949722`).
+Item branch: `branch/issue-498-owner-items` (review fixes `524949722`, `a33f4a09e`).
 Current branch: `branch/issue-498-delivery-evidence` (#548).
 Client handoff worktree: `/home/aiwithapex/projects/durisclient-issue26-server-handoff`,
 branch `branch/issue-26-server-handoff` (fixture fix `2115d9b`).
@@ -99,3 +99,10 @@ client consumer before adding any. Preserve text fallback for unavailable featur
 The reported player/pet/opponent HP symptom remains unverified in a real game.
 Review/merge/deployment and these follow-ups are separate work, not missing steps
 in the completed revised server delivery.
+
+Final review correction `a33f4a09e` routes worn-container `get` through the existing
+selector-aware matcher. Its native regression fails before the fix and passes
+afterwards; both backend builds pass. The lookup does not run in the measured
+cost workload, so the recorded timing evidence is reused. Client fixtures were
+recaptured with the extra command-owner hash; existing populated/clear wire
+inputs differ only in the chat timestamp, preserving the real-Mudlet evidence.
