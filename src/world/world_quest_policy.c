@@ -406,6 +406,7 @@ struct reward_withholding
 {
 	size_t quest_items = 0;
 	size_t top_value = 0;
+	int percent = 20;
 };
 
 // Every item a hand-built quest pays out or asks players to hand in. Bartender rewards
@@ -587,17 +588,17 @@ void load_reward_profiles(reward_withholding &withheld)
 	// A zone's most valuable items are earned in the zone, not bought from a bartender.
 	// They are withheld before the per-level lists and zone scores are built, so both
 	// describe only what a quest can actually pay.
-	const int withheld_percent = BOUNDED(
-		0,
-		static_cast<int>(get_property("world.quest.reward.top.withheld.percent", 20.000)),
-		100);
+	const double configured = get_property("world.quest.reward.top.withheld.percent", 20.000);
+	if (!std::isfinite(configured))
+		logit(LOG_STATUS, "Invalid world.quest.reward.top.withheld.percent; using 20%%");
+	withheld.percent = world_quest_reward_withheld_percent(configured);
 	for (quest_zone_profile &zone : quest_zones)
 	{
 		std::vector<int> values;
 		values.reserve(zone.rewards.size());
 		for (const quest_reward_profile &reward : zone.rewards)
 			values.push_back(reward.ivalue);
-		const int ceiling = world_quest_reward_value_ceiling(values, withheld_percent);
+		const int ceiling = world_quest_reward_value_ceiling(values, withheld.percent);
 
 		std::vector<quest_reward_profile> offered;
 		offered.reserve(zone.rewards.size());
@@ -1214,17 +1215,17 @@ bool world_quest_policy_bootstrap()
 		logit(LOG_STATUS,
 		      "World quest catalog ready: zones=%d mobile_profiles=%zu reward_profiles=%zu "
 		      "mapless_zones=%d elapsed_ms=%lld withheld_quest_items=%zu "
-		      "withheld_top_value=%zu",
+		      "withheld_top_value=%zu withheld_percent=%d",
 		      top_of_zone_table + 1, mob_profiles, reward_profiles, mapless_zones,
 		      static_cast<long long>(elapsed.count()), withheld.quest_items,
-		      withheld.top_value);
+		      withheld.top_value, withheld.percent);
 		fprintf(stderr,
 			"World quest catalog ready: zones=%d mobile_profiles=%zu reward_profiles=%zu "
 			"mapless_zones=%d elapsed_ms=%lld withheld_quest_items=%zu "
-			"withheld_top_value=%zu\n",
+			"withheld_top_value=%zu withheld_percent=%d\n",
 			top_of_zone_table + 1, mob_profiles, reward_profiles, mapless_zones,
 			static_cast<long long>(elapsed.count()), withheld.quest_items,
-			withheld.top_value);
+			withheld.top_value, withheld.percent);
 	}
 	catch (const std::exception &error)
 	{

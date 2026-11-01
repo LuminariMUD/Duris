@@ -207,6 +207,7 @@ bool capture_status(P_char ch, player_snapshot &snapshot, capture_budget &budget
 	ADD_STATUS(divine_boon_delivery_seq, ch->only.pc->divine_boon_delivery_seq);
 	ADD_STATUS(quest_origin_room, ch->only.pc->quest_origin_room);
 	ADD_STATUS(quest_replacement_due, ch->only.pc->quest_replacement_due);
+	ADD_STATUS(quest_reward_item_count, ch->only.pc->quest_reward_item_count);
 #undef ADD_STATUS
 
 	for (size_t index = 0; index < snapshot.conditions.size(); ++index)

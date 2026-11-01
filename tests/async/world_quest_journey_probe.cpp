@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cassert>
 #include <vector>
+#include <unistd.h>
 extern P_room world;
 extern zone_data *zone_table;
 extern int top_of_world;
@@ -75,6 +76,11 @@ extern "C"
 	int quest_gameplay_fixture_vnum = 0;
 	int quest_gameplay_fixture_selected = 0;
 	int quest_gameplay_fixture_suggested = 0;
+	int quest_gameplay_reward_quota = 0;
+	int quest_gameplay_bonus_successes = -1;
+	int quest_gameplay_bonus_rolls = 0;
+	int quest_gameplay_fail_reward_at = 0;
+	int quest_gameplay_reward_calls = 0;
 	void *quest_gameplay_passive_mobile = nullptr;
 }
 extern "C" void quest_gameplay_read_control()
@@ -87,6 +93,20 @@ extern "C" void quest_gameplay_read_control()
 				&quest_gameplay_stage, &quest_gameplay_origin);
 	fclose(input);
 	assert(read == 3 || read == 4);
+	input = fopen("quest-reward-control.txt", "r");
+	quest_gameplay_reward_quota = 0;
+	quest_gameplay_bonus_successes = -1;
+	quest_gameplay_bonus_rolls = 0;
+	quest_gameplay_fail_reward_at = 0;
+	quest_gameplay_reward_calls = 0;
+	if (input)
+	{
+		const int fields = fscanf(input, "%d %d %d", &quest_gameplay_reward_quota,
+					  &quest_gameplay_bonus_successes,
+					  &quest_gameplay_fail_reward_at);
+		assert(fields == 2 || fields == 3);
+		fclose(input);
+	}
 }
 extern "C" void quest_gameplay_setup(P_char ch)
 {
@@ -186,15 +206,39 @@ static int completion_remaining = -1, completion_level = 0, completion_target = 
 static int completion_calls = 0;
 static uint64_t completion_reward = 0;
 static int completion_reward_vnum = 0;
-extern "C" void quest_gameplay_history(P_char ch, P_obj reward)
+static std::vector<uint64_t> completion_rewards;
+extern "C" void quest_gameplay_history(P_char ch, const void *raw_rewards)
 {
 	assert(ch && IS_PC(ch));
+	const auto *rewards = static_cast<const std::vector<P_obj> *>(raw_rewards);
+	completion_rewards.clear();
+	for (P_obj reward : *rewards)
+		if (reward)
+			completion_rewards.push_back(reward->obj_uid);
+	FILE *record = fopen("quest-reward-uids.txt", "w");
+	assert(record);
+	for (uint64_t uid : completion_rewards)
+		fprintf(record, "%llu\n", static_cast<unsigned long long>(uid));
+	fclose(record);
+	P_obj reward = rewards->empty() ? nullptr : rewards->front();
 	++completion_calls;
 	completion_remaining = sql_world_quest_can_do_another(ch);
 	completion_level = GET_LEVEL(ch);
 	completion_target = ch->only.pc->quest_mob_vnum;
 	completion_reward = reward ? reward->obj_uid : 0;
 	completion_reward_vnum = reward ? OBJ_VNUM(reward) : 0;
+}
+
+extern "C" void quest_gameplay_reward_pause()
+{
+	if (access("quest-reward-pause", F_OK) != 0)
+		return;
+	FILE *ready = fopen("quest-reward-ready", "w");
+	assert(ready);
+	fputs("committed\n", ready);
+	fclose(ready);
+	while (access("quest-reward-pause", F_OK) == 0)
+		usleep(100000);
 }
 
 static void number(cJSON *object, const char *key, long long value)
@@ -489,9 +533,11 @@ extern "C" void quest_gameplay_choose_fixture(P_char ch, const void *source_look
 			    (!returns.count(mob->in_room) ||
 			     !returns.count(real_room(GET_BIRTHPLACE(mob)))))
 				walkable = false;
-		const int needed = quest_gameplay_kind == FIND_AND_ASK ? 1 :
-				   quest_gameplay_level == 29	       ? 3 :
-									 2;
+		const int needed =
+			quest_gameplay_kind == FIND_AND_ASK ? 1 :
+			quest_gameplay_reward_quota > 0	    ? quest_gameplay_reward_quota + 1 :
+			quest_gameplay_level == 29	    ? 3 :
+							      2;
 		if (!walkable ||
 		    world_quest_policy_check_target(ch, quest_gameplay_origin, quest_gameplay_level,
 						    zone, vnum, quest_gameplay_kind, needed)
@@ -509,7 +555,13 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	assert(ch && IS_PC(ch));
 	using lookup_type = const void *(*)(P_char);
 	const auto source = reinterpret_cast<lookup_type>(const_cast<void *>(source_lookup));
-	const auto &q = *ch->only.pc;
+	auto &q = *ch->only.pc;
+	if (q.quest_active && q.quest_type == FIND_AND_KILL && !q.quest_accomplished &&
+	    !q.quest_kill_how_many && quest_gameplay_reward_quota > 0)
+	{
+		q.quest_kill_original = quest_gameplay_reward_quota;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	}
 	static unsigned sequence = 0;
 	static int last_target = 0;
 	if (q.quest_active)
@@ -573,6 +625,9 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "completion_target", completion_target);
 	cJSON_AddStringToObject(root, "reward_uid", std::to_string(completion_reward).c_str());
 	number(root, "reward_vnum", completion_reward_vnum);
+	cJSON *reward_uids = cJSON_AddArrayToObject(root, "reward_uids");
+	for (uint64_t uid : completion_rewards)
+		cJSON_AddItemToArray(reward_uids, cJSON_CreateString(std::to_string(uid).c_str()));
 
 	number(root, "active", q.quest_active);
 	number(root, "accomplished", q.quest_accomplished);
@@ -583,6 +638,9 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	number(root, "zone", q.quest_zone_number);
 	number(root, "kills", q.quest_kill_how_many);
 	number(root, "quota", q.quest_kill_original);
+	number(root, "frozen_item_count", q.quest_reward_item_count);
+	number(root, "bonus_rolls", quest_gameplay_bonus_rolls);
+	number(root, "reward_calls", quest_gameplay_reward_calls);
 	number(root, "map_bought", q.quest_map_bought);
 	number(root, "map_room", q.quest_map_room);
 	number(root, "origin", q.quest_origin_room);
@@ -637,7 +695,8 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	}
 
 	std::unordered_map<int, std::vector<P_char>> targets;
-	if (q.quest_active)
+	const bool seeking_target = q.quest_active && !q.quest_accomplished;
+	if (seeking_target)
 		for (P_char mob = character_list; mob; mob = mob->next)
 		{
 			if (!IS_NPC(mob) || !IS_ALIVE(mob) || mob->in_room < 0 ||
@@ -662,7 +721,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 	for (size_t next = 0; next < queue.size(); ++next)
 	{
 		const int room = queue[next];
-		if (q.quest_active ? targets.count(room) : room == real_room(origin))
+		if (seeking_target ? targets.count(room) : room == real_room(origin))
 		{
 			destination = room;
 			break;
@@ -699,7 +758,7 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 			from = to;
 		}
 		number(root, "destination", world[destination].number);
-		if (q.quest_active)
+		if (seeking_target)
 		{
 			P_char mob = targets.at(destination).front();
 			number(root, "birthplace", GET_BIRTHPLACE(mob));

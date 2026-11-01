@@ -154,9 +154,10 @@ bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &ite
 bool sql_hydrate_item_owner_revisions(void);
 // Completion is published only after history and the player's after-image commit.
 struct player_world_quest_reward;
-bool sql_world_quest_finish_async(P_char ch, P_obj obj, bool awaiting_reward,
-				  bool final_kill_reward, const player_world_quest_reward &reward,
-				  int escrow_fee, std::function<bool(P_char)> committed);
+bool sql_world_quest_finish_async(P_char ch, const std::vector<P_obj> &rewards,
+				  bool awaiting_reward, bool final_kill_reward,
+				  const player_world_quest_reward &reward, int escrow_fee,
+				  std::function<bool(P_char)> committed);
 // Reads a character's world quest history, which the quest checks then use.
 void sql_world_quest_history_load(P_char ch);
 int sql_world_quest_done_already(P_char ch, int number);

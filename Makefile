@@ -116,6 +116,9 @@ security-check: security-sbom
 # directories as well as files.
 world: build-area-tools
 	@set -eu; \
+	mkdir -p bin/areas; \
+	exec 9>bin/areas/world.lock; \
+	flock 9; \
 	stamp=areas/.world.stamp; \
 	refresh=0; \
 	for output in $(AREA_WORLD_OUTPUTS); do \

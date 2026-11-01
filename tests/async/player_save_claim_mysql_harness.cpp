@@ -984,9 +984,16 @@ int main()
 	quest.pending_world_quest.awaiting_reward = true;
 	quest.pending_world_quest.escrow_fee = 0;
 	quest.pending_world_quest.before_quest[1] = 15003;
-	quest.pending_world_quest.reward_items = { item(15003001, 1001, -1) };
+	quest.pending_world_quest.reward_items = { item(15003001, 1001, -1),
+						   item(15003003, 1002, -1),
+						   item(15003004, 1002, 1) };
 	quest.pending_world_quest.reward_encoded_size = 1024;
-	quest.items = { item(15003002, 1002, -1), quest.pending_world_quest.reward_items[0] };
+	quest.status_integers.push_back(
+		{ player_status_field::quest_reward_item_count, 2, 0, false });
+	quest.items = { item(15003002, 1002, -1), quest.pending_world_quest.reward_items[0],
+			quest.pending_world_quest.reward_items[1],
+			quest.pending_world_quest.reward_items[2] };
+	quest.items.back().parent_index = 2;
 	++quest.revision;
 	execute(test_connection,
 		"CREATE TRIGGER reject_quest_history BEFORE INSERT ON world_quest_accomplished "
@@ -994,7 +1001,7 @@ int main()
 	require(player_snapshot_repository_apply(test_connection, quest).outcome ==
 				player_save_apply_outcome::terminal_failure &&
 			scalar(test_connection,
-			       "SELECT COUNT(*) FROM item_current_owner WHERE item_uid=15003001") ==
+			       "SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (15003001,15003003,15003004)") ==
 				"0" &&
 			scalar(test_connection,
 			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003001") ==
@@ -1019,6 +1026,11 @@ int main()
 			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003001") ==
 				"1" &&
 			owner_of(15003001) == "1:77777:0:1:15003001:0" &&
+			scalar(test_connection,
+			       "SELECT quest_reward_item_count FROM player_data WHERE pid=77777") ==
+				"2" &&
+			owner_of(15003003) == "1:77777:0:1:15003003:0" &&
+			owner_of(15003004) == "1:77777:0:1:15003003:15003003" &&
 			scalar(test_connection,
 			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=77777 AND quest_target=15003") ==
 				"1",
