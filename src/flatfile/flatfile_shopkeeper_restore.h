@@ -16,6 +16,16 @@
 #define DURIS_FLATFILE_SHOPKEEPER_RESTORE_H
 
 #include <string>
+#include <vector>
+
+struct flatfile_shopkeeper_record;
+struct flatfile_materialized_shopkeeper;
+
+// Prepare and commit stock/custody before publishing the staged keeper bodies.
+bool flatfile_shopkeeper_restock(const std::string &root,
+				 std::vector<flatfile_shopkeeper_record> *records,
+				 const std::vector<flatfile_materialized_shopkeeper> &staged,
+				 std::string *error);
 
 // After live keepers and produced stock are reconciled, initialize missing IDs.
 bool flatfile_shopkeeper_bootstrap_new(const std::string &root, std::string *error);
@@ -31,6 +41,7 @@ enum class flatfile_shopkeeper_restore_result
 };
 
 flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std::string &root,
-								       std::string *error);
+								       std::string *error,
+								       bool refill = false);
 
 #endif

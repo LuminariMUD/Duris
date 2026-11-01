@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "flatfile/flatfile_shopkeeper_ownership.h"
+#include "item/item_ownership_runtime.h"
 
 #include <limits>
 #include <new>
@@ -116,4 +117,25 @@ flatfile_shopkeeper_ownership_result flatfile_shopkeeper_load_item_ownership(
 	if (reconciled == flatfile_shopkeeper_ownership_result::ok)
 		*owner_revision = loaded_revision;
 	return reconciled;
+}
+
+bool flatfile_shopkeeper_publish_ownership(const std::string &root,
+					   const flatfile_shopkeeper_record &record,
+					   std::string *error)
+{
+	std::vector<item_ownership_runtime_entry> ownership;
+	uint64_t revision = 0;
+	std::vector<player_load_item_identity> identities;
+	if (flatfile_shopkeeper_load_item_ownership(root, record, &revision, &identities, error) !=
+	    flatfile_shopkeeper_ownership_result::ok)
+		return false;
+	for (size_t index = 0; index < identities.size(); ++index)
+	{
+		const auto &identity = identities[index];
+		ownership.push_back({ identity.item_uid, identity.root_item_uid,
+				      identity.parent_item_uid, identity.owner,
+				      identity.item_revision, identity.owner_revision,
+				      record.items[index].vnum, identity.state });
+	}
+	return item_ownership_runtime_hydrate_batch(ownership.data(), ownership.size());
 }

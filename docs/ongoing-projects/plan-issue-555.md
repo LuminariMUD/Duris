@@ -1,7 +1,7 @@
 # Issue #555: refill missing shop stock after a normal reboot
 
-Status: boot classification and SQL deficit refill implemented and locally checked;
-flat-file refill and gameplay qualification remain. Updated 2026-11-01.
+Status: boot classification and both persistence refill paths implemented and
+locally checked; complete gameplay qualification remains. Updated 2026-11-01.
 
 - Issue: [#555 — reboot-only shop stock is discarded](https://github.com/LuminariMUD/Duris/issues/555).
 - Branch: [`branch/issue-555-reboot-shop-stock`](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-reboot-shop-stock).
@@ -17,6 +17,8 @@ Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
 SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
 `branch/issue-555-refill-shop-stock`, based on that branch,
 in the same local worktree. Keep #558 unmerged for review until the stack is ready.
+Flat-file PR: [#561](https://github.com/LuminariMUD/Duris/pull/561),
+`branch/issue-555-flatfile-stock`, based on #559.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
@@ -76,8 +78,34 @@ Additional SQL evidence:
 - `make -C src -j4` passes again for the SQL changes; output is in
   `bin/issue-555-stock-build.log`.
 
-Next: integrate the same selector with flat-file catalog/custody publication,
-extend persistence and failure coverage, and run the acceptance journeys below.
+The flat-file continuation uses the same selector. Its transaction lives in
+`flatfile_shopkeeper_restock.c`; catalog restore calls it only when the boot
+facade explicitly grants refill. It captures selected fresh graphs, checks shop
+and custody revisions and new UID absence under the authority lock, and commits
+catalog plus custody through the existing authority transaction. Only afterward
+does it move those roots into the staged keeper and hydrate runtime ownership.
+Bootstrap and refill share ownership publication through the existing ownership
+module. No-deficit boots do not write a catalog or advance its revision.
+
+Additional flat-file evidence:
+
+- `test_flatfile_shopkeeper_restock.py`: five ASan/UBSan cases pass using the
+  production selector, refill transaction, catalog/custody repositories, and
+  runtime hydration. World movement and graph capture are test doubles. Cases
+  cover partial finite stock, equipment exclusion, saved resale properties,
+  container parent/root identity, another reboot with no catalog change, UID
+  collision, stale shop revision, storage-write failure with unchanged durable
+  files, and publication failure after a complete durable commit/reload.
+- Existing catalog restore, repository, ownership reconciliation, and new-shop
+  bootstrap checks pass. Their current harnesses still cover default restore
+  without refill; the complete gameplay path is a separate required check.
+- Development builds for MariaDB and client-free flat-file mode pass. The latter
+  executable is `bin/server/dms_flatfile`; logs are under `bin/issue-555-*.log`.
+
+Next: run the full-world no-trade restart control, then add and execute the
+buy/save/reboot acceptance journeys for both modes, including recovery controls.
+The worktree has no generated `areas/world.*` data yet; prepare isolated generated
+world data for those journeys rather than use stale unverified area output.
 The isolated restore tests do not yet prove the complete buy/save/reboot path.
 No production operation or release tag has occurred.
 

@@ -63,6 +63,7 @@ char_data keeper={};
 int real_mobile(int vnum) { return vnum==2000 ? 0 : -1; }
 int real_room(int vnum) { return vnum==2300 ? 0 : -1; }
 flatfile_shopkeeper_result flatfile_shopkeeper_list(const std::string &,std::vector<flatfile_shopkeeper_record> *out,std::string *) { *out=records; return listing; }
+bool flatfile_shopkeeper_restock(const std::string &,std::vector<flatfile_shopkeeper_record> *,const std::vector<flatfile_materialized_shopkeeper> &,std::string *) { assert(false && "default restore must not refill"); return false; }
 flatfile_shopkeeper_materialize_result flatfile_shopkeeper_materialize(const std::string &,const flatfile_shopkeeper_record &,flatfile_materialized_shopkeeper *out,player_load_item_materialize_metrics *,std::string *) { ++body_calls; out->character=&keeper; out->room_rnum=0; return flatfile_shopkeeper_materialize_result::ok; }
 void item_ownership_runtime_forget(uint64_t) { assert(false); }
 void extract_char(P_char mob) { assert(mob==&keeper); }

@@ -73,6 +73,12 @@ flatfile_shopkeeper_prepare_addition(const std::string &root, const flatfile_aut
 flatfile_shopkeeper_result
 flatfile_shopkeeper_list(const std::string &root, std::vector<flatfile_shopkeeper_record> *records,
 			 std::string *error);
+// Advance existing shop records by one revision; commit with new stock custody.
+flatfile_shopkeeper_result
+flatfile_shopkeeper_prepare_restock(const std::string &root, const flatfile_authority_lock &lock,
+				    const std::vector<flatfile_shopkeeper_record> &records,
+				    flatfile_authority_after_image *after_image,
+				    std::string *error);
 flatfile_shopkeeper_result
 flatfile_shopkeeper_prepare_trade(const std::string &root, const flatfile_authority_lock &lock,
 				  const shop_trade_payload &payload,

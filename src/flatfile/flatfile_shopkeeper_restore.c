@@ -99,8 +99,8 @@ void discard_staged(std::vector<flatfile_materialized_shopkeeper> *staged,
 }
 }
 
-flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std::string &root,
-								       std::string *error)
+flatfile_shopkeeper_restore_result
+flatfile_shopkeeper_restore_catalog(const std::string &root, std::string *error, bool refill)
 {
 	std::vector<flatfile_shopkeeper_record> records;
 	const auto listed = flatfile_shopkeeper_list(root, &records, error);
@@ -156,6 +156,21 @@ flatfile_shopkeeper_restore_result flatfile_shopkeeper_restore_catalog(const std
 		staged.push_back(materialized);
 	}
 
+	try
+	{
+		if (refill && !flatfile_shopkeeper_restock(root, &records, staged, error))
+		{
+			if (error && error->empty())
+				*error = "shop stock replenishment failed";
+			discard_staged(&staged, records);
+			return flatfile_shopkeeper_restore_result::io_error;
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		discard_staged(&staged, records);
+		return flatfile_shopkeeper_restore_result::io_error;
+	}
 	for (size_t index = 0; index < staged.size(); ++index)
 		if (!char_to_room(staged[index].character, staged[index].room_rnum, 0))
 		{
@@ -324,32 +339,10 @@ bool flatfile_shopkeeper_bootstrap_new(const std::string &root, std::string *err
 		}
 		for (const auto &record : additions)
 		{
-			std::vector<item_ownership_runtime_entry> ownership;
-			uint64_t revision = 0;
-			std::vector<player_load_item_identity> identities;
-			if (flatfile_shopkeeper_load_item_ownership(root, record, &revision,
-								    &identities, error) !=
-			    flatfile_shopkeeper_ownership_result::ok)
+			if (!flatfile_shopkeeper_publish_ownership(root, record, error))
 			{
 				if (error && error->empty())
-					*error = "new shop custody reload failed";
-				return false;
-			}
-			for (size_t index = 0; index < identities.size(); ++index)
-			{
-				const auto &identity = identities[index];
-				ownership.push_back({ identity.item_uid, identity.root_item_uid,
-						      identity.parent_item_uid, identity.owner,
-						      identity.item_revision,
-						      identity.owner_revision,
-						      record.items[index].vnum, identity.state });
-			}
-			if (!item_ownership_runtime_hydrate_batch(ownership.data(),
-								  ownership.size()))
-			{
-				if (error && error->empty())
-					*error = "new shop custody publication failed: " +
-						 std::to_string(record.shop_id);
+					*error = "shop custody publication failed";
 				return false;
 			}
 			records.push_back(record);
