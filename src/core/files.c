@@ -4054,7 +4054,8 @@ void restore_shopkeepers(void)
 	{
 		std::string error;
 		const char *root = persistence_mode_flatfile_root();
-		const auto restored = flatfile_shopkeeper_restore_catalog(root ? root : "", &error);
+		const auto restored = flatfile_shopkeeper_restore_catalog(
+			root ? root : "", &error, shopkeeper_boot_restock());
 		if (restored != flatfile_shopkeeper_restore_result::ok &&
 		    restored != flatfile_shopkeeper_restore_result::not_found)
 			fatal_boot_error("shopkeeper", "flat-file shopkeeper restore failed: %s",

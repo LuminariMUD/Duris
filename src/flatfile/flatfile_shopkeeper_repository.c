@@ -590,6 +590,50 @@ flatfile_shopkeeper_prepare_addition(const std::string &root, const flatfile_aut
 }
 
 flatfile_shopkeeper_result
+flatfile_shopkeeper_prepare_restock(const std::string &root, const flatfile_authority_lock &lock,
+				    const std::vector<flatfile_shopkeeper_record> &records,
+				    flatfile_authority_after_image *after_image, std::string *error)
+{
+	if (root.empty() || !lock.matches(root) || records.empty() || !after_image)
+		return flatfile_shopkeeper_result::invalid;
+	*after_image = {};
+	const auto recovered = recover(root, lock, error);
+	if (recovered != flatfile_shopkeeper_result::ok)
+		return recovered;
+	shopkeeper_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_shopkeeper_result::ok)
+		return loaded;
+	if (catalog.revision == UINT64_MAX)
+		return flatfile_shopkeeper_result::invalid;
+	try
+	{
+		for (auto record : records)
+		{
+			auto existing = std::find_if(catalog.records.begin(), catalog.records.end(),
+						     [&](const auto &entry)
+						     { return entry.shop_id == record.shop_id; });
+			if (existing == catalog.records.end() || existing->revision == UINT64_MAX ||
+			    record.revision != existing->revision + 1 ||
+			    record.mob_vnum != existing->mob_vnum ||
+			    record.room_vnum != existing->room_vnum)
+				return flatfile_shopkeeper_result::stale;
+			std::sort(record.affects.begin(), record.affects.end(), affect_less);
+			*existing = std::move(record);
+		}
+		++catalog.revision;
+		if (!encode_catalog(catalog, &after_image->bytes))
+			return flatfile_shopkeeper_result::invalid;
+		after_image->filename = catalog_filename;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return flatfile_shopkeeper_result::io_error;
+	}
+	return flatfile_shopkeeper_result::ok;
+}
+
+flatfile_shopkeeper_result
 flatfile_shopkeeper_list(const std::string &root, std::vector<flatfile_shopkeeper_record> *records,
 			 std::string *error)
 {

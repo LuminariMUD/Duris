@@ -38,5 +38,8 @@ flatfile_shopkeeper_ownership_result flatfile_shopkeeper_reconcile_item_ownershi
 flatfile_shopkeeper_ownership_result flatfile_shopkeeper_load_item_ownership(
 	const std::string &root, const flatfile_shopkeeper_record &record, uint64_t *owner_revision,
 	std::vector<player_load_item_identity> *identities, std::string *error);
+bool flatfile_shopkeeper_publish_ownership(const std::string &root,
+					   const flatfile_shopkeeper_record &record,
+					   std::string *error);
 
 #endif
