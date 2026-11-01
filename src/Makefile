@@ -364,6 +364,7 @@ OBJS =  $(SHIP_OBJS) \
 				 economy/shop_trade_transaction.o \
 				 economy/shop_trade_runtime.o \
 				 economy/shopkeeper_boot.o \
+				 economy/shopkeeper_restock.o \
 				 item/item_transfer_repository.o \
 				 item/item_claim.o \
 				 item/item_claim_repository.o \

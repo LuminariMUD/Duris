@@ -236,6 +236,26 @@ void obj_to_char(P_obj obj, P_char ch)
 	obj->loc_p = LOC_CARRIED;
 	obj->loc.carrying = ch;
 }
+void obj_from_char(P_obj obj)
+{
+	P_obj *link = &obj->loc.carrying->carrying;
+	while (*link != obj)
+	{
+		assert(*link);
+		link = &(*link)->next_content;
+	}
+	*link = obj->next_content;
+	obj->next_content = nullptr;
+	obj->loc_p = 0;
+	obj->loc.carrying = nullptr;
+}
+int shop_producing(P_obj obj, int shop)
+{
+	for (int index = 0; index < shop_index[shop].number_items_produced; ++index)
+		if (shop_index[shop].producing[index] == obj->R_num)
+			return true;
+	return false;
+}
 void extract_obj(P_obj obj, int)
 {
 	if (!obj)
@@ -337,6 +357,8 @@ bool is_replicated_shop(int shop)
 	return false;
 }
 
+bool sql_restore_shopkeepers(bool refill = false);
+// PRODUCTION_RESTOCK
 // PRODUCTION_RESTORE
 // PRODUCTION_HELPER
 
@@ -458,6 +480,62 @@ int main(int argc, char **argv)
 
 		command.arg3 = NOWHERE;
 		reset_mobile(1, false); // Existing invalid-room handling still rejects placement.
+	}
+	else if (scenario == "refill" || scenario == "unsold" || scenario == "excess" ||
+		 scenario == "recovery" || scenario == "refill-failure")
+	{
+		P_char fresh = spawn(0);
+		bind_shopkeeper(fresh, 0);
+		P_obj bag = read_object(83185, REAL);
+		bag->contains = read_object(91, REAL);
+		bag->contains->loc_p = LOC_INSIDE;
+		bag->contains->loc.inside = bag;
+		obj_to_char(bag, fresh);
+		obj_to_char(read_object(3102, REAL), fresh);
+		obj_to_char(read_object(3102, REAL), fresh);
+		obj_to_char(read_object(80, REAL), fresh);
+		saved_keepers = { { "0", "10", "100", "200" } };
+		add_item(10, 90); // Unrelated player-sold goods.
+		add_item(10, 3102); // Partially sold stock.
+		add_item(10, 83185, 1); // Equipment never counts as sale stock.
+		if (scenario == "unsold" || scenario == "excess")
+			add_item(10, 83185);
+		if (scenario == "excess")
+			add_item(10, 83185);
+		shop_index[0].number_items_produced = 1;
+		shop_index[0].producing[0] = 80;
+		if (scenario == "refill-failure")
+		{
+			read_object_fail_rnum = 80;
+			assert(!sql_restore_shopkeepers(true));
+			assert(world[0].people == fresh && !fresh->next_in_room);
+			assert(has_item(fresh, 83185) && has_item(fresh, 3102));
+		}
+		else
+		{
+			assert(sql_restore_shopkeepers(scenario != "recovery"));
+			P_char keeper = world[0].people;
+			int bags = 0, potions = 0;
+			bool retained_bag = false;
+			for (P_obj item = keeper->carrying; item; item = item->next_content)
+			{
+				bags += item->R_num == 83185;
+				potions += item->R_num == 3102;
+				if (item == bag)
+				{
+					retained_bag = true;
+					assert(item->contains && item->contains->R_num == 91);
+					assert(item->contains->loc.inside == item);
+				}
+			}
+			assert(bags == (scenario == "recovery" ? 0 : scenario == "excess" ? 2 : 1));
+			assert(potions == (scenario == "recovery" ? 1 : 2));
+			assert(retained_bag == (scenario == "refill"));
+			assert(has_item(keeper, 90) && has_item(keeper, 80));
+			assert(keeper->equipment[0] && keeper->equipment[0]->R_num == 83185);
+			assert(!keeper->next_in_room);
+			reset_mobile(0, true); // An ordinary reset cannot add any more stock.
+		}
 	}
 	else if (scenario == "shared")
 	{
