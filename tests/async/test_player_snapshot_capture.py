@@ -29,7 +29,7 @@ int main()
 {
     static_assert(std::is_move_constructible_v<player_snapshot>);
     static_assert(std::is_move_assignable_v<player_snapshot>);
-    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 13);
+    static_assert(PLAYER_SNAPSHOT_SCHEMA_VERSION == 14);
     static_assert(PLAYER_SNAPSHOT_MAX_BYTES == 4 * 1024 * 1024);
     static_assert(PLAYER_SNAPSHOT_MAX_OBJECTS < PLAYER_SNAPSHOT_MAX_ROWS);
     static_assert(PLAYER_SNAPSHOT_MAX_DEPTH > 0);
@@ -236,6 +236,7 @@ int main()
     const std::string read_hash(64, 'a');
     pc.quest_origin_room = 16633;
     pc.quest_replacement_due = 1;
+    pc.quest_reward_item_count = 3;
     pc.quest_kill_how_many = 4;
     pc.quest_kill_original = 7;
     pc.wallet_revision = 19;
@@ -254,16 +255,18 @@ int main()
     assert(player_snapshot_decode(status_bytes.data(), status_bytes.size(), &restored_status) == player_snapshot_codec_result::ok);
     assert(restored_status.wallet_revision == 19);
     assert(restored_status.quest_values[10] == 4 && restored_status.quest_values[11] == 7);
-    bool found_origin = false, found_replacement = false, found_gold = false;
+    bool found_origin = false, found_replacement = false, found_reward_count = false, found_gold = false;
     for (const auto &field : restored_status.status_integers) {
         if (field.field == player_status_field::quest_origin_room)
             found_origin = field.signed_value == 16633;
         if (field.field == player_status_field::quest_replacement_due)
             found_replacement = field.signed_value == 1;
+        if (field.field == player_status_field::quest_reward_item_count)
+            found_reward_count = field.signed_value == 3;
         if (field.field == player_status_field::gold)
             found_gold = field.signed_value == 123;
     }
-    assert(found_origin && found_replacement && found_gold);
+    assert(found_origin && found_replacement && found_reward_count && found_gold);
     // Event-owned Hatred must be recomputed after either backend reloads a player.
     affected_type hatred_combat{}, hatred_spell{}, ordinary{};
     hatred_combat.type = hatred_spell.type = TAG_HATRED;

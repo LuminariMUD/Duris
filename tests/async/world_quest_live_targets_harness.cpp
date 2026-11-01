@@ -521,11 +521,11 @@ std::string render_daily(P_char, bool, std::string *)
 }
 
 #ifndef WORLD_QUEST_SQL_HISTORY
-bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool, bool,
+bool sql_world_quest_finish_async(P_char ch, const std::vector<P_obj> &rewards, bool, bool,
 				  const player_world_quest_reward &, int,
 				  std::function<bool(P_char)> committed)
 {
-	(void)reward;
+	(void)rewards;
 	++history_writes;
 	committed(ch);
 	return true;

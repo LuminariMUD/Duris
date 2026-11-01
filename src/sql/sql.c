@@ -175,6 +175,21 @@ struct world_quest_reward_publication
 	std::vector<item_ownership_runtime_entry> ownership;
 };
 
+static uint64_t world_quest_reward_root_uid(const std::vector<player_item_snapshot> &items,
+					    size_t index)
+{
+	while (index < items.size())
+	{
+		const int32_t parent = items[index].parent_index;
+		if (parent == PLAYER_SNAPSHOT_NO_PARENT)
+			return items[index].object_uid;
+		if (parent < 0 || static_cast<size_t>(parent) >= index)
+			return 0;
+		index = static_cast<size_t>(parent);
+	}
+	return 0;
+}
+
 static P_obj world_quest_find_reward(uint64_t uid)
 {
 	for (P_obj object = object_list; object; object = object->next)
@@ -183,9 +198,21 @@ static P_obj world_quest_find_reward(uint64_t uid)
 	return NULL;
 }
 
-static P_obj world_quest_restore_reward(const world_quest_reward_publication &state)
+static P_obj world_quest_restore_reward(const world_quest_reward_publication &state,
+					uint64_t root_uid)
 {
-	std::vector<player_item_snapshot> items = state.items;
+	const auto first = std::find_if(state.items.begin(), state.items.end(),
+					[&](const auto &item)
+					{ return item.object_uid == root_uid; });
+	if (first == state.items.end() || first->parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+		return NULL;
+	const auto end = std::find_if(first + 1, state.items.end(), [](const auto &item)
+				      { return item.parent_index == PLAYER_SNAPSHOT_NO_PARENT; });
+	const auto offset = static_cast<int32_t>(first - state.items.begin());
+	std::vector<player_item_snapshot> items(first, end);
+	for (auto &item : items)
+		if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+			item.parent_index -= offset;
 	std::vector<player_load_item_identity> identities;
 	identities.reserve(items.size());
 	for (size_t index = 0; index < items.size(); ++index)
@@ -237,15 +264,20 @@ static bool world_quest_publish_reward(P_char actor,
 		return true;
 	if (actor && !IS_ALIVE(actor))
 		return false;
-	P_obj root = world_quest_find_reward(state->items.front().object_uid);
 	if (!actor)
 	{
 		// The committed player item will be loaded on the next login.
-		if (!root)
-			return true;
-		if (!OBJ_NOWHERE(root))
-			return false;
-		extract_obj(root, FALSE);
+		for (const auto &item : state->items)
+			if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
+			{
+				P_obj root = world_quest_find_reward(item.object_uid);
+				if (root && !OBJ_NOWHERE(root))
+					return false;
+			}
+		for (const auto &item : state->items)
+			if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
+				if (P_obj root = world_quest_find_reward(item.object_uid))
+					extract_obj(root, FALSE);
 		return true;
 	}
 	if (!state->ready)
@@ -260,13 +292,20 @@ static bool world_quest_publish_reward(P_char actor,
 			    &revision, &records, &error) != flatfile_item_repository_result::ok)
 			return false;
 		state->ownership.clear();
-		for (const auto &item : state->items)
+		for (size_t index = 0; index < state->items.size(); ++index)
 		{
+			const auto &item = state->items[index];
 			auto found = std::find_if(records.begin(), records.end(),
 						  [&](const auto &record)
 						  { return record.item_uid == item.object_uid; });
 			if (found == records.end() || found->vnum != item.vnum ||
-			    found->state != item_custody_state::active)
+			    found->state != item_custody_state::active ||
+			    found->root_item_uid !=
+				    world_quest_reward_root_uid(state->items, index) ||
+			    found->parent_item_uid !=
+				    (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT ?
+					     0 :
+					     state->items[item.parent_index].object_uid))
 				return false;
 			item_ownership_runtime_entry entry{};
 			entry.item_uid = found->item_uid;
@@ -345,9 +384,9 @@ static bool world_quest_publish_reward(P_char actor,
 									    state->items[item->parent_index]
 										    .object_uid;
 							    if (std::to_string(
-									state->items.front()
-										.object_uid) !=
-									row[1] ||
+									world_quest_reward_root_uid(
+										state->items,
+										index)) != row[1] ||
 								std::to_string(parent) != row[2])
 								    return;
 							    item_ownership_runtime_entry entry{};
@@ -394,16 +433,29 @@ static bool world_quest_publish_reward(P_char actor,
 		state->ready = false;
 		return false;
 	}
-	if (root && OBJ_CARRIED_BY(root, actor))
-		return true;
-	if (!root)
-		root = world_quest_restore_reward(*state);
-	if (!root || !OBJ_NOWHERE(root))
-		return false;
-	const uint64_t uid = root->obj_uid;
-	obj_to_char(root, actor);
-	root = world_quest_find_reward(uid);
-	return root && OBJ_CARRIED_BY(root, actor);
+	// Validate/restore every root before exposing any of this batch.
+	for (const auto &item : state->items)
+		if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
+		{
+			P_obj root = world_quest_find_reward(item.object_uid);
+			if (!root)
+				root = world_quest_restore_reward(*state, item.object_uid);
+			if (!root || (!OBJ_NOWHERE(root) && !OBJ_CARRIED_BY(root, actor)))
+				return false;
+		}
+	for (const auto &item : state->items)
+		if (item.parent_index == PLAYER_SNAPSHOT_NO_PARENT)
+		{
+			P_obj root = world_quest_find_reward(item.object_uid);
+			if (!root)
+				return false;
+			if (!OBJ_CARRIED_BY(root, actor))
+				obj_to_char(root, actor);
+			root = world_quest_find_reward(item.object_uid);
+			if (!root || !OBJ_CARRIED_BY(root, actor))
+				return false;
+		}
+	return true;
 }
 // End world quest reward publication.
 
@@ -6011,9 +6063,10 @@ bool sql_hydrate_item_owner_revisions(void)
 
 #endif
 
-bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
-				  bool final_kill_reward, const player_world_quest_reward &values,
-				  int escrow_fee, std::function<bool(P_char)> committed)
+bool sql_world_quest_finish_async(P_char ch, const std::vector<P_obj> &rewards,
+				  bool awaiting_reward, bool final_kill_reward,
+				  const player_world_quest_reward &values, int escrow_fee,
+				  std::function<bool(P_char)> committed)
 {
 	if (!ch || IS_NPC(ch) || !ch->only.pc || GET_PID(ch) <= 0 ||
 	    ch->only.pc->quest_mob_vnum <= 0 || !committed)
@@ -6031,18 +6084,34 @@ bool sql_world_quest_finish_async(P_char ch, P_obj reward, bool awaiting_reward,
 		quest.giver = ch->only.pc->quest_giver;
 		quest.occurred_at = static_cast<int64_t>(time(NULL));
 		quest.player_name = GET_NAME(ch);
-		if (reward)
+		for (P_obj reward : rewards)
 		{
+			if (!reward)
+				continue;
+			std::vector<player_item_snapshot> tree;
+			size_t encoded_size = 0;
 			if (awaiting_reward &&
 			    (!OBJ_NOWHERE(reward) ||
-			     player_item_snapshot_tree_capture(reward, &quest.reward_items,
-							       &quest.reward_encoded_size) !=
+			     player_item_snapshot_tree_capture(reward, &tree, &encoded_size) !=
 				     player_snapshot_capture_result::ok ||
-			     quest.reward_items.empty() ||
-			     std::any_of(quest.reward_items.begin(), quest.reward_items.end(),
+			     tree.empty() ||
+			     std::any_of(tree.begin(), tree.end(),
 					 [](const player_item_snapshot &item)
 					 { return !item.object_uid || item.vnum <= 0; })))
 				return false;
+			if (tree.size() > PLAYER_SNAPSHOT_MAX_OBJECTS - quest.reward_items.size() ||
+			    encoded_size > PLAYER_SNAPSHOT_MAX_BYTES - quest.reward_encoded_size)
+				return false;
+			const auto offset = static_cast<int32_t>(quest.reward_items.size());
+			for (auto &item : tree)
+			{
+				if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
+					item.parent_index += offset;
+				quest.reward_items.push_back(std::move(item));
+			}
+			quest.reward_encoded_size += encoded_size;
+			if (reward != rewards.front())
+				continue;
 			quest.reward_vnum =
 				reward->R_num >= 0 ? obj_index[reward->R_num].virtual_number : 0;
 			quest.reward_description =
