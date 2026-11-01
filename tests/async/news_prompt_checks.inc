@@ -35,8 +35,12 @@ static void news_prompt_matrix()
 	assert(publish_news("first news\n"));
 	assert(has_unread_news(&actor) && has_unread_news(&other));
 	assert(prompt().find("(news)") != std::string::npos);
-	assert(read().find("tog page on") != std::string::npos && has_unread_news(&actor));
-	SET_BIT(actor.specials.act, PLR_PAGING_ON);
+	assert(read().find("News file is too long; use 'toggle paging on' to read it.") !=
+		       std::string::npos &&
+	       has_unread_news(&actor));
+	do_toggle(&actor, writable_arg("paging on"), 0);
+	assert(IS_SET(actor.specials.act, PLR_PAGING_ON));
+	drain(&desc);
 	const int before = save_calls;
 	assert(read().find("first news") != std::string::npos);
 	assert(!has_unread_news(&actor) && has_unread_news(&other));

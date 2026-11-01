@@ -132,6 +132,11 @@ static void shown(int kind,const string &arg,int count,bool truncated=false) {
     if(kind && count) assert(text.find("|          7|         11|")!=string::npos);
 }
 int main() {
+    fixture(1);
+    REMOVE_BIT(staff.specials.act,PLR_PAGING_ON);
+    char empty[]="";
+    do_zlist(&staff,empty,0);
+    assert(output=="&+WZone list is too long; use 'toggle paging on' to read it.\n");
     for(int kind=0;kind<3;++kind) {
         for(int matches : {0,1,199,499,500,501,700}) {
             fixture(matches);
@@ -320,7 +325,8 @@ def main():
              extract_function("core/utility.c", "string strip_ansi(const char *str)"),
              extract_function("core/utility.c", "string pad_ansi(const char *str, int length, bool trim_to_length)"),
              extract_function("interp.c", "bool is_abbrev(const char *arg1, const char *arg2)"),
-             extract_function("db.c", "int real_zone(const int virt)"), commands, DRIVER]
+             extract_function("db.c", "int real_zone(const int virt)"),
+             extract_function("actinf.c", "void do_zlist("), commands, DRIVER]
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="builder-lists-", dir=ROOT / "bin/tests") as temporary:
         test, binary = Path(temporary) / "test.cpp", Path(temporary) / "test"
