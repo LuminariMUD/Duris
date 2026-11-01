@@ -67,8 +67,6 @@ void obj_cast_spell(int spell, int level, int duration, P_char smoker)
 void do_smoke(P_char ch, char *argument, int /*cmd*/)
 {
 	int room;
-	struct weather_data *weather_info =
-		&sector_table[in_weather_sector(ch->in_room)].conditions;
 
 	// The Drawbridge - Determines whether to kill the process before we begin looking into whether the player
 	//   has the proper items or how to calculate the Spell_Levels.
@@ -142,17 +140,17 @@ void do_smoke(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	// Can't smoke in the rain, snow, or blizzards.
-	if ((weather_info != NULL) && (weather_info->precip_rate > 0) &&
-	    !((world[room].sector_type == SECT_INSIDE) ||
-	      (world[room].sector_type == SECT_UNDRWLD_INSIDE)))
+	int weather_sec = in_weather_sector(room);
+	struct weather_data *weather_info =
+		(weather_sec >= 0) ? &sector_table[weather_sec].conditions : NULL;
+	if ((weather_info != NULL) && (weather_info->precip_rate > 0) && NORMAL_PLANE(room) &&
+	    OUTSIDE(ch) && (world[room].sector_type != SECT_INSIDE) &&
+	    !IS_ROOM(room, (ROOM_NO_PRECIP | ROOM_TUNNEL)))
 	{
-		if (!IS_ROOM(room, (ROOM_INDOORS | ROOM_NO_PRECIP | ROOM_TUNNEL)))
-		{
-			send_to_char(
-				"&nThere is no way you can &+Wsmoke&n in this &+cwe&+Ca&+ct&+Che&+cr&n.\n\r",
-				ch);
-			return;
-		}
+		send_to_char(
+			"&nThere is no way you can &+Wsmoke&n in this &+cwe&+Ca&+ct&+Che&+cr&n.\n\r",
+			ch);
+		return;
 	}
 
 	// Trolls are a sticky wicket as they shouldn't smoke as it is bad for their health.  There are some caveats,
