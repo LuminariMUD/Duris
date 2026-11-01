@@ -1171,8 +1171,9 @@ static int websocket_send_frame(struct descriptor_data *d, int opcode, const voi
 	if (result == 0)
 		result = websocket_flush_output(d);
 
-	if (result == 0 && d->character && d->character->only.pc)
-		d->character->only.pc->send_data += frame_len;
+	struct char_data *player = d->original ? d->original : d->character;
+	if (result == 0 && player && !IS_NPC(player) && player->only.pc)
+		player->only.pc->send_data += frame_len;
 
 	if (result != 0 && result != WS_OUTPUT_QUEUE_FULL)
 		d->write_failed = 1;
