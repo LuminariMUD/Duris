@@ -1,6 +1,7 @@
 # Issue #534: bartender completion rewards
 
-Status: **independently reviewed, locally qualified, and ready to merge in stack order**.
+Status: **implementation and local qualification complete; delivered through
+PRs #535, #538, #539, and #541**.
 Updated 2026-11-01.
 Issue: [Duris #534](https://github.com/LuminariMUD/Duris/issues/534).
 
@@ -31,43 +32,33 @@ kill credit, and quota assignment retain their rules.
 
 ## Git and worktrees
 
-Review stack, in order:
+Delivery order is [#538](https://github.com/LuminariMUD/Duris/pull/538),
+[#535](https://github.com/LuminariMUD/Duris/pull/535),
+[#539](https://github.com/LuminariMUD/Duris/pull/539), then
+[#541](https://github.com/LuminariMUD/Duris/pull/541). The active Master ruleset
+requires linear history, so the PRs use squash merges. Each child was rebased
+onto master after its parent landed, with an explicit lease protecting the
+published head. Git dropped the duplicate #538 fixture repair from #539.
 
-1. [PR #535](https://github.com/LuminariMUD/Duris/pull/535),
-   `branch/issue-534-withholding`, targets `master`.
-   Review worktree: `/home/aiwithapex/projects/duris-review-535`, head `21773261b`.
-2. [PR #539](https://github.com/LuminariMUD/Duris/pull/539),
-   `branch/issue-534-kill-rewards`, targets #535's branch.
-   Review worktree: `/home/aiwithapex/projects/duris-review-539`, head `400603467`.
-3. [PR #541](https://github.com/LuminariMUD/Duris/pull/541),
-   `branch/issue-534-bonus-policy`, targets #539's branch.
-   Review worktree: `/home/aiwithapex/projects/duris-review-541`.
-   **This is the authoritative implementation/handoff worktree.**
+The complete merge simulation matched reviewed #541 head `b89598dec` exactly.
+Both restacks also preserved their reviewed file trees exactly; this final
+handoff update changes documentation only. Fresh reward policy, completion/XP
+on both backends, sanitizer publication, flatfile repository, snapshot capture,
+14 documentation checks, and both backend builds passed on the combined source.
 
-The independent review rebased/restacked the feature changes onto master
-`881853d21`, preserving the current-level replacement fix and inventory feedback.
-Original published heads remain available in local
-`branch/archive-pr{535,538,539,541}-before-review-20261101` branches; the original
-implementation worktrees were preserved. PR #541's policy and qualification
-commits were consolidated as `520b814b0`, followed by separate review repairs.
-The PRs identify their current published heads.
+The historical review worktrees were `duris-review-{535,538,539,541}` under
+`/home/aiwithapex/projects/`; the original implementation worktrees were
+`duris-issue-534-{withholding,kill-rewards,bonus-policy}` and
+`duris-flatfile-test-bootstrap`. Their review, qualification and merge-check
+logs were copied to the main checkout's ignored
+`bin/merge-prs-535-541-20261101/evidence/<worktree-name>/` before cleanup.
+Original pre-review heads remain in
+`branch/archive-pr{535,538,539,541}-before-review-20261101`.
+The clean feature/review worktrees and merged remote branches can be removed
+after the final merge.
 
-[PR #538](https://github.com/LuminariMUD/Duris/pull/538) independently repairs a
-five-line test setup omission: the flatfile player-save fixture must initialize
-shared frag-cap authority before preparing a combat receipt. The unchanged suite
-failed before reaching its quest tests without that initialization. Equivalent
-patch `aa56ee015` is included in #539. The independently rebased #538 head is
-`db15c8bb4`, in `/home/aiwithapex/projects/duris-review-538`.
-
-Merge #538 first, then #535, #539 and #541. Use merge commits for the stack:
-GitHub permits them, and preserving ancestry avoids a further restack after
-parent merges. Git combines the identical #538 fixture repair. If squash merges
-are chosen instead, restack each child onto master and remove carried parent
-patches before merging it. No release tag is warranted for review work.
-
-The original checkout's unrelated staged work and untracked plan were left unchanged.
-No production operation, merge of these PRs, release tag, or deployment is part of
-this implementation.
+The original checkout's unrelated staged work and untracked plan are preserved.
+Production migration/deployment and release tagging remain separate work.
 
 ## Implementation and ablation decisions
 
@@ -147,8 +138,8 @@ this migration or a 59-step manifest. Production deployment remains separate wor
 
 All evidence below comes from local executable tests and isolated disposable
 world/database fixtures. No production state was used. Original implementation
-logs remain under `bin/qualification/issue534/` in the implementation worktrees.
-Independent review logs are under `bin/review/` in `duris-review-541`, including
+logs and independent review logs were preserved under the evidence directory
+listed above. The `duris-review-541/review/` evidence includes
 both engine compatibility/drift suites and six backend journey results (ordinary
 rewards, nine-item maximum, and failed-preparation/committed-crash recovery).
 The six-test snapshot suite, production capture/count round trip, both server
@@ -223,8 +214,8 @@ Final integrated server SHA-256:
 - Flatfile: `ec8b297606a486abef6ba39eecbd0a46ae3526091742e908759c2d6a5f75c611`.
 
 All required implementation and local qualification work is complete. No test
-process remains to resume. The next owner action is review of the pushed PR stack;
-production migration/deployment and any release tagging are separate work.
+process remains to resume. Issue #534 is complete with this delivery.
+Production migration/deployment and any release tagging are separate work.
 
 ## Reproduce verification
 
