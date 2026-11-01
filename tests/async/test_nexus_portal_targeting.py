@@ -21,6 +21,7 @@ production = "\n".join([
     extract_function("interp.c", "int fill_word("),
     extract_function("interp.c", "char *one_argument("),
     extract_function("handler.c", "bool isname(const char *str,"),
+    extract_function("handler.c", "bool obj_name_matches("),
     extract_function("handler.c", "int get_number("),
     extract_function("handler.c", "P_obj get_obj_in_list_vis("),
     extract_function("handler.c", "int generic_find("),

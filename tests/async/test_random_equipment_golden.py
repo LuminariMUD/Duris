@@ -46,6 +46,7 @@ HELPERS = [
     ("utility.c", "int BOUNDED(int a, int b, int c)"),
     ("handler.c", "char *FirstWord(char *namelist)"),
     ("handler.c", "bool isname(const char *str, const char *namelist)"),
+    ("handler.c", "void set_obj_extra2_flags("),
     ("objconv.c", "void material_restrictions(P_obj obj)"),
     ("salchemist.c", "void set_keywords(P_obj t_obj, const char *newKeys)"),
     ("salchemist.c", "void set_short_description(P_obj t_obj, const char *newShort)"),
@@ -63,6 +64,7 @@ HARNESS = r'''
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "core/utils.h"
+#include "net/gmcp.h"
 #include "item/objmisc.h"
 #include "item/random_equipment.h"
 #include "item/weapon_actions.h"
@@ -80,6 +82,7 @@ HARNESS = r'''
 #include <string>
 
 // ---- The world ----
+void gmcp_item_changed(P_obj) {}
 // Zone 0 has colour codes in its name, so its items can be named; zone 1 is plain; zone 2
 // is a town. Room 2 is a guild room in zone 1.
 static zone_data zones[3];

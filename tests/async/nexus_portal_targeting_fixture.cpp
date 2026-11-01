@@ -3,6 +3,7 @@
 #include "core/utils.h"
 #include "cmd/interp.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/map.h"
 #include <cassert>
 #include <cstdio>

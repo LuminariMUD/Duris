@@ -154,6 +154,7 @@ HARNESS_STUB bool gmcp_item_selector_matches(P_char, P_obj, const char *)
 }
 HARNESS_STUB void gmcp_combat_damage(P_char, P_char, int, const damage_messages *) {}
 HARNESS_STUB void gmcp_session_update(P_desc) {}
+HARNESS_STUB void gmcp_preferences_changed(P_desc) {}
 HARNESS_STUB void gmcp_session_restored(P_desc) {}
 HARNESS_STUB bool gmcp_handle_control_json(P_desc, const struct cJSON *, const char *, size_t,
 					   const char *)

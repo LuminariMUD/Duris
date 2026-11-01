@@ -3,6 +3,7 @@
 #include "core/utility.h"
 #include "core/utils.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "net/command_latency.h"
 #include "net/session_input.h"
 #include "net/ws_handlers.h"
@@ -71,6 +72,11 @@ static void dispatch_playing_command(P_char, char *input)
 	commands.emplace_back(input);
 }
 void gmcp_input_receipt(P_desc, const char *) {}
+void gmcp_session_update(P_desc) {}
+int is_desc_valid(P_desc)
+{
+	return true;
+}
 void string_add(P_desc, char *)
 {
 	assert(false);
