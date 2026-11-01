@@ -5,10 +5,76 @@
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
       The slate is clean. The grudges survived. Make your mark.
 &+W======================================================================&n
-&+WUpdated: October 31, 2026&n
+&+WUpdated: November 01, 2026&n
 
-Welcome back! Race for your faction, secure your loot and visit the tavern.
+Welcome back! Finish a tavern task and make room in your bags.
 Newest first; later updates replace older rules. Archive back to 12/14/25.
+
+&+R11/01/26&n &+L-&n &+YThe tavern pays in treasure&n
+&+W----------------------------------------------------------------------&n
+
+&+CAn item for a job well done&n
+&+Y-&n Completing a bartender KILL task now guarantees &+Yone personal item&n.
+  Each required kill after the first adds an independent &+Y10%&n chance
+  of another item. A nine-kill task averages &+Y1.8 items&n; all arrive
+  together when you complete the task, rather than dropping on corpses.
+&+Y-&n ASK and one-kill tasks award one item. Eligible companions each earn
+  their own rewards; experience and coin rewards remain per completion.
+  If delivery is pending, wait and retry as directed: the whole batch
+  waits together, and retrying does not reroll its item count.
+  Existing completed tasks keep their original item entitlement.
+&+Y-&n Tavern reward catalogs now withhold the top &+Y5%&n of item values
+  instead of 20%. Level requirements and other exclusions still apply.
+  More valuable possibilities do not guarantee a particular reward.
+&+Y-&n Free replacement tasks use your &+Ycurrent level&n when choosing a
+  new target. Ordinary random armor no longer prevents an ASK task or
+  free replacement from finding a suitable target. Your earned progress,
+  original quota, remaining shares and purchased map stay with the task.
+  Read &+C'help quest'&n for rewards, sharing and travel limits.
+
+&+CSpellcraft, rest and a dry place for your pipe&n
+&+Y-&n Racial spell-damage bonuses and resistances now apply to the intended
+  damage type. Cold no longer reads the lightning modifier, and Earth
+  receives its racial adjustments. This does not change Frostbite's
+  base formula or promise every race the same damage.
+&+Y-&n Spell-granted, upgraded and refreshed rest bonuses now survive a
+  crash after a later automatic checkpoint saves them. Normal duration,
+  offline aging and login eligibility still apply.
+&+Y-&n Surface rain and snow no longer stop smoking underground or in
+  sheltered rooms. Exposed surface storms still matter, as do water,
+  visibility and racial restrictions. Read &+C'help smoke'&n.
+
+&+CClient panels that know what you are doing&n
+&+Y-&n Compatible clients can receive current game time, separate opponent
+  and tank health, and clearer character-entry and controlled-body
+  changes. Knockdowns now refresh your position and group vitals after
+  the fall, including a ward that absorbs the damage or a failed bash.
+&+Y-&n Clients that opt in can also receive applied-damage events and
+  inventory/equipment pages, including requested visible bag contents.
+  Closed containers, darkness and locker access keep their normal limits.
+  These feeds require client support; ordinary text commands still work.
+  A full damage-event feed pauses independently of health panels; a client
+  can subscribe again, but missed events are not replayed.
+&+Y-&n Web clients handle controlling NPC bodies safely and clear character
+  creation state after a refused entry. Hotboot-aware panels can retain
+  the same character session while refreshing their current views.
+
+&+CReturning safely, reading clearly&n
+&+Y-&n When email password recovery is enabled, it confirms success only
+  after saving the new password, and failed saves leave the code for
+  retry. Temporary mail transport timeouts can also be retried.
+  &+WEmail password resets remain disabled on this server.&n
+&+Y-&n Old locker save or sorting work no longer reaches into a later
+  locker visit. A departed visit can finish saving its own contents
+  without moving items in the room you entered afterward.
+&+Y-&n When paging is off, &+C'news'&n and &+C'zlist'&n now point you to the
+  correct command: &+C'toggle paging on'&n.
+
+&+CFind the right shelf in the help library&n
+&+Y-&n Try &+C'help starter kit'&n (or &+C'help starter'&n),
+  &+C'help conjurer spells'&n, &+C'help firemagus'&n and &+C'help rifts'&n
+  for pointers to the full guides. &+C'help quest'&n now explains the
+  current treasure, replacement, sharing and geographic travel rules.
 
 &+R10/30/26 - 10/31/26&n &+L-&n &+YThree days to win your faction's next level&n
 &+W----------------------------------------------------------------------&n

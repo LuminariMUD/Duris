@@ -20567,55 +20567,62 @@ After having quaffed one potion, you will experience a 3-4 minute waiting time b
 #0
 
 Quest
-Quest - Last Edited: 2009-08-16 22:29:12 by Blaize
-==================================================
-Quests are given by mobs to players.  Most often the quest will require the player to get an object or series of objects to bring back.  Prizes can include money, items, keys or nothing at all.  New to Duris is the bartender quest system.
-Bartenders can sell you either a go kill task or a go ask task, starting at
-level 11. A task names its target and the area where it can be found. Kill tasks
-give the required number of kills and award their reward when you finish the
-last one. For an ask task, bring the named target the message shown by QUEST.
+Quest - Last Edited: 2026-11-01
+============================================================
+Zone quests begin with NPC conversations or item turn-ins. Staff may
+also run special quests. Bartenders sell KILL and ASK world quests
+starting at level 11; use 'ask bartender quest' to buy or check a task.
+Type 'quest' to see its target, area, progress and any purchased map.
 
-From levels 11 through 29, new tasks stay in the local region and require
-ordinary travel without keys, fares or special travel equipment. From level 30,
-tasks may lead farther away using travel abilities you currently have. A suitable
-target is available when assigned; this does not promise a safe fight. If no
-suitable new task is available, the bartender returns your purchase fee.
+From levels 11 through 29, tasks use your attached surface region and
+its connected Underdark region. From level 30, broader scope applies.
+An assigned task does not promise an open or safe route. Doors, keys,
+boats, flight and travel scripts are your responsibility. ASK targets
+can be below level 62 without using the KILL level band; ordinary
+visibility, speech and interaction requirements still apply.
 
-QUEST and the bartender check your current task. If a world change has made it
-impossible, ask a bartender for a quest to receive a free replacement. Earned
-kills, the original quota, accepted level, remaining shares and a purchased map
-are kept. If no replacement is available, the free replacement remains yours
-through logout and restart. Removing your own travel equipment or a temporary
-condition does not earn a free replacement. An inconclusive check keeps your task.
+Completing an ASK task or a one-kill task grants one personal item.
+Completing a KILL quota grants one guaranteed personal item plus an
+independent 10% chance of another item for each required kill after
+the first. A nine-kill task averages 1.8 items, not nine guaranteed
+items. Items arrive in your inventory. Each eligible companion earns
+their own rewards; experience and coin rewards remain per completion.
+The catalog currently withholds the top 5% of item values in each area;
+level requirements and the other reward exclusions still apply.
 
-Maps cost an additional fee and mark a verified way into the target area.
-Unverified directions are withheld until the task can be checked again. An
-older saved task may need a real bartender to check its travel origin first.
+If reward preparation or saving is pending, wait and retry as directed.
+The whole item batch is deferred together; retrying does not reroll its
+count. Existing completed tasks keep their original item entitlement.
 
-The purchaser may share a quest with up to four consenting companions, for a
-party of five. Each companion must be of a suitable level, have a quest allowance
-remaining, not have done the task before, and be able to use its route and target.
-Sharing has no extra quest fee; each recipient buys their own map and earns
-their own completion reward. Recipients cannot share the task again. Quests
-purchased while sharing was disabled keep their original remaining shares.
-Voluntarily abandoning a usable task still costs money and may use a quest allowance after
-partial progress. A pending free replacement can be discarded without either
-penalty by asking for 'abandon confirm'.
-ask bartender quest
-*Purchases a quest, checks accepted work, or redeems a free replacement.
-ask bartender map
-*Purchases a map of the area surrounding the zone.
-ask bartender abandon
-*Voluntarily gives up your current task; a usable task may carry a fee.
-quest
-*Displays current quest, any progress made, and the map, if bought.
-*For the purchaser, displays how many more times the quest may be shared.
-quest share <player>
-*Shares your quest with others, if you bought the quest.
+If a world change invalidates your task, ask a bartender for a free
+replacement. Selection uses your current level. Earned progress, the
+original quota, remaining shares and a purchased map are retained.
+When no replacement is available, your entitlement survives logout and
+restart. A temporary condition does not by itself
+entitle you to replacement. An inconclusive check keeps your task.
+
+Use 'ask bartender map' to buy an area map for an additional fee. It
+marks the target area's entrance, not a guaranteed passable route.
+
+The purchaser can use 'quest share <player>' to invite up to four
+consenting companions, for a party of five. Each must qualify for the
+task and have an allowance remaining without having completed it.
+Sharing adds no quest fee; each recipient buys their own map. Recipients
+cannot share again. Older tasks keep the share allowance they had when
+purchased. Ordinary travel rules apply to everyone.
+
+Use 'ask bartender abandon' to give up a task. Abandoning usable work
+costs money and may consume an allowance after progress. A pending free
+replacement can be discarded with 'ask bartender abandon confirm'
+without that fee or allowance penalty. Pending history work asks you
+to retry rather than overwriting newer character progress.
 
 ==See also==
 
-zones, mobs, bartender
+* Bartender
+* Quests
+* Ask
+* Zones
 
 #0
 
@@ -24385,6 +24392,9 @@ herbs are magical, they will have no effects if smoked in a "No Magic" room.
 have the herb in your inventory.  Herbs are notoriously fickle to heat and
 humidity, whilst pipes come in a variety of styles and strengths.  The cheaper
 the pipe the quicker it will fail under the pressures of applied heat.
+  Surface rain and snow do not prevent smoking underground or in sheltered
+rooms. Exposed surface precipitation can still prevent it; water, visibility
+and racial restrictions continue to apply.
   Smoking is also subject to the weather and various terrains.  Also, certain
 races have physical or social reactions to smoking.  Trolls notoriously have
 great difficulties in smoking, although it is possible for them under the
