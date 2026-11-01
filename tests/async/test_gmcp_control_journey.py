@@ -119,12 +119,21 @@ def combat_journey(client):
     for vnum in (22800, 22801):
         client.send(f"load mob {vnum}")
         client.expect("You have created")
+    send_telnet(client, "Core.Supports.Add", ["Duris.Combat 1"])
+    wait_telnet(client, "Duris.Capabilities", predicate=lambda state: "Duris.Combat" in state["supported"])
+    send_telnet(client, "Duris.Subscribe", ["Duris.Time 1", "Duris.Combat 1"])
+    wait_telnet(client, "Duris.Capabilities", predicate=lambda state: "Duris.Combat" in state["active"])
     client.send("force foe kill ally")
     before = len(telnet_packets(client))
     client.send("hit foe")
     fighting = wait_telnet(client, "Combat.Update", before, lambda state:
         (state.get("target") or {}).get("name") == "foe" and
         (state.get("tank") or {}).get("name") == "ally")
+    event = wait_telnet(client, "Duris.Combat", before, lambda state: state["target"] == "foe")
+    require(event["damage"] > 0 and event["damageType"] == "physical" and
+            isinstance(event["critical"], bool), "authoritative melee metadata missing")
+    require(not any(name == "Combat.Update" and "round" in state
+                    for name, state in telnet_packets(client)[before:]), "damage event duplicated a legacy round")
     require(0 <= fighting["target"]["healthPercent"] <= 100 and
             0 <= fighting["tank"]["healthPercent"] <= 100,
             "combat subject percentages are invalid")
@@ -136,7 +145,9 @@ def combat_journey(client):
     client.send("purge foe")
     cleared = wait_telnet(client, "Combat.Update", before, lambda state:
         state.get("target") is None and state.get("tank") is None)
-    return [fighting, departed, cleared]
+    send_telnet(client, "Duris.Subscribe", ["Duris.Time 1"])
+    wait_telnet(client, "Duris.Capabilities", predicate=lambda state: state["active"] == ["Duris.Time"])
+    return [fighting, departed, cleared, event]
 
 
 def run(binary, evidence):
@@ -206,6 +217,9 @@ def run(binary, evidence):
             returned = wait_telnet(client, "Duris.Session", before, lambda value: value["state"] == "playing" and value["character"]["bodyRevision"] != switched["character"]["bodyRevision"])
             require(returned["context"] == reconnected["context"] and returned["generation"] == reconnected["generation"], "body return changed the entry key")
             combat = combat_journey(client)
+            require(all(combat[-1][key] == returned[key] for key in ("context", "process", "generation")) and
+                    combat[-1]["bodyRevision"] == returned["character"]["bodyRevision"],
+                    "combat event crossed the current lifecycle/body boundary")
             phases = []
             for hour, expected, phase in ((-1,23,"night"),(4,4,"dawn"),(9,9,"day"),(16,16,"dusk"),(0,0,"night")):
                 before = len(telnet_packets(client))

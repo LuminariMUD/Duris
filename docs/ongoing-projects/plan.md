@@ -42,6 +42,29 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- Applied-damage slice in progress: Duris.Combat 1 requires explicit support and
+  interest; active consumers receive each outgoing applied hit in the existing
+  FIFO and no duplicate legacy round. Damage uses the actual before/after HP
+  delta after gameplay caps/conversion, including secondary victims. Per-delivery
+  message metadata carries spell/physical kind and the existing melee/archery
+  critical result; unprovided critical is null. Copies at the damage boundary
+  prevent nested spell procs changing the caller's metadata. No gameplay RNG call.
+  Events carry context/process/generation/body revision and string sequence.
+  Each interval permits 64 events/64 KiB including conservative envelope reserve;
+  allocation, queue or budget failure invalidates the connection rather than
+  silently dropping history. State retains its separate coalescing/retry behavior.
+  The native ASan/UBSan event cases pass actual fractional HP conversion,
+  secondary/primary identity, masked labels, source metadata delivery copies,
+  known/unknown critical, FIFO count/sequence, both bounds, 45 allocation budgets,
+  queue failure, 64-bit sequence and disabled construction on both transports.
+  Both builds, physical-layer/death-result/missile regressions, prompt/phase/docs
+  checks and 2,386,264 sanitizer fuzz executions pass. The booted journey passes
+  subscribed physical damage with a known critical boolean, no duplicate legacy
+  round, and matching current context/process/generation/body identifiers.
+- PR #545's fuzz harness now supplies the viewer helpers used by combat state.
+  Its isolated link failure was reproduced, repaired and qualified with 1,389,773
+  sanitizer fuzz executions, then pushed separately as `49fc1cf25`.
+
 - Combat state slice: extend legacy Combat.Update with authoritative room-local
   target/tank, explicit nulls, viewer masking and accepted-output revisions.
   The mutation audit found direct HP writes across regeneration, affects,

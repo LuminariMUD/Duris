@@ -72,7 +72,18 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     tmp = Path(directory)
     damage = extract_function('fight.c', 'int raw_damage(')
     start = damage.index('/* Send GMCP updates for combat */')
-    notice = damage[start:damage.index('\n\t\t}', start)]
+    application_start = damage.index('if (flags & RAWDAM_NOKILL)')
+    application_end = damage.index('telemetry_runtime_game_combat_damage(', application_start)
+    notice = damage[application_start:application_end] + damage[start:damage.index('\n\t\t}', start)]
+    delivery_paths = []
+    for function, name, params in [
+        ('int spell_damage(', 'capture_spell_delivery', 'int type, uint flags'),
+        ('int melee_damage(', 'capture_physical_delivery', 'int flags'),
+    ]:
+        implementation = extract_function('fight.c', function)
+        begin = implementation.index('damage_messages delivery = *messages;')
+        end = implementation.index('damAccumulator);', begin) + len('damAccumulator);')
+        delivery_paths.append(f'int {name}(P_char ch, P_char victim, double dam, {params}, damage_messages *messages) {{ int result; int *damAccumulator = nullptr;\n' + implementation[begin:end] + '\nreturn result; }')
     gmcp = source('gmcp.c').read_text()
     control = gmcp[gmcp.index('// New-stream control and time.'):gmcp.index('// End new-stream control and time.')]
     auth_source = gmcp[gmcp.index('static int gmcp_durisweb_auth_limited('):gmcp.index('void gmcp_input_receipt(')]
@@ -80,7 +91,7 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     combat_source = gmcp[gmcp.index('// Combat snapshots.'):gmcp.index('// End combat snapshots.')]
     sender_source = gmcp[gmcp.index('/* core gmcp send'):gmcp.index('/* Bootstrap state')]
     (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + combat_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
-        + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n')
+        + '\n' + '\n'.join(delivery_paths) + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam, damage_messages *messages = nullptr, uint flags = 0) {\n' + notice + '\n}\n')
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
         *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',

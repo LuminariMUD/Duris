@@ -56,6 +56,14 @@ int get_property(const char *, int fallback)
 {
 	return fallback;
 }
+bool ac_can_see(P_char, P_char, bool)
+{
+	return true;
+}
+char *PERS(P_char ch, P_char, int, bool)
+{
+	return ch->player.name;
+}
 void update_groupies(P_char, bool) {}
 char *json_build_char_affects(struct char_data *)
 {

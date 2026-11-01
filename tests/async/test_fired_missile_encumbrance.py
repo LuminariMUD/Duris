@@ -122,6 +122,7 @@ bool MakeScrap(P_char, P_obj object) {
 }
 int melee_damage(P_char, P_char victim, double, int, damage_messages *messages, int *) {
     ++damage_calls;
+    assert(messages->critical_known && !messages->critical);
     assert(messages->obj && strstr(messages->obj->name, "arrow"));
     assert(strstr(messages->obj->short_description, "arrow"));
     assert(!strstr(messages->attacker, "shield"));

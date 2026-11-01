@@ -59,9 +59,10 @@ bool gmcp_handle_control_json(struct descriptor_data *d, const cJSON *message, c
 constexpr uint32_t GMCP_SUPPORT_CAPABILITIES = 1U << 0;
 constexpr uint32_t GMCP_SUPPORT_TIME = 1U << 1;
 constexpr uint32_t GMCP_SUPPORT_SESSION = 1U << 2;
+constexpr uint32_t GMCP_SUPPORT_COMBAT = 1U << 3;
 constexpr uint32_t GMCP_IMPLEMENTED_SUPPORTS = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_TIME |
-					       GMCP_SUPPORT_SESSION;
-constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME;
+					       GMCP_SUPPORT_SESSION | GMCP_SUPPORT_COMBAT;
+constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME | GMCP_SUPPORT_COMBAT;
 
 // Observe real descriptor state/owning-player identity, then queue control before data.
 void gmcp_session_update(struct descriptor_data *d);
@@ -133,7 +134,10 @@ void gmcp_char_affects(struct char_data *ch);
 void gmcp_combat_update(struct char_data *ch, struct char_data *victim, int damage,
 			const char *damage_type, int critical);
 
-/* send target health update */
+// Send one outgoing applied hit using its authoritative delivery metadata.
+void gmcp_combat_damage(struct char_data *ch, struct char_data *victim, int damage,
+			const struct damage_messages *messages);
+/* schedule target/tank state */
 void gmcp_combat_target(struct char_data *ch, struct char_data *victim);
 
 /* combat ended */
