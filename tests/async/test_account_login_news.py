@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Login and registration show a brief notice; full news is read on request."""
+"""Login and registration show a brief notice; paged news is read on request."""
 
 from _paths import SRC
 from pathlib import Path
@@ -40,7 +40,7 @@ assert prompt in pages
 assert pages.index(notice) < pages.index(motd) < pages.index(prompt)
 assert password.count("display_account_login_pages(d);") == 2
 assert new_account.count("display_account_login_pages(d);") == 1
-assert 'send_paged_text(recipient, "&+WDuris News\\n\\n" + news.text, LOG_NONE)' in function_body(
+assert 'send_paged_text(recipient, display, LOG_NONE)' in function_body(
     ACTINF, "void do_news("
 )
 

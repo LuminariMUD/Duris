@@ -8917,7 +8917,24 @@ void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 		send_to_char("News is currently unavailable.\r\n", recipient);
 		return;
 	}
-	if (!send_paged_text(recipient, "&+WDuris News\n\n" + news.text, LOG_NONE))
+	constexpr size_t max_news_bytes = 50000;
+	const std::string header = "&+WDuris News\n\n";
+	const std::string footer = "\n&nRead the full news archive on the website:\n"
+				   "&+Chttps://duris.sbs/news?tab=mud&n\n";
+	const size_t body_limit = max_news_bytes - header.size() - footer.size();
+	size_t length = news.text.size();
+	if (length > body_limit)
+	{
+		// Keep complete paragraphs where possible, otherwise complete lines.
+		// The full source and its fingerprint still identify the published news.
+		length = news.text.rfind("\n\n", body_limit);
+		if (length == std::string::npos)
+			length = news.text.rfind('\n', body_limit);
+		if (length == std::string::npos)
+			length = 0;
+	}
+	const std::string display = header + news.text.substr(0, length) + footer;
+	if (!send_paged_text(recipient, display, LOG_NONE))
 	{
 		send_to_char("News could not fit in the command output; it remains unread.\r\n",
 			     recipient);

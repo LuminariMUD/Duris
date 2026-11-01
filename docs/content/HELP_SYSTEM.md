@@ -143,6 +143,13 @@ After publishing, database-backed news refreshes on the next successful one-minu
 mud-info read. Plain `page` (no arguments) requests an immediate refresh. Flat-file
 news reloads on plain `page` or restart. `page help` refreshes only help pages.
 
+The in-game `news` command displays at most 50,000 bytes, including its heading,
+color tokens and website footer. It keeps the newest text, ending at a complete
+paragraph or line, and links to `https://duris.sbs/news?tab=mud` for the full archive.
+The source file and database row remain complete for the website. Even an archive
+larger than the command output buffer is safe to display through this capped view.
+The unread marker still tracks the full published content, including archive edits.
+
 ## Editing help
 
 - Authoring rules and formatting conventions:

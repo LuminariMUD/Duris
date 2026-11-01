@@ -28,9 +28,13 @@ static void news_prompt_matrix()
 	{
 		command_action = [](P_char ch) { do_news(ch, writable_arg(""), 0); };
 		process_with_paging(&actor, writable_arg("news"));
-		if (desc.showstr_count)
-			show_string(&desc, writable_arg("q"));
-		return drain(&desc);
+		std::string shown = drain(&desc);
+		while (desc.showstr_count)
+		{
+			show_string(&desc, writable_arg(""));
+			shown += drain(&desc);
+		}
+		return shown;
 	};
 	assert(publish_news("first news\n"));
 	assert(has_unread_news(&actor) && has_unread_news(&other));
@@ -111,13 +115,59 @@ static void news_prompt_matrix()
 	desc.connected = CON_PLAYING;
 	desc.term_type = TERM_ANSI;
 
-	// The whole body must fit. A prior refused output also prevents acknowledgement.
-	assert(publish_news(std::string(MAX_COMMAND_OUTPUT, 'x')));
-	assert(read().find("remains unread") != std::string::npos && has_unread_news(&actor));
+	// The MUD view includes its heading and web footer in the 50,000-byte cap.
 	const std::string header = "&+WDuris News\n\n";
-	assert(publish_news(std::string(MAX_COMMAND_OUTPUT - header.size() - 1, 'x')));
+	const std::string web_link = "https://duris.sbs/news?tab=mud";
+	const std::string short_news = "Short news.\n";
+	assert(publish_news(short_news));
+	assert(read().find(web_link) != std::string::npos);
+	const size_t overhead = output_length - short_news.size();
+	assert(overhead > header.size() + web_link.size());
+	const size_t body_limit = 50000 - overhead;
+	for (size_t length : { body_limit - 1, body_limit })
+	{
+		const std::string fitting = std::string(length - 1, 'x') + "\n";
+		assert(publish_news(fitting));
+		assert(read().find(web_link) != std::string::npos);
+		assert(output_length == length + overhead && output_length <= 50000);
+		assert(std::string(command_output).substr(header.size(), length) == fitting);
+		assert(current_news().text == fitting && !has_unread_news(&actor));
+	}
+
+	// Stop before a paragraph that crosses the cap, even above the old command limit.
+	std::string recent = "&+YLatest news&n\n";
+	const std::string line = "A complete news entry with its conditions and limits.\n";
+	while (recent.size() + line.size() < body_limit - 100)
+		recent += line;
+	const std::string archive =
+		recent + "\nOLDER ARCHIVE\n" + std::string(MAX_COMMAND_OUTPUT, 'x');
+	assert(publish_news(archive));
+	const std::string archive_hash = current_news().fingerprint;
+	const std::string shown = read();
+	assert(shown.find("Latest news") != std::string::npos);
+	assert(shown.find(web_link) != std::string::npos && shown.ends_with("&n\n"));
+	assert(shown.find("OLDER ARCHIVE") == std::string::npos);
+	assert(output_length <= 50000 && output_length > 49000);
+	const std::string excerpt = command_output;
+	assert(excerpt.starts_with(header + recent));
+	assert(current_news().text == archive && current_news().fingerprint == archive_hash);
+	assert(std::string(pc.last_read_news_hash) == archive_hash && !has_unread_news(&actor));
+	assert(publish_news(archive + "archived correction") && has_unread_news(&actor));
 	read();
-	assert(!has_unread_news(&actor));
+	assert(std::string(command_output) == excerpt && !has_unread_news(&actor));
+
+	// Without blank lines, drop the incomplete line, including its color/UTF-8 bytes.
+	const std::string partial_line = recent + "&+C" + std::string(200, 'y') + "\xc3\xa9&n\n";
+	assert(publish_news(partial_line));
+	assert(read().find(web_link) != std::string::npos);
+	assert(std::string(command_output) == excerpt);
+	assert(current_news().text == partial_line);
+	// A single oversized line cannot be displayed intact; the web link still works.
+	assert(publish_news(std::string(body_limit + 1, 'z')));
+	assert(read().find(web_link) != std::string::npos);
+	assert(output_length == overhead && !has_unread_news(&actor));
+
+	// A prior refused output still prevents acknowledgement.
 	assert(publish_news("after overflow\n"));
 	command_action = [](P_char ch)
 	{

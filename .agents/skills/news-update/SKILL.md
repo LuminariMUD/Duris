@@ -3,17 +3,17 @@ name: news-update
 description: >-
   Update Duris player news from GitHub history and publish it to the current environment.
   Use when asked to update news, catch up missing announcements, or turn landed
-  changes into comprehensive, entertaining, nontechnical player news with the
+  changes into concise, complete, nontechnical player news with the
   file's established MUD colors and layout.
 ---
 
 # News Update
 
 Update `lib/information/news` itself unless the user requests a draft or review only.
-Give returning players the whole useful story: what changed, who it affects, how
-to use it, and any costs, limits or catches. Comprehensive means every distinct
-player-facing change is accounted for, not one bullet per commit. Make it a good
-read without sacrificing facts or hiding less glamorous fixes.
+Give returning players every distinct player-facing change in the fewest clear
+words: what changed, who it affects, how to use it, and any costs, limits or
+catches. Complete coverage does not require one bullet per commit or a long
+explanation of each fix. Preserve the facts while cutting filler and repetition.
 
 Paths below are relative to the repository root. Read the checkout's `AGENTS.md`
 and preserve existing worktree edits.
@@ -28,9 +28,10 @@ resolved before publication, while independent news preparation can continue.
 ## Establish what is actually missing
 
 Read the current news, especially the introduction, newest dated sections and
-the boundary of the historical archive. Use the recent sections as the style
-model; the older archive is a historical record, not a template for new jargon
-or formatting. Determine the current source repository and intended branch from
+the boundary of the historical archive. Use recent sections for colors and layout,
+but follow the concise writing guidance below even when existing entries are
+wordy. The older archive is a historical record, not a style template. Determine
+the current source repository and intended branch from
 Git remotes and GitHub metadata rather than hardcoding an owner or branch.
 
 Identify the last **substantive coverage update**, not merely the last edit:
@@ -116,26 +117,33 @@ and reboot status in the operator report, never in the news file; deployment mus
 not require a second edit to remove temporary status notices. Do not infer
 activation from a merged commit when reporting deployment status.
 
-## Write for the adventurer, not the developer
+## Write concise player entries
 
-Use a welcoming, knowledgeable voice, speaking directly to `you` and `your`
-character. A lively heading or a little in-world humor can make a section inviting:
-"Your backpack can breathe again" works only when the following facts explain
-the actual bag change. Keep jokes brief, use exclamation marks sparingly, and
-describe losses or balance reductions plainly. Avoid hype such as "lag-free",
-"never lose an item again", or "everything is fixed" without evidence.
+Use a friendly, direct voice and short, descriptive headings. Keep any in-world
+flavor in the heading; do not add a setup sentence or joke to each entry. State
+losses and balance reductions plainly, and avoid unsupported hype such as
+"lag-free", "never lose an item again", or "everything is fixed".
 
-Lead each bullet with the practical change. Follow with affected characters,
-conditions and a usable command when relevant. Keep sentences short, usually
-one change per bullet. Split complicated systems into a few related bullets
-rather than hiding their rules in a giant paragraph. Group repeated fixes by
-the experience they repair, but preserve distinct consequences and exceptions.
-There is no arbitrary bullet limit: tighten wording before dropping coverage.
+Lead each bullet with the practical change. Default to one short sentence;
+roughly 15-35 words is a useful target, not a minimum or hard cap. Add a second
+sentence or a related bullet when needed to retain material details. Simple
+fixes should usually fit in one or two wrapped lines. Split complicated systems
+by distinct player actions or rules, keeping shared conditions together.
+
+Group repeated fixes to the same behavior, preserving every distinct consequence
+and exception. Cut throat-clearing ("Players will now find that"), repeated
+subjects, explanations of why an obvious fix is helpful, and restatements of the
+same outcome. Mention unchanged rules only when they clarify the change or
+prevent a likely misunderstanding. Prefer direct verbs: "keeps" over "will now
+continue to retain". Never use a vague catch-all or drop facts to meet a length
+target; there is no fixed limit on the number of bullets needed for full coverage.
 
 Keep precise details that help a player decide or act: eligibility, level, target,
 cost, currency, waiting time, duration, number of uses, restrictions and commands.
 Verify numbers and units; a code pulse or tick is not automatically a second or
 combat round. Preserve command spelling, argument order and optional arguments.
+Help links supplement these details; they must not replace changed rules or
+essential instructions in the entry.
 Explain unfamiliar game terms on first use when needed. Replace engineering terms
 such as transaction, persistence, async, cache, race condition, migration, mutex,
 schema and idempotency with the behavior the player notices. Avoid source paths,
@@ -147,6 +155,13 @@ For example, given verified source behavior:
   no longer leaves your purse showing the wrong amount."
 - "Preserve nested inventory across recovery" becomes "Your bags keep the bags
   inside them, and their contents, when the game restarts."
+- "Players can now purchase up to five private chests inside their locker. Each
+  chest costs 500 platinum. To buy one, use 'eq chest create <name> [password]'.
+  Payment comes from your purse if it holds enough, otherwise from your bank.
+  The two balances cannot be combined. Wait for the purchase result." becomes
+  "Buy up to five private chests in your locker: 'eq chest create <name> [password]',
+  500 platinum each. Payment uses your purse if sufficient, otherwise your bank
+  (no combined balances); wait for the result."
 - A new combat ability needs its eligible race/class, usable targets, restrictions
   and command, not just "New ability added!"
 
@@ -208,9 +223,8 @@ The newest changes come first. Later updates replace older rules.
 &+RMM/DD/YY - MM/DD/YY&n &+L-&n &+YShort, inviting headline&n
 &+W----------------------------------------------------------------------&n
 
-&+CA topic players recognize&n
-&+Y-&n [Practical change, with &+C'command'&n or &+Yvalue&n when useful.]
-  [A condition or consequence that the player needs to understand.]
+&+CShort topic heading&n
+&+Y-&n [Change + essential condition, &+C'command'&n or &+Yvalue&n.]
 ```
 
 Place new material after the introduction and before the previous newest section.
@@ -240,6 +254,9 @@ Before calling the file fully up to date:
   report the pinned SHA as the verified cutoff. If a moving branch or unavailable
   source prevents a complete audit, report the precise outstanding range.
 - Read the full new text for tone, practical detail and nontechnical clarity.
+  Make a final compression pass: remove filler and repeated facts, then compare
+  with the inventory to confirm every distinct change, command, number, condition
+  and exception still survives. Expand any entry that became ambiguous.
   Inspect visible widths, complete/reset color tokens, date order, blank lines,
   final newline and the diff. Confirm the current PWIPE announcement remains
   pinned above all dated updates. Keep unrelated edits and the archive intact.
@@ -269,8 +286,10 @@ arguments). If a separately authorized deployment already includes a reboot,
 perform the readback after that reboot instead of reloading beforehand.
 
 Log in and run the actual `news` command. Confirm that its first page shows the
-newest headline and main addition, then use the pager to read through the entire
-new section. Enable paging if needed and restore any preferences changed for
+newest headline and main addition, then page through the visible news and website
+footer. The MUD view is capped at 50,000 bytes, including its heading and footer;
+keep the full archive in the file and database and verify any omitted text on the
+website. Enable paging if needed and restore any preferences changed for
 verification. A matching database row, website API response or help lookup alone
 does not prove players see the update. If reload or player-visible readback cannot
 be completed, report publication and verification separately with the missing
