@@ -1809,6 +1809,13 @@ struct descriptor_data
 	size_t ws_control_output_offset;
 	int gmcp_enabled;
 	bool gmcp_initial_state_pending;
+	uint32_t gmcp_supports; // Versioned new streams; legacy packages keep their defaults.
+	uint32_t gmcp_interests;
+	uint32_t gmcp_active_streams; // Last accepted control snapshot.
+	bool gmcp_control_pending;
+	uint64_t gmcp_time_revision;
+	uint64_t gmcp_request_refill_ms[2];
+	unsigned char gmcp_request_tokens[2];
 	bool gmcp_command_receipts; // Opt-in, session-local input dequeue observation.
 	uint64_t gmcp_input_sequence;
 	int mssp_sent;

@@ -47,6 +47,21 @@ struct ShipData;
 #define GMCP_MAX_INPUT_SIZE (1024 * 1024)
 #define GMCP_MAX_PACKAGE_SIZE 128
 
+constexpr size_t GMCP_CONTROL_MAX_INPUT_SIZE = 8192;
+constexpr size_t GMCP_CONTROL_MAX_ENTRIES = 64;
+constexpr size_t GMCP_CONTROL_MAX_ENTRY_BYTES = 96;
+struct cJSON;
+// WebSocket already decoded the envelope; do not serialize and parse control twice.
+bool gmcp_handle_control_json(struct descriptor_data *d, const cJSON *message, const char *raw,
+			      size_t len, const char *json_end);
+
+// New streams are explicitly versioned and opt-in. These bits are descriptor-local.
+constexpr uint32_t GMCP_SUPPORT_CAPABILITIES = 1U << 0;
+constexpr uint32_t GMCP_SUPPORT_TIME = 1U << 1;
+
+void gmcp_preferences_changed(struct descriptor_data *d);
+void gmcp_time_changed(void);
+
 /* negotiation */
 
 /* send gmcp will to start negotiation (called during connection setup) */

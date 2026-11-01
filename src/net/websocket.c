@@ -1640,7 +1640,7 @@ void websocket_free(struct descriptor_data *d)
 
 /* helper: handle a complete websocket message (after fragmentation reassembly) */
 static void websocket_handle_message(struct descriptor_data *d, int opcode, char *payload,
-				     size_t /*payload_len*/)
+				     size_t payload_len)
 {
 	if (opcode == WS_OPCODE_TEXT && payload)
 	{
@@ -1649,7 +1649,8 @@ static void websocket_handle_message(struct descriptor_data *d, int opcode, char
 		d->wait = 0;
 
 		/* parse json and extract command/data */
-		cJSON *json = cJSON_Parse(payload);
+		const char *json_end = nullptr;
+		cJSON *json = cJSON_ParseWithLengthOpts(payload, payload_len, &json_end, 0);
 		if (json)
 		{
 			const char *type = NULL;
@@ -1670,7 +1671,14 @@ static void websocket_handle_message(struct descriptor_data *d, int opcode, char
 			}
 			else if (type && strcmp(type, "gmcp") == 0)
 			{
-				/* handle gmcp package */
+				/* New control uses the decoded tree, before the legacy JSON round trip. */
+				if (gmcp_handle_control_json(d, json, payload, payload_len,
+							     json_end))
+				{
+					cJSON_Delete(json);
+					return;
+				}
+				/* handle legacy gmcp package */
 				cJSON *pkg_item = cJSON_GetObjectItem(json, "package");
 				if (pkg_item && cJSON_IsString(pkg_item) && pkg_item->valuestring)
 				{

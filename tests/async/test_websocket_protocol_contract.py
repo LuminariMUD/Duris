@@ -303,7 +303,16 @@ def test_authorization_state_fails_closed_for_service_and_player_commands():
     assert 'd->durisweb_backend  = 1;' in GMCP
     assert 'd->account || d->character || d->connected == CON_PLAYING' in GMCP
     assert '#define GMCP_MAX_INPUT_SIZE (1024 * 1024)' in GMCP_H
-    assert GMCP.count('cJSON_ParseWithLength') == 2
+    hello = function_body(GMCP, "void gmcp_handle_input(", "/* core gmcp send")
+    assert hello.count('cJSON_ParseWithLength') == 2
+    control = function_body(GMCP, "static bool gmcp_handle_control(", "// End new-stream control and time.")
+    assert control.count('cJSON_ParseWithLengthOpts') == 1
+    assert control.index('gmcp_control_begin') < control.index('cJSON_ParseWithLengthOpts')
+    begin = function_body(GMCP, "static bool gmcp_control_begin(", "static void gmcp_apply_control(")
+    assert 'len > GMCP_CONTROL_MAX_INPUT_SIZE' in begin
+    assert 'gmcp_control_request_allowed' in begin
+    dispatch = function_body(SOURCE, "static void websocket_handle_message(", "int websocket_process_input(")
+    assert dispatch.index('gmcp_handle_control_json') < dispatch.index('cJSON_PrintUnformatted(data_item)')
     assert 'cJSON_Parse(' not in GMCP
     assert "strncmp(data, \"Core.Hello\", 10) == 0 && data[10] == ' '" in GMCP
     assert "strncmp(data, \"Client.Info\", 11) == 0 && data[11] == ' '" in GMCP

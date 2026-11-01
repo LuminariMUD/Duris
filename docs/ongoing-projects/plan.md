@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **planned; implementation has not started**. Updated 2026-11-01.
+Status: **implementation in progress; control/time slice in qualification**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -17,14 +17,14 @@ The original planning commit supplied the plan only. Estimates concern future wo
 ## Master integration - 2026-11-01
 
 Merged `origin/master` at `ee6f9fbf3` into this issue worktree. Runtime and
-test sources match that master exactly; #498 implementation remains unstarted.
+test sources matched that master exactly; implementation had not started.
 The only conflict was the shared plan path. This file retains the complete
 #498 plan; master's complete #500 handoff is preserved byte-for-byte in
 [plan-issue-500.md](plan-issue-500.md).
 
 Re-audited the original-to-merged-master delta against the current owning
 source and both live issue bodies on 2026-11-01. The findings and line numbers
-below now describe `ee6f9fbf3`. The seven core contracts remain unimplemented;
+below describe `ee6f9fbf3`. At that review the seven core contracts were unimplemented;
 upstream changes affect session admission, durable item/reward publication,
 container access, command gates and the workload baseline. The implementation
 steps and proof below account for those changes without adding new streams.
@@ -39,6 +39,34 @@ Local analysis tooling: the merge's normal hook passed with clang-tidy 18
 explicitly selecting `--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`, the
 build compiler's installation. Its automatic GCC 16 header selection failed.
 The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
+
+## Implementation progress - 2026-11-01
+
+- First review chunk (ready for review): bounded Core.Supports.Set/Add/Remove, Capabilities and
+  explicit Subscribe, plus the shared cached Duris.Time stream. The existing
+  GUI harness now runs the real parser/control/send paths and additional time/
+  preference/flood/retry cases over both transport variants. Native GUI,
+  prompt, input-receipt, periodic-event and minimal-boot regressions pass.
+- MariaDB and client-free flatfile builds pass. The new booted
+  test_gmcp_control_journey.py passes normal Telnet/WebSocket dispatch, entry,
+  account return/re-entry, reconnect, preference off/on, invalid preference,
+  negative staff hours and day-phase changes. A WebSocket decoded-string edge
+  found by that journey was fixed by sharing the bounded control application
+  path before the legacy reserialization adapter; both transports now enforce
+  the same module/size/count/rate rules.
+- Initial 30-second ASan/UBSan GMCP fuzzing passed 12,487,256 executions; the
+  expanded raw/decoded-envelope recheck passed 3,213,603 executions. Ten new
+  retained seeds cover both forms. The final-source replay passed another 2,519,725 executions. Real-Mudlet/client
+  coordination and matched overhead measurements remain open.
+- Preserved the unmodified `ee6f9fbf3` binary, SHA-256, compiler/machine metadata
+  and deterministic 17-frame/11-package fixtures (4,716 JSON payload bytes)
+  under ignored `bin/qualification/issue498/baseline/`. These are baseline
+  artifacts, not booted workload or percentile/performance qualification.
+- Capability/subscription and Time v1 shapes are in
+  [GMCP.md](../network/GMCP.md). Only implemented contracts are advertised.
+  Session lifecycle is the next dependent chunk; combat, inventory, actions,
+  command results and final matched measurements/client qualification remain.
+  No #498 completion or HP-symptom fix is claimed by this first slice.
 
 ## Outcome
 

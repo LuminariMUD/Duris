@@ -11,6 +11,7 @@
 #include "net/output_style.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -96,6 +97,8 @@ void event_another_hour(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void * 
 			}
 		}
 	}
+
+	gmcp_time_changed();
 
 	// save dirty shopkeepers periodically
 	save_dirty_shopkeepers();

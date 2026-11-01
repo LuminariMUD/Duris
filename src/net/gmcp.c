@@ -13,6 +13,8 @@
 #include "net/gmcp.h"
 #include <cjson/cJSON.h>
 #include <math.h>
+#include <algorithm>
+#include <ctype.h>
 #include <mysql.h>
 #include <openssl/hmac.h>
 #include <stdio.h>
@@ -28,6 +30,7 @@
 #include "sql/sql.h"
 #include "net/websocket.h"
 #include "net/ws_auth.h"
+#include "persistence/latency_trace.h"
 
 extern const int top_of_world;
 
@@ -38,6 +41,249 @@ extern const char *pc_class_types[];
 extern struct descriptor_data *descriptor_list;
 extern const struct class_names class_names_table[];
 extern const struct race_names race_names_table[];
+
+extern struct time_info_data time_info;
+
+// New-stream control and time. Kept together for executable production-path tests.
+static bool gmcp_queue(struct descriptor_data *d, const char *package, const char *json);
+static uint64_t gmcp_clock_revision;
+static int gmcp_clock_hour = -1;
+static char gmcp_clock_json[128];
+
+static bool gmcp_streaming_enabled(P_desc d)
+{
+	return d && d->gmcp_enabled && !d->write_failed &&
+	       (!d->character || !PLR3_FLAGGED(GET_TRUE_CHAR(d->character), PLR3_NOGMCP));
+}
+
+static bool gmcp_time_active(P_desc d)
+{
+	return gmcp_streaming_enabled(d) && STATE(d) == CON_PLAYING && d->character &&
+	       (!IS_NPC(d->character) || IS_MORPH(d->character)) &&
+	       (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) &&
+	       (d->gmcp_supports & d->gmcp_interests & GMCP_SUPPORT_TIME);
+}
+
+void gmcp_preferences_changed(P_desc d)
+{
+	if (!d)
+		return;
+	if (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES)
+		d->gmcp_control_pending = true;
+	d->gmcp_time_revision = 0;
+}
+
+static void gmcp_flush_capabilities(P_desc d)
+{
+	if (!d || !d->gmcp_enabled || d->write_failed ||
+	    (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES) && !d->gmcp_control_pending))
+		return;
+	const uint32_t active = gmcp_time_active(d) ? GMCP_SUPPORT_TIME : 0;
+	if (active != d->gmcp_active_streams)
+	{
+		d->gmcp_control_pending = true;
+		d->gmcp_time_revision = 0;
+	}
+	if (!d->gmcp_control_pending)
+		return;
+	char json[512];
+	const int length =
+		snprintf(json, sizeof(json),
+			 "{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
+			 "\"Duris.Subscribe\":1,\"Duris.Time\":1},\"supported\":[%s],"
+			 "\"interested\":[%s],\"active\":[%s]}",
+			 gmcp_streaming_enabled(d) ? "true" : "false",
+			 d->gmcp_supports & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
+			 d->gmcp_interests & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "",
+			 gmcp_time_active(d) ? "\"Duris.Time\"" : "");
+	if (length > 0 && static_cast<size_t>(length) < sizeof(json) &&
+	    gmcp_queue(d, "Duris.Capabilities", json))
+	{
+		d->gmcp_control_pending = false;
+		d->gmcp_active_streams = active;
+	}
+}
+
+void gmcp_time_changed(void)
+{
+	// The clock owns mutation. Even malformed old time data cannot escape the wire range.
+	const int hour = (time_info.hour % 24 + 24) % 24;
+	if (hour == gmcp_clock_hour)
+		return;
+	gmcp_clock_hour = hour;
+	++gmcp_clock_revision;
+	gmcp_clock_json[0] = '\0';
+}
+
+static void gmcp_flush_time(P_desc d)
+{
+	// No JSON construction, clock work or traversal for an uninterested descriptor.
+	if (!gmcp_time_active(d) || d->gmcp_control_pending)
+		return;
+	gmcp_time_changed();
+	if (d->gmcp_time_revision == gmcp_clock_revision)
+		return;
+	if (!gmcp_clock_json[0])
+	{
+		const char *phase = gmcp_clock_hour >= 4 && gmcp_clock_hour <= 8   ? "dawn" :
+				    gmcp_clock_hour >= 9 && gmcp_clock_hour <= 15  ? "day" :
+				    gmcp_clock_hour >= 16 && gmcp_clock_hour <= 18 ? "dusk" :
+										     "night";
+		snprintf(gmcp_clock_json, sizeof(gmcp_clock_json),
+			 "{\"revision\":\"%llu\",\"hour\":%d,\"phase\":\"%s\"}",
+			 static_cast<unsigned long long>(gmcp_clock_revision), gmcp_clock_hour,
+			 phase);
+	}
+	if (gmcp_queue(d, "Duris.Time", gmcp_clock_json))
+		d->gmcp_time_revision = gmcp_clock_revision;
+}
+
+static bool gmcp_control_request_allowed(P_desc d, unsigned family)
+{
+	const uint64_t now = latency_trace_monotonic_us() / 1000;
+	if (!now)
+		return false;
+	uint64_t &refill = d->gmcp_request_refill_ms[family];
+	unsigned char &tokens = d->gmcp_request_tokens[family];
+	if (!refill)
+	{
+		refill = now;
+		tokens = 2;
+	}
+	if (now < refill)
+		return false;
+	const uint64_t elapsed = (now - refill) / 1000;
+	if (elapsed)
+	{
+		tokens = static_cast<unsigned char>(
+			std::min<uint64_t>(2, tokens + std::min<uint64_t>(2, elapsed)));
+		refill += elapsed * 1000;
+	}
+	if (!tokens)
+		return false;
+	--tokens;
+	return true;
+}
+
+enum class gmcp_control_kind
+{
+	unknown,
+	set,
+	add,
+	remove,
+	subscribe
+};
+
+static gmcp_control_kind gmcp_control_package(const char *package, size_t size)
+{
+	const auto named = [&](const char *name)
+	{ return size == strlen(name) && !memcmp(package, name, size); };
+	if (named("Core.Supports.Set"))
+		return gmcp_control_kind::set;
+	if (named("Core.Supports.Add"))
+		return gmcp_control_kind::add;
+	if (named("Core.Supports.Remove"))
+		return gmcp_control_kind::remove;
+	if (named("Duris.Subscribe"))
+		return gmcp_control_kind::subscribe;
+	return gmcp_control_kind::unknown;
+}
+
+static bool gmcp_control_begin(P_desc d, gmcp_control_kind kind, const char *raw, size_t len)
+{
+	if (!d->gmcp_enabled || len > GMCP_CONTROL_MAX_INPUT_SIZE || memchr(raw, '\0', len) ||
+	    !gmcp_control_request_allowed(d, kind == gmcp_control_kind::subscribe ? 1 : 0))
+		return false;
+	// cJSON strings have no stored length. This check must precede WebSocket reserialization.
+	for (size_t index = 0; index + 6 <= len; ++index)
+		if (!memcmp(raw + index, "\\u0000", 6))
+			return false;
+	return true;
+}
+
+static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *array)
+{
+	if (!cJSON_IsArray(array))
+		return;
+	uint32_t requested = 0;
+	size_t count = 0;
+	const cJSON *entry;
+	cJSON_ArrayForEach(entry, array)
+	{
+		if (++count > GMCP_CONTROL_MAX_ENTRIES || !cJSON_IsString(entry) ||
+		    strnlen(entry->valuestring, GMCP_CONTROL_MAX_ENTRY_BYTES + 1) >
+			    GMCP_CONTROL_MAX_ENTRY_BYTES)
+			return;
+		if (!strcmp(entry->valuestring, "Duris.Capabilities 1"))
+			requested |= GMCP_SUPPORT_CAPABILITIES;
+		else if (!strcmp(entry->valuestring, "Duris.Time 1"))
+			requested |= GMCP_SUPPORT_TIME;
+	}
+	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
+	if (kind == gmcp_control_kind::subscribe)
+	{
+		if (!had_control)
+			return;
+		d->gmcp_interests = requested & d->gmcp_supports & GMCP_SUPPORT_TIME;
+	}
+	else
+	{
+		if (kind == gmcp_control_kind::set)
+			d->gmcp_supports = requested;
+		else if (kind == gmcp_control_kind::add)
+			d->gmcp_supports |= requested;
+		else
+			d->gmcp_supports &= ~requested;
+		d->gmcp_interests &= d->gmcp_supports;
+		if (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
+			d->gmcp_interests = 0;
+	}
+	d->gmcp_control_pending = had_control || (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES);
+	d->gmcp_time_revision = 0;
+}
+
+static bool gmcp_handle_control(P_desc d, const char *data, size_t len)
+{
+	const char *space = static_cast<const char *>(
+		memchr(data, ' ', std::min<size_t>(len, GMCP_MAX_PACKAGE_SIZE)));
+	const auto kind =
+		gmcp_control_package(data, space ? static_cast<size_t>(space - data) : len);
+	if (kind == gmcp_control_kind::unknown)
+		return false;
+	if (!space || !gmcp_control_begin(d, kind, data, len))
+		return true;
+	const char *json = space + 1;
+	const char *end = nullptr;
+	cJSON *root =
+		cJSON_ParseWithLengthOpts(json, len - static_cast<size_t>(json - data), &end, 0);
+	if (!root)
+		return true;
+	while (end < data + len && isspace(static_cast<unsigned char>(*end)))
+		++end;
+	if (end == data + len)
+		gmcp_apply_control(d, kind, root);
+	cJSON_Delete(root);
+	return true;
+}
+
+bool gmcp_handle_control_json(P_desc d, const cJSON *message, const char *raw, size_t len,
+			      const char *json_end)
+{
+	const cJSON *package = cJSON_GetObjectItem(message, "package");
+	if (!cJSON_IsString(package))
+		return false;
+	const auto kind = gmcp_control_package(package->valuestring, strlen(package->valuestring));
+	if (kind == gmcp_control_kind::unknown)
+		return false;
+	if (!d || !raw || !json_end || !gmcp_control_begin(d, kind, raw, len))
+		return true;
+	while (json_end < raw + len && isspace(static_cast<unsigned char>(*json_end)))
+		++json_end;
+	if (json_end == raw + len)
+		gmcp_apply_control(d, kind, cJSON_GetObjectItem(message, "data"));
+	return true;
+}
+// End new-stream control and time.
 
 /* send gmcp negotiation request to client */
 void gmcp_negotiate(struct descriptor_data *d)
@@ -64,6 +310,8 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 	{
 		bool was_enabled = d->gmcp_enabled;
 		d->gmcp_enabled = 1;
+		if (!was_enabled)
+			gmcp_preferences_changed(d);
 		if (!was_enabled && STATE(d) == CON_PLAYING)
 			d->gmcp_initial_state_pending = true;
 	}
@@ -71,6 +319,9 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 	{
 		d->gmcp_enabled = 0;
 		d->gmcp_initial_state_pending = false;
+		d->gmcp_control_pending = false;
+		d->gmcp_active_streams = 0;
+		d->gmcp_time_revision = 0;
 	}
 }
 
@@ -79,11 +330,14 @@ void gmcp_flush_initial_states(void)
 {
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
-		if (!d->gmcp_initial_state_pending)
-			continue;
-		d->gmcp_initial_state_pending = false;
-		if (STATE(d) == CON_PLAYING)
+		if (d->gmcp_initial_state_pending && STATE(d) == CON_PLAYING)
+		{
+			d->gmcp_initial_state_pending = false;
 			gmcp_send_initial_state(d->character);
+		}
+		else
+			gmcp_flush_capabilities(d);
+		gmcp_flush_time(d);
 	}
 }
 
@@ -125,6 +379,8 @@ void gmcp_input_receipt(struct descriptor_data *d, const char *input)
 void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len)
 {
 	if (!d || !data || len == 0 || len > GMCP_MAX_INPUT_SIZE)
+		return;
+	if (gmcp_handle_control(d, data, len))
 		return;
 
 	if (len > 10 && strncmp(data, "Core.Hello", 10) == 0 && data[10] == ' ')
@@ -237,23 +493,23 @@ void gmcp_handle_input(struct descriptor_data *d, const char *data, size_t len)
 }
 
 /* core gmcp send - handles telnet and websocket */
-void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
+static bool gmcp_queue(struct descriptor_data *d, const char *package, const char *json)
 {
 	if (!d || !package || !json)
-		return;
+		return false;
 	if (!d->gmcp_enabled && !d->websocket)
-		return;
+		return false;
 
 	/* Check descriptor is still valid (not a dangling pointer to closed socket) */
 	if (!is_desc_valid(d))
-		return;
+		return false;
 	if (d->write_failed)
-		return;
+		return false;
 
 	if (d->websocket)
 	{
 		/* WebSocket: Send JSON message */
-		websocket_send_json(d, package, json);
+		return websocket_send_json(d, package, json) >= 0;
 	}
 	else
 	{
@@ -265,7 +521,7 @@ void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
 		unsigned char *buf = (unsigned char *)malloc(total_len);
 
 		if (!buf)
-			return;
+			return false;
 
 		buf[0] = TELNET_IAC;
 		buf[1] = TELNET_SB;
@@ -277,14 +533,30 @@ void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
 		buf[total_len - 1] = TELNET_SE;
 
 		/* Use binary write to handle MCCP compression properly */
-		write_to_descriptor_binary(d, buf, total_len);
+		const bool queued = write_to_descriptor_binary(d, buf, total_len) >= 0;
 		free(buf);
+		return queued;
 	}
+}
+
+void gmcp_send(struct descriptor_data *d, const char *package, const char *json)
+{
+	(void)gmcp_queue(d, package, json);
 }
 
 /* Bootstrap state that otherwise only changes after a gameplay event. */
 void gmcp_send_initial_state(struct char_data *ch)
 {
+	if (ch && ch->desc)
+	{
+		gmcp_preferences_changed(ch->desc);
+		gmcp_flush_capabilities(ch->desc);
+		if (ch->desc->gmcp_control_pending)
+		{
+			ch->desc->gmcp_initial_state_pending = true;
+			return;
+		}
+	}
 	if (!GMCP_ENABLED(ch) || (IS_NPC(ch) && !IS_MORPH(ch)))
 		return;
 	ch->desc->gmcp_initial_state_pending = false;
@@ -305,6 +577,7 @@ void gmcp_send_initial_state(struct char_data *ch)
 		gmcp_combat_target(ch, GET_OPPONENT(ch));
 	else
 		gmcp_combat_end(ch);
+	gmcp_flush_time(ch->desc);
 }
 
 /* send room.info when character enters a room */

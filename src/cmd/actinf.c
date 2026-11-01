@@ -25,6 +25,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "player/news.h"
 #include "cmd/information_cache.h"
 #include "core/structs.h"
@@ -7006,7 +7007,7 @@ void do_time(P_char ch, char *argument, int /*cmd*/)
 
 	if (IS_TRUSTED(ch) && GET_LEVEL(ch) >= FORGER && strlen(Gbuf1))
 	{
-		hour = time_info.hour = atoi(Gbuf1) % 24;
+		hour = time_info.hour = (atoi(Gbuf1) % 24 + 24) % 24;
 
 		wizlog(56, "%s set the time to %d:00 or %d:00%s.", GET_NAME(ch), time_info.hour,
 		       (hour == 0) ? 12 :
@@ -7015,6 +7016,7 @@ void do_time(P_char ch, char *argument, int /*cmd*/)
 		       (hour > 11) ? "pm" : "am");
 		send_to_char("You set the time.\n", ch);
 		astral_clock_setMapModifiers();
+		gmcp_time_changed();
 		return;
 	}
 
