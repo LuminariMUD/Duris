@@ -10,7 +10,7 @@ from _paths import ROOT, extract_function
 
 
 FUNCTIONS = (
-    ("actwiz.c", "static void extractlink_attempt(P_char ch"),
+    ("actwiz.c", "static bool extractlink_attempt(P_char ch"),
     ("actwiz.c", "void do_extractlink(P_char ch"),
 )
 
@@ -27,7 +27,9 @@ def main() -> int:
     )
     harness = template.replace(marker, production)
 
-    with tempfile.TemporaryDirectory(prefix="duris-extractlink-") as directory:
+    build_root = ROOT / "bin" / "tests"
+    build_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="duris-extractlink-", dir=build_root) as directory:
         generated = Path(directory) / "extractlink_feedback_runtime.cpp"
         binary = Path(directory) / "extractlink_feedback_runtime"
         generated.write_text(harness, encoding="utf-8")

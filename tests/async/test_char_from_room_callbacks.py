@@ -18,6 +18,7 @@ PRELUDE = r'''
 #include "item/item_actions.h"
 #include "net/gmcp.h"
 #include "world/db.h"
+#include "telemetry/telemetry_runtime.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -48,6 +49,13 @@ static obj_data callback_carried, callback_extra_carried, callback_equipped, cal
 static std::vector<P_obj> extracted_items;
 static bool transient_items;
 static bool locker_test;
+static int session_exits;
+telemetry_capture_result telemetry_runtime_game_session_exit(P_char ch, P_desc,
+                                                             telemetry_session_end_reason) {
+    ++session_exits;
+    ch->telemetry_session_sequence = 0;
+    return {};
+}
 
 P_char combat_list = nullptr;
 P_char combat_next_ch = nullptr;
@@ -284,6 +292,7 @@ LOCKER_FIXTURE = r'''
 // locker leave handler, room departure, extraction admission and item cleanup.
 #define IS_TOWN_RAIDED(ch) false
 static bool snapshot_ok, movement_busy, writer_available;
+static bool chest_write_pending, chest_purchase_pending, chest_durable, chest_audit_pending;
 static int snapshot_calls, terminal_saves, deferred_saves, locker_releases;
 static char_data locker_character;
 struct StorageLocker {
@@ -292,8 +301,8 @@ struct StorageLocker {
     P_char GetLockerUser() { return user; }
     P_char GetLockerChar() { return character; }
     int GetLockerId() { return 1; }
-    bool ChestWritePending() { return false; }
-    bool PrivateContentsDurable() { return true; }
+    bool ChestWritePending() { return chest_write_pending; }
+    bool PrivateContentsDurable() { return chest_durable; }
     bool LockerToPFile() {
         ++snapshot_calls;
         if (!snapshot_ok) return false;
@@ -305,8 +314,8 @@ struct StorageLocker {
         return true;
     }
 };
-bool private_chest_purchase_locker_busy(int) { return false; }
-bool sql_chest_log_pending(int) { return false; }
+bool private_chest_purchase_locker_busy(int) { return chest_purchase_pending; }
+bool sql_chest_log_pending(int) { return chest_audit_pending; }
 static StorageLocker locker;
 static StorageLocker *retained_locker;
 static bool locker_handle_leave(P_char, StorageLocker *, int, int);
@@ -590,7 +599,7 @@ static void run_inventory_cleanup(Scenario selected, bool npc, bool saved, int p
     assert(!initial_linked.hitched_to && !callback_linked.hitched_to);
 }
 
-static void run_locker_extraction(int failure, bool saved)
+static void run_locker_extraction(int failure, bool saved, bool terminal = false)
 {
     locker_test = true;
     rooms[0] = {}; rooms[1] = {}; locker_character = {};
@@ -600,39 +609,57 @@ static void run_locker_extraction(int failure, bool saved)
     ch->runtime_id = 1; ch->in_room = 0;
     SET_POS(ch, STAT_NORMAL + POS_STANDING);
     if (saved) ch->runtime_flags = CHAR_RFLAG_TERMINAL_ITEMS_SAVED;
+    ch->telemetry_session_sequence = 42;
+    session_exits = 0;
     character_list = rooms[0].people = ch;
-    obj_data contents{}, inventory{};
+    obj_data contents{}, inventory{}, equipment{};
     contents.loc_p = LOC_ROOM; contents.loc.room = 0;
     rooms[0].contents = &contents;
     give_item(ch, &inventory);
+    wear_item(ch, &equipment);
     ch->group = &recreated_group; ch->nevents = &recreated_event;
     locker = {ch, failure == 1 ? nullptr : &locker_character};
     retained_locker = &locker;
     movement_busy = failure == 0;
     snapshot_ok = failure != 2;
     writer_available = failure != 3;
+    chest_write_pending = failure == 5;
+    chest_purchase_pending = failure == 6;
+    chest_durable = failure != 7;
+    chest_audit_pending = failure == 8;
     snapshot_calls = terminal_saves = deferred_saves = locker_releases = 0;
     cleanup_calls = event_cleanup_calls = group_cleanup_calls = 0;
     terminal_departure_override = dummy_override = nullptr;
     combat_list = combat_next_ch = nullptr; dummy_guard = false;
     extracted_items.clear();
-    extraction_unlink_fixture(ch);
-    if (failure < 3) {
+    auto remove = [ch, terminal]() {
+        if (terminal) extract_char_after_terminal_save(ch);
+        else extraction_unlink_fixture(ch);
+    };
+    remove();
+    if (failure < 3 || failure >= 5) {
         assert(character_list == ch && rooms[0].people == ch && ch->in_room == 0);
         assert(retained_locker == &locker && locker.user == ch);
         assert(rooms[0].contents == &contents && ch->carrying == &inventory);
+        assert(ch->equipment[0] == &equipment);
         assert(ch->group == &recreated_group && ch->nevents == &recreated_event);
         assert(cleanup_calls == 0 && event_cleanup_calls == 0 && group_cleanup_calls == 0);
         assert(extracted_items.empty() && !terminal_saves && !deferred_saves && !locker_releases);
+        assert(!session_exits && ch->telemetry_session_sequence == 42);
+        assert(bool(IS_SET(ch->runtime_flags, CHAR_RFLAG_TERMINAL_ITEMS_SAVED)) == saved);
         // The intact occupant and contents can retry successfully.
         movement_busy = false; snapshot_ok = true; locker.character = &locker_character;
-        extraction_unlink_fixture(ch);
+        chest_write_pending = chest_purchase_pending = chest_audit_pending = false;
+        chest_durable = true;
+        remove();
     }
     assert(character_list == nullptr && ch->in_room == NOWHERE);
     assert(retained_locker == nullptr && locker.user == nullptr && locker_releases == 1);
     assert(terminal_saves + deferred_saves == 1);
     assert(locker_character.carrying == &contents && OBJ_CARRIED(&contents));
-    assert_item_cleanup(&inventory, saved, 1);
+    assert_item_cleanup(&inventory, saved || terminal, 1);
+    assert_item_cleanup(&equipment, saved || terminal, 1);
+    assert(session_exits == (terminal ? 1 : 0));
     delete ch;
     locker_test = false;
 }
@@ -665,8 +692,10 @@ int main()
     char_data detached_character{};
     detached_character.in_room = NOWHERE;
     char_from_room(&detached_character);
-    for (int failure = 0; failure < 5; ++failure)
+    for (int failure = 0; failure < 9; ++failure) {
         for (bool saved : {false, true}) run_locker_extraction(failure, saved);
+        run_locker_extraction(failure, false, true);
+    }
     std::puts("Room departure and terminal extraction: callback lifetime, relationships and item ownership cases passed");
 }
 '''
@@ -707,6 +736,8 @@ with tempfile.TemporaryDirectory(prefix="char-from-room-", dir=build_root) as di
         extract_function("linked_objects.c", "void add_linked_object("),
         extract_function("handler.c", "static void extract_char_items("),
         unlink,
+        "void extract_char(P_char ch) { extraction_unlink_fixture(ch); }",
+        extract_function("handler.c", "void extract_char_after_terminal_save("),
         DRIVER,
     )), encoding="utf-8")
     subprocess.run([

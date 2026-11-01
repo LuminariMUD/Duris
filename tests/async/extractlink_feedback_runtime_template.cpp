@@ -25,6 +25,7 @@ struct char_data
 	descriptor_data *desc = nullptr;
 	char_data *next = nullptr;
 	bool terminal_save_ok = true;
+	bool locker_ready = true;
 	bool extracted = false;
 	int save_calls = 0;
 	int extract_calls = 0;
@@ -92,8 +93,15 @@ int isname(const char *wanted, const char *actual)
 bool persistence_save_character_terminal(P_char ch, int intent)
 {
 	assert(intent == RENT_LINKDEAD);
+	assert(ch->locker_ready);
 	++ch->save_calls;
 	return ch->terminal_save_ok;
+}
+
+bool locker_leave_for_extraction(P_char ch)
+{
+	assert(!ch->desc || is_desc_valid(ch->desc));
+	return ch->locker_ready;
 }
 
 void extract_char_after_terminal_save(P_char ch)
@@ -170,7 +178,7 @@ static void named_success()
 	assert(contains(admin.output, "Attempting ghost extraction: Spidgaul (linkdead)."));
 	assert(contains(admin.output, "Extracted ghost: Spidgaul."));
 	assert(contains(admin.output, "extractlink result: 1 match; 1 ghost found; 1 extracted; "
-				      "0 connected; 0 excluded."));
+				      "0 deferred; 0 connected; 0 excluded."));
 	assert(!contains(admin.output, "Retained ghost"));
 	assert(!contains(admin.output, "No player character"));
 	assert(wiz_audit.size() == 1);
@@ -178,8 +186,7 @@ static void named_success()
 	assert(file_audit == wiz_audit);
 }
 
-// The terminal save is queued and the ghost always leaves (persistence reset step 7),
-// even when the save stub reports a failure.
+// Once locker departure succeeds, an ordinary save queue failure still allows removal.
 static void named_save_failure()
 {
 	reset_observations();
@@ -198,7 +205,7 @@ static void named_save_failure()
 	assert(ghost.extract_calls == 1);
 	assert(contains(admin.output, "Extracted ghost: Spidgaul."));
 	assert(contains(admin.output, "extractlink result: 1 match; 1 ghost found; 1 extracted; "
-				      "0 connected; 0 excluded."));
+				      "0 deferred; 0 connected; 0 excluded."));
 	assert(!contains(admin.output, "Retained ghost"));
 	assert(wiz_audit.size() == 1);
 	assert(file_audit == wiz_audit);
@@ -223,7 +230,7 @@ static void named_connected_match()
 	assert(contains(admin.output,
 			"Cannot extract Spidgaul: character has a valid connection."));
 	assert(contains(admin.output, "extractlink result: 1 match; 0 ghosts found; 0 extracted; "
-				      "1 connected; 0 excluded."));
+				      "0 deferred; 1 connected; 0 excluded."));
 	assert(!contains(admin.output, "No player character"));
 	assert(wiz_audit.empty());
 	assert(file_audit.empty());
@@ -248,6 +255,40 @@ static void named_no_match()
 	assert(file_audit.empty());
 }
 
+static void named_deferred_retry()
+{
+	for (bool dangling : { false, true })
+	{
+		reset_observations();
+		descriptor_data invalid_descriptor{ false };
+		char_data admin = make_admin();
+		char_data ghost;
+		ghost.name = "Waiting";
+		ghost.locker_ready = false;
+		ghost.desc = dangling ? &invalid_descriptor : nullptr;
+		admin.next = &ghost;
+		character_list = &admin;
+		char argument[] = "Waiting";
+		for (int attempt = 0; attempt < 2; ++attempt)
+		{
+			admin.output.clear();
+			do_extractlink(&admin, argument, 0);
+			assert(!ghost.extracted && !ghost.save_calls && !ghost.extract_calls);
+			assert(!ghost.desc && ghost.name && admin.next == &ghost);
+			assert(contains(admin.output, "Deferred ghost: Waiting."));
+			assert(contains(admin.output, "0 extracted; 1 deferred;"));
+			assert(!contains(admin.output, "Extracted ghost:"));
+			assert(wiz_audit.empty() && file_audit.empty());
+		}
+		ghost.locker_ready = true;
+		admin.output.clear();
+		do_extractlink(&admin, argument, 0);
+		assert(ghost.extracted && ghost.save_calls == 1 && ghost.extract_calls == 1);
+		assert(contains(admin.output, "1 extracted; 0 deferred;"));
+		assert(wiz_audit.size() == 1 && file_audit == wiz_audit);
+	}
+}
+
 static void mixed_all()
 {
 	reset_observations();
@@ -265,10 +306,14 @@ static void mixed_all()
 	char_data dangling_success;
 	dangling_success.name = "Dangling";
 	dangling_success.desc = &invalid_descriptor;
+	char_data waiting;
+	waiting.name = "Waiting";
+	waiting.locker_ready = false;
 	admin.next = &connected;
 	connected.next = &linkdead_success;
 	linkdead_success.next = &linkdead_failure;
 	linkdead_failure.next = &dangling_success;
+	dangling_success.next = &waiting;
 	character_list = &admin;
 	char argument[] = "all";
 
@@ -282,7 +327,9 @@ static void mixed_all()
 	assert(dangling_success.desc == nullptr);
 	assert(contains(admin.output, "Dangling (invalid descriptor)."));
 	assert(!contains(admin.output, "Connected"));
-	assert(contains(admin.output, "extractlink all complete: 3 ghosts found; 3 extracted."));
+	assert(!waiting.extracted && !waiting.save_calls);
+	assert(contains(admin.output,
+			"extractlink all complete: 4 ghosts found; 3 extracted; 1 deferred."));
 	assert(count_containing(wiz_audit, " extracted ghost character ") == 3);
 	assert(file_audit == wiz_audit);
 }
@@ -311,6 +358,7 @@ int main()
 	named_save_failure();
 	named_connected_match();
 	named_no_match();
+	named_deferred_retry();
 	mixed_all();
 	self_and_usage_feedback();
 	return 0;
