@@ -1526,6 +1526,34 @@ static void items_contract(bool websocket)
 	if (!websocket)
 		emit(&d, "Char.Items.List", "items-equipment");
 	cJSON_Delete(equipment);
+	// Finite lights illuminate when worn, but not in inventory or nested lists.
+	worn.type = ITEM_LIGHT;
+	worn.value[2] = 2;
+	cJSON *carried_light = gmcp_item_row(&actor, &worn, -1, d.gmcp_items_scope);
+	assert(cJSON_GetArraySize(cJSON_GetObjectItem(carried_light, "flags")) == 0);
+	cJSON_Delete(carried_light);
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("illuminating") != std::string::npos);
+	const auto burning_epoch = actor.gmcp_items_epoch;
+	const auto burning_revision = d.gmcp_items_revision;
+	const auto burning_packets = deliveries[&d].size();
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(worn.value[2] == 1 && actor.gmcp_items_epoch == burning_epoch &&
+	       d.gmcp_items_revision == burning_revision &&
+	       deliveries[&d].size() == burning_packets);
+	update_char_objects(&actor);
+	assert(worn.value[2] == 0 && actor.gmcp_items_epoch == burning_epoch + 1);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == burning_revision + 1 &&
+	       payload(&d, "Char.Items.List").find("illuminating") == std::string::npos);
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(actor.gmcp_items_epoch == burning_epoch + 1 &&
+	       d.gmcp_items_revision == burning_revision + 1);
 	concealed_item = &worn;
 	gmcp_items_changed(&actor);
 	gmcp_flush_initial_states();
@@ -1646,7 +1674,7 @@ static void nested_items_contract(bool websocket)
 	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
 	actor.desc = &d;
 	descriptor_list = &d;
-	obj_data bag{}, inner{}, hidden{}, worn{};
+	obj_data bag{}, inner{}, hidden{}, worn{}, worn_item{};
 	bag.obj_uid = 501;
 	bag.name = const_cast<char *>("bag");
 	bag.short_description = const_cast<char *>("a bag");
@@ -1664,12 +1692,17 @@ static void nested_items_contract(bool websocket)
 	hidden.obj_uid = 503;
 	hidden.short_description = const_cast<char *>("hidden item");
 	hidden.type = ITEM_OTHER;
+	hidden.name = const_cast<char *>("hidden");
 	inner.next_content = &hidden;
 	worn = bag;
 	worn.obj_uid = 504;
 	worn.loc_p = LOC_WORN;
 	worn.loc.wearing = &actor;
-	worn.contains = nullptr;
+	worn_item = inner;
+	worn_item.obj_uid = 505;
+	worn_item.loc.inside = &worn;
+	worn_item.next_content = nullptr;
+	worn.contains = &worn_item;
 	actor.equipment[WIELD] = &worn;
 	concealed_item = &hidden;
 	gmcp_flush_initial_states();
@@ -1713,13 +1746,28 @@ static void nested_items_contract(bool websocket)
 	if (!websocket)
 		emit(&d, "Char.Items.List", "items-nested");
 	assert(payload(&d, "Char.Items.List").find("an inner bag") != std::string::npos);
+	char item_selector[96];
+	strlcpy(item_selector, token(inner.obj_uid).c_str(), sizeof(item_selector));
+	P_obj selected_bag =
+		get_obj_in_list_vis(&actor, token(bag.obj_uid).c_str(), actor.carrying, false);
+	assert(selected_bag == &bag);
+	assert(do_get_container_resolve_item(&actor, selected_bag, item_selector, true) == &inner);
+	char keyword[] = "hidden";
+	assert(do_get_container_resolve_item(&actor, &bag, keyword, true) == &hidden);
+	assert(!do_get_container_resolve_item(&actor, &bag, keyword, false));
+	strlcpy(item_selector, token(hidden.obj_uid).c_str(), sizeof(item_selector));
+	assert(!do_get_container_resolve_item(&actor, &bag, item_selector, true));
 	get(inner.obj_uid);
 	finish(true, 0); // Explicit known-empty nested state.
 	get(worn.obj_uid);
-	finish(true, 0); // Equipped containers use the same owner search.
+	finish(true, 1); // Equipped containers use the same owner search.
 	char worn_selector[96];
 	strlcpy(worn_selector, token(worn.obj_uid).c_str(), sizeof(worn_selector));
 	assert(do_get_obj_in_equipment_vis(&actor, worn_selector) == &worn);
+	strlcpy(item_selector, token(worn_item.obj_uid).c_str(), sizeof(item_selector));
+	assert(do_get_container_resolve_item(&actor,
+					     do_get_obj_in_equipment_vis(&actor, worn_selector),
+					     item_selector, true) == &worn_item);
 	get(9999);
 	finish(false, 0); // Missing/cross-owner/room-only identity reveals no contents.
 	bag.value[1] = CONT_CLOSED;
@@ -1781,7 +1829,7 @@ static void nested_items_contract(bool websocket)
 	gmcp_flush_initial_states();
 	assert(item_visibility_checks - checks <= 128);
 	assert(deliveries[&d].size() == packets_before_search && d.gmcp_items_location == 3);
-	finish(true, 0);
+	finish(true, 1);
 	get(inner.obj_uid);
 	gmcp_flush_initial_states();
 	const auto stale = token(inner.obj_uid);
@@ -1793,6 +1841,8 @@ static void nested_items_contract(bool websocket)
 	gmcp_flush_initial_states();
 	gmcp_flush_initial_states();
 	assert(!gmcp_item_selector_matches(&actor, &inner, stale.c_str()));
+	strlcpy(item_selector, stale.c_str(), sizeof(item_selector));
+	assert(!do_get_container_resolve_item(&actor, &bag, item_selector, true));
 	const auto after_mutation = d.gmcp_items_revision;
 	request("[\"" + stale + "\"]");
 	assert(d.gmcp_items_revision == after_mutation);

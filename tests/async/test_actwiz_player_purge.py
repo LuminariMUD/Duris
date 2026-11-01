@@ -28,6 +28,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "core/utility.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "ships/ships.h"
 #include "sql/sql.h"
 #include "sql/sql_player.h"

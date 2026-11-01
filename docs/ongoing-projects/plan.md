@@ -17,13 +17,14 @@ No action/cooldown framework, extra storage calls or broad qualification campaig
    [#544](https://github.com/LuminariMUD/Duris/pull/544),
    [#545](https://github.com/LuminariMUD/Duris/pull/545) and
    [#546](https://github.com/LuminariMUD/Duris/pull/546) are merged into master.
-2. Owner items: [#547](https://github.com/LuminariMUD/Duris/pull/547) is ready
-   against master. It includes bounded pages, native selectors, requested nested
+2. Owner items: [#547](https://github.com/LuminariMUD/Duris/pull/547) is squash-merged
+   into master as `35dc321cb`. It includes bounded pages, native selectors, requested nested
    contents, epoch/access cancellation and completed publication. Uninterested/
    unchanged lists build no JSON. Open/close, transfer, editor, condition and
-   rename owners notify; knockout and reveal-true-name review findings are fixed.
-3. Cost evidence: [#548](https://github.com/LuminariMUD/Duris/pull/548) is stacked
-   on #547. Three lines add `gmcp_protocol` to the existing tracer before storage
+   rename owners notify. All five review findings are fixed, including finite-light
+   burnout and item selectors inside carried/worn containers.
+3. Cost evidence: [#548](https://github.com/LuminariMUD/Duris/pull/548) now targets
+   master and carries the merged #547 fixes. Three lines add `gmcp_protocol` to the existing tracer before storage
    work. The [wire document](../network/GMCP.md#short-local-cost-check--2026-11-01)
    records the short matched results and their limits. No new measurement service.
 4. Client handoff: [client #28](https://github.com/LuminariMUD/duris-client/pull/28)
@@ -77,13 +78,21 @@ before publishing. Every delivered chunk is committed, pushed and in a review PR
 ## Handoff and remaining follow-ups
 
 Server worktree: `/home/aiwithapex/projects/duris-issue-498`.
-Item branch: `branch/issue-498-owner-items` (review fixes `524949722`, `a33f4a09e`).
+Owner-items merge: `35dc321cb`; qualified head `a7533f937` is retained locally as
+`branch/archive-pr547-qualified-20261101`.
 Current branch: `branch/issue-498-delivery-evidence` (#548).
 Client handoff worktree: `/home/aiwithapex/projects/durisclient-issue26-server-handoff`,
 branch `branch/issue-26-server-handoff` (fixture fix `2115d9b`).
-Other checkouts/dirty work and the original reference are preserved. Parent-merge
-cleanup was performed by another agent; do not recreate deleted parent branches.
-No merge of the three new PRs, production operation or release tag is part of this goal.
+Other checkouts/dirty work and the original reference are preserved. Do not recreate
+deleted parent branches. PR #548 and client #28 remain open; no production operation
+or release tag was performed.
+
+The #547 merge tree exactly matches its qualified head. Its full local regression
+sweep and repaired-test reruns, sanitizer/booted selector journeys and both backend
+builds are recorded in the PR's merge-readiness comment. That qualification remains
+under `/home/aiwithapex/projects/duris-pr547-review/bin/qualification/pr547/`.
+After carrying it into #548, the child diff remains the timing span and two documents;
+the recorded cost/capture evidence below retains its original source hashes.
 
 Local ignored proof: `bin/qualification/issue498/owner-items-parent-wire.json`,
 `owner-items-parent-*-restore.json`, `owner-review-*.log`, `delivery-*.log`,

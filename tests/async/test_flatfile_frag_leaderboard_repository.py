@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from _paths import SRC, rel
+from _paths import extract_function, rel
 import pathlib
 import subprocess
 import tempfile
@@ -47,19 +47,12 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-frag-leaderboard-") as tempo
         raise SystemExit(run_result.stdout)
     print(run_result.stdout.strip())
 
-sql_source = (SRC / "sql.c").read_text()
-no_mysql = sql_source[
-    sql_source.index("#ifdef __NO_MYSQL__") : sql_source.index(
-        "#else", sql_source.index("#ifdef __NO_MYSQL__")
-    )
-]
+flatfile_route = extract_function("sql.c", "void sql_update_frag_leaderboard(P_char ch)")
 for token in (
     "flatfile_frag_leaderboard_upsert",
     "record.total_frags = ch->only.pc->frags",
     "record.racewar = GET_RACEWAR(ch)",
     "persistence_alert(AVATAR, \"frag_leaderboard\"",
 ):
-    if token not in no_mysql:
+    if token not in flatfile_route:
         raise SystemExit(f"client-free frag leaderboard route is missing {token}")
-if "void sql_update_frag_leaderboard(P_char /*ch*/) {}" in no_mysql:
-    raise SystemExit("client-free frag leaderboard update is still a no-op")

@@ -14,6 +14,7 @@ HARNESS = r'''
 #include "economy/boon_reward_transaction.h"
 #include "economy/boon.h"
 #include "combat/combat_outcome_transaction.h"
+#include "combat/frag_cap_runtime.h"
 #include "world/zone_touch_transaction.h"
 #include "world/epic.h"
 #include "guild/artifact_guild_transaction.h"
@@ -34,6 +35,7 @@ HARNESS = r'''
 #include <unistd.h>
 
 P_room world = nullptr;
+void frag_cap_runtime_refresh() {}
 zone_data *zone_table = nullptr;
 P_index mob_index = nullptr;
 static char_data actors[2] = {};
@@ -258,8 +260,9 @@ static void definition_view_checks()
 	assert(boon_reward_transaction_health_copy().definition_failures >= 4);
 	assert(critical_command_coordinator_drain(5000));
 }
-int main()
+int main(int argc, char **argv)
 {
+	assert(argc == 2);
 	for (size_t i = 0; i < 2; ++i)
 	{
 		actors[i].only.pc = &pcs[i];
@@ -270,6 +273,7 @@ int main()
 	}
 	assert(player_save_worker_init(save, nullptr));
 	assert(critical_command_coordinator_init(apply, nullptr));
+	assert(combat_outcome_transaction_init(argv[1]));
 	critical_command_coordinator_set_drain_observer(deliver);
 	assert(boon_reward_transaction_submit(&actors[0], nullptr, 51, BOPT_LEVEL));
 	combat_outcome_payload combat = {};
@@ -333,6 +337,7 @@ int main()
 	definition_view_checks();
 	assert(persistence_writer_wait_idle(5000));
 	critical_command_coordinator_reset_for_tests();
+	combat_outcome_transaction_reset_for_tests();
 	player_save_worker_reset_for_tests();
 	puts("PASS real boon/combat/stone guards survive duplicate delivery and coordinator-cache eviction; offline stone publishes once");
 }
@@ -349,10 +354,12 @@ with tempfile.TemporaryDirectory(prefix='reward-replay-', dir=outputs) as direct
         'economy/boon_reward_command.c', 'economy/boon_reward_transaction.c',
         'economy/currency_command.c',
         'combat/combat_outcome_command.c', 'guild/artifact_guild_command.c', 'combat/combat_outcome_transaction.c',
+        'combat/combat_outcome_intent.c',
+        'flatfile/flatfile_store.c',
         'world/zone_touch_command.c', 'world/zone_touch_transaction.c', 'world/epic_command.c',
     ]
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-pthread',
                     '-ffunction-sections','-fdata-sections','-Isrc','-I/usr/include/mysql',str(cpp),
                     *[str(ROOT/'src'/p) for p in sources],str(HARNESS_STUBS),
                     '-Wl,--gc-sections','-lcrypto','-lmysqlclient','-o',str(binary)],cwd=ROOT,check=True)
-    subprocess.run([str(binary)],check=True,timeout=30)
+    subprocess.run([str(binary), directory],check=True,timeout=30)

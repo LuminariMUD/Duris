@@ -3661,6 +3661,7 @@ void update_char_objects(P_char ch)
 	{
 		char_light(ch);
 		room_light(ch->in_room, REAL);
+		gmcp_items_changed(ch);
 	}
 }
 

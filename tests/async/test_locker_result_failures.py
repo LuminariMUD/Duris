@@ -17,7 +17,7 @@ assert "sql_verify_chest_password" not in opening
 assert "if (manager)" in opening
 # The chest's password is held in memory while the locker is open.
 assert "PrivateChest *chest = pLocker->FindPrivateChest(arg1);" in opening
-assert "finish(ch->desc, hash.empty() && !arg2[0], nullptr);" in opening
+assert "finish(ch->desc, hash.empty() && !*password, nullptr);" in opening
 assert "password_async_start(" in opening
 assert "password_work_submit(arg2, hash.c_str(), nullptr, 1, 1)" in opening
 # A racing password change fails closed, and a rehash only replaces what it checked.
