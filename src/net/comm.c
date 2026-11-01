@@ -2338,6 +2338,9 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 		gmcp_flush_dirty_rooms();
 		gmcp_flush_dirty_ship_contacts();
 		gmcp_flush_dirty_ship_info();
+		latency_trace_record("gmcp_protocol",
+				     latency_trace_elapsed_us(gmcp_begin_us, loop_monotonic_us()),
+				     loop_tick);
 		flush_pending_ship_saves();
 		retry_unplaced_ships();
 		locker_async_pulse();

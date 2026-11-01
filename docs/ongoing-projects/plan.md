@@ -1,125 +1,117 @@
 # Issue #498: small server delivery for Mudlet #26
 
-Updated 2026-11-01. **Active: owner resumed the revised scope.**
-The accepted revised plan limits the first delivery to useful, bounded server
-interfaces. The rest of [client #26](https://github.com/LuminariMUD/duris-client/issues/26)
-and [server #498](https://github.com/LuminariMUD/Duris/issues/498) remains follow-up work;
-this delivery does not close either whole issue.
+Updated 2026-11-01. **Revised delivery completed and ready for review.**
+This completes the selected first delivery, not all candidates in
+[server #498](https://github.com/LuminariMUD/Duris/issues/498) or
+[client #26](https://github.com/LuminariMUD/duris-client/issues/26).
 
-Worktree: `/home/aiwithapex/projects/duris-issue-498`
-Branch: `branch/issue-498-owner-items`
-Resumed from `c422427fe`. Item completion is locally qualified and being published.
-Remaining delivery work: parent integration, short cost check, fixtures and handoff.
-Parent `1f9920ac2` now includes reviewed WebSocket/combat fixes and upstream
-bartender reward batches. Revalidate the affected publisher/GUI paths and focused
-restoration leg against this integration; retain unrelated proof.
+## Outcome and scope
 
-## Deliver
+Provide structured time, session boundaries, combat target/tank and outgoing
+applied damage, and visible owner inventory/equipment. Reuse existing values,
+flushes and publishers, with bounded optional work and a concrete client handoff.
+No action/cooldown framework, extra storage calls or broad qualification campaign.
 
-**Outcome:** give Mudlet structured time, combat target/tank, session boundaries,
-and visible owner inventory/equipment, with an explicit way to choose supported
-streams. Reuse the implementations and passing checks already present.
+1. Time/capabilities and session/combat: server PRs
+   [#542](https://github.com/LuminariMUD/Duris/pull/542),
+   [#544](https://github.com/LuminariMUD/Duris/pull/544),
+   [#545](https://github.com/LuminariMUD/Duris/pull/545) and
+   [#546](https://github.com/LuminariMUD/Duris/pull/546) are merged into master.
+2. Owner items: [#547](https://github.com/LuminariMUD/Duris/pull/547) is squash-merged
+   into master as `35dc321cb`. It includes bounded pages, native selectors, requested nested
+   contents, epoch/access cancellation and completed publication. Uninterested/
+   unchanged lists build no JSON. Open/close, transfer, editor, condition and
+   rename owners notify. All five review findings are fixed, including finite-light
+   burnout and item selectors inside carried/worn containers.
+3. Cost evidence: [#548](https://github.com/LuminariMUD/Duris/pull/548) now targets
+   master and carries the merged #547 fixes. Three lines add `gmcp_protocol` to the existing tracer before storage
+   work. The [wire document](../network/GMCP.md#short-local-cost-check--2026-11-01)
+   records the short matched results and their limits. No new measurement service.
+4. Client handoff: [client #28](https://github.com/LuminariMUD/duris-client/pull/28)
+   is ready against `branch/protocol-interface-improvements`. It provides real
+   generated fixtures, source selection/fallback and page/lifecycle rules, and
+   points to existing ship, status/vitals, affects, quest and chat packets.
+   Client UI/automation adoption is separate from this server delivery.
 
-1. **Time and stream support.** Reuse PR #542. Send the small shared time/phase
-   snapshot on entry/re-enable/time changes. Support/interest checks precede new
-   optional stream construction.
-2. **Session and combat.** Reuse PRs #544, #545 and #546. Send session boundaries
-   when they happen. Combat samples the two current prompt subjects in the
-   existing flush and constructs changed state only; damage uses the actual hit
-   result. No per-hit population scan or second gameplay calculation.
-3. **Inventory/equipment.** Finish and publish the existing item branch. An
-   interested panel receives coalesced completed owner state; resync is requested.
-   Uninterested/unchanged lists build no JSON. Reuse the existing limits: one
-   <=16 KiB/128-inspected-entry page per participant per flush, eight global work
-   slots, fair rotation. Nested contents are explicitly requested, with bounded
-   owner-tree search. Preserve native visibility/access rules, empty states,
-   selector lifetime, and completed publication. No new storage calls or deltas.
-4. **Client handoff.** Document the packages and provide real serialized fixtures.
-   Point client work to existing `Ship.Info`/`Ship.Contacts`, `Char.Status`/
-   `Char.Vitals`, `Char.Affects`, `Quest.Map`/`Quest.Status`, and `Comm.Channel`.
-   These already support removing redundant contacts/score/time queries, visible
-   affect-loss parsing, quest presentation and group-bid parsing where applicable.
-   Mudlet must choose one source and retain fallback for unavailable features.
+## Proof and stopping rule
 
-## Finish efficiently
+**Files:** GMCP/item publication/presentation owners and existing focused tests;
+three-line timing attribution; wire/plan docs; client capture/fixtures/handoff.
+**Non-goals:** deployment, release tag, production operations, full burn-in,
+CI wait, client runtime migration or completing every candidate in the issues.
+**Proof:** reuse valid recorded results; the required affected checks below pass.
+No further regression/hardening phase is required for this selected delivery.
 
-**Files:** current GMCP/item changes and their existing focused tests; affected
-parent WebSocket fixes; `docs/network/GMCP.md`, this plan, and client fixture
-capture/handoff only. Runtime client UI/automation changes are a separate task.
+- Both backend builds passed after parent integration and the focused review fixes:
+  `make -C src -j4`; separate `PERSISTENCE_BACKEND=flatfile` build to
+  `bin/server/dms_flatfile`. Formatting/normal changed-line tidy hooks passed.
+- `python3 tests/async/test_gui_gmcp_contract.py --sanitize`: both transports,
+  bounded 3,000-item pages/search, 100-descriptor fairness, selectors, access,
+  editor/queue/allocation retry, disarm/repair/temporary-save and committed reward
+  retry/replay/logout. Review regressions cover knockout recovery and both true-name
+  rename paths; the worn-container get lookup also resolves item selectors. Parser fuzz's 11,540,402 sanitizer executions remain valid:
+  later changes do not change item parsing.
+- `python3 tests/async/test_gmcp_control_journey.py --server bin/server/dms_flatfile`:
+  normal Telnet/WebSocket dispatch, lifecycle, combat and native item commands pass.
+  The merged parent's WebSocket regression and reward-publication tests pass.
+- Focused `run_world_quest_dual_backend.py` gameplay leg (`11:2`, one ASK quest and
+  restart per backend) passed on MariaDB and flatfile after reward-batch integration.
+  Container audit/access/capacity refusal, crumbleloot, player-load and documentation
+  checks passed. Their unchanged paths were not rerun unnecessarily.
+- Short cost check: five approximately 75-second windows per binary, one descriptor,
+  3,000 objects, idle/uninterested, disabled, combat, subscribed items and slow reader.
+  Zero overruns; delivery protocol max 669 us; whole-tick max 1.078 ms. See the wire
+  document for averages, source/binary hashes, memory behavior and limitations.
+- `python3 scripts/capture_server_gmcp.py --server /home/aiwithapex/projects/duris-issue-498`
+  in the client handoff checkout: producer passed; 26 source hashes match and 12
+  phases include the new contracts plus existing populated/clear cases.
+- Real Mudlet `python3 scripts/mudlet_test.py run --scenario server-wire` passed
+  (`20261101T102603Z-38eccfe8-server-wire`); populated/clear screenshots inspected.
+  The stale target-HP test expectation was corrected to the captured 32 percent.
+  This proves existing wire decode/clears, not adoption of new handlers or an HP
+  widget symptom fix. Fixture/docs-only work needs no package release/version bump.
 
-**Proof:** reuse the recorded native, build, wire and backend results. Review the
-final item diff and remaining native presentation/selector assumptions, integrate
-parent fixes, and run only checks affected by those changes. Required C/C++ build
-and formatting rules still apply. Capture updated client fixtures once.
+Ablation: retained the useful implemented interfaces, their focused proof and
+one small cost check; removed the requirement to finish all future candidates
+before publishing. Every delivered chunk is committed, pushed and in a review PR.
 
-Run one short matched cost check with the prepared baseline for idle/disabled,
-active combat and large subscribed inventory. Measure protocol work, output and
-loop cost; include a slow consumer. Confirm bounded work/backlog and no idle list
-construction. Report measured results and limits. A material regression gets a
-focused fix or the affected optional feature is held back. Do not turn this into
-a new benchmark framework or exhaustive population/world workload campaign.
+## Handoff and remaining follow-ups
 
-Publish the owner-items PR against `branch/issue-498-combat-events` as soon as its
-focused checks pass. Preserve the existing PR stack and reuse valid evidence.
-No deployment, release tag, production operation, full burn-in or CI wait.
+Server worktree: `/home/aiwithapex/projects/duris-issue-498`.
+Owner-items merge: `35dc321cb`; qualified head `a7533f937` is retained locally as
+`branch/archive-pr547-qualified-20261101`.
+Current branch: `branch/issue-498-delivery-evidence` (#548).
+Client handoff worktree: `/home/aiwithapex/projects/durisclient-issue26-server-handoff`,
+branch `branch/issue-26-server-handoff` (fixture fix `2115d9b`).
+Other checkouts/dirty work and the original reference are preserved. Do not recreate
+deleted parent branches. PR #548 and client #28 remain open; no production operation
+or release tag was performed.
 
-**Estimate from this checkpoint:** about 4 active hours; allow **3-5 hours** for
-server delivery as reviewable PRs plus fixtures/cost evidence/client handoff.
-This reuses the substantial implementation already done. It excludes implementing
-all of #26, the client UI migration, reviewer turnaround and production rollout.
+The #547 merge tree exactly matches its qualified head. Its full local regression
+sweep and repaired-test reruns, sanitizer/booted selector journeys and both backend
+builds are recorded in the PR's merge-readiness comment. That qualification remains
+under `/home/aiwithapex/projects/duris-pr547-review/bin/qualification/pr547/`.
+After carrying it into #548, the child diff remains the timing span and two documents;
+the recorded cost/capture evidence below retains its original source hashes.
 
-## Explicit follow-ups
+Local ignored proof: `bin/qualification/issue498/owner-items-parent-wire.json`,
+`owner-items-parent-*-restore.json`, `owner-review-*.log`, `delivery-*.log`,
+`short-cost/{run.py,baseline.json,feature.json,*-latency.log}`. The original
+`baseline-881/` remains intact; the matching client-free reference build lives
+under `short-cost/baseline-flatfile/`. World generation is shared: prepare once,
+then run isolated backend legs. Do not run `make world` concurrently.
 
-WHO, player/ship scan, dice and identify can be low-cost command-result additions:
-emit the decisions/results already produced by the ordinary authorized command,
-with bounded output and no second traversal/RNG/identification. They are separate
-small PRs after this first delivery, not prerequisites for it.
+WHO, scan, dice and identify remain possible small authorized-command-result PRs.
+Actions, cooldown/activity tracking, richer score/skills, affect reasons, observer
+notices, epic reports, weather and chargen extensions are deferred. Select a real
+client consumer before adding any. Preserve text fallback for unavailable features.
+The reported player/pet/opponent HP symptom remains unverified in a real game.
+Review/merge/deployment and these follow-ups are separate work, not missing steps
+in the completed revised server delivery.
 
-Action outcomes, cooldown/activity tracking, observer notices, richer score/skills,
-affect reasons, epic reports, weather and chargen extensions are deferred. Add a
-specific one only for a selected client consumer. No blanket event/cooldown system.
-The reported HP widget symptom remains unverified in real Mudlet; server combat
-state alone does not establish a client fix.
-
-Ablation: the first delivery is the client investigation's recommended small
-server set. Keep useful implemented behavior and its relevant proof. Remove the
-requirement to finish every candidate and the large qualification campaign before
-shipping that set. Preserve deferred work and evidence; do not discard code.
-
-## Current evidence and resume pointers
-
-- Four open review PRs: [#542](https://github.com/LuminariMUD/Duris/pull/542),
-  [#544](https://github.com/LuminariMUD/Duris/pull/544),
-  [#545](https://github.com/LuminariMUD/Duris/pull/545),
-  [#546](https://github.com/LuminariMUD/Duris/pull/546).
-- Live heads checked during this planning pass: #542 `3e0299507` (WebSocket NPC
-  accounting fix), #544 `202379077` (rejected-creation chargen reset), #545
-  `ad994c6ef`, #546 `5da514bee`. Check ancestry and carry required parent fixes
-  forward when implementation resumes; do not overwrite local item work.
-- Current local work adds requested nested pages, open/close/access invalidation,
-  and focused tests. Native ASan/UBSan passed nested visibility/cancellation,
-  3,000-item bounded work, retries, disarm/repair/temporary-save behavior and the
-  real reward publisher's failure/retry/replay/logout-to-wire assertions.
-- Both server builds passed. Booted Telnet/WebSocket journey passed native
-  load/drop/wield/remove/rename, nested put/get-all, wear and give/body switching.
-  Focused real reward plus ordinary item restoration passed on MariaDB and
-  flatfile (one level-11 ASK quest and restart per backend).
-- Container tests passed access/audit/capacity refusal without notification;
-  crumbleloot tests passed without announcing a detached reward attachment.
-  Player-load tests, documentation checks, formatting and changed-line tidy
-  passed. Parser fuzz passed 11,540,402 ASan/UBSan executions.
-- Reuse `bin/qualification/issue498/owner-items-nested-wire.json`,
-  `owner-items-mariadb-reward-restore.json`, `owner-items-flatfile-reward-restore.json`,
-  `owner-items-nested-fuzz.log`, `owner-items-refused-movement.log`,
-  `owner-items-crumble.log`, and `owner-items-nested-tidy.log`. Earlier checkpoint
-  evidence remains in that directory. `baseline-881/` holds the prepared reference.
-- World generation is shared: prepare it once, then run isolated backend legs.
-  Concurrent `make world` calls caused a test setup race, corrected before both
-  focused backend legs passed. No tracked generated outputs changed.
-- The original local plan simplification and pause-handoff deletion predated this
-  implementation run and are preserved. Other worktrees remain untouched. No
-  owner-items commit/push/PR or production deployment has occurred in this run.
-
-PR #547 review follow-up: knockout/recovery now changes the item visibility
-filter; reveal-true-name updates notify through the existing setter/publication
-path. Both stale-view failures were reproduced in the GMCP sanitizer harness.
+Final review correction `a33f4a09e` routes worn-container `get` through the existing
+selector-aware matcher. Its native regression fails before the fix and passes
+afterwards; both backend builds pass. The lookup does not run in the measured
+cost workload, so the recorded timing evidence is reused. Client fixtures were
+recaptured with the extra command-owner hash; existing populated/clear wire
+inputs differ only in the chat timestamp, preserving the real-Mudlet evidence.
