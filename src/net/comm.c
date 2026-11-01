@@ -25,6 +25,7 @@
 #include "core/prototypes.h"
 #include "world/world_singletons.h"
 #include "flatfile/flatfile_shopkeeper_restore.h"
+#include "economy/shopkeeper_boot.h"
 #include "item/item_actions.h"
 #include "item/artifact_mana.h"
 #include "item/device_actions.h"
@@ -882,6 +883,17 @@ int main(int argc, char **argv)
 	start_log_writer();
 	(void)telemetry_runtime_init(telemetry_runtime_options_from_environment());
 
+	if (!mini_mode)
+	{
+		std::string boot_error;
+		if (!shopkeeper_boot_begin("shopkeeper-boot",
+					   copyover_boot || redis_world_recovery_boot_active(),
+					   &boot_error))
+			fatal_boot_error("shopkeeper", "Could not record boot state: %s",
+					 boot_error.c_str());
+		logit(LOG_STATUS, "Shopkeeper reboot refill eligibility: %s.",
+		      shopkeeper_boot_restock() ? "clean cold restart" : "preserve saved stock");
+	}
 	const int game_exit_status = run_the_game(port, sslport);
 	telemetry_shutdown_request telemetry_shutdown{};
 	telemetry_shutdown.final_flush = 1U;
@@ -902,6 +914,14 @@ int main(int argc, char **argv)
 	artifact_mana_shutdown();
 	shutdown_mysql();
 
+	if (!mini_mode && shutdownflag && !_copyover &&
+	    (game_exit_status == 0 || game_exit_status == 52 || game_exit_status == 54))
+	{
+		std::string boot_error;
+		if (!shopkeeper_boot_finish("shopkeeper-boot", &boot_error))
+			fprintf(stderr, "Shopkeeper clean stop was not recorded: %s\n",
+				boot_error.c_str());
+	}
 	return game_exit_status;
 }
 

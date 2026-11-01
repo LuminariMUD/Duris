@@ -1,6 +1,7 @@
 # Issue #555: refill missing shop stock after a normal reboot
 
-Status: planned; implementation has not started. Updated 2026-11-01.
+Status: implementation in progress; boot classification prerequisite implemented
+and locally checked. Stock refill and gameplay qualification remain. Updated 2026-11-01.
 
 - Issue: [#555 — reboot-only shop stock is discarded](https://github.com/LuminariMUD/Duris/issues/555).
 - Branch: [`branch/issue-555-reboot-shop-stock`](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-reboot-shop-stock).
@@ -8,6 +9,47 @@ Status: planned; implementation has not started. Updated 2026-11-01.
 - Windows worktree: `\\wsl.localhost\Ubuntu\home\aiwithapex\projects\duris-issue-555`.
 - Remote plan: [plan-issue-555.md](https://github.com/LuminariMUD/Duris/blob/branch/issue-555-reboot-shop-stock/docs/ongoing-projects/plan-issue-555.md).
 - Planning base: [`f2de272aace60a74e29fbc8abedb945834e9a6a8`](https://github.com/LuminariMUD/Duris/commit/f2de272aace60a74e29fbc8abedb945834e9a6a8), fetched from `origin/master`.
+
+## Implementation handoff
+
+The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
+regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
+before world boot and a clean marker after shutdown completes. Only a preceding
+clean marker plus a cold boot permits `shopkeeper_boot_restock()`. Copyover and
+Redis world restoration (including a clean world-preserving restart) retain
+recovery semantics. The eligibility is not yet connected to stock movement.
+
+The marker is private runtime data in `shopkeeper-boot/state`, relative to the
+server data directory, ignored by Git. It reuses the existing atomic, synced
+flat-file primitives in both persistence modes. Corrupt/unreadable state fails
+startup; a failed clean-marker write leaves refill disabled on the next start.
+No marker means an unknown predecessor, so the first start after upgrading keeps
+saved stock. A subsequent clean stop establishes eligibility for the next normal
+cold reboot. New shops still obtain their initial stock from their normal reset.
+Minimal/report/pwipe-recovery runs do not manipulate this marker.
+
+Ablation: existing Redis markers describe a particular recovery generation and
+cannot classify a cold start with no Redis image. The small local marker supplies
+that missing distinction; it avoids adding a launcher option, a SQL migration,
+or changing world recovery. The stock target will still come from actual boot
+reset objects, avoiding a second reset interpreter.
+
+Verified for this prerequisite:
+
+- `python3 tests/async/test_shopkeeper_boot.py`: passes executable clean/unclean
+  process transitions, upgrade, recovery, corrupt state, symlink, and failed-write
+  cases under ASan/UBSan, plus main lifecycle placement checks.
+- `python3 tests/async/test_shopkeeper_copyover_compat.py`: passes.
+- `python3 tests/async/test_shopkeeper_population.py`: all five scenarios pass.
+- `python3 tests/async/test_dirty_shopkeeper_retry.py`: all contracts pass.
+- `make -C src -j4`: development MariaDB server builds successfully at
+  `bin/server/dms_new`; output is in `bin/issue-555-build.log`.
+
+Next: inventory authored finite shop reset forms, capture exact boot-created
+keeper targets only for eligible boots, integrate SQL and flat-file deficit
+movement with their durability owners, and run the acceptance journeys below.
+The lifecycle process tests are not evidence that stock is replenished. No
+production operation or release tag has occurred.
 
 ## Outcome
 
@@ -189,9 +231,9 @@ evidence; hosted CI completion is not a gate. Report any unavailable validation.
 
 ## Scope and completion
 
-This branch currently contains planning documentation only. Its delivery is a
-reviewed plan committed and pushed on the dedicated branch, with this issue link
-and an issue comment linking back to the branch, plan, and local worktree.
+The planning document and dedicated branch are linked from the issue. Runtime
+chunks are published for review as they become ready; dependent changes will
+use stacked PRs. Keep this handoff current with their links and exact results.
 
 Implementation is complete only when the acceptance cases above pass and their
 results are recorded. A green population test alone does not prove restocking.
