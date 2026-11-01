@@ -138,6 +138,8 @@ def run(binary, evidence):
             client.send("switch shadow")
             switched = wait_telnet(client, "Duris.Session", before, lambda value: value["state"] == "playing" and value["character"]["bodyRevision"] != reconnected["character"]["bodyRevision"])
             require(switched["generation"] == reconnected["generation"] and switched["character"]["name"] == CHARACTER, "body switch became a new character entry")
+            for package in ("Char.Vitals", "Char.Affects", "Room.Info"):
+                wait_telnet(client, package, before)
             before = len(telnet_packets(client))
             client.send("return")
             client.expect("You return to your original body.")
