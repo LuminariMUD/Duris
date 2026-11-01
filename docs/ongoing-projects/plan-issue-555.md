@@ -12,6 +12,9 @@ and locally checked. Stock refill and gameplay qualification remain. Updated 202
 
 ## Implementation handoff
 
+Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
+`branch/issue-555-reboot-shop-stock` against `master`.
+
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
 before world boot and a clean marker after shutdown completes. Only a preceding
