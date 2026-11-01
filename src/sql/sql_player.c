@@ -6,6 +6,7 @@
 #include "core/prototypes.h"
 #include <cmath>
 #include "core/structs.h"
+#include "economy/shopkeeper_restock.h"
 #include "net/comm.h"
 #include "net/unicode.h"
 #include "net/output_preference_codec.h"
@@ -228,7 +229,7 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 {
 	return false;
 }
-bool sql_restore_shopkeepers(void)
+bool sql_restore_shopkeepers(bool /*refill*/)
 {
 	return true;
 }
@@ -3198,7 +3199,7 @@ void discard_shopkeeper_restore_stage(struct shopkeeper_temp *keepers,
 	}
 }
 
-static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
+static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool refill)
 {
 	if (!DB)
 		return false;
@@ -3674,6 +3675,38 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 		}
 	}
 
+	// Prepare every replacement and deficit before any live keeper is removed.
+	struct replacement
+	{
+		shopkeeper_temp *saved;
+		std::vector<P_char> incumbents;
+		std::vector<P_obj> stock;
+	};
+	std::vector<replacement> replacements;
+	try
+	{
+		for (auto *k = keepers; k; k = k->next)
+		{
+			std::vector<P_char> incumbents;
+			for (P_char keeper2 : live_shopkeepers(k->shop_nr))
+				if (keeper2 != k->mob &&
+				    (shop_index[k->shop_nr].shop_is_roaming ||
+				     keeper2->in_room == real_room(k->room_vnum)) &&
+				    mob_index[GET_RNUM(keeper2)].virtual_number == k->mob_vnum)
+					incumbents.push_back(keeper2);
+			std::vector<P_obj> stock;
+			if (refill && !restored && incumbents.size() == 1)
+				stock = shopkeeper_reboot_stock(incumbents[0]->carrying,
+								k->inventory, k->shop_nr);
+			replacements.push_back({ k, std::move(incumbents), std::move(stock) });
+		}
+	}
+	catch (const std::bad_alloc &)
+	{
+		discard_shopkeeper_restore_stage(keepers, all_items, true);
+		return false;
+	}
+
 	// free item temp structs
 	struct all_items_temp *ti = all_items;
 	while (ti)
@@ -3685,8 +3718,9 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 
 	// process each shopkeeper
 	int loaded = 0;
-	for (struct shopkeeper_temp *k = keepers; k; k = k->next)
+	for (auto &replacement : replacements)
 	{
+		auto *k = replacement.saved;
 		int load_room = real_room(k->room_vnum);
 		if (load_room == NOWHERE)
 		{
@@ -3711,21 +3745,16 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 
 		const int shop_idx = k->shop_nr;
 
-		// Replace only one incumbent already proven to belong to this exact
-		// shop.  A controlled NPC, a different bound shop, or an ambiguous
-		// same-template population is never destructive restore authority.
-		std::vector<P_char> incumbents;
-		for (P_char keeper2 : live_shopkeepers(k->shop_nr))
-			if (keeper2 != k->mob &&
-			    (shop_index[k->shop_nr].shop_is_roaming ||
-			     keeper2->in_room == load_room) &&
-			    mob_index[GET_RNUM(keeper2)].virtual_number == k->mob_vnum)
-				incumbents.push_back(keeper2);
-		const int incumbent_matches = static_cast<int>(incumbents.size());
+		const int incumbent_matches = static_cast<int>(replacement.incumbents.size());
 		int extracted = 0;
 		if (!restored && incumbent_matches == 1)
 		{
-			extract_char(incumbents[0]);
+			for (P_obj item : replacement.stock)
+			{
+				obj_from_char(item);
+				obj_to_char(item, k->mob);
+			}
+			extract_char(replacement.incumbents[0]);
 			extracted = 1;
 		}
 		if (persistence_trace_enabled())
@@ -3765,9 +3794,9 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored)
 	return true;
 }
 
-bool sql_restore_shopkeepers(void)
+bool sql_restore_shopkeepers(bool refill)
 {
-	return sql_restore_shopkeeper_catalog(-1, nullptr);
+	return sql_restore_shopkeeper_catalog(-1, nullptr, refill);
 }
 
 // True while the periodic save's next pulse is scheduled.

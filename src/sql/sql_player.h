@@ -161,7 +161,7 @@ bool sql_load_all_corpses(void);
 
 // shopkeepers
 bool sql_save_shopkeeper(P_char ch, int shop_nr);
-bool sql_restore_shopkeepers(void);
+bool sql_restore_shopkeepers(bool refill = false);
 bool sql_save_dirty_shopkeepers(bool force = false);
 
 // saved items

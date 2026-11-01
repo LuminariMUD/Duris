@@ -1,7 +1,7 @@
 # Issue #555: refill missing shop stock after a normal reboot
 
-Status: implementation in progress; boot classification prerequisite implemented
-and locally checked. Stock refill and gameplay qualification remain. Updated 2026-11-01.
+Status: boot classification and SQL deficit refill implemented and locally checked;
+flat-file refill and gameplay qualification remain. Updated 2026-11-01.
 
 - Issue: [#555 — reboot-only shop stock is discarded](https://github.com/LuminariMUD/Duris/issues/555).
 - Branch: [`branch/issue-555-reboot-shop-stock`](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-reboot-shop-stock).
@@ -14,6 +14,8 @@ and locally checked. Stock refill and gameplay qualification remain. Updated 202
 
 Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
 `branch/issue-555-reboot-shop-stock` against `master`.
+SQL refill continuation: `branch/issue-555-refill-shop-stock`, based on that branch,
+in the same local worktree. Keep #558 unmerged for review until the stack is ready.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
@@ -48,11 +50,35 @@ Verified for this prerequisite:
 - `make -C src -j4`: development MariaDB server builds successfully at
   `bin/server/dms_new`; output is in `bin/issue-555-build.log`.
 
-Next: inventory authored finite shop reset forms, capture exact boot-created
-keeper targets only for eligible boots, integrate SQL and flat-file deficit
-movement with their durability owners, and run the acceptance journeys below.
-The lifecycle process tests are not evidence that stock is replenished. No
-production operation or release tag has occurred.
+The authored-area scan found 460 direct finite `G` entries across 132 keeper
+templates, including four blocks with repeated finite types, and 92 `E` entries.
+It found no `P` entries inside these shop `M` blocks. Follower commands also occur,
+so these are static configuration counts, not a count of affected live shops.
+The implementation uses the actual carried graph and therefore preserves the
+results of existing reset decisions, including indirect creation and containers.
+
+The SQL continuation adds one shared root selector in `shopkeeper_restock.c/.h`.
+It excludes produced goods, counts saved roots by prototype, and selects only
+the missing fresh roots without modifying either inventory. SQL prepares all
+replacement candidates and deficits before extracting any incumbent. It moves
+selected roots through ordinary object movement, then extracts the surplus fresh
+stock. The public SQL restore defaults to preserving stock; only the boot facade
+passes the clean-cold-boot permission. Missing snapshots and ambiguous keeper
+identity retain their existing behavior. No new object is created by the refill.
+
+Additional SQL evidence:
+
+- `test_shopkeeper_population.py` now passes ten ASan/UBSan scenarios, including
+  finite refill, partial repeated stock, unsold and excess copies, resale goods,
+  equipment exclusion, container-child transfer, recovery exclusion, and failure
+  before publication. This executes the production selector and SQL restore.
+- `make -C src -j4` passes again for the SQL changes; output is in
+  `bin/issue-555-stock-build.log`.
+
+Next: integrate the same selector with flat-file catalog/custody publication,
+extend persistence and failure coverage, and run the acceptance journeys below.
+The isolated restore tests do not yet prove the complete buy/save/reboot path.
+No production operation or release tag has occurred.
 
 ## Outcome
 
