@@ -213,6 +213,29 @@ int main()
 	const unsigned char pong[] = { 0x8a, 0x02, 'h', 'i' };
 	if (!memmem(output, output_len, pong, sizeof(pong)))
 		return fail("missing pong for coalesced masked ping");
+	char_data player{};
+	player.only.pc = new pc_only_data{};
+	char_data mob{};
+	mob.specials.act = ACT_ISNPC;
+	mob.only.npc = new npc_only_data{};
+	d.character = &mob;
+	if (websocket_send_text(&d, "test") != 0)
+		return fail("NPC output without a player owner");
+	d.original = &player;
+	if (websocket_send_text(&d, "test") != 0 || player.only.pc->send_data != 6)
+		return fail("NPC output was not charged to the original player");
+	d.original = &mob;
+	if (websocket_send_text(&d, "test") != 0 || player.only.pc->send_data != 6)
+		return fail("NPC original was treated as a player");
+	d.original = nullptr;
+	d.character = &player;
+	if (websocket_send_text(&d, "test") != 0 || player.only.pc->send_data != 12)
+		return fail("player output accounting");
+	d.character = nullptr;
+	delete mob.only.npc;
+	delete player.only.pc;
+	if (read(pair[1], output, sizeof(output)) != 24)
+		return fail("NPC/player output frames");
 
 	int newcomer_pair[2];
 	int service_pair[2];

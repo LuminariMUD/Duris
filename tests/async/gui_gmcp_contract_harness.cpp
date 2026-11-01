@@ -3,6 +3,11 @@
 #include "core/utils.h"
 #include "core/json_utils.h"
 #include "net/gmcp.h"
+#include "net/websocket.h"
+#include "net/ws_auth.h"
+#include "persistence/latency_trace.h"
+#include <algorithm>
+#include <cctype>
 #include "ships/ships.h"
 #include "world/db.h"
 #include "magic/spells.h"
@@ -114,6 +119,18 @@ int flag2idx(int flags)
 	return 0;
 }
 
+static uint64_t control_clock_us = 10000000;
+uint64_t latency_trace_monotonic_us()
+{
+	return control_clock_us;
+}
+const char *input_command_label(const char *)
+{
+	return "unknown";
+}
+static bool queue_reject;
+static std::map<P_desc, std::vector<std::string>> packages;
+
 static int contact_count = 1;
 static int contact_scans;
 int is_desc_valid(P_desc d)
@@ -122,12 +139,22 @@ int is_desc_valid(P_desc d)
 }
 int write_to_descriptor_binary(P_desc d, const unsigned char *bytes, size_t size)
 {
+	if (queue_reject)
+		return -1;
 	wire[d].emplace_back(reinterpret_cast<const char *>(bytes), size);
+	if (size >= 3 && bytes[2] == TELOPT_GMCP)
+	{
+		const std::string frame(reinterpret_cast<const char *>(bytes + 3), size - 3);
+		packages[d].push_back(frame.substr(0, frame.find(' ')));
+	}
 	return 0;
 }
 int websocket_send_json(P_desc d, const char *package, const char *json)
 {
+	if (queue_reject)
+		return -1;
 	++websockets;
+	packages[d].push_back(package);
 	ws_wire[d][package] = json;
 	return 0;
 }
@@ -262,6 +289,17 @@ void display_map_room(P_char ch, int room, int radius, int mode, int package)
 	gmcp_send_quest_map(ch, "quest map");
 }
 
+static void replace_hour_flower(int, int, int)
+{
+	assert(false && "midnight rollover must not replace hour flowers");
+}
+static int clock_shop_saves;
+bool save_dirty_shopkeepers(bool)
+{
+	++clock_shop_saves;
+	return true;
+}
+
 #include "production.inc"
 
 static std::string payload(P_desc d, const char *package)
@@ -292,6 +330,214 @@ static void flush()
 	gmcp_flush_dirty_ship_contacts();
 	gmcp_flush_dirty_ship_info();
 }
+
+static void control_time_contract(P_char actor)
+{
+	const P_desc saved_descriptor = actor->desc;
+	const P_desc saved_list = descriptor_list;
+	for (bool websocket : { false, true })
+	{
+		descriptor_data d{};
+		d.websocket = websocket;
+		d.connected = CON_ACCT_SELECT_CHAR;
+		descriptor_list = &d;
+		wire.erase(&d);
+		ws_wire.erase(&d);
+		packages.erase(&d);
+		const auto send = [&](const std::string &request, bool advance = true)
+		{
+			if (advance)
+				control_clock_us += 1000000;
+			gmcp_handle_input(&d, request.data(), request.size());
+		};
+		const auto count = [&]() { return packages[&d].size(); };
+		const auto check_time = [&](int hour, const char *phase)
+		{
+			cJSON *root = cJSON_Parse(payload(&d, "Duris.Time").c_str());
+			assert(root);
+			assert(cJSON_GetObjectItem(root, "hour")->valueint == hour);
+			assert(std::string(cJSON_GetStringValue(
+				       cJSON_GetObjectItem(root, "phase"))) == phase);
+			assert(cJSON_IsString(cJSON_GetObjectItem(root, "revision")));
+			cJSON_Delete(root);
+		};
+		// Transport negotiation and supported decoding are not a panel subscription.
+		send("Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Time 1\"]");
+		assert(!d.gmcp_supports);
+		gmcp_handle_negotiation(&d, TELNET_DO);
+		send("Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Time 1\"]");
+		gmcp_flush_initial_states();
+		assert(count() == 1 && packages[&d].back() == "Duris.Capabilities");
+		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=
+		       std::string::npos);
+		send("Duris.Subscribe [\"Duris.Time 1\"]");
+		gmcp_flush_initial_states();
+		assert(count() == 2); // no gameplay time stream before character entry
+		d.character = actor;
+		d.connected = CON_PLAYING;
+		actor->desc = &d;
+		time_info.hour = 9;
+		gmcp_send_initial_state(actor);
+		assert(packages[&d][2] == "Duris.Capabilities");
+		assert(packages[&d].back() == "Duris.Time");
+		check_time(9, "day");
+		d.character = nullptr;
+		d.connected = CON_ACCT_SELECT_CHAR;
+		const auto departed = count();
+		gmcp_flush_initial_states();
+		assert(count() == departed + 1 && !d.gmcp_active_streams);
+		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=
+		       std::string::npos);
+		d.character = actor;
+		d.connected = CON_PLAYING;
+		gmcp_flush_initial_states();
+		assert(count() == departed + 3 && d.gmcp_active_streams == GMCP_SUPPORT_TIME);
+		check_time(9, "day");
+		const size_t initial_count = count();
+		gmcp_flush_initial_states();
+		assert(count() == initial_count); // idle is silent
+		for (const auto &[hour, phase] :
+		     std::vector<std::pair<int, const char *>>{ { 0, "night" },
+								{ 3, "night" },
+								{ 4, "dawn" },
+								{ 8, "dawn" },
+								{ 9, "day" },
+								{ 15, "day" },
+								{ 16, "dusk" },
+								{ 18, "dusk" },
+								{ 19, "night" },
+								{ 23, "night" } })
+		{
+			const size_t before = count();
+			time_info.hour = hour;
+			gmcp_time_changed();
+			assert(count() == before); // mutation only invalidates the shared cache
+			gmcp_flush_initial_states();
+			assert(count() == before + 1);
+			check_time(hour, phase);
+			gmcp_flush_initial_states();
+			assert(count() == before + 1);
+		}
+		time_info.hour = 23;
+		time_info.day = 34;
+		time_info.month = 16;
+		const int year = time_info.year;
+		const int saves = clock_shop_saves;
+		event_another_hour(nullptr, nullptr, nullptr, nullptr);
+		assert(time_info.hour == 0 && time_info.day == 0 && time_info.month == 0 &&
+		       time_info.year == year + 1);
+		assert(clock_shop_saves == saves + 1);
+		gmcp_flush_initial_states();
+		check_time(0, "night");
+		const auto revision = d.gmcp_time_revision;
+		actor->specials.act3 |= PLR3_NOGMCP;
+		gmcp_preferences_changed(&d);
+		gmcp_flush_initial_states();
+		assert(payload(&d, "Duris.Capabilities").find("\"enabled\":false") !=
+		       std::string::npos);
+		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=
+		       std::string::npos);
+		time_info.hour = 10;
+		gmcp_time_changed();
+		const size_t disabled = count();
+		gmcp_flush_initial_states();
+		assert(count() == disabled && gmcp_clock_json[0] == '\0');
+		actor->specials.act3 &= ~PLR3_NOGMCP;
+		gmcp_preferences_changed(&d);
+		gmcp_flush_initial_states();
+		assert(count() == disabled + 2 && d.gmcp_time_revision > revision);
+		assert(packages[&d][disabled] == "Duris.Capabilities");
+		check_time(10, "day");
+		send("Core.Supports.Remove [\"Duris.Time 1\"]");
+		gmcp_flush_initial_states();
+		assert(!d.gmcp_interests && !gmcp_time_active(&d));
+		send("Core.Supports.Add [\"Duris.Time 2\",\"Char.Items 1\",\"unknown 1\"]");
+		assert(!(d.gmcp_supports & GMCP_SUPPORT_TIME));
+		send("Core.Supports.Add [\"Duris.Time 1\"]");
+		assert(!d.gmcp_interests); // re-advertising support does not re-open a panel
+		gmcp_clock_json[0] = '\0';
+		gmcp_flush_initial_states();
+		assert(gmcp_clock_json[0] == '\0');
+		const auto supports = d.gmcp_supports;
+		for (const auto &invalid : std::vector<std::string>{
+			     "Core.Supports.Set {}", "Core.Supports.Set [true]",
+			     "Core.Supports.Set [null]",
+			     "Core.Supports.Set [\"Duris.Time 1\"] trailing",
+			     "Core.Supports.Set [\"Duris.Time 1\\u0000hidden\"]",
+			     "Core.Supports.Set [\"" + std::string(97, 'x') + "\"]",
+			     "Core.Supports.Set [" + std::string(8192, ' ') + "]" })
+		{
+			send(invalid);
+			assert(d.gmcp_supports == supports && !d.gmcp_interests);
+		}
+		std::string oversized = "Core.Supports.Set [\"Duris.Time 1\"";
+		for (int index = 0; index < 64; ++index)
+			oversized += ",\"Duris.Time 1\"";
+		oversized += "]";
+		send(oversized);
+		assert(d.gmcp_supports == supports);
+		send(std::string("Core.Supports.Set []") + '\0' + "ignored");
+		assert(d.gmcp_supports == supports);
+		// Independent families: a subscription flood cannot refill Supports or vice versa.
+		d.gmcp_request_refill_ms[0] = 0;
+		send("Core.Supports.Add []", false);
+		send("Core.Supports.Add []", false);
+		send("Core.Supports.Remove [\"Duris.Time 1\"]", false);
+		assert(d.gmcp_supports == supports);
+		control_clock_us += 999000;
+		send("Core.Supports.Remove [\"Duris.Time 1\"]", false);
+		assert(d.gmcp_supports == supports);
+		control_clock_us += 1000;
+		send("Core.Supports.Remove [\"Duris.Time 1\"]", false);
+		assert(!(d.gmcp_supports & GMCP_SUPPORT_TIME));
+		send("Core.Supports.Add [\"Duris.Time 1\"]");
+		send("Duris.Subscribe [\"Duris.Time 1\"]");
+		queue_reject = true;
+		const size_t failed = count();
+		gmcp_flush_initial_states();
+		assert(d.gmcp_control_pending && d.gmcp_time_revision == 0 && count() == failed);
+		queue_reject = false;
+		gmcp_flush_initial_states();
+		assert(!d.gmcp_control_pending && d.gmcp_time_revision && count() == failed + 2);
+		gmcp_handle_negotiation(&d, TELNET_DONT);
+		const size_t stopped = count();
+		gmcp_flush_initial_states();
+		assert(count() == stopped);
+		d.connected = CON_ACCT_SELECT_CHAR;
+		gmcp_handle_negotiation(&d, TELNET_DO);
+		d.connected = CON_PLAYING;
+		gmcp_flush_initial_states();
+		assert(count() == stopped + 2); // re-enable resynchronizes the retained interest
+		if (!websocket)
+		{
+			emit(&d, "Duris.Capabilities", "control");
+			emit(&d, "Duris.Time", "time");
+		}
+		d.gmcp_request_refill_ms[0] = 0;
+		send("Core.Supports.Set []", false);
+		send("Core.Supports.Set []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = true;
+		gmcp_flush_initial_states();
+		assert(d.gmcp_control_pending);
+		control_clock_us += 1000000;
+		send("Core.Supports.Remove []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = false;
+		gmcp_flush_initial_states();
+		assert(!d.gmcp_supports && !d.gmcp_interests);
+		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=
+		       std::string::npos);
+		const auto removed = count();
+		gmcp_flush_initial_states();
+		assert(count() == removed);
+		descriptor_data fresh{};
+		assert(!fresh.gmcp_supports && !fresh.gmcp_interests && !fresh.gmcp_time_revision);
+	}
+	actor->desc = saved_descriptor;
+	descriptor_list = saved_list;
+}
+
 int main()
 {
 	static char_data a, b, victim;
@@ -782,4 +1028,5 @@ int main()
 	wire.clear();
 	gmcp_send_room_map(&a, "hidden");
 	assert(wire.empty());
+	control_time_contract(&a);
 }

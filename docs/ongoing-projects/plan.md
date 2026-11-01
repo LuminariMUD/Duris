@@ -1,401 +1,648 @@
-# Issue #500: bartender eligibility without travel proof
+# Issue #498: GMCP state and command-result contracts
 
-Status: **implementation and local qualification complete**. Updated 2026-10-31.
+Status: **implementation in progress; control/time slice in qualification**. Updated 2026-11-01.
 
-- Work item: [Duris #500](https://github.com/LuminariMUD/Duris/issues/500).
-- Integration review: [PR #522](https://github.com/LuminariMUD/Duris/pull/522), targeting master; source branch `branch/issue-500-geography`.
-- Qualified source: `4572474ac`, including settled master `964cd61cd` and the inherited #520/#526 repairs.
-- Qualification checkout: `/home/aiwithapex/projects/duris-pr522-fixes`. The earlier implementation checkout and its evidence remain at `/home/aiwithapex/projects/duris-worktrees/issue-500-eligibility`.
-- Original planning baseline: `807c6d8dce8be4102d43c91950c80548a58f7f02`, then the head of [PR #513](https://github.com/LuminariMUD/Duris/pull/513).
-- Method: the repository's [ablation skill](../../.agents/skills/ablation/SKILL.md).
+- Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
+- Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
+- Server branch: [branch/issue-498-gmcp-contracts](https://github.com/LuminariMUD/Duris/tree/branch/issue-498-gmcp-contracts), natively linked to #498 in GitHub Development.
+- Local worktree: /home/aiwithapex/projects/duris-issue-498.
+- Audited runtime baseline: ee6f9fbf344b3828c896d0ba032128c43b0b9f9d (merged master; reviewed in branch head `94bc675ee`).
+- Original planning baseline: 2b2b6fb2d578b88e54b2a653506c4dd429346479; retained only for change comparison and historical test evidence.
+- Client reference: [immutable investigation](https://github.com/LuminariMUD/duris-client/blob/aa40a50cda789525dddddcce6f8056e53985a0bb/docs/ongoing-projects/protocol-interface-investigation.md), checked alongside both current issue bodies.
 
-The #513 prerequisites and ASK chunk landed through #520 (`809cfe0e8`). The follow-up #526 (`d6582ec27`) preserves unrelated player changes through failed history writes and credits final-kill XP before calculating the remaining reward. This branch includes both repairs and settled master `964cd61cd`. All three #500 behavior changes and their local acceptance checks are complete; #506 is already completed. The intermediate planning and qualification checkpoints below are historical and are superseded by the final record at the end.
+The previous contents of this path are already preserved byte-for-byte in
+[plan-issue-420.md](plan-issue-420.md); comparison was performed before editing.
+The original planning commit supplied the plan only. Estimates concern future work.
 
-The previous shared plan is already preserved byte-for-byte in [plan-issue-420.md](plan-issue-420.md); comparison passed before replacement. The separate [#500/#506 qualification record](plan-issues-500-506.md) remains intact. Its former geography decisions and the issue's archived investigation are historical evidence, not the current task list.
+## Master integration - 2026-11-01
+
+Merged `origin/master` at `ee6f9fbf3` into this issue worktree. Runtime and
+test sources matched that master exactly; implementation had not started.
+The only conflict was the shared plan path. This file retains the complete
+#498 plan; master's complete #500 handoff is preserved byte-for-byte in
+[plan-issue-500.md](plan-issue-500.md).
+
+Re-audited the original-to-merged-master delta against the current owning
+source and both live issue bodies on 2026-11-01. The findings and line numbers
+below describe `ee6f9fbf3`. At that review the seven core contracts were unimplemented;
+upstream changes affect session admission, durable item/reward publication,
+container access, command gates and the workload baseline. The implementation
+steps and proof below account for those changes without adding new streams.
+
+Merge validation passed: `make -C src -j4`; the GUI GMCP contract, prompt
+regression and input-receipt tests; game-loop phase and WebSocket protocol
+source contracts; staged formatting and whitespace checks; and both plans'
+relative links. No booted-game or real-Mudlet qualification is claimed by this
+merge. The implementation and measurement requirements below remain pending.
+
+Local analysis tooling: the merge's normal hook passed with clang-tidy 18
+explicitly selecting `--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`, the
+build compiler's installation. Its automatic GCC 16 header selection failed.
+The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
+
+## Implementation progress - 2026-11-01
+
+- PR #542 review fix: capability invalidation remains pending until accepted
+  by the transport, including duplicate support-removal requests in one burst
+  and further requests while its queue retry is pending. The real parser/send
+  regression fails on the reviewed code and passes with the sticky pending flag
+  on both framing variants. Session work remains on its dependent branch.
+- Review stack root: [PR #542](https://github.com/LuminariMUD/Duris/pull/542),
+  branch/issue-498-gmcp-contracts. Control/time commit `998a1639b` is published;
+  dependent chunks will use their own branches and target their immediate parent.
+- Master advanced to `881853d21` during qualification (quest replacement policy
+  and diagnostics). It merged cleanly. Recheck builds, the production GMCP
+  harness and the updated quest-target regression before publishing that merge.
+  The initial `ee6f9fbf3` artifacts stay historical; matched final overhead must
+  use the updated upstream baseline to avoid attributing quest-policy changes
+  to the protocol work.
+- First review chunk (ready for review): bounded Core.Supports.Set/Add/Remove, Capabilities and
+  explicit Subscribe, plus the shared cached Duris.Time stream. The existing
+  GUI harness now runs the real parser/control/send paths and additional time/
+  preference/flood/retry cases over both transport variants. Native GUI,
+  prompt, input-receipt, periodic-event and minimal-boot regressions pass.
+- MariaDB and client-free flatfile builds pass. The new booted
+  test_gmcp_control_journey.py passes normal Telnet/WebSocket dispatch, entry,
+  account return/re-entry, reconnect, preference off/on, invalid preference,
+  negative staff hours and day-phase changes. A WebSocket decoded-string edge
+  found by that journey was fixed by sharing the bounded control application
+  path before the legacy reserialization adapter; both transports now enforce
+  the same module/size/count/rate rules.
+- Initial 30-second ASan/UBSan GMCP fuzzing passed 12,487,256 executions; the
+  expanded raw/decoded-envelope recheck passed 3,213,603 executions. Ten new
+  retained seeds cover both forms. The final-source replay passed another 2,519,725 executions. Real-Mudlet/client
+  coordination and matched overhead measurements remain open.
+- Preserved the unmodified `ee6f9fbf3` binary, SHA-256, compiler/machine metadata
+  and deterministic 17-frame/11-package fixtures (4,716 JSON payload bytes)
+  under ignored `bin/qualification/issue498/baseline/`. These are baseline
+  artifacts, not booted workload or percentile/performance qualification.
+- Capability/subscription and Time v1 shapes are in
+  [GMCP.md](../network/GMCP.md). Only implemented contracts are advertised.
+  Session lifecycle is the next dependent chunk; combat, inventory, actions,
+  command results and final matched measurements/client qualification remain.
+  No #498 completion or HP-symptom fix is claimed by this first slice.
 
 ## Outcome
 
-Implement all three decisions in the current issue body:
+Deliver all seven server contract areas in #498: authoritative combat/tank
+state; game time; session lifecycle; capability/subscription gating; owner
+inventory/equipment; semantic action/activity/cooldown events; and authorized
+scan, ship-scan, dice, identify and WHO results. Preserve gameplay decisions,
+recipient information policy, legacy streams and bounded game-loop work.
+Record a disposition for every additional candidate. Supply real serialized
+fixtures and measured costs so client #26 can adopt each advertised feature.
 
-1. New ASK/KILL assignments at every supported quest level, shares, accepted-task validation and replacement selection do not depend on an outward route, a return route, obstacles, travel capabilities, unknown travel scripts, or route-search budgets. Normal movement rules continue to govern travel.
-2. At accepted levels 11–29, eligible targets may belong to either the origin's attached surface region or its connected Underdark map component. Quietus room 1734 and Bloodstone room 74339 must support both. Keep unrelated regions excluded. Level 30 removes this local-region restriction while other zone/target rules still apply.
-3. ASK admits otherwise suitable targets with authored and live levels below `MAXLVL` (currently 62), without the KILL band. KILL retains inclusive `[L - 4, L + 5]` checks on both levels. Preserve the strict zone-average window and target-interaction checks.
-
-Update the [bartender reference](../reference/BARTENDER_QUESTS.md), including assignment, maps, sharing, recovery and verification wording. A broader pool does not guarantee selection of a particular NPC or an otherwise eligible target at every player level in every zone.
+Each core contract needs executable proof through its real gameplay/session
+path. A declared package, helper test, unchanged hash or screenshot alone does
+not establish the outcome. The player/pet/opponent HP symptom remains an
+investigation until reproduced and verified in the client.
 
 ## Non-goals
 
-- No reward, cost, wallet-publication, daily-allowance, completion-history, sharing-limit, quota, XP or random-selection balance changes in the three-rule eligibility chunk. Preserve #513's midnight/abandonment repair. Separately authorized review repairs inherited from #520 are recorded below rather than reverted or duplicated.
-- Keep the existing level-11 minimum, ASK/KILL purchases at 11–49, KILL-only purchases at 50+, and mapless-zone minimum of 41.
-- Keep routine-reset/birthplace provenance, actual destination zone, live supply, speech, visibility, aggression, ASK interception, safe-room KILL restrictions, controlled/summoned exclusions and target history. Route-only checks must not become disguised target restrictions.
-- Retain genuine non-route replacement causes, earned progress, accepted level/type/quota, receiver, start time, purchased-map entitlement and legacy origin/replacement persistence. Do not resurrect already persisted replacement entitlements: saved state does not identify whether a past route rejection caused them.
-- No movement changes, script/transport execution, travel abilities granted to players, schema migration, content balancing, new runtime configuration, general graph service, production operation, deployment or full burn-in.
-
-## Source findings
-
-These findings come from the checked-out source, not from accepting the issue's diagnosis. Line references describe the pinned baseline.
-
-1. **Route gating is active in several paths.** In [world_quest_policy.c](../../src/world/world_quest_policy.c), `quest_target_request` (944–1019) builds routes before indexing candidates. Empty/exhausted routes prevent selection; `common()` requires `reachable()` for reset and live rooms. `world_quest_policy_check_target()` (1161–1278) uses current/capable/potential route passes for accepted work. A missing return can produce `unavailable`, not just temporary refusal.
-
-2. **Geography itself applies travel rules.** `quest_route_builder::region()` (368–435) calls `connection()`, excluding locks, walls, castle/map barriers and terrain. It stores one integer; mixed surface/Underdark boundaries resolve to zero. Underdark membership currently requires a directed return. Merely bypassing the final route verdict leaves hidden route dependencies.
-
-3. **Named origins exist, but unrestricted flooding is unsafe.** [specs.assign.c](../../src/specs/specs.assign.c) binds giver 1709 and Cerrio 74060. [quietus.zon](../../areas/zon/quietus.zon) places 1709 at 1734; [bs.zon](../../areas/zon/bs.zon) places 74060 at 74339. A read-only parser of AREA-listed authored files, using zone top intervals and `ZONE_MAP`, found Quietus boundaries 635755/636555 and 850045. Bloodstone has direct surface boundaries and adjacent interiors including mountaintracks; unrestricted interior traversal expands through 5,165 rooms and many map boundaries. Simply deleting obstacle filters from that flood is not a justified locality rule. The previous loaded-world record identifies local Bloodstone anchors including 602263/598665 and 813720; requalify their membership under the new topology. The authored parser is not a server boot or proof of eligible targets.
-
-4. **Existing map helpers have narrower meanings.** `IS_MAP_ROOM()` in [map.h](../../src/world/map.h) uses `ZONE_MAP`, not just surface/Underdark VNUM ranges. `assign_continents()` in [map.c](../../src/world/map.c) supplies surface identities. `calculate_map_coordinates()` combines interiors/maps and filters reciprocal exits/ocean; `map_section` is not an independent Underdark-component identifier. `get_map_room()` in [world_quest.c](../../src/world/world_quest.c):387 returns the first direct zone map exit. It can provide a cached hint but cannot represent BOTH memberships or resolve every interior origin.
-
-5. **ASK is filtered before quest type selection.** `ordinary_instance()` (991–1005) applies authored and live `[L - 4, L + 5]` checks. Changing only the ASK branch cannot recover those candidates. `world_type_eligible()` separately checks the ASK prototype against `MAXLVL`; an explicit live cutoff is needed when the shared band goes away. `static_zone_eligibility()` (927–942) retains the truncated zone average, reward pool and mapless threshold. [world_quest_policy_math.h](../../src/world/world_quest_policy_math.h) defines the strict `(L - 7, L + 5)` zone window; [config.h](../../src/core/config.h):114 defines `MAXLVL` as 62.
-
-6. **Commands and maps consume the same policy.** `do_quest()` in world_quest.c:654 checks the sharing recipient through the accepted-target API. `world_quest_refresh()` at 795 converts `unavailable` into a saved replacement entitlement. Map hints come from the route context. [specs.mobile.c](../../src/specs/specs.mobile.c):10854 says local tasks require ordinary travel; world_quest.c also has travel-specific status/share wording. Map payment revalidates the target and must retain its non-route protection.
-
-7. **The route counter also bounds non-route work.** `quest_spend_work()` charges live-character scans, visibility/lighting and shop lookup as well as traversal. Remove route budgets/dependencies, but retain clearly named bounded target checks and the existing 32 target-probe/32 history-check limits. Target/history exhaustion retains its conservative meaning and must not become a route verdict.
-
-8. **Existing tests encode the superseded policy.** [world_quest_routes_harness.cpp](../../tests/async/world_quest_routes_harness.cpp) expects obstacles, missing returns and mixed regions to refuse. [world_quest_live_targets_harness.cpp](../../tests/async/world_quest_live_targets_harness.cpp):890–1011 expects locks, lost flight, scripts and oversized graphs to block accepted work; sharing/map-payment cases also depend on routes. [run_world_quest_dual_backend.py](../../tests/async/run_world_quest_dual_backend.py):600–608 expects the named level-29 refusals. [world_quest_journey_probe.cpp](../../tests/async/world_quest_journey_probe.cpp) exposes the route graph for test navigation. Removing only production callers would leave qualification broken or misleading.
-
-## Files and implementation sequence
-
-### 1. Establish geographic membership and failing cases
-
-Use existing harnesses and the disposable loaded-world probe to establish the actual surface identity and independent Underdark component attached to both named givers, including Bloodstone's connector zones. Record positive and negative room/zone fixtures before finalizing the attachment traversal.
-
-The representation must satisfy all of the following:
-
-- Reuse loaded world/zone metadata and existing surface continent identities. Compute Underdark components from authored map-to-map adjacency, independent of locks, terrain, procedures and player facts. Connectivity is geographical, not an outward/return proof; a one-way link cannot alone disqualify a target. Never merge Underdark components through interior zones, surface travel, scripts or transports.
-- Represent surface and Underdark membership separately and accept their union. Multiple entrances into one region are one membership. Having one of each is not a conflict.
-- Resolve attachments at map boundaries, using local connector relationships justified by the loaded-world audit. Zone membership must cover disconnected reset/live rooms within the same authored zone; neither room needs an ordinary-exit path to the giver. Do not cross a map region to discover additional origin regions or union arbitrary remote interior networks.
-- Unknown geography is not permission for remote targets below 30. Genuine geographic uncertainty may remain conservative, but scripts, locks and route budgets must not create it; both named origins must resolve. Raw room flooding and first-exit selection are inadequate. If loaded metadata cannot express a demonstrated local attachment unambiguously, use the smallest explicit quest-local attachment data for that origin rather than a general resolver, broad fallback or new configuration.
-- Prefer stable topology/attachment data in the existing boot catalog after map setup. Do not scan the entire world per request or cache player-dependent routes. Keep the implementation in the policy owner. At 30+, bypass local membership only.
-
-Extend the existing route harness into geographic coverage and the live-target harness into assignment/command coverage. Add cases that fail on the baseline for all three decisions, including remote-region negative controls. Reuse filenames and runners unless a rename is actually necessary.
-
-### 2. Replace route proof in the shared policy
-
-Expected production files: [world_quest_policy.c](../../src/world/world_quest_policy.c), [world_quest_policy.h](../../src/world/world_quest_policy.h), [world_quest_policy_math.h](../../src/world/world_quest_policy_math.h).
-
-- Remove `quest_route_builder`, current/capable/potential passes, reverse-return graphs and public route-only APIs after updating all consumers. Remove obsolete movement/trap/barrier includes, stubs and route limits. Do not retain an always-true route wrapper or compatibility switch.
-- Separate ordinary-instance checks from type-level rules. Put authored/live KILL bands in the KILL path and authored/live `< MAXLVL` in ASK. Retain remaining interaction checks, including #513's passive Bloodstone ASK handlers.
-- Use the same geography for selection, validation, sharing and replacement, preserving accepted level/origin. Keep legacy origin-zero binding and invalid-origin handling; describe origin as scope provenance instead of travel proof.
-- Classify accepted targets once for actual supply/interaction. Retain `valid`, `blocked`, `unproven`, `needs_origin` and `unavailable` for their surviving non-route meanings. Preserve blindness, silence, aggression and handler uncertainty.
-- Retain closed/private destination zones and restricted final-room exclusions currently supplied by `ordinary_space()` where they protect target eligibility. Move only those restrictions into the target check; do not copy terrain, transit-room restrictions, player capabilities or unknown travel procedures. ASK's underwater/silence checks are interaction constraints and stay; lack of travel gear must not disqualify KILL.
-- Supply map hints independently from known geographic entrances for the target's actual zone, consistent with local scope. Reuse cached `get_map_room()` when suitable; select a deterministic attached entrance when needed. Hints identify a place, not a proved route. A genuinely mapless target remains valid under the existing 41+ rule without a purchasable hint.
-- Retain bounded target/history work under accurate names, with no graph requirement. Old route size/work limits become irrelevant.
-
-### 3. Integrate commands without changing unrelated state behavior
-
-Expected additional production edits: small wording/comment changes in [world_quest.c](../../src/world/world_quest.c) and [specs.mobile.c](../../src/specs/specs.mobile.c), plus only integration changes demonstrated necessary by the shared policy.
-
-Exercise real `world_quest()` requests, `do_quest()` sharing, `world_quest_refresh()`, map-payment continuations and `world_quest_replace()`. Remove travel-specific refusal wording. Preserve payment ordering, genuine-failure refunds, remaining-kill supply, free replacement, dirty marking and GMCP cache behavior.
-
-A route change after acceptance, during sharing or during map payment must not block/invalidate work, clear its geographic hint, grant replacement, alter progress or cause a route-only refund. Genuine target/supply/location failures must retain their behavior. Keep serialized fields and GMCP status values; no schema or client protocol change is needed.
-
-### 4. Update tests and the reference
-
-Expected test changes:
-
-- [test_world_quest_routes.py](../../tests/async/test_world_quest_routes.py) and its harness: replace route-proof assertions with geography/non-mutation assertions; remove unused movement predicate extraction.
-- [test_world_quest_target_retries.py](../../tests/async/test_world_quest_target_retries.py) and the live-target harness: add type-level coverage and new refresh/share/map expectations; retain history/probe/payment controls.
-- [world_quest_journey_probe.cpp](../../tests/async/world_quest_journey_probe.cpp) and [run_world_quest_dual_backend.py](../../tests/async/run_world_quest_dual_backend.py): remove qualification dependencies on the deleted route API. Navigation is test tooling for deliberately walkable fixtures, not an eligibility oracle. Select controlled targets for real ASK/KILL completion. Test special-travel assignments/status separately without requiring the runner to walk them. Preserve recovery/history coverage.
-- Update [test_world_quest_dynamic_policy.py](../../tests/async/test_world_quest_dynamic_policy.py) only for changed contracts and any concrete references found by a repository-wide symbol search. Change registration only if an entry point changes.
-
-Update BARTENDER_QUESTS.md's source map, live targets, geographic policy, bounds, recovery, map/share wording and verification examples. Explain both local regions, level 30, independent ASK cutoff, preserved zone window and normal movement. Remove claims about route proof, gear-based eligibility and local mixed-region refusal. Record final evidence/limitations in this plan.
-
-## Proof and acceptance
-
-1. **No travel gating:** otherwise eligible ASK/KILL at 11, 29, 30 and a high supported level accept locked/secret/blocked/walled exits, missing returns, no ordinary path, unknown transit scripts, transport-only access, traps/barriers and flight/boat/waterbreathing requirements. Check both reset and live rooms. Keep ASK destination speech restrictions as negative controls. For high-level ASK use accepted/shared-target validation; retain KILL-only new purchases at 50+. A graph larger than the old route bounds cannot refuse an eligible target.
-2. **Both local regions:** for each named origin and levels 11/29, cover ASK/KILL in attached surface and Underdark regions. Use controlled eligible zone averages/rewards to isolate geography; report actual loaded-world grants separately. Reject another surface continent/disconnected Underdark component. Interior bridges must not merge components. Cover multiple/mixed entrances, disconnected rooms within a zone, one-way topology and player travel after acceptance. At 30, remote geography alone cannot refuse.
-3. **ASK and KILL levels:** vary authored/live values independently below `L - 4`, above `L + 5`, at 61, 62 and above. Keep zone means eligible so they do not obscure the type test. ASK accepts out-of-band levels below 62 and refuses either level at 62; KILL retains exact endpoints and adjacent rejections. Preserve strict zone-average boundaries `L - 7`/`L + 5` and positive cases just inside. Keep interaction, provenance and history negative controls.
-4. **Refresh/sharing/maps:** run real refresh, sharing with fixture sharing enabled, map purchase and replacement selection after each route-change class. Verify accepted fields, partial progress, wallet/history, shares, replacement flag, paid-map entitlement and Quest.Status/Quest.Map. Missing targets, inadequate supply and true interaction failures remain meaningful controls. Saved level 29 stays local after the player reaches 30. Preserve legacy origin binding and previously persisted replacement entitlements.
-5. **Commands/persistence:** update named-giver `reported` cases and deterministic surface/Underdark/broad-ASK fixtures. Run disposable flatfile and MariaDB journeys, refresh/share/map state across relog/restart and real ASK/KILL completion on walkable fixtures. Inspect saved and live state; restart must not reintroduce route blocking or lose progress. Keep genuine no-candidate/replacement and history-rollover controls. Random sampling of one region cannot establish both-region coverage.
-6. **Read-only checks and bounded work:** policy must not move actors, execute scripts, consume keys/traps, change equipment/affects, probe prototypes during requests or mutate assignment state before publication. Retain non-mutation assertions and target/history bounds. Confirm obsolete route symbols have no remaining consumer or substitute route requirement.
-
-Planned commands after implementation, from the worktree:
-
-```sh
-python3 tests/async/test_world_quest_routes.py
-python3 tests/async/test_world_quest_target_retries.py
-python3 tests/async/test_world_quest_dynamic_policy.py
-python3 tests/async/test_world_quest_reward_policy.py
-python3 tests/async/test_world_quest_failure_feedback.py
-python3 tests/async/test_world_quest_remaining_unloaded.py
-make -C src
-DURIS_WORLD_QUEST_BACKEND=both DURIS_WORLD_QUEST_JOURNEY=reported python3 tests/async/run_world_quest_dual_backend.py
-DURIS_WORLD_QUEST_BACKEND=both DURIS_WORLD_QUEST_JOURNEY=both python3 tests/async/run_world_quest_dual_backend.py
-./scripts/format.sh --check
-python3 tests/async/test_documentation_contract.py
-git diff --check
-```
-
-Integrate new deterministic cases into these existing selections. Use fresh binaries from existing runner helpers. Confirm local/dev environment before gameplay tests; use disposable accounts/databases/state roots and artifacts under `bin/`. The target suite includes SQL-history cases; run the separate history journey only if a change disturbs that integration. Do not wait for hosted CI. Record failed/skipped checks distinctly; helper tests do not replace command/persistence proof.
-
-## Ablation decisions
-
-- **Keep:** one eligibility owner, geographic data needed by low-level selection/validation, independent ASK/KILL rules, target-interaction classification, map hints and focused command/persistence proof. Each serves a requirement or traced consumer.
-- **Simplify:** three capability-dependent route passes become geography plus one target check. Reuse the boot catalog, surface identities, current status/persistence machinery and harnesses.
-- **Drop:** movement-procedure allowlist expansion, permissive route fallbacks, ferry/teleport discovery, general graph infrastructure, configurable legacy/new modes, reward/history changes and unrelated cleanup.
-- **Investigate first:** the exact Bloodstone attachment boundary without obstacle filters. The authored audit shows why unrestricted traversal is not a safe substitution. Completion requires positive/negative loaded-world membership evidence, not an assumed region or an unresolved product decision.
-
-## Planning evidence and implementation estimate
-
-Completed at the pinned baseline, before source edits:
-
-- `python3 tests/async/test_world_quest_dynamic_policy.py`: passed.
-- `python3 tests/async/test_world_quest_target_retries.py`: all 72 live-target/creation/payment scenarios and 10 SQL-history scenarios passed under the existing ASan/UBSan harness. These establish old behavior/compatibility, not the requested new rules.
-- `cmp docs/ongoing-projects/plan.md docs/ongoing-projects/plan-issue-420.md`: matched before replacement.
-- Source/caller/test review and read-only authored geography audits described above. No new server build, booted-world reproduction, production observation or implementation acceptance is claimed.
-
-Planning validation: `python3 tests/async/test_documentation_contract.py` passed all 14 tests; `git diff --check` passed. The diff changes only this plan, and `gh issue develop 500 --list` confirms its Development branch link. Commit/push and verify matching local/remote heads, then publish the committed plan link without closing #500.
-
-Estimate for **me to implement and locally qualify: 4–6 hours of active work**:
-
-- 45–75 minutes: loaded geography confirmation and failing fixtures.
-- 75–105 minutes: policy removal, level split, map/command integration and focused regressions.
-- 60–90 minutes: journey/probe changes and disposable backend runs.
-- 30–60 minutes: reference updates, builds, final review and commits.
-
-Allow up to **8 hours** if Bloodstone's attachment data or navigation-fixture separation needs additional work. This includes implementation and local validation, not just editing the selector. It excludes prerequisite merge/review waiting, deployment and production qualification.
-
-## Implementation evidence: ASK target levels
-
-The first chunk moves the authored/live level band from the shared ordinary-instance
-filter into KILL eligibility. ASK now checks both levels against `MAXLVL`, leaving
-zone eligibility and interaction checks in place. The reference describes this
-implemented rule; its route/geography sections await the next chunk.
-
-The extended native fixture first failed against the old source for a level-11
-ASK with authored target level 6 and live level 11. After the production change,
-all **184** live-target/creation/payment scenarios passed under ASan/UBSan,
-including 112 new authored/live level cases at accepted levels 11/29/30/49.
-Both the selector and accepted-target API are exercised with forced quest type;
-the destination zone average remains fixed while each target level varies.
-All 10 SQL-history cases also passed.
-
-Additional checks passed: `make -C src -j8`, dynamic policy contracts, XP feedback
-(MariaDB and flatfile), reward policy, 14 documentation checks, formatting and
-`git diff --check`. These results qualify the level chunk only; route removal,
-dual-region geography and the planned command/persistence journeys remain open.
-Current master `aa77a2030` was merged for build/compatibility qualification.
-
-## Implementation evidence: route removal and both regions (in progress)
-
-The second chunk replaces the route builder and all three capability passes
-with boot-time geography and one accepted-target interaction/supply check.
-The production route API and route limits are removed. Target-check bounds,
-actual restricted current target locations, provenance and ASK interaction rules
-remain. Maps use geographic zone entrances; travel changes no longer clear
-them or invalidate a task. Refusal messages now describe target/scope state.
-
-The attachment decision is now concrete: gather authored map boundaries and
-interior-zone adjacency, then resolve the nearest boundary **separately for
-surface and Underdark**. The map-only Underdark graph uses undirected
-connectivity, ignoring movement flags; interior connectors cannot merge map
-components. Ties between different identities remain unresolved for that family.
-This avoids flooding all 5,165 connected Bloodstone interior rooms and requires
-no special-case origin table, new configuration or travel simulation.
-
-The disposable **flatfile loaded-world audit passed**. Both 1734 and 74339
-resolve to surface region 2 and Underdark component 239868 in that boot's rnums.
-Both Good and Evil observers received eligible tasks at 11/29/30 from both
-origins. Component rnums are process-local evidence, not persisted identifiers.
-The geometry harness passes mixed/nearest boundaries, incoming/one-way edges,
-disconnected rooms, unrelated surface/Underdark rejection, ambiguity, unchanged
-world memory and a graph larger than the old route limit.
-
-The expanded native suite passed **284** scenarios and 10 SQL-history cases,
-including the final terrain-fixture addition. It covers named-origin synthetic
-ASK/KILL geography at 11/29/30/56, broad ASK and KILL levels at 11/29/30/49/56,
-strict zone-average endpoints, refresh/sharing/map-payment route immunity and
-genuine target invalidation. The old distribution-room fixture is now explicitly
-private: its rejection proves location policy rather than a missing path.
-The journey probe now has its own ordinary-exit navigation helper; assignment
-is independent of whether that test helper can walk the target.
-
-`make -C src -j8`, dynamic/reward/failure/remaining contracts, geography,
-formatting, whitespace and 14 documentation checks passed. The first `reported`
-and `both` journey runs failed in their ordinary-exit navigator after accepting
-valid broader-pool targets: one walked into a map barrier, and one could not
-reach remaining targets after restart. This did not justify restoring route
-eligibility. The test navigator now uses the actual read-only map-barrier
-predicate, and gameplay sampling explicitly chooses otherwise eligible fixtures
-with ordinary outward/return paths for their routine instances and birthplaces.
-Debugger hooks select that zone/prototype; production validation, publication,
-payments, movement, ASK/KILL, reward and persistence still execute normally.
-Special-travel acceptance is independently covered by native fixtures.
-
-The reported suite also enables sharing only in its disposable properties copy,
-then exercises actual CONSENT, QUEST SHARE and paid MAP with the giver's exits
-locked. It saves/restarts both source and recipient and compares copied work,
-paid map, purse, allowance and remaining shares. Fresh `reported` and `both`
-runs on both backends are underway; completion still requires their results.
-
-The next journey attempts exposed two further fixture defects: snapshots could
-observe a partially processed movement batch, and the newly created sharing
-recipient had not equipped its visibility gear. Navigation now synchronizes
-every movement/preparation command through its prompt, and score observations
-use tagged requests plus their response/prompt. The recipient uses normal
-`wear all` before consenting. The ASK completion sampler now specifically
-selects an eligible target outside the KILL band and records its live level;
-a focused 11/29 ASK journey on both backends supplements the full matrix.
-These are test changes, not production travel restrictions. All current journey
-results remain pending; draft #522 must not be marked ready before they pass.
-
-Further qualification isolated stale queued score observations: snapshots now
-carry a unique request identifier, and the reader accepts only its own response.
-The broad ASK run completed its level-11 case. Its first level-29 fixture used
-a safe room, where existing reward rules legitimately suppress XP; completion
-fixtures now avoid safe/arena/guild locations when proving positive XP. No
-reward rule changed. Fresh full, reported and focused ASK runs are in progress;
-the required final result is still both backends passing every planned journey.
-Baseline, native and failed-journey logs are retained locally under
-`bin/qualification/issue500/` and are not tracked.
-
-The walker now observes each authored destination before submitting the next
-movement command, with a bounded wait and an exact room assertion. A prompt or
-batch-end score alone did not establish that every requested step had finished.
-The runner also freezes its probe source at startup so editing the checkout
-cannot mix probe signatures between its MariaDB and flatfile passes. A prior
-intermediate run's flatfile debugger stopped on that signature mismatch; this
-was not a server crash. Final `both` and `reported` runs use the corrected
-step synchronization. No production change was needed for these harness fixes.
-
-Exact step observation then identified the remaining concrete navigation error:
-the simplified walker admitted ocean sectors (for example 556132 -> 555732),
-which ordinary movement rejects. The walker now conservatively excludes ocean
-and hazardous planar terrain, as appropriate for its completion fixtures only.
-Production eligibility remains independent of these travel checks. Superseded
-reported runs were interrupted with normal cleanup; the corrected full/reported
-pair is the remaining completion gate.
-
-Ablation after that diagnosis removes the temporary per-step polling: the
-failure was an inadmissible ocean edge in test navigation, not evidence for a
-new movement-publication protocol. The final walker retains ordered batches,
-unique score request IDs, response/prompt synchronization and an exact end-room
-assertion (or a checked combat interruption). The stricter reported run already
-in flight may finish with per-step assertions; the final full run qualifies the
-batched reader on both backends. No eligibility or acceptance requirement is
-weakened by removing the diagnostic polling.
-
-Final source review added a regression for a tied surface boundary alongside a
-known Underdark attachment. It reproduced an incorrect `unavailable` verdict
-for the unmatched surface task. The geographic cache now retains an uncertainty
-bit: known matches still work, while an unresolved mismatch remains `unproven`
-and `world_quest_refresh()` keeps the accepted task instead of granting a reroll.
-All **300** native scenarios and 10 SQL-history cases pass, including the new
-negative control and the durable-state transition. The geography harness and
-fresh server build also pass. Fresh full/reported backend runs use this final
-production repair.
-
-The earlier full run completed both level-11 and level-29 kinds, including the
-partial KILL restart, before its level-30 fixture leveled to 31. Its remaining
-allowance then legitimately changed because history is counted per current
-level below 50 (`sql_world_quest_can_do_another`). The regression now checks
-that partial combat writes no history, and checks equal remaining allowance
-when the actor level is unchanged. No allowance policy was changed.
-
-Final ablation also removes the carried-over private-birthplace restriction:
-the player interacts at the live target room, not its spawn room. Routine M-reset
-provenance and same-zone birthplace checks remain, but a public live target is
-not rejected just because it was born in a private holding room. The existing
-staging-release case now proves that positive behavior; NPCs currently in private
-holding rooms remain excluded. The fresh build and all 300 native/10 SQL-history
-cases pass with this final policy.
-
-To make completion inputs deterministic, explicit disposable setup now restores
-routine NPCs in the requested target pool to their authored birth rooms and sets
-their sentinel flag. It does not spawn prototypes or alter levels, statistics,
-population counts or reset provenance. Targets are then selected and validated
-through production policy. After partial restart the same explicit preparation
-pins the retained target; the fixture asserts every saved player/quest field
-is unchanged. This replaces reliance on a random wandering population, which
-could leave no ordinary-travel KILL completion fixture after the first ASK case.
-
-## Concurrent review integration and final-head qualification
-
-The full five-case matrix and reported-giver suites passed on **both backends**
-at implementation revision `f9b28d826`; their retained artifacts are
-`matrix-passed.json` and `reported-final-passed.json` under
-`bin/qualification/issue500/`. The runtime ASK targets were level 24 at accepted
-11 and level 20 at accepted 29. Both backends qualified real partial KILL
-save/restart, retained reward identities and ordinary outward/return commands.
-
-Before readiness, the remote stack advanced with concurrent review fixes.
-This checkout fast-forwarded those changes and merged the updated #520 parent
-in `75fb94e66`. The parent now includes durable item/history/recovery-receipt
-publication and retained final-kill entitlement; #522 adds ASK command-scene
-interceptor auditing independent of travel. Temporary target sleep/silence now
-blocks accepted ASK instead of issuing replacement. The integrated master also
-contains unrelated landed frag-cap and skill changes; those remain upstream work.
-
-On this integrated head, 300 native scenarios, 16 SQL-history cases, reward
-publication, XP feedback on both backends, reward/failure/remaining contracts,
-save-pipeline contracts, flatfile history/recovery, item snapshot codec, the
-server build, formatting and 14 documentation checks passed. Full/reported
-journeys are rerunning: the old-head runtime artifacts do not claim coverage
-of the newer reward/persistence code.
-
-The journey now checks completion allowance through a read-only copied player
-view at the level captured by the history admission, using the real allowance
-API. This preserves the exactly-one-consumption assertion when scalar XP later
-changes the actor's level; it neither changes the actor nor duplicates the
-allowance formula. All code and review changes are preserved, and the active
-worktree remains dedicated to this final qualification.
-
-The full matrix next reached a genuine scripted movement gate on its chosen
-level-29 ASK fixture. Its navigator now rejects opaque room/mobile/object
-movement handlers and room affects when selecting ordinary completion fixtures,
-reusing the production Bloodstone passive-handler predicate through the existing
-debugger mechanism rather than copying that allowlist. This test-only screening
-does not restore travel gating to production. The new full run is in progress.
-
-**Reported-giver qualification passed on both backends.** For each backend the
-result includes all 10 Good/Evil named-giver grant cases, six saved/restarted
-abandon/regrant sequences, actual consent/share/map with locked giver exits and
-both players' retained state after restart, progressed-abandon history, legacy
-origin binding, durable free replacement, and Bloodstone level-30 ASK/KILL
-completion and ordinary return travel. The recipient restores an active level-29
-task from origin 1734, paid map, original receiver and no onward shares.
-Evidence: `bin/qualification/issue500/reported-passed.json` (ignored).
-The reported run used stricter per-step movement observation; the final full
-matrix still must qualify the simplified batched walker and 11/29 cases.
-
-## Final integration and qualification — 2026-10-31
-
-Both backend builds pass on settled master `964cd61cd` with the #522 changes.
-The master integration preserves the qualified quest, reward, player-save and
-currency implementations byte-for-byte; conflicts were duplicated #526 squash
-ancestry in a comment and the test setup action number. The independent-credit
-fixture uses action 8, retaining action 7 for locked-exit sharing.
-
-Fresh combined checks pass: assignment/refresh/share/map/type/geography and
-SQL-history regressions under ASan/UBSan; reward publication; XP and the level-25
-mercenary boundary/retry; reward/remaining/failure contracts; player-save retry
-and offline retention; currency/auction escrow; flatfile player/history and item
-codec; and disposable MariaDB save/claim rollback, replay and reward custody.
-Formatting, staged clang-tidy, documentation checks and whitespace checks pass.
-
-The `reported` journey passes on MariaDB and flatfile, covering named givers,
-locked-exit sharing/maps, saved abandonment/regrant, history, replacement and
-Bloodstone ASK/KILL completion. The default five-case `both` matrix passes on
-both backends: 11:2, 11:1, 29:1, 29:2 and 30:1, including real movement/combat,
-out-of-band ASK completion, partial KILL save/restart, rewards, history, relogin
-and restart. The MariaDB `history-failure-restart` journey also passes: an
-independent 1,000-copper credit survives rejected history writes and restart;
-retry charges the fee and records history exactly once.
-
-The first combined journeys exposed a test synchronization gap while final-KILL
-history was committed but its reward callback had not cleared the live task.
-The journey now waits on the completion marker with a timeout. A later MariaDB
-matrix selected an ordinary random fallback after an unsuitable purchase and
-could reach only one thorncat; its other resets were in an outbound-only load
-room. Retries now repeat the existing explicit fixture preparation and require
-the exact prechecked prototype and actual zone. No production eligibility,
-quota, NPC count, combat limits or credit was changed. The corrected MariaDB
-matrix passes at `4572474ac`; the flatfile matrix and both reported passes use
-`b1babb49e`, whose production quest/reward/save/currency code is unchanged by the
-settled-master integration and the subsequent fixture-only edits.
-
-Ignored evidence is under `bin/merge522/` in the qualification checkout: native
-and save logs, `flatfile/final-{reported,both}.log`,
-`mariadb/final-reported.log`, `mariadb/final-history-failure-restart.log`, and
-`mariadb/final-both-fixture-identity.log`. Earlier failed/interrupted runs remain
-separate. Final cleanup retains this evidence in the main checkout's ignored
-merge-campaign directory. No production operation, deployment or release tag
-was part of this qualification.
+- Client UI/automation rewrites, releases and text-fallback removal belong to
+  #26. Server fixtures, coordinated scenarios and evidence handoff remain
+  required here; server tests alone cannot claim client qualification.
+- No replacement command dispatcher, remote action API, event broker, durable
+  replay, database schema, synchronous storage calls, population feed, world
+  traversal per hit, zone-graph service or additional map generation.
+- No per-second countdown packets, recursive inventory push, speculative item
+  deltas, generic observer framework or blanket export of hidden affects.
+- No production operation, deployment, unrelated cleanup, full burn-in or wait
+  for hosted CI. Keep text behavior available during the companion migration.
+
+## Findings from the owning source
+
+Paths and line numbers refer to merged master `ee6f9fbf3`. Changed owners were
+re-read; 22 unchanged protocol/gameplay/reference files were also compared
+byte-for-byte with the original planning baseline. The issues and client
+investigation are inputs, not proof of implementation.
+
+1. **Negotiation/bootstrap already exist.**
+   [gmcp.c](../../src/net/gmcp.c):58-86,125-237,286-307 handles DO/DONT,
+   deferred snapshots, Core.Hello, Client.Info and opt-in Char.Input. It does
+   not handle Core.Supports or gameplay requests. Bootstrap already sends ship
+   clears, status, vitals, affects, group, room, quest and combat.
+   [gmcp.h](../../src/net/gmcp.h):139-144 distinguishes negotiated transport
+   from the character's NOGMCP preference. Pre-character lifecycle/control needs
+   a descriptor policy without bypassing that preference for gameplay data.
+
+2. **WebSockets share the bootstrap.**
+   [account.c](../../src/account/account.c):2296,
+   [nanny.c](../../src/account/nanny.c):2215,
+   [actoth.c](../../src/cmd/actoth.c):5811-5814 and
+   [ws_handlers.c](../../src/net/ws_handlers.c):1057-1068 reach the same sender.
+   Account/nanny have several direct state and character assignments, including
+   pre-entry cancellation and switched originals. No protocol session generation
+   exists. Hook semantic boundaries; do not increment generation from bootstrap
+   or mechanically replace every STATE assignment. Account recovery now
+   acknowledges successful resets only after durable storage through account.c's
+   account_apply_recovered_password() and ws_handlers.c's ws_complete_reset_reply();
+   reset_completed is not a
+   character attachment. Preserve writer_wait_id/descriptor-liveness handling
+   and same-account session closure. build_account_load_request() also refuses
+   character admission while that account's chest purchase is pending.
+
+3. **Combat is immediate and attacker-centric.**
+   gmcp.c:1013-1108 creates target/optional round, no tank; end sends target:null.
+   The target serializer uses GET_NAME without recipient masking there.
+   [prompt.c](../../src/net/prompt.c):299-342 derives tank as the opponent's
+   opponent, requires both relationships to be local, and masks an unseen tank
+   as "someone". [fight.c](../../src/combat/fight.c):5752-5759 sends victim
+   vitals and attacker target/round; secondary-target damage can omit the round,
+   and metadata is "unknown"/false. set_fighting(), unlink_fighting(),
+   stop_fighting(), terminal extraction and update_pos() are distinct paths.
+   Current packets do not prove ally damage, non-GMCP tank health or all posture
+   changes stay fresh. Self HP already has its own Char.Vitals source.
+
+4. **Time has small mutation boundaries.**
+   [weather.c](../../src/world/weather.c):75-99 advances time_info.hour and the
+   calendar; astral_clock_setMapModifiers() owns hourly map/announcement rules.
+   [actinf.c](../../src/cmd/actinf.c):6995-7104 contains staff "time N" and the
+   ordinary do_time() path that can schedule autoreboot. The field is hour,
+   not hours. Publish after normalized mutation; serialization must only read.
+
+5. **Item dirtiness exists but is not subscription state.**
+   [handler.c](../../src/world/handler.c):1873-2193,3051 onward owns core item
+   transfers/equip and sets runtime flags. obj_to_char_at_end() is a separate
+   append/restoration path. unequip_char() has a saving argument.
+   [files.c](../../src/core/files.c):1455-1465 clears persistence dirty flags
+   and temporarily unequips on terminal saves. GMCP cannot depend on those
+   flags surviving saves. [structs.h](../../src/core/structs.h):500 already
+   has obj_uid; vnums are templates. [utils.h](../../src/core/utils.h):612-613
+   allows staff 3,000 carried objects: list bounds are a real requirement.
+   do_inventory(), do_equipment(), get_equipment_list(), list_obj_to_char()
+   and show_obj_to_char() own visibility, anatomy, duplicate presentation and
+   wraithform policy; raw object fields do not automatically preserve it.
+   Upstream get/put/look/examine/empty now enforce
+   locker_container_access_allowed(); LockerMovementAudit admission can refuse
+   movement or MakeScrap() before mutation. Preserve those boundaries and the
+   non-takeable private-chest policy in item_command_policy.c.
+   [sql.c](../../src/sql/sql.c):233 onward owns world_quest_publish_reward():
+   a reward can remain detached after its durable save, then hydrate/attach or
+   restore for a live actor, or leave durable custody for later login. The
+   committed callback in [player_save_pipeline.c](../../src/player/player_save_pipeline.c):531-575
+   may retry after actor departure. Protocol dirtiness belongs to completed
+   live publication, not reward creation, save admission or an internal counter.
+
+6. **Completion owners already know useful outcomes.**
+   do_bash()/do_rescue() delegate to bash()/rescue() in
+   [actoff.c](../../src/cmd/actoff.c); rescue resolves and retargets around
+   8210-8300, with CharWait afterward.
+   [memorize.c](../../src/classes/memorize.c):490-568,1097-1253 distinguishes
+   completion and voluntary/disrupted cancellation.
+   [bard.c](../../src/classes/bard.c):1918-1928 knows actual song completion;
+   [epic_skills.c](../../src/classes/epic_skills.c):1252 onward owns infusion;
+   [mining.c](../../src/economy/mining.c):286,385,802 separates command and
+   delayed results. [events.c](../../src/world/events.c):368 onward owns
+   CharWait; [affects.c](../../src/magic/affects.c):1938-1960 creates hidden
+   short affects. [json_utils.c](../../src/core/json_utils.c):1009-1074 excludes
+   AFFTYPE_NOSHOW and already exports visible duration seconds. Reuse those
+   owners instead of input labels/output matching or exposing internal tags.
+
+7. **Requested results can reuse existing decisions.**
+   actinf.c:9792-10064 performs scan detection/RNG and temporary room traversal.
+   do_who():7444 onward filters by level, morph, trust, faction, anonymity,
+   host and displayed fields/counts.
+   [tradeskill.c](../../src/economy/tradeskill.c):2546-2608 holds actual dice
+   results inside the roll loop. [ship_combat.c](../../src/ships/ship_combat.c):196
+   onward authorizes scan_target() by contacts/range before armor/internal
+   output. [magic.c](../../src/magic/magic.c):10499 onward gates identify,
+   including NOIDENTIFY/effective-level differences. Shop, auction, crafting
+   and spell callers reach it with different authority.
+
+8. **Flush names are not construction/measurement guarantees.**
+   gmcp.c:660-728 shares contact payloads by vessel/verification variant but
+   builds personalized own-ship info before hashing.
+   [comm.c](../../src/net/comm.c):2327-2388 still flushes GMCP first, then
+   runs durable completions and save publication. Its "gmcp_flush" span includes
+   the new chest/combat-outcome/frag-cap pulse work alongside existing account
+   recovery, saves and caches. sql_async_pulse() runs after that span and can
+   publish further changes. Count protocol work at construction/delivery sites;
+   mutations after the state flush must remain dirty for the next flush.
+   [latency_trace.h](../../src/persistence/latency_trace.h) has bounded
+   count/total/max/top samples, not a full percentile distribution.
+   [GAME_LOOP_PHASES.md](../network/GAME_LOOP_PHASES.md) fixes phase ordering;
+   do not move output/persistence/combat owners to make protocol tests pass.
+
+9. **Not every proposed stream exists, and several need no duplicate.**
+   Char.Items/Char.Skills appear only as package constants; source search found
+   no callers of json_build_stat_roll()/json_build_chargen_complete(). Ship
+   details, quest map/status, affect seconds, chat presentation and input
+   receipts already work. [epic.c](../../src/world/epic.c):1950-1975 has cached
+   text with a cache-miss generation path; displayed_alignment() enforces
+   disclosure delay. [public-population.md](../guides/public-population.md)
+   explains why public MSSP/live population is withheld. A new stream must not
+   revive it or add periodic report generation.
+   Existing Quest.Status now normalizes killCount during pending reward/history
+   stages in json_utils.c:1225-1242; world_quest_start_reward() temporarily reuses
+   quest_kill_how_many for money. Preserve that serializer instead of exporting
+   raw quest fields. gmcp_quest_status()/gmcp_quest_map() retain availability,
+   paid-map and completion clears; reuse the current geographic policy without
+   another eligibility traversal or new quest stream.
+
+## Contract decisions and bounds
+
+Finalize schemas in docs/network/GMCP.md (new), with examples produced by
+executable serializers. Duris.* names below are proposals, not current APIs.
+Record agreed fields/version availability in both trackers before client
+fallback retirement. This is coordination, not a new approval ceremony.
+
+- Preserve legacy packages/default sends. New catalogs/events require compatible
+  support and explicit interest; WebSockets keep their legacy default without
+  automatically subscribing to new large lists. Additive combat fields remain
+  compatible with existing readers.
+- Implement bounded Core.Supports.Set/Add/Remove for a small fixed feature set,
+  not a generic registry. Unknown modules/versions never grant authority.
+  Proposed Duris.Capabilities advertises only working schemas and effective
+  stream state; proposed Duris.Subscribe controls interest in new streams.
+  Support means decodable; interest means currently wanted. Unsubscribe clears
+  pending protocol work, stops construction and explicitly invalidates client
+  state.
+- Gate before JSON/list work: negotiation, effective preference, support,
+  interest, then dirty/request state. Session/Capabilities control remains
+  available to capable negotiated clients to report preference disable/enable;
+  gameplay streaming still honors NOGMCP.
+- Use a connection-local character generation and monotonic revisions/event
+  sequences, encoded losslessly where needed. Advance generation at semantic
+  attachment/entry, not renegotiation/bootstrap. A new connection starts a new
+  context. Session has account/chargen/playing states and character:null;
+  never expose credentials/account identifiers.
+- State replaces its documented whole scope. Define omitted versus null;
+  target:null/tank:null clear combat, items:[] is authoritative empty, and
+  unavailable/ineligible differs from empty. Session invalidation clears all
+  prior character streams. State resync never replays historical action events.
+- Events carry generation, event sequence, kind/outcome, permitted actor/target
+  and small known reason codes. Preserve each actual event in order; do not
+  coalesce it like state. No replay/exactly-once promise across disconnect.
+  Char.Input remains only a dequeue receipt. Never include typed arguments,
+  account recovery secrets or chest credentials in these payloads.
+- Time v1 carries hour 0-23 and phase: dawn 04-08, day 09-15, dusk 16-18,
+  night 19-03. Optional calendar indexing/year offset must be specified if
+  retained. Cooldowns use monotonic server milliseconds and remaining
+  milliseconds at emission, scoped to the connection; clients count locally.
+  Keep global wait, selected skill cooldowns and status/activity restrictions
+  separate; a deadline alone does not guarantee CAN_ACT.
+- Initial limits to validate: Supports <=8 KiB/64 entries/96 bytes per entry;
+  new read/subscription requests burst 2 then 1/second per family; result pages
+  <=128 rows/16 KiB; new semantic events <=64 events/64 KiB per descriptor per
+  flush interval; new replaceable-state/list output <=32 KiB per descriptor
+  per flush plus a shared round-robin work budget. Event bytes use their
+  separate quota and enter the existing FIFO at completion, without waiting
+  for the state flush. These are implementation constants, not new user
+  options. Bound strings/collections before construction and final encoded size.
+- Reuse existing bounded Telnet/WebSocket FIFOs and failure/close behavior,
+  avoiding a second event queue. Events are never silently overwritten;
+  exhausting event/transport limits uses the documented overflow/connection
+  reset policy. Preserve control-message room when transport permits final
+  invalidation. Test it: state resync cannot reconstruct missed dice/history.
+- Large item/WHO/scan results use bounded pages with revision, continuation and
+  complete semantics; ordinary lists fit one page. Replace only completed
+  revisions, never a silently truncated list. Invalidate item-state continuations
+  on owner, visibility or mutation changes. Requested command results retain
+  values captured during their authorized pass; pagination must not repeat a
+  scan, random decision or identification. Cancel old-character pending pages/
+  snapshots on session change and suppress late event construction for that
+  generation. Already queued output stays in FIFO order before the session
+  boundary; never cancel durable gameplay transactions or their offline
+  recovery. Completion delivery must match the current character/generation,
+  with a fresh snapshot on later entry. No borrowed item pointers survive
+  extraction; construction, captured results and pending protocol work must
+  also have explicit total bounds.
+
+## Implementation sequence, files and proof
+
+Each step is a reviewable commit or small related series. Extend existing
+harnesses before adding focused tests; do not build another test framework.
+Advertise a feature only after its real path works.
+
+### 1. Baseline, contracts and gating (2-3 active hours)
+
+- Freeze serialized fixtures, seeds, populations and workloads at `ee6f9fbf3`,
+  not the original planning revision; record construction counts, bytes and
+  latency before runtime changes. Recapture the existing Quest.Status fixtures
+  with pending rewards/history represented through the current serializer.
+- For booted tests use the maintained disposable backend authority/setup helpers
+  (test_flight_network_journey.authority and run_world_quest_dual_backend.setup_run_root).
+  Honor current migration/runtime manifests, including SQL migrations 0056/0057
+  where applicable. Startup now requires successful frag_cap_runtime_boot(),
+  including minimal worlds; do not bypass it or add a second fixture bootstrap.
+  This is local/dev qualification setup, not new migration or production work.
+- Add narrow support/interest/control state in src/net/gmcp.c/h and
+  src/core/structs.h; initialize/free/reset it on descriptor creation/close/
+  recovery. No new persistent preference/configuration service.
+- Integrate bounded state flushing at the existing cadence without moving
+  output/persistence/combat phases. Async mutations published after an earlier
+  flush remain pending for the next one.
+- Proof: production input/send paths for Set/Add/Remove, malformed/oversized
+  inputs, unknown versions, request floods, legacy Telnet/WebSocket defaults,
+  preferences and unverified identity. Extend the existing GMCP fuzz corpus
+  where parser branches are added.
+
+### 2. Session and time (2-3 active hours)
+
+- Hook attach/detach/account/chargen/playing in account.c, nanny.c, comm.c,
+  ws_handlers.c and actual quit/return/switch paths. Audit failed load,
+  pre-entry cancel, link-dead reconnect, copyover, morph and switched originals.
+  Send invalidation before character pointers are released. Preserve existing
+  chest-access invalidation in close_socket() and writer/account admission
+  gates. Hook actual attachment/completion, not an accepted load/reset request;
+  password-reset completion stays in account state until ordinary login.
+- Bootstrap order: capabilities/effective streams, session boundary, then
+  compatible snapshots. Same-socket detach sends character:null before new
+  character data. Re-enable resends state without advancing entry generation;
+  disable control is sent before gameplay gating blocks updates.
+- Cache one small global time payload per revision. Invalidate after
+  event_another_hour() normalization and staff time mutation. Entry/re-enable
+  sends the current revision to interested recipients, without command calls.
+- Defer optional calendar expansion/shutdown countdown metadata; neither is
+  needed for the required clock/phase UI. Do not advertise them.
+- Proof: initial/late negotiation, repeated DO, re-enable, A -> account -> B,
+  failed attach, chest-purchase admission refusal, chargen cancel, reconnect/
+  copyover, morph/switch identity and phase boundaries. Include a disconnect or
+  account replacement while recovery/publication is pending: no late packet
+  enters another character's generation and durable work still completes.
+  Retain the existing account-recovery contract/native tests and extend the
+  disposable recovery journey only where new lifecycle assertions need it.
+  Assert serialization never calls do_time/shutdown/storage.
+
+### 3. Combat, observers and damage events (3-5 active hours)
+
+- Extend Combat.Update with tank and explicit target/tank nulls. Follow prompt
+  relationships/locality and recipient PERS/visibility policy, including generic
+  unseen identity. Keep self HP separate from target/tank percent/condition.
+- Mark affected local observers dirty from relationship, health and posture
+  mutations, using room-local traversal/dirty-room ownership and coalescing.
+  Audit healing/regen/direct posture assignments, rescue, flee, death,
+  departure and terminal extraction, including non-GMCP tanks. Do not scan the
+  population/combat list per hit or add a global observer dependency index.
+- Mark old/new contexts before references die; resolve current relationships
+  at flush without delayed raw victims. Define state revisions/event ordering.
+- Separate outgoing applied-damage events from replaceable target state.
+  Preserve actually applied amounts, including secondary targets, without
+  retargeting the primary enemy. Pass known damage-type/critical metadata from
+  authoritative calculations; retain explicit unknown when unavailable.
+  Never recompute/roll again. Document legacy round scope and prevent capable
+  clients counting both old/new representations. No full miss/damage log.
+- Files: gmcp.c/h, fight.c, handler.c and concrete health/posture owners found
+  by the audit; keep any helper local to this responsibility.
+- Proof: player/pet/enemy independently near death; masked names; ally and
+  secondary damage; rescue/tank swaps; posture/heal; flee/death/departure/
+  extraction; clear-before-reuse; unchanged RNG; no disabled construction.
+  Under #26, identify the affected widget and verify values/labels/critical
+  styling and delayed text before claiming the reported HP symptom fixed.
+
+### 4. Owner inventory/equipment (4-6 active hours)
+
+- Implement Char.Items.List inv/eq with generation, location, revision,
+  completion, visible description, quantity, worn slot, usable selector and
+  known condition/flags. Per-instance rows with quantity 1 are sufficient for
+  separate objects; preserve duplicate targeting. Optional capacity/count/
+  weight reuses existing values, never identification-only fields.
+- Start with complete snapshots/empty or unavailable states. Revision-scoped
+  entry tokens/selectors suffice for v1. If client agreement requires stable
+  cross-snapshot identity, reuse audited obj_uid lifetime as an opaque string
+  scoped to generation; no new allocator, vnum, raw pointer or rounded number.
+- Add independent GMCP pending revision/dirtiness; saves may clear persistence
+  flags. Cover transfer/append/restore, equip/unequip, extraction, containers,
+  rename, damage/repair and visibility/anatomy/wraithform changes. Mark both
+  owners on transfer, not only player command sites.
+- Coalesce completed operations. Respect saving=true and restoration; never
+  publish transient terminal-save unequips or partial get-all. Audit src/item
+  transaction publication plus core/files.c and persistence restoration; emit
+  after authoritative commit/publication, not speculative ownership changes.
+  Include sql.c's world_quest_publish_reward(), player-save committed callbacks
+  and reward restoration. A durable reward is not visible inventory until live
+  attachment finishes; offline completion must not target the departed socket.
+  Do not call the reward publication helper or read its repository to serialize.
+- Serialize subscribed dirty/requested top-level lists with bounded pages/work.
+  Nested contents remain explicitly requested with current owner, visibility
+  and normal container-access eligibility, including the current locker gate.
+  Invalidate pending pages if access changes. Owner lists do not become a
+  private-chest contents API; no recursive push, polling or deltas.
+- Files: gmcp.c/h, json_utils.c/h, handler.c, sql.c, player_save_pipeline.c,
+  necessary item/publication owners and actinf.c presentation policy. Share a
+  read-only presentation helper only if text/JSON truly share policy; do not
+  invoke a printing command to serialize.
+- Proof: empties, 3,000-item staff lists, duplicates/selectors, get/drop/give/
+  get-all, wear/remove/disarm, containers, rename/repair, visibility, save/load,
+  async success/failure/replay, extraction between pages and unsubscribe.
+  Cover deferred quest reward attachment/reconstruction, logout before its
+  publication and exactly one visible inventory revision after retry; refused
+  chest access/audit/scrapping must not invent a mutation or expose contents.
+  Extend the existing committed-reward publication and SQL chest regression/
+  lifecycle harnesses for these paths. Verify ordinary inventory/reward restore
+  on MariaDB and flatfile; private chests remain SQL-only.
+  Assert one completed bulk revision and no extra persistence or hidden data.
+
+### 5. Actions, activity, cooldowns and notices (5-8 active hours)
+
+- Hook actual success/failure/completion/cancellation: bash/rescue/flee in
+  actoff.c; disarm/consent in actnew.c and fight.c; follow/group in their cmd
+  owners; study/prayer in classes/memorize.c; infusion in epic_skills.c;
+  songs in bard.c; mining in economy/mining.c. Include early refusals and
+  deferred/async completion for pending actions, not only the command wrapper.
+- Send successful flee direction after movement succeeds, or explicit failure/
+  cancellation. Publish only reasons already known/permitted to the recipient.
+- Publish self global-wait and allowlisted skill cooldown changes from
+  CharWait/event_wait and short-affect add/replace/remove/expiry in events.c
+  and affects.c. Derive intervals from actual scheduled state, including
+  restored timers. No hidden-tag dump or timer added solely to tick a UI.
+- Send a small activity snapshot at entry/re-enable/change, with started,
+  completed/cancelled and known stop reason. Separate studies/prayers/infusion/
+  song cause from posture. Full prepared-spell catalogs are unnecessary.
+- Inventory actual active client automation notice triggers. Include consent,
+  follow/group, mining and skill-up notices. For tracks, frost beacon, scrying,
+  spell-hit reports and arrival/trap/movement notices, reuse already-permitted
+  values at existing recipient branches for active #26 needs; record every
+  trigger's owner/event or an explicit client-accepted deferral. Do not replace
+  "other notices" with a generic text-to-event parser.
+- Eligible local rescue/assist observers receive small relationship/outcome
+  updates, including required observed attack/miss transitions. No second
+  room-wide combat log, remote feed or other players' cooldowns.
+- Proof: success/refusal/failed roll, async finish, interruption/voluntary cancel,
+  cooldown replace/expire/clear, command/skill variants, duplicate events and
+  no false completion from affect loss. Verify bystander masking, a non-GMCP
+  actor and multiple individual events before one coalesced state flush.
+
+### 6. Authorized command results (3-5 active hours)
+
+- First emit negotiated JSON alongside the existing authorized command.
+  No GMCP handler directly calls gameplay functions. Any later transport
+  request must enqueue the same command through normal wait/eligibility/
+  input rules, with bounded pending request state. Preserve comm.c's current
+  get_playing_cmd_from_q() transaction/chest gate, shared-bank reservations and
+  account writer waits; a new request must not skip them as a "read-only" shortcut.
+- Player scan: collect actual successful detections, including "here",
+  directions/distances and explicit empty/failure, inside the existing pass.
+  Restore ch->in_room before delivery. Preserve visibility/RNG count and order;
+  do not re-evaluate detection for JSON.
+- Ship scan: serialize already-authorized scan_target armor/internal/relative
+  results separately from routine contacts. Retain bridge/range/contact rules
+  and withhold world coordinates from unverified connections.
+- Dice: emit the loop's actual result, sides, index/count and roll ID to the
+  same allowed self/local observers, with recipient masking. No reroll; the
+  capability/ID contract and client tests prevent dual-source processing.
+- Identify: accumulate only fields actually revealed at successful spell/
+  service branches after existing cost/authority/completion. Test NOIDENTIFY
+  and effective-level differences, including shop/auction/crafting callers.
+- WHO: serialize accepted rows and branch-specific displayed fields from
+  do_who(), preserving filter/sort, explicit empty/failure, anonymity, trust,
+  level and population privacy. Do not export internal totals/opposing names
+  merely because the server knows them. No automatic roster.
+- Files: actinf.c, tradeskill.c, ship_combat.c, magic.c, necessary service
+  completion callers and gmcp.c/h/read-only serializers.
+- Proof: text/protocol permitted-field parity, fixed RNG call counts, blocked/
+  empty results, hidden targets, anonymous/trusted WHO, level-one/morph refusal,
+  identify cost/failure and ship verification. Exercise normal input dispatch.
+
+### 7. Integration, measurements and closeout (5-8 active hours)
+
+- Extend test_gui_gmcp_contract.py/native harness for real serializers,
+  Telnet/WebSocket send paths, new bootstrap and clears. Extend the prompt/
+  toggle and input-receipt tests where their contracts change. Add focused
+  native mutation/command journeys for uncovered gameplay requirements only.
+- Implementation checks: ./scripts/format.sh --check, make -C src, the three
+  focused GMCP tests, relevant new gameplay/persistence tests,
+  test_game_loop_phase_contract.py and applicable public-population/output/
+  command-queue tests. Register new regressions if runner discovery needs it.
+  Reuse test_world_quest_reward_publication.py, test_private_chest_regressions.py,
+  test_private_chest_lifecycle.py and test_account_recovery_contract.py where
+  their publication/lifecycle owners are touched; extend their real-path proof
+  instead of introducing a general notification or persistence test framework.
+  Retain test_item_movement_input_queue.py/test_transaction_input_queue.py for
+  any new request dispatch. These are implementation checks, not claims that
+  this plan review ran gameplay journeys. All compiled artifacts remain under bin/.
+- Cover initial/late negotiation, repeated bootstrap, reconnect/copyover,
+  same-socket switches, disable/re-enable, support/interest changes, null/empty,
+  stale revisions/duplicate events, slow consumers/overflow, legacy and
+  unverified clients. Preserve bought/valid quest-map and ship privacy rules.
+- In the actual client checkout run:
+
+      python3 scripts/capture_server_gmcp.py --server /home/aiwithapex/projects/duris-issue-498
+
+  Check that extraction covers the changed functions; commit fixture provenance
+  on the client branch. Run affected real-Mudlet server-wire, connections,
+  information, combat, time, split, ship and lifecycle scenarios. Inspect
+  screenshots, numeric state and styling. Unavailable environments/scenarios
+  remain explicitly unverified; native fixture success is not Mudlet proof.
+- Finalize protocol/availability/compatibility/measured-limit docs and candidate
+  dispositions; update docs/reference/CODEBASE.md only where navigation needs
+  it. Link delivered commits/PRs and evidence in both issues. Keep unfinished
+  external qualification explicit; do not close on serializer-only coverage.
+
+## Measured overhead gate
+
+Use merged-master `ee6f9fbf3` as the before baseline, with existing loop timing/
+trace tooling and workload runners. Match frag-cap round/deadline state and
+pending/retrying transactions as well as population/commands in each pair;
+original-planning timings would omit newly landed game-loop work.
+Add narrow protocol construction/send counters and a qualification workload
+where missing, not a new observability service or synchronous logging.
+
+- Match population, seed, commands/events, world fixtures, verification and
+  ship/item distribution before/after. Also compare interest disabled/enabled.
+- Workloads: idle/negotiation churn; combat with non-GMCP tanks, multiple
+  observers and ally damage; unchanged/changing bridge observers; bulk items/
+  large inventories; WHO/scan bursts; throttled/nonreading consumers. Include
+  ordinary load and declared stress at 100 descriptors/3,000 carried items.
+- Warm up, then run at least three matched pairs per workload with enough
+  pulse samples for meaningful p99. Record sample counts/measurement overhead.
+  Compute p50/p95/p99 from bounded raw samples or the existing suitable
+  collector outside the loop; trace count/total/max summaries are insufficient.
+- Report serializer calls, bytes/payloads, dirty/coalesced work, refused
+  requests, sequence gaps/overflows, queue peaks, CPU/RSS and event-loop
+  p50/p95/p99/max/overruns. Attribute protocol construction/delivery separately
+  from the old gmcp_flush persistence/cache span.
+- Proposed initial budget: <=5% pulse-p99 regression at matched representative
+  load, pulse p99 <=250 ms, no additional attributable pulse overruns, and
+  added GMCP work p99 <=2 ms/max <=10 ms per flush at supported workload.
+  Idle/uninterested new-list construction, persistent backlog growth and new
+  blocking storage calls must be zero. These are proposed limits, not measured
+  results or owner agreement. Record the accepted budget in both trackers
+  before final qualification; adjust batching/implementation with evidence
+  instead of silently weakening the gate.
+- Retain compiler/build, machine, seeds, sizes, revisions and raw artifact
+  locations. Local results do not establish production overhead.
+
+## Further-candidate dispositions
+
+These decisions satisfy the requested assessment; all seven core areas above
+remain in scope. Record reasons and later changes in both issues at closeout.
+Do not advertise deferred features or remove their client fallback.
+
+- Affect category/polarity and permitted expiry/removal reason: defer category
+  tables/reason plumbing. Existing duration seconds permit local countdowns;
+  loss is not proof of expiry. A mixed/unknown taxonomy needs a real consumer
+  and policy audit. Selected self cooldown/activity state stays in step 5.
+- Richer score: defer. Current STATS already uses vitals/status; redundant
+  score queries are client work. A full score catalog needs another mutation
+  audit without a present panel requirement.
+- Learned skill list/changes: defer the full Char.Skills list (no active skills
+  tab); retain actual skill-up notices in step 5. Do not advertise the constant.
+- Spell preparation/activity: implement current activity/start/finish/cancel
+  in step 5; defer full prepared-spell catalogs.
+- Cached/delayed epic-zone report: defer. Existing cache/text generation and
+  delayed completion/alignment disclosure need a separate prepared structured
+  publication design. No new synchronous Redis work or immediate disclosures.
+- Local weather/visibility/map mode: defer richer weather; reuse Room.Map and
+  Room.Info. Add a scalar map-mode only if an active #26 ambiguity survives
+  those packets, using already-resolved state, without another map calculation.
+- Chat direction/recipient/event identity: defer broad schema changes; reuse
+  presentation/timestamps and single-source routing. If an active consumer
+  still needs "You -> Name" parsing, follow up with only permitted direction/
+  recipient at existing chat construction, with its own contract/proof.
+- Permitted chargen feedback: implement lifecycle here; defer roll/completion
+  payloads until fields/disclosure policy and a client scenario are explicit.
+  Unused builders do not authorize their precision. Account/chargen transitions
+  remain required in step 2.
+
+## Ablation review
+
+Kept the seven core contracts, recipient-policy repairs on touched paths,
+bounds, lifecycle correctness and real-path/performance proof: each serves an
+issue requirement. Simplified requests to output from authorized commands and
+reused bootstrap, socket FIFOs, room-local dirtiness, actual RNG values and
+existing cooldown/event owners.
+
+Dropped speculative deltas, a second command API, generic subscription/observer/
+event frameworks, durable replay, periodic catalogs, optional shutdown/calendar
+fields and catalogs without current consumers. Item paging stays because
+staff can really carry 3,000 items; independent pending state stays because
+saves clear persistence flags. No feature is justified by a constant alone.
+The post-merge review keeps those decisions and reuses upstream admission,
+publication, custody and recovery paths; it adds no parallel transaction owner,
+notification framework, chest stream or frag-cap feature.
+
+## Planning validation and my implementation estimate
+
+Original planning checks on `2b2b6fb2d` (2026-10-30):
+
+- python3 tests/async/test_gui_gmcp_contract.py — PASS; production serializers,
+  wire/send/bootstrap/bridge fixtures with substituted world services.
+- python3 tests/async/test_gmcp_prompt_regressions.py — PASS; native toggle
+  matrix/source contracts, not a live prompt/gameplay journey.
+- python3 tests/async/test_gmcp_input_receipts.py — PASS; native ASan/UBSan
+  dequeue/sequence/privacy checks.
+- Existing plan versus plan-issue-420.md — identical before replacement.
+
+The original planning commit changed no C/C++ and did not qualify a booted
+game, new contract, overhead comparison or real Mudlet. The later merge's build
+and focused baseline checks are recorded above. This post-merge review changes
+only this plan; it reuses those results because runtime/test sources are still
+identical to `ee6f9fbf3`. Review checks passed for current source anchors,
+relative links and named test paths, preserved scope/bounds and `git diff --check`.
+Those checks validate this document, not implementation. All new-contract
+gameplay/client/performance deliverables remain pending.
+
+My estimate as implementing agent is **24-38 active working hours**, including
+focused gameplay tests, fixture/scenario coordination, measurement and docs.
+The step estimates sum to that range; the first contract/lifecycle/time/combat
+slice is **7-11 hours**. That is roughly 3-5 focused eight-hour days, not a
+delivery promise or a human-team estimate.
+
+Assumptions: usable local/dev gameplay and Mudlet environments, no gameplay
+policy redesign. External review/contract feedback or unavailable environments
+add elapsed time. Unreproduced HP behavior, broader notices or missing mutation
+hooks could raise this to **40-50 active hours**; update this plan with that
+evidence if discovered. Client UI adoption/releases have a separate estimate
+under #26.

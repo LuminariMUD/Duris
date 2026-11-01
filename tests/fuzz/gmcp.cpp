@@ -1,5 +1,5 @@
 // GMCP input from a client that has not logged in: gmcp_handle_input(), which takes
-// Core.Hello and Client.Info. The rest of gmcp.c sends to a logged-in character; it is
+// Core.Hello, Client.Info and bounded new-stream control. The rest of gmcp.c sends to a logged-in character; it is
 // linked, and what it calls is stubbed here.
 // fuzz-sources: src/net/gmcp.c
 // fuzz-libs: -lcjson -lcrypto
@@ -12,8 +12,10 @@
 #include "ships/ships.h"
 #include "world/map.h"
 #include <cstdint>
+#include <cjson/cJSON.h>
 
 P_desc descriptor_list = nullptr;
+time_info_data time_info{};
 P_room world = nullptr;
 int top_of_world = -1;
 struct zone_data *zone_table = nullptr;
@@ -126,10 +128,29 @@ int websocket_send_json(struct descriptor_data *, const char *, const char *)
 	return 0;
 }
 
+uint64_t latency_trace_monotonic_us()
+{
+	return 1000000;
+}
+
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
 	descriptor_data d{};
 	d.descriptor = -1;
+	d.gmcp_enabled = 1;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES;
 	gmcp_handle_input(&d, reinterpret_cast<const char *>(data), size);
+	if (size && data[0] == '{')
+	{
+		const char *end = nullptr;
+		const char *raw = reinterpret_cast<const char *>(data);
+		cJSON *message = cJSON_ParseWithLengthOpts(raw, size, &end, 0);
+		if (message)
+		{
+			gmcp_handle_control_json(&d, message, raw, size, end);
+			cJSON_Delete(message);
+		}
+	}
+
 	return 0;
 }

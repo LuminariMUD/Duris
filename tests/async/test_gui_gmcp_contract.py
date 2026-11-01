@@ -32,7 +32,7 @@ functions = [
     ('gmcp.c', 'void gmcp_room_info('),
     ('gmcp.c', 'void gmcp_comm_channel_ex('),
     ('gmcp.c', 'void gmcp_char_vitals('),
-    ('gmcp.c', 'void gmcp_send('),
+    ('gmcp.c', 'void gmcp_input_receipt('),
     ('gmcp.c', 'void gmcp_handle_negotiation('),
     ('gmcp.c', 'void gmcp_flush_initial_states('),
     ('gmcp.c', 'void gmcp_send_initial_state('),
@@ -50,6 +50,7 @@ functions = [
     ('gmcp.c', 'void gmcp_quest_status(struct char_data *ch)'),
     ('gmcp.c', 'void gmcp_quest_status(struct char_data *ch, world_quest_target_status status)'),
     ('gmcp.c', 'void gmcp_quest_map(struct char_data *ch, world_quest_target_status status)'),
+    ('weather.c', 'void event_another_hour('),
     ('world_quest.c', 'void show_map_at('),
     ('utility.c', 'int IS_MORPH('),
     ('ws_handlers.c', 'void ws_send_full_game_state('),
@@ -73,13 +74,18 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     damage = extract_function('fight.c', 'int raw_damage(')
     start = damage.index('/* Send GMCP updates for combat */')
     notice = damage[start:damage.index('\n\t\t}', start)]
-    (tmp / 'production.inc').write_text('\n\n'.join(extract_function(*f) for f in functions)
+    gmcp = source('gmcp.c').read_text()
+    control = gmcp[gmcp.index('// New-stream control and time.'):gmcp.index('// End new-stream control and time.')]
+    auth_source = gmcp[gmcp.index('static int gmcp_durisweb_auth_limited('):gmcp.index('void gmcp_input_receipt(')]
+    parser_source = gmcp[gmcp.index('void gmcp_handle_input('):gmcp.index('/* core gmcp send')]
+    sender_source = gmcp[gmcp.index('/* core gmcp send'):gmcp.index('/* Bootstrap state')]
+    (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
         + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n')
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
         '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
         str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')), str(HARNESS_STUBS),
-        '-Wl,--gc-sections', '-lcjson', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
+        '-Wl,--gc-sections', '-lcjson', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
     result = subprocess.run([str(binary)], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30)
     if result.returncode:
         print(result.stderr)
