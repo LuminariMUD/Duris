@@ -8908,7 +8908,7 @@ void do_news(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	if (!IS_SET(recipient->specials.act, PLR_PAGING_ON))
 	{
-		send_to_char("&+WNews file is to long, please tog page on, to read it\n", ch);
+		send_to_char("&+WNews file is too long; use 'toggle paging on' to read it.\n", ch);
 		return;
 	}
 	const auto &news = current_news();
@@ -10266,7 +10266,7 @@ void do_zlist(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	if (!IS_SET(ch->specials.act, PLR_PAGING_ON))
 	{
-		send_to_char("&+WNews file is to long, please tog page on, to read it\n", ch);
+		send_to_char("&+WZone list is too long; use 'toggle paging on' to read it.\n", ch);
 		return;
 	}
 
