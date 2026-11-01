@@ -37,6 +37,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -1211,6 +1212,7 @@ void lance_charge(P_char ch, char *argument)
 		act("$n is knocked to the ground!", FALSE, victim, 0, 0, TO_ROOM);
 		send_to_char("You are knocked to the ground!\n", victim);
 		SET_POS(victim, POS_SITTING + GET_STAT(victim));
+		gmcp_char_vitals(victim);
 		CharWait(victim, (int)(PULSE_VIOLENCE *
 				       get_property("skill.lance.charge.KnockdownLag", 2.000)));
 	}
@@ -3950,6 +3952,7 @@ void kick(P_char ch, P_char victim)
 		act("$n's nimble kick connects with $N's groin...\r$N crashes to the ground!",
 		    FALSE, ch, 0, victim, TO_NOTVICT);
 		SET_POS(victim, POS_SITTING + GET_STAT(victim));
+		gmcp_char_vitals(victim);
 
 		if (!number(0, 24))
 		{
@@ -4924,6 +4927,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 			act("$n is knocked to the ground!", FALSE, victim, 0, 0, TO_ROOM);
 			send_to_char("You are knocked to the ground!\n", victim);
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
+			gmcp_char_vitals(victim);
 			CharWait(victim, vict_lag * PULSE_VIOLENCE);
 		}
 	}
@@ -6962,6 +6966,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		act("$N avoids being bashed by $n, who loses $s balance and falls.", FALSE, ch, 0,
 		    victim, TO_NOTVICT);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
+		gmcp_char_vitals(ch);
 		CharWait(ch, (int)(PULSE_VIOLENCE * 2.000));
 		return;
 	}
@@ -7007,6 +7012,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		act("You attempt to bash $N, but $E is simply too huge for you to move!", FALSE, ch,
 		    0, victim, TO_CHAR);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
+		gmcp_char_vitals(ch);
 		CharWait(ch, (int)(PULSE_VIOLENCE * 0.500));
 		return;
 	}
@@ -7020,6 +7026,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 		act("You topple over yourself as you try to bash $N - $E's just too small!\n",
 		    FALSE, ch, 0, victim, TO_CHAR);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
+		gmcp_char_vitals(ch);
 		CharWait(ch, (int)(PULSE_VIOLENCE * 0.500));
 		return;
 	}
@@ -7185,6 +7192,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 	else if (percent_chance == TAKEDOWN_PENALTY)
 	{
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
+		gmcp_char_vitals(ch);
 		CharWait(ch, PULSE_VIOLENCE * 2);
 		return;
 	}
@@ -7260,6 +7268,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 			SET_POS(ch, POS_KNEELING + GET_STAT(ch));
 			CharWait(ch, PULSE_VIOLENCE * 2);
 		}
+		gmcp_char_vitals(ch);
 	}
 	else
 	{
@@ -7321,8 +7330,10 @@ void bash(P_char ch, P_char victim, bool _debug)
 				    FALSE, ch, 0, victim, TO_NOTVICT);
 				set_short_affected_by(ch, SKILL_BASH, (int)(1.5 * PULSE_VIOLENCE));
 			}
+
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
 			update_pos(victim);
+			gmcp_char_vitals(victim);
 		}
 
 		if (!IS_ALIVE(ch))
@@ -7639,6 +7650,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		}
 
 		SET_POS(vict, POS_SITTING + GET_STAT(vict));
+		gmcp_char_vitals(vict);
 		CharWait(ch, PULSE_VIOLENCE * 2);
 		CharWait(vict, PULSE_VIOLENCE * 2);
 
@@ -9138,6 +9150,7 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 			CharWait(victim, (int)(PULSE_VIOLENCE *
 					       get_property("kick.roomkick.victimlag", 1.000)));
 			SET_POS(victim, POS_PRONE + GET_STAT(victim));
+			gmcp_char_vitals(victim);
 		}
 		else if (movement.status == forced_move_status::blocked)
 		{
@@ -9145,6 +9158,7 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
 			CharWait(victim, (int)(PULSE_VIOLENCE *
 					       get_property("kick.wallkick.victimlag", 1.5)));
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
+			gmcp_char_vitals(victim);
 			stop_fighting(victim);
 		}
 	}
@@ -9545,6 +9559,7 @@ void do_trample(P_char ch, char *argument, int /*cmd*/)
 			act("$n is knocked to the ground!", FALSE, victim, 0, 0, TO_ROOM);
 			send_to_char("You are knocked to the ground!\n", victim);
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
+			gmcp_char_vitals(victim);
 			CharWait(victim, vict_lag * PULSE_VIOLENCE);
 		}
 	}
