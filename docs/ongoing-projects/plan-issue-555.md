@@ -14,7 +14,8 @@ flat-file refill and gameplay qualification remain. Updated 2026-11-01.
 
 Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
 `branch/issue-555-reboot-shop-stock` against `master`.
-SQL refill continuation: `branch/issue-555-refill-shop-stock`, based on that branch,
+SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
+`branch/issue-555-refill-shop-stock`, based on that branch,
 in the same local worktree. Keep #558 unmerged for review until the stack is ready.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
