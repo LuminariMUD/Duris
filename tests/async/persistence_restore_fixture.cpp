@@ -7,6 +7,10 @@
 #include "flatfile/flatfile_authority_transaction.h"
 #include "flatfile/flatfile_store.h"
 #include "item/locker_receipt.h"
+#include "combat/combat_outcome_command.h"
+#include "combat/combat_outcome_intent.h"
+#include "combat/frag_cap_repository.h"
+#include <chrono>
 
 // Native fixture output must not expose repository log details.
 
@@ -21,6 +25,89 @@ int main(int argc, char **argv)
 	const std::string mode = argv[1];
 	const fs::path root = argv[2];
 	std::string error;
+	if (mode == "seed-combat" || mode == "recover-combat")
+	{
+		const auto journal = root.parent_path() / "journals/critical";
+		fs::create_directories(journal);
+		for (const auto &path : { journal.parent_path(), journal })
+			fs::permissions(path, fs::perms::owner_all, fs::perm_options::replace);
+		std::vector<critical_command> retained;
+		require(combat_outcome_intent_init(journal.c_str(), &retained),
+			"combat intent initialization failed");
+		if (mode == "seed-combat")
+		{
+			require(retained.empty(), "seed requires no existing intents");
+			const int64_t admitted =
+				std::chrono::duration_cast<std::chrono::microseconds>(
+					std::chrono::system_clock::now().time_since_epoch())
+					.count() -
+				1000000;
+			frag_cap_state cap;
+			require(frag_cap_flatfile_adopt(root.string(), 25, admitted, &cap) ==
+					frag_cap_store_result::ok,
+				"combat cap seed failed");
+			combat_outcome_payload payload = {};
+			payload.victim_pid = 42;
+			payload.participant_count = 1;
+			payload.participants[0].pid = 42;
+			payload.participants[0].role = combat_participant_role::victim;
+			strcpy(payload.participants[0].account_name.data(), "Account-One");
+			for (uint8_t id : { 0xc1, 0xc2 })
+			{
+				critical_operation_id operation = {};
+				operation.bytes[0] = id;
+				critical_command command;
+				require(combat_outcome_command_build(&command, operation, payload),
+					"combat command build failed");
+				command.accepted_at_usec = admitted + id;
+				require(combat_outcome_intent_write(command),
+					"combat write failed");
+				if (id == 0xc2)
+				{
+					require(flatfile_player_domain_apply(root.string(), command)
+								.outcome ==
+							critical_apply_outcome::applied,
+						"completed combat commit failed");
+					require(combat_outcome_intent_complete(operation),
+						"combat completion failed");
+				}
+			}
+		}
+		else
+		{
+			require(retained.size() <= 1, "unexpected replay count");
+			for (const auto &command : retained)
+			{
+				require(command.operation_id.bytes[0] == 0xc1,
+					"completed evidence must not replay");
+				const auto applied =
+					flatfile_player_domain_apply(root.string(), command);
+				require(applied.outcome == critical_apply_outcome::applied ||
+						applied.outcome ==
+							critical_apply_outcome::already_applied,
+					"restored intent replay failed");
+				std::cout << (applied.outcome == critical_apply_outcome::applied ?
+						      "applied\n" :
+						      "already_applied\n");
+				require(flatfile_player_domain_apply(root.string(), command)
+							.outcome ==
+						critical_apply_outcome::already_applied,
+					"repeated combat replay was not idempotent");
+				require(combat_outcome_intent_complete(command.operation_id),
+					"restored intent completion failed");
+			}
+			critical_command recorded;
+			require(combat_outcome_intent_read(
+					(journal / "combat-intents").string(),
+					"c2000000000000000000000000000000.recorded", &recorded) &&
+					flatfile_player_domain_apply(root.string(), recorded)
+							.outcome ==
+						critical_apply_outcome::already_applied,
+				"completed evidence lost its authority commit");
+		}
+		combat_outcome_intent_shutdown();
+		return 0;
+	}
 	if (mode == "seed-receipt")
 	{
 		currency_command_payload payload = {};

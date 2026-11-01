@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODES = {"flatfile-primary", "mariadb-primary"}
 GENERATION = re.compile(r"[0-9]{20}-[0-9a-f]{32}")
 LOCKS = {".identity.lock", ".critical-authority.lock", ".accounts.lock", ".artifact-mana.lock"}
-# The critical-command journal directory now holds only locker identification receipts.
+# Locker receipts and durable combat outcomes share the critical journal root.
 JOURNAL_ROOTS = {"critical"}
 # The journal an older server kept in that directory. Nothing reads it any more; a backup
 # carries it as it is, so an upgraded server still backs up and an older generation restores.
@@ -44,6 +44,9 @@ RETIRED_JOURNAL_FILES = {"critical-command.journal", "critical-command.journal.t
 RECEIPT_WRITE = re.compile(r"\.[1-9][0-9]{0,9}\.receipt\.tmp\.[0-9]+\.[0-9]+")
 RECEIPT = re.compile(r"locker-identification/([1-9][0-9]{0,9})\.receipt")
 RECEIPT_MAX_BYTES = 16 + 1024 + 64 * 1024 + 32  # The native codec's bound.
+COMBAT_INTENT = re.compile(r"combat-intents/([0-9a-f]{32})\.(intent|recorded)")
+COMBAT_WRITE = re.compile(r"\.[0-9a-f]{32}\.intent\.tmp\.[0-9]+\.[0-9]+")
+COMBAT_MAX_BYTES = 8 * 1024 * 1024 + 128 * 1024 + 32  # Native command bound + SHA-256.
 LOCK_WAIT_SECONDS = 120
 CAPACITY_CHECK_INTERVAL = 32 * 1024 * 1024
 STDERR_TAIL_LINES = 20
@@ -282,15 +285,19 @@ def sync_tree(root):
         sync_dir(base)
 
 
-def journal_capture(stage, p, capacity_base=None):
+def journal_capture(stage, p, capacity_base=None, *, combat=False):
+    """Combat evidence precedes the authority snapshot; locker receipts follow it."""
     target = stage / "journals"
-    target.mkdir(mode=0o700)
+    target.mkdir(mode=0o700, exist_ok=True)
     used = (total_size(p["root"]) if capacity_base is None else capacity_base) + total_size(stage)
 
     def copy(source, destination):
         # Each file is held to the budget and the reserve before a byte of it is written.
         nonlocal used
-        size = os.lstat(source).st_size
+        source = secure_path(Path(source), False)
+        size = source.stat().st_size
+        if combat and source.name != ".service-lock":
+            require(32 < size <= COMBAT_MAX_BYTES, "journal_combat_size")
         used += size
         require(used < p["max_bytes"], "capacity_headroom_required")
         require(shutil.disk_usage(stage).free >= size + p["min_free_bytes"], "low_free_capacity")
@@ -300,17 +307,47 @@ def journal_capture(stage, p, capacity_base=None):
         secure_path(source, True)
         require(source.is_dir(), "journal_source_missing")
         require(name in JOURNAL_ROOTS, "invalid_journal_roots")
+        destination = target / name
+        destination.mkdir(mode=0o700, exist_ok=True)
+        if combat:
+            source = source / "combat-intents"
+            if not source.exists() and not source.is_symlink():
+                continue  # Also support generations made before combat intents existed.
+            secure_path(source, True)
+            destination = destination / "combat-intents"
+
+        def ignore(directory, names):
+            relative = Path(directory).relative_to(source)
+            require(relative in ({Path(".")} if combat else
+                                 {Path("."), Path("locker-identification")}),
+                    "journal_filename")
+            temporary = {x for x in names if
+                         (combat and COMBAT_WRITE.fullmatch(x)) or
+                         (not combat and relative == Path("locker-identification") and
+                          RECEIPT_WRITE.fullmatch(x))}
+            for entry in temporary:
+                secure_path(Path(directory) / entry, False)
+            return temporary | ({"combat-intents"} if not combat and relative == Path(".") else set())
+
         # A rename replaces a receipt whole, so the copy holds one whole version of each. It
         # is checked on its own: the directory may have moved on since.
-        shutil.copytree(source, target / name, symlinks=True, copy_function=copy,
-                        ignore=lambda _, names: {x for x in names if RECEIPT_WRITE.fullmatch(x)})
+        shutil.copytree(source, destination, symlinks=True, copy_function=copy,
+                        dirs_exist_ok=not combat, ignore=ignore)
         for relative, metadata in inventory(target / name).items():
             receipt = RECEIPT.fullmatch(relative)
-            service_lock = relative == "locker-identification/.service-lock"
+            intent = COMBAT_INTENT.fullmatch(relative)
+            service_lock = relative in {"locker-identification/.service-lock",
+                                        "combat-intents/.service-lock"}
             if receipt:
                 require(int(receipt[1]) <= 2147483647, "journal_receipt_pid")
                 # The restore qualifier validates the checksum, payment and filename identity.
                 require(0 < metadata["bytes"] <= RECEIPT_MAX_BYTES, "journal_receipt_size")
+            elif intent:
+                require(int(intent[1], 16) != 0, "journal_combat_operation")
+                require(32 < metadata["bytes"] <= COMBAT_MAX_BYTES, "journal_combat_size")
+                data = (target / name / relative).read_bytes()
+                require(hashlib.sha256(data[:-32]).digest() == data[-32:],
+                        "journal_combat_checksum")
             else:
                 require(service_lock or relative in RETIRED_JOURNAL_FILES, "journal_filename")
             if service_lock:
@@ -730,6 +767,10 @@ def backup(p, mode):
                     shutil.copyfile(previous, stage / "runtime-schema.json")
                     verify_database_schema(stage / "runtime-schema.json")
             waiting = {name: waiting_receipts(source) for name, source in p["journal_roots"].items()}
+            # A completed marker suppresses replay. Freeze it before the authority so its
+            # commit cannot be newer than the snapshot; an active intent remains replayable
+            # whether its idempotent command commits before or after the snapshot.
+            journal_capture(stage, p, capacity_base, combat=True)
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
             # The receipts come after the authority, so a paid, failed or delivered one is at
