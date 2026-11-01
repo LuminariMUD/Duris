@@ -143,6 +143,8 @@ HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job
 	return player_save_submit_result::unavailable;
 }
 HARNESS_STUB void gmcp_char_vitals(P_char) {}
+HARNESS_STUB void gmcp_session_update(P_desc) {}
+HARNESS_STUB void gmcp_session_restored(P_desc) {}
 HARNESS_STUB bool gmcp_handle_control_json(P_desc, const struct cJSON *, const char *, size_t,
 					   const char *)
 {

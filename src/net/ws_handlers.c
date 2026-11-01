@@ -3921,6 +3921,8 @@ void ws_handle_command(struct descriptor_data *d, const char *cmd, cJSON *data)
 		if (!strcmp(cmd, entry.name))
 		{
 			entry.handler(d, data);
+			if (entry.handler != ws_cmd_game && is_desc_valid(d))
+				gmcp_session_update(d);
 			return;
 		}
 	}

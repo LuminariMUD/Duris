@@ -4021,6 +4021,7 @@ void extract_char(P_char ch)
 			flush_input_queue(ch->desc);
 #ifndef USE_ACCOUNT
 			ch->desc->connected = CON_MAIN_MENU;
+			gmcp_session_update(ch->desc);
 			SEND_TO_Q(MENU, ch->desc);
 			//  SEND_TO_Q("\r\n*** PRESS RETURN: ", ch->desc);
 			//  ch->desc->connected = CON_RMOTD;
@@ -4041,6 +4042,7 @@ void extract_char(P_char ch)
 			if (ch->desc->account)
 			{
 				ch->desc->connected = CON_DISPLAY_ACCT_MENU;
+				gmcp_session_update(ch->desc);
 
 				/* For WebSocket clients, send return_to_menu signal instead of telnet menu */
 				if (ch->desc->websocket)

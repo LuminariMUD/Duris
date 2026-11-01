@@ -14,6 +14,7 @@ import tempfile
 import time
 import zlib
 import test_flatfile_combat_journey as journey
+from test_gmcp_control_journey import negotiate, wait_telnet, telnet_packets
 
 
 class Client(journey.MudClient):
@@ -28,8 +29,11 @@ class Client(journey.MudClient):
         self.waiting_marker = True
         self.socket.sendall(bytes([255, 253, 86]))
         self.send('look')
-        self.expect('The Regression Arena')
+        deadline = time.monotonic() + 15
+        while self.inflater is None and time.monotonic() < deadline:
+            self._receive()
         assert self.inflater is not None, 'MCCP was not negotiated'
+        self.expect('The Regression Arena')
 
     def _receive(self):
         try: data = self.socket.recv(65536)
@@ -125,6 +129,9 @@ def run(binary, compressed, nonroot=False):
             journey.MudClient = Client
             try: client = journey.reconnect_character(port)
             finally: journey.MudClient = original
+            negotiate(client)
+            lifecycle = wait_telnet(client, 'Duris.Session', predicate=lambda state: state['state'] == 'playing')
+            assert lifecycle['character']['name'] == journey.CHARACTER and not lifecycle['resumed']
             if compressed: client.enable_compression()
             process.send_signal(signal.SIGUSR1)
             client.expect('Copyover FAILED', timeout=60)
@@ -154,7 +161,14 @@ def run(binary, compressed, nonroot=False):
                 client.send('look'); client.expect('The Regression Arena')
                 idle.sendall(b'\n')
                 assert idle.recv(65536), 'copyover closed a non-preservable connection'
+            packet_cursor = len(telnet_packets(client))
             process.send_signal(signal.SIGUSR1); client.expect('Copyover complete!', timeout=90)
+            resumed = wait_telnet(client, 'Duris.Session', packet_cursor, lambda state: state['state'] == 'playing' and state['resumed'])
+            assert resumed['context'] == lifecycle['context'] and resumed['generation'] == lifecycle['generation']
+            assert resumed['process'] != lifecycle['process']
+            clock = wait_telnet(client, 'Duris.Time', packet_cursor)
+            assert clock['process'] == resumed['process']
+            print('copyover retained the entry key and changed only the process revision baseline', flush=True)
             client.send('look'); client.expect('The Regression Arena')
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
             assert not path.exists() and not claimed.exists() and process.poll() is None

@@ -18,7 +18,7 @@
 const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
-#define COPYOVER_VERSION 17 // full NPC item trees and equipment UIDs; reads versions 12-16 too
+#define COPYOVER_VERSION 18 // connection protocol continuity; reads versions 12-17 too
 
 // copyover file header
 struct copyover_header
@@ -65,6 +65,15 @@ struct copyover_desc
 	int pet_vnums[10]; // up to 10 pets
 	int pet_hit[10]; // current hp
 	int pet_max_hit[10]; // max hp
+
+	// Version 18 appends connection-only protocol state to the existing record.
+	uint32_t gmcp_supports;
+	uint32_t gmcp_interests;
+	uint64_t gmcp_session_generation;
+	uint64_t gmcp_session_body_revision;
+	uint64_t gmcp_input_sequence;
+	unsigned char gmcp_command_receipts;
+	char gmcp_session_context[33];
 };
 
 // mob state for copyover

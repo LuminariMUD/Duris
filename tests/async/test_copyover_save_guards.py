@@ -148,6 +148,13 @@ int main()
     descriptor_data descriptor = {};
     descriptor.descriptor = 10;
     descriptor.character = &owner;
+    descriptor.gmcp_supports = 7;
+    descriptor.gmcp_interests = 2;
+    descriptor.gmcp_session_generation = 9007199254740993ULL;
+    descriptor.gmcp_session_body_revision = 3;
+    descriptor.gmcp_input_sequence = 12345678901234567890ULL;
+    descriptor.gmcp_command_receipts = true;
+    strcpy(descriptor.gmcp_session_context,"0123456789abcdef0123456789abcdef");
     FILE *file = tmpfile();
     assert(file);
     assert(write_desc_entry(file, &descriptor));
@@ -156,6 +163,11 @@ int main()
     assert(fread(&saved, sizeof(saved), 1, file) == 1);
     fclose(file);
     assert(saved.num_pets == 1);
+    assert(saved.gmcp_supports == 7 && saved.gmcp_interests == 2);
+    assert(saved.gmcp_session_generation == 9007199254740993ULL && saved.gmcp_session_body_revision == 3);
+    assert(saved.gmcp_input_sequence == 12345678901234567890ULL && saved.gmcp_command_receipts == 1);
+    assert(!strcmp(saved.gmcp_session_context, descriptor.gmcp_session_context));
+
     assert(saved.pet_vnums[0] == 1201);
 }
 '''

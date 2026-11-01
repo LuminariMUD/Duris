@@ -128,13 +128,25 @@ const char *input_command_label(const char *)
 {
 	return "unknown";
 }
+static int json_allocation_budget = -1;
+static void *bounded_json_allocate(size_t size)
+{
+	if (json_allocation_budget == 0)
+		return nullptr;
+	if (json_allocation_budget > 0)
+		--json_allocation_budget;
+	return std::malloc(size);
+}
 static bool queue_reject;
 static std::map<P_desc, std::vector<std::string>> packages;
+static std::map<P_desc, std::vector<std::pair<std::string, std::string>>> deliveries;
 
 static int contact_count = 1;
 static int contact_scans;
+static unsigned descriptor_validations;
 int is_desc_valid(P_desc d)
 {
+	++descriptor_validations;
 	return d != nullptr;
 }
 int write_to_descriptor_binary(P_desc d, const unsigned char *bytes, size_t size)
@@ -142,10 +154,13 @@ int write_to_descriptor_binary(P_desc d, const unsigned char *bytes, size_t size
 	if (queue_reject)
 		return -1;
 	wire[d].emplace_back(reinterpret_cast<const char *>(bytes), size);
-	if (size >= 3 && bytes[2] == TELOPT_GMCP)
+	if (size >= 5 && bytes[0] == TELNET_IAC && bytes[1] == TELNET_SB && bytes[2] == TELOPT_GMCP)
 	{
 		const std::string frame(reinterpret_cast<const char *>(bytes + 3), size - 3);
-		packages[d].push_back(frame.substr(0, frame.find(' ')));
+		const size_t split = frame.find(' ');
+		packages[d].push_back(frame.substr(0, split));
+		deliveries[d].emplace_back(frame.substr(0, split),
+					   frame.substr(split + 1, frame.size() - split - 3));
 	}
 	return 0;
 }
@@ -155,6 +170,7 @@ int websocket_send_json(P_desc d, const char *package, const char *json)
 		return -1;
 	++websockets;
 	packages[d].push_back(package);
+	deliveries[d].emplace_back(package, json);
 	ws_wire[d][package] = json;
 	return 0;
 }
@@ -359,6 +375,8 @@ static void control_time_contract(P_char actor)
 			assert(std::string(cJSON_GetStringValue(
 				       cJSON_GetObjectItem(root, "phase"))) == phase);
 			assert(cJSON_IsString(cJSON_GetObjectItem(root, "revision")));
+			assert(std::strlen(cJSON_GetStringValue(
+				       cJSON_GetObjectItem(root, "process"))) == 32);
 			cJSON_Delete(root);
 		};
 		// Transport negotiation and supported decoding are not a panel subscription.
@@ -513,7 +531,17 @@ static void control_time_contract(P_char actor)
 			emit(&d, "Duris.Capabilities", "control");
 			emit(&d, "Duris.Time", "time");
 		}
-		send("Core.Supports.Set []");
+		d.gmcp_request_refill_ms[0] = 0;
+		send("Core.Supports.Set []", false);
+		send("Core.Supports.Set []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = true;
+		gmcp_flush_initial_states();
+		assert(d.gmcp_control_pending);
+		control_clock_us += 1000000;
+		send("Core.Supports.Remove []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = false;
 		gmcp_flush_initial_states();
 		assert(!d.gmcp_supports && !d.gmcp_interests);
 		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=
@@ -525,6 +553,221 @@ static void control_time_contract(P_char actor)
 		assert(!fresh.gmcp_supports && !fresh.gmcp_interests && !fresh.gmcp_time_revision);
 	}
 	actor->desc = saved_descriptor;
+	descriptor_list = saved_list;
+}
+
+static void session_contract(P_char actor, bool websocket)
+{
+	const auto saved_list = descriptor_list;
+	const auto saved_desc = actor->desc;
+	const auto saved_id = actor->runtime_id;
+	actor->runtime_id = 100;
+	descriptor_data d{};
+	d.websocket = websocket;
+	d.connected = CON_ACCT_SELECT_CHAR;
+	d.gmcp_enabled = 1;
+	descriptor_list = &d;
+	wire.erase(&d);
+	packages.erase(&d);
+	ws_wire.erase(&d);
+	deliveries.erase(&d);
+	const auto send = [&](const std::string &request)
+	{
+		control_clock_us += 1000000;
+		gmcp_handle_input(&d, request.data(), request.size());
+	};
+	const auto session = [&]() { return cJSON_Parse(payload(&d, "Duris.Session").c_str()); };
+	const auto check = [&](const char *state, const char *generation, const char *name,
+			       const char *body = "1")
+	{
+		cJSON *root = session();
+		assert(root);
+		assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(root, "state"))) ==
+		       state);
+		assert(std::string(cJSON_GetStringValue(cJSON_GetObjectItem(root, "generation"))) ==
+		       generation);
+		assert(std::strlen(cJSON_GetStringValue(cJSON_GetObjectItem(root, "context"))) ==
+		       32);
+		assert(std::strlen(cJSON_GetStringValue(cJSON_GetObjectItem(root, "process"))) ==
+		       32);
+		const cJSON *character = cJSON_GetObjectItem(root, "character");
+		if (name)
+		{
+			assert(std::string(cJSON_GetStringValue(
+				       cJSON_GetObjectItem(character, "name"))) == name);
+			assert(std::string(cJSON_GetStringValue(
+				       cJSON_GetObjectItem(character, "bodyRevision"))) == body);
+		}
+		else
+			assert(cJSON_IsNull(character));
+		cJSON_Delete(root);
+	};
+	send("Core.Supports.Set [\"Duris.Capabilities 1\",\"Duris.Time 1\",\"Duris.Session 1\"]");
+	send("Duris.Subscribe [\"Duris.Time 1\"]");
+	gmcp_flush_initial_states();
+	check("account", "0", nullptr);
+	const std::string context = d.gmcp_session_context;
+	if (!websocket)
+		emit(&d, "Duris.Session", "session-account");
+	d.connected = CON_ACCT_NEW_CHAR;
+	gmcp_session_update(&d);
+	check("chargen", "0", nullptr);
+	d.connected = CON_ACCT_SELECT_CHAR;
+	gmcp_session_update(&d);
+	check("account", "0", nullptr);
+	d.character = actor;
+	actor->desc = &d;
+	d.connected = CON_PLAYING;
+	const auto begin = packages[&d].size();
+	gmcp_send_initial_state(actor);
+	assert(packages[&d][begin] == "Duris.Capabilities");
+	assert(packages[&d][begin + 1] == "Duris.Session");
+	check("playing", "1", "Tester");
+	if (!websocket)
+		emit(&d, "Duris.Session", "session-enter");
+	gmcp_send_initial_state(actor);
+	gmcp_handle_negotiation(&d, TELNET_DO);
+	send("Core.Supports.Add [\"Duris.Session 1\"]");
+	gmcp_flush_initial_states();
+	assert(d.gmcp_session_generation == 1 && context == d.gmcp_session_context);
+	check("playing", "1", "Tester");
+	cJSON_Hooks hooks{};
+	hooks.malloc_fn = bounded_json_allocate;
+	hooks.free_fn = std::free;
+	cJSON_InitHooks(&hooks);
+	for (int budget = 0; budget < 40; ++budget)
+	{
+		const auto before = packages[&d].size();
+		d.gmcp_session_pending = true;
+		json_allocation_budget = budget;
+		gmcp_session_update(&d);
+		const bool waiting = d.gmcp_session_pending;
+		assert(packages[&d].size() == before + (waiting ? 0 : 1));
+		json_allocation_budget = -1;
+		gmcp_session_update(&d);
+		assert(!d.gmcp_session_pending && packages[&d].size() == before + 1);
+		check("playing", "1", "Tester");
+	}
+	cJSON_InitHooks(nullptr);
+	const auto validations = descriptor_validations;
+	gmcp_char_vitals(actor);
+	assert(descriptor_validations ==
+	       validations + 1); // no extra population scan on a stable gameplay packet
+	actor->specials.act3 |= PLR3_NOGMCP;
+	gmcp_preferences_changed(&d);
+	gmcp_flush_initial_states();
+	check("playing", "1", "Tester"); // control remains available while gameplay is disabled
+	actor->specials.act3 &= ~PLR3_NOGMCP;
+	gmcp_preferences_changed(&d);
+	gmcp_flush_initial_states();
+	char_data body{};
+	npc_only_data body_npc{};
+	body.only.npc = &body_npc;
+	body.specials.act = ACT_ISNPC;
+	body.runtime_id = 200;
+	body.desc = &d;
+	body.player.name = const_cast<char *>("borrowed body");
+	body.points.hit = 37;
+	body.points.max_hit = 80;
+	d.original = actor;
+	d.character = &body;
+	actor->desc = nullptr;
+	const auto switched = packages[&d].size();
+	gmcp_char_vitals(&body);
+	assert(packages[&d][switched] == "Duris.Session");
+	assert(packages[&d].back() == "Char.Vitals");
+	check("playing", "1", "Tester", "2");
+	assert(d.gmcp_session_generation == 1);
+	d.character = actor;
+	d.original = nullptr;
+	actor->desc = &d;
+	body.desc = nullptr;
+	gmcp_char_vitals(actor);
+	check("playing", "1", "Tester", "3");
+	// Even a direct replacement must clear the preceding character before any new data.
+	char_data other{};
+	pc_only_data other_pc{};
+	other.only.pc = &other_pc;
+	other.player.name = const_cast<char *>("Second");
+	other.runtime_id = 300;
+	other.in_room = 1;
+	other.desc = &d;
+	d.character = &other;
+	actor->desc = nullptr;
+	queue_reject = true;
+	const auto rejected = packages[&d].size();
+	gmcp_char_vitals(&other);
+	assert(packages[&d].size() == rejected && d.gmcp_session_pending &&
+	       d.gmcp_initial_state_pending);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_session_generation == 2 && !d.gmcp_session_pending);
+	std::vector<std::string> transitions;
+	for (size_t index = rejected; index < deliveries[&d].size(); ++index)
+		if (deliveries[&d][index].first == "Duris.Session")
+			transitions.push_back(deliveries[&d][index].second);
+	assert(transitions.size() == 2 &&
+	       transitions[0].find("\"character\":null") != std::string::npos);
+	check("playing", "2", "Second");
+	// Terminal invalidation is constructed while the body is still valid, then holds no pointer.
+	d.connected = CON_DISPLAY_ACCT_MENU;
+	gmcp_session_update(&d);
+	check("account", "2", nullptr);
+	if (!websocket)
+		emit(&d, "Duris.Session", "session-clear");
+	d.character = nullptr;
+	other.desc = nullptr;
+	gmcp_handle_negotiation(&d, TELNET_DONT);
+	d.character = actor;
+	actor->desc = &d;
+	d.connected = CON_PLAYING;
+	gmcp_send_initial_state(actor);
+	assert(!d.gmcp_control_pending && !d.gmcp_initial_state_pending);
+	gmcp_handle_negotiation(&d, TELNET_DO);
+	gmcp_flush_initial_states();
+	check("playing", "3", "Tester");
+	assert(context == d.gmcp_session_context);
+	if (!websocket)
+	{
+		// A recovered descriptor adopts the same entry but a new process marker.
+		const auto generation = d.gmcp_session_generation;
+		const auto body_revision = d.gmcp_session_body_revision;
+		const std::string old_process = gmcp_session_process;
+		descriptor_data restored{};
+		restored.gmcp_enabled = 1;
+		restored.gmcp_supports = d.gmcp_supports;
+		restored.gmcp_interests = d.gmcp_interests;
+		restored.gmcp_session_generation = generation;
+		restored.gmcp_session_body_revision = body_revision;
+		std::strcpy(restored.gmcp_session_context, d.gmcp_session_context);
+		restored.connected = CON_PLAYING;
+		restored.character = actor;
+		actor->desc = &restored;
+		descriptor_list = &restored;
+		gmcp_session_process[0] = 0;
+		gmcp_clock_revision = 0;
+		gmcp_clock_hour = -1;
+		gmcp_clock_json[0] = 0;
+		gmcp_session_restored(&restored);
+		gmcp_flush_initial_states();
+		assert(restored.gmcp_session_generation == generation &&
+		       restored.gmcp_session_resumed);
+		assert(context == restored.gmcp_session_context);
+		assert(old_process != gmcp_session_process);
+		assert(payload(&restored, "Duris.Time").find(gmcp_session_process) !=
+		       std::string::npos);
+		assert(payload(&restored, "Duris.Session").find("\"resumed\":true") !=
+		       std::string::npos);
+		assert(payload(&restored, "Duris.Session").find("\"generation\":\"3\"") !=
+		       std::string::npos);
+		restored.gmcp_session_generation = 9007199254740993ULL;
+		restored.gmcp_session_pending = true;
+		gmcp_session_update(&restored);
+		assert(payload(&restored, "Duris.Session")
+			       .find("\"generation\":\"9007199254740993\"") != std::string::npos);
+	}
+	actor->desc = saved_desc;
+	actor->runtime_id = saved_id;
 	descriptor_list = saved_list;
 }
 
@@ -1019,4 +1262,6 @@ int main()
 	gmcp_send_room_map(&a, "hidden");
 	assert(wire.empty());
 	control_time_contract(&a);
+	session_contract(&a, false);
+	session_contract(&a, true);
 }

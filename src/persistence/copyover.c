@@ -93,6 +93,11 @@ static bool copyover_version_supported(int version)
 	return version >= 12 && version <= COPYOVER_VERSION;
 }
 
+static size_t copyover_desc_bytes_for_version(int version)
+{
+	return version < 18 ? offsetof(copyover_desc, gmcp_supports) : sizeof(copyover_desc);
+}
+
 static size_t copyover_mob_bytes_for_version(int version)
 {
 	if (version == 12)
@@ -276,6 +281,15 @@ static int write_desc_entry(FILE *fp, P_desc d)
 	strlcpy(entry.host2, d->host2, sizeof(entry.host2));
 	entry.term_type = d->term_type;
 	entry.gmcp_enabled = d->gmcp_enabled;
+	entry.gmcp_supports = d->gmcp_supports;
+	entry.gmcp_interests = d->gmcp_interests;
+	entry.gmcp_session_generation = d->gmcp_session_generation;
+	entry.gmcp_session_body_revision = d->gmcp_session_body_revision;
+	entry.gmcp_input_sequence = d->gmcp_input_sequence;
+	entry.gmcp_command_receipts = d->gmcp_command_receipts;
+	strlcpy(entry.gmcp_session_context, d->gmcp_session_context,
+		sizeof(entry.gmcp_session_context));
+
 	entry.out_compress = d->out_compress;
 	entry.mtts_flags = d->mtts_flags;
 	entry.charset_detected = 0; // removed
@@ -655,7 +669,7 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 	    header.num_mobs < 0 || header.num_objects < 0 || header.num_rooms < 0 ||
 	    header.num_combat || header.num_zones ||
 	    static_cast<size_t>(header.num_descriptors) >
-		    snapshot->bytes.size() / sizeof(copyover_desc) ||
+		    snapshot->bytes.size() / copyover_desc_bytes_for_version(header.version) ||
 	    static_cast<size_t>(header.num_mobs) >
 		    snapshot->bytes.size() / copyover_mob_bytes_for_version(header.version) ||
 	    static_cast<size_t>(header.num_objects) >
@@ -665,10 +679,12 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 	size_t offset = sizeof(header) + 3 * sizeof(int);
 	for (int index = 0; index < header.num_descriptors; ++index)
 	{
-		if (sizeof(copyover_desc) > snapshot->bytes.size() - offset)
+		if (copyover_desc_bytes_for_version(header.version) >
+		    snapshot->bytes.size() - offset)
 			return false;
 		copyover_desc desc = {};
-		memcpy(&desc, snapshot->bytes.data() + offset, sizeof(desc));
+		memcpy(&desc, snapshot->bytes.data() + offset,
+		       copyover_desc_bytes_for_version(header.version));
 		if (!memchr(desc.player_name, 0, sizeof(desc.player_name)) ||
 		    !memchr(desc.host, 0, sizeof(desc.host)) ||
 		    !memchr(desc.host2, 0, sizeof(desc.host2)) ||
@@ -676,7 +692,22 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		    !memchr(desc.ttype_terminal, 0, sizeof(desc.ttype_terminal)) ||
 		    desc.num_pets < 0 || desc.num_pets > 10)
 			return false;
-		offset += sizeof(desc);
+		if (header.version >= 18)
+		{
+			const size_t context_size = strnlen(desc.gmcp_session_context,
+							    sizeof(desc.gmcp_session_context));
+			if (desc.gmcp_command_receipts > 1 || (context_size && context_size != 32))
+				return false;
+			for (size_t context_index = 0; context_index < context_size;
+			     ++context_index)
+			{
+				const char value = desc.gmcp_session_context[context_index];
+				if (!((value >= '0' && value <= '9') ||
+				      (value >= 'a' && value <= 'f')))
+					return false;
+			}
+		}
+		offset += copyover_desc_bytes_for_version(header.version);
 	}
 	if (header.version >= 15)
 	{
@@ -1801,7 +1832,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	// restore descriptors
 	for (i = 0; i < header.num_descriptors; i++)
 	{
-		if (fread(&desc_entry, sizeof(desc_entry), 1, fp) != 1)
+		desc_entry = {};
+		if (fread(&desc_entry, copyover_desc_bytes_for_version(header.version), 1, fp) != 1)
 		{
 			logit(LOG_STATUS, "copyover_recover: failed reading desc %d", i);
 			goto copyover_recover_fail;
@@ -1847,6 +1879,16 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		strlcpy(d->host2, desc_entry.host2, sizeof(d->host2));
 		d->term_type = desc_entry.term_type;
 		d->gmcp_enabled = desc_entry.gmcp_enabled;
+		d->gmcp_supports = desc_entry.gmcp_supports & GMCP_IMPLEMENTED_SUPPORTS;
+		d->gmcp_interests = desc_entry.gmcp_interests & d->gmcp_supports &
+				    GMCP_INTEREST_STREAMS;
+		d->gmcp_session_generation = desc_entry.gmcp_session_generation;
+		d->gmcp_session_body_revision = desc_entry.gmcp_session_body_revision;
+		d->gmcp_input_sequence = desc_entry.gmcp_input_sequence;
+		d->gmcp_command_receipts = desc_entry.gmcp_command_receipts != 0;
+		strlcpy(d->gmcp_session_context, desc_entry.gmcp_session_context,
+			sizeof(d->gmcp_session_context));
+
 		d->mtts_flags = desc_entry.mtts_flags;
 		strlcpy(d->client_name, desc_entry.ttype_client, sizeof(d->client_name));
 		d->ttype_state = TTYPE_COMPLETE; // already negotiated before copyover
@@ -1866,6 +1908,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				d->character = ch;
 				ch->desc = d;
 				d->connected = CON_PLAYING;
+				gmcp_session_restored(d);
 				if (GET_LEVEL(ch) < MINLVLIMMORTAL)
 					update_ingame_racewar(GET_RACEWAR(ch));
 

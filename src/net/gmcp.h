@@ -58,6 +58,15 @@ bool gmcp_handle_control_json(struct descriptor_data *d, const cJSON *message, c
 // New streams are explicitly versioned and opt-in. These bits are descriptor-local.
 constexpr uint32_t GMCP_SUPPORT_CAPABILITIES = 1U << 0;
 constexpr uint32_t GMCP_SUPPORT_TIME = 1U << 1;
+constexpr uint32_t GMCP_SUPPORT_SESSION = 1U << 2;
+constexpr uint32_t GMCP_IMPLEMENTED_SUPPORTS = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_TIME |
+					       GMCP_SUPPORT_SESSION;
+constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME;
+
+// Observe real descriptor state/owning-player identity, then queue control before data.
+void gmcp_session_update(struct descriptor_data *d);
+// Copyover adopts the preserved entry without incrementing its generation.
+void gmcp_session_restored(struct descriptor_data *d);
 
 void gmcp_preferences_changed(struct descriptor_data *d);
 void gmcp_time_changed(void);

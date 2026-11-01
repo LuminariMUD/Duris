@@ -4957,6 +4957,7 @@ void do_switch(P_char ch, char *argument, int cmd)
 			ch->only.pc->switched = victim;
 
 			victim->desc = ch->desc;
+			gmcp_session_update(victim->desc);
 
 			// We could, at this point, pull ch from room and leave the was_in_room, and put them back there
 			//   upon do_return, but that's not really necessary.
@@ -5006,6 +5007,7 @@ void do_return(P_char ch, char * /*argument*/, int /*cmd*/)
 		ch->desc->character->only.pc->switched = 0;
 
 		ch->desc->character->desc = ch->desc;
+		gmcp_session_update(ch->desc);
 		switched_mob->desc = 0; // Clear the MOB's desc, not ch->desc
 	}
 	else /* switched body due to shape change  */

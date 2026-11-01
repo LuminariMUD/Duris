@@ -17,13 +17,14 @@ import time
 
 from test_account_recovery_journey import ACCOUNT, OLD_PASSWORD, ROOT, IsolatedServer, MudClient, build_flatfile_server, require
 from test_game_loop_session_journey import CHARACTER, create_character, reconnect_character
-from test_creation_prompt_journey import reboot
+from test_creation_prompt_journey import reboot, start_character, reply, finish_character_choices
 from test_flatfile_combat_journey import make_overlord
 from test_character_stat_choice_journey import WebSocketClient
 
 
 GMCP_FRAME = re.compile(rb"\xff\xfa\xc9(.*?)\xff\xf0", re.S)
-SUPPORT = ["Duris.Capabilities 1", "Duris.Time 1"]
+SUPPORT = ["Duris.Capabilities 1", "Duris.Time 1", "Duris.Session 1"]
+SECOND_CHARACTER = "Secondphase"
 
 
 def telnet_packets(client):
@@ -85,9 +86,19 @@ def run(binary, evidence):
         try:
             client = MudClient(server.plain_port)
             negotiate(client)
+            account = wait_telnet(client, "Duris.Session", predicate=lambda state: state["state"] == "account")
+            require(account["generation"] == "0" and account["character"] is None, "pre-entry identity was exposed")
             require(not any(name == "Duris.Time" for name, _ in telnet_packets(client)), "time leaked before character entry")
             create_character(client)
             first = wait_telnet(client, "Duris.Time")
+            entry = wait_telnet(client, "Duris.Session", predicate=lambda state: state["state"] == "playing")
+            require(entry["context"] == account["context"] and entry["generation"] == "1", "entry did not advance one generation")
+            require(entry["character"]["name"] == CHARACTER and not entry["resumed"], "wrong attached identity")
+            sessions = [data for name, data in telnet_packets(client) if name == "Duris.Session"]
+            require(any(state["state"] == "chargen" and state["character"] is None for state in sessions), "chargen boundary missing")
+            require(all(state["generation"] == "0" for state in sessions if state["state"] != "playing"), "chargen advanced entry generation")
+            packet_names = [name for name, _ in telnet_packets(client)]
+            require(packet_names.index("Duris.Session") < packet_names.index("Char.Vitals"), "initial character data overtook session")
             require(0 <= first["hour"] <= 23 and isinstance(first["revision"], str), "invalid initial clock")
             before = len(telnet_packets(client))
             client.socket.sendall(b"\xff\xfd\xc9")
@@ -106,6 +117,8 @@ def run(binary, evidence):
             require(not any(name == "Duris.Time" for name, _ in telnet_packets(client)[before:]), "disabled preference still streamed")
             client.send("toggle gmcp on")
             wait_telnet(client, "Duris.Time", before)
+            played = [data for name, data in telnet_packets(client) if name == "Duris.Session" and data["state"] == "playing"]
+            require({(state["context"], state["generation"]) for state in played} == {(entry["context"], "1")}, "negotiation/preference replayed character entry")
             client.send("save")
             client.expect(f"Save complete for {CHARACTER}.", timeout=20)
             client.close()
@@ -117,6 +130,19 @@ def run(binary, evidence):
             negotiate(client)
             reconnect_character(client)
             wait_telnet(client, "Duris.Time")
+            reconnected = wait_telnet(client, "Duris.Session", predicate=lambda state: state["state"] == "playing")
+            require(reconnected["context"] != entry["context"] and reconnected["generation"] == "1", "new connection reused the preceding context")
+            client.send("load mob 1106")
+            client.expect("You have created")
+            before = len(telnet_packets(client))
+            client.send("switch shadow")
+            switched = wait_telnet(client, "Duris.Session", before, lambda value: value["state"] == "playing" and value["character"]["bodyRevision"] != reconnected["character"]["bodyRevision"])
+            require(switched["generation"] == reconnected["generation"] and switched["character"]["name"] == CHARACTER, "body switch became a new character entry")
+            before = len(telnet_packets(client))
+            client.send("return")
+            client.expect("You return to your original body.")
+            returned = wait_telnet(client, "Duris.Session", before, lambda value: value["state"] == "playing" and value["character"]["bodyRevision"] != switched["character"]["bodyRevision"])
+            require(returned["context"] == reconnected["context"] and returned["generation"] == reconnected["generation"], "body return changed the entry key")
             phases = []
             for hour, expected, phase in ((-1,23,"night"),(4,4,"dawn"),(9,9,"day"),(16,16,"dusk"),(0,0,"night")):
                 before = len(telnet_packets(client))
@@ -139,18 +165,32 @@ def run(binary, evidence):
             before = len(telnet_packets(client))
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=20)
+            cleared = wait_telnet(client, "Duris.Session", before, lambda state: state["state"] == "account")
+            require(cleared["character"] is None and cleared["generation"] == "1", "departure did not clear the old character")
             wait_telnet(client, "Duris.Capabilities", before, lambda state: not state["active"])
             client.expect("Please select an option")
             before = len(telnet_packets(client))
-            client.send("1")
-            client.expect(CHARACTER)
-            client.send("1")
-            client.expect("Play as")
-            client.send("y")
+            start_character(client)
+            reply(client, SECOND_CHARACTER, "Is this correct?")
+            reply(client, "y", "meet these criteria?")
+            reply(client, "y", "Your selection")
+            finish_character_choices(client)
+            reply(client, "y", "PRESS RETURN")
+            reply(client, "", "Your starter kit is ready")
             client.expect("Pos: standing >")
             wait_telnet(client, "Duris.Time", before, lambda state: state["hour"] == 10)
+            reentered = wait_telnet(client, "Duris.Session", before, lambda state: state["state"] == "playing")
+            require(reentered["context"] == reconnected["context"] and reentered["generation"] == "2" and reentered["character"]["name"] == SECOND_CHARACTER, "same-socket A/account/B transition has wrong identity")
+            client.send("save")
+            client.expect(f"Save complete for {SECOND_CHARACTER}.")
             client.close()
             client = None
+            server.shutdown()
+            reboot(server)
+            deadline = time.monotonic() + 30
+            while "Entering game loop." not in server.server_output():
+                require(server.process.poll() is None and time.monotonic() < deadline, "server failed to restart before WebSocket entry")
+                time.sleep(0.05)
 
             # Real WebSocket framing/JSON dispatch, initially unverified and before login.
             websocket = WebSocketClient(server.websocket_port)
@@ -171,15 +211,26 @@ def run(binary, evidence):
             auth = websocket.command("login", {"account": ACCOUNT, "password": OLD_PASSWORD}, "auth")
             require(auth["status"] in ("success", "reconnected"), f"WebSocket login failed: {auth}")
             if auth["status"] == "success":
-                websocket.send_frame(1, json.dumps({"type": "cmd", "cmd": "enter", "data": {"character": CHARACTER}}).encode())
+                before = len(websocket.messages)
+                websocket.send_frame(1, json.dumps({"type": "cmd", "cmd": "enter", "data": {"character": "Missing"}}).encode())
+                time.sleep(1.1)
+                send_websocket(websocket, "Core.Supports.Add", [])
+                failed = wait_websocket(websocket, "Duris.Session", lambda value: value["state"] == "account", after=before)
+                require(failed["generation"] == "0" and failed["character"] is None, "failed entry advanced or exposed a character")
+                websocket.send_frame(1, json.dumps({"type": "cmd", "cmd": "enter", "data": {"character": SECOND_CHARACTER}}).encode())
             state = wait_websocket(websocket, "Duris.Time")
-            require(state["hour"] == 10 and state["phase"] == "day", f"wrong WebSocket clock: {state}")
+            websocket_entry = wait_websocket(websocket, "Duris.Session", lambda value: value["state"] == "playing")
+            require(websocket_entry["character"]["name"] == SECOND_CHARACTER and websocket_entry["generation"] == "1", "WebSocket attachment has wrong lifecycle identity")
+            require(websocket_entry["context"] != reentered["context"], "WebSocket reused the Telnet context")
+            require(0 <= state["hour"] <= 23 and state["process"] == websocket_entry["process"], f"wrong WebSocket clock scope: {state}")
             websocket.close()
             websocket = None
             server.shutdown()
-            result = {"staff_phases": phases, "websocket_time": state, "binary": str(binary),
+            result = {"staff_phases": phases, "websocket_time": state,
+                      "session_entries": [entry, reconnected, reentered, websocket_entry],
+                      "body_transitions": [switched, returned], "binary": str(binary),
                       "source_sha256": hashlib.sha256((ROOT / "src/net/gmcp.c").read_bytes()).hexdigest(),
-                      "scope": "Booted disposable server and normal Telnet/WebSocket dispatch; not real Mudlet or overhead qualification."}
+                      "scope": "Booted disposable lifecycle/control/time via normal Telnet/WebSocket dispatch; not real Mudlet or overhead qualification."}
             if evidence:
                 evidence.parent.mkdir(parents=True, exist_ok=True)
                 evidence.write_text(json.dumps(result, indent=2) + "\n")
@@ -201,4 +252,4 @@ if __name__ == "__main__":
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="gmcp-control-", dir=build_root) as build:
         run(args.server.resolve() if args.server else build_flatfile_server(Path(build)), args.evidence)
-    print("booted GMCP control/time Telnet and WebSocket journey passed")
+    print("booted GMCP control/time/session Telnet and WebSocket journey passed")

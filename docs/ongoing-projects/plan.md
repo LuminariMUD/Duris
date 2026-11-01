@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **implementation in progress; control/time slice in qualification**. Updated 2026-11-01.
+Status: **control/time ready in PR #542; session lifecycle in progress**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -42,12 +42,36 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- Current implementation branch: branch/issue-498-session-lifecycle, based on
+  the published PR #542 head. Session work will target that immediate parent.
+  Implement connection-scoped context/generation and account/chargen/playing
+  snapshots; observe semantic entry and invalidate before terminal release.
+  Repeated negotiation must retain the generation, and morph/switch must retain
+  the owning player's identity. No authentication, persistence or replay redesign.
+  Extend the native and booted wire journeys for real transition/order proof.
+  Native ASan/UBSan cases now cover stable entry keys, chargen cancellation,
+  same-socket replacement/clear ordering, morph/switch body revisions, 40 JSON
+  allocation-failure points, control-before-data retry and copyover adoption.
+  Copyover version 18 extends the existing descriptor record with optional
+  connection support/interest/context/generation and receipt continuity; versions
+  12-17 retain their frozen 660-byte prefix. A process marker resets snapshot
+  revision baselines after hotboot while the entry key stays unchanged.
+  No new persistence service or additional copyover file is introduced.
+  MariaDB and client-free builds pass. The booted journey verifies initial
+  account/chargen/playing state, repeated negotiation/preferences, A/account/B,
+  new-connection context, failed entry and live NPC switch/return. Copyover
+  native evidence/custody and actual original-socket exec checks pass; process
+  markers also scope Time revisions for consumers that do not use Session.
+  The parent PR review fix is published as `a82e52dd8` and retained here.
+- A clean detached `881853d21` reference checkout and checksummed MariaDB binary
+  are now prepared under `bin/qualification/issue498/baseline-881/` for matched
+  measurements. No feature code or player data was copied into that reference.
 - Review stack root: [PR #542](https://github.com/LuminariMUD/Duris/pull/542),
   branch/issue-498-gmcp-contracts. Control/time commit `998a1639b` is published;
   dependent chunks will use their own branches and target their immediate parent.
 - Master advanced to `881853d21` during qualification (quest replacement policy
-  and diagnostics). It merged cleanly. Recheck builds, the production GMCP
-  harness and the updated quest-target regression before publishing that merge.
+  and diagnostics). It merged cleanly. Both builds, the production GMCP harness and the updated quest-target
+  regression passed before merge `44a13bc1d` was published.
   The initial `ee6f9fbf3` artifacts stay historical; matched final overhead must
   use the updated upstream baseline to avoid attributing quest-policy changes
   to the protocol work.

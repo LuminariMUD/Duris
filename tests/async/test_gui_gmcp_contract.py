@@ -14,7 +14,9 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path)
+parser.add_argument('--sanitize', action='store_true')
 args = parser.parse_args()
+sanitizers = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie'] if args.sanitize else []
 functions = [
     ('utility.c', 'string strip_ansi('),
     ('ship_utils.c', 'char *ShipSlot::get_status_str('),
@@ -83,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
         + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n')
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
-        '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
+        *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
         str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')), str(HARNESS_STUBS),
         '-Wl,--gc-sections', '-lcjson', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
     result = subprocess.run([str(binary)], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30)
