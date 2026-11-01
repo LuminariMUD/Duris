@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **control/time, lifecycle and combat state ready in PRs #542/#544/#545; damage events in progress**. Updated 2026-11-01.
+Status: **control/time, lifecycle and combat ready in PRs #542/#544/#545/#546; owner items in progress**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -42,7 +42,7 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
-- Applied-damage slice in progress: Duris.Combat 1 requires explicit support and
+- Applied-damage slice (qualified for review): Duris.Combat 1 requires explicit support and
   interest; active consumers receive each outgoing applied hit in the existing
   FIFO and no duplicate legacy round. Damage uses the actual before/after HP
   delta after gameplay caps/conversion, including secondary victims. Per-delivery
@@ -91,10 +91,13 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
   switch/reconnect, and original-socket uncompressed/MCCP copyover pass.
 - Combat state is ready for review in [PR #545](https://github.com/LuminariMUD/Duris/pull/545),
   based on PR #544; implementation `1424da65b` is published and mergeable.
-- Current implementation branch: branch/issue-498-combat-events, based on PR
-  #545's head. The next focused PR targets branch/issue-498-combat-state.
-  Add opt-in actual applied-damage events with known metadata, recipient masking,
-  event ordering/bounds and no primary-target mutation or duplicate legacy round.
+- Applied damage is ready for review in [PR #546](https://github.com/LuminariMUD/Duris/pull/546),
+  based on PR #545; implementation `5898ce013` plus parent integration `08ff013a9`
+  is published. Server, sanitizer, booted wire and fuzz qualifications pass.
+- Current implementation branch: branch/issue-498-owner-items, based on PR #546.
+  The next focused PR targets branch/issue-498-combat-events. Implement bounded,
+  subscribed owner inventory/equipment snapshots and real mutation/publication
+  ownership; audit durable rewards/restoration before adding item notifications.
   Remaining inventory, actions/results, client/real-Mudlet and matched overhead
   gates are still required. No issue completion or HP-symptom fix is claimed.
 - PR #544 review fix: a Session-aware player switching into an ordinary NPC now
