@@ -4375,6 +4375,8 @@ void free_char(P_char ch)
 		return;
 	}
 	++character_removal_generation;
+	// Direct/offline releases also have to detach affects held by other characters.
+	clear_all_links(ch);
 	if ((GET_OPPONENT(ch)))
 	{
 		logit(LOG_EXIT, "free_char: called with a non-extracted char");

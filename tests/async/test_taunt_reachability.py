@@ -6,6 +6,7 @@ code. Rolls, affect publication and combat services are deterministic fixtures.
 """
 
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -17,6 +18,7 @@ PRELUDE = r'''
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "core/mm.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -32,6 +34,15 @@ static int rolls, saves, notches, applied, removed, stopped, engaged;
 static int actor_wait, victim_wait, skill_roll;
 static bool resisted;
 static std::string feedback;
+static mm_ds link_pool{};
+mm_ds *dead_link_pool = &link_pool;
+link_description link_types[LNK_MAX + 1]{};
+void *_mm_get(mm_ds *, const char *, int) { return new char_link_data{}; }
+void mm_release(mm_ds *, void *value) { delete static_cast<char_link_data *>(value); }
+mm_ds *mm_create(const char *, size_t, size_t, unsigned) { return &link_pool; }
+void logit(const char *, const char *, ...) {}
+void wear_off_message(P_char, affected_type *) {}
+void unlink_char_affect(P_char, affected_type *);
 
 bool SanityCheck(P_char ch, const char *) { return ch != nullptr; }
 int GET_CHAR_SKILL_P(P_char, int skill) { assert(skill == SKILL_TAUNT); return 100; }
@@ -67,16 +78,22 @@ void CharWait(P_char ch, int delay) {
     if (ch == &mob) victim_wait += delay;
     else { assert(ch == &taunter); actor_wait += delay; }
 }
-void affect_to_char_with_messages(P_char ch, affected_type *af, const char *, const char *) {
+affected_type *affect_to_char(P_char ch, affected_type *af) {
     assert(ch == &mob && !ch->affected);
     taunt = *af;
     ch->affected = &taunt;
     ++applied;
+    return ch->affected;
+}
+void affect_remove(P_char ch, affected_type *af) {
+    assert(ch == &mob && af == ch->affected);
+    ch->affected = nullptr;
+    if (IS_SET(af->flags, AFFTYPE_LINKED_CH)) unlink_char_affect(ch, af);
+    ++removed;
 }
 void affect_from_char(P_char ch, int type) {
-    assert(ch == &mob && type == SKILL_TAUNT);
-    ch->affected = nullptr;
-    ++removed;
+    assert(ch->affected && ch->affected->type == type);
+    affect_remove(ch, ch->affected);
 }
 void stop_fighting(P_char ch) {
     assert(ch == &mob);
@@ -93,6 +110,7 @@ void engage(P_char ch, P_char target) {
 
 DRIVER = r'''
 static void reset(std::initializer_list<P_char> formation, bool narrow = true) {
+    clear_all_links(&taunter); clear_all_links(&mob); clear_all_links(&tank);
     room = {}; taunter = {}; mob = {}; tank = {}; taunt = {};
     room.number = 40010;
     room.room_flags = narrow ? ROOM_SINGLE_FILE : 0;
@@ -118,10 +136,12 @@ static void reset(std::initializer_list<P_char> formation, bool narrow = true) {
 }
 
 static void existing_taunt(P_char issuer) {
-    taunt.type = SKILL_TAUNT;
-    taunt.context = issuer;
-    taunt.duration = 17;
-    mob.affected = &taunt;
+    affected_type af{};
+    af.type = SKILL_TAUNT;
+    af.context = issuer;
+    af.duration = 17;
+    linked_affect_to_char(&mob, &af, issuer, LNK_TAUNT);
+    applied = 0;
 }
 
 static void invoke() { do_taunt(&taunter, const_cast<char *>("Mob"), 0); }
@@ -169,6 +189,7 @@ static void reachable_cases() {
 }
 
 int main() {
+    initialize_taunt_link();
     blocked_cases();
     reachable_cases();
 
@@ -198,6 +219,30 @@ int main() {
     assert(taunt.context == &taunter && taunt.duration > 17);
     assert(!applied && !removed && !stopped && !engaged && victim_wait == WAIT_SEC * 2);
 
+    // Character removal on either end and normal expiry unlink both lists.
+    for (P_char departing : {&taunter, &mob}) {
+        reset({&tank, &mob, &taunter});
+        invoke();
+        assert(taunter.linked && mob.linking);
+        clear_all_links(departing);
+        assert(!mob.affected && !mob.linking && !taunter.linked);
+        // Reusing the issuer's address must not redirect later target selection.
+        taunter = {};
+        assert(ParseTarget(&mob, const_cast<char *>("Tank")) == &tank);
+    }
+    reset({&tank, &mob, &taunter});
+    invoke();
+    affect_from_char(&mob, SKILL_TAUNT);
+    assert(!mob.linking && !taunter.linked);
+    reset({&tank, &mob, &taunter});
+    existing_taunt(&tank);
+    invoke(); // Retargeting replaces the old link as well as its affect.
+    assert(!tank.linked && taunter.linked && mob.linking);
+    clear_all_links(&tank); // An unrelated issuer cannot remove this taunt.
+    assert(mob.affected && mob.affected->context == &taunter);
+    clear_all_links(&taunter);
+    assert(!mob.affected && !mob.linking);
+
     std::puts("taunt reachability: blocked and adjacent formations, existing affects, ordinary rooms, saves and failures passed");
 }
 '''
@@ -209,6 +254,23 @@ functions = [
     extract_function("actoff.c", "P_char ParseTarget("),
     extract_function("actoff.c", "void do_taunt("),
 ]
+link_functions = [extract_function("affects.c", signature) for signature in (
+    "void define_link(", "struct char_link_data *link_char_with_affect(",
+    "P_char get_linked_char(", "P_char get_linking_char(", "void dispose_link(", "void internal_unlink_char(",
+    "void unlink_char(", "void unlink_char_affect(P_char ch, struct affected_type *af)",
+    "void clear_links(P_char ch, ush_int type)", "void clear_all_links(",
+    "void linked_affect_to_char(",
+)]
+functions = link_functions + functions
+registration = re.search(r'define_link\(LNK_TAUNT,.*?;',
+                         extract_function("affects.c", "void initialize_links()"), re.S)
+assert registration
+functions.append("void initialize_taunt_link() { " + registration[0] + " }")
+# Both ordinary extraction and direct character release must clear linked affects
+# while the issuer is still intact, before strings/PC data or the character pool.
+free = extract_function("db.c", "void free_char(")
+assert free.index("clear_all_links(ch);") < free.index("str_free(ch->player.title)")
+assert "clear_all_links(ch);" in extract_function("handler.c", "void extract_char(")
 
 build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)

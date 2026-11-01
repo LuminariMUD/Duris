@@ -257,7 +257,8 @@ struct edit_data
 #define LNK_CHAR_OBJ_AFF 23
 #define LNK_DRAGOON_MOUNT 24
 #define LNK_PLANT_PARALYSIS 25
-#define LNK_MAX 25
+#define LNK_TAUNT 26
+#define LNK_MAX 26
 
 #define LNKFLG_NONE 0
 #define LNKFLG_ROOM BIT_1

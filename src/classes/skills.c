@@ -5070,7 +5070,10 @@ void initialize_skills()
 	SPELL_ADD(CLASS_REAVER, 11);
 	SPELL_ADD(CLASS_RANGER, 11);
 
-	SKILL_CREATE("taunt", SKILL_TAUNT, TAR_MENTAL);
+	SKILL_CREATE_WITH_MESSAGES(
+		"taunt", SKILL_TAUNT, TAR_MENTAL,
+		"You finally let the words go and can focus on other targets again.",
+		"$n seems to have calmed down.");
 	SKILL_ADD(CLASS_ANTIPALADIN, 11, 60);
 	SPEC_SKILL_ADD(CLASS_ANTIPALADIN, 30, 100, SPEC_VIOLATOR);
 	SKILL_ADD(CLASS_BARD, 11, 40);
