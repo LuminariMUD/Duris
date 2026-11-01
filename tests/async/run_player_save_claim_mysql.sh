@@ -39,6 +39,13 @@ done
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0055_world_quest_recovery.sql"
 "$ROOT/migrations/immutable/0055_world_quest_recovery.sh"
 [[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT CONCAT(quest_origin_room,':',quest_replacement_due,':',quest_kill_how_many,':',quest_kill_original) FROM player_data WHERE pid=99") == 16633:1:4:7 ]]
+# The new completion count defaults for old players and survives migration replay.
+"$ROOT/migrations/immutable/0058_world_quest_reward_count.sh"
+[[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT quest_reward_item_count FROM player_data WHERE pid=99") == 0 ]]
+"${MYSQL[@]}" "$DB_NAME" -e "UPDATE player_data SET quest_reward_item_count=4 WHERE pid=99;"
+"${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0058_world_quest_reward_count.sql"
+"$ROOT/migrations/immutable/0058_world_quest_reward_count.sh"
+[[ $("${MYSQL[@]}" "$DB_NAME" -e "SELECT quest_reward_item_count FROM player_data WHERE pid=99") == 4 ]]
 "${MYSQL[@]}" "$DB_NAME" -e "DELETE FROM player_data WHERE pid=99;"
 # The audit migration is additive and rerunnable, and its verifier checks it.
 "${MYSQL[@]}" "$DB_NAME" < "$ROOT/migrations/immutable/0033_item_owner_audit.sql"

@@ -11023,7 +11023,7 @@ static bool world_quest_begin_progressed_abandon(P_char actor, int fee)
 	const int target = actor->only.pc->quest_mob_vnum;
 	const int started = actor->only.pc->quest_started;
 	if (!sql_world_quest_finish_async(
-		    actor, NULL, false, false, {}, fee,
+		    actor, {}, false, false, {}, fee,
 		    [pid, target, started, fee](P_char player)
 		    {
 			    if (player && (!player->only.pc || !player->only.pc->quest_active ||

@@ -12,7 +12,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 HARNESS = ROOT / "tests/async/websocket_runtime_harness.cpp"
 
 
-with tempfile.TemporaryDirectory(prefix="duris-websocket-runtime-") as directory:
+build_dir = ROOT / "bin/tests"
+build_dir.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix="websocket-runtime-", dir=build_dir) as directory:
     binary = pathlib.Path(directory) / "websocket_runtime_harness"
     build = subprocess.run(
         [
@@ -21,6 +23,9 @@ with tempfile.TemporaryDirectory(prefix="duris-websocket-runtime-") as directory
             "-Wall",
             "-Wextra",
             "-Werror",
+            "-fsanitize=address,undefined",
+            "-fno-sanitize-recover=all",
+            "-fno-omit-frame-pointer",
             "-D__NO_MYSQL__",
             f"-I{SRC}",
             f"-I{SRC / 'no_mysql'}",

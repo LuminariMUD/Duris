@@ -2434,6 +2434,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		d->character = NULL;
 		ch->desc = NULL;
 		free_char(ch);
+		ws_reset_chargen(d);
 		STATE(d) = CON_ACCT_SELECT_CHAR;
 		ws_send_auth_success(d, d->account->acct_name);
 		return;
