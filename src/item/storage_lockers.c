@@ -88,6 +88,7 @@ void event_memorize(P_char, P_char, P_obj, void *);
 int is_wearing_necroplasm(P_char);
 static int save_locker_char(P_char chInLocker, int bTerminal);
 static void free_locker(int roomNum);
+static StorageLocker *locker_current(P_char ch);
 static bool check_for_artisInRoom(P_char ch, int rroom);
 static void event_deferredTerminalSave(P_char chLocker, P_char ch, P_obj obj, void *data);
 
@@ -129,14 +130,10 @@ inline StorageLocker *GetChestList(int real_room)
 /* Called from locker_async.c after a non-terminal public snapshot is sealed:
  * put items back into chests/floor so the room is usable again while the
  * worker applies SQL. */
-extern "C" void locker_async_restore_snapshot_view(P_char chUser)
+extern "C" void locker_async_restore_snapshot_view(P_char chLocker, P_char chUser)
 {
-	StorageLocker *pLocker;
-
-	if (!chUser || chUser->in_room == NOWHERE || !IS_ROOM(chUser->in_room, ROOM_LOCKER))
-		return;
-	pLocker = GetChestList(chUser->in_room);
-	if (!pLocker || chUser != pLocker->GetLockerUser())
+	StorageLocker *pLocker = locker_current(chUser);
+	if (!pLocker || pLocker->GetLockerChar() != chLocker || !pLocker->LockerUserMatches(chUser))
 		return;
 	pLocker->PFileToLocker();
 }
@@ -144,22 +141,21 @@ extern "C" void locker_async_restore_snapshot_view(P_char chUser)
 /* Optional UI refresh after async non-terminal success (items already restored). */
 extern "C" void locker_async_request_resort(P_char chLocker, P_char chUser)
 {
-	if (!chLocker || !chUser)
+	StorageLocker *pLocker = locker_current(chUser);
+	if (!pLocker || pLocker->GetLockerChar() != chLocker || !pLocker->LockerUserMatches(chUser))
 		return;
 	if (!get_scheduled(chLocker, StorageLocker::event_resortLocker))
 		add_event(StorageLocker::event_resortLocker, 1, chLocker, chUser, NULL, 0, NULL, 0);
 }
 
 /* Move room/chests onto locker char before snapshot (re-entrant for rebuild gens). */
-extern "C" int locker_async_prepare_snapshot(P_char chUser)
+extern "C" int locker_async_prepare_snapshot(P_char chLocker, P_char chUser)
 {
-	StorageLocker *pLocker;
-
-	if (!chUser || chUser->in_room == NOWHERE || !IS_ROOM(chUser->in_room, ROOM_LOCKER))
-		return 0;
-	pLocker = GetChestList(chUser->in_room);
-	if (!pLocker || chUser != pLocker->GetLockerUser())
-		return 0;
+	StorageLocker *pLocker = locker_current(chUser);
+	// A departed visit already moved its items onto chLocker. Its terminal save
+	// must still capture those items without touching a later visit's room.
+	if (!pLocker || pLocker->GetLockerChar() != chLocker || !pLocker->LockerUserMatches(chUser))
+		return 1;
 	return pLocker->LockerToPFile() ? 1 : 0;
 }
 
@@ -1940,11 +1936,11 @@ bool PrivateChest::FlushContents(void)
 				result =
 					locker_chest_snapshot_repository_apply_from_pool(*snapshot);
 			}
-			catch (const std::bad_alloc &)
+			catch(const std::bad_alloc &)
 			{
 				result = { player_save_apply_outcome::terminal_failure, 0, ENOMEM };
 			}
-			catch (...)
+			catch(...)
 			{
 				result = { player_save_apply_outcome::terminal_failure, 0, EFAULT };
 			}
@@ -2586,8 +2582,9 @@ void StorageLocker::event_resortLocker(P_char chLocker, P_char ch, P_obj /*obj*/
 	   will already be in the room.  ch will be the player, and chLocker is the locker..
 	   if 'data' is null, this was called from the event mgr, meaning a save or initial
 	   entry.  Otherwise, its being called directly - from an eq sort command */
-	StorageLocker *pLocker = locker_current_or_error(ch, "Error: no locker found.\r\n");
-	if (!pLocker)
+	StorageLocker *pLocker = locker_current(ch);
+	// The player can leave or enter another locker between scheduling and dispatch.
+	if (!pLocker || pLocker->GetLockerChar() != chLocker || !pLocker->LockerUserMatches(ch))
 	{
 		return;
 	}
@@ -4296,16 +4293,16 @@ static int locker_chest_id(StorageLocker *pLocker, const char *name)
 
 namespace
 {
-struct chest_change
-{
-	int locker_id, chest_id, room;
-	uint64_t actor_id;
-	std::string name, hash;
-	bool remove, reading = false;
-	std::shared_ptr<sql_write_receipt> receipt;
-	std::chrono::steady_clock::time_point retry{};
-};
-std::vector<std::shared_ptr<chest_change>> chest_changes;
+	struct chest_change
+	{
+		int locker_id, chest_id, room;
+		uint64_t actor_id;
+		std::string name, hash;
+		bool remove, reading = false;
+		std::shared_ptr<sql_write_receipt> receipt;
+		std::chrono::steady_clock::time_point retry{};
+	};
+	std::vector<std::shared_ptr<chest_change>> chest_changes;
 }
 
 // A lost COMMIT response may still have applied. Reconcile the same ID before

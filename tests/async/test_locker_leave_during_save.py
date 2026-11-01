@@ -91,8 +91,8 @@ void extract_char(P_char ch)
         }
 }
 extern "C" void locker_async_request_resort(P_char, P_char) {}
-extern "C" void locker_async_restore_snapshot_view(P_char) {}
-extern "C" int locker_async_prepare_snapshot(P_char)
+extern "C" void locker_async_restore_snapshot_view(P_char, P_char) {}
+extern "C" int locker_async_prepare_snapshot(P_char, P_char)
 {
     return 1;
 }

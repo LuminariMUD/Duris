@@ -138,7 +138,7 @@ static struct locker_async_slot *slot_alloc(const char *name)
 		{
 			g_slots.emplace_back();
 		}
-		catch (const std::bad_alloc &)
+		catch(const std::bad_alloc &)
 		{
 			return NULL;
 		}
@@ -279,7 +279,7 @@ static player_save_apply_result locker_write_job(const struct locker_async_job &
 	{
 		g_results.push_back(res);
 	}
-	catch (const std::bad_alloc &)
+	catch(const std::bad_alloc &)
 	{
 		logit(LOG_FILE, "locker_async: result lost for %s gen=%lu", res.locker_name,
 		      res.gen);
@@ -495,16 +495,13 @@ static int start_one_snapshot(struct locker_async_slot *s)
 	/* Always re-prepare live inventory onto the locker char before sealing.
 	 * Terminal leave already did LockerToPFile; a second call is mostly no-op.
 	 * Non-terminal rebuild gens MUST re-walk after a prior restore. */
-	if (chUser && chUser->in_room != NOWHERE && IS_ROOM(chUser->in_room, ROOM_LOCKER))
+	if (!locker_async_prepare_snapshot(chLocker, chUser))
 	{
-		if (!locker_async_prepare_snapshot(chUser))
-		{
-			persistence_alert(AVATAR, "locker_async", s->locker_name, "none", "none",
-					  "prepare_failed",
-					  "LockerToPFile failed before snapshot; aborting gen");
-			slot_clear(s);
-			return 0;
-		}
+		persistence_alert(AVATAR, "locker_async", s->locker_name, "none", "none",
+				  "prepare_failed",
+				  "LockerToPFile failed before snapshot; aborting gen");
+		slot_clear(s);
+		return 0;
 	}
 
 	/* Player is obj-locked via user_pid while DIRTY. Capture the snapshot now. */
@@ -522,7 +519,7 @@ static int start_one_snapshot(struct locker_async_slot *s)
 						      &bytes) == player_snapshot_capture_result::ok)
 			job.snapshot = std::move(snapshot);
 	}
-	catch (const std::bad_alloc &)
+	catch(const std::bad_alloc &)
 	{
 		job.snapshot.reset();
 	}
@@ -539,7 +536,7 @@ static int start_one_snapshot(struct locker_async_slot *s)
 		else
 		{
 			if (chUser)
-				locker_async_restore_snapshot_view(chUser);
+				locker_async_restore_snapshot_view(chLocker, chUser);
 			slot_clear(s);
 		}
 		return 0;
@@ -552,7 +549,7 @@ static int start_one_snapshot(struct locker_async_slot *s)
 	 * copy (items still on chLocker). Main-thread walk is done; unlock
 	 * happens because state is no longer DIRTY. */
 	if (!s->terminal && chUser)
-		locker_async_restore_snapshot_view(chUser);
+		locker_async_restore_snapshot_view(chLocker, chUser);
 
 	logit(LOG_DEBUG, "locker_async: enqueued name=%s gen=%lu terminal=%d", s->locker_name,
 	      s->gen, s->terminal ? 1 : 0);

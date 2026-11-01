@@ -59,6 +59,15 @@ and writer admission are controlled boundaries, not a live database fault test.
 `test_locker_leave_during_save.py` separately verifies that an older in-flight save
 cannot retire the locker character before the newer terminal contents are written.
 
+`python3 tests/async/test_locker_callback_visit.py` executes locker callbacks and
+the real async writer state machine under ASan/UBSan. A delayed sort or snapshot
+must still belong to the player's current visit. It covers departure to a bank
+whose extra-description keyword parses as pointer `0xba`, entry into another
+locker, stale worker replies, player identity reuse, ordinary sorting and
+preparation failure. Terminal capture still saves the old holder's items without
+moving anything in the next locker. Event dispatch, inventory movement and the
+persistence sink are controlled boundaries.
+
 ## Legacy object trap restoration (#368)
 
 `python3 tests/async/test_legacy_trap_editor.py` compiles and executes the actual area

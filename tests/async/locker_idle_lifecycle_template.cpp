@@ -98,8 +98,8 @@ player_save_apply_result locker_snapshot_repository_apply_from_pool(const locker
 	return { player_save_apply_outcome::applied, 0, 0 };
 }
 extern "C" void locker_async_request_resort(P_char, P_char) {}
-extern "C" void locker_async_restore_snapshot_view(P_char) {}
-extern "C" int locker_async_prepare_snapshot(P_char)
+extern "C" void locker_async_restore_snapshot_view(P_char, P_char) {}
+extern "C" int locker_async_prepare_snapshot(P_char, P_char)
 {
 	return 1;
 }

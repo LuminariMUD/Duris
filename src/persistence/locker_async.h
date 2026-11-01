@@ -43,9 +43,9 @@ extern "C"
 
 	/* Optional helpers implemented in storage_lockers.c (C linkage). */
 	void locker_async_request_resort(P_char chLocker, P_char chUser);
-	void locker_async_restore_snapshot_view(P_char chUser);
-	/* Run LockerToPFile for the user's active locker before snapshotting. */
-	int locker_async_prepare_snapshot(P_char chUser);
+	void locker_async_restore_snapshot_view(P_char chLocker, P_char chUser);
+	/* Prepare only this holder's active visit. A departed visit is already prepared. */
+	int locker_async_prepare_snapshot(P_char chLocker, P_char chUser);
 
 #ifdef __cplusplus
 }
