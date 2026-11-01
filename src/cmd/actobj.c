@@ -12,6 +12,7 @@
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
+#include "world/handler.h"
 #include "world/events.h"
 #include "world/transport.h"
 #include "cmd/interp.h"
@@ -1028,7 +1029,7 @@ static P_obj do_get_obj_in_equipment_vis(P_char ch, char *name)
 	{
 		P_obj obj = ch->equipment[i];
 
-		if (obj && CAN_SEE_OBJ(ch, obj) && isname(name_ptr, obj->name))
+		if (obj && CAN_SEE_OBJ(ch, obj) && obj_name_matches(ch, obj, name_ptr))
 		{
 			matched++;
 			if (matched == match_num)
