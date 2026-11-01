@@ -47,6 +47,7 @@ extern struct time_info_data time_info;
 
 // New-stream control and time. Kept together for executable production-path tests.
 static bool gmcp_queue(struct descriptor_data *d, const char *package, const char *json);
+static void gmcp_flush_combat(P_desc d);
 static uint64_t gmcp_clock_revision;
 static int gmcp_clock_hour = -1;
 static char gmcp_clock_json[128];
@@ -138,6 +139,7 @@ static void gmcp_session_observe(P_desc d)
 		d->gmcp_time_revision = 0;
 	if (changed)
 	{
+		d->gmcp_combat_state_sent = false;
 		if (playing && gmcp_session_supported(d))
 			d->gmcp_initial_state_pending = true;
 		d->gmcp_session_state = static_cast<unsigned char>(phase);
@@ -552,6 +554,7 @@ void gmcp_flush_initial_states(void)
 		else
 			gmcp_session_update(d);
 		gmcp_flush_time(d);
+		gmcp_flush_combat(d);
 	}
 }
 
@@ -803,10 +806,8 @@ void gmcp_send_initial_state(struct char_data *ch)
 	gmcp_room_info(ch);
 	ch->desc->last_map_update = 1;
 	gmcp_quest_status(ch);
-	if (GET_OPPONENT(ch))
-		gmcp_combat_target(ch, GET_OPPONENT(ch));
-	else
-		gmcp_combat_end(ch);
+	ch->desc->gmcp_combat_state_sent = false;
+	gmcp_flush_combat(ch->desc);
 	gmcp_flush_time(ch->desc);
 }
 
@@ -1512,104 +1513,177 @@ void gmcp_char_affects(struct char_data *ch)
 	}
 }
 
-/* send combat.update for a combat round */
+// Combat snapshots. Sample only the two prompt relationships in the existing
+// descriptor flush: direct health/posture writes and non-GMCP tanks need no
+// per-hit observer scan or collection of pointers surviving gameplay mutations.
+static gmcp_combat_subject gmcp_combat_sample(P_char viewer, P_char subject)
+{
+	gmcp_combat_subject view{};
+	if (!subject || viewer->in_room < 0 || subject->in_room != viewer->in_room)
+		return view;
+	view.present = true;
+	view.identity = subject->runtime_id;
+	view.position = GET_POS(subject);
+	view.bleeding = GET_HIT(subject) < 0 || GET_MAX_HIT(subject) <= 0;
+	if (GET_MAX_HIT(subject) > 0)
+		view.health_percent = static_cast<int>(std::clamp<int64_t>(
+			static_cast<int64_t>(GET_HIT(subject)) * 100 / GET_MAX_HIT(subject), 0,
+			100));
+	if (subject != viewer && !CAN_SEE(viewer, subject))
+		strlcpy(view.name, "someone", sizeof(view.name));
+	else if (IS_PC(subject))
+		strlcpy(view.name, strip_ansi(PERS(subject, viewer, 0, true)).c_str(),
+			sizeof(view.name));
+	else if (const char *name = GET_NAME(subject))
+	{
+		// Prompt's first alphabetic word, bounded instead of FirstWord's static buffer.
+		while (*name == ' ')
+			++name;
+		size_t length = 0;
+		while (length < sizeof(view.name) - 1 &&
+		       isalpha(static_cast<unsigned char>(name[length])))
+		{
+			view.name[length] = name[length];
+			++length;
+		}
+	}
+	return view;
+}
+
+static bool gmcp_combat_equal(const gmcp_combat_subject &a, const gmcp_combat_subject &b)
+{
+	return a.present == b.present && a.identity == b.identity &&
+	       a.health_percent == b.health_percent && a.position == b.position &&
+	       a.bleeding == b.bleeding && !strcmp(a.name, b.name);
+}
+
+static cJSON *gmcp_combat_json(const gmcp_combat_subject &view)
+{
+	if (!view.present)
+		return cJSON_CreateNull();
+	const char *health = view.bleeding		? "bleeding to death" :
+			     view.health_percent >= 100 ? "excellent" :
+			     view.health_percent >= 90	? "few scratches" :
+			     view.health_percent >= 75	? "small wounds" :
+			     view.health_percent >= 50	? "quite a few wounds" :
+			     view.health_percent >= 30	? "big nasty wounds" :
+			     view.health_percent >= 15	? "pretty hurt" :
+							  "awful";
+	const char *positions[] = { "on their ass", "sitting", "kneeling", "standing" };
+	cJSON *json = cJSON_CreateObject();
+	if (!json || !cJSON_AddStringToObject(json, "name", view.name) ||
+	    !cJSON_AddStringToObject(json, "health", health) ||
+	    !cJSON_AddNumberToObject(json, "healthPercent", view.health_percent) ||
+	    !cJSON_AddStringToObject(json, "position", positions[view.position]))
+	{
+		cJSON_Delete(json);
+		return nullptr;
+	}
+	return json;
+}
+
+static void gmcp_combat_publish(P_char ch, bool force, int damage = 0,
+				const char *damage_type = nullptr, int critical = 0,
+				P_char hit_victim = nullptr)
+{
+	if (!GMCP_ENABLED(ch) || STATE(ch->desc) != CON_PLAYING || !gmcp_session_player(ch->desc) ||
+	    ch->desc->write_failed)
+		return;
+	P_desc d = ch->desc;
+	gmcp_session_update(d);
+	if (d->gmcp_control_pending || (gmcp_session_supported(d) && d->gmcp_session_pending))
+		return;
+	P_char target = GET_OPPONENT(ch);
+	if (!target)
+		target = hit_victim;
+	if (target && (ch->in_room < 0 || target->in_room != ch->in_room))
+		target = nullptr;
+	const gmcp_combat_subject views[2] = {
+		gmcp_combat_sample(ch, target),
+		gmcp_combat_sample(ch, target ? GET_OPPONENT(target) : nullptr)
+	};
+	const bool round = damage > 0 || damage_type;
+	if (!force && !round && d->gmcp_combat_state_sent &&
+	    gmcp_combat_equal(views[0], d->gmcp_combat_subjects[0]) &&
+	    gmcp_combat_equal(views[1], d->gmcp_combat_subjects[1]))
+		return;
+	cJSON *root = cJSON_CreateObject();
+	cJSON *target_json = gmcp_combat_json(views[0]);
+	cJSON *tank_json = gmcp_combat_json(views[1]);
+	if (!root || !target_json || !tank_json)
+	{
+		cJSON_Delete(root);
+		cJSON_Delete(target_json);
+		cJSON_Delete(tank_json);
+		return;
+	}
+	cJSON_AddItemToObjectCS(root, "target", target_json);
+	cJSON_AddItemToObjectCS(root, "tank", tank_json);
+	const uint64_t revision = d->gmcp_combat_revision + 1;
+	char revision_text[32];
+	snprintf(revision_text, sizeof(revision_text), "%llu",
+		 static_cast<unsigned long long>(revision));
+	if (!cJSON_AddStringToObject(root, "revision", revision_text))
+	{
+		cJSON_Delete(root);
+		return;
+	}
+	if (round)
+	{
+		cJSON *event = cJSON_AddObjectToObject(root, "round");
+		if (!event || !cJSON_AddStringToObject(event, "attacker", GET_NAME(ch)) ||
+		    !cJSON_AddNumberToObject(event, "damage", damage) ||
+		    !cJSON_AddStringToObject(event, "damageType",
+					     damage_type ? damage_type : "unknown") ||
+		    !cJSON_AddBoolToObject(event, "critical", critical))
+		{
+			cJSON_Delete(root);
+			return;
+		}
+	}
+	char *json = cJSON_PrintUnformatted(root);
+	cJSON_Delete(root);
+	if (!json)
+		return;
+	if (gmcp_queue(d, GMCP_PKG_COMBAT_UPDATE, json))
+	{
+		d->gmcp_combat_subjects[0] = views[0];
+		d->gmcp_combat_subjects[1] = views[1];
+		d->gmcp_combat_state_sent = true;
+		d->gmcp_combat_revision = revision;
+	}
+	free(json);
+}
+
+static void gmcp_flush_combat(P_desc d)
+{
+	if (d && d->character)
+		gmcp_combat_publish(d->character, false);
+}
+
+/* Preserve the first hit's victim before damage() establishes the relationship. */
 void gmcp_combat_update(struct char_data *ch, struct char_data *victim, int damage,
 			const char *damage_type, int critical)
 {
-	cJSON *root, *target, *round;
-	char *json;
-	int health_pct;
-
-	if (!ch || !ch->desc || !victim)
-		return;
-	if (!GMCP_ENABLED(ch))
-		return;
-
-	root = cJSON_CreateObject();
-
-	/* target info */
-	target = cJSON_CreateObject();
-	cJSON_AddStringToObject(target, "name", GET_NAME(victim));
-
-	/* calculate health percentage */
-	if (GET_MAX_HIT(victim) > 0)
-	{
-		health_pct = (GET_HIT(victim) * 100) / GET_MAX_HIT(victim);
-		if (health_pct < 0)
-			health_pct = 0;
-	}
-	else
-	{
-		health_pct = 0;
-	}
-
-	/* health description */
-	const char *health_desc;
-	if (health_pct >= 100)
-		health_desc = "excellent";
-	else if (health_pct >= 90)
-		health_desc = "few scratches";
-	else if (health_pct >= 75)
-		health_desc = "small wounds";
-	else if (health_pct >= 50)
-		health_desc = "quite a few wounds";
-	else if (health_pct >= 30)
-		health_desc = "big nasty wounds";
-	else if (health_pct >= 15)
-		health_desc = "pretty hurt";
-	else if (health_pct >= 1)
-		health_desc = "awful";
-	else
-		health_desc = "bleeding to death";
-
-	cJSON_AddStringToObject(target, "health", health_desc);
-	cJSON_AddNumberToObject(target, "healthPercent", health_pct);
-
-	/* target position */
-	const char *positions[] = { "on their ass", "sitting", "kneeling", "standing" };
-	int pos = GET_POS(victim);
-	const char *pos_desc = (pos >= 0 && pos <= 3) ? positions[pos] : "standing";
-	cJSON_AddStringToObject(target, "position", pos_desc);
-	cJSON_AddItemToObject(root, "target", target);
-
-	/* round info */
-	if (damage > 0 || damage_type)
-	{
-		round = cJSON_CreateObject();
-		cJSON_AddStringToObject(round, "attacker", GET_NAME(ch));
-		cJSON_AddNumberToObject(round, "damage", damage);
-		cJSON_AddStringToObject(round, "damageType",
-					damage_type ? damage_type : "physical");
-		cJSON_AddBoolToObject(round, "critical", critical);
-		cJSON_AddItemToObject(root, "round", round);
-	}
-
-	json = cJSON_PrintUnformatted(root);
-	cJSON_Delete(root);
-
-	if (json)
-	{
-		gmcp_send(ch->desc, GMCP_PKG_COMBAT_UPDATE, json);
-		free(json);
-	}
+	if (victim)
+		gmcp_combat_publish(ch, true, damage, damage_type, critical, victim);
 }
 
-/* send target health update for health bar */
+/* Relationship changes coalesce with health and posture at the next flush. */
 void gmcp_combat_target(struct char_data *ch, struct char_data *victim)
 {
-	gmcp_combat_update(ch, victim, 0, NULL, 0);
+	(void)victim;
+	if (ch && ch->desc)
+		ch->desc->gmcp_combat_state_sent = false;
 }
 
-/* send combat ended notification */
+/* Explicitly clear ended combat before the character can be detached/reused. */
 void gmcp_combat_end(struct char_data *ch)
 {
-	if (!ch || !ch->desc)
-		return;
-	if (!GMCP_ENABLED(ch))
-		return;
-
-	gmcp_send(ch->desc, GMCP_PKG_COMBAT_UPDATE, "{\"target\":null}");
+	gmcp_combat_publish(ch, true);
 }
+
+// End combat snapshots.
 
 /* send channel message via gmcp */
 void gmcp_comm_channel(struct char_data *ch, const char *channel, const char *sender,

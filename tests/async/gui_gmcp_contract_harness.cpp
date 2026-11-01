@@ -83,9 +83,16 @@ int get_vis_mode(P_char, int)
 {
 	return 0;
 }
-bool ac_can_see(P_char, P_char, bool)
+static P_char concealed;
+static int visibility_checks;
+bool ac_can_see(P_char, P_char subject, bool)
 {
-	return true;
+	++visibility_checks;
+	return subject != concealed;
+}
+char *PERS(P_char subject, P_char, int, bool)
+{
+	return GET_NAME(subject);
 }
 bool ac_can_see_obj(P_char, P_obj, int)
 {
@@ -129,8 +136,10 @@ const char *input_command_label(const char *)
 	return "unknown";
 }
 static int json_allocation_budget = -1;
+static int json_allocation_calls;
 static void *bounded_json_allocate(size_t size)
 {
+	++json_allocation_calls;
 	if (json_allocation_budget == 0)
 		return nullptr;
 	if (json_allocation_budget > 0)
@@ -355,6 +364,7 @@ static std::string payload(P_desc d, const char *package)
 			return i->substr(prefix.size(), i->size() - prefix.size() - 2);
 		}
 	}
+	fprintf(stderr, "missing GMCP package: %s\n", package);
 	assert(false && "missing GMCP package");
 	return "";
 }
@@ -430,7 +440,7 @@ static void control_time_contract(P_char actor)
 		d.character = actor;
 		d.connected = CON_PLAYING;
 		gmcp_flush_initial_states();
-		assert(count() == departed + 3 && d.gmcp_active_streams == GMCP_SUPPORT_TIME);
+		assert(count() == departed + 4 && d.gmcp_active_streams == GMCP_SUPPORT_TIME);
 		check_time(9, "day");
 		const size_t initial_count = count();
 		gmcp_flush_initial_states();
@@ -817,8 +827,214 @@ static void session_contract(P_char actor, bool websocket)
 	descriptor_list = saved_list;
 }
 
+static void combat_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data viewer{}, enemy{}, tank{}, replacement{};
+	pc_only_data player{}, ally{}, other{};
+	npc_only_data npc{};
+	descriptor_data d{};
+	viewer.only.pc = &player;
+	tank.only.pc = &ally;
+	replacement.only.pc = &other;
+	enemy.only.npc = &npc;
+	enemy.specials.act = ACT_ISNPC;
+	viewer.runtime_id = 10;
+	enemy.runtime_id = 11;
+	tank.runtime_id = 12;
+	replacement.runtime_id = 13;
+	viewer.player.name = const_cast<char *>("Viewer");
+	enemy.player.name = const_cast<char *>("wolf grey beast");
+	tank.player.name = const_cast<char *>("Ally");
+	replacement.player.name = const_cast<char *>("Rescuer");
+	viewer.in_room = enemy.in_room = tank.in_room = replacement.in_room = 1;
+	viewer.points.max_hit = enemy.points.max_hit = tank.points.max_hit =
+		replacement.points.max_hit = 100;
+	viewer.points.hit = 10;
+	enemy.points.hit = 80;
+	tank.points.hit = 5;
+	replacement.points.hit = 60;
+	SET_POS(&enemy, POS_STANDING);
+	SET_POS(&tank, POS_KNEELING);
+	viewer.specials.fighting = &enemy;
+	enemy.specials.fighting = &tank;
+	viewer.desc = &d;
+	d.character = &viewer;
+	d.connected = CON_PLAYING;
+	d.gmcp_enabled = 1;
+	d.websocket = websocket;
+	descriptor_list = &d;
+	const auto count = [&]
+	{ return std::count(packages[&d].begin(), packages[&d].end(), "Combat.Update"); };
+	const auto check =
+		[&](const char *target_name, int target_hp, const char *tank_name, int tank_hp)
+	{
+		cJSON *json = cJSON_Parse(payload(&d, "Combat.Update").c_str());
+		for (const auto &[key, name, hp] : { std::tuple{ "target", target_name, target_hp },
+						     std::tuple{ "tank", tank_name, tank_hp } })
+		{
+			cJSON *subject = cJSON_GetObjectItem(json, key);
+			if (!name)
+				assert(cJSON_IsNull(subject));
+			else
+			{
+				assert(cJSON_IsObject(subject));
+				assert(std::string(cJSON_GetStringValue(
+					       cJSON_GetObjectItem(subject, "name"))) == name);
+				assert(cJSON_GetObjectItem(subject, "healthPercent")->valueint ==
+				       hp);
+			}
+		}
+		assert(cJSON_IsString(cJSON_GetObjectItem(json, "revision")));
+		cJSON_Delete(json);
+	};
+	gmcp_flush_initial_states();
+	check("wolf", 80, "Ally", 5);
+	assert(payload(&d, "Combat.Update").find("kneeling") != std::string::npos);
+	emit(&d, "Combat.Update", "combat-subjects");
+	// raw_damage publishes before damage() establishes the first combat relationship.
+	viewer.specials.fighting = enemy.specials.fighting = nullptr;
+	applied_damage_notice(&viewer, &enemy, 8);
+	check("wolf", 80, nullptr, 0);
+	assert(payload(&d, "Combat.Update").find("\"damage\":8") != std::string::npos);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	// A lethal first hit can finish without ever establishing that relationship.
+	enemy.points.hit = -11;
+	applied_damage_notice(&viewer, &enemy, 111);
+	check("wolf", 0, nullptr, 0);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	enemy.points.hit = 80;
+	viewer.specials.fighting = &enemy;
+	enemy.specials.fighting = &tank;
+	gmcp_flush_combat(&d);
+	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
+	cJSON_InitHooks(&hooks);
+	const auto stable_count = count();
+	const auto allocations = json_allocation_calls;
+	for (int n = 0; n < 100; ++n)
+		gmcp_flush_combat(&d);
+	assert(count() == stable_count && json_allocation_calls == allocations);
+	// No event hook: direct non-GMCP ally healing and posture still refresh.
+	tank.points.hit = 75;
+	SET_POS(&tank, POS_SITTING);
+	gmcp_flush_combat(&d);
+	check("wolf", 80, "Ally", 75);
+	assert(payload(&d, "Combat.Update").find("sitting") != std::string::npos);
+	// Multiple hits coalesce; self HP never becomes target or tank HP.
+	enemy.points.hit = 25;
+	enemy.points.hit = 1;
+	viewer.points.hit = 95;
+	const auto before_hits = count();
+	gmcp_flush_combat(&d);
+	assert(count() == before_hits + 1);
+	check("wolf", 1, "Ally", 75);
+	concealed = &tank;
+	gmcp_flush_combat(&d);
+	check("wolf", 1, "someone", 75);
+	assert(payload(&d, "Combat.Update").find("Ally") == std::string::npos);
+	concealed = nullptr;
+	// Rescue changes the opponent's opponent without retargeting the viewer.
+	enemy.specials.fighting = &replacement;
+	gmcp_flush_combat(&d);
+	check("wolf", 1, "Rescuer", 60);
+	// Departure clears a tank, then an off-room primary clears both.
+	replacement.in_room = 2;
+	gmcp_flush_combat(&d);
+	check("wolf", 1, nullptr, 0);
+	enemy.in_room = 2;
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	enemy.in_room = replacement.in_room = 1;
+	enemy.specials.fighting = &viewer;
+	gmcp_flush_combat(&d);
+	check("wolf", 1, "Viewer", 95);
+	enemy.points.hit = -5;
+	gmcp_flush_combat(&d);
+	check("wolf", 0, "Viewer", 95);
+	assert(payload(&d, "Combat.Update").find("bleeding to death") != std::string::npos);
+	enemy.points.hit = 200;
+	gmcp_flush_combat(&d);
+	check("wolf", 100, "Viewer", 95);
+	const auto before_identity = count();
+	++enemy.runtime_id;
+	gmcp_flush_combat(&d);
+	assert(count() == before_identity + 1); // same address/name/vitals, new live identity
+	std::string long_name(600, 'x');
+	enemy.player.name = long_name.data();
+	gmcp_flush_combat(&d);
+	assert(std::strlen(d.gmcp_combat_subjects[0].name) == 255);
+	assert(payload(&d, "Combat.Update").size() < 4096);
+	enemy.player.name = const_cast<char *>("wolf grey beast");
+	gmcp_flush_combat(&d);
+	// Cache advances only when a complete snapshot enters the FIFO.
+	for (int budget = 0; budget < 30; ++budget)
+	{
+		d.gmcp_combat_state_sent = false;
+		json_allocation_budget = budget;
+		gmcp_flush_combat(&d);
+		const auto before_retry = count();
+		const bool pending = !d.gmcp_combat_state_sent;
+		json_allocation_budget = -1;
+		gmcp_flush_combat(&d);
+		assert(count() == before_retry + (pending ? 1 : 0));
+		check("wolf", 100, "Viewer", 95);
+	}
+	enemy.points.hit = 90;
+	queue_reject = true;
+	const auto before_retry = count();
+	gmcp_flush_combat(&d);
+	assert(count() == before_retry);
+	queue_reject = false;
+	gmcp_flush_combat(&d);
+	check("wolf", 90, "Viewer", 95);
+	// Disabled/pre-entry streams do not resolve names or allocate JSON.
+	for (int mode = 0; mode < 3; ++mode)
+	{
+		d.gmcp_enabled = mode != 0;
+		if (mode == 1)
+			viewer.specials.act3 |= PLR3_NOGMCP;
+		if (mode == 2)
+			d.connected = CON_DISPLAY_ACCT_MENU;
+		const auto before = json_allocation_calls;
+		const auto visibility = visibility_checks;
+		gmcp_flush_combat(&d);
+		assert(json_allocation_calls == before && visibility_checks == visibility);
+		viewer.specials.act3 &= ~PLR3_NOGMCP;
+	}
+	d.connected = CON_PLAYING;
+	viewer.specials.fighting = nullptr;
+	gmcp_combat_end(&viewer);
+	check(nullptr, 0, nullptr, 0);
+	char_data *extracted = new char_data{};
+	extracted->only.npc = &npc;
+	extracted->specials.act = ACT_ISNPC;
+	extracted->runtime_id = 99;
+	extracted->player.name = const_cast<char *>("pet companion");
+	extracted->in_room = 1;
+	extracted->points.hit = 1;
+	extracted->points.max_hit = 100;
+	viewer.specials.fighting = extracted;
+	gmcp_flush_combat(&d);
+	check("pet", 1, nullptr, 0);
+	viewer.specials.fighting = nullptr;
+	delete extracted;
+	gmcp_flush_combat(&d); // prior view has no live pointer to the freed pet
+	check(nullptr, 0, nullptr, 0);
+	cJSON_InitHooks(nullptr);
+	descriptor_list = saved_list;
+}
+
 int main()
 {
+	combat_contract(false);
+	combat_contract(true);
+	wire.clear();
+	ws_wire.clear();
+	packages.clear();
+	deliveries.clear();
+	websockets = 0;
 	static char_data a, b, victim;
 	static pc_only_data apc, bpc;
 	static descriptor_data ad, bd;
@@ -1043,14 +1259,19 @@ int main()
 	victim.player.name = const_cast<char *>("wolf");
 	victim.points.hit = 40;
 	victim.points.max_hit = 100;
+	a.specials.fighting = &victim;
+	victim.in_room = a.in_room;
 	applied_damage_notice(&a, &victim, 8);
 	emit(&ad, "Combat.Update");
 	static char_data primary;
 	primary.player.name = const_cast<char *>("primary");
+	primary.in_room = a.in_room;
+	victim.in_room = a.in_room;
 	primary.points.hit = 90;
 	primary.points.max_hit = 100;
 	a.specials.fighting = &primary;
 	applied_damage_notice(&a, &victim, 8);
+	gmcp_flush_initial_states();
 	assert(payload(&ad, "Combat.Update").find("\"name\":\"primary\"") != std::string::npos);
 	assert(payload(&ad, "Combat.Update").find("\"round\"") == std::string::npos);
 	a.specials.fighting = &victim;
@@ -1059,7 +1280,8 @@ int main()
 	assert(payload(&ad, "Combat.Update").find("\"damage\":8") != std::string::npos);
 	a.specials.fighting = nullptr;
 	gmcp_combat_end(&a);
-	assert(payload(&ad, "Combat.Update") == "{\"target\":null}");
+	assert(payload(&ad, "Combat.Update").find("\"target\":null") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("\"tank\":null") != std::string::npos);
 	zones[0].flags = 0;
 	zones[0].number = 228;
 	zones[0].name = const_cast<char *>("Test Zone");
@@ -1212,6 +1434,7 @@ int main()
 	morph.points.max_hit = 80;
 	morph.affected = &affect;
 	morph.specials.fighting = &victim;
+	victim.in_room = morph.in_room;
 	rooms[0].name = const_cast<char *>("Morph room");
 	ad.original = &a;
 	ad.character = &morph;
@@ -1237,6 +1460,7 @@ int main()
 	payload(&ad, "Quest.Map");
 	ad.original = nullptr;
 	ad.character = &a;
+	victim.in_room = a.in_room;
 	a.desc = &ad;
 	morph.desc = nullptr;
 	apc.quest_map_bought = 0;
@@ -1268,7 +1492,8 @@ int main()
 	a.group = nullptr;
 	ws_wire.clear();
 	ws_send_full_game_state(&ad);
-	assert(payload(&ad, "Combat.Update") == "{\"target\":null}");
+	assert(payload(&ad, "Combat.Update").find("\"target\":null") != std::string::npos);
+	assert(payload(&ad, "Combat.Update").find("\"tank\":null") != std::string::npos);
 	assert(payload(&ad, "Group.Status").find("\"members\":[]") != std::string::npos);
 	ad.websocket = 0;
 	apc.quest_map_bought = 0;

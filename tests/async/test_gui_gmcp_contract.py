@@ -44,9 +44,6 @@ functions = [
     ('gmcp.c', 'static cJSON *json_build_ship_contacts('),
     ('gmcp.c', 'void gmcp_flush_dirty_ship_contacts('),
     ('gmcp.c', 'void gmcp_flush_dirty_ship_info('),
-    ('gmcp.c', 'void gmcp_combat_update('),
-    ('gmcp.c', 'void gmcp_combat_target('),
-    ('gmcp.c', 'void gmcp_combat_end('),
     ('gmcp.c', 'void gmcp_send_room_map('),
     ('gmcp.c', 'void gmcp_send_quest_map('),
     ('gmcp.c', 'void gmcp_quest_status(struct char_data *ch)'),
@@ -81,8 +78,9 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     control = gmcp[gmcp.index('// New-stream control and time.'):gmcp.index('// End new-stream control and time.')]
     auth_source = gmcp[gmcp.index('static int gmcp_durisweb_auth_limited('):gmcp.index('void gmcp_input_receipt(')]
     parser_source = gmcp[gmcp.index('void gmcp_handle_input('):gmcp.index('/* core gmcp send')]
+    combat_source = gmcp[gmcp.index('// Combat snapshots.'):gmcp.index('// End combat snapshots.')]
     sender_source = gmcp[gmcp.index('/* core gmcp send'):gmcp.index('/* Bootstrap state')]
-    (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
+    (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + combat_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
         + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam) {\n' + notice + '\n}\n'
         + '\nvoid rejected_creation(P_desc d, P_char ch) { account_racewar_admission admission{};\n'
         + extract_function('ws_handlers.c', 'if (!account_commit_character_admission(d, ch, false, &admission))') + '\n}\n')
