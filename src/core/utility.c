@@ -3719,12 +3719,12 @@ string strip_ansi(const char *str)
 				str += 2;
 				continue;
 			}
-			if ((*(str + 1) == '-') || (*(str + 1) == '+'))
+			if (((*(str + 1) == '-') || (*(str + 1) == '+')) && str[2])
 			{
 				str += 3;
 				continue;
 			}
-			if ((*(str + 1) == '='))
+			if ((*(str + 1) == '=') && str[2] && str[3])
 			{
 				str += 4;
 				continue;
