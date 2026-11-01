@@ -21,6 +21,10 @@ void __free(void *memory, const char *, int)
 }
 P_desc descriptor_list = nullptr;
 const char *where[MAX_WEAR] = {};
+int get_vis_mode(P_char, int)
+{
+	return 1;
+}
 bool ac_can_see_obj(P_char, P_obj, int)
 {
 	return true;

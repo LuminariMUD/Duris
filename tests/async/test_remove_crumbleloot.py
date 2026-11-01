@@ -34,7 +34,8 @@ P_room world = rooms;
 static std::set<P_obj> live;
 static std::set<int> effects;
 static std::string output;
-static int extracted;
+static int extracted, attached_notices;
+void gmcp_items_changed(P_char) { ++attached_notices; }
 void send_to_char(const char *text, P_char) { output += text; }
 void send_to_room(const char *text, int) { output += text; }
 void act(const char *text, int, P_char, P_obj obj, void *, int) {
@@ -88,7 +89,7 @@ int main() {
                 obj->affects = &enchant;
                 effects = {TAG_PERMINVIS, SPELL_ARMOR, SPELL_BATTLEMAGE};
                 execute_wear(&ch, obj, WEAR_BODY, 0, false);
-                output.clear(); extracted = 0;
+                output.clear(); extracted = 0; attached_notices = 0;
                 P_obj replacement = nullptr;
                 if (mode == 2) {
                     replacement = new obj_data{}; live.insert(replacement);
@@ -102,11 +103,11 @@ int main() {
                 assert(!effects.count(TAG_PERMINVIS) && !effects.count(SPELL_ARMOR));
                 if (mode != 2) assert(!effects.count(SPELL_BATTLEMAGE));
                 if (crumble && !trusted) {
-                    assert(extracted == 1 && ch.carrying == nullptr);
+                    assert(extracted == 1 && ch.carrying == nullptr && attached_notices == 0);
                     assert(output.find("crumble to dust") != std::string::npos);
                     assert(output.find("You are quite naked") == std::string::npos);
                 } else {
-                    assert(extracted == 0 && ch.carrying == obj && obj->affects == nullptr);
+                    assert(extracted == 0 && ch.carrying == obj && obj->affects == nullptr && attached_notices == 1);
                     assert(output.find("You stop using") != std::string::npos);
                     live.erase(obj); delete obj;
                 }

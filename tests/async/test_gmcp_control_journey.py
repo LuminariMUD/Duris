@@ -162,11 +162,11 @@ def item_journey(client):
     initial = snapshot("inv", before)
     snapshot("eq", before)
     before = len(telnet_packets(client))
-    for _ in range(2):
+    for _ in range(3):
         client.send("load obj 15")
         client.expect("You have created")
     loaded = snapshot("inv", before, lambda state:
-        sum("banana" in row["description"] for row in state["items"]) >= 2)
+        sum("banana" in row["description"] for row in state["items"]) >= 3)
     bananas = [row for row in loaded["items"] if "banana" in row["description"]]
     require(bananas[0]["selector"] != bananas[1]["selector"], "duplicate objects share a selector")
     before = len(telnet_packets(client))
@@ -218,6 +218,110 @@ def item_journey(client):
     edited = snapshot("inv", before, lambda state:
         any(row["description"].strip() == "an edited wooden mace" for row in state["items"]))
     snapshot("eq", before)
+    def latest_item(fragment):
+        state = next(state for name, state in reversed(telnet_packets(client))
+                     if name == "Char.Items.List" and state["location"] == "inv" and state["complete"])
+        return next(row for row in state["items"] if fragment in row["description"])
+
+    def nested(selector, available, count):
+        snapshot("eq", 0)  # Both top-level pages must be complete before requesting contents.
+        drain(client)
+        after = len(telnet_packets(client))
+        send_telnet(client, "Char.Items.Get", [selector])
+        state = snapshot(selector, after)
+        require(state["available"] == available and len(state["items"]) == count,
+                f"wrong nested contents: {state}")
+        return state
+
+    # Real container gates and nested selectors, using ordinary put/get dispatch.
+    before = len(telnet_packets(client))
+    client.send("load obj 380")
+    client.expect("You have created")
+    snapshot("inv", before, lambda state: any("small wooden chest" in row["description"] for row in state["items"]))
+    before = len(telnet_packets(client))
+    client.send("close chest")
+    snapshot("inv", before)
+    snapshot("eq", before)
+    chest = latest_item("small wooden chest")
+    closed = nested(chest["selector"], False, 0)
+    before = len(telnet_packets(client))
+    client.send("open " + chest["selector"])
+    opened = snapshot("inv", before)
+    snapshot("eq", before)
+    require(int(opened["revision"]) > int(closed["revision"]), "open did not retire the closed view")
+    nested(latest_item("small wooden chest")["selector"], True, 0)
+    before = len(telnet_packets(client))
+    client.send("load obj 379")
+    client.expect("You have created")
+    snapshot("inv", before, lambda state: any("large iron box" in row["description"] for row in state["items"]))
+    before = len(telnet_packets(client))
+    client.send("open box")
+    snapshot("inv", before)
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("put all.banana box")
+    packed = snapshot("inv", before, lambda state: not any("banana" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("put box chest")
+    snapshot("inv", before, lambda state: not any("large iron box" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
+    contents = nested(latest_item("small wooden chest")["selector"], True, 1)
+    inner_selector = contents["items"][0]["selector"]
+    inner_contents = nested(inner_selector, True, len(bananas) - 1)
+    require(all("banana" in row["description"] for row in inner_contents["items"]), "nested selector returned another owner's data")
+    before = len(telnet_packets(client))
+    client.send("close chest")
+    snapshot("inv", before)
+    snapshot("eq", before)
+    # Stale nested selectors never resolve against another duplicate after access change.
+    client.send("drop " + inner_contents["items"][0]["selector"])
+    drain(client)
+    before = len(telnet_packets(client))
+    client.send("open chest")
+    snapshot("inv", before)
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("get all chest")
+    snapshot("inv", before, lambda state: any("large iron box" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("get all box")
+    unpacked = snapshot("inv", before, lambda state:
+        sum("banana" in row["description"] for row in state["items"]) == len(bananas) - 1)
+    snapshot("eq", before)
+    drain(client)
+    require(len({state["revision"] for name, state in telnet_packets(client)[before:]
+                 if name == "Char.Items.List"}) == 1, "get-all published a partial bulk revision")
+    # A native wear/remove and transfer exercise the actual ownership/slot paths.
+    before = len(telnet_packets(client))
+    client.send("load obj 450")
+    client.expect("You have created")
+    snapshot("inv", before, lambda state: any("rugged leather cap" in row["description"] for row in state["items"]))
+    before = len(telnet_packets(client))
+    client.send("wear " + latest_item("rugged leather cap")["selector"])
+    cap_equipped = snapshot("eq", before, lambda state: any("rugged leather cap" in row["description"] for row in state["items"]))
+    cap = next(row for row in cap_equipped["items"] if "rugged leather cap" in row["description"])
+    before = len(telnet_packets(client))
+    client.send("remove " + cap["selector"])
+    snapshot("inv", before, lambda state: any("rugged leather cap" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
+    client.send("load mob 22801")
+    client.expect("You have created")
+    before = len(telnet_packets(client))
+    client.send("give " + latest_item("banana")["selector"] + " ally")
+    given = snapshot("inv", before, lambda state:
+        sum("banana" in row["description"] for row in state["items"]) == len(bananas) - 2)
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("switch ally")
+    received = snapshot("inv", before, lambda state: any("banana" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("return")
+    client.expect("You return to your original body.")
+    snapshot("inv", before, lambda state: any("edited wooden mace" in row["description"] for row in state["items"]))
+    snapshot("eq", before)
     before = len(telnet_packets(client))
     client.send("save")
     client.expect(f"Save complete for {CHARACTER}.")
@@ -227,7 +331,9 @@ def item_journey(client):
     send_telnet(client, "Duris.Subscribe", ["Duris.Time 1"])
     wait_telnet(client, "Duris.Capabilities", before, lambda state: state["active"] == ["Duris.Time"])
     return {"initial": initial, "loaded": loaded, "dropped": dropped,
-            "equipped": equipped, "removed": removed, "renamed": renamed, "edited": edited}
+            "equipped": equipped, "removed": removed, "renamed": renamed, "edited": edited, "closed": closed, "contents": contents,
+            "inner_contents": inner_contents, "packed": packed, "unpacked": unpacked,
+            "cap_equipped": cap_equipped, "given": given, "received": received}
 
 
 def run(binary, evidence):

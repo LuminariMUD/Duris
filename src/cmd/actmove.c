@@ -2735,6 +2735,7 @@ void do_open(P_char ch, char *argument, int /*cmd*/)
 			}
 		}
 		REMOVE_BIT(obj->value[1], CONT_CLOSED);
+		gmcp_item_changed(obj);
 		send_to_char("Ok.\n", ch);
 		act("$n opens $p.", FALSE, ch, obj, 0, TO_ROOM);
 		if (obj_index[obj->R_num].virtual_number == 1270)
@@ -2854,6 +2855,7 @@ void do_close(P_char ch, char *argument, int /*cmd*/)
 		else
 		{
 			SET_BIT(obj->value[1], CONT_CLOSED);
+			gmcp_item_changed(obj);
 			send_to_char("Ok.\n", ch);
 			act("$n closes $p.", FALSE, ch, obj, 0, TO_ROOM);
 		}

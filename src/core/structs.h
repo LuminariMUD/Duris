@@ -1835,6 +1835,9 @@ struct descriptor_data
 	uint64_t gmcp_items_revision;
 	uint32_t gmcp_items_filter;
 	P_obj gmcp_items_cursor; // Used only while the captured body/epoch still match.
+	P_obj gmcp_items_container; // Same epoch guard as the page/search cursor.
+	uint64_t gmcp_items_requested_uid;
+	bool gmcp_items_ascending;
 	unsigned gmcp_items_index;
 	unsigned gmcp_items_page;
 	unsigned char gmcp_items_location;

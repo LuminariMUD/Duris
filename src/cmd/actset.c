@@ -974,9 +974,11 @@ static void setbit_obj(P_char ch, char *name, char *flag, char *val, int on_off)
 	const auto condition = obj->condition;
 	const auto object_type = obj->type;
 	const auto light = obj->value[2];
+	const auto container_flags = obj->value[1];
 	setbit_parseTable(ch, (void *)obj, table, ARRAY_SIZE(table), flag, val, on_off, SETBIT_OBJ);
 	if (extra != obj->extra_flags || extra2 != obj->extra2_flags ||
-	    condition != obj->condition || object_type != obj->type || light != obj->value[2])
+	    condition != obj->condition || object_type != obj->type || light != obj->value[2] ||
+	    container_flags != obj->value[1])
 		gmcp_item_changed(obj);
 
 	if (OBJ_WORN(obj))

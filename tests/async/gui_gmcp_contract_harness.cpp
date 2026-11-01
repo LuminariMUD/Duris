@@ -3,11 +3,19 @@
 #include "core/utils.h"
 #include "core/json_utils.h"
 #include "net/gmcp.h"
+#include "net/comm.h"
+#include "item/item_actions.h"
+#include "item/encumbrance_policy.h"
 #include "net/websocket.h"
 #include "net/ws_auth.h"
 #include "persistence/latency_trace.h"
+#include "item/item_ownership_runtime.h"
+#include "player/player_load_items.h"
+#include "sql/sql_async.h"
+#include <memory>
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include "ships/ships.h"
 #include "world/db.h"
 #include "magic/spells.h"
@@ -87,9 +95,10 @@ char *get_class_string(P_char, char *buf)
 	std::strcpy(buf, "Warrior");
 	return buf;
 }
+static int item_vision = 1;
 int get_vis_mode(P_char, int)
 {
-	return 0;
+	return item_vision;
 }
 static P_char concealed;
 static int visibility_checks;
@@ -102,9 +111,16 @@ char *PERS(P_char subject, P_char, int, bool)
 {
 	return GET_NAME(subject);
 }
+static P_obj denied_container;
+bool locker_container_access_allowed(P_char, P_obj object)
+{
+	return object != denied_container;
+}
 static P_obj concealed_item;
+static unsigned item_visibility_checks;
 bool ac_can_see_obj(P_char, P_obj object, int)
 {
+	++item_visibility_checks;
 	return object != concealed_item;
 }
 static int websockets;
@@ -339,6 +355,103 @@ int raw_damage(P_char, P_char, double, uint, damage_messages *messages, int *)
 {
 	captured_damage = *messages;
 	return DAM_NONEDEAD;
+}
+void item_actions_source_leaving(P_obj) {}
+int fill_word(char *)
+{
+	return 0;
+}
+int GET_CLASS(P_char ch, uint cls)
+{
+	return (ch->player.m_class & cls) != 0;
+}
+static P_char disarm_target;
+static int disarm_roll = 1;
+int GET_CHAR_SKILL_P(P_char, int)
+{
+	return 100;
+}
+int number(int, int)
+{
+	return disarm_roll;
+}
+int STAT_INDEX(int value)
+{
+	return value;
+}
+int generic_find(const char *, int, P_char, P_char *, P_obj *)
+{
+	return 0;
+}
+P_char get_char_room_vis(P_char, const char *)
+{
+	return disarm_target;
+}
+void trapdamage(P_char, P_obj)
+{
+	assert(false);
+}
+void act(const char *, int, P_char, P_obj, void *, int) {}
+void send_to_char(const char *, P_char) {}
+void strip_holy_sword(P_char) {}
+void CharWait(P_char, int) {}
+void set_short_affected_by(P_char, int, int) {}
+void set_fighting(P_char ch, P_char victim)
+{
+	ch->specials.fighting = victim;
+}
+void all_affects(P_char, int) {}
+void balance_affects(P_char) {}
+void clear_links(P_char, P_obj, int) {}
+int char_light(P_char)
+{
+	return 0;
+}
+int room_light(int, int)
+{
+	return 0;
+}
+static void mark_char_or_owner_dirty(P_char) {}
+// The committed-reward publisher is real; only storage/attachment services are
+// controlled. Native command journeys separately exercise the attachment owners.
+static std::function<void(bool, const sql_rows &)> reward_read_done;
+static bool reward_hydrate = true;
+static unsigned reward_reads, reward_attachments, reward_extractions;
+bool sql_read_at(persistence_query_site, std::string,
+		 std::function<void(bool, const sql_rows &)> done)
+{
+	assert(!reward_read_done);
+	++reward_reads;
+	reward_read_done = std::move(done);
+	return true;
+}
+bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_entry *, size_t)
+{
+	return reward_hydrate;
+}
+void obj_to_char(P_obj object, P_char actor)
+{
+	assert(OBJ_NOWHERE(object));
+	++reward_attachments;
+	object->loc_p = LOC_CARRIED;
+	object->loc.carrying = actor;
+	object->next_content = actor->carrying;
+	actor->carrying = object;
+	gmcp_items_changed(actor);
+}
+void extract_obj(P_obj object, int)
+{
+	assert(object == object_list && OBJ_NOWHERE(object));
+	++reward_extractions;
+	object_list = object->next;
+}
+bool player_load_item_graph_materialize_detached(const std::vector<player_item_snapshot> &,
+						 const std::vector<player_load_item_identity> &,
+						 const item_owner_identity &, uint64_t, bool, bool,
+						 std::vector<P_obj> *,
+						 player_load_item_materialize_metrics *)
+{
+	return false; // Restoration itself is covered by the publication/load harnesses.
 }
 #include "production.inc"
 
@@ -1408,6 +1521,334 @@ static void items_contract(bool websocket)
 	descriptor_list = saved_list;
 }
 
+static void nested_items_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{};
+	pc_only_data pc{};
+	actor.only.pc = &pc;
+	actor.runtime_id = 350;
+	actor.player.name = const_cast<char *>("Nestedcollector");
+	actor.in_room = 1;
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	descriptor_data d{};
+	d.descriptor = 52;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &actor;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	actor.desc = &d;
+	descriptor_list = &d;
+	obj_data bag{}, inner{}, hidden{}, worn{};
+	bag.obj_uid = 501;
+	bag.name = const_cast<char *>("bag");
+	bag.short_description = const_cast<char *>("a bag");
+	bag.type = ITEM_CONTAINER;
+	bag.loc_p = LOC_CARRIED;
+	bag.loc.carrying = &actor;
+	actor.carrying = &bag;
+	inner = bag;
+	inner.obj_uid = 502;
+	inner.short_description = const_cast<char *>("an inner bag");
+	inner.loc_p = LOC_INSIDE;
+	inner.loc.inside = &bag;
+	bag.contains = &inner;
+	hidden = inner;
+	hidden.obj_uid = 503;
+	hidden.short_description = const_cast<char *>("hidden item");
+	hidden.type = ITEM_OTHER;
+	inner.next_content = &hidden;
+	worn = bag;
+	worn.obj_uid = 504;
+	worn.loc_p = LOC_WORN;
+	worn.loc.wearing = &actor;
+	worn.contains = nullptr;
+	actor.equipment[WIELD] = &worn;
+	concealed_item = &hidden;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_location == 2);
+	const auto token = [&](uint64_t uid)
+	{ return "@i:" + std::string(d.gmcp_items_scope) + ":" + std::to_string(uid); };
+	const auto request = [&](const std::string &value)
+	{
+		control_clock_us += 1000000;
+		if (websocket)
+		{
+			const std::string raw =
+				"{\"type\":\"gmcp\",\"package\":\"Char.Items.Get\",\"data\":" +
+				value + "}";
+			cJSON *message = cJSON_Parse(raw.c_str());
+			assert(gmcp_handle_control_json(&d, message, raw.data(), raw.size(),
+							raw.data() + raw.size()));
+			cJSON_Delete(message);
+		}
+		else
+		{
+			const std::string raw = "Char.Items.Get " + value;
+			gmcp_handle_input(&d, raw.data(), raw.size());
+		}
+	};
+	const auto finish = [&](bool available, int count)
+	{
+		for (unsigned n = 0; n < 100 && d.gmcp_items_location != 2; ++n)
+			gmcp_flush_initial_states();
+		assert(d.gmcp_items_location == 2);
+		cJSON *json = cJSON_Parse(payload(&d, "Char.Items.List").c_str());
+		assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "complete")));
+		assert(cJSON_IsTrue(cJSON_GetObjectItem(json, "available")) == available);
+		assert(cJSON_GetArraySize(cJSON_GetObjectItem(json, "items")) == count);
+		cJSON_Delete(json);
+	};
+	const auto get = [&](uint64_t uid) { request("[\"" + token(uid) + "\"]"); };
+	get(bag.obj_uid);
+	finish(true, 1); // Hidden siblings are omitted; a request never recursively pushes.
+	assert(payload(&d, "Char.Items.List").find("an inner bag") != std::string::npos);
+	get(inner.obj_uid);
+	finish(true, 0); // Explicit known-empty nested state.
+	get(worn.obj_uid);
+	finish(true, 0); // Equipped containers use the same owner search.
+	get(9999);
+	finish(false, 0); // Missing/cross-owner/room-only identity reveals no contents.
+	bag.value[1] = CONT_CLOSED;
+	get(bag.obj_uid);
+	finish(false, 0);
+	get(inner.obj_uid);
+	finish(false, 0); // Cannot traverse a closed ancestor.
+	bag.extra2_flags = ITEM2_TRANSPARENT;
+	get(bag.obj_uid);
+	finish(true, 1); // Native look-in permits transparent closed containers.
+	denied_container = &bag;
+	get(bag.obj_uid);
+	finish(false, 0); // Locker policy still wins over transparency.
+	denied_container = nullptr;
+	bag.value[1] = 0;
+	item_vision = 3;
+	get(bag.obj_uid);
+	finish(false, 0);
+	item_vision = 1;
+	// Malformed, overlong, noncanonical, stale and multi-target requests do nothing.
+	const auto revision = d.gmcp_items_revision;
+	for (const auto &bad : std::vector<std::string>{
+		     "[1]", "[\"bad\"]", "[\"" + token(1) + "x\"]",
+		     "[\"" + token(1) + "8446744073709551616\"]", "[\"" + token(1) + "\",\"x\"]" })
+		request(bad);
+	assert(d.gmcp_items_revision == revision && d.gmcp_items_location == 2);
+	// Large nested lists use the same bounded page, retry and cancellation owners.
+	std::vector<obj_data> contents(3000);
+	for (size_t i = 0; i < contents.size(); ++i)
+	{
+		auto &object = contents[i];
+		object.obj_uid = 600 + i;
+		object.short_description = const_cast<char *>("a nested item");
+		object.loc_p = LOC_INSIDE;
+		object.loc.inside = &inner;
+		object.next_content = i + 1 < contents.size() ? &contents[i + 1] : nullptr;
+	}
+	inner.contains = contents.data();
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	get(inner.obj_uid);
+	gmcp_flush_initial_states(); // bounded search, no page construction in the same slot
+	const auto before = deliveries[&d].size();
+	queue_reject = true;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_page == 0 && deliveries[&d].size() == before);
+	queue_reject = false;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_page == 1 && d.gmcp_items_location == 5);
+	// Access can change without a save flag or item epoch (e.g. locker policy).
+	denied_container = &bag;
+	finish(false, 0);
+	denied_container = nullptr;
+	// Search across a large tree is bounded too, including ascents.
+	get(worn.obj_uid);
+	const auto checks = item_visibility_checks;
+	const auto packets_before_search = deliveries[&d].size();
+	gmcp_flush_initial_states();
+	assert(item_visibility_checks - checks <= 128);
+	assert(deliveries[&d].size() == packets_before_search && d.gmcp_items_location == 3);
+	finish(true, 0);
+	get(inner.obj_uid);
+	gmcp_flush_initial_states();
+	const auto stale = token(inner.obj_uid);
+	// Canonical detach/extract notifications retire both search and page pointers.
+	inner.contains = nullptr;
+	gmcp_items_changed(&actor);
+	contents.clear();
+	contents.shrink_to_fit();
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(!gmcp_item_selector_matches(&actor, &inner, stale.c_str()));
+	const auto after_mutation = d.gmcp_items_revision;
+	request("[\"" + stale + "\"]");
+	assert(d.gmcp_items_revision == after_mutation);
+	concealed_item = nullptr;
+	descriptor_list = saved_list;
+}
+
+static void item_reward_publication_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	P_obj saved_objects = object_list;
+	char_data actor{};
+	pc_only_data pc{};
+	actor.only.pc = &pc;
+	actor.runtime_id = 370;
+	actor.player.name = const_cast<char *>("Rewardcollector");
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	descriptor_data d{};
+	d.descriptor = 53;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &actor;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	actor.desc = &d;
+	descriptor_list = &d;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto packets = deliveries[&d].size();
+	const auto revision = d.gmcp_items_revision;
+	auto state = std::make_shared<world_quest_reward_publication>();
+	state->pid = 42;
+	player_item_snapshot item{};
+	item.object_uid = 100;
+	item.vnum = 1001;
+	item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	state->items = { item };
+	obj_data reward{};
+	reward.obj_uid = 100;
+	reward.short_description = const_cast<char *>("a committed reward");
+	reward.loc_p = LOC_NOWHERE;
+	object_list = &reward;
+	const auto finish_read = [&](bool ok, const char *owner = "42")
+	{
+		assert(reward_read_done);
+		auto done = std::move(reward_read_done);
+		reward_read_done = {};
+		done(ok, { { { "100", "100", "0", "1", owner, "0", "1", "1001", "1", "7" } } });
+	};
+	assert(!world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == packets); // detached reward is never serialized
+	finish_read(false);
+	assert(!world_quest_publish_reward(&actor, state));
+	finish_read(true, "99");
+	assert(!state->ready && !world_quest_publish_reward(&actor, state));
+	finish_read(true);
+	reward_hydrate = false;
+	assert(!world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(deliveries[&d].size() == packets && d.gmcp_items_revision == revision);
+	reward_hydrate = true;
+	assert(!world_quest_publish_reward(&actor, state));
+	finish_read(true);
+	const auto attachments = reward_attachments;
+	assert(world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	const auto visible = payload(&d, "Char.Items.List");
+	assert(visible.find("a committed reward") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision + 1 && deliveries[&d].size() == packets + 2);
+	assert(reward_attachments == attachments + 1);
+	const auto reads = reward_reads;
+	const auto epoch = actor.gmcp_items_epoch;
+	assert(world_quest_publish_reward(&actor, state));
+	gmcp_flush_initial_states();
+	assert(reward_reads == reads && actor.gmcp_items_epoch == epoch &&
+	       reward_attachments == attachments + 1 && deliveries[&d].size() == packets + 2);
+	// A late read owns no character pointer; logout leaves durable recovery intact.
+	reward.loc_p = LOC_NOWHERE;
+	actor.carrying = nullptr;
+	state->ready = false;
+	assert(!world_quest_publish_reward(&actor, state));
+	d.character = nullptr;
+	actor.desc = nullptr;
+	const auto extractions = reward_extractions;
+	assert(world_quest_publish_reward(nullptr, state));
+	assert(reward_extractions == extractions + 1 && !object_list);
+	finish_read(true);
+	assert(world_quest_publish_reward(nullptr, state));
+	assert(reward_attachments == attachments + 1);
+	object_list = saved_objects;
+	descriptor_list = saved_list;
+}
+
+static void item_disarm_repair_contract(bool websocket)
+{
+	P_desc saved_list = descriptor_list;
+	char_data actor{}, victim{};
+	pc_only_data pc{}, victim_pc{};
+	actor.only.pc = &pc;
+	victim.only.pc = &victim_pc;
+	actor.runtime_id = 379;
+	actor.player.name = const_cast<char *>("Disarmer");
+	victim.runtime_id = 380;
+	victim.player.name = const_cast<char *>("Victim");
+	SET_POS(&actor, STAT_NORMAL | POS_STANDING);
+	SET_POS(&victim, STAT_NORMAL | POS_STANDING);
+	actor.specials.fighting = &victim;
+	disarm_target = &victim;
+	descriptor_data d{};
+	d.descriptor = 54;
+	d.websocket = websocket;
+	d.gmcp_enabled = 1;
+	d.connected = CON_PLAYING;
+	d.character = &victim;
+	d.gmcp_supports = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_ITEMS;
+	d.gmcp_interests = GMCP_SUPPORT_ITEMS;
+	victim.desc = &d;
+	descriptor_list = &d;
+	obj_data weapon{}, own_weapon{};
+	weapon.obj_uid = 800;
+	weapon.name = const_cast<char *>("sword");
+	weapon.short_description = const_cast<char *>("a sword");
+	weapon.type = ITEM_WEAPON;
+	weapon.loc_p = LOC_WORN;
+	weapon.loc.wearing = &victim;
+	victim.equipment[WIELD] = &weapon;
+	actor.equipment[WIELD] = &own_weapon;
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto epoch = victim.gmcp_items_epoch;
+	const auto revision = d.gmcp_items_revision;
+	assert(unequip_char(&victim, WIELD, true) == &weapon);
+	assert(victim.gmcp_items_epoch == epoch); // Temporary terminal-save removal is silent.
+	victim.equipment[WIELD] = &weapon;
+	weapon.loc_p = LOC_WORN;
+	weapon.loc.wearing = &victim;
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision);
+	char command[] = "victim sword";
+	disarm_roll = 1;
+	do_disarm(&actor, command, 0);
+	assert(!victim.equipment[WIELD] && OBJ_CARRIED_BY(&weapon, &victim));
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("a sword") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == revision + 1); // Both movement halves coalesce.
+	set_obj_condition(&weapon, 25);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	const auto damaged = d.gmcp_items_revision;
+	spell_repair_one_item(50, &victim, nullptr, 0, nullptr, &weapon);
+	assert(weapon.condition == 100);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("25%") == std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == damaged + 1);
+	spell_repair_one_item(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == damaged + 1); // Healthy repair is no mutation.
+	disarm_target = nullptr;
+	descriptor_list = saved_list;
+}
+
 static void items_fairness_contract()
 {
 	P_desc saved_list = descriptor_list;
@@ -1462,6 +1903,12 @@ int main()
 		label = "wielded";
 	items_contract(false);
 	items_contract(true);
+	nested_items_contract(false);
+	nested_items_contract(true);
+	item_reward_publication_contract(false);
+	item_reward_publication_contract(true);
+	item_disarm_repair_contract(false);
+	item_disarm_repair_contract(true);
 	items_fairness_contract();
 	combat_contract(false);
 	combat_contract(true);

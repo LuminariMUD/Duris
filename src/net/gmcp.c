@@ -15,6 +15,7 @@
 #include <math.h>
 #include <algorithm>
 #include <ctype.h>
+#include <charconv>
 #include <mysql.h>
 #include <openssl/hmac.h>
 #include <openssl/rand.h>
@@ -53,6 +54,7 @@ static bool gmcp_queue(struct descriptor_data *d, const char *package, const cha
 static void gmcp_flush_combat(P_desc d);
 static void gmcp_items_reset(P_desc d);
 static bool gmcp_flush_items_page(P_desc d);
+static void gmcp_items_request(P_desc d, const cJSON *array);
 static int gmcp_items_resume_fd = -1;
 static uint64_t gmcp_clock_revision;
 static int gmcp_clock_hour = -1;
@@ -448,8 +450,7 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 		return;
 	if (kind == gmcp_control_kind::items)
 	{
-		if (!cJSON_GetArraySize(array) && (gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS))
-			gmcp_items_reset(d);
+		gmcp_items_request(d, array);
 		return;
 	}
 	const bool wanted_items = d->gmcp_interests & GMCP_SUPPORT_ITEMS;
@@ -1834,6 +1835,8 @@ static void gmcp_items_reset(P_desc d)
 		return;
 	d->gmcp_items_started = false;
 	d->gmcp_items_cursor = nullptr;
+	d->gmcp_items_container = nullptr;
+	d->gmcp_items_requested_uid = 0;
 	d->gmcp_items_scope[0] = 0;
 }
 
@@ -1920,6 +1923,114 @@ static uint32_t gmcp_items_filter(P_char ch)
 	       (IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ? 128U : 0U);
 }
 
+// Match look-in presentation, without opening containers or invoking commands.
+static bool gmcp_item_contents_visible(P_char ch, P_obj object)
+{
+	if (!CAN_SEE_OBJ(ch, object) || object->hitched_to || object->gmcp_items_editors ||
+	    !locker_container_access_allowed(ch, object))
+		return false;
+	switch (object->type)
+	{
+	case ITEM_CORPSE:
+	case ITEM_QUIVER:
+		return true;
+	case ITEM_CONTAINER:
+	case ITEM_STORAGE:
+		return !IS_SET(object->value[1], CONT_CLOSED) ||
+		       IS_OBJ_STAT2(object, ITEM2_TRANSPARENT);
+	default:
+		return false;
+	}
+}
+
+static void gmcp_items_request(P_desc d, const cJSON *array)
+{
+	if (!(gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS))
+		return;
+	if (!cJSON_GetArraySize(array))
+	{
+		gmcp_items_reset(d);
+		return;
+	}
+	// A single latest request reuses the completed top-level snapshot's scope.
+	P_char ch = d->character;
+	const cJSON *entry = cJSON_GetArrayItem(array, 0);
+	if (cJSON_GetArraySize(array) != 1 || !cJSON_IsString(entry) || !d->gmcp_items_started ||
+	    d->gmcp_items_location < 2 || d->gmcp_items_epoch != ch->gmcp_items_epoch ||
+	    d->gmcp_items_body != ch->runtime_id || d->gmcp_items_filter != gmcp_items_filter(ch))
+		return;
+	char prefix[40];
+	snprintf(prefix, sizeof(prefix), "@i:%s:", d->gmcp_items_scope);
+	const size_t length = strlen(entry->valuestring), prefix_length = strlen(prefix);
+	if (length <= prefix_length || length > prefix_length + 20 ||
+	    strncmp(entry->valuestring, prefix, prefix_length))
+		return;
+	uint64_t uid = 0;
+	const char *end = entry->valuestring + length;
+	const auto parsed = std::from_chars(entry->valuestring + prefix_length, end, uid);
+	if (parsed.ec != std::errc{} || parsed.ptr != end || !uid ||
+	    entry->valuestring[prefix_length] == '0')
+		return;
+	d->gmcp_items_requested_uid = uid;
+	d->gmcp_items_container = nullptr;
+	d->gmcp_items_cursor = ch->carrying;
+	d->gmcp_items_index = d->gmcp_items_page = 0;
+	d->gmcp_items_ascending = false;
+	d->gmcp_items_location = 3; // Search inventory, then equipped trees (4), then page (5).
+	++d->gmcp_items_revision;
+}
+
+// Walk the owned tree without recursion or a new index. Ascents count as work too.
+// The normal mutation epoch invalidates every retained pointer before it is reused.
+static void gmcp_items_find_container(P_desc d)
+{
+	unsigned work = 0;
+	while (work++ < 128 && d->gmcp_items_location < 5)
+	{
+		P_obj object = d->gmcp_items_cursor;
+		if (!object)
+		{
+			d->gmcp_items_location = 4;
+			if (d->gmcp_items_index >= MAX_WEAR)
+			{
+				d->gmcp_items_location = 5;
+				break;
+			}
+			d->gmcp_items_cursor = d->character->equipment[d->gmcp_items_index++];
+			d->gmcp_items_ascending = false;
+			continue;
+		}
+		if (!d->gmcp_items_ascending)
+		{
+			if (object->obj_uid == d->gmcp_items_requested_uid)
+			{
+				d->gmcp_items_container = object;
+				d->gmcp_items_cursor = nullptr;
+				d->gmcp_items_location = 5;
+				break;
+			}
+			if (object->contains && gmcp_item_contents_visible(d->character, object))
+			{
+				d->gmcp_items_cursor = object->contains;
+				continue;
+			}
+		}
+		if (object->next_content && (OBJ_INSIDE(object) || d->gmcp_items_location == 3))
+		{
+			d->gmcp_items_cursor = object->next_content;
+			d->gmcp_items_ascending = false;
+		}
+		else
+		{
+			d->gmcp_items_cursor = OBJ_INSIDE(object) ? object->loc.inside : nullptr;
+			d->gmcp_items_ascending = true;
+		}
+	}
+	if (d->gmcp_items_location == 5)
+		d->gmcp_items_cursor = d->gmcp_items_container ? d->gmcp_items_container->contains :
+								 nullptr;
+}
+
 bool gmcp_item_selector_matches(P_char ch, P_obj object, const char *selector)
 {
 	if (!ch || !ch->desc || !object || !selector ||
@@ -1932,7 +2043,11 @@ bool gmcp_item_selector_matches(P_char ch, P_obj object, const char *selector)
 		return false;
 	P_obj root = object;
 	while (OBJ_INSIDE(root) && root->loc.inside)
+	{
 		root = root->loc.inside;
+		if (!gmcp_item_contents_visible(ch, root))
+			return false;
+	}
 	if (!OBJ_CARRIED_BY(root, ch) && !OBJ_WORN_BY(root, ch))
 		return false;
 	char expected[96];
@@ -2017,11 +2132,42 @@ static bool gmcp_flush_items_page(P_desc d)
 		d->gmcp_items_cursor = ch->carrying;
 		d->gmcp_items_started = true;
 	}
-	if (d->gmcp_items_location >= 2)
+	if (d->gmcp_items_location == 2)
 		return false;
-	const bool inventory = d->gmcp_items_location == 0;
-	const bool available = !IS_AFFECTED(ch, AFF_WRAITHFORM) &&
-			       (GET_STAT(ch) >= (inventory ? STAT_RESTING : STAT_SLEEPING));
+	const bool nested = d->gmcp_items_location >= 3;
+	const bool inventory = d->gmcp_items_location == 0 || nested;
+	bool available = !IS_AFFECTED(ch, AFF_WRAITHFORM) &&
+			 (GET_STAT(ch) >= (inventory ? STAT_RESTING : STAT_SLEEPING));
+	if (nested)
+	{
+		const int vision = ch->in_room >= 0 && ch->in_room <= top_of_world ?
+					   get_vis_mode(ch, ch->in_room) :
+					   0;
+		available = available && !IS_BLIND(ch) && !IS_AFFECTED(ch, AFF_KNOCKED_OUT) &&
+			    (vision == 1 || vision == 2);
+		// Recheck ancestors even during a search paused in their subtree.
+		for (P_obj parent =
+			     d->gmcp_items_location == 5 ?
+				     d->gmcp_items_container :
+				     (d->gmcp_items_cursor && OBJ_INSIDE(d->gmcp_items_cursor) ?
+					      d->gmcp_items_cursor->loc.inside :
+					      nullptr);
+		     available && parent;
+		     parent = OBJ_INSIDE(parent) ? parent->loc.inside : nullptr)
+			available = gmcp_item_contents_visible(ch, parent);
+		if (available && d->gmcp_items_location < 5)
+		{
+			gmcp_items_find_container(d);
+			return true; // Search and construction share one bounded work slot.
+		}
+		available = available && d->gmcp_items_container;
+	}
+	char location[96];
+	if (nested)
+		snprintf(location, sizeof(location), "@i:%s:%llu", d->gmcp_items_scope,
+			 static_cast<unsigned long long>(d->gmcp_items_requested_uid));
+	else
+		strlcpy(location, inventory ? "inv" : "eq", sizeof(location));
 	P_obj cursor = d->gmcp_items_cursor;
 	unsigned index = d->gmcp_items_index;
 	cJSON *root = cJSON_CreateObject();
@@ -2039,7 +2185,7 @@ static bool gmcp_flush_items_page(P_desc d)
 			     cJSON_AddStringToObject(root, "generation", generation) &&
 			     cJSON_AddStringToObject(root, "bodyRevision", body) &&
 			     cJSON_AddStringToObject(root, "revision", revision) &&
-			     cJSON_AddStringToObject(root, "location", inventory ? "inv" : "eq") &&
+			     cJSON_AddStringToObject(root, "location", location) &&
 			     cJSON_AddNumberToObject(root, "page", d->gmcp_items_page) &&
 			     cJSON_AddBoolToObject(root, "available", available);
 	size_t bytes = 512;
@@ -2092,7 +2238,7 @@ static bool gmcp_flush_items_page(P_desc d)
 		++d->gmcp_items_page;
 		if (finished)
 		{
-			++d->gmcp_items_location;
+			d->gmcp_items_location = nested ? 2 : d->gmcp_items_location + 1;
 			d->gmcp_items_index = d->gmcp_items_page = 0;
 			d->gmcp_items_cursor = nullptr;
 		}

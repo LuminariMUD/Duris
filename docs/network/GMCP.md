@@ -4,9 +4,8 @@ The same packages use Telnet GMCP subnegotiation and the existing WebSocket
 `{type:"gmcp", package, data}` envelope. Legacy gameplay packages keep their
 existing defaults. New versioned streams require explicit support and interest.
 This document describes the implemented control, time, lifecycle and combat
-state/damage slices of issue #498. The owner-item section reflects an in-progress
-branch checkpoint; its remaining proof is recorded in the #498 plan. Nested item
-requests, actions and command results remain pending.
+state/damage and owner-item slices of issue #498. Requested nested contents use
+the same bounded owner-item scheduler. Actions and command results remain pending.
 
 ## Negotiation and interest
 
@@ -245,7 +244,7 @@ Advertise `Char.Items 1` and include it in Subscribe to receive the controlled
 body's visible inventory/equipment. These are independent of Time and Combat.
 `Char.Items.Get []` requests a replacement of both top-level lists. It has an
 independent burst-two/refill-one-per-second bucket and the same bounded control
-parser. Nonempty/malformed requests change no state; unsupported, uninterested
+parser. Malformed requests change no state; unsupported, uninterested
 and pre-entry requests stop before additional parsing/construction. WebSocket
 uses the already decoded envelope, as with the other control requests.
 
@@ -261,6 +260,8 @@ Clients stage earlier pages; an incomplete empty page is not an empty inventory.
 A newer revision's page zero discards older unfinished staging. Revisions are
 lossless decimal strings shared by both locations in one replacement cycle.
 Session process/body boundaries also discard old views, pages and selectors.
+A new top-level revision's page zero also invalidates every previously requested
+nested view. A mutation/re-enable/resync generates a new selector scope.
 Bootstrap, re-enable and Get resync may replace state without advancing Session's
 entry generation. No prior item snapshot or event history is replayed.
 
@@ -306,10 +307,26 @@ completion resolves the item's UID once and notifies its current holder, includi
 a transfer during editing. Ordinary extraction adds no editor scan; an edited
 object retires its native editor pointers before its strings are released.
 
-This slice implements top-level owner lists only. Nested container requests and
-their normal container/locker authorization remain required in the next dependent
-chunk; no nested request feature is advertised here and private chests gain no
-contents API.
+After both top-level lists complete, `Char.Items.Get ["<selector>"]` requests only
+that container's direct visible contents. The response uses that exact selector
+as `location`, starts at page zero, and has a newer revision. The selector scope
+stays valid across nested requests until an item/body/visibility mutation or
+resync. A container returned in a requested page may itself be requested; nothing
+is pushed recursively. Each connection keeps only its latest pending request;
+sending another abandons the earlier request and its staging. Reject malformed,
+stale-scope, multi-selector and premature requests without changing state.
+
+The existing scheduler searches only owned inventory/equipment trees, at most
+128 traversal steps per work slot (including ascents), then pages in later slots.
+It never scans the world object list or constructs an unbounded captured result.
+Normal look-in posture, vision, object visibility, closed/transparent-container
+and locker authorization apply. Missing/inaccessible/non-container targets return
+one `available:false,items:[],complete:true` page; they never claim a known-empty
+container. Authorization is checked again before each page, including ancestors.
+Access revocation during a request produces an unavailable page, while a normal
+item mutation cancels it in favor of fresh top-level state and selectors. Native
+open/close and staff container-flag edits retire the old scope. Private chests
+remain room/storage owned and gain no contents API through this owner-only stream.
 
 ## Proof and remaining qualification
 

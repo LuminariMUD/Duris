@@ -90,7 +90,13 @@ P_index mob_index = indices;
 static room_data rooms[2];
 P_room world = rooms;
 const unsigned LockerChest::m_chestVnum = 173;
-bool locker_container_access_allowed(P_char, P_obj) { return true; }
+static bool audit_ready = true, access_allowed = true;
+static unsigned item_notices;
+void gmcp_item_changed(P_obj) { ++item_notices; }
+bool locker_container_access_allowed(P_char, P_obj) { return access_allowed; }
+LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *) {
+    m_ready = audit_ready;
+}
 extern const struct race_names race_names_table[];
 const struct race_names race_names_table[] = {{"human", "human", "human", "hum"}};
 // Include the unmodified #96443 Illithid and #83185 Shield Dwarves bag shells.
@@ -163,7 +169,7 @@ void obj_to_char_at_end(P_obj obj, P_char ch) {
 }
 P_char training_dummy_item_owner(P_obj) { return nullptr; }
 void obj_to_room(P_obj obj, int room) { obj->loc_p = LOC_ROOM; obj->loc.room = room; }
-static void mark_container_dirty(P_obj) {}
+static void mark_container_dirty(P_obj object) { gmcp_item_changed(object); }
 void artifact_update_location_sql(P_obj) {}
 void writeSavedItem(P_obj obj) { assert(obj->type == ITEM_STORAGE); }
 void add_weight(P_obj, int);
@@ -752,6 +758,33 @@ static void private_chest_capacity(bool bulk) {
     extract_obj(bag, TRUE);
 }
 
+static void publication_refusals() {
+    char_data actor{};
+    P_obj bag = read_object(0, REAL), item = read_object(3, REAL);
+    bag->value[0] = 100;
+    obj_to_char_at_end(bag, &actor);
+    obj_to_char_at_end(item, &actor);
+    const auto notices = item_notices;
+    audit_ready = false;
+    assert(!put(&actor, item, bag, FALSE, nullptr));
+    audit_ready = true;
+    assert(OBJ_CARRIED_BY(item, &actor) && item_notices == notices);
+    access_allowed = false;
+    assert(!put(&actor, item, bag, FALSE, nullptr));
+    access_allowed = true;
+    bag->value[0] = 1;
+    assert(!put(&actor, item, bag, FALSE, nullptr));
+    assert(OBJ_CARRIED_BY(item, &actor) && item_notices == notices);
+    bag->value[0] = 100;
+    assert(put(&actor, item, bag, FALSE, nullptr));
+    assert(OBJ_INSIDE_OBJ(item, bag) && item_notices > notices);
+    const auto attached = item_notices;
+    obj_to_obj(item, bag); // Refused duplicate attachment is no mutation.
+    assert(item_notices == attached);
+    obj_from_char(bag);
+    extract_obj(bag, TRUE);
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     for (int i = 0; i < 8; ++i) {
@@ -759,7 +792,8 @@ int main(int argc, char **argv) {
         prototypes[i].weight = prototype_weights[i];
     }
     indices[9].virtual_number = 9;
-    if (!strcmp(argv[1], "sorting")) sorting();
+    if (!strcmp(argv[1], "publication-refusals")) publication_refusals();
+    else if (!strcmp(argv[1], "sorting")) sorting();
     else if (!strcmp(argv[1], "private-single-capacity")) private_chest_capacity(false);
     else if (!strcmp(argv[1], "private-bulk-capacity")) private_chest_capacity(true);
     else if (!strcmp(argv[1], "insert")) movement(false);
@@ -805,7 +839,7 @@ with tempfile.TemporaryDirectory(prefix="locker-container-weight-", dir=build) a
         str(HARNESS_STUBS), "-lbsd", "-o", str(binary),
     ], check=True)
     failed = []
-    for case in ("private-single-capacity", "private-bulk-capacity",
+    for case in ("publication-refusals", "private-single-capacity", "private-bulk-capacity",
                  "sorting", "insert", "append", "public-load", "private-load",
                  "worn-insert", "worn-append", "worn-nested-insert", "worn-nested-append",
                  "worn-weight-changes", "carried-weight-changes", "worn-recalculation",
