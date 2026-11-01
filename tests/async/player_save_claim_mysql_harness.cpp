@@ -578,6 +578,10 @@ int main()
 	worn.equipment_slot = 3;
 	shop.items = { item(9102, 13, -1), item(9103, 14, 0), worn };
 	shop.items[1].parent_index = 0;
+	// Legacy resale custody still names its former player before the shop saves.
+	execute(test_connection,
+		"INSERT INTO item_current_owner(item_uid,root_item_uid,parent_item_uid,owner_type,"
+		"owner_id,owner_context_id,item_revision,vnum,state) VALUES (9102,9102,NULL,1,1,0,1,13,1)");
 	applied = shopkeeper_snapshot_repository_apply(test_connection, shop);
 	require(applied.outcome == player_save_apply_outcome::applied &&
 			scalar(test_connection,
@@ -591,6 +595,12 @@ int main()
 			scalar(test_connection,
 			       "SELECT equip_slot FROM shopkeeper_items WHERE obj_uid=9101") == "3",
 		"a shopkeeper save did not write its row, affects and stock");
+	require(scalar(test_connection,
+		       "SELECT COUNT(*) FROM item_current_owner WHERE owner_type=9 AND owner_id=18 "
+		       "AND item_uid IN (9101,9102,9103)") == "3",
+		"shopkeeper snapshots must claim their complete item graph");
+	require(owner_of(9102) == "9:18:0:1:9102:0",
+		"a resale snapshot must replace the seller's stale custody");
 	shop.items = { item(9104, 15, -1) };
 	shop.affects.clear();
 	applied = shopkeeper_snapshot_repository_apply(test_connection, shop);

@@ -20,13 +20,17 @@ from run_world_quest_dual_backend import setup_run_root
 ROOT = journey.ROOT
 
 
-def run(binary, output):
+def run(binary, output, areas=None):
     evidence = {'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                 'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(), 'passed': False, 'boots': []}
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='shop-bootstrap-') as temporary:
         runtime = Path(temporary)
         _, critical, log = setup_run_root(runtime)
+        if areas is not None:
+            assert (runtime / 'areas').is_symlink()
+            (runtime / 'areas').unlink()
+            (runtime / 'areas').symlink_to(areas, target_is_directory=True)
         (runtime / 'help').symlink_to(ROOT / 'help', target_is_directory=True)
         plain, tls, websocket = journey.available_ports()
         with authority('flatfile', runtime) as (environment, _):
@@ -64,6 +68,7 @@ def run(binary, output):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--server', type=Path, required=True)
+    parser.add_argument('--areas', type=Path, help='isolated generated full-world area directory')
     parser.add_argument('--output', type=Path, default=ROOT / 'bin/qualification/shop-bootstrap.json')
     args = parser.parse_args()
-    run(args.server.resolve(), args.output.resolve())
+    run(args.server.resolve(), args.output.resolve(), args.areas.resolve() if args.areas else None)

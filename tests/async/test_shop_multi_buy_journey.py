@@ -24,7 +24,7 @@ GOD, GOD_ACCOUNT = "Shopwarden", "Shopstaff"
 ROOM, KEEPER, BAG, RATION, SMALL_BAG, TRINKET = 45035, 1258, 1258, 1259, 1260, 1261
 
 
-def fixture(runtime):
+def fixture(runtime, *, reboot_stock=False, room=ROOM):
     # Full-world boot owns shop registration. Keep source copies and every
     # generated world/lookup file inside this disposable runtime.
     areas = runtime / "areas"
@@ -72,12 +72,19 @@ PH 0 0 -1
     shop = (ROOT / "areas/shp/newbie.shp").read_text().split("#29206~")[0]
     shop = re.sub(r"(?s)N\n.*?\n0\n", f"N\n{RATION}\n0\n", shop, count=1)
     shop = shop.replace("#29201~", f"#{KEEPER}~")
-    shop = shop.replace("\n29201\n0\n29201\n", f"\n{KEEPER}\n0\n{ROOM}\n")
+    shop = shop.replace("\n29201\n0\n29201\n", f"\n{KEEPER}\n0\n{room}\n")
     shop = shop.replace("0.80\n1.10\n0\n", "0.80\n1.10\n19\n15\n8\n0\n")
+    if reboot_stock:
+        shop = shop.replace("1.10\n19\n", "1.10\n10\n19\n")
     end = areas / "shp/end.shp"
     end.write_text(end.read_text().replace("$~", shop + "$~"))
     zone = areas / "zon/charing.zon"
-    zone.write_text(zone.read_text().replace("\nS\n", f"\nM 0 {KEEPER} 1 {ROOM} 100 0 0 0\nS\n"))
+    stock = (f"G 1 {BAG} 99 0 100 0 0 0\n"
+             f"P 1 {TRINKET} 99 {BAG} 100 0 0 0\n"
+             f"G 1 {TRINKET} 99 0 100 0 0 0\n"
+             f"G 1 {TRINKET} 99 0 100 0 0 0\n"
+             f"G 1 {SMALL_BAG} 99 0 100 0 0 0\n") if reboot_stock else ""
+    zone.write_text(zone.read_text().replace("\nS\n", f"\nM 0 {KEEPER} 1 {room} 100 0 0 0\n{stock}S\n"))
     generated = subprocess.run(["./m_slow"], cwd=areas, capture_output=True, text=True)
     assert generated.returncode == 0, generated.stdout[-4000:] + generated.stderr[-4000:]
 

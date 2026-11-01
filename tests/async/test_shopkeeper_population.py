@@ -36,7 +36,9 @@ with tempfile.TemporaryDirectory(prefix="shopkeeper-population-", dir=build_root
         str(source), "-o", str(binary),
     ], check=True)
     for scenario in ("reset", "shared", "duplicate", "cleanup", "invalid",
-                     "refill", "unsold", "excess", "recovery", "refill-failure"):
+                     "refill", "unsold", "excess", "recovery", "refill-failure", "refill-new", "refill-shared",
+                     "uid-duplicate", "uid-invalid", "uid-legacy",
+                     "stale-root", "stale-tree", "stale-child", "stale-duplicate", "resale-legacy", "ownership-failure"):
         subprocess.run([str(binary), scenario], check=True, env={
             **os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
         })

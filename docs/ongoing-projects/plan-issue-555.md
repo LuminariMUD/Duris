@@ -1,113 +1,204 @@
 # Issue #555: refill missing shop stock after a normal reboot
 
-Status: boot classification and both persistence refill paths implemented and
-locally checked; complete gameplay qualification remains. Updated 2026-11-01.
+Status: implemented and locally qualified; review stack is ready. Updated 2026-11-01.
+
+## Resale review fix
+
+PR #562's review exposed a paid resale purchase that printed success but lost
+the item: its preserved UID already existed in custody, while the SQL checkout
+submitted it as a new creation. Finite SQL checkout now moves the existing object
+directly to the player, following the accepted memory-authority persistence rule.
+Payment and delivery happen in the same game-loop call. The shop's outgoing
+snapshot is queued before the buyer's snapshot, retaining the existing crash
+policy rather than introducing a new transaction or minting a replacement UID.
+
+Shop snapshots now claim their saved graphs through the same SQL claim writer as
+other owners. Restoration filters superseded shop rows against custody, promotes
+retained contents past stale containers, and checks duplicate UIDs only after
+filtering. Legacy resale custody that still names the seller is accepted only
+when that seller's saved inventory no longer contains the UID. An unavailable
+legacy-ownership query aborts restoration without publishing a partial catalog.
+No migration or production operation is needed.
+
+Focused validation passes: 21 ASan/UBSan SQL population/restore scenarios;
+`run_player_save_claim_mysql.sh` on disposable MariaDB, including shop graph
+claims replacing the seller's custody; the production shop save/flush runner;
+dirty-shop retries; player-save claim checks; live flat-file route contracts;
+both backend builds; Python compilation; formatting and whitespace checks.
+
+The extended reboot-stock gameplay journey verifies that legacy resale survives,
+an ordinary paid repurchase delivers its original UID, saving does not charge
+again, and an insufficient-funds refusal leaves stock and wallet unchanged.
+Its MariaDB and flat-file legs pass, including the existing refill, repeated
+reboot, native copyover, SIGKILL and clean-stop recovery controls. The final
+MariaDB rerun against the stale-duplicate ordering fix also passes.
+Final qualified binary SHA-256 values: MariaDB
+`720b0801a29e27e1a84ad10c3f7051fe43e8e2a15a96b8f3f85ec425ee1c170e`;
+flat-file
+`f64148e097ca71698d594121c636e0235c54d11053e70a82dd8400598aaed6ca`.
+Evidence is under `bin/qualification/resale-fix-*.json` and accompanying logs;
+the checks and build logs use the `bin/resale-fix-*` prefix.
+
+```sh
+python3 tests/async/test_shopkeeper_population.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_shopkeeper_save_runtime.py
+python3 tests/async/test_dirty_shopkeeper_retry.py
+python3 tests/async/test_player_save_claim.py
+python3 tests/async/test_shop_trade_live_route.py
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_reboot_stock_journey.py --backend mariadb --server bin/server/dms_new --report bin/qualification/resale-fix-mariadb-final.json
+python3 tests/async/run_shop_reboot_stock_journey.py --backend flatfile --server bin/server/dms_resale_flatfile --report bin/qualification/resale-fix-flatfile.json
+```
+
+The qualification below predates this review fix; its original binary hashes
+remain historical evidence for that earlier implementation.
 
 - Issue: [#555 — reboot-only shop stock is discarded](https://github.com/LuminariMUD/Duris/issues/555).
-- Branch: [`branch/issue-555-reboot-shop-stock`](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-reboot-shop-stock).
+- Current branch: [branch/issue-555-stock-qualification](https://github.com/LuminariMUD/Duris/tree/branch/issue-555-stock-qualification).
 - Local worktree: `/home/aiwithapex/projects/duris-issue-555`.
 - Windows worktree: `\\wsl.localhost\Ubuntu\home\aiwithapex\projects\duris-issue-555`.
-- Remote plan: [plan-issue-555.md](https://github.com/LuminariMUD/Duris/blob/branch/issue-555-reboot-shop-stock/docs/ongoing-projects/plan-issue-555.md).
+- Remote plan: [plan-issue-555.md](https://github.com/LuminariMUD/Duris/blob/branch/issue-555-stock-qualification/docs/ongoing-projects/plan-issue-555.md).
 - Planning base: [`f2de272aace60a74e29fbc8abedb945834e9a6a8`](https://github.com/LuminariMUD/Duris/commit/f2de272aace60a74e29fbc8abedb945834e9a6a8), fetched from `origin/master`.
 
 ## Implementation handoff
 
-Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
-`branch/issue-555-reboot-shop-stock` against `master`.
-SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
-`branch/issue-555-refill-shop-stock`, based on that branch,
-in the same local worktree. Keep #558 unmerged for review until the stack is ready.
-Flat-file PR: [#561](https://github.com/LuminariMUD/Duris/pull/561),
-`branch/issue-555-flatfile-stock`, based on #559.
+Implementation and local acceptance work are complete. The following open PRs
+form the review stack; merge in this order after the required reviews:
 
-The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
-regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
-before world boot and a clean marker after shutdown completes. Only a preceding
-clean marker plus a cold boot permits `shopkeeper_boot_restock()`. Copyover and
-Redis world restoration (including a clean world-preserving restart) retain
-recovery semantics. The eligibility is not yet connected to stock movement.
+1. [#558](https://github.com/LuminariMUD/Duris/pull/558): boot classification,
+   branch/issue-555-reboot-shop-stock against master.
+2. [#559](https://github.com/LuminariMUD/Duris/pull/559): SQL deficit refill,
+   branch/issue-555-refill-shop-stock against #558's branch.
+3. [#561](https://github.com/LuminariMUD/Duris/pull/561): atomic flat-file refill,
+   branch/issue-555-flatfile-stock against #559's branch.
+4. [#562](https://github.com/LuminariMUD/Duris/pull/562): saved SQL identity repair
+   and qualification, branch/issue-555-stock-qualification against #561's branch.
 
-The marker is private runtime data in `shopkeeper-boot/state`, relative to the
-server data directory, ignored by Git. It reuses the existing atomic, synced
-flat-file primitives in both persistence modes. Corrupt/unreadable state fails
-startup; a failed clean-marker write leaves refill disabled on the next start.
-No marker means an unknown predecessor, so the first start after upgrading keeps
-saved stock. A subsequent clean stop establishes eligibility for the next normal
-cold reboot. New shops still obtain their initial stock from their normal reset.
-Minimal/report/pwipe-recovery runs do not manipulate this marker.
+Current checkout: /home/aiwithapex/projects/duris-issue-555 on the final branch.
+No merge, production operation, migration, or release tag is part of this
+handoff. Review and deployment remain owner actions. The sections below retain
+the completed design and acceptance reference, rather than unexecuted TODOs.
+
+### Delivered behavior
+
+- economy/shopkeeper_boot.c/.h records a private, atomically synced marker at
+  shopkeeper-boot/state relative to the data directory. A proven clean stop
+  permits the next ordinary cold boot to refill. Copyover, Redis world recovery,
+  and an unclean stop preserve stock. This includes Redis's existing clean
+  world-preserving restart mode. Unknown/first-upgrade predecessors also preserve
+  stock; a subsequent clean stop establishes eligibility. New shops still receive
+  ordinary initial reset stock. Minimal/report/pwipe-recovery runs leave the
+  marker alone. Corrupt/unreadable state rejects startup; a failed clean-marker
+  write cannot enable refill.
+- economy/shopkeeper_restock.c/.h selects only missing finite carried roots from
+  the actual initial-reset keeper. Saved copies, including resale goods, count
+  toward the target. Equipment and container children do not count as loose
+  stock. Existing selected graphs move with their UIDs and children. Saved graphs
+  are retained unchanged; produced stock uses its existing path.
+- SQL prepares every replacement candidate and deficit before removing a fresh
+  keeper, then uses normal object movement and existing snapshot writes/retries.
+  Generic restore defaults to preservation; the boot facade grants permission.
+  The optional persistence trace includes permission and selected-root count.
+- Flat-file refill captures selected graphs, validates shop/custody revisions and
+  new UID absence under the existing authority lock, and commits catalog plus
+  ownership together before publishing new stock. Bootstrap and refill reuse
+  ownership publication. No-deficit boots do not rewrite or advance the catalog.
+  Failed commit/publication rejects incomplete startup while retaining recoverable
+  durable state.
+- Qualification found SQL saved shop item UIDs but omitted them from restoration.
+  Valid saved UIDs are now restored; duplicate/invalid UIDs reject publication.
+  Legacy snapshots without a UID retain their previous fresh allocation. No
+  migration is required.
 
 Ablation: existing Redis markers describe a particular recovery generation and
-cannot classify a cold start with no Redis image. The small local marker supplies
-that missing distinction; it avoids adding a launcher option, a SQL migration,
-or changing world recovery. The stock target will still come from actual boot
-reset objects, avoiding a second reset interpreter.
+cannot classify a cold start without a Redis image, so the small local marker
+supplies that distinction using existing file primitives. Using actual reset
+stock avoids a second reset interpreter, persistent item-origin tracking,
+configuration, or a restock service. The authored-area scan found 460 finite
+direct G entries across 132 templates, four repeated-type blocks, 92 E entries,
+and no P entries inside those shop M blocks. These are configuration counts,
+not independently reproduced live defects. The actual graph also covers indirect
+loads and container contents.
 
-Verified for this prerequisite:
+### Verification
 
-- `python3 tests/async/test_shopkeeper_boot.py`: passes executable clean/unclean
-  process transitions, upgrade, recovery, corrupt state, symlink, and failed-write
-  cases under ASan/UBSan, plus main lifecycle placement checks.
-- `python3 tests/async/test_shopkeeper_copyover_compat.py`: passes.
-- `python3 tests/async/test_shopkeeper_population.py`: all five scenarios pass.
-- `python3 tests/async/test_dirty_shopkeeper_retry.py`: all contracts pass.
-- `make -C src -j4`: development MariaDB server builds successfully at
-  `bin/server/dms_new`; output is in `bin/issue-555-build.log`.
+These focused checks pass; previously valid evidence was reused where its owning
+code path did not change:
 
-The authored-area scan found 460 direct finite `G` entries across 132 keeper
-templates, including four blocks with repeated finite types, and 92 `E` entries.
-It found no `P` entries inside these shop `M` blocks. Follower commands also occur,
-so these are static configuration counts, not a count of affected live shops.
-The implementation uses the actual carried graph and therefore preserves the
-results of existing reset decisions, including indirect creation and containers.
+```sh
+python3 tests/async/test_shopkeeper_boot.py
+python3 tests/async/test_shopkeeper_population.py
+python3 tests/async/test_shopkeeper_secondary_binding.py
+python3 tests/async/test_dirty_shopkeeper_retry.py
+python3 tests/async/test_shopkeeper_save_runtime.py
+python3 tests/async/test_shopkeeper_retry_policy.py
+python3 tests/async/test_shopkeeper_copyover_compat.py
+python3 tests/async/test_spellbook_persistence_contract.py
+python3 tests/async/test_flatfile_shopkeeper_restore.py
+python3 tests/async/test_flatfile_shopkeeper_repository.py
+python3 tests/async/test_flatfile_shopkeeper_bootstrap.py
+python3 tests/async/test_flatfile_shopkeeper_ownership.py
+python3 tests/async/test_flatfile_shopkeeper_restock.py
+```
 
-The SQL continuation adds one shared root selector in `shopkeeper_restock.c/.h`.
-It excludes produced goods, counts saved roots by prototype, and selects only
-the missing fresh roots without modifying either inventory. SQL prepares all
-replacement candidates and deficits before extracting any incumbent. It moves
-selected roots through ordinary object movement, then extracts the surplus fresh
-stock. The public SQL restore defaults to preserving stock; only the boot facade
-passes the clean-cold-boot permission. Missing snapshots and ambiguous keeper
-identity retain their existing behavior. No new object is created by the refill.
+The production SQL restore/selector harness passes 15 ASan/UBSan scenarios,
+including partial/unsold/excess stock, saved container contents, equipment
+exclusion, missing snapshots, shared/ambiguous bindings, cleanup, and valid,
+duplicate, invalid and legacy UIDs. Boot tests execute separate process/file
+transitions. The five flat-file refill ASan/UBSan cases execute the selector,
+real catalog/custody transaction and runtime ownership, covering repeat boots,
+stale revision, UID collision, storage failure, and post-commit publication
+failure/reload. Their world/graph I/O doubles are supplemented by real-server
+journeys.
 
-Additional SQL evidence:
+```sh
+python3 tests/async/run_shop_reboot_stock_journey.py --backend flatfile --server bin/server/dms_flatfile --report bin/qualification/issue-555-flatfile-journey.json
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/run_shop_reboot_stock_journey.py --backend mariadb --server bin/server/dms_new --report bin/qualification/issue-555-mariadb-journey.json
+```
 
-- `test_shopkeeper_population.py` now passes ten ASan/UBSan scenarios, including
-  finite refill, partial repeated stock, unsold and excess copies, resale goods,
-  equipment exclusion, container-child transfer, recovery exclusion, and failure
-  before publication. This executes the production selector and SQL restore.
-- `make -C src -j4` passes again for the SQL changes; output is in
-  `bin/issue-555-stock-build.log`.
+Both journeys pass on disposable accounts, authority and private generated world
+data. They exercise Maggeynel's authored bag and potion through buy/save/clean
+reboot, partial repeated stock, actual resale of a matching stock type and an
+unrelated potion, retained unsold/resale UIDs and cost, new container parentage,
+another clean reboot without duplication, native copyover, SIGKILL without Redis,
+and clean-stop eligibility after crash. Produced goods are actually bought.
+Flat-file inspection reconciles catalog and custody. SQL snapshots are
+checkpointed through an ordinary paid purchase; free staff purchases do not
+checkpoint that keeper. The extra fixture uses road 45016 to avoid existing
+merchant and pet-shop procedures.
 
-The flat-file continuation uses the same selector. Its transaction lives in
-`flatfile_shopkeeper_restock.c`; catalog restore calls it only when the boot
-facade explicitly grants refill. It captures selected fresh graphs, checks shop
-and custody revisions and new UID absence under the authority lock, and commits
-catalog plus custody through the existing authority transaction. Only afterward
-does it move those roots into the staged keeper and hydrate runtime ownership.
-Bootstrap and refill share ownership publication through the existing ownership
-module. No-deficit boots do not write a catalog or advance its revision.
+The game refuses sales of full containers. Preservation of saved container
+contents is covered by the production restore harness; the live journey checks
+newly replenished container graphs. The shared refill selector preserves all
+existing object properties without copying or rewriting saved items.
 
-Additional flat-file evidence:
+Qualified binary SHA-256:
 
-- `test_flatfile_shopkeeper_restock.py`: five ASan/UBSan cases pass using the
-  production selector, refill transaction, catalog/custody repositories, and
-  runtime hydration. World movement and graph capture are test doubles. Cases
-  cover partial finite stock, equipment exclusion, saved resale properties,
-  container parent/root identity, another reboot with no catalog change, UID
-  collision, stale shop revision, storage-write failure with unchanged durable
-  files, and publication failure after a complete durable commit/reload.
-- Existing catalog restore, repository, ownership reconciliation, and new-shop
-  bootstrap checks pass. Their current harnesses still cover default restore
-  without refill; the complete gameplay path is a separate required check.
-- Development builds for MariaDB and client-free flat-file mode pass. The latter
-  executable is `bin/server/dms_flatfile`; logs are under `bin/issue-555-*.log`.
+- Flat-file: c5bf8285fb54abff16f69bd388698e687f2537e49a5f23588b3213828ca5a455.
+- MariaDB: 5f5b9513276047d66b0399a0be894740a67cd8e56aa8ed9632e7a80fbcb5e2c0.
 
-Next: run the full-world no-trade restart control, then add and execute the
-buy/save/reboot acceptance journeys for both modes, including recovery controls.
-The worktree has no generated `areas/world.*` data yet; prepare isolated generated
-world data for those journeys rather than use stale unverified area output.
-The isolated restore tests do not yet prove the complete buy/save/reboot path.
-No production operation or release tag has occurred.
+Reports and logs are under bin/qualification/issue-555-*-journey.*. A subsequent
+logging-only cleanup overwrites old transcript attempts and retains prior boot
+sessions; gameplay actions/assertions are unchanged.
+
+The full-world no-trade control also passes:
+
+```sh
+python3 tests/async/run_shop_bootstrap_journey.py --server bin/server/dms_flatfile --areas bin/qualification/issue-555-world/areas --output bin/qualification/issue-555-bootstrap.json
+```
+
+Both boots retain the same 1,148,381-byte catalog, SHA-256
+7f5991653983a599e44979cd2a30a8ae79e924344bb233dd697edc656cba400b.
+The isolated area data was generated with the seven bin/areas/tools/make_*
+binaries under bin/qualification/issue-555-world/areas using authored input
+symlinks. Checkout-generated areas/world.* files were not modified.
+
+Development MariaDB and client-free flat-file builds pass. The SQL-only UID and
+trace repair was rebuilt with make -C src -j4 and used by the successful MariaDB
+journey; it is outside the client-free compile path. Logs include
+bin/issue-555-final-build.log and bin/issue-555-flatfile-build.log.
+Formatting, Clang-Tidy commit hooks, Python compilation, and whitespace checks
+pass. Hosted CI completion is not a gate; no full regression campaign was needed.
 
 ## Outcome
 
