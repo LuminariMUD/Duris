@@ -12056,6 +12056,12 @@ void do_taunt(P_char ch, char *arg, int cmd)
 		return;
 	}
 
+	if (IS_ROOM(vict->in_room, ROOM_SINGLE_FILE) && !AdjacentInRoom(vict, ch))
+	{
+		act("$N can't reach you in this narrow room.", FALSE, ch, NULL, vict, TO_CHAR);
+		return;
+	}
+
 	if ((notch_skill(ch, SKILL_TAUNT, get_property("skill.notch.offensive", 7)) ||
 	     number(1, 100) <= percent_chance || IS_TRUSTED(ch)))
 	{
@@ -12085,10 +12091,7 @@ void do_taunt(P_char ch, char *arg, int cmd)
 				af.flags = AFFTYPE_SHORT | AFFTYPE_NOSAVE;
 				af.context = (void *)ch;
 				af.duration = duration;
-				affect_to_char_with_messages(
-					vict, &af,
-					"You finally let the words go and can focus on other targets again.",
-					"$n seems to have calmed down.");
+				linked_affect_to_char(vict, &af, ch, LNK_TAUNT);
 				if (GET_OPPONENT(vict) != ch)
 				{
 					stop_fighting(vict);
