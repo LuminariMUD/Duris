@@ -20,6 +20,9 @@ sanitizers = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno
 functions = [
     ('utility.c', 'string strip_ansi('),
     ('condition.c', 'char *item_condition('),
+    ('salchemist.c', 'void set_short_description('),
+    ('random_equipment.c', 'bool identify_random('),
+    ('magic.c', 'void spell_reveal_true_name('),
     ('handler.c', 'int set_obj_condition('),
     ('handler.c', 'P_obj unequip_char('),
     ('interp.c', 'char *one_argument('),
@@ -114,7 +117,8 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
         *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
-        str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')), str(HARNESS_STUBS),
+        str(ROOT/'tests/async/gui_gmcp_contract_harness.cpp'), str(source('json_utils.c')),
+        str(source('random_equipment_tables.c')), str(source('safe_format.c')), str(HARNESS_STUBS),
         '-Wl,--gc-sections', '-lcjson', '-lcrypto', '-o', str(binary)], cwd=ROOT, check=True, timeout=120)
     result = subprocess.run([str(binary)], cwd=ROOT, check=False, text=True, capture_output=True, timeout=30)
     if result.returncode:

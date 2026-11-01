@@ -119,3 +119,7 @@ shipping that set. Preserve deferred work and evidence; do not discard code.
 - The original local plan simplification and pause-handoff deletion predated this
   implementation run and are preserved. Other worktrees remain untouched. No
   owner-items commit/push/PR or production deployment has occurred in this run.
+
+PR #547 review follow-up: knockout/recovery now changes the item visibility
+filter; reveal-true-name updates notify through the existing setter/publication
+path. Both stale-view failures were reproduced in the GMCP sanitizer harness.

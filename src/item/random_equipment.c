@@ -727,12 +727,7 @@ bool identify_random(P_obj obj)
 	if (!strcmp(buffer, obj->short_description))
 		return false;
 
-	if ((obj->str_mask & STRUNG_DESC2) && obj->short_description)
-		FREE(obj->short_description);
-
-	obj->short_description = str_dup(buffer);
-
-	obj->str_mask |= STRUNG_DESC2;
+	set_short_description(obj, buffer);
 
 	return true;
 }

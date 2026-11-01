@@ -20,6 +20,8 @@
 #include "world/db.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
+#include "item/random_equipment.h"
+#include "world/vnum.obj.h"
 #include "guild/assocs.h"
 #include <cassert>
 #include <cstdio>
@@ -118,10 +120,10 @@ bool locker_container_access_allowed(P_char, P_obj object)
 }
 static P_obj concealed_item;
 static unsigned item_visibility_checks;
-bool ac_can_see_obj(P_char, P_obj object, int)
+bool ac_can_see_obj(P_char ch, P_obj object, int)
 {
 	++item_visibility_checks;
-	return object != concealed_item;
+	return object != concealed_item && !IS_AFFECTED(ch, AFF_KNOCKED_OUT);
 }
 static int websockets;
 const class_names class_names_table[64] = { { "Warrior", "Warrior", "War", 'W' } };
@@ -385,6 +387,10 @@ int fill_word(char *)
 int GET_CLASS(P_char ch, uint cls)
 {
 	return (ch->player.m_class & cls) != 0;
+}
+char *str_dup(const char *value)
+{
+	return strdup(value);
 }
 static P_char disarm_target;
 static int disarm_roll = 1;
@@ -1532,6 +1538,17 @@ static void items_contract(bool websocket)
 	cJSON_Delete(equipment);
 	assert(!get_obj_equipped(&actor, selected));
 	concealed_item = nullptr;
+	const auto before_knockout = d.gmcp_items_revision;
+	actor.specials.affected_by |= AFF_KNOCKED_OUT;
+	assert(!gmcp_item_selector_matches(&actor, &worn, selected));
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("Something.") != std::string::npos);
+	actor.specials.affected_by &= ~AFF_KNOCKED_OUT; // Position and item epoch stay unchanged.
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_knockout + 2);
+	assert(payload(&d, "Char.Items.List").find("a blade") != std::string::npos);
 	// Deferred native edits publish no partial row and notify the current holder.
 	P_obj saved_objects = object_list;
 	object_list = &worn;
@@ -1935,6 +1952,36 @@ static void item_disarm_repair_contract(bool websocket)
 	spell_repair_one_item(50, &victim, nullptr, 0, nullptr, &weapon);
 	gmcp_flush_initial_states();
 	assert(d.gmcp_items_revision == damaged + 1); // Healthy repair is no mutation.
+	P_index saved_index = obj_index;
+	index_data names[1]{};
+	obj_index = names;
+	names[0].virtual_number = VOBJ_RANDOM_WEAPON;
+	weapon.value[5] = spells_data[0].spell;
+	const auto before_reveal = d.gmcp_items_revision;
+	spell_reveal_true_name(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find(strip_ansi(spells_data[0].name)) !=
+	       std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_reveal + 1);
+	const auto revealed_epoch = victim.gmcp_items_epoch;
+	assert(!identify_random(&weapon) && victim.gmcp_items_epoch == revealed_epoch);
+	std::free(weapon.short_description);
+	weapon.str_mask = 0;
+	weapon.name = const_cast<char *>("_id_");
+	weapon.short_description = const_cast<char *>("a concealed blade");
+	names[0].virtual_number = 1;
+	extra_descr_data hidden_name{};
+	hidden_name.keyword = const_cast<char *>("_id_short_");
+	hidden_name.description = const_cast<char *>("a revealed blade\rignored suffix");
+	weapon.ex_description = &hidden_name;
+	spell_reveal_true_name(50, &victim, nullptr, 0, nullptr, &weapon);
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("a revealed blade") != std::string::npos);
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == before_reveal + 2);
+	std::free(weapon.short_description);
+	obj_index = saved_index;
 	disarm_target = nullptr;
 	descriptor_list = saved_list;
 }
