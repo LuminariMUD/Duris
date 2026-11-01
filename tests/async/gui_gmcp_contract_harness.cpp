@@ -513,7 +513,17 @@ static void control_time_contract(P_char actor)
 			emit(&d, "Duris.Capabilities", "control");
 			emit(&d, "Duris.Time", "time");
 		}
-		send("Core.Supports.Set []");
+		d.gmcp_request_refill_ms[0] = 0;
+		send("Core.Supports.Set []", false);
+		send("Core.Supports.Set []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = true;
+		gmcp_flush_initial_states();
+		assert(d.gmcp_control_pending);
+		control_clock_us += 1000000;
+		send("Core.Supports.Remove []", false);
+		assert(d.gmcp_control_pending);
+		queue_reject = false;
 		gmcp_flush_initial_states();
 		assert(!d.gmcp_supports && !d.gmcp_interests);
 		assert(payload(&d, "Duris.Capabilities").find("\"active\":[]") !=

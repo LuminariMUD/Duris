@@ -42,6 +42,11 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- PR #542 review fix: capability invalidation remains pending until accepted
+  by the transport, including duplicate support-removal requests in one burst
+  and further requests while its queue retry is pending. The real parser/send
+  regression fails on the reviewed code and passes with the sticky pending flag
+  on both framing variants. Session work remains on its dependent branch.
 - Review stack root: [PR #542](https://github.com/LuminariMUD/Duris/pull/542),
   branch/issue-498-gmcp-contracts. Control/time commit `998a1639b` is published;
   dependent chunks will use their own branches and target their immediate parent.

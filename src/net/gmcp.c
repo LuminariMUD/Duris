@@ -238,7 +238,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 		if (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
 			d->gmcp_interests = 0;
 	}
-	d->gmcp_control_pending = had_control || (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES);
+	d->gmcp_control_pending = d->gmcp_control_pending || had_control ||
+				  (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES);
 	d->gmcp_time_revision = 0;
 }
 
