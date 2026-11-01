@@ -42,6 +42,25 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
 
+- Combat state slice: extend legacy Combat.Update with authoritative room-local
+  target/tank, explicit nulls, viewer masking and accepted-output revisions.
+  The mutation audit found direct HP writes across regeneration, affects,
+  spells, scripts, equipment and commands; dozens of new mutation hooks would
+  still miss setters in content code. Instead, the existing descriptor flush
+  samples exactly the two current prompt subjects and compares bounded scalar/
+  name snapshots. It constructs JSON only for changed state; disabled/pre-entry
+  recipients do not resolve names or construct output. No room/population scan,
+  new periodic traversal, retained character pointer or observer index is added.
+  This replaces the proposed dirty-room mechanism while preserving its outcomes.
+  Native ASan/UBSan passes independent HP, masking, non-GMCP healing/posture,
+  rescue, room departure, freed-subject safety, identity reuse, bounded names,
+  unchanged JSON-allocation counts and allocation/transport retries on both
+  framing variants. The booted wire journey passes real combat against an NPC
+  fighting a non-GMCP NPC tank, ally extraction/tank null and foe extraction/
+  both nulls. MariaDB and client-free builds, prompt, loop-phase and documentation
+  checks pass. Legacy applied-hit rounds remain compatible; the next dependent
+  chunk must add negotiated applied-damage events and metadata/ordering bounds.
+
 - Lifecycle is ready for review in [PR #544](https://github.com/LuminariMUD/Duris/pull/544),
   based on PR #542. Implementation `243562574` plus parent integration
   `fe9477140` is published. Both server builds, sanitizer/native lifetime and
@@ -411,13 +430,17 @@ Advertise a feature only after its real path works.
 - Extend Combat.Update with tank and explicit target/tank nulls. Follow prompt
   relationships/locality and recipient PERS/visibility policy, including generic
   unseen identity. Keep self HP separate from target/tank percent/condition.
-- Mark affected local observers dirty from relationship, health and posture
-  mutations, using room-local traversal/dirty-room ownership and coalescing.
-  Audit healing/regen/direct posture assignments, rescue, flee, death,
-  departure and terminal extraction, including non-GMCP tanks. Do not scan the
-  population/combat list per hit or add a global observer dependency index.
-- Mark old/new contexts before references die; resolve current relationships
-  at flush without delayed raw victims. Define state revisions/event ordering.
+- Coalesce viewer state in the existing descriptor flush by sampling only its
+  two current room-local prompt subjects. Compare bounded scalar/name snapshots
+  before allocating JSON. This covers direct healing/regen/posture assignments,
+  rescue, flee, death, departure and extraction, including non-GMCP tanks.
+  The source audit found direct HP writes in events.c, affects.c, magic.c,
+  class skills, commands and many specs; a new hook set would not be complete.
+  Do not scan rooms/population/combat lists per hit or add an observer index.
+- Resolve current relationships at flush, retaining only scalar/opaque runtime
+  identity/name values between flushes. Never retain a raw victim pointer.
+  Session/body changes invalidate the cache; accepted FIFO output advances the
+  revision. Define the separate event ordering in the next dependent slice.
 - Separate outgoing applied-damage events from replaceable target state.
   Preserve actually applied amounts, including secondary targets, without
   retargeting the primary enemy. Pass known damage-type/critical metadata from

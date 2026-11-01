@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Booted control/time protocol through normal Telnet and WebSocket dispatch.
+"""Booted lifecycle/time and combat state through normal protocol dispatch.
 
 Uses maintained isolated state, creation, staff promotion and reboot helpers.
 --server reuses an explicitly built client-free flatfile binary. No checkout
@@ -79,8 +79,68 @@ def send_websocket(client, package, data):
     client.send_frame(1, json.dumps({"type": "gmcp", "package": package, "data": data}).encode())
 
 
+def combat_fixture(run_root):
+    """Two durable-free NPCs for a real non-GMCP tank and terminal extraction."""
+    mini = run_root / "areas_mini"
+    path = mini / "mini.mob"
+    mobs = path.read_text()
+    for vnum, name in ((22800, "foe"), (22801, "ally")):
+        mob = f"""#{vnum}
+{name} regression~
+the regression {name}~
+The regression {name} waits here.
+~
+~
+10 0 0 0 0 0 0 0 S
+PH 0 0 -1
+10 0 100 1000d1+99000 1d1+0
+0.0.0.0 0
+8 8 0
+"""
+        mobs = mobs.replace("$~", mob + "$~")
+    path.write_text(mobs)
+    path = mini / "mini.wld"
+    path.write_text(path.read_text().replace("$~", """#22800
+The GMCP Regression Arena~
+A quiet room for the disposable combat wire journey.
+~
+1 0 0
+S
+$~"""))
+    path = mini / "mini.zon"
+    zone = path.read_text()
+    require("1299 0 0 6 11 1" in zone, "minimal zone header changed")
+    path.write_text(zone.replace("1299 0 0 6 11 1", "29999 0 0 6 11 1"))
+
+
+def combat_journey(client):
+    client.send("goto 22800")
+    client.expect("The GMCP Regression Arena")
+    for vnum in (22800, 22801):
+        client.send(f"load mob {vnum}")
+        client.expect("You have created")
+    client.send("force foe kill ally")
+    before = len(telnet_packets(client))
+    client.send("hit foe")
+    fighting = wait_telnet(client, "Combat.Update", before, lambda state:
+        (state.get("target") or {}).get("name") == "foe" and
+        (state.get("tank") or {}).get("name") == "ally")
+    require(0 <= fighting["target"]["healthPercent"] <= 100 and
+            0 <= fighting["tank"]["healthPercent"] <= 100,
+            "combat subject percentages are invalid")
+    before = len(telnet_packets(client))
+    client.send("purge ally")
+    departed = wait_telnet(client, "Combat.Update", before, lambda state:
+        (state.get("tank") or {}).get("name") != "ally")
+    before = len(telnet_packets(client))
+    client.send("purge foe")
+    cleared = wait_telnet(client, "Combat.Update", before, lambda state:
+        state.get("target") is None and state.get("tank") is None)
+    return [fighting, departed, cleared]
+
+
 def run(binary, evidence):
-    with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}) as server:
+    with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}, combat_fixture) as server:
         client = None
         websocket = None
         try:
@@ -145,6 +205,7 @@ def run(binary, evidence):
             client.expect("You return to your original body.")
             returned = wait_telnet(client, "Duris.Session", before, lambda value: value["state"] == "playing" and value["character"]["bodyRevision"] != switched["character"]["bodyRevision"])
             require(returned["context"] == reconnected["context"] and returned["generation"] == reconnected["generation"], "body return changed the entry key")
+            combat = combat_journey(client)
             phases = []
             for hour, expected, phase in ((-1,23,"night"),(4,4,"dawn"),(9,9,"day"),(16,16,"dusk"),(0,0,"night")):
                 before = len(telnet_packets(client))
@@ -230,9 +291,9 @@ def run(binary, evidence):
             server.shutdown()
             result = {"staff_phases": phases, "websocket_time": state,
                       "session_entries": [entry, reconnected, reentered, websocket_entry],
-                      "body_transitions": [switched, returned], "binary": str(binary),
+                      "body_transitions": [switched, returned], "combat": combat, "binary": str(binary),
                       "source_sha256": hashlib.sha256((ROOT / "src/net/gmcp.c").read_bytes()).hexdigest(),
-                      "scope": "Booted disposable lifecycle/control/time via normal Telnet/WebSocket dispatch; not real Mudlet or overhead qualification."}
+                      "scope": "Booted disposable lifecycle/control/time plus combat/tank/extraction via normal dispatch; not real Mudlet or overhead qualification."}
             if evidence:
                 evidence.parent.mkdir(parents=True, exist_ok=True)
                 evidence.write_text(json.dumps(result, indent=2) + "\n")
@@ -254,4 +315,4 @@ if __name__ == "__main__":
     build_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="gmcp-control-", dir=build_root) as build:
         run(args.server.resolve() if args.server else build_flatfile_server(Path(build)), args.evidence)
-    print("booted GMCP control/time/session Telnet and WebSocket journey passed")
+    print("booted GMCP control/time/session and combat state journey passed")

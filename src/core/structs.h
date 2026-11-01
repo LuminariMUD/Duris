@@ -1726,6 +1726,17 @@ struct snoop_data
 
 typedef struct gnutls_session_int *gnutls_session_t;
 
+// Last accepted viewer-specific combat subjects. No retained character pointers.
+struct gmcp_combat_subject
+{
+	uint64_t identity;
+	int health_percent;
+	unsigned char position;
+	bool present;
+	bool bleeding;
+	char name[256];
+};
+
 struct descriptor_data
 {
 	// Session-local cosmetic state, zeroed on allocation/reconnect/copyover.
@@ -1814,6 +1825,9 @@ struct descriptor_data
 	uint32_t gmcp_active_streams; // Last accepted control snapshot.
 	bool gmcp_control_pending;
 	uint64_t gmcp_time_revision;
+	gmcp_combat_subject gmcp_combat_subjects[2];
+	uint64_t gmcp_combat_revision;
+	bool gmcp_combat_state_sent;
 	uint64_t gmcp_session_generation;
 	uint64_t gmcp_session_player; // Runtime identities are never sent as player IDs.
 	uint64_t gmcp_session_body;

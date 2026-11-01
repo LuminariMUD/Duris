@@ -3,8 +3,9 @@
 The same packages use Telnet GMCP subnegotiation and the existing WebSocket
 `{type:"gmcp", package, data}` envelope. Legacy gameplay packages keep their
 existing defaults. New versioned streams require explicit support and interest.
-This document describes the implemented control, time and lifecycle slices of
-issue #498. Combat/tank, item, action and command-result work remains pending.
+This document describes the implemented control, time, lifecycle and combat
+state slices of issue #498. Applied-damage events, item, action and command-result
+work remains pending.
 
 ## Negotiation and interest
 
@@ -153,6 +154,44 @@ the existing transport FIFO. On temporary queue failure the pending snapshot
 is retained for retry; later time data cannot overtake a pending control packet.
 Existing terminal overflow/connection-close behavior still applies. This slice
 makes no replay guarantee across disconnects.
+
+## Combat.Update (legacy-compatible full state)
+
+Every snapshot replaces both `target` and `tank`; each is an object or explicit
+`null`. Target is the controlled body's current opponent, only while room-local.
+Tank is that opponent's opponent, also only while room-local. Their HP is separate
+from `Char.Vitals.hp/maxHp`, which continues to describe the controlled body.
+
+```json
+{"target":{"name":"wolf","health":"small wounds","healthPercent":80,"position":"standing"},"tank":{"name":"Ally","health":"awful","healthPercent":5,"position":"kneeling"},"revision":"7"}
+```
+
+Percentages are clamped to 0-100 using wide intermediate arithmetic. Overheal
+cannot overflow a bar, and negative HP retains the bleeding condition. Position
+uses the existing prone/sitting/kneeling/standing model. Names follow the prompt's
+viewer policy: unseen subjects become `someone`, players use recipient-specific
+PERS, and NPCs use the first alphabetic word. Names are plain text, bounded to
+255 bytes; no runtime ID, prototype or raw pointer is exposed.
+
+The existing two-pulse descriptor pass samples only these two subjects and sends
+changed views, including healing, posture and non-GMCP tanks. It does not scan a
+room or the combat/population list per hit. Repeated unchanged flushes allocate no
+JSON; disabled and pre-entry recipients do not resolve subjects. Snapshots retain
+only bounded values, so extraction cannot leave a queued victim pointer. Initial
+bootstrap resends the current complete state; session/body transitions invalidate
+the cache. `{"target":null,"tank":null,"revision":"8"}` clears both views.
+
+`revision` is a lossless decimal string increasing for each accepted Combat.Update
+on this connection/process. Rejected state output leaves the cache unchanged for
+retry. Session-aware consumers use its process/body boundaries to reset their
+revision baseline. Other legacy consumers use their usual reconnect/bootstrap
+reset; no historical replay is implied. State-only JSON stays below 4 KiB.
+
+The optional legacy `round` remains a per-applied-hit compatibility field, not a
+complete battle log or aggregated combat round. State-only updates never repeat
+it. Secondary-hit events, known damage type/critical metadata and the negotiated
+event sequence/budget contract remain required in the next dependent PR. This
+state slice does not claim those events or the reported client HP symptom fixed.
 
 ## Proof and remaining qualification
 
