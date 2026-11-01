@@ -231,10 +231,11 @@ const char *status_column(player_status_field field)
 		"aggressive",
 		"highest_level",
 	};
-	static constexpr std::array<const char *, 6> tail = {
-		"screen_length",	"last_ip",
-		"learned_flight_stops", "divine_boon_delivery_seq",
-		"quest_origin_room",	"quest_replacement_due"
+	static constexpr std::array<const char *, 7> tail = {
+		"screen_length",	  "last_ip",
+		"learned_flight_stops",	  "divine_boon_delivery_seq",
+		"quest_origin_room",	  "quest_replacement_due",
+		"quest_reward_item_count"
 	};
 	const size_t index = static_cast<size_t>(field);
 	if (index < columns.size())

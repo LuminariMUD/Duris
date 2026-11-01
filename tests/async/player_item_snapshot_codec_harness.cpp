@@ -572,7 +572,8 @@ int main(int argc, char **argv)
 				player_snapshot_codec_result::ok,
 			"legacy quest fixture did not decode");
 		for (auto field : { player_status_field::quest_origin_room,
-				    player_status_field::quest_replacement_due })
+				    player_status_field::quest_replacement_due,
+				    player_status_field::quest_reward_item_count })
 			require(std::count_if(read_back.status_integers.begin(),
 					      read_back.status_integers.end(),
 					      [field](const auto &row) {
@@ -588,18 +589,37 @@ int main(int argc, char **argv)
 		{ player_status_field::quest_origin_room, 16633, 0, false });
 	changed.status_integers.push_back(
 		{ player_status_field::quest_replacement_due, 1, 0, false });
+	changed.status_integers.push_back(
+		{ player_status_field::quest_reward_item_count, 3, 0, false });
 	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok &&
 			player_snapshot_decode(other.data(), other.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&
 			read_back.wallet_revision == full.wallet_revision &&
 			read_back.quest_values == changed.quest_values &&
 			read_back.status_integers[1].signed_value == 16633 &&
-			read_back.status_integers[2].signed_value == 1,
+			read_back.status_integers[2].signed_value == 1 &&
+			read_back.status_integers[3].signed_value == 3,
 		"quest recovery state, progress or wallet revision lost in round trip");
 	put32(other, 0, 12);
 	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
 			player_snapshot_codec_result::invalid_value,
 		"version 12 accepted status fields introduced in version 13");
+	put32(other, 0, 13);
+	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
+			player_snapshot_codec_result::invalid_value,
+		"version 13 accepted a reward count introduced in version 14");
+	const auto version13 = wire(13);
+	require(player_snapshot_decode(version13.data(), version13.size(), &read_back) ==
+				player_snapshot_codec_result::ok &&
+			std::count_if(
+				read_back.status_integers.begin(), read_back.status_integers.end(),
+				[](const auto &row)
+				{
+					return row.field ==
+						       player_status_field::quest_reward_item_count &&
+					       row.signed_value == 0 && !row.is_unsigned;
+				}) == 1,
+		"version 13 did not default the absent reward count exactly once");
 	const auto version8 = wire(8);
 	require(player_snapshot_decode(version8.data(), version8.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&

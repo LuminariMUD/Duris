@@ -50,6 +50,12 @@ inline bool world_quest_item_passes_floor(int quest_level, int itemvalue)
 	       (static_cast<long long>(itemvalue) * 2) >= quest_level;
 }
 
+// Bound before conversion so even extreme finite property values are safe to cast.
+inline int world_quest_reward_withheld_percent(double configured)
+{
+	return std::isfinite(configured) ? static_cast<int>(std::clamp(configured, 5.0, 25.0)) : 20;
+}
+
 // Bartenders never hand out the most valuable share of a zone's reward items. The top
 // ceil(count * withheld_percent / 100) items by itemvalue are withheld, and any item worth
 // as much as the cheapest of those is withheld with it, so the rule acts as a ceiling: an

@@ -148,6 +148,27 @@ static void *bounded_json_allocate(size_t size)
 	return std::malloc(size);
 }
 static bool queue_reject;
+static unsigned creation_menus;
+bool account_commit_character_admission(P_desc d, P_char ch, bool, account_racewar_admission *)
+{
+	assert(d->character == ch && d->chargen_phase == CHARGEN_READY);
+	return false;
+}
+void account_format_racewar_denial(const account_racewar_admission *, char *out, size_t size)
+{
+	snprintf(out, size, "Admission rejected");
+}
+void ws_send_system(P_desc, const char *, const char *) {}
+void item_creation_grant_cancel_batch_before_entry(P_char) {}
+void free_char(P_char ch)
+{
+	assert(!ch->desc);
+}
+void ws_send_auth_success(P_desc d, const char *)
+{
+	assert(STATE(d) == CON_ACCT_SELECT_CHAR && !d->character);
+	++creation_menus;
+}
 static std::map<P_desc, std::vector<std::string>> packages;
 static std::map<P_desc, std::vector<std::pair<std::string, std::string>>> deliveries;
 
@@ -632,6 +653,22 @@ static void session_contract(P_char actor, bool websocket)
 	d.connected = CON_ACCT_SELECT_CHAR;
 	gmcp_session_update(&d);
 	check("account", "0", nullptr);
+	if (websocket)
+	{
+		acct_entry account{};
+		d.account = &account;
+		d.chargen_phase = CHARGEN_READY;
+		d.character = actor;
+		actor->desc = &d;
+		gmcp_session_update(&d);
+		check("chargen", "0", nullptr);
+		const auto menus = creation_menus;
+		rejected_creation(&d, actor);
+		assert(creation_menus == menus + 1 && d.chargen_phase == CHARGEN_UNSTARTED);
+		gmcp_session_update(&d);
+		check("account", "0", nullptr);
+		d.account = nullptr;
+	}
 	d.character = actor;
 	actor->desc = &d;
 	d.connected = CON_PLAYING;
@@ -848,6 +885,7 @@ static void combat_contract(bool websocket)
 				assert(cJSON_IsNull(subject));
 			else
 			{
+				assert(cJSON_IsObject(subject));
 				assert(std::string(cJSON_GetStringValue(
 					       cJSON_GetObjectItem(subject, "name"))) == name);
 				assert(cJSON_GetObjectItem(subject, "healthPercent")->valueint ==
@@ -861,6 +899,23 @@ static void combat_contract(bool websocket)
 	check("wolf", 80, "Ally", 5);
 	assert(payload(&d, "Combat.Update").find("kneeling") != std::string::npos);
 	emit(&d, "Combat.Update", "combat-subjects");
+	// raw_damage publishes before damage() establishes the first combat relationship.
+	viewer.specials.fighting = enemy.specials.fighting = nullptr;
+	applied_damage_notice(&viewer, &enemy, 8);
+	check("wolf", 72, nullptr, 0);
+	assert(payload(&d, "Combat.Update").find("\"damage\":8") != std::string::npos);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	// A lethal first hit can finish without ever establishing that relationship.
+	enemy.points.hit = 10;
+	applied_damage_notice(&viewer, &enemy, 111);
+	check("wolf", 0, nullptr, 0);
+	gmcp_flush_combat(&d);
+	check(nullptr, 0, nullptr, 0);
+	enemy.points.hit = 80;
+	viewer.specials.fighting = &enemy;
+	enemy.specials.fighting = &tank;
+	gmcp_flush_combat(&d);
 	cJSON_Hooks hooks{ bounded_json_allocate, std::free };
 	cJSON_InitHooks(&hooks);
 	const auto stable_count = count();

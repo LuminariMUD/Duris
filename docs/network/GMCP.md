@@ -188,8 +188,11 @@ revision baseline. Other legacy consumers use their usual reconnect/bootstrap
 reset; no historical replay is implied. State-only JSON stays below 4 KiB.
 
 The optional legacy `round` remains a per-applied-hit compatibility field, not a
-complete battle log or aggregated combat round. State-only updates never repeat
-it. Active Duris.Combat subscribers receive damage only through that event package;
+complete battle log or aggregated combat round. Before the first combat
+relationship is established, its immediate snapshot uses the struck victim as
+the target, including a lethal first hit. The next periodic snapshot follows the
+current relationship and clears absent subjects. State-only updates never repeat
+the round. Active Duris.Combat subscribers receive damage only through that event package;
 their Combat.Update packets contain state without `round`. Other clients retain
 the legacy primary-only round behavior. This does not claim the reported client
 HP symptom fixed; real widget qualification remains required.

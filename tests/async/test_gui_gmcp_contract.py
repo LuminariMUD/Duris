@@ -53,6 +53,7 @@ functions = [
     ('world_quest.c', 'void show_map_at('),
     ('utility.c', 'int IS_MORPH('),
     ('ws_handlers.c', 'void ws_send_full_game_state('),
+    ('ws_handlers.c', 'static void ws_reset_chargen('),
 ]
 # MAP_AUTOMAP already suppresses text; mutating websocket would change framing.
 comm = source('comm.c').read_text()
@@ -91,7 +92,9 @@ with tempfile.TemporaryDirectory(prefix='gui-gmcp-', dir=build) as directory:
     combat_source = gmcp[gmcp.index('// Combat snapshots.'):gmcp.index('// End combat snapshots.')]
     sender_source = gmcp[gmcp.index('/* core gmcp send'):gmcp.index('/* Bootstrap state')]
     (tmp / 'production.inc').write_text(control + '\n' + sender_source + '\n' + auth_source + '\n' + parser_source + '\n' + combat_source + '\n' + '\n\n'.join(extract_function(*f) for f in functions)
-        + '\n' + '\n'.join(delivery_paths) + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam, damage_messages *messages = nullptr, uint flags = 0) {\n' + notice + '\n}\n')
+        + '\n' + '\n'.join(delivery_paths) + '\nvoid applied_damage_notice(P_char ch, P_char victim, double dam, damage_messages *messages = nullptr, uint flags = 0) {\n' + notice + '\n}\n'
+        + '\nvoid rejected_creation(P_desc d, P_char ch) { account_racewar_admission admission{};\n'
+        + extract_function('ws_handlers.c', 'if (!account_commit_character_admission(d, ch, false, &admission))') + '\n}\n')
     binary = tmp / 'test'
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror',
         *sanitizers, '-ffunction-sections', '-fdata-sections', '-Isrc', '-I/usr/include/mysql', f'-I{tmp}',
