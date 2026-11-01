@@ -941,17 +941,33 @@ world_quest_target_status world_quest_refresh(P_char ch, int bartender_origin)
 
 bool world_quest_replace(P_char ch, P_char giver)
 {
-	if (!ch || IS_NPC(ch) || player_save_pipeline_world_quest_pending(GET_PID(ch)) || !giver ||
-	    !IS_NPC(giver) || ch->in_room < 0 || ch->in_room > top_of_world ||
-	    giver->in_room != ch->in_room || !ch->only.pc->quest_replacement_due ||
-	    ch->only.pc->quest_accomplished)
+	auto refused = [&](const char *reason)
+	{
+		logit(LOG_STATUS,
+		      "World quest replacement failed: pid=%d stage=precondition reason=%s",
+		      ch && IS_PC(ch) ? GET_PID(ch) : 0, reason);
 		return false;
+	};
+	if (!ch || IS_NPC(ch))
+		return refused("invalid_actor");
+	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
+		return refused("save_pending");
+	if (!giver || !IS_NPC(giver))
+		return refused("invalid_giver");
+	if (ch->in_room < 0 || ch->in_room > top_of_world)
+		return refused("invalid_room");
+	if (giver->in_room != ch->in_room)
+		return refused("giver_not_present");
+	if (!ch->only.pc->quest_replacement_due)
+		return refused("replacement_not_due");
+	if (ch->only.pc->quest_accomplished)
+		return refused("already_accomplished");
 	auto &quest = *ch->only.pc;
 	const int remaining = quest.quest_type == FIND_AND_KILL ?
 				      quest.quest_kill_original - quest.quest_kill_how_many :
 				      1;
 	if (remaining < 1)
-		return false;
+		return refused("no_remaining_work");
 	world_quest_target target;
 	const int origin = world[ch->in_room].number;
 	if (world_quest_policy_select_target(ch, origin, quest.quest_level, target,

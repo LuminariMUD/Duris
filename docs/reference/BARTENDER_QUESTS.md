@@ -328,6 +328,26 @@ the target, zone, giver, origin, and geographic map entrance to the new interact
 the same target may be selected again if it has become usable. Retained kills
 do not award XP again. Returning supply does not automatically reactivate a
 pending entitlement: ask for `quest` to select the replacement.
+
+Failed replacement requests write one `World quest replacement failed:` line to
+the server status log (`logs/log/status` in the standard runtime). The `pid`
+identifies the character. `stage=precondition` reports failures such as pending
+save, absent giver, or no remaining work. `stage=selection` includes current and
+accepted levels, required type/count, old target, current origin and its region
+identities, scanned instances, candidate zones, last attempted target, history
+availability, remaining probe/history limits, and work consumed.
+
+Selection `reason` distinguishes unavailable history, unavailable catalog, no
+eligible zone/target, and exhausted work/probe/history budgets. `history=not_checked`
+means selection did not reach a history lookup; it does not imply history is
+unavailable. `rejections` lists nonzero predicate-failure counts and one example
+VNUM per reason. Examples identify objects for object-handler failures, rooms for
+location/environment/room-handler failures, zones for zone failures, and mobiles
+for other target failures. Zero means no applicable example; -1 means an invalid
+object/mobile index. Counts include repeated checks of the same instance, and
+`supply` counts prototypes with too few qualifying instances, so these are not
+unique-target totals. The log uses bounded counters without executing handlers or
+performing another world scan. Successful replacements emit no failure line.
 `abandon confirm` discards an entitlement and progress without charging money,
 recording a target completion, or consuming allowance.
 

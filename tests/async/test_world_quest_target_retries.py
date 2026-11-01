@@ -95,6 +95,7 @@ void run_map_payment(P_char player, int fee)
                       (61, level), (level, 61), (62, level), (level, 62),
                       (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
+    scenarios += [(23, "diagnostics", "ask")]
     scenarios += [(level, f"geography_{origin}_{family}", kind)
                   for origin in (1734, 74339)
                   for level in (11, 29, 30, 56)
