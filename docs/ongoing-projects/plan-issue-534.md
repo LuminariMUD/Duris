@@ -1,6 +1,7 @@
 # Issue #534: bartender completion rewards
 
-Status: **implemented, locally qualified, and ready for review**. Updated 2026-11-01.
+Status: **independently reviewed, locally qualified, and ready to merge in stack order**.
+Updated 2026-11-01.
 Issue: [Duris #534](https://github.com/LuminariMUD/Duris/issues/534).
 
 ## Outcome
@@ -34,31 +35,39 @@ Review stack, in order:
 
 1. [PR #535](https://github.com/LuminariMUD/Duris/pull/535),
    `branch/issue-534-withholding`, targets `master`.
-   Worktree: `/home/aiwithapex/projects/duris-issue-534-withholding`.
+   Review worktree: `/home/aiwithapex/projects/duris-review-535`, head `21773261b`.
 2. [PR #539](https://github.com/LuminariMUD/Duris/pull/539),
    `branch/issue-534-kill-rewards`, targets #535's branch.
-   Worktree: `/home/aiwithapex/projects/duris-issue-534-kill-rewards`.
+   Review worktree: `/home/aiwithapex/projects/duris-review-539`, head `400603467`.
 3. [PR #541](https://github.com/LuminariMUD/Duris/pull/541),
    `branch/issue-534-bonus-policy`, targets #539's branch.
-   Worktree: `/home/aiwithapex/projects/duris-issue-534-bonus-policy`.
+   Review worktree: `/home/aiwithapex/projects/duris-review-541`.
    **This is the authoritative implementation/handoff worktree.**
 
-Each branch has been pushed with its matching upstream. The initial policy
-commit is `59a17ae57`; `ec58bbf0d` records gameplay/crash qualification. Current
-master `ee6f9fbf3` was merged through the stack without rewriting published
-history; `826ddff0c` integrates its clearer inventory feedback into batch delivery.
-PRs contain the current heads, including subsequent qualification/documentation.
+The independent review rebased/restacked the feature changes onto master
+`881853d21`, preserving the current-level replacement fix and inventory feedback.
+Original published heads remain available in local
+`branch/archive-pr{535,538,539,541}-before-review-20261101` branches; the original
+implementation worktrees were preserved. PR #541's policy and qualification
+commits were consolidated as `520b814b0`, followed by separate review repairs.
+The PRs identify their current published heads.
 
 [PR #538](https://github.com/LuminariMUD/Duris/pull/538) independently repairs a
 five-line test setup omission: the flatfile player-save fixture must initialize
 shared frag-cap authority before preparing a combat receipt. The unchanged suite
 failed before reaching its quest tests without that initialization. Equivalent
-commit `49b5435c1` is included in #539, so the fixture repair is represented once
-in the resulting source. It is separate from the reward feature.
+patch `aa56ee015` is included in #539. The independently rebased #538 head is
+`db15c8bb4`, in `/home/aiwithapex/projects/duris-review-538`.
 
-The original checkout's unrelated staged work was preserved. Its task-owned
-untracked copy of this plan is synchronized for discovery. No production operation,
-merge of these PRs, release tag, or deployment is part of this implementation.
+Merge #538 first, then #535, #539 and #541. Use merge commits for the stack:
+GitHub permits them, and preserving ancestry avoids a further restack after
+parent merges. Git combines the identical #538 fixture repair. If squash merges
+are chosen instead, restack each child onto master and remove carried parent
+patches before merging it. No release tag is warranted for review work.
+
+The original checkout's unrelated staged work and untracked plan were left unchanged.
+No production operation, merge of these PRs, release tag, or deployment is part of
+this implementation.
 
 ## Implementation and ablation decisions
 
@@ -67,6 +76,14 @@ reuse the existing property, catalog, completion transaction, item graph, and
 ownership publication. Current master already had recoverable flatfile completions;
 the older planning checkout did not. A second flatfile protocol, reward ledger,
 hot-reload service, and separate asynchronous decision-saving stage were omitted.
+
+The independent adversarial review posted two reproduced findings directly on
+#541 and repaired them in separate commits: `f065dae30` updates the stale
+version-13 capture test and proves a nonzero frozen count survives production
+capture/codec round trip; `d2e245c34` locks the shared `make world` freshness check
+and generation after concurrent backend journeys raced on `areas/tworld.*`.
+The latter extends the existing parallel-journey regression with two independent
+make processes. Neither repair adds a new persistence path or fixture framework.
 
 - [world_quest.c](../../src/world/world_quest.c) rolls once from the saved
   `quest_kill_original`, freezes `quest_reward_item_count`, prepares exactly that
@@ -129,8 +146,14 @@ this migration or a 59-step manifest. Production deployment remains separate wor
 ## Acceptance and evidence
 
 All evidence below comes from local executable tests and isolated disposable
-world/database fixtures. No production state was used. Logs are retained under
-`bin/qualification/issue534/` in the relevant worktree.
+world/database fixtures. No production state was used. Original implementation
+logs remain under `bin/qualification/issue534/` in the implementation worktrees.
+Independent review logs are under `bin/review/` in `duris-review-541`, including
+both engine compatibility/drift suites and six backend journey results (ordinary
+rewards, nine-item maximum, and failed-preparation/committed-crash recovery).
+The six-test snapshot suite, production capture/count round trip, both server
+builds, repository/claim tests, migration contracts, quest regressions and
+two-process world-generation test all passed after the review repairs.
 
 1. **Quantity:** production-body tests enumerate all 256 nine-kill patterns,
    verify the 10/11 roll boundary, eight RNG calls, mean 1.8 and the one-item
@@ -219,6 +242,9 @@ python3 tests/async/test_world_quest_remaining_unloaded.py
 python3 tests/async/test_player_save_pipeline.py
 python3 tests/async/test_player_load_pipeline.py
 python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/run_regression_tests.py --jobs 4 --match snapshot
+python3 tests/async/test_flatfile_journey_build_isolation.py
 python3 tests/async/test_flatfile_player_repository.py
 python3 tests/async/test_flatfile_world_quest_history.py
 python3 tests/async/test_immutable_migration_runner.py
