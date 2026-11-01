@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **control/time and lifecycle ready in PRs #542/#544; combat slice in progress**. Updated 2026-11-01.
+Status: **control/time, lifecycle and combat state ready in PRs #542/#544/#545; damage events in progress**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -66,10 +66,12 @@ The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
   `fe9477140` is published. Both server builds, sanitizer/native lifetime and
   allocation/queue cases, live Telnet/WebSocket A/account/B/failed-entry/body
   switch/reconnect, and original-socket uncompressed/MCCP copyover pass.
-- Current implementation branch: branch/issue-498-combat-state, based on PR
-  #544's head. The next focused PR targets branch/issue-498-session-lifecycle.
-  Add authoritative target/tank state, room-local coalesced observer refresh and
-  actual applied-damage events with recipient masking; keep self vitals separate.
+- Combat state is ready for review in [PR #545](https://github.com/LuminariMUD/Duris/pull/545),
+  based on PR #544; implementation `1424da65b` is published and mergeable.
+- Current implementation branch: branch/issue-498-combat-events, based on PR
+  #545's head. The next focused PR targets branch/issue-498-combat-state.
+  Add opt-in actual applied-damage events with known metadata, recipient masking,
+  event ordering/bounds and no primary-target mutation or duplicate legacy round.
   Remaining inventory, actions/results, client/real-Mudlet and matched overhead
   gates are still required. No issue completion or HP-symptom fix is claimed.
 - PR #544 review fix: a Session-aware player switching into an ordinary NPC now
