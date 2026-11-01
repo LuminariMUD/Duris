@@ -129,7 +129,8 @@ static void gmcp_session_observe(P_desc d)
 {
 	const auto phase = gmcp_session_current_phase(d);
 	const bool playing = phase == gmcp_session_phase::playing;
-	const uint64_t player = playing ? gmcp_session_player(d)->runtime_id : 0;
+	const P_char session_player = gmcp_session_player(d);
+	const uint64_t player = playing && session_player ? session_player->runtime_id : 0;
 	const uint64_t body = playing ? d->character->runtime_id : 0;
 	const bool entry = playing && (d->gmcp_session_state != static_cast<unsigned char>(phase) ||
 				       d->gmcp_session_player != player);
@@ -238,6 +239,9 @@ static bool gmcp_session_nonce(char (&output)[33])
 
 static bool gmcp_session_send(P_desc d, gmcp_session_phase phase, uint64_t generation)
 {
+	const P_char player = gmcp_session_player(d);
+	if (phase == gmcp_session_phase::playing && !player)
+		return false;
 	if (!gmcp_session_nonce(d->gmcp_session_context) ||
 	    !gmcp_session_nonce(gmcp_session_process))
 		return false;
@@ -260,7 +264,7 @@ static bool gmcp_session_send(P_desc d, gmcp_session_phase phase, uint64_t gener
 	if (valid && phase == gmcp_session_phase::playing)
 	{
 		char name[MAX_NAME_LENGTH + 1];
-		strlcpy(name, GET_NAME(gmcp_session_player(d)), sizeof(name));
+		strlcpy(name, GET_NAME(player), sizeof(name));
 		snprintf(counter, sizeof(counter), "%llu",
 			 static_cast<unsigned long long>(d->gmcp_session_body_revision));
 		valid = cJSON_AddStringToObject(character, "name", name) &&
@@ -323,8 +327,11 @@ void gmcp_session_update(P_desc d)
 
 void gmcp_session_restored(P_desc d)
 {
+	const P_char player = gmcp_session_player(d);
+	if (!player || !d->character)
+		return;
 	d->gmcp_session_state = static_cast<unsigned char>(gmcp_session_phase::playing);
-	d->gmcp_session_player = gmcp_session_player(d)->runtime_id;
+	d->gmcp_session_player = player->runtime_id;
 	d->gmcp_session_body = d->character->runtime_id;
 	if (!d->gmcp_session_generation)
 		d->gmcp_session_generation = 1;
