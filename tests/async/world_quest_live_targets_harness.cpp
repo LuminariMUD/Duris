@@ -11,6 +11,7 @@
 #include "world/zone_story_quest_runtime.h"
 #include "cmd/interp.h"
 #include "world/specs.prototypes.h"
+#include "world/vnum.obj.h"
 #include "sql/sql.h"
 
 #include <cassert>
@@ -64,6 +65,45 @@ std::string feedback;
 std::vector<std::string> replacement_logs;
 void run_payment(P_char, int origin, int fee, bool committed);
 void run_map_payment(P_char, int fee);
+void assert_equipment_sets_ignore_ask(P_char);
+
+// ASK must not reach periodic equipment-set side effects.
+void event_random_set_proc(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+void event_balance_affects(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+void event_object_proc(P_char, P_char, P_obj, void *)
+{
+	std::abort();
+}
+void check_zone_spells(P_char, P_obj, int, const char *)
+{
+	std::abort();
+}
+void affect_from_char(P_char, int)
+{
+	std::abort();
+}
+affected_type *affect_to_char(P_char, affected_type *)
+{
+	std::abort();
+}
+void disarm_char_nevents(P_char, event_func_type)
+{
+	std::abort();
+}
+void disarm_obj_nevents(P_obj, event_func_type)
+{
+	std::abort();
+}
+nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int)
+{
+	std::abort();
+}
 
 static int interceptor_calls = 0;
 int blocking_mobile(P_char, P_char, int cmd, char *)
@@ -928,6 +968,77 @@ int main(int argc, char **argv)
 		hide_artifact.next_content = &regeneration_ring;
 	}
 #ifndef WORLD_QUEST_SQL_HISTORY
+	if (mode == "random_armor")
+	{
+		assert_equipment_sets_ignore_ask(&player);
+		objects[0].virtual_number = VOBJ_RANDOM_ARMOR;
+		objects[0].func.obj = set_proc;
+		obj_data armor{};
+		armor.R_num = 0;
+		armor.short_description = const_cast<char *>("armor &+rfrom Fixture");
+		obj_data blocker{};
+		blocker.R_num = 1;
+		objects[1].func.obj = blocking_object;
+		P_char giver = spawn(2, 0, 0);
+		command_giver = giver;
+		auto ask = [&]
+		{
+			history_reads.clear();
+			feedback.clear();
+			replacement_logs.clear();
+			char request[] = "bartender quest";
+			assert(world_quest(giver, &player, CMD_ASK, request));
+		};
+		for (bool worn : { true, false })
+		{
+			armor.loc_p = worn ? LOC_WORN : LOC_CARRIED;
+			armor.loc.wearing = &player;
+			player.equipment[WEAR_BODY] = worn ? &armor : nullptr;
+			player.carrying = worn ? nullptr : &armor;
+			move(&player, 3);
+			char message[] = "target message";
+			assert(!special(&player, CMD_ASK, message));
+			move(&player, 0);
+			history_reads.clear();
+			world_quest_target selected;
+			assert(world_quest_policy_select_target(&player, 1000, level, selected,
+								FIND_AND_ASK) ==
+			       QUEST_CREATION_NO_FAILURE);
+			pc.quest_active = 0;
+			pc.quest_replacement_due = 1;
+			pc.quest_level = 23;
+			pc.quest_type = FIND_AND_ASK;
+			pc.quest_mob_vnum = 777;
+			pc.quest_started = 12345;
+			pc.quest_map_bought = 1;
+			GET_COPPER(&player) = 0;
+			daily_remaining = 0;
+			ask();
+			assert(pc.quest_active && !pc.quest_replacement_due &&
+			       pc.quest_level == level);
+			assert(pc.quest_type == FIND_AND_ASK && pc.quest_started == 12345 &&
+			       pc.quest_map_bought && GET_MONEY(&player) == 0 &&
+			       daily_remaining == 0 && wallet_debits == 0 && history_writes == 0);
+			assert(world_quest_refresh(&player) == world_quest_target_status::valid);
+			assert(replacement_logs.empty());
+			// Safe armor must not hide a genuine interceptor in the same scene.
+			rooms[3].contents = &blocker;
+			assert(world_quest_refresh(&player) == world_quest_target_status::unproven);
+			pc.quest_active = 0;
+			pc.quest_replacement_due = 1;
+			const auto pending = pc;
+			ask();
+			assert(!memcmp(&pc, &pending, sizeof(pc)) && GET_MONEY(&player) == 0 &&
+			       daily_remaining == 0 && wallet_debits == 0 && history_writes == 0);
+			move(&player, 3);
+			assert(special(&player, CMD_ASK, message));
+			move(&player, 0);
+			rooms[3].contents = nullptr;
+		}
+		std::cout << "random armor worn/carried ASK and free replacement level " << level
+			  << ": passed\n";
+		return 0;
+	}
 	if (mode == "diagnostics")
 	{
 		// A retained level-23 ASK on a now-level-31 player, through the real

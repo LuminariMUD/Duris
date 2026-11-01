@@ -284,8 +284,9 @@ ASK checks the command interceptors at the target room: its room procedure,
 other awake NPC handlers, room objects, and the player's carried/equipped
 objects. Unknown handlers make an accepted task unproven and prevent new
 assignment until the interaction can be verified. Audited passive handlers
-remain eligible. This bounded audit never executes a procedure or checks the
-travel route.
+remain eligible, including carried or worn random armor and master-set items:
+their set-bonus handler ignores ASK. This bounded audit never executes a procedure
+or checks the travel route.
 
 ## Recovery, maps, and sharing
 

@@ -18,6 +18,11 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
     mobile = repo_source("specs.mobile.c").read_text()
     payment_context = mobile[mobile.index("enum class world_quest_payment_action"):
                              mobile.index("static void world_quest_report_creation_failure")]
+    objects = repo_source("specs.object.c").read_text()
+    set_context = objects[objects.index("typedef int (*set_func)"):
+                          objects.index("void event_random_set_proc(")]
+    set_table = objects[objects.index("struct set_data\n"):
+                        objects.index("int set_proc(")]
     adapters.write_text(
         '#include "core/prototypes.h"\n#include "core/utils.h"\n'
         '#include "magic/spells.h"\n#include "world/map.h"\n'
@@ -32,6 +37,14 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'extern int top_of_world;\nextern int CheckFor_remember(P_char, P_char);\n'
         'extern time_info_data time_info;\nextern const char *month_name[];\n'
         'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
+        '#include "world/specs.prototypes.h"\n#include "world/vnum.obj.h"\n'
+        '#include <cassert>\n'
+        'extern int top_of_zone_table;\n'
+        'void event_random_set_proc(P_char, P_char, P_obj, void *);\n'
+        'void event_balance_affects(P_char, P_char, P_obj, void *);\n'
+        'void event_object_proc(P_char, P_char, P_obj, void *);\n'
+        + set_context + extract_function("specs.object.c", "int random_set(")
+        + set_table + extract_function("specs.object.c", "int set_proc(")
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
             ("cmd/interp.c", "void half_chop("),
             ("cmd/interp.c", "bool special("),
@@ -56,6 +69,32 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
             ("specs.mobile.c", "static bool world_quest_begin_progressed_abandon("),
             ("specs.mobile.c", "int world_quest(P_char"),
         )) + r'''
+void assert_equipment_sets_ignore_ask(P_char actor)
+{
+    // Exercise every delegate in the production table, including real random/master
+    // set callbacks. A new ASK-intercepting delegate must invalidate this audit.
+    const int old_vnum = obj_index[0].virtual_number;
+    obj_data item{};
+    item.R_num = 0;
+    item.short_description = const_cast<char *>("armor &+rfrom Fixture");
+    char message[] = "target message";
+    for (const auto &set : sets)
+        for (int vnum : set.items)
+        {
+            if (!vnum)
+                break;
+            obj_index[0].virtual_number = vnum;
+            item.loc_p = LOC_WORN;
+            item.loc.wearing = actor;
+            actor->equipment[WEAR_BODY] = &item;
+            assert(!set_proc(&item, actor, CMD_ASK, message));
+            actor->equipment[WEAR_BODY] = nullptr;
+            item.loc_p = LOC_CARRIED;
+            item.loc.carrying = actor;
+            assert(!set_proc(&item, actor, CMD_ASK, message));
+        }
+    obj_index[0].virtual_number = old_vnum;
+}
 void run_payment(P_char player, int origin, int fee, bool committed)
 {
     world_quest_payment_context payment{world_quest_payment_action::quest, fee, 9000, origin};
@@ -78,6 +117,7 @@ void run_map_payment(P_char player, int fee)
         "tests/async/world_quest_live_targets_harness.cpp", str(HARNESS_STUBS),
         "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
         "src/core/safe_format.c",
+        "src/specs/specs.set.c",
         "-Wl,--gc-sections",
     ]
     subprocess.run([*compile_command, str(adapters), "-o", str(binary)], cwd=ROOT, check=True)
@@ -96,6 +136,7 @@ void run_map_payment(P_char player, int fee)
                       (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
     scenarios += [(31, "diagnostics", "ask")]
+    scenarios += [(level, "random_armor", "ask") for level in (23, 31)]
     scenarios += [(level, "replacement_level", kind)
                   for level in (23, 31, 46) for kind in ("ask", "kill")]
     scenarios += [(level, f"geography_{origin}_{family}", kind)
