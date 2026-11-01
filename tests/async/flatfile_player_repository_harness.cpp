@@ -2122,6 +2122,11 @@ int main(int argc, char **argv)
 	quest.items[0].object_uid = 7001001;
 	quest.items[0].parent_index = PLAYER_SNAPSHOT_NO_PARENT;
 	quest.items[0].equipment_slot = -1;
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001010;
+	quest.items.push_back(quest.items[0]);
+	quest.items.back().object_uid = 7001011;
+	quest.items.back().parent_index = 1;
 	quest.quest_values[0] = 1;
 	quest.quest_values[3] = PLAYER_WORLD_QUEST_REWARD_PENDING;
 	quest.pending_world_quest = { true,	  25001,	 30,	  9000, quest.items[0].vnum,
@@ -2142,7 +2147,11 @@ int main(int argc, char **argv)
 	player_snapshot receipt{};
 	require(flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt, &error) ==
 				flatfile_player_load_result::ok &&
-			receipt.items.size() == 1 && receipt.items[0].object_uid == 7001001 &&
+			receipt.items.size() == 3 && receipt.items[0].object_uid == 7001001 &&
+			receipt.items[1].object_uid == 7001010 &&
+			receipt.items[1].parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
+			receipt.items[2].object_uid == 7001011 &&
+			receipt.items[2].parent_index == 1 &&
 			receipt.quest_values[3] == PLAYER_WORLD_QUEST_REWARD_PENDING &&
 			!receipt.pending_world_quest.present,
 		"quest receipt or reward did not reload");
@@ -2166,9 +2175,9 @@ int main(int argc, char **argv)
 		"conflicting quest completion accepted");
 	require(flatfile_player_snapshot_load(quest_root.string(), quest_pid, &receipt, &error) ==
 				flatfile_player_load_result::ok &&
-			receipt.revision == 2 && receipt.items.size() == 2 &&
+			receipt.revision == 2 && receipt.items.size() == 4 &&
 			receipt.items[0].object_uid == 7001001 &&
-			receipt.items[1].object_uid == 7001003 && receipt.quest_values[3] == 0,
+			receipt.items[3].object_uid == 7001003 && receipt.quest_values[3] == 0,
 		"failed history lost unrelated item or exposed staged reward");
 
 	// A stale fee after-image must not complete history while silently retaining a newer purse.

@@ -366,9 +366,7 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 					if (!item.object_uid ||
 					    !ids.insert(item.object_uid).second ||
 					    item.parent_index < PLAYER_SNAPSHOT_NO_PARENT ||
-					    item.parent_index >= static_cast<int32_t>(index) ||
-					    (index &&
-					     item.parent_index == PLAYER_SNAPSHOT_NO_PARENT))
+					    item.parent_index >= static_cast<int32_t>(index))
 						return player_save_pipeline_result::capture_failed;
 					if (item.parent_index != PLAYER_SNAPSHOT_NO_PARENT)
 						item.parent_index += static_cast<int32_t>(offset);

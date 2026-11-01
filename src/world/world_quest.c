@@ -342,7 +342,7 @@ static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool
 	const int target = ch->only.pc->quest_mob_vnum;
 	const int started = ch->only.pc->quest_started;
 	if (!sql_world_quest_finish_async(
-		    ch, reward, true, final_kill, values, 0,
+		    ch, { reward }, true, final_kill, values, 0,
 		    [reward_uid, mob_id, target, started, type, final_kill, values](P_char actor)
 		    {
 			    if (!actor || !actor->only.pc || !actor->only.pc->quest_active ||

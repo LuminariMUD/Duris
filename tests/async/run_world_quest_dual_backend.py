@@ -1159,7 +1159,7 @@ break *sql_world_quest_finish_async
 set $history_break=$bpnum
 commands
 silent
-call (void)quest_gameplay_history((char_data*)$rdi,(obj_data*)$rsi)
+call (void)quest_gameplay_history((char_data*)$rdi,(void*)$rsi)
 continue
 end
 break world/world_quest_policy.c:{type_line}
