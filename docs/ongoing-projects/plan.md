@@ -9,7 +9,10 @@ Updated 2026-11-01. **Implemented and locally qualified; ready for review.**
 - Inspected baseline: `0a972227636b66c4e0c98900b1120c25ac181353`.
 - [The original implementation plan](https://github.com/LuminariMUD/Duris/blob/5e3ab6d560a313a275a730c80a52c4f41ecde3fe/docs/ongoing-projects/plan.md)
   and [the previous completed #498 handoff](https://github.com/LuminariMUD/Duris/blob/0a972227636b66c4e0c98900b1120c25ac181353/docs/ongoing-projects/plan.md)
-  remain in Git history.
+  remain in Git history. The completed backup qualification from merged
+  [PR #556](https://github.com/LuminariMUD/Duris/pull/556) is preserved separately
+  in [plan-issue-537.md](plan-issue-537.md); its production and restore evidence
+  is retained. [plan-issue-498.md](plan-issue-498.md) retains the protocol handoff.
 
 ## Outcome and source findings
 
@@ -134,6 +137,6 @@ the native records provide the deterministic mechanics comparison.
 
 All implementation and local qualification work in the plan is complete. PR #557
 contains the command change, the two focused tests and this updated handoff.
-The issue stays open for review/merge. No production reproduction, deployment,
+Merging PR #557 completes #505. No production reproduction, deployment,
 migration, real-account operation or release tag was performed. The unrelated
 main checkout and other worktrees were preserved.
