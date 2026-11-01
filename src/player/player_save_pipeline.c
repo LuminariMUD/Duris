@@ -421,7 +421,10 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 				snapshot.quest_values[5] = -1;
 				for (auto &row : snapshot.status_integers)
 					if (row.field == player_status_field::quest_origin_room ||
-					    row.field == player_status_field::quest_replacement_due)
+					    row.field ==
+						    player_status_field::quest_replacement_due ||
+					    row.field ==
+						    player_status_field::quest_reward_item_count)
 					{
 						row.signed_value = 0;
 						row.unsigned_value = 0;

@@ -2134,6 +2134,8 @@ int main(int argc, char **argv)
 	quest.pending_world_quest.awaiting_reward = true;
 	quest.pending_world_quest.reward_items = quest.items;
 	quest.pending_world_quest.reward_encoded_size = 1024;
+	quest.status_integers.push_back(
+		{ player_status_field::quest_reward_item_count, 2, 0, false });
 	setenv("DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL", "1", 1);
 	const auto quest_fault = flatfile_player_snapshot_apply(quest_root.string(), quest, &error);
 	require(quest_fault.outcome == player_save_apply_outcome::retryable_failure,
@@ -2155,6 +2157,13 @@ int main(int argc, char **argv)
 			receipt.quest_values[3] == PLAYER_WORLD_QUEST_REWARD_PENDING &&
 			!receipt.pending_world_quest.present,
 		"quest receipt or reward did not reload");
+	require(std::any_of(receipt.status_integers.begin(), receipt.status_integers.end(),
+			    [](const auto &row) {
+				    return row.field ==
+						   player_status_field::quest_reward_item_count &&
+					   row.signed_value == 2;
+			    }),
+		"frozen reward count did not reload");
 	int count = 0;
 	require(flatfile_world_quest_count_day(quest_root.c_str(), quest_pid, 30, 1800000000,
 					       &count, &error) == flatfile_world_quest_result::ok &&

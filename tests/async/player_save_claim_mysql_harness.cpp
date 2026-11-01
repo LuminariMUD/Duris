@@ -988,6 +988,8 @@ int main()
 						   item(15003003, 1002, -1),
 						   item(15003004, 1002, 1) };
 	quest.pending_world_quest.reward_encoded_size = 1024;
+	quest.status_integers.push_back(
+		{ player_status_field::quest_reward_item_count, 2, 0, false });
 	quest.items = { item(15003002, 1002, -1), quest.pending_world_quest.reward_items[0],
 			quest.pending_world_quest.reward_items[1],
 			quest.pending_world_quest.reward_items[2] };
@@ -1024,6 +1026,9 @@ int main()
 			       "SELECT COUNT(*) FROM player_items WHERE pid=77777 AND obj_uid=15003001") ==
 				"1" &&
 			owner_of(15003001) == "1:77777:0:1:15003001:0" &&
+			scalar(test_connection,
+			       "SELECT quest_reward_item_count FROM player_data WHERE pid=77777") ==
+				"2" &&
 			owner_of(15003003) == "1:77777:0:1:15003003:0" &&
 			owner_of(15003004) == "1:77777:0:1:15003003:15003003" &&
 			scalar(test_connection,

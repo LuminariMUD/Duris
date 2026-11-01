@@ -99,10 +99,17 @@ Each character completes and is rewarded independently, including shared work.
 Let `C` be that character's current level at the relevant reward call, `L` the
 saved accepted quest level, and `N` the original KILL quota.
 
-- **Item:** one uniformly selected prototype from the accepted zone's cached
+- **Items:** ASK and one-kill tasks guarantee one personal item at completion.
+  A KILL quota `N` adds an independent 10% bonus-item roll for each kill after
+  the first: `1 + Binomial(N - 1, 0.1)`. Nine kills therefore average 1.8 items;
+  exactly one has probability 43.046721%, and two or more 56.953279%. Rewards
+  are delivered together at completion. Quotas outside 1–4096 retain the task
+  for staff diagnosis, so all possible quantities fit the snapshot object limit.
+  Each item independently selects a prototype, with replacement, from the accepted zone's cached
   reward pool for `L` (falling back to `C` only if the saved level is nonpositive).
   If it cannot be instantiated, `create_random_eq()` uses current level `C`.
-  The resulting item has `ITEM_SECRET`, `ITEM_INVISIBLE`, and `ITEM_NODROP`
+  Duplicate prototypes are possible, with distinct object UIDs. Each resulting
+  item has `ITEM_SECRET`, `ITEM_INVISIBLE`, and `ITEM_NODROP`
   removed and `ITEM_NOREPAIR` added. The KILL reward goes to the completing
   character through the player-save transaction, not onto a corpse or on every kill.
 - **XP:** `quest_exp_reward()` truncates `EXP_NOTCH(character) * band_multiplier`
@@ -128,7 +135,9 @@ enabled, a positive mortal credit prints `Quest EXP:` using the actual credited
 amount. Ordinary combat XP is separate from the bartender per-kill award.
 
 Completion captures the scalar reward amounts at the completing interaction.
-The detached item, completion history, and a pending-reward marker commit together
+The item count is rolled once and retained in `quest_reward_item_count`; failure
+while preparing a later item defers the complete batch and saves that decision
+for retry. The detached items, count, completion history, and a pending-reward marker commit together
 through the player-save transaction (MariaDB or the flatfile authority journal).
 The final KILL XP is credited before the remaining reward is calculated; the
 completed task retains those reward values for retry. Other remaining rewards
@@ -140,11 +149,14 @@ If this happens on the final KILL, a completed-task marker lets a bartender
 retry the reward without requiring another kill or awarding that kill's XP twice.
 
 If the process stops after commit but before publication, login restores the
-item from the saved inventory. The completed-task marker preserves the captured
-remaining scalar rewards for a bartender claim without creating another item
+items from the saved inventory. The completed-task marker preserves the captured
+remaining scalar rewards for a bartender claim without creating another batch
 or recording history again. The marker temporarily stores XP, epics and copper
 in the completed task's receiver, shares and credited-kill fields; these fields
 resume their ordinary meanings when the task is reset.
+An unfinished legacy quest uses the new quantity formula on completion; already
+completed legacy work with no saved count keeps its original one-item entitlement.
+The single history row describes the base item; it is not a list of bonus items.
 
 ## Catalog, target, and route policy
 
@@ -179,14 +191,13 @@ and potions, with these exclusions:
   not enumerate additional VNUMs for this exclusion.
 
 Each zone then withholds its most valuable `world.quest.reward.top.withheld.percent`
-(fallback/configuration 20) percent of source-eligible items, rounded up and
+(configured 5%, missing-key fallback 20%) of source-eligible items, rounded up and
 including value ties. If ties would remove the entire pool even though the
 rounded requested count is smaller than the pool, withholding is suppressed.
-A sole item with positive withholding is still removed; 100% withholding
-removes the whole pool. This ceiling is calculated before level filtering.
+A sole item is still removed. This ceiling is calculated before level filtering.
 Remaining rewards must have positive `itemvalue` and pass `2 * itemvalue >= L`
 to enter that level's pool. Counts, means, and scores use only this final pool.
-The boot log reports `withheld_quest_items` and `withheld_top_value`. The setting
+The boot log reports `withheld_quest_items`, `withheld_top_value`, and the effective percentage. The setting
 is read when the catalog is built, so a change applies at the next boot.
 
 For eligible zones, the relative selection weight is
@@ -467,7 +478,7 @@ differ; in particular `world.quest.share.max` falls back to 0 but this file sets
   multiplied by a remaining-time percentage clamped to 1–100.
   Its C++ fallback is 1.0. `world.quest.cost.abandon.time=24` is the decay
   period in hours (also fallback 24).
-- `world.quest.reward.top.withheld.percent=20` is read while building the boot
+- `world.quest.reward.top.withheld.percent=5` is read while building the boot
   catalog. Its inclusive range is 5–25%; the missing-key default is 20%.
   Finite values are clamped before integer conversion, and fractional values
   truncate toward zero. Nonfinite values use 20% with a diagnostic. The catalog
@@ -495,12 +506,16 @@ type, level, giver/receiver, start time, kill counts, shares, map, origin, and
 replacement entitlement. Stored rooms and zone numbers are VNUMs, not transient
 runtime indexes; giver/target are prototype VNUMs and receiver is a player PID.
 SQL requires the additive recovery fields from
-[0055_world_quest_recovery.sql](../../migrations/immutable/0055_world_quest_recovery.sql);
+[0055_world_quest_recovery.sql](../../migrations/immutable/0055_world_quest_recovery.sql)
+and the frozen item count from
+[0058_world_quest_reward_count.sql](../../migrations/immutable/0058_world_quest_reward_count.sql);
 see [player saves](../persistence/PLAYER_SAVE_PIPELINE.md)
 for checkpoint authority.
 
 Snapshot wire version 13 appended origin and replacement fields; earlier wire
-versions and legacy pfile imports initialize both to zero. The legacy 14-value
+versions and legacy pfile imports initialize both to zero. Version 14 appends
+the frozen reward count, defaulting to zero for earlier snapshots and imports.
+The legacy 14-value
 quest payload is unchanged. Reset clears these fields, and sharing copies the
 origin. Creation, sharing, map purchase, availability transitions, replacement,
 and reset mark STATUS dirty. Partial KILL progress is captured in STATUS too;
@@ -578,7 +593,7 @@ the owning source paths above as well. Run each focused script below with
   history/probe caps and refunds, followed by 10 SQL-history scenarios.
 - [test_world_quest_reward_policy.py](../../tests/async/test_world_quest_reward_policy.py):
   executable withholding math and source contracts for reward filtering,
-  sharing limits, fees, and one-item completion policy.
+  sharing limits, fees, completion batches, and independent bonus rolls.
 - [test_world_quest_failure_feedback.py](../../tests/async/test_world_quest_failure_feedback.py):
   source assertions for failed assignment feedback, refunds, and preserved state.
 - [test_world_quest_xp_feedback.py](../../tests/async/test_world_quest_xp_feedback.py):
