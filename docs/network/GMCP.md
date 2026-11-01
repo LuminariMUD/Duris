@@ -356,3 +356,8 @@ with and without MCCP, and the native copyover matrix covers versions 12-18.
 Real Mudlet and matched event-loop/serializer measurements remain separate
 evidence in `docs/ongoing-projects/plan.md`; these focused checks do not establish
 project completion or negligible overhead.
+
+The existing latency trace reports `gmcp_protocol` around the initial/item, room
+and ship protocol flushes, ending before queued ship saves and other persistence
+completion work. The older `gmcp_flush` span includes that additional work and
+must not be treated as serialization time. Both use the existing bounded tracer.
