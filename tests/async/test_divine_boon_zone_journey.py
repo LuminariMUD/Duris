@@ -147,7 +147,7 @@ def run(backend, binary):
                              'tbreak main', 'commands', 'silent', 'python',
                              f'open({str(debug_pid)!r}, "w").write(str(gdb.selected_inferior().pid))',
                              'end', 'continue', 'end',
-                             'break critical_command_coordinator_submit',
+                             'break critical_command_coordinator_submit_admitted',
                              'condition 2 command.type == critical_command_type::combat_outcome',
                              'commands', 'silent', 'python', 'import os, time',
                              f'open({str(prepared_gate)!r}, "w").write("prepared")',
