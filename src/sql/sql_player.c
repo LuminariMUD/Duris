@@ -3392,11 +3392,12 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 			}
 
 			int equip_slot = atoi(row[3]);
+			unsigned long uid = obj->obj_uid;
 			if (row[29] && *row[29])
 			{
 				char *end = nullptr;
 				errno = 0;
-				const unsigned long uid = strtoul(row[29], &end, 10);
+				uid = strtoul(row[29], &end, 10);
 				if (errno || !uid || row[29][0] < '1' || row[29][0] > '9' || *end)
 				{
 					extract_obj(obj);
@@ -3404,15 +3405,15 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 					discard_shopkeeper_restore_stage(keepers, all_items, false);
 					return false;
 				}
-				obj->obj_uid = uid;
 			}
-			if (!restored_uids.insert(obj->obj_uid).second)
+			if (!restored_uids.insert(uid).second)
 			{
 				extract_obj(obj);
 				mysql_free_result(result);
 				discard_shopkeeper_restore_stage(keepers, all_items, false);
 				return false;
 			}
+			obj->obj_uid = uid;
 			int container_id = row[20] ? atoi(row[20]) : 0;
 			if (equip_slot < 0 || equip_slot > MAX_WEAR || container_id < 0)
 			{
@@ -3781,8 +3782,9 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 		}
 		if (persistence_trace_enabled())
 			logit(LOG_DEBUG,
-			      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d",
-			      k->shop_nr, k->mob_vnum, incumbent_matches, extracted);
+			      "sql_restore_shopkeepers: shop %d vnum %d incumbent_matches=%d extracted=%d refill=%d restocked=%zu",
+			      k->shop_nr, k->mob_vnum, incumbent_matches, extracted, refill,
+			      replacement.stock.size());
 
 		if (restored)
 			*restored = k->mob;
