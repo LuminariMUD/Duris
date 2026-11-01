@@ -1,416 +1,277 @@
-# Issue #534: bartender KILL bonus items and configurable withholding
+# Issue #534: bartender completion rewards
 
-Status: **implementation in progress; withholding and batch foundation ready for review**. Updated 2026-11-01.
+Status: **implementation and local qualification complete; delivered through
+PRs #535, #538, #539, and #541**.
+Updated 2026-11-01.
 Issue: [Duris #534](https://github.com/LuminariMUD/Duris/issues/534).
 
-## Current implementation handoff
+## Outcome
 
-- Worktree: `/home/aiwithapex/projects/duris-issue-534-kill-rewards`.
-  Branch: `branch/issue-534-kill-rewards`, stacked on the withholding commit
-  `adbac1a9857f12f77cd2d8c27c4b79e9cf01eaab`. This is the authoritative working
-  copy of this plan. The original checkout and all its staged work are preserved.
-- Parent worktree: `/home/aiwithapex/projects/duris-issue-534-withholding`,
-  branch `branch/issue-534-withholding`, originally based on master
-  `0678df92a13991c4b0f7787863b80770ed8f42e0`.
-  [PR #535](https://github.com/LuminariMUD/Duris/pull/535) is open for review.
-- **Outcome:** deliver the specified bonus formula, personal recoverable batches,
-  and 5–25% withholding with the 20% default. **Non-goals:** release/deployment,
-  historical backfill, fixed iValue caps, and new configuration infrastructure.
-- **Ablation:** reuse the existing property, percentile arithmetic, catalog,
-  item snapshots, and completion machinery. Publish the independent withholding
-  change first; stack the batch work on it. Fresh master already contains reward
-  recovery changes absent from the original checkout's committed HEAD, so no
-  uncommitted dependency needs importing. The historical inspection below is
-  retained as context and must be checked against this integrated source.
-- **Files for chunk 1:** `src/world/world_quest_policy.c`, its existing math
-  header, `lib/duris.properties`, the reward policy test, the bartender reference,
-  and this plan. **Proof:** reward-policy and dynamic-policy executables,
-  documentation checks, full server build, formatting, and isolated catalog boots.
-- Implemented: bounded/finite-safe normalization, effective-percent startup
-  reporting, unchanged 20% default and tie algorithm, documentation and executable
-  cases for every whole percentage, fractional/extreme/nonfinite inputs, and
-  20-item pools at 5/20/25%. The general ceiling helper remains unchanged.
-- Passed: `python3 tests/async/test_world_quest_reward_policy.py`,
-  `python3 tests/async/test_world_quest_dynamic_policy.py`,
-  `python3 tests/async/test_documentation_contract.py` (14 tests),
-  `make -C src -j6`, `./scripts/format.sh --check`, and `git diff --check`.
-  Build log: `bin/qualification/issue534/build.log`.
-- Both MariaDB and flatfile builds passed. Five isolated full-world flatfile
-  boots verified configured/effective percentages 5/5, 20/20, 25/25, 0/5, and
-  100/25. Retained profiles were 7,275 at 5%, 6,105 at 20%, and 5,723 at 25%;
-  all boots inspected 353 zones. Evidence and the reusable local probe are in
-  `bin/qualification/issue534/catalog.log` and `catalog.py`.
-- Further ablation: integrated master already routes both backends through
-  `player_save_pipeline_submit_world_quest()`. Its flatfile repository prepares
-  history and commits it with the materialized player state through the existing
-  authority transaction. Reuse that path; the original flatfile findings below
-  describe the older planning checkout and are superseded. Do not add another
-  flatfile pending-file protocol or history reconciler. Pending state constants
-  also changed: unsecured is 4 and history-pending is 5 on this baseline.
-- Remaining: publish the batch foundation, implement saved quantity decisions and multi-root
-  delivery/recovery on both backends, extend their focused tests/journeys, and
-  publish dependent PRs. The complete goal remains open until those are qualified.
+A completed KILL assignment owes one guaranteed personal item plus one independent
+10% bonus-item roll for each required kill after the first. A one-kill assignment
+therefore pays one item; nine kills pay `1 + Binomial(8, 0.1)`, averaging 1.8 items.
+At nine kills, exactly one item has probability 43.046721%, two or more 56.953279%,
+and zero 0%, assuming eventual successful delivery. The complete batch arrives
+at completion. There are no interim corpse drops.
 
-### Batch foundation checkpoint
+`world.quest.reward.top.withheld.percent` now accepts whole percentages **5–25**,
+inclusive. The checked-in setting is now **5%**, following the owner's follow-up;
+the missing-key fallback remains **20%**. Finite values are clamped before conversion;
+fractions truncate toward zero. Nonfinite values use 20 with a diagnostic. The
+catalog startup log reports the effective percentage. A change takes effect on
+restart, when the cached catalog is rebuilt.
 
-The completion API now accepts a vector of detached roots, captures their trees
-with remapped parent indexes, and admits the graph through one existing
-completion transaction. The save pipeline now accepts multiple roots. Publication
-checks each root's recorded ancestry, validates/restores all roots before new
-attachments, recognizes roots already held by the actor, and cleans up all
-detached roots for an offline actor. Restore materializes only the missing tree.
-The existing SQL and flatfile repositories already handle multi-root graphs;
-no new persistence protocol or migration is needed for this foundation.
+The accepted-level iValue floor, source/quest exclusions, percentile ceiling
+rounding, boundary ties, and tie exception retain their existing rules. Each
+item independently selects from the same accepted zone/level pool, with
+replacement; repeated prototypes have distinct UIDs. The existing random-equipment
+fallback and reward flag adjustments apply to every item. No fixed iValue cap,
+bonus-chance setting, new difficulty curve, or historical reward backfill was added.
+ASK still pays one item. Scalar rewards, fees, allowances, sharing eligibility,
+kill credit, and quota assignment retain their rules.
 
-Current gameplay still requests its original one-item batch. Bonus quantity
-selection, its saved field/migration, and batch player feedback are the next
-chunk; this foundation does not claim the requested reward formula is enabled.
+## Git and worktrees
 
-Passed on the foundation:
+Delivery order is [#538](https://github.com/LuminariMUD/Duris/pull/538),
+[#535](https://github.com/LuminariMUD/Duris/pull/535),
+[#539](https://github.com/LuminariMUD/Duris/pull/539), then
+[#541](https://github.com/LuminariMUD/Duris/pull/541). The active Master ruleset
+requires linear history, so the PRs use squash merges. Each child was rebased
+onto master after its parent landed, with an explicit lease protecting the
+published head. Git dropped the duplicate #538 fixture repair from #539.
 
-- ASan/UBSan production publication and capture harness for SQL and flatfile,
-  including two roots with children, a wrong root identity, failure on the second
-  capture without submitting a partial graph, missing-root restoration, an
-  already-attached root, repeat publication, offline cleanup, and wrong location.
-- Save-pipeline regression with a second root and a save while publication is
-  refused; reward-policy, XP feedback, target retries, and flatfile history tests.
-- `tests/async/run_player_save_claim_mysql.sh` in its disposable MariaDB: two
-  reward roots plus a child, history rollback, exact custody, replay, stale
-  wallet rejection, UID collision, load filtering, and retained-state checks.
-- MariaDB and flatfile server builds. Logs and SQL evidence are under
-  `bin/qualification/issue534/` in this worktree.
+The complete merge simulation matched reviewed #541 head `b89598dec` exactly.
+Both restacks also preserved their reviewed file trees exactly; this final
+handoff update changes documentation only. Fresh reward policy, completion/XP
+on both backends, sanitizer publication, flatfile repository, snapshot capture,
+14 documentation checks, and both backend builds passed on the combined source.
 
-The flatfile repository suite initially failed at `prepare PvP receipt`, before
-reaching the quest fixture. The fixture never bootstrapped shared frag-cap state.
-That independent five-line setup repair passes the unchanged full suite and is
-published separately as [PR #538](https://github.com/LuminariMUD/Duris/pull/538),
-branch `branch/fix-flatfile-quest-test-bootstrap`, commit `6df741257`.
-Its equivalent commit `49b5435c1` is included here to unblock batch qualification.
-The expanded multi-root flatfile fixture now passes, including the interrupted
-authority commit, reload, single history count, and failed-history fallback
-retaining unrelated items. `test_world_quest_remaining_unloaded.py`,
-`test_player_item_snapshot_codec.py`, all 14 documentation checks, formatting,
-and whitespace checks also pass.
+The historical review worktrees were `duris-review-{535,538,539,541}` under
+`/home/aiwithapex/projects/`; the original implementation worktrees were
+`duris-issue-534-{withholding,kill-rewards,bonus-policy}` and
+`duris-flatfile-test-bootstrap`. Their review, qualification and merge-check
+logs were copied to the main checkout's ignored
+`bin/merge-prs-535-541-20261101/evidence/<worktree-name>/` before cleanup.
+Original pre-review heads remain in
+`branch/archive-pr{535,538,539,541}-before-review-20261101`.
+The clean feature/review worktrees and merged remote branches can be removed
+after the final merge.
 
-No release tag has been created: these are review branches, not releases.
-Master advanced separately through account recovery and racial-spell repairs;
-those changes are not imported as uncommitted dependencies.
+The original checkout's unrelated staged work and untracked plan are preserved.
+Production migration/deployment and release tagging remain separate work.
 
-The requested change is one guaranteed completion item plus an independent 10%
-bonus-item roll for each required kill after the first, and a configurable
-top-value withholding percentage from **5% through 25%, inclusive**, defaulting
-to **20%**. This plan selects those changes; the issue itself remains a record
-of historical/current findings. The illustrative fixed iValue range of 25–45
-in that discussion is not part of this implementation.
+## Implementation and ablation decisions
 
-## Original planning baseline and integration dependency
+The work follows the [ablation skill](../../.agents/skills/ablation/SKILL.md):
+reuse the existing property, catalog, completion transaction, item graph, and
+ownership publication. Current master already had recoverable flatfile completions;
+the older planning checkout did not. A second flatfile protocol, reward ledger,
+hot-reload service, and separate asynchronous decision-saving stage were omitted.
 
-Inspected the working tree on `branch/issues-500-506-bartender-bugfixes`, HEAD
-`dc1457f722c4f42d5d11fc39c96fb67859a94de8`, including its existing staged reward,
-history, ownership-publication, and save-pipeline changes. Those changes belong
-to separate work and are not implemented by this plan. Before implementation,
-identify their integrated revision and recheck the boundaries below. Preserve
-their recovery fixes rather than implementing against the issue's older source.
+The independent adversarial review posted two reproduced findings directly on
+#541 and repaired them in separate commits: `f065dae30` updates the stale
+version-13 capture test and proves a nonzero frozen count survives production
+capture/codec round trip; `d2e245c34` locks the shared `make world` freshness check
+and generation after concurrent backend journeys raced on `areas/tworld.*`.
+The latter extends the existing parallel-journey regression with two independent
+make processes. Neither repair adds a new persistence path or fixture framework.
 
-- [world_quest.c](../../src/world/world_quest.c): `quest_kill()` calls
-  `world_quest_start_reward()` at completion. The latter creates one object;
-  `world_quest_deliver_reward()` publishes it and the scalar rewards. Completed
-  KILL retries already retain XP/epic/money values in completed-task fields.
-  `quest_kill_original` remains the saved total quota.
-- [world_quest_policy.c](../../src/world/world_quest_policy.c):
-  `load_reward_profiles()` already reads
-  `world.quest.reward.top.withheld.percent`, defaults it to 20, and bounds it
-  to 0–100. This is an existing configuration setting, not a new setting to
-  invent. The catalog is built once; a property reload does not rebuild it.
-- [world_quest_policy_math.h](../../src/world/world_quest_policy_math.h):
-  `world_quest_reward_value_ceiling()` implements ceiling rounding, boundary
-  ties, and the exception that avoids emptying a tied multi-item pool.
-- [sql.c](../../src/sql/sql.c),
-  [player_save_pipeline.c](../../src/player/player_save_pipeline.c), and
-  [player_snapshot_repository.c](../../src/player/player_snapshot_repository.c):
-  the staged SQL path commits history, status, and a detached reward graph
-  together before publication. It accepts one root, despite storing a vector
-  of item snapshots. Capture validation rejects a second root, and restore/
-  publication assume a single root. Calling the finish operation once per item
-  would incorrectly repeat completion/history and is not a valid extension.
-- [player_snapshot.h](../../src/player/player_snapshot.h):
-  `player_pending_world_quest` already carries `reward_items`, scalar rewards,
-  completion metadata, and failure recovery state. Reuse this structure and
-  the existing item ownership machinery.
-- The flatfile `sql_world_quest_finish_async()` currently writes history and
-  invokes the callback directly. The common pending-completion submission is
-  disabled for `__NO_MYSQL__`, and the flatfile snapshot repository rejects
-  `pending_world_quest`. SQL transaction behavior must not be attributed to
-  this path. Reliable multi-item completion needs explicit flatfile coverage.
+- [world_quest.c](../../src/world/world_quest.c) rolls once from the saved
+  `quest_kill_original`, freezes `quest_reward_item_count`, prepares exactly that
+  many detached roots, and announces every received item after publication.
+  XP/epic/money completion effects execute once per task, outside the item loop.
+  Final-kill XP is not paid again on recovery. The latest master's completion
+  banner and explicit "in your inventory" wording are preserved for each item.
+- The new count is carried through `pc_only_data`, STATUS capture/load mappings,
+  SQL persistence, flatfile snapshots, and supported snapshot-version upgrades.
+  Reset/creation clear it; sharing unfinished work leaves an unrolled decision.
+  Replacement keeps the original quota/progress. Group members roll independently.
+- Failed creation of a later item cleans up the entire uncommitted batch and
+  requests a STATUS checkpoint of the completed task/count/scalar values. Retry
+  reuses the quantity. Before a durable batch exists, generation may be retried;
+  after commit, recovery uses the saved item graph and UIDs.
+- [sql.c](../../src/sql/sql.c) accepts multiple roots, captures their trees with
+  remapped parent indexes, and submits one existing completion transaction.
+  [player_save_pipeline.c](../../src/player/player_save_pipeline.c) admits the
+  complete graph with status/history. SQL and flatfile repositories already
+  support these graphs. Object/byte limits defer the whole reward rather than
+  silently reducing it. Quotas outside 1–4096 are retained for staff diagnosis,
+  bounding the loop and every possible quantity by the snapshot object limit.
+- Publication verifies each root's recorded ancestry and owner, restores only
+  missing trees, recognizes already-attached roots, and validates all roots before
+  new attachments. An offline actor's detached bodies are removed; committed
+  inventory is restored on login. A container's children are graph members,
+  not additional quest rewards.
+- [world_quest_policy.c](../../src/world/world_quest_policy.c) normalizes the
+  existing percentage once during catalog construction, before per-level pools
+  and zone scores. The general percentile helper retains its existing 0/100
+  mathematical behavior; the operator setting is bounded to 5–25.
 
-## Selected behavior
+The single history record describes the base item; it is not an exhaustive list
+of bonus items. Item snapshots, UIDs, and existing reward logs account for the
+batch. There is no history entry per bonus item.
 
-### Item quantity and timing
+## Migration and compatibility
 
-For a completed KILL quest with saved required quota `N >= 1`:
+[0058_world_quest_reward_count.sql](../../migrations/immutable/0058_world_quest_reward_count.sql)
+(sequence 59) adds signed `player_data.quest_reward_item_count INT NOT NULL DEFAULT 0`.
+Its [verifier](../../migrations/immutable/0058_world_quest_reward_count.sh) checks the
+column definition. The guarded migration preserves positive decisions on rerun.
+Apply it before starting the new binary. Migration hashes, runtime head/history,
+and independently measured MySQL 8/MariaDB 10.11 metadata fingerprints are
+synchronized in the manifest and compiled runtime contract.
 
-```text
-items = 1 + sum(N - 1 independent rolls, each succeeding with probability 0.10)
-E[items] = 1 + 0.10 * (N - 1)
-P(items = 1 + k) = choose(N - 1, k) * 0.1^k * 0.9^(N - 1 - k)
-```
+Snapshot wire version **14** appends the count; supported pre-14 snapshots and
+legacy pfile imports initialize it to zero. The legacy 14-value quest payload is
+unchanged. Unfinished old assignments use the new formula when they finish.
+Already-completed legacy tasks with zero count retain their one-item entitlement.
+Unsecured legacy state 4 retains its existing final-XP compatibility behavior;
+history-pending state 5 freezes the remaining values. Secured states 2/3 resume
+remaining effects without new generation or history.
 
-- Perform exactly `N - 1` calls equivalent to `number(1, 100) <= 10` when
-  finalizing a new completion. Each success adds one item. Use the production
-  inclusive RNG contract; do not implement one combined roll or a 10% increase
-  to the chance of receiving the base item.
-- Deliver the entire batch personally at completion, through the existing
-  ownership/persistence path. There are no interim corpse drops. The guarantee
-  is an owed item retained for recovery when creation or storage is unavailable,
-  not permission to finish with an empty reward.
-- One kill gives exactly one item with no bonus RNG calls. Quotas 3, 5, 7,
-  and 9 average 1.2, 1.4, 1.6, and 1.8 items. At nine kills, zero items is 0%,
-  exactly one is 43.046721%, two or more is 56.953279%, and the maximum is nine.
-  These are quantity probabilities assuming eventual successful delivery.
-- Use the actual saved quota, including difficulty-scaled quotas above nine.
-  Do not use the current progress counter, live mob count, current difficulty,
-  or player level to recalculate the number of rolls. Invalid saved quotas must
-  retain the task for diagnosis instead of permitting an unbounded loop.
-- Each qualifying character rolls independently for their own completed quest.
-  Preserve existing sharing and kill-credit rules: sharing currently copies
-  progress and quota, so a recipient completes that shared assignment under
-  the same quota-based formula. Do not copy a completed reward decision.
-- ASK remains one personal completion item. XP, epics, mercenary payments,
-  fees, allowances, quota assignment, abandonment, and ordinary mob loot keep
-  their current rules. Scalar completion rewards execute once per completion,
-  not once per item. Final-kill XP is not paid again during recovery.
+The schema is additive, but older binaries cannot read version-14 snapshots.
+Do not roll back a live binary across that boundary without a tested conversion
+or drain procedure. The previously sealed online-migration flags do not authorize
+this migration or a 59-step manifest. Production deployment remains separate work.
 
-### Item selection and withholding
+## Acceptance and evidence
 
-Reuse this existing property in [duris.properties](../../lib/duris.properties):
+All evidence below comes from local executable tests and isolated disposable
+world/database fixtures. No production state was used. Original implementation
+logs and independent review logs were preserved under the evidence directory
+listed above. The `duris-review-541/review/` evidence includes
+both engine compatibility/drift suites and six backend journey results (ordinary
+rewards, nine-item maximum, and failed-preparation/committed-crash recovery).
+The six-test snapshot suite, production capture/count round trip, both server
+builds, repository/claim tests, migration contracts, quest regressions and
+two-process world-generation test all passed after the review repairs.
 
-```properties
-world.quest.reward.top.withheld.percent=20.000
-```
+1. **Quantity:** production-body tests enumerate all 256 nine-kill patterns,
+   verify the 10/11 roll boundary, eight RNG calls, mean 1.8 and the one-item
+   probability, plus one-kill/no-roll, an 18-kill control, and invalid quotas.
+   Completion tests produce 1/2/9 items and one scalar callback. A second-item
+   creation failure cleans up the batch, retains its count, and awards no repeat XP.
+2. **Configuration:** every whole setting 5–25, missing/default 20, fractional,
+   extreme and nonfinite inputs pass. Twenty distinct values withhold 1/4/5 at
+   5/20/25%. Rounding, ties, all-equal/single-item pools, authored quest exclusions,
+   and level-31/50 floors remain covered. Five full-world boots verified 5/20/25
+   and out-of-range 0→5 and 100→25 across 353 zones. Retained profiles were
+   7,275 / 6,105 / 5,723 at 5 / 20 / 25 in the withholding worktree.
+3. **Compatibility:** snapshot-14 round trips preserve a positive count;
+   supported older versions default it exactly once and reject a version-14
+   field under a version-13 header. SQL old rows default to zero and migration
+   replay retains count 4. Both repositories save/load count 2 with multiple roots.
+4. **Whole batch:** sanitizer tests execute production capture/publication for
+   both backends, including multiple roots with children, wrong ownership/ancestry,
+   missing-root restoration, already-attached roots, refusal, offline cleanup,
+   and byte/object-limit rejection without partial submission. SQL tests cover
+   rollback, replay, stale-wallet refusal and UID collision. The flatfile fixture
+   interrupts the authority commit and proves reload, one history count, and
+   preservation of unrelated items after failed-history fallback.
+5. **Restart/crash:** both backend recovery journeys fail creation on item two,
+   checkpoint/restart the frozen count of three, force future rolls to zero, and
+   retry the same count. They then kill the isolated server after transaction
+   commit but before publication, restore all three exact UIDs, claim remaining
+   effects without generation/repeated final XP/history, and restart once more.
+   Each journey performs four boots. Chaos login also changes the actor's current
+   level; the saved decision remains unchanged.
+6. **Gameplay/group credit:** ordinary ASK and one-kill commands pay one item;
+   nine kills with zero/one successes pay one/two. Each case saves/restarts and
+   checks exact UIDs and one history entry. A fresh maximum case delivers nine
+   distinct items for nine kills and preserves them on restart. Both backends
+   pass. The production death-hook regression gives two same-room group members
+   independent personal quantities of one and nine, sixteen rolls, two scalar
+   callbacks, and no repeated killer/victim credit.
 
-Support every whole percentage from 5 to 25, not only steps of five. Keep the
-missing-key default at 20. Bound finite values to 5–25 before conversion to an
-integer; fractional values truncate toward zero, matching the existing integer
-policy. Nonfinite values use 20 with a diagnostic. This deliberately changes
-old out-of-range settings: 0 becomes 5 and 100 becomes 25. Report the effective
-percentage in the existing catalog startup diagnostic.
+Successful journey logs:
 
-Read the effective percentage once when building the catalog. Apply it after
-source eligibility and authored-quest exclusions, before level-specific pools
-and zone scores. Keep the existing `ceil(pool_size * percent / 100)` rule,
-boundary-tie inclusion, single-item behavior, and tie exception. The percentage
-is a requested share of item prototypes, not a reduction to each item's stats
-or iValue; ties and small pools can remove a different actual fraction.
+- `rewards-flatfile-qualified.log`, `rewards-mariadb-qualified.log`: four cases,
+  five boots per backend.
+- `max-flatfile-qualified.log`, `max-mariadb-qualified.log`: nine items, two boots
+  per backend, using `DURIS_WORLD_QUEST_REWARD_CASES=30:1:9:8`.
+- `recovery-flatfile.log`, `recovery-mariadb.log`: generation failure, checkpoint,
+  forced crash, claim and final restart, four boots per backend.
 
-Keep the accepted-level floor `itemvalue > 0 && 2 * itemvalue >= quest_level`.
-Select every item independently from the same eligible zone/level pool, with
-replacement: duplicate prototypes are allowed but must have distinct UIDs.
-Keep the normal random-equipment fallback and reward flag adjustments for each
-item. That fallback remains a separate generator, not a promise that all
-possible generated rewards fall under the zone's percentile cutoff.
+The first matrix tried a level-50 nine-kill walking fixture, but could not find
+ten eligible fully walkable copies. The maximum-batch journey uses a valid
+level-30 assignment in a fresh fixture; accepted-level floor tests still cover
+31 and 50. Earlier failed fixture/debugger attempts are not qualification results.
 
-Changing withholding requires a server restart/catalog rebuild. Do not add
-hot reload or a second configuration mechanism. Active assignments that have
-not materialized rewards use the catalog of the running server; a durably
-prepared batch keeps its selected items across restart/configuration changes.
-Changing the pool also changes the existing pool-derived zone-selection scores.
+Pre-integration qualified server SHA-256:
 
-## Implementation sequence
+- MariaDB: `6c4a0c2d7ab3d9728db610b93af773fe49bf3e6fbf3e791407a0b3e9546f6ff5`.
+- Flatfile: `dde85c83be42556b6e681a122bd4be5b2258608ac50b2f6c36d0c7e2aceb2ef9`.
 
-### 1. Preserve the reward decision
+Master integration preserved reward logic and adopted the current inventory
+feedback. Both builds and the focused completion/group, policy, publication,
+save-pipeline, documentation, format and whitespace checks pass afterward. Fresh
+one-kill/restart smoke journeys also passed on both integrated binaries, with two
+boots each (`integrated-smoke-flatfile.log`, `integrated-smoke-mariadb.log`).
 
-Add one explicit saved status field, `quest_reward_item_count`, with zero meaning
-no new-format quantity decision. Keep the accepted quota in
-`quest_kill_original`; do not hide the count in a map flag or overload the scalar
-reward fields. Reset the new field when resetting/creating a quest and leave it
-zero when sharing unfinished work. Replacement preserves the original quota
-and progress, so it does not award or reroll items.
+Final integrated server SHA-256:
 
-On a newly completed KILL quest, decide the count once while transitioning to
-the existing completed/pending state, alongside the frozen scalar rewards.
-Checkpoint that decision before publishing rewards or completion history.
-If checkpoint admission or writing fails, keep the same decision in memory
-and retry saving it; the failure must not call the bonus RNG again. Across
-process loss, the durable checkpoint is authoritative. No completion reward
-may be exposed from an uncommitted decision.
+- MariaDB: `5f0e11a18d63075ae7f67ff12cda4b32f0334c31393ec1020d2ceedf6c25d693`.
+- Flatfile: `ec8b297606a486abef6ba39eecbd0a46ae3526091742e908759c2d6a5f75c611`.
 
-Carry the field through `pc_only_data`, the status-field registry, capture,
-codec, load materialization, SQL load/save mappings, and flatfile snapshots.
-Use an additive, guarded SQL migration and the next available snapshot version;
-preserve decoding of earlier versions and initialize the field to zero. Cover
-legacy import/default initialization too. Update the migration runner/schema
-contracts required by the repository rather than selecting a migration number
-in advance of integration.
+All required implementation and local qualification work is complete. No test
+process remains to resume. Issue #534 is complete with this delivery.
+Production migration/deployment and any release tagging are separate work.
 
-Compatibility rules:
+## Reproduce verification
 
-- An unfinished assignment loaded from before the change uses the new formula
-  when it finishes, including already-earned progress.
-- A legacy completed KILL task in `PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING`
-  with zero count retains its original one-item entitlement; do not roll a
-  retroactive bonus. New completions enter that state with a positive count.
-- Existing `PLAYER_WORLD_QUEST_REWARD_PENDING` and
-  `PLAYER_WORLD_QUEST_KILL_REWARD_PENDING` states resume the already-secured
-  items/scalar rewards without creating another batch. Completed history is
-  never reopened. ASK uses a one-item decision through the shared batch path.
-
-### 2. Prepare and commit one batch
-
-Extend the existing completion API to take multiple detached reward roots.
-Create exactly the saved number of items using `quest_item_reward()`. All must
-pass the existing UID, ownership, and crumble-loot checks before admission.
-If any item cannot be created or admitted, clean up every uncommitted detached
-object, retain the completed task/count, and publish no partial batch. A failed
-attempt before durable batch admission may retry item generation; it cannot
-reroll the saved number of items. After admission, retry the saved item graph,
-not the item selector.
-
-Capture roots into the existing `reward_items` vector, remapping parent indexes
-for each tree and preserving root markers. Extend capture, encoded-size limits,
-UID uniqueness checks, repository claims, materialization, and publication to
-accept multiple roots. A container's children are graph members, not additional
-quest rewards. Keep object/byte limits; reaching them defers the whole reward
-instead of silently shortening it.
-
-For SQL, commit one history record and the complete item graph with the player
-after-image. Preserve transaction failure recovery, stale-save protection,
-unloaded-component checks, and committed-owner verification. Hydrate ownership
-for all roots before attachment; publication retry must recognize roots already
-attached and never grant them again. A disconnected player receives committed
-items on login. Restore all missing detached roots from the committed snapshots.
-
-Keep the existing single history row per quest. Its legacy `reward_vnum` and
-description can describe the base item; document that they are not an exhaustive
-inventory of bonus items. Use the item snapshots/UIDs and existing reward logs
-to account for the batch. Do not add one history row per bonus item or expand
-the history schema into a separate reward ledger.
-
-For flatfile, reuse the integrated completion/save boundary and its existing
-authority transaction for prepared history, player state, and item ownership.
-Extend only the remaining single-root assumptions. Preserve original completion
-metadata and replay matching so a crash cannot consume a second allowance or
-lose the batch. Prove the full batch through this real backend; do not add a
-second pending-file protocol or assume two independent renames are a transaction.
-
-Only after the batch and completion are secured should the normal completion
-callback announce received items, pay scalar rewards once, clear the quest,
-and update GMCP. Keep feedback accurate for zero bonus successes, multiple
-items, deferred delivery, and already-secured recovery.
-
-### 3. Bound the existing withholding configuration
-
-Change the property normalization in `load_reward_profiles()` to the selected
-5–25 range and keep the checked-in/default value at 20. Reuse the existing
-ceiling algorithm without changing its tie behavior. Its general mathematical
-helper can retain 0/100 test coverage; enforce the narrower operator policy at
-the configuration boundary. Add the effective percentage to the current
-catalog log, then build all per-level pools and weights from that result.
-
-Update [BARTENDER_QUESTS.md](../reference/BARTENDER_QUESTS.md) and the property
-comment with the completion formula, personal batch timing, duplicate-item
-possibility, bounds/default, rounding, restart requirement, and pending-task
-compatibility. Correct the reference's old single-item and recovery statements
-against the integrated code. Update this plan with actual implementation and
-validation evidence when that work is performed.
-
-## Verification and acceptance
-
-Use executable production paths with controlled RNG and persistence failures;
-source-string assertions or a Monte Carlo average alone cannot prove delivery.
-
-1. **Quantity:** for `N=1`, no bonus RNG call and exactly one root; for `N=9`,
-   exactly eight rolls and 1/2/9 roots for zero/one/all successes. Test values
-   10 and 11 at the success boundary, quotas 3/5/7 and a valid quota above nine,
-   and an invalid quota. Enumerate the eight binary outcomes with their weights
-   to verify the nine-kill probabilities. Count RNG calls again on retries:
-   they must stay unchanged. ASK always has one root and no bonus roll.
-2. **Configuration:** missing/20 defaults agree with the baseline catalog;
-   test 5, 25, an interior value such as 17, below/above bounds, fractional and
-   nonfinite values. On 20 distinct values, 5/20/25% withhold 1/4/5 prototypes.
-   Cover ceiling rounding, boundary ties, all-equal multi-item and single-item
-   pools, authored quest exclusions, and level-31/50 floors. Prove every bonus
-   item uses the same pool and that a property reload alone leaves it cached.
-3. **Decision compatibility:** save/load the count on both backends; load old
-   snapshot/SQL defaults; complete an old unfinished quest with the new rule;
-   recover old completed states with one item/no retroactive bonus. Exercise
-   sharing and free replacement without copying or rerolling a decision.
-4. **Whole batch:** fail creation on a later item, snapshot capture, ownership
-   validation, queue admission, database commit, and flatfile writes. Retain
-   the same quantity decision, no success message, and no partial usable reward.
-   Include unloaded inventory, count/byte limits, repeated VNUMs with distinct
-   UIDs, and a root containing child items.
-5. **Replay/restart:** restart after the quantity checkpoint, after durable
-   batch commit but before publication, and at flatfile history reconciliation.
-   Also retry partial live publication and disconnect before the callback.
-   Verify the exact root UIDs/count, one history entry/allowance consumption,
-   one scalar payout, and no repeated final-kill XP. Include another save before
-   publication, since a stale snapshot must not erase committed reward items.
-6. **Gameplay:** run isolated ASK, one-kill, and nine-kill journeys with zero,
-   one, and multiple bonus successes. Include grouped credit, level changes
-   after acceptance, and settings 5/20/25 on separate boots. Inspect durable
-   inventory and history on both MariaDB and flatfile after relog/restart.
-
-Extend the existing reward policy/publication, save-pipeline, snapshot codec,
-flatfile history, SQL claim, and dual-backend journey harnesses. The current
-publication harness's two snapshots represent one root plus a child; add actual
-multiple-root cases. Replace the reward-policy assertion that every KILL quest
-pays exactly one item, preserving the ASK and one-kill controls. Register new
-cases in the applicable test runners without duplicating their infrastructure.
-
-Planned focused commands after implementation:
+The following focused checks passed during implementation; final integration
+reused valid results and reran the checks affected by its changes. Commit hooks
+also passed formatting and clang-tidy. External CI was not used as a completion gate.
 
 ```sh
 python3 tests/async/test_world_quest_reward_policy.py
+python3 tests/async/test_world_quest_dynamic_policy.py
 python3 tests/async/test_world_quest_reward_publication.py
 python3 tests/async/test_world_quest_xp_feedback.py
 python3 tests/async/test_world_quest_target_retries.py
 python3 tests/async/test_world_quest_remaining_unloaded.py
 python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_player_load_pipeline.py
 python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/run_regression_tests.py --jobs 4 --match snapshot
+python3 tests/async/test_flatfile_journey_build_isolation.py
 python3 tests/async/test_flatfile_player_repository.py
 python3 tests/async/test_flatfile_world_quest_history.py
-make -C src
+python3 tests/async/test_immutable_migration_runner.py
+python3 tests/async/test_runtime_boot_compatibility.py
+python3 tests/async/test_data_lifecycle_manifest.py
+python3 scripts/validate_runtime_compatibility.py
+python3 scripts/validate_data_lifecycle.py
+tests/async/run_player_save_claim_mysql.sh
+RUNTIME_DB_IMAGE=mysql:8.0 tests/async/run_runtime_compatibility_mysql.sh
+RUNTIME_DB_IMAGE=mariadb:10.11 tests/async/run_runtime_compatibility_mysql.sh
+make -C src -j6
+make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_flat"
 ./scripts/format.sh --check
 python3 tests/async/test_documentation_contract.py
 git diff --check
 ```
 
-Also run the SQL claim harness via `tests/async/run_player_save_claim_mysql.sh`
-inside its disposable database fixture, and the expanded
-`tests/async/run_world_quest_dual_backend.py` for both backends and the reward
-failure/crash cases. Use that runner's current CLI when implementing. Record
-exact commands, scenario coverage, migration rerun/backward-load results, and
-any unavailable checks; a build or stubbed test is not a runtime qualification.
-Compiled artifacts belong under `bin/`. CI is not a substitute for these checks.
+Run the ordinary, maximum and recovery journeys using the matching backend binary:
 
-## Completion boundary
+```sh
+for quest_backend in flatfile mariadb; do
+    quest_binary="$PWD/bin/server/dms_new"
+    if [ "$quest_backend" = flatfile ]; then quest_binary="$PWD/bin/server/dms_flat"; fi
+    for quest_journey in rewards reward-recovery; do
+        DURIS_WORLD_QUEST_BACKEND="$quest_backend" DURIS_WORLD_QUEST_BINARY="$quest_binary" \
+        DURIS_WORLD_QUEST_JOURNEY="$quest_journey" \
+        python3 tests/async/run_world_quest_dual_backend.py
+    done
+    DURIS_WORLD_QUEST_BACKEND="$quest_backend" DURIS_WORLD_QUEST_BINARY="$quest_binary" \
+    DURIS_WORLD_QUEST_JOURNEY=rewards DURIS_WORLD_QUEST_REWARD_CASES=30:1:9:8 \
+    python3 tests/async/run_world_quest_dual_backend.py
+done
+```
 
-Implementation is ready for review only when the formula, inclusive 5–25 bounds,
-20 default, existing eligibility rules, legacy-task compatibility, and complete
-batch recovery are proven by the checks above. Keep the fixed 10% bonus chance
-in code; no bonus-chance property, fixed iValue cap, per-kill drops, new difficulty
-curve, hot-reload subsystem, or historical reward backfill is required.
-
-The original planning task created only this document. It did not change game behavior,
-apply migrations, deploy, commit/push, or close #534. Production migration and
-deployment remain separate authorized work. For the eventual rollout, apply the
-additive schema change before starting the new binary, retain the default 20%,
-and inspect the effective catalog setting. Reverting the percentage to 20 is
-independent of reverting code; an older binary must not be started on new-format
-pending batches without a tested compatibility/drain procedure.
-
-## Planning validation, 2026-11-01
-
-Re-read issue #534 and the current working-tree paths identified above. The
-document specifies both requested changes, delivery timing, property semantics,
-integration dependencies, persistence/compatibility work, and executable
-acceptance criteria. `python3 tests/async/test_documentation_contract.py` passed
-all 14 checks, including maintained Markdown links and anchors. Whitespace
-checks passed for the new document and tracked diffs. The pre-existing staged
-diff retained SHA-256
-`44e6a875fc75ebb0d088bec1dd0d6ad472044219ea0b153f0ea8b18ff039e948`;
-there are no tracked unstaged changes from this planning task.
-
-Only this new plan was written. The implementation checks listed above have
-not been run for #534, and no build, gameplay, or persistence qualification is
-claimed for the proposed behavior.
+The runners use environment variables, not CLI flags; they create disposable
+loopback accounts/state/databases, never read the checkout's `.env`, and remove
+their temporary servers and containers. Compiled artifacts and evidence stay
+under ignored `bin/` paths. The updated player/operator reference is
+[BARTENDER_QUESTS.md](../reference/BARTENDER_QUESTS.md).

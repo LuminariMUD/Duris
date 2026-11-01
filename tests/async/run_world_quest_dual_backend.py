@@ -37,11 +37,18 @@ JOURNEY = os.environ.get("DURIS_WORLD_QUEST_JOURNEY", "both")
 GAMEPLAY_CASES = tuple(tuple(map(int, case.split(":"))) for case in
                        os.environ.get("DURIS_WORLD_QUEST_GAMEPLAY_CASES",
                                       "11:2,11:1,29:1,29:2,30:1").split(","))
+REWARD_CASES = tuple(tuple(map(int, case.split(":"))) for case in os.environ.get(
+    "DURIS_WORLD_QUEST_REWARD_CASES", "11:2:0:0,11:1:1:0,30:1:9:0,31:1:9:1").split(","))
+if not REWARD_CASES or any(len(case) != 4 or not 11 <= case[0] <= 56 or
+                          not ((case[1] == 2 and case[2:] == (0, 0)) or
+                               (case[1] == 1 and 1 <= case[2] <= 4096 and
+                                0 <= case[3] < case[2])) for case in REWARD_CASES):
+    raise ValueError("unsupported focused reward cases")
 if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
                              for case in GAMEPLAY_CASES):
     raise ValueError("unsupported focused gameplay cases")
-if JOURNEY not in {"both", "recovery", "gameplay", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
-    raise ValueError("DURIS_WORLD_QUEST_JOURNEY must be both, recovery, gameplay, audit, reported, or history")
+if JOURNEY not in {"both", "recovery", "gameplay", "rewards", "reward-recovery", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
+    raise ValueError("unsupported DURIS_WORLD_QUEST_JOURNEY scenario")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
 
@@ -411,10 +418,12 @@ def navigate_quest(client: MudClient, run_root: pathlib.Path, *, returning: bool
 
 
 def stop_quest_server(process: subprocess.Popen[str], pid_path: pathlib.Path,
-                      output_path: pathlib.Path) -> str:
-    os.kill(int(pid_path.read_text()), signal.SIGTERM)
+                      output_path: pathlib.Path, *, crash: bool = False) -> str:
+    os.kill(int(pid_path.read_text()), signal.SIGKILL if crash else signal.SIGTERM)
     process.wait(timeout=30)
     output = output_path.read_text(errors="replace")
+    if crash:
+        return output
     require(process.returncode == 0 and "Normal termination of game." in output,
             "journey server did not stop normally:\n" + output[-6000:])
     require(output.count("World quest catalog ready:") == 1,
@@ -451,7 +460,7 @@ def execute_disposable_sql(environment: dict[str, str], query: str) -> None:
 
 def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                      database_environment, *, origin: int = BARTENDER_ROOM,
-                     cases=GAMEPLAY_CASES) -> tuple[MudClient, list[dict]]:
+                     cases=GAMEPLAY_CASES, recover_pending=None) -> tuple[MudClient, list[dict]]:
     results = []
     partial_persisted = False
     rewards = set()
@@ -536,6 +545,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                     continue
                 current = gameplay_snapshot(client, run_root)
             if kind == 1 and current["active"] and current["accomplished"]:
+                if recover_pending:
+                    return recover_pending(client, current, accepted)
                 # The final kill stays active while its durable reward is published.
                 # History may already be committed; this is not partial progress.
                 deadline = time.monotonic() + 30
@@ -597,11 +608,12 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                 max(completed["completion_remaining"] - 1, 0) and
                 completed["completion_calls"] == previous["completion_calls"] + 1,
                 "completion did not use exactly one allowance at its actual level")
-        new_items = [item for item in completed["items"]
-                     if item["uid"] == completed["reward_uid"] and item["vnum"] == completed["reward_vnum"]]
-        require(completed["reward_uid"] not in baseline_items and len(new_items) == 1,
+        reward_uids = set(completed["reward_uids"])
+        new_items = [item for item in completed["items"] if item["uid"] in reward_uids]
+        require(reward_uids and not reward_uids & baseline_items and
+                len(new_items) == len(reward_uids),
                 f"level {level} kind {kind} mob {accepted['mob']} completion reward missing: {new_items}; state={completed}")
-        rewards.add(new_items[0]["uid"])
+        rewards.update(reward_uids)
         client.send("save")
         client.expect("Save complete for Taverek.", timeout=120)
         deadline = time.monotonic() + 30
@@ -613,11 +625,101 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
         results.append({"level": level, "kind": kind, "ordinary_steps": steps,
                         "return_steps": return_steps, "attempts": attempts, "accepted": accepted,
                         "target": target, "partials": partials, "reward": new_items[0],
+                        "rewards": new_items,
                         "completed": completed, "returned": returned})
         (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
     require((29, 1) not in cases or partial_persisted,
             "no real partial-progress restart was qualified")
     return client, results
+
+
+def perform_reward_cases(client, run_root, restart, database_environment):
+    results = []
+    for level, kind, quota, successes in REWARD_CASES:
+        (run_root / "quest-reward-control.txt").write_text(f"{quota} {successes}\n")
+        client, cases = perform_gameplay(client, run_root, restart, database_environment,
+                                         cases=((level, kind),))
+        case = cases[0]
+        expected = 1 + successes
+        require(len(case["rewards"]) == expected,
+                f"expected {expected} personal reward roots: {case}")
+        if kind == 1:
+            require(case["accepted"]["quota"] == quota, "fixture quota was not applied")
+        before = case["completed"]
+        history = stored_gameplay_history(database_environment, before)
+        client = restart(client)
+        restored = settled_gameplay_snapshot(client, run_root)
+        uids = {item["uid"] for item in case["rewards"]}
+        require(not restored["active"] and uids <= {item["uid"] for item in restored["items"]} and
+                stored_gameplay_history(database_environment, restored) == history,
+                "reward batch or single history entry did not survive restart")
+        case.update(expected_items=expected, restored=restored)
+        results.append(case)
+        (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
+    return client, results
+
+
+def perform_reward_recovery(client, run_root, restart, database_environment):
+    control = run_root / "quest-reward-control.txt"
+    control.write_text("9 2 2\n")
+
+    def recover(current_client, pending, accepted):
+        require(pending["frozen_item_count"] == 3 and pending["bonus_rolls"] == 8 and
+                pending["reward_calls"] == 2, "later creation failure did not freeze three items")
+        history = stored_gameplay_history(database_environment, pending)
+        require(history == stored_gameplay_history(database_environment, accepted),
+                "failed preparation consumed history")
+        current_client.send("save")
+        current_client.expect("Save complete for Taverek.", timeout=120)
+        current_client = restart(current_client, lambda: control.write_text("9 0 0\n"))
+        restored = settled_gameplay_snapshot(current_client, run_root)
+        require(restored["frozen_item_count"] == 3 and restored["active"],
+                "quantity decision did not survive restart")
+        navigate_quest(current_client, run_root, returning=True)
+
+        # Stop after the existing transaction commits but before live item publication.
+        pause = run_root / "quest-reward-pause"
+        ready = run_root / "quest-reward-ready"
+        pause.touch()
+        current_client.send("ask bartender quest")
+        deadline = time.monotonic() + 60
+        while not ready.exists():
+            require(time.monotonic() < deadline, "reward did not reach committed publication")
+            time.sleep(0.1)
+        uids = set((run_root / "quest-reward-uids.txt").read_text().splitlines())
+        require(len(uids) == 3, "retry changed the saved batch quantity")
+        current_client = restart(current_client, pause.unlink, crash=True)
+        committed = settled_gameplay_snapshot(current_client, run_root)
+        require(committed["active"] and committed["accomplished"] == 3 and
+                committed["frozen_item_count"] == 3 and
+                uids <= {item["uid"] for item in committed["items"]},
+                "committed batch or pending marker did not survive forced crash")
+        require(stored_gameplay_history(database_environment, committed) == history + 1,
+                "committed crash did not preserve one history entry")
+        navigate_quest(current_client, run_root, returning=True)
+        before_claim = settled_gameplay_snapshot(current_client, run_root)
+        current_client.send("ask bartender quest")
+        current_client.expect("you finished your quest!", timeout=60)
+        claimed = settled_gameplay_snapshot(current_client, run_root)
+        require(not claimed["active"] and claimed["bonus_rolls"] == 0 and
+                claimed["reward_calls"] == 0 and
+                claimed["progress_xp"] == before_claim["progress_xp"] and
+                uids <= {item["uid"] for item in claimed["items"]} and
+                stored_gameplay_history(database_environment, claimed) == history + 1,
+                "secured recovery repeated generation, XP, or completion history")
+        current_client.send("save")
+        current_client.expect("Save complete for Taverek.", timeout=120)
+        current_client = restart(current_client)
+        final = settled_gameplay_snapshot(current_client, run_root)
+        require(not final["active"] and uids <= {item["uid"] for item in final["items"]} and
+                stored_gameplay_history(database_environment, final) == history + 1,
+                "claimed batch did not remain single after another restart")
+        return current_client, [{"pending": pending, "restored": restored,
+                                  "committed": committed, "claimed": claimed, "final": final,
+                                  "reward_uids": sorted(uids)}]
+
+    return perform_gameplay(client, run_root, restart, database_environment,
+                            cases=((31, 1),), recover_pending=recover)
 
 
 def perform_reported(client: MudClient, run_root: pathlib.Path, restart,
@@ -1079,6 +1181,7 @@ handle SIGTERM nostop noprint pass
 handle SIGPIPE nostop noprint pass
 set $journey_invalidate = {0 if restarted else 1}
 define apply_journey_mode
+disable $bonus_break
 if quest_gameplay_stage > 0
 disable $checkpoint_break
 disable $invalidate_break
@@ -1162,6 +1265,48 @@ silent
 call (void)quest_gameplay_history((char_data*)$rdi,(void*)$rsi)
 continue
 end
+break *_Z6numberii
+set $bonus_break=$bpnum
+disable $bonus_break
+commands
+silent
+python
+caller = gdb.newest_frame().older()
+if caller and (caller.name() or '').startswith('world_quest_roll_item_count'):
+    index = int(gdb.parse_and_eval('quest_gameplay_bonus_rolls'))
+    successes = int(gdb.parse_and_eval('quest_gameplay_bonus_successes'))
+    gdb.execute('return ' + ('10' if index < successes else '11'), to_string=True)
+    gdb.execute('set quest_gameplay_bonus_rolls = ' + str(index + 1))
+    gdb.execute('set $bonus_remaining = $bonus_remaining - 1')
+    if int(gdb.parse_and_eval('$bonus_remaining')) == 0:
+        gdb.execute('disable $bonus_break')
+end
+continue
+end
+break *'world_quest_roll_item_count(int)'
+commands
+silent
+if quest_gameplay_bonus_successes >= 0 && $rdi > 1
+set $bonus_remaining=$rdi-1
+enable $bonus_break
+end
+continue
+end
+break *quest_item_reward
+commands
+silent
+set quest_gameplay_reward_calls=quest_gameplay_reward_calls+1
+if quest_gameplay_fail_reward_at > 0 && quest_gameplay_reward_calls == quest_gameplay_fail_reward_at
+return (obj_data*)0
+end
+continue
+end
+break *world_quest_publish_reward
+commands
+silent
+call (void)quest_gameplay_reward_pause()
+continue
+end
 break world/world_quest_policy.c:{type_line}
 set $kind_break=$bpnum
 commands
@@ -1205,11 +1350,11 @@ run
         process = launch()
         client = None
 
-        def restart_gameplay(current: MudClient, while_down=None) -> MudClient:
+        def restart_gameplay(current: MudClient, while_down=None, *, crash=False) -> MudClient:
             nonlocal process, client
             current.close()
             client = None
-            stop_quest_server(process, pid_path, output_path)
+            stop_quest_server(process, pid_path, output_path, crash=crash)
             if while_down:
                 while_down()
             process = launch(restarted=True)
@@ -1279,13 +1424,15 @@ run
                     "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
                     "catalog_ready_count": boot_count,
                 }
-            if JOURNEY == "gameplay":
-                client, gameplay = perform_gameplay(client, run_root, restart_gameplay, database_environment)
+            if JOURNEY in {"gameplay", "rewards", "reward-recovery"}:
+                journey = {"gameplay": perform_gameplay, "rewards": perform_reward_cases,
+                           "reward-recovery": perform_reward_recovery}[JOURNEY]
+                client, gameplay = journey(client, run_root, restart_gameplay, database_environment)
                 client.close()
                 client = None
                 stop_quest_server(process, pid_path, output_path)
                 return {
-                    "backend": backend, "journey": "gameplay", "gameplay": gameplay,
+                    "backend": backend, "journey": JOURNEY, "gameplay": gameplay,
                     "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
                     "catalog_ready_count": boot_count,
                 }
@@ -1457,6 +1604,7 @@ run
                 f"--- runtime logs ---\n{logs}"
             ) from error
         finally:
+            (run_root / "quest-reward-pause").unlink(missing_ok=True)
             if client is not None:
                 client.close()
             if process.poll() is None:

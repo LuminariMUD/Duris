@@ -23,6 +23,7 @@ using namespace std;
 #include "core/prototypes.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
+#include "core/files.h"
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -132,6 +133,7 @@ void resetQuest(P_char ch)
 	ch->only.pc->quest_map_bought = 0;
 	ch->only.pc->quest_origin_room = 0;
 	ch->only.pc->quest_replacement_due = 0;
+	ch->only.pc->quest_reward_item_count = 0;
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 }
 
@@ -223,11 +225,14 @@ static P_obj world_quest_reward_by_uid(uint64_t uid)
 }
 
 // The history/after-image is durable before this publishes any completion rewards.
-static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bool final_kill,
-				       P_obj reward, bool already_secured,
+static bool world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bool final_kill,
+				       const std::vector<P_obj> &rewards, bool already_secured,
 				       const player_world_quest_reward &values)
 {
 	char Gbuf1[MAX_STRING_LENGTH];
+	for (P_obj reward : rewards)
+		if (!reward || !OBJ_CARRIED_BY(reward, ch))
+			return false;
 	if (!final_kill && quest_mob && type == FIND_AND_ASK)
 	{
 		wizlog(56, "%s finished quest @%s (ask quest)", GET_NAME(ch),
@@ -238,18 +243,18 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 	}
 	if (final_kill)
 		send_to_char("\r\n&+Y================ QUEST COMPLETE ================&n\r\n", ch);
-	const bool reward_granted = reward && OBJ_CARRIED_BY(reward, ch);
-	if (reward_granted && final_kill)
-		send_to_char_f(
-			ch,
-			"&+WFor completing your quest you receive %s&+W in your inventory.&n\r\n",
-			reward->short_description);
-	else if (reward_granted && quest_mob)
-	{
-		act("$n gives you $q ", TRUE, quest_mob, reward, ch, TO_VICT);
-		act("$n gives $N $q.", FALSE, quest_mob, reward, ch, TO_NOTVICT);
-	}
-	else if (already_secured)
+	for (P_obj reward : rewards)
+		if (final_kill)
+			send_to_char_f(
+				ch,
+				"&+WFor completing your quest you receive %s&+W in your inventory.&n\r\n",
+				reward->short_description);
+		else if (quest_mob)
+		{
+			act("$n gives you $q ", TRUE, quest_mob, reward, ch, TO_VICT);
+			act("$n gives $N $q.", FALSE, quest_mob, reward, ch, TO_NOTVICT);
+		}
+	if (already_secured)
 		send_to_char("Your completed task is ready for its remaining rewards.\r\n", ch);
 
 	if (final_kill)
@@ -296,11 +301,32 @@ static void world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	resetQuest(ch);
 	gmcp_quest_status(ch);
+	return true;
+}
+
+static int world_quest_roll_item_count(int quota)
+{
+	// Every possible outcome must fit the existing snapshot object limit.
+	if (quota < 1 || static_cast<size_t>(quota) > PLAYER_SNAPSHOT_MAX_OBJECTS)
+		return 0;
+	int count = 1;
+	for (int kill = 1; kill < quota; ++kill)
+		if (number(1, 100) <= 10)
+			++count;
+	return count;
 }
 
 static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool final_kill)
 {
-	P_obj reward = quest_item_reward(ch);
+	auto &quest = *ch->only.pc;
+	if (!quest.quest_reward_item_count)
+	{
+		quest.quest_reward_item_count =
+			final_kill && !quest.quest_accomplished ?
+				world_quest_roll_item_count(quest.quest_kill_original) :
+				1;
+		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
+	}
 	const bool retrying_kill = final_kill && ch->only.pc->quest_accomplished ==
 							 PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING;
 	const player_world_quest_reward values =
@@ -316,34 +342,57 @@ static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool
 		ch->only.pc->quest_kill_how_many = values.money;
 		mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS);
 	}
-	if (reward && IS_OBJ_STAT2(reward, ITEM2_CRUMBLELOOT) && !IS_TRUSTED(ch))
+	if (quest.quest_reward_item_count < 1 ||
+	    static_cast<size_t>(quest.quest_reward_item_count) > PLAYER_SNAPSHOT_MAX_OBJECTS ||
+	    (final_kill &&
+	     (quest.quest_reward_item_count > quest.quest_kill_original ||
+	      static_cast<size_t>(quest.quest_kill_original) > PLAYER_SNAPSHOT_MAX_OBJECTS)))
 	{
-		extract_obj(reward, FALSE);
 		send_to_char(
-			final_kill ?
-				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
-				"The quest reward is unavailable; your task was not changed.\r\n",
+			"Your quest reward count is invalid; your task is retained. Please inform a god.\r\n",
 			ch);
 		return false;
 	}
-	if (!reward || !reward->obj_uid)
+	std::vector<P_obj> rewards;
+	std::vector<uint64_t> reward_uids;
+	const auto retain = [&]()
 	{
-		if (reward)
+		for (P_obj reward : rewards)
 			extract_obj(reward, FALSE);
+		const int room = ch->in_room == NOWHERE ? NOWHERE : world[ch->in_room].number;
+		player_save_pipeline_request(ch, PLAYER_COMPONENT_STATUS, RENT_CRASH, room);
 		send_to_char(
 			final_kill ?
 				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
 				"The quest reward is unavailable; your task was not changed.\r\n",
 			ch);
 		return false;
+	};
+	try
+	{
+		rewards.reserve(quest.quest_reward_item_count);
+		reward_uids.reserve(quest.quest_reward_item_count);
+		for (int item = 0; item < quest.quest_reward_item_count; ++item)
+		{
+			P_obj reward = quest_item_reward(ch);
+			if (reward)
+				rewards.push_back(reward);
+			if (!reward || !reward->obj_uid ||
+			    (IS_OBJ_STAT2(reward, ITEM2_CRUMBLELOOT) && !IS_TRUSTED(ch)))
+				return retain();
+			reward_uids.push_back(reward->obj_uid);
+		}
 	}
-	const uint64_t reward_uid = reward ? reward->obj_uid : 0;
+	catch (const std::bad_alloc &)
+	{
+		return retain();
+	}
 	const uint64_t mob_id = quest_mob ? quest_mob->runtime_id : 0;
 	const int target = ch->only.pc->quest_mob_vnum;
 	const int started = ch->only.pc->quest_started;
 	if (!sql_world_quest_finish_async(
-		    ch, { reward }, true, final_kill, values, 0,
-		    [reward_uid, mob_id, target, started, type, final_kill, values](P_char actor)
+		    ch, rewards, true, final_kill, values, 0,
+		    [reward_uids, mob_id, target, started, type, final_kill, values](P_char actor)
 		    {
 			    if (!actor || !actor->only.pc || !actor->only.pc->quest_active ||
 				actor->only.pc->quest_mob_vnum != target ||
@@ -355,20 +404,14 @@ static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool
 			    P_char mob = mob_id ? find_character_by_runtime_id(mob_id) : NULL;
 			    if (mob && mob->in_room != actor->in_room)
 				    mob = NULL;
-			    world_quest_deliver_reward(actor, mob, type, final_kill,
-						       world_quest_reward_by_uid(reward_uid), false,
-						       values);
-			    return true;
+			    std::vector<P_obj> delivered;
+			    for (uint64_t uid : reward_uids)
+				    delivered.push_back(world_quest_reward_by_uid(uid));
+			    return world_quest_deliver_reward(actor, mob, type, final_kill,
+							      delivered, false, values);
 		    }))
 	{
-		if (reward)
-			extract_obj(reward, FALSE);
-		send_to_char(
-			final_kill ?
-				"Your completed task is retained; ask a bartender to retry the reward.\r\n" :
-				"Your quest history is unavailable; your task was not changed.\r\n",
-			ch);
-		return false;
+		return retain();
 	}
 	if (player_save_pipeline_world_quest_pending(GET_PID(ch)))
 		send_to_char("Your quest history is still being secured.\r\n", ch);
@@ -403,7 +446,7 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 							   ch->only.pc->quest_shares_left,
 							   ch->only.pc->quest_kill_how_many };
 		world_quest_deliver_reward(ch, quest_mob, final_kill ? FIND_AND_KILL : type,
-					   final_kill, NULL, true, values);
+					   final_kill, {}, true, values);
 		return;
 	}
 	world_quest_start_reward(ch, quest_mob, type, false);
@@ -1025,6 +1068,7 @@ bool createQuestForGiverVnum(P_char ch, int giver_vnum, int origin_vnum,
 	ch->only.pc->quest_level = GET_LEVEL(ch);
 	ch->only.pc->quest_origin_room = origin_vnum;
 	ch->only.pc->quest_replacement_due = 0;
+	ch->only.pc->quest_reward_item_count = 0;
 	ch->only.pc->quest_receiver = GET_PID(ch);
 	ch->only.pc->quest_kill_how_many = 0;
 	ch->only.pc->quest_kill_original = quest_kill_original;

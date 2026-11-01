@@ -94,6 +94,11 @@ int maximum_exp_level = 20, death_cutoff = -1;
 double death_penalty = 0.10;
 P_char last_recipient = nullptr;
 obj_data reward{};
+obj_data bonus_items[4095]{};
+int item_calls=0, fail_item_at=0, bonus_calls=0;
+std::vector<int> bonus_rolls;
+player_save_pipeline_result player_save_pipeline_request(
+    P_char, player_component_mask_t, int, int) { return player_save_pipeline_result::queued; }
 bool conjure_valid = false;
 bool recipe_known = false;
 bool sql_has_spellbook_mob(int, int) { return recipe_known; }
@@ -210,13 +215,23 @@ char *coin_stringv(int, int) { static char text[] = "coins"; return text; }
 int number(int low, int high) {
     last_random_low = low; last_random_high = high;
     if (conjure_roll && low == 1 && high == conjure_intelligence) return conjure_roll;
+    if (low == 1 && high == 100) {
+        int index=bonus_calls++;
+        if (index < static_cast<int>(bonus_rolls.size())) return bonus_rolls[index];
+    }
     return low;
 }
 void ADD_MONEY(P_char, int) { assert(false); }
 P_obj quest_item_reward(P_char) {
-    if (missing_reward) return nullptr;
-    reward.obj_uid=1000; reward.loc_p=LOC_NOWHERE; reward.next=nullptr; object_list=&reward;
-    return &reward;
+    ++item_calls;
+    if (missing_reward || item_calls==fail_item_at) return nullptr;
+    P_obj item=item_calls==1 ? &reward : &bonus_items[item_calls-2];
+    auto flags=item->extra2_flags;
+    *item={}; item->extra2_flags=flags;
+    item->short_description=const_cast<char *>("a reward");
+    item->obj_uid=1000+item_calls; item->loc_p=LOC_NOWHERE;
+    item->next=object_list; object_list=item;
+    return item;
 }
 bool item_movement_transaction_player_busy(P_char) { return false; }
 void quest_epic_reward(P_char, int, int) { ++epics; }
@@ -235,10 +250,15 @@ bool sql_world_quest_finish_async(P_char ch, const std::vector<P_obj> &objects, 
     return true;
 }
 P_char find_character_by_runtime_id(uint64_t) { return nullptr; }
-void extract_obj(P_obj, int) { object_list=nullptr; }
+void extract_obj(P_obj object, int) {
+    P_obj *link=&object_list;
+    while (*link && *link!=object) link=&(*link)->next;
+    assert(*link); *link=object->next;
+}
 void resetQuest(P_char ch) {
     ch->only.pc->quest_active = 0;
     ch->only.pc->quest_mob_vnum = 0;
+    ch->only.pc->quest_reward_item_count = 0;
 }
 uint64_t discoveries_at_level_save = 0;
 static void notify_level_advancement(P_char, int);
@@ -281,6 +301,8 @@ int main() {
         output.clear();
         exp_log.clear();
         dirty = epics = finished = 0;
+        item_calls=fail_item_at=bonus_calls=0; bonus_rolls.clear(); object_list=nullptr;
+        pc.quest_reward_item_count=0;
         history_allowed = true;
         defer_history = false;
         deferred_history = {};
@@ -487,6 +509,68 @@ int main() {
     assert(output.find("you finished your quest!") != std::string::npos);
     assert(output.find("For completing your quest you receive") != std::string::npos);
     assert(pc.quest_active == 0);
+
+    // Quantity is personal, while XP/history/scalar rewards remain per task.
+    for (int successes : {0,1,8}) {
+        reset(); pc.quest_kill_original=9; pc.quest_kill_how_many=8;
+        bonus_rolls.assign(8,11);
+        for (int index=0; index<successes; ++index) bonus_rolls[index]=10;
+        quest_kill(&player,&mob);
+        assert(bonus_calls==8 && item_calls==1+successes && finished==1 && epics==1);
+        assert(player.points.curr_exp==144 && !pc.quest_active);
+        int roots=0;
+        for (auto object=object_list; object; object=object->next) {
+            assert(OBJ_CARRIED_BY(object,&player)); ++roots;
+        }
+        assert(roots==1+successes);
+    }
+    reset(); pc.quest_kill_original=1;
+    quest_kill(&player,&mob);
+    assert(item_calls==1 && bonus_calls==0 && finished==1);
+
+    // Losing a later item defers the whole batch without changing its count.
+    reset(); pc.quest_kill_original=9; pc.quest_kill_how_many=8;
+    bonus_rolls.assign(8,10); fail_item_at=2;
+    quest_kill(&player,&mob);
+    assert(pc.quest_reward_item_count==9 && bonus_calls==8 && !object_list && finished==0);
+    assert(player.points.curr_exp==144 && pc.quest_accomplished==PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING);
+    fail_item_at=0; bonus_rolls.assign(8,11);
+    quest_full_reward(&player,&mob,FIND_AND_KILL);
+    assert(bonus_calls==8 && item_calls==11 && finished==1 && epics==1);
+    assert(player.points.curr_exp==144 && !pc.quest_active);
+
+    // Old completed records never acquire retrospective bonus rolls.
+    for (int state : {PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED,
+                      PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING}) {
+        reset(); pc.quest_kill_original=9; pc.quest_accomplished=state;
+        quest_full_reward(&player,&mob,FIND_AND_KILL);
+        assert(item_calls==1 && bonus_calls==0 && finished==1);
+    }
+
+    // Execute the real death hook: each same-room group member gets an
+    // independent decision and personal roots; the killer/victim are not repeated.
+    reset();
+    group_list quest_group{};
+    player.group=&quest_group; other.group=&quest_group; mob.group=&quest_group;
+    other.specials.position=STAT_NORMAL;
+    other.player.level=20; other.player.race=RACE_HUMAN;
+    other.player.name=const_cast<char *>("Other"); other.points.curr_exp=0;
+    pc.quest_kill_original=9; pc.quest_kill_how_many=8;
+    other_pc=pc; other_pc.pid=43;
+    rooms[0].people=&player; player.next_in_room=&other; other.next_in_room=&mob;
+    mob.next_in_room=nullptr;
+    bonus_rolls.assign(8,11); bonus_rolls.insert(bonus_rolls.end(),8,10);
+    credit_group_kill(&player,&mob);
+    assert(bonus_calls==16 && item_calls==10 && finished==2 && epics==2);
+    assert(player.points.curr_exp==144 && other.points.curr_exp==144);
+    int personal=0, shared=0;
+    for (auto object=object_list; object; object=object->next) {
+        personal+=OBJ_CARRIED_BY(object,&player);
+        shared+=OBJ_CARRIED_BY(object,&other);
+    }
+    assert(personal==1 && shared==9 && !pc.quest_active && !other_pc.quest_active);
+    player.group=other.group=mob.group=nullptr;
+    rooms[0].people=nullptr; player.next_in_room=other.next_in_room=nullptr;
 
     // Qualification failures must neither award XP nor advance the kill count.
     for (int scenario = 0; scenario < 10; ++scenario) {
@@ -723,9 +807,16 @@ int main() {
         if (final_kill) {
             assert(output.find(
                 "\r\n&+Y================ QUEST COMPLETE ================&n\r\n"
-                "&+WFor completing your quest you receive a reward&+W in your inventory.&n\r\n"
+                "&+WFor completing your quest you receive a reward&+W in your inventory.&n\r\n") != std::string::npos);
+            assert(output.find(
                 "&+WCongratulations, you finished your quest!&n\r\n"
                 "&+Y================================================&n\r\n\r\n") != std::string::npos);
+            size_t messages=0, offset=0;
+            while ((offset=output.find(" in your inventory.",offset)) != std::string::npos) {
+                ++messages; ++offset;
+            }
+            assert(messages==static_cast<size_t>(item_calls));
+            assert(output.find("QUEST COMPLETE",output.find("QUEST COMPLETE")+1)==std::string::npos);
         }
     }
     // Preserve each original high-level epic roll boundary.
@@ -1403,9 +1494,15 @@ def main() -> None:
     functions += [extract_function("world_quest.c", signature) for signature in (
         "static int quest_epic_reward_amount(", "int quest_exp_reward(",
         "static player_world_quest_reward world_quest_prepare_reward(",
-        "static P_obj world_quest_reward_by_uid(", "static void world_quest_deliver_reward(",
+        "static P_obj world_quest_reward_by_uid(", "static bool world_quest_deliver_reward(",
+        "static int world_quest_roll_item_count(",
         "static bool world_quest_start_reward(", "void quest_full_reward(",
         "static bool world_quest_matches_target(", "void quest_ask(", "void quest_kill(")]
+    death = source("fight.c").read_text()
+    hook_start = death.index("// world quest hook")
+    hook_end = death.index("\n\t\tstudioproc_kill", hook_start)
+    functions += ["static void credit_group_kill(P_char killer, P_char ch) { P_char tmp_ch;\n" +
+                  death[hook_start:hook_end] + "\n}"]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
     functions += [extract_function("magic.c", "void spell_contain_being(")]
     functions += [extract_function("fight.c", "void kill_gain(P_char ch, P_char victim)\n")]

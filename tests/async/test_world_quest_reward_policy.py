@@ -2,7 +2,7 @@
 """Contracts for bartender quest rewards.
 
 Rewards still come from the quest's zone, but never quest items and never the zone's most
-valuable items; each completed quest pays one reward to the player who completed it;
+valuable items; each completed quest pays a personal reward batch;
 quests may be shared with four companions; and the fee is a property.
 """
 
@@ -133,7 +133,7 @@ def test_nofear_block_reads_the_fourth_affect_field() -> None:
     assert not offenders, offenders
 
 
-def test_kill_quests_pay_one_reward_on_completion() -> None:
+def test_kill_quests_pay_a_batch_on_completion() -> None:
     kill = extract_function("world_quest.c", "void quest_kill(")
     assert "obj_to_char(reward, quest_mob)" not in kill
     assert "obj_to_char(reward, ch)" not in kill
@@ -143,9 +143,46 @@ def test_kill_quests_pay_one_reward_on_completion() -> None:
     assert "--ch->only.pc->quest_kill_how_many" not in done
     start = extract_function("world_quest.c", "static bool world_quest_start_reward(")
     assert start.count("quest_item_reward(ch)") == 1
+    assert "item < quest.quest_reward_item_count" in start
     assert "PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING" in start
     assert kill.index("gain_exp(ch, NULL") < kill.index("world_quest_start_reward(")
     assert start.index("sql_world_quest_finish_async(") < start.index("world_quest_deliver_reward(")
+
+
+def test_independent_bonus_rolls() -> None:
+    _run_harness(r'''
+#include "player/player_snapshot.h"
+#include <cassert>
+#include <cmath>
+#include <climits>
+static unsigned outcomes = 0;
+static int calls = 0, roll = 11;
+int number(int low, int high) {
+    assert(low == 1 && high == 100);
+    return (outcomes >> calls++) & 1 ? 10 : roll;
+}
+''' + extract_function("world_quest.c", "static int world_quest_roll_item_count(") + r'''
+int main() {
+    assert(world_quest_roll_item_count(1) == 1 && calls == 0);
+    for (int invalid : {0, -1, INT_MAX})
+        assert(world_quest_roll_item_count(invalid) == 0 && calls == 0);
+    double mass=0, mean=0, one=0;
+    for (outcomes=0; outcomes<256; ++outcomes) {
+        calls=0; roll=11;
+        int count=world_quest_roll_item_count(9);
+        assert(calls==8 && count>=1 && count<=9);
+        int successes=__builtin_popcount(outcomes);
+        assert(count==1+successes);
+        double probability=std::pow(0.1,successes)*std::pow(0.9,8-successes);
+        mass+=probability; mean+=count*probability;
+        if (count==1) one+=probability;
+    }
+    assert(std::abs(mass-1)<1e-12 && std::abs(mean-1.8)<1e-12);
+    assert(std::abs(one-0.43046721)<1e-12);
+    outcomes=0; calls=0; roll=10;
+    assert(world_quest_roll_item_count(18)==18 && calls==17);
+}
+''', "duris-world-quest-bonus-")
 
 
 def test_quest_sharing_remains_configurable() -> None:
@@ -174,7 +211,7 @@ def test_properties_ship_the_documented_defaults() -> None:
     section = PROPERTIES[PROPERTIES.index("[worldQuest]"):]
     section = section[: section.index("\n[", 1)].splitlines()
     for line in ("world.quest.share.max=4.000", "world.quest.cost.per.level=20.000",
-                 "world.quest.reward.top.withheld.percent=20.000"):
+                 "world.quest.reward.top.withheld.percent=5.000"):
         assert line in section, line
 
 
@@ -185,7 +222,8 @@ if __name__ == "__main__":
         test_catalog_never_offers_quest_items,
         test_catalog_withholds_top_value_items_before_pools_and_scores,
         test_nofear_block_reads_the_fourth_affect_field,
-        test_kill_quests_pay_one_reward_on_completion,
+        test_kill_quests_pay_a_batch_on_completion,
+        test_independent_bonus_rolls,
         test_quest_sharing_remains_configurable,
         test_bartender_fee_is_a_property,
         test_properties_ship_the_documented_defaults,

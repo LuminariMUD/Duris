@@ -679,7 +679,8 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         self.assertIn("requires run", result.stderr)
 
     def test_online_chest_frag_scope_and_lock_mode(self):
-        manifest = runner.load_manifest()
+        current = runner.load_manifest()
+        manifest = runner.replace(current, migrations=current.migrations[:58])
         environment = {
             "ENVIRONMENT": "production", "DB_HOST": "127.0.0.1",
             "DB_NAME": "duris", "DB_USER": "x", "DB_PASSWD": "x",
@@ -687,6 +688,9 @@ class ImmutableMigrationRunnerTest(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(os.environ, environment, clear=True):
             backup = self.make_production_backup(Path(temporary))
+            if len(current.migrations) > 58:
+                with self.assertRaisesRegex(runner.MigrationContractError, "reviewed production"):
+                    runner.MysqlExecutor(current, "127.0.0.1/duris", backup, online_chest_frag=True)
             for target, path in ((None, backup), ("127.0.0.1/other", backup), ("127.0.0.1/duris", None)):
                 with self.assertRaises(runner.MigrationContractError):
                     runner.MysqlExecutor(manifest, target, path, online_chest_frag=True)

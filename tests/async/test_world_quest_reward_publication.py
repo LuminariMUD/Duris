@@ -158,6 +158,7 @@ P_index obj_index = nullptr;
 int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 static player_pending_world_quest captured;
 static bool reject_second = false;
+static size_t capture_bytes = 100, capture_nodes = 2;
 const char *persistence_mode_flatfile_root() { return "unused"; }
 flatfile_item_repository_result flatfile_item_repository_load_owner(
     const std::string &, const item_owner_identity &owner, uint64_t *revision,
@@ -179,7 +180,13 @@ player_snapshot_capture_result player_item_snapshot_tree_capture(
     player_item_snapshot root{}, child{};
     root.object_uid=object->obj_uid; root.vnum=1001; root.parent_index=PLAYER_SNAPSHOT_NO_PARENT;
     child.object_uid=root.object_uid+1; child.vnum=1002; child.parent_index=0;
-    *items={root,child}; *bytes=100; return player_snapshot_capture_result::ok;
+    *items={root,child};
+    if (capture_nodes != 2) {
+        items->resize(capture_nodes,child);
+        for (size_t index=1; index<items->size(); ++index)
+            (*items)[index].object_uid=root.object_uid*10000+index;
+    }
+    *bytes=capture_bytes; return player_snapshot_capture_result::ok;
 }
 bool player_save_pipeline_submit_world_quest(P_char, const player_pending_world_quest &quest,
     std::function<bool(P_char,const player_pending_world_quest &)>) {
@@ -204,6 +211,13 @@ int main() {
     assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
         [](P_char){return true;}));
     assert(!captured.present); // no partially captured batch was submitted
+    reject_second=false; capture_bytes=PLAYER_SNAPSHOT_MAX_BYTES/2+1;
+    assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
+        [](P_char){return true;}) && !captured.present);
+    capture_bytes=100; capture_nodes=PLAYER_SNAPSHOT_MAX_OBJECTS;
+    assert(!sql_world_quest_finish_async(&actor,{&first,&second},true,true,{},0,
+        [](P_char){return true;}) && !captured.present);
+    capture_nodes=2;
 
     auto state=std::make_shared<world_quest_reward_publication>(); state->pid=42;
     reject_second=false;
