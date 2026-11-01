@@ -17,7 +17,8 @@ Prerequisite PR: [#558](https://github.com/LuminariMUD/Duris/pull/558),
 SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
 `branch/issue-555-refill-shop-stock`, based on that branch,
 in the same local worktree. Keep #558 unmerged for review until the stack is ready.
-Flat-file continuation: `branch/issue-555-flatfile-stock`, based on #559.
+Flat-file PR: [#561](https://github.com/LuminariMUD/Duris/pull/561),
+`branch/issue-555-flatfile-stock`, based on #559.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
