@@ -36,6 +36,7 @@ functions = [
     ('handler.c', 'P_obj get_obj_in_list_vis('),
     ('handler.c', 'P_obj get_obj_equipped('),
     ('actinf.c', 'P_obj get_object_in_equip('),
+    ('actobj.c', 'static P_obj do_get_obj_in_equipment_vis('),
     ('ship_utils.c', 'char *ShipSlot::get_status_str('),
     ('ship_utils.c', 'const char *ShipSlot::get_position_str('),
     ('ship_utils.c', 'char *ShipSlot::get_description('),

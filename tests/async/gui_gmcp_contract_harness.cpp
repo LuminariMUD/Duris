@@ -1717,6 +1717,9 @@ static void nested_items_contract(bool websocket)
 	finish(true, 0); // Explicit known-empty nested state.
 	get(worn.obj_uid);
 	finish(true, 0); // Equipped containers use the same owner search.
+	char worn_selector[96];
+	strlcpy(worn_selector, token(worn.obj_uid).c_str(), sizeof(worn_selector));
+	assert(do_get_obj_in_equipment_vis(&actor, worn_selector) == &worn);
 	get(9999);
 	finish(false, 0); // Missing/cross-owner/room-only identity reveals no contents.
 	bag.value[1] = CONT_CLOSED;
