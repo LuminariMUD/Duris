@@ -906,8 +906,10 @@ struct quest_target_request
 			if (object->R_num > top_of_objt)
 				return reject(reason, -1);
 			const auto proc = obj_index[object->R_num].func.obj;
+			// set_proc delegates only to master/random set bonuses; both ignore ASK.
 			if (!proc || proc == board || proc == artifact_hide ||
-			    proc == ring_of_regeneration || proc == tracks || proc == blood_stains)
+			    proc == ring_of_regeneration || proc == tracks ||
+			    proc == blood_stains || proc == set_proc)
 				return true;
 			return reject(reason, obj_index[object->R_num].virtual_number);
 		};
