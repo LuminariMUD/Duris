@@ -5521,6 +5521,28 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 	debug("do_headbutt: (%s) butting (%s) chance (%d) roll (%d).", GET_NAME(ch),
 	      GET_NAME(victim), chance, roll);
 
+	// Damage results report deaths, so count delivered damage separately for feedback.
+	auto headbutt_damage = [&](P_char source, P_char target, double amount, int flags,
+				   damage_messages *hit_messages)
+	{
+		int delivered = 0;
+		int result = melee_damage(source, target, amount, flags, hit_messages, &delivered);
+		if (result == DAM_NONEDEAD && delivered == 0)
+		{
+			bool backfire = source != ch;
+			act(backfire ? "Your headbutt backfires, but does no damage to you." :
+				       "Your headbutt does no damage to $N.",
+			    FALSE, ch, 0, victim, TO_CHAR);
+			act(backfire ? "$n's headbutt backfires, but does no damage to $m." :
+				       "$n's headbutt does no damage to you.",
+			    FALSE, ch, 0, victim, TO_VICT);
+			act(backfire ? "$n's headbutt backfires, but does no damage to $m." :
+				       "$n's headbutt does no damage to $N.",
+			    FALSE, ch, 0, victim, TO_NOTVICTROOM);
+		}
+		return result;
+	};
+
 	// failed catastrophically!
 	if (!notch_skill(ch, SKILL_HEADBUTT, get_property("skill.notch.offensive", 7)) && roll <= 2)
 	{
@@ -5538,9 +5560,9 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		affect_to_char(ch, &af);
 		CharWait(ch, PULSE_VIOLENCE * 2);
 
-		if (melee_damage(victim, ch, dam,
-				 PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
-				 &fail_messages) != DAM_NONEDEAD)
+		if (headbutt_damage(victim, ch, dam,
+				    PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
+				    &fail_messages) != DAM_NONEDEAD)
 		{
 			return;
 		}
@@ -5558,7 +5580,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		affect_to_char(ch, &af);
 		CharWait(ch, PULSE_VIOLENCE * 1.5);
 
-		if (melee_damage(victim, ch, dam, PHSDAM_NOPOSITION, &fail_messages) !=
+		if (headbutt_damage(victim, ch, dam, PHSDAM_NOPOSITION, &fail_messages) !=
 		    DAM_NONEDEAD)
 		{
 			return;
@@ -5608,9 +5630,9 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		CharWait(ch, (int)(PULSE_VIOLENCE * 1.5));
 		debug("do_headbutt: (%s) butting (%s) dam (%d) skill (%d).", GET_NAME(ch),
 		      GET_NAME(victim), (int)dam, GET_CHAR_SKILL(ch, SKILL_HEADBUTT));
-		if (melee_damage(ch, victim, (int)dam,
-				 PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
-				 messages) != DAM_NONEDEAD)
+		if (headbutt_damage(ch, victim, (int)dam,
+				    PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
+				    messages) != DAM_NONEDEAD)
 		{
 			return;
 		}
@@ -5626,9 +5648,9 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 			debug("do_headbutt: (%s) double butting (%s) dam (%d) skill (%d).",
 			      GET_NAME(ch), GET_NAME(victim), (int)dam / 2,
 			      GET_CHAR_SKILL(ch, SKILL_DOUBLE_HEADBUTT));
-			if (melee_damage(ch, victim, (int)(dam / 2),
-					 PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
-					 messages) != DAM_NONEDEAD)
+			if (headbutt_damage(ch, victim, (int)(dam / 2),
+					    PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
+					    messages) != DAM_NONEDEAD)
 			{
 				return;
 			}
