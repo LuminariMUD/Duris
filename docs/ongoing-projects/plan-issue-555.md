@@ -19,9 +19,10 @@ SQL refill PR: [#559](https://github.com/LuminariMUD/Duris/pull/559),
 in the same local worktree. Keep #558 unmerged for review until the stack is ready.
 Flat-file PR: [#561](https://github.com/LuminariMUD/Duris/pull/561),
 `branch/issue-555-flatfile-stock`, based on #559.
-Current checkout/qualification continuation: `branch/issue-555-stock-qualification`
-in `/home/aiwithapex/projects/duris-issue-555`, based on #561. Its qualification
-work is still in progress and has no PR yet.
+Current checkout/qualification PR: [#562](https://github.com/LuminariMUD/Duris/pull/562),
+`branch/issue-555-stock-qualification` in `/home/aiwithapex/projects/duris-issue-555`,
+based on #561. Its no-trade control is verified; remaining gameplay qualification
+continues on this branch. Full stack: #558 -> #559 -> #561 -> #562.
 
 The first chunk adds `economy/shopkeeper_boot.c/.h` and its real process/file
 regression in `tests/async/test_shopkeeper_boot.py`. Main records a running marker
