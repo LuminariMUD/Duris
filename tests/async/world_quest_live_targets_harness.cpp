@@ -936,7 +936,7 @@ int main(int argc, char **argv)
 		P_char giver = spawn(2, 0, 0);
 		player.player.level = 31;
 		pc.quest_replacement_due = 1;
-		pc.quest_level = level;
+		pc.quest_level = 23;
 		pc.quest_type = FIND_AND_ASK;
 		pc.quest_mob_vnum = 777;
 		pc.quest_map_bought = 1;
@@ -960,7 +960,7 @@ int main(int argc, char **argv)
 		player.specials.affected_by2 |= AFF2_SILENCED;
 		refuses("actor_speech=", "history=not_checked");
 		assert(replacement_logs.front().find(
-			       "current_level=31 accepted_level=23 type=2 needed=1") !=
+			       "current_level=31 accepted_level=23 selection_level=31 type=2 needed=1") !=
 		       std::string::npos);
 		assert(replacement_logs.front().find("origin=1000 surface=") != std::string::npos);
 		player.specials.affected_by2 &= ~AFF2_SILENCED;
@@ -1016,9 +1016,9 @@ int main(int argc, char **argv)
 		pc.quest_type = FIND_AND_KILL;
 		refuses("reason=no_remaining_work", "stage=precondition");
 		pc.quest_type = FIND_AND_ASK;
-		pc.quest_level = 1;
+		player.player.level = 1;
 		refuses("reason=no_eligible_zone");
-		pc.quest_level = level;
+		player.player.level = level;
 		move(giver, 1);
 		refuses("reason=giver_not_present", "stage=precondition");
 		move(giver, 0);
@@ -1028,6 +1028,42 @@ int main(int argc, char **argv)
 		assert(replacement_logs.empty() && !pc.quest_replacement_due &&
 		       pc.quest_level == level && pc.quest_map_bought && pc.quest_started == 12345);
 		std::cout << "replacement diagnostics and preserved entitlement: passed\n";
+		return 0;
+	}
+	if (mode == "replacement_level")
+	{
+		P_char giver = spawn(2, 0, 0);
+		pc.quest_replacement_due = 1;
+		pc.quest_level = level == 23 ? 30 : 23;
+		pc.quest_type = preferred_type;
+		pc.quest_mob_vnum = 777;
+		pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 3 : 0;
+		pc.quest_kill_how_many = preferred_type == FIND_AND_KILL ? 2 : 0;
+		pc.quest_receiver = 999;
+		pc.quest_shares_left = 2;
+		pc.quest_map_bought = 1;
+		pc.quest_started = 12345;
+		const auto accepted = pc;
+		player.specials.affected_by |= AFF_BLIND;
+		assert(!world_quest_replace(&player, giver));
+		assert(!memcmp(&pc, &accepted, sizeof(pc)) && dirty_marks == 0);
+		player.specials.affected_by &= ~AFF_BLIND;
+		history_reads.clear();
+		assert(world_quest_replace(&player, giver));
+		assert(pc.quest_level == player.player.level && pc.quest_active &&
+		       !pc.quest_replacement_due && dirty_marks == 1);
+		assert(pc.quest_type == accepted.quest_type &&
+		       pc.quest_kill_original == accepted.quest_kill_original &&
+		       pc.quest_kill_how_many == accepted.quest_kill_how_many &&
+		       pc.quest_receiver == accepted.quest_receiver &&
+		       pc.quest_shares_left == accepted.quest_shares_left &&
+		       pc.quest_map_bought == accepted.quest_map_bought &&
+		       pc.quest_started == accepted.quest_started);
+		// Validation reads the saved level too: an upgraded target must stay valid.
+		assert(world_quest_refresh(&player) == world_quest_target_status::valid);
+		assert(pc.quest_active && !pc.quest_replacement_due && dirty_marks == 1);
+		std::cout << "replacement level " << accepted.quest_level << " -> " << level << ' '
+			  << argv[3] << ": passed\n";
 		return 0;
 	}
 #endif
@@ -1552,14 +1588,16 @@ int main(int argc, char **argv)
 		assert(GET_MONEY(&player) == 10000 && wallet_debits == 0 && history_writes == 0);
 		zones[1].flags &= ~ZONE_CLOSED;
 		player.player.level = 10;
-		ask("quest"); // Continuation precedes new-purchase level and allowance gates.
+		ask("quest"); // No current-level targets below the selector's minimum level.
+		assert(!memcmp(&pc, &waiting, sizeof(pc)) && GET_MONEY(&player) == 10000);
+		player.player.level = level;
+		ask("quest"); // Replacement still bypasses payment and daily allowance gates.
 		assert(pc.quest_active && !pc.quest_replacement_due && GET_MONEY(&player) == 10000);
 		assert(pc.quest_level == level && pc.quest_type == preferred_type &&
 		       pc.quest_kill_original == accepted.quest_kill_original &&
 		       pc.quest_kill_how_many == accepted.quest_kill_how_many &&
 		       pc.quest_shares_left == 2 && pc.quest_map_bought == 1);
 		assert(wallet_debits == 0 && reward_claims == 0 && history_writes == 0);
-		player.player.level = level;
 		daily_remaining = 1;
 		pc.quest_map_bought = 0;
 		map_calls = 0;

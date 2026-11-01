@@ -321,10 +321,12 @@ check, with no capability-dependent route passes.
 Ask any real bartender for `quest` to redeem a replacement without a new fee or
 daily penalty, before the new-purchase level and allowance gates. Replacement
 still requires an eligible target and loaded target-exclusion history.
-It retains accepted type/level, earned kills, original quota, receiver, remaining
-shares, purchased-map flag, and original start time. If no
-replacement qualifies, the entitlement remains. A successful replacement updates
-the target, zone, giver, origin, and geographic map entrance to the new interaction;
+It selects at the character's current level and saves that as the replacement's
+accepted level, so validation and rewards use the same level. It retains type,
+earned kills, original quota, receiver, remaining shares, purchased-map flag, and
+original start time. If no replacement qualifies, the entitlement and previous
+accepted level remain unchanged. A successful replacement updates the target,
+zone, giver, origin, and geographic map entrance to the new interaction;
 the same target may be selected again if it has become usable. Retained kills
 do not award XP again. Returning supply does not automatically reactivate a
 pending entitlement: ask for `quest` to select the replacement.
@@ -332,10 +334,11 @@ pending entitlement: ask for `quest` to select the replacement.
 Failed replacement requests write one `World quest replacement failed:` line to
 the server status log (`logs/log/status` in the standard runtime). The `pid`
 identifies the character. `stage=precondition` reports failures such as pending
-save, absent giver, or no remaining work. `stage=selection` includes current and
-accepted levels, required type/count, old target, current origin and its region
-identities, scanned instances, candidate zones, last attempted target, history
-availability, remaining probe/history limits, and work consumed.
+save, absent giver, or no remaining work. `stage=selection` includes the current,
+saved accepted, and attempted selection levels, required type/count, old target,
+current origin and its region identities, scanned instances, candidate zones,
+last attempted target, history availability, remaining probe/history limits,
+and work consumed.
 
 Selection `reason` distinguishes unavailable history, unavailable catalog, no
 eligible zone/target, and exhausted work/probe/history budgets. `history=not_checked`

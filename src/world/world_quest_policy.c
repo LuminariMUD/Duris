@@ -1337,14 +1337,15 @@ quest_creation_failure world_quest_policy_select_target(P_char ch, int origin_vn
 						      world_quest_region{};
 			logit(LOG_STATUS,
 			      "World quest replacement failed: pid=%d stage=selection reason=%s "
-			      "current_level=%d accepted_level=%d type=%d needed=%d old_target=%d "
+			      "current_level=%d accepted_level=%d selection_level=%d "
+			      "type=%d needed=%d old_target=%d "
 			      "origin=%d surface=%d underdark=%d uncertain=%d scanned=%zu "
 			      "candidate_zones=%zu zones_tried=%d last_target=%d history=%s "
 			      "probes_left=%d history_checks_left=%d work=%zu work_exhausted=%d "
 			      "rejections={%s}",
-			      GET_PID(ch), reason, GET_LEVEL(ch), accepted_level, required_type,
-			      needed, ch->only.pc->quest_mob_vnum, origin_vnum, region.surface,
-			      region.underdark, region.uncertain,
+			      GET_PID(ch), reason, GET_LEVEL(ch), ch->only.pc->quest_level,
+			      accepted_level, required_type, needed, ch->only.pc->quest_mob_vnum,
+			      origin_vnum, region.surface, region.underdark, region.uncertain,
 			      request ? request->scanned : size_t{ 0 },
 			      request ? request->mobs.size() : size_t{ 0 },
 			      request ? request->zones_tried : 0,

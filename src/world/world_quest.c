@@ -970,10 +970,12 @@ bool world_quest_replace(P_char ch, P_char giver)
 		return refused("no_remaining_work");
 	world_quest_target target;
 	const int origin = world[ch->in_room].number;
-	if (world_quest_policy_select_target(ch, origin, quest.quest_level, target,
+	const int replacement_level = GET_LEVEL(ch);
+	if (world_quest_policy_select_target(ch, origin, replacement_level, target,
 					     quest.quest_type,
 					     remaining) != QUEST_CREATION_NO_FAILURE)
 		return false;
+	quest.quest_level = replacement_level;
 	quest.quest_active = 1;
 	quest.quest_replacement_due = 0;
 	quest.quest_mob_vnum = target.mob_vnum;
