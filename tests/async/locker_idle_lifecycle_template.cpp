@@ -141,6 +141,7 @@ int gain_condition(P_char ch, int, int)
 	return 0;
 }
 void epic_choose_new_epic_task(P_char) {}
+static void display_divine_experience(P_char) {}
 void act(const char *, int, P_char, P_obj, void *, int) {}
 void send_to_char(const char *, P_char) {}
 void loginlog(int, const char *, ...) {}

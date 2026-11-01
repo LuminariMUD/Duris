@@ -103,7 +103,9 @@ assert "return apply_sql_work(connection," in bank
 work = REPOSITORY[REPOSITORY.index("player_save_apply_result apply_sql_work("):]
 work = work[:work.index("\n}\n")]
 assert "if (connection_error(query.error_code))" in work
-assert "player_save_apply_outcome::terminal_failure, 0, query.error_code" in work
+assert "bool retry_ambiguous_commit = false" in work
+assert "retry_ambiguous_commit ? player_save_apply_outcome::ambiguous_commit" in work
+assert "player_save_apply_outcome::terminal_failure" in work
 print("[PASS] a bank delta is written once: in a transaction, never retried after an unknown commit")
 
 LOAD_REPOSITORY = (SRC / "player_load_repository.c").read_text()
