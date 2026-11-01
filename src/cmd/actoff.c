@@ -12056,6 +12056,12 @@ void do_taunt(P_char ch, char *arg, int cmd)
 		return;
 	}
 
+	if (IS_ROOM(vict->in_room, ROOM_SINGLE_FILE) && !AdjacentInRoom(vict, ch))
+	{
+		act("$N can't reach you in this narrow room.", FALSE, ch, NULL, vict, TO_CHAR);
+		return;
+	}
+
 	if ((notch_skill(ch, SKILL_TAUNT, get_property("skill.notch.offensive", 7)) ||
 	     number(1, 100) <= percent_chance || IS_TRUSTED(ch)))
 	{
