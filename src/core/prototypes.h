@@ -1373,6 +1373,10 @@ void recalc_container_weight(P_obj);
 void container_reset_empty_weight(P_obj);
 int container_total_weight(P_obj);
 void obj_from_room(P_obj);
+// Live item presentation changes are observed independently of persistence saves.
+int set_obj_condition(P_obj object, int condition);
+void set_obj_extra_flags(P_obj object, unsigned flags);
+void set_obj_extra2_flags(P_obj object, unsigned flags);
 void obj_to_char(P_obj obj, P_char ch);
 void obj_to_char_at_end(P_obj obj, P_char ch);
 void obj_to_obj(P_obj, P_obj);

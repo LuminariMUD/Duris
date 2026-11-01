@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -968,7 +969,15 @@ static void setbit_obj(P_char ch, char *name, char *flag, char *val, int on_off)
 		}
 	}
 
+	const auto extra = obj->extra_flags;
+	const auto extra2 = obj->extra2_flags;
+	const auto condition = obj->condition;
+	const auto object_type = obj->type;
+	const auto light = obj->value[2];
 	setbit_parseTable(ch, (void *)obj, table, ARRAY_SIZE(table), flag, val, on_off, SETBIT_OBJ);
+	if (extra != obj->extra_flags || extra2 != obj->extra2_flags ||
+	    condition != obj->condition || object_type != obj->type || light != obj->value[2])
+		gmcp_item_changed(obj);
 
 	if (OBJ_WORN(obj))
 	{

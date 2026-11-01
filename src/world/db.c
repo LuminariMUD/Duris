@@ -11,6 +11,7 @@
 
 #include "combat/trap.h"
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "player/news.h"
 #include "player/player_save_pipeline.h"
 #include "world/world_singletons.h"
@@ -4514,6 +4515,7 @@ void free_char(P_char ch)
 /* release memory allocated for an obj struct */
 void free_obj(P_obj obj)
 {
+	gmcp_item_edit_extracted(obj);
 	struct extra_descr_data *th, *next_one;
 	struct obj_affect *af;
 

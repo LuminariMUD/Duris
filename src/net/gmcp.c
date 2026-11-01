@@ -38,6 +38,7 @@ extern const int top_of_world;
 
 /* externs */
 extern struct room_data *world;
+extern P_obj object_list;
 extern struct zone_data *zone_table;
 extern const char *pc_class_types[];
 extern struct descriptor_data *descriptor_list;
@@ -45,10 +46,14 @@ extern const struct class_names class_names_table[];
 extern const struct race_names race_names_table[];
 
 extern struct time_info_data time_info;
+extern const char *where[];
 
 // New-stream control and time. Kept together for executable production-path tests.
 static bool gmcp_queue(struct descriptor_data *d, const char *package, const char *json);
 static void gmcp_flush_combat(P_desc d);
+static void gmcp_items_reset(P_desc d);
+static bool gmcp_flush_items_page(P_desc d);
+static int gmcp_items_resume_fd = -1;
 static uint64_t gmcp_clock_revision;
 static int gmcp_clock_hour = -1;
 static char gmcp_clock_json[128];
@@ -141,6 +146,7 @@ static void gmcp_session_observe(P_desc d)
 	if (changed)
 	{
 		d->gmcp_combat_state_sent = false;
+		gmcp_items_reset(d);
 		if (playing && gmcp_session_supported(d))
 			d->gmcp_initial_state_pending = true;
 		d->gmcp_session_state = static_cast<unsigned char>(phase);
@@ -167,6 +173,7 @@ void gmcp_preferences_changed(P_desc d)
 {
 	if (!d)
 		return;
+	gmcp_items_reset(d);
 	if (d->gmcp_enabled && (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
 		d->gmcp_control_pending = true;
 	d->gmcp_time_revision = 0;
@@ -192,6 +199,8 @@ static void gmcp_flush_capabilities(P_desc d)
 		std::string result = streams & GMCP_SUPPORT_TIME ? "\"Duris.Time\"" : "";
 		if (streams & GMCP_SUPPORT_COMBAT)
 			result += (result.empty() ? "" : ",") + std::string("\"Duris.Combat\"");
+		if (streams & GMCP_SUPPORT_ITEMS)
+			result += (result.empty() ? "" : ",") + std::string("\"Char.Items\"");
 		return result;
 	};
 	const std::string supported = names(d->gmcp_supports);
@@ -201,7 +210,7 @@ static void gmcp_flush_capabilities(P_desc d)
 	const int length = snprintf(
 		json, sizeof(json),
 		"{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
-		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1},\"supported\":[%s],"
+		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1,\"Char.Items\":1,\"Char.Items.Get\":1},\"supported\":[%s],"
 		"\"interested\":[%s],\"active\":[%s],\"control\":[%s]}",
 		gmcp_streaming_enabled(d) ? "true" : "false", supported.c_str(), interested.c_str(),
 		active_names.c_str(), gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
@@ -396,7 +405,8 @@ enum class gmcp_control_kind
 	set,
 	add,
 	remove,
-	subscribe
+	subscribe,
+	items
 };
 
 static gmcp_control_kind gmcp_control_package(const char *package, size_t size)
@@ -411,13 +421,19 @@ static gmcp_control_kind gmcp_control_package(const char *package, size_t size)
 		return gmcp_control_kind::remove;
 	if (named("Duris.Subscribe"))
 		return gmcp_control_kind::subscribe;
+	if (named("Char.Items.Get"))
+		return gmcp_control_kind::items;
 	return gmcp_control_kind::unknown;
 }
 
 static bool gmcp_control_begin(P_desc d, gmcp_control_kind kind, const char *raw, size_t len)
 {
+	if (kind == gmcp_control_kind::items && !(gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS))
+		return false;
 	if (!d->gmcp_enabled || len > GMCP_CONTROL_MAX_INPUT_SIZE || memchr(raw, '\0', len) ||
-	    !gmcp_control_request_allowed(d, kind == gmcp_control_kind::subscribe ? 1 : 0))
+	    !gmcp_control_request_allowed(d, kind == gmcp_control_kind::items	  ? 2 :
+					     kind == gmcp_control_kind::subscribe ? 1 :
+										    0))
 		return false;
 	// cJSON strings have no stored length. This check must precede WebSocket reserialization.
 	for (size_t index = 0; index + 6 <= len; ++index)
@@ -430,6 +446,13 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 {
 	if (!cJSON_IsArray(array))
 		return;
+	if (kind == gmcp_control_kind::items)
+	{
+		if (!cJSON_GetArraySize(array) && (gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS))
+			gmcp_items_reset(d);
+		return;
+	}
+	const bool wanted_items = d->gmcp_interests & GMCP_SUPPORT_ITEMS;
 	uint32_t requested = 0;
 	size_t count = 0;
 	const cJSON *entry;
@@ -447,6 +470,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 			requested |= GMCP_SUPPORT_SESSION;
 		else if (!strcmp(entry->valuestring, "Duris.Combat 1"))
 			requested |= GMCP_SUPPORT_COMBAT;
+		else if (!strcmp(entry->valuestring, "Char.Items 1"))
+			requested |= GMCP_SUPPORT_ITEMS;
 	}
 	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
 	if (kind == gmcp_control_kind::subscribe)
@@ -467,6 +492,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 		if (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
 			d->gmcp_interests = 0;
 	}
+	if (wanted_items != static_cast<bool>(d->gmcp_interests & GMCP_SUPPORT_ITEMS))
+		gmcp_items_reset(d);
 	d->gmcp_control_pending = d->gmcp_control_pending || had_control ||
 				  (d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES);
 	d->gmcp_time_revision = 0;
@@ -550,6 +577,7 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 	else if (cmd == TELNET_DONT)
 	{
 		d->gmcp_enabled = 0;
+		gmcp_items_reset(d);
 		d->gmcp_initial_state_pending = false;
 		d->gmcp_control_pending = false;
 		d->gmcp_active_streams = 0;
@@ -560,6 +588,8 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 /* Coalesce option toggles until the next periodic GMCP flush. */
 void gmcp_flush_initial_states(void)
 {
+	P_desc items_start = descriptor_list;
+	bool interested_items = false;
 	for (struct descriptor_data *d = descriptor_list; d; d = d->next)
 	{
 		d->gmcp_event_count = 0;
@@ -573,7 +603,25 @@ void gmcp_flush_initial_states(void)
 			gmcp_session_update(d);
 		gmcp_flush_time(d);
 		gmcp_flush_combat(d);
+		interested_items |= (gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS) != 0;
+		if (d->descriptor == gmcp_items_resume_fd)
+			items_start = d->next ? d->next : descriptor_list;
 	}
+	if (!interested_items || !items_start)
+		return;
+	// One <=16 KiB page per descriptor, eight attempts total, rotating after the
+	// last participant. No retained descriptor pointer or unbounded output queue.
+	P_desc d = items_start;
+	unsigned budget = 8;
+	do
+	{
+		if (gmcp_flush_items_page(d))
+		{
+			--budget;
+			gmcp_items_resume_fd = d->descriptor;
+		}
+		d = d->next ? d->next : descriptor_list;
+	} while (d != items_start && budget);
 }
 
 static int gmcp_durisweb_auth_limited(struct descriptor_data *d)
@@ -1778,6 +1826,281 @@ void gmcp_combat_damage(P_char ch, P_char victim, int damage, const damage_messa
 	}
 	free(json);
 }
+
+// Owner item snapshots. Cursors are valid only under the captured body/epoch.
+static void gmcp_items_reset(P_desc d)
+{
+	if (!d)
+		return;
+	d->gmcp_items_started = false;
+	d->gmcp_items_cursor = nullptr;
+	d->gmcp_items_scope[0] = 0;
+}
+
+void gmcp_items_changed(P_char ch)
+{
+	if (!ch)
+		return;
+	++ch->gmcp_items_epoch;
+	if (ch->desc && ch->desc->character == ch)
+		gmcp_items_reset(ch->desc);
+}
+
+void gmcp_item_changed(P_obj object)
+{
+	if (!object)
+		return;
+	while (OBJ_INSIDE(object) && object->loc.inside)
+		object = object->loc.inside;
+	if (OBJ_CARRIED(object))
+		gmcp_items_changed(object->loc.carrying);
+	else if (OBJ_WORN(object))
+		gmcp_items_changed(object->loc.wearing);
+}
+
+// Native object editing already owns the string pointer. Retain only its UID for
+// notification, so completion also follows transfers and never retains a victim.
+void gmcp_item_edit_done(P_desc d)
+{
+	if (!d || !d->gmcp_item_edit_uid)
+		return;
+	const uint64_t uid = d->gmcp_item_edit_uid;
+	d->gmcp_item_edit_uid = 0;
+	for (P_obj object = object_list; object; object = object->next)
+		if (object->obj_uid == uid)
+		{
+			if (object->gmcp_items_editors)
+				--object->gmcp_items_editors;
+			gmcp_item_changed(object);
+			return;
+		}
+}
+
+void gmcp_item_edit_begin(P_desc d, P_obj object)
+{
+	if (!d || !object)
+		return;
+	gmcp_item_edit_done(d);
+	d->gmcp_item_edit_uid = object->obj_uid;
+	++object->gmcp_items_editors;
+	gmcp_item_changed(object);
+}
+
+void gmcp_item_edit_extracted(P_obj object)
+{
+	if (!object || !object->gmcp_items_editors)
+		return;
+	// Only an edited object takes this exceptional path; ordinary extraction
+	// adds no descriptor scan. Retire the editor before its field is freed.
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->gmcp_item_edit_uid == object->obj_uid)
+		{
+			d->gmcp_item_edit_uid = 0;
+			d->str = nullptr;
+			if (d->backstr)
+				FREE(d->backstr);
+		}
+	object->gmcp_items_editors = 0;
+}
+
+static bool gmcp_item_magic_visible(P_char ch)
+{
+	return IS_TRUSTED(ch) || IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ||
+	       (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+		GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_PRIEST));
+}
+
+static uint32_t gmcp_items_filter(P_char ch)
+{
+	return static_cast<uint32_t>(GET_STAT(ch)) << 16 |
+	       (IS_AFFECTED(ch, AFF_WRAITHFORM) ? 1U : 0U) | (IS_BLIND(ch) ? 2U : 0U) |
+	       (IS_AFFECTED(ch, AFF_DETECT_INVISIBLE) ? 4U : 0U) |
+	       (has_innate(ch, INNATE_OPHIDIAN_EYES) ? 8U : 0U) | (GET_LEVEL(ch) > 45 ? 16U : 0U) |
+	       (IS_TRUSTED(ch) ? 32U : 0U) | (IS_PC(ch) ? 64U : 0U) |
+	       (IS_AFFECTED2(ch, AFF2_DETECT_MAGIC) ? 128U : 0U);
+}
+
+bool gmcp_item_selector_matches(P_char ch, P_obj object, const char *selector)
+{
+	if (!ch || !ch->desc || !object || !selector ||
+	    !(gmcp_gameplay_streams(ch->desc) & GMCP_SUPPORT_ITEMS))
+		return false;
+	P_desc d = ch->desc;
+	if (d->character != ch || !d->gmcp_items_started || !d->gmcp_items_scope[0] ||
+	    d->gmcp_items_epoch != ch->gmcp_items_epoch || d->gmcp_items_body != ch->runtime_id ||
+	    d->gmcp_items_filter != gmcp_items_filter(ch) || !CAN_SEE_OBJ(ch, object))
+		return false;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	if (!OBJ_CARRIED_BY(root, ch) && !OBJ_WORN_BY(root, ch))
+		return false;
+	char expected[96];
+	snprintf(expected, sizeof(expected), "@i:%s:%llu", d->gmcp_items_scope,
+		 static_cast<unsigned long long>(object->obj_uid));
+	return !strcmp(selector, expected);
+}
+
+static cJSON *gmcp_item_row(P_char ch, P_obj object, int slot, const char *scope)
+{
+	const bool visible = CAN_SEE_OBJ(ch, object);
+	if (slot < 0 && (!visible || object->hitched_to))
+		return nullptr;
+	char selector[96], description[384];
+	snprintf(selector, sizeof(selector), "@i:%s:%llu", scope,
+		 static_cast<unsigned long long>(object->obj_uid));
+	strlcpy(description,
+		visible && object->short_description ?
+			strip_ansi(object->short_description).c_str() :
+			"Something.",
+		sizeof(description));
+	cJSON *row = cJSON_CreateObject();
+	cJSON *flags = row ? cJSON_AddArrayToObject(row, "flags") : nullptr;
+	bool complete =
+		row && flags && cJSON_AddStringToObject(row, "description", description) &&
+		cJSON_AddNumberToObject(row, "quantity", 1) &&
+		(slot < 0 ? cJSON_AddNullToObject(row, "slot") :
+			    cJSON_AddNumberToObject(row, "slot", slot)) &&
+		(visible ? cJSON_AddStringToObject(row, "selector", selector) :
+			   cJSON_AddNullToObject(row, "selector")) &&
+		(visible ? cJSON_AddStringToObject(row, "condition",
+						   strip_ansi(item_condition(object)).c_str()) :
+			   cJSON_AddNullToObject(row, "condition"));
+	if (complete && slot >= 0)
+		complete =
+			cJSON_AddStringToObject(row, "slotName", strip_ansi(where[slot]).c_str());
+	if (complete && visible)
+	{
+		const auto flag = [&](bool present, const char *name)
+		{
+			if (present && !cJSON_AddItemToArray(flags, cJSON_CreateString(name)))
+				complete = false;
+		};
+		flag(IS_OBJ_STAT(object, ITEM_INVISIBLE), "invisible");
+		flag(IS_OBJ_STAT(object, ITEM_GLOW), "glowing");
+		flag(IS_OBJ_STAT(object, ITEM_HUM), "humming");
+		flag(IS_OBJ_STAT(object, ITEM_LIT) ||
+			     (object->type == ITEM_LIGHT && object->value[2] == -1),
+		     "illuminating");
+		flag(IS_OBJ_STAT2(object, ITEM2_MAGIC) && gmcp_item_magic_visible(ch), "magic");
+	}
+	if (!complete)
+	{
+		cJSON_Delete(row);
+		return nullptr;
+	}
+	return row;
+}
+
+static bool gmcp_flush_items_page(P_desc d)
+{
+	if (!(gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS) || d->gmcp_control_pending ||
+	    (gmcp_session_supported(d) && d->gmcp_session_pending))
+		return false;
+	P_char ch = d->character;
+	const uint32_t filter = gmcp_items_filter(ch);
+	if (d->gmcp_items_epoch != ch->gmcp_items_epoch || d->gmcp_items_body != ch->runtime_id ||
+	    d->gmcp_items_filter != filter)
+		gmcp_items_reset(d);
+	if (!d->gmcp_items_started)
+	{
+		if (!gmcp_session_nonce(d->gmcp_items_scope) ||
+		    !gmcp_session_nonce(gmcp_session_process) ||
+		    !gmcp_session_nonce(d->gmcp_session_context))
+			return true;
+		d->gmcp_items_epoch = ch->gmcp_items_epoch;
+		d->gmcp_items_body = ch->runtime_id;
+		d->gmcp_items_filter = filter;
+		++d->gmcp_items_revision;
+		d->gmcp_items_location = 0;
+		d->gmcp_items_index = d->gmcp_items_page = 0;
+		d->gmcp_items_cursor = ch->carrying;
+		d->gmcp_items_started = true;
+	}
+	if (d->gmcp_items_location >= 2)
+		return false;
+	const bool inventory = d->gmcp_items_location == 0;
+	const bool available = !IS_AFFECTED(ch, AFF_WRAITHFORM) &&
+			       (GET_STAT(ch) >= (inventory ? STAT_RESTING : STAT_SLEEPING));
+	P_obj cursor = d->gmcp_items_cursor;
+	unsigned index = d->gmcp_items_index;
+	cJSON *root = cJSON_CreateObject();
+	cJSON *items = root ? cJSON_AddArrayToObject(root, "items") : nullptr;
+	char generation[32], revision[32], body[32];
+	snprintf(generation, sizeof(generation), "%llu",
+		 static_cast<unsigned long long>(d->gmcp_session_generation));
+	snprintf(revision, sizeof(revision), "%llu",
+		 static_cast<unsigned long long>(d->gmcp_items_revision));
+	snprintf(body, sizeof(body), "%llu",
+		 static_cast<unsigned long long>(d->gmcp_session_body_revision));
+	bool complete_json = root && items && cJSON_AddNumberToObject(root, "version", 1) &&
+			     cJSON_AddStringToObject(root, "context", d->gmcp_session_context) &&
+			     cJSON_AddStringToObject(root, "process", gmcp_session_process) &&
+			     cJSON_AddStringToObject(root, "generation", generation) &&
+			     cJSON_AddStringToObject(root, "bodyRevision", body) &&
+			     cJSON_AddStringToObject(root, "revision", revision) &&
+			     cJSON_AddStringToObject(root, "location", inventory ? "inv" : "eq") &&
+			     cJSON_AddNumberToObject(root, "page", d->gmcp_items_page) &&
+			     cJSON_AddBoolToObject(root, "available", available);
+	size_t bytes = 512;
+	unsigned inspected = 0;
+	while (complete_json && available && inspected < 128 &&
+	       (inventory ? cursor != nullptr : index < MAX_WEAR))
+	{
+		P_obj object = inventory ? cursor : ch->equipment[index];
+		if (object && object->gmcp_items_editors)
+		{
+			cJSON_Delete(root);
+			return true; // Do not publish a partially edited item, even after transfer.
+		}
+		if (object && (inventory ? !object->hitched_to && CAN_SEE_OBJ(ch, object) : true))
+		{
+			cJSON *row = gmcp_item_row(ch, object,
+						   inventory ? -1 : static_cast<int>(index),
+						   d->gmcp_items_scope);
+			char *json = row ? cJSON_PrintUnformatted(row) : nullptr;
+			if (!json)
+			{
+				cJSON_Delete(row);
+				complete_json = false;
+				break;
+			}
+			const size_t length = strlen(json) + 1;
+			free(json);
+			if (bytes + length > 16384)
+			{
+				cJSON_Delete(row);
+				break;
+			}
+			cJSON_AddItemToArray(items, row);
+			bytes += length;
+		}
+		if (inventory)
+			cursor = cursor->next_content;
+		else
+			++index;
+		++inspected;
+	}
+	const bool finished = !available || (inventory ? !cursor : index >= MAX_WEAR);
+	complete_json = complete_json && cJSON_AddBoolToObject(root, "complete", finished);
+	char *json = complete_json ? cJSON_PrintUnformatted(root) : nullptr;
+	cJSON_Delete(root);
+	if (json && strlen(json) <= 16384 && gmcp_queue(d, "Char.Items.List", json))
+	{
+		d->gmcp_items_cursor = cursor;
+		d->gmcp_items_index = index;
+		++d->gmcp_items_page;
+		if (finished)
+		{
+			++d->gmcp_items_location;
+			d->gmcp_items_index = d->gmcp_items_page = 0;
+			d->gmcp_items_cursor = nullptr;
+		}
+	}
+	free(json);
+	return true;
+}
+// End owner item snapshots.
 
 // End combat snapshots.
 

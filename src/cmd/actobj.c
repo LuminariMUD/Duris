@@ -7521,7 +7521,7 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 		}
 		else if (IS_SET(k->extra_flags, ITEM_SECRET) && find_chance(ch))
 		{
-			REMOVE_BIT(k->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(k, k->extra_flags & ~(ITEM_SECRET));
 			if (CAN_SEE_OBJ(ch, k))
 			{ /*
 			   * Was it found?
@@ -7541,7 +7541,7 @@ void do_search(P_char ch, char *argument, int /*cmd*/)
 			else /*
 			      * Make it secret again
 			      */
-				SET_BIT(k->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(k, k->extra_flags | (ITEM_SECRET));
 		}
 	}
 

@@ -6949,7 +6949,7 @@ void spell_enchant_weapon(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 
 	if ((GET_ITEM_TYPE(obj) == ITEM_WEAPON) && !IS_SET(obj->extra2_flags, ITEM2_MAGIC))
 	{
-		SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(obj, obj->extra2_flags | (ITEM2_MAGIC));
 
 		for (i = 0, affected = FALSE; i < MAX_OBJ_AFFECT; i++)
 		{
@@ -7609,7 +7609,7 @@ void spell_dispel_invisible(int /*level*/, P_char ch, char * /*arg*/, int /*type
 		{
 			act("$p fades into visibility.", FALSE, ch, obj, 0, TO_CHAR);
 			act("$p fades into visibility.", TRUE, ch, obj, 0, TO_ROOM);
-			REMOVE_BIT(obj->extra_flags, ITEM_INVISIBLE);
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_INVISIBLE));
 		}
 	}
 	else
@@ -7719,8 +7719,8 @@ void spell_invisibility(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		{
 			act("&+L$p turns invisible.", FALSE, ch, obj, 0, TO_CHAR);
 			act("&+L$p turns invisible.", TRUE, ch, obj, 0, TO_ROOM);
-			SET_BIT(obj->extra_flags, ITEM_INVISIBLE);
-			REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_INVISIBLE));
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 		}
 	}
 	else
@@ -11802,7 +11802,7 @@ void spell_continual_light(int level, P_char ch, char * /*arg*/, int /*type*/, P
 			return;
 		}
 		act("&+W$p glows brilliantly!", FALSE, ch, obj, 0, TO_CHAR);
-		SET_BIT(obj->extra_flags, ITEM_LIT);
+		set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 	}
 	else
 	{
@@ -13885,13 +13885,17 @@ void spell_disintegrate(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 									"spell.disintegrate.burn.dmg",
 									3),
 								SPLDAM_FIRE, 0, &eqburnmsg);
-							obj->condition -= BOUNDED(
-								0,
-								number(1,
-								       (int)get_property(
-									       "spell.disintegrate.max.eq.dmg",
-									       10)),
-								(obj->condition - 1));
+							set_obj_condition(
+								obj,
+								obj->condition -
+									(BOUNDED(
+										0,
+										number(1,
+										       (int)get_property(
+											       "spell.disintegrate.max.eq.dmg",
+											       10)),
+										(obj->condition -
+										 1))));
 							act("$p cracks from the heat.", FALSE, ch,
 							    obj, victim, TO_VICT);
 							/* Getting rid of this spammy useless message crap - Jexni 7/17/08
@@ -15867,7 +15871,7 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		else if ((number(25, 59) < level) || IS_TRUSTED(ch))
 		{
 			act("&+bThe magic aura around&n $p&+b fades.", TRUE, ch, obj, 0, TO_CHAR);
-			REMOVE_BIT(obj->extra2_flags, ITEM2_MAGIC);
+			set_obj_extra2_flags(obj, obj->extra2_flags & ~(ITEM2_MAGIC));
 			obj->affected[0].location = APPLY_NONE;
 			obj->affected[0].modifier = 0;
 			obj->affected[1].location = APPLY_NONE;
@@ -16863,7 +16867,7 @@ void spell_darkness(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		if (IS_OBJ_STAT(obj, ITEM_LIT))
 		{
 			act("The illuminations of $p are negated.", FALSE, ch, obj, 0, TO_CHAR);
-			REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 			if (OBJ_WORN(obj) || OBJ_CARRIED(obj))
 				char_light(ch);
 			room_light(ch->in_room, REAL);
@@ -22401,7 +22405,7 @@ void spell_repair_one_item(int /*level*/, P_char ch, char * /*arg*/, int /*type*
 {
 	if (obj)
 	{
-		obj->condition = 100;
+		set_obj_condition(obj, 100);
 		act("$q glows a faint &+Yyellowish hue&n as a wave of energy covers its surface.",
 		    FALSE, ch, obj, 0, TO_CHAR);
 		act("$n's $q glows a faint &+Yyellowish hue&n as a wave of energy covers its surface.",
@@ -22534,8 +22538,8 @@ static bool apply_soulbind_metadata(P_char victim, P_obj obj, bool require_durab
 		SET_BIT(obj->extra_flags, ITEM_NORENT);
 		SET_BIT(obj->extra2_flags, ITEM2_CRUMBLELOOT);
 		SET_BIT(obj->extra2_flags, ITEM2_SOULBIND);
-		REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
-		REMOVE_BIT(obj->extra_flags, ITEM_INVISIBLE);
+		set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
+		set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_INVISIBLE));
 		SET_BIT(obj->extra_flags, ITEM_NOREPAIR);
 		REMOVE_BIT(obj->extra_flags, ITEM_NODROP);
 		act("&+W$n &+rbegins to chant loudly, calling forth the &+Bblood &+rof their enemies. &+W$n's &+rhands begin to &+Rg&+rl&+Ro&+rw &+Rbrightly &+ras drops of blood begin to form.\r\n"
@@ -22810,8 +22814,8 @@ void load_soulbind(P_char ch)
 	SET_BIT(obj->extra_flags, ITEM_NORENT);
 	SET_BIT(obj->extra2_flags, ITEM2_CRUMBLELOOT);
 	SET_BIT(obj->extra2_flags, ITEM2_SOULBIND);
-	REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
-	REMOVE_BIT(obj->extra_flags, ITEM_INVISIBLE);
+	set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
+	set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_INVISIBLE));
 	SET_BIT(obj->extra_flags, ITEM_NOREPAIR);
 	REMOVE_BIT(obj->extra_flags, ITEM_NODROP);
 

@@ -150,6 +150,86 @@ def combat_journey(client):
     return [fighting, departed, cleared, event]
 
 
+def item_journey(client):
+    drain(client)  # Respect the existing independent control token buckets.
+    before = len(telnet_packets(client))
+    send_telnet(client, "Core.Supports.Add", ["Char.Items 1"])
+    wait_telnet(client, "Duris.Capabilities", before, lambda state: "Char.Items" in state["supported"])
+    send_telnet(client, "Duris.Subscribe", ["Duris.Time 1", "Char.Items 1"])
+    def snapshot(location, after, predicate=lambda state: True):
+        return wait_telnet(client, "Char.Items.List", after, lambda state:
+            state["location"] == location and state["complete"] and predicate(state))
+    initial = snapshot("inv", before)
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    for _ in range(2):
+        client.send("load obj 15")
+        client.expect("You have created")
+    loaded = snapshot("inv", before, lambda state:
+        sum("banana" in row["description"] for row in state["items"]) >= 2)
+    bananas = [row for row in loaded["items"] if "banana" in row["description"]]
+    require(bananas[0]["selector"] != bananas[1]["selector"], "duplicate objects share a selector")
+    before = len(telnet_packets(client))
+    client.send("drop " + bananas[0]["selector"])
+    dropped = snapshot("inv", before, lambda state:
+        sum("banana" in row["description"] for row in state["items"]) == len(bananas) - 1)
+    require(int(dropped["revision"]) > int(loaded["revision"]), "drop did not replace inventory")
+    before = len(telnet_packets(client))
+    client.send("drop " + bananas[0]["selector"])
+    client.send("inventory")
+    client.expect("You are carrying:")
+    drain(client)
+    require(not any(name == "Char.Items.List" and int(state["revision"]) > int(dropped["revision"])
+                    for name, state in telnet_packets(client)[before:]), "stale selector caused a mutation")
+    before = len(telnet_packets(client))
+    client.send("load obj 677")
+    client.expect("You have created")
+    carrying_mace = snapshot("inv", before, lambda state:
+        any("small wooden mace" in row["description"] for row in state["items"]))
+    mace = next(row for row in carrying_mace["items"] if "small wooden mace" in row["description"])
+    before = len(telnet_packets(client))
+    client.send("wield " + mace["selector"])
+    equipped = snapshot("eq", before, lambda state:
+        any("small wooden mace" in row["description"] for row in state["items"]))
+    worn = next(row for row in equipped["items"] if "small wooden mace" in row["description"])
+    require(isinstance(worn["slot"], int), "equipment lost its worn slot")
+    before = len(telnet_packets(client))
+    client.send("remove " + worn["selector"])
+    removed = snapshot("eq", before, lambda state:
+        not any("small wooden mace" in row["description"] for row in state["items"]))
+
+    latest = next(state for name, state in reversed(telnet_packets(client))
+                  if name == "Char.Items.List" and state["location"] == "inv" and state["complete"])
+    mace = next(row for row in latest["items"] if "small wooden mace" in row["description"])
+    before = len(telnet_packets(client))
+    client.send("string obj " + mace["selector"] + " short a renamed wooden mace&+")
+    renamed = snapshot("inv", before, lambda state:
+        any(row["description"] == "a renamed wooden mace&+" for row in state["items"]))
+    mace = next(row for row in renamed["items"] if "renamed wooden mace" in row["description"])
+    client.send("string obj " + mace["selector"] + " short")
+    client.expect("Enter string")
+    before = len(telnet_packets(client))
+    client.send("an edited wooden mace")
+    drain(client)
+    require(not any(name == "Char.Items.List" and any("edited wooden mace" in row["description"]
+                        for row in state["items"]) for name, state in telnet_packets(client)[before:]),
+            "partial editor text was published")
+    client.send("/s")
+    edited = snapshot("inv", before, lambda state:
+        any(row["description"].strip() == "an edited wooden mace" for row in state["items"]))
+    snapshot("eq", before)
+    before = len(telnet_packets(client))
+    client.send("save")
+    client.expect(f"Save complete for {CHARACTER}.")
+    drain(client)
+    require(not any(name == "Char.Items.List" for name, _ in telnet_packets(client)[before:]),
+            "ordinary save invented an item revision")
+    send_telnet(client, "Duris.Subscribe", ["Duris.Time 1"])
+    wait_telnet(client, "Duris.Capabilities", before, lambda state: state["active"] == ["Duris.Time"])
+    return {"initial": initial, "loaded": loaded, "dropped": dropped,
+            "equipped": equipped, "removed": removed, "renamed": renamed, "edited": edited}
+
+
 def run(binary, evidence):
     with IsolatedServer(binary, {"DURIS_WEBSOCKET": "TRUE"}, combat_fixture) as server:
         client = None
@@ -220,6 +300,7 @@ def run(binary, evidence):
             require(all(combat[-1][key] == returned[key] for key in ("context", "process", "generation")) and
                     combat[-1]["bodyRevision"] == returned["character"]["bodyRevision"],
                     "combat event crossed the current lifecycle/body boundary")
+            items = item_journey(client)
             phases = []
             for hour, expected, phase in ((-1,23,"night"),(4,4,"dawn"),(9,9,"day"),(16,16,"dusk"),(0,0,"night")):
                 before = len(telnet_packets(client))
@@ -300,12 +381,27 @@ def run(binary, evidence):
             require(websocket_entry["character"]["name"] == SECOND_CHARACTER and websocket_entry["generation"] == "1", "WebSocket attachment has wrong lifecycle identity")
             require(websocket_entry["context"] != reentered["context"], "WebSocket reused the Telnet context")
             require(0 <= state["hour"] <= 23 and state["process"] == websocket_entry["process"], f"wrong WebSocket clock scope: {state}")
+            before = len(websocket.messages)
+            send_websocket(websocket, "Core.Supports.Add", ["Char.Items 1"])
+            wait_websocket(websocket, "Duris.Capabilities", lambda value: "Char.Items" in value["supported"], after=before)
+            send_websocket(websocket, "Duris.Subscribe", ["Duris.Time 1", "Char.Items 1"])
+            websocket_items = wait_websocket(websocket, "Char.Items.List", lambda value:
+                value["location"] == "inv" and value["complete"], after=before)
+            require(websocket_items["context"] == websocket_entry["context"] and
+                    websocket_items["generation"] == websocket_entry["generation"], "WebSocket items have stale entry context")
+            require(not any("edited wooden mace" in row["description"] for row in websocket_items["items"]),
+                    "old character inventory entered the new body")
+            before = len(websocket.messages)
+            send_websocket(websocket, "Char.Items.Get", [])
+            wait_websocket(websocket, "Char.Items.List", lambda value:
+                value["location"] == "inv" and value["complete"] and
+                int(value["revision"]) > int(websocket_items["revision"]), after=before)
             websocket.close()
             websocket = None
             server.shutdown()
             result = {"staff_phases": phases, "websocket_time": state,
                       "session_entries": [entry, reconnected, reentered, websocket_entry],
-                      "body_transitions": [switched, returned], "combat": combat, "binary": str(binary),
+                      "body_transitions": [switched, returned], "combat": combat, "items": items, "websocket_items": websocket_items, "binary": str(binary),
                       "source_sha256": hashlib.sha256((ROOT / "src/net/gmcp.c").read_bytes()).hexdigest(),
                       "scope": "Booted disposable lifecycle/control/time plus combat/tank/extraction via normal dispatch; not real Mudlet or overhead qualification."}
             if evidence:

@@ -274,7 +274,7 @@ int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
 
 	if (!IS_SET(arrow->extra2_flags, ITEM2_MAGIC) && arrow->condition > 70)
 	{
-		SET_BIT(arrow->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(arrow, arrow->extra2_flags | (ITEM2_MAGIC));
 	}
 
 	switch (cmd)
@@ -899,7 +899,8 @@ void do_fire(P_char ch, char *argument, int cmd)
 			{
 				if (number(0, 1))
 				{
-					missile->condition -= number(1, 5);
+					set_obj_condition(missile,
+							  missile->condition - (number(1, 5)));
 				}
 				scrap_missile = missile->condition <= 0;
 				if (!scrap_missile)
@@ -912,7 +913,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 			// 10% chance to damage shield.
 			if (shield_blocked && shield && !number(0, 9) && !IS_ARTIFACT(shield))
 			{
-				shield->condition -= number(1, 3);
+				set_obj_condition(shield, shield->condition - (number(1, 3)));
 				send_to_char("Your shield is damaged!\r\n", victim);
 				if (shield->condition < 1)
 				{

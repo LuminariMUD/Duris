@@ -1887,6 +1887,31 @@ static void mark_char_or_owner_dirty(P_char ch)
 	}
 }
 
+int set_obj_condition(P_obj object, int condition)
+{
+	const auto before = object->condition;
+	object->condition = condition;
+	if (before != object->condition)
+		gmcp_item_changed(object);
+	return object->condition;
+}
+
+void set_obj_extra_flags(P_obj object, unsigned flags)
+{
+	const auto before = object->extra_flags;
+	object->extra_flags = flags;
+	if (before != object->extra_flags)
+		gmcp_item_changed(object);
+}
+
+void set_obj_extra2_flags(P_obj object, unsigned flags)
+{
+	const auto before = object->extra2_flags;
+	object->extra2_flags = flags;
+	if (before != object->extra2_flags)
+		gmcp_item_changed(object);
+}
+
 // Give an object to a char
 void obj_to_char(P_obj object, P_char ch)
 {
@@ -1999,6 +2024,7 @@ void obj_to_char(P_obj object, P_char ch)
 		object->g_key = 1;
 	}
 
+	gmcp_items_changed(ch);
 	mark_char_or_owner_dirty(ch);
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_INVENTORY);
 }
@@ -2051,6 +2077,7 @@ void obj_from_char(P_obj object)
 	IS_CARRYING_N(object->loc.carrying)--;
 	object->z_cord = object->loc.carrying->specials.z_cord;
 
+	gmcp_items_changed(ch);
 	mark_char_or_owner_dirty(ch);
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_INVENTORY);
 
@@ -2146,6 +2173,7 @@ void equip_char(P_char ch, P_obj obj, int pos, int nodrop)
 							     SPELL_TYPE_SPELL, ch, 0));
 		}
 
+	gmcp_items_changed(ch);
 	mark_char_or_owner_dirty(ch);
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_EQUIPMENT);
 }
@@ -2189,6 +2217,8 @@ P_obj unequip_char(P_char ch, int pos, bool saving)
 	}
 	GET_CARRYING_W(ch) -= (encumbrance_weight(GET_OBJ_WEIGHT(obj)) / 2);
 
+	if (!saving)
+		gmcp_items_changed(ch);
 	mark_char_or_owner_dirty(ch);
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_EQUIPMENT);
 
@@ -2828,6 +2858,7 @@ static void mark_container_dirty(P_obj container)
 	while (OBJ_INSIDE(top) && top->loc.inside)
 		top = top->loc.inside;
 
+	gmcp_item_changed(top);
 	SET_BIT(top->runtime_flags, OBJ_RFLAG_DIRTY_CONTAINER);
 
 	P_char owner = NULL;
@@ -3102,6 +3133,7 @@ void obj_to_char_at_end(P_obj object, P_char ch)
 
 	if (object->g_key == 0 && IS_PC(ch) && GET_LEVEL(ch) < 57 && GET_PID(ch) < 10000000)
 		object->g_key = 1;
+	gmcp_items_changed(ch);
 }
 
 /*
@@ -4282,6 +4314,15 @@ P_char get_char_vis(P_char ch, const char *name)
 	return (0);
 }
 
+bool obj_name_matches(P_char viewer, P_obj object, const char *name)
+{
+	if (!object || !name)
+		return false;
+	if (!strncasecmp(name, "@i:", 3))
+		return gmcp_item_selector_matches(viewer, object, name);
+	return isname(name, object->name);
+}
+
 P_obj get_obj_in_list_vis(P_char ch, const char *name, P_obj list, bool no_tracks)
 {
 	P_obj i;
@@ -4302,8 +4343,9 @@ P_obj get_obj_in_list_vis(P_char ch, const char *name, P_obj list, bool no_track
 	{
 		for (i = list, j = 1; i && (j <= k); i = i->next_content)
 		{
-			if (isname(tmp, i->name) || (IS_PC(ch) && IS_TRUSTED(ch) &&
-						     atoi(name) > 0 && atoi(name) == OBJ_VNUM(i)))
+			if (obj_name_matches(ch, i, tmp) ||
+			    (IS_PC(ch) && IS_TRUSTED(ch) && atoi(name) > 0 &&
+			     atoi(name) == OBJ_VNUM(i)))
 			{
 				if (CAN_SEE_OBJ(ch, i) ||
 				    (IS_NOSHOW(i) && OBJ_VNUM(i) != VNUM_TRACKS))
@@ -4319,8 +4361,9 @@ P_obj get_obj_in_list_vis(P_char ch, const char *name, P_obj list, bool no_track
 	{
 		for (i = list, j = 1; i && (j <= k); i = i->next_content)
 		{
-			if (isname(tmp, i->name) || (IS_PC(ch) && IS_TRUSTED(ch) &&
-						     atoi(name) > 0 && atoi(name) == OBJ_VNUM(i)))
+			if (obj_name_matches(ch, i, tmp) ||
+			    (IS_PC(ch) && IS_TRUSTED(ch) && atoi(name) > 0 &&
+			     atoi(name) == OBJ_VNUM(i)))
 			{
 				if (CAN_SEE_OBJ(ch, i) || IS_NOSHOW(i))
 				{
@@ -4620,7 +4663,7 @@ P_obj get_obj_equipped(P_char ch, char *arg)
 		if (!ch->equipment[i])
 			continue;
 		// Skip items that don't match
-		if (!isname(tmp, ch->equipment[i]->name) &&
+		if (!obj_name_matches(ch, ch->equipment[i], tmp) &&
 		    !(IS_TRUSTED(ch) && (vnum > 0) && (vnum == OBJ_VNUM(ch->equipment[i]))))
 		{
 			continue;
@@ -4878,7 +4921,7 @@ int generic_find(const char *arg, int bitvector, P_char ch, P_char *tar_ch, P_ob
 	if (IS_SET(bitvector, FIND_OBJ_EQUIP))
 	{
 		for (found = FALSE, i = 0; i < MAX_WEAR && !found; i++)
-			if (ch->equipment[i] && isname(name, ch->equipment[i]->name))
+			if (ch->equipment[i] && obj_name_matches(ch, ch->equipment[i], name))
 			{
 				*tar_obj = ch->equipment[i];
 				found = TRUE;

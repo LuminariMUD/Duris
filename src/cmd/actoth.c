@@ -6244,7 +6244,7 @@ void try_to_bury(P_char ch, P_obj obj_object)
 	CharWait(ch, 20); /*
 	                   * 20 second delay
 	                   */
-	SET_BIT(obj_object->extra_flags, ITEM_BURIED);
+	set_obj_extra_flags(obj_object, obj_object->extra_flags | (ITEM_BURIED));
 	/*  writeSavedItem(obj_object);*/
 	return;
 }
@@ -6297,7 +6297,7 @@ void do_dig(P_char ch, char * /*argument*/, int /*cmd*/)
 		if (IS_SET(k->extra_flags, ITEM_BURIED) &&
 		    (number(1, 100) < ((GET_C_LUK(ch) / 2) + number(1, 50))))
 		{
-			REMOVE_BIT(k->extra_flags, ITEM_BURIED);
+			set_obj_extra_flags(k, k->extra_flags & ~(ITEM_BURIED));
 			/*      PurgeSavedItemFile(k);*/
 			act("You dig up $p!", FALSE, ch, k, 0, TO_CHAR);
 			act("$n digs up $p!", FALSE, ch, k, 0, TO_ROOM);
@@ -6326,7 +6326,7 @@ void try_to_hide(P_char ch, P_obj obj_object)
 
 	CharWait(ch, PULSE_VIOLENCE << 1);
 
-	SET_BIT(obj_object->extra_flags, ITEM_SECRET);
+	set_obj_extra_flags(obj_object, obj_object->extra_flags | (ITEM_SECRET));
 	return;
 }
 

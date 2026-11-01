@@ -14,3 +14,6 @@
 
 int can_prime_class_use_item(P_char, P_obj);
 bool get_char_room_target(P_char viewer, P_char target, char *out, size_t capacity);
+
+// Reserved protocol selectors never fall back to an ordinary keyword.
+bool obj_name_matches(P_char viewer, P_obj object, const char *name);

@@ -6172,10 +6172,11 @@ void do_restore(P_char ch, char *argument, int cmd)
 					continue;
 				for (i = 0; i < MAX_WEAR; i++)
 					if (victim->equipment[i])
-						victim->equipment[i]->condition =
-							100; // victim->equipment[i]->max_condition; wipe2011
+						set_obj_condition(
+							victim->equipment[i],
+							100); // victim->equipment[i]->max_condition; wipe2011
 				for (obj = victim->carrying; obj; obj = obj->next_content)
-					obj->condition = 100; // obj->max_condition; wipe2011
+					set_obj_condition(obj, 100); // obj->max_condition; wipe2011
 				send_to_char(
 					"&+gFrom out of nowhere, little gremlin-like creatures about 6 inches tall pop up.\n"
 					"&+gThey grab all of your equipment, and fiddle with it before returning to you.\n"
@@ -7184,12 +7185,12 @@ void do_secret(P_char ch, char *argument, int /*cmd*/)
 	{
 		if (IS_SET(obj->extra_flags, ITEM_SECRET))
 		{
-			REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 			send_to_char("SECRET bit removed.\n", ch);
 		}
 		else
 		{
-			SET_BIT(obj->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_SECRET));
 			send_to_char("SECRET bit set.\n", ch);
 		}
 	}

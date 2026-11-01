@@ -257,7 +257,7 @@ int fade_drusus(P_obj obj, P_char ch, int cmd, char *argument)
 		if (!strcmp(arg, "invisible"))
 		{
 			if (IS_OBJ_STAT(obj, ITEM_LIT)) /* Like to do this throughout */
-				REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 			if (time_info.day != obj->timer[0])
 			{
 				act("You say 'invisible'", FALSE, ch, 0, 0, TO_CHAR);
@@ -287,7 +287,7 @@ int fade_drusus(P_obj obj, P_char ch, int cmd, char *argument)
 		act("&+LA wisp of black shadow shoots forth from $p, &+Lhitting you in the eyes!&N",
 		    TRUE, ch, obj, vict, TO_VICT);
 		spell_pword_blind(35, ch, 0, SPELL_TYPE_SPELL, vict, 0);
-		SET_BIT(obj->extra_flags, ITEM_LIT);
+		set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 
 		return TRUE;
 	}
@@ -596,7 +596,7 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 				act("You say 'light'", FALSE, ch, 0, 0, TO_CHAR);
 				act("$p &+Rflares up!&N", FALSE, ch, obj, 0, TO_CHAR);
 				act("$n's $q &+Rflares up!&N", FALSE, ch, obj, 0, TO_ROOM);
-				SET_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 				return TRUE;
 			}
 		if (isname(arg, "dark"))
@@ -607,7 +607,7 @@ int flame_of_north_sword(P_obj obj, P_char ch, int cmd, char *arg)
 				act("The flames covering $p die down.", FALSE, ch, obj, 0, TO_CHAR);
 				act("The flames covering $n's $q die down.", FALSE, ch, obj, 0,
 				    TO_ROOM);
-				REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 				return TRUE;
 			}
 	}
@@ -826,7 +826,7 @@ int staff_of_power(P_obj obj, P_char ch, int cmd, char *arg)
 				act("You say 'light'", FALSE, ch, obj, NULL, TO_CHAR);
 				act("$p &+Rflares up!&N", FALSE, ch, obj, NULL, TO_CHAR);
 				act("$n's $q &+Rflares up!&N", FALSE, ch, obj, NULL, TO_ROOM);
-				SET_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 				return TRUE;
 			}
 		}
@@ -840,7 +840,7 @@ int staff_of_power(P_obj obj, P_char ch, int cmd, char *arg)
 				    TO_CHAR);
 				act("The flames covering $n's $q die down.", FALSE, ch, obj, NULL,
 				    TO_ROOM);
-				REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 				return TRUE;
 			}
 		}
@@ -893,7 +893,7 @@ int staff_of_blue_flames(P_obj obj, P_char ch, int cmd, char *arg)
 			act("$n's $q &+Rflares up!&N", FALSE, ch, obj, NULL, TO_ROOM);
 			REMOVE_BIT(obj->bitvector4, AFF4_GLOBE_OF_DARKNESS);
 			REMOVE_BIT(ch->specials.affected_by4, AFF4_GLOBE_OF_DARKNESS);
-			SET_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 			balance_affects(ch);
 			return TRUE;
 		}
@@ -904,7 +904,7 @@ int staff_of_blue_flames(P_obj obj, P_char ch, int cmd, char *arg)
 			act("You say 'dark' to $p.", FALSE, ch, obj, NULL, TO_CHAR);
 			act("The flames covering $p die down.", FALSE, ch, obj, NULL, TO_CHAR);
 			act("The flames covering $n's $q die down.", FALSE, ch, obj, NULL, TO_ROOM);
-			REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 			SET_BIT(obj->bitvector4, AFF4_GLOBE_OF_DARKNESS);
 			balance_affects(ch);
 			//      spell_globe_of_darkness(60, ch, NULL, SPELL_TYPE_SPELL, ch, 0);

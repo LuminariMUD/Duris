@@ -11,6 +11,7 @@
 #define TROPHY
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -135,7 +136,7 @@ void spellbind_committed(P_char ch, bool committed, const epic_command_result &,
 	int total = 0;
 	if (!number(0, 2) && !IS_TRUSTED(ch))
 	{
-		item->condition -= number(1, 20);
+		set_obj_condition(item, item->condition - (number(1, 20)));
 		act("...however, you damaged it a bit...", FALSE, ch, 0, 0, TO_CHAR);
 	}
 	else if (!number(0, 40) || IS_TRUSTED(ch))
@@ -466,6 +467,7 @@ void set_keywords(P_obj t_obj, const char *newKeys)
 	t_obj->name = NULL;
 	t_obj->str_mask |= STRUNG_KEYS;
 	t_obj->name = str_dup(newKeys);
+	gmcp_item_changed(t_obj);
 }
 
 void set_short_description(P_obj t_obj, const char *newShort)
@@ -477,6 +479,7 @@ void set_short_description(P_obj t_obj, const char *newShort)
 	t_obj->short_description = NULL;
 	t_obj->str_mask |= STRUNG_DESC2;
 	t_obj->short_description = str_dup(newShort);
+	gmcp_item_changed(t_obj);
 }
 
 void set_long_description(P_obj t_obj, const char *newDescription)
@@ -988,7 +991,7 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 		{
 			act("... and severely damage it.", FALSE, ch, 0, 0, TO_CHAR);
 			SET_BIT(item->extra_flags, ITEM_NOREPAIR);
-			item->condition = item->condition - number(1, 20);
+			set_obj_condition(item, item->condition - number(1, 20));
 		}
 		return;
 	}
@@ -1463,11 +1466,11 @@ void do_fix(P_char ch, char *argument, int /*cmd*/)
 	{
 		act("$N fiddles with $p, fixing it quickly!", TRUE, ch, item, ch, TO_ROOM);
 		act("You fiddle with $p, fixing it quickly!", TRUE, ch, item, 0, TO_CHAR);
-		item->condition = 100 - number(0, 10);
+		set_obj_condition(item, 100 - number(0, 10));
 	}
 	else
 	{
-		item->condition = item->condition - number(2, 30);
+		set_obj_condition(item, item->condition - number(2, 30));
 		if (item->condition < 1)
 		{
 			act("$N fiddles with $p, but fails, destroying it!", TRUE, ch, item, ch,
@@ -2057,7 +2060,7 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 		act("You utter a foul curse as you pour too much acid on the $q.\n"
 		    "Your $q was damaged as the acid eats into it!",
 		    FALSE, ch, item, 0, TO_CHAR);
-		item->condition = item->condition - number(5, 10);
+		set_obj_condition(item, item->condition - number(5, 10));
 
 		if (item->condition < 1)
 		{

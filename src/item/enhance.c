@@ -259,7 +259,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	// Remove Curse, Secret, add Invis
 	if (IS_SET(robj->extra_flags, ITEM_SECRET))
 	{
-		REMOVE_BIT(robj->extra_flags, ITEM_SECRET);
+		set_obj_extra_flags(robj, robj->extra_flags & ~(ITEM_SECRET));
 	}
 	if (IS_SET(robj->extra_flags, ITEM_NODROP))
 	{
@@ -268,7 +268,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	if (IS_SET(robj->extra_flags, ITEM_INVISIBLE))
 	{
-		REMOVE_BIT(robj->extra_flags, ITEM_INVISIBLE);
+		set_obj_extra_flags(robj, robj->extra_flags & ~(ITEM_INVISIBLE));
 	}
 	SET_BIT(robj->extra_flags, ITEM_NOREPAIR);
 	SUB_MONEY(ch, cost, 0);

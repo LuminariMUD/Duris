@@ -60,9 +60,21 @@ constexpr uint32_t GMCP_SUPPORT_CAPABILITIES = 1U << 0;
 constexpr uint32_t GMCP_SUPPORT_TIME = 1U << 1;
 constexpr uint32_t GMCP_SUPPORT_SESSION = 1U << 2;
 constexpr uint32_t GMCP_SUPPORT_COMBAT = 1U << 3;
+constexpr uint32_t GMCP_SUPPORT_ITEMS = 1U << 4;
 constexpr uint32_t GMCP_IMPLEMENTED_SUPPORTS = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_TIME |
-					       GMCP_SUPPORT_SESSION | GMCP_SUPPORT_COMBAT;
-constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME | GMCP_SUPPORT_COMBAT;
+					       GMCP_SUPPORT_SESSION | GMCP_SUPPORT_COMBAT |
+					       GMCP_SUPPORT_ITEMS;
+constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME | GMCP_SUPPORT_COMBAT |
+					   GMCP_SUPPORT_ITEMS;
+
+// Invalidate only protocol presentation; never cancel durable item work.
+void gmcp_items_changed(struct char_data *ch);
+void gmcp_item_changed(struct obj_data *object);
+void gmcp_item_edit_begin(struct descriptor_data *d, struct obj_data *object);
+void gmcp_item_edit_done(struct descriptor_data *d);
+void gmcp_item_edit_extracted(struct obj_data *object);
+bool gmcp_item_selector_matches(struct char_data *ch, struct obj_data *object,
+				const char *selector);
 
 // Observe real descriptor state/owning-player identity, then queue control before data.
 void gmcp_session_update(struct descriptor_data *d);

@@ -2694,9 +2694,9 @@ void do_open(P_char ch, char *argument, int /*cmd*/)
 					}
 				}
 				// Remove Curse, Secret, add Invis
-				REMOVE_BIT(robj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(robj, robj->extra_flags & ~(ITEM_SECRET));
 				REMOVE_BIT(robj->extra_flags, ITEM_NODROP);
-				REMOVE_BIT(robj->extra_flags, ITEM_INVISIBLE);
+				set_obj_extra_flags(robj, robj->extra_flags & ~(ITEM_INVISIBLE));
 
 				if (door == TURKEY_INNARDS_VNUM)
 				{

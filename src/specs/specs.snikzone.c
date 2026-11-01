@@ -55,7 +55,7 @@ int frost_elb_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 			act("Your $q &+Lhums loudly, and becomes &+Bbitterly &+Ccold&+W!&n", TRUE,
 			    ch, obj, 0, TO_CHAR);
 			spell_coldshield(50, ch, NULL, 0, ch, obj);
-			REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 			return TRUE;
 		}
 		else
@@ -69,7 +69,7 @@ int frost_elb_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 				act("Your $q &+Lhums loudly, and becomes &+Rscorching &+Yhot&+W!&n",
 				    TRUE, ch, obj, 0, TO_CHAR);
 				spell_fireshield(50, ch, NULL, 0, ch, obj);
-				REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 				return TRUE;
 			}
 		}
@@ -87,7 +87,7 @@ int frost_elb_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 			    TO_ROOM);
 			act("$p &+Lhums softly as it strikes &+W_YOU_&n", TRUE, victim, obj, 0,
 			    TO_CHAR);
-			SET_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_LIT));
 			return TRUE;
 		}
 	}

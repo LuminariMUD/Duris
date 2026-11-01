@@ -184,7 +184,7 @@ static void mark_reward_item(P_obj obj, const char *account, unsigned long long 
 	SET_BIT(obj->extra_flags, ITEM_NOSELL | ITEM_NODROP | ITEM_NOREPAIR);
 	REMOVE_BIT(obj->extra_flags, ITEM_NORENT);
 	SET_BIT(obj->extra2_flags, ITEM2_SOULBIND | ITEM2_ACCOUNT_BOUND | ITEM2_NOLOOT);
-	REMOVE_BIT(obj->extra_flags, ITEM_SECRET | ITEM_INVISIBLE);
+	set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET | ITEM_INVISIBLE));
 }
 
 static bool promote_reward_contents(P_obj container)

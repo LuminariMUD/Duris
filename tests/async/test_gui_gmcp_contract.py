@@ -19,6 +19,16 @@ args = parser.parse_args()
 sanitizers = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie'] if args.sanitize else []
 functions = [
     ('utility.c', 'string strip_ansi('),
+    ('condition.c', 'char *item_condition('),
+    ('handler.c', 'int set_obj_condition('),
+    ('handler.c', 'void set_obj_extra_flags('),
+    ('handler.c', 'void set_obj_extra2_flags('),
+    ('handler.c', 'int get_number('),
+    ('handler.c', 'bool isname(const char *str, const char *namelist)'),
+    ('handler.c', 'bool obj_name_matches('),
+    ('handler.c', 'P_obj get_obj_in_list_vis('),
+    ('handler.c', 'P_obj get_obj_equipped('),
+    ('actinf.c', 'P_obj get_object_in_equip('),
     ('ship_utils.c', 'char *ShipSlot::get_status_str('),
     ('ship_utils.c', 'const char *ShipSlot::get_position_str('),
     ('ship_utils.c', 'char *ShipSlot::get_description('),

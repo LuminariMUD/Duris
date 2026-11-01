@@ -1,6 +1,6 @@
 # Issue #498: GMCP state and command-result contracts
 
-Status: **control/time, lifecycle and combat ready in PRs #542/#544/#545/#546; owner items in progress**. Updated 2026-11-01.
+Status: **paused at owner request; PRs #542/#544/#545/#546 ready for review; owner items are an in-progress branch checkpoint**. Updated 2026-11-01.
 
 - Server work: [Duris #498](https://github.com/LuminariMUD/Duris/issues/498).
 - Client adoption and real-Mudlet qualification: [duris-client #26](https://github.com/LuminariMUD/duris-client/issues/26).
@@ -41,6 +41,37 @@ build compiler's installation. Its automatic GCC 16 header selection failed.
 The ignored `CLANG_TIDY` wrapper changes tooling only; checks remain enabled.
 
 ## Implementation progress - 2026-11-01
+
+- Paused at the owner's request after validating and preserving the owner-item
+  checkpoint. Resume from [the pause handoff](2026-11-01-issue-498-pause-handoff.md).
+  The branch is pushed without an owner-item PR because the nested/container and
+  complete persistence qualification below still belong to this issue.
+- Owner-item implementation is in progress on branch/issue-498-owner-items.
+  Char.Items 1/Subscribe now gates bounded inv/eq pages; Char.Items.Get [] requests
+  a resync through the existing bounded control parser and a separate token bucket.
+  The existing descriptor flush admits one <=128-inspected-row/16 KiB page per
+  participant, eight page attempts total, rotating participants fairly. Snapshot
+  cursors require the current body and a separate live mutation epoch; no save flag
+  controls delivery and no repository or command is called to serialize.
+  Opaque per-snapshot selectors bind the current owner/body/epoch and reuse native
+  object lookup/visibility gates. This avoids quadratic keyword-ordinal counting
+  for 3,000 duplicate objects, without a second object identity allocator or queue.
+  Canonical transfer/equip/unequip/append/container paths invalidate pending views;
+  live condition/visibility-flag writes use small setters that notify only actual
+  value changes. Creation-only writes were left to attachment invalidation.
+  The production-path ASan/UBSan harness passes 3,000 duplicate items,
+  inventory/equipment selector resolution, stale/cross-owner and reserved-namespace
+  rejection, bounded pages, empty/unavailable/hidden states, 100-descriptor fair
+  scheduling, coalescing, no-op setters, freed cursors, allocation/queue retry,
+  deferred-edit custody and zero JSON allocations for unchanged snapshots on both
+  transports. Both backends build. The disposable booted journey passes Telnet
+  load/drop/wield/remove, stale selector refusal, inline/deferred rename and
+  save without a false revision; WebSocket entry and resync also pass. The
+  committed-reward publication and locker/container regressions pass, and
+  the current GMCP parser passed 2,320,344 sanitizer fuzz executions. Nested
+  requests, complete get-all/give/persistence/reward-restoration qualification,
+  real-client adoption and matched overhead remain open. This branch is a WIP
+  checkpoint, not a completed item contract or review-ready owner-item PR.
 
 - Applied-damage slice (qualified for review): Duris.Combat 1 requires explicit support and
   interest; active consumers receive each outgoing applied hit in the existing

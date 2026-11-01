@@ -8306,7 +8306,7 @@ bool MobDestroyWall(P_char ch, P_obj wall, bool bTryHit)
 	if (IS_SET(wall->extra_flags, ITEM_SECRET))
 	{
 		bIsSecret = true;
-		REMOVE_BIT(wall->extra_flags, ITEM_SECRET);
+		set_obj_extra_flags(wall, wall->extra_flags & ~(ITEM_SECRET));
 	}
 	if (!CAN_SEE_OBJ(ch, wall))
 	{
@@ -8314,7 +8314,7 @@ bool MobDestroyWall(P_char ch, P_obj wall, bool bTryHit)
 	}
 	if (bIsSecret)
 	{
-		SET_BIT(wall->extra_flags, ITEM_SECRET);
+		set_obj_extra_flags(wall, wall->extra_flags | (ITEM_SECRET));
 	}
 	if (!bImpossible)
 	{

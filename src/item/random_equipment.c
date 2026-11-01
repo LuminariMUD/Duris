@@ -257,7 +257,7 @@ static void set_weapon_spell(P_obj obj, int source_level)
 		obj->value[5] = spells_data[spell].spell;
 		obj->value[6] = number(15, MAX(20, source_level - 10));
 		obj->value[7] = number(45, 60); // One cast per this many hits, on average.
-		SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(obj, obj->extra2_flags | (ITEM2_MAGIC));
 	}
 }
 
@@ -325,7 +325,7 @@ static void set_melee_values(P_obj obj, int slot, int material, int prefix, int 
 
 	if ((obj->affected[3].location != APPLY_NONE) || (obj->affected[2].location != APPLY_NONE))
 	{
-		SET_BIT(obj->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(obj, obj->extra2_flags | (ITEM2_MAGIC));
 	}
 }
 

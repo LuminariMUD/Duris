@@ -143,6 +143,15 @@ HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job
 	return player_save_submit_result::unavailable;
 }
 HARNESS_STUB void gmcp_char_vitals(P_char) {}
+HARNESS_STUB void gmcp_items_changed(P_char) {}
+HARNESS_STUB void gmcp_item_changed(P_obj) {}
+HARNESS_STUB void gmcp_item_edit_begin(P_desc, P_obj) {}
+HARNESS_STUB void gmcp_item_edit_done(P_desc) {}
+HARNESS_STUB void gmcp_item_edit_extracted(P_obj) {}
+HARNESS_STUB bool gmcp_item_selector_matches(P_char, P_obj, const char *)
+{
+	return false;
+}
 HARNESS_STUB void gmcp_combat_damage(P_char, P_char, int, const damage_messages *) {}
 HARNESS_STUB void gmcp_session_update(P_desc) {}
 HARNESS_STUB void gmcp_session_restored(P_desc) {}
@@ -307,4 +316,26 @@ HARNESS_STUB bool collector_transaction_player_busy(P_char)
 HARNESS_STUB bool shop_trade_transaction_player_busy(P_char)
 {
 	return false;
+}
+
+HARNESS_STUB int set_obj_condition(P_obj object, int condition)
+{
+	object->condition = condition;
+	gmcp_item_changed(object);
+	return object->condition;
+}
+HARNESS_STUB void set_obj_extra_flags(P_obj object, unsigned flags)
+{
+	object->extra_flags = flags;
+	gmcp_item_changed(object);
+}
+HARNESS_STUB void set_obj_extra2_flags(P_obj object, unsigned flags)
+{
+	object->extra2_flags = flags;
+	gmcp_item_changed(object);
+}
+
+HARNESS_STUB bool obj_name_matches(P_char, P_obj object, const char *name)
+{
+	return object && name && strncasecmp(name, "@i:", 3) && isname(name, object->name);
 }

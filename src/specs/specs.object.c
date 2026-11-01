@@ -7267,7 +7267,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			send_to_char("It was just an illusion!!\n", ch);
 			if (IS_SET(obj->extra_flags, ITEM_SECRET))
 			{
-				REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 			}
 		}
 		else
@@ -11206,7 +11206,7 @@ int ring_of_regeneration(P_obj obj, P_char ch, int cmd, char *arg)
 			act("$n's $q &nhums softly.", TRUE, ch, obj, 0, TO_NOTVICT);
 			act("Your $q &nhums softly.", TRUE, ch, obj, 0, TO_CHAR);
 			obj->timer[0] = curr_time;
-			obj->extra_flags &= ~ITEM_GLOW;
+			set_obj_extra_flags(obj, obj->extra_flags & ~ITEM_GLOW);
 			spell_heal(60, ch, 0, 0, ch, 0);
 			return TRUE;
 		}
@@ -11217,7 +11217,7 @@ int ring_of_regeneration(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("Your $q &+Wglows&n with a soft light.", TRUE, obj->loc.wearing, obj, 0,
 		    TO_CHAR);
-		obj->extra_flags |= ITEM_GLOW;
+		set_obj_extra_flags(obj, obj->extra_flags | ITEM_GLOW);
 	}
 
 	return FALSE;
@@ -11235,7 +11235,7 @@ int proc_whirlwinds(P_obj obj, P_char ch, int cmd, char *arg)
 	if ((!OBJ_WORN_POS(obj, WEAR_WRIST_R)) && (!OBJ_WORN_POS(obj, WEAR_WRIST_L)) &&
 	    (!OBJ_WORN_POS(obj, WEAR_WRIST_LR)) && (!OBJ_WORN_POS(obj, WEAR_WRIST_LL)))
 	{
-		obj->extra_flags &= ~ITEM_HUM;
+		set_obj_extra_flags(obj, obj->extra_flags & ~ITEM_HUM);
 		return FALSE;
 	}
 
@@ -11253,7 +11253,7 @@ int proc_whirlwinds(P_obj obj, P_char ch, int cmd, char *arg)
 			act("$n performs a slight gesture around $s forearm and suddenly gains &+Cspeed&n and &+Baccuracy&n!",
 			    TRUE, ch, obj, 0, TO_ROOM);
 			obj->timer[0] = curr_time;
-			obj->extra_flags &= ~ITEM_HUM;
+			set_obj_extra_flags(obj, obj->extra_flags & ~ITEM_HUM);
 			set_short_affected_by(ch, SKILL_WHIRLWIND, 3 * PULSE_VIOLENCE);
 			return TRUE;
 		}
@@ -11264,7 +11264,7 @@ int proc_whirlwinds(P_obj obj, P_char ch, int cmd, char *arg)
 	{
 		act("Your $q starts vibrating and humming quietly.", TRUE, obj->loc.wearing, obj, 0,
 		    TO_CHAR);
-		obj->extra_flags |= ITEM_HUM;
+		set_obj_extra_flags(obj, obj->extra_flags | ITEM_HUM);
 	}
 
 	return FALSE;
@@ -11711,7 +11711,7 @@ int blood_stains(P_obj obj, P_char /*ch*/, int cmd, char * /*argument*/)
 		// Change it up after 90 seconds
 		if (!IS_SET(obj->extra_flags, ITEM_NOSHOW) && (obj->timer[0] < (time(NULL) - 90)))
 		{
-			SET_BIT(obj->extra_flags, ITEM_NOSHOW);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_NOSHOW));
 			return TRUE;
 		}
 
@@ -12679,7 +12679,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 			    obj, NULL, TO_CHAR);
 			act("$n arms $p and hides it from the eyes of any trespassers.", FALSE, ch,
 			    obj, NULL, TO_ROOM);
-			SET_BIT(obj->extra_flags, ITEM_SECRET);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_SECRET));
 			set_obj_affected(obj, 1800 * WAIT_SEC, TAG_OBJ_DECAY, 0);
 			CharWait(ch, PULSE_VIOLENCE);
 			if (IS_PC(ch))
@@ -12721,7 +12721,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				snprintf(buf, 256, "$N has trespassed in %s!",
 					 world[ch->in_room].name);
 				act(buf, FALSE, tch, 0, ch, TO_CHAR);
-				REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 				obj->value[0] = 0;
 				disarm_obj_nevents(obj, NULL);
 
@@ -12740,7 +12740,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 		{
 			if (tch != NULL && ch->in_room != tch->in_room && !grouped(ch, tch))
 			{
-				REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 				obj->value[0] = 0;
 				disarm_obj_nevents(obj, NULL);
 
@@ -12771,7 +12771,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 					 "$N &+yhas sprung your &+rcrippling &+ytrap at&n %s!",
 					 world[ch->in_room].name);
 				act(buf, FALSE, tch, 0, ch, TO_CHAR);
-				REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 				obj->value[0] = 0;
 				disarm_obj_nevents(obj, NULL);
 
@@ -12804,7 +12804,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 		{
 			if (tch != NULL && ch->in_room != tch->in_room && !grouped(ch, tch))
 			{
-				REMOVE_BIT(obj->extra_flags, ITEM_SECRET);
+				set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_SECRET));
 				obj->value[0] = 0;
 				disarm_obj_nevents(obj, NULL);
 
@@ -12931,7 +12931,7 @@ int skill_beacon(P_obj obj, P_char ch, int cmd, char *argument)
 		act("Upon $n's touch a &+B&-Lcracking bolt&n shoots out from $p "
 		    "binding $m for a second in an immobilizing grip.",
 		    FALSE, ch, obj, 0, TO_ROOM);
-		REMOVE_BIT(obj->extra2_flags, ITEM2_MAGIC);
+		set_obj_extra2_flags(obj, obj->extra2_flags & ~(ITEM2_MAGIC));
 		// Maybe add a cooldown timer here instead of removing the magic flag?
 		return TRUE;
 	}

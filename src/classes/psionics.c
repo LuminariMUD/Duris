@@ -1524,8 +1524,8 @@ void spell_ectoplasmic_form(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		{
 			act("&+L$p turns invisible.", FALSE, ch, obj, 0, TO_CHAR);
 			act("&+L$p turns invisible.", TRUE, ch, obj, 0, TO_ROOM);
-			SET_BIT(obj->extra_flags, ITEM_INVISIBLE);
-			REMOVE_BIT(obj->extra_flags, ITEM_LIT);
+			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_INVISIBLE));
+			set_obj_extra_flags(obj, obj->extra_flags & ~(ITEM_LIT));
 		}
 	}
 	else
