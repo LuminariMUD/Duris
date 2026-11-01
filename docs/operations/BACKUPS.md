@@ -50,8 +50,8 @@ Set BACKUP_POLICY_FILE in the protected environment file. The launcher reads
 literal dotenv assignments only; it never evaluates shell commands, expansions,
 or substitutions. Quote values containing spaces. Explicitly configure all live
 authority roots, plus journal_roots.critical: the `CRITICAL_COMMAND_JOURNAL_DIR`
-directory, which holds the locker identification receipts since the persistence
-reset (neither journal is kept any more, and a policy that still names
+directory, which holds locker identification receipts and durable combat outcome
+evidence (neither retired journal is kept any more, and a policy that still names
 `journal_roots.players` is refused). The `critical-command.journal` and
 `critical-command.journal.tmp` an older server left there are carried as they are and
 never read; deleting them is optional. A configured `CRITICAL_COMMAND_JOURNAL_DIR` must
@@ -80,6 +80,27 @@ qualify the backup under their actual service restrictions before cutover.
 Flatfile capture holds the identity, critical-authority, account and
 artifact-mana locks, taken in that order, while it copies the complete durable
 file tree with its pending-transaction evidence.
+
+The `combat-intents` tree is copied **before** the authority capture. Its empty,
+owner-only `.service-lock` is supported even while the game holds the lock. Each
+nonzero, lowercase 32-digit operation ID names either a pending `.intent` or a
+completed `.recorded` command. Both are retained, bounded by the native command
+limit (8 MiB payload + 128 KiB envelope + 32-byte SHA-256), and their appended
+checksum is checked during capture. Unpublished atomic-write files matching
+`.<operation-id>.intent.tmp.<process-id>.<sequence>` are omitted; the game never
+replays them. Unknown files, nested directories, unsafe ownership/permissions,
+links, invalid sizes and bad checksums reject the generation. If a pending file
+is renamed while being copied, capture can fail safely and the next schedule
+evaluation retries; no partial generation publishes and no live evidence is edited.
+
+This ordering matters: a `.recorded` file already had its authority commit before
+the snapshot. An `.intent` captured before the snapshot stays pending in the
+generation even if the live game completes it during the dump. Restore replays
+that command if its commit missed the snapshot, or finds its existing operation
+receipt and applies it idempotently. Copying completed markers after the dump
+could suppress a command whose commit was absent from the snapshot. Completed
+commands remain available as reconciliation evidence and are never replayed just
+because they were backed up. Locker receipts require the opposite ordering:
 
 The receipt tree is copied after the authority capture, so a paid, failed or
 delivered receipt is at least as new as the database it is restored with: an
@@ -274,7 +295,13 @@ new socket. Flatfile restore verifies copied bytes before mutation, runs native
 authority replay, and validates existing account, snapshot, and world catalog bytes.
 Full player/domain loads reject lossy topology repair. Before boot, every copied
 locker receipt is decoded with the production codec; anything else in the receipt
-directory, or a receipt that fails, blocks qualification. Both modes then boot the
+directory, or a receipt that fails, blocks qualification. Combat `.intent` and
+`.recorded` files pass the same native bounded reader, SHA-256 check, command and
+payload decoders, nonzero admission-time check and filename/operation identity
+check used for pending recovery. Duplicate operation IDs, more than 128 pending
+intents and unexpected combat entries (including unpublished temporaries in a
+generation) block qualification. This preflight does not replay or rename evidence;
+the isolated server replays only pending intents. Both modes then boot the
 matching server against copied mini-world assets in a new user/network/PID namespace,
 exercise HTTP readiness, reject persistence startup failure messages and require
 clean shutdown; authority reconciliation runs again after the boot. Namespaces must be available;
@@ -320,10 +347,15 @@ recovery as a gameplay feature.
 ## Verification
 
     python3 tests/async/test_persistence_backup.py
+    python3 tests/async/test_combat_intent_backup.py
     python3 tests/async/test_backup_pfiles.py
     python3 tests/async/test_flatfile_backup_manifest.py
     python3 tests/async/test_flatfile_launcher.py
     DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py
+
+The combat-intent regression compiles the native writer/qualifier and exercises
+isolated repository replay on both sides of the snapshot, plus safe retry during
+a completion rename. It needs no mounts, live database or running game.
 
 The integration test uses synthetic identities, private MariaDB daemons, a
 bounded temporary restore mount, and isolated service namespaces. It requires

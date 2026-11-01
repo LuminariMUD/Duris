@@ -25,6 +25,32 @@ std::string filename(const critical_operation_id &operation)
 }
 }
 
+bool combat_outcome_intent_read(const std::string &root, const std::string &name,
+				critical_command *command)
+{
+	critical_operation_id operation;
+	std::vector<uint8_t> bytes;
+	combat_outcome_payload payload;
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	if (!command ||
+	    !((name.size() == 32 + strlen(".intent") && name.ends_with(".intent")) ||
+	      (name.size() == 32 + strlen(".recorded") && name.ends_with(".recorded"))) ||
+	    name.substr(0, 32).find_first_not_of("0123456789abcdef") != std::string::npos ||
+	    !critical_operation_id_from_hex(name.substr(0, 32).c_str(), &operation) ||
+	    flatfile_read(root, name, CRITICAL_COMMAND_MAX_ENCODED_BYTES + sizeof(digest), &bytes,
+			  nullptr) != flatfile_read_result::ok ||
+	    bytes.size() <= sizeof(digest))
+		return false;
+	const size_t size = bytes.size() - sizeof(digest);
+	SHA256(bytes.data(), size, digest);
+	return CRYPTO_memcmp(digest, bytes.data() + size, sizeof(digest)) == 0 &&
+	       critical_command_decode(bytes.data(), size, command) ==
+		       critical_command_codec_result::ok &&
+	       command->accepted_at_usec &&
+	       critical_operation_id_equal(command->operation_id, operation) &&
+	       combat_outcome_command_decode_payload(*command, &payload);
+}
+
 bool combat_outcome_intent_init(const char *parent, std::vector<critical_command> *retained)
 {
 	if (service_lock >= 0 || !parent || !*parent || !retained)
@@ -54,27 +80,8 @@ bool combat_outcome_intent_init(const char *parent, std::vector<critical_command
 		const std::string name = entry->d_name;
 		if (name[0] == '.' || name.ends_with(".recorded"))
 			continue; // Completed evidence and unpublished atomic-write temporaries.
-		critical_operation_id operation;
-		std::vector<uint8_t> bytes;
 		critical_command command;
-		combat_outcome_payload payload;
-		unsigned char digest[SHA256_DIGEST_LENGTH];
-		ok = name.size() == 32 + strlen(".intent") && name.ends_with(".intent") &&
-		     critical_operation_id_from_hex(name.substr(0, 32).c_str(), &operation) &&
-		     flatfile_read(directory, name,
-				   CRITICAL_COMMAND_MAX_ENCODED_BYTES + sizeof(digest), &bytes,
-				   nullptr) == flatfile_read_result::ok &&
-		     bytes.size() > sizeof(digest);
-		if (!ok)
-			break;
-		const size_t size = bytes.size() - sizeof(digest);
-		SHA256(bytes.data(), size, digest);
-		ok = CRYPTO_memcmp(digest, bytes.data() + size, sizeof(digest)) == 0 &&
-		     critical_command_decode(bytes.data(), size, &command) ==
-			     critical_command_codec_result::ok &&
-		     command.accepted_at_usec &&
-		     critical_operation_id_equal(command.operation_id, operation) &&
-		     combat_outcome_command_decode_payload(command, &payload);
+		ok = combat_outcome_intent_read(directory, name, &command);
 		if (ok)
 		{
 			ok = retained->size() < COMBAT_OUTCOME_INTENT_MAX;

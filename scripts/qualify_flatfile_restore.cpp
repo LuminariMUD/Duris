@@ -19,6 +19,7 @@
 #include "kingdom/kingdom_restore.h"
 #include "persistence/persistence_log.h"
 #include "economy/divine_trade_repository.h"
+#include "combat/combat_outcome_intent.h"
 
 // Native parsers may log diagnostics containing identities; this process reports
 // only aggregate success or a fixed failure code.
@@ -110,8 +111,33 @@ static void qualify_locker_receipts(const std::filesystem::path &directory)
 	}
 }
 
-// The critical-command journal directory holds the locker receipts and, from an older
-// server, the journal it was named for, which nothing reads any more.
+static void qualify_combat_intents(const std::filesystem::path &directory)
+{
+	struct stat status = {};
+	require(lstat(directory.c_str(), &status) == 0 && S_ISDIR(status.st_mode) &&
+		status.st_uid == geteuid() && !(status.st_mode & 0077));
+	std::set<std::string> operations;
+	size_t pending = 0;
+	for (const auto &entry : std::filesystem::directory_iterator(directory))
+	{
+		require(lstat(entry.path().c_str(), &status) == 0 && S_ISREG(status.st_mode) &&
+			status.st_uid == geteuid() && status.st_nlink == 1 &&
+			!(status.st_mode & 0077));
+		const auto name = entry.path().filename().string();
+		if (name == ".service-lock")
+		{
+			require(status.st_size == 0);
+			continue;
+		}
+		critical_command command;
+		require(combat_outcome_intent_read(directory.string(), name, &command));
+		require(operations.insert(name.substr(0, 32)).second);
+		if (entry.path().extension() == ".intent")
+			require(++pending <= COMBAT_OUTCOME_INTENT_MAX);
+	}
+}
+
+// Durable recovery evidence plus retired, unread critical-command journal files.
 static void qualify_receipts(const std::filesystem::path &candidate)
 {
 	require(candidate.is_absolute() &&
@@ -126,8 +152,13 @@ static void qualify_receipts(const std::filesystem::path &candidate)
 			require(entry.is_regular_file() && !entry.is_symlink());
 			continue;
 		}
-		require(name == "locker-identification");
-		qualify_locker_receipts(entry.path());
+		if (name == "combat-intents")
+			qualify_combat_intents(entry.path());
+		else
+		{
+			require(name == "locker-identification");
+			qualify_locker_receipts(entry.path());
+		}
 	}
 }
 

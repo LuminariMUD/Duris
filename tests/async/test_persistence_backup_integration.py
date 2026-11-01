@@ -13,6 +13,7 @@ All filesystem deletion is limited to this test's TemporaryDirectory. Startup
 timeouts (60s) may need investigation on heavily contended machines.
 """
 import json
+import functools
 import hashlib
 import struct
 import os
@@ -43,6 +44,28 @@ def sql(env, query=None, payload=None):
     return backup.run(args, phase="test", env=env, input=payload).decode().strip()
 
 
+FIXTURE = ROOT / "bin/tools/persistence_restore_fixture"
+
+
+@functools.cache
+def build_native_fixture():
+    native.build()
+    sources = []
+    for name in [*native.SOURCES, "frag_cap", "frag_cap_repository", "frag_cap_config",
+                 "flatfile_world_quest_history"]:
+        found = list((ROOT / "src").rglob(name + ".c"))
+        if len(found) != 1:
+            raise RuntimeError("ambiguous fixture source")
+        sources.append(str(found[0]))
+    subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
+                    "-D__NO_MYSQL__", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
+                    "-Isrc", "-Isrc/no_mysql",
+                    "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
+                    "tests/async/persistence_restore_fixture.cpp", *sources, "-lcrypto", "-lz", "-pthread",
+                    str(HARNESS_STUBS), "-o", str(FIXTURE)], cwd=ROOT, check=True)
+    return FIXTURE
+
+
 @unittest.skipUnless(os.environ.get("DURIS_RUN_BACKUP_INTEGRATION") == "1",
                      "requires explicit disposable Linux integration invocation")
 class PersistenceRecoveryIntegration(unittest.TestCase):
@@ -55,27 +78,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             if not (ROOT / "bin/server" / name).is_file():
                 raise RuntimeError("build both backend server binaries before integration")
         cls.old_umask = os.umask(0o077)
-        cls.fixture = ROOT / "bin/tools/persistence_restore_fixture"
-        cls.native_built = False
-
-    @classmethod
-    def build_native_fixture(cls):
-        if cls.native_built:
-            return
-        native.build()
-        sources = []
-        for name in native.SOURCES:
-            found = list((ROOT / "src").rglob(name + ".c"))
-            if len(found) != 1:
-                raise RuntimeError("ambiguous fixture source")
-            sources.append(str(found[0]))
-        subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Wpedantic", "-Werror",
-                        "-D__NO_MYSQL__", "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
-                        "-Isrc", "-Isrc/no_mysql",
-                        "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",
-                        "tests/async/persistence_restore_fixture.cpp", *sources, "-lcrypto", "-lz", "-pthread",
-                        str(HARNESS_STUBS), "-o", str(cls.fixture)], cwd=ROOT, check=True)
-        cls.native_built = True
+        cls.fixture = FIXTURE
 
     @classmethod
     def tearDownClass(cls):
@@ -100,7 +103,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
 
     @unittest.skipUnless(os.geteuid() == 0, "requires root to model a foreign-owned checkout")
     def test_isolated_service_boot_from_private_foreign_owned_checkout(self):
-        self.build_native_fixture()
+        build_native_fixture()
         candidate = self.p["restore_root"] / "candidate-private-checkout"
         candidate.mkdir(mode=0o700)
         backup.write_json(candidate / "ISOLATED_RESTORE", {"generation": "synthetic"})
@@ -123,7 +126,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         self.assertEqual(checkout.stat().st_mode & 0o777, 0o700)
 
     def test_flatfile_pending_transaction_account_player_domain_receipt_and_boot(self):
-        self.build_native_fixture()
+        build_native_fixture()
         live = self.base / "live"
         backup.run([str(self.fixture), "seed", str(live)], phase="test")
         journals = live.parent / "journals"
@@ -160,8 +163,37 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
         self.assertEqual(backup.inventory(generation), captured)
         self.assertIn(b"Entering game loop.", (candidate / "service.log").read_bytes())
 
+    def test_combat_intents_backup_restore_and_isolated_service_replay(self):
+        build_native_fixture()
+        live = self.base / "live"
+        backup.run([str(self.fixture), "seed", str(live)], phase="test")
+        backup.run([str(self.fixture), "seed-combat", str(live)], phase="test")
+        critical = self.base / "journals/critical"
+        self.p["journal_roots"] = {"critical": critical}
+        self.p["live_roots"] = [live, critical]
+        source_state = backup.inventory(live, exclude_locks=True)
+        source_journals = backup.inventory(critical)
+        with mock.patch.dict(os.environ, {"FLATFILE_STATE_DIR": str(live),
+                                          "CRITICAL_COMMAND_JOURNAL_DIR": str(critical)}):
+            result = backup.schedule(self.p, "flatfile-primary")
+        self.assertEqual(result["result"], "ok")
+        generation = self.p["root"] / result["generation"]
+        captured = backup.inventory(generation)
+        receipt = restore.restore(self.p, generation.name, self.ledger())
+        self.assertEqual(receipt["result"], "qualified")
+        candidate = self.p["restore_root"] / receipt["candidate"]
+        store = candidate / "journals/critical/combat-intents"
+        self.assertFalse(list(store.glob("*.intent")))
+        self.assertEqual({p.name for p in store.glob("*.recorded")},
+                         {"c1" + "00" * 15 + ".recorded", "c2" + "00" * 15 + ".recorded"})
+        backup.run([str(self.fixture), "recover-combat", str(candidate / "state")], phase="test")
+        self.assertEqual(backup.inventory(live, exclude_locks=True), source_state)
+        self.assertEqual(backup.inventory(critical), source_journals)
+        self.assertEqual(backup.inventory(generation), captured)
+        self.assertEqual(backup.status(self.p)["result"], "ok")
+
     def test_locker_receipt_qualification_rejects_corruption_and_unexpected_entries(self):
-        self.build_native_fixture()
+        build_native_fixture()
         for case in ("valid", "retired-journal", "corrupt", "wrong-pid", "zero-pid", "oversized",
                      "extra-file", "foreign-file", "nested-directory", "nonempty-lock",
                      "public-file", "public-directory", "symlink-file", "symlink-directory",
@@ -215,7 +247,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                         backup.run(command, phase="test")
 
     def test_valid_manifest_with_corrupt_lazy_catalog_never_qualifies(self):
-        self.build_native_fixture()
+        build_native_fixture()
         live = self.base / "live"
         backup.run([str(self.fixture), "seed", str(live)], phase="test")
         def kingdom_catalog(realm_id):
@@ -261,7 +293,7 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
                 else:
                     corrupt.write_bytes(original)
     def test_mariadb_full_dump_schema_history_values_and_isolated_service_boot(self):
-        self.build_native_fixture()
+        build_native_fixture()
         source = self.base / "live"
         source.mkdir(mode=0o700)
         with restore.private_database(source) as env:
@@ -294,6 +326,9 @@ class PersistenceRecoveryIntegration(unittest.TestCase):
             store = self.p["journal_roots"]["critical"] / "locker-identification"
             backup.run([str(self.fixture), "seed-receipt", str(store)], phase="test")
             receipt_bytes = (store / "42.receipt").read_bytes()
+            combat = self.p["journal_roots"]["critical"] / "combat-intents"
+            combat.mkdir(mode=0o700)
+            (combat / ".service-lock").touch(mode=0o600)
             with mock.patch.dict(os.environ, env, clear=True):
                 result = backup.backup(self.p, "mariadb-primary")
             generation = self.p["root"] / result["generation"]
