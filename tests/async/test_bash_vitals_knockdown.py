@@ -2,7 +2,7 @@
 """Regression coverage for bash knockdown Char.Vitals freshness and group observation (issue 504).
 
 When a character is knocked down by bash:
-1. The victim's posture is updated to sitting before melee_damage() is evaluated.
+1. Damage is evaluated against the original posture, then knockdown publishes the final posture.
 2. The GMCP Char.Vitals message dispatched from combat or knockdown reflects "position": "sitting"
    immediately, rather than leaving the client showing the pre-knockdown posture.
 3. Permitted group observers are flagged for an update and observe "position": "sitting" in Group.Status.
@@ -18,31 +18,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from _paths import ROOT, HARNESS_STUBS, extract_function, source
-
-ACTOFF = source("actoff.c").read_text(encoding="utf-8")
-
-
-def test_source_contracts() -> None:
-    """Verify source-level ordering and GMCP linkage in actoff.c."""
-    assert '#include "net/gmcp.h"' in ACTOFF, "actoff.c must include net/gmcp.h"
-
-    bash_src = extract_function("actoff.c", "void bash(P_char ch, P_char victim, bool _debug)")
-    # Ensure posture update occurs before melee_damage on the successful bash path
-    pos_sitting = bash_src.index("SET_POS(victim, POS_SITTING + GET_STAT(victim));")
-    melee_dam = bash_src.index("if (melee_damage(ch, victim, MAX(1, dmg), PHSDAM_TOUCH, 0) == DAM_NONEDEAD)")
-    assert pos_sitting < melee_dam, "SET_POS(victim, POS_SITTING) must precede melee_damage in bash()"
-
-    update_pos = bash_src.index("update_pos(victim);", pos_sitting)
-    assert update_pos < melee_dam, "update_pos(victim) must precede melee_damage in bash()"
-
-    # Ensure vitals dispatch occurs if damage was zero or posture deviated
-    assert "if (GET_HIT(victim) == hit_before || GET_POS(victim) != POS_SITTING)" in bash_src
-    assert "gmcp_char_vitals(victim);" in bash_src
-
-    # Ensure attacker failure branches update vitals
-    assert "update_pos(ch);\n\t\tgmcp_char_vitals(ch);" in bash_src
-
+from _paths import ROOT, HARNESS_STUBS, extract_function
 
 def test_native_bash_vitals_runtime() -> None:
     """Execute production bash with real GMCP serializers and verify packet freshness."""
@@ -77,6 +53,7 @@ def test_native_bash_vitals_runtime() -> None:
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "combat/damage.h"
+#include "combat/forced_movement.h"
 #include "magic/spells.h"
 #include "net/comm.h"
 #include "net/gmcp.h"
@@ -123,6 +100,8 @@ void gmcp_send(struct descriptor_data *desc, const char *pkg, const char *data)
 static bool force_bash_hit = true;
 static bool zero_damage_ward = false;
 static int melee_damage_calls = 0;
+static int damage_entry_position = -1;
+static P_char tackle_target = nullptr;
 
 int number(int low, int high)
 {
@@ -147,7 +126,19 @@ bool good_for_skewering(P_obj) { return false; }
 float takedown_check(P_char, P_char, float chance, int, ulong) { return chance; }
 int CountNumGreaterElementalFollowersInSameRoom(P_char) { return 0; }
 void engage(P_char, P_char) {}
-void CharWait(P_char, int) {}
+void CharWait(P_char ch, int) { SET_BIT(ch->specials.act2, PLR2_WAIT); }
+P_char ParseTarget(P_char, char *) { return tackle_target; }
+void set_fighting(P_char ch, P_char victim) { ch->specials.fighting = victim; }
+void unlink_char(P_char, P_char, ush_int) {}
+using forced_departure_message = std::pair<uint64_t, std::string>;
+static std::vector<forced_departure_message> snapshot_forced_departure(P_char, P_char, int, bool, bool)
+{ assert(false); return {}; }
+static void deliver_forced_departure(const std::vector<forced_departure_message> &, P_char, P_char, int, bool)
+{ assert(false); }
+static void forced_rebound_messages(P_char, P_char, forced_block, bool) { assert(false); }
+forced_move_result move_forced_pair(P_char, P_char, int, const std::function<void()> &)
+{ assert(false); return {forced_move_status::interrupted}; }
+affected_type *affect_to_char(P_char, affected_type *) { return nullptr; }
 void set_short_affected_by(P_char, int, int) {}
 bool affected_by_spell(P_char, int) { return false; }
 int GET_CHAR_SKILL_P(P_char, int) { return 90; }
@@ -194,6 +185,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int, struct damage_messag
 {
     (void)ch;
     ++melee_damage_calls;
+    damage_entry_position = GET_POS(victim);
     if (zero_damage_ward)
     {
         // 0 damage dealt: returns DAM_NONEDEAD without calling gmcp_char_vitals
@@ -226,12 +218,16 @@ int main()
     desc_attacker.gmcp_enabled = 1;
 
     // Characters
+    pc_only_data attacker_pc{};
+    pc_only_data victim_pc{};
     char_data attacker{};
+    attacker.only.pc = &attacker_pc;
     attacker.desc = &desc_attacker;
     attacker.player.name = const_cast<char*>("Attacker");
     SET_POS(&attacker, POS_STANDING + STAT_NORMAL);
 
     char_data victim{};
+    victim.only.pc = &victim_pc;
     victim.desc = &desc_victim;
     victim.player.name = const_cast<char*>("Victim");
     victim.points.hit = 100;
@@ -267,20 +263,15 @@ int main()
 
     assert(GET_POS(&victim) == POS_SITTING);
     assert(melee_damage_calls == 1);
+    assert(damage_entry_position == POS_STANDING);
     assert(!gmcp_deliveries[&desc_victim].empty());
 
-    // Check last Char.Vitals packet for victim
-    bool found_vitals = false;
+    // Damage may publish the original posture; the final packet must contain knockdown.
+    std::string last_vitals;
     for (const auto &[pkg, data] : gmcp_deliveries[&desc_victim])
-    {
         if (pkg == GMCP_PKG_CHAR_VITALS)
-        {
-            found_vitals = true;
-            assert(data.find("\"position\":\"sitting\"") != std::string::npos);
-            assert(data.find("\"position\":\"standing\"") == std::string::npos);
-        }
-    }
-    assert(found_vitals);
+            last_vitals = data;
+    assert(last_vitals.find("\"position\":\"sitting\"") != std::string::npos);
 
     // Group observer must have last_group_update flagged
     assert(desc_observer.last_group_update == 1);
@@ -310,7 +301,8 @@ int main()
     bash(&attacker, &victim, false);
 
     assert(GET_POS(&victim) == POS_SITTING);
-    found_vitals = false;
+    assert(damage_entry_position == POS_STANDING);
+    bool found_vitals = false;
     for (const auto &[pkg, data] : gmcp_deliveries[&desc_victim])
     {
         if (pkg == GMCP_PKG_CHAR_VITALS)
@@ -343,11 +335,44 @@ int main()
     }
     assert(found_attacker_vitals);
 
-    std::printf("Bash vitals knockdown native runtime tests passed\n");
+    // An idle NPC with a standing default must stay down when it topples.
+    npc_only_data npc_data{};
+    npc_data.default_pos = POS_STANDING + STAT_NORMAL;
+    char_data npc{};
+    npc.specials.act = ACT_ISNPC;
+    npc.only.npc = &npc_data;
+    npc.points.hit = npc.points.max_hit = 100;
+    SET_POS(&npc, POS_STANDING + STAT_NORMAL);
+    SET_POS(&victim, POS_SITTING + STAT_NORMAL);
+    const int calls_before = melee_damage_calls;
+    bash(&npc, &victim, false);
+    assert(GET_POS(&npc) == POS_SITTING);
+    assert(!CAN_ACT((&npc)));
+    assert(melee_damage_calls == calls_before);
+
+    // Tackle starts against an idle NPC, before combat or wait can prevent
+    // update_pos from restoring its default stance. Avoid movement via the
+    // existing guild-room rule; this case exercises the command itself.
+    rooms[0].room_flags = ROOM_GUILD;
+    npc.specials.act2 = 0;
+    npc.specials.fighting = nullptr;
+    SET_POS(&npc, POS_STANDING + STAT_NORMAL);
+    SET_POS(&attacker, POS_STANDING + STAT_NORMAL);
+    attacker.specials.fighting = nullptr;
+    tackle_target = &npc;
+    force_bash_hit = true;
+    char target[] = "npc";
+    do_tackle(&attacker, target, 0);
+    assert(GET_POS(&npc) == POS_SITTING);
+    assert(!CAN_ACT((&npc)));
+    assert(IS_FIGHTING(&attacker));
+
+    std::printf("Bash/tackle vitals knockdown native runtime tests passed\n");
     return 0;
 }
 '''
 
+    tackle_fn = extract_function("actoff.c", "void do_tackle(")
     bash_fn = extract_function("actoff.c", "void bash(P_char ch, P_char victim, bool _debug)")
     update_pos_fn = extract_function("combat/fight.c", "void update_pos(P_char ch)")
     json_build_char_vitals_fn = extract_function("core/json_utils.c", "char *json_build_char_vitals(struct char_data *ch)")
@@ -369,6 +394,7 @@ int main()
                 gmcp_send_group_status_fn,
                 update_pos_fn,
                 bash_fn,
+                tackle_fn,
                 driver,
             )),
             encoding="utf-8",
@@ -382,6 +408,8 @@ int main()
                 "-Werror",
                 "-Wno-unused-parameter",
                 "-Wno-unused-variable",
+                *(["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"]
+                  if os.environ.get("SANITIZE") == "1" else []),
                 f"-I{ROOT / 'src'}",
                 str(harness),
                 str(HARNESS_STUBS),
@@ -396,6 +424,5 @@ int main()
 
 
 if __name__ == "__main__":
-    test_source_contracts()
     test_native_bash_vitals_runtime()
     print("All bash vitals knockdown tests passed")
