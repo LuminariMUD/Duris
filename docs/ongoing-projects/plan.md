@@ -19,16 +19,17 @@ and health success inside the configured two-hour recovery-point objective (RPO)
 documentation and test files are unchanged at this baseline. This plan therefore
 retains that implementation and targets the remaining verification and operational
 acceptance. The issue's receipt-only description describes its older incident
-checkout, not current master. No production state was inspected for this plan;
-the issue's October 31 inventory, ages, capacity and service status are historical
-reports, not fresh measurements. PR #551 also explicitly leaves production
-acceptance pending.
+checkout, not current master. The fresh qualification and read-only production
+inspection below supersede the planning-time reliance on #551's reported tests.
+All six issue acceptance criteria now have evidence. No additional runtime fix
+was needed; #551's implementation is retained.
 
 **Non-goals:** no storage migration, schema or policy changes, replacement backup
 system, retry/backoff redesign, replication setup, enabling recurring restore
 drills, retention changes, live evidence deletion, full burn-in or unrelated
-combat behavior changes. Production operations require separate authorization;
-this request covers planning, an isolated checkout and publishing the plan.
+combat behavior changes. This delivery qualifies the existing implementation;
+production inspection is read-only and invokes no backup, deployment, migration,
+restart, restore, retention or configuration operation.
 
 ## Verified code paths and storage contract
 
@@ -82,113 +83,153 @@ this request covers planning, an isolated checkout and publishing the plan.
   capture; a direct `backup` invocation alone does not advance that schedule.
   `status()` measures RPO age from the newest generation's capture-start time.
 
-## Delivery steps and acceptance coverage
+## Execution and proof (2026-11-01)
 
-1. **Retain the delivered implementation.** The first five issue checkboxes have
-   paths in current master: storage validation and transient handling in
-   `persistence_backup.py`; ordering and replay in the capture/restore/native
-   owners above; focused tests below; updated `BACKUPS.md`. Do not reimplement
-   the old validator or cherry-pick #551 again. If later evidence exposes a gap
-   in an acceptance criterion, make the smallest change in its existing owner
-   and extend its existing regression before revising this plan's status.
+1. **Retained the completed implementation.** #551 already supplies the storage
+   contract, transient handling, capture ordering, shared native qualifier and
+   `BACKUPS.md` update. Code inspection and fresh tests found no additional
+   implementation defect. Reapplying that fix or adding another validator would
+   duplicate working code. The relevant production source hashes match this
+   checkout's capture, restore, intent-reader and native qualifier sources.
 
-2. **Verify with the existing fixtures and preserve evidence.** Fresh focused
-   checks on this baseline passed:
+2. **Built both server backends locally.** These commands passed with the normal
+   warnings-as-errors profile and separate backend object directories:
+
+   ```sh
+   make -C src -j6
+   make -C src -j6 PERSISTENCE_BACKEND=flatfile \
+     DMS_BINARY=/home/aiwithapex/projects/duris-issue-537-plan/bin/server/dms_restore_flatfile
+   ```
+
+   All compiled artifacts remain ignored under `bin/`. The server hashes are
+   `7defdd7dad77c20945e9ea65ee0f8d9fe420c723dc9da00eb861d05504ffe99a`
+   (MariaDB) and
+   `30993ef249c1f90a596a3957ff942870148bd43930e3650f6684af5c3d30c8a3`
+   (flatfile).
+
+3. **Passed all 72 focused checks.**
 
    ```sh
    python3 tests/async/test_combat_intent_backup.py -v
    python3 tests/async/test_persistence_backup.py
    python3 tests/async/test_backup_review_remediations.py
+   python3 tests/async/test_backup_pfiles.py
+   python3 tests/async/test_flatfile_backup_manifest.py
    ```
 
-   Results: **7 + 43 + 17 = 67 passed**. The first command builds the native
-   writer/qualifier fixture and proves held boot-lock capture, pending/completed
-   bytes, recognized temporary omission, invalid-entry rejection, failed rename
-   cleanup/retry, schedule/health success, and representative backup/restore
-   journeys. Native repository outcomes are `applied` when the commit missed
-   the authority snapshot and `already_applied` when it preceded it; repeated
-   replay is idempotent and source/generation inventories stay unchanged.
+   Counts: 7 + 43 + 17 + 2 + 3. The native combat fixture proves held boot-lock
+   capture, pending/completed evidence, exact temporary omission, unsafe-entry
+   rejection, failed rename cleanup/retry and schedule/health success. Its
+   backup/restore journey proves `applied` when the commit missed the authority
+   snapshot and `already_applied` when it preceded it; repeated replay preserves
+   authority values and leaves source/generation inventories unchanged.
 
-   Limits: that focused journey substitutes candidate service boot and the
-   dedicated-filesystem guard. Its MariaDB ordering case uses synthetic dump
-   bytes. It does not independently prove a real MariaDB import or game boot.
-   PR #551 records both backend builds and these two real disposable integration
-   tests passing for the unchanged implementation:
+4. **Passed both real disposable restore integration cases.** Run as local WSL
+   root inside a private mount namespace, with newly built executables, private
+   MariaDB daemons, bounded tmpfs restore storage and isolated service namespaces:
 
    ```sh
-   DURIS_RUN_BACKUP_INTEGRATION=1 python3 tests/async/test_persistence_backup_integration.py \
-     PersistenceRecoveryIntegration.test_combat_intents_backup_restore_and_isolated_service_replay \
-     PersistenceRecoveryIntegration.test_mariadb_full_dump_schema_history_values_and_isolated_service_boot
+   unshare --mount --propagation private env DURIS_RUN_BACKUP_INTEGRATION=1 \
+     python3 tests/async/test_persistence_backup_integration.py -v \
+       PersistenceRecoveryIntegration.test_combat_intents_backup_restore_and_isolated_service_replay \
+       PersistenceRecoveryIntegration.test_mariadb_full_dump_schema_history_values_and_isolated_service_boot
    ```
 
-   Reuse that reported integration evidence for this documentation-only change;
-   it was not rerun here. If an implementation fix or relevant dependency change
-   makes it stale, build both server backends and the native fixture, then rerun
-   these selected cases on disposable Linux with mount/unshare privileges,
-   private MariaDB daemons and bounded restore storage as documented in
-   `test_persistence_backup_integration.py`. Never load a production environment
-   for those tests. For any C/C++ change run `./scripts/format.sh --check` and
-   `make -C src`, plus the affected native tests. No hosted CI wait is required.
+   Both passed in 153.522 seconds. This is fresh evidence, not a reuse of #551's
+   results. Actual restored service boots replay pending combat into recorded
+   evidence, retain completed evidence, and preserve source/generation bytes.
+   The MariaDB case verifies dump/import, schema history and value reconciliation.
+   No checkout environment or existing authority was used. The two compiled
+   native fixture outputs were returned to the local checkout owner's ownership.
 
-3. **After explicit production authorization, establish the actual rollout state.**
-   Read the effective backup/health units, their checkout and environment-file
-   paths, current policy, journal metadata, newest generation/status receipt and
-   `schedule.json.completed`. Check whether the effective backup scripts already
-   include #551 and whether any changed native qualifier/server executable needs
-   building or deployment. Follow the normal deployment procedure only for the
-   changes still absent; a source merge does not prove deployment. Preserve
-   private configuration and all live evidence. No database migration is required
-   by #551. Do not delete/unlock `.service-lock` or manufacture combat events.
+5. **Qualified gameplay on both backends.** The existing default combat journeys
+   passed using the freshly built binaries and disposable accounts/characters:
 
-4. **Prove recovery through the scheduled path.** Let a due timer evaluation run,
-   or invoke its existing `schedule` entry point only within the authorized
-   operation. Record the before/after generation IDs, capture-start/completion
-   times, manifest/readback verification and completion receipt, then establish:
+   ```sh
+   python3 tests/async/test_flatfile_player_repository.py \
+     --build-inspector "$PWD/bin/tests/coin-death-inspector"
+   python3 tests/async/test_flatfile_combat_journey.py \
+     --variant default "$PWD/bin/server/dms_restore_flatfile"
+   bash tests/async/with_disposable_mariadb.sh \
+     python3 tests/async/test_mysql_combat_journey.py \
+       --server "$PWD/bin/server/dms_new" --one
+   ```
 
-   - A new complete generation publishes successfully with `result: ok`, and its
-     combat evidence satisfies the supported storage contract.
-   - `schedule.json.completed` advances for that successful due capture, and a
-     subsequent evaluation follows the configured interval instead of retrying
-     capture every minute.
-   - Both the effective backup and health units finish successfully and their
-     outputs report `ok`; the newest capture-start age is within the configured
-     7,200-second RPO. Check actual results, not merely timer activation.
-   - The game remains healthy. Retain known-good generations and apply only the
-     already-approved retention policy. If the run fails, retain redacted error
-     evidence and investigate the actual failing phase without relaxing validation.
+   They exercise account/character creation, real NPC combat, death, corpse loot,
+   saves, reconnect and a server restart without duplicate consequences. The
+   MariaDB journey put 12 items into the first player corpse and confirmed stable
+   state after the second death/restart. The flatfile journey verified wallet,
+   inventory, death count, experience and level across restart/re-entry.
 
-5. **Close only with operational evidence.** Post the authorized rollout revision,
-   new generation, schedule advancement, UTC check times and backup/health results
-   to #537. Keep it open until these facts are recorded; do not use a closing
-   keyword on the plan PR. A production restore drill, replication and any
-   reconciliation are separate decisions; the isolated fixture supplies the
-   requested representative backup/restore proof.
+   Real PvP qualification also passed on both backends after one `make world`
+   preparation:
 
-## Files and ablation decisions
+   ```sh
+   python3 tests/async/test_frag_cap_journey.py --backend flatfile \
+     --server "$PWD/bin/server/dms_restore_flatfile"
+   bash tests/async/with_disposable_mariadb.sh \
+     python3 tests/async/test_frag_cap_journey.py --backend mariadb \
+       --server "$PWD/bin/server/dms_new"
+   ```
 
-This plan delivery changes `docs/ongoing-projects/plan.md` and preserves its prior
-#498 handoff unchanged as [plan-issue-498.md](plan-issue-498.md). No runtime code,
-configuration, credentials, player data or operational state changes are needed.
-The original dirty checkout and existing #537 implementation worktree are left
-untouched.
+   Both reached `PASS`: ordinary PvP produced the durable receipt, the maintenance
+   clock consumed the result, shared caps/banked XP progressed correctly, and
+   saved state survived restart. The existing quiet/circle result checks passed.
+   This exercises the real combat caller alongside the native backup fixtures.
 
-For any demonstrated remaining defect, edit only the existing capture/restore,
-native reader/qualifier or focused test owner identified above; update
-`BACKUPS.md` only if its contract changes. Keep both durable file types, private
-metadata checks, pre-snapshot combat capture and native qualification: removing
-any loses a traced acceptance requirement. Reuse the existing retry path, fixture
-and reported integration results. Drop duplicate implementation, new validators,
-new test infrastructure and scheduler redesign: current paths already satisfy
-those needs. No acceptance criterion is dropped to reduce scope.
+6. **Inspected production without changing it.** At 19:00:31 UTC the actual
+   production checkout was `0a972227636b66c4e0c98900b1120c25ac181353`, running
+   `mariadb-primary`. Effective user units use that checkout's `.env` and invoke
+   the existing wrapper's `schedule` / `status --require-drill` entry points.
+   Both backup and health last exited 0 with `Result=success` and JSON `ok`.
+   The game unit remained active/running. Readback verified all inventory sizes,
+   hashes, schema-manifest hash and dump structure for generation
+   `01793556665833190526-61018f101094472e870be950f20de735`.
+   Its captured combat tree contains the supported empty lock. The completion
+   receipt is `ok`; its completion and `schedule.json.completed` both equal
+   `1793556705`. Capture age was 2,966 seconds against the 7,200-second RPO.
+   Policy remains hourly capture, no replica, and recurring restore drills off.
 
-## Estimate for me to finish implementation
+   At 19:08:20 UTC the game health endpoint returned HTTP 200 with
+   `{"status":"healthy","persistence":"ready"}`. The production host has no
+   `bin/tools/qualify_flatfile_restore` executable; a restore on that host must
+   first run the existing documented `python3 scripts/build_restore_qualifier.py`
+   step. This is a restore prerequisite, not evidence of a production restore
+   test. The fresh real restore proof above used the locally built qualifier.
+   No production build or restore was performed and disabled drill policy was
+   preserved.
 
-The code and documentation implementation is already merged; **no additional
-coding is currently indicated**. Fresh focused verification is complete above.
-Allow **30-60 minutes of my active work** for the remaining authorized production
-state check, any script/qualifier update still needed, one due capture, health
-checks and issue evidence, excluding approval and time waiting for the configured
-schedule. If a fresh isolated full integration run is needed, allow another
-**45-90 minutes**, including backend builds. If live evidence reveals a new defect,
-re-estimate from that concrete failure. These are estimates, not evidence that
-production is recovered.
+   **Observed scheduled recovery directly.** The existing timer published
+   `01793560330608382493-e572569306ac47759ede58b927e88313`, captured
+   19:12:10-19:12:50 UTC, with completion `ok`. Readback verified its complete
+   inventory hashes/sizes, schema-manifest hash and dump structure; its combat
+   tree contains the supported empty lock. `schedule.json.completed` advanced
+   from `1793556705` to `1793560370`, matching the new completion receipt.
+   Subsequent backup and health evaluations returned JSON `ok` (19:13:10 UTC),
+   following the normal hourly capture cadence rather than recapturing every
+   minute. At 19:14:07 UTC the new capture-start age was 117 seconds, inside the
+   7,200-second RPO. Both units again exited 0 with `Result=success` at 19:14:08;
+   the game health endpoint still returned healthy/persistence-ready at 19:14:36.
+   Earlier generations remain present. No manual capture or operational script
+   was invoked and no production state was changed by this work.
+
+## Files, ablation and completion
+
+This delivery changes `docs/ongoing-projects/plan.md` and preserves its previous
+#498 handoff unchanged as [plan-issue-498.md](plan-issue-498.md). It adds no runtime
+code, options, configuration or test infrastructure. Fresh executable evidence
+replaces the planning-time assumption that existing reported proof was sufficient.
+The original dirty checkout and existing #537 implementation worktree are untouched.
+
+Keep both durable file types, private metadata checks, pre-snapshot combat capture
+and native qualification: removing any loses a traced acceptance requirement.
+Reuse existing fixtures and the scheduled retry path. Drop duplicate code,
+validator layers and scheduler redesign because existing paths meet the outcome.
+No acceptance criterion is dropped. Local build/qualification evidence is ignored
+under `bin/qualification/issue537/`; synthetic game/database state is cleaned by
+its owning tests. No full burn-in or hosted CI wait is part of this scoped work.
+
+Implementation, focused tests, real isolated restores, both-backend gameplay and
+production publication/schedule/health acceptance are complete. Publish this
+record on #537 and in PR #556 for review. No deployment, production restore,
+replica setup or recurring drill activation is included in this delivery.
