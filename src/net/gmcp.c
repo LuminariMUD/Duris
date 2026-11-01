@@ -2105,7 +2105,8 @@ static cJSON *gmcp_item_row(P_char ch, P_obj object, int slot, const char *scope
 		flag(IS_OBJ_STAT(object, ITEM_GLOW), "glowing");
 		flag(IS_OBJ_STAT(object, ITEM_HUM), "humming");
 		flag(IS_OBJ_STAT(object, ITEM_LIT) ||
-			     (object->type == ITEM_LIGHT && object->value[2] == -1),
+			     (object->type == ITEM_LIGHT &&
+			      (slot >= 0 ? object->value[2] != 0 : object->value[2] == -1)),
 		     "illuminating");
 		flag(IS_OBJ_STAT2(object, ITEM2_MAGIC) && gmcp_item_magic_visible(ch), "magic");
 	}

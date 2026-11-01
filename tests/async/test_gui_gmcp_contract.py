@@ -25,6 +25,7 @@ functions = [
     ('magic.c', 'void spell_reveal_true_name('),
     ('handler.c', 'int set_obj_condition('),
     ('handler.c', 'P_obj unequip_char('),
+    ('handler.c', 'void update_char_objects('),
     ('interp.c', 'char *one_argument('),
     ('actnew.c', 'void do_disarm('),
     ('magic.c', 'void spell_repair_one_item('),

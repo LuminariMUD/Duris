@@ -1526,6 +1526,34 @@ static void items_contract(bool websocket)
 	if (!websocket)
 		emit(&d, "Char.Items.List", "items-equipment");
 	cJSON_Delete(equipment);
+	// Finite lights illuminate when worn, but not in inventory or nested lists.
+	worn.type = ITEM_LIGHT;
+	worn.value[2] = 2;
+	cJSON *carried_light = gmcp_item_row(&actor, &worn, -1, d.gmcp_items_scope);
+	assert(cJSON_GetArraySize(cJSON_GetObjectItem(carried_light, "flags")) == 0);
+	cJSON_Delete(carried_light);
+	gmcp_items_changed(&actor);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(payload(&d, "Char.Items.List").find("illuminating") != std::string::npos);
+	const auto burning_epoch = actor.gmcp_items_epoch;
+	const auto burning_revision = d.gmcp_items_revision;
+	const auto burning_packets = deliveries[&d].size();
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(worn.value[2] == 1 && actor.gmcp_items_epoch == burning_epoch &&
+	       d.gmcp_items_revision == burning_revision &&
+	       deliveries[&d].size() == burning_packets);
+	update_char_objects(&actor);
+	assert(worn.value[2] == 0 && actor.gmcp_items_epoch == burning_epoch + 1);
+	gmcp_flush_initial_states();
+	gmcp_flush_initial_states();
+	assert(d.gmcp_items_revision == burning_revision + 1 &&
+	       payload(&d, "Char.Items.List").find("illuminating") == std::string::npos);
+	update_char_objects(&actor);
+	gmcp_flush_initial_states();
+	assert(actor.gmcp_items_epoch == burning_epoch + 1 &&
+	       d.gmcp_items_revision == burning_revision + 1);
 	concealed_item = &worn;
 	gmcp_items_changed(&actor);
 	gmcp_flush_initial_states();
