@@ -44,6 +44,7 @@ struct scheduled_event
 	P_char rider;
 };
 std::unordered_map<P_char, scheduled_event> scheduled;
+bool reject_flight_events = false;
 int next_id = 1;
 int bfs_cur_marker = 1;
 void bfs_clear_marks()
@@ -385,6 +386,8 @@ nevent_cancel_result nevent_cancel(nevent_handle h)
 nevent_schedule_result add_event(event_func f, int, P_char ch, P_char rider, P_obj, int,
 				 const void *, int)
 {
+	if (reject_flight_events)
+		return { nevent_schedule_status::negative_delay, {} };
 	assert(!scheduled.count(ch));
 	scheduled[ch] = { f, rider };
 	return {};

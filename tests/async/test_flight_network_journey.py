@@ -100,7 +100,7 @@ def command(client, text, timeout=20):
     return bytes(client.transcript[start:]).decode(errors='replace')
 
 
-def run(binary, backend, build):
+def run(binary, backend, build, interruptions_only=False, reconnect_only=False):
     inspector = build / 'flight-inspector'
     if backend == 'flatfile':
         subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
@@ -150,7 +150,9 @@ def run(binary, backend, build):
             def login(name, account):
                 client = journey.reconnect_character(plain, expected_room=None, account=account, character=name)
                 clients.append(client)
-                client.expect('Welcome to Duris', timeout=60)
+                # reconnect_character consumes the reconnect banner itself.
+                if b'Reconnecting...' not in client.transcript:
+                    client.expect('Welcome to Duris', timeout=60)
                 client.expect_any(('Pos: standing >', '<>'), timeout=20)
                 command(client, 'toggle paging no')
                 command(client, 'look')
@@ -178,6 +180,120 @@ def run(binary, backend, build):
                 transferred = command(god, 'transfer ' + PLAYER)
                 assert 'Ok.' in transferred, transferred
 
+            def qualify_socket_reconnect():
+                nonlocal player
+                visit(582084)
+                command(god, 'setbit char ' + PLAYER + ' platinum 1000')
+                assert 'Here is your ticket' in command(player, 'buy 1')
+                player.send('give ticket griffin')
+                player.expect('launches', timeout=20)
+                player.close()
+                clients.remove(player)
+                disconnected = command(god, 'stat char ' + PLAYER)
+                assert 'Linkdead' in disconnected and 'RIDING' in disconnected, disconnected
+                player = login(PLAYER, ACCOUNT)
+                assert 'learned flight stops' in command(player, 'flights')
+                player.expect('lands.', timeout=120)
+                command(god, 'goto 582084')
+                deadline = time.monotonic() + 120
+                while 'Flight Service' not in command(god, 'list'):
+                    assert time.monotonic() < deadline, 'carrier lost after socket reconnect'
+                    time.sleep(.5)
+                evidence['live_passenger_reconnected'] = True
+                print(backend + ': socket loss retained a live passenger and reconnect completed the trip',
+                      flush=True)
+
+            def qualify_interruptions():
+                nonlocal player
+                # Use the real NPC kill/hit command path while the first movement
+                # callback is still in its normal departure delay.
+                for attacker_altitude in (0, 10):
+                    visit(582084)
+                    command(god, 'setbit char ' + PLAYER + ' platinum 1000')
+                    assert 'Here is your ticket' in command(player, 'buy 1')
+                    loaded = command(god, 'load mob 3220')
+                    assert 'created' in loaded, loaded
+                    command(god, 'setbit char rabbit npcact SENTINEL 1')
+                    command(god, 'setbit char rabbit basehit 1000000')
+                    command(god, 'restore rabbit')
+                    command(god, 'setbit char rabbit zcord ' + str(attacker_altitude))
+                    player.send('give ticket griffin')
+                    player.expect('launches', timeout=20)
+                    command(god, 'force rabbit kill ' + PLAYER)
+                    state = command(god, 'stat char ' + PLAYER)
+                    assert 'RIDING' in state, state
+                    if attacker_altitude == 0:
+                        assert re.search(r'Fighting:\s*---', state), state
+                    else:
+                        assert re.search(r'Fighting:\s*rabbit', state), state
+                    command(god, 'peace')
+                    command(god, 'purge rabbit')
+                    player.expect('lands.', timeout=120)
+                    command(god, 'goto 582084')
+                    deadline = time.monotonic() + 120
+                    while 'Flight Service' not in command(god, 'list'):
+                        assert time.monotonic() < deadline, 'carrier lost after attack qualification'
+                        time.sleep(.5)
+                    print(backend + ': actual NPC attack at altitude ' + str(attacker_altitude) +
+                          ' retained the paid ride', flush=True)
+                evidence['npc_attack_altitudes'] = [0, 10]
+                # Exercise complete command/extraction paths on Torrhan's reported service.
+                # Staff privilege is temporary test setup to permit explicit interruption;
+                # discovery, purchase and initial boarding still use the mortal path.
+                original_level = progress()['level']
+                for interruption in ('unlink', 'extract'):
+                    visit(582084)
+                    assert 'Flight Service' in command(player, 'list')
+                    command(god, 'setbit char ' + PLAYER + ' platinum 1000')
+                    assert 'Here is your ticket' in command(player, 'buy 1')
+                    player.send('give ticket griffin')
+                    player.expect('launches', timeout=20)
+                    player.expect('flies ', timeout=20)
+                    # A mortal can look/list known stops, but cannot leave the ride.
+                    locked = command(player, 'dismount')
+                    assert 'holding on for dear life' in locked, locked
+                    assert 'learned flight stops' in command(player, 'flights')
+                    command(god, 'setbit char ' + PLAYER + ' level 62')
+                    if interruption == 'unlink':
+                        unlinked = command(player, 'dismount')
+                        assert 'You dismount' in unlinked, unlinked
+                        # A new location must survive return of the now-empty carrier.
+                        command(god, 'setbit char ' + PLAYER + ' zcord 0')
+                        command(god, 'goto 543701')
+                        assert 'Ok.' in command(god, 'transfer ' + PLAYER)
+                    else:
+                        player.send('quit')
+                        player.expect('ACCOUNT MENU', timeout=30)
+                        player.send('0')
+                        player.close()
+                        clients.remove(player)
+                    command(god, 'goto 582084')
+                    deadline = time.monotonic() + 90
+                    while 'Flight Service' not in command(god, 'list'):
+                        assert time.monotonic() < deadline, 'Torrhan carrier stranded after ' + interruption
+                        time.sleep(.5)
+                    carrier = command(god, 'stat mob griffin')
+                    assert 'event_flying_transport_move' not in carrier, carrier
+                    assert 'event_flying_transport_return' not in carrier, carrier
+                    if interruption == 'extract':
+                        player = login(PLAYER, ACCOUNT)
+                    command(god, 'setbit char ' + PLAYER + ' level ' + str(original_level))
+                    visit(582084)
+                    assert 'Flight Service' in command(player, 'list')
+                    assert 'Here is your ticket' in command(player, 'buy 1')
+                    player.send('give ticket griffin')
+                    player.expect('launches', timeout=20)
+                    player.expect('lands.', timeout=120)
+                    command(god, 'goto 582084')
+                    deadline = time.monotonic() + 120
+                    while 'Flight Service' not in command(god, 'list'):
+                        assert time.monotonic() < deadline, 'Torrhan service did not return after reuse'
+                        time.sleep(.5)
+                    print(backend + ': Torrhan recovered and completed a new trip after ' + interruption,
+                          flush=True)
+                evidence['torrhan_outbound_interruptions'] = ['unlink_and_separate', 'passenger_extraction']
+                qualify_socket_reconnect()
+
             try:
                 process = boot()
                 for name, account in ((PLAYER, ACCOUNT), (GOD, GOD_ACCOUNT)):
@@ -198,6 +314,16 @@ def run(binary, backend, build):
                 command(god, 'setbit char ' + PLAYER + ' platinum 25')
                 command(god, 'setbit char ' + PLAYER + ' basehit 1000000')
                 command(god, 'restore ' + PLAYER)
+                if interruptions_only or reconnect_only:
+                    for room in (582084, 575328):
+                        visit(room)
+                        assert 'Flight Service' in command(player, 'list')
+                    if reconnect_only:
+                        qualify_socket_reconnect()
+                    else:
+                        qualify_interruptions()
+                    print(json.dumps(evidence, sort_keys=True), flush=True)
+                    return
                 help_text = command(player, 'help flights')
                 assert 'Explore 25 ordinary flight stops' in help_text, help_text
                 assert 'good side of the racewar' in help_text, help_text
@@ -307,6 +433,7 @@ def run(binary, backend, build):
                 assert 'Kimordril' in command(player, 'list')
                 evidence['return_after_logout'] = True
                 print(backend + ': immobile ticket retained and empty return survived logout', flush=True)
+                qualify_interruptions()
                 # Dedicated services do not discover anything and keep their level gates.
                 for room, keyword, destination, fare in (
                     (619771, 'krrlytstalarryn', 'Cavern', 50),
@@ -404,6 +531,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--backend', choices=('flatfile', 'mariadb'), default='flatfile')
     parser.add_argument('--server', type=Path)
+    focus = parser.add_mutually_exclusive_group()
+    focus.add_argument('--interruptions-only', action='store_true',
+                       help='qualify transport interruptions using two discovered stops')
+    focus.add_argument('--reconnect-only', action='store_true',
+                       help='qualify socket reconnect with a live paid-flight passenger')
     args = parser.parse_args()
     subprocess.run(['make', 'world'], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
     (ROOT / 'bin/tests').mkdir(parents=True, exist_ok=True)
@@ -414,7 +546,7 @@ def main():
         else:
             assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
             binary = journey.build_flatfile_server(build / 'server')
-        run(binary, args.backend, build)
+        run(binary, args.backend, build, args.interruptions_only, args.reconnect_only)
 
 
 if __name__ == '__main__':

@@ -888,40 +888,8 @@ void event_flying_transport_move(P_char ch, P_char /*victim*/, P_obj /*obj*/, vo
 		return;
 	}
 
-	int dir = BFS_ERROR;
-
-	int path_size = transport_routes[TRANSPORT_ROUTE(ch)].path.size();
-
-	if (path_size < 1)
-	{
-		dir = BFS_NO_PATH;
-	}
-	else if (TRANSPORT_STEP(ch) == path_size)
-	{
-		dir = BFS_ALREADY_THERE;
-	}
-	else
-	{
-		dir = transport_routes[TRANSPORT_ROUTE(ch)].path[TRANSPORT_STEP(ch)++];
-	}
-
-	//  dir = (int) find_first_step(ch->in_room, real_room0(TRANSPORT_DESTINATION(ch)), BFS_CAN_FLY, 0, WAGON_TYPE_FLYING, &dist);
-
-	if (dir == BFS_ERROR || dir == BFS_NO_PATH)
-	{
-		act("$n looks confused for a moment, lands, and you dismount hastily.", FALSE, ch,
-		    0, victim, TO_VICT);
-		act("$n looks confused for a moment, lands, and $N dismounts hastily.", FALSE, ch,
-		    0, victim, TO_NOTVICT);
-
-		logit(LOG_DEBUG,
-		      "BFS_ERROR or BFS_NO_PATH in event_flying_transport_move() transport.c with %s as rider and %s as transport.",
-		      GET_NAME(victim), GET_NAME(ch));
-
-		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
-		return;
-	}
-	else if (dir == BFS_ALREADY_THERE)
+	const auto &path = transport_routes[TRANSPORT_ROUTE(ch)].path;
+	if (TRANSPORT_STEP(ch) == static_cast<int>(path.size()))
 	{
 		act("$n lands.", FALSE, ch, 0, victim, TO_ROOM);
 
@@ -939,6 +907,7 @@ void event_flying_transport_move(P_char ch, P_char /*victim*/, P_obj /*obj*/, vo
 		return;
 	}
 
+	const int dir = path[TRANSPORT_STEP(ch)++];
 	int was_in = ch->in_room;
 
 	if (was_in < 0 || was_in > top_of_world || dir < 0 || dir >= NUM_EXITS ||
@@ -1005,36 +974,14 @@ void event_flying_transport_return(P_char ch, P_char /*victim*/, P_obj /*obj*/, 
 		return;
 	}
 
-	int dir = BFS_ERROR;
-
-	int path_size = transport_routes[TRANSPORT_ROUTE(ch)].path.size();
-
-	if (path_size < 1)
+	if (TRANSPORT_STEP(ch) == 0)
 	{
-		dir = BFS_NO_PATH;
-	}
-	else if (TRANSPORT_STEP(ch) == 0)
-	{
-		dir = BFS_ALREADY_THERE;
-	}
-	else
-	{
-		dir = rev_dir[transport_routes[TRANSPORT_ROUTE(ch)].path[--TRANSPORT_STEP(ch)]];
-	}
-
-	//  dir = (int) find_first_step(ch->in_room, real_room0(TRANSPORT_DESTINATION(ch)), BFS_CAN_FLY, 0, WAGON_TYPE_FLYING, &dist);
-
-	if (dir == BFS_ERROR || dir == BFS_NO_PATH || dir == BFS_ALREADY_THERE)
-	{
-		if (dir == BFS_ERROR || dir == BFS_NO_PATH)
-		{
-			logit(LOG_DEBUG, "Invalid return flight path for %s.", GET_NAME(ch));
-		}
-
 		act("$n lands.", FALSE, ch, 0, nullptr, TO_ROOM);
 		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
 		return;
 	}
+
+	const int dir = rev_dir[transport_routes[TRANSPORT_ROUTE(ch)].path[--TRANSPORT_STEP(ch)]];
 
 	int was_in = ch->in_room;
 	if (was_in < 0 || was_in > top_of_world || dir < 0 || dir >= NUM_EXITS ||

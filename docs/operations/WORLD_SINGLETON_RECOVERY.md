@@ -112,3 +112,10 @@ becomes WAITING and clears its progress only after confirmed placement at home.
 Duplicate retirement revalidates both carriers after landing before transferring
 items or extracting the extra body. No new event type or recovery snapshot field
 is needed.
+
+`test_flight_network_journey.py` qualifies real commands and persistence on
+disposable full worlds. `--interruptions-only` uses two learned stops for NPC
+attack, outbound interruption, carrier reuse and reconnect checks;
+`--reconnect-only` selects just the socket case. A ground NPC's melee attempt is
+rejected against an elevated passenger; legal same-altitude combat retains the
+paid ride. These checks do not identify the original reported attacker.

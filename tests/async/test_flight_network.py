@@ -216,11 +216,34 @@ int main() {
     assert(ch->carrying == ticket && !GET_MOUNT(ch) && GET_MOUNT(other) == ch);
     assert(GET_MONEY(ch) == boarding_money && pc.learned_flight_stops == boarding_stops);
     assert(scheduled.empty() && ch->specials.z_cord == 0 && other->specials.z_cord == 0);
+    pc_only_data extra_pc = {};
+    P_char extra = player(&extra_pc, "Extra");
+    char_to_room(extra, ch->in_room, -1);
+    link_char(extra, other, LNK_RIDING);
+    command(CMD_GIVE, "ticket carrier");
+    assert(ch->carrying == ticket && !GET_MOUNT(ch) && GET_MOUNT(extra) == other);
+    assert(GET_MONEY(ch) == boarding_money && scheduled.empty());
+    unlink_char(extra, other, LNK_RIDING);
     unlink_char(other, ch, LNK_RIDING);
+    assert(!flying_transport_cmd_give(recipient, recipient, give)); // NPC bodies cannot redeem
+    descriptor_data switched = {};
+    switched.original = ch;
+    recipient->desc = &switched;
+    assert(!flying_transport_cmd_give(recipient, recipient, give)); // even while a player controls it
+    recipient->desc = nullptr;
+    reject_flight_events = true;
+    command(CMD_GIVE, "ticket carrier");
+    assert(ch->carrying == ticket && !GET_MOUNT(ch) && scheduled.empty());
+    reject_flight_events = false;
+    ch->player.race = RACE_CENTAUR; // An unoccupied centaur may take a paid flight alone.
     command(CMD_GIVE, "ticket carrier");
     assert(!ch->carrying && GET_MOUNT(ch) == recipient);
     assert(is_flight_carrier(recipient) && is_flight_passenger(ch));
     assert(!is_flight_passenger(other) && !is_flight_carrier(ch));
+    assert(command(CMD_LOOK) == 0 && command(CMD_FLIGHTS) == 0);
+    assert(command(CMD_NORTH) == 1 && command(CMD_MOUNT, "other") == 1);
+    assert(ch->specials.z_cord == 10 && recipient->specials.z_cord == 10);
+    ch->player.race = RACE_DROW;
     assert(command(CMD_FLIGHTS) == 0); // proc lets the interpreter run the anywhere command
     do_flights(ch, nullptr, CMD_FLIGHTS);
     assert(output.find("Quietus") != std::string::npos && awards == 2);
@@ -385,14 +408,14 @@ int main() {
     do_flights(ch, nullptr, CMD_FLIGHTS);
     assert(output.find("distance unavailable") != std::string::npos);
     // Each interrupted trip must return to service and sell the next trip.
-    pc.learned_flight_stops = 6;
+    pc.learned_flight_stops = 6 | (uint64_t{1} << 4);
     ch->specials.position = STAT_NORMAL;
     ch->player.race = RACE_DROW;
     GET_COPPER(ch) = 1000000;
     for (int interruption = 0; interruption < 5; ++interruption) {
         visit(2);
         command(CMD_LIST);
-        command(CMD_BUY, "1");
+        command(CMD_BUY, "2"); // A two-edge route: unlink before reaching the destination.
         assert(ch->carrying);
         command(CMD_GIVE, "ticket carrier");
         assert(GET_MOUNT(ch) == recipient);
@@ -421,6 +444,10 @@ int main() {
             char_from_room(recipient);
             char_to_room(recipient, 6, -1);
         }
+        if (interruption == 0) {
+            run_event(recipient);
+            assert(recipient->in_room == 2); // Return immediately, never advance alone.
+        }
         int callbacks = 0;
         while (scheduled.count(recipient)) {
             assert(++callbacks < 40);
@@ -440,6 +467,15 @@ int main() {
     while (scheduled.count(recipient)) run_event(recipient);
     assert(ch->in_room == 1 && ch->specials.z_cord == 0);
     assert(recipient->in_room == 2 && recipient->specials.z_cord == 0);
+    // Rejected continuation must land the carrier rather than abandon its rider.
+    visit(2);
+    command(CMD_BUY, "1");
+    command(CMD_GIVE, "ticket carrier");
+    reject_flight_events = true;
+    run_event(recipient);
+    reject_flight_events = false;
+    assert(recipient->in_room == 2 && ch->in_room == 2 && scheduled.empty());
+    assert(!GET_MOUNT(ch) && ch->specials.z_cord == 0 && recipient->specials.z_cord == 0);
     clear_world();
     puts("flight catalog, paths, discoveries, fares, commands, tickets and interruption recovery passed");
 }
