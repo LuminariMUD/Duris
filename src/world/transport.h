@@ -27,6 +27,8 @@ struct transport_snapshot
 void transport_capture(P_char mob, transport_snapshot *snapshot);
 void transport_restore(P_char mob, const transport_snapshot &snapshot);
 void initialize_transport();
+bool is_flight_carrier(P_char ch);
+bool is_flight_passenger(P_char ch);
 void do_flights(P_char ch, char *argument, int cmd);
 int flying_transport(P_char ch, P_char victim, int cmd, char *arg);
 bool flying_transport_cmd_give(P_char ch, P_char victim, char *arg);

@@ -19,6 +19,7 @@
 #include "combat/ctf.h"
 #include "combat/training_dummy.h"
 #include "world/graph.h"
+#include "world/transport.h"
 #include "magic/spells.h"
 
 /*
@@ -139,6 +140,13 @@ void do_mount(P_char ch, char *argument, int /*cmd*/)
 	if (mount == ch)
 	{
 		send_to_char("Ride on your own back?  How?\r\n", ch);
+		return;
+	}
+	if (is_flight_carrier(mount) || is_flight_passenger(mount))
+	{
+		send_to_char(
+			"Flight carriers take one ticketed passenger. You cannot mount them or their passenger.\r\n",
+			ch);
 		return;
 	}
 	if (training_dummy_is(mount))

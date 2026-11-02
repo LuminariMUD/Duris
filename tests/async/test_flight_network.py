@@ -207,8 +207,20 @@ int main() {
     command(CMD_GIVE, "ticket carrier");
     assert(ch->carrying == ticket && !GET_MOUNT(ch));
     ch->specials.fighting = nullptr;
+    // A ticket cannot carry the player's own rider (or a longer riding chain).
+    const auto boarding_money = GET_MONEY(ch);
+    const auto boarding_stops = pc.learned_flight_stops;
+    link_char(other, ch, LNK_RIDING);
+    command(CMD_GIVE, "ticket carrier");
+    assert(output.find("Your rider must dismount") != std::string::npos);
+    assert(ch->carrying == ticket && !GET_MOUNT(ch) && GET_MOUNT(other) == ch);
+    assert(GET_MONEY(ch) == boarding_money && pc.learned_flight_stops == boarding_stops);
+    assert(scheduled.empty() && ch->specials.z_cord == 0 && other->specials.z_cord == 0);
+    unlink_char(other, ch, LNK_RIDING);
     command(CMD_GIVE, "ticket carrier");
     assert(!ch->carrying && GET_MOUNT(ch) == recipient);
+    assert(is_flight_carrier(recipient) && is_flight_passenger(ch));
+    assert(!is_flight_passenger(other) && !is_flight_carrier(ch));
     assert(command(CMD_FLIGHTS) == 0); // proc lets the interpreter run the anywhere command
     do_flights(ch, nullptr, CMD_FLIGHTS);
     assert(output.find("Quietus") != std::string::npos && awards == 2);

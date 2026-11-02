@@ -91,6 +91,13 @@ are detached without being pulled back home. Arrival detaches and grounds the
 delivered passenger unconditionally, even where the ordinary dismount command
 would refuse. The carrier returns at flight altitude and lands at its own pad.
 
+A flight accepts one player who has neither a mount nor a rider. Ticket refusal
+preserves the ticket and wallet. Ordinary mounting cannot attach a rider to a
+service carrier or its active passenger. Legacy nested passengers found during
+recovery are all detached and grounded before landing at home. Entering combat
+without mounted-combat skill does not dismount a paid passenger; ordinary ground
+mounts and existing attack/altitude rules keep their normal behavior.
+
 `python3 tests/async/test_flight_transport_runtime.py` uses production transport,
 riding-link functions, event scheduling and cancellation with isolated room I/O.
 It covers passenger link teardown/freeing between and during movement, owner

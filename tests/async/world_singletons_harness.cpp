@@ -678,6 +678,26 @@ int main()
 		run_event(flight);
 	assert(flight->in_room == 0 && flight->specials.z_cord == 0 &&
 	       TRANSPORT_STATE(flight) == TRANSPORT_STATE_WAITING);
+	// Legacy nested passengers must all be detached/grounded before recovery moves them.
+	P_char extra = new char_data{};
+	extra->specials.position = STAT_NORMAL;
+	extra->player.name = const_cast<char *>("Extra");
+	extra->in_room = -1;
+	extra->next = character_list;
+	character_list = extra;
+	char_to_room(extra, 1, -1);
+	char_from_room(rider);
+	char_to_room(rider, 1, -1);
+	char_from_room(flight);
+	char_to_room(flight, 1, -1);
+	link_char(extra, rider, LNK_RIDING);
+	rider->specials.z_cord = extra->specials.z_cord = 10;
+	strlcpy(orphan.rider, player_name, sizeof(orphan.rider));
+	transport_restore(flight, orphan);
+	initialize_transport();
+	assert(flight->in_room == 0 && rider->in_room == 0 && extra->in_room == 0);
+	assert(!GET_MOUNT(rider) && !GET_MOUNT(extra) && !GET_RIDER(flight));
+	assert(rider->specials.z_cord == 0 && extra->specials.z_cord == 0 && scheduled.empty());
 
 	// Old snapshots have no route metadata; safely return that dragon home.
 	char_from_room(flight);

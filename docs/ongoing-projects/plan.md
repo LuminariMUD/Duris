@@ -1,6 +1,6 @@
 # Issue #584: flight transport implementation plan
 
-Status: implementation in progress. Updated 2026-11-02. Carrier continuation is the first review chunk; boarding/combat and full-world acceptance follow on a dependent branch.
+Status: implementation in progress. Updated 2026-11-02. Carrier continuation is open in [PR #586](https://github.com/LuminariMUD/Duris/pull/586), commit `7916ceca6`. Boarding/combat is the second review chunk on `branch/issue-584-flight-boarding-combat`, stacked on `branch/issue-584-flight-transport`. Full-world acceptance remains in progress.
 
 - Work item: [Duris #584](https://github.com/LuminariMUD/Duris/issues/584).
 - Linked development branch: [branch/issue-584-flight-transport](https://github.com/LuminariMUD/Duris/tree/branch/issue-584-flight-transport).
@@ -139,6 +139,18 @@ Checks for this chunk: `make -C src -j8` passed; flight-network, world-singleton
 
 Remaining work (required before issue completion): boarding rejection and later mount guards; nested recovery safety; narrow combat exemption; real room-entry/attack/altitude checks; complete server extraction and service-reuse journeys including Torrhan, both persistence backends, and final evidence review. Continue from this worktree and stack the next branch on the first implementation commit. No release tag or deployment is appropriate for these unmerged fixes.
 
+### Implementation handoff: boarding/combat chunk
+
+Implemented incoming-rider ticket refusal, service-carrier/passenger guards in the actual `do_mount()` command, and a narrow `set_fighting()` exception for active paid passengers. Catalog identity, movement state and reciprocal riding links define a paid passenger; altitude alone does not. Two small public predicates serve these concrete command/combat consumers. Ordinary mounting of a service carrier is also refused, preventing a free rider from joining an empty return. Mastered NPCs remain outside the service catalog rules.
+
+Recovery and runtime callbacks detect legacy nested riders and land the chain. Landing first removes every link in the chain, then grounds/places co-located travelers, avoiding recursive movement with inconsistent altitudes. Separately relocated players remain in their new rooms. This is temporary landing state, not a persistent passenger manifest or new fare model.
+
+Focused flight-network, production flight/link/event/combat/mount runtime, and world-singleton sanitizer checks pass. Runtime tests execute the full production `set_fighting()` and `do_mount()` bodies with unrelated services stubbed, including zero-skill paid combat, the ordinary skill-based ground dismount, direct/later mount refusal, and successful ground centaur mounting. The singleton fixture verifies that a named recovered passenger carrying another rider lands both at altitude zero with no residual riding links. The local MariaDB server build passed before the journey runs.
+
+Pending acceptance work in the working tree: `test_flight_network_journey.py` now adds actual outbound unlink/separation and trusted-player extraction at Torrhan, followed by real purchase/departure and carrier reuse. These additions are not yet qualified. An earlier flat-file journey (started before those additions) is running via tool session `57067`, log `bin/issue584-flatfile-journey.log`; it has passed discovery, occupied/empty copyover, logout, and both dedicated-destination trips. The updated MariaDB journey is running via session `71845`, log `bin/issue584-mariadb-journey.log`, using the existing `bin/server/dms_new` MariaDB build and `with_disposable_mariadb.sh`. Poll those exact sessions/processes rather than restarting live tests. No checkout `.env` or shared server is used.
+
+Still required: finish and inspect both journeys with the added interruption cases; add actual ground/same-altitude attack-path checks and altitude assertions; distinguish a live link-dead passenger from extraction; cover NPC/switched-body ticket guards; run the final requirement-by-requirement audit. Source inspection and isolated combat-entry tests do not prove the original ground-attack story. Keep #584 open.
+
 At the inspected base, these existing controls passed:
 
 - `python3 tests/async/test_flight_network.py` — catalog, paths, discoveries, fares, commands, tickets, and epic exclusions; ASan/UBSan enabled by the runner.
@@ -183,3 +195,20 @@ and passenger/carrier removal during recursive movement and home landing. Valida
 `./scripts/format.sh`, `./scripts/tidy.sh`, and `git diff --check`.
 Full-world final-stack acceptance follows in #588 after carrying this fix through
 #587's legacy-chain code.
+
+## PR #587 review carry-forward (2026-11-02)
+
+Rebased the single boarding/combat commit onto the reviewed #586 fix. The runtime
+fixture conflict retained both production companion placement and actual mount/combat
+bodies. Legacy-chain landing and startup candidate retirement now retain runtime
+identities alongside their temporary pointer lists, so an earlier leave callback
+cannot make a later queued traveler/carrier a stale access. Removed-count logging
+counts actual retirement. A focused legacy-chain case removes the later traveler
+from the earlier traveler's departure hook and verifies safe landing and balanced
+links/events. Ground centaur mounting, one-player boarding and paid combat semantics
+are preserved; no new persistent state or helper layer was needed.
+
+PR #587 carry-forward validation passed: local MariaDB build, flight-network,
+production flight/link/event/combat/mount runtime and singleton ASan/UBSan tests,
+formatting, tidy and diff checks. The rebased PR remains one logical boarding/combat
+commit; #586's review fix is its parent.

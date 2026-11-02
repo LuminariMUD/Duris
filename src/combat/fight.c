@@ -68,6 +68,7 @@
 #include "mob/studioproc.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
+#include "world/transport.h"
 #include "world/world_quest.h"
 #include "net/ws_handlers.h"
 #include "guild/artifact_guild_transaction.h"
@@ -7928,7 +7929,7 @@ void set_fighting(P_char ch, P_char vict)
 	}
 	if (P_char mount = get_linked_char(ch, LNK_RIDING))
 	{
-		if (!GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT) /* && !is_natural_mount(ch, mount)*/)
+		if (!GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT) && !is_flight_passenger(ch))
 		{
 			send_to_char("I'm afraid you aren't quite up to mounted combat.\r\n", ch);
 			act("$n quickly slides off $N's back.", TRUE, ch, 0, mount, TO_NOTVICT);

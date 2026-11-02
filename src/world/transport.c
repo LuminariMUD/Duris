@@ -28,6 +28,7 @@
 #include "persistence/persistence_checkpoint.h"
 #include "world/map.h"
 #include <vector>
+#include <utility>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -168,6 +169,20 @@ static int transport_service(P_char mob)
 	return -1;
 }
 
+bool is_flight_carrier(P_char ch)
+{
+	return transport_service(ch) >= 0;
+}
+
+bool is_flight_passenger(P_char ch)
+{
+	if (!ch)
+		return false;
+	P_char carrier = GET_MOUNT(ch);
+	return is_flight_carrier(carrier) && TRANSPORT_STATE(carrier) == TRANSPORT_STATE_MOVING &&
+	       GET_RIDER(carrier) == ch;
+}
+
 void transport_capture(P_char mob, transport_snapshot *snapshot)
 {
 	*snapshot = {};
@@ -238,10 +253,20 @@ static bool transport_land_at_home(P_char mob, int origin)
 	const auto removals = character_removal_generation;
 	// An occupied legacy/duplicate flight is landed with its passenger before
 	// retiring the extra dragon. Extraction must never strand a linked rider.
-	P_char rider = GET_RIDER(mob);
-	if (rider)
+	// Old recovered flights may contain nested riders. Detach the whole chain
+	// before any placement can recursively move another traveler.
+	vector<std::pair<P_char, uint64_t>> riders;
+	P_char mount = mob;
+	while (P_char rider = GET_RIDER(mount))
 	{
-		unlink_char(rider, mob, LNK_RIDING);
+		unlink_char(rider, mount, LNK_RIDING);
+		riders.emplace_back(rider, rider->runtime_id);
+		mount = rider;
+	}
+	for (auto [rider, rider_runtime] : riders)
+	{
+		if (!transport_survived(rider, rider_runtime, removals))
+			continue;
 		// A separately relocated player is no longer part of this flight.
 		if (rider->in_room == mob->in_room)
 		{
@@ -391,12 +416,12 @@ void initialize_transport()
 			if ((sign = read_object(TRANSPORT_SIGN_VNUM, VIRTUAL)))
 				obj_to_room(sign, origin);
 
-		std::vector<P_char> candidates;
+		std::vector<std::pair<P_char, uint64_t>> candidates;
 		P_char mob = nullptr;
 		for (P_char candidate = character_list; candidate; candidate = candidate->next)
 			if (transport_service(candidate) == i)
 			{
-				candidates.push_back(candidate);
+				candidates.emplace_back(candidate, candidate->runtime_id);
 				// Reconnect only a recovered, co-located, currently unmounted player.
 				if (candidate->only.npc->transport_recovery_pending &&
 				    candidate->only.npc->recovered_transport_rider[0])
@@ -422,10 +447,11 @@ void initialize_transport()
 			continue;
 		const auto mob_runtime = mob->runtime_id;
 		const auto removals = character_removal_generation;
-		for (P_char duplicate : candidates)
-			if (duplicate != mob)
+		size_t retired = 0;
+		for (auto [duplicate, duplicate_runtime] : candidates)
+			if (duplicate != mob &&
+			    transport_survived(duplicate, duplicate_runtime, removals))
 			{
-				const auto duplicate_runtime = duplicate->runtime_id;
 				const auto duplicate_removals = character_removal_generation;
 				transport_land_at_home(duplicate, origin);
 				if (!transport_survived(mob, mob_runtime, removals))
@@ -444,6 +470,8 @@ void initialize_transport()
 					if (duplicate->equipment[slot])
 						obj_to_char(unequip_char(duplicate, slot), mob);
 				extract_char(duplicate);
+				if (!char_in_list(duplicate))
+					++retired;
 			}
 		if (!transport_survived(mob, mob_runtime, removals))
 			continue;
@@ -455,6 +483,7 @@ void initialize_transport()
 			mob->only.npc->transport_recovery_pending = false;
 			mob->only.npc->recovered_transport_rider[0] = '\0';
 			if (TRANSPORT_STATE(mob) == TRANSPORT_STATE_MOVING &&
+			    (!GET_RIDER(mob) || !GET_RIDER(GET_RIDER(mob))) &&
 			    transport_position_valid(mob, i))
 			{
 				P_char rider = GET_RIDER(mob);
@@ -469,9 +498,9 @@ void initialize_transport()
 			else
 				transport_land_at_home(mob, origin);
 		}
-		if (candidates.size() > 1)
+		if (retired)
 			logit(LOG_STATUS, "world singleton: transport=%d removed=%zu",
-			      transports[i].mob_vnum, candidates.size() - 1);
+			      transports[i].mob_vnum, retired);
 	}
 }
 
@@ -733,6 +762,11 @@ bool flying_transport_cmd_give(P_char ch, P_char victim, char *arg)
 		send_to_char("You're already riding something!\n", ch);
 		return true;
 	}
+	if (GET_RIDER(ch))
+	{
+		send_to_char("Your rider must dismount before you can take a flight.\n", ch);
+		return true;
+	}
 	if (!add_event(event_flying_transport_move, PULSE_VIOLENCE, victim, nullptr, 0, 0, 0, 0))
 	{
 		send_to_char(
@@ -841,6 +875,11 @@ void event_flying_transport_move(P_char ch, P_char /*victim*/, P_obj /*obj*/, vo
 
 	// The carrier owns its continuation. Passenger extraction only removes the ride.
 	P_char victim = GET_RIDER(ch);
+	if (victim && GET_RIDER(victim))
+	{
+		transport_land_at_home(ch, real_room(transports[service].origin_vnum));
+		return;
+	}
 	if (!victim || victim->in_room != ch->in_room || GET_MOUNT(victim) != ch)
 	{
 		if (victim)
