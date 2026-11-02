@@ -5,6 +5,7 @@
 #include "magic/spells.h"
 #include "player/player_snapshot.h"
 #include "item/item_movement_transaction.h"
+#include "item/item_ownership_runtime.h"
 #include "classes/necromancy.h"
 #include "sql/sql.h"
 #include <algorithm>
@@ -24,6 +25,18 @@ static P_char actor;
 static P_obj container, item, sibling;
 static int calls, mode, transfers, publications, saves;
 static bool refuse_audit;
+bool npc_has_spell_slot(P_char, int)
+{
+	return false;
+}
+int IS_CLERIC(P_char)
+{
+	return 0;
+}
+int IsBetterObject(P_char, P_obj, int)
+{
+	return 0;
+}
 LockerMovementAudit::LockerMovementAudit(P_char, P_obj, P_obj, P_obj, const char *)
 {
 	m_ready = !refuse_audit;
@@ -247,6 +260,38 @@ static void reset(uint64_t uid = 1, int type = ITEM_CONTAINER)
 }
 int main()
 {
+	// A scavenger's newly received bag and ordinary loot organize through real
+	// put(), even when both still have obsolete saved room/corpse custody.
+	for (bool new_bag : { false, true })
+	{
+		reset();
+		actor->specials.act = ACT_ISNPC;
+		item->trap_charge = 0;
+		container->loc_p = LOC_CARRIED;
+		container->loc.carrying = actor;
+		sibling->next_content = container;
+		item_ownership_runtime_reset();
+		assert(item_ownership_runtime_hydrate({ container->obj_uid,
+							container->obj_uid,
+							0,
+							{ item_owner_type::room, 9999, 0 },
+							1,
+							1,
+							0,
+							item_custody_state::active }));
+		assert(item_ownership_runtime_hydrate({ item->obj_uid,
+							item->obj_uid,
+							0,
+							{ item_owner_type::corpse, 77, 0 },
+							1,
+							1,
+							0,
+							item_custody_state::active }));
+		CheckEqWorthUsing(actor, new_bag ? container : item);
+		assert(OBJ_INSIDE(item) && item->loc.inside == container);
+		assert(transfers == (new_bag ? 2 : 1));
+	}
+	item_ownership_runtime_reset();
 	for (int target_type : { ITEM_CONTAINER, ITEM_QUIVER })
 	{
 		for (int failure = 0; failure < 4; ++failure)

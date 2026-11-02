@@ -72,20 +72,6 @@ GET_PLAYING = extract(
 DISPATCH_PLAYING = extract(
     COMM_PATH, "static void dispatch_playing_command(P_char character, char *input)"
 )
-CHECK_EQ_WORTH_USING = extract(
-    SRC / "mobact.c", "void CheckEqWorthUsing(P_char ch, P_obj obj)"
-)
-# Authoritative scavenged roots still get the normal equipment evaluation. The
-# later guard only blocks an unjournaled reparent into an already-carried bag.
-equip_check = CHECK_EQ_WORTH_USING.index("if (IsBetterObject(ch, obj, 0))")
-authoritative_root_guard = CHECK_EQ_WORTH_USING.index(
-    "if (authoritative)", equip_check
-)
-container_reparent = CHECK_EQ_WORTH_USING.index(
-    "for (ob = ch->carrying; ob; ob = ob2)", authoritative_root_guard
-)
-assert equip_check < authoritative_root_guard < container_reparent
-
 PRELUDE = r'''
 #include "core/utils.h"
 #include "economy/currency_transaction.h"

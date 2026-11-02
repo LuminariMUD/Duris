@@ -32,7 +32,6 @@
 #include "classes/necromancy.h"
 #include "economy/collector_presence.h"
 #include "economy/nexus_stones.h"
-#include "item/item_ownership_runtime.h"
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "core/profile.h"
@@ -7099,9 +7098,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 
 	if (obj_index[obj->R_num].virtual_number == 101) /* Dont wear the helm of ooc! */
 		return;
-	item_ownership_runtime_entry ownership = {};
-	const bool authoritative = obj->obj_uid &&
-				   item_ownership_runtime_lookup(obj->obj_uid, &ownership);
 
 	/*
 	 * Keep containers around, for our mobs 'collections'..
@@ -7109,11 +7105,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 	 */
 	if (obj->type == ITEM_CONTAINER)
 	{
-		// The mobile-claim commit records this object as a detached root. Do not
-		// immediately reparent other authoritative inventory beneath it without a
-		// second transaction; equipping below is topology-neutral and remains safe.
-		if (authoritative)
-			return;
 		/*
 		 * Just for sake of .. fun .., mobs archive stuff in containers.
 		 */
@@ -7143,8 +7134,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 			return;
 	}
 	if (IsBetterObject(ch, obj, 0))
-		return;
-	if (authoritative)
 		return;
 
 	for (ob = ch->carrying; ob; ob = ob2)
