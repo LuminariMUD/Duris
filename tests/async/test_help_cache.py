@@ -61,6 +61,7 @@ void add(string title,string text,string category="1") {
  pages.push_back({{title,text,category,"2026-09-10","Editor"}}); }
 int main() {
  assert(wiki_help("help").find("unavailable")!=string::npos);
+ assert(wiki_help_single("Fire").find("unavailable")!=string::npos);
  assert(wiki_race_description("Human").empty());
  ready=true; add("help","welcome"); add("Fire","burn","9"); add("Fire shield","protect");
  add("Alias","Redirect: Fire shield"); add("Cycle","Redirect: Cycle");

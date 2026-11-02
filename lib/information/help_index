@@ -27706,3 +27706,48 @@ SV Spell
 Spell save is your saving throw against spell attacks. Read
 'help saving throw' for the saving-throw categories and how they work.
 #
+
+Spells (Command)
+============================================================
+Browse your spells, class spell circles, and individual spell details.
+
+==Syntax==
+
+spells
+spells <class or specialization>
+spells info <spell name>
+
+Bare spells shows your own spells, including for staff. Spells are grouped by
+Circle and name; future circles are labeled. Your class, specialization,
+secondary class and current maximum Circle describe whose access is shown.
+Book markers check inventory, hands and belt only for spellbook users.
+Circle access and book presence do not mean a spell is prepared or ready to cast.
+
+Use spells cleric for base grants or spells fire magus for a complete effective
+specialization catalog, including inherited spells and changes. Lost base
+spells are listed separately. Bard songs and instruments remain in skills.
+Catalogs are reference information, independent of your race, class and level.
+
+Use spells info fireball for registered aggression, class/spec circles and
+changes, your personal access, and the existing helpfile. Live definitions
+supply circles; authored help explains casting syntax, effects and restrictions.
+Names accept case-insensitive full names and unique abbreviations, with spaces
+or hyphens. Ambiguous names list choices.
+
+==Staff==
+
+spells <target>
+spells target <name>
+spells all
+
+Staff can inspect a visible character. Class/spec names take precedence;
+use spells target <name> for collisions with catalogs or reserved words.
+Spells all lists spell IDs, aggression and base-class circles, with a class-code
+legend. Use info or a specialization catalog for specialization access.
+
+==See also==
+
+Skills, Race, Classes, Specialization, Multiclass, Spell circle, Cast,
+Memorize, Pray, Scribe
+
+#

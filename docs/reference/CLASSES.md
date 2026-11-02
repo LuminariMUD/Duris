@@ -30,6 +30,14 @@ For players, start with `help classes`, `help <class>`, `help <class> skills`,
 Warrior description and its two skillset topic names. Use `specialize` to list
 your own choices and `specialize list` to list specialization/race definitions.
 `skills`, `spells`, and `innate` describe the current character's abilities.
+Bare `spells` is personal for players and staff. Browse base grants with
+`spells cleric`, a complete specialization with `spells fire magus`, and live
+circles, personal access and authored help with `spells info fireball`.
+Catalogs are independent of your character; personal access follows the actual
+specialization and multiclass circle rules. Circle access and book presence do
+not establish preparation or readiness to cast. Bard songs remain in `skills`.
+Staff use `spells all` for the global base-class circle reference and
+`spells target <name>` to inspect characters whose names collide with catalogs.
 
 | Resource | What it supplies |
 | --- | --- |

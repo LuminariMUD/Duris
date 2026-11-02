@@ -11984,11 +11984,12 @@ it in your victim"s face.
 #0
 
 Godspells
-Godspells - Last Edited: 2007-04-22 22:12:53 by Unknown
-=======================================================
-Syntax:  spells
-This command gives you a comprehensive listing of all skills, spells,
-songs, etc.
+Godspells - Last Edited: 2026-11-02
+============================================================
+Staff use spells all for the global base-class circle reference.
+Bare spells shows your own spells; spells <target> inspects a visible character.
+Use spells target <name> for class/spec or reserved-name collisions.
+See help spells for catalogs, individual spell information and full syntax.
 
 #0
 
@@ -29207,3 +29208,51 @@ no new dedicated cooldown. Its existing target restrictions remain.
 * Water Magus
 * Water Form
 * Conjure Water
+
+#0
+
+Spells
+Spells - Last Edited: 2026-11-02
+============================================================
+Browse your spells, class spell circles, and individual spell details.
+
+==Syntax==
+
+spells
+spells <class or specialization>
+spells info <spell name>
+
+Bare spells shows your own spells, including for staff. Spells are grouped by
+Circle and name; future circles are labeled. Your class, specialization,
+secondary class and current maximum Circle describe whose access is shown.
+Book markers check inventory, hands and belt only for spellbook users.
+Circle access and book presence do not mean a spell is prepared or ready to cast.
+
+Use spells cleric for base grants or spells fire magus for a complete effective
+specialization catalog, including inherited spells and changes. Lost base
+spells are listed separately. Bard songs and instruments remain in skills.
+Catalogs are reference information, independent of your race, class and level.
+
+Use spells info fireball for registered aggression, class/spec circles and
+changes, your personal access, and the existing helpfile. Live definitions
+supply circles; authored help explains casting syntax, effects and restrictions.
+Names accept case-insensitive full names and unique abbreviations, with spaces
+or hyphens. Ambiguous names list choices.
+
+==Staff==
+
+spells <target>
+spells target <name>
+spells all
+
+Staff can inspect a visible character. Class/spec names take precedence;
+use spells target <name> for collisions with catalogs or reserved words.
+Spells all lists spell IDs, aggression and base-class circles, with a class-code
+legend. Use info or a specialization catalog for specialization access.
+
+==See also==
+
+Skills, Race, Classes, Specialization, Multiclass, Spell circle, Cast,
+Memorize, Pray, Scribe
+
+#0
