@@ -8,8 +8,9 @@ query the writer is still blocked in is cut off, so the process exits on time.
 tests/async/run_sql_pool_interrupt_mysql.sh (make test-db) proves the cut-off on a real
 server; test_player_save_worker.py proves the writer names the interrupted job.
 """
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
 COMM = (SRC / "comm.c").read_text()
@@ -30,6 +31,7 @@ assert loop.index("persistence_save_all_characters_terminal(RENT_CRASH);") < \
     loop.index("persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS") < \
     loop.index("shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000)")
 assert "locker_recovery_begin();" not in loop
+assert "redis_world_recovery_drain(shutdown_writer_remaining_msec(3000))" in loop
 assert "not_written" not in loop and "persistence_writer_pending_owners" not in loop
 print("[PASS] the game loop queues every save and dirty locker before the timed drain")
 
@@ -37,10 +39,12 @@ run = body(COMM, "int run_the_game(int port, int sslport)")
 assert run.index("game_loop(port, sslport);") < \
     run.index("locker_async_drain(shutdown_writer_remaining_msec(2000));") < \
     run.index("report_unwritten_saves(player_save_pipeline_finish(") < \
+    run.index("critical_gameplay_handle_completions(shutdown_completions, count);") < \
     run.index("locker_recovery_begin();") < \
     run.index("locker_recovery_finish(shutdown_writer_deadline_usec);") < \
     run.index("locker_async_shutdown();")
 assert run.index("locker_recovery_begin();") < run.rindex("critical_command_coordinator_shutdown();")
+assert run.index("locker_recovery_begin();") < run.index("collector_catalog_cache_shutdown();")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("reap_unheld_player_items_at_boot();")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!sql_hydrate_item_owner_revisions()")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!hydrate_flatfile_system_item_owner()")
@@ -73,3 +77,37 @@ assert "tests/async/run_sql_pool_interrupt_mysql.sh" in (
     ROOT / "tests/run_db_tests.sh").read_text()
 print("[PASS] at the deadline a query the writer is blocked in is cut off, not waited for")
 print("shutdown writer bound contracts passed")
+
+# Exercise the actual deadline helper: all writer/Redis drains must leave the
+# image's final two seconds available, including when the writer used its budget.
+build = ROOT / 'bin/tests/shutdown-budget'
+build.mkdir(parents=True, exist_ok=True)
+cpp = build / 'harness.cpp'
+cpp.write_text('''
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+constexpr uint64_t SHUTDOWN_LOCKER_RECOVERY_USEC = 2000000;
+static uint64_t shutdown_writer_deadline_usec, now_usec;
+static uint64_t persistence_observability_now_usec() { return now_usec; }
+''' + extract_function('net/comm.c', 'static int shutdown_writer_remaining_msec(') + '''
+int main() {
+    now_usec = 1000000;
+    assert(shutdown_writer_remaining_msec(30000) == 0);
+    shutdown_writer_deadline_usec = 31000000;
+    assert(shutdown_writer_remaining_msec(30000) == 28000);
+    assert(shutdown_writer_remaining_msec(3000) == 3000);
+    now_usec = 28000000;
+    assert(shutdown_writer_remaining_msec(3000) == 1000);
+    now_usec = 29000000;
+    assert(shutdown_writer_remaining_msec(3000) == 0);
+    now_usec = 32000000;
+    assert(shutdown_writer_remaining_msec(3000) == 0);
+    shutdown_writer_deadline_usec = 1;
+    assert(shutdown_writer_remaining_msec(3000) == 0);
+}
+''')
+binary = build / 'harness'
+subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', str(cpp), '-o', str(binary)], check=True)
+subprocess.run([str(binary)], check=True, timeout=5)
+print('[PASS] writer and Redis drains preserve the final two seconds without renewing the deadline')

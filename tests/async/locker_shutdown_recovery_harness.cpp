@@ -36,6 +36,41 @@ P_char character_list;
 P_obj object_list;
 static std::deque<critical_command> grants;
 static std::deque<critical_completion> grant_completions;
+static std::string pending_domain;
+bool shop_trade_transaction_player_busy(P_char)
+{
+	return pending_domain == "shop-pending";
+}
+bool auction_transaction_player_busy(P_char)
+{
+	return pending_domain == "auction-pending";
+}
+bool collector_transaction_player_busy(P_char)
+{
+	return pending_domain == "collector-pending";
+}
+bool player_save_pipeline_world_quest_pending(int)
+{
+	return pending_domain == "quest-pending";
+}
+bool critical_command_coordinator_is_fenced(const critical_entity_key &, critical_operation_id *)
+{
+	return pending_domain == "other-fenced";
+}
+void persistence_critical_failure(int, const critical_completion &) {}
+void locker_identify_pulse() {}
+void private_chest_purchase_pulse() {}
+void sql_chest_log_pulse() {}
+void locker_chest_changes_pulse() {}
+void shop_trade_transaction_handle_completions(const critical_completion *, size_t) {}
+void auction_transaction_handle_completions(const critical_completion *, size_t) {}
+void collector_transaction_handle_completions(const critical_completion *, size_t) {}
+void combat_outcome_transaction_handle_completions(const critical_completion *, size_t) {}
+void artifact_guild_transaction_handle_completions(const critical_completion *, size_t) {}
+void boon_reward_transaction_handle_completions(const critical_completion *, size_t) {}
+void divine_trade_runtime_completions(const critical_completion *, size_t) {}
+void boon_shop_transaction_handle_completions(const critical_completion *, size_t) {}
+void zone_touch_transaction_handle_completions(const critical_completion *, size_t) {}
 static room_data rooms[3]{};
 P_room world = rooms;
 extern const int top_of_world = 2;
@@ -449,6 +484,7 @@ int main(int argc, char **argv)
 	assert(mysql_real_connect(DB, "localhost", "root", "locker-test", argv[2], 0, argv[1], 0));
 	assert(chdir(argv[3]) == 0);
 	const std::string mode = argv[4];
+	pending_domain = mode;
 	if (mode == "refuse-boot")
 	{
 		assert(!locker_recovery_boot());
@@ -524,6 +560,9 @@ int main(int argc, char **argv)
 		  mode.find("cycle") == std::string::npos;
 	if (mode == "public-object-missing")
 		durable = false;
+	const bool external_pending = mode.ends_with("-pending") || mode == "other-fenced";
+	if (external_pending)
+		durable = false;
 	prepare = mode != "prepare";
 	queue = mode != "queue";
 	fail_write = mode == "writer-failure";
@@ -564,6 +603,16 @@ int main(int argc, char **argv)
 		user.next_in_room = &user;
 	if (mode == "late-grant" || mode == "ambiguous-grant")
 		commit_grant(mode == "late-grant");
+	if (external_pending)
+	{
+		assert(mysql_query(DB,
+				   "INSERT INTO player_items(pid,vnum,obj_uid) VALUES(42,48,400)") ==
+		       0);
+		assert(mysql_query(
+			       DB,
+			       "INSERT INTO item_current_owner(item_uid,root_item_uid,owner_type,owner_id,item_revision,vnum,state) VALUES(400,400,1,42,1,48,1)") ==
+		       0);
+	}
 	if (mode == "blocked-publish")
 	{
 		// A FIFO at the temporary file makes open(O_EXCL) fail immediately.
@@ -573,6 +622,7 @@ int main(int argc, char **argv)
 	block_child_io = mode == "blocked-io";
 	if (mode == "reaped")
 		signal(SIGCHLD, reap_fixture);
+	// FINAL_COMPLETION_PUBLICATION
 	locker_recovery_begin();
 	if (mode == "reaped")
 		usleep(100000);

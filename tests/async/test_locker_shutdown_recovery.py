@@ -31,11 +31,16 @@ signatures = (
 )
 bodies = '\n'.join(extract_function('item/storage_lockers.c', signature)
                    for signature in signatures)
+bodies += '\n' + extract_function('net/comm.c', 'static void critical_gameplay_handle_completions(')
+comm = (ROOT / 'src/net/comm.c').read_text()
+publication_start = comm.index('critical_completion shutdown_completions[64];')
+publication = comm[publication_start:comm.index('locker_recovery_begin();', publication_start)]
 bodies = bodies.replace('bool StorageLocker::LockerToPFile(void)\n{',
                         'bool StorageLocker::LockerToPFile(void)\n{\n++prepare_calls;')
 cpp = build / 'harness.cpp'
 cpp.write_text((ROOT / 'tests/async/locker_shutdown_recovery_harness.cpp').read_text()
-               .replace('// PRODUCTION_BODIES', bodies))
+               .replace('// PRODUCTION_BODIES', bodies)
+               .replace('// FINAL_COMPLETION_PUBLICATION', publication))
 sources = [
     'src/persistence/locker_recovery.c', 'src/flatfile/flatfile_store.c',
     'src/persistence/locker_async.c',
@@ -161,7 +166,8 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 run(state, 'recover')  # second boot cannot repeat or duplicate recovery
                 print(f'[PASS] {case}: process exit/restart, topology, quantities, ownership and item-only player recovery', flush=True)
 
-            for case in ('movement', 'ambiguous-grant', 'holder-missing', 'public-object-missing', 'malformed', 'blocked-publish', 'blocked-io',
+            external_pending = ('shop-pending', 'auction-pending', 'collector-pending', 'quest-pending', 'other-fenced')
+            for case in ('movement', 'ambiguous-grant', 'holder-missing', 'public-object-missing', 'malformed', 'blocked-publish', 'blocked-io', *external_pending,
                          'room-cycle', 'public-cycle', 'holder-cycle', 'occupant-cycle'):
                 reset()
                 state = work / case
@@ -176,6 +182,8 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 if case == 'ambiguous-grant':
                     assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items') == '105,400,401'
                     assert sql('SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (400,401) AND owner_type=1 AND owner_id=42') == '2'
+                if case in external_pending:
+                    assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items') == '105,400'
                 print(f'[PASS] {case}: explicit failure, retained evidence, restart refuses unsafe replacement', flush=True)
 
             for case in ('checksum', 'wrong-store'):

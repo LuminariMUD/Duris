@@ -1288,7 +1288,6 @@ int run_the_game(int port, int sslport)
 	collector_maintenance_shutdown();
 	collector_listing_pipeline_shutdown();
 	collector_presence_shutdown();
-	collector_catalog_cache_shutdown();
 	information_cache_shutdown();
 	help_cache_shutdown();
 	account_recovery_shutdown();
@@ -1308,7 +1307,12 @@ int run_the_game(int port, int sslport)
 			shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC,
 			sql_pool_interrupt_borrowed));
 		// Nothing can commit after this point. Retain the coordinator until the
-		// recovery capture has published completed grants into the live inventories.
+		// completed operations have published into the live inventories. Use the
+		// normal dispatcher for every item-changing domain, not just creation grants.
+		critical_completion shutdown_completions[64];
+		while (const size_t count =
+			       critical_command_coordinator_pulse(shutdown_completions, 64))
+			critical_gameplay_handle_completions(shutdown_completions, count);
 		locker_recovery_begin();
 		locker_recovery_finish(shutdown_writer_deadline_usec);
 		artifact_guild_transaction_report_unsaved();
@@ -1320,6 +1324,7 @@ int run_the_game(int port, int sslport)
 		player_save_worker_shutdown();
 	}
 	critical_command_coordinator_shutdown();
+	collector_catalog_cache_shutdown();
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
 	// Look for dropped artis and remove them from the next boot.
@@ -2989,7 +2994,7 @@ resume_game_loop:
 			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
 		player_save_pipeline_drain(
 			shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000));
-		if (!redis_world_recovery_drain(3000))
+		if (!redis_world_recovery_drain(shutdown_writer_remaining_msec(3000)))
 			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
 					  "pipeline_drain_failed", "shutdown_cancelled=0");
 	}

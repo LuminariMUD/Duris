@@ -74,6 +74,10 @@
 #include "core/files.h"
 #include "item/private_chest_purchase.h"
 #include "item/item_movement_transaction.h"
+#include "economy/shop_trade_transaction.h"
+#include "economy/auction_transaction.h"
+#include "economy/collector_transaction.h"
+#include "player/player_save_pipeline.h"
 #include <unordered_set>
 
 extern P_index obj_index;
@@ -2234,13 +2238,21 @@ bool locker_shutdown_capture(std::vector<locker_recovery_entry> *entries,
 			}
 			if (IS_NPC(occupant) || GET_PID(occupant) <= 0)
 				continue;
-			if (item_movement_transaction_player_busy(occupant))
+			if (item_movement_transaction_player_busy(occupant) ||
+			    shop_trade_transaction_player_busy(occupant) ||
+			    auction_transaction_player_busy(occupant) ||
+			    collector_transaction_player_busy(occupant) ||
+			    player_save_pipeline_world_quest_pending(GET_PID(occupant)) ||
+			    critical_command_coordinator_is_fenced(
+				    { critical_entity_type::player,
+				      static_cast<uint64_t>(GET_PID(occupant)) },
+				    nullptr))
 			{
-				// An ambiguous commit may have installed a detached grant that
+				// An unresolved operation may have installed a detached item that
 				// is absent from this inventory. Preserve evidence, never erase
 				// that durable payload with an incomplete replacement on boot.
 				logit(LOG_FILE,
-				      "UNRECOVERED locker shutdown: player_pid=%d grant_outcome_unresolved=1",
+				      "UNRECOVERED locker shutdown: player_pid=%d item_outcome_unresolved=1",
 				      GET_PID(occupant));
 				complete = false;
 			}

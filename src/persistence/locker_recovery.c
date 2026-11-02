@@ -10,7 +10,6 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "sql/sql.h"
-#include "item/item_movement_transaction.h"
 
 #include <array>
 #include <cerrno>
@@ -368,12 +367,6 @@ void locker_recovery_begin(void)
 {
 	try
 	{
-		// The writer is stopped, but a grant's commit can still be awaiting main-
-		// thread publication. Capturing before that publication would erase its
-		// durable payload when the frozen player inventory replaces it on boot.
-		critical_completion completions[64];
-		while (const size_t count = critical_command_coordinator_pulse(completions, 64))
-			item_movement_transaction_handle_completions(completions, count);
 		std::vector<locker_recovery_entry> entries;
 		std::vector<player_snapshot> players;
 		capture_complete = locker_shutdown_capture(&entries, &players);

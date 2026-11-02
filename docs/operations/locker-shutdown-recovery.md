@@ -8,7 +8,7 @@ admission can fail afterwards.
 ## What is preserved
 
 After input has stopped, terminal character saves have been attempted, and the
-writer has stopped, shutdown publishes completed item grants into their live
+writer has stopped, shutdown publishes completed item-changing operations into their live
 inventories, then captures every occupied locker and retained terminal locker
 holder. This traversal does not move items or call departure, `LockerToPFile`,
 private durability, purchase, or audit completion code. It captures:
@@ -74,7 +74,8 @@ audit barriers. The image recovers items; it does **not** certify completion of
 these operations. Inspect the ordinary `not_written` reports and purchase/audit
 records separately. Completed detached creation grants are published before
 capture, including grants that committed during the final writer drain. If a
-grant's outcome remains unknown, the image is incomplete and boot refuses replay:
+grant or another inventory operation remains unresolved (including a shop,
+auction, collector, quest reward or player fence), the image is incomplete and boot refuses replay:
 replacing the inventory could otherwise erase its committed payload. Preserve
 the image, transfer receipts and database for reconciliation; no second grant is
 issued by recovery.
