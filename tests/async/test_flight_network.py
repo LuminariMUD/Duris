@@ -372,24 +372,81 @@ int main() {
     output.clear();
     do_flights(ch, nullptr, CMD_FLIGHTS);
     assert(output.find("distance unavailable") != std::string::npos);
+    // Each interrupted trip must return to service and sell the next trip.
+    pc.learned_flight_stops = 6;
+    ch->specials.position = STAT_NORMAL;
+    ch->player.race = RACE_DROW;
+    GET_COPPER(ch) = 1000000;
+    for (int interruption = 0; interruption < 5; ++interruption) {
+        visit(2);
+        command(CMD_LIST);
+        command(CMD_BUY, "1");
+        assert(ch->carrying);
+        command(CMD_GIVE, "ticket carrier");
+        assert(GET_MOUNT(ch) == recipient);
+        // Outbound continuation must not retain an extraction-sensitive victim.
+        assert(scheduled.at(recipient).rider == nullptr);
+        run_event(recipient);
+        const int interrupted_room = recipient->in_room;
+        assert(interrupted_room != 2);
+        if (interruption == 0) {
+            unlink_char(ch, recipient, LNK_RIDING); // still co-located
+        } else if (interruption == 1) {
+            unlink_char(ch, recipient, LNK_RIDING);
+            char_from_room(ch);
+            char_to_room(ch, 4, -1);
+        } else if (interruption == 2) {
+            // A separately relocated passenger must not be pulled back home.
+            char_from_room(ch);
+            ch->in_room = 4;
+            ch->next_in_room = rooms[4].people;
+            rooms[4].people = ch;
+        } else if (interruption == 3) {
+            TRANSPORT_STEP(recipient) = 999999;
+        } else {
+            // Wrong position with otherwise valid progress cannot resume the route.
+            unlink_char(ch, recipient, LNK_RIDING);
+            char_from_room(recipient);
+            char_to_room(recipient, 6, -1);
+        }
+        int callbacks = 0;
+        while (scheduled.count(recipient)) {
+            assert(++callbacks < 40);
+            assert(scheduled.at(recipient).rider == nullptr);
+            run_event(recipient);
+        }
+        assert(recipient->in_room == 2 && recipient->specials.z_cord == 0);
+        assert(TRANSPORT_STATE(recipient) == TRANSPORT_STATE_WAITING);
+        assert(TRANSPORT_ROUTE(recipient) == -1 && TRANSPORT_STEP(recipient) == 0);
+        assert(!GET_MOUNT(ch) && !GET_RIDER(recipient));
+        if (interruption == 1 || interruption == 2) assert(ch->in_room == 4);
+    }
+    // Successful travel still works after all interruptions.
+    visit(2);
+    command(CMD_BUY, "1");
+    command(CMD_GIVE, "ticket carrier");
+    while (scheduled.count(recipient)) run_event(recipient);
+    assert(ch->in_room == 1 && ch->specials.z_cord == 0);
+    assert(recipient->in_room == 2 && recipient->specials.z_cord == 0);
     clear_world();
-    puts("flight catalog, paths, discoveries, fares, commands, tickets and epic exclusions passed");
+    puts("flight catalog, paths, discoveries, fares, commands, tickets and interruption recovery passed");
 }
 '''
 utility = (ROOT / 'src/core/utility.c').read_text()
 map_lookup = utility[utility.index('int maproom_of_zone(int zone_num)'):utility.index('/* real rooms only! */')]
 CASES = CASES.replace('int maproom_of_zone(int) { return NOWHERE; }', map_lookup)
 base = '#include <bit>\n' + base
-build = ROOT / 'bin/tests'
-build.mkdir(parents=True, exist_ok=True)
-with tempfile.TemporaryDirectory(prefix='flight-network-', dir=build) as temporary:
-    source = Path(temporary) / 'harness.cpp'
-    source.write_text(base + CASES)
-    binary = Path(temporary) / 'harness'
-    subprocess.run(['g++', '-std=c++20', '-g', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
-                    '-I', str(ROOT / 'src'), '-I/usr/include/mysql', '-I/usr/include/libxml2',
-                    str(source), str(ROOT / 'src/world/world_singletons.c'),
-                    '-lbsd', str(HARNESS_STUBS), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True,
-                   env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=1:halt_on_error=1'})
+if __name__ == '__main__':
+    build = ROOT / 'bin/tests'
+    build.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='flight-network-', dir=build) as temporary:
+        source = Path(temporary) / 'harness.cpp'
+        source.write_text(base + CASES)
+        binary = Path(temporary) / 'harness'
+        subprocess.run(['g++', '-std=c++20', '-g', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
+                        '-I', str(ROOT / 'src'), '-I/usr/include/mysql', '-I/usr/include/libxml2',
+                        str(source), str(ROOT / 'src/world/world_singletons.c'),
+                        '-lbsd', str(HARNESS_STUBS), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True,
+                       env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=1:halt_on_error=1'})

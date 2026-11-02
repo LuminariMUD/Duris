@@ -1,6 +1,6 @@
 # Issue #584: flight transport implementation plan
 
-Status: planned; implementation has not started. Prepared 2026-11-02.
+Status: implementation in progress. Updated 2026-11-02. Carrier continuation is the first review chunk; boarding/combat and full-world acceptance follow on a dependent branch.
 
 - Work item: [Duris #584](https://github.com/LuminariMUD/Duris/issues/584).
 - Linked development branch: [branch/issue-584-flight-transport](https://github.com/LuminariMUD/Duris/tree/branch/issue-584-flight-transport).
@@ -16,7 +16,7 @@ Preserve ordinary occupied trips, empty returns, ordinary ground mounting/combat
 
 ## Non-goals
 
-No production intervention, deployment, restart, migrations, player-data changes, refunds, new multi-passenger fare model, global riding/combat redesign, or new scheduler/reconciliation service. No claim that a socket disconnect, NPC horse, or ground melee caused the reported live incident without evidence. This branch currently delivers only this plan; #584 remains open until implementation and its acceptance checks are complete. #40 and merged #51 are historical context, not additional work items to close.
+No production intervention, deployment, restart, migrations, player-data changes, refunds, new multi-passenger fare model, global riding/combat redesign, or new scheduler/reconciliation service. No claim that a socket disconnect, NPC horse, or ground melee caused the reported live incident without evidence. #584 remains open until implementation and its acceptance checks are complete. #40 and merged #51 are historical context, not additional work items to close.
 
 ## What the current code establishes
 
@@ -128,6 +128,16 @@ git diff --check
 The default journey builds its flat-file server under `bin/tests`; the explicit MariaDB binary is also under `bin/`. The database wrapper supplies disposable loopback authority and the journey does not use the checkout's `.env` or running game. If a required journey is unavailable, record the specific missing dependency and leave that acceptance claim unverified. Do not wait for CI, stop a shared server, or run a repository-wide burn-in for this task.
 
 ## Validation performed for this plan
+
+### Implementation handoff: carrier continuation chunk
+
+Implemented carrier-only outbound/recovered events, current-rider checks, empty return on lost riding links, shared route-position validation, remote-passenger detachment, unconditional arrival detachment, and carrier lifetime checks after both occupied and empty room entry. The shared position validator replaces duplicated recovery validation and is used by both runtime callbacks; no scheduler changes, watchdog, new state, or schema were added.
+
+`test_flight_network.py` now covers same-room unlink, unlink plus separation, separation with a remaining ride link, invalid step, unexpected position, and successful purchase/departure after interruptions. Its new carrier-only assertion failed on the unmodified implementation. `test_flight_transport_runtime.py` uses production link creation/removal and event scheduling/cancellation, with isolated allocation and room I/O, to exercise passenger teardown/freeing between and during movement and carrier extraction during outbound/return callbacks. The singleton fixture also tests recovery of an already orphaned flight snapshot.
+
+Checks for this chunk: `make -C src -j8` passed; flight-network, world-singleton and generic event-cancellation sanitizer controls passed during development. Final focused checks are recorded with the review commit. Full-world and dual-backend journeys have not yet been run for the implementation.
+
+Remaining work (required before issue completion): boarding rejection and later mount guards; nested recovery safety; narrow combat exemption; real room-entry/attack/altitude checks; complete server extraction and service-reuse journeys including Torrhan, both persistence backends, and final evidence review. Continue from this worktree and stack the next branch on the first implementation commit. No release tag or deployment is appropriate for these unmerged fixes.
 
 At the inspected base, these existing controls passed:
 

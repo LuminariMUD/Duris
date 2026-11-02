@@ -14,6 +14,7 @@
 #include <vector>
 
 P_char character_list = nullptr;
+uint64_t character_removal_generation = 0;
 P_desc descriptor_list = nullptr;
 P_obj object_list = nullptr;
 index_data mob_indexes[4] = {};
@@ -54,6 +55,7 @@ int shops_saved = 0;
 int saved_shop_rooms[7] = { -1, -1, -1, -1, -1, -1, -1 };
 bool fail_shop_placement = false;
 bool entry_hazard = false;
+void (*entry_hook)(P_char) = nullptr;
 persistence_mode persistence_mode_get()
 {
 	return PERSISTENCE_MODE_MARIADB_PRIMARY;
@@ -176,6 +178,8 @@ bool char_to_room(P_char ch, int room, int direction)
 		char_from_room(rider);
 		char_to_room(rider, room, -1);
 	}
+	if (entry_hook)
+		entry_hook(ch);
 	return true;
 }
 int char_in_list(const P_char candidate)
@@ -302,6 +306,7 @@ void extract_obj(P_obj obj, int)
 }
 void extract_char(P_char ch)
 {
+	++character_removal_generation;
 	assert(!GET_RIDER(ch));
 	scheduled.erase(ch);
 	// Ordinary production NPC teardown drops items in a valid room.
@@ -639,6 +644,22 @@ int main()
 	run_event(flight);
 	assert(flight->in_room == 0 && TRANSPORT_STATE(flight) == TRANSPORT_STATE_WAITING &&
 	       scheduled.empty());
+
+	// A snapshot of an already stranded, unoccupied flight resumes its return.
+	char_from_room(flight);
+	char_to_room(flight, 1, -1);
+	transport_snapshot orphan = {};
+	orphan.origin = rooms[0].number;
+	orphan.destination = rooms[2].number;
+	orphan.state = TRANSPORT_STATE_MOVING;
+	orphan.step = 1;
+	transport_restore(flight, orphan);
+	initialize_transport();
+	assert(scheduled.at(flight).rider == nullptr);
+	while (scheduled.count(flight))
+		run_event(flight);
+	assert(flight->in_room == 0 && flight->specials.z_cord == 0 &&
+	       TRANSPORT_STATE(flight) == TRANSPORT_STATE_WAITING);
 
 	// Old snapshots have no route metadata; safely return that dragon home.
 	char_from_room(flight);

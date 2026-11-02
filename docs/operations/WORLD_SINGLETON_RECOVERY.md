@@ -81,3 +81,19 @@ recovery experiment.
 
 A full-world boot or copyover applies reconciliation and logs the number of extra
 keepers and dragons removed.
+
+Runtime flight continuation belongs to the carrier alone, including on occupied
+trips. Passenger extraction therefore removes the riding link without cancelling
+the carrier's next movement. Each callback checks the carrier's actual route
+position and current rider; an interrupted trip returns empty, while invalid
+progress lands the carrier at its configured pad. Separately relocated players
+are detached without being pulled back home. Arrival detaches and grounds the
+delivered passenger unconditionally, even where the ordinary dismount command
+would refuse. The carrier returns at flight altitude and lands at its own pad.
+
+`python3 tests/async/test_flight_transport_runtime.py` uses production transport,
+riding-link functions, event scheduling and cancellation with isolated room I/O.
+It covers passenger link teardown/freeing between and during movement, owner
+extraction during occupied and empty movement, generic victim cancellation, and
+return to service. It complements the full-server flight journey; its simulated
+room entry and character allocation do not prove a production attack sequence.
