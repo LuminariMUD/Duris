@@ -15120,16 +15120,48 @@ See also: BASH
 
 #
 SKILLS (General Information)
-===========================================================================
-Skills are methods of survival or battle tactics and techniques that are 
-learned by classes through use over time. 
+============================================================
+Use skills to see your own skill proficiency and future unlock levels.
+Staff also see their own skills when no argument is supplied.
 
-Your proficiency at a skill will increase over time if you apply the skill
-as you adventure.
+==Syntax==
 
-NOTE: Type "skill" to see a list of your character's skills are current
-      proficiency at them.  
-===========================================================================
+skills
+skills <class or specialization>
+skills info <skill name>
+
+Examples: skills warrior, skills guardian, skills dark knight,
+and skills info mounted combat. Full names and unique abbreviations work.
+
+Class and specialization lists show unlock levels and proficiency caps.
+A specialization list includes inherited skills and its changes, and names
+skills lost from the base class. Assassin and Thief select the current
+Rogue specializations. These catalogs are references; they do not determine
+whether your race can choose that class or specialization.
+
+Skill information shows current class/spec definitions, your own progress,
+and existing helpfile details. Unlisted specializations inherit base-class
+values. A proficiency rating is not a guaranteed chance of success.
+Epic skills use their separate acquisition rules. Instruments and bard
+songs are included where applicable; spells use the spell commands.
+
+==Staff inspection==
+
+skills <target>
+skills target <name>
+skills levels
+
+Staff can inspect a visible character. Use the explicit target form when a
+character's name matches a class, specialization, or command keyword.
+The levels table shows base-class unlock levels in grouped columns.
+The obsolete skills reset option has been removed.
+
+==See also==
+
+* Practice
+* Teachers
+* Specialization
+* Race
 
 #
 

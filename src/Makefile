@@ -137,6 +137,7 @@ OBJS =  $(SHIP_OBJS) \
 				 cmd/actcomm.o \
 				 cmd/actinf.o \
 				 cmd/race.o \
+				 cmd/skills.o \
 				 cmd/actmove.o \
 				 cmd/actnew.o \
 				 cmd/actobj.o \

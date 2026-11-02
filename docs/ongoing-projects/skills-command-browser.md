@@ -1,6 +1,6 @@
 # Skills command browser
 
-Status: planned; implementation has not started.
+Status: implemented and locally qualified; preparing the focused review PR.
 Date: 2026-11-02
 Estimated effort: about 2 hours; allow 1–3 hours for implementation, help updates,
 builds, and focused validation. Intended delivery is one focused PR.
@@ -109,9 +109,9 @@ requirements, or active/passive behavior that the shared skill data cannot prove
 - Recognize `info` and `levels` before catalog/target lookup. Resolve class/spec
   names before attempting staff target lookup. Ordinary players must never enter
   staff inspection or the staff table through an abbreviation or fallback.
-- During implementation, check collisions between reserved/class/spec names and
-  character targeting. Keep the five primary forms above; settle any necessary
-  explicit staff targeting escape before finalizing the parser.
+- Keep the five primary forms above. The staff-only `skills target <name>`
+  escape explicitly selects a character when its name collides with a reserved
+  word, class, specialization, or ambiguous catalog abbreviation.
 - Unknown input and incomplete `skills info` should explain the applicable syntax.
   Filter undefined/internal effect entries out of public skill lookup.
 - Generate `skills levels` from the class catalog, with readable headings, a
@@ -122,7 +122,7 @@ requirements, or active/passive behavior that the shared skill data cannot prove
 ## Implementation steps and likely files
 
 1. **Refactor command routing and retain existing personal output.**
-   Start in `src/guild/guild.c` (`do_skills`). Make no-argument behavior consistent,
+   Move `do_skills` from `src/guild/guild.c` to `src/cmd/skills.c`. Make no-argument behavior consistent,
    move the staff table behind `levels`, preserve target inspection, and remove
    `reset`. Keep helpers local unless an existing second caller needs them.
 2. **Add class/spec browsing and skill lookup.**
@@ -149,26 +149,26 @@ new registration framework is unnecessary. No schema changes are anticipated.
 
 ## Proof and acceptance criteria
 
-- [ ] Bare `skills` shows personal skills for a mortal and for staff.
-- [ ] Staff target inspection still works; players cannot inspect other targets.
-- [ ] Every supported class/spec name resolves correctly, including multiword
+- [x] Bare `skills` shows personal skills for a mortal and for staff.
+- [x] Staff target inspection still works; players cannot inspect other targets.
+- [x] Every supported class/spec name resolves correctly, including multiword
   names, Assassin/Thief, exact matches, ambiguous abbreviations, and invalid input.
-- [ ] Catalogs show correct base/spec unlock levels and caps. Cover a spec-only
+- [x] Catalogs show correct base/spec unlock levels and caps. Cover a spec-only
   skill, a removed skill, a changed level, and a cap-only change. Bash is a useful
   case: Warrior cap 100, Swordsman cap 70, and no Swashbuckler access.
-- [ ] Personal/info output uses actual specialization and multiclass rules.
-- [ ] Existing epic, instrument, and song coverage is preserved; internal effects
+- [x] Personal/info output uses actual specialization and multiclass rules.
+- [x] Existing epic, instrument, and song coverage is preserved; internal effects
   do not appear as public learnable skills.
-- [ ] Info output combines correct live facts with the matching help topic on
+- [x] Info output combines correct live facts with the matching help topic on
   both MySQL and flat-file builds. Cover redirects, missing help, and unavailable
   help while retaining the live-data section.
-- [ ] `skills levels` is staff-only, covers the class catalog, and is readable in
+- [x] `skills levels` is staff-only, covers the class catalog, and is readable in
   a normal terminal. `skills reset` no longer takes the obsolete reset path.
-- [ ] Command help documents the final behavior, and output remains readable with
+- [x] Command help documents the final behavior, and output remains readable with
   colors stripped and with long results passing through the pager.
-- [ ] Run focused executable regressions and isolated gameplay journeys through
+- [x] Run focused executable regressions and isolated gameplay journeys through
   the actual command dispatcher, including both mortal and staff permissions.
-- [ ] Run `./scripts/format.sh --check`, `make -C src`, and the relevant existing
+- [x] Run `./scripts/format.sh --check`, `make -C src`, and the relevant existing
   help tests. Qualify the changed command/help paths against both supported
   backends using isolated build/test artifacts. Report any unrun validation;
   hosted CI is not a completion dependency.
@@ -183,3 +183,58 @@ a separate operation.
 
 Before completion, reread the diff and remove anything not needed for the five
 command forms, specialization browsing, help reuse, documentation, or their proof.
+
+## Implementation progress and handoff
+
+- Implemented the browser in `src/cmd/skills.c`, moving the old handler out of
+  guild training code and registering its object in the Makefile. Existing
+  command registration and the game output pager remain the entry path.
+- Reused `wiki_help_single` directly and declared its existing `trim` utility in
+  `wikihelp.h`. No extra help API, description store, eligibility framework,
+  configuration, schema, or mechanics changes were needed.
+- Class/spec names take precedence over staff target lookup. The staff-only
+  `skills target <name>` escape handles characters named like classes or reserved
+  words. Current specialization names override legacy Assassin/Thief classes.
+- `skills levels` now groups all 30 class catalog entries into six-column blocks.
+  Base-class tables and catalogs exclude epic purchases; epic info identifies
+  their separate acquisition rules and reuses their help topic.
+- Updated both maintained Skills help topics with all command forms and examples.
+  Inspection of both help sources found matching topics for every defined skill
+  name except the two internal cooldown entries, which the public filter excludes.
+- Reviewed the code and the real color-stripped Bash info and level-table output.
+  Runtime transcripts are generated under `bin/tests/skills-info-<backend>.txt`
+  and `bin/tests/skills-levels-<backend>.txt`, and are not committed.
+
+### Validation completed on 2026-11-02
+
+- `python3 tests/async/test_skills_command.py` — passed on both compile backends
+  with AddressSanitizer and UndefinedBehaviorSanitizer. Exercises all class/spec
+  names, exact/unique/ambiguous matching, specialization-only skills, removals,
+  cap/level changes, real character/multiclass calculations, mental anguish,
+  mortal/fogged-staff permission boundaries, NPC inspection, epic/instrument/song
+  coverage, and retention of live facts with missing/unavailable help.
+- `make -C src -j6` — passed; MariaDB binary `bin/server/dms_new`.
+- `make -C src -j6 PERSISTENCE_BACKEND=flatfile DMS_BINARY=../bin/server/dms_flatfile`
+  — passed; independent flat-file artifacts under `bin/`.
+- `python3 tests/async/run_skills_command_journey.py --backend flatfile --server bin/server/dms_flatfile`
+  — passed through the real dispatcher on disposable authority, with created
+  mortal/staff characters, live skill/help definitions, catalog differences,
+  target inspection, permission boundaries, colors, and the output pager.
+- `tests/async/with_disposable_mariadb.sh python3 tests/async/run_skills_command_journey.py --backend mariadb --server bin/server/dms_new`
+  — passed the same journey using a disposable loopback database and maintained
+  help import. No configured game account, production database, or live server was used.
+- `python3 tests/async/test_help_cache.py` — passed, including redirect handling,
+  missing/unavailable topics, refresh publication and failure/shutdown behavior.
+- `python3 tests/async/test_flatfile_help_catalog.py` — passed catalog, help
+  runtime, and information runtime checks.
+- `python3 scripts/format_help_topics.py`, `./scripts/format.sh --check`, and
+  `git diff --cached --check` — passed. The staged formatter was also applied.
+- Pre-commit clang-tidy passed with its compiler include selection pinned to the
+  build's GCC 13 installation (`--gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/13`).
+  Its default selection of separately installed GCC 16 headers caused parser
+  errors; an untracked wrapper under `bin/tidy/` supplies the compatible selection
+  through `CLANG_TIDY`. No checks were bypassed.
+
+All implementation acceptance criteria above are met. Remaining workflow:
+commit/push this change, open its focused PR against `master`, and record the PR
+link here and on issue #598. Review/merge and production deployment are separate.
