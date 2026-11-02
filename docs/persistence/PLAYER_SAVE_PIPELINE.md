@@ -244,7 +244,8 @@ extract the character at once (`persistence_save_character_terminal()` in
 leaves. On flat-file only, a new character's first save is written before its domains
 are read back, within five seconds.
 
-Shutdown queues every player's save, gives the writer 30 seconds for what is queued and
+Shutdown queues every player's save, shares a 30-second window between the writer
+and locker recovery (reserving the last two seconds for the image), and
 always goes; a write it could not finish is named in the log. Copyover waits the same
 30 seconds and is called off, resuming the game loop, when the writer cannot drain.
 Orderly shutdown also freezes retained locker contents and their occupants' items

@@ -7,8 +7,9 @@ admission can fail afterwards.
 
 ## What is preserved
 
-After input has stopped, command drains and terminal character saves have been
-attempted, shutdown captures every occupied locker and retained terminal locker
+After input has stopped, terminal character saves have been attempted, and the
+writer has stopped, shutdown publishes completed item grants into their live
+inventories, then captures every occupied locker and retained terminal locker
 holder. This traversal does not move items or call departure, `LockerToPFile`,
 private durability, purchase, or audit completion code. It captures:
 
@@ -28,7 +29,8 @@ the same backup and retention policy as player persistence.
 Publication runs in a child that uses only filesystem syscalls and never touches
 the database or inherited C++ services. A file is written and synced as
 `shutdown.pending`, renamed to `shutdown.image`, and its directory synced. The
-parent waits only until the **existing writer deadline**, then kills the child
+parent reserves the last two seconds of the **existing 30-second window** for
+capture/publication, then kills the child at that deadline
 without joining blocked disk I/O. Image capture/publication does not grant the
 writer a fresh 30 seconds. Copyover continues to use its existing cancellable
 drains; pwipe does not create a shutdown image.
@@ -41,7 +43,8 @@ The recovery directory is relative to the game's data directory:
 - Flat-file: `$FLATFILE_STATE_DIR/locker-shutdown/` (native private chests remain
   unavailable on that backend).
 
-Boot locks the directory and checks recovery **before artifact population
+Boot locks the directory and checks recovery **before hydrating ownership
+revision caches, artifact population
 reconciliation, unheld-item reaping, world loading, or player admission**. A
 complete image is decoded in full, then applied through the existing locker,
 private chest and item-only player repositories. These make item ownership agree
@@ -69,8 +72,12 @@ The console/stderr and file log report:
 Per-locker capture logs identify pending item-movement, chest-write, purchase and
 audit barriers. The image recovers items; it does **not** certify completion of
 these operations. Inspect the ordinary `not_written` reports and purchase/audit
-records separately. An unfinished detached creation grant is still governed by
-its existing committed transfer payload; this image does not issue a second grant.
+records separately. Completed detached creation grants are published before
+capture, including grants that committed during the final writer drain. If a
+grant's outcome remains unknown, the image is incomplete and boot refuses replay:
+replacing the inventory could otherwise erase its committed payload. Preserve
+the image, transfer receipts and database for reconciliation; no second grant is
+issued by recovery.
 
 A missing holder, wrapper, chest object, malformed item graph, allocation/size
 failure, or duplicate UID can make a complete recovery impossible. Available

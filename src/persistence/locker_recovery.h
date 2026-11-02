@@ -14,7 +14,8 @@ struct locker_recovery_entry
 
 // Boot, before custody cleanup or any live loads. Refuse boot on unresolved data.
 bool locker_recovery_boot(void);
-// Shutdown only: freeze memory, then publish on a child with no database access.
+// Shutdown only, after the writer stops: publish its item completions, freeze
+// memory, then publish on a child with no database access.
 // The finish uses the writer's existing monotonic deadline, never a new wait.
 void locker_recovery_begin(void);
 void locker_recovery_finish(uint64_t deadline_usec);

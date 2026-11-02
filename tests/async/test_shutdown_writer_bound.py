@@ -28,24 +28,30 @@ loop = loop[:loop.index("close_sockets(s);")]
 assert loop.index("persistence_save_all_characters_terminal(RENT_CRASH);") < \
     loop.index("locker_async_drain(0);") < \
     loop.index("persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS") < \
-    loop.index("locker_recovery_begin();") < \
     loop.index("shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000)")
+assert "locker_recovery_begin();" not in loop
 assert "not_written" not in loop and "persistence_writer_pending_owners" not in loop
 print("[PASS] the game loop queues every save and dirty locker before the timed drain")
 
 run = body(COMM, "int run_the_game(int port, int sslport)")
 assert run.index("game_loop(port, sslport);") < \
     run.index("locker_async_drain(shutdown_writer_remaining_msec(2000));") < \
-    run.index("report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,") < \
+    run.index("report_unwritten_saves(player_save_pipeline_finish(") < \
+    run.index("locker_recovery_begin();") < \
     run.index("locker_recovery_finish(shutdown_writer_deadline_usec);") < \
     run.index("locker_async_shutdown();")
+assert run.index("locker_recovery_begin();") < run.rindex("critical_command_coordinator_shutdown();")
 assert COMM.index("if (!locker_recovery_boot())") < COMM.index("reap_unheld_player_items_at_boot();")
+assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!sql_hydrate_item_owner_revisions()")
+assert COMM.index("if (!locker_recovery_boot())") < COMM.index("!hydrate_flatfile_system_item_owner()")
+assert "shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC" in run
 assert "locker_recovery_begin" not in body(COMM, "bool pwipe_quiesce_writers(void)")
 assert "sql_pool_interrupt_borrowed" in run
 # The locker drains wait only for what is left of the writer's 30 s.
 assert COMM.count("locker_async_drain(shutdown_writer_remaining_msec(2000));") == 2
 remaining = body(COMM, "static int shutdown_writer_remaining_msec(int cap_msec)")
-assert "now >= shutdown_writer_deadline_usec" in remaining and "return 0;" in remaining
+assert "now >= writer_deadline" in remaining and "return 0;" in remaining
+assert "shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC" in remaining
 assert COMM.count("report_unwritten_saves(") == 2  # the definition and its one call
 report = body(COMM, "static void report_unwritten_saves(")
 assert '"not_written"' in report and "persistence_job_kind::log" in report

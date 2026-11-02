@@ -123,6 +123,7 @@ class StorageLocker
 	// The private chest named `name` (any case), or NULL.
 	PrivateChest *FindPrivateChest(const char *name);
 	std::vector<PrivateChest *> GetPrivateChests(void);
+	bool ChestObjectsPresent(void) const;
 	// Unlink the chest and delete it.
 	void RemovePrivateChest(PrivateChest *chest);
 	int GetRealRoom(void) { return m_realRoom; };

@@ -1,6 +1,7 @@
 // Live locker traversal, departure guards, item capture/codec, recovery publication,
-// and SQL ownership repositories are production code. Gameplay/event boundaries
-// and private durability/admission outcomes are controlled by this fixture.
+// grant publication, transfer and ownership repositories are production code.
+// Gameplay/events, coordinator delivery and private durability/admission outcomes
+// are controlled by this fixture.
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "core/files.h"
@@ -13,6 +14,10 @@
 #include "flatfile/flatfile_player_repository.h"
 #include "sql/sql.h"
 #include "sql/sql_pool.h"
+#include "item/item_movement_transaction.h"
+#include "item/item_ownership_runtime.h"
+#include "item/item_transfer_repository.h"
+#include <deque>
 #define LOCKERS_START 65201
 #define LOCKERS_MAX 99
 #define IS_TOWN_RAIDED(ch) false
@@ -28,6 +33,9 @@
 
 MYSQL *DB;
 P_char character_list;
+P_obj object_list;
+static std::deque<critical_command> grants;
+static std::deque<critical_completion> grant_completions;
 static room_data rooms[3]{};
 P_room world = rooms;
 extern const int top_of_world = 2;
@@ -115,9 +123,76 @@ bool esc_locker_name_matches_player(const char *, P_char)
 {
 	return true;
 }
-bool item_movement_transaction_player_busy(P_char)
+critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
-	return movement;
+	command.accepted_at_usec = 1;
+	assert(critical_command_normalize(&command));
+	grants.push_back(std::move(command));
+	return critical_submit_result::accepted;
+}
+size_t critical_command_coordinator_pulse(critical_completion *results, size_t capacity)
+{
+	size_t count = 0;
+	while (count < capacity && !grant_completions.empty())
+	{
+		results[count++] = grant_completions.front();
+		grant_completions.pop_front();
+	}
+	return count;
+}
+void mark_player_dirty_components(int, player_component_mask_t) {}
+void collector_catalog_cache_invalidate() {}
+bool collector_transaction_item_busy(uint64_t)
+{
+	return false;
+}
+void command_interpreter(P_char, char *)
+{
+	abort();
+}
+void process_with_paging(P_char, char *)
+{
+	abort();
+}
+void send_to_char(const char *text, P_char ch, int)
+{
+	send_to_char(text, ch);
+}
+P_char find_player_by_pid(int pid)
+{
+	for (P_char ch = character_list; ch; ch = ch->next)
+		if (GET_PID(ch) == pid)
+			return ch;
+	return nullptr;
+}
+bool player_load_item_graph_materialize_creation(const item_transfer_payload &,
+						 const item_transfer_result &, std::vector<P_obj> *)
+{
+	return false;
+}
+void obj_from_char(P_obj object)
+{
+	P_obj *link = &object->loc.carrying->carrying;
+	while (*link != object)
+		link = &(*link)->next_content;
+	*link = object->next_content;
+	object->next_content = nullptr;
+	object->loc_p = LOC_NOWHERE;
+}
+void obj_to_obj(P_obj object, P_obj container)
+{
+	object->loc_p = LOC_INSIDE;
+	object->loc.inside = container;
+	object->next_content = container->contains;
+	container->contains = object;
+}
+void extract_obj(P_obj object, int)
+{
+	P_obj *link = &object_list;
+	while (*link != object)
+		link = &(*link)->next;
+	*link = object->next;
+	object->next = nullptr;
 }
 bool private_chest_purchase_locker_busy(int)
 {
@@ -266,6 +341,7 @@ class PublicChest : public LockerChest
 		m_pChestObject = object;
 	}
 	void FillExtraDescBuf(char *) override {}
+	void lose_object() { m_pChestObject = nullptr; }
 };
 class TestPrivateChest : public PrivateChest
 {
@@ -306,7 +382,48 @@ static P_obj object(uint64_t uid, int type = ITEM_OTHER)
 	value->type = type;
 	value->condition = 100;
 	value->cost = 25;
+	value->loc_p = LOC_NOWHERE;
+	value->next = object_list;
+	object_list = value;
 	return value;
+}
+
+static void commit_grant(bool acknowledge)
+{
+	assert(grants.size() == 1);
+	const auto &command = grants.front();
+	char operation[33];
+	assert(critical_operation_id_to_hex(command.operation_id, operation, sizeof(operation)));
+	const std::string insert =
+		"INSERT INTO critical_operation_inbox "
+		"(operation_id,command_hash,keys_hash,command_type,schema_version,payload_version,status,result_payload) "
+		"VALUES (UNHEX('" +
+		std::string(operation) + "'),UNHEX(REPEAT('00',32)),UNHEX(REPEAT('00',32))," +
+		std::to_string(static_cast<unsigned>(command.type)) + ",1,1,1,'')";
+	assert(mysql_query(DB, "START TRANSACTION") == 0);
+	assert(mysql_query(DB, insert.c_str()) == 0);
+	item_transfer_result result{};
+	unsigned int code = 0;
+	bool mutated = false;
+	const bool applied =
+		item_transfer_repository_execute(DB, command, &result, &code, &mutated);
+	if (!applied)
+		fprintf(stderr, "grant apply failed: mysql=%u errno=%d %s\n", mysql_errno(DB),
+			errno, mysql_error(DB));
+	assert(applied);
+	assert(code == 0 && mutated);
+	assert(mysql_query(DB, "COMMIT") == 0);
+	if (acknowledge)
+	{
+		critical_completion completion{};
+		completion.operation_id = command.operation_id;
+		completion.outcome = critical_apply_outcome::applied;
+		std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded{};
+		assert(item_transfer_command_encode_result(result, &encoded));
+		completion.result_size = encoded.size();
+		std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+		grant_completions.push_back(completion);
+	}
 }
 static void contained(P_obj parent, P_obj child)
 {
@@ -365,7 +482,8 @@ int main(int argc, char **argv)
 	locker.SetLockerId(1);
 	locker.SetPublicChestId(2);
 	auto public_object = object(900, ITEM_CONTAINER);
-	locker.add(new PublicChest(public_object));
+	auto public_chest = new PublicChest(public_object);
+	locker.add(public_chest);
 	floor(public_object);
 	auto bag = object(100, ITEM_CONTAINER);
 	contained(bag, object(101));
@@ -389,11 +507,23 @@ int main(int argc, char **argv)
 		contained(private_bag, object(201));
 		contained(private_object, private_bag);
 	}
-	movement = mode == "movement";
+	movement = mode == "movement" || mode == "ambiguous-grant" || mode == "late-grant";
+	if (movement)
+	{
+		assert(item_ownership_runtime_hydrate_owner({ item_owner_type::system, 0, 0 }, 0));
+		assert(item_ownership_runtime_hydrate_owner({ item_owner_type::player, 42, 0 }, 0));
+		auto grant = object(400, ITEM_CONTAINER);
+		contained(grant, object(401));
+		assert(item_creation_grant_submit_to_player(&user, grant, &user));
+		assert(item_movement_transaction_player_busy(&user));
+	}
 	purchase = mode == "purchase";
 	audit = mode == "audit";
 	durable = mode != "durability" && mode != "malformed" && mode != "blocked-publish" &&
-		  mode != "blocked-io" && mode != "reaped";
+		  mode != "blocked-io" && mode != "reaped" &&
+		  mode.find("cycle") == std::string::npos;
+	if (mode == "public-object-missing")
+		durable = false;
 	prepare = mode != "prepare";
 	queue = mode != "queue";
 	fail_write = mode == "writer-failure";
@@ -422,6 +552,18 @@ int main(int argc, char **argv)
 	}
 	if (mode == "malformed")
 		coins->R_num = -1;
+	if (mode == "public-object-missing")
+		public_chest->lose_object();
+	if (mode == "room-cycle")
+		coins->next_content = coins;
+	if (mode == "public-cycle")
+		public_object->contains->next_content = public_object->contains;
+	if (mode == "holder-cycle")
+		holder.carrying->next_content = holder.carrying;
+	if (mode == "occupant-cycle")
+		user.next_in_room = &user;
+	if (mode == "late-grant" || mode == "ambiguous-grant")
+		commit_grant(mode == "late-grant");
 	if (mode == "blocked-publish")
 	{
 		// A FIFO at the temporary file makes open(O_EXCL) fail immediately.

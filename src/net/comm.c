@@ -517,6 +517,8 @@ int no_ferries = 0;
 int copyover_boot = 0;
 // The writer's shutdown bound: game_loop() starts it, run_the_game() enforces it.
 constexpr uint64_t SHUTDOWN_WRITER_SECONDS = 30;
+// Leave the last two seconds of the same shutdown window for the locker image.
+constexpr uint64_t SHUTDOWN_LOCKER_RECOVERY_USEC = 2000000;
 static uint64_t shutdown_writer_deadline_usec = 0;
 
 // What is left of the writer's shutdown bound, at most cap_msec: once it has passed, a
@@ -524,10 +526,13 @@ static uint64_t shutdown_writer_deadline_usec = 0;
 static int shutdown_writer_remaining_msec(int cap_msec)
 {
 	const uint64_t now = persistence_observability_now_usec();
-	if (!shutdown_writer_deadline_usec || now >= shutdown_writer_deadline_usec)
+	const uint64_t writer_deadline =
+		shutdown_writer_deadline_usec > SHUTDOWN_LOCKER_RECOVERY_USEC ?
+			shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC :
+			0;
+	if (!writer_deadline || now >= writer_deadline)
 		return 0;
-	return static_cast<int>(
-		std::min<uint64_t>(cap_msec, (shutdown_writer_deadline_usec - now) / 1000));
+	return static_cast<int>(std::min<uint64_t>(cap_msec, (writer_deadline - now) / 1000));
 }
 
 // Names every save shutdown could not write, once per owner, with its kind in the
@@ -821,12 +826,6 @@ int main(int argc, char **argv)
 	if (!persistence_mode_requires_mysql() &&
 	    !item_uid_allocator_reserve(nullptr, ITEM_UID_BOOT_RESERVATION))
 		fatal_boot_error("comm", "Could not reserve a collision-free flat item UID range");
-	if (!persistence_mode_requires_mysql() && !hydrate_flatfile_system_item_owner())
-		fatal_boot_error("comm",
-				 "Could not hydrate the flat-file system item-owner revision");
-	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
-		logit(LOG_STATUS,
-		      "Authoritative item owner revisions unavailable; movement fails closed.");
 	if (copyover_boot && copyover_prepare_boot() != copyover_boot_result::ready)
 		fatal_boot_error(
 			"copyover",
@@ -848,10 +847,17 @@ int main(int argc, char **argv)
 			logit(LOG_STATUS,
 			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
 	}
+	// Replay before caching ownership revisions as well as before custody cleanup.
 	if (!locker_recovery_boot())
 		fatal_boot_error(
 			"locker_recovery",
 			"Locker shutdown recovery unresolved; preserve runtime/locker-shutdown (or FLATFILE_STATE_DIR/locker-shutdown) and follow the locker recovery runbook");
+	if (!persistence_mode_requires_mysql() && !hydrate_flatfile_system_item_owner())
+		fatal_boot_error("comm",
+				 "Could not hydrate the flat-file system item-owner revision");
+	if (persistence_mode_requires_mysql() && !sql_hydrate_item_owner_revisions())
+		logit(LOG_STATUS,
+		      "Authoritative item owner revisions unavailable; movement fails closed.");
 	const auto &population = artifact_population_prepare_boot(copyover_boot);
 	logit(LOG_STATUS, "Artifact population evidence: %s rows=%zu retained_uids=%zu.",
 	      population.complete ? "complete" : "incomplete", population.items.size(),
@@ -1287,20 +1293,23 @@ int run_the_game(int port, int sslport)
 	help_cache_shutdown();
 	account_recovery_shutdown();
 	password_login_shutdown();
-	critical_command_coordinator_shutdown();
 	locker_identify_shutdown();
 	critical_outbox_shutdown();
 	if (!_pwipe)
 	{
 		// The last lockers are queued here. Nothing queues a write after this: the
-		// writer gets what is left of its 30 s, a query still running then is cut off,
-		// and every save it could not write is named.
+		// writer gets what is left before the image's two-second reservation, a query
+		// still running then is cut off, and every save it could not write is named.
 		if (!shutdown_writer_deadline_usec)
 			shutdown_writer_deadline_usec = persistence_observability_now_usec() +
 							SHUTDOWN_WRITER_SECONDS * 1000000ULL;
 		locker_async_drain(shutdown_writer_remaining_msec(2000));
-		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
-								   sql_pool_interrupt_borrowed));
+		report_unwritten_saves(player_save_pipeline_finish(
+			shutdown_writer_deadline_usec - SHUTDOWN_LOCKER_RECOVERY_USEC,
+			sql_pool_interrupt_borrowed));
+		// Nothing can commit after this point. Retain the coordinator until the
+		// recovery capture has published completed grants into the live inventories.
+		locker_recovery_begin();
 		locker_recovery_finish(shutdown_writer_deadline_usec);
 		artifact_guild_transaction_report_unsaved();
 		locker_async_shutdown();
@@ -1310,6 +1319,7 @@ int run_the_game(int port, int sslport)
 		// Pwipe already drained and closed admission before its SQL boundary.
 		player_save_worker_shutdown();
 	}
+	critical_command_coordinator_shutdown();
 
 	/* Don't need this anymore, as dropped artis are handled in real time on the DB.
 	// Look for dropped artis and remove them from the next boot.
@@ -2949,8 +2959,8 @@ resume_game_loop:
 	discord_bridge_shutdown();
 
 	// Shutdown always goes (persistence reset step 8). Each drain is bounded and a
-	// failure is reported, never a reason to keep running. The writer gets 30 s for
-	// what is queued; run_the_game() names whatever it could not write once nothing
+	// failure is reported, never a reason to keep running. The writer and locker
+	// image share 30 s; run_the_game() names whatever it could not write once nothing
 	// else can queue a write.
 	if (!_pwipe && item_creation_grant_batches_pending())
 		persistence_alert(AVATAR, "starter_grant", "shutdown", "none", "none",
@@ -2977,7 +2987,6 @@ resume_game_loop:
 					  "dirty_save_failed", "shutdown_cancelled=0");
 		shutdown_writer_deadline_usec =
 			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
-		locker_recovery_begin();
 		player_save_pipeline_drain(
 			shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000));
 		if (!redis_world_recovery_drain(3000))

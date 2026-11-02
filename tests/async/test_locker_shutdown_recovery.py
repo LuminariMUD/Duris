@@ -21,6 +21,7 @@ signatures = (
     'LockerChest *StorageLocker::AddLockerChest(',
     'LockerChest *StorageLocker::FindChestForObject(',
     'std::vector<PrivateChest *> StorageLocker::GetPrivateChests(',
+    'bool StorageLocker::ChestObjectsPresent(',
     'static StorageLocker *active_locker_for(',
     'static bool locker_recovery_append(',
     'bool locker_shutdown_capture(',
@@ -38,6 +39,7 @@ cpp.write_text((ROOT / 'tests/async/locker_shutdown_recovery_harness.cpp').read_
 sources = [
     'src/persistence/locker_recovery.c', 'src/flatfile/flatfile_store.c',
     'src/persistence/locker_async.c',
+    'src/item/item_movement_transaction.c', 'src/item/item_transfer_repository.c',
     'src/player/player_snapshot_capture.c', 'src/player/player_snapshot_codec.c',
     'src/player/player_snapshot_repository.c', 'src/item/item_claim_repository.c',
     'src/item/item_claim.c', 'src/persistence/dupe_log.c',
@@ -90,7 +92,8 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 sql('SET FOREIGN_KEY_CHECKS=0;' + ''.join('TRUNCATE TABLE ' + table + ';' for table in (
                     'player_items', 'locker_items', 'player_item_affects', 'player_item_extra_descr',
                     'locker_item_affects', 'locker_item_extra_descr', 'item_current_owner',
-                    'item_owner_revision', 'item_owner_audit', 'private_chests', 'lockers', 'player_data')) +
+                    'item_owner_revision', 'item_owner_audit', 'item_ownership_ledger',
+                    'critical_operation_inbox', 'private_chests', 'lockers', 'player_data')) +
                     'SET FOREIGN_KEY_CHECKS=1;'
                     "INSERT INTO player_data(pid,name,copper) VALUES(42,'Fixture',123);"
                     "INSERT INTO lockers(id,locker_name,owner_pid,racewar,race) VALUES(1,'Fixture.locker',42,0,0);"
@@ -107,7 +110,7 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 return result
 
             terminal_cases = ('queue', 'writer-failure', 'capture')
-            for case in ('movement', 'write', 'purchase', 'durability', 'audit', 'prepare', *terminal_cases, 'reaped'):
+            for case in ('late-grant', 'write', 'purchase', 'durability', 'audit', 'prepare', *terminal_cases, 'reaped'):
                 reset()
                 state = work / case
                 state.mkdir()
@@ -135,7 +138,8 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 assert public == '100,101,102,104,105', public
                 if case not in terminal_cases:
                     assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM locker_items WHERE chest_id=3') == '200,201'
-                assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items') == '300,301'
+                expected_player = '300,301,400,401' if case == 'late-grant' else '300,301'
+                assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items') == expected_player
                 assert sql('SELECT value0 FROM locker_items WHERE obj_uid=102') == '37'
                 assert sql('SELECT p.obj_uid FROM locker_items c JOIN locker_items p ON p.id=c.container_id WHERE c.obj_uid=101') == '100'
                 assert sql('SELECT equip_slot FROM player_items WHERE obj_uid=301') == str(7)  # WEAR_HEAD + 1
@@ -143,7 +147,7 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 assert sql("SELECT CONCAT(owner_type,':',owner_id,':',owner_context_id) FROM item_current_owner WHERE item_uid=300") == '1:42:0'
                 assert sql("SELECT CONCAT(owner_type,':',owner_id,':',owner_context_id) FROM item_current_owner WHERE item_uid=105") == '5:1:2'
                 rows = sql('SELECT COUNT(*),COUNT(DISTINCT obj_uid) FROM (SELECT obj_uid FROM locker_items UNION ALL SELECT obj_uid FROM player_items) all_items')
-                expected_count = 9 if case not in terminal_cases else 7
+                expected_count = 11 if case == 'late-grant' else 9 if case not in terminal_cases else 7
                 # Terminal cases retain the old private payload copy of uid 300,
                 # but its owner is the player; loaders omit that stale copy.
                 assert rows == (f'{expected_count + 1}\t{expected_count}' if case in terminal_cases else f'{expected_count}\t{expected_count}'), rows
@@ -157,7 +161,8 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 run(state, 'recover')  # second boot cannot repeat or duplicate recovery
                 print(f'[PASS] {case}: process exit/restart, topology, quantities, ownership and item-only player recovery', flush=True)
 
-            for case in ('holder-missing', 'malformed', 'blocked-publish', 'blocked-io'):
+            for case in ('movement', 'ambiguous-grant', 'holder-missing', 'public-object-missing', 'malformed', 'blocked-publish', 'blocked-io',
+                         'room-cycle', 'public-cycle', 'holder-cycle', 'occupant-cycle'):
                 reset()
                 state = work / case
                 state.mkdir()
@@ -168,6 +173,9 @@ with tempfile.TemporaryDirectory(prefix='duris-locker-shutdown-') as td:
                 assert 'UNRECOVERED locker shutdown:' in result.stderr, result.stderr
                 run(state, 'refuse-boot')
                 assert sql('SELECT GROUP_CONCAT(obj_uid) FROM locker_items') == '300'
+                if case == 'ambiguous-grant':
+                    assert sql('SELECT GROUP_CONCAT(obj_uid ORDER BY obj_uid) FROM player_items') == '105,400,401'
+                    assert sql('SELECT COUNT(*) FROM item_current_owner WHERE item_uid IN (400,401) AND owner_type=1 AND owner_id=42') == '2'
                 print(f'[PASS] {case}: explicit failure, retained evidence, restart refuses unsafe replacement', flush=True)
 
             for case in ('checksum', 'wrong-store'):
