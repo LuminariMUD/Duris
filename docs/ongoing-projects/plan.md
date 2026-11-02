@@ -1,6 +1,6 @@
 # Issue #584: flight transport implementation plan
 
-Status: implementation and local acceptance complete; ready for review. Updated 2026-11-02. Review/merge order: [PR #586](https://github.com/LuminariMUD/Duris/pull/586), [PR #587](https://github.com/LuminariMUD/Duris/pull/587), then the acceptance PR on [`branch/issue-584-flight-acceptance`](https://github.com/LuminariMUD/Duris/tree/branch/issue-584-flight-acceptance). Each PR targets its predecessor. No merge or deployment has been performed.
+Status: implementation, review follow-up and local acceptance complete. [PR #586](https://github.com/LuminariMUD/Duris/pull/586) and [PR #587](https://github.com/LuminariMUD/Duris/pull/587) were squash-merged in order; [PR #588](https://github.com/LuminariMUD/Duris/pull/588) is rebased directly onto the resulting master and ready to merge. Updated 2026-11-02. No deployment has been performed.
 
 - Work item: [Duris #584](https://github.com/LuminariMUD/Duris/issues/584).
 - Linked development branch: [branch/issue-584-flight-transport](https://github.com/LuminariMUD/Duris/tree/branch/issue-584-flight-transport).
@@ -136,7 +136,10 @@ Implemented carrier-only outbound/recovered events, current-rider checks, empty 
 
 Checks for this chunk: `make -C src -j8` passed; flight-network, world-singleton and generic event-cancellation sanitizer controls passed during development. Final focused checks are recorded with the review commit. Full-world and dual-backend journeys have not yet been run for the implementation.
 
-This first checkpoint is commit `7916ceca6` in PR #586. The following checkpoint implements boarding/combat. No release tag or deployment is appropriate for these unmerged fixes.
+PR #586 combined the carrier implementation and review follow-up, then
+squash-merged as `4d45fe7f4`. The following checkpoint implements
+boarding/combat. No release tag or deployment is appropriate before the stack is
+fully merged.
 
 ### Implementation handoff: boarding/combat chunk
 
@@ -148,7 +151,14 @@ Focused flight-network, production flight/link/event/combat/mount runtime, and w
 
 ### Acceptance handoff
 
-The boarding/combat checkpoint is commit `660e7965b` in PR #587. The acceptance branch adds complete command journeys, focused test modes, and scheduling-refusal/body/long-chain assertions. Both full-world backends have passed actual outbound dismount/separation and character extraction at Torrhan, followed by a newly purchased trip and service reuse, in addition to catalog discovery, faction/access checks, occupied and empty copyover, logout, dedicated trips, crash recovery, and normal relog.
+PR #587 squash-merged the boarding/combat checkpoint as `d04e0d905`. The rebased
+acceptance checkpoint is commit `c18fe6d1a` in PR #588. The acceptance
+branch adds complete command journeys, focused test modes, and
+scheduling-refusal/body/long-chain assertions. Both full-world backends have
+passed actual outbound dismount/separation and character extraction at Torrhan,
+followed by a newly purchased trip and service reuse, in addition to catalog
+discovery, faction/access checks, occupied and empty copyover, logout, dedicated
+trips, crash recovery, and normal relog.
 
 Evidence already completed:
 
@@ -237,3 +247,40 @@ PR #587 carry-forward validation passed: local MariaDB build, flight-network,
 production flight/link/event/combat/mount runtime and singleton ASan/UBSan tests,
 formatting, tidy and diff checks. The rebased PR remains one logical boarding/combat
 commit; #586's review fix is its parent.
+
+## Final review qualification (2026-11-02)
+
+PR #588 was rebased onto merged master `d04e0d905` without changing its two
+logical commits: acceptance/simplification at `c18fe6d1a`, then this final
+documentation commit.
+The documentation conflict retained both the review-follow-up recovery guarantees
+and the full-world journey instructions. Master had advanced before merging to
+`3b47d69562de60610e5992c759b6c0100ab497d0`; its race-info-only changes did not
+overlap this stack. The full stack was rebased before #586, then #587 and #588
+were replayed onto each preceding squash merge so their diffs remained narrow.
+No release tag is appropriate before merge.
+
+Validation on the final stack passed:
+
+- `make -C src -j8` using the MariaDB backend.
+- `test_flight_network.py`, `test_flight_transport_runtime.py`,
+  `test_world_singletons.py`, and `test_nevent_cancellation_runtime.py` under
+  ASan/UBSan, plus `test_mounted_gatekeeper_runtime.py` and
+  `test_char_from_room_callbacks.py`. `test_race_command.py` also passed on the
+  rebased head, covering the new master commit.
+- `scripts/format.sh`, `scripts/tidy.sh`, and `git diff --check`.
+- Complete flat-file full-world journey on the rebased head, binary SHA-256
+  `376a6ffac3f5fa6d54ba0fa539d9639ec4b28b1e2304a52a1df882943596c6e7`.
+- Complete disposable MariaDB full-world journey on the same flight stack before
+  the unrelated race-info-only master rebase, binary SHA-256
+  `a247ae9a88efc3c81a54cf36ecf2a14780b3f8614a9c48ae275638d6ed1db612`.
+
+Each complete journey passed 25-stop discovery, fares and access rules, two
+copyovers, occupied and empty recovery, logout, ground and same-altitude NPC
+attack paths, outbound unlink/separation, actual passenger extraction, Torrhan
+service reuse, live socket reconnect, restricted destinations, crash recovery,
+and normal relog. The disposable database and all journey processes were removed
+by their test harnesses. Hosted CI was not used as a gate.
+The MariaDB journey was not repeated after the race-only rebase: ablation keeps
+the valid complete-backend evidence and pairs it with the exact-head MariaDB
+build, focused flight suites, race suite, and complete flat-file journey.
