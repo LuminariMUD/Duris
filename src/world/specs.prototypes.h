@@ -580,6 +580,8 @@ int stormbringer(P_obj, P_char, int, char *);
 // Thanks giving eq.
 int generic_riposte_proc(P_obj, P_char, int, char *);
 int generic_parry_proc(P_obj, P_char, int, char *);
+int generic_shield_block_proc(P_obj, P_char, int, char *);
+int barovia_undead_necklace(P_obj, P_char, int, char *);
 int tripboots(P_obj, P_char, int, char *);
 int blindbadge(P_obj, P_char, int, char *);
 int fumblegaunts(P_obj, P_char, int, char *);
