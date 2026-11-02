@@ -156,6 +156,7 @@ static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count 
 	for (size_t index = 0; index < affects.size(); ++index)
 	{
 		affects[index].duration = 30;
+		affects[index].loc2 = 1251;
 		affects[index].next = index + 1 < affects.size() ? &affects[index + 1] : nullptr;
 	}
 	mob.affected = affects.data();
@@ -178,6 +179,12 @@ static std::vector<char> image(int version = COPYOVER_VERSION, int affect_count 
 		entry.shopkeeper_shop_id = 7;
 		assert(fwrite(&entry, copyover_mob_bytes_for_version(version), 1, file) == 1);
 		std::vector<copyover_affect> saved_affects(affect_count);
+		for (auto &affect : saved_affects)
+		{
+			affect.loc2 = 227;
+			affect.loc2_high =
+				0xee; // former padding was not part of old records' contract
+		}
 		assert(fwrite(saved_affects.data(), saved_affects.size() * sizeof(saved_affects[0]),
 			      1, file) == 1);
 		std::vector<copyover_carried_item> saved_inventory(inventory_count);
@@ -304,7 +311,7 @@ int main(int argc, char **argv)
 		invalid.gmcp_session_context[10] = 'z';
 		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
-		std::cout << "copyover descriptor protocol versions 12-18 passed\n";
+		std::cout << "copyover descriptor protocol versions 12-19 passed\n";
 		return 0;
 	}
 	if (std::string(argv[1]) == "formats")
@@ -325,6 +332,8 @@ int main(int argc, char **argv)
 			       used == span.size);
 			assert(mob.affects.size() == (version >= 17 ? 79 : 80) &&
 			       mob.inventory.size() == 300);
+			for (const auto &affect : mob.affects)
+				assert(affect.skill_selector() == (version >= 19 ? 1251 : 227));
 			assert(mob.mob.shopkeeper_shop_id == (version < 16 ? -1 : 7));
 			artifact_recovery_population population;
 			assert(!artifact_population_read_copyover(snapshot, &population));

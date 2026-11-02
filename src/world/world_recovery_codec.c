@@ -189,7 +189,8 @@ bool encode_mob(const unsigned char *native_data, size_t native_size, unsigned c
 		put_i16(output + offset, static_cast<int16_t>(affect.type));
 		offset += 2;
 		output[offset++] = affect.wear_off_message_index;
-		output[offset++] = 0;
+		// Version 1 always wrote zero here; use that reserved byte for the high selector.
+		output[offset++] = affect.loc2_high;
 		put_i32(output + offset, static_cast<int32_t>(affect.duration));
 		offset += 4;
 		put_u32(output + offset, static_cast<uint32_t>(affect.flags));
@@ -334,7 +335,7 @@ bool decode_mob(const unsigned char *wire_data, size_t wire_size,
 		affect.type = get_i16(wire_data + offset);
 		offset += 2;
 		affect.wear_off_message_index = wire_data[offset++];
-		++offset;
+		affect.loc2_high = wire_data[offset++];
 		affect.duration = get_i32(wire_data + offset);
 		offset += 4;
 		affect.flags = get_u32(wire_data + offset);
@@ -740,7 +741,7 @@ bool world_recovery_decode_record_header(const unsigned char *data, size_t size,
 					 world_recovery_record_type *type, uint32_t *payload_size)
 {
 	if (!data || size < WORLD_RECOVERY_WIRE_RECORD_HEADER_BYTES || !type || !payload_size ||
-	    data[5] != WORLD_RECOVERY_RECORD_VERSION || data[6] || data[7])
+	    (data[5] != 1 && data[5] != WORLD_RECOVERY_RECORD_VERSION) || data[6] || data[7])
 		return false;
 	const uint8_t raw_type = data[4];
 	if (raw_type < static_cast<uint8_t>(world_recovery_record_type::mob) ||

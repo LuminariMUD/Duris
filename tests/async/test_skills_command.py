@@ -134,6 +134,33 @@ int main() {
     help_result = "Help is temporarily unavailable.";
     assert(run(&ch, "info bash").find("Current rating: 60") != std::string::npos);
     assert(run(&ch, "info anatomy").find("separate epic skill rules") != std::string::npos);
+    affected_type effect{};
+    effect.loc2 = SKILL_BASH;
+    effect.location = APPLY_SKILL_ADD;
+    effect.modifier = 20;
+    ch.affected = &effect;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 80);
+    assert(run(&ch, "info bash").find("Current rating: 80  Learned: 60") != std::string::npos);
+    effect.loc2 = SKILL_PARRY;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 60); // an unrelated selector must not apply
+    effect.loc2 = SKILL_BASH;
+    effect.modifier = -80;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 0);
+    effect.modifier = 20;
+    pc.skills[SKILL_BASH].learned = 0;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 0); // additive effects do not teach a skill
+    effect.location = APPLY_SKILL_GRANT;
+    effect.modifier = 40;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 40);
+    assert(pc.skills[SKILL_BASH].learned == 0);
+    effect.loc2 = SKILL_ANATOMY;
+    pc.skills[SKILL_ANATOMY].learned = 0;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_ANATOMY) == 40);
+    assert(run(&ch, "info anatomy").find("Current rating: 40  Learned: 0") != std::string::npos);
+    ch.affected = nullptr;
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_ANATOMY) == 0);
+    assert(GET_CHAR_SKILL_P(&ch, SKILL_BASH) == 0);
+    pc.skills[SKILL_BASH].learned = 60;
     ch.player.level = 62;
     text = run(&ch, "");
     assert(text.find("Scholar : SKILLS") != std::string::npos && text.find("taught 70") != std::string::npos);

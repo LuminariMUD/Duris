@@ -18,7 +18,7 @@
 const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
-#define COPYOVER_VERSION 18 // connection protocol continuity; reads versions 12-17 too
+#define COPYOVER_VERSION 19 // full skill selectors; reads versions 12-18 too
 
 // copyover file header
 struct copyover_header
@@ -106,6 +106,7 @@ struct copyover_affect
 {
 	sh_int type;
 	::byte wear_off_message_index;
+	ubyte loc2_high; // v19 uses former padding; older files may contain arbitrary bytes here
 	int duration;
 	uint flags;
 	int modifier;
@@ -117,7 +118,19 @@ struct copyover_affect
 	unsigned long bitvector3;
 	unsigned long bitvector4;
 	unsigned long bitvector5;
+
+	uint16_t skill_selector() const { return loc2 | static_cast<uint16_t>(loc2_high) << 8; }
+	void set_skill_selector(uint16_t value)
+	{
+		loc2 = static_cast<ubyte>(value);
+		loc2_high = static_cast<ubyte>(value >> 8);
+	}
 };
+// Preserve native copyover record widths and all historical field offsets.
+static_assert(offsetof(copyover_affect, loc2_high) == 3);
+static_assert(offsetof(copyover_affect, duration) == 4);
+static_assert(offsetof(copyover_affect, loc2) == 17);
+static_assert(offsetof(copyover_affect, level) == 18);
 
 // room state (doors)
 struct copyover_room

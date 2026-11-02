@@ -5243,7 +5243,7 @@ int GET_CHAR_SKILL_P(P_char ch, int skl)
 
 #ifdef STANCES_ALLOWED
 	if (skllvl > 0 && IS_PC(ch) && (ch->only.pc->frags > 0))
-		mod = (int)(ch->only.pc->frags / 500);
+		mod += (int)(ch->only.pc->frags / 500);
 
 	if (skllvl > 0)
 	{
@@ -5264,10 +5264,8 @@ int GET_CHAR_SKILL_P(P_char ch, int skl)
 		}
 	}
 
-	return MAX(0, (skllvl + mod));
-#else
-	return skllvl;
 #endif
+	return MAX(0, (skllvl + mod));
 }
 
 int GET_LVL_FOR_SKILL(P_char ch, int skill)

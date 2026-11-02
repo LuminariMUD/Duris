@@ -157,7 +157,11 @@ P_char read_mobile(int number, int mode) {
 }
 int setup_pet(P_char, P_char, int, int) { std::abort(); }
 void add_follower(P_char, P_char) { std::abort(); }
-affected_type *affect_to_char(P_char, affected_type *) { std::abort(); }
+static affected_type restored_skill_effect;
+affected_type *affect_to_char(P_char mob, affected_type *effect) {
+ assert(effect->loc2==1251 && effect->location==APPLY_SKILL_GRANT && effect->modifier==40);
+ restored_skill_effect=*effect; mob->affected=&restored_skill_effect; return mob->affected;
+}
 char affect_total(P_char mob, int) { GET_MAX_HIT(mob)=5; GET_MAX_MANA(mob)=6; GET_MAX_VITALITY(mob)=7; return 0; }
 void equip_char(P_char mob, P_obj object, int slot, int) {
  mob->equipment[slot]=object; object->loc_p=LOC_WORN; object->loc.wearing=mob;
@@ -262,6 +266,10 @@ int main(int argc, char **argv)
 
         if(npc_case()) {
             auto *mob=read_mobile(0,REAL); mob->in_room=0; mob->only.npc->idnum=42;
+            static affected_type skill_effect{};
+            skill_effect.type=1251; skill_effect.loc2=1251;
+            skill_effect.location=APPLY_SKILL_GRANT; skill_effect.modifier=40;
+            skill_effect.duration=30; mob->affected=&skill_effect;
             if(shop_case()) mob->only.npc->shopkeeper_shop_id=0;
             auto *carried=read_object(1000,VIRTUAL); carried->obj_uid=910; carried->extra_flags=ITEM_ARTIFACT;
             carried->value[0]=73; obj_to_char(carried,mob);
@@ -370,6 +378,7 @@ int main(int argc, char **argv)
         return 0;
     }
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
+    if(npc_case()) assert(npc_holder.affected && npc_holder.affected->loc2==1251);
     assert(telnet == -1 && tls == -1 && websocket == -1);
     assert(copyover_recover(&telnet, &tls, &websocket) == 0);
     assert((access(COPYOVER_FILE, F_OK) == 0) == new_publication);

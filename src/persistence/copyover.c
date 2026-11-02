@@ -600,6 +600,9 @@ bool copyover_decode_mob(const char *data, size_t size, int version, copyover_mo
 		const size_t affect_bytes = staged.affects.size() * sizeof(copyover_affect);
 		if (affect_bytes)
 			memcpy(staged.affects.data(), data + offset, affect_bytes);
+		if (version < 19)
+			for (auto &affect : staged.affects)
+				affect.loc2_high = 0;
 		offset += affect_bytes;
 		if (static_cast<size_t>(staged.mob.num_carrying) >
 		    (size - offset) / sizeof(copyover_carried_item))
@@ -920,7 +923,7 @@ static int write_mob_affects(FILE *fp, P_char mob)
 		entry.flags = af->flags;
 		entry.modifier = af->modifier;
 		entry.location = af->location;
-		entry.loc2 = af->loc2;
+		entry.set_skill_selector(af->loc2);
 		entry.level = af->level;
 		entry.bitvector = af->bitvector;
 		entry.bitvector2 = af->bitvector2;
@@ -2078,7 +2081,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 			af.flags = aff_entries[a].flags;
 			af.modifier = aff_entries[a].modifier;
 			af.location = aff_entries[a].location;
-			af.loc2 = aff_entries[a].loc2;
+			af.loc2 = aff_entries[a].skill_selector();
 			af.level = aff_entries[a].level;
 			af.bitvector = aff_entries[a].bitvector;
 			af.bitvector2 = aff_entries[a].bitvector2;
@@ -2439,7 +2442,7 @@ int copyover_write_mob_to_buffer(P_char mob, char *buf, size_t max_len)
 		aff_entry.flags = af->flags;
 		aff_entry.modifier = af->modifier;
 		aff_entry.location = af->location;
-		aff_entry.loc2 = af->loc2;
+		aff_entry.set_skill_selector(af->loc2);
 		aff_entry.level = af->level;
 		aff_entry.bitvector = af->bitvector;
 		aff_entry.bitvector2 = af->bitvector2;
@@ -2630,7 +2633,7 @@ P_char copyover_restore_mob_from_buffer(const char *buf, size_t len, size_t *byt
 		af.flags = aff_entry.flags;
 		af.modifier = aff_entry.modifier;
 		af.location = aff_entry.location;
-		af.loc2 = aff_entry.loc2;
+		af.loc2 = aff_entry.skill_selector();
 		af.level = aff_entry.level;
 		af.bitvector = aff_entry.bitvector;
 		af.bitvector2 = aff_entry.bitvector2;

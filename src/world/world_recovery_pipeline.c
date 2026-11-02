@@ -494,7 +494,7 @@ int write_mob_record(P_char mob, char *buffer, size_t maximum)
 		saved.flags = affect->flags;
 		saved.modifier = affect->modifier;
 		saved.location = affect->location;
-		saved.loc2 = affect->loc2;
+		saved.set_skill_selector(affect->loc2);
 		saved.level = affect->level;
 		saved.bitvector = affect->bitvector;
 		saved.bitvector2 = affect->bitvector2;

@@ -76,7 +76,7 @@ int main()
         static_cast<world_recovery_record_type>(99), encoded_size,
         record_header.data(), record_header.size()));
     const std::array<unsigned char, 8> expected_record_header = {
-        0x0c,0x00,0x00,0x00, 0x03,0x01,0x00,0x00
+        0x0c,0x00,0x00,0x00, 0x03,0x02,0x00,0x00
     };
     assert(record_header == expected_record_header);
     world_recovery_record_type decoded_type = {};
@@ -84,7 +84,10 @@ int main()
     assert(world_recovery_decode_record_header(record_header.data(), record_header.size(),
                                                &decoded_type, &decoded_size));
     assert(decoded_type == world_recovery_record_type::door && decoded_size == 12);
-    record_header[5] = 2;
+    record_header[5] = 1; // already-written records remain readable
+    assert(world_recovery_decode_record_header(record_header.data(), record_header.size(),
+                                               &decoded_type, &decoded_size));
+    record_header[5] = WORLD_RECOVERY_RECORD_VERSION + 1;
     assert(!world_recovery_decode_record_header(record_header.data(), record_header.size(),
                                                 &decoded_type, &decoded_size));
     std::vector<unsigned char> native;
@@ -155,6 +158,7 @@ int main()
     affect.type = -3;
     affect.duration = 99;
     affect.flags = 0xaabbccddU;
+    affect.set_skill_selector(1251); // real epic skill ID, beyond the old byte selector
     affect.bitvector5 = static_cast<unsigned long>(0x01020304UL);
     std::vector<unsigned char> native_mob(sizeof(mob) + sizeof(affect));
     memcpy(native_mob.data(), &mob, sizeof(mob));
@@ -164,6 +168,7 @@ int main()
                                         native_mob.size(), encoded_mob.data(),
                                         encoded_mob.size(), &encoded_size));
     assert(encoded_size == 346);
+    assert(encoded_mob[286 + 3] == 4 && encoded_mob[286 + 17] == 227);
     assert(world_recovery_decode_record(world_recovery_record_type::mob, encoded_mob.data(),
                                         encoded_size, &native));
     copyover_mob decoded_mob = {};
@@ -175,6 +180,15 @@ int main()
            decoded_mob.num_affects == 1);
     assert(decoded_affect.type == affect.type && decoded_affect.flags == affect.flags &&
            decoded_affect.bitvector5 == affect.bitvector5);
+    assert(decoded_affect.skill_selector() == 1251);
+    // A legacy v1 affect used zero in the reserved byte and a literal low-byte selector.
+    auto legacy_mob = encoded_mob;
+    legacy_mob[286 + 3] = 0;
+    legacy_mob[286 + 17] = 42;
+    assert(world_recovery_decode_record(world_recovery_record_type::mob, legacy_mob.data(),
+                                        encoded_size, &native));
+    memcpy(&decoded_affect, native.data() + sizeof(decoded_mob), sizeof(decoded_affect));
+    assert(decoded_affect.skill_selector() == 42 && decoded_affect.flags == affect.flags);
     assert(decoded_mob.shopkeeper_shop_id == -1); // Legacy wire must not claim shop zero.
     mob.shopkeeper_shop_id = 480;
     memcpy(native_mob.data(), &mob, sizeof(mob));

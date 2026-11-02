@@ -23,7 +23,7 @@
 
 constexpr size_t WORLD_RECOVERY_WIRE_HEADER_BYTES = 64;
 constexpr size_t WORLD_RECOVERY_WIRE_RECORD_HEADER_BYTES = 8;
-constexpr uint8_t WORLD_RECOVERY_RECORD_VERSION = 1;
+constexpr uint8_t WORLD_RECOVERY_RECORD_VERSION = 2; // full affect skill selectors; reads v1 too
 constexpr size_t WORLD_RECOVERY_WIRE_OBJECT_HEADER_BYTES = 8;
 constexpr size_t WORLD_RECOVERY_WIRE_ITEM_BYTES = 3324;
 constexpr size_t WORLD_RECOVERY_FLOOR_PREFIX_BYTES = 5;

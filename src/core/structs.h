@@ -1193,7 +1193,7 @@ struct affected_type
 	uint flags; /* flags describing affect behavior, see AFFTYPE_* defines */
 	int modifier; /* This is added to apropriate ability     */
 	ubyte location; /* Tells which ability to change(APPLY_XXX)*/
-	ubyte loc2;
+	uint16_t loc2; // skill IDs extend beyond the byte-sized apply locations
 	void *context;
 	unsigned short level;
 	unsigned long bitvector; /* Tells which bits to set (AFF_XXX)       */
