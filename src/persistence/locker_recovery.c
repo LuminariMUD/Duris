@@ -278,8 +278,13 @@ bool locker_recovery_boot(void)
 		}
 		directory = root ? std::string(root) + "/locker-shutdown" :
 				   "runtime/locker-shutdown";
-		if (!root && mkdir("runtime", 0700) && errno != EEXIST)
-			return false;
+		bool runtime_created = false;
+		if (!root)
+		{
+			runtime_created = mkdir("runtime", 0700) == 0;
+			if (!runtime_created && errno != EEXIST)
+				return false;
+		}
 		if (mkdir(directory.c_str(), 0700) && errno != EEXIST)
 			return false;
 		std::string error;
@@ -298,6 +303,18 @@ bool locker_recovery_boot(void)
 		close(parent_fd);
 		if (!synced)
 			return false;
+		if (runtime_created)
+		{
+			// runtime/ can itself be new on the first boot. Sync its entry in
+			// the data directory too, not only locker-shutdown/ inside runtime/.
+			const int data_fd = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+			if (data_fd < 0)
+				return false;
+			const bool parent_synced = fsync(data_fd) == 0;
+			close(data_fd);
+			if (!parent_synced)
+				return false;
+		}
 		// An interrupted publication is ambiguous evidence. Keep it for staff;
 		// neither an empty writer nor an older database proves it was recovered.
 		struct stat info;

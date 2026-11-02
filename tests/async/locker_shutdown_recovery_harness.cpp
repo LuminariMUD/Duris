@@ -85,10 +85,20 @@ static int prepare_calls;
 static std::string test_database;
 static bool block_child_io;
 static pid_t parent_pid;
+static int data_directory_syncs;
 static volatile sig_atomic_t reaped_pid, reaped_status;
 extern "C" int __real_fsync(int);
 extern "C" int __wrap_fsync(int fd)
 {
+	if (getpid() == parent_pid)
+	{
+		struct stat current
+		{
+		}, target{};
+		if (stat(".", &current) == 0 && fstat(fd, &target) == 0 &&
+		    current.st_dev == target.st_dev && current.st_ino == target.st_ino)
+			++data_directory_syncs;
+	}
 	if (block_child_io && getpid() != parent_pid)
 		raise(SIGSTOP);
 	return __real_fsync(fd);
@@ -452,6 +462,7 @@ static void commit_grant(bool acknowledge)
 	{
 		critical_completion completion{};
 		completion.operation_id = command.operation_id;
+		completion.type = command.type;
 		completion.outcome = critical_apply_outcome::applied;
 		std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded{};
 		assert(item_transfer_command_encode_result(result, &encoded));
@@ -483,6 +494,7 @@ int main(int argc, char **argv)
 	DB = mysql_init(nullptr);
 	assert(mysql_real_connect(DB, "localhost", "root", "locker-test", argv[2], 0, argv[1], 0));
 	assert(chdir(argv[3]) == 0);
+	const bool had_runtime = access("runtime", F_OK) == 0;
 	const std::string mode = argv[4];
 	pending_domain = mode;
 	if (mode == "refuse-boot")
@@ -491,6 +503,8 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	assert(locker_recovery_boot());
+	if (!had_runtime)
+		assert(data_directory_syncs > 0);
 	if (mode == "recover")
 		return 0;
 
