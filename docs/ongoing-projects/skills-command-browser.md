@@ -1,6 +1,6 @@
 # Skills command browser
 
-Status: implemented; both PR review findings fixed and locally qualified; ready for merge.
+Status: implementation and review fixes complete and locally qualified. Delivery status is recorded on PR #599.
 Date: 2026-11-02
 Estimated effort: about 2 hours; allow 1–3 hours for implementation, help updates,
 builds, and focused validation. Intended delivery is one focused PR.
@@ -8,12 +8,11 @@ builds, and focused validation. Intended delivery is one focused PR.
 ## Tracking
 
 - Issue: [LuminariMUD/Duris #598](https://github.com/LuminariMUD/Duris/issues/598).
-- Review PR: [#599 — Add skills browser and help-backed skill info](https://github.com/LuminariMUD/Duris/pull/599).
+- Delivery PR: [#599 — Add skills browser and fix effective skill grants](https://github.com/LuminariMUD/Duris/pull/599).
 - Implementation/review-fix history: [PR #599 commits](https://github.com/LuminariMUD/Duris/pull/599/commits).
-- Development branch: [branch/issue-598-skills-browser](https://github.com/LuminariMUD/Duris/tree/branch/issue-598-skills-browser),
-  linked to the issue in GitHub's Development section.
-- Published plan: [skills-command-browser.md](https://github.com/LuminariMUD/Duris/blob/branch/issue-598-skills-browser/docs/ongoing-projects/skills-command-browser.md).
-- Local worktree: `/home/aiwithapex/projects/duris-issue-598`.
+- Delivery branch: `branch/issue-598-skills-browser` (history retained on PR #599).
+- Published plan: [skills-command-browser.md](https://github.com/LuminariMUD/Duris/blob/master/docs/ongoing-projects/skills-command-browser.md).
+- Implementation workspace: `/home/aiwithapex/projects/duris-issue-598` (disposable).
 - Base branch: `master`.
 
 PR #599 links this issue and plan. The issue remains open until the completed
@@ -237,11 +236,10 @@ command forms, specialization browsing, help reuse, documentation, or their proo
   errors; an untracked wrapper under `bin/tidy/` supplies the compatible selection
   through `CLANG_TIDY`. No checks were bypassed.
 
-All implementation acceptance criteria above are met. Implementation and tests
-are committed and pushed; PR #599 targets `master`, is ready for review, and
-closes issue #598 on merge. GitHub reports the branch mergeable against current
-master. No implementation work remains in this plan. Review/merge and production
-deployment are separate operations.
+All implementation acceptance criteria above are met. Implementation, tests, and
+review fixes are committed and pushed. PR #599 targets `master` and closes issue
+#598 on merge; its delivery status and final commit are recorded on that PR. No
+implementation work remains in this plan. Production deployment is separate.
 
 ## Review resolution and final validation
 
@@ -289,6 +287,7 @@ Additional local proof after the review fixes:
   pass with the documented GCC 13 header selection.
 
 No production state was changed, no release tag is appropriate, and no additional
-stacked PR is needed. Preserve the browser and review-fix commits on this single
-PR and update the remote with an explicit lease after the rebase. Hosted CI is
-not a completion gate; the applicable checks above ran locally.
+stacked PR is needed. The single PR retains the browser and review-fix history. Squash-merge it as one
+coherent change, then retire its delivery branch and disposable workspace once
+integration is verified. Hosted CI is not a completion gate; the applicable
+checks above ran locally.
