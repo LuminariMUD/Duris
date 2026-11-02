@@ -278,6 +278,9 @@ static void check_database_scores(P_char viewer)
 	assert(output.find("-190.00") != std::string::npos);
 	assert(output.find("1.25") != std::string::npos);
 	assert(output.find("Rank") != std::string::npos);
+	assert(output.find("Epics") == std::string::npos);
+	assert(output.find("2000000001") == std::string::npos);
+	assert(output.find("240") == std::string::npos);
 	assert(output.find("Deaths") == std::string::npos);
 	assert(output.find("death penalties") == std::string::npos);
 	assert(output.find("Avatarstaff") == std::string::npos);

@@ -366,7 +366,7 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 			"SELECT name, "
 			"  (level * %d) + (experience DIV %d) + "
 			"  (ship_frags * %d) + (frags * %d) + (epics * %d) AS score, "
-			"  level, frags, ship_frags, epics "
+			"  level, frags, ship_frags "
 			"FROM (SELECT pd.pid, pd.name, CAST(pd.level AS SIGNED) AS level, "
 			"  GREATEST(COALESCE(pd.exp, 0), 0) AS experience, "
 			"  CASE WHEN pd.frags > -%d AND pd.frags < %d THEN pd.frags ELSE 0 END AS frags, "
@@ -390,8 +390,8 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 			const double divisor = hardcore_config_get()->score_display_divisor;
 			strcpy(buf,
 			       "\r\n&+y=-=-=-=-=-=-=-=-=-=--= &+rDuris Mud &+WLeader Board&+y =-=-=-=-=-=-=-=-=-=-=-&n\r\n\r\n");
-			snprintf(buf2, 2048, "&+WRank %-15s %3s %12s %9s %7s %7s&n\r\n", "Name",
-				 "Lvl", "Score", "Frags", "Ship", "Epics");
+			snprintf(buf2, 2048, "&+WRank %-15s %3s %12s %9s %7s&n\r\n", "Name", "Lvl",
+				 "Score", "Frags", "Ship");
 			strcat(buf, buf2);
 
 			int rank = 0;
@@ -405,9 +405,9 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 
 					checked_snprintf(
 						buf2, 2048,
-						"&+w%4d %-15s %3s &+Y%12.2f &+w%9.2f %7s %7s&n\r\n",
+						"&+w%4d %-15s %3s &+Y%12.2f &+w%9.2f %7s&n\r\n",
 						++rank, name, row[2], pts, atof(row[3]) / 100.0,
-						row[4], row[5]);
+						row[4]);
 					strcat(buf, buf2);
 				}
 			}
@@ -415,7 +415,7 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 			if (rows.empty())
 				strcat(buf, "No players are ranked yet.\r\n");
 			strcat(buf,
-			       "\r\nEpics are total earned; scores also include level and experience.\r\nSee 'help leaderboard' for scoring.\r\n");
+			       "\r\nScores also include level, experience, and total earned epics.\r\nSee 'help leaderboard' for scoring.\r\n");
 			page_string(live->desc, buf, 1);
 		});
 	if (!queued)
