@@ -2644,8 +2644,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 	artifact_row_store(vnum, { new_owned, locType, location, timer, type });
 }
 
-bool artifact_reconcile_player_owner(P_obj object,
-				     const item_ownership_runtime_entry *restored_custody)
+bool artifact_reconcile_player_owner(P_obj object)
 {
 	if (!updateArtis || !artifact_is_canonical(object))
 		return false;
@@ -2656,21 +2655,6 @@ bool artifact_reconcile_player_owner(P_obj object,
 		       OBJ_CARRIED(root) ? root->loc.carrying :
 					   nullptr;
 	if (!owner || IS_NPC(owner) || IS_TRUSTED(owner) || GET_PID(owner) <= 0)
-		return false;
-	item_ownership_runtime_entry custody = {};
-	if (!item_ownership_runtime_lookup(object->obj_uid, &custody))
-	{
-		if (!restored_custody)
-			return false;
-		custody = *restored_custody;
-	}
-	if (custody.item_uid != object->obj_uid || custody.state != item_custody_state::active ||
-	    !custody.item_revision || custody.vnum != OBJ_VNUM(object) ||
-	    !item_owner_identity_equal(custody.owner,
-				       { item_owner_type::player,
-					 static_cast<uint64_t>(GET_PID(owner)), 0 }) ||
-	    custody.root_item_uid != root->obj_uid ||
-	    custody.parent_item_uid != (OBJ_INSIDE(object) ? object->loc.inside->obj_uid : 0))
 		return false;
 	const auto &row = artifact_rows.at(OBJ_VNUM(object));
 	if (row.removed || !row.owned || row.locType != ARTIFACT_ON_PC ||

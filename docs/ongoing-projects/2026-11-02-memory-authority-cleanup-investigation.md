@@ -15,11 +15,37 @@ override what happened afterward. Updating every cache on every movement would
 make this harder to maintain. The cleanup should remove the inappropriate
 decisions from those caches.**
 
-This is an investigation, not a shipped fix. All new cases use synthetic IDs.
-No game process, player data, environment file, or production database was
-changed. The initial tracked worktree was clean. The only tracked change is this
-report. The investigation driver and result logs are copied into this worktree's
-ignored `bin/tests` directory as local evidence; they are not part of the commit.
+The findings below describe the original baseline. Implementation progress and
+remaining work are recorded here; no production deployment or repair is implied.
+The initial tracked worktree was clean. Tests use synthetic IDs. Build outputs,
+the investigation driver, and result logs remain ignored under `bin/`.
+
+## Implementation handoff
+
+Use the newest branch in the PR stack for continued work. Keep completed chunks
+ready for review; do not merge or tag a release as part of this task.
+
+1. **Live artifact owner correction and feeding:** implemented on the original
+   branch. Canonical registration and actual worn/carried/nested placement now
+   establish the player holder without an ownership-cache permission check.
+   Removed the restored-custody parameter and the attachment-only vector argument
+   it required. Tests cover stale/missing cache evidence, rejected duplicate
+   bodies, first feed, epic feeding, monolith feeding, timer/soul preservation,
+   failed construction, and terminal unload. Source admission is unchanged in
+   this chunk: its delayed-read boundary must be resolved before removing that
+   separate veto.
+2. **Next:** retire obsolete boot player locators after accepted live placement;
+   keep world projections and failed-construction rollback.
+3. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
+   old-holder source cleanup versus damaged-component retention; exact shop
+   revisions; physical floor/copyover capture; NPC container organization;
+   pet/NORENT compatibility review; specific refusal diagnostics and existing
+   inspection; backend and end-to-end acceptance journeys listed below.
+
+Validation for chunk 1: `make -C src -j4` passed (MariaDB development build;
+`bin/tests/memory-authority-583/build-live-owner.log`). Focused sanitizer and
+checks passed: `python3 tests/async/test_artifact_creation_admission.py`
+(ASan/UBSan) and `python3 tests/async/test_player_load_items.py`.
 
 ## The existing design already says what should happen
 

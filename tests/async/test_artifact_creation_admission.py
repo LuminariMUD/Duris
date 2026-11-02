@@ -442,7 +442,7 @@ int main() {
  // Unqualified same-UID placement cannot register, mutate or retire the authority.
  auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
  player_item_snapshot saved={}; saved.equipment_slot=0;
- attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  assert(!legacy.live_object && !artifact_is_canonical(hydrated));
  artifact_update_location_sql(hydrated); artifact_feed_sql(&holder,hydrated,100,false,false);
  assert(legacy.timer==7777 && legacy.location==2000);
@@ -452,10 +452,10 @@ int main() {
  qualified.item_uid=qualified.payload_root_item_uid=80002;
  legacy.canonical_payloads={qualified}; legacy.population_reason=artifact_population_reason::complete;
  hydrated=read_object_for_recovery(qualified); assert(hydrated);
- attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  assert(legacy.live_object==hydrated && legacy.pending==artifact_pending::none && legacy.timer==7777);
  player_load_items_discard(&holder); assert(!legacy.live_object);
- hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
  assert(!artifact_is_canonical(duplicate) && legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
  assert(legacy.identity_state==artifact_identity_state::present);
@@ -504,10 +504,10 @@ void owner_reconciliation_cases() {
   if(placement==2) {
    auto *bag=read_object(903,VIRTUAL); bag->obj_uid=5000;
    obj_to_obj(body,bag);
-   attach_loaded_inventory(&owner,{bag,body},{0},{saved,player_item_snapshot{}},{{},source.custody});
+   attach_loaded_inventory(&owner,{bag,body},{0},{saved,player_item_snapshot{}});
    assert(owner.carrying==unrelated && unrelated->next_content==bag && bag->contains==body);
   } else {
-   attach_loaded_inventory(&owner,{body},{0},{saved},{source.custody});
+   attach_loaded_inventory(&owner,{body},{0},{saved});
    assert(owner.carrying==unrelated);
    assert(placement==0 ? owner.equipment[0]==body : unrelated->next_content==body);
   }
@@ -541,8 +541,9 @@ void owner_reconciliation_cases() {
    assert(artifact_feed_sql(&owner,copy,900,false,false)==artifact_feed_result::rejected);
    extract_obj(copy,FALSE);
    const auto alerts=owner_mismatch_alerts;
-   // Every disagreement leaves authority intact instead of guessing an owner.
+   // Optional cache evidence cannot overrule the canonical body's live holder.
    for(int conflict=0;conflict<6;++conflict) {
+    row.location=88; row.timer=before;
     item_ownership_runtime_reset(); auto custody=source.custody;
     switch(conflict) {
      case 0: custody.owner.id=88; break;
@@ -552,12 +553,14 @@ void owner_reconciliation_cases() {
      case 4: custody.state=item_custody_state::quarantined; break;
     }
     if(conflict!=5) assert(item_ownership_runtime_hydrate(custody));
-    assert(!artifact_reconcile_player_owner(body) && row.location==88);
-    assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::no_effect);
-    assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::rejected);
-    assert(row.timer==before+900 && row.location==88 && row.canonical_item_uid==4242);
+    assert(artifact_reconcile_player_owner(body) && row.location==77 && row.timer==before);
+    assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::ready);
+    assert(payload.artifact_count==1 && payload.artifacts[0].timer_before==before);
+    assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::positive);
+    assert(row.timer==before+900 && row.location==77 && row.canonical_item_uid==4242);
+    assert(artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==666);
    }
-   assert(owner_mismatch_alerts==alerts+12);
+   assert(owner_mismatch_alerts==alerts);
    owner_mismatch_alerts=0;
   }
   assert(owner_mismatch_alerts==0);
@@ -1580,10 +1583,11 @@ void monolith_cases() {
   command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
  owner.player.level=62; use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
   command_output.find("satisfaction")==std::string::npos); owner.player.level=51;
- artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==2 &&
-  artifact_rows.at(900).timer==initial+14400 && command_output.find("satisfaction")==std::string::npos);
- artifact_rows.at(900).location=55;
- monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+14400 &&
+ // Stale tracking repairs from the live wearer before the monolith feeds it.
+ artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==1 &&
+  artifact_rows.at(900).location==55 && artifact_rows.at(900).timer==initial+21600 &&
+  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+ monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+21600 &&
   command_output.find("satisfaction")==std::string::npos);
  // Clamping an over-cap artifact keeps its negative feedback, without a false positive.
  monolith.value[0]=1; artifact_rows.at(900).timer=time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY+120;
