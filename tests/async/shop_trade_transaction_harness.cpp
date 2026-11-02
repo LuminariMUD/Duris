@@ -187,8 +187,13 @@ P_char find_player_by_pid(int pid)
 }
 
 bool item_ownership_runtime_apply(const item_transfer_payload &payload,
-				  const item_transfer_result &result)
+				  const item_transfer_result &result,
+				  const uint64_t *item_revisions)
 {
+	assert(item_revisions);
+	for (size_t index = 0; index < payload.item_count; ++index)
+		assert(item_revisions[index] ==
+		       (payload.from_owner.type == item_owner_type::system ? 1 : 6));
 	published_transfer = payload;
 	published_transfer_result = result;
 	ownership_published = true;

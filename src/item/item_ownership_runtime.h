@@ -48,7 +48,8 @@ bool item_ownership_runtime_hydrate_owner(const item_owner_identity &owner, uint
 bool item_ownership_runtime_lookup(uint64_t item_uid, item_ownership_runtime_entry *entry);
 bool item_ownership_runtime_owner_revision(const item_owner_identity &owner, uint64_t *revision);
 bool item_ownership_runtime_apply(const item_transfer_payload &payload,
-				  const item_transfer_result &result);
+				  const item_transfer_result &result,
+				  const uint64_t *item_revisions = nullptr);
 bool item_ownership_runtime_apply_collector(const collector_command_payload &payload,
 					    const collector_command_result &result);
 void item_ownership_runtime_forget(uint64_t item_uid);

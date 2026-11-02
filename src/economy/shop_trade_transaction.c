@@ -143,7 +143,8 @@ bool publish_ownership(const shop_trade_payload &payload, const shop_trade_resul
 	for (size_t index = 0; index < result.item_count; ++index)
 		transfer_result.max_item_revision =
 			std::max(transfer_result.max_item_revision, result.item_revisions[index]);
-	return item_ownership_runtime_apply(transfer, transfer_result);
+	return item_ownership_runtime_apply(transfer, transfer_result,
+					    result.item_revisions.data());
 }
 
 bool publish(std::unordered_map<std::string, pending_trade>::iterator found, P_char character)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Runtime regressions for the live item ownership cache."""
 
-from _paths import rel
+from _paths import rel, extract_function
 import subprocess
 import tempfile
 from pathlib import Path
@@ -12,11 +12,66 @@ ROOT = Path(__file__).resolve().parents[2]
 HARNESS = r'''
 #include "item/item_ownership_runtime.h"
 #include "economy/collector_command.h"
+#include "economy/shop_trade_command.h"
 
 #include <cassert>
 
+// SHOP_PUBLICATION
+
 int main()
 {
+	// Ordinary sale after unseen handoffs, followed by buyback. Exercise the
+	// actual shop adapter and actual cache, both empty and misleadingly in step.
+	for (bool cached : {false, true}) {
+		item_ownership_runtime_reset();
+		shop_trade_payload sale = {};
+		sale.action = shop_trade_action::sell_store;
+		sale.player_pid = 42; sale.shop_id = 7;
+		sale.selected_item_uid = sale.target_root_item_uid = 400;
+		sale.item_count = 1;
+		sale.items[0] = {400,400,0,1,800,item_custody_state::active};
+		if (cached) assert(item_ownership_runtime_hydrate(
+			{400,400,0,{item_owner_type::player,42,0},1,1,800,item_custody_state::active}));
+		shop_trade_result sold = {};
+		sold.action = sale.action; sold.item_count = 1;
+		sold.player_owner_revision = 8; sold.counterparty_owner_revision = 2;
+		sold.item_uids[0] = 400; sold.item_revisions[0] = 9;
+		assert(publish_ownership(sale,sold));
+		item_ownership_runtime_entry entry = {};
+		assert(item_ownership_runtime_lookup(400,&entry) && entry.item_revision == 9 &&
+		       entry.owner.type == item_owner_type::shopkeeper && entry.owner.id == 8);
+		sale.action = shop_trade_action::buy_existing;
+		sale.items[0].expected_item_revision = 9;
+		sold.action = sale.action; sold.item_revisions[0] = 10;
+		sold.player_owner_revision = 9; sold.counterparty_owner_revision = 3;
+		assert(publish_ownership(sale,sold));
+		assert(item_ownership_runtime_lookup(400,&entry) && entry.item_revision == 10 &&
+		       entry.owner.type == item_owner_type::player && entry.owner.id == 42);
+	}
+	// A stocked container purchase is a supported multi-item boundary. Its
+	// descendants keep their own revisions rather than inheriting the maximum.
+	item_ownership_runtime_reset();
+	{
+		const item_owner_identity shop = {item_owner_type::shopkeeper,8,0};
+		assert(item_ownership_runtime_hydrate({400,400,0,shop,8,1,800,item_custody_state::active}));
+		assert(item_ownership_runtime_hydrate({401,400,400,shop,2,1,801,item_custody_state::active}));
+		shop_trade_payload buy = {};
+		buy.action = shop_trade_action::buy_existing; buy.player_pid = 42; buy.shop_id = 7;
+		buy.selected_item_uid = buy.target_root_item_uid = 400; buy.item_count = 2;
+		buy.items[0] = {400,400,0,8,800,item_custody_state::active};
+		buy.items[1] = {401,400,400,2,801,item_custody_state::active};
+		shop_trade_result bought = {};
+		bought.action = buy.action; bought.item_count = 2;
+		bought.player_owner_revision = 1; bought.counterparty_owner_revision = 2;
+		bought.item_uids[0] = 400; bought.item_uids[1] = 401;
+		bought.item_revisions[0] = 9; bought.item_revisions[1] = 3;
+		assert(publish_ownership(buy,bought));
+		item_ownership_runtime_entry entry = {};
+		assert(item_ownership_runtime_lookup(400,&entry) && entry.item_revision == 9);
+		assert(item_ownership_runtime_lookup(401,&entry) && entry.item_revision == 3 &&
+		       entry.root_item_uid == 400 && entry.parent_item_uid == 400);
+	}
+	item_ownership_runtime_reset();
 	const item_transfer_result extended = { 100, 1, 11, 1, 6, 7, true };
 	std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded = {};
 	assert(item_transfer_command_encode_result(extended, &encoded));
@@ -374,7 +429,9 @@ int main()
 with tempfile.TemporaryDirectory(prefix="duris-item-ownership-runtime-") as temp_dir:
 	source = Path(temp_dir) / "item_ownership_runtime_test.cpp"
 	binary = Path(temp_dir) / "item_ownership_runtime_test"
-	source.write_text(HARNESS)
+	source.write_text(HARNESS.replace("// SHOP_PUBLICATION", "\n".join(
+		extract_function("shop_trade_transaction.c", signature)
+		for signature in ("bool buying(", "bool publish_ownership("))))
 	subprocess.run(
 		[
 			"g++",
