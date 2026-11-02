@@ -157,3 +157,29 @@ These passes establish the baseline only. No new regression, C/C++ implementatio
 - 2–3 hours: builds, both persistence journeys, fixes from those checks, documentation, and final ablation/diff review.
 
 This estimate excludes waiting for a reporter's exact horse/attack sequence, review, and production deployment. A newly demonstrated special-attack or route-altitude defect could add approximately 1–2 hours; that would be reported with its evidence and a revised estimate, not silently expanded into a combat redesign.
+
+## PR #586 review follow-up (2026-11-02)
+
+Both P2 findings were verified against the production departure and placement
+contracts. The refused-departure fixture reproduced WAITING away from home with
+no flight event on the original head. The lifetime issue follows directly from
+`char_from_room()` permitting removal/replacement before the old caller's snapshot.
+
+The fix shares checked relocation between occupied movement, empty return and
+home landing. Recursive riding-companion movement checks both participants at
+the same callback boundaries. Refused home placement reuses the existing return
+event, and only confirmed home placement publishes WAITING. Startup callers honor
+failed landing and avoid accessing removed carriers. The fixtures now model leave
+vetoes and duplicate-insertion refusal and exercise the production companion mover.
+This keeps the existing state/snapshot format and scheduler; no new recovery service,
+configuration, tag, migration or production operation is needed.
+
+Focused proof includes repeated departure/entry refusal followed by recovery and
+service reuse; occupied/empty departure redirection, removal and storage replacement;
+and passenger/carrier removal during recursive movement and home landing. Validation passed: `make -C src -j8`; `test_flight_network.py`,
+`test_flight_transport_runtime.py`, `test_world_singletons.py`,
+`test_nevent_cancellation_runtime.py`, `test_mounted_gatekeeper_runtime.py`, and
+`test_char_from_room_callbacks.py` (focused native suites use ASan/UBSan);
+`./scripts/format.sh`, `./scripts/tidy.sh`, and `git diff --check`.
+Full-world final-stack acceptance follows in #588 after carrying this fix through
+#587's legacy-chain code.

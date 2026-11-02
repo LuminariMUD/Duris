@@ -1,5 +1,6 @@
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "cmd/interp.h"
 #include "world/world_singletons.h"
 #include "persistence/copyover.h"
 #include "world/world_recovery_codec.h"
@@ -56,6 +57,8 @@ int saved_shop_rooms[7] = { -1, -1, -1, -1, -1, -1, -1 };
 bool fail_shop_placement = false;
 bool entry_hazard = false;
 void (*entry_hook)(P_char) = nullptr;
+int (*departure_hook)(P_char) = nullptr;
+P_char refused_entry = nullptr;
 persistence_mode persistence_mode_get()
 {
 	return PERSISTENCE_MODE_MARIADB_PRIMARY;
@@ -144,6 +147,15 @@ P_char find_player_by_name(const char *name)
 }
 void char_from_room(P_char ch)
 {
+	const int source = ch->in_room;
+	const auto runtime = ch->runtime_id;
+	if (departure_hook)
+	{
+		const int result = departure_hook(ch);
+		if (result == ROOM_PROC_LEAVE_VETO || !char_in_list(ch) ||
+		    ch->runtime_id != runtime || ch->in_room != source || !IS_ALIVE(ch))
+			return;
+	}
 	if (ch->in_room >= 0)
 	{
 		P_char *at = &world[ch->in_room].people;
@@ -152,11 +164,15 @@ void char_from_room(P_char ch)
 		if (*at)
 			*at = ch->next_in_room;
 	}
+	if (source >= 0)
+		ch->specials.was_in_room = world[source].number;
 	ch->in_room = -1;
 	ch->next_in_room = nullptr;
 }
 bool char_to_room(P_char ch, int room, int direction)
 {
+	if (!IS_ALIVE(ch) || ch->in_room != NOWHERE || ch == refused_entry)
+		return false;
 	// Ordinary room entry can extract a mob; recovery must skip those effects.
 	if (entry_hazard && direction >= 0)
 	{
@@ -206,6 +222,7 @@ P_char read_mobile(int v, int mode)
 	// As the production read_mobile() does: reported before it is marked an NPC.
 	shopkeeper_mob_created(ch);
 	ch->specials.act = ACT_ISNPC;
+	ch->specials.position = POS_STANDING + STAT_NORMAL;
 	return ch;
 }
 P_obj read_object(int v, int mode)
@@ -588,6 +605,7 @@ int main()
 	initialize_transport();
 	char player_name[] = "Passenger";
 	P_char rider = new char_data{};
+	rider->specials.position = STAT_NORMAL;
 	rider->player.name = player_name;
 	rider->in_room = -1;
 	rider->next = character_list;
@@ -670,6 +688,7 @@ int main()
 
 	// Two occupied duplicates: land the extra passenger before extraction.
 	P_char rider2 = new char_data{};
+	rider2->specials.position = STAT_NORMAL;
 	rider2->in_room = -1;
 	rider2->next = character_list;
 	character_list = rider2;

@@ -34,6 +34,16 @@ for signature in ('P_char get_linked_char(', 'P_char get_linking_char(',
 base = base.replace('assert(!GET_RIDER(ch));\n\tscheduled.erase(ch);',
                     'clear_all_links(ch);\n\tdisarm_char_nevents(ch, nullptr);')
 
+# Exercise production companion placement inside the isolated room-I/O fixture.
+base = ('#include "core/prototypes.h"\n'
+        'static bool move_riding_companions(P_char, int, int);\n') + base
+base = base.replace('''	if (P_char rider = GET_RIDER(ch))
+	{
+		char_from_room(rider);
+		char_to_room(rider, room, -1);
+	}''', '\tif (!move_riding_companions(ch, room, direction)) return false;')
+movement = extract_function('handler.c', 'static bool move_riding_companions(')
+
 links = '\n'.join(extract_function('affects.c', signature) for signature in (
     'struct char_link_data *link_char_with_affect(', 'struct char_link_data *link_char(',
     'P_char get_linked_char(', 'P_char get_linking_char(', 'void dispose_link(',
@@ -197,6 +207,123 @@ driver += r'''
         visit(2);
         recipient->specials.position = STAT_NORMAL;
     }
+    pc.learned_flight_stops |= uint64_t{1} << 4;
+    // Refused departure/placement must retain one home-recovery continuation.
+    for (bool empty_return : {false, true}) {
+        for (bool refuse_entry : {false, true}) {
+            visit(2);
+            command(CMD_BUY, "2");
+            command(CMD_GIVE, "ticket carrier");
+            if (empty_return) while (GET_MOUNT(ch)) run_event(recipient);
+            else run_event(recipient);
+            if (refuse_entry) refused_entry = recipient;
+            else departure_hook = [](P_char actor) -> int {
+                return IS_NPC(actor) ? ROOM_PROC_LEAVE_VETO : FALSE;
+            };
+            run_event(recipient);
+            assert(TRANSPORT_STATE(recipient) == TRANSPORT_STATE_MOVING);
+            assert(TRANSPORT_ROUTE(recipient) == -1 && recipient->nevents);
+            assert(ne_event_counter == 1 && !GET_RIDER(recipient));
+            run_event(recipient); // A persistent veto/refusal still retains one retry.
+            assert(ne_event_counter == 1 && TRANSPORT_STATE(recipient) == TRANSPORT_STATE_MOVING);
+            refused_entry = nullptr;
+            departure_hook = nullptr;
+            while (recipient->nevents) run_event(recipient);
+            assert(recipient->in_room == 2 && recipient->specials.z_cord == 0);
+            assert(TRANSPORT_STATE(recipient) == TRANSPORT_STATE_WAITING);
+            assert(!GET_MOUNT(ch) && ne_event_counter == 0);
+        }
+    }
+    // Source hooks may redirect, remove, or replace the occupied/empty carrier.
+    for (bool empty_return : {false, true}) {
+        for (int outcome = 0; outcome < 3; ++outcome) {
+            visit(2);
+            command(CMD_BUY, "2");
+            command(CMD_GIVE, "ticket carrier");
+            if (empty_return) while (GET_MOUNT(ch)) run_event(recipient);
+            else run_event(recipient);
+            const int source = recipient->in_room;
+            departure_hook = outcome == 0 ? +[](P_char actor) -> int {
+                if (IS_NPC(actor)) {
+                    departure_hook = nullptr;
+                    char_from_room(actor);
+                    char_to_room(actor, 6, -1);
+                }
+                return FALSE;
+            } : outcome == 1 ? +[](P_char actor) -> int {
+                if (IS_NPC(actor)) {
+                    departure_hook = nullptr;
+                    extract_char(actor);
+                }
+                return FALSE;
+            } : +[](P_char actor) -> int {
+                if (IS_NPC(actor)) {
+                    departure_hook = nullptr;
+                    clear_all_links(actor);
+                    disarm_char_nevents(actor, nullptr);
+                    ++character_removal_generation;
+                    ++actor->runtime_id; // Same storage now belongs to another character.
+                    TRANSPORT_STATE(actor) = TRANSPORT_STATE_WAITING;
+                    TRANSPORT_ROUTE(actor) = -1;
+                    TRANSPORT_STEP(actor) = 0;
+                }
+                return FALSE;
+            };
+            run_event(recipient);
+            assert(ne_event_counter == 0 && event_pool.objs_used == 0 && link_pool.objs_used == 0);
+            if (outcome == 0) {
+                assert(recipient->in_room == 2 && TRANSPORT_STATE(recipient) == TRANSPORT_STATE_WAITING);
+            } else if (outcome == 1) {
+                assert(!char_in_list(recipient));
+                initialize_transport();
+            } else {
+                assert(recipient->in_room == source && TRANSPORT_STEP(recipient) == 0);
+                assert(TRANSPORT_ROUTE(recipient) == -1);
+                transport_land_at_home(recipient, 2);
+            }
+            visit(2);
+        }
+    }
+    // Recursive occupied movement and home landing revalidate both actors.
+    for (bool home_recovery : {false, true}) {
+        for (bool remove_carrier : {false, true}) {
+            visit(2);
+            command(CMD_BUY, "2");
+            command(CMD_GIVE, "ticket carrier");
+            run_event(recipient);
+            if (home_recovery) TRANSPORT_STEP(recipient) = -1;
+            departure_hook = remove_carrier ? +[](P_char actor) -> int {
+                if (IS_PC(actor)) {
+                    departure_hook = nullptr;
+                    extract_char(recipient);
+                }
+                return FALSE;
+            } : +[](P_char actor) -> int {
+                if (IS_PC(actor)) {
+                    departure_hook = nullptr;
+                    extract_char(actor);
+                }
+                return FALSE;
+            };
+            run_event(recipient);
+            while (char_in_list(recipient) && recipient->nevents) run_event(recipient);
+            assert(ne_event_counter == 0 && event_pool.objs_used == 0 && link_pool.objs_used == 0);
+            if (remove_carrier) {
+                assert(ch->in_room != NOWHERE && !GET_MOUNT(ch));
+                assert(!char_in_list(recipient));
+                initialize_transport();
+            } else {
+                assert(recipient->in_room == 2 && TRANSPORT_STATE(recipient) == TRANSPORT_STATE_WAITING);
+                ch = player(&pc, "Explorer");
+                GET_COPPER(ch) = 1000000;
+            }
+        }
+    }
+    visit(2);
+    command(CMD_BUY, "1");
+    command(CMD_GIVE, "ticket carrier");
+    while (recipient->nevents) run_event(recipient);
+    assert(ch->in_room == 1 && ch->specials.z_cord == 0);
     clear_world();
     for (void *value : pool_storage) free(value);
     puts("production flight links, passenger teardown, victim cancellation and owner disarm passed");
@@ -207,7 +334,7 @@ build = ROOT / 'bin/tests'
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='flight-runtime-', dir=build) as temporary:
     source = Path(temporary) / 'harness.cpp'
-    source.write_text(base + RUNTIME + links + driver)
+    source.write_text(base + RUNTIME + links + movement + driver)
     binary = Path(temporary) / 'harness'
     subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-ffunction-sections', '-fdata-sections',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',

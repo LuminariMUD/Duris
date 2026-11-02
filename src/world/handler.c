@@ -1257,6 +1257,43 @@ void recover_from_room_ch_loop(P_char k)
 	k->next_in_room = 0;
 }
 
+// A companion's departure/entry hooks may also remove or redirect this entrant.
+static bool move_riding_companions(P_char ch, int room, int dir)
+{
+	const auto runtime = ch->runtime_id;
+	const auto removals = character_removal_generation;
+	for (int incoming = 0; incoming < 2; ++incoming)
+	{
+		P_char companion = incoming ? GET_RIDER(ch) : GET_MOUNT(ch);
+		if (!companion || companion->in_room == room)
+			continue;
+		const auto companion_runtime = companion->runtime_id;
+		char_from_room(companion);
+		const bool entrant_live =
+			(removals == character_removal_generation || char_in_list(ch)) &&
+			ch->runtime_id == runtime && IS_ALIVE(ch);
+		if ((removals == character_removal_generation || char_in_list(companion)) &&
+		    companion->runtime_id == companion_runtime && IS_ALIVE(companion) &&
+		    companion->in_room == NOWHERE)
+		{
+			// Finish placing a surviving companion even if the entrant vanished.
+			// A redirected entrant must not be pulled back by the riding link.
+			if (!entrant_live || ch->in_room != room)
+			{
+				if (incoming)
+					unlink_char(companion, ch, LNK_RIDING);
+				else if (entrant_live)
+					unlink_char(ch, companion, LNK_RIDING);
+			}
+			char_to_room(companion, room, dir);
+		}
+		if ((removals != character_removal_generation && !char_in_list(ch)) ||
+		    ch->runtime_id != runtime || !IS_ALIVE(ch) || ch->in_room != room)
+			return false;
+	}
+	return true;
+}
+
 /*
  * place a character in a room.
  */
@@ -1474,17 +1511,8 @@ bool char_to_room(P_char ch, int room, int dir)
 
 	AddCharToZone(ch);
 
-	if ((t_ch = get_linked_char(ch, LNK_RIDING)) && t_ch->in_room != ch->in_room)
-	{
-		char_from_room(t_ch);
-		char_to_room(t_ch, ch->in_room, dir);
-	}
-
-	if ((t_ch = get_linking_char(ch, LNK_RIDING)) && t_ch->in_room != ch->in_room)
-	{
-		char_from_room(t_ch);
-		char_to_room(t_ch, ch->in_room, dir);
-	}
+	if (!move_riding_companions(ch, room, dir))
+		return FALSE;
 
 	/*
 	 * ok, since running battles aren't allowed, if they get here and are

@@ -97,3 +97,11 @@ It covers passenger link teardown/freeing between and during movement, owner
 extraction during occupied and empty movement, generic victim cancellation, and
 return to service. It complements the full-server flight journey; its simulated
 room entry and character allocation do not prove a production attack sequence.
+
+Flight relocation checks character identity and liveness after both departure and
+entry callbacks, including recursively moved riding companions. A refused or
+redirected home placement keeps a single return callback pending; the carrier
+becomes WAITING and clears its progress only after confirmed placement at home.
+Duplicate retirement revalidates both carriers after landing before transferring
+items or extracting the extra body. No new event type or recovery snapshot field
+is needed.
