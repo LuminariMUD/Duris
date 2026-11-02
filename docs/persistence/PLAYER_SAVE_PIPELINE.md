@@ -32,7 +32,7 @@ The artifact/guild lifecycle drain consumes writer completions before retrying
 dirty captures, releasing admission slots while the normal game loop is stopped.
 
 The game-thread checkpoint and completion paths perform no MySQL, Redis, or filesystem
-operation. Nothing is journaled. A crash loses whatever had not reached durable
+operation. Ordinary checkpoints are not journaled. A crash loses whatever had not reached durable
 storage. The 30-second `dirty-player-checkpoint` interval is a scheduling target,
 not an upper bound on loss: batching, refused admission, writer retries, or an
 outage can leave older state unwritten. Inspect the writer's oldest age and the
@@ -247,6 +247,12 @@ are read back, within five seconds.
 Shutdown queues every player's save, gives the writer 30 seconds for what is queued and
 always goes; a write it could not finish is named in the log. Copyover waits the same
 30 seconds and is called off, resuming the game loop, when the writer cannot drain.
+Orderly shutdown also freezes retained locker contents and their occupants' items
+in a bounded, durable recovery image, including lockers that never reached the
+writer. Boot replays it through these repositories before custody cleanup or
+gameplay. An incomplete/interrupted image stops boot for reconciliation; an empty
+queue is never proof of locker recovery. See the
+[locker shutdown recovery runbook](../operations/locker-shutdown-recovery.md).
 `world persistence` reports the writer's queue, retries, failures and drain failures
 without player identity.
 

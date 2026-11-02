@@ -28,7 +28,8 @@ loop = loop[:loop.index("close_sockets(s);")]
 assert loop.index("persistence_save_all_characters_terminal(RENT_CRASH);") < \
     loop.index("locker_async_drain(0);") < \
     loop.index("persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS") < \
-    loop.index("player_save_pipeline_drain(SHUTDOWN_WRITER_SECONDS * 1000ULL);")
+    loop.index("locker_recovery_begin();") < \
+    loop.index("shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000)")
 assert "not_written" not in loop and "persistence_writer_pending_owners" not in loop
 print("[PASS] the game loop queues every save and dirty locker before the timed drain")
 
@@ -36,7 +37,10 @@ run = body(COMM, "int run_the_game(int port, int sslport)")
 assert run.index("game_loop(port, sslport);") < \
     run.index("locker_async_drain(shutdown_writer_remaining_msec(2000));") < \
     run.index("report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,") < \
+    run.index("locker_recovery_finish(shutdown_writer_deadline_usec);") < \
     run.index("locker_async_shutdown();")
+assert COMM.index("if (!locker_recovery_boot())") < COMM.index("reap_unheld_player_items_at_boot();")
+assert "locker_recovery_begin" not in body(COMM, "bool pwipe_quiesce_writers(void)")
 assert "sql_pool_interrupt_borrowed" in run
 # The locker drains wait only for what is left of the writer's 30 s.
 assert COMM.count("locker_async_drain(shutdown_writer_remaining_msec(2000));") == 2

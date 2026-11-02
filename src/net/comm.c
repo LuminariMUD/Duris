@@ -133,6 +133,7 @@
 #include "persistence/persistence_mode.h"
 #include "core/env_file.h"
 #include "persistence/locker_async.h"
+#include "persistence/locker_recovery.h"
 #include "persistence/maintenance_repository.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/maintenance_snapshot.h"
@@ -847,6 +848,10 @@ int main(int argc, char **argv)
 			logit(LOG_STATUS,
 			      "Redis recovery evidence unavailable or invalid; physical absence is unresolved");
 	}
+	if (!locker_recovery_boot())
+		fatal_boot_error(
+			"locker_recovery",
+			"Locker shutdown recovery unresolved; preserve runtime/locker-shutdown (or FLATFILE_STATE_DIR/locker-shutdown) and follow the locker recovery runbook");
 	const auto &population = artifact_population_prepare_boot(copyover_boot);
 	logit(LOG_STATUS, "Artifact population evidence: %s rows=%zu retained_uids=%zu.",
 	      population.complete ? "complete" : "incomplete", population.items.size(),
@@ -1296,6 +1301,7 @@ int run_the_game(int port, int sslport)
 		locker_async_drain(shutdown_writer_remaining_msec(2000));
 		report_unwritten_saves(player_save_pipeline_finish(shutdown_writer_deadline_usec,
 								   sql_pool_interrupt_borrowed));
+		locker_recovery_finish(shutdown_writer_deadline_usec);
 		artifact_guild_transaction_report_unsaved();
 		locker_async_shutdown();
 	}
@@ -2971,7 +2977,9 @@ resume_game_loop:
 					  "dirty_save_failed", "shutdown_cancelled=0");
 		shutdown_writer_deadline_usec =
 			persistence_observability_now_usec() + SHUTDOWN_WRITER_SECONDS * 1000000ULL;
-		player_save_pipeline_drain(SHUTDOWN_WRITER_SECONDS * 1000ULL);
+		locker_recovery_begin();
+		player_save_pipeline_drain(
+			shutdown_writer_remaining_msec(SHUTDOWN_WRITER_SECONDS * 1000));
 		if (!redis_world_recovery_drain(3000))
 			persistence_alert(AVATAR, "world_recovery", "shutdown", "none", "none",
 					  "pipeline_drain_failed", "shutdown_cancelled=0");

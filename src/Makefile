@@ -524,6 +524,7 @@ OBJS =  $(SHIP_OBJS) \
 				 item/locker_identify.o \
 				 item/locker_receipt.o \
 				 persistence/locker_async.o \
+				 persistence/locker_recovery.o \
 				 world/timers.o \
 				 cmd/track.o \
 				 economy/tradeskill.o \
