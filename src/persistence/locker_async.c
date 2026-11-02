@@ -138,7 +138,7 @@ static struct locker_async_slot *slot_alloc(const char *name)
 		{
 			g_slots.emplace_back();
 		}
-		catch(const std::bad_alloc &)
+		catch (const std::bad_alloc &)
 		{
 			return NULL;
 		}
@@ -279,7 +279,7 @@ static player_save_apply_result locker_write_job(const struct locker_async_job &
 	{
 		g_results.push_back(res);
 	}
-	catch(const std::bad_alloc &)
+	catch (const std::bad_alloc &)
 	{
 		logit(LOG_FILE, "locker_async: result lost for %s gen=%lu", res.locker_name,
 		      res.gen);
@@ -519,7 +519,7 @@ static int start_one_snapshot(struct locker_async_slot *s)
 						      &bytes) == player_snapshot_capture_result::ok)
 			job.snapshot = std::move(snapshot);
 	}
-	catch(const std::bad_alloc &)
+	catch (const std::bad_alloc &)
 	{
 		job.snapshot.reset();
 	}

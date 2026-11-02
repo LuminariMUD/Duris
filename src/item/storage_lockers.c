@@ -1936,11 +1936,11 @@ bool PrivateChest::FlushContents(void)
 				result =
 					locker_chest_snapshot_repository_apply_from_pool(*snapshot);
 			}
-			catch(const std::bad_alloc &)
+			catch (const std::bad_alloc &)
 			{
 				result = { player_save_apply_outcome::terminal_failure, 0, ENOMEM };
 			}
-			catch(...)
+			catch (...)
 			{
 				result = { player_save_apply_outcome::terminal_failure, 0, EFAULT };
 			}
@@ -4293,16 +4293,16 @@ static int locker_chest_id(StorageLocker *pLocker, const char *name)
 
 namespace
 {
-	struct chest_change
-	{
-		int locker_id, chest_id, room;
-		uint64_t actor_id;
-		std::string name, hash;
-		bool remove, reading = false;
-		std::shared_ptr<sql_write_receipt> receipt;
-		std::chrono::steady_clock::time_point retry{};
-	};
-	std::vector<std::shared_ptr<chest_change>> chest_changes;
+struct chest_change
+{
+	int locker_id, chest_id, room;
+	uint64_t actor_id;
+	std::string name, hash;
+	bool remove, reading = false;
+	std::shared_ptr<sql_write_receipt> receipt;
+	std::chrono::steady_clock::time_point retry{};
+};
+std::vector<std::shared_ptr<chest_change>> chest_changes;
 }
 
 // A lost COMMIT response may still have applied. Reconcile the same ID before

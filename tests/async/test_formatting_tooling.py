@@ -242,7 +242,10 @@ if clang_format and shutil.which("git-clang-format"):
         )
 
         probe = fixture / "probe.c"
-        probe.write_text("int value()\n{\n\treturn 0;\n}\n")
+        # Keep the formatting hunk away from both file boundaries. A zero-context
+        # patch can apply at a boundary while git apply refuses the same edit here.
+        prefix, suffix = "// file header\n\n", "\n// file footer\n"
+        probe.write_text(prefix + "int value()\n{\n\treturn 0;\n}\n" + suffix)
         subprocess.run(
             ["git", "add", ".clang-format", "probe.c"], cwd=fixture, check=True
         )
@@ -251,7 +254,7 @@ if clang_format and shutil.which("git-clang-format"):
             cwd=fixture, check=True,
         )
 
-        probe.write_text("int value(){int number=1;return number;}\n")
+        probe.write_text(prefix + "int value(){int number=1;return number;}\n" + suffix)
         subprocess.run(["git", "add", "probe.c"], cwd=fixture, check=True)
         with probe.open("a") as source:
             source.write("// preserve this unstaged edit\n")
