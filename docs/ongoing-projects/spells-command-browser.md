@@ -12,8 +12,7 @@ players and staff. Move the current staff global catalog to **`spells all`**.
 Add class/spec reference catalogs and spell information backed by current game
 definitions and existing help.
 
-This work is the prerequisite for the
-[class command browser](class-command-browser.md). Its main integration points
+This work is the prerequisite for the planned class command browser. Its main integration points
 are `spells <class or specialization>` and `spells info <spell name>`.
 Complete and locally qualify this browser before implementing the class plan.
 Follow the [skills browser](skills-command-browser.md) for presentation and
