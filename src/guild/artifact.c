@@ -1238,6 +1238,10 @@ void artifact_object_placed(P_obj object)
 	row.previous_state = artifact_identity_state::unresolved;
 	if (recovery)
 	{
+		// Player payloads are mutable: accepted live placement supersedes their
+		// boot locators. Keep pinned world sources for source-qualified recovery.
+		std::erase_if(row.canonical_payloads, [](const auto &source)
+			      { return source.domain == artifact_payload_domain::player; });
 		++arti_cache_generation;
 		return;
 	}

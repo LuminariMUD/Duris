@@ -25,8 +25,9 @@ the investigation driver, and result logs remain ignored under `bin/`.
 Use the newest branch in the PR stack for continued work. Keep completed chunks
 ready for review; do not merge or tag a release as part of this task.
 
-1. **Live artifact owner correction and feeding:** implemented on the original
-   branch. Canonical registration and actual worn/carried/nested placement now
+1. **Live artifact owner correction and feeding:** review-ready in
+   [PR #589](https://github.com/LuminariMUD/Duris/pull/589), original branch.
+   Canonical registration and actual worn/carried/nested placement now
    establish the player holder without an ownership-cache permission check.
    Removed the restored-custody parameter and the attachment-only vector argument
    it required. Tests cover stale/missing cache evidence, rejected duplicate
@@ -34,8 +35,11 @@ ready for review; do not merge or tag a release as part of this task.
    failed construction, and terminal unload. Source admission is unchanged in
    this chunk: its delayed-read boundary must be resolved before removing that
    separate veto.
-2. **Next:** retire obsolete boot player locators after accepted live placement;
-   keep world projections and failed-construction rollback.
+2. **Artifact expiry:** implemented on `branch/issue-583-artifact-expiry`, stacked
+   on #589. Accepted recovery placement erases only boot player locators, keeping
+   pinned world projections. The ASan/UBSan artifact admission harness passes,
+   including genuine boot tracking repair, construction cancellation, live
+   handoff, unload, current-recipient lookup, and actual offline retirement.
 3. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
    old-holder source cleanup versus damaged-component retention; exact shop
    revisions; physical floor/copyover capture; NPC container organization;
@@ -45,7 +49,8 @@ ready for review; do not merge or tag a release as part of this task.
 Validation for chunk 1: `make -C src -j4` passed (MariaDB development build;
 `bin/tests/memory-authority-583/build-live-owner.log`). Focused sanitizer and
 checks passed: `python3 tests/async/test_artifact_creation_admission.py`
-(ASan/UBSan) and `python3 tests/async/test_player_load_items.py`.
+(ASan/UBSan) and `python3 tests/async/test_player_load_items.py`. Chunk 2 uses the
+same sanitizer harness and an incremental `make -C src -j4`.
 
 ## The existing design already says what should happen
 

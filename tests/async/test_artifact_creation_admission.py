@@ -203,7 +203,11 @@ const object_template *find_object_template(int vnum) {
 static size_t offline_released=0, offline_saves=0, corpse_saves=0, expiry_retries=0;
 static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
 static std::vector<std::function<void(P_char)>> offline_callbacks;
-char *get_player_name_from_pid(int pid) { return pid==77 ? const_cast<char *>("Offline") : nullptr; }
+static int offline_requested_pid=0;
+char *get_player_name_from_pid(int pid) {
+ offline_requested_pid=pid;
+ return pid==77 ? const_cast<char *>("Offline") : pid==88 ? const_cast<char *>("Recipient") : nullptr;
+}
 bool is_pid_online(int,bool) { return owner_online; }
 bool player_load_pipeline_pid_pending(int) { return owner_loading; }
 bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { offline_callbacks.push_back(std::move(done)); return true; }
@@ -1189,6 +1193,35 @@ void offline_expiry_cases() {
   assert(offline_callbacks.size()==1 && offline.timer==1 && offline.location==99);
   offline_callbacks.front()(nullptr); offline_callbacks.clear();
  }
+ // Failed construction keeps the boot repair locator. Accepted recovery retires
+ // only player locators, and handoff/unload expiry follows the current player.
+ saved_holder.row_id=1; saved_holder.vnum=900; saved_holder.owner_reference=77;
+ saved_holder.payload_root_item_uid=saved_holder.item_uid;
+ saved_holder.extra_flags_present=true; saved_holder.extra_flags=ITEM_ARTIFACT; saved_holder.quantity=1;
+ saved_holder.custody_examined=saved_holder.custody_found=saved_holder.custody_owner_revision_found=true;
+ saved_holder.custody={81000,81000,0,saved_holder.payload_owner,1,1,900,item_custody_state::active};
+ auto world_source=saved_holder; world_source.domain=artifact_payload_domain::copyover_ground;
+ offline.canonical_payloads={saved_holder,world_source};
+ item_ownership_runtime_reset();
+ auto *recovered=read_object_for_recovery(saved_holder); assert(recovered);
+ extract_obj(recovered,FALSE);
+ assert(offline.canonical_payloads.size()==2 && !offline.live_object);
+ recovered=read_object_for_recovery(saved_holder); assert(recovered); obj_to_char(recovered,&owner);
+ assert(offline.canonical_payloads.size()==1 &&
+        offline.canonical_payloads[0].domain==artifact_payload_domain::copyover_ground);
+ pc.pid=88; artifact_update_sql(recovered,'Y',1);
+ assert(offline.location==88 && offline.timer==1 && artifact_is_canonical(recovered));
+ extract_obj(recovered,FALSE);
+ updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(offline_requested_pid==88 && offline_callbacks.size()==1 && !offline.live_object);
+ auto recipient=saved_holder; recipient.owner_reference=88;
+ recipient.payload_owner.id=recipient.custody.owner.id=88;
+ recovered=read_object_for_recovery(recipient); assert(recovered); obj_to_char(recovered,&owner);
+ offline_callbacks.front()(&owner); offline_callbacks.clear(); pc.pid=77;
+ assert(!offline.live_object && offline.identity_state==artifact_identity_state::retired &&
+        offline.canonical_item_uid==81000 && !object_list && !pool.objs_used);
+ artifact_save_pulse(true); drain();
  // Qualified absence may clear obsolete timer tracking, preserving configured availability.
  artifact_rows.clear(); artifact_binds.clear();
  auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;
