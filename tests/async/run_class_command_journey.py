@@ -36,10 +36,15 @@ def run(binary, backend):
                     continue
                 kept.append(topic)
             path.write_text((separator + "\n").join(kept))
-        with (runtime / "lib/information/help_index").open("a") as help_file:
-            help_file.write("\n#\n\nGuardian\nRedirect: Class journey details\n\n#\n")
         with (runtime / "help/duris_help_parsed.hlp").open("a") as help_file:
-            help_file.write("\nClass journey details\nClass journey details - Last Edited: 2026-11-02\n"
+            help_file.write("\nGuardian\nGuardian - Last Edited: 2026-11-02\n"
+                            "============================================================\n"
+                            "Redirect: Class journey details\n\n#0\n"
+                            "\nWildmage\nWildmage - Last Edited: 2026-11-02\n"
+                            "============================================================\n"
+                            "==Skill changes==\nDeliberately stale authored grant table.\n\n"
+                            "==Class mechanics==\n\n==See also==\nSorcerer\n\n#0\n"
+                            "\nClass journey details\nClass journey details - Last Edited: 2026-11-02\n"
                             "============================================================\n"
                             "Redirected Guardian focus for the disposable journey.\n\n"
                             "==Class mechanics==\nProtects allies with a shield.\n\n#0\n")
@@ -138,6 +143,7 @@ def run(binary, backend):
                 missing = command(player, "class info wildmage")
                 assert "Description unavailable" in missing and "Parent class: Sorcerer" in missing
                 assert "Added innate: wildmagic" in missing
+                assert "Deliberately stale" not in missing and "Authored mechanics" not in missing
                 for name in ("assassin", "thief"):
                     text = command(player, "class info " + name)
                     assert "Parent class: Rogue" in text and "Rogue specialization" in text

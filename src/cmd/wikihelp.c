@@ -728,22 +728,21 @@ string wiki_help_prose(string title, string section)
 			}
 #endif
 		text = trim(text, " \t\r\n");
+		// Imported parsed-help pages retain their edit header and underline.
+		while (!text.empty())
+		{
+			const size_t end = text.find('\n');
+			const string line = trim(text.substr(0, end), " \t\r");
+			if (strcasecmp(line.c_str(), title.c_str()) &&
+			    line.find(" - Last Edited:") == string::npos &&
+			    line.find_first_not_of('=') != string::npos)
+				break;
+			text = end == string::npos ? "" : trim(text.substr(end + 1), " \t\r\n");
+		}
 		if (text.rfind("Redirect:", 0) != 0)
 			break;
 		title = trim(text.substr(9), " \t\r\n");
 		text.clear();
-	}
-	// Imported parsed-help pages retain their edit header and underline in the body.
-	text = trim(text, " \t\r\n");
-	while (!text.empty())
-	{
-		const size_t end = text.find('\n');
-		const string line = trim(text.substr(0, end), " \t\r");
-		if (strcasecmp(line.c_str(), title.c_str()) &&
-		    line.find(" - Last Edited:") == string::npos &&
-		    line.find_first_not_of('=') != string::npos)
-			break;
-		text = end == string::npos ? "" : trim(text.substr(end + 1), " \t\r\n");
 	}
 	if (!section.empty())
 	{
@@ -753,6 +752,9 @@ string wiki_help_prose(string title, string section)
 			return "";
 		text = text.substr(begin + marker.size());
 	}
+	text = trim(text, " \t\r\n");
+	if (text.rfind("==", 0) == 0)
+		return "";
 	return dewikify(trim(text.substr(0, text.find("\n==")), " \t\r\n"));
 }
 

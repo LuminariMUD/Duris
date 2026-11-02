@@ -88,6 +88,13 @@ int main() {
  assert(wiki_help_prose("Guard alias", "Class mechanics")=="Protects two allies.");
  assert(wiki_help_prose("Guardian", "Missing").empty());
  assert(wiki_help_prose("Cycle", "").empty());
+ add("Parsed guard alias", "Parsed guard alias - Last Edited: 2026-11-02\n=====\nRedirect: Guardian");
+ assert(wiki_help_prose("Parsed guard alias", "")=="Guardian focus.");
+ assert(wiki_help_prose("Parsed guard alias", "Class mechanics")=="Protects two allies.");
+ add("No opening prose", "==Allowed races==\nStale race list.\n\n==Class mechanics==\nProtects allies.");
+ assert(wiki_help_prose("No opening prose", "").empty());
+ add("Empty mechanics", "A class.\n\n==Class mechanics==\n\n==Skill changes==\nStale grants.");
+ assert(wiki_help_prose("Empty mechanics", "Class mechanics").empty());
  for(int i=0;i<150;++i) add("bulk"+to_string(i),"text");
  auto result=wiki_help("bulk");
  assert(result.find("bulk100\n")!=string::npos);

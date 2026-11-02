@@ -251,3 +251,7 @@ navigation, ANSI colors, 79-column output, and paging for both callers.
 The implementation reuses the race display helper and extends its existing
 help-prose extraction for named mechanics sections and redirects. It adds no
 browser framework, schema, configuration layer, or gameplay-rule changes.
+
+Follow-up code review reproduced and fixed parsed-header redirects and empty
+prose/section boundaries. The help-cache regression and both dispatcher journeys
+cover these cases without allowing authored grant tables to replace live facts.
