@@ -5900,6 +5900,8 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 
 		if (GET_STAT(victim) == STAT_SLEEPING && new_stat != STAT_DEAD)
 		{
+			if (new_stat >= STAT_SLEEPING && !IS_AFFECTED(victim, AFF_KNOCKED_OUT))
+				send_to_char("You are rudely awakened!\r\n", victim);
 			act("$n has a RUDE awakening!", TRUE, victim, 0, 0, TO_ROOM);
 			affect_from_char(victim, SPELL_SLEEP);
 			if (IS_AFFECTED(victim, AFF_SLEEP))

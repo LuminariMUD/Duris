@@ -127,11 +127,31 @@ FRAGLIST renders live race status outside cached historical rankings.
 
 Migration `0057_shared_frag_cap` adds nullable snapshot storage without changing
 live caps. First activation validates the old effective cap range/deadline;
-see [the delivery plan](../ongoing-projects/plan-issue-508.md) for adoption, reset,
-rollback and exact qualification. XP banks at 100% of otherwise computed awards,
+see [the cutover procedure](../operations/RUNBOOK.md#frag-race-adoption-and-rollback)
+for adoption, reset and rollback. XP banks at 100% of otherwise computed awards,
 within global/storage limits. The ordinary level-50 XP ceiling, epic requirements
 and Hardcore's bounded faction-cap +2 XP allowance remain. Cap changes grant no
 free character levels. Production activation is separate.
+
+## Saved shop stock at cold boot
+
+`src/economy/shopkeeper_boot.c` classifies boot ownership, and
+`shopkeeper_restock.c` coordinates finite-stock refill. Restore valid saved goods
+first, preserving their UIDs, properties and contents, then add only
+`max(0, reboot target - restored count)` for each finite stock type. Never trim
+saved excess or replace unsold/player-sold goods. Repeated clean reboots without
+purchases must not accumulate more stock; unlimited production keeps its own path.
+
+The clean-cold-boot receipt distinguishes a normal reboot from crash recovery,
+copyover and per-shop restoration. Those recovery paths do not refill reboot-only
+stock. An absent marker, including the first boot after upgrading, is unknown and
+does not authorize a refill. The flat-file backend commits stock and custody
+through its existing authority transaction. SQL shop saves claim graphs through the ordinary claim
+writer and filter superseded rows against custody during restore; finite resale
+checkout moves the existing UID instead of submitting another creation. The
+outgoing shop capture precedes the buyer capture, retaining the normal checkpoint
+crash window. See [#555](https://github.com/LuminariMUD/Duris/issues/555) for the
+qualification and `tests/async/test_shopkeeper_population.py` for native coverage.
 
 ## Ships subsystem
 
@@ -215,6 +235,22 @@ is registered in.
 When adding a handler to one of these families, register it in the owning table
 in the same change. Compilation alone does not prove a handler is dispatched;
 verify its real command or event entry point.
+
+### Callback lifetime and owned NPC strings
+
+Damage, room entry and special procedures can kill/extract participants before
+returning. A non-null character pointer alone does not prove usable NPC data.
+`spell_frost_beam()` rechecks both participants after damage before its secondary
+save/effect; follow the existing death/liveness contract before continuing a
+callback or dereferencing participant-specific fields.
+
+Loaded NPC prototype strings remain shared until replaced by private allocations.
+String ownership bits must describe actual ownership at every intermediate call.
+Reflection calls `setup_pet()` before claiming its final image strings, releases
+the private interim pet name, then sets ownership bits after installing the final
+allocations. Marking shared strings owned early permits a helper to free the
+prototype used by the next image. `test_frost_beam_lifetime.py` and
+`test_innate_reflection.py` exercise these production paths under sanitizers.
 
 ## C++ conventions the warning profile enforces
 

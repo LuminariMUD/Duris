@@ -353,9 +353,10 @@ and WebSocket dispatch, character entry/return/reconnect, preference changes,
 staff clock mutation and invalid WebSocket module input on disposable state.
 The original-socket copyover journey verifies context/generation continuity
 with and without MCCP, and the native copyover matrix covers versions 12-18.
-Real Mudlet and matched event-loop/serializer measurements remain separate
-evidence in `docs/ongoing-projects/plan.md`; these focused checks do not establish
-project completion or negligible overhead.
+The [local cost check](#short-local-cost-check--2026-11-01) records matched
+event-loop/serializer measurements; [#498](https://github.com/LuminariMUD/Duris/issues/498)
+retains the client handoff and delivery scope. These focused checks do not establish
+general player capacity or negligible overhead.
 
 The existing latency trace reports `gmcp_protocol` around the initial/item, room
 and ship protocol flushes, ending before queued ship saves and other persistence

@@ -310,7 +310,7 @@ int load_nexus_stones(bool report_empty)
 #endif
 	if (report_empty && loaded == 0)
 		logit(LOG_STATUS,
-		      "Nexus catalogue is empty: Nexus gameplay is unavailable. See docs/ongoing-projects/plan-issue-109.md for catalogue provisioning status.");
+		      "Nexus catalogue is empty: Nexus gameplay is unavailable. See docs/persistence/IMMUTABLE_MIGRATIONS.md for catalogue provisioning.");
 	return TRUE;
 }
 

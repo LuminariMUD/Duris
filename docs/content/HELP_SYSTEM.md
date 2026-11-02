@@ -63,6 +63,31 @@ motd, news, wizmotd, credits, FAQ, rules, and wizlist directly from their
 allow-listed `lib/information/` files. This keeps boot/login and information
 commands functional without changing the database-backed lookup path.
 
+## Reviewing missing searches
+
+Both database-cache and flat-file lookups append zero-result searches to
+`lib/etc/help`; `info` uses the same handler as `help`. A miss means no search
+results, rather than no exact title. Successful partial/multiple matches, empty
+default help, unavailable catalogs and failed redirect rendering do not become
+missing-topic records. Command-attribute output can follow a genuine miss.
+
+The shared logger writes server-local time, `::`, and the original query, for
+example `Mon Nov  2 12:34:56 2026::example missing topic`. Repetitions remain
+separate records. The help call supplies no character, account or address, but
+the query itself is arbitrary user text: keep raw records private and out of Git.
+The normal asynchronous log queue is best effort; enqueueing is not a disk
+acknowledgement or a guarantee against crash/disk-full loss.
+
+For a manual review, inspect the local runtime file and group text after the
+first `::` delimiter. Normalize case and surrounding whitespace only in the
+review view, preserving original records. Counts measure requests, not unique
+people. Check existing titles and aliases before deciding whether a query needs
+new prose, a discoverable alias, or no change. Publish any chosen edits through
+the content pipeline below; log entries do not authorize automatic publication.
+
+Capture regression coverage and both-backend command qualification remain tracked
+in [#575](https://github.com/LuminariMUD/Duris/issues/575).
+
 ## Content pipeline
 
 ```

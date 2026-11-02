@@ -658,7 +658,11 @@ All sampling/RNG breakpoints are disabled for command/observer timing.
 Character creation reuses the maintained combat-journey flow. Focused
 `test_world_quest_*` tests cover policy and failure boundaries.
 
-The [issue #437 qualification record](../ongoing-projects/plan-issue-437.md)
-retains detailed local journey evidence. Test existence or a source checkout
+Issues [#437](https://github.com/LuminariMUD/Duris/issues/437),
+[#500](https://github.com/LuminariMUD/Duris/issues/500),
+[#506](https://github.com/LuminariMUD/Duris/issues/506) and
+[#534](https://github.com/LuminariMUD/Duris/issues/534) retain the scoped delivery
+and local qualification evidence. Earlier route-proof decisions are superseded
+by #500's current geography-only eligibility. Test existence or a source checkout
 does not establish the binary, settings, routes, or recovery state of a live
 production deployment.

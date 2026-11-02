@@ -105,6 +105,54 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, co
 	std::abort();
 }
 
+// An ASK-safe combat procedure must return before casting any spell.
+void spell_dread_wave(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_poison(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_minor_paralysis(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_wither(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_cyclone(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_cone_of_cold(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_ice_storm(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_immolate(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+void spell_firestorm(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+
+void spell_lightning_bolt(int, P_char, char *, int, P_char, P_obj)
+{
+	std::abort();
+}
+
+int char_in_list(P_char)
+{
+	std::abort();
+}
+
 static int interceptor_calls = 0;
 int blocking_mobile(P_char, P_char, int cmd, char *)
 {
@@ -968,6 +1016,220 @@ int main(int argc, char **argv)
 		hide_artifact.next_content = &regeneration_ring;
 	}
 #ifndef WORLD_QUEST_SQL_HISTORY
+	if (mode == "proc_share")
+	{
+		using status = world_quest_target_status;
+		const int vnum = preferred_type == FIND_AND_ASK ? 1003 : 1002;
+		pc.quest_active = 1;
+		pc.quest_type = preferred_type;
+		pc.quest_mob_vnum = vnum;
+		pc.quest_zone_number = 20;
+		pc.quest_level = level;
+		pc.quest_origin_room = 1000;
+		pc.quest_giver = 9000;
+		pc.quest_receiver = GET_PID(&player);
+		pc.quest_kill_original = preferred_type == FIND_AND_KILL ? 4 : 0;
+		pc.quest_kill_how_many = preferred_type == FIND_AND_KILL ? 3 : 0;
+		pc.quest_shares_left = 2;
+		pc.quest_started = 12345;
+		pc.quest_map_room = 500001;
+		const auto owner = pc;
+		char_data recipient{};
+		pc_only_data recipient_state{};
+		recipient.only.pc = &recipient_state;
+		recipient_state.pid = 88;
+		recipient.player = player.player;
+		SET_POS(&recipient, STAT_NORMAL | POS_STANDING);
+		recipient.in_room = NOWHERE;
+		move(&recipient, 0);
+		recipient.next = character_list;
+		character_list = &recipient;
+		command_recipient = &recipient;
+		share_limit = 2;
+		obj_data item{}, container{}, blocker{};
+		item.R_num = 0;
+		container.R_num = -1;
+		container.type = ITEM_CONTAINER;
+		container.loc_p = LOC_CARRIED;
+		container.loc.carrying = &recipient;
+		blocker.R_num = 1;
+		objects[1].func.obj = burbul_map_obj;
+		const auto empty = recipient_state;
+		auto check = [&](status expected)
+		{
+			const auto before = recipient_state;
+			assert(world_quest_policy_check_target(&recipient, 1000, level, 20, vnum,
+							       preferred_type, 1)
+				       .status == expected);
+			assert(!memcmp(&before, &recipient_state, sizeof(before)));
+		};
+		auto share = [&](bool succeeds, const char *message)
+		{
+			pc = owner;
+			recipient_state = empty;
+			// Non-active saved fields must survive every failed attempt.
+			recipient_state.quest_mob_vnum = 777;
+			recipient_state.quest_started = 6789;
+			const auto before = recipient_state;
+			history_reads.clear();
+			feedback.clear();
+			char request[] = "share friend";
+			do_quest(&player, request, 0);
+			assert(feedback.find(message) != std::string::npos);
+			auto after_owner = pc;
+			after_owner.quest_shares_left = owner.quest_shares_left;
+			assert(!memcmp(&after_owner, &owner, sizeof(owner)));
+			if (!succeeds)
+			{
+				assert(!memcmp(&before, &recipient_state, sizeof(before)));
+				assert(pc.quest_shares_left == 2);
+				return;
+			}
+			assert(recipient_state.quest_active && pc.quest_shares_left == 1);
+			assert(recipient_state.quest_type == owner.quest_type &&
+			       recipient_state.quest_mob_vnum == owner.quest_mob_vnum &&
+			       recipient_state.quest_zone_number == owner.quest_zone_number &&
+			       recipient_state.quest_level == owner.quest_level &&
+			       recipient_state.quest_origin_room == owner.quest_origin_room &&
+			       recipient_state.quest_giver == owner.quest_giver &&
+			       recipient_state.quest_receiver == owner.quest_receiver &&
+			       recipient_state.quest_kill_original == owner.quest_kill_original &&
+			       recipient_state.quest_kill_how_many == owner.quest_kill_how_many &&
+			       recipient_state.quest_started == owner.quest_started);
+			const auto delivered = recipient_state;
+			history_reads.clear();
+			feedback.clear();
+			do_quest(&player, request, 0);
+			assert(feedback.find("already on a task") != std::string::npos);
+			assert(!memcmp(&delivered, &recipient_state, sizeof(delivered)) &&
+			       pc.quest_shares_left == 1);
+		};
+		const char *refused = "cannot currently use this task's target";
+		for (const auto &[item_vnum, proc] :
+		     { std::pair<int, obj_proc_type>{ 67262, mace_of_sea },
+		       { 67237, serpent_blade },
+		       { 67242, lich_spine },
+		       { 67276, sword_whirlwinds },
+		       { 36884, kvasir_dagger },
+		       { 22962, hammer_titans },
+		       { 32862, aboleth_pendant } })
+		{
+			objects[0].virtual_number = item_vnum;
+			objects[0].func.obj = proc;
+			const int slot = proc == aboleth_pendant ? WEAR_NECK_1 : WIELD;
+			for (int location : { LOC_CARRIED, LOC_WORN, LOC_INSIDE })
+			{
+				item.loc_p = location;
+				item.loc.carrying = &recipient;
+				recipient.carrying = location == LOC_CARRIED ? &item :
+						     location == LOC_INSIDE  ? &container :
+									       nullptr;
+				recipient.equipment[slot] = location == LOC_WORN ? &item : nullptr;
+				container.contains = location == LOC_INSIDE ? &item : nullptr;
+				if (location == LOC_INSIDE)
+					item.loc.inside = &container;
+				const auto item_before = item;
+				const auto affects_before = recipient.specials.affected_by;
+				char message[] = "target message";
+				assert(!proc(&item, &recipient, CMD_ASK, message));
+				move(&recipient, 3);
+				assert(!special(&recipient, CMD_ASK, message));
+				move(&recipient, 0);
+				assert(!memcmp(&item, &item_before, sizeof(item)) &&
+				       recipient.specials.affected_by == affects_before);
+				check(status::valid);
+				share(true, "You've shared your quest");
+				// A genuine ASK consumer remains rejected alongside safe gear.
+				recipient.equipment[WEAR_BODY] = &blocker;
+				const int reads = object_reads;
+				check(preferred_type == FIND_AND_ASK ? status::unproven :
+								       status::valid);
+				share(preferred_type == FIND_AND_KILL,
+				      preferred_type == FIND_AND_ASK ? refused :
+								       "You've shared your quest");
+				assert(object_reads ==
+				       reads); // Validation never invokes the handler.
+				move(&recipient, 3);
+				char intercepted[] = "burbul map";
+				assert(special(&recipient, CMD_ASK, intercepted));
+				move(&recipient, 0);
+				recipient.equipment[WEAR_BODY] = nullptr;
+				objects[1].func.obj = unknown_object;
+				recipient.equipment[WEAR_BODY] = &blocker;
+				check(preferred_type == FIND_AND_ASK ? status::unproven :
+								       status::valid);
+				share(preferred_type == FIND_AND_KILL,
+				      preferred_type == FIND_AND_ASK ? refused :
+								       "You've shared your quest");
+				recipient.equipment[WEAR_BODY] = nullptr;
+				objects[1].func.obj = burbul_map_obj;
+			}
+		}
+		// Actual/unknown interceptors are invisible to special() inside a bag.
+		for (obj_proc_type proc : { burbul_map_obj, unknown_object })
+		{
+			objects[0].func.obj = proc;
+			for (int location : { LOC_CARRIED, LOC_WORN, LOC_INSIDE })
+			{
+				item.loc_p = location;
+				if (location == LOC_INSIDE)
+					item.loc.inside = &container;
+				else
+					item.loc.carrying = &recipient;
+				recipient.carrying = location == LOC_CARRIED ? &item :
+						     location == LOC_INSIDE  ? &container :
+									       nullptr;
+				recipient.equipment[WIELD] = location == LOC_WORN ? &item : nullptr;
+				container.contains = location == LOC_INSIDE ? &item : nullptr;
+				const bool allowed = preferred_type == FIND_AND_KILL ||
+						     location == LOC_INSIDE;
+				check(allowed ? status::valid : status::unproven);
+				share(allowed, allowed ? "You've shared your quest" : refused);
+				if (proc == burbul_map_obj)
+				{
+					move(&recipient, 3);
+					char message[] = "burbul map";
+					assert(special(&recipient, CMD_ASK, message) ==
+					       (location != LOC_INSIDE));
+					move(&recipient, 0);
+				}
+			}
+		}
+
+		recipient.carrying = nullptr;
+		recipient.equipment[WIELD] = nullptr;
+		consent = false;
+		share(false, "needs to consent");
+		consent = true;
+		recipient.player.level = level + 7;
+		share(false, "too experienced");
+		recipient.player.level = level - 7;
+		share(false, "too inexperienced");
+		recipient.player.level = level;
+		for (int remaining : { -1, 0 })
+		{
+			daily_remaining = remaining;
+			share(false, "unable to receive your quest");
+		}
+		daily_remaining = 1;
+		fresh.erase(vnum);
+		share(false, "already done this quest");
+		fresh.insert(vnum);
+		recipient.specials.affected_by |= AFF_BLIND;
+		share(false, refused);
+		recipient.specials.affected_by &= ~AFF_BLIND;
+		if (preferred_type == FIND_AND_ASK)
+		{
+			recipient.specials.affected_by2 |= AFF2_SILENCED;
+			share(false, refused);
+			recipient.specials.affected_by2 &= ~AFF2_SILENCED;
+		}
+		assert(wallet_debits == 0 && history_writes == 0);
+		std::cout << "combat-proc sharing level " << level << ' ' << argv[3]
+			  << ": passed\n";
+		return 0;
+	}
+
 	if (mode == "random_armor")
 	{
 		assert_equipment_sets_ignore_ask(&player);

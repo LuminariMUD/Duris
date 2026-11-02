@@ -263,14 +263,25 @@ in memory too. Ordered entity snapshots persist current state; type-9 commands
 record captured history and never apply rewards on completion. Per-entity dirty
 metadata and commit receipts distinguish unsaved state from committed history.
 Producer/restart qualification is recorded in the
-[evidence](../records/log-server-review.md#qualification-update-2026-10-14); the detailed
+[evidence](https://github.com/LuminariMUD/Duris/blob/76262c0b71da4bf1e835228475930a966fb08310/docs/records/log-server-review.md#qualification-update-2026-10-14); the detailed
 contract is in [CRITICAL_COMMAND_PIPELINE.md](../persistence/CRITICAL_COMMAND_PIPELINE.md#artifact-and-guild-rewards-live-in-memory).
 
 Canonical artifact UID/state is held in the existing game-thread artifact record.
 Boot stages its metadata with artifact/soul reads before publishing memory, and
 ordered artifact snapshots capture UID, timer and soul together. Identity and
-proven-absence evidence survive legacy tracking removal and failed refreshes;
-complete population classification and universal admission remain in the #67 plan.
+proven-absence evidence survive legacy tracking removal and failed refreshes.
+The broader historical population/admission proposal in
+[#67](https://github.com/LuminariMUD/Duris/issues/67) is closed as not planned;
+it is not an active implementation queue.
+
+After source-qualified player item restoration, canonical identity and validated
+custody can reconcile stale artifact location tracking on the game thread.
+`artifact_reconcile_player_owner()` checks the live canonical pointer/UID, physical
+player owner, vnum, root/parent and active item revision. Recovery preserves the
+UID, soul and positive timer; only an absent timer receives the ordinary default.
+It is recovery, not a new acquisition. Conflicting artifacts are excluded
+individually from reward capture, allowing unrelated artifact/guild rewards to
+continue. A tracking mismatch alone does not establish an illegitimate duplicate.
 
 Recurring database work uses `src/persistence/maintenance_scheduler.c`. Stable per-instance offsets
 replace aligned modulus spikes; every job has row and time budgets, continuation state,

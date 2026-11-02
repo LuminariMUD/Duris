@@ -239,12 +239,13 @@ cannot finish, stop before the deadline and obtain the owner's revised opening
 time. An older binary removes the restriction, so keep the game stopped during a
 rollback before launch. After launch verification, explicitly disable the expired
 gate in the next controlled config update. The gate does not fence external writers
-or replace any season-reset barrier. Qualification and current limitations are in
-the [launch-gate handoff](../ongoing-projects/plan-pwipe-launch-gate-2026-10-28.md).
+or replace any season-reset barrier. The local qualification and launch-gate
+integration are recorded in [#417](https://github.com/LuminariMUD/Duris/issues/417).
 
-Do not use `pwipe` for ordinary restarts. Fresh current-master qualification is
-tracked in issue #417; closed #264 contains prior evidence. A handoff repair alone
-is not wipe readiness.
+Do not use `pwipe` for ordinary restarts. Closed issues
+[#417](https://github.com/LuminariMUD/Duris/issues/417) and #264 contain dated
+local qualification evidence. Use current build/configuration evidence when
+deciding wipe readiness; issue closure alone does not qualify a changed build.
 
 The in-game operator command requires Forger level or explicit trusted command
 permission; `shutdown pwipe confirm yes`
@@ -297,8 +298,9 @@ The roster change is one transaction: failure rolls back name/account/body chang
 and retains the incomplete-reset fence. Old summon links are cleared every reset,
 independently of the 28-day grant-decrement policy. The completed local full-world
 journeys, store inventory, failure/replay cases and integration variants are recorded
-in the [issue #417 findings](../ongoing-projects/issue-417-pwipe-qualification-findings.md).
-That record names the tested revision and remaining rollout conditions.
+in [#417](https://github.com/LuminariMUD/Duris/issues/417) and the maintained
+[pwipe regression ledger](../testing/REGRESSIONS.md#pwipe-sqlfilesystem-handoff).
+Those records name the tested scope; a later deployment needs its own checks.
 
 The native player identity is a positive signed integer. Pwipe checks the live
 `player_data` allocator before crossing the boundary and checks recreated PIDs and
@@ -1094,6 +1096,33 @@ forced. Correct the database failure, confirm the writer's age is falling, then 
 the copyover again. Shutdown alerts carry `shutdown_cancelled=0`: shutdown went ahead,
 and the log names any save it could not write.
 
+## Locker identities and private chests
+
+Bare `enter locker <character>` resolves an active, unblocked account-character
+mapping to that account's same-side locker before considering a legacy personal
+locker. Explicit `<character>.locker` selects the legacy identity; canonical
+account/guild names accept their final suffix without adding it twice. Resolution
+does not move contents or rewrite grants. Owners/managers retain their rights;
+visitors still need the resolved locker's grant and side checks before occupancy
+is disclosed. See [#234](https://github.com/LuminariMUD/Duris/issues/234).
+
+A private chest requires a successful explicit open before inspection or item,
+bulk, coin or empty operations. Its authorization belongs to the actor and current
+visit; entry to the outer locker does not grant private-chest access. Existing
+locker managers bypass the chest password, while guests need both locker admission
+and the private password. The outer locker registry retains private wrappers
+through sorting; their storage names and capacity do not derive from a database ID.
+
+Delayed sort/save callbacks must match the expected locker holder and occupant
+runtime identity. A callback from an older visit must not touch the next locker.
+Departure may need to wait for pending movement, private-chest work or preparation;
+draining queued writes alone cannot prove that a refused, unqueued capture is safe
+at process exit. The remaining shutdown/recovery work is
+[#564](https://github.com/LuminariMUD/Duris/issues/564). Never discard a holder or
+private receipt to clear an error. Paid chest purchases reconcile by stable
+operation ID after an ambiguous commit, rather than charging again; migration
+`0056_private_chest_receipts` supplies the receipt identities.
+
 ## Quintaragon Castle reset access
 
 Zone 24 retains its ordinary mode-1 timer admission: a connected playing character
@@ -1115,6 +1144,32 @@ The affected key VNUMs are 2405, 2418, 2422, 2425, 2436, 2437 and 2438. Entrance
 key 2402 retains its normal empty-zone policy, and bookcase key 2434 is unchanged.
 Copyover/world recovery retains its saved door flags until a qualifying reset;
 the rule does not migrate old snapshots or repair arbitrary manual locks.
+
+## Frag race adoption and rollback
+
+The regular 72-hour rules are in [CODEBASE.md](../reference/CODEBASE.md#frag-based-level-caps).
+For first adoption, capture and validate the old effective normal caps, configured
+floor/maximum and next-unlock timestamp before replacing configuration. Exclude
+Hardcore's allowance. Initialize both caps to `min(56, max(31, old highest cap))`,
+zero the new race scores, and preserve character levels, banked XP and ordinary
+frag balances. Do not infer an old customized maximum from the new default.
+
+At 56 retire the clock. If adoption itself opens 31, start a full 72-hour round.
+Otherwise retain the earlier valid old deadline or activation plus 72 hours. An
+already expired old deadline produces one zero-score tied result at activation,
+then a new full round; it does not create a chain of historical contests.
+
+SQL pwipe initializes 31/31 and zero scores from the persisted reset start, with
+deadline plus 72 hours. Same-epoch retries retain that cutoff. Flat-file pwipe
+remains unsupported: a new season needs a selected fresh authority root and an
+explicit fresh floor of 31, preserving the old root.
+
+Apply `0057_shared_frag_cap` before activation. After activation, rollback must
+retain the new snapshot/read path or use a forward fix. Old flat-file binaries
+ignore race state; old SQL maintenance updates only projections. Neither safely
+runs an activated race. Never clear scores or reduce caps as a rollback shortcut.
+Production migration/reset/deployment requires owner authorization. Implementation
+and scoped qualification are recorded in [#508](https://github.com/LuminariMUD/Duris/issues/508).
 
 ## Restart and crash recovery
 

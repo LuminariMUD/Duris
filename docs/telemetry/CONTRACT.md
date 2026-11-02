@@ -376,9 +376,10 @@ Scoped/process native gap counts stay distinct, with unknown duration remaining
 unknown despite a zero known-duration total. Health counters never count refusal
 attempts as distinct omitted players.
 
-Runtime integration, producer capacity/admission metrics, journal/quota/HTTP
-health and ingestion acceptance remain pending. Current component tests do not
-prove cloud delivery.
+Runtime integration and scoped ingestion acceptance are described under
+[Runtime connection](#runtime-connection-59), [reports](REPORTS.md) and
+[performance evidence](PERFORMANCE_GATE.md). Component tests alone do not prove
+cloud delivery or general player capacity.
 
 ### Complete event-volume fixture (#59)
 
@@ -866,5 +867,8 @@ key, sender allocation, reviewed property catalog and matching initialized quota
 `.env.example` lists the names. Production defaults to 19,800 normal + 100 health
 attempts/day; tagged synthetic worlds >=1000 are limited to 100 total. The native
 state tool initializes or exhausts allowance explicitly; boot never resets it.
-Real native gameplay, performance and queried cloud-report acceptance remain
-pending in the [delivery plan](../ongoing-projects/plan.md).
+The native gameplay, measured performance fixture and bounded queried-cloud
+acceptance are recorded in [PERFORMANCE_GATE.md](PERFORMANCE_GATE.md) and
+[REPORTS.md](REPORTS.md). These dated results do not establish current production
+ingestion or concurrent-player capacity. Operational quota failures remain tracked
+in [#446](https://github.com/LuminariMUD/Duris/issues/446).

@@ -353,7 +353,7 @@ shape and position. Replays preserve existing values and snapshots; old rows
 and old-writer inserts retain unknown consent. No current player flag is used
 to backfill permission. The v4 combat writer records NULL/0/1 with each owned
 snapshot in the existing transaction. See the
-[PvP implementation and rollout plan](../records/2026-10-18-pvp-mud-implementation-plan.md).
+[PvP implementation and rollout plan](https://github.com/LuminariMUD/Duris/blob/76262c0b71da4bf1e835228475930a966fb08310/docs/records/2026-10-18-pvp-mud-implementation-plan.md).
 
 Migration 0044 adds canonical artifact UID/state fields to the existing
 `artifact_domain_state` store. It retains `item_uid` and its custody FK: the
@@ -363,8 +363,10 @@ canonical selection or data cleanup. A unique key prevents one non-null canonica
 UID from naming two vnums, and retired UIDs remain representable. Column/index
 guards replay partial DDL; the verifier checks their full shape, preserves the
 custody FK, and refuses inconsistent state/UID pairs. Apply it before starting
-the updated database-backed server. See the [artifact plan](../ongoing-projects/plan-issue-67.md)
-for the separate runtime/admission/reconciliation acceptance work.
+the updated database-backed server. The
+[runtime identity contract](../reference/ARCHITECTURE.md#persistence)
+describes current reconciliation; the broader historical proposal is retained in
+closed [#67](https://github.com/LuminariMUD/Duris/issues/67).
 
 Migration 0046 restores only Nexus IDs 1 (Marduk) and 3 (Enlil), with explicit
 zero stat fields and the existing epic/cargo bonus assignments. Its SQL checks

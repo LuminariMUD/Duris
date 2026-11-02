@@ -214,6 +214,43 @@ The last category includes inspector compilation and process startup; it is not
 solely gameplay time. Cache keys hash environment values without storing their
 plaintext in manifests. Never check cache artifacts into Git.
 
+## Staff-operated racewar battles
+
+`scripts/run_racewar_battle.py` prepares two full groups of real mortal characters
+and drives native commands for a watchable stress battle. It creates accounts and
+characters and changes their equipment/state; use a disposable local/dev server
+or a separately authorized target. It does not validate or isolate a production
+endpoint for the operator. Generate the world once before starting isolated legs;
+do not run `make world` concurrently.
+
+On Linux/WSL, provide private JSON with `host`, `port`, `registration_email`, and
+`staff` containing `account`, `password`, `character`. The controller must be an
+Overlord. Keep this configuration and the credential-bearing account pool private:
+
+```sh
+python3 scripts/run_racewar_battle.py --config /private/path/controller.json \
+  --accounts bin/racewar-battles/accounts.json --duration 180
+```
+
+`--room <VNUM>` selects a battlefield; otherwise the controller's initial room is
+captured. `--output` must name a new directory. Use a different account to observe.
+The runner reads the live group caps, prepares the full rosters, checks equipment
+and selected spells, then waits for explicit `start`. `status` reports progress;
+`stop`, EOF, SIGINT or SIGTERM initiates participant cleanup. Combat has no
+in-fight resource refill, and death/departure ends that participant's actions.
+
+Inspect `summary.json`, `roster.json` and per-connection evidence under the output
+directory. A submitted spell is not proof its effect completed, and the controller
+response sample includes network/scheduling time. Require confirmed participant
+stop and acknowledged final saves; a partial roster or unconfirmed stop is a
+failure. If the runner reports `STOP UNCONFIRMED`, connect staff and use
+`battleprep stop` with the exact participant names from `summary.json`. Do not
+substitute room-wide purge, global restore or `transfer all`.
+
+The native preparation/control tests and provisioning/combat journeys are linked
+from [#405](https://github.com/LuminariMUD/Duris/issues/405). They qualify the
+declared fixture, not arbitrary class balance or server player capacity.
+
 ## Before a merge
 
 Run the gate, one command after the other, on a quiet machine. The performance

@@ -126,6 +126,16 @@ Other wallet batch operations do not pass through item ownership:
 
 ## Moving and saving
 
+Produced shop purchases stage the largest prefix of the requested quantity that
+funds and container limits permit, then submit that prefix through one batch
+ownership/trade command. Sequential persistence/completion stages do not grow
+with quantity. Unadmitted items cost nothing; a terminally rejected batch returns
+its whole debit once and delivers none. Trusted-player purchases can charge zero.
+Success follows durable ownership and live publication. This does not make wallet,
+keeper and ownership saves one cross-domain atomic transaction. The production
+owner is `src/economy/shop.c`; [#454](https://github.com/LuminariMUD/Duris/issues/454)
+records the both-backend qualification.
+
 Every batch moves its items in memory at once. `get all`, `drop all`, `put all` and `empty`
 select their items first, apply cumulative weight, count, space and quiver capacity as they go,
 then move each selected item and report once. Binding, trap, hitch, no-loot, cursed, soulbound

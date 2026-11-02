@@ -66,6 +66,14 @@ alignment, size, intrinsic affects, aggression, act flags and undead spell slots
 Equipment is restored through the ordinary item loader, and derived bonuses are
 recomputed from the base values, so equipment does not compound across restarts.
 
+Conjured Fire elementals and mephits use explicit kinds 23 and 24 with prototypes
+1100/1110–1112. Their captured intrinsic state preserves the chosen variant and
+descriptions rather than reconstructing prototype Fireshield/names. Finite death
+deadlines continue to age offline. Older binaries that do not recognize these
+kinds hold the records instead of safely restoring them; account for these saved
+followers before an application rollback. The owning definitions are in
+`src/player/pet_restore_state.{h,c}` and the summon paths in `src/magic/magic.c`.
+
 The charm and the death are saved as absolute Unix deadlines, so time offline counts, and
 zero means permanent. A restore never makes a finite follower permanent because its owner
 has since gained a globe or the innate. The kind's cost is the same on a restore as in

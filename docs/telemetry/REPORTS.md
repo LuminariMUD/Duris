@@ -22,6 +22,9 @@ That cloud refresh and a read-only query check are a separate follow-up; no new
 capture campaign is needed. The current review is qualified locally and does not
 claim those saved definitions have been refreshed. All five production queries
 exclude the tagged synthetic traffic.
+The saved-definition comparison and any required refresh are tracked in
+[#578](https://github.com/LuminariMUD/Duris/issues/578); the exporter quota incident
+is tracked separately in [#446](https://github.com/LuminariMUD/Duris/issues/446).
 The starter dashboard is retained. Views select schema 1, environment 1, season 1,
 empty test tag and a rolling 31-day event window. Change the explicit SQL scope
 and bucket predicates for another authorized scope or captured cohort. Each query

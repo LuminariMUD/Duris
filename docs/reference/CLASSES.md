@@ -41,7 +41,7 @@ your own choices and `specialize list` to list specialization/race definitions.
 | [Creation switches](../../lib/creation_availability.cfg), [environment example](../../.env.example) | Checked-in creation policy and the broader testing overrides. |
 | [Boot-loaded class-menu text](../../lib/creation/classtable) | The fallback text is loaded at boot; current creation builds its class menu from code and configuration. |
 | [Command attributes](../lib/information/command_attributes.txt) | The stats used by individual commands/abilities; these attributes are also appended to in-game help. |
-| [Character mechanics plan](../ongoing-projects/class-anchor.md) | Proposed mechanical traceability and deeper lifecycle qualification. It remains an implementation plan, not a completed verification report. |
+| [Character mechanics work (#52)](https://github.com/LuminariMUD/Duris/issues/52) | Proposed mechanical traceability and deeper lifecycle qualification; implementation status and acceptance belong in the issue. |
 | [Chaos mode](CHAOS_MODE.md), [Chaos kit catalogue](CHAOS_KIT_CATALOG.md), [standard starter kits](LEGACY_STARTER_KITS.md) | Alternate creation rewards, equipment, and starter-kit behavior. Receiving a Chaos or staff grant does not establish an ordinary acquisition route. |
 | [Codebase map](CODEBASE.md), [experience trophies](EXPERIENCE_TROPHIES.md), [progression telemetry](../telemetry/PROGRESSION.md) | Shared gameplay ownership, XP observations, and progression records. |
 | [Player saves](../persistence/PLAYER_SAVE_PIPELINE.md), [critical commands](../persistence/CRITICAL_COMMAND_PIPELINE.md) | Saved character state, transaction APIs, and their durability boundaries. |
@@ -175,7 +175,33 @@ races), then enforces only fixed G/E requirements. It does not assign neutral
 alignment for N cells or enforce GN/NE choices in the same way. For example,
 Human Necromancer is a legal evil matrix cell, but WebSocket assigns Human good
 alignment and rejects that selection. Treat the table as matrix eligibility,
-not proof that both clients can complete every listed combination.
+not proof that both clients can complete every listed combination. The repair is
+tracked in [#577](https://github.com/LuminariMUD/Duris/issues/577).
+
+### Stat selection and tutorial starts
+
+New characters choose Default or Advanced before rolling. Default uses
+`1d4 + 86` (87–90) once per attribute; Advanced uses `3d6 + 77` (80–95) and
+allows rerolls until acceptance. Both transports grant four chosen +5 bonuses,
+capped at 100, followed by ordinary-stat/luck swaps. Karma is rolled and displayed
+but cannot receive a bonus or be swapped. The production owners are
+`roll_basic_attributes()` in [actwiz.c](../../src/cmd/actwiz.c), the Telnet states
+in [nanny.c](../../src/account/nanny.c), and WebSocket creation in
+[ws_handlers.c](../../src/net/ws_handlers.c). Existing characters are unchanged.
+
+Tutorial starts use the shared hometown eligibility helpers in `nanny.c` and
+the authored hometown data in [constant.c](../../src/core/constant.c). Plane of
+Chaos and Wutvr are the evil counterparts of Plane of Life and Ailvio; their
+copied mobile mechanics use the original profiles to preserve encounter behavior.
+The racial-home exit sets the final home and respawn. Inspect current shared
+eligibility rather than relying on older Ogre/Firbolg exclusion proposals.
+
+`death_exp_loss_level_threshold()` in [limits.c](../../src/world/limits.c)
+protects all races/sides below the configured cutoff (default and checked-in
+value 30), including the separate Lich death path in `fight.c`. Crossing the
+cutoff upward announces the XP/level-loss rule. This does not waive other death
+consequences. Focused creation, stat-choice and issue-213 onboarding tests cover
+these paths; they do not measure new-player retention.
 
 ## Specializations
 
@@ -381,7 +407,7 @@ forms remain separate from class identity.
 
 Shapechange, corpseform, phantasmal/wraith forms, world race changes, and staff
 setters need their own eligibility and reversal checks. The
-[character mechanics plan](../ongoing-projects/class-anchor.md) inventories these
+[character mechanics issue](https://github.com/LuminariMUD/Duris/issues/52) tracks these
 routes and their unresolved lifecycle proof. In particular, `AFFTYPE_NOSAVE`
 does not prove that every changed identity field safely reverses on death,
 quit/relog, or restart. This reference makes no such persistence claim.

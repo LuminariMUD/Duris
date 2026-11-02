@@ -2,12 +2,11 @@
 
 Setup and first boot live in the root [README](../README.md); its Quick start is the
 onboarding path. This directory holds the development, architecture, operations,
-database, and builder references. Open work lives in the
-plan under `ongoing-projects/`, not here.
-
-The [new player retention strategy](ongoing-projects/new-player-retention.md)
-contains the source analysis, agreed game rules, diagrams, and proposed measurements
-for the first session and later returns.
+database, and builder references. Actionable work belongs in the
+[GitHub issue tracker](https://github.com/LuminariMUD/Duris/issues).
+`ongoing-projects/` is a temporary human workspace; permanent references must not
+depend on its files. Consolidate verified, lasting details here and preserve open
+requirements in issues before removing a temporary document.
 
 ```
 docs/
@@ -20,7 +19,7 @@ docs/
   diagrams/      architecture diagrams         assets/       images and audio
   examples/      versioned configuration samples and transcripts
   data/          generated inputs and evidence that tools read
-  ongoing-projects/  the plan being worked on now
+  ongoing-projects/  temporary human workspace
   lib/           runtime game data (not documentation)
 ```
 
@@ -198,7 +197,7 @@ are in Git history at commit `212592e3`.
   deliberately left out.
 - [Player privacy: chat logging, snoop and address retention](adr/0003-player-privacy-chat-snoop-addresses.md):
   no logging of private conversation (in the code since 2026-10-09), snoop that tells its
-  target, and network addresses kept at most 30 days (both still to implement).
+  target, and network addresses kept at most 30 days.
 - [Server architecture diagram](diagrams/duris-server-architecture.html) and
   [database model](diagrams/duris-database-model.html)
 

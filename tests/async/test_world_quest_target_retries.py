@@ -23,6 +23,26 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
                           objects.index("void event_random_set_proc(")]
     set_table = objects[objects.index("struct set_data\n"):
                         objects.index("int set_proc(")]
+    assignments = repo_source("specs.assign.c").read_text()
+    for vnum, proc in ((67262, "mace_of_sea"), (67237, "serpent_blade"),
+                       (67242, "lich_spine"), (67276, "sword_whirlwinds"),
+                       (36884, "kvasir_dagger"), (22962, "hammer_titans"),
+                       (32862, "aboleth_pendant")):
+        assert re.search(rf"obj_index\[real_object0\({vnum}\)\]\.func\.obj\s*=\s*{proc};",
+                         assignments)
+    # Identity-only dependencies must never be invoked by target validation.
+    # The reported weapons and their neighbors below use full production bodies.
+    policy = repo_source("world/world_quest_policy.c").read_text()
+    object_audit = policy[policy.index("auto object_handler ="):
+                          policy.index("for (P_obj object = actor->carrying;")]
+    safe_procs = re.findall(r"proc == (\w+)", object_audit)
+    linked_procs = {"board", "artifact_hide", "ring_of_regeneration", "tracks",
+                    "blood_stains", "set_proc", "master_set", "mace_of_sea",
+                    "serpent_blade", "lich_spine", "sword_whirlwinds", "kvasir_dagger",
+                    "hammer_titans", "aboleth_pendant"}
+    identity_stubs = "\n".join(
+        f"int {name}(P_obj, P_char, int, char *) {{ std::abort(); }}"
+        for name in safe_procs if name not in linked_procs)
     adapters.write_text(
         '#include "core/prototypes.h"\n#include "core/utils.h"\n'
         '#include "magic/spells.h"\n#include "world/map.h"\n'
@@ -45,7 +65,16 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'void event_object_proc(P_char, P_char, P_obj, void *);\n'
         + set_context + extract_function("specs.object.c", "int random_set(")
         + set_table + extract_function("specs.object.c", "int set_proc(")
+        + identity_stubs
         + payment_context + "\n".join(extract_function(file, signature) for file, signature in (
+            ("specs.object.c", "int mace_of_sea("),
+            ("specs.object.c", "int serpent_blade("),
+            ("specs.object.c", "int lich_spine("),
+            ("specs.object.c", "int sword_whirlwinds("),
+            ("specs.object.c", "int kvasir_dagger("),
+            ("specs.object.c", "int hammer_titans("),
+            ("specs.shabo.c", "int aboleth_pendant("),
+            ("specs.ailvio.c", "int burbul_map_obj("),
             ("cmd/interp.c", "void half_chop("),
             ("cmd/interp.c", "bool special("),
             ("world/handler.c", "bool isname(const char *str, const char *namelist)"),
@@ -136,6 +165,8 @@ void run_map_payment(P_char player, int fee)
                       (63, level), (level, 63))]
     scenarios += [(30, "cosmetic", "ask")]
     scenarios += [(31, "diagnostics", "ask")]
+    scenarios += [(level, "proc_share", kind)
+                  for level in (11, 29, 30, 41) for kind in ("ask", "kill")]
     scenarios += [(level, "random_armor", "ask") for level in (23, 31)]
     scenarios += [(level, "replacement_level", kind)
                   for level in (23, 31, 46) for kind in ("ask", "kill")]

@@ -4,7 +4,7 @@ These route contracts describe the authored world after
 [PR #204](https://github.com/LuminariMUD/Duris/pull/204). Current room sources and
 [route checks](../../tests/async/test_issue37_zone_routes.py) remain the authority
 for future changes. Earlier placement decisions are retained separately in the
-[October 15 implementation record](../records/2026-10-15-zone-placements.md);
+[October 15 implementation record](https://github.com/LuminariMUD/Duris/blob/76262c0b71da4bf1e835228475930a966fb08310/docs/records/2026-10-15-zone-placements.md);
 the older Arcium and tower coordinates in that record are superseded.
 
 Directions below form reciprocal exit pairs. A map marker is a labeled footprint,
