@@ -24,6 +24,21 @@ classes; its point estimates are distinct from these implemented rules.
 
 ## Existing resources
 
+Use `class` or `class list` for the live roster, `class list <race>` for current
+creation-policy choices, and `class info <class or specialization>` for a
+profile. `class specs <class>` compares named paths with your race permission;
+`class innates <class or specialization>` includes inherited class grants,
+unlock levels, and active/passive markers. Names match the skills and spells
+browsers, including spaces/hyphens and unique abbreviations. Assassin and Thief
+resolve to Rogue specializations; standalone legacy IDs are labelled roster
+notes. Specialization profiles summarize only effective grant differences,
+including skill cap changes and lost access. Full catalogs remain in `skills`
+and `spells`. Race permission is separate from creation eligibility and the
+level, teacher, prior-spec, multiclass and cooldown checks owned by `specialize`.
+Descriptions and authored mechanics come from the current help catalog; live
+facts remain available when that prose is missing. Alignment annotations are
+separate from racewar side and transport/account-admission checks.
+
 For players, start with `help classes`, `help <class>`, `help <class> skills`,
 `help skill_<class>`, `help specialization`, and `help multiclass`. For example,
 `help warrior`, `help warrior skills`, and `help skill_warrior` refer to the

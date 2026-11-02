@@ -911,6 +911,7 @@ extern unsigned int game_locked_level;
 #define CMD_BATTLEPREP 872
 #define CMD_LAST 873
 #define CMD_RACE 874
+#define CMD_CLASS 875
 
 /* The CMD_s below are not real commands, they are used in item special procedures to identify
  * when wearer gets hit in melee or nuked and when an item is poofing on ground.

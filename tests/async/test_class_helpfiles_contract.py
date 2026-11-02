@@ -54,6 +54,14 @@ for entry in index_entries:
             index_map[t.lower()] = (t, entry)
 
 # 4. Verify contracts for every class
+command_body = "\n".join(parsed_map["class"][1].strip().splitlines()[3:]).strip()
+command_index_body = "\n".join(index_map["class"][1].strip().splitlines()[2:]).strip()
+assert command_body == command_index_body, "Class command help sources diverge"
+for form in ("class list <race>", "class info <class or specialization>",
+             "class specs <class>", "class innates <class or specialization>",
+             "skills <class or specialization>", "spells <class or specialization>"):
+    assert form in command_body, f"Missing class navigation: {form}"
+
 for cls in class_names:
     cls_lower = cls.lower()
     skills_title = f"{cls_lower} skills"

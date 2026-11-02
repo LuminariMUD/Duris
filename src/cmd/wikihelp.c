@@ -699,28 +699,40 @@ string wiki_help_single(string str)
 
 #endif
 
-// Race profiles use authored lore, with live classes/stats/innates supplied separately.
-string wiki_race_description(string title)
+// Reference profiles use authored prose, with live grants supplied separately.
+string wiki_help_prose(string title, string section)
 {
 	string text;
-#ifdef __NO_MYSQL__
-	const auto &help = flat_help();
-	if (help.ready)
+	for (unsigned depth = 0; depth < 8; ++depth)
 	{
+#ifdef __NO_MYSQL__
+		const auto &help = flat_help();
+		if (!help.ready)
+			return "";
 		const auto *entry = flatfile_help_catalog_find(help.catalog, title);
-		if (entry)
-			text = entry->text;
-	}
+		if (!entry)
+			return "";
+		title = entry->title;
+		text = entry->text;
 #else
-	const auto *catalog = help_cache_get();
-	if (catalog)
+		const auto *catalog = help_cache_get();
+		if (!catalog)
+			return "";
+		text.clear();
 		for (const auto &page : *catalog)
 			if (help_title_equal(page.fields[0], title))
 			{
+				title = page.fields[0];
 				text = page.fields[1];
 				break;
 			}
 #endif
+		text = trim(text, " \t\r\n");
+		if (text.rfind("Redirect:", 0) != 0)
+			break;
+		title = trim(text.substr(9), " \t\r\n");
+		text.clear();
+	}
 	// Imported parsed-help pages retain their edit header and underline in the body.
 	text = trim(text, " \t\r\n");
 	while (!text.empty())
@@ -733,8 +745,20 @@ string wiki_race_description(string title)
 			break;
 		text = end == string::npos ? "" : trim(text.substr(end + 1), " \t\r\n");
 	}
-	// The opening paragraphs describe the race; later sections are available via help.
+	if (!section.empty())
+	{
+		const string marker = "==" + section + "==\n";
+		const size_t begin = text.find(marker);
+		if (begin == string::npos)
+			return "";
+		text = text.substr(begin + marker.size());
+	}
 	return dewikify(trim(text.substr(0, text.find("\n==")), " \t\r\n"));
+}
+
+string wiki_race_description(string title)
+{
+	return wiki_help_prose(title, "");
 }
 
 struct cmd_attrib_data cmd_attribs[CMD_ATTRIB_MAX];

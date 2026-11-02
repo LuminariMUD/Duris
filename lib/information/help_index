@@ -6242,6 +6242,8 @@ None beyond the base-class registrations.
 '*' Designates passive ability.
 Requirements are registration values, not automatic learning or preparation. Base-class grants remain subject to the listed specialization changes, and abilities retain their own use conditions.
 
+==Class mechanics==
+
 At level 30, Fire Magus can use innate fireshield without a memorized
 spell or mana. It applies the usual temporary Fireshield effect;
 expiration, dispelling and combat retaliation remain unchanged.
@@ -27749,5 +27751,58 @@ legend. Use info or a specialization catalog for specialization access.
 
 Skills, Race, Classes, Specialization, Multiclass, Spell circle, Cast,
 Memorize, Pray, Scribe
+
+#
+
+Class
+
+Browse the live class and specialization guide. Reference browsing is open
+regardless of your race, level, class, or staff status.
+
+==Syntax==
+
+  class
+  class list
+  class list <race>
+  class info <class or specialization>
+  class specs <class>
+  class innates <class or specialization>
+
+Bare class shows the roster, including disabled and special/legacy entries.
+Race filters show current creation-policy choices and alignment requirements;
+transport alignment and account admission remain character-creation checks.
+Alignment is separate from racewar side. Disabled races cannot be selected.
+
+Profiles combine authored help with current creation availability, eligible
+races, specialization paths, and class innates. Specialization profiles show
+only changes from the base class: skill levels/caps, spell circles, lost or
+added grants, and innate changes. The complete effective catalogs remain in
+skills <class or specialization> and spells <class or specialization>.
+
+Your race permission is a reference annotation, not readiness to specialize.
+Selection requires level 30, an appropriate teacher, no existing specialization
+or secondary class, and an expired respecialization timer. Specialize performs
+the final checks. Innates include inherited class grants, unlock levels and
+active/passive markers; use help <ability name> for usage and conditions.
+Racial abilities are listed separately by race innates <race>.
+
+Names accept case-insensitive full names, spaces/hyphens and unique prefixes.
+Ambiguous names list candidates. Assassin and Thief resolve to Rogue
+specializations, whose help topics are Rogue Assassin and Rogue Thief.
+Standalone legacy IDs are explicitly labelled roster notes.
+
+==Examples==
+
+  class list grey elf
+  class info guardian
+  class specs warrior
+  class innates fire magus
+  skills guardian
+  spells fire magus
+  spells info fireball
+
+==See also==
+
+Classes, Class Guides, Race, Skills, Spells, Specialization, Multiclass
 
 #

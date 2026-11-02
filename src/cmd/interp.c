@@ -23,6 +23,7 @@
 #include "cmd/battleprep.h"
 #include "cmd/last.h"
 #include "cmd/race.h"
+#include "cmd/class.h"
 #include "kingdom/kingdom.h"
 #include "core/utils.h"
 #include <arpa/telnet.h>
@@ -1285,7 +1286,8 @@ const char *command[MAX_CMD] = {
 	"battleprep",
 	"last",
 	"race",
-	"\n" /* MAX_CMD = 875, MAX_CMD_LIST = 1000 */
+	"class",
+	"\n" /* MAX_CMD = 876, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3226,6 +3228,7 @@ void assign_command_pointers(void)
 	CMD_Y(CMD_TRANQUILIZE, STAT_DEAD + POS_PRONE, do_tranquilize, LESSER_G, FALSE);
 	CMD_Y(CMD_HELP, STAT_DEAD + POS_PRONE, do_help, 0, FALSE);
 	CMD_Y(CMD_RACE, STAT_DEAD + POS_PRONE, do_race, 0, FALSE);
+	CMD_Y(CMD_CLASS, STAT_DEAD + POS_PRONE, do_class, 0, FALSE);
 	CMD_N(CMD_HIDE, STAT_RESTING + POS_SITTING, do_hide, 0, FALSE);
 	CMD_N(CMD_HITCH, STAT_NORMAL + POS_STANDING, do_hitch_vehicle, 0, TRUE);
 	CMD_N(CMD_INFO, STAT_SLEEPING + POS_PRONE, do_help, 0, FALSE);

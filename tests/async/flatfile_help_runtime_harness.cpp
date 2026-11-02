@@ -21,6 +21,21 @@ static void require(bool condition, const string &message)
 /** Exercise flat-file help lookup, including the supported No Locate aliases. */
 int main()
 {
+	for (const char *topic : { "Rogue Assassin", "Rogue Thief" })
+	{
+		const string prose = wiki_help_prose(topic, "");
+		require(prose.find("Rogue specialization") != string::npos &&
+				prose.find("Standalone") == string::npos,
+			"Class profile selected the legacy class description");
+	}
+	require(wiki_help_prose("Guardian", "Class mechanics").find("guard two people") !=
+			string::npos,
+		"Class profile omitted authored mechanics");
+	require(wiki_help_prose("definitely missing", "").empty(),
+		"Missing profile prose should leave generated facts usable");
+	require(wiki_help_prose("Fire Magus", "Class mechanics").find("innate fireshield") !=
+			string::npos,
+		"Fire Magus mechanics section omitted its active innate");
 	const string default_help = wiki_help("");
 	require(default_help.find("temporarily disabled") == string::npos &&
 			default_help.find("help") != string::npos,

@@ -16,7 +16,7 @@ extern const struct stat_data stat_factor[];
 extern float combat_by_race[][3];
 extern float spell_pulse_data[];
 
-static string race_display_name(int race)
+string race_display_name(int race)
 {
 	const race_names &name = race_names_table[race];
 	if (strip_ansi(name.ansi) == name.normal)
