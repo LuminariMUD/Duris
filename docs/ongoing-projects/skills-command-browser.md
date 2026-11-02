@@ -1,6 +1,6 @@
 # Skills command browser
 
-Status: implemented and locally qualified; preparing the focused review PR.
+Status: implemented, locally qualified, and ready for review in PR #599.
 Date: 2026-11-02
 Estimated effort: about 2 hours; allow 1–3 hours for implementation, help updates,
 builds, and focused validation. Intended delivery is one focused PR.
@@ -8,6 +8,8 @@ builds, and focused validation. Intended delivery is one focused PR.
 ## Tracking
 
 - Issue: [LuminariMUD/Duris #598](https://github.com/LuminariMUD/Duris/issues/598).
+- Review PR: [#599 — Add skills browser and help-backed skill info](https://github.com/LuminariMUD/Duris/pull/599).
+- Implementation commit: `9e850fc660b2b2055c0d3661fceebd4b1286cd2b`.
 - Development branch: [branch/issue-598-skills-browser](https://github.com/LuminariMUD/Duris/tree/branch/issue-598-skills-browser),
   linked to the issue in GitHub's Development section.
 - Published plan: [skills-command-browser.md](https://github.com/LuminariMUD/Duris/blob/branch/issue-598-skills-browser/docs/ongoing-projects/skills-command-browser.md).
@@ -235,6 +237,8 @@ command forms, specialization browsing, help reuse, documentation, or their proo
   errors; an untracked wrapper under `bin/tidy/` supplies the compatible selection
   through `CLANG_TIDY`. No checks were bypassed.
 
-All implementation acceptance criteria above are met. Remaining workflow:
-commit/push this change, open its focused PR against `master`, and record the PR
-link here and on issue #598. Review/merge and production deployment are separate.
+All implementation acceptance criteria above are met. Implementation and tests
+are committed and pushed; PR #599 targets `master`, is ready for review, and
+closes issue #598 on merge. GitHub reports the branch mergeable against current
+master. No implementation work remains in this plan. Review/merge and production
+deployment are separate operations.
