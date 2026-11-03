@@ -74,6 +74,7 @@ legacy_traps $DB python3 tests/async/test_legacy_trap_journey.py $SERVER mariadb
 information_cache $DB python3 tests/async/test_information_cache_journey.py --backend mariadb --server $SERVER
 deletion $DB python3 tests/async/run_mysql_deletion_journey.py --server $SERVER
 hardcore_death $DB python3 tests/async/run_mysql_hardcore_death_journey.py --server $SERVER
+leaderboard_scoring $DB python3 tests/async/test_leaderboard_scoring.py
 stalled_writer tests/async/run_mysql_stalled_writer_journey.sh
 private_chest_purchase $DB python3 tests/async/run_private_chest_purchase_mysql.py
 game_loop_queries $DB python3 tests/async/test_mysql_game_loop_queries_journey.py --server $SERVER
