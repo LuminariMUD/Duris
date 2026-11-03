@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_save_pipeline.h"
+#include "economy/shop_trade_transaction.h"
 #include "persistence/persistence_observability.h"
 #include <cstdlib>
 #include <cstring>
@@ -46,8 +47,7 @@ extern P_room world;
 
 namespace
 {
-uint32_t trade_player_pid = 0;
-player_pending_trade_snapshot trade_capture;
+std::unordered_map<uint32_t, player_pending_trade_snapshot> trade_captures;
 struct pending_world_quest_save
 {
 	player_pending_world_quest quest;
@@ -310,9 +310,12 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	}
 	try
 	{
+		if (!shop_trade_transaction_capture_items(ch, &snapshot))
+			return player_save_pipeline_result::capture_failed;
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
-		if (trade_player_pid == static_cast<uint32_t>(GET_PID(ch)))
+		if (auto trade = trade_captures.find(GET_PID(ch)); trade != trade_captures.end())
 		{
+			const auto &trade_capture = trade->second;
 			snapshot.pending_trade = trade_capture;
 			const auto extra =
 				trade_capture.has_cargo_effect ?
@@ -691,8 +694,7 @@ bool player_save_pipeline_load_held(int pid)
 		return false;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
-		if (trade_player_pid == static_cast<uint32_t>(pid) ||
-		    pending_world_quests.count(pid))
+		if (trade_captures.count(pid) || pending_world_quests.count(pid))
 			return true;
 	}
 	return player_save_worker_pid_pending(pid) ||
@@ -717,8 +719,7 @@ void player_save_pipeline_reset_for_tests(void)
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
 	health = {};
 	accepting = false;
-	trade_player_pid = 0;
-	trade_capture = {};
+	trade_captures.clear();
 	pending_world_quests.clear();
 }
 
@@ -777,7 +778,7 @@ bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade
 try
 {
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
-	if (!pid || trade_player_pid || !accepting || !health.initialized ||
+	if (!pid || !accepting || !health.initialized ||
 	    !std::any_of(trade.operation.begin(), trade.operation.end(),
 			 [](uint8_t b) { return b; }) ||
 	    !std::any_of(trade.command_hash.begin(), trade.command_hash.end(),
@@ -785,9 +786,7 @@ try
 	    trade.payment < -static_cast<int64_t>(INT32_MAX) || trade.payment > INT32_MAX ||
 	    trade.wallet_revision == UINT64_MAX)
 		return false;
-	trade_capture = trade;
-	trade_player_pid = pid;
-	return true;
+	return trade_captures.emplace(pid, trade).second;
 }
 catch (const std::bad_alloc &)
 {
@@ -796,9 +795,5 @@ catch (const std::bad_alloc &)
 void player_save_pipeline_release_trade(uint32_t pid)
 {
 	std::lock_guard<std::mutex> lock(pipeline_mutex);
-	if (trade_player_pid == pid)
-	{
-		trade_player_pid = 0;
-		trade_capture = {};
-	}
+	trade_captures.erase(pid);
 }

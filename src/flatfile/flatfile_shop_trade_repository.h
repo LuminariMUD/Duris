@@ -16,6 +16,7 @@
 #define DURIS_FLATFILE_SHOP_TRADE_REPOSITORY_H
 
 #include "persistence/critical_command_coordinator.h"
+#include "flatfile/flatfile_player_domain_repository.h"
 
 #include <string>
 
@@ -24,5 +25,10 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 
 // Read-only validation of the complete replay catalog, including lazy entries.
 bool flatfile_shop_trade_repository_validate(const std::string &root, std::string *error);
+// Caller holds authority; settle a pre-publication save from the exact receipt.
+// not_found means this is not a retained shop operation.
+flatfile_player_domain_result
+flatfile_shop_trade_settle_snapshot(const std::string &root, const flatfile_authority_lock &lock,
+				    player_snapshot *snapshot, std::string *error);
 
 #endif
