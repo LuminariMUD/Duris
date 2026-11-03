@@ -16,7 +16,7 @@ fixture = r'''
 #include <cassert>
 #include <cstdio>
 Skill skills[MAX_SKILLS] = {};
-static int result, fighting_calls, counter_calls, timers;
+static int result, startup_result, counter_result, fighting_calls, counter_calls, timers;
 static char_data attacker, victim;
 static void reset(int outcome) {
     attacker={}; victim={}; result=outcome;
@@ -26,6 +26,7 @@ static void reset(int outcome) {
     SET_POS(&attacker, POS_STANDING+STAT_NORMAL);
     SET_POS(&victim, POS_STANDING+STAT_NORMAL);
     fighting_calls=counter_calls=timers=0;
+    startup_result=counter_result=DAM_NONEDEAD;
 }
 static int apply_deaths(P_char ch, P_char target) {
     if (result==DAM_CHARDEAD || result==DAM_BOTHDEAD) {
@@ -43,8 +44,15 @@ int spell_damage(P_char ch,P_char target,double,int,uint,damage_messages *,int *
     return apply_deaths(ch,target);
 }
 P_char get_linked_char(P_char,ush_int) { return nullptr; }
-void set_fighting(P_char,P_char) { ++fighting_calls; }
-int attack_back(P_char,P_char,int) { ++counter_calls; return 0; }
+void set_fighting(P_char ch,P_char target) {
+    ++fighting_calls; result=startup_result; apply_deaths(ch,target);
+}
+int attack_back(P_char ch,P_char target,int) {
+    ++counter_calls;
+    if (!IS_ALIVE(ch)) return IS_ALIVE(target) ? DAM_CHARDEAD : DAM_BOTHDEAD;
+    if (!IS_ALIVE(target)) return DAM_VICTDEAD;
+    result=counter_result; return apply_deaths(ch,target);
+}
 int GetLowestSpellCircle_p(int) { return 1; }
 bool is_wielding_paladin_sword(P_char) { return true; }
 bool affected_by_spell(P_char,int) { return false; }
@@ -82,6 +90,14 @@ int main() {
     // Fresh use of the same character storage gets only its new live effect.
     reset(DAM_NONEDEAD);
     assert(cleave(&attacker,&victim) && timers==1);
+    for (int outcome : {DAM_NONEDEAD,DAM_VICTDEAD,DAM_BOTHDEAD,DAM_CHARDEAD}) {
+        reset(DAM_NONEDEAD); startup_result=outcome;
+        assert(damage(&attacker,&victim,1,SKILL_CLEAVE)==(outcome!=DAM_NONEDEAD));
+        assert(fighting_calls==1 && counter_calls==1);
+        reset(DAM_NONEDEAD); counter_result=outcome;
+        assert(damage(&attacker,&victim,1,SKILL_CLEAVE)==(outcome!=DAM_NONEDEAD));
+        assert(fighting_calls==1 && counter_calls==1);
+    }
     puts("PASS real damage/cleave: live, victim/caster/both death and fresh reuse");
 }
 '''
