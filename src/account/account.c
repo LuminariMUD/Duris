@@ -2641,9 +2641,9 @@ void add_char_to_account(P_desc d)
 				  "add character save failed");
 	}
 #else
-	/* The new pid has been allocated, but no player_data row exists yet, so an account
-	 * save would skip this mapping. The first character save commits player_data plus
-	 * account_characters. */
+	/* The first full snapshot captures this account before queueing. Its writer
+	 * transaction commits the owned player, membership and opening balances together;
+	 * an ordinary account save cannot establish a usable character by itself. */
 #endif
 }
 
