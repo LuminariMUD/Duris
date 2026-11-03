@@ -3883,7 +3883,7 @@ void init_char(P_char ch)
 	    !item_ownership_runtime_hydrate_owner(
 		    { item_owner_type::player, static_cast<uint64_t>(ch->only.pc->pid), 0 }, 0))
 		logit(LOG_FILE, "could not initialize new player item ownership state");
-	if (ch->only.pc->pid > 0 && !player_revision_hydrate(ch->only.pc->pid, 0))
+	if (ch->only.pc->pid > 0 && !player_revision_hydrate(ch->only.pc->pid, 0, true))
 		logit(LOG_FILE, "could not initialize new player revision state");
 	// The name is taken from now on.
 	sql_player_names_set(ch->only.pc->pid, GET_NAME(ch));

@@ -2666,6 +2666,7 @@ bool account_publish_kept_character(P_acct account, const struct acct_chars &val
 	c->charname = str_dup(name);
 	c->next = account->acct_character_list;
 	account->acct_character_list = c;
+	++account->num_chars;
 	return true;
 }
 

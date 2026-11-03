@@ -15,19 +15,66 @@ no governed metric matching these contracts when checked.
 | Encounters and separate pet contributions | [13125345](https://us.posthog.com/project/678214/insights/g8EmHskc) | [encounters.sql](posthog/encounters.sql) |
 | Delivery health and coverage | [13125346](https://us.posthog.com/project/678214/insights/Q1uzfy0I) | [health.sql](posthog/health.sql) |
 
-The bounded cloud fixture below qualified the original saved definitions.
-After merging the review corrections, refresh saved insights **13125343 (time),
-13125344 (XP), 13125345 (encounters), and 13125346 (health)** from the corresponding SQL files.
-That cloud refresh and a read-only query check are a separate follow-up; no new
-capture campaign is needed. The current review is qualified locally and does not
-claim those saved definitions have been refreshed. All five production queries
-exclude the tagged synthetic traffic.
-The saved-definition comparison and any required refresh are tracked in
-[#578](https://github.com/LuminariMUD/Duris/issues/578); the exporter quota incident
-is tracked separately in [#446](https://github.com/LuminariMUD/Duris/issues/446).
-The starter dashboard is retained. Views select schema 1, environment 1, season 1,
-empty test tag and a rolling 31-day event window. Change the explicit SQL scope
-and bucket predicates for another authorized scope or captured cohort. Each query
+### Saved-state verification — 2026-11-03 UTC (#578)
+
+All five complete saved definitions were compared through the user's signed-in
+Duris browser's page-bound PostHog tools. Their SQL matches the committed files
+after replacing the saved `{filters}` placeholder with the repository's rolling
+31-day timestamp predicate and normalizing whitespace. The saved dashboard date
+controls retain calendar boundaries; reproducible checks use explicit UTC bounds.
+The saved queries already
+selected season 2 when inspected; no scope overwrite was needed. Their stale
+season-1 descriptions were corrected. The time query's interval-first ordering
+was then published after the local first-page regression passed; its verified
+saved revision is `2026-11-03T18:46:14.540183Z`. Dashboard membership, date filters,
+test exclusion and all other query semantics were preserved.
+
+Merge review also reproduced the same page starvation in XP: 501 level changes
+hid every observed-XP row. Its plane order now puts observed XP first; saved
+insight 13125344 was verified at revision `2026-11-03T19:18:57.693253Z` from
+review fix `d3e9edbf0` in #631. On November 2 production data it returns XP first,
+with 3,431 rows before the 500-row limit, and identical output for duplicated
+source rows. The browser's saved view confirms that order. The local 501-level
+regression failed before the fix and passes afterward. Health scope isolation
+also now uses a distinct excluded producer; removing its season predicate is
+detected instead of being hidden by latest-per-producer aggregation.
+
+SQL revisions: season scope `bd6f64faf` ([#630](https://github.com/LuminariMUD/Duris/pull/630));
+time ordering `1fa1e04c5` ([#631](https://github.com/LuminariMUD/Duris/pull/631)).
+The pending-refresh handoff in [#578](https://github.com/LuminariMUD/Duris/issues/578)
+is satisfied; its verification record landed in
+[#633](https://github.com/LuminariMUD/Duris/pull/633). Both #578 and the historical
+exporter quota incident [#446](https://github.com/LuminariMUD/Duris/issues/446)
+are closed with the recorded observation/growth limits.
+
+All five saved reports executed with existing season-2 data. Activity returned
+235 characters with entries, 1,852 logical entries and 177 characters with
+multiple entries at inspection. These are rolling character returns, not account
+retention. Time, XP and encounters each returned the bounded 500-row page and
+reported larger underlying populations (19,457, 23,010 and 25,875 respectively
+at that snapshot). They are not complete-population totals. Health returned
+12 latest-per-producer rows. The latest was healthy with zero suppression,
+expiry, ambiguity and native drops. Cloud actor completeness remains independent
+of native completion; missing/unsupported actor coverage stays visible.
+
+For the completed UTC day November 2, every SQL result was identical when each
+source event was duplicated by a two-row `CROSS JOIN`, including its truncation
+count. Health freshness used a fixed comparison time. The final time-order
+change was checked again: the first row is `interval_delta`, with 3,509 total
+rows before the 500-row limit, and duplicate input produces the identical page.
+Local native fixtures separately prove exact time/XP, pet overflow, reconciliation,
+unknowns and test/scope exclusion. No new capture campaign was run.
+
+The starter dashboard is retained. The committed SQL files select schema 1,
+environment 1, **season 2**, empty test tag and a rolling 31-day event window,
+matching production configuration and query-visible scope inspected on 2026-11-03.
+The native connector still returns 404 for project 678214; use the authorized
+signed-in browser's page-bound tools for this project rather than another org's data.
+For historical season 1, copy the SQL and explicitly change
+`properties.duris_season_id = '2'` to `= '1'`; retain the environment, schema,
+test exclusion and desired UTC time window. Never change the server's season or
+combine identities across seasons to make a report appear populated. Change the
+explicit SQL scope and bucket predicates for another authorized scope or captured cohort. Each query
 deduplicates immutable `duris_event_id` before aggregation or array expansion.
 
 Activity measures opaque characters and logical sessions, not accounts or people.
@@ -39,8 +86,12 @@ allocation. Window selection uses the exported fragment's event timestamp; it
 does not reconstruct interval endpoints inside that fragment.
 
 Time rows marked `checkpoint_gap_do_not_add` are reconciliation evidence and must
-never be added to interval deltas. XP is observed gameplay, not proof of a durable
-save. Encounter run and actor rows are separate: do not sum run duration over actor
+never be added to interval deltas. The bounded time table lists additive interval
+rows first so a large checkpoint population cannot hide time allocation. Its
+truncation count still covers both planes; use narrower scopes to inspect omitted
+rows. XP is observed gameplay, not proof of a durable
+save. Its bounded table likewise lists observed XP before level transitions so
+a large transition population cannot hide the XP allocations. Encounter run and actor rows are separate: do not sum run duration over actor
 rows or add pet damage to owner damage. Native terminal completeness and observed
 cloud actor counts are independent. Partial/unknown evidence stays visible.
 The 500-row tables expose `total_rows_before_limit` where aggregation could be
@@ -74,7 +125,8 @@ PYTHONPATH=bin/tests/posthog-report-deps python3 tests/async/run_telemetry_posth
 
 This executes all five committed SQL definitions with embedded ClickHouse against
 native fixture rows and controlled rollback/reconciliation variants. It checks
-event deduplication, quota/capacity and recovered-incident visibility, consistent
+production season-2 selection with excluded season-1, other-environment,
+other-schema and synthetic rows, event deduplication, quota/capacity and recovered-incident visibility, consistent
 freshness, retained encounter overflow (including 640 pet damage), lower-bound
 duration labels, separate time-quality and XP zone/group buckets, and late checkpoint comparisons.
 The local adapter supplies HogQL's nullable `toInt` conversion and event-property

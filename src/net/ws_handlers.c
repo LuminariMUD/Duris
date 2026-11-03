@@ -2130,6 +2130,12 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 
 	if (!ws_chargen_allowed(d))
 		return;
+	if (d->account->num_chars >= MAX_CHARS_PER_ACCOUNT)
+	{
+		ws_send_system(d, "error",
+			       "Your account already has the maximum number of characters.");
+		return;
+	}
 	if (d->chargen_phase != CHARGEN_READY)
 	{
 		ws_send_system(d, "error", "Complete the preceding stat creation steps first");
