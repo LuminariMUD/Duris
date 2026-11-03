@@ -18,7 +18,7 @@ WITH deduplicated AS (
       AND event = 'duris_telemetry_health'
       AND properties.duris_schema_version = 1
       AND properties.duris_environment_id = '1'
-      AND properties.duris_season_id = '1'
+      AND properties.duris_season_id = '2'
       AND coalesce(properties.duris_test_run, '') = ''
     GROUP BY event_id
 ), latest AS (

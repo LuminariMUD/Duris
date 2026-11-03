@@ -26,6 +26,8 @@
 /* defines */
 
 #define SAV_STATVERS 47
+// Publish the acknowledged first snapshot's existing runtime authorities/membership.
+bool publish_initial_character_baseline(P_char ch);
 #define SAV_SKILLVERS 2
 #define SAV_ITEMVERS 36
 #define SAV_AFFVERS 8

@@ -82,12 +82,12 @@ unsigned int sql_execute(MYSQL *connection, const std::string &statement)
 {repair}
 
 /* The repair as the account read runs it: the mappings changed, or -1. */
-static int repair(const char *account)
+static int repair(const char *account, int only_pid = 0)
 {{
     char escaped[256];
     mysql_real_escape_string(DB, escaped, account, std::strlen(account));
     int repaired = 0;
-    return sql_repair_account_character_projection(DB, escaped, &repaired) ? -1 : repaired;
+    return sql_repair_account_character_projection(DB, escaped, &repaired, only_pid) ? -1 : repaired;
 }}
 
 /* Return one required database setting for the isolated fixture. */
@@ -219,6 +219,19 @@ int main()
     assert(repair("RepairAcct") == 0);
     assert(scalar("SELECT opening_frags FROM combat_frag_baseline WHERE pid=102") == 77);
     assert(repair("EmptyAcct") == 0);
+
+    // Kept-character attach must not project any other member of this account.
+    execute("INSERT INTO player_data(pid,name,account_name,active) VALUES "
+            "(108,'ScopedTarget','RepairAcct',1),(109,'ScopedSibling','RepairAcct',1)");
+    assert(repair("RepairAcct", 108) > 0);
+    assert(scalar("SELECT COUNT(*) FROM account_characters WHERE pid=108 AND deleted_at IS NULL") == 1);
+    assert(scalar("SELECT COUNT(*) FROM account_characters WHERE pid=109") == 0);
+    assert(scalar("SELECT (SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=108)+"
+                  "(SELECT COUNT(*) FROM epic_balance_baseline WHERE pid=108)+"
+                  "(SELECT COUNT(*) FROM combat_frag_baseline WHERE pid=108)") == 3);
+    assert(scalar("SELECT (SELECT COUNT(*) FROM currency_wallet_baseline WHERE pid=109)+"
+                  "(SELECT COUNT(*) FROM epic_balance_baseline WHERE pid=109)+"
+                  "(SELECT COUNT(*) FROM combat_frag_baseline WHERE pid=109)") == 0);
 
     mysql_close(DB);
     DB = nullptr;

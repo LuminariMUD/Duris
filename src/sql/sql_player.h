@@ -194,4 +194,9 @@ int *sql_get_spellbook_mobs(int pid, int *count);
 // False while a ship receipt is unfinished or needs a retry before copyover.
 bool sql_ship_write_pulse();
 void sql_reserve_ship_ids(uint32_t maximum);
+// A scoped recovery may repair one PID without projecting other account members.
+unsigned int sql_repair_account_character_projection(MYSQL *connection,
+						     const std::string &escaped_account,
+						     int *repaired, int only_pid = 0);
+
 #endif // __SQL_PLAYER_H_INCLUDED__

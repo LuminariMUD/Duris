@@ -1,3 +1,5 @@
+#include "flatfile/flatfile_player_snapshot_file.h"
+#include "flatfile/flatfile_store.h"
 #include "economy/divine_trade_repository.h"
 #include "player/player_snapshot_codec.h"
 #include "flatfile/flatfile_world_quest_history.h"
@@ -12,6 +14,8 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_account_reward_summon_repository.h"
+#include "flatfile/flatfile_account_repository.h"
+#include "account/account.h"
 #include "flatfile/flatfile_association_repository.h"
 #include "flatfile/flatfile_frag_leaderboard_repository.h"
 #include "flatfile/flatfile_locker_repository.h"
@@ -20,6 +24,7 @@
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
 #include "core/defines.h"
@@ -223,6 +228,14 @@ static void inspect_authority(const std::string &root, int32_t pid)
 		std::cout << domains.domains.wallet[i];
 	}
 	std::cout << "],\"wallet_revision\":" << domains.domains.wallet_revision;
+	std::cout << ",\"epics\":" << domains.domains.epics << ",\"bank\":[";
+	for (size_t i = 0; i < domains.domains.bank.size(); ++i)
+	{
+		if (i)
+			std::cout << ',';
+		std::cout << domains.domains.bank[i];
+	}
+	std::cout << ']';
 	std::cout << ",\"coin_items\":[";
 	bool first_coin = true;
 	for (const auto &item : snapshot.items)
@@ -1301,8 +1314,354 @@ static void divine_trade_settlement(const fs::path &base)
 		<< "Divine trade purchase/sale recovery passed at journal and all six after-image boundaries\n";
 }
 
+static void initial_creation_boundaries(const fs::path &root)
+{
+	for (int boundary = -1; boundary <= 5; ++boundary)
+	{
+		const auto state = (root / std::to_string(boundary)).string();
+		for (const auto &directory :
+		     { fs::path(state), fs::path(state) / "players", fs::path(state) / "domains",
+		       fs::path(state) / "identities", fs::path(state) / "identities/names",
+		       fs::path(state) / "identities/accounts" })
+		{
+			fs::create_directories(directory);
+			fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+		}
+		std::string error;
+		int32_t pid = 0;
+		require(flatfile_identity_allocate_pid(state, &pid, &error) ==
+				flatfile_identity_result::ok,
+			"allocate initial PID: " + error);
+		flatfile_account_record account;
+		account.name = "Keeper";
+		account.password_hash = "synthetic-hash";
+		uint64_t revision = 0;
+		require(flatfile_account_save(state, account, 0, &revision, &error) ==
+				flatfile_account_result::ok,
+			"save synthetic owner: " + error);
+		auto snapshot = make_full(1);
+		snapshot.pid = pid;
+		snapshot.creation_account = account.name;
+		snapshot.status_integers.push_back(
+			{ player_status_field::birth_time, 1800000000, 0, false });
+		for (auto &field : snapshot.status_integers)
+			if (field.field == player_status_field::level)
+				field.signed_value = 0;
+		const char *fault =
+			boundary < 0  ? "DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT" :
+			boundary == 0 ? "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL" :
+					"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION";
+		const auto step = std::to_string(boundary);
+		setenv(fault, step.c_str(), 1);
+		const auto failed = flatfile_player_snapshot_apply(state, snapshot, &error);
+		unsetenv(fault);
+		require(failed.outcome == player_save_apply_outcome::retryable_failure,
+			"creation fault boundary " + step + " did not fire: " + error);
+		flatfile_identity_record identity;
+		player_snapshot stored;
+		if (boundary < 0)
+		{
+			require(flatfile_identity_lookup_pid(state, pid, &identity, &error) ==
+						flatfile_identity_result::not_found &&
+					flatfile_player_snapshot_read(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::not_found,
+				"uncommitted creation published identity or snapshot");
+			flatfile_player_domain_record absent;
+			require(flatfile_player_domain_load(state, pid, account.name, 0, &absent,
+							    &error) ==
+					flatfile_player_domain_result::not_found,
+				"uncommitted creation published domains");
+			require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"retry after unpublished creation: " + error);
+		}
+		else
+		{
+			// Allocation itself must recover the journal before advancing the
+			// catalog, so the identity after-image cannot rewind its high water.
+			int32_t next = 0;
+			require(flatfile_identity_allocate_pid(state, &next, &error) ==
+						flatfile_identity_result::ok &&
+					next == pid + 1,
+				"interrupted creation rewound or blocked the PID allocator: " +
+					error);
+			require(flatfile_player_domain_restore_recover(state, &error) ==
+					flatfile_player_domain_result::ok,
+				"recover creation after-images: " + error);
+		}
+		require(flatfile_identity_lookup_pid(state, pid, &identity, &error) ==
+					flatfile_identity_result::ok &&
+				identity.active && identity.account == account.name &&
+				identity.name == "Player" && identity.login_count == 1 &&
+				identity.last_login == 1800000000,
+			"recovery lost initial owner/membership: " + error);
+		require(flatfile_player_snapshot_load(state, pid, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				std::equal(stored.status_integers.begin(),
+					   stored.status_integers.end(),
+					   snapshot.status_integers.begin(),
+					   snapshot.status_integers.end(),
+					   [](const auto &left, const auto &right)
+					   {
+						   return left.field == right.field &&
+							  left.signed_value == right.signed_value &&
+							  left.unsigned_value ==
+								  right.unsigned_value &&
+							  left.is_unsigned == right.is_unsigned;
+					   }),
+			"recovery lost kept stats/options: " + error);
+		flatfile_player_domain_record domains;
+		require(flatfile_player_domain_load(state, pid, account.name, 0, &domains,
+						    &error) == flatfile_player_domain_result::ok &&
+				domains.domains.base_stats[0] == 50 &&
+				domains.domains.base_stats[9] == 59 &&
+				domains.domains.wallet[0] == 11,
+			"recovery lost initial domains: " + error);
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+			"initial retry did not reconcile the committed snapshot");
+		account.blocked = 1;
+		require(flatfile_account_save(state, account, revision, &revision, &error) ==
+				flatfile_account_result::ok,
+			"block synthetic owner: " + error);
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+			"blocking entry invalidated an already committed creation: " + error);
+		int32_t blocked_pid = 0;
+		require(flatfile_identity_allocate_pid(state, &blocked_pid, &error) ==
+				flatfile_identity_result::ok,
+			"allocate blocked attempt PID");
+		auto blocked = snapshot;
+		blocked.pid = blocked_pid;
+		for (auto &field : blocked.status_strings)
+			if (field.field == player_status_string_field::name)
+				field.value = "BlockedNew";
+		require(flatfile_player_snapshot_apply(state, blocked, &error).outcome ==
+					player_save_apply_outcome::terminal_failure &&
+				flatfile_identity_lookup_pid(state, blocked_pid, &identity,
+							     &error) ==
+					flatfile_identity_result::not_found &&
+				flatfile_player_snapshot_read(state, blocked_pid, &stored,
+							      &error) ==
+					flatfile_player_load_result::not_found,
+			"blocked account published a fresh identity or snapshot: " + error);
+		account.blocked = 0;
+		require(flatfile_account_save(state, account, revision, &revision, &error) ==
+				flatfile_account_result::ok,
+			"unblock synthetic owner: " + error);
+		if (boundary < 0)
+		{
+			auto quest = snapshot;
+			quest.revision = 2;
+			quest.quest_values = {};
+			quest.pending_world_quest = {
+				true, 25001, 20, 9000, 0, 1800000001, "Player", "initial completion"
+			};
+			quest.pending_world_quest.before_quest[0] = 1;
+			quest.pending_world_quest.before_quest[1] = 25001;
+			require(flatfile_player_snapshot_apply(state, quest, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"creation quest must continue after its same-revision fallback");
+			int count = 0;
+			require(flatfile_world_quest_count_day(state.c_str(), pid, 20, 1800000001,
+							       &count, &error) ==
+						flatfile_world_quest_result::ok &&
+					count == 1 &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.quest_values[0] == 0,
+				"creation quest success omitted history or final state");
+			auto advanced = quest;
+			advanced.revision = 3;
+			advanced.creation_account.clear();
+			advanced.pending_world_quest = {};
+			for (auto &field : advanced.status_integers)
+				if (field.field == player_status_field::level)
+					field.signed_value = 1;
+			require(flatfile_player_snapshot_apply(state, advanced, &error).outcome ==
+						player_save_apply_outcome::applied &&
+					flatfile_player_snapshot_apply(state, quest, &error)
+							.outcome ==
+						player_save_apply_outcome::already_applied &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.revision == 3,
+				"initial quest replay overwrote later state");
+		}
+		int32_t competitor = 0;
+		require(flatfile_identity_allocate_pid(state, &competitor, &error) ==
+					flatfile_identity_result::ok &&
+				competitor == pid + (boundary < 0 ? 2 : 3),
+			"allocate competing PID");
+		auto competing = snapshot;
+		competing.pid = competitor;
+		require(flatfile_player_snapshot_apply(state, competing, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"competing PID stole the kept name");
+		require(flatfile_identity_sync_account(state, account.name, {}, &error) ==
+				flatfile_identity_result::ok,
+			"seed exact creation tombstone");
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"late initial snapshot resurrected a tombstoned identity");
+	}
+	const auto limited = (root / "account-limit").string();
+	for (const auto &directory :
+	     { fs::path(limited), fs::path(limited) / "players", fs::path(limited) / "domains",
+	       fs::path(limited) / "identities", fs::path(limited) / "identities/names",
+	       fs::path(limited) / "identities/accounts" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	flatfile_account_record owner;
+	owner.name = "Limitkeeper";
+	owner.password_hash = "synthetic";
+	uint64_t revision = 0;
+	require(flatfile_account_save(limited, owner, 0, &revision, &error) ==
+			flatfile_account_result::ok,
+		"save limited account: " + error);
+	int32_t pid = 0;
+	for (int i = 1; i < MAX_CHARS_PER_ACCOUNT; ++i)
+	{
+		require(flatfile_identity_allocate_pid(limited, &pid, &error) ==
+					flatfile_identity_result::ok &&
+				flatfile_identity_claim(limited, pid,
+							"Limitseed" + std::to_string(i), owner.name,
+							&error) == flatfile_identity_result::ok,
+			"seed account slots");
+	}
+	require(flatfile_identity_allocate_pid(limited, &pid, &error) ==
+			flatfile_identity_result::ok,
+		"allocate last slot");
+	auto last = make_full(1);
+	last.pid = pid;
+	last.creation_account = owner.name;
+	require(flatfile_player_snapshot_apply(limited, last, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_player_snapshot_apply(limited, last, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+		"last slot and retry must remain valid at the cap: " + error);
+	auto excess = last;
+	require(flatfile_identity_allocate_pid(limited, &excess.pid, &error) ==
+			flatfile_identity_result::ok,
+		"allocate over-limit attempt");
+	for (auto &field : excess.status_strings)
+		if (field.field == player_status_string_field::name)
+			field.value = "Overlimit";
+	const auto capped = flatfile_player_snapshot_apply(limited, excess, &error);
+	flatfile_identity_record absent;
+	require(capped.outcome == player_save_apply_outcome::terminal_failure &&
+			capped.creation_not_committed &&
+			flatfile_identity_lookup_pid(limited, excess.pid, &absent, &error) ==
+				flatfile_identity_result::not_found,
+		"over-limit creation must publish no membership");
+	std::cout
+		<< "atomic first character: precommit, journal and five after-images, replay, competition and tombstones passed\n";
+}
+
 int main(int argc, char **argv)
 {
+	if (argc == 3 && std::string(argv[2]) == "empty-authorities")
+	{
+		const std::string root = argv[1];
+		for (const char *suffix : { "", "/domains", "/players", "/identities",
+					    "/identities/accounts", "/identities/names" })
+		{
+			fs::create_directories(root + suffix);
+			fs::permissions(root + suffix, fs::perms::owner_all,
+					fs::perm_options::replace);
+		}
+		setenv("PERSISTENCE_MODE", "flatfile-primary", 1);
+		setenv("FLATFILE_STATE_DIR", root.c_str(), 1);
+		char configured[1024]{};
+		require(persistence_mode_configure(configured, sizeof(configured)), configured);
+		std::string error;
+		require(flatfile_account_reward_summon_establish(root, {}, &error) ==
+				flatfile_account_reward_summon_result::ok,
+			"empty account reward authority: " + error);
+		require(flatfile_boon_establish(root, {}, &error) == flatfile_boon_result::ok,
+			"empty boon authority: " + error);
+		require(flatfile_artifact_establish(root, {}, &error) ==
+				flatfile_artifact_result::ok,
+			"empty artifact authority: " + error);
+		require(flatfile_frag_leaderboard_establish(root, {}, &error) ==
+				flatfile_frag_leaderboard_result::ok,
+			"empty frag authority: " + error);
+		require(flatfile_locker_establish(root, {}, {}, &error) ==
+				flatfile_locker_result::ok,
+			"empty locker authority: " + error);
+		require(flatfile_association_establish(root, {}, &error) ==
+				flatfile_association_result::ok,
+			"empty association authority: " + error);
+		require(flatfile_ship_establish(root, {}, &error) == flatfile_ship_result::ok,
+			"empty ship authority: " + error);
+		require(flatfile_world_item_establish(root, {}, {}, &error) ==
+				flatfile_world_item_result::ok,
+			"empty world-item authority: " + error);
+		require(flatfile_recipe_establish(root, {}, &error) == flatfile_recipe_result::ok,
+			"empty recipe authority: " + error);
+		require(flatfile_spellbook_establish(root, {}, &error) ==
+				flatfile_spellbook_result::ok,
+			"empty spellbook authority: " + error);
+		return 0;
+	}
+	if (argc == 4 &&
+	    (std::string(argv[2]) == "starter-pending" || std::string(argv[2]) == "legacy-kept"))
+	{
+		// Offline disposable fixture: simulate loss of the post-grant snapshot.
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_read(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			error);
+		bool found = false;
+		for (auto &field : snapshot.status_integers)
+			if (field.field == player_status_field::action_flags_3)
+			{
+				if (std::string(argv[2]) == "starter-pending")
+				{
+					field.unsigned_value |= BIT_25;
+					field.signed_value |= BIT_25;
+				}
+				else
+				{
+					field.unsigned_value &= ~(BIT_23 | BIT_24);
+					field.signed_value &= ~(BIT_23 | BIT_24);
+				}
+				found = true;
+			}
+		require(found, "missing action flags in disposable fixture");
+		std::vector<uint8_t> bytes;
+		require(flatfile_player_snapshot_encode_file(&snapshot, &bytes),
+			"encode starter fixture");
+		require(flatfile_atomic_write(
+				flatfile_player_snapshot_file::player_directory(argv[1]),
+				flatfile_player_snapshot_file::player_filename(snapshot.pid), bytes,
+				&error),
+			error);
+		return 0;
+	}
+	if (argc == 5 && std::string(argv[2]) == "block-account")
+	{
+		std::string error;
+		flatfile_account_record account;
+		require(flatfile_account_load(argv[1], argv[3], &account, &error) ==
+				flatfile_account_result::ok,
+			"synthetic account lookup: " + error);
+		const int blocked = std::stoi(argv[4]);
+		require(blocked == 0 || blocked == 1, "synthetic block must be 0 or 1");
+		account.blocked = blocked;
+		uint64_t revision = 0;
+		require(flatfile_account_save(argv[1], account, account.revision, &revision,
+					      &error) == flatfile_account_result::ok,
+			"synthetic account block: " + error);
+		return 0;
+	}
 	if (argc == 4 && std::string(argv[2]) == "stale-membership")
 	{
 		// The level-projection journey calls this only with its synthetic server stopped.
@@ -1748,6 +2107,7 @@ int main(int argc, char **argv)
 	require(argc == 2, "state root argument required");
 	const fs::path root = argv[1];
 	saved_wallet_matrix(root / "saved-wallet");
+	initial_creation_boundaries(root / "initial-creation");
 	divine_trade_settlement(root / "trade-settlement");
 	const fs::path players = root / "players";
 	const fs::path identities = root / "identities/names";
@@ -1784,7 +2144,8 @@ int main(int argc, char **argv)
 	require(player_snapshot_encode(old_status, &legacy_bytes) ==
 			player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
-	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1);
+	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1 - sizeof(uint32_t) -
+			    old_status.creation_account.size());
 	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
 	player_snapshot legacy;
 	uint64_t legacy_sequence = 99;

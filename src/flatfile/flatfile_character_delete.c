@@ -102,7 +102,9 @@ bool append_operation(std::vector<flatfile_authority_operation> *operations,
 
 flatfile_character_delete_result flatfile_character_delete(const std::string &root, int32_t pid,
 							   const std::string &expected_name,
-							   std::string *error)
+							   std::string *error,
+							   uint64_t expected_catalog_revision,
+							   uint64_t expected_snapshot_revision)
 {
 	if (error)
 		error->clear();
@@ -119,10 +121,21 @@ flatfile_character_delete_result flatfile_character_delete(const std::string &ro
 	if (!authority_lock.acquire(root, error))
 		return flatfile_character_delete_result::io_error;
 
+	if (expected_catalog_revision)
+	{
+		player_snapshot snapshot;
+		const auto loaded = flatfile_player_snapshot_read(root, pid, &snapshot, error);
+		if (expected_snapshot_revision ? (loaded != flatfile_player_load_result::ok ||
+						  snapshot.revision != expected_snapshot_revision) :
+						 loaded != flatfile_player_load_result::not_found)
+			return flatfile_character_delete_result::conflict;
+	}
+
 	flatfile_authority_operation identity_operation;
 	const auto identity = flatfile_identity_prepare_remove(root, identity_lock, authority_lock,
 							       pid, expected_name,
-							       &identity_operation, error);
+							       &identity_operation, error,
+							       expected_catalog_revision);
 	const bool retry = identity == flatfile_identity_result::unchanged;
 	if (identity != flatfile_identity_result::ok && !retry)
 		return map_identity(identity);
@@ -256,7 +269,8 @@ flatfile_character_delete_result flatfile_character_delete(const std::string &ro
 		if (!append_operation(&operations, &operation))
 			return flatfile_character_delete_result::io_error;
 	}
-	else if (!(retry && snapshot == flatfile_player_load_result::not_found))
+	else if (!((retry || (expected_catalog_revision && !expected_snapshot_revision)) &&
+		   snapshot == flatfile_player_load_result::not_found))
 	{
 		return map_authority(snapshot, flatfile_player_load_result::not_found,
 				     flatfile_player_load_result::io_error);
@@ -269,7 +283,8 @@ flatfile_character_delete_result flatfile_character_delete(const std::string &ro
 		if (!append_operation(&operations, &operation))
 			return flatfile_character_delete_result::io_error;
 	}
-	else if (!(retry && domain == flatfile_player_domain_result::not_found))
+	else if (!((retry || (expected_catalog_revision && !expected_snapshot_revision)) &&
+		   domain == flatfile_player_domain_result::not_found))
 	{
 		return map_authority(domain, flatfile_player_domain_result::not_found,
 				     flatfile_player_domain_result::io_error);

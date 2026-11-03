@@ -125,13 +125,6 @@ struct domain_transaction
 	std::vector<transaction_bank> banks;
 };
 
-enum class player_publish_result
-{
-	ok,
-	invalid,
-	io_error
-};
-
 struct encoder
 {
 	std::vector<uint8_t> bytes;
@@ -762,15 +755,6 @@ bool encode_bank_record(const bank_record &record, std::vector<uint8_t> *bytes)
 	return payload.valid && encode_file(bank_magic, payload.bytes, record.revision, bytes);
 }
 
-bool publish_bank(const std::string &root, const bank_record &record, std::string *error)
-{
-	std::vector<uint8_t> bytes;
-	return encode_bank_record(record, &bytes) &&
-	       flatfile_atomic_write(domains_directory(root),
-				     bank_filename(record.account_name, record.racewar), bytes,
-				     error);
-}
-
 flatfile_player_domain_result decode_player_authority(const std::vector<uint8_t> &bytes,
 						      int32_t pid, player_authority *authority)
 {
@@ -918,40 +902,20 @@ bool encode_player_authority(const player_authority &authority, std::vector<uint
 	return payload.valid && encode_file(player_magic, payload.bytes, revision, bytes);
 }
 
-player_publish_result publish_player_authority(const std::string &root,
-					       const player_authority &authority,
-					       std::string *error)
-{
-	std::vector<uint8_t> bytes;
-	if (!encode_player_authority(authority, &bytes))
-		return player_publish_result::invalid;
-	return flatfile_atomic_write(domains_directory(root), player_filename(authority.record.pid),
-				     bytes, error) ?
-		       player_publish_result::ok :
-		       player_publish_result::io_error;
-}
-
-bool publish_player(const std::string &root, const flatfile_player_domain_record &record,
-		    std::string *error)
-{
-	return publish_player_authority(root, { record, {} }, error) == player_publish_result::ok;
-}
-
-flatfile_player_domain_result establish(const std::string &root,
-					const flatfile_player_domain_record &record,
-					bool require_bank_match, std::string *error)
+flatfile_player_domain_result
+prepare_baseline(const std::string &root, const flatfile_authority_lock &authority,
+		 const flatfile_player_domain_record &record, bool require_bank_match,
+		 std::vector<flatfile_authority_operation> *operations, std::string *error)
 {
 	std::string account;
-	if (root.empty() || record.pid <= 0 || !canonical_account(record.account_name, &account) ||
-	    record.domains.wallet_revision || record.domains.epic_revision ||
-	    record.domains.frag_revision || record.domains.bank_revision ||
-	    record.domains.base_stat_revision > 1 || !valid_gameplay(record) ||
+	if (!operations || !authority.matches(root) || record.pid <= 0 ||
+	    !canonical_account(record.account_name, &account) ||
+	    (require_bank_match && record.domains.wallet_revision) ||
+	    record.domains.epic_revision || record.domains.frag_revision ||
+	    record.domains.bank_revision || record.domains.base_stat_revision > 1 ||
+	    !valid_gameplay(record) ||
 	    (!require_bank_match && record.domains.bank != std::array<uint64_t, 4>{}))
 		return flatfile_player_domain_result::invalid;
-	std::lock_guard<std::mutex> guard(domain_mutex);
-	flatfile_authority_lock authority;
-	if (!authority.acquire(root, error))
-		return flatfile_player_domain_result::io_error;
 	const auto recovered = recover_authority(root, authority, error);
 	if (recovered != flatfile_player_domain_result::ok)
 		return recovered;
@@ -961,6 +925,7 @@ flatfile_player_domain_result establish(const std::string &root,
 	{
 		if (existing.account_name != account || existing.racewar != record.racewar ||
 		    existing.domains.wallet != record.domains.wallet ||
+		    existing.domains.wallet_revision != record.domains.wallet_revision ||
 		    existing.domains.epics != record.domains.epics ||
 		    existing.domains.frags != record.domains.frags ||
 		    existing.domains.old_frags != record.domains.old_frags ||
@@ -984,8 +949,11 @@ flatfile_player_domain_result establish(const std::string &root,
 	if (bank_loaded == flatfile_player_domain_result::not_found)
 	{
 		bank = { account, record.racewar, 1, record.domains.bank };
-		if (!publish_bank(root, bank, error))
-			return flatfile_player_domain_result::io_error;
+		flatfile_authority_operation operation;
+		operation.filename = bank_filename(account, record.racewar);
+		if (!encode_bank_record(bank, &operation.bytes))
+			return flatfile_player_domain_result::invalid;
+		operations->push_back(std::move(operation));
 	}
 	else if (bank_loaded != flatfile_player_domain_result::ok)
 		return bank_loaded;
@@ -993,9 +961,34 @@ flatfile_player_domain_result establish(const std::string &root,
 		return flatfile_player_domain_result::conflict;
 	flatfile_player_domain_record canonical = record;
 	canonical.account_name = account;
-	if (!publish_player(root, canonical, error))
-		return flatfile_player_domain_result::io_error;
+	flatfile_authority_operation operation;
+	operation.filename = player_filename(record.pid);
+	if (!encode_player_authority({ canonical, {} }, &operation.bytes))
+		return flatfile_player_domain_result::invalid;
+	operations->push_back(std::move(operation));
 	return flatfile_player_domain_result::ok;
+}
+
+flatfile_player_domain_result establish(const std::string &root,
+					const flatfile_player_domain_record &record,
+					bool require_bank_match, std::string *error)
+{
+	std::lock_guard<std::mutex> guard(domain_mutex);
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return flatfile_player_domain_result::io_error;
+	std::vector<flatfile_authority_operation> operations;
+	const auto prepared =
+		prepare_baseline(root, authority, record, require_bank_match, &operations, error);
+	if (prepared != flatfile_player_domain_result::ok || operations.empty())
+		return prepared;
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
+										operations, error);
+	return committed == flatfile_authority_transaction_result::ok ?
+		       flatfile_player_domain_result::ok :
+	       committed == flatfile_authority_transaction_result::io_error ?
+		       flatfile_player_domain_result::io_error :
+		       flatfile_player_domain_result::invalid;
 }
 flatfile_player_domain_result
 load_artifact_pending(const std::string &root, artifact_guild_delivery_ids *ids, std::string *error)
@@ -1247,6 +1240,14 @@ flatfile_player_domain_result flatfile_player_domain_establish_initial_player(
 	const std::string &root, const flatfile_player_domain_record &record, std::string *error)
 {
 	return establish(root, record, false, error);
+}
+
+flatfile_player_domain_result flatfile_player_domain_prepare_initial_player(
+	const std::string &root, const flatfile_authority_lock &authority,
+	const flatfile_player_domain_record &record,
+	std::vector<flatfile_authority_operation> *operations, std::string *error)
+{
+	return prepare_baseline(root, authority, record, false, operations, error);
 }
 
 flatfile_player_domain_result flatfile_player_domain_restore_recover(const std::string &root,

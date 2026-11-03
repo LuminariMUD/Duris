@@ -8,6 +8,8 @@
 #include "core/utils.h"
 #include "account/account.h"
 #include "item/storage_lockers.h"
+#include "item/starter_kit_intent.h"
+#include "player/player_revision_state.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -26,6 +28,35 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Ordinary item fixtures do not provide durable starter-kit storage. Dedicated
+// starter/revision tests link the real implementations, overriding these refusals.
+HARNESS_STUB bool starter_kit_intent_bind(uint32_t, const critical_command &)
+{
+	return false;
+}
+HARNESS_STUB bool starter_kit_intent_finish(uint32_t, const critical_command &, bool)
+{
+	return false;
+}
+HARNESS_STUB starter_kit_state starter_kit_intent_read(uint32_t, critical_command *)
+{
+	return starter_kit_state::invalid;
+}
+HARNESS_STUB bool player_revision_snapshot_copy(int, player_revision_snapshot *)
+{
+	return false;
+}
+// Fixtures without the account creation state machine have no pending Keep.
+HARNESS_STUB bool account_creation_pending(int)
+{
+	return false;
+}
+HARNESS_STUB bool account_creation_owner_pending(const char *)
+{
+	return false;
+}
+HARNESS_STUB void account_creation_saved(const player_save_completion &) {}
+HARNESS_STUB void account_creation_pulse() {}
 // Fixtures without the player-save pipeline have no pending quest transition.
 HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)
 {
@@ -371,3 +402,13 @@ HARNESS_STUB bool obj_name_matches(P_char, P_obj object, const char *name)
 void __attribute__((weak)) update_group_vitals(P_char) {}
 // Non-group fixtures do not deliver group observer notifications.
 HARNESS_STUB void update_groupies(P_char, bool) {}
+
+__attribute__((weak)) bool kept_character_recovery_pending(int)
+{
+	return false;
+}
+
+__attribute__((weak)) bool kept_character_recovery_owner_pending(const char *)
+{
+	return false;
+}

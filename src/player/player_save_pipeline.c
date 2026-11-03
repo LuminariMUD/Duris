@@ -96,7 +96,7 @@ void retire_ended_player(int pid)
 	player_revision_snapshot revision = {};
 	if (player_revision_snapshot_copy(pid, &revision) && revision.session_ended &&
 	    !live_player(pid) && !player_save_pipeline_world_quest_pending(pid) &&
-	    !player_save_worker_pid_pending(pid))
+	    !account_creation_pending(pid) && !player_save_worker_pid_pending(pid))
 		player_revision_forget(pid);
 }
 
@@ -110,6 +110,8 @@ bool completion_succeeded(const player_save_completion &completion)
 /** Account for one writer completion on the game thread. */
 void finish_completion(const player_save_completion &completion)
 {
+	if (completion.kind == persistence_job_kind::player)
+		account_creation_saved(completion);
 	if (trace_player_saves())
 		logit(LOG_STATUS,
 		      "PLAYER SAVE TRACE: stage=completion mono_us=%llu kind=%s owner=%llu revision=%llu components=%llu outcome=%u error=%u retries=%u queued_us=%llu started_us=%llu completed_us=%llu",
@@ -284,6 +286,10 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))
 		return player_save_pipeline_result::capture_failed;
+	// Until a new character has a baseline, even a coalesced save must carry
+	// everything needed to create a usable owned character.
+	if (revision.initial_creation)
+		components = PLAYER_CHECKPOINT_COMPONENT_ALL;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		auto pending = pending_world_quests.find(GET_PID(ch));
@@ -310,6 +316,19 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	}
 	try
 	{
+		if (revision.initial_creation)
+		{
+			if (!ch->desc || !ch->desc->account || !ch->desc->account->acct_name ||
+			    !ch->desc->account->acct_name[0])
+				return player_save_pipeline_result::capture_failed;
+			snapshot.creation_account = ch->desc->account->acct_name;
+			if (snapshot.creation_account.size() > 50 ||
+			    snapshot.creation_account.size() + sizeof(uint32_t) >
+				    PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound)
+				return player_save_pipeline_result::capture_failed;
+			snapshot.encoded_size_bound +=
+				snapshot.creation_account.size() + sizeof(uint32_t);
+		}
 		if (!shop_trade_transaction_capture_items(ch, &snapshot))
 			return player_save_pipeline_result::capture_failed;
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -519,7 +538,9 @@ void player_save_pipeline_pulse(void)
 		const size_t completed =
 			player_save_worker_pulse(completions, PLAYER_SAVE_PIPELINE_PULSE_BUDGET);
 		for (size_t index = 0; index < completed; ++index)
+		{
 			finish_completion(completions[index]);
+		}
 		// Finish the entire batch before retiring any previous session's revision.
 		for (size_t index = 0; index < completed; ++index)
 			if (completions[index].kind == persistence_job_kind::player)
@@ -527,6 +548,7 @@ void player_save_pipeline_pulse(void)
 		if (completed < PLAYER_SAVE_PIPELINE_PULSE_BUDGET)
 			break;
 	}
+	account_creation_pulse();
 	// A failed terminal save can outlive its actor. Retain the last immutable
 	// capture and retry it rather than dropping the pending history on logout.
 	std::vector<std::pair<int, std::shared_ptr<player_snapshot>>> retry;
@@ -690,6 +712,8 @@ bool player_save_pipeline_load_held(int pid)
 {
 	if (pid <= 0)
 		return false;
+	if (account_creation_pending(pid))
+		return true;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (trade_captures.count(pid) || pending_world_quests.count(pid))

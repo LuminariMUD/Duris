@@ -366,6 +366,8 @@ OBJS =  $(SHIP_OBJS) \
 				 item/item_command_parser.o \
 				 item/forced_weapon_drop.o \
 				 item/item_movement_transaction.o \
+				 item/starter_kit_intent.o \
+				 account/kept_character_recovery.o \
 				 economy/shop_trade_transaction.o \
 				 economy/shop_trade_runtime.o \
 				 economy/shopkeeper_boot.o \

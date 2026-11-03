@@ -44,11 +44,11 @@ def function_body(signature: str, start_at: int = 0) -> str:
 
 
 # 1. Orders.
-baseline = NANNY.index("if (!writeCharacter(ch, 2, NOWHERE))")
-assert baseline < NANNY.index("load_chaos_new_character_kit(ch);") < NANNY.index(
-    "schedule_chaos_starting_ledgers(ch);"
-)
-assert "mark_chaos_starter_reward_intents(ch);\n\tif (!writeCharacter(ch, 2, NOWHERE))" in NANNY
+entry = NANNY[NANNY.index("void enter_game"):NANNY.index("void select_terminal")]
+assert entry.index("if (!writeCharacter(ch, 1, NOWHERE))") < entry.index("item_creation_grant_resume_starter(ch)")
+assert entry.index("item_creation_grant_resume_starter(ch)") < entry.index("load_chaos_new_character_kit(ch, true)")
+keep = NANNY[NANNY.index("bool keep_new_character"):NANNY.index("void continue_kept_character")]
+assert keep.index("mark_chaos_starter_reward_intents") < keep.index("save_kept_character")
 assert (
     NANNY.index("advance_to_level(ch, 56);")
     < NANNY.index("grant_epic_skills_without_specialization(ch);")

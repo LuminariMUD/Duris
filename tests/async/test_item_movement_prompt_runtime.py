@@ -22,6 +22,8 @@ PRELUDE = r'''
 #include "net/websocket.h"
 #include "core/json_utils.h"
 #include "item/item_movement_transaction.h"
+#include "item/starter_kit_intent.h"
+#include "player/player_revision_state.h"
 #include "item/item_ownership_runtime.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_load_items.h"
@@ -102,8 +104,10 @@ void format_to_snoopers(const char *in, char *out) { strcpy(out, in); }
 void append_prompt(P_char, char *) {}
 void write_to_pc_log(P_char, const char *, int) {}
 void send_to_char(const char *text, P_char ch) { write_to_q(text, &ch->desc->output, 1); }
-extern "C" ssize_t __wrap_write(int, const void *p, size_t n)
+extern "C" ssize_t __real_write(int, const void *, size_t);
+extern "C" ssize_t __wrap_write(int fd, const void *p, size_t n)
 {
+    if (fd > 2) return __real_write(fd, p, n);
     std::string bytes((const char *)p, n);
     if (bytes == std::string("\xff\xf9", 2)) ++ga_count;
     delivered += bytes;
@@ -405,8 +409,75 @@ static void container_batch_matrix()
         object_list = nullptr; character_list = nullptr;
     }
 }
-int main()
+static void starter_replay_matrix(const char *directory)
 {
+    assert(starter_kit_intent_init(directory));
+    indexes[0].virtual_number = 100;
+    item_movement_transaction_reset_for_tests();
+    item_ownership_runtime_reset();
+    char_data actor{}; pc_only_data pc{}; descriptor_data descriptor{};
+    pc.pid = 42; actor.only.pc = &pc; actor.desc = &descriptor;
+    actor.specials.act3 = PLR3_STARTER_KIT_PENDING;
+    descriptor.character = &actor; descriptor.connected = CON_PLAYING;
+    character_list = &actor;
+    obj_data item{}; item.obj_uid = 100; item.R_num = 0; item.loc_p = LOC_NOWHERE;
+    object_list = &item;
+    const item_owner_identity owner{item_owner_type::player, 42, 0};
+    assert(item_ownership_runtime_hydrate_owner({item_owner_type::system, 0, 0}, 1));
+    assert(item_ownership_runtime_hydrate_owner(owner, 7));
+    player_revision_reset_for_tests();
+    assert(player_revision_hydrate(42, 1));
+    player_revision_t revision;
+    assert(player_revision_mark(42, PLAYER_COMPONENT_STATUS, &revision));
+    player_component_mask_t components;
+    assert(player_revision_queue(42, &revision, &components));
+    const auto previous = submitted;
+    P_obj roots[]{&item};
+    assert(item_creation_grant_submit_batch_to_player_before_entry(&actor, roots, 1, &actor, true));
+    assert(critical_operation_id_equal(previous.operation_id, submitted.operation_id)); // Initialization has not committed.
+    assert(player_revision_acknowledge_durable(42, revision, components));
+    assert(player_revision_record_written(42, revision));
+    item_movement_transaction_player_ready(&actor);
+    const auto bound = submitted;
+    critical_command stored;
+    assert(starter_kit_intent_read(42, &stored) == starter_kit_state::pending);
+    assert(critical_command_equal(stored, bound));
+    // Lose every volatile queue before the transfer runs. Resume the complete
+    // saved command, without recapturing or generating a different item UID.
+    item_movement_transaction_reset_for_tests();
+    starter_kit_intent_shutdown();
+    assert(starter_kit_intent_init(directory));
+    assert(item_creation_grant_resume_starter(&actor));
+    item_movement_transaction_player_ready(&actor);
+    assert(critical_command_equal(submitted, bound));
+    critical_completion completion{};
+    completion.operation_id = bound.operation_id;
+    completion.outcome = critical_apply_outcome::applied;
+    item_transfer_result result{100, 1, 2, 8, 1, 0};
+    std::array<uint8_t, ITEM_TRANSFER_RESULT_BYTES> encoded{};
+    assert(item_transfer_command_encode_result(result, &encoded));
+    completion.result_size = encoded.size();
+    std::copy(encoded.begin(), encoded.end(), completion.result_payload.begin());
+    item_movement_transaction_handle_completions(&completion, 1);
+    assert(!item_movement_transaction_player_busy(&actor) && OBJ_CARRIED_BY(&item, &actor));
+    assert(!IS_SET(actor.specials.act3, PLR3_STARTER_KIT_PENDING));
+    assert(starter_kit_intent_read(42, &stored) == starter_kit_state::committed);
+    actor.specials.act3 |= PLR3_STARTER_KIT_PENDING;
+    assert(item_creation_grant_resume_starter(&actor));
+    assert(!IS_SET(actor.specials.act3, PLR3_STARTER_KIT_PENDING));
+    assert(critical_command_equal(submitted, bound));
+    while (descriptor.output.head) {
+        auto *block = descriptor.output.head; descriptor.output.head = block->next;
+        free(block->text); free(block);
+    }
+    object_list = nullptr; character_list = nullptr;
+    starter_kit_intent_shutdown();
+    item_movement_transaction_reset_for_tests();
+}
+int main(int argc, char **argv)
+{
+    assert(argc == 2);
+    starter_replay_matrix(argv[1]);
     container_batch_matrix();
     assert(publish_news("transport news\n"));
     for (bool ws : {false, true})
@@ -460,11 +531,11 @@ def main():
                         '-fsanitize=address,undefined', '-Isrc', str(source),
                         *[str(SRC / name) for name in ['output_profiles.c', 'output_style.c', 'prompt.c', 'ansi.c', 'mccp.c', 'unicode.c', 'json_utils.c', 'safe_format.c',
                             'item_movement_transaction.c', 'item_ownership_runtime.c',
-                            'item_transfer_command.c', 'critical_command.c',
+                            'item_transfer_command.c', 'critical_command.c', 'starter_kit_intent.c', 'flatfile_store.c', 'player_revision_state.c',
                             'player_snapshot_capture.c', 'player_snapshot_codec.c', 'news.c']],
                         '-Wl,--gc-sections', '-Wl,--wrap=write', '-lz', '-lcrypto', '-lcjson', str(HARNESS_STUBS), '-o', str(binary)],
                        cwd=ROOT, check=True, timeout=600)
-        subprocess.run([str(binary)], check=True, timeout=30)
+        subprocess.run([str(binary), directory], check=True, timeout=30)
 
 
 if __name__ == '__main__':

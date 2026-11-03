@@ -593,6 +593,7 @@ void do_tedit(P_char, char *, int);
 void do_depiss(P_char, char *, int);
 void do_repiss(P_char, char *, int);
 void do_approve(P_char, char *, int);
+void do_keptchar(P_char, char *, int);
 void do_advance(P_char, char *, int);
 void do_affectpurge(P_char, char *, int);
 void do_allow(P_char, char *, int);
@@ -1168,6 +1169,9 @@ enum class character_delete_result
 // game before done runs.
 void delete_character(P_char ch, bool delete_locker = true,
 		      std::function<void(character_delete_result)> done = {});
+struct kept_character_recovery_record;
+void delete_kept_character(const kept_character_recovery_record &record,
+			   std::function<void(character_delete_result)> done);
 P_obj read_one_object(char *);
 int restoreAffects(char *, P_char);
 int restoreCharOnly(P_char, char *);
@@ -2094,8 +2098,8 @@ int get_name(char return_namn[256], int SEX = -1, uint64_t id = 0);
 
 int tossHint(P_char ch);
 void loadHints();
-void approve_name(char *name);
-void create_denied_file(const char *, char *);
+void approve_name(const char *name);
+void create_denied_file(const char *, const char *);
 int getNewPCidNumb(void);
 void setNewPCidNumbfromFile(void);
 char *statstr(int);
@@ -2112,7 +2116,7 @@ int find_hometown(int race, bool force, int racewar = RACEWAR_NONE);
 int find_starting_alignment(int, int);
 int number_of_players(void);
 void add_stat_bonus(P_char, int, int);
-void deny_name(char *);
+void deny_name(const char *);
 void display_characteristics(P_desc);
 void display_stats(P_desc);
 void echo_off(P_desc);
@@ -2125,7 +2129,6 @@ void load_obj_to_newbies(P_char);
 void nanny(P_desc, char *);
 void newby_announce(P_desc);
 void print_recommended_action(P_desc);
-void schedule_chaos_new_character_kit_before_entry(P_char);
 void restore_chaos_character_kit(P_char, const char *);
 bool chaos_kit_equipment_ready(P_char, P_char);
 void equip_chaos_kit(P_char);

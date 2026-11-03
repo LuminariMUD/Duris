@@ -15,9 +15,9 @@ assert "flatfile_account_state_release(loaded)" in ACCOUNT
 assert "copy_account(account, loaded);" in ACCOUNT
 assert "str_dup(from->acct_name" in ACCOUNT
 assert "void flatfile_account_state_release" in ADAPTER
-assert "c->level = GET_LEVEL(player);" in ACCOUNT
-assert "c->race = GET_RACE(player);" in ACCOUNT
-assert "c->m_class = player->player.m_class;" in ACCOUNT
+assert "value.level = GET_LEVEL(player);" in ACCOUNT
+assert "value.race = GET_RACE(player);" in ACCOUNT
+assert "value.m_class = player->player.m_class;" in ACCOUNT
 assert "sync_account_character_projection(P_char player" in ACCOUNT
 assert "sync_account_character_projection(ch, projection_room, TRUE)" in ACCOUNT
 assert "world[ch->in_room].number" in ACCOUNT

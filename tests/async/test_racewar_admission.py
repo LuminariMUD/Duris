@@ -38,6 +38,7 @@ native_side_check = function_body(nanny, "static bool account_creation_side_allo
 ws_login = function_body(websocket, "void ws_finish_login(")
 ws_enter = function_body(websocket, "void ws_cmd_enter(")
 ws_create = function_body(websocket, "void ws_cmd_create_character(")
+ws_finish_create = function_body(websocket, "void ws_finish_kept_character(")
 
 assert 'get_property("account.timer.racewarSwitch", 3600)' in account
 assert "account_racewar_evaluate" in check_at
@@ -77,13 +78,14 @@ assert "ws_resolve_racewar_side(race_id, alignment)" in ws_create
 assert ws_create.index("const account_racewar_admission preflight") < ws_create.index(
     "/* allocate character structure"
 )
-assert ws_create.index("account_commit_character_admission") < ws_create.index(
+assert "keep_new_character(d)" in ws_create
+assert ws_finish_create.index("account_commit_character_admission") < ws_finish_create.index(
     "STATE(d) = CON_PLAYING"
 )
-assert ws_create.index("account_commit_character_admission") < ws_create.index(
+assert ws_finish_create.index("account_commit_character_admission") < ws_finish_create.index(
     'cJSON_AddStringToObject(response, "status", "created")'
 )
-assert "item_creation_grant_cancel_batch_before_entry(ch)" in ws_create
+assert "item_creation_grant_cancel_batch_before_entry(ch)" in ws_finish_create
 assert "account/racewar_admission.o" in makefile
 
 # Both maintained account backends already round-trip the timestamps that the

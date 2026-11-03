@@ -9,6 +9,8 @@
  */
 
 #include "combat/trap_legacy.h"
+#include "account/kept_character_recovery.h"
+#include <optional>
 #include "core/prototypes.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
@@ -1298,6 +1300,86 @@ void locker_post_save_hook(P_char ch)
 		(*world[ch->in_room].funct)(ch->in_room, ch, (-81), NULL);
 }
 
+bool publish_initial_character_baseline(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || !ch->desc || !ch->desc->account)
+		return false;
+#ifdef __NO_MYSQL__
+	flatfile_player_domain_record domains;
+	std::string domain_error;
+	const char *account = get_account_name_safe(ch);
+	if (!account || !*account || !strcmp(account, "Unknown"))
+	{
+		statuslog(
+			56,
+			"&+RALERT&n: new-player bank revision sync failed: missing account context");
+		return 0;
+	}
+	const auto domain_result =
+		flatfile_player_domain_load(persistence_mode_flatfile_root(), GET_PID(ch), account,
+					    GET_RACEWAR(ch), &domains, &domain_error);
+	if (domain_result != flatfile_player_domain_result::ok || !domains.domains.bank_revision ||
+	    std::any_of(domains.domains.bank.begin(), domains.domains.bank.end(),
+			[](uint64_t amount) { return amount > INT_MAX; }) ||
+	    std::any_of(domains.domains.wallet.begin(), domains.domains.wallet.end(),
+			[](uint64_t amount) { return amount > INT_MAX; }))
+	{
+		statuslog(56,
+			  "&+RALERT&n: new-player bank revision sync failed (domain result %d): %s",
+			  static_cast<int>(domain_result),
+			  domain_result == flatfile_player_domain_result::ok ?
+				  "invalid bank revision or currency balance overflow" :
+			  domain_error.empty() ? "authority load failed" :
+						 domain_error.c_str());
+		persistence_alert(AVATAR, "player", "redacted", "none", "none",
+				  "bank_revision_sync_failed", NULL);
+		return 0;
+	}
+	const item_owner_identity owner = { item_owner_type::player,
+					    static_cast<uint64_t>(GET_PID(ch)), 0 };
+	uint64_t owner_revision = 0;
+	std::vector<flatfile_item_ownership_record> owned_items;
+	std::string ownership_error;
+	const auto ownership = flatfile_item_repository_load_owner(persistence_mode_flatfile_root(),
+								   owner, &owner_revision,
+								   &owned_items, &ownership_error);
+	if (ownership != flatfile_item_repository_result::ok || !owner_revision ||
+	    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
+	{
+		statuslog(56, "&+RALERT&n: new-player item ownership revision sync failed");
+		persistence_alert(AVATAR, "player", "redacted", "none", "none",
+				  "ownership_revision_sync_failed", NULL);
+		return 0;
+	}
+	// Creation can precede CON_PLAYING, so hydrate this character explicitly.
+	// Publish only after every required authority read/validation succeeded.
+	const AccountBankBalances balances = { static_cast<int>(domains.domains.bank[0]),
+					       static_cast<int>(domains.domains.bank[1]),
+					       static_cast<int>(domains.domains.bank[2]),
+					       static_cast<int>(domains.domains.bank[3]) };
+	GET_BALANCE_COPPER(ch) = balances.copper;
+	GET_BALANCE_SILVER(ch) = balances.silver;
+	GET_BALANCE_GOLD(ch) = balances.gold;
+	GET_BALANCE_PLATINUM(ch) = balances.platinum;
+	ch->only.pc->bank_revision = domains.domains.bank_revision;
+	GET_COPPER(ch) = domains.domains.wallet[0];
+	GET_SILVER(ch) = domains.domains.wallet[1];
+	GET_GOLD(ch) = domains.domains.wallet[2];
+	GET_PLATINUM(ch) = domains.domains.wallet[3];
+	ch->only.pc->wallet_revision = domains.domains.wallet_revision;
+	publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
+					       domains.domains.bank_revision);
+#endif
+	if (!find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch)))
+		add_char_to_account(ch->desc);
+	const auto *membership =
+		find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch));
+	if (!membership || membership->pid != GET_PID(ch))
+		return false;
+	REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
+	return true;
+}
+
 int writeCharacter(P_char ch, int type, int room)
 {
 	if (!ch || !GET_NAME(ch))
@@ -1372,80 +1454,8 @@ int writeCharacter(P_char ch, int type, int room)
 			    queued != player_save_pipeline_result::coalesced)
 				return 0;
 		}
-		if (establishing_baseline)
-		{
-			flatfile_player_domain_record domains;
-			std::string domain_error;
-			const char *account = get_account_name_safe(ch);
-			if (!account || !*account || !strcmp(account, "Unknown"))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player bank revision sync failed: missing account context");
-				return 0;
-			}
-			const auto domain_result = flatfile_player_domain_load(
-				persistence_mode_flatfile_root(), GET_PID(ch), account,
-				GET_RACEWAR(ch), &domains, &domain_error);
-			if (domain_result != flatfile_player_domain_result::ok ||
-			    !domains.domains.bank_revision ||
-			    std::any_of(domains.domains.bank.begin(), domains.domains.bank.end(),
-					[](uint64_t amount) { return amount > INT_MAX; }) ||
-			    std::any_of(domains.domains.wallet.begin(),
-					domains.domains.wallet.end(),
-					[](uint64_t amount) { return amount > INT_MAX; }))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player bank revision sync failed (domain result %d): %s",
-					static_cast<int>(domain_result),
-					domain_result == flatfile_player_domain_result::ok ?
-						"invalid bank revision or currency balance overflow" :
-					domain_error.empty() ? "authority load failed" :
-							       domain_error.c_str());
-				persistence_alert(AVATAR, "player", "redacted", "none", "none",
-						  "bank_revision_sync_failed", NULL);
-				return 0;
-			}
-			const item_owner_identity owner = { item_owner_type::player,
-							    static_cast<uint64_t>(GET_PID(ch)), 0 };
-			uint64_t owner_revision = 0;
-			std::vector<flatfile_item_ownership_record> owned_items;
-			std::string ownership_error;
-			const auto ownership = flatfile_item_repository_load_owner(
-				persistence_mode_flatfile_root(), owner, &owner_revision,
-				&owned_items, &ownership_error);
-			if (ownership != flatfile_item_repository_result::ok || !owner_revision ||
-			    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player item ownership revision sync failed");
-				persistence_alert(AVATAR, "player", "redacted", "none", "none",
-						  "ownership_revision_sync_failed", NULL);
-				return 0;
-			}
-			// Creation can precede CON_PLAYING, so hydrate this character explicitly.
-			// Publish only after every required authority read/validation succeeded.
-			const AccountBankBalances balances = {
-				static_cast<int>(domains.domains.bank[0]),
-				static_cast<int>(domains.domains.bank[1]),
-				static_cast<int>(domains.domains.bank[2]),
-				static_cast<int>(domains.domains.bank[3])
-			};
-			GET_BALANCE_COPPER(ch) = balances.copper;
-			GET_BALANCE_SILVER(ch) = balances.silver;
-			GET_BALANCE_GOLD(ch) = balances.gold;
-			GET_BALANCE_PLATINUM(ch) = balances.platinum;
-			ch->only.pc->bank_revision = domains.domains.bank_revision;
-			GET_COPPER(ch) = domains.domains.wallet[0];
-			GET_SILVER(ch) = domains.domains.wallet[1];
-			GET_GOLD(ch) = domains.domains.wallet[2];
-			GET_PLATINUM(ch) = domains.domains.wallet[3];
-			ch->only.pc->wallet_revision = domains.domains.wallet_revision;
-			publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
-							       domains.domains.bank_revision);
-		}
+		if (establishing_baseline && !publish_initial_character_baseline(ch))
+			return 0;
 		if (!sync_account_character_projection(ch, room, TRUE))
 		{
 			statuslog(56,
@@ -1512,7 +1522,15 @@ character_delete_result forget_deleted_character(const deleted_character &delete
 	// Names are unique: only the live sessions of the character's account list it.
 	for (P_desc d = descriptor_list; d; d = d->next)
 		if (d->account)
-			remove_char_from_list(d->account, deleted.name.c_str(), false);
+			for (auto *member = d->account->acct_character_list; member;
+			     member = member->next)
+				if (member->pid == deleted.pid &&
+				    !strcasecmp(member->charname, deleted.name.c_str()))
+				{
+					remove_char_from_list(d->account, deleted.name.c_str(),
+							      false);
+					break;
+				}
 #endif
 	delete_ship_runtime(deleted.name.c_str());
 	std::string zone_story_error;
@@ -1530,20 +1548,12 @@ character_delete_result forget_deleted_character(const deleted_character &delete
 }
 } // namespace
 
-void delete_character(P_char ch, bool delete_locker,
-		      std::function<void(character_delete_result)> done)
+static void
+delete_character_identity(const deleted_character &deleted, bool delete_locker,
+			  [[maybe_unused]] sql_work guild_work,
+			  std::function<void(character_delete_result)> done,
+			  std::optional<kept_character_recovery_record> recovery = std::nullopt)
 {
-	if (!done)
-		done = [](character_delete_result) {};
-	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
-	{
-		done(character_delete_result::refused);
-		return;
-	}
-	const deleted_character deleted = {
-		GET_PID(ch), GET_NAME(ch),
-		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
-	};
 #ifdef __NO_MYSQL__
 	if (!delete_locker || !artifact_save_drain(3000))
 	{
@@ -1552,7 +1562,9 @@ void delete_character(P_char ch, bool delete_locker,
 	}
 	std::string error;
 	const auto result = flatfile_character_delete(persistence_mode_flatfile_root(), deleted.pid,
-						      deleted.name, &error);
+						      deleted.name, &error,
+						      recovery ? recovery->catalog_revision : 0,
+						      recovery ? recovery->revision : 0);
 	if (result != flatfile_character_delete_result::ok &&
 	    result != flatfile_character_delete_result::already_deleted)
 	{
@@ -1574,32 +1586,28 @@ void delete_character(P_char ch, bool delete_locker,
 			   deleted.pid),
 		remove_all_locker_access_statement(deleted.name.c_str()),
 	};
+	if (recovery)
+		statements.insert(
+			statements.begin(),
+			sql_format(
+				"INSERT IGNORE INTO account_characters(account_name,pid,char_name,deleted_at) VALUES('%s',%d,'%s',NOW())",
+				escape_str(recovery->owner.c_str()).c_str(), deleted.pid,
+				escape_str(deleted.name.c_str()).c_str()));
 	for (std::string &statement : remove_all_artifacts_sql(deleted.pid))
 		statements.push_back(std::move(statement));
-	sql_work guild_work;
-	if (GET_ASSOC(ch))
-	{
-		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
-		if (!guild_statements.empty())
-		{
-			guild_work =
-				kingdom_guild_save_work(static_cast<int>(GET_ASSOC(ch)->get_id()),
-							std::move(guild_statements));
-			if (!guild_work)
-			{
-				done(character_delete_result::refused);
-				return;
-			}
-		}
-	}
+
 	if (delete_locker)
 		statements.push_back(sql_delete_locker_statement(deleted.pid, 0));
 	statements.push_back(sql_delete_ship_statement(deleted.name.c_str()));
 	statements.push_back(sql_format("DELETE FROM player_data WHERE pid=%d", deleted.pid));
 	if (!sql_read_work(
-		    [statements, guild_work = std::move(guild_work)](MYSQL *connection,
-								     sql_rows *) -> unsigned int
+		    [statements, recovery, guild_work = std::move(guild_work)](
+			    MYSQL *connection, sql_rows *) -> unsigned int
 		    {
+			    if (recovery)
+				    if (const auto error = kept_character_recovery_release_guard(
+						connection, *recovery))
+					    return error;
 			    if (guild_work)
 				    if (const unsigned int error = guild_work(connection))
 					    return error;
@@ -1620,10 +1628,58 @@ void delete_character(P_char ch, bool delete_locker,
 			    }
 			    // Runtime cleanup also forgets unplaced rows and their proof/snapshot.
 			    done(forget_deleted_character(deleted));
-		    }))
+		    },
+		    recovery.has_value()))
 		done(character_delete_result::refused);
 #endif
 }
+void delete_character(P_char ch, bool delete_locker,
+		      std::function<void(character_delete_result)> done)
+{
+	if (!done)
+		done = [](character_delete_result) {};
+	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	const deleted_character deleted{ GET_PID(ch), GET_NAME(ch),
+					 GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) :
+							 0,
+					 GET_FRAGS(ch) };
+	sql_work guild_work;
+#ifndef __NO_MYSQL__
+	if (GET_ASSOC(ch))
+	{
+		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
+		if (!guild_statements.empty())
+		{
+			guild_work =
+				kingdom_guild_save_work(static_cast<int>(GET_ASSOC(ch)->get_id()),
+							std::move(guild_statements));
+			if (!guild_work)
+			{
+				done(character_delete_result::refused);
+				return;
+			}
+		}
+	}
+#endif
+	delete_character_identity(deleted, delete_locker, std::move(guild_work), std::move(done));
+}
+
+void delete_kept_character(const kept_character_recovery_record &record,
+			   std::function<void(character_delete_result)> done)
+{
+	if (!kept_character_recovery_releasable(record))
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	delete_character_identity({ record.pid, record.name, 0, 0 }, true, {}, std::move(done),
+				  record);
+}
+
 #endif
 
 void PurgeCorpseFile(P_obj corpse)

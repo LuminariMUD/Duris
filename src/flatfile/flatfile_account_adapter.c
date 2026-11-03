@@ -224,20 +224,20 @@ void flatfile_account_state_release(P_acct account)
 	release_account(account);
 }
 
-bool flatfile_account_state_save(P_acct account, std::string *error)
+bool flatfile_account_state_save(P_acct account, std::string *error, bool project_membership)
 {
 	const char *root = persistence_mode_flatfile_root();
 	flatfile_account_record record;
 	if (!root || !to_record(account, &record))
 		return false;
 	std::vector<flatfile_identity_record> memberships;
-	if (!membership_records(account, &memberships))
+	if (project_membership && !membership_records(account, &memberships))
 		return false;
 
 	/*
-	 * Account scalars and identity membership are two authorities; publish
-	 * both after-images through one transaction so a failure between them
-	 * cannot leave the account revision acknowledged on its own.
+	 * When projecting membership, publish it with account scalars in one
+	 * transaction. During initial player persistence the creation transaction
+	 * owns membership, so concurrent settings saves leave that projection alone.
 	 */
 	flatfile_identity_lock identity_lock;
 	if (!identity_lock.acquire(root, error))
@@ -257,15 +257,19 @@ bool flatfile_account_state_save(P_acct account, std::string *error)
 		    &account_operation, &committed_revision, error) != flatfile_account_result::ok)
 		return false;
 	flatfile_authority_operation identity_operation;
-	const auto identity = flatfile_identity_prepare_sync_account(
-		root, identity_lock, authority_lock, account->acct_name, memberships,
-		&identity_operation, error);
-	if (identity != flatfile_identity_result::ok)
-		return false;
+	if (project_membership)
+	{
+		const auto identity = flatfile_identity_prepare_sync_account(
+			root, identity_lock, authority_lock, account->acct_name, memberships,
+			&identity_operation, error);
+		if (identity != flatfile_identity_result::ok)
+			return false;
+	}
 	try
 	{
 		operations.push_back(std::move(account_operation));
-		operations.push_back(std::move(identity_operation));
+		if (project_membership)
+			operations.push_back(std::move(identity_operation));
 	}
 	catch (const std::bad_alloc &)
 	{

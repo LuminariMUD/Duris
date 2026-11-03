@@ -71,11 +71,15 @@ class flatfile_identity_lock
 	struct state;
 	std::unique_ptr<state> state_;
 	bool owns(const std::string &root) const;
+	friend flatfile_identity_result flatfile_identity_prepare_initial_player(
+		const std::string &, const flatfile_identity_lock &,
+		const flatfile_authority_lock &, flatfile_identity_record *,
+		flatfile_authority_operation *, std::string *);
 	friend flatfile_identity_result
 	flatfile_identity_prepare_remove(const std::string &, const flatfile_identity_lock &,
 					 const flatfile_authority_lock &, int32_t,
 					 const std::string &, flatfile_authority_operation *,
-					 std::string *);
+					 std::string *, uint64_t);
 	friend flatfile_identity_result
 	flatfile_identity_prepare_sync_account(const std::string &, const flatfile_identity_lock &,
 					       const flatfile_authority_lock &, const std::string &,
@@ -90,6 +94,12 @@ flatfile_identity_result flatfile_identity_current_highest_pid(const std::string
 flatfile_identity_result flatfile_identity_claim(const std::string &root, int32_t pid,
 						 const std::string &name,
 						 const std::string &account, std::string *error);
+// Prepare a new membership alongside its first usable snapshot. An empty account
+// requires an existing matching legacy identity; it can never claim a new PID.
+flatfile_identity_result flatfile_identity_prepare_initial_player(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority_lock, flatfile_identity_record *record,
+	flatfile_authority_operation *operation, std::string *error);
 flatfile_identity_result flatfile_identity_lookup_name(const std::string &root,
 						       const std::string &name,
 						       flatfile_identity_record *record,
@@ -114,11 +124,16 @@ flatfile_identity_result flatfile_identity_prepare_sync_account(
 	const flatfile_authority_lock &authority_lock, const std::string &account,
 	const std::vector<flatfile_identity_record> &records,
 	flatfile_authority_operation *operation, std::string *error);
-flatfile_identity_result
-flatfile_identity_prepare_remove(const std::string &root,
-				 const flatfile_identity_lock &identity_lock,
-				 const flatfile_authority_lock &authority_lock, int32_t pid,
-				 const std::string &expected_name,
-				 flatfile_authority_operation *operation, std::string *error);
+flatfile_identity_result flatfile_identity_prepare_remove(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority_lock, int32_t pid,
+	const std::string &expected_name, flatfile_authority_operation *operation,
+	std::string *error, uint64_t expected_catalog_revision = 0);
+// Explicit staff repair, retaining the existing snapshot and monetary authority.
+flatfile_identity_result flatfile_identity_prepare_recovered_kept(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority, const flatfile_identity_record &record,
+	uint64_t expected_catalog_revision, flatfile_authority_operation *operation,
+	std::string *error);
 
 #endif

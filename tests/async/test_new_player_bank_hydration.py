@@ -22,11 +22,9 @@ def block(text, start):
 
 
 files = (ROOT / "src/core/files.c").read_text()
-# The block that reads the new player's domains back (the one before it waits for
-# the first save to land).
-start = files.index("if (establishing_baseline)\n\t\t{\n\t\t\tflatfile_player_domain_record domains;")
+# The shared publication step runs after the initial save has been acknowledged.
+start = files.index("bool publish_initial_character_baseline(P_char ch)")
 hydrate = "bool hydrate(P_char ch) " + block(files, start)
-hydrate = hydrate[:-1] + "return true;\n}"
 utility = (ROOT / "src/core/utility.c").read_text()
 start = utility.index("void publish_account_bank_balances_revision(")
 publication = utility[start:utility.index("{", start)] + block(utility, start)
@@ -47,6 +45,12 @@ PRELUDE = r'''
 #include <filesystem>
 #include <iostream>
 P_desc descriptor_list = nullptr;
+struct acct_chars *find_char_in_list(struct acct_chars *, const char *) {
+    static acct_chars existing = {};
+    existing.pid = 1;
+    return &existing;
+}
+void add_char_to_account(P_desc) { assert(false); }
 static std::string root;
 static std::string last_status;
 static bool item_read_ok = true, item_hydrate_ok = true;
