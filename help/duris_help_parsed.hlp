@@ -2166,9 +2166,9 @@ possible effects are bestowed upon reaching 10th circle.
 #0
 
 Aura of Battle Lust
-Aura of Battle Lust - Last Edited: 2026-10-18
+Aura of Battle Lust - Last Edited: 2026-11-03
 ==========================================
-Syntax:         innate aura of battlelust
+Syntax:         innate aura battlelust (or innate aura_of_battlelust)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -2182,9 +2182,9 @@ Aura of Vigor, Aura of Improved Healing, Aura of Precision, Aura of Protection, 
 #0
 
 Aura of Endurance
-Aura of Endurance - Last Edited: 2018-05-11 10:24:20 by lohrr
+Aura of Endurance - Last Edited: 2026-11-03
 =============================================================
-Syntax:         innate aura of endurance
+Syntax:         innate aura endurance (or innate aura_of_endurance)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -2198,9 +2198,9 @@ Aura of Battle Lust, Aura of Vigor, Aura of Improved Healing, Aura of Precision,
 #0
 
 Aura of Improved Healing
-Aura of Improved Healing - Last Edited: 2018-05-11 10:24:37 by lohrr
+Aura of Improved Healing - Last Edited: 2026-11-03
 ====================================================================
-Syntax:         innate aura of improved healing
+Syntax:         innate aura healing (or innate aura_of_improved_healing)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -2214,9 +2214,9 @@ Aura of Vigor, Aura of Precision, Aura of Protection, Aura of Endurance, Aura of
 #0
 
 Aura of Precision
-Aura of Precision - Last Edited: 2018-05-11 10:23:49 by lohrr
+Aura of Precision - Last Edited: 2026-11-03
 =============================================================
-Syntax:         innate aura of precision
+Syntax:         innate aura precision (or innate aura_of_precision)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -2230,9 +2230,9 @@ Aura of Vigor, Aura of Improved Healing, Aura of Protection, Aura of Endurance, 
 #0
 
 Aura of Protection
-Aura of Protection - Last Edited: 2018-05-11 10:23:22 by lohrr
+Aura of Protection - Last Edited: 2026-11-03
 ==============================================================
-Syntax:         innate aura of protection
+Syntax:         innate aura protection (or innate aura_of_protection)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -2246,9 +2246,9 @@ Aura of Vigor, Aura of Improved Healing, Aura of Precision, Aura of Endurance, A
 #0
 
 Aura of Vigor
-Aura of Vigor - Last Edited: 2018-05-11 10:24:54 by lohrr
+Aura of Vigor - Last Edited: 2026-11-03
 =========================================================
-Syntax:         innate aura of vigor
+Syntax:         innate aura vigor (or innate aura_of_vigor)
 * Area of effect: <all group members>
 * Aggressive:     No
 * Cumulative:     No
@@ -18833,24 +18833,27 @@ Learning, preparation, equipment, and current ability conditions still apply.
 #0
 
 Paladin auras
-Paladin auras - Last Edited: 2008-05-09 20:19:34 by Blaize
+Paladin auras - Last Edited: 2026-11-03
 ==========================================================
 Paladins, Anti-Paladins and eligible Clerics can radiate auras to eligible
 nearby group members. A provider maintains only one aura at a time;
 different providers may radiate different aura types simultaneously.
 Identical aura types do not stack. Cleric Healers cannot receive the
 Improved Healing bonus or enhance their spells with it.
-Syntax: innate <aura_name>
+Syntax: innate aura <keyword>
+Any prefix of the keyword works, so 'innate aura heal' raises Aura of
+Improved Healing. 'innate aura of <keyword>' and full names such as
+'innate aura_of_improved_healing' also work.
 
 ==List of Auras==
 
-* Aura of Protection
-* Aura of Precision
-* Aura of Endurance
-* Aura of Improved Healing
-* Aura of Vigor
-* Aura of Battle Lust
-* Aura of Spell Protection
+* Aura of Protection - protection (shortest: p)
+* Aura of Precision - precision (shortest: pre)
+* Aura of Endurance - endurance (shortest: e)
+* Aura of Improved Healing - healing or improved (shortest: h)
+* Aura of Vigor - vigor (shortest: v)
+* Aura of Battle Lust - battlelust (shortest: b)
+* Aura of Spell Protection - spell (shortest: s)
 
 #0
 
@@ -28743,9 +28746,9 @@ Healer, Epic Warding Faith
 #0
 
 Aura of Spell Protection
-Aura of Spell Protection - Last Edited: 2026-10-21
+Aura of Spell Protection - Last Edited: 2026-11-03
 ============================================================
-Syntax: innate aura_of_spell_protection
+Syntax: innate aura spell (or innate aura_of_spell_protection)
 * Area of effect: <eligible nearby group members>
 * Aggressive: No
 * Cumulative: No
