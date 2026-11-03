@@ -41,14 +41,8 @@ ready for review; do not merge or tag a release as part of this task.
    pinned world projections. The ASan/UBSan artifact admission harness passes,
    including genuine boot tracking repair, construction cancellation, live
    handoff, unload, current-recipient lookup, and actual offline retirement.
-<<<<<<< HEAD
-3. **Shop revisions:** review-ready in
-   [PR #591](https://github.com/LuminariMUD/Duris/pull/591), stacked on #590.
-   Shop publication supplies its existing exact revision array to the
-=======
 3. **Shop revisions:** implemented on `branch/issue-583-shop-revisions`, stacked
    on #590. Shop publication supplies its existing exact revision array to the
->>>>>>> origin/master
    runtime apply function. No serialized result changes. Real adapter/cache tests
    cover an ordinary sale with committed revision 9 despite cached/submitted 1,
    the empty-cache case, buyback at revision 10, and a stocked-container purchase
@@ -58,7 +52,6 @@ ready for review; do not merge or tag a release as part of this task.
    used for creation grants and adopted-object operator repair. Its generic
    result still contains only a maximum: mixed-revision memory-held repair
    publication needs separate treatment before calling the revision audit done.
-<<<<<<< HEAD
 4. **NPC containers:** implemented on `branch/issue-583-npc-containers`, stacked
    on #591. Removed both cache vetoes: newly received bags can organize inventory,
    and newly received ordinary items can enter carried bags. Reuses normal `put()`
@@ -77,11 +70,6 @@ ready for review; do not merge or tag a release as part of this task.
 5. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
    old-holder source cleanup versus damaged-component retention; generic repair
    revision publication; physical floor/copyover capture;
-=======
-4. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
-   old-holder source cleanup versus damaged-component retention; generic repair
-   revision publication; physical floor/copyover capture; NPC container organization;
->>>>>>> origin/master
    pet/NORENT compatibility review; specific refusal diagnostics and existing
    inspection; backend and end-to-end acceptance journeys listed below.
 
