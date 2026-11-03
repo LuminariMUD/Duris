@@ -66,6 +66,7 @@ prelude = r'''
 #include <cstdint>
 #include <functional>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 #define TRUE 1
@@ -96,6 +97,11 @@ std::string sql_format(const char *format,...) {
     char out[512]; va_list args; va_start(args,format); vsnprintf(out,sizeof out,format,args); va_end(args);
     return out;
 }
+struct kept_character_recovery_record { int pid=0; std::string name, owner; uint64_t revision=0, catalog_revision=0; };
+bool kept_character_recovery_releasable(const kept_character_recovery_record &) { assert(false); return false; }
+struct MYSQL {};
+using sql_work = std::function<unsigned int(MYSQL *)>;
+std::string escape_str(const char *value) { return value; }
 struct member { char name[32]; member *next = nullptr; };
 using P_member = member*;
 struct Character;
@@ -157,7 +163,8 @@ bool player_save_pipeline_drain(uint64_t) { return true; }
 bool locker_async_drain(uint64_t) { return true; }
 const char *persistence_mode_flatfile_root() { return "fixture"; }
 enum class flatfile_character_delete_result { ok, already_deleted, io_error };
-flatfile_character_delete_result flatfile_character_delete(const std::string&, int, const std::string&, std::string*) {
+flatfile_character_delete_result flatfile_character_delete(const std::string&, int, const std::string&, std::string*, uint64_t catalog, uint64_t revision) {
+    assert(!catalog && !revision);
     assert(artifact_drain_ready && artifact_drain_calls);
     ++backend_calls;
     if (fail_stage) return flatfile_character_delete_result::io_error;
@@ -166,10 +173,9 @@ flatfile_character_delete_result flatfile_character_delete(const std::string&, i
 #else
 // The writer: a queued job waits for the test's pulse, and runs its statements in one
 // staged transaction that commits only when every statement succeeded.
-struct MYSQL {};
-using sql_work = std::function<unsigned int(MYSQL *)>;
 using sql_row = std::vector<std::string>;
 using sql_rows = std::vector<sql_row>;
+unsigned int kept_character_recovery_release_guard(MYSQL *, const kept_character_recovery_record &) { assert(false); return 1; }
 static std::function<void()> pending;
 static int stage=0;
 static std::vector<std::string> executed;
@@ -187,7 +193,8 @@ sql_work kingdom_guild_save_work(int, std::vector<std::string> statements) {
 }
 #define sql_read_work(...) queue_job(__VA_ARGS__)
 bool queue_job(std::function<unsigned int(MYSQL*, sql_rows*)> work,
-               std::function<void(bool, const sql_rows&)> done) {
+               std::function<void(bool, const sql_rows&)> done, bool retry=false) {
+    assert(!retry);
     ++backend_calls; assert(!pending);
     pending = [work, done]() {
         MYSQL connection; sql_rows rows; stage = 0; executed.clear();

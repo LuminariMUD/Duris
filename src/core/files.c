@@ -9,6 +9,8 @@
  */
 
 #include "combat/trap_legacy.h"
+#include "account/kept_character_recovery.h"
+#include <optional>
 #include "core/prototypes.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
@@ -1520,7 +1522,15 @@ character_delete_result forget_deleted_character(const deleted_character &delete
 	// Names are unique: only the live sessions of the character's account list it.
 	for (P_desc d = descriptor_list; d; d = d->next)
 		if (d->account)
-			remove_char_from_list(d->account, deleted.name.c_str(), false);
+			for (auto *member = d->account->acct_character_list; member;
+			     member = member->next)
+				if (member->pid == deleted.pid &&
+				    !strcasecmp(member->charname, deleted.name.c_str()))
+				{
+					remove_char_from_list(d->account, deleted.name.c_str(),
+							      false);
+					break;
+				}
 #endif
 	delete_ship_runtime(deleted.name.c_str());
 	std::string zone_story_error;
@@ -1538,20 +1548,12 @@ character_delete_result forget_deleted_character(const deleted_character &delete
 }
 } // namespace
 
-void delete_character(P_char ch, bool delete_locker,
-		      std::function<void(character_delete_result)> done)
+static void
+delete_character_identity(const deleted_character &deleted, bool delete_locker,
+			  [[maybe_unused]] sql_work guild_work,
+			  std::function<void(character_delete_result)> done,
+			  std::optional<kept_character_recovery_record> recovery = std::nullopt)
 {
-	if (!done)
-		done = [](character_delete_result) {};
-	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
-	{
-		done(character_delete_result::refused);
-		return;
-	}
-	const deleted_character deleted = {
-		GET_PID(ch), GET_NAME(ch),
-		GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) : 0, GET_FRAGS(ch)
-	};
 #ifdef __NO_MYSQL__
 	if (!delete_locker || !artifact_save_drain(3000))
 	{
@@ -1560,7 +1562,9 @@ void delete_character(P_char ch, bool delete_locker,
 	}
 	std::string error;
 	const auto result = flatfile_character_delete(persistence_mode_flatfile_root(), deleted.pid,
-						      deleted.name, &error);
+						      deleted.name, &error,
+						      recovery ? recovery->catalog_revision : 0,
+						      recovery ? recovery->revision : 0);
 	if (result != flatfile_character_delete_result::ok &&
 	    result != flatfile_character_delete_result::already_deleted)
 	{
@@ -1582,32 +1586,28 @@ void delete_character(P_char ch, bool delete_locker,
 			   deleted.pid),
 		remove_all_locker_access_statement(deleted.name.c_str()),
 	};
+	if (recovery)
+		statements.insert(
+			statements.begin(),
+			sql_format(
+				"INSERT IGNORE INTO account_characters(account_name,pid,char_name,deleted_at) VALUES('%s',%d,'%s',NOW())",
+				escape_str(recovery->owner.c_str()).c_str(), deleted.pid,
+				escape_str(deleted.name.c_str()).c_str()));
 	for (std::string &statement : remove_all_artifacts_sql(deleted.pid))
 		statements.push_back(std::move(statement));
-	sql_work guild_work;
-	if (GET_ASSOC(ch))
-	{
-		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
-		if (!guild_statements.empty())
-		{
-			guild_work =
-				kingdom_guild_save_work(static_cast<int>(GET_ASSOC(ch)->get_id()),
-							std::move(guild_statements));
-			if (!guild_work)
-			{
-				done(character_delete_result::refused);
-				return;
-			}
-		}
-	}
+
 	if (delete_locker)
 		statements.push_back(sql_delete_locker_statement(deleted.pid, 0));
 	statements.push_back(sql_delete_ship_statement(deleted.name.c_str()));
 	statements.push_back(sql_format("DELETE FROM player_data WHERE pid=%d", deleted.pid));
 	if (!sql_read_work(
-		    [statements, guild_work = std::move(guild_work)](MYSQL *connection,
-								     sql_rows *) -> unsigned int
+		    [statements, recovery, guild_work = std::move(guild_work)](
+			    MYSQL *connection, sql_rows *) -> unsigned int
 		    {
+			    if (recovery)
+				    if (const auto error = kept_character_recovery_release_guard(
+						connection, *recovery))
+					    return error;
 			    if (guild_work)
 				    if (const unsigned int error = guild_work(connection))
 					    return error;
@@ -1628,10 +1628,58 @@ void delete_character(P_char ch, bool delete_locker,
 			    }
 			    // Runtime cleanup also forgets unplaced rows and their proof/snapshot.
 			    done(forget_deleted_character(deleted));
-		    }))
+		    },
+		    recovery.has_value()))
 		done(character_delete_result::refused);
 #endif
 }
+void delete_character(P_char ch, bool delete_locker,
+		      std::function<void(character_delete_result)> done)
+{
+	if (!done)
+		done = [](character_delete_result) {};
+	if (!ch || !GET_NAME(ch) || GET_PID(ch) <= 0)
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	const deleted_character deleted{ GET_PID(ch), GET_NAME(ch),
+					 GET_ASSOC(ch) ? static_cast<int>(GET_ASSOC(ch)->get_id()) :
+							 0,
+					 GET_FRAGS(ch) };
+	sql_work guild_work;
+#ifndef __NO_MYSQL__
+	if (GET_ASSOC(ch))
+	{
+		auto guild_statements = GET_ASSOC(ch)->statements_without_member(ch);
+		if (!guild_statements.empty())
+		{
+			guild_work =
+				kingdom_guild_save_work(static_cast<int>(GET_ASSOC(ch)->get_id()),
+							std::move(guild_statements));
+			if (!guild_work)
+			{
+				done(character_delete_result::refused);
+				return;
+			}
+		}
+	}
+#endif
+	delete_character_identity(deleted, delete_locker, std::move(guild_work), std::move(done));
+}
+
+void delete_kept_character(const kept_character_recovery_record &record,
+			   std::function<void(character_delete_result)> done)
+{
+	if (!kept_character_recovery_releasable(record))
+	{
+		done(character_delete_result::refused);
+		return;
+	}
+	delete_character_identity({ record.pid, record.name, 0, 0 }, true, {}, std::move(done),
+				  record);
+}
+
 #endif
 
 void PurgeCorpseFile(P_obj corpse)

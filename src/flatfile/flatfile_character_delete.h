@@ -30,6 +30,8 @@ enum class flatfile_character_delete_result
 
 flatfile_character_delete_result flatfile_character_delete(const std::string &root, int32_t pid,
 							   const std::string &expected_name,
-							   std::string *error);
+							   std::string *error,
+							   uint64_t expected_catalog_revision = 0,
+							   uint64_t expected_snapshot_revision = 0);
 
 #endif

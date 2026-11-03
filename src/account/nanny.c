@@ -45,6 +45,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "account/account.h"
+#include "account/kept_character_recovery.h"
 #include "account/account_recovery.h"
 #include "world/achievements.h"
 #include "guild/assocs.h"
@@ -54,6 +55,7 @@
 #include "economy/crafting.h"
 #include <array>
 #include <map>
+#include <mutex>
 #include "item/item_movement_transaction.h"
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
@@ -4097,6 +4099,8 @@ struct kept_save
 	player_save_completion completion{};
 };
 std::map<int, kept_save> kept_saves;
+// The login worker reads membership; payload fields remain game-thread owned.
+std::mutex kept_saves_mutex;
 
 void decide_creation_approval(P_char ch)
 {
@@ -4152,8 +4156,11 @@ bool save_kept_character(P_desc d, kept_save_kind kind)
 			return false;
 		}
 		request = wait_for_writer(d);
-		kept_saves.emplace(pid, kept_save{ request, ch->runtime_id, 0, GET_NAME(ch),
-						   d->account->acct_name, kind });
+		{
+			std::lock_guard<std::mutex> lock(kept_saves_mutex);
+			kept_saves.emplace(pid, kept_save{ request, ch->runtime_id, 0, GET_NAME(ch),
+							   d->account->acct_name, kind });
+		}
 		kept_saves.at(pid).projection = account_kept_character_projection(ch);
 		STATE(d) = CON_CREATION_SAVE;
 		if (d->websocket)
@@ -4170,11 +4177,17 @@ bool save_kept_character(P_desc d, kept_save_kind kind)
 			kept_saves.at(pid).revision = revision.acknowledged_revision;
 			return true;
 		}
-		kept_saves.erase(pid);
+		{
+			std::lock_guard<std::mutex> lock(kept_saves_mutex);
+			kept_saves.erase(pid);
+		}
 	}
 	catch (const std::bad_alloc &)
 	{
-		kept_saves.erase(pid);
+		{
+			std::lock_guard<std::mutex> lock(kept_saves_mutex);
+			kept_saves.erase(pid);
+		}
 	}
 	if (request)
 		writer_replied(request);
@@ -4188,11 +4201,17 @@ bool save_kept_character(P_desc d, kept_save_kind kind)
 
 bool account_creation_pending(int pid)
 {
-	return kept_saves.count(pid) != 0;
+	{
+		std::lock_guard<std::mutex> lock(kept_saves_mutex);
+		if (kept_saves.count(pid))
+			return true;
+	}
+	return kept_character_recovery_pending(pid);
 }
 
 bool account_creation_owner_pending(const char *name)
 {
+	std::lock_guard<std::mutex> lock(kept_saves_mutex);
 	for (const auto &[pid, saved] : kept_saves)
 	{
 		(void)pid;
@@ -4200,7 +4219,7 @@ bool account_creation_owner_pending(const char *name)
 		    !strcasecmp(saved.account.c_str(), name))
 			return true;
 	}
-	return false;
+	return kept_character_recovery_owner_pending(name);
 }
 
 void account_creation_saved(const player_save_completion &completion)
@@ -4234,7 +4253,10 @@ void account_creation_pulse()
 			++found;
 		}
 		else
+		{
+			std::lock_guard<std::mutex> lock(kept_saves_mutex);
 			found = kept_saves.erase(found);
+		}
 		P_desc d = writer_replied(saved.request);
 		if (d && (!d->character || d->character->runtime_id != saved.runtime ||
 			  GET_PID(d->character) != pid || !d->account ||

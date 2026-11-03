@@ -650,6 +650,7 @@ flatfile_identity_result flatfile_identity_lookup_pid(const std::string &root, i
 	const flatfile_identity_result result = load_catalog(root, &catalog, error);
 	if (result != flatfile_identity_result::ok)
 		return result;
+	record->catalog_revision = catalog.revision;
 	flatfile_identity_record *entry = find_pid(&catalog, pid);
 	if (!entry)
 		return flatfile_identity_result::not_found;
@@ -738,12 +739,11 @@ flatfile_identity_result flatfile_identity_prepare_sync_account(
 	return flatfile_identity_result::ok;
 }
 
-flatfile_identity_result
-flatfile_identity_prepare_remove(const std::string &root,
-				 const flatfile_identity_lock &identity_lock,
-				 const flatfile_authority_lock &authority_lock, int32_t pid,
-				 const std::string &expected_name,
-				 flatfile_authority_operation *operation, std::string *error)
+flatfile_identity_result flatfile_identity_prepare_remove(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority_lock, int32_t pid,
+	const std::string &expected_name, flatfile_authority_operation *operation,
+	std::string *error, uint64_t expected_catalog_revision)
 {
 	std::string expected_key;
 	if (!operation || pid <= 0 || !identity_lock.matches(root) ||
@@ -759,6 +759,10 @@ flatfile_identity_prepare_remove(const std::string &root,
 	const auto loaded = load_catalog(root, &catalog, error);
 	if (loaded != flatfile_identity_result::ok)
 		return loaded;
+	if (expected_catalog_revision && (catalog.revision != expected_catalog_revision ||
+					  (find_active_name(&catalog, expected_name) &&
+					   find_active_name(&catalog, expected_name)->pid != pid)))
+		return flatfile_identity_result::conflict;
 	flatfile_identity_record *entry = find_pid(&catalog, pid);
 	std::string current_key;
 	if (!entry || !canonical_name(entry->name, &current_key) || current_key != expected_key)
@@ -778,5 +782,51 @@ flatfile_identity_prepare_remove(const std::string &root,
 	operation->kind = flatfile_authority_operation_kind::write;
 	operation->filename = identity_filename;
 	operation->bytes = std::move(bytes);
+	return flatfile_identity_result::ok;
+}
+
+flatfile_identity_result flatfile_identity_prepare_recovered_kept(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority, const flatfile_identity_record &recovered,
+	uint64_t expected_catalog_revision, flatfile_authority_operation *operation,
+	std::string *error)
+{
+	std::string name_key, account_key;
+	if (!operation || !identity_lock.matches(root) || !authority.matches(root) ||
+	    recovered.pid <= 0 || recovered.level != 0 ||
+	    !canonical_name(recovered.name, &name_key) ||
+	    !canonical_name(recovered.account, &account_key))
+		return flatfile_identity_result::invalid;
+	if (flatfile_authority_transaction_recover(root, authority, error) !=
+	    flatfile_authority_transaction_result::ok)
+		return flatfile_identity_result::io_error;
+	identity_catalog catalog;
+	if (load_catalog(root, &catalog, error) != flatfile_identity_result::ok)
+		return flatfile_identity_result::invalid;
+	if (catalog.revision != expected_catalog_revision || recovered.pid >= catalog.next_pid)
+		return flatfile_identity_result::conflict;
+	auto *existing = find_pid(&catalog, recovered.pid);
+	if (existing)
+	{
+		std::string existing_name, existing_owner;
+		if (!existing->active || existing->blocked || existing->level != 0 ||
+		    !canonical_name(existing->name, &existing_name) || existing_name != name_key ||
+		    !canonical_name(existing->account, &existing_owner) ||
+		    existing_owner != account_key)
+			return flatfile_identity_result::conflict;
+		return flatfile_identity_result::unchanged;
+	}
+	else
+	{
+		if (find_active_name(&catalog, recovered.name))
+			return flatfile_identity_result::conflict;
+		catalog.entries.push_back(recovered);
+	}
+	*operation = {};
+	operation->store = flatfile_authority_store::identities;
+	operation->filename = identity_filename;
+	if (catalog.revision == UINT64_MAX ||
+	    !encode_file(catalog, catalog.revision + 1, &operation->bytes))
+		return flatfile_identity_result::invalid;
 	return flatfile_identity_result::ok;
 }
