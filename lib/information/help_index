@@ -26142,7 +26142,7 @@ See also: Human, Orc, Swashbuckler, ships
 
 AURA_OF_IMPROVED_HEALING (Innate)
 ===========================================================================
-Syntax: innate aura_of_improved_healing
+Syntax: innate aura healing (or innate aura_of_improved_healing)
 
 Paladins at level 30 can radiate this white aura to eligible group members.
 Cleric Healers cannot receive its bonus, and healing spells cast by Healers
@@ -26165,7 +26165,7 @@ See also: HEALER, EPIC WARDING FAITH
 #
 "AURA OF SPELL PROTECTION" (Innate)
 ===========================================================================
-Syntax: innate aura_of_spell_protection
+Syntax: innate aura spell (or innate aura_of_spell_protection)
 Healers and Holymen can radiate this magenta aura after specializing at level 30.
 It improves group spell protection based on the provider's level.
 Each provider can maintain only one aura at a time.
@@ -26174,7 +26174,7 @@ See also: healer, holyman, aura of protection
 #
 "AURA OF PROTECTION" (Innate)
 ===========================================================================
-Syntax: innate aura_of_protection
+Syntax: innate aura protection (or innate aura_of_protection)
 Paladins, Anti-Paladins, Holymen and Zealots can radiate this group aura.
 It improves armor class based on the provider's level. Identical types do not stack.
 ===========================================================================
@@ -26186,6 +26186,9 @@ Paladins, Anti-Paladins and eligible Clerics can provide group auras.
 A provider maintains only one aura at a time; different aura types from
 separate providers can coexist. Identical aura types do not stack.
 Improved Healing does not affect Cleric Healers or enhance Healer-cast spells.
+Raise an aura with 'innate aura <keyword>': protection, precision, endurance,
+healing, vigor, battlelust or spell. Any prefix works, such as 'innate aura
+heal'. 'innate aura of <keyword>' and the full innate names also work.
 ===========================================================================
 See also: aura of improved healing, aura of spell protection, aura of protection
 #
@@ -27800,4 +27803,117 @@ The roster labels the retired standalone Assassin and Thief classes.
 
 Classes, Class Guides, Race, Skills, Spells, Specialization, Multiclass
 
+#
+Major Globe
+Major globe is another name for Globe of Invulnerability. Read
+'help globe of invulnerability' for the protection spell and
+'spells info globe of invulnerability' for class and circle access.
+It blocks eligible spells, not physical attacks.
+See also: Globe of Invulnerability, Minor Globe of Invulnerability.
+#
+Race List
+Use 'race list' to browse the racewar roster, 'race info <race>' for
+traits and class choices, and 'race innates <race>' for racial abilities
+and unlock levels. Disabled and special races show their restrictions.
+See also: Race, Races, Racial.
+#
+Attach
+Use 'wear <item> attach' to attach a suitable item to your belt.
+You need a worn belt, an empty attachment slot and an item that can
+attach to a belt. Not every held item or instrument supports attachment.
+See also: Wear, Equipment, Instruments.
+#
+Enhance Weapon
+Weapon enhancement uses 'enhance <item>' for superior-stat improvements
+or 'enhance <item> <donor item or essence>' for replacement or an essence.
+These commands can consume money and materials. Read 'help enhance'
+for eligibility, caps, costs and donor restrictions before using them.
+See also: Enhance, Craft, Salvage.
+#
+Enhance Material
+Use 'enhance <item>' to see the combined missing materials for superior
+enhancement. If you already carry the supplies and money, this command
+performs the enhancement; it is not a free preview. Materials must be
+carried directly. Read 'help enhance' for the full requirements and fees.
+See also: Enhance, Craft, Salvage, Chaos Pouch.
+#
+Dayblind
+Dayblind is a passive sight restriction, not a command. Bright rooms can
+limit the sight of a creature with this innate; a globe of darkness and
+twilight conditions affect that restriction. Use 'race innates <race>'
+to check racial abilities and 'race info <race>' for the race's traits.
+See also: Infravision, Ultravision, Globe of Darkness, Racial.
+#
+Human Innates
+Use 'race innates human' for Human racial abilities and their unlock
+levels. Use 'class innates <class or specialization>' for inherited
+class abilities and 'innate' for your own available abilities.
+See also: Human, Innate, Race, Class.
+#
+Dragoon Hunter
+The specialization is named Dragon Hunter, under the Dragoon class.
+Dragoon is disabled for normal creation in the current server policy.
+Use 'class info dragon hunter' or 'class specs dragoon' for the reference;
+a reference listing does not make the class available for creation.
+See also: Dragoon, Class, Specialization.
+#
+Dragoon Priest
+The specialization is named Dragon Priest, under the Dragoon class.
+Dragoon is disabled for normal creation in the current server policy.
+Use 'class info dragon priest' or 'class specs dragoon' for the reference;
+a reference listing does not make the class available for creation.
+See also: Dragoon, Class, Specialization.
+#
+Dragoon Lancer
+The specialization is named Dragon Lancer, under the Dragoon class.
+Dragoon is disabled for normal creation in the current server policy.
+Use 'class info dragon lancer' or 'class specs dragoon' for the reference;
+a reference listing does not make the class available for creation.
+See also: Dragoon, Class, Specialization.
+#
+Epic Skill List
+Use 'epic skills' to list your epic skills and 'help epic skills' for
+training guidance. 'skills info <skill name>' shows a skill's details;
+ordinary class catalogs do not include epic purchases. Training normally
+starts at level 30 and still requires the skill's eligibility and costs.
+See also: Epic Skills, Skills, Epic Skill Costs.
+#
+Endurance Aura
+The ability is Aura of Endurance. Use 'innate aura of endurance' when
+you have the innate; Paladins and Anti-Paladins gain it at level 15.
+Read 'help aura of endurance' and 'help paladin auras' for its effects
+and the shared aura rules. It is separate from the Endurance spell.
+See also: Aura of Endurance, Paladin Auras, Endurance.
+#
+Summon Ship
+At a ship-service NPC, use 'summon ship' to call your own ship and
+'summon time' to ask about travel time. Carry enough coins for the
+quoted fee and meet the normal raidable and service requirements.
+Sinking, busy or maintained ships can refuse the request.
+
+Summoning takes time. It removes passengers and clears cargo for mortal
+owners, so unload valuables first. An existing summons cannot be ordered
+again; 'summon time' reports its remaining time. This is ship service,
+not the creature-summoning spell.
+See also: Ship Basics, Ship Commands, Sailing.
+#
+Call Ship
+To call your own ship at a ship-service NPC, use 'summon ship'.
+Read 'help summon ship' first: the service costs coins, takes time,
+removes passengers and clears cargo for mortal owners.
+See also: Summon Ship, Ship Basics, Sailing.
+#
+Totem Mastery
+The epic skill is named Totemic Mastery. Read 'help totemic mastery'
+for its totem and casting benefits, or 'skills info totemic mastery'
+for your current rating. It uses separate epic-training requirements;
+it is not an innate activation command.
+See also: Totemic Mastery, Totems, Epic Skills.
+#
+Flight Paths
+Use 'flights' to see the ordinary flight stops this character has learned.
+Use 'list' at a waiting flight carrier to learn its stop and see available
+routes and fares. Buy the listed ticket and give it to that same carrier.
+Read 'help flights' for discovery, prices, restrictions and special trips.
+See also: Flights, Travel.
 #

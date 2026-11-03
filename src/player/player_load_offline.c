@@ -24,6 +24,7 @@
 #include "sql/sql_player.h"
 
 #include <unordered_map>
+#include <cerrno>
 
 extern struct mm_ds *dead_mob_pool;
 extern struct mm_ds *dead_pconly_pool;
@@ -168,6 +169,21 @@ bool player_load_offline_complete(const player_load_result &result)
 	auto found = offline_loads.find(result.request_id);
 	if (found == offline_loads.end())
 		return false;
+	if (!player_load_items_read_current(result))
+	{
+		if (player_load_pipeline_submit(result.request) ==
+		    player_load_submit_outcome::accepted)
+			return true;
+		auto done = std::move(found->second);
+		offline_loads.erase(found);
+		player_load_result failed;
+		failed.request_id = result.request_id;
+		failed.pid = result.pid;
+		failed.outcome = player_load_outcome::retryable_failure;
+		failed.error_code = EAGAIN;
+		done(failed);
+		return true;
+	}
 	auto done = std::move(found->second);
 	offline_loads.erase(found);
 	done(result);

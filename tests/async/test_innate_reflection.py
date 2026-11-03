@@ -57,7 +57,8 @@ static void clear(P_char ch) {
 '''
 functions = [
     ('utility.c', 'int flag2idx('),
-    ('interp.c', 'void argument_interpreter('), ('interp.c', 'bool is_abbrev('),
+    ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
+    ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
     ('affects.c', 'struct affected_type *get_spell_from_char('),
     ('affects.c', 'bool affected_by_spell('),

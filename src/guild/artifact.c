@@ -3774,8 +3774,9 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 		// Boot qualification knows the saved holder even when legacy tracking
 		// still names a room or an earlier owner. Placement clears these sources,
 		// so they cannot override a later live transfer.
-		int location = row.locType == ARTIFACT_ON_PC ? row.location :
-							       row.offline_pet_owner_pid;
+		int location = row.offline_pet_owner_pid > 0 ?
+				       row.offline_pet_owner_pid :
+				       (row.locType == ARTIFACT_ON_PC ? row.location : 0);
 		for (const auto &source : row.canonical_payloads)
 		{
 			uint64_t pid = 0;

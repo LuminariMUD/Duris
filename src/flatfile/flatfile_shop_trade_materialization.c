@@ -814,7 +814,7 @@ flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_r
 flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_reconcile(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t player_pid,
 	const std::vector<flatfile_item_ownership_record> &owned, player_snapshot *snapshot,
-	std::string *error)
+	std::string *error, std::span<const uint64_t> settled_sale_items)
 {
 	if (root.empty() || !lock.matches(root) || !player_pid || !snapshot ||
 	    snapshot->pid != static_cast<int32_t>(player_pid))
@@ -833,6 +833,9 @@ flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_r
 	std::unordered_map<uint64_t, std::unordered_set<uint64_t>> existing_pets;
 	try
 	{
+		// A payment receipt outlives the first full save's materialization events.
+		// Its sold UIDs still require custody reconciliation in later captures.
+		mentioned.insert(settled_sale_items.begin(), settled_sale_items.end());
 		owner_records.reserve(owned.size());
 		for (const auto &record : owned)
 			if (!owner_records.emplace(record.item_uid, record).second)

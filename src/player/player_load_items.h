@@ -46,6 +46,9 @@ struct player_load_item_materialize_metrics
 
 // Game-thread qualification of the immutable gameplay load. Rejected components
 // remain in the original store; accepted sources are sealed for construction.
+// Game-thread delivery: an artifact cut invalidated by writer work needs another
+// read through the original request/deadline before materialization or inspection.
+bool player_load_items_read_current(const player_load_result &result);
 unsigned int player_load_items_qualify(player_load_result *result);
 bool player_load_item_graph_materialize_player(P_char character, const player_load_result &result,
 					       bool hydrate_ownership,

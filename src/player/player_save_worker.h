@@ -175,6 +175,14 @@ bool persistence_writer_wait_idle(uint64_t timeout_msec);
 std::vector<persistence_job_owner> persistence_writer_pending_owners(void);
 const char *persistence_job_kind_name(persistence_job_kind kind);
 player_save_worker_health player_save_worker_health_copy(void);
+// A read cut can be reused only while this token stays unchanged. Zero means
+// queued/in-flight writes could still invalidate a read that starts now.
+inline uint64_t persistence_writer_read_sequence()
+{
+	const auto health = player_save_worker_health_copy();
+	return health.queued_jobs || health.inflight_jobs ? 0 :
+							    health.submitted + health.replaced + 1;
+}
 void player_save_worker_reset_for_tests(void);
 
 #endif

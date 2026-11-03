@@ -36,7 +36,11 @@ base = base.replace('assert(!GET_RIDER(ch));\n\tscheduled.erase(ch);',
 
 # Exercise production companion placement inside the isolated room-I/O fixture.
 base = ('#include "core/prototypes.h"\n'
+        '#include "combat/attack_continuation.h"\n'
+        'static uint64_t fixture_runtime_id = 0;\n'
         'static bool move_riding_companions(P_char, int, int);\n') + base
+base = base.replace('P_char ch = new char_data{};',
+                    'P_char ch = new char_data{}; ch->runtime_id = ++fixture_runtime_id;')
 base = base.replace('''	if (P_char rider = GET_RIDER(ch))
 	{
 		char_from_room(rider);
@@ -60,6 +64,11 @@ RUNTIME = r'''
 #include "net/gmcp.h"
 #include "telemetry/telemetry_runtime.h"
 #include "classes/dreadlord.h"
+P_char find_character_by_runtime_id(uint64_t id) {
+    for (P_char ch = character_list; ch; ch = ch->next)
+        if (ch->runtime_id == id) return ch;
+    return nullptr;
+}
 bool is_dragoon_mounted(P_char) { return false; }
 void telemetry_combat_context_changed(P_char) {}
 bool training_dummy_is(P_char) { return false; }
@@ -153,6 +162,8 @@ RUNTIME = RUNTIME.replace('#include "world/new_events.c"',
                               'extern const int top_of_world;', 'extern int top_of_world;'))
 
 driver = CASES[:CASES.index('    visit(1);')]
+driver = driver.replace('P_char ch = new char_data{};',
+                        'P_char ch = new char_data{}; ch->runtime_id = ++fixture_runtime_id;')
 driver = driver.replace('    initialize_transport();', '''    nevent_bind_game_thread();
     ne_dead_event_pool = &event_pool;
     link_types[LNK_RIDING].name = "RIDING";
@@ -451,6 +462,7 @@ with tempfile.TemporaryDirectory(prefix='flight-runtime-', dir=build) as tempora
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
                     '-I', str(ROOT / 'src'), '-I/usr/include/mysql', '-I/usr/include/libxml2',
                     str(source), str(ROOT / 'src/world/world_singletons.c'),
+                    str(ROOT / 'src/combat/attack_continuation.c'),
                     '-Wl,--gc-sections', '-lbsd', str(HARNESS_STUBS), '-o', str(binary)], check=True)
     subprocess.run([str(binary)], check=True,
                    env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=1:halt_on_error=1',

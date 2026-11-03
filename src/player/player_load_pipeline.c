@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_pipeline.h"
+#include "player/player_save_worker.h"
 #include "sql/sql_thread_init.h"
 
 #include "flatfile/flatfile_player_repository.h"
@@ -227,6 +228,7 @@ void worker_main()
 		player_load_result result = {};
 		result.request_id = job.request.request_id;
 		result.pid = job.request.pid;
+		const uint64_t read_sequence = persistence_writer_read_sequence();
 		try
 		{
 			std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -244,6 +246,7 @@ void worker_main()
 			try
 			{
 				result = execute_callback(job.request, execute_context);
+				result.request = job.request;
 			}
 			catch (const std::bad_alloc &)
 			{
@@ -260,6 +263,7 @@ void worker_main()
 			(result.request_id != job.request.request_id ||
 			 (job.request.pid > 0 && result.pid != job.request.pid) || result.pid <= 0);
 		result.request_id = job.request.request_id;
+		result.item_read_writer_sequence = read_sequence;
 		if (identity_mismatch)
 		{
 			result.outcome = player_load_outcome::stale;
@@ -480,9 +484,11 @@ bool player_load_pipeline_execute_sync(player_load_request request, player_load_
 	} thread_guard;
 #endif
 
+	const uint64_t read_sequence = persistence_writer_read_sequence();
 	try
 	{
 		*result_out = execute(request, context);
+		result_out->request = request;
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -500,6 +506,7 @@ bool player_load_pipeline_execute_sync(player_load_request request, player_load_
 		result_out->outcome = player_load_outcome::retryable_failure;
 		result_out->error_code = EFAULT;
 	}
+	result_out->item_read_writer_sequence = read_sequence;
 	if (result_out->request_id != request.request_id ||
 	    (request.pid > 0 && result_out->pid != request.pid) || result_out->pid <= 0)
 	{
