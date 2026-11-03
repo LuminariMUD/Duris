@@ -58,7 +58,8 @@ and Git checks. Exact current scope and remaining growth limits are recorded bel
   `branch/issue-446-posthog-season2`, head `bd6f64faf`, based on #629.
 - Time-page repair: [PR #631](https://github.com/LuminariMUD/Duris/pull/631),
   `branch/issue-446-posthog-time-page`, head `1fa1e04c5`, based on #630.
-- Acceptance/evidence: `branch/issue-446-posthog-acceptance`, based on #631.
+- Acceptance/evidence: [PR #633](https://github.com/LuminariMUD/Duris/pull/633),
+  `branch/issue-446-posthog-acceptance`, based on #631.
   Review these in order; retarget each child after its parent merges. No release
   tag, deployment, restart, migration, quota reset or capture campaign is needed.
 - The user confirms the FREE tier and production season 2. No capture/identity
