@@ -1,6 +1,6 @@
 # Issue #612: durable Keep and resumable first entry
 
-Status: implementation in progress; initial MariaDB ownership chunk locally qualified and ready for its first PR. No production operation performed. Updated 2026-11-03.
+Status: implementation in progress; initial MariaDB ownership delivered in open [PR #628](https://github.com/LuminariMUD/Duris/pull/628). No production operation performed. Updated 2026-11-03.
 
 - Work item: [Duris #612](https://github.com/LuminariMUD/Duris/issues/612).
 - GitHub Development branch: [branch/issue-612-kept-character-resume](https://github.com/LuminariMUD/Duris/tree/branch/issue-612-kept-character-resume).
@@ -22,7 +22,8 @@ Existing broken records receive a guarded, testable repair/release path. Ownersh
 - **Reproduction established on the inspected base.** Fresh MariaDB and flat-file builds ran the new real-socket `test_kept_character_journey.py`. MariaDB saved the synthetic kept character at level 0 / revision 1 / NULL owner; fresh account login had no selectable character. The flat-file control passed disconnect, account selection and cold restart. Fixture boot uses a disposable migrated schema, nonempty disposable credentials and a valid level-31 `level_cap` seed. It never reads checkout `.env`.
 - **Chunk 1: initial MariaDB ownership (locally qualified).** The save pipeline captures the initial account as owned snapshot data while the existing written revision is zero. Such captures include all components, including coalesced captures. The SQL transaction validates the account and exact PID/name/owner/mapping, rejects competing identities and tombstones, then publishes player, membership and opening balances together. A same-attempt retry recognizes a committed baseline without replaying older creation state. Snapshot schema 15 carries the account; supported schemas through 14 decode with an empty creation context. Ordinary saves leave an established owner alone.
 - **Ablation refinement:** use existing `written_revision == 0` to retain initial account context until completion; no additional transient baseline flag or synchronous game-loop SQL is needed. The rest of the original acceptance scope remains required. The current journey checks ownership/selectability only; it does not yet claim approval, resumption, delayed acknowledgment, grants or recovery coverage.
-- **Next:** open the qualified chunk-1 PR immediately, then stack a dependent branch for atomic flat-file first publication, creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery. Keep this section current with PR links, exact passing commands and unresolved gates.
+- **Git handoff:** [PR #628](https://github.com/LuminariMUD/Duris/pull/628) targets `master` from `branch/issue-612-kept-character-resume`; implementation commit `8bfa04068`. It is ready for review and intentionally does not close #612. No release tag is appropriate for this unmerged feature chunk.
+- **Next:** stack a dependent branch for atomic flat-file first publication, then creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery. Keep this section current with PR links, exact passing commands and unresolved gates.
 - Synthetic build/test logs are under ignored `bin/tests/issue-612-*`. Pre-change evidence: `issue-612-before-mariadb.log` and `issue-612-before-flatfile.log`. No credentials, runtime state, generated artifacts or production identifiers are tracked.
 
 Chunk-1 proof (all passed locally on 2026-11-03):
