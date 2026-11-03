@@ -396,7 +396,8 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
                      class_name: str = "w", *, account: str = ACCOUNT,
                      character: str = CHARACTER, email: str = EMAIL,
                      hometown: str | None = None, race_name: str = "h",
-                     existing_account: bool = False, alignment: str = "g") -> None:
+                     existing_account: bool = False, alignment: str = "g",
+                     hardcore: bool = False) -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
@@ -432,10 +433,15 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     client.send(race_name)
     client.expect("Male or Female")
     client.send("m")
-    prompt, _ = client.expect_any(("Hardcore", "Class Selection"))
-    if prompt == "Hardcore":
-        client.send("n")
+    prompt, warning = client.expect_any(("Please select either H", "Class Selection"))
+    if prompt == "Please select either H":
+        if hardcore:
+            require("Hardcore char can only die 5 times" in warning,
+                    "Hardcore creation did not warn about five counted deaths")
+        client.send("h" if hardcore else "n")
         client.expect("Class Selection")
+    else:
+        require(not hardcore, "Hardcore creation was not offered")
     client.send(class_name)
     stat_prompt_seen = False
     prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))

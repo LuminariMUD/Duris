@@ -100,7 +100,7 @@ assert "hardcore_config_death_is_final" in fight
 assert "death_permadeath" in s
 assert "hardcore_config_level_loss_allowed" in limits
 assert "level_loss_protected_at" in s
-assert "death.max.count=1" in c
+assert "death.max.count=5" in c
 assert "configured death limit" in help_index
 assert "fifth death" not in help_index.lower()
 
