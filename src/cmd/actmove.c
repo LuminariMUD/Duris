@@ -2713,10 +2713,10 @@ void do_open(P_char ch, char *argument, int /*cmd*/)
 					    FALSE, ch, robj, 0, TO_ROOM);
 				}
 
-				obj_to_char(robj, ch);
+				const bool object_survived = obj_to_char(robj, ch);
 				obj_from_char(obj);
 				extract_obj(obj, FALSE);
-				if (itemvalue(robj) > 100)
+				if (object_survived && itemvalue(robj) > 100)
 				{
 					statuslog(
 						ch->player.level,

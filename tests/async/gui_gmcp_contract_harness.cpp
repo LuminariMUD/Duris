@@ -456,7 +456,7 @@ bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_ent
 {
 	return reward_hydrate;
 }
-void obj_to_char(P_obj object, P_char actor)
+bool obj_to_char(P_obj object, P_char actor)
 {
 	assert(OBJ_NOWHERE(object));
 	++reward_attachments;
@@ -465,6 +465,7 @@ void obj_to_char(P_obj object, P_char actor)
 	object->next_content = actor->carrying;
 	actor->carrying = object;
 	gmcp_items_changed(actor);
+	return true;
 }
 void extract_obj(P_obj object, int)
 {

@@ -183,7 +183,7 @@ P_obj get_obj_in_list_vis(P_char, const char *, P_obj, bool)
 char *str_dup(const char *) { abort(); }
 char *coin_stringv(int, int) { abort(); }
 int SUB_MONEY(P_char, int, int) { abort(); }
-void obj_to_char(P_obj, P_char) { abort(); }
+bool obj_to_char(P_obj, P_char) { abort(); return true; }
 
 static P_char character(bool npc, int room)
 {

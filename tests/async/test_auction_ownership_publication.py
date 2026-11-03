@@ -38,7 +38,7 @@ harness = r'''
 bool currency_transaction_submit_wallet_value(P_char, int64_t, currency_reason_type, int64_t,
     critical_source_site, critical_deadline_class, currency_completion_fn, const void *,
     size_t) { return true; }
-void obj_to_char(P_obj, P_char) {}
+bool obj_to_char(P_obj, P_char) { return true; }
 void extract_obj(P_obj, int = 0) {}
 P_obj find_live_object(P_obj expected, uint64_t) { return expected; }
 ''' + declarations + publication + r'''

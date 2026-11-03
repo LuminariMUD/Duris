@@ -238,12 +238,13 @@ void send_to_char(const char *text, P_char) { grant_messages += text; }
 void send_to_char(const char *, P_char, int) {}
 void extract_obj(P_obj object, int) { ++extracted_count; extracted_uids.push_back(object->obj_uid); }
 void obj_from_char(P_obj) {}
-void obj_to_char(P_obj object, P_char actor)
+bool obj_to_char(P_obj object, P_char actor)
 {
     object->loc_p = LOC_CARRIED;
     object->loc.carrying = actor;
     object->next_content = actor->carrying;
     actor->carrying = object;
+    return true;
 }
 void obj_to_obj(P_obj, P_obj) {}
 void obj_to_room(P_obj, int) {}

@@ -140,11 +140,12 @@ void obj_to_room(P_obj object,int room) {
  object->loc_p=LOC_ROOM; object->loc.room=room;
  object->next_content=rooms[room].contents; rooms[room].contents=object; place_tree(object);
 }
-void obj_to_char(P_obj object,P_char mob) {
- if(intercept_swap_placement(object)) return;
- if(IS_OBJ_STAT2(object,ITEM2_CRUMBLELOOT) && IS_PC(mob) && !IS_TRUSTED(mob)) { extract_obj(object,TRUE); return; }
+bool obj_to_char(P_obj object,P_char mob) {
+ if(intercept_swap_placement(object)) return swap_placement_fault != 3;
+ if(IS_OBJ_STAT2(object,ITEM2_CRUMBLELOOT) && IS_PC(mob) && !IS_TRUSTED(mob)) { extract_obj(object,TRUE); return false; }
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob;
  object->next_content=mob->carrying; mob->carrying=object; artifact_object_placed(object);
+ return true;
 }
 void obj_to_obj(P_obj object,P_obj parent) {
  if(intercept_swap_placement(object)) return;

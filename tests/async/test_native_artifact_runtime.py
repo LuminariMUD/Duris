@@ -119,9 +119,10 @@ void stop_follower(P_char) {}
 int setup_pet(P_char,P_char,int,int) { return 0; }
 void event_pet_death(P_char,P_char,P_obj,void *) {}
 int get_spell_circle(P_char,int) { return 1; }
-void obj_to_char(P_obj object,P_char actor) {
+bool obj_to_char(P_obj object,P_char actor) {
     object->loc_p=LOC_CARRIED; object->loc.carrying=actor;
     object->next_content=actor->carrying; actor->carrying=object;
+    return true;
 }
 void obj_from_char(P_obj object) {
     item_actions_source_leaving(object); P_obj *entry=&object->loc.carrying->carrying;

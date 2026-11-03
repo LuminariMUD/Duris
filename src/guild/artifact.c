@@ -3062,7 +3062,11 @@ void poof_artifact(P_obj arti)
 		if (cont != arti)
 		{
 			obj_from_obj(arti);
-			obj_to_char(arti, owner);
+			if (!obj_to_char(arti, owner))
+			{
+				writeCharacter(owner, RENT_CRASH, owner->in_room);
+				return;
+			}
 		}
 		break;
 	case LOC_WORN:
@@ -3070,7 +3074,11 @@ void poof_artifact(P_obj arti)
 		if (cont != arti)
 		{
 			obj_from_obj(arti);
-			obj_to_char(arti, owner);
+			if (!obj_to_char(arti, owner))
+			{
+				writeCharacter(owner, RENT_CRASH, owner->in_room);
+				return;
+			}
 		}
 		break;
 	case LOC_INSIDE:

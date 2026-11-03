@@ -219,11 +219,12 @@ void obj_from_char(P_obj object)
 	character.carrying = nullptr;
 }
 
-void obj_to_char(P_obj object, P_char seller)
+bool obj_to_char(P_obj object, P_char seller)
 {
 	assert(object == &sold && seller == &character && sold_place == place::held);
 	sold_place = place::inventory;
 	character.carrying = &sold;
+	return true;
 }
 
 void extract_obj(P_obj object, int)

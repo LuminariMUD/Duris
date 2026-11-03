@@ -51,10 +51,11 @@ bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_ent
     ++hydrations; assert(count == (multiple ? 4 : 2) && entries[0].owner.id == 42);
     return allow_hydration;
 }
-void obj_to_char(P_obj object, P_char actor) {
+bool obj_to_char(P_obj object, P_char actor) {
     assert(OBJ_NOWHERE(object)); ++attachments;
     object->loc_p = LOC_CARRIED; object->loc.carrying = actor;
     gmcp_items_changed(actor);
+    return true;
 }
 void extract_obj(P_obj object, int gone) {
     assert(OBJ_NOWHERE(object) && !gone); ++extractions;

@@ -1929,7 +1929,7 @@ void set_obj_extra2_flags(P_obj object, unsigned flags)
 }
 
 // Give an object to a char
-void obj_to_char(P_obj object, P_char ch)
+bool obj_to_char(P_obj object, P_char ch)
 {
 	P_obj o;
 	char Gbuf[MAX_STRING_LENGTH];
@@ -1938,7 +1938,7 @@ void obj_to_char(P_obj object, P_char ch)
 	{
 		logit(LOG_MOB, "obj_to_char: no ch, obj vnum %d", object ? OBJ_VNUM(object) : -1);
 		logit(LOG_OBJ, "obj_to_char: no ch, obj vnum %d", object ? OBJ_VNUM(object) : -1);
-		return;
+		return object != nullptr;
 	}
 
 	if (!object)
@@ -1951,7 +1951,7 @@ void obj_to_char(P_obj object, P_char ch)
 		{
 			logit(LOG_OBJ, "obj_to_char: no obj: player (%s).", GET_NAME(ch));
 		}
-		return;
+		return false;
 	}
 
 	if (training_dummy_is(ch))
@@ -1959,29 +1959,23 @@ void obj_to_char(P_obj object, P_char ch)
 		logit(LOG_DEBUG, "obj_to_char: training dummy %s refused object vnum %d",
 		      J_NAME(ch), OBJ_VNUM(object));
 		if (OBJ_NOWHERE(object) && ch->in_room != NOWHERE)
+		{
+			const uint64_t item_uid = object->obj_uid;
 			obj_to_room(object, ch->in_room);
-		return;
+			return find_live_object(object, item_uid) != nullptr;
+		}
+		return true;
 	}
 
 	if (!OBJ_NOWHERE(object))
 	{
 		logit(LOG_DEBUG, "obj_to_char: wonders never cease, obj vnum %d not in NOWHERE",
 		      OBJ_VNUM(object));
-		return;
-		/*
-		    act("&+gWith a scurry, bugs appear from nowhere, engulfing $p.", TRUE, ch, object, 0, TO_ROOM);
-		    extract_obj(object, TRUE); // A bug -> eating an arti.. ouch.
-		    return;
-		*/
+		return true;
 	}
 
 	if (IS_OBJ_STAT2(object, ITEM2_CRUMBLELOOT) && IS_PC(ch) && !IS_TRUSTED(ch))
 	{
-		// DEFERRED: use-after-free — extract_obj frees object, but callers in
-		// do_get/give/remove (actobj.c) still dereference the stale pointer.
-		// Setting object=NULL here only clears our local copy; the caller's
-		// pointer is passed by value. Fix requires returning a freed-status
-		// from obj_to_char/obj_to_room, touching hundreds of call sites.
 		if (ch->in_room)
 		{
 			snprintf(
@@ -1991,8 +1985,7 @@ void obj_to_char(P_obj object, P_char ch)
 			send_to_room(Gbuf, ch->in_room);
 		}
 		extract_obj(object, TRUE); // Crumbleloot arti?
-		object = NULL;
-		return;
+		return false;
 	}
 
 	if (ch->carrying && (ch->carrying->R_num == object->R_num))
@@ -2043,6 +2036,7 @@ void obj_to_char(P_obj object, P_char ch)
 	gmcp_items_changed(ch);
 	mark_char_or_owner_dirty(ch);
 	SET_BIT(ch->runtime_flags, CHAR_RFLAG_DIRTY_INVENTORY);
+	return true;
 }
 
 /*
@@ -3540,7 +3534,7 @@ void Decay(P_obj obj)
 				    (obj->loc.wearing->equipment[pos] == obj))
 					break;
 
-			if (obj->loc.wearing->equipment[pos] != obj)
+			if (pos >= MAX_WEAR)
 			{
 				logit(LOG_DEBUG, "Decay():  equipped obj %d (%s) not in equip (%s)",
 				      obj->R_num, obj->name, GET_NAME(obj->loc.wearing));
@@ -3550,7 +3544,9 @@ void Decay(P_obj obj)
 					TRUE); // If, God forbid, an artifact decays, I guess we remove it from active artis list.
 				return;
 			}
-			obj_to_char(unequip_char(obj->loc.wearing, pos), obj->loc.wearing);
+			P_char wearer = obj->loc.wearing;
+			if (!obj_to_char(unequip_char(wearer, pos), wearer))
+				return;
 			/*
 			 * now carried, drop through
 			 */

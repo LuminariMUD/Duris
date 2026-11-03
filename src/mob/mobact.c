@@ -7066,16 +7066,12 @@ int IsBetterObject(P_char ch, P_obj obj, int foo)
 					act("You stop using $p.", FALSE, ch, foob, 0, TO_CHAR);
 					act("$n stops using $p.", TRUE, ch, foob, 0, TO_ROOM);
 					foo2 = unequip_char(ch, l);
-					obj_to_char(foo2, ch);
+					const bool object_survived = obj_to_char(foo2, ch);
 					wear(ch, obj, equipment_pos_table[a][1], 1);
 					CharWait(ch, 1);
-					IsBetterObject(ch, foo2, a + 1); /*
-					                                  * Nifty recursive
-					                                  * call to make of
-					                                  * use item if it
-					                                  * can be used
-					                                  * elsewhere
-					                                  */
+					// Try the replaced item in the remaining equipment slots.
+					if (object_survived)
+						IsBetterObject(ch, foo2, a + 1);
 					return 1;
 				}
 			}

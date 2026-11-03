@@ -101,11 +101,11 @@ void epic_store_committed(P_char pl, bool committed, const epic_command_result &
 		SET_BIT(obj->bitvector5, AFF5_FOREST_SIGHT);
 	send_to_char("Kannard says, 'Ah, good choice! Quite a rare item!'\n", pl);
 	act("You now have $p!\r\n", FALSE, pl, obj, 0, TO_CHAR);
+	epiclog(56, "%s bought '%s' (%d) at the epic store for %d epics.", J_NAME(pl),
+		obj->short_description, context.object_vnum, context.cost);
 	obj_to_char(obj, pl);
 	if (!do_save_silent(pl, 1))
 		logit(LOG_WIZ, "Failed to save %s after epic store purchase.", GET_NAME(pl));
-	epiclog(56, "%s bought '%s' (%d) at the epic store for %d epics.", J_NAME(pl),
-		obj->short_description, context.object_vnum, context.cost);
 }
 
 bool submit_epic_store_purchase(P_char pl, int object_vnum, int cost, bool forest_sight = false)

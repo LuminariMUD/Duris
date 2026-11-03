@@ -2119,7 +2119,8 @@ int githpc_special_weap(P_obj obj, P_char ch, int cmd, char *arg)
 						    FALSE, ch, 0, 0, TO_ROOM);
 						obj_to_char(unequip_char(ch, WIELD), ch);
 						obj_from_char(obj);
-						obj_to_char(obj, vict);
+						if (!obj_to_char(obj, vict))
+							return TRUE;
 						act("A bright flash of light erupts from your hands!!! When the light dies down, you realize $p has returned to your posession!",
 						    FALSE, vict, 0, obj, TO_CHAR);
 						act("A bright flash of light erupts from $n's hands!!!",

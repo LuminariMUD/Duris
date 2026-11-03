@@ -54,9 +54,10 @@ bool item_ownership_runtime_hydrate_many_atomic(const item_ownership_runtime_ent
 {
 	std::abort();
 }
-void obj_to_char(P_obj, P_char)
+bool obj_to_char(P_obj, P_char)
 {
 	std::abort();
+	return true;
 }
 void extract_obj(P_obj, int)
 {

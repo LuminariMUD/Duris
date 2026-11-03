@@ -60,6 +60,14 @@ ready for review; do not merge or tag a release as part of this task.
    regression cases pass alongside `test_put_trap_lifecycle.py`,
    `test_get_trap_lifecycle.py`, `test_items_move_in_memory.py`,
    `test_item_movement_input_queue.py`, and `make -C src -j4`.
+   Review follow-up: `obj_to_char()` now reports whether the body survived,
+   including dummy redirection. Give/slip preserve owner saves while skipping
+   object feedback, artifact checks and triggers after extraction. Audited other
+   callers: guarded post-transfer access in shops, auction pickups, soulbind,
+   removal, decay and item procs; retained arrows until damage/enchantment use
+   finishes. ASan/UBSan coverage includes trusted/untrusted senders and recipients,
+   removal/replacement, decay, refused/redirected placement and fatal/nonfatal
+   crumbleloot hits. Matching standalone fixtures use the new return signature.
 5. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
    old-holder source cleanup versus damaged-component retention; generic repair
    revision publication; physical floor/copyover capture;

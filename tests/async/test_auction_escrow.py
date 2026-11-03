@@ -48,7 +48,8 @@ static std::vector<std::string> order;
 static int64_t wallet = 0;
 static critical_command queued;
 static critical_submit_result coordinator_result = critical_submit_result::accepted;
-static uint32_t reserved_chest_pid, reserved_trade_pid;
+static uint32_t reserved_chest_pid;
+static std::unordered_map<uint32_t, int64_t> reserved_trade_payments;
 static std::string reserved_chest_account;
 static int reserved_chest_racewar;
 bool currency_transaction_chest_busy(P_char ch) { return ch && reserved_chest_pid && GET_PID(ch)==static_cast<int>(reserved_chest_pid); }
@@ -72,7 +73,7 @@ void currency_transaction_save_first(P_char) { order.push_back("save"); }
 // Where the listed item is: in the seller's inventory, held by the auction, or gone.
 static std::string item_place = "inventory";
 void obj_from_char(P_obj) { item_place = "held"; order.push_back("item:held"); }
-void obj_to_char(P_obj, P_char) { item_place = "inventory"; order.push_back("item:back"); }
+bool obj_to_char(P_obj, P_char) { item_place = "inventory"; order.push_back("item:back"); return true; }
 void extract_obj(P_obj, int = 0) { item_place = "gone"; order.push_back("item:gone"); }
 P_obj find_live_object(P_obj expected, uint64_t uid)
 {

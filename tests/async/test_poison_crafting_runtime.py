@@ -69,9 +69,10 @@ void obj_from_char(P_obj obj) {
     }
     assert(false);
 }
-void obj_to_char(P_obj obj, P_char ch) {
+bool obj_to_char(P_obj obj, P_char ch) {
     assert(!carrying.count(obj)); obj->next_content = ch->carrying; ch->carrying = obj;
     carrying[obj] = ch;
+    return true;
 }
 void extract_obj(P_obj obj, int) {
     assert(live_objects.erase(obj)); obj_from_char(obj);

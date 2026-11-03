@@ -16606,7 +16606,8 @@ void finish_smelt(P_char ch, P_char pl, int vnum)
 
 	ore = read_object(vnum + 1, VIRTUAL);
 	ore->cost = price;
-	obj_to_char(ore, pl);
+	if (!obj_to_char(ore, pl))
+		return;
 
 	switch ((OBJ_VNUM(ore) - LOWEST_ORE_VNUM) / 3)
 	{

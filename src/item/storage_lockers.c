@@ -4275,7 +4275,9 @@ static bool check_for_artisInRoom(P_char ch, int rroom)
 			/* okay, they can't store that here... tell them so, and stick it back
 			   in their inventory */
 			obj_from_room(tmp_object);
-			obj_to_char(tmp_object, ch);
+			found = true;
+			if (!obj_to_char(tmp_object, ch))
+				continue;
 			act("&+LThe overpowering will of $p &+Ldenies $n&+L's attempt to release it.",
 			    TRUE, ch, tmp_object, 0, TO_ROOM);
 			act("&+LThe overpowering will of $p &+Ldefies you as it flies back into your hands.",
@@ -4288,7 +4290,6 @@ static bool check_for_artisInRoom(P_char ch, int rroom)
 			      tmp_object->short_description,
 			      obj_index[tmp_object->R_num].virtual_number, J_NAME(ch),
 			      world[ch->in_room].number);
-			found = true;
 		}
 	}
 	return found;

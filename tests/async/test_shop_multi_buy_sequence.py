@@ -113,7 +113,7 @@ void extract_obj(P_obj object, int) {
     assert(*link==object); *link=object->next;
     delete object;
 }
-void obj_to_char(P_obj object, P_char ch) { object->loc_p=LOC_CARRIED; object->loc.carrying=ch; }
+bool obj_to_char(P_obj object, P_char ch) { object->loc_p=LOC_CARRIED; object->loc.carrying=ch; return true; }
 void obj_from_char(P_obj object) { object->loc_p=LOC_NOWHERE; object->loc.carrying=nullptr; }
 void obj_to_obj(P_obj object, P_obj container) {
     object->loc_p=LOC_INSIDE; object->loc.inside=container;

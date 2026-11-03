@@ -100,9 +100,10 @@ P_obj random_zone_item(P_char ch) {
     }
     return obj;
 }
-void obj_to_char(P_obj obj, P_char ch) {
+bool obj_to_char(P_obj obj, P_char ch) {
     assert(obj && ch == &staff); inventory.push_back(obj);
     if (obj->type == ITEM_SCROLL) recipes++;
+    return true;
 }
 void do_stat(P_char ch, char *argument, int command, P_obj obj) {
     assert(ch == &staff && !strcmp(argument, "o") && command == CMD_STAT);

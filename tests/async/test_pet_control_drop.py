@@ -70,12 +70,13 @@ P_obj unequip_char(P_char pet, int slot, bool)
     object->loc.wearing = nullptr;
     return object;
 }
-void obj_to_char(P_obj object, P_char actor)
+bool obj_to_char(P_obj object, P_char actor)
 {
     object->loc_p = LOC_CARRIED;
     object->loc.carrying = actor;
     object->next_content = actor->carrying;
     actor->carrying = object;
+    return true;
 }
 void obj_from_char(P_obj object)
 {

@@ -277,7 +277,8 @@ static void shop_produced_completion(P_char ch, bool committed, const shop_trade
 		P_obj object = shop_trade_find_object(uid);
 		if (payload.multi_root && OBJ_NOWHERE(object))
 		{
-			obj_to_char(object, ch);
+			if (!obj_to_char(object, ch))
+				continue;
 			if (destination)
 			{
 				obj_from_char(object);
@@ -583,7 +584,8 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 			return;
 		}
 		SET_BIT(object->extra2_flags, ITEM2_STOREITEM);
-		obj_to_char(object, ch);
+		if (!obj_to_char(object, ch))
+			return;
 		if (payload.target_parent_item_uid)
 		{
 			obj_from_char(object);
@@ -2587,7 +2589,6 @@ bool transact(P_char from, P_obj merchandise, P_char to, int value)
 			}
 			else
 				obj_from_char(merchandise);
-			obj_to_char(merchandise, to);
 			gem_value = merchandise->cost * 3 / 4;
 			change = gem_value - value;
 			if (change > 0)
@@ -2603,6 +2604,7 @@ bool transact(P_char from, P_obj merchandise, P_char to, int value)
 				 from->player.name, to->player.name,
 				 merchandise->short_description);
 			send_to_room_except_two(Gbuf4, from->in_room, from, to);
+			obj_to_char(merchandise, to);
 			return TRUE;
 		}
 		else if (GET_MONEY(from) >= value)

@@ -3203,9 +3203,9 @@ void boon_publish_transaction_result(P_char ch, double event_data, const boon_re
 			P_obj reward = read_object(static_cast<int>(entry.bonus), VIRTUAL);
 			if (reward)
 			{
-				obj_to_char(reward, ch);
-				send_to_char_f(ch, "&+WYou receive %s&+W!&n\r\n",
-					       reward->short_description);
+				if (obj_to_char(reward, ch))
+					send_to_char_f(ch, "&+WYou receive %s&+W!&n\r\n",
+						       reward->short_description);
 			}
 			break;
 		}

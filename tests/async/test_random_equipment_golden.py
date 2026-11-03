@@ -176,7 +176,7 @@ static void release(P_obj obj)
 
 // What the kill drop puts on the victim.
 static std::string given;
-void obj_to_char(P_obj obj, P_char ch)
+bool obj_to_char(P_obj obj, P_char ch)
 {
 	char line[64];
 	if (obj->R_num == VOBJ_RANDOM_ARMOR || obj->R_num == VOBJ_RANDOM_WEAPON)
@@ -192,6 +192,7 @@ void obj_to_char(P_obj obj, P_char ch)
 	}
 	given += std::string("->") + GET_NAME(ch);
 	release(obj);
+	return false;
 }
 
 // ---- Characters ----

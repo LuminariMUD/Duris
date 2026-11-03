@@ -277,7 +277,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	act("&+BYour enhancement is a success! You now have &n$p&+B!", FALSE, ch, robj, 0, TO_CHAR);
 	snprintf(buf, MAX_STRING_LENGTH, "&+wFinal item value: %d.&n\r\n", itemvalue(robj));
 	send_to_char(buf, ch);
-	obj_to_char(robj, ch);
+	const bool object_survived = obj_to_char(robj, ch);
 	obj_from_char(source);
 	extract_obj(source);
 	if (!pouch_material)
@@ -285,10 +285,12 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		obj_from_char(material);
 		extract_obj(material);
 	}
-	statuslog(ch->player.level,
-		  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!", GET_NAME(ch),
-		  obj_index[robj->R_num].virtual_number, robj->short_description, itemvalue(robj),
-		  (ch->in_room == NOWHERE) ? -1 : world[ch->in_room].number);
+	if (object_survived)
+		statuslog(ch->player.level,
+			  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!",
+			  GET_NAME(ch), obj_index[robj->R_num].virtual_number,
+			  robj->short_description, itemvalue(robj),
+			  (ch->in_room == NOWHERE) ? -1 : world[ch->in_room].number);
 	return;
 }
 

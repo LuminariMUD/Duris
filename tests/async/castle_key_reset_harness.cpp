@@ -258,11 +258,12 @@ void extract_obj(P_obj item)
 	assert(found != objects.end());
 	objects.erase(found);
 }
-void obj_to_char(P_obj item, P_char mob)
+bool obj_to_char(P_obj item, P_char mob)
 {
 	detach(item);
 	item->next_content = mob->carrying;
 	mob->carrying = item;
+	return true;
 }
 P_obj unequip_char(P_char mob, int slot)
 {

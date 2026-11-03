@@ -25,9 +25,10 @@ P_obj read_one_object(char *) {
     return &item;
 }
 void extract_obj(P_obj object, int) { assert(object == &item); ++extracted; }
-void obj_to_char(P_obj object, P_char) {
+bool obj_to_char(P_obj object, P_char) {
     assert(object == &item && !IS_ARTIFACT(object) && object->obj_uid == 42);
     ++delivered;
+    return true;
 }
 void send_to_char(const char *message, P_char) { output += message; }
 void send_to_char_f(P_char, const char *, ...) {}

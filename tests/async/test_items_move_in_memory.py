@@ -27,7 +27,7 @@ for name in ("item_movement_transaction_submit", "item_ownership_runtime",
 print("[PASS] get, drop, give, put and empty move the object in memory")
 
 HANDLER = (SRC / "handler.c").read_text()
-to_char = body(HANDLER, "void obj_to_char(P_obj object, P_char ch)")
+to_char = body(HANDLER, "bool obj_to_char(P_obj object, P_char ch)")
 assert "item_ownership_runtime_lookup" not in to_char
 assert "item_creation_grant_submit_to_player" not in to_char
 print("[PASS] obj_to_char places an object without asking the ownership catalog")

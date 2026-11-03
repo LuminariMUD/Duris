@@ -154,7 +154,7 @@ check("transfer serialization does not masquerade as an unowned player save",
 
 # Memory is the authority: obj_to_char places an object without asking the ownership
 # catalog, and the holder's next save records a new item.
-to_char = handler[handler.index("void obj_to_char("):]
+to_char = handler[handler.index("bool obj_to_char("):]
 to_char = to_char[:to_char.index("void obj_from_char(")]
 check("obj_to_char has no ownership gate",
       "item_ownership_runtime_lookup" not in to_char
