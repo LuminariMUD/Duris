@@ -195,171 +195,165 @@ void close_other_account_sessions(P_desc d)
 				     "\r\nYour account is being permanently deleted.\r\n");
 }
 
-	class account_deletion_drain_guard
+class account_deletion_drain_guard
+{
+    public:
+	account_deletion_drain_guard()
 	{
-	    public:
-		account_deletion_drain_guard()
-		{
-			maintenance_scheduler_quiesce();
-			critical_command_coordinator_quiesce();
-			critical_outbox_quiesce();
-		}
+		maintenance_scheduler_quiesce();
+		critical_command_coordinator_quiesce();
+		critical_outbox_quiesce();
+	}
 
-		~account_deletion_drain_guard()
-		{
-			if (player_quiesced_)
-				player_save_pipeline_resume();
-			critical_outbox_resume();
-			critical_command_coordinator_resume();
-			maintenance_scheduler_resume();
-		}
+	~account_deletion_drain_guard()
+	{
+		if (player_quiesced_)
+			player_save_pipeline_resume();
+		critical_outbox_resume();
+		critical_command_coordinator_resume();
+		maintenance_scheduler_resume();
+	}
 
-		bool drain()
-		{
-			if (!maintenance_scheduler_drain(3000) ||
-			    !critical_command_coordinator_drain(3000) ||
-			    !critical_outbox_drain(3000) ||
-			    !persistence_flush_all_character_saves())
-				return false;
-			player_save_pipeline_quiesce();
-			player_quiesced_ = true;
-			return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
-			       artifact_save_drain(3000);
-		}
+	bool drain()
+	{
+		if (!maintenance_scheduler_drain(3000) ||
+		    !critical_command_coordinator_drain(3000) || !critical_outbox_drain(3000) ||
+		    !persistence_flush_all_character_saves())
+			return false;
+		player_save_pipeline_quiesce();
+		player_quiesced_ = true;
+		return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
+		       artifact_save_drain(3000);
+	}
 
-	    private:
-		bool player_quiesced_ = false;
+    private:
+	bool player_quiesced_ = false;
+};
+
+// The account's characters leave the game. Closing their sessions queued their terminal saves.
+void remove_deleted_account_characters(P_desc deleting_session,
+				       const std::vector<account_deletion_identity> &identities)
+{
+	for (P_char character = character_list, next = NULL; character; character = next)
+	{
+		next = character->next;
+		if (IS_NPC(character))
+			continue;
+		for (const auto &identity : identities)
+			if (GET_PID(character) == identity.pid)
+			{
+				if (character->desc)
+				{
+					P_desc character_desc = character->desc;
+					character->desc = NULL;
+					character_desc->character = NULL;
+					if (character_desc != deleting_session)
+						close_socket(character_desc);
+				}
+				extract_char_after_terminal_save(character);
+				break;
+			}
+	}
+}
+
+// The account's deletion committed: memory lets go of its characters.
+void forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
+{
+	for (const auto &identity : identities)
+	{
+		item_ownership_runtime_forget_player_domain(identity.pid);
+		player_revision_forget(identity.pid);
+		redis_invalidate_ship_snapshot(identity.name.c_str());
+		forget_deleted_guild_member(identity.name.c_str());
+		delete_ship_runtime(identity.name.c_str());
+	}
+}
+
+void display_account_login_pages(P_desc d)
+{
+	SEND_TO_Q("\r\n&+YNews:&n Type 'news' in game to read the latest updates.\r\n", d);
+	SEND_TO_Q(motd.c_str(), d);
+	SEND_TO_Q("\r\n*** PRESS RETURN: ", d);
+}
+
+bool prepare_account_reconnect(P_char character, P_desc descriptor)
+{
+	if (!character || !descriptor)
+		return false;
+
+	const auto save_fenced = [character]()
+	{ return collector_service_player_save_fenced(character); };
+	const auto discard_stale_body = [character, descriptor]()
+	{
+		// Keep the account state machine attached to its menu descriptor.  A
+		// fenced linkdead body must not be extracted while it still owns the
+		// descriptor, because extract_char() would move that descriptor to the
+		// account menu as a side effect and the caller would lose its pending
+		// character-selection state.
+		if (descriptor->character == character)
+			descriptor->character = NULL;
+		character->desc = NULL;
+		SEND_TO_Q(
+			"Your previous session needs an authoritative inventory reload; loading a fresh character snapshot now.\r\n",
+			descriptor);
+		extract_char_after_terminal_save(character);
 	};
 
-	// The account's characters leave the game. Closing their sessions queued their terminal saves.
-	void
-	remove_deleted_account_characters(P_desc deleting_session,
-					  const std::vector<account_deletion_identity> &identities)
+	// Never replay a retained purchase or any other ready hook into a body
+	// whose graph is already fenced.
+	if (save_fenced())
 	{
-		for (P_char character = character_list, next = NULL; character; character = next)
-		{
-			next = character->next;
-			if (IS_NPC(character))
-				continue;
-			for (const auto &identity : identities)
-				if (GET_PID(character) == identity.pid)
-				{
-					if (character->desc)
-					{
-						P_desc character_desc = character->desc;
-						character->desc = NULL;
-						character_desc->character = NULL;
-						if (character_desc != deleting_session)
-							close_socket(character_desc);
-					}
-					extract_char_after_terminal_save(character);
-					break;
-				}
-		}
+		discard_stale_body();
+		return false;
 	}
 
-	// The account's deletion committed: memory lets go of its characters.
-	void
-	forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
+	// Keep the descriptor present while readiness callbacks run so a successful
+	// replay can report its result to the reconnecting player.  The caller only
+	// enters CON_PLAYING after this preflight succeeds.
+	character->desc = descriptor;
+	zone_touch_transaction_player_ready(character);
+	locker_identify_replay(character);
+	item_movement_transaction_player_ready(character);
+	shop_trade_transaction_player_ready(character);
+	auction_transaction_player_ready(character);
+	collector_transaction_player_ready(character);
+	collector_service_player_ready(character, false);
+	boon_reward_transaction_player_ready(character);
+
+	if (save_fenced())
 	{
-		for (const auto &identity : identities)
-		{
-			item_ownership_runtime_forget_player_domain(identity.pid);
-			player_revision_forget(identity.pid);
-			redis_invalidate_ship_snapshot(identity.name.c_str());
-			forget_deleted_guild_member(identity.name.c_str());
-			delete_ship_runtime(identity.name.c_str());
-		}
+		discard_stale_body();
+		return false;
 	}
+	return true;
+}
 
-	void display_account_login_pages(P_desc d)
+bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_request *request_out)
+{
+	if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name || !request_out)
+		return false;
+	if (STATE(d) != CON_ACCT_DELETE_CHAR &&
+	    currency_transaction_chest_account_busy(d->account->acct_name))
 	{
-		SEND_TO_Q("\r\n&+YNews:&n Type 'news' in game to read the latest updates.\r\n", d);
-		SEND_TO_Q(motd.c_str(), d);
-		SEND_TO_Q("\r\n*** PRESS RETURN: ", d);
+		SEND_TO_Q(
+			"Your chest purchase is still being secured; please try again shortly.\r\n",
+			d);
+		return false;
 	}
-
-	bool prepare_account_reconnect(P_char character, P_desc descriptor)
+	player_load_request request = {};
+	request.request_id = player_load_pipeline_next_request_id();
+	request.pid = c->pid;
+	request.account_name = d->account->acct_name;
+	if (STATE(d) == CON_ACCT_DELETE_CHAR)
 	{
-		if (!character || !descriptor)
-			return false;
-
-		const auto save_fenced = [character]()
-		{ return collector_service_player_save_fenced(character); };
-		const auto discard_stale_body = [character, descriptor]()
-		{
-			// Keep the account state machine attached to its menu descriptor.  A
-			// fenced linkdead body must not be extracted while it still owns the
-			// descriptor, because extract_char() would move that descriptor to the
-			// account menu as a side effect and the caller would lose its pending
-			// character-selection state.
-			if (descriptor->character == character)
-				descriptor->character = NULL;
-			character->desc = NULL;
-			SEND_TO_Q(
-				"Your previous session needs an authoritative inventory reload; loading a fresh character snapshot now.\r\n",
-				descriptor);
-			extract_char_after_terminal_save(character);
-		};
-
-		// Never replay a retained purchase or any other ready hook into a body
-		// whose graph is already fenced.
-		if (save_fenced())
-		{
-			discard_stale_body();
-			return false;
-		}
-
-		// Keep the descriptor present while readiness callbacks run so a successful
-		// replay can report its result to the reconnecting player.  The caller only
-		// enters CON_PLAYING after this preflight succeeds.
-		character->desc = descriptor;
-		zone_touch_transaction_player_ready(character);
-		locker_identify_replay(character);
-		item_movement_transaction_player_ready(character);
-		shop_trade_transaction_player_ready(character);
-		auction_transaction_player_ready(character);
-		collector_transaction_player_ready(character);
-		collector_service_player_ready(character, false);
-		boon_reward_transaction_player_ready(character);
-
-		if (save_fenced())
-		{
-			discard_stale_body();
-			return false;
-		}
-		return true;
+		// Confirmation only needs character metadata, not live items or pets.
+		request.include_items = false;
+		request.include_pets = false;
 	}
-
-	bool build_account_load_request(P_desc d, struct acct_chars *c,
-					player_load_request *request_out)
-	{
-		if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name ||
-		    !request_out)
-			return false;
-		if (STATE(d) != CON_ACCT_DELETE_CHAR &&
-		    currency_transaction_chest_account_busy(d->account->acct_name))
-		{
-			SEND_TO_Q(
-				"Your chest purchase is still being secured; please try again shortly.\r\n",
-				d);
-			return false;
-		}
-		player_load_request request = {};
-		request.request_id = player_load_pipeline_next_request_id();
-		request.pid = c->pid;
-		request.account_name = d->account->acct_name;
-		if (STATE(d) == CON_ACCT_DELETE_CHAR)
-		{
-			// Confirmation only needs character metadata, not live items or pets.
-			request.include_items = false;
-			request.include_pets = false;
-		}
-		request.deadline_usec =
-			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-		*request_out = std::move(request);
-		return true;
-	}
+	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+	*request_out = std::move(request);
+	return true;
+}
 
 } // namespace
 
