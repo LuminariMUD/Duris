@@ -87,6 +87,8 @@ def main():
                                      "duris_run_id"):
                         if other["properties"].get(identity) is not None:
                             other["properties"][identity] += "-excluded-" + field
+                    if other["event"] == "duris_telemetry_health":
+                        other["properties"]["producer_boot_id"] = "10001"
                     excluded.append(other)
             assert stable(result) == stable(run(db, name, rows + excluded)), name
             assert stable(result) == stable(run(db, name, rows + rows)), name

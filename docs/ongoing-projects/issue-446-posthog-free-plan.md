@@ -49,6 +49,16 @@ billing remain unverified; they are explicit first-step implementation inputs.
 
 ## What the evidence establishes
 
+### Merge review — 2026-11-03
+
+The health isolation fixture originally reused the in-scope producer identity
+for excluded rows. Latest-per-producer selection could hide those rows even if
+the season predicate was removed; a disposable SQL mutation reproduced the
+false pass. Excluded health rows now have a distinct numeric producer identity,
+so they cannot disappear behind valid snapshots. The mutation must fail at
+the health assertion, while the real five-report SQL suite must pass. No runtime
+or saved-query change is needed for this test repair.
+
 ### Implementation checkpoint — 2026-11-03
 
 - The user confirms Duris is on the FREE tier and supplies production season 2.
