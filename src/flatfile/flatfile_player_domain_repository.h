@@ -96,6 +96,11 @@ flatfile_player_domain_establish(const std::string &root,
 				 const flatfile_player_domain_record &record, std::string *error);
 flatfile_player_domain_result flatfile_player_domain_establish_initial_player(
 	const std::string &root, const flatfile_player_domain_record &record, std::string *error);
+// Prepare the initial bank/player domains without publishing ahead of the snapshot.
+flatfile_player_domain_result flatfile_player_domain_prepare_initial_player(
+	const std::string &root, const flatfile_authority_lock &authority,
+	const flatfile_player_domain_record &record,
+	std::vector<flatfile_authority_operation> *operations, std::string *error);
 // Recover complete authority/domain intents without requiring an existing player.
 flatfile_player_domain_result flatfile_player_domain_restore_recover(const std::string &root,
 								     std::string *error);

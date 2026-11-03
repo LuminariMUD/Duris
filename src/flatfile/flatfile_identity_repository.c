@@ -314,12 +314,32 @@ flatfile_identity_result publish_catalog(const std::string &root, identity_catal
 	return flatfile_identity_result::ok;
 }
 
+// Finish an interrupted identity after-image before observing or advancing the
+// catalog, especially its monotonic PID allocator. Caller holds the identity lock.
+flatfile_identity_result lock_catalog_authority(const std::string &root,
+						flatfile_authority_lock *authority,
+						std::string *error)
+{
+	if (!authority->acquire(root, error))
+		return flatfile_identity_result::io_error;
+	const auto recovered = flatfile_authority_transaction_recover(root, *authority, error);
+	return recovered == flatfile_authority_transaction_result::ok ?
+		       flatfile_identity_result::ok :
+	       recovered == flatfile_authority_transaction_result::io_error ?
+		       flatfile_identity_result::io_error :
+		       flatfile_identity_result::invalid;
+}
+
 template <typename Mutation> flatfile_identity_result
 mutate_catalog(const std::string &root, Mutation mutation, std::string *error)
 {
 	flatfile_identity_lock authority;
 	if (!authority.acquire(root, error))
 		return flatfile_identity_result::io_error;
+	flatfile_authority_lock transaction;
+	const auto recovered = lock_catalog_authority(root, &transaction, error);
+	if (recovered != flatfile_identity_result::ok)
+		return recovered;
 	identity_catalog catalog;
 	const flatfile_identity_result loaded = load_catalog(root, &catalog, error);
 	if (loaded != flatfile_identity_result::ok && loaded != flatfile_identity_result::not_found)
@@ -477,7 +497,13 @@ flatfile_identity_result flatfile_identity_current_highest_pid(const std::string
 {
 	if (!pid)
 		return flatfile_identity_result::invalid;
-	std::lock_guard<std::mutex> guard(identity_mutex);
+	flatfile_identity_lock identity;
+	if (!identity.acquire(root, error))
+		return flatfile_identity_result::io_error;
+	flatfile_authority_lock transaction;
+	const auto recovered = lock_catalog_authority(root, &transaction, error);
+	if (recovered != flatfile_identity_result::ok)
+		return recovered;
 	identity_catalog catalog;
 	const flatfile_identity_result result = load_catalog(root, &catalog, error);
 	if (result == flatfile_identity_result::not_found)
@@ -517,6 +543,59 @@ flatfile_identity_result flatfile_identity_claim(const std::string &root, int32_
 		error);
 }
 
+flatfile_identity_result flatfile_identity_prepare_initial_player(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority_lock, flatfile_identity_record *record,
+	flatfile_authority_operation *operation, std::string *error)
+{
+	std::string name, account;
+	if (!record || !operation || !identity_lock.matches(root) ||
+	    !authority_lock.matches(root) || record->pid <= 0 ||
+	    !canonical_name(record->name, &name) ||
+	    (!record->account.empty() && !canonical_name(record->account, &account)))
+		return flatfile_identity_result::invalid;
+	*operation = {};
+	const auto recovered = flatfile_authority_transaction_recover(root, authority_lock, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return recovered == flatfile_authority_transaction_result::io_error ?
+			       flatfile_identity_result::io_error :
+			       flatfile_identity_result::invalid;
+	identity_catalog catalog;
+	const auto loaded = load_catalog(root, &catalog, error);
+	if (loaded != flatfile_identity_result::ok)
+		return loaded;
+	if (record->pid >= catalog.next_pid)
+		return flatfile_identity_result::invalid;
+	flatfile_identity_record *existing = find_pid(&catalog, record->pid);
+	if (existing)
+	{
+		std::string existing_name, existing_account;
+		if (!existing->active || existing->blocked ||
+		    !canonical_name(existing->name, &existing_name) || existing_name != name ||
+		    !canonical_name(existing->account, &existing_account) ||
+		    (!account.empty() && existing_account != account) ||
+		    existing->racewar != record->racewar)
+			return flatfile_identity_result::conflict;
+		record->account = existing->account;
+		record->active = true;
+		return flatfile_identity_result::unchanged;
+	}
+	if (account.empty())
+		return flatfile_identity_result::not_found;
+	if (find_active_name(&catalog, record->name))
+		return flatfile_identity_result::conflict;
+	if (catalog.revision == std::numeric_limits<uint64_t>::max())
+		return flatfile_identity_result::exhausted;
+	record->active = true;
+	record->blocked = false;
+	catalog.entries.push_back(*record);
+	if (!encode_file(catalog, catalog.revision + 1, &operation->bytes))
+		return flatfile_identity_result::invalid;
+	operation->store = flatfile_authority_store::identities;
+	operation->filename = identity_filename;
+	return flatfile_identity_result::ok;
+}
+
 flatfile_identity_result flatfile_identity_lookup_name(const std::string &root,
 						       const std::string &name,
 						       flatfile_identity_record *record,
@@ -525,7 +604,13 @@ flatfile_identity_result flatfile_identity_lookup_name(const std::string &root,
 	std::string canonical;
 	if (!record || !canonical_name(name, &canonical))
 		return flatfile_identity_result::invalid;
-	std::lock_guard<std::mutex> guard(identity_mutex);
+	flatfile_identity_lock identity;
+	if (!identity.acquire(root, error))
+		return flatfile_identity_result::io_error;
+	flatfile_authority_lock transaction;
+	const auto recovered = lock_catalog_authority(root, &transaction, error);
+	if (recovered != flatfile_identity_result::ok)
+		return recovered;
 	identity_catalog catalog;
 	const flatfile_identity_result result = load_catalog(root, &catalog, error);
 	if (result != flatfile_identity_result::ok)
@@ -543,7 +628,13 @@ flatfile_identity_result flatfile_identity_lookup_pid(const std::string &root, i
 {
 	if (!record || pid <= 0)
 		return flatfile_identity_result::invalid;
-	std::lock_guard<std::mutex> guard(identity_mutex);
+	flatfile_identity_lock identity;
+	if (!identity.acquire(root, error))
+		return flatfile_identity_result::io_error;
+	flatfile_authority_lock transaction;
+	const auto recovered = lock_catalog_authority(root, &transaction, error);
+	if (recovered != flatfile_identity_result::ok)
+		return recovered;
 	identity_catalog catalog;
 	const flatfile_identity_result result = load_catalog(root, &catalog, error);
 	if (result != flatfile_identity_result::ok)
@@ -562,7 +653,13 @@ flatfile_identity_list_account(const std::string &root, const std::string &accou
 	std::string account_key;
 	if (!records || !canonical_name(account, &account_key))
 		return flatfile_identity_result::invalid;
-	std::lock_guard<std::mutex> guard(identity_mutex);
+	flatfile_identity_lock identity;
+	if (!identity.acquire(root, error))
+		return flatfile_identity_result::io_error;
+	flatfile_authority_lock transaction;
+	const auto recovered = lock_catalog_authority(root, &transaction, error);
+	if (recovered != flatfile_identity_result::ok)
+		return recovered;
 	identity_catalog catalog;
 	const flatfile_identity_result result = load_catalog(root, &catalog, error);
 	records->clear();

@@ -91,11 +91,15 @@ import sys
 source = (Path(sys.argv[1]) / "src/sql/sql.c").read_text()
 body = source[source.rindex("bool sql_pwipe(int code_verify)"):]
 reset = re.search(r'qry\("(UPDATE player_data SET [^"]+)"\)', body).group(1)
+reset_mappings = re.search(r'qry\("(UPDATE account_characters SET deleted_at[^"]+)"\)', body).group(1)
 postflight_call = re.search(
     r'db_query\(\s*((?:"[^"]*"\s*)+),\s*OVERLORD\)', body).group(1)
 overlord = re.search(r'#define\s+OVERLORD\s+(\d+)',
                     (Path(sys.argv[1]) / 'src/core/config.h').read_text()).group(1)
 postflight = ''.join(re.findall(r'"([^"]*)"', postflight_call)).replace('%d', overlord)
+# Owned first saves now create a real membership, so include the production
+# reset's companion mapping tombstone before checking its postconditions.
+print(reset_mappings + ";")
 print(reset + ";")
 print(postflight + ";")
 PY
