@@ -29,6 +29,16 @@ was then published after the local first-page regression passed; its verified
 saved revision is `2026-11-03T18:46:14.540183Z`. Dashboard membership, date filters,
 test exclusion and all other query semantics were preserved.
 
+Merge review also reproduced the same page starvation in XP: 501 level changes
+hid every observed-XP row. Its plane order now puts observed XP first; saved
+insight 13125344 was verified at revision `2026-11-03T19:18:57.693253Z` from
+review fix `d3e9edbf0` in #631. On November 2 production data it returns XP first,
+with 3,431 rows before the 500-row limit, and identical output for duplicated
+source rows. The browser's saved view confirms that order. The local 501-level
+regression failed before the fix and passes afterward. Health scope isolation
+also now uses a distinct excluded producer; removing its season predicate is
+detected instead of being hidden by latest-per-producer aggregation.
+
 SQL revisions: season scope `bd6f64faf` ([#630](https://github.com/LuminariMUD/Duris/pull/630));
 time ordering `1fa1e04c5` ([#631](https://github.com/LuminariMUD/Duris/pull/631)).
 The pending-refresh handoff in [#578](https://github.com/LuminariMUD/Duris/issues/578)

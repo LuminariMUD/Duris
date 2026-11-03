@@ -2,8 +2,8 @@
 
 - Issue: [#446](https://github.com/LuminariMUD/Duris/issues/446)
 - Prepared: 2026-11-03
-- Status: current-traffic investigation, report repairs and cloud reconciliation
-  complete for review. Keep full collection; growth qualification remains bounded
+- Status: review fixes validated; sequential merge and cleanup in progress.
+  Keep full collection; growth qualification remains bounded
   as recorded below. No game deployment or quota mutation was performed.
 - Branch: `branch/issue-446-posthog-free-plan`
 - Local worktree: `/home/aiwithapex/projects/duris-issue-446-posthog-free-plan`
@@ -56,8 +56,8 @@ The health isolation fixture originally reused the in-scope producer identity
 for excluded rows. Latest-per-producer selection could hide those rows even if
 the season predicate was removed; a disposable SQL mutation reproduced the
 false pass. Excluded health rows now have a distinct numeric producer identity,
-so they cannot disappear behind valid snapshots. The mutation must fail at
-the health assertion, while the real five-report SQL suite must pass. No runtime
+so they cannot disappear behind valid snapshots. The missing-season mutation now
+fails at the health assertion, while the real five-report SQL suite passes. No runtime
 or saved-query change is needed for this test repair.
 
 The XP report has the same bounded-page problem as time: `level_change` sorts
@@ -65,8 +65,12 @@ before `observed_xp`, so 501 level transitions hide every XP allocation. The
 existing runner now reproduces that case and failed on the original order.
 Reverse only its plane ordering, preserving independent XP expansion, exact
 integers, level rows, scope filters and the 500-row/truncation contract. The full
-local report suite must pass, then synchronize the saved XP view and update its
-fingerprint in the acceptance record before merging #633.
+local report suite passes, including both 501-row first-page cases. Saved XP
+insight 13125344 was updated and read back at `2026-11-03T19:18:57.693253Z`;
+its normalized SQL fingerprint below matches the repository. A bounded November 2
+production check returns observed XP first, 3,431 rows before the 500-row limit,
+and identical results with duplicated source input. Browser verification used the
+saved URL without a stale `#q` override and visibly shows `observed_xp` first.
 
 ### Implementation checkpoint — 2026-11-03
 
@@ -210,14 +214,15 @@ explicit UTC bounds for reproducible checks. SHA-256 values for the final SQL:
 
 - Activity 13125342: `d1e7cfefb7a2c80b113073ec105f7657606ebfe31f517fca74a6bbd8ad3b9c3c`.
 - Time 13125343: `85b4419576bfbf8816e70b4a0027e5b88f3ce0e00e6a8a5ecbdb0881b63cb2d2`.
-- XP 13125344: `58bc9421e19a35707ced1d5eb69fcb95c1d7c36adb69d881b867104d615d7ece`.
+- XP 13125344: `c6ff66efb35475e942157a31520c98437caf348f0a7a520b211ee36160cf35be`.
 - Encounters 13125345: `9d97948d9ed1dd294cf998c6eaf1c73eea59d8e618250453f64422069457838e`.
 - Health 13125346: `e06e41378099e8f9cc49a4bf3b690eaefd79c955ecb982108650d83bc256114f`.
 
-Only the five stale season-1 descriptions and the demonstrated time ordering
+The five stale season-1 descriptions and the demonstrated time/XP ordering
 needed cloud edits. The time update was read back exactly at saved revision
 `2026-11-03T18:46:14.540183Z`; dashboard date filters/membership were retained.
-The browser visibly shows season 2 and additive interval rows first. No new
+The XP review update is recorded above. The browser visibly shows season 2,
+additive interval rows first in time, and observed XP first in progression. No new
 dashboard, insight, event, capture campaign or paid feature was created.
 
 All five saved reports executed. For the completed November 2 UTC day, reading
