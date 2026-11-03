@@ -1,3 +1,9 @@
+# Active plan: PostHog free-tier telemetry (#446)
+
+Continue from [the issue-446 implementation plan](issue-446-posthog-free-plan.md).
+It records the scope, evidence, validation, PR sequence and remaining access needs.
+Updated 2026-11-03. The previous plans below are retained as history.
+
 # Issue #611: preserve assigned NPC ship pursuit
 
 Status: implementation, PR #627 review fixes and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
