@@ -3539,6 +3539,44 @@ void do_innate(P_char ch, char *arg, int cmd)
 		return;
 	}
 
+	// "innate aura prot" and "innate aura of protection" are short for
+	// "innate aura_of_protection". Any prefix of a keyword selects an owned aura.
+	if (!str_cmp(innate_name, "aura") && *innate_args)
+	{
+		static const struct
+		{
+			const char *keyword;
+			int innate;
+		} auras[] = {
+			{ "protection", INNATE_AURA_PROTECTION },
+			{ "precision", INNATE_AURA_PRECISION },
+			{ "battlelust", INNATE_AURA_BATTLELUST },
+			{ "endurance", INNATE_AURA_ENDURANCE },
+			{ "healing", INNATE_AURA_HEALING },
+			{ "improved", INNATE_AURA_HEALING },
+			{ "vigor", INNATE_AURA_VIGOR },
+			{ "spell", INNATE_AURA_SPELL_PROTECTION },
+		};
+		char keyword[MAX_INPUT_LENGTH];
+		char *after_keyword = one_argument(one_argument(arg, keyword), keyword);
+
+		if (!str_cmp(keyword, "of"))
+		{
+			one_argument(after_keyword, keyword);
+		}
+		for (const auto &aura : auras)
+		{
+			if (*keyword && is_abbrev(keyword, aura.keyword) &&
+			    has_innate(ch, aura.innate))
+			{
+				(innates_data[aura.innate].func)(ch, keyword, CMD_INNATE);
+				return;
+			}
+		}
+		send_to_char("You know no such aura!\n", ch);
+		return;
+	}
+
 	char *handler_args = innate_args;
 	char *rest = arg && cmd != CMD_SUMMON ? skip_spaces(arg) : NULL;
 
