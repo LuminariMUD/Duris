@@ -14,7 +14,7 @@ WITH fragments AS (
       AND event = 'duris_character_summary'
       AND properties.duris_schema_version = 1
       AND properties.duris_environment_id = '1'
-      AND properties.duris_season_id = '1'
+      AND properties.duris_season_id = '2'
       AND coalesce(properties.duris_test_run, '') = ''
     GROUP BY event_id
 ), buckets AS (
@@ -78,5 +78,5 @@ WITH fragments AS (
 )
 SELECT *, count() OVER () AS total_rows_before_limit
 FROM planes
-ORDER BY row_plane, utc_day DESC, allocation, class_id, race_id, faction_id, level_band, zone, group_size, context, context_quality, session_id
+ORDER BY row_plane DESC, utc_day DESC, allocation, class_id, race_id, faction_id, level_band, zone, group_size, context, context_quality, session_id
 LIMIT 500

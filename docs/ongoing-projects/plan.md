@@ -1,3 +1,15 @@
+# Completed plan: PostHog free-tier telemetry (#446)
+
+Continue from [the issue-446 implementation plan](issue-446-posthog-free-plan.md).
+It records the scope, measured usage, validation, review fixes and growth limits.
+Merged in order: [#629](https://github.com/LuminariMUD/Duris/pull/629) →
+[#630](https://github.com/LuminariMUD/Duris/pull/630) →
+[#631](https://github.com/LuminariMUD/Duris/pull/631) →
+[#633](https://github.com/LuminariMUD/Duris/pull/633). Current traffic fits full
+collection; season scope and the bounded time/XP views are repaired and verified.
+Both #446 and #578 are closed. Continue from master; the task worktree is temporary.
+Updated 2026-11-03. The previous plans below are retained as history.
+
 # Issue #611: preserve assigned NPC ship pursuit
 
 Status: implementation, PR #627 review fixes and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
