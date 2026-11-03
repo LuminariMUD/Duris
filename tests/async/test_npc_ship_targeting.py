@@ -33,6 +33,7 @@ FUNCTIONS = "\n\n".join(
         ("ship_npc.c", ("P_ship try_load_npc_ship(P_ship target, NPC_AI_Type type, int level, P_char ch)",)),
         ("ship_npc_ai.c", (
             "NPCShipAI::NPCShipAI(P_ship s, P_char ch)", "void NPCShipAI::activity()",
+            "bool NPCShipAI::try_unload()",
             "void NPCShipAI::escort_attacked_by(P_ship attacker)",
             "bool NPCShipAI::find_current_target()", "bool NPCShipAI::find_new_target()",
             "bool NPCShipAI::is_valid_target(P_ship tar)", "void NPCShipAI::update_target(int i)",
@@ -55,6 +56,7 @@ HARNESS = r'''
 #include "ships/ship_npc_ai.h"
 #include "magic/spells.h"
 #include "economy/divine_trade_runtime.h"
+#include "ships/ship_identity.c"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -72,7 +74,7 @@ ShipMap tactical_map[101][101]{};
 ContactData contacts[MAXSHIPS]{};
 const ShipTypeData ship_type_data[MAXSHIPCLASS] = {{ ._hull = 100, ._mxsail = 100, ._mxspeed = 20, ._speedgain = 1 }};
 const WeaponData weapon_data[MAXWEAPON]{};
-static int contact_bonus, basic_calls, advanced_calls;
+static int contact_bonus, basic_calls, advanced_calls, unload_calls;
 static std::vector<P_ship> allocated;
 
 // Only the outer spawn overload is production code: the factory creates a
@@ -86,6 +88,7 @@ static P_ship make_ship(int race, int location) {
     ship->crew.stamina = ship->crew.max_stamina = 100;
     ship->shipobj = new obj_data{};
     if (race == NPCSHIP) ship->npc_ai = new NPCShipAI(ship);
+    register_ship_runtime(ship);
     assert(shipObjHash.add(ship));
     allocated.push_back(ship);
     return ship;
@@ -167,13 +170,15 @@ void NPCShipAI::advanced_combat_maneuver() { assert(ship->target && t_range > 37
 void NPCShipAI::run_away() { abort(); }
 bool NPCShipAI::do_escort() { return false; }
 void NPCShipAI::cruise() {}
-bool NPCShipAI::try_unload() { return false; }
+bool pc_is_aboard(P_ship) { return false; }
+bool try_unload_npc_ship(P_ship) { ++unload_calls; return true; }
 void fly_ship(P_ship) { abort(); }
 ''' + FUNCTIONS + r'''
 
 static void reset() {
     for (P_ship ship : allocated) {
         assert(shipObjHash.erase(ship));
+        unregister_ship_runtime(ship);
         delete ship->npc_ai;
         delete ship->shipobj;
         free(ship);
@@ -188,7 +193,7 @@ static void reset() {
         zones[i].real_bottom = 1;
     }
     world[1].number = 500000;
-    basic_calls = advanced_calls = 0;
+    basic_calls = advanced_calls = unload_calls = 0;
 }
 
 static P_ship spawn(P_ship victim, NPC_AI_Type type, int advanced, int idle) {
@@ -311,11 +316,48 @@ static void check_unavailable() {
     puts("PASS NPC/player unavailable targets: unloaded (no reacquisition), docked, sinking, off-map and different zones");
 }
 
+static void check_unload_visibility() {
+    for (contact_bonus = 0; contact_bonus <= 2; ++contact_bonus)
+    for (int scenario = 0; scenario < 8; ++scenario) {
+        reset();
+        world[2].number = 600100;
+        world[3].number = 600100 + (scenario < 2 ? 145 : 35 + contact_bonus);
+        P_ship ship = make_ship(NPCSHIP, 2);
+        P_ship witness = make_ship(scenario == 6 ? NPCSHIP : GOODIESHIP, 3);
+        if (scenario == 1 || scenario == 4) REMOVE_BIT(witness->flags, LOADED);
+        if (scenario == 5) SET_BIT(witness->flags, DOCKED);
+        if (scenario == 3) witness->x += 0.1f; // Just outside actual 3-D range.
+        if (scenario == 7) witness->z = 1;
+        ship->npc_ai->mode = NPC_AI_LEAVING;
+        ship->timer[T_MAINTENANCE] = 1;
+        ship->npc_ai->contacts_count = getcontacts(ship, false);
+        assert(ship->npc_ai->contacts_count == 1);
+        ContactData saved_contacts[MAXSHIPS];
+        memcpy(saved_contacts, contacts, sizeof contacts);
+        const bool visible = scenario == 2;
+        assert(ship->npc_ai->try_unload() == !visible);
+        assert(unload_calls == (visible ? 0 : 1));
+        assert(!memcmp(saved_contacts, contacts, sizeof contacts));
+        if (visible) {
+            assert(ship->timer[T_MAINTENANCE] == 11);
+            for (int tick = 0; tick < 25; ++tick) ship_activity();
+            assert(unload_calls == 0);
+            // Leaving contact must eventually allow cleanup on a heartbeat.
+            world[3].number += 110;
+            for (int tick = 0; tick < 11 && !unload_calls; ++tick) ship_activity();
+            assert(unload_calls == 1);
+        }
+    }
+    reset();
+    puts("PASS cleanup witnesses: loaded/undocked/player, exact scout range, distant/unloaded rejection, unchanged contact buffer");
+}
+
 int main(int argc, char **argv) {
     assert(argc == 2);
     if (!strcmp(argv[1], "group")) check_group();
     else if (!strcmp(argv[1], "escort")) check_escort();
     else if (!strcmp(argv[1], "unavailable")) check_unavailable();
+    else if (!strcmp(argv[1], "unload-visibility")) check_unload_visibility();
     else abort();
 }
 '''
@@ -335,7 +377,7 @@ with tempfile.TemporaryDirectory(prefix="npc-ship-targeting-", dir=build_root) a
              str(path / "test.cpp"), str(HARNESS_STUBS), "-o", str(binary)],
             cwd=ROOT, check=True,
         )
-        for case in ("group", "escort", "unavailable"):
+        for case in ("group", "escort", "unavailable", "unload-visibility"):
             print(f"{backend}: {case}", flush=True)
             result = subprocess.run([str(binary), case], timeout=30)
             if result.returncode:

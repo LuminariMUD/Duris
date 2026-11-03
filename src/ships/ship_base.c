@@ -2440,9 +2440,9 @@ bool check_undocking_conditions(P_ship ship, int m_class, P_char ch)
  *
  * WARNING -- do not turn the `return` after finish_sinking() into a
  * `continue`.  finish_sinking() FREES an NPC ship and erases it from the
- * hash, which strands the iterator; bailing out of the whole sweep is what
- * keeps that from being a use-after-free.  The cost is that ships later in
- * the hash lose one tick whenever a ship finishes sinking.
+ * hash, which strands the iterator. NPC AI cleanup can do the same.
+ * Bailing out of the whole sweep prevents use-after-free; ships later in
+ * the hash lose one tick whenever a ship is destroyed.
  */
 void ship_activity()
 {
@@ -2483,6 +2483,9 @@ void ship_activity()
 
 		for (j = 0; j < MAXTIMERS; j++)
 		{
+			// Keep expired NPC cleanup pending until its AI can handle it.
+			if (IS_NPC_SHIP(ship) && j == T_MAINTENANCE && ship->timer[j] == 1)
+				continue;
 			if (ship->timer[j] > 0)
 				ship->timer[j] -= 1;
 		}
@@ -3147,7 +3150,13 @@ void ship_activity()
 			if (ship->autopilot)
 				autopilot_activity(ship);
 			if (ship->npc_ai)
+			{
+				const ShipRuntimeRef ref = ship->runtime_ref;
 				ship->npc_ai->activity();
+				// AI cleanup can delete this hull and invalidate the hash visitor.
+				if (!find_ship_by_runtime_ref(ref))
+					return;
+			}
 
 			int pirate_chance =
 				has_eq_diplomat(ship) ?

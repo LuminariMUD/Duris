@@ -1,6 +1,6 @@
 # Issue #611: preserve assigned NPC ship pursuit
 
-Status: implementation and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
+Status: implementation, PR #627 review fixes and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
 
 - Work item: [Duris #611](https://github.com/LuminariMUD/Duris/issues/611).
 - GitHub-linked development branch: [branch/issue-611-npc-pursuit](https://github.com/LuminariMUD/Duris/tree/branch/issue-611-npc-pursuit).
@@ -131,7 +131,7 @@ Review delivery: implementation commit `08ea954ef` is pushed on the linked branc
 in [PR #627](https://github.com/LuminariMUD/Duris/pull/627), targeting `master`.
 The planning commit and implementation are one focused PR; no dependent stack is
 needed. This final documentation checkpoint records the published review location.
-No implementation or local acceptance work remains. Keep #611 open until merge.
+The original pursuit implementation and local acceptance were complete at this checkpoint. The subsequent PR review repairs are recorded below. Keep #611 open until merge.
 
 The heartbeat now distinguishes NPC availability from player lock policy. NPCs keep
 loaded, undocked, non-sinking same-map targets without a range or player-idle limit.
@@ -199,6 +199,62 @@ merge remain; no release tag, deployment, production mutation, full-world journe
 or hosted-CI wait is required for this review-ready scope. The original issue's
 historical incident reconstruction and broad reacquisition policy remain outside
 the proof. Tracked changes in other worktrees were preserved.
+
+## PR #627 lifecycle review follow-up (2026-11-03)
+
+All three findings in review `5757540715` are valid. Before changing production
+code, the expanded lifecycle fixture reproduced the AI-triggered heap-use-after-free,
+passenger refusal without rearming, and lost expiry during blocked AI ticks on both
+backends. The targeting fixture also rejected the required distant-witness cleanup
+assertion on both backends. Baseline logs are ignored local evidence under
+`bin/pr627-deletion-baseline.log` and `bin/pr627-targeting-baseline.log`.
+
+The heartbeat now captures the existing runtime identity around NPC AI activity and
+ends the whole sweep if cleanup deleted the hull, avoiding both subsequent hull
+access and advancing an invalidated hash visitor. Expired NPC maintenance remains
+at 1 until AI can handle it; 0 remains the unarmed state, and player maintenance
+still counts down normally. Boarding postpones cleanup by the existing 10-tick
+witness delay. Cleanup witnesses must be loaded, undocked player hulls within
+`35 + scout bonus` using cached contact range. Unlimited pursuit contacts and their
+shared buffer remain intact. No public interface, state, helper or configuration
+was added.
+
+The lifecycle fixture now runs production AI, captain/passenger detection, contacts,
+unload and teardown inside the production heartbeat. It verifies room/crew/reference
+release, the intentional skipped tick for a later hash entry and its next update,
+and real removal despite loaded/unloaded 145-room witnesses. It also verifies
+boarding refusal/retry and pending expiry across mindblast, missing captain,
+failed map preparation, docking and anchoring. The targeting fixture uses real map
+coordinates and cached 3-D ranges to test all scout bonuses, exact range, fractional
+and altitude exclusions, loaded/docked/NPC eligibility and byte-for-byte contact
+buffer preservation. Only its terminal unload is counted; actual destruction is
+covered by the lifecycle fixture.
+
+Final local validation passed:
+
+```sh
+python3 tests/async/test_npc_ship_deletion.py
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_nevent_ship_volley_runtime.py
+python3 tests/async/test_ship_autopilot_group_safety.py
+python3 tests/async/test_ferry_ship_lifetime.py
+make -C src -j8
+make -s -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/aiwithapex/projects/duris-issue-611/bin/server/dms_new-flatfile
+./scripts/format.sh --check --rev origin/master
+./scripts/tidy.sh --rev origin/master
+git diff --check
+```
+
+Both NPC suites run both backends under ASan/UBSan. The unchanged pursuit,
+player-lock/combat and summon-cooldown controls also pass. No live sailing journey,
+database operation or deployment was performed. Hosted CI is not a completion gate.
+
+Final ablation keeps the three demonstrated repairs in the existing two ship
+sources and extends the existing two fixtures; no new test framework or runtime
+layer is needed. `origin/master` remains the branch ancestor at `96ef0ed6b`, so no
+rebase or carry-forward is necessary. Keep one review-fix commit after the published
+history, and squash the focused PR when merging; no dependent stack or release tag
+is warranted. The original checkout and unrelated worktrees remain preserved.
 
 ## Live follow-up and limits
 
