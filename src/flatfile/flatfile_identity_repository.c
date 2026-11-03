@@ -14,6 +14,7 @@
 
 #include "flatfile/flatfile_identity_repository.h"
 #include "core/config.h"
+#include "account/account.h"
 
 #include "flatfile/flatfile_store.h"
 
@@ -584,6 +585,16 @@ flatfile_identity_result flatfile_identity_prepare_initial_player(
 		return flatfile_identity_result::not_found;
 	if (find_active_name(&catalog, record->name))
 		return flatfile_identity_result::conflict;
+	const auto count = std::count_if(catalog.entries.begin(), catalog.entries.end(),
+					 [&](const auto &entry)
+					 {
+						 std::string owner;
+						 return entry.active &&
+							canonical_name(entry.account, &owner) &&
+							owner == account;
+					 });
+	if (count >= MAX_CHARS_PER_ACCOUNT)
+		return flatfile_identity_result::exhausted;
 	if (catalog.revision == std::numeric_limits<uint64_t>::max())
 		return flatfile_identity_result::exhausted;
 	record->active = true;

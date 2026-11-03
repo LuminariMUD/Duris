@@ -14,6 +14,7 @@
 
 #include "player/player_snapshot_repository.h"
 
+#include "account/account.h"
 #include "core/defines.h"
 #include "core/files.h"
 #include "economy/collector_eligibility.h"
@@ -1165,6 +1166,21 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		return { true, 0 };
 	if (!creation)
 		return { false, ENOENT };
+	// The account row is locked, so concurrent first saves share the same cap.
+	result = execute(
+		connection,
+		"SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND account_name=" +
+			quote(connection, snapshot.creation_account) + " FOR UPDATE");
+	if (!result.ok)
+		return result;
+	rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) };
+	row = mysql_fetch_row(rows);
+	const bool room = row && row[0] && strtoull(row[0], nullptr, 10) < MAX_CHARS_PER_ACCOUNT;
+	mysql_free_result(rows);
+	if (!room)
+		return { false, ENOSPC };
 	*created = true;
 	return execute(connection,
 		       "INSERT INTO player_data (pid,name,account_name,active) VALUES (" +

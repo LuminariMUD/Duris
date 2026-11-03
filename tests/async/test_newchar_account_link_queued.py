@@ -13,6 +13,8 @@ capture = body.index("writeCharacter(newch")
 assert body.index("newch->desc = &creation_context") < capture
 assert capture < body.index("newch->desc = nullptr") < body.index("if (!saved)")
 assert "INSERT INTO account_characters" not in body, "membership belongs to the initial save"
-assert "find_char_in_list" in body and "add_char_to_account(&creation_context)" in body
+assert re.search(r"account_publish_kept_character\(\s*ch->desc->account", body)
+assert "account_kept_character_projection(newch)" in body
+assert "num_chars++" not in body, "publication owns the count exactly once"
 assert not re.search(r"\b(db_query|qry|mysql_str)\s*\(", body), "newchar queries on the game loop"
 print("[PASS] newchar captures account authority and reuses atomic initial membership")

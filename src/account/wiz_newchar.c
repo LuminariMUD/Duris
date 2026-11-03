@@ -374,9 +374,10 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 
 	// The first snapshot owns the durable membership. Flat-file baseline
 	// acknowledgment may already have published its in-memory entry.
-	if (!find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(newch)))
-		add_char_to_account(&creation_context);
-	ch->desc->account->num_chars++;
+	if (!account_publish_kept_character(
+		    ch->desc->account, account_kept_character_projection(newch), GET_NAME(newch)))
+		logit(LOG_DEBUG, "wiz_newchar: committed account cache requires reload pid=%d",
+		      GET_PID(newch));
 
 	// log it
 	logit(LOG_WIZ, "%s created test character %s (race %d, class %d, level %d, maxskills %s)",

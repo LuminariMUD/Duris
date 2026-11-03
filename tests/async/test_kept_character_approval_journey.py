@@ -61,6 +61,16 @@ def run(binary, backend):
                     (server.run_root / directory).mkdir(parents=True, exist_ok=True)
                 creation.reboot(server)
                 staff = enter_staff(server)
+                # Staff creation must publish its current account cache even
+                # when the first MariaDB snapshot is still queued.
+                creation.reply(staff, "newchar Staffprobe 3 11 56 false", "character saved.")
+                creation.reply(staff, "quit", "Please select an option:")
+                listing = creation.reply(staff, "1", "Staffprobe")
+                assert listing.count("Staffprobe") == 1, listing
+                creation.reply(staff, "0", "Please select an option:")
+                creation.reply(staff, "1", STAFF)
+                creation.reply(staff, STAFF, "(Y/N)")
+                creation.reply(staff, "y", "Pos: standing >")
                 creation.reply(staff, "approve on", "Pos: standing >")
                 mortal = account.MudClient(server.plain_port)
                 account.create_account(mortal, account.OLD_PASSWORD, name=OWNER)
