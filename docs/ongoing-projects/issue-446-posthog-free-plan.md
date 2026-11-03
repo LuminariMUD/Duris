@@ -49,6 +49,16 @@ billing remain unverified; they are explicit first-step implementation inputs.
 
 ## What the evidence establishes
 
+### Merge review — 2026-11-03
+
+The health isolation fixture originally reused the in-scope producer identity
+for excluded rows. Latest-per-producer selection could hide those rows even if
+the season predicate was removed; a disposable SQL mutation reproduced the
+false pass. Excluded health rows now have a distinct numeric producer identity,
+so they cannot disappear behind valid snapshots. The mutation must fail at
+the health assertion, while the real five-report SQL suite must pass. No runtime
+or saved-query change is needed for this test repair.
+
 ### Implementation checkpoint — 2026-11-03
 
 - The user confirms Duris is on the FREE tier and supplies production season 2.
@@ -69,11 +79,34 @@ billing remain unverified; they are explicit first-step implementation inputs.
 - Delivery order: publish the plan/handoff, stack the season-2 SQL/fixture fix,
   then stack the cached diagnostics with executable command coverage and builds.
   Each chunk will be committed, pushed and left in a focused review PR.
+  Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),
+  branch `branch/issue-446-posthog-free-plan`, head `04dd635c5`.
 - Remaining acceptance: correct-account billing/query access; saved-query
   comparison/refresh under #578; comparable busy-interval and UTC-rollover live
   snapshots; measured family demand and organization headroom. Neither #446 nor
   #578 can close on the local scope fix alone. Production deployment, journal
   mutation, quota reset and new cloud capture campaigns remain outside this work.
+
+### Report scope chunk
+
+Branch `branch/issue-446-posthog-season2` is stacked on the plan PR. All five
+committed SQL files now select season 2; environment/schema/test exclusions and
+UUID deduplication are preserved. `REPORTS.md` records the current scope, explicit
+historical querying, and the still-pending saved-cloud refresh under #578.
+The existing embedded ClickHouse runner now uses season-2 native fixtures and
+mixes independently identified season-1, other-environment, other-schema and
+synthetic records into every report. This regression failed against the old SQL
+(`AssertionError: activity`) before the scope change. No extra cloud campaign
+or new report framework is needed. Validation passed:
+
+```sh
+PYTHONPATH=bin/tests/posthog-report-deps python3 tests/async/run_telemetry_posthog_reports.py
+git diff --check
+```
+
+All five reports passed scope isolation/deduplication plus the existing rollback,
+quota/capacity, recovered incidents, pet overflow, context/XP dimensions and late
+checkpoint assertions. The installed dependency is local under ignored `bin/`.
 
 1. **The issue describes an October 28 incident.** It reports 46,700 native
    admissions in about three hours, `EDQUOT`, and zero historical SQL
