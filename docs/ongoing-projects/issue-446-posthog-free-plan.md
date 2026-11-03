@@ -53,11 +53,11 @@ and Git checks. Exact current scope and remaining growth limits are recorded bel
 ### Implementation checkpoint — 2026-11-03
 
 - Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),
-  `branch/issue-446-posthog-free-plan`, head `04dd635c5`.
+  `branch/issue-446-posthog-free-plan`, planning checkpoint `04dd635c5`.
 - Season scope: [PR #630](https://github.com/LuminariMUD/Duris/pull/630),
-  `branch/issue-446-posthog-season2`, head `bd6f64faf`, based on #629.
+  `branch/issue-446-posthog-season2`, SQL commit `bd6f64faf`, based on #629.
 - Time-page repair: [PR #631](https://github.com/LuminariMUD/Duris/pull/631),
-  `branch/issue-446-posthog-time-page`, head `1fa1e04c5`, based on #630.
+  `branch/issue-446-posthog-time-page`, SQL commit `1fa1e04c5`, based on #630.
 - Acceptance/evidence: [PR #633](https://github.com/LuminariMUD/Duris/pull/633),
   `branch/issue-446-posthog-acceptance`, based on #631.
   Review these in order; retarget each child after its parent merges. No release
@@ -253,6 +253,16 @@ definition and does not claim those additional metrics were implemented.
 and headroom evidenced. Leave both issues open until the review stack lands;
 reviewers can then close the current incidents with these limits explicit.
 No production game operation or additional cloud capture remains for this repair.
+
+Final integration: master advanced to `f43055ec4` (#627) during this work.
+Merged it into #629 and carried the updated parents through #630, #631 and #633
+using ordinary merge commits and pushes; no published history was rewritten.
+Resolved `plan.md` by retaining the telemetry pointer and the complete newer NPC
+plan, which itself preserves the flight plan. The tested report SQL, report runner
+and telemetry source are unchanged by this integration (`git diff --exit-code
+f05a8b56e HEAD -- docs/telemetry tests/async/run_telemetry_posthog_reports.py
+src/telemetry` passed before this documentation-only update). Reuse the completed
+SQL/native evidence rather than rerunning unrelated gameplay suites.
 
 ### Original planning baseline (before the implementation above)
 
