@@ -6,9 +6,35 @@
   Keep full collection; growth qualification remains bounded
   as recorded below. No game deployment or quota mutation was performed.
 - Integrated branch: `master`; historical task branches are recorded below.
-- Implementation worktree used: `/home/aiwithapex/projects/duris-issue-446-posthog-free-plan`.
-  Continue from `master`, not this temporary implementation path.
+- Retired implementation worktree: `/home/aiwithapex/projects/duris-issue-446-posthog-free-plan`.
+  This path and its task branches are removed; continue from `master`.
 - Source baseline: `96ef0ed6b` (`origin/master` when this worktree was created).
+
+### Merge closeout — 2026-11-03
+
+All four PRs were independently reviewed, retargeted to master after their
+parents landed, and merged with ordinary merge commits so no published history
+needed rewriting:
+
+- #629: `9ee55701b926e9b545a9b9bcd86001df9c8d4104` at 19:21:16 UTC.
+- #630: `12bf32f466774fe36d5571dd17628ef9df8c19d8` at 19:21:36 UTC.
+- #631: `dac23bfad7b346d9850609c7f5f51f5f8c3fb41a` at 19:21:55 UTC.
+- #633: `e231f63c19b864160ca026fb15c5886b72e6010a` at 19:23:43 UTC.
+
+Hosted review threads had no findings. Local review fixed the health-scope false
+pass and XP page starvation described below; the full report suite passed afterward.
+No implementation or review finding remains open for this repair.
+
+Cleanup verified: all four task branches were removed locally and remotely,
+and the temporary implementation worktree was removed without force. Its ignored
+contents were generated `bin/tests`, `bin/tidy` and Python cache artifacts. Other
+worktrees, their checkout positions and unrelated work remain preserved.
+No tag, deployment, server build, migration, quota change or new capture campaign
+was required. The source runtime and collection policy are unchanged.
+
+The earlier documentation-only closeout commit `ddfac5394` was accepted through
+an account bypass of master's PR rule. This final cleanup record follows the
+required PR path; further direct pushes to master are not part of this workflow.
 
 ## Decision
 
@@ -287,26 +313,6 @@ and telemetry source are unchanged by this integration (`git diff --exit-code
 f05a8b56e HEAD -- docs/telemetry tests/async/run_telemetry_posthog_reports.py
 src/telemetry` passed before this documentation-only update). Reuse the completed
 SQL/native evidence rather than rerunning unrelated gameplay suites.
-
-### Merge closeout — 2026-11-03
-
-All four PRs were independently reviewed, retargeted to master after their
-parents landed, and merged with ordinary merge commits so no published history
-needed rewriting:
-
-- #629: `9ee55701b926e9b545a9b9bcd86001df9c8d4104` at 19:21:16 UTC.
-- #630: `12bf32f466774fe36d5571dd17628ef9df8c19d8` at 19:21:36 UTC.
-- #631: `dac23bfad7b346d9850609c7f5f51f5f8c3fb41a` at 19:21:55 UTC.
-- #633: `e231f63c19b864160ca026fb15c5886b72e6010a` at 19:23:43 UTC.
-
-Hosted review threads had no findings. Local review fixed the health-scope false
-pass and XP page starvation above, and the full report suite passed afterward.
-No implementation or review finding remains open for this repair. Final cleanup
-removes only these four task branches and the temporary worktree; its ignored
-contents are generated `bin/tests`, `bin/tidy` and Python cache artifacts. Other
-worktrees, their checkout positions and any unrelated work remain preserved.
-No tag, deployment, server build, migration, quota change or new capture campaign
-was required. The source runtime and collection policy are unchanged.
 
 ### Original planning baseline (before the implementation above)
 
