@@ -360,7 +360,15 @@ void shop_trade_transaction_handle_completions(const critical_completion *comple
 		found->second.completion_ready = true;
 		if (P_char character = find_player_by_pid(found->second.player_pid))
 			publish(found, character);
-		else if (!found->second.wallet_published)
+	}
+	// Safe delivery can fail while the buyer is online, then the buyer can
+	// unload without another completion. Sweep retained replies on every pulse.
+	for (auto next = pending.begin(); next != pending.end();)
+	{
+		auto found = next++;
+		if (!found->second.completion_ready || find_player_by_pid(found->second.player_pid))
+			continue;
+		if (!found->second.wallet_published)
 		{
 			// Login reads the compound purse after queued captures settle. It
 			// cannot wait for an absent actor to publish that same purse.
@@ -381,9 +389,9 @@ void shop_trade_transaction_handle_completions(const critical_completion *comple
 				player_save_pipeline_release_trade(entry.player_pid);
 				currency_transaction_release_trade(entry.player_pid);
 			}
-			if (entry.wallet_published || !entry.payment)
-				publish(found, nullptr);
 		}
+		if (found->second.wallet_published || !found->second.payment)
+			publish(found, nullptr);
 	}
 }
 

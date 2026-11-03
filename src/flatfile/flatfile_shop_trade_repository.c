@@ -366,7 +366,8 @@ flatfile_shop_trade_settle_snapshot(const std::string &root, const flatfile_auth
 				const auto reconciled =
 					flatfile_shop_trade_materialization_reconcile(
 						root, lock, operation.player_pid, owned, snapshot,
-						error);
+						error,
+						{ result.item_uids.data(), result.item_count });
 				if (reconciled != flatfile_shop_trade_materialization_result::ok)
 					return reconciled == flatfile_shop_trade_materialization_result::
 								       io_error ?

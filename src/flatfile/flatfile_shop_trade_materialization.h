@@ -21,6 +21,7 @@
 #include "economy/shop_trade_command.h"
 
 #include <string>
+#include <span>
 #include <vector>
 
 enum class flatfile_shop_trade_materialization_result
@@ -76,7 +77,7 @@ flatfile_shop_trade_materialization_result flatfile_item_transfer_materializatio
 flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_reconcile(
 	const std::string &root, const flatfile_authority_lock &lock, uint32_t player_pid,
 	const std::vector<flatfile_item_ownership_record> &owned, player_snapshot *snapshot,
-	std::string *error);
+	std::string *error, std::span<const uint64_t> settled_sale_items = {});
 flatfile_shop_trade_materialization_result flatfile_shop_trade_materialization_read_health(
 	const std::string &root, const flatfile_authority_lock &lock,
 	flatfile_shop_trade_materialization_health *health, std::string *error);

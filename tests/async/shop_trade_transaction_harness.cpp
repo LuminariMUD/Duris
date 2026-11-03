@@ -471,5 +471,21 @@ int main()
 	       completion_count == before_offline + 1 && wallet == 500);
 	player_online = true;
 	ownership_allowed = true;
+	// A committed delivery may first wait online, then lose its actor before
+	// another completion arrives. Empty drains must release the login hold.
+	batch_ready = false;
+	batch.expected_wallet_revision = pc.wallet_revision;
+	assert(shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
+	const auto waiting_batch = completion(batch_result);
+	shop_trade_transaction_handle_completions(&waiting_batch, 1);
+	assert(reserved && shop_trade_transaction_player_busy(&character));
+	player_online = false;
+	const int before_unload = completion_count;
+	shop_trade_transaction_handle_completions(nullptr, 0);
+	assert(!reserved && !shop_trade_transaction_player_busy(&character) && completion_offline &&
+	       completion_count == before_unload + 1 && wallet == 500);
+	shop_trade_transaction_handle_completions(nullptr, 0);
+	assert(completion_count == before_unload + 1);
+	player_online = true;
 	shop_trade_transaction_reset_for_tests();
 }

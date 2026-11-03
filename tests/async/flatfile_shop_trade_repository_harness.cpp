@@ -418,6 +418,8 @@ int main(int argc, char **argv)
 	applied = flatfile_shop_trade_repository_apply(root.string(), sale_command);
 	require(applied.outcome == critical_apply_outcome::applied,
 		"could not commit retained sale for restart reconciliation");
+	player_snapshot second_capture;
+	const auto repeated_root = root.string() + "-repeated-sale";
 	{
 		// The disconnected seller's capture retains the held item. A committed
 		// receipt removes it before the save can claim it back from the shop.
@@ -437,6 +439,7 @@ int main(int argc, char **argv)
 				critical_command_codec_result::ok,
 			"encode sale receipt identity");
 		SHA256(encoded.data(), encoded.size(), delayed.pending_trade.command_hash.data());
+		second_capture = delayed;
 		require(flatfile_shop_trade_settle_snapshot(root.string(), lock, &delayed,
 							    &error) ==
 					flatfile_player_domain_result::ok &&
@@ -444,6 +447,29 @@ int main(int argc, char **argv)
 				delayed.items.size() == 1 && delayed.items[0].object_uid == 700 &&
 				delayed.status_integers[1].unsigned_value == 5,
 			"committed sale capture reclaimed its sold item or missed its credit");
+		// The real save retires materialization evidence after its first full
+		// capture. A second queued capture still has the held sale graph/tag.
+		fs::copy(root, repeated_root, fs::copy_options::recursive);
+	}
+	{
+		flatfile_authority_lock repeated_lock;
+		require(repeated_lock.acquire(repeated_root, &error), "lock repeated sale capture");
+		flatfile_authority_operation retirement;
+		require(flatfile_shop_trade_materialization_prepare_player_remove(
+				repeated_root, repeated_lock, 42, &retirement, &error) ==
+					flatfile_shop_trade_materialization_result::ok &&
+				flatfile_authority_transaction_commit_operations(
+					repeated_root, repeated_lock, { retirement }, &error) ==
+					flatfile_authority_transaction_result::ok,
+			"retire first sale capture materialization evidence");
+		auto repeated = second_capture;
+		require(flatfile_shop_trade_settle_snapshot(repeated_root, repeated_lock, &repeated,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				!player_snapshot_trade_pending(repeated) &&
+				repeated.items.size() == 1 && repeated.items[0].object_uid == 700 &&
+				repeated.status_integers[1].unsigned_value == 5,
+			"second sale capture restored sold UIDs after evidence retirement");
 	}
 	player_items.clear();
 	require(flatfile_item_repository_load_owner(root.string(), player_owner, &player_revision,
