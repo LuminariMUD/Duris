@@ -28,6 +28,7 @@ Existing broken records receive a guarded, testable repair/release path. Ownersh
 - **Chunk-2 Git handoff:** [PR #634](https://github.com/LuminariMUD/Duris/pull/634), `branch/issue-612-flatfile-creation`, implementation `09c5cea98`, targets PR #632 and is ready for review. The primary worktree remains `/home/aiwithapex/projects/duris-issue-612-kept-characters`.
 - **Active continuation:** the primary worktree is on `branch/issue-612-creation-ack`, based on #634's documentation handoff `c5b880686`. The first acknowledgment prerequisite is locally qualified: both repositories recognize an exact previously committed initial snapshot even if its account was blocked before reconciliation. A new or newer capture for a blocked account is still refused. Continue with implementation-sequence steps 3–4 below, including pending reservations, UI acknowledgment and resumption; those runtime transitions have not yet changed. Earlier PRs remain ready for review; do not merge them or close #612 as part of this implementation-only handoff.
 - **Reconciliation Git handoff:** [PR #635](https://github.com/LuminariMUD/Duris/pull/635), implementation `352e098aa`, targets #634 from `branch/issue-612-creation-ack` and is ready for review. Next work will qualify and fix the pre-entry connection-override lifetime boundary before changing acknowledgment transitions.
+- **Takeover qualification:** current worktree is on dependent `branch/issue-612-preentry-override`, based on #635's handoff `83db88576`. The maintained socket journey now tests Telnet and WebSocket takeover of an ordinary kept level-0 character on both backends, compares the same PID and all ten stored base stats before/after first entry, and cold-restarts/relogs again. All four cases pass on existing runtime code. Telnet authentication closes the old same-account descriptor before selection; WebSocket `enter` closes the matching pre-entry descriptor before queuing account confirmation. The source-risk branch in `is_char_in_game()` was not exercised by these normal journeys, so this chunk adds verification rather than a speculative runtime patch. Preserve these controls and requalify the lifetime boundary when the new asynchronous saving state makes additional pre-entry states reachable; the planned PID/owner checks and approval routing remain part of steps 3–4.
 - **Next:** implement creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery on dependent branches. Keep this section current with PR links, exact passing commands and unresolved gates. Neither delivery chunk completes #612.
 - Synthetic build/test logs are under ignored `bin/tests/issue-612-*`. Pre-change evidence: `issue-612-before-mariadb.log` and `issue-612-before-flatfile.log`. No credentials, runtime state, generated artifacts or production identifiers are tracked.
 
@@ -78,6 +79,26 @@ Additional details for the next implementation session:
 - The current Keep UI still advertises Return before save acknowledgment, accepted-name/approval branches still need a common baseline, and account selection/override still need safe pre-entry routing. Chaos and ordinary kit resumption remain unimplemented acceptance gates; inventory emptiness is not a completion receipt. No recovery command or operations guide has been delivered yet.
 
 Acknowledgment prerequisite proof (2026-11-03): both existing executable repository harnesses first failed when an account was blocked after the initial commit. After the fix, `bash tests/async/run_player_save_claim_mysql.sh` and `python3 tests/async/test_flatfile_player_repository.py` pass, including a separate fresh blocked-account attempt that publishes no identity/snapshot/membership. MariaDB also verifies the committed character's later level is not overwritten. Both `make -C src -j6` and `make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/issue-612-flatfile -j6` pass. No schema change or new lifecycle field was needed. Logs: ignored `bin/tests/issue-612-blocked-{before,after}-{mariadb,flatfile}.log` and `issue-612-reconcile-*-build.log`.
+
+Takeover proof (all passed locally on 2026-11-03; this chunk changes Python/docs only):
+
+```sh
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new --override telnet
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new --override websocket
+python3 tests/async/test_kept_character_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new --override telnet
+python3 tests/async/test_kept_character_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new --override websocket
+python3 -m py_compile tests/async/test_kept_character_journey.py
+git diff --check
+```
+
+The flat-file leg builds the existing repository inspector under `bin/tests/` to read authoritative numeric stats; it does not infer them from screen text. The fixture explicitly observes the old socket closing. These controls cover ordinary approval-off/non-Chaos creation; pending approval, delayed initial completion and active Chaos grants still require the planned journeys.
+
+Source-traced reuse points for the next acknowledgment chunk:
+
+- `wait_for_writer()` / `writer_replied()` are already public in `account.h`; they match an asynchronous reply to a live descriptor by a unique request ID and tolerate descriptor loss. Reuse them rather than introducing another descriptor ID or retaining a raw descriptor in a queued job.
+- `delete_character(ch, true, done)` already reports its durable outcome on the game thread and does not consume `ch` (`core/prototypes.h`, `core/files.c`). Staff decline can reuse this callback and the existing request ID instead of creating a second deletion implementation.
+- Flat-file initial bank/item ownership hydration currently lives inside `writeCharacter()` after its terminal baseline acknowledgment. An asynchronous creation callback needs that same publication after commit; factor only that existing post-baseline step rather than queueing another initial snapshot or doing MariaDB I/O on the game loop.
+- A narrow creation-completion hook in the existing player-save pipeline can notify the account continuation using immutable PID/revision/name/account/request context. No generic workflow/callback framework or second writer queue is required. Initial approval metadata, level-0 selection routing, staff acceptance/decline and save-failure cleanup must agree before the new saving-state chunk is considered qualified.
 
 ## Non-goals
 
