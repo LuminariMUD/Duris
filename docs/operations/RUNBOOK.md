@@ -1142,6 +1142,27 @@ key 2402 retains its normal empty-zone policy, and bookcase key 2434 is unchange
 Copyover/world recovery retains its saved door flags until a qualifying reset;
 the rule does not migrate old snapshots or repair arbitrary manual locks.
 
+## Elemental Groves reset access
+
+Zone 38 uses the castle rule above for its sixteen progression gates. Every key
+and plaque breaks on use and allows one live copy. After any reset, a gate stays
+locked only when its source has the key: the carrier mobile at its home room,
+the loose key on its home room's floor, or the plaque inside its home room's
+pedestal. Otherwise the gate is left closed but unlocked. When any player body
+remains in the zone, including a linkdead or morphed player or staff, all sixteen
+gates are left unlocked.
+
+| Source | Key VNUMs |
+|---|---|
+| Carrier mobile | 3800-3807 (gravel, slate, seashell, coral, igneous, magma, glass, crystal) |
+| Floor | 3808 cloudy key in room 3854, 3809 black key in room 3823 |
+| Pedestal | 3810-3815 plaques in rooms 3897, 3908, 3920, 3927, 3952 and 3953 |
+
+The pedestals are permanent, so their reset rows never reload a plaque after
+boot. When no copy of a plaque is live and its pedestal is in its home room, the
+reset puts a new plaque in that pedestal. This is the only object the rule
+creates. The keyless elemental door between rooms 3966 and 3967 is unchanged.
+
 ## Frag race adoption and rollback
 
 The regular 72-hour rules are in [CODEBASE.md](../reference/CODEBASE.md#frag-based-level-caps).

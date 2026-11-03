@@ -3342,12 +3342,56 @@ void no_reset_zone_reset(int zone_number)
 	}
 }
 
-// Castle keys are single-use and limited to one live copy. A surviving carrier
-// is not restocked, so only relock a gate when its source can supply the key.
-// Run after the reset rows: the castle's doors precede its mobile/item loads.
-static void restore_castle_reset_access(int zone)
+// Progression keys that break on use and allow one live copy. A surviving
+// source is not restocked by its reset rows, so only relock a gate when its
+// source can supply the key. Run after the reset rows: these zones' doors
+// precede their mobile/item loads.
+static void restore_key_gate_reset_access(int zone)
 {
-	if (zone_table[zone].number != 24)
+	enum class key_source
+	{
+		carrier, // holder is the mobile carrying or wearing the key
+		floor, // the key lies loose in its home room
+		pedestal // holder is the container object in its home room
+	};
+	static const struct
+	{
+		int zone, key;
+		key_source source;
+		int holder, home, room, direction, other_room;
+	} gates[] = {
+		// Quintaragon Castle (#418)
+		{ 24, 2405, key_source::carrier, 2406, 2427, 2414, DIR_DOWN, 2415 },
+		{ 24, 2418, key_source::carrier, 2415, 2439, 2427, DIR_UP, 2428 },
+		{ 24, 2422, key_source::carrier, 2418, 2452, 2446, DIR_WEST, 2448 },
+		{ 24, 2425, key_source::carrier, 2419, 2456, 2460, DIR_UP, 2461 },
+		{ 24, 2436, key_source::carrier, 2433, 2481, 2471, DIR_NORTH, 2479 },
+		{ 24, 2437, key_source::carrier, 2420, 2477, 2480, DIR_NORTH, 2488 },
+		{ 24, 2438, key_source::carrier, 2428, 2493, 2480, DIR_SOUTH, 2498 },
+		{ 24, 2402, key_source::carrier, 2401, 2401, 2401, DIR_NORTH, 2402 },
+		// The Elemental Groves (#614)
+		{ 38, 3800, key_source::carrier, 3811, 3900, 3899, DIR_EAST, 3898 },
+		{ 38, 3801, key_source::carrier, 3812, 3898, 3898, DIR_SOUTH, 3897 },
+		{ 38, 3802, key_source::carrier, 3813, 3909, 3910, DIR_EAST, 3911 },
+		{ 38, 3803, key_source::carrier, 3814, 3910, 3910, DIR_SOUTH, 3908 },
+		{ 38, 3804, key_source::carrier, 3815, 3919, 3921, DIR_WEST, 3922 },
+		{ 38, 3805, key_source::carrier, 3816, 3921, 3921, DIR_NORTH, 3920 },
+		{ 38, 3806, key_source::carrier, 3817, 3925, 3926, DIR_WEST, 3928 },
+		{ 38, 3807, key_source::carrier, 3818, 3928, 3928, DIR_NORTH, 3927 },
+		{ 38, 3808, key_source::floor, 0, 3854, 3951, DIR_UP, 3952 },
+		{ 38, 3809, key_source::floor, 0, 3823, 3947, DIR_UP, 3953 },
+		{ 38, 3810, key_source::pedestal, 3818, 3897, 3960, DIR_NORTH, 3961 },
+		{ 38, 3811, key_source::pedestal, 3818, 3908, 3961, DIR_NORTH, 3962 },
+		{ 38, 3812, key_source::pedestal, 3818, 3920, 3962, DIR_NORTH, 3963 },
+		{ 38, 3813, key_source::pedestal, 3818, 3927, 3963, DIR_NORTH, 3964 },
+		{ 38, 3814, key_source::pedestal, 3818, 3952, 3964, DIR_NORTH, 3965 },
+		{ 38, 3815, key_source::pedestal, 3819, 3953, 3965, DIR_NORTH, 3966 },
+	};
+
+	bool listed = false;
+	for (const auto &gate : gates)
+		listed = listed || gate.zone == zone_table[zone].number;
+	if (!listed)
 		return;
 
 	bool occupied = false;
@@ -3359,21 +3403,10 @@ static void restore_castle_reset_access(int zone)
 			break;
 		}
 
-	static const struct
-	{
-		int key, carrier, home, room, direction, other_room;
-	} gates[] = {
-		{ 2405, 2406, 2427, 2414, DIR_DOWN, 2415 },
-		{ 2418, 2415, 2439, 2427, DIR_UP, 2428 },
-		{ 2422, 2418, 2452, 2446, DIR_WEST, 2448 },
-		{ 2425, 2419, 2456, 2460, DIR_UP, 2461 },
-		{ 2436, 2433, 2481, 2471, DIR_NORTH, 2479 },
-		{ 2437, 2420, 2477, 2480, DIR_NORTH, 2488 },
-		{ 2438, 2428, 2493, 2480, DIR_SOUTH, 2498 },
-		{ 2402, 2401, 2401, 2401, DIR_NORTH, 2402 },
-	};
 	for (const auto &gate : gates)
 	{
+		if (gate.zone != zone_table[zone].number)
+			continue;
 		// The durable entrance key keeps its ordinary empty-zone policy. Include
 		// the entrance when a player body remains, or the internal escape route
 		// would still end at a locked outer door. Linkdead bodies count too.
@@ -3387,26 +3420,59 @@ static void restore_castle_reset_access(int zone)
 			continue;
 		auto *exit = world[room].dir_option[gate.direction];
 		auto *back = world[other_room].dir_option[rev_dir[gate.direction]];
+		// Unlocking either side also unlocks the other, so the far side may
+		// take another key (3898 west takes slate 3801, 3899 east gravel 3800).
 		if (!exit || !back || exit->to_room != other_room || back->to_room != room ||
-		    exit->key != gate.key || back->key != gate.key)
+		    exit->key != gate.key)
 			continue;
 
-		bool supplied = false;
 		const int home = real_room(gate.home);
-		if (!occupied && home >= 0)
-			for (P_char mob = world[home].people; mob; mob = mob->next_in_room)
+		const int key = real_object(gate.key);
+		P_obj pedestal = nullptr;
+		if (gate.source == key_source::pedestal && home >= 0)
+		{
+			const int holder = real_object(gate.holder);
+			if (holder >= 0)
+				pedestal = get_obj_in_list_num(holder, world[home].contents);
+		}
+		// The plaque's P row follows its pedestal's O row, which never runs
+		// again because the pedestal is permanent; P also finds its container
+		// world-wide by vnum, so a later reload could land in another pedestal.
+		if (pedestal && key >= 0 && obj_index[key].number < 1)
+		{
+			P_obj plaque = read_object_for_creation(key, REAL);
+			if (plaque)
+				obj_to_obj(plaque, pedestal);
+		}
+
+		bool supplied = false;
+		if (!occupied && home >= 0 && key >= 0)
+			switch (gate.source)
 			{
-				if (!IS_NPC(mob) || !IS_ALIVE(mob) ||
-				    mob_index[GET_RNUM(mob)].virtual_number != gate.carrier)
-					continue;
-				for (P_obj obj = mob->carrying; obj; obj = obj->next_content)
-					if (OBJ_VNUM(obj) == gate.key)
-						supplied = true;
-				// has_key() checks HOLD only; key 2437 is worn on the neck.
-				for (int slot = 0; slot <= CUR_MAX_WEAR; ++slot)
-					if (mob->equipment[slot] &&
-					    OBJ_VNUM(mob->equipment[slot]) == gate.key)
-						supplied = true;
+			case key_source::floor:
+				supplied = get_obj_in_list_num(key, world[home].contents) !=
+					   nullptr;
+				break;
+			case key_source::pedestal:
+				supplied = pedestal && get_obj_in_list_num(key, pedestal->contains);
+				break;
+			case key_source::carrier:
+				for (P_char mob = world[home].people; mob; mob = mob->next_in_room)
+				{
+					if (!IS_NPC(mob) || !IS_ALIVE(mob) ||
+					    mob_index[GET_RNUM(mob)].virtual_number != gate.holder)
+						continue;
+					for (P_obj obj = mob->carrying; obj;
+					     obj = obj->next_content)
+						if (OBJ_VNUM(obj) == gate.key)
+							supplied = true;
+					// has_key() checks HOLD only; key 2437 is worn on the neck.
+					for (int slot = 0; slot <= CUR_MAX_WEAR; ++slot)
+						if (mob->equipment[slot] &&
+						    OBJ_VNUM(mob->equipment[slot]) == gate.key)
+							supplied = true;
+				}
+				break;
 			}
 		if (supplied)
 			continue;
@@ -4215,7 +4281,7 @@ void reset_zone(int zone, int force_item_repop)
 			last_cmd = 0;
 	}
 
-	restore_castle_reset_access(zone);
+	restore_key_gate_reset_access(zone);
 
 	if (zone_table[zone].lifespan_min != zone_table[zone].lifespan_max)
 		zone_table[zone].lifespan =

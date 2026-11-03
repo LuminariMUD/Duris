@@ -80,17 +80,17 @@ def fixture_source():
     return "\n".join(result)
 
 
-def production_source():
+def production_source(cases="MGED!"):
     db = (ROOT / "src/world/db.c").read_text()
     events = (ROOT / "src/world/events.c").read_text()
-    helper_start = db.find("static void restore_castle_reset_access(")
+    helper_start = db.find("static void restore_key_gate_reset_access(")
     helper = "" if helper_start < 0 else db[helper_start:db.index("#define ZCMD", helper_start)]
     start = db.index("void reset_zone(")
     reset = db[start:db.index("#undef ZCMD", start)]
     # Retain the production admission/loop, M/G/E/D bodies and finalization.
     # Other reset commands are absent from this fixture and rejected by default.
     reset = re.sub(r"(?ms)^\t\t\tcase '([^']+)':.*?(?=^\t\t\t(?:case |default:))",
-                   lambda m: m[0] if m[1] in "MGED!" else "", reset)
+                   lambda m: m[0] if m[1] in cases else "", reset)
     start = db.index("int is_empty(")
     empty = db[start:db.index("\n/************************************************************************", start)]
     start = events.index("void event_reset_zone(")
@@ -112,6 +112,7 @@ def main():
                         "-Wno-unused-variable", "-Wno-unused-but-set-variable",
                         "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                         "-fno-pie", "-no-pie", "-I", str(ROOT / "src"),
+                        "-I", str(ROOT / "tests/async"),
                         str(source), "-o", str(binary)], check=True)
         failures = []
         for case in [str(g[0]) for g in GATES] + ["controls", "occupancy", "boundaries"]:
