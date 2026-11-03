@@ -140,6 +140,9 @@ int main()
     assert(results[0].outcome == player_load_outcome::applied);
     assert(results[1].request_id == 2);
     assert(results[1].outcome == player_load_outcome::stale);
+    assert(results[0].item_read_writer_sequence == 1);
+    assert(results[0].request.request_id == results[0].request_id);
+    assert(results[0].request.pid == results[0].pid && results[0].request.deadline_usec > 0);
 
     assert(player_load_pipeline_submit(request(3, 30)) ==
            player_load_submit_outcome::accepted);

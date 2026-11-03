@@ -468,6 +468,14 @@ int main() {
 """
 HARNESS=HARNESS.replace("// OWNER_RECONCILIATION_CASES", r"""
 void owner_reconciliation_cases() {
+ player_load_result delayed;
+ delayed.outcome=player_load_outcome::applied; delayed.item_read_writer_sequence=0;
+ delayed.snapshot.items.resize(1); delayed.item_identities.resize(1);
+ delayed.snapshot.items[0].extra_flags=ITEM_ARTIFACT;
+ assert(player_load_items_qualify(&delayed)==EAGAIN && delayed.snapshot.items.size()==1);
+ delayed.snapshot.pets.resize(1); delayed.snapshot.pets[0].items=delayed.snapshot.items;
+ delayed.snapshot.items.clear(); delayed.item_identities.clear();
+ assert(player_load_items_qualify(&delayed)==EAGAIN && delayed.snapshot.pets[0].items.size()==1);
  for(int placement=0;placement<3;++placement) for(int stale=0;stale<5;++stale) {
   assert(!object_list && !pool.objs_used && writes.empty());
   artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
@@ -584,7 +592,7 @@ void owner_reconciliation_cases() {
  std::cout<<"qualified worn/carried/nested owner reconciliation, first feed, conflicts and cancellation: PASS\n";
 }
 """)
-source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
+source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "bool player_load_items_read_current(", "unsigned int player_load_items_qualify(")))
 source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static void append_obj_to_list(")+"\n"+extract_function("handler.c","void obj_to_char_at_end("))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",

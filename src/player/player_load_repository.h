@@ -167,6 +167,10 @@ struct player_load_source_item
 struct player_load_result
 {
 	uint64_t request_id = 0;
+	player_load_request request = {}; // original identity/deadline for a fresh async read
+	// UINT64_MAX is boot/direct repository use; async reads capture the writer
+	// cut so artifact admission can require a fresh read after overlapping saves.
+	uint64_t item_read_writer_sequence = UINT64_MAX;
 	int32_t pid = 0;
 	player_load_outcome outcome = player_load_outcome::component_failure;
 	unsigned int error_code = 0;

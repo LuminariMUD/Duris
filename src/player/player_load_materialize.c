@@ -430,6 +430,13 @@ bool player_load_materialize(P_char ch, const player_load_result &loaded)
 	if (!ch || !ch->only.pc)
 		return false;
 	const bool source_valid = valid_snapshot(loaded);
+	if (source_valid && !player_load_items_read_current(loaded))
+	{
+		logit(LOG_SYS, "player_load: pid=%d outcome=fresh_artifact_read_required",
+		      loaded.pid);
+		errno = EAGAIN;
+		return false;
+	}
 	if (source_valid &&
 	    (loaded.snapshot.components &
 	     (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) &&

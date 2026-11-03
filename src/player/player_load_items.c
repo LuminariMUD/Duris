@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_items.h"
+#include "player/player_save_worker.h"
 #include "combat/trap_legacy.h"
 
 #include "net/comm.h"
@@ -962,11 +963,33 @@ bool player_load_item_graph_materialize(P_char character,
 		hydrate_ownership, false, metrics);
 }
 
+bool player_load_items_read_current(const player_load_result &result)
+{
+	if (result.outcome != player_load_outcome::applied ||
+	    result.item_read_writer_sequence == UINT64_MAX ||
+	    (result.item_read_writer_sequence &&
+	     result.item_read_writer_sequence == persistence_writer_read_sequence()))
+		return true;
+	for (const auto &item : result.snapshot.items)
+		if ((item.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(item.vnum))
+			return false;
+	for (const auto &pet : result.snapshot.pets)
+		for (const auto &item : pet.items)
+			if ((item.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(item.vnum))
+				return false;
+	for (const auto &source : result.item_sources)
+		if ((source.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(source.vnum))
+			return false;
+	return true;
+}
+
 unsigned int player_load_items_qualify(player_load_result *result)
 {
 	if (!result || result->outcome != player_load_outcome::applied ||
 	    result->snapshot.items.size() != result->item_identities.size())
 		return EINVAL;
+	if (!player_load_items_read_current(*result))
+		return EAGAIN;
 	try
 	{
 		auto &sources = result->item_sources;
