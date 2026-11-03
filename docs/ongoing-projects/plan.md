@@ -1,7 +1,12 @@
 # Active plan: PostHog free-tier telemetry (#446)
 
 Continue from [the issue-446 implementation plan](issue-446-posthog-free-plan.md).
-It records the scope, evidence, validation, PR sequence and remaining access needs.
+It records the scope, measured usage, validation and growth limits. The review
+stack is [#629](https://github.com/LuminariMUD/Duris/pull/629) →
+[#630](https://github.com/LuminariMUD/Duris/pull/630) →
+[#631](https://github.com/LuminariMUD/Duris/pull/631) →
+[#633](https://github.com/LuminariMUD/Duris/pull/633). Current traffic fits full
+collection; season scope and the bounded time view are repaired and verified.
 Updated 2026-11-03. The previous plans below are retained as history.
 
 # Issue #611: preserve assigned NPC ship pursuit

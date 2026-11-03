@@ -2,8 +2,9 @@
 
 - Issue: [#446](https://github.com/LuminariMUD/Duris/issues/446)
 - Prepared: 2026-11-03
-- Status: implementation active; report scope and cached diagnostics are the first
-  review chunks. Production changes have not started.
+- Status: review fixes validated; sequential merge and cleanup in progress.
+  Keep full collection; growth qualification remains bounded
+  as recorded below. No game deployment or quota mutation was performed.
 - Branch: `branch/issue-446-posthog-free-plan`
 - Local worktree: `/home/aiwithapex/projects/duris-issue-446-posthog-free-plan`
 - Source baseline: `96ef0ed6b` (`origin/master` when this worktree was created).
@@ -38,14 +39,14 @@ service, SDK replacement, second writer, payload spool, or paid add-on. Preserve
 the existing worker, reducer, queue, journal, and gameplay independence.
 
 **Files:** this plan and `plan.md`; the five existing report SQL files,
-`REPORTS.md` and their local SQL runner for the confirmed season mismatch;
-`src/cmd/actinf.c` and its focused command regression for cached family diagnostics.
-Other implementation owners below remain conditional on measured demand.
+`REPORTS.md` and their local SQL runner for the confirmed season mismatch and
+time-page defect. No runtime change is needed for current measured demand.
+Other implementation owners below remain conditional on measured excess.
 
 **Proof:** source tracing, read-only production configuration/log inspection,
-official pricing checks, executable local reducer/sender tests, reproducible
-budget arithmetic, and Git checks. Current cloud ingestion and Duris organization
-billing remain unverified; they are explicit first-step implementation inputs.
+official pricing checks, existing executable reducer/sender evidence, local and
+cloud SQL checks, actual organization billing, reproducible budget arithmetic,
+and Git checks. Exact current scope and remaining growth limits are recorded below.
 
 ## What the evidence establishes
 
@@ -55,8 +56,8 @@ The health isolation fixture originally reused the in-scope producer identity
 for excluded rows. Latest-per-producer selection could hide those rows even if
 the season predicate was removed; a disposable SQL mutation reproduced the
 false pass. Excluded health rows now have a distinct numeric producer identity,
-so they cannot disappear behind valid snapshots. The mutation must fail at
-the health assertion, while the real five-report SQL suite must pass. No runtime
+so they cannot disappear behind valid snapshots. The missing-season mutation now
+fails at the health assertion, while the real five-report SQL suite passes. No runtime
 or saved-query change is needed for this test repair.
 
 The XP report has the same bounded-page problem as time: `level_change` sorts
@@ -64,17 +65,23 @@ before `observed_xp`, so 501 level transitions hide every XP allocation. The
 existing runner now reproduces that case and failed on the original order.
 Reverse only its plane ordering, preserving independent XP expansion, exact
 integers, level rows, scope filters and the 500-row/truncation contract. The full
-local report suite must pass, then synchronize the saved XP view and update its
-fingerprint in the acceptance record before merging #633.
+local report suite passes, including both 501-row first-page cases. Saved XP
+insight 13125344 was updated and read back at `2026-11-03T19:18:57.693253Z`;
+its normalized SQL fingerprint below matches the repository. A bounded November 2
+production check returns observed XP first, 3,431 rows before the 500-row limit,
+and identical results with duplicated source input. Browser verification used the
+saved URL without a stale `#q` override and visibly shows `observed_xp` first.
 
 ### Implementation checkpoint — 2026-11-03
 
 - Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),
-  `branch/issue-446-posthog-free-plan`, head `04dd635c5`.
+  `branch/issue-446-posthog-free-plan`, planning checkpoint `04dd635c5`.
 - Season scope: [PR #630](https://github.com/LuminariMUD/Duris/pull/630),
-  `branch/issue-446-posthog-season2`, head `bd6f64faf`, based on #629.
-- Time-page repair: `branch/issue-446-posthog-time-page`, based on #630.
-  Acceptance/evidence follows that repair.
+  `branch/issue-446-posthog-season2`, SQL commit `bd6f64faf`, based on #629.
+- Time-page repair: [PR #631](https://github.com/LuminariMUD/Duris/pull/631),
+  `branch/issue-446-posthog-time-page`, SQL commit `1fa1e04c5`, based on #630.
+- Acceptance/evidence: [PR #633](https://github.com/LuminariMUD/Duris/pull/633),
+  `branch/issue-446-posthog-acceptance`, based on #631.
   Review these in order; retarget each child after its parent merges. No release
   tag, deployment, restart, migration, quota reset or capture campaign is needed.
 - The user confirms the FREE tier and production season 2. No capture/identity
@@ -130,8 +137,157 @@ fixture raises only its parser's query-size limit to hold more than one page.
 No production query/memory/result limits are raised.
 
 Validation: the complete existing embedded ClickHouse report runner and
-`git diff --check` pass. A saved-view order update and verification will be
-recorded in the acceptance chunk, preserving the dashboard's date-filter binding.
+`git diff --check` pass. The saved-view order update and verification below
+preserve the dashboard's date-filter binding.
+
+### Cloud and budget acceptance — 2026-11-03, approximately 18:35–18:50 UTC
+
+The correct account's Billing confirms `billing_plan=free`, no active paid
+subscription, a 1,000,000-event Product Analytics limit and no exceeded limit.
+The billing period is **October 21 09:14:54.264 UTC through November 20
+09:14:54.264 UTC**. The product overview showed **64,506** current events and
+**127,911** projected events. Its older usage summary showed 57,087 plus 7,419
+today, reconciling to 64,506. Do not treat the usage time series' zero for the
+incomplete November 3 day as zero ingestion. Only project 678214 appears in the
+organization's event-usage breakdown. Other product meters and paid add-ons
+showed zero usage/no subscriptions. No billing settings were changed.
+
+Completed-day billing event counts are October 29 **11,704**, October 30
+**7,970**, October 31 **8,122**, November 1 **8,497**, November 2 **8,470**.
+This covers the settled weekday/weekend comparison without waiting another week.
+The settled maximum extrapolates to 263,407/31 days; even repeating the observed
+11,704 launch-day count gives 362,824/31 days, below the 450,000 normal target.
+These are forecasts from billing counts, not hard bounds on future demand or
+sender attempts. Native reservations still count retries before HTTP. The actual
+single-project organization and current projection have substantial free-tier
+headroom, so no quota increase or routine-run sampling is justified now.
+
+Read-only bounded event queries separately confirmed all six families, schema 1,
+environment 1, season 2 and empty test tag. October 30–November 2 yielded
+**33,095 received rows**, with received and distinct `duris_event_id` counts
+equal in every day/family/scope group. Those counts differ slightly from billing
+and must not replace its meter. Settled encounter output contains 1,704–1,850
+run rows/day, 1,954–2,113 player rows/day and 248–607 pet rows/day; it is not
+six rows for every run. The original low-run synthetic forecast is not an actual
+production capacity estimate.
+
+The historical quota incident is query-visible and recovered:
+
+- October 29 00:00:00.029 UTC still reports quota day **20754 (October 28)**,
+  normal/health **19,800/100**, error **122**, 7,270 cumulative suppressed rows
+  and zero submitted rows for that producer. This establishes prior-day exhaustion,
+  not excessive October 29 native-to-cloud volume. The original allocation's
+  operational cause (for example deliberate season rollover) was not audited and
+  is not asserted.
+- At 01:00:00.041 UTC, the same producer reports day **20755**, normal/health
+  **802/1**, zero quota error and **803** submissions. Continued hourly progress
+  follows. The 7,270 suppression count remains cumulative historical loss; it
+  must not be counted as new loss each day or silently backfilled.
+- Observed October 30–November 3 snapshots show zero quota error, reduction
+  refusal, suppression, expiry, ambiguity, native drops and retries. Hourly
+  snapshots cannot rule out every unobserved transient, but no current quota
+  failure requiring operational repair is evidenced.
+- The current producer's November 3 **17:33:12 / 18:33:12.005** snapshots show
+  native consumed **9,882 / 14,425**, created **835 / 1,102**, submitted
+  **833 / 1,102**, normal reserved **7,384 / 7,652**, health **20 / 21**,
+  suppression **0 / 0**, quota error **0 / 0**. Compare deltas: 4,543 native
+  records produce 267 additional rows; the 269 submissions include two previously
+  pending rows. This confirms continued query-visible progress without summing
+  cumulative snapshots or treating native admissions as billable events.
+
+The 17:33 health row also exposes all six `output_by_family` and eight
+`native_reduction_by_kind` entries. It has 71 session, 305 character summary,
+67 level, 389 encounter, one configuration and two health rows created; 387
+encounter rows acknowledged, with the two remaining rows pending. Family
+suppression/expiry/ambiguity are all zero. Reuse these existing counters if
+measurement is resumed; a new cached-command implementation is unnecessary.
+
+### Saved reports and exact proof
+
+All five saved queries already had season 2 and the reviewed semantics when
+the authorized browser was supplied. Comparison used complete query definitions,
+normalized whitespace and the explicit replacement of `{filters}` with the
+repository's rolling 31-day timestamp predicate. The dashboard wrapper uses
+calendar date-range controls, so its exact endpoint semantics differ from the
+repository's rolling-to-now predicate; retain that existing UI behavior and use
+explicit UTC bounds for reproducible checks. SHA-256 values for the final SQL:
+
+- Activity 13125342: `d1e7cfefb7a2c80b113073ec105f7657606ebfe31f517fca74a6bbd8ad3b9c3c`.
+- Time 13125343: `85b4419576bfbf8816e70b4a0027e5b88f3ce0e00e6a8a5ecbdb0881b63cb2d2`.
+- XP 13125344: `c6ff66efb35475e942157a31520c98437caf348f0a7a520b211ee36160cf35be`.
+- Encounters 13125345: `9d97948d9ed1dd294cf998c6eaf1c73eea59d8e618250453f64422069457838e`.
+- Health 13125346: `e06e41378099e8f9cc49a4bf3b690eaefd79c955ecb982108650d83bc256114f`.
+
+The five stale season-1 descriptions and the demonstrated time/XP ordering
+needed cloud edits. The time update was read back exactly at saved revision
+`2026-11-03T18:46:14.540183Z`; dashboard date filters/membership were retained.
+The XP review update is recorded above. The browser visibly shows season 2,
+additive interval rows first in time, and observed XP first in progression. No new
+dashboard, insight, event, capture campaign or paid feature was created.
+
+All five saved reports executed. For the completed November 2 UTC day, reading
+each source row twice through a two-row CROSS JOIN returned identical results
+for all reports; health freshness used a fixed timestamp. The time order was
+rechecked afterward and remains duplicate-invariant, with interval rows first
+and 3,509 rows before its 500-row limit. Default 31-day time/XP/encounter pages
+are truncated; never use those 500 rows as population totals. Local fixture
+checks additionally prove scope/test isolation, exact time/XP, separate pet
+overflow, rollback, late reconciliation and the new first-page behavior.
+
+Reproduction uses the existing native fixture binaries from the unchanged C/C++
+baseline and the documented local ClickHouse command. That command and
+`git diff --check` pass on the final SQL/test change. No C/C++ build, gameplay
+journey or performance requalification is required for these SQL/documentation
+edits. Existing dual-backend reducer/HTTPS results below remain valid; no capture,
+worker lifecycle, retry, durable journal or schema code changed. Hosted CI is not
+a gate. Original checkout and all unrelated worktrees remain untouched.
+
+### Growth limit and continuation boundary
+
+Current billing and settled-day coverage support keeping full collection. They
+do **not** qualify forty characters connected all day. Aggregating the reviewed
+time deltas **before** their 500-row limit yields 1,054.202 known connected
+character-hours and 1,062.936 resident hours over October 30–November 2: averages
+10.981 and 11.072. A further 142,855,524,059 connected microseconds have unknown
+occurrence day and are not allocated to invented dates.
+
+As an explicit forty-average stress **forecast**, scale the observed 32,983
+variable-family rows across four days by `40 / 10.9812740174`, keep 112
+configuration/health rows across those days fixed, and round up: **30,064/day**,
+or **30,666/day** with an assumed 2% retry allowance and **950,746/31 days**
+including 100 test attempts. This exceeds the local daily cap and normal/shared
+targets. It is neither a concurrent executable test nor a claim that average
+concurrency will scale linearly. The old serial fixture cannot qualify that load.
+An encounter-heavy or outage/recovery burst at that unobserved sustained load
+also remains unqualified. Do not present peak twenty or current low billing as
+a guarantee for forty average.
+
+Keep the existing limits and re-open the conditional reduction work before such
+sustained growth, or when measured normal attempts approach 14,000/day, loss
+reappears, or other organization producers materially consume the headroom.
+At that point use the measured eligible whole-run mix and the sequence below;
+do not silently enable sampling now for hypothetical traffic. Active-character-day
+and day-1/day-7 cohort extensions likewise remain conditional on proving their
+observation/coverage semantics; this patch preserves the existing rolling-return
+definition and does not claim those additional metrics were implemented.
+
+#578's saved-state comparison/result checks are complete and recorded in
+`REPORTS.md`. #446's reported block is shown historical, with current ingestion
+and headroom evidenced. Leave both issues open until the review stack lands;
+reviewers can then close the current incidents with these limits explicit.
+No production game operation or additional cloud capture remains for this repair.
+
+Final integration: master advanced to `f43055ec4` (#627) during this work.
+Merged it into #629 and carried the updated parents through #630, #631 and #633
+using ordinary merge commits and pushes; no published history was rewritten.
+Resolved `plan.md` by retaining the telemetry pointer and the complete newer NPC
+plan, which itself preserves the flight plan. The tested report SQL, report runner
+and telemetry source are unchanged by this integration (`git diff --exit-code
+f05a8b56e HEAD -- docs/telemetry tests/async/run_telemetry_posthog_reports.py
+src/telemetry` passed before this documentation-only update). Reuse the completed
+SQL/native evidence rather than rerunning unrelated gameplay suites.
+
+### Original planning baseline (before the implementation above)
 
 1. **The issue describes an October 28 incident.** It reports 46,700 native
    admissions in about three hours, `EDQUOT`, and zero historical SQL
