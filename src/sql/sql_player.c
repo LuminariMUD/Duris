@@ -171,8 +171,23 @@ int *sql_get_player_recipes(int pid, int *count)
 	return result_recipes;
 }
 
+namespace
+{
+std::map<std::string, int> creation_reservations;
+
+std::string reservation_name(const char *name)
+{
+	std::string key(name);
+	for (char &letter : key)
+		letter = LOWER(letter);
+	return key;
+}
+}
+
 bool sql_player_exists(const char *name)
 {
+	if (name && creation_reservations.count(reservation_name(name)))
+		return true;
 	bool exists = true;
 	std::string error;
 	if (!flatfile_player_identity_exists(name, &exists, &error))
@@ -181,6 +196,10 @@ bool sql_player_exists(const char *name)
 }
 int sql_get_player_pid(const char *name)
 {
+	if (name)
+		if (const auto held = creation_reservations.find(reservation_name(name));
+		    held != creation_reservations.end())
+			return held->second;
 	int32_t pid = -1;
 	std::string error;
 	if (!flatfile_player_identity_pid(name, &pid, &error))
@@ -191,10 +210,29 @@ bool sql_player_names_load(void)
 {
 	return true;
 }
-void sql_player_names_set(int, const char *) {}
-void sql_player_names_forget(int) {}
-void sql_player_names_hold(int, const char *) {}
-void sql_player_names_release(int, const char *) {}
+void sql_player_names_set(int pid, const char *name)
+{
+	sql_player_names_forget(pid);
+	sql_player_names_hold(pid, name);
+}
+void sql_player_names_forget(int pid)
+{
+	std::erase_if(creation_reservations,
+		      [pid](const auto &held) { return held.second == pid; });
+}
+void sql_player_names_hold(int pid, const char *name)
+{
+	if (pid > 0 && name)
+		creation_reservations.try_emplace(reservation_name(name), pid);
+}
+void sql_player_names_release(int pid, const char *name)
+{
+	if (!name)
+		return;
+	const auto held = creation_reservations.find(reservation_name(name));
+	if (held != creation_reservations.end() && held->second == pid)
+		creation_reservations.erase(held);
+}
 const char *sql_get_player_name(int)
 {
 	return nullptr;

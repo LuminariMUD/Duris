@@ -21,7 +21,10 @@
 
 P_acct flatfile_account_state_load(const char *name, std::string *error);
 void flatfile_account_state_release(P_acct account);
-bool flatfile_account_state_save(P_acct account, std::string *error);
+// An initial player commit owns membership until its game-thread acknowledgment;
+// concurrent account settings may still save without projecting a stale list.
+bool flatfile_account_state_save(P_acct account, std::string *error,
+				 bool project_membership = true);
 bool flatfile_account_state_exists(const char *name, bool *exists, std::string *error);
 
 #endif

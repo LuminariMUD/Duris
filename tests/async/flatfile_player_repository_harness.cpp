@@ -21,6 +21,7 @@
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/persistence_observability.h"
+#include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
 #include "classes/necromancy.h"
 #include "core/defines.h"
@@ -1461,6 +1462,66 @@ static void initial_creation_boundaries(const fs::path &root)
 
 int main(int argc, char **argv)
 {
+	if (argc == 3 && std::string(argv[2]) == "empty-authorities")
+	{
+		const std::string root = argv[1];
+		for (const char *suffix : { "", "/domains", "/players", "/identities",
+					    "/identities/accounts", "/identities/names" })
+		{
+			fs::create_directories(root + suffix);
+			fs::permissions(root + suffix, fs::perms::owner_all,
+					fs::perm_options::replace);
+		}
+		setenv("PERSISTENCE_MODE", "flatfile-primary", 1);
+		setenv("FLATFILE_STATE_DIR", root.c_str(), 1);
+		char configured[1024]{};
+		require(persistence_mode_configure(configured, sizeof(configured)), configured);
+		std::string error;
+		require(flatfile_account_reward_summon_establish(root, {}, &error) ==
+				flatfile_account_reward_summon_result::ok,
+			"empty account reward authority: " + error);
+		require(flatfile_boon_establish(root, {}, &error) == flatfile_boon_result::ok,
+			"empty boon authority: " + error);
+		require(flatfile_artifact_establish(root, {}, &error) ==
+				flatfile_artifact_result::ok,
+			"empty artifact authority: " + error);
+		require(flatfile_frag_leaderboard_establish(root, {}, &error) ==
+				flatfile_frag_leaderboard_result::ok,
+			"empty frag authority: " + error);
+		require(flatfile_locker_establish(root, {}, {}, &error) ==
+				flatfile_locker_result::ok,
+			"empty locker authority: " + error);
+		require(flatfile_association_establish(root, {}, &error) ==
+				flatfile_association_result::ok,
+			"empty association authority: " + error);
+		require(flatfile_ship_establish(root, {}, &error) == flatfile_ship_result::ok,
+			"empty ship authority: " + error);
+		require(flatfile_world_item_establish(root, {}, {}, &error) ==
+				flatfile_world_item_result::ok,
+			"empty world-item authority: " + error);
+		require(flatfile_recipe_establish(root, {}, &error) == flatfile_recipe_result::ok,
+			"empty recipe authority: " + error);
+		require(flatfile_spellbook_establish(root, {}, &error) ==
+				flatfile_spellbook_result::ok,
+			"empty spellbook authority: " + error);
+		return 0;
+	}
+	if (argc == 5 && std::string(argv[2]) == "block-account")
+	{
+		std::string error;
+		flatfile_account_record account;
+		require(flatfile_account_load(argv[1], argv[3], &account, &error) ==
+				flatfile_account_result::ok,
+			"synthetic account lookup: " + error);
+		const int blocked = std::stoi(argv[4]);
+		require(blocked == 0 || blocked == 1, "synthetic block must be 0 or 1");
+		account.blocked = blocked;
+		uint64_t revision = 0;
+		require(flatfile_account_save(argv[1], account, account.revision, &revision,
+					      &error) == flatfile_account_result::ok,
+			"synthetic account block: " + error);
+		return 0;
+	}
 	if (argc == 4 && std::string(argv[2]) == "stale-membership")
 	{
 		// The level-projection journey calls this only with its synthetic server stopped.

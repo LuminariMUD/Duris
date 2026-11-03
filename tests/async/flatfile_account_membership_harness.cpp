@@ -130,8 +130,19 @@ int main(int argc, char **argv)
 						     &error) == flatfile_identity_result::ok &&
 			undead_identity.racewar == 3,
 		"the identity must keep each character's own racewar");
+	// A login/settings cache can omit a character whose first snapshot has just
+	// committed. Saving those settings during Keep must not tombstone membership.
+	struct acct_chars *cached_membership = loaded->acct_character_list;
+	loaded->acct_character_list = nullptr;
+	free(loaded->acct_email);
+	loaded->acct_email = strdup("during-keep@example.test");
+	require(flatfile_account_state_save(loaded, &error, false),
+		"settings-only save during Keep failed: " + error);
+	loaded->acct_character_list = cached_membership;
 	P_acct reloaded = flatfile_account_state_load("account-one", &error);
 	require(reloaded && reloaded->num_chars == 4, "reload with four characters: " + error);
+	require(!strcmp(reloaded->acct_email, "during-keep@example.test"),
+		"settings did not commit while membership projection was deferred");
 	for (struct acct_chars *entry = reloaded->acct_character_list; entry; entry = entry->next)
 	{
 		if (!strcmp(entry->charname, "Watcher"))

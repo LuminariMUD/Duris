@@ -351,6 +351,8 @@ int main()
 	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
 			applied.rolled_back,
 		"initial mapping failure must report a confirmed rollback");
+	require(applied.creation_not_committed,
+		"mapping rollback must prove this initial attempt published no character");
 	for (const char *table : { "player_data", "player_items", "currency_wallet_baseline",
 				   "epic_balance_baseline", "combat_frag_baseline" })
 		require(scalar(test_connection, "SELECT COUNT(*) FROM " + std::string(table) +
@@ -406,6 +408,16 @@ int main()
 			scalar(test_connection,
 			       "SELECT COUNT(*) FROM account_characters WHERE pid=5") == "0",
 		"a blocked account must not commit a fresh character");
+	require(applied.creation_not_committed,
+		"blocked fresh creation must permit attempt-scoped cleanup");
+	auto missing_owner = snapshot_for(6, 1, "MissingOwner");
+	missing_owner.creation_account = "absent_account";
+	applied = player_snapshot_repository_apply(test_connection, missing_owner);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.creation_not_committed &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=6") ==
+				"0",
+		"missing owner with no initial row must release only its empty attempt");
 	execute(test_connection, "UPDATE accounts SET blocked=0 WHERE account_name='claim_probe'");
 	auto conflicting = unbased;
 	execute(test_connection, "INSERT INTO accounts(account_name) VALUES ('other_creator')");

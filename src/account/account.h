@@ -147,4 +147,18 @@ void account_read(struct descriptor_data *d, const char *name, account_read_done
 uint64_t wait_for_writer(struct descriptor_data *d);
 struct descriptor_data *writer_replied(uint64_t id);
 
+struct player_save_completion;
+bool keep_new_character(struct descriptor_data *d);
+void continue_kept_character(struct descriptor_data *d, bool created = false);
+bool approve_kept_character(struct descriptor_data *d);
+bool decline_kept_character(struct descriptor_data *d, const char *reason);
+void account_creation_saved(const player_save_completion &completion);
+void account_creation_pulse();
+bool account_creation_pending(int pid);
+bool account_creation_owner_pending(const char *name);
+// Value projection: name/next remain null until publication into an account list.
+struct acct_chars account_kept_character_projection(struct char_data *character);
+bool account_publish_kept_character(struct acct_entry *account, const struct acct_chars &projection,
+				    const char *name);
+
 #endif // DURIS_ACCOUNT_H
