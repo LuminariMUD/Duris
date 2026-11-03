@@ -93,16 +93,19 @@ bool starter_kit_intent_bind(uint32_t pid, const critical_command &command)
 	const auto state = starter_kit_intent_read(pid, &existing);
 	if (state == starter_kit_state::absent)
 		return write(pid, command, 0);
-	std::vector<uint8_t> old_bytes, new_bytes;
-	return state == starter_kit_state::pending &&
-	       critical_command_encode(existing, &old_bytes) == critical_command_codec_result::ok &&
-	       critical_command_encode(command, &new_bytes) == critical_command_codec_result::ok &&
-	       old_bytes == new_bytes;
+	return state == starter_kit_state::pending && critical_command_equal(existing, command);
 }
 
 bool starter_kit_intent_finish(uint32_t pid, const critical_command &command, bool committed)
 {
-	return starter_kit_intent_bind(pid, command) && write(pid, command, committed ? 1 : 2);
+	critical_command existing;
+	const auto state = starter_kit_intent_read(pid, &existing);
+	const auto terminal = committed ? starter_kit_state::committed :
+					  starter_kit_state::rejected;
+	// A failed directory sync can leave the terminal rename visible. Rewrite the
+	// identical result to establish durability without reopening it for submission.
+	return (state == starter_kit_state::pending || state == terminal) &&
+	       critical_command_equal(existing, command) && write(pid, command, committed ? 1 : 2);
 }
 
 void starter_kit_intent_shutdown()

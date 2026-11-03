@@ -242,7 +242,7 @@ void epic_free_level(P_char) { assert(false); }
 int get_property(const char *, int fallback) { return fallback; }
 void clear_title(P_char) {}
 int getNewPCidNumb() { return 42; }
-bool player_revision_hydrate(int, player_revision_t) { return true; }
+bool player_revision_hydrate(int, player_revision_t, bool) { return true; }
 void sql_player_names_set(int, const char *) {}
 void find_starting_location(P_char, int) {}
 void NewbySkillSet(P_char, bool) {}

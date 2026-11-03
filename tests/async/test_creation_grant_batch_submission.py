@@ -49,5 +49,5 @@ assert "count > ITEM_CREATION_GRANT_MAX_ROOTS" in QUEUE_BATCH
 
 print("[PASS] detached starter roots use one creation batch submission")
 
-assert "nullptr, true, nullptr" in PRE_ENTRY_BATCH
+assert "nullptr, true, starter" in PRE_ENTRY_BATCH
 assert "item_creation_grant_submit_batch_to_player(" in MOVEMENT_HEADER

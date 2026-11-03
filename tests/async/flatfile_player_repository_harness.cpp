@@ -15,6 +15,7 @@
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_account_reward_summon_repository.h"
 #include "flatfile/flatfile_account_repository.h"
+#include "account/account.h"
 #include "flatfile/flatfile_association_repository.h"
 #include "flatfile/flatfile_frag_leaderboard_repository.h"
 #include "flatfile/flatfile_locker_repository.h"
@@ -1449,6 +1450,47 @@ static void initial_creation_boundaries(const fs::path &root)
 		require(flatfile_account_save(state, account, revision, &revision, &error) ==
 				flatfile_account_result::ok,
 			"unblock synthetic owner: " + error);
+		if (boundary < 0)
+		{
+			auto quest = snapshot;
+			quest.revision = 2;
+			quest.quest_values = {};
+			quest.pending_world_quest = {
+				true, 25001, 20, 9000, 0, 1800000001, "Player", "initial completion"
+			};
+			quest.pending_world_quest.before_quest[0] = 1;
+			quest.pending_world_quest.before_quest[1] = 25001;
+			require(flatfile_player_snapshot_apply(state, quest, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"creation quest must continue after its same-revision fallback");
+			int count = 0;
+			require(flatfile_world_quest_count_day(state.c_str(), pid, 20, 1800000001,
+							       &count, &error) ==
+						flatfile_world_quest_result::ok &&
+					count == 1 &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.quest_values[0] == 0,
+				"creation quest success omitted history or final state");
+			auto advanced = quest;
+			advanced.revision = 3;
+			advanced.creation_account.clear();
+			advanced.pending_world_quest = {};
+			for (auto &field : advanced.status_integers)
+				if (field.field == player_status_field::level)
+					field.signed_value = 1;
+			require(flatfile_player_snapshot_apply(state, advanced, &error).outcome ==
+						player_save_apply_outcome::applied &&
+					flatfile_player_snapshot_apply(state, quest, &error)
+							.outcome ==
+						player_save_apply_outcome::already_applied &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.revision == 3,
+				"initial quest replay overwrote later state");
+		}
 		int32_t competitor = 0;
 		require(flatfile_identity_allocate_pid(state, &competitor, &error) ==
 					flatfile_identity_result::ok &&
@@ -1466,6 +1508,58 @@ static void initial_creation_boundaries(const fs::path &root)
 				player_save_apply_outcome::terminal_failure,
 			"late initial snapshot resurrected a tombstoned identity");
 	}
+	const auto limited = (root / "account-limit").string();
+	for (const auto &directory :
+	     { fs::path(limited), fs::path(limited) / "players", fs::path(limited) / "domains",
+	       fs::path(limited) / "identities", fs::path(limited) / "identities/names",
+	       fs::path(limited) / "identities/accounts" })
+	{
+		fs::create_directories(directory);
+		fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+	}
+	std::string error;
+	flatfile_account_record owner;
+	owner.name = "Limitkeeper";
+	owner.password_hash = "synthetic";
+	uint64_t revision = 0;
+	require(flatfile_account_save(limited, owner, 0, &revision, &error) ==
+			flatfile_account_result::ok,
+		"save limited account: " + error);
+	int32_t pid = 0;
+	for (int i = 1; i < MAX_CHARS_PER_ACCOUNT; ++i)
+	{
+		require(flatfile_identity_allocate_pid(limited, &pid, &error) ==
+					flatfile_identity_result::ok &&
+				flatfile_identity_claim(limited, pid,
+							"Limitseed" + std::to_string(i), owner.name,
+							&error) == flatfile_identity_result::ok,
+			"seed account slots");
+	}
+	require(flatfile_identity_allocate_pid(limited, &pid, &error) ==
+			flatfile_identity_result::ok,
+		"allocate last slot");
+	auto last = make_full(1);
+	last.pid = pid;
+	last.creation_account = owner.name;
+	require(flatfile_player_snapshot_apply(limited, last, &error).outcome ==
+				player_save_apply_outcome::applied &&
+			flatfile_player_snapshot_apply(limited, last, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+		"last slot and retry must remain valid at the cap: " + error);
+	auto excess = last;
+	require(flatfile_identity_allocate_pid(limited, &excess.pid, &error) ==
+			flatfile_identity_result::ok,
+		"allocate over-limit attempt");
+	for (auto &field : excess.status_strings)
+		if (field.field == player_status_string_field::name)
+			field.value = "Overlimit";
+	const auto capped = flatfile_player_snapshot_apply(limited, excess, &error);
+	flatfile_identity_record absent;
+	require(capped.outcome == player_save_apply_outcome::terminal_failure &&
+			capped.creation_not_committed &&
+			flatfile_identity_lookup_pid(limited, excess.pid, &absent, &error) ==
+				flatfile_identity_result::not_found,
+		"over-limit creation must publish no membership");
 	std::cout
 		<< "atomic first character: precommit, journal and five after-images, replay, competition and tombstones passed\n";
 }

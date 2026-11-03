@@ -711,6 +711,31 @@ def complete_generation(root, p, destination, event):
             "replica": replica}
 
 
+def verify_starter_capture(stage, p):
+    """No binding may cross the early evidence copy and authority snapshot."""
+    for name, root in p["journal_roots"].items():
+        source = Path(root) / "starter-kits"
+        captured = stage / "journals" / name / "starter-kits"
+        expected = {path.name for path in captured.glob("*.kit")}
+        seen = set()
+        if source.exists() or source.is_symlink():
+            secure_path(source, True)
+            for path in source.iterdir():
+                if path.name == ".service-lock" or re.fullmatch(r"\.\d+\.kit\.tmp\..+", path.name):
+                    continue
+                secure_path(path, False)
+                require(re.fullmatch(r"[1-9][0-9]*\.kit", path.name) and
+                        33 < path.stat().st_size <= COMBAT_MAX_BYTES, "journal_starter_changed")
+                data = path.read_bytes()
+                require(data[0] <= 2 and hashlib.sha256(data[:-32]).digest() == data[-32:],
+                        "journal_starter_checksum")
+                require(path.name in expected and
+                        data == (captured / path.name).read_bytes(),
+                        "journal_starter_changed")
+                seen.add(path.name)
+        require(seen == expected, "journal_starter_changed")
+
+
 def backup(p, mode):
     if mode == "mariadb-primary-flatfile-fallback":
         mode = "mariadb-primary"
@@ -781,6 +806,7 @@ def backup(p, mode):
             journal_capture(stage, p, capacity_base, starter=True)
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
+            verify_starter_capture(stage, p)
             # The receipts come after the authority, so a paid, failed or delivered one is at
             # least as new as the database it is restored with. One still waiting on its payment
             # may have its charge in the snapshot but not its paid marker, which a restore would

@@ -496,10 +496,10 @@ void NPCShipAI::escort_attacked_by(P_ship attacker)
 /*
  * Despawn the ship if its errand is over and nobody would notice.
  *
- * Only considered when the maintenance countdown reaches 1.  Refuses while a
- * player is aboard, and pushes the countdown back another 10 ticks if any
- * non-NPC, undocked ship is still in contact -- ships do not vanish in front
- * of witnesses.
+ * Only considered when the maintenance countdown reaches 1. Postpones another
+ * 10 ticks while a player is aboard or a loaded, undocked player ship is in
+ * contact range -- ships do not vanish in front of witnesses. The heartbeat
+ * keeps expiry pending while AI activity is temporarily blocked.
  *
  * Returns TRUE only if the ship was actually destroyed, in which case the
  * caller must not touch it again.
@@ -509,10 +509,15 @@ bool NPCShipAI::try_unload()
 	if (ship->timer[T_MAINTENANCE] == 1)
 	{
 		if (pc_is_aboard(ship))
+		{
+			ship->timer[T_MAINTENANCE] += 10;
 			return FALSE;
+		}
+		const float contact_range = 35 + ship->crew.get_contact_range_mod();
 		for (int i = 0; i < contacts_count; i++)
 		{
-			if (SHIP_DOCKED(contacts[i].ship) || IS_NPC_SHIP(contacts[i].ship))
+			if (!SHIP_LOADED(contacts[i].ship) || SHIP_DOCKED(contacts[i].ship) ||
+			    IS_NPC_SHIP(contacts[i].ship) || contacts[i].range > contact_range)
 				continue;
 			ship->timer[T_MAINTENANCE] += 10;
 			return FALSE;
@@ -732,12 +737,14 @@ void NPCShipAI::update_target(int i) // index in contacts
 /*
  * Whether `tar` is something this ship will attack.
  *
- * Never a docked or sinking ship.  The current target always stays valid.
- * Otherwise the ship must belong to one of the four player racewar sides --
+ * Never an unloaded, docked or sinking ship.  An available current target
+ * stays valid; other ships must belong to one of the four player racewar sides --
  * which is what stops NPC ships attacking each other.
  */
 bool NPCShipAI::is_valid_target(P_ship tar)
 {
+	if (!SHIP_LOADED(tar))
+		return false;
 	if (SHIP_DOCKED(tar))
 		return false;
 	if (SHIP_SINKING(tar))

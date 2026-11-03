@@ -8,6 +8,8 @@
 #include "core/utils.h"
 #include "account/account.h"
 #include "item/storage_lockers.h"
+#include "item/starter_kit_intent.h"
+#include "player/player_revision_state.h"
 #include "economy/boon_reward_transaction.h"
 #include "economy/shop_trade_transaction.h"
 #include "guild/artifact_admission.h"
@@ -26,6 +28,24 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Ordinary item fixtures do not provide durable starter-kit storage. Dedicated
+// starter/revision tests link the real implementations, overriding these refusals.
+HARNESS_STUB bool starter_kit_intent_bind(uint32_t, const critical_command &)
+{
+	return false;
+}
+HARNESS_STUB bool starter_kit_intent_finish(uint32_t, const critical_command &, bool)
+{
+	return false;
+}
+HARNESS_STUB starter_kit_state starter_kit_intent_read(uint32_t, critical_command *)
+{
+	return starter_kit_state::invalid;
+}
+HARNESS_STUB bool player_revision_snapshot_copy(int, player_revision_snapshot *)
+{
+	return false;
+}
 // Fixtures without the account creation state machine have no pending Keep.
 HARNESS_STUB bool account_creation_pending(int)
 {

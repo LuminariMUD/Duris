@@ -46,15 +46,16 @@ int published = 0, released = 0, approved = 0, denied = 0, websocket_entries = 0
 int ended = 0, deletions = 0;
 std::string output;
 std::map<int, std::string> reservations;
-std::map<P_acct, int> cached_characters;
 acct_chars account_kept_character_projection(P_char ch) { acct_chars value{}; value.pid = GET_PID(ch); return value; }
-bool account_publish_kept_character(P_acct account, const acct_chars &value, const char *) { cached_characters[account] = value.pid; return true; }
+/* PRODUCTION_ACCOUNT_PUBLICATION */
 player_save_pipeline_result admission = player_save_pipeline_result::queued;
 std::function<void(character_delete_result)> deletion_reply;
 
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { abort(); }
 void write_to_q(const char *text, txt_q *, const int) { output += text; }
 void statuslog(int, const char *, ...) {}
+void *__malloc(size_t size, const char *, const char *, int) { return std::malloc(size); }
+char *str_dup(const char *text) { return strdup(text); }
 bool chaos_mud_enabled() { return false; }
 bool pfile_exists(const char *, char *) { return accepted; }
 void mark_chaos_starter_reward_intents(P_char) { assert(false); }
@@ -93,6 +94,7 @@ struct session {
     char name[24] = "Kept";
     char owner[24] = "Owner";
     explicit session(int pid) {
+        snprintf(name, sizeof(name), "Kept%d", pid);
         ch.only.pc = &pc; pc.pid = pid; ch.player.name = name;
         ch.runtime_id = static_cast<uint64_t>(pid); ch.desc = &d;
         account.acct_name = owner; d.account = &account; d.character = &ch;
@@ -126,6 +128,10 @@ int main() {
         assert(published == 0 && account_creation_pending(1));
         busy = false; account_creation_pulse();
         assert(!account_creation_pending(1) && published == 1 && STATE(&s.d) == CON_RMOTD);
+        assert(s.account.num_chars == 1);
+        assert(account_publish_kept_character(&s.account, account_kept_character_projection(&s.ch), s.name));
+        assert(s.account.num_chars == 1); // retries do not consume another slot
+
         assert(output.find("PRESS RETURN") != std::string::npos);
     }
     {
@@ -147,7 +153,7 @@ int main() {
         const int before = published;
         complete(4, player_save_apply_outcome::applied);
         assert(!account_creation_pending(4) && published == before);
-        assert(cached_characters[&other.account] == 4); // a login during the pending save sees the committed membership
+        assert(other.account.acct_character_list->pid == 4 && other.account.num_chars == 2); // a login during the pending save sees the committed membership
     }
     {
         session s(5); assert(keep_new_character(&s.d));
@@ -209,7 +215,8 @@ build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="kept-lifecycle-", dir=build) as temporary:
     source = Path(temporary) / "harness.cpp"
-    source.write_text("\n".join((PRELUDE, requests, controller, MAIN)))
+    publication = function(account, "bool account_publish_kept_character(")
+    source.write_text("\n".join((PRELUDE.replace("/* PRODUCTION_ACCOUNT_PUBLICATION */", publication), requests, controller, MAIN)))
     for backend in ("mariadb", "flatfile"):
         binary = Path(temporary) / backend
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc",

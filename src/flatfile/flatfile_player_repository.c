@@ -975,14 +975,6 @@ static player_save_apply_result apply_player_snapshot(const std::string &root,
 						 EEXIST) };
 		if (!snapshot.creation_account.empty())
 		{
-			flatfile_account_record account;
-			const auto owner = flatfile_account_load(root, snapshot.creation_account,
-								 &account, error);
-			if (owner != flatfile_account_result::ok)
-				return { owner == flatfile_account_result::io_error ?
-						 player_save_apply_outcome::retryable_failure :
-						 player_save_apply_outcome::terminal_failure,
-					 0, EACCES };
 			if (loaded == flatfile_player_load_result::ok &&
 			    materialized.revision >= snapshot.revision)
 			{
@@ -992,13 +984,38 @@ static player_save_apply_result apply_player_snapshot(const std::string &root,
 							snapshot.creation_account))
 					return { player_save_apply_outcome::terminal_failure, 0,
 						 EILSEQ };
-				return { player_save_apply_outcome::already_applied,
-					 materialized.revision, 0 };
+				bool committed = true;
+				if (snapshot.pending_world_quest.present &&
+				    !snapshot.pending_world_quest.fallback_only)
+				{
+					const auto &quest = snapshot.pending_world_quest;
+					const auto found = flatfile_world_quest_record_matches(
+						root, authority, snapshot.pid, quest.target,
+						quest.level, quest.occurred_at, &committed, error);
+					if (found != flatfile_world_quest_result::ok)
+						return {
+							player_save_apply_outcome::retryable_failure,
+							0, EIO
+						};
+					// Only an equal-revision fallback may continue into its quest.
+					if (!committed &&
+					    materialized.revision != snapshot.revision)
+						return { player_save_apply_outcome::terminal_failure,
+							 0, EILSEQ };
+				}
+				if (committed)
+					return { player_save_apply_outcome::already_applied,
+						 materialized.revision, 0 };
 			}
-			// Account blocking controls new writes/admission, not whether this
-			// exact creation was already durably committed before the block.
-			if (account.blocked)
-				return { player_save_apply_outcome::terminal_failure, 0, EACCES };
+			// A policy change cannot invalidate an already committed creation.
+			flatfile_account_record account;
+			const auto owner = flatfile_account_load(root, snapshot.creation_account,
+								 &account, error);
+			if (owner != flatfile_account_result::ok || account.blocked)
+				return { owner == flatfile_account_result::io_error ?
+						 player_save_apply_outcome::retryable_failure :
+						 player_save_apply_outcome::terminal_failure,
+					 0, EACCES };
 		}
 		if (identity == flatfile_identity_result::ok)
 			operations.push_back(std::move(identity_operation));

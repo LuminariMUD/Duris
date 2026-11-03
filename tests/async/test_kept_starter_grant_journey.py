@@ -14,7 +14,7 @@ from test_flatfile_chaos_new_character_kit import read_item_ownership
 
 def run(binary, backend, chaos, transport):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if backend == "flatfile" and not inspector.exists():
+    if backend == "flatfile":
         subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                         "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
