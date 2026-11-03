@@ -18,7 +18,7 @@ create = extract_function("ws_handlers.c", "void ws_cmd_create_character(")
 # services are controlled boundaries; stop exactly where mutations would begin.
 prefix = create[:create.index("\t/* store chargen options in descriptor */")]
 prefix = prefix.replace("\tcJSON *response;\n", "").replace("\tchar *json_str;\n", "")
-prefix += "\t++accepted; selected_home = actual_hometown;\n}\n"
+prefix += "\t++accepted; selected_home = actual_hometown; selected_alignment = alignment; selected_side = resolved_racewar;\n}\n"
 assert create.index("!creation_hometown_available(") < create.index("mm_get(")
 for mutation in ("init_char(ch)", "add_char_to_account(d)", "writeCharacter(ch"):
     assert create.index("!creation_hometown_available(") < create.index(mutation)
@@ -45,14 +45,14 @@ prelude = r'''
 #include <vector>
 
 int accepted = 0, selected_home = -1, prompts = 0, disabled_race = -1;
-int tutorial_tags = 0;
+int tutorial_tags = 0, alignment_rule = 2, selected_alignment = 9, selected_side = -1;
 unsigned int game_locked = 0;
 bool all_races = false, admission_allowed = true;
 std::string output, error, json;
 bool creation_race_enabled(int race) { return race != disabled_race; }
 bool creation_all_races_enabled() { return all_races; }
 bool creation_class_enabled(int) { return true; }
-int creation_class_align(int, int) { return 0; }
+int creation_class_align(int, int) { return alignment_rule; }
 static bool ws_chargen_allowed(P_desc) { return true; }
 int bannedsite(char *, int) { return false; }
 std::string get_mud_info(const char *) { return {}; }
@@ -112,7 +112,7 @@ int main() {
             const bool neutral = !strcmp(race.faction, "neutral");
             const bool good = neutral ? !strcmp(alignment, "good") : !strcmp(race.faction, "good");
             const int side = good ? RACEWAR_GOOD : RACEWAR_EVIL;
-            const auto homes = menu(race.race_id, neutral ? alignment : nullptr);
+            const auto homes = menu(race.race_id, alignment);
             ch.player.race = race.race_id;
             ch.player.racewar = side;
             output.clear();
@@ -207,9 +207,7 @@ int main() {
         auto *data = cJSON_Parse(request);
         json.clear(); error.clear();
         ws_cmd_get_hometowns(&d, data);
-        // A fixed-side race derives its own faction, ignoring supplied alignment.
-        if (std::string(request) == "{\"race\":1,\"alignment\":false}") assert(!json.empty());
-        else assert(!error.empty() && json.empty());
+        assert(!error.empty() && json.empty());
         cJSON_Delete(data);
     }
     disabled_race = RACE_OGRE;
@@ -219,7 +217,46 @@ int main() {
     assert(!error.empty() && json.empty());
     cJSON_Delete(data);
     disabled_race = -1;
-    data = cJSON_Parse("{\"name\":\"Pupil\",\"race\":1,\"class\":1,\"sex\":1,\"hometown\":22}");
+    // Execute the production pre-materialization handler for every matrix code.
+    // GN has no current normal-roster cell: use a controlled code here rather
+    // than changing the gameplay matrix to manufacture a live combination.
+    d.chargen_race = RACE_HUMAN;
+    for (int i = 0; i < MAX_ATTRIBUTES; ++i) d.chargen_stats[i] = 90 + i;
+    const stat_data original_stats = d.chargen_stats;
+    for (int rule : {-1, 0, 1, 2, 3, 4, 5}) {
+        alignment_rule = rule;
+        const char *metadata[] = {"evil", "neutral", "good", "any", "good_neutral", "neutral_evil"};
+        if (rule != 5) assert(!strcmp(ws_get_class_alignment(rule), metadata[rule + 1]));
+        else assert(ws_get_class_alignment(rule) == nullptr);
+        for (const char *value : {"omitted", "\"good\"", "\"neutral\"", "\"evil\"",
+                                 "\"Good\"", "\"any\"", "\"\"", "false", "0", "null", "{}", "[]"}) {
+            std::string request = "{\"name\":\"Pupil\",\"race\":1,\"class\":1,\"sex\":1,\"hometown\":22";
+            if (strcmp(value, "omitted")) request += ",\"alignment\":" + std::string(value);
+            request += "}";
+            auto *data = cJSON_Parse(request.c_str()); assert(data);
+            const bool omitted = !strcmp(value, "omitted");
+            const bool parsed = !strcmp(value, "\"good\"") || !strcmp(value, "\"neutral\"") || !strcmp(value, "\"evil\"");
+            const int choice = omitted ? rule : !strcmp(value, "\"good\"") ? 1 : !strcmp(value, "\"neutral\"") ? 0 : -1;
+            // Independent policy oracle: bit 0 = evil, 1 = neutral, 2 = good.
+            const int allowed[] = {1, 2, 4, 7, 6, 3, 0}; // E, N, G, A, GN, NE, forbidden
+            const bool expected = omitted ? rule >= -1 && rule <= 1 :
+                parsed && (allowed[rule + 1] & (1 << (choice + 1)));
+            error.clear(); accepted = 0;
+            ws_cmd_create_character(&d, data);
+            assert(accepted == expected);
+            assert(error.empty() == expected);
+            assert(d.character == &ch && d.chargen_phase == CHARGEN_READY && d.chargen_bonus_remaining == 0);
+            assert(!memcmp(&original_stats, &d.chargen_stats, sizeof original_stats));
+            if (expected) assert(selected_alignment == choice && selected_side == RACEWAR_GOOD);
+            cJSON_Delete(data);
+        }
+    }
+    alignment_rule = 2;
+    assert(ws_resolve_racewar_side(RACE_THRIKREEN, 0) == RACEWAR_GOOD);
+    assert(ws_resolve_racewar_side(RACE_THRIKREEN, -1) == RACEWAR_EVIL);
+    assert(ws_resolve_racewar_side(RACE_HUMAN, -1) == RACEWAR_GOOD);
+    assert(ws_resolve_racewar_side(RACE_DROW, 0) == RACEWAR_EVIL);
+    data = cJSON_Parse("{\"name\":\"Pupil\",\"race\":1,\"class\":1,\"sex\":1,\"alignment\":\"good\",\"hometown\":22}");
     d.chargen_race = RACE_HUMAN;
     admission_allowed = false;
     accepted = 0; error.clear();
@@ -246,7 +283,7 @@ functions += [extract_function("nanny.c", signature) for signature in (
 functions += [extract_function("ws_handlers.c", signature) for signature in (
     "static const struct restricted_race_info *ws_find_restricted_race(",
     "static const char *ws_get_race_faction(", "static int ws_resolve_racewar_side(",
-    "static int ws_is_playable_race(", "void ws_cmd_get_hometowns(",
+    "static int ws_is_playable_race(", "static const char *ws_get_class_alignment(", "static bool ws_parse_alignment(", "void ws_cmd_get_hometowns(",
 )]
 directory = ROOT / "bin/tests"
 directory.mkdir(parents=True, exist_ok=True)
@@ -261,4 +298,4 @@ with tempfile.TemporaryDirectory(prefix="creation-hometowns-", dir=directory) as
                         "-fsanitize=address,undefined", "-fno-pie", "-no-pie", *flags,
                         str(program), "-lcjson", "-o", str(binary)], cwd=ROOT, check=True)
         subprocess.run([str(binary)], check=True, timeout=10)
-print("shared/terminal/web hometown policy and pre-persistence validation passed")
+print("shared/terminal/web hometown policy, all alignment codes and pre-persistence validation passed")

@@ -185,7 +185,7 @@ static void inspect_authority(const std::string &root, int32_t pid)
 	flatfile_authority_lock lock;
 	require(lock.acquire(root, &error), "inspect authority lock: " + error);
 	std::cout << "{\"revision\":" << snapshot.revision << ",\"intent\":" << snapshot.save_intent
-		  << ",\"room\":" << snapshot.room_vnum
+		  << ",\"room\":" << snapshot.room_vnum << ",\"name\":\"" << identity.name << '"'
 		  << ",\"membership_level\":" << identity.level;
 	for (const auto &entry : snapshot.status_strings)
 		if (entry.field == player_status_string_field::last_read_news_hash)
@@ -257,17 +257,24 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			field.field == player_status_field::birthplace ? "birthplace" :
 			field.field == player_status_field::original_birthplace ?
 									 "original_birthplace" :
-			field.field == player_status_field::race       ? "race" :
-			field.field == player_status_field::deaths     ? "death_count" :
-			field.field == player_status_field::experience ? "experience" :
-			field.field == player_status_field::level      ? "level" :
+			field.field == player_status_field::race	  ? "race" :
+			field.field == player_status_field::class_primary ? "m_class" :
+			field.field == player_status_field::alignment	  ? "alignment" :
+			field.field == player_status_field::racewar	  ? "racewar" :
+			field.field == player_status_field::deaths	  ? "death_count" :
+			field.field == player_status_field::experience	  ? "experience" :
+			field.field == player_status_field::level	  ? "level" :
 			field.field == player_status_field::learned_flight_stops ?
 								    "learned_flight_stops" :
 								    nullptr;
 		if (name)
-			std::cout
-				<< ",\"" << name << "\":"
-				<< (field.is_unsigned ? field.unsigned_value : field.signed_value);
+		{
+			std::cout << ",\"" << name << "\":";
+			if (field.is_unsigned)
+				std::cout << field.unsigned_value;
+			else
+				std::cout << field.signed_value;
+		}
 	}
 	for (const auto &owner :
 	     { item_owner_identity{ item_owner_type::player, static_cast<uint64_t>(pid), 0 },

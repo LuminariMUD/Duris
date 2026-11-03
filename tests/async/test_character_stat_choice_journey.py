@@ -20,8 +20,9 @@ from test_connection_limit_journey import upgrade
 
 class WebSocketClient:
     """Small uncompressed socket client for the server's existing JSON protocol."""
-    def __init__(self, port):
-        self.socket = socket.create_connection(("127.0.0.1", port), timeout=5)
+    def __init__(self, port, *, source_host=None):
+        self.socket = socket.create_connection(("127.0.0.1", port), timeout=5,
+                                               source_address=(source_host, 0) if source_host else None)
         self.messages = []
         self.buffer = bytearray(upgrade(self.socket, "127.0.0.1"))
 

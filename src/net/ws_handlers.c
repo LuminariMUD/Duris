@@ -914,7 +914,7 @@ static const char *ws_get_race_faction(int race)
 
 static int ws_resolve_racewar_side(int race, int alignment)
 {
-	const int scaled_alignment = alignment > 0 ? 1000 : -1000;
+	const int scaled_alignment = alignment * 1000;
 	if (OLD_RACE_GOOD(race, scaled_alignment))
 		return RACEWAR_GOOD;
 	if (OLD_RACE_EVIL(race, scaled_alignment))
@@ -962,6 +962,22 @@ static const char *ws_get_class_alignment(int value)
 	default:
 		return NULL; /* forbidden */
 	}
+}
+
+/* Wire alignment is independent of the race's effective racewar side. */
+static bool ws_parse_alignment(cJSON *item, int *alignment)
+{
+	if (!cJSON_IsString(item))
+		return false;
+	if (!strcmp(item->valuestring, "good"))
+		*alignment = 1;
+	else if (!strcmp(item->valuestring, "neutral"))
+		*alignment = 0;
+	else if (!strcmp(item->valuestring, "evil"))
+		*alignment = -1;
+	else
+		return false;
+	return true;
 }
 
 /* load basic character info for json response */
@@ -2113,7 +2129,6 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	int race_id, class_id, sex, alignment;
 	int hometown_id, is_hardcore, is_newbie;
 	int class_align_req;
-	const char *faction;
 
 	if (!ws_chargen_allowed(d))
 		return;
@@ -2210,7 +2225,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	}
 
 	/* validate class is valid for race */
-	if (class_id < 1 || class_id > CLASS_COUNT)
+	if (class_item->valuedouble != class_id || class_id < 1 || class_id > CLASS_COUNT)
 	{
 		ws_send_system(d, "error", "Invalid class selection");
 		return;
@@ -2230,48 +2245,21 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
-	/* check alignment for neutral races */
-	faction = ws_get_race_faction(race_id);
-	if (strcmp(faction, "neutral") == 0)
+	/* Fixed cells can omit alignment; multi-choice cells require an explicit
+	   choice. Always validate a supplied value, including stale fixed choices. */
+	align_item = cJSON_GetObjectItem(data, "alignment");
+	if (!align_item && class_align_req >= -1 && class_align_req <= 1)
+		alignment = class_align_req;
+	else if (!ws_parse_alignment(align_item, &alignment))
 	{
-		align_item = cJSON_GetObjectItem(data, "alignment");
-		if (!align_item || !cJSON_IsString(align_item))
-		{
-			ws_send_system(d, "error", "Neutral races must choose an alignment");
-			return;
-		}
-		if (strcmp(align_item->valuestring, "good") == 0)
-		{
-			alignment = 1; /* good */
-		}
-		else if (strcmp(align_item->valuestring, "evil") == 0)
-		{
-			alignment = -1; /* evil */
-		}
-		else
-		{
-			ws_send_system(d, "error", "Invalid alignment selection");
-			return;
-		}
-	}
-	else if (strcmp(faction, "good") == 0)
-	{
-		alignment = 1;
-	}
-	else
-	{
-		alignment = -1;
-	}
-
-	/* validate class alignment requirement */
-	if (class_align_req == 1 && alignment != 1)
-	{
-		ws_send_system(d, "error", "That class requires good alignment");
+		ws_send_system(d, "error", "Choose a valid character alignment");
 		return;
 	}
-	if (class_align_req == -1 && alignment != -1)
+	if (!(class_align_req == 2 || (class_align_req == 3 && alignment >= 0) ||
+	      (class_align_req == 4 && alignment <= 0) || class_align_req == alignment))
 	{
-		ws_send_system(d, "error", "That class requires evil alignment");
+		ws_send_system(d, "error",
+			       "That alignment is not available for your race and class");
 		return;
 	}
 	const int resolved_racewar = ws_resolve_racewar_side(race_id, alignment);
@@ -2369,8 +2357,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	ch->player.sex = sex;
 	ch->player.m_class = 1 << (class_id - 1);
 
-	/* set alignment (1000 for good, -1000 for evil) */
-	GET_ALIGNMENT(ch) = (alignment == 1) ? 1000 : -1000;
+	GET_ALIGNMENT(ch) = alignment * 1000;
 
 	/* Keep materialization identical to the side used by the admission preflight. */
 	GET_RACEWAR(ch) = resolved_racewar;
@@ -2466,7 +2453,13 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	cJSON_AddStringToObject(response, "name", capitalized_name);
 	cJSON_AddStringToObject(response, "race", race_names_table[race_id].normal);
 	cJSON_AddStringToObject(response, "class", class_names_table[class_id].normal);
-	cJSON_AddStringToObject(response, "faction", (alignment == 1) ? "good" : "evil");
+	cJSON_AddStringToObject(response, "alignment", ws_get_class_alignment(alignment));
+	cJSON_AddStringToObject(response, "faction",
+				resolved_racewar == RACEWAR_GOOD    ? "good" :
+				resolved_racewar == RACEWAR_EVIL    ? "evil" :
+				resolved_racewar == RACEWAR_UNDEAD  ? "undead" :
+				resolved_racewar == RACEWAR_NEUTRAL ? "neutral" :
+								      "none");
 	cJSON_AddBoolToObject(response, "hardcore", is_hardcore);
 	cJSON_AddBoolToObject(response, "newbie", is_newbie);
 	if (actual_hometown >= 0 && actual_hometown <= LAST_HOME)
@@ -2610,23 +2603,18 @@ void ws_cmd_get_hometowns(struct descriptor_data *d, cJSON *data)
 	const char *alignment = NULL;
 	const char *faction = ws_get_race_faction(race_id);
 	cJSON *align_item = cJSON_GetObjectItem(data, "alignment");
-	if (!strcmp(faction, "neutral"))
+	if (align_item)
 	{
-		if (align_item)
+		int selected_alignment;
+		if (!ws_parse_alignment(align_item, &selected_alignment))
 		{
-			if (!cJSON_IsString(align_item) ||
-			    (strcmp(align_item->valuestring, "good") &&
-			     strcmp(align_item->valuestring, "evil")))
-			{
-				ws_send_system(d, "error", "Invalid alignment selection");
-				return;
-			}
-			alignment = align_item->valuestring;
-			racewar = ws_resolve_racewar_side(race_id,
-							  !strcmp(alignment, "good") ? 1 : -1);
+			ws_send_system(d, "error", "Invalid alignment selection");
+			return;
 		}
+		alignment = align_item->valuestring;
+		racewar = ws_resolve_racewar_side(race_id, selected_alignment);
 	}
-	else
+	else if (strcmp(faction, "neutral"))
 	{
 		alignment = faction;
 		racewar = ws_resolve_racewar_side(race_id, !strcmp(faction, "good") ? 1 : -1);

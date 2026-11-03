@@ -191,15 +191,27 @@ restricted races whose normal matrix row is empty. Neither switch changes
 `class_table` for its other consumers. Both overrides are `FALSE` in the
 committed environment example.
 
-**Telnet and WebSocket alignment differ.** Telnet applies fixed G/N/E cells or
-offers the choices in A/GN/NE cells. WebSocket advertises those codes but derives
-good/evil alignment from race faction (or a good/evil choice for neutral-faction
-races), then enforces only fixed G/E requirements. It does not assign neutral
-alignment for N cells or enforce GN/NE choices in the same way. For example,
-Human Necromancer is a legal evil matrix cell, but WebSocket assigns Human good
-alignment and rejects that selection. Treat the table as matrix eligibility,
-not proof that both clients can complete every listed combination. The repair is
-tracked in [#577](https://github.com/LuminariMUD/Duris/issues/577).
+**Telnet and WebSocket use the same alignment cells.** Fixed G/N/E cells assign
+good (+1000), neutral (0), or evil (-1000). A/GN/NE cells require a choice from
+their permitted alignments. WebSocket `create_character.alignment` accepts
+`good`, `neutral`, or `evil`; it may be omitted only for a fixed cell. Every
+supplied value is validated against the selected race/class before character
+allocation, including stale choices left over from another class. Rejection
+preserves the accepted stats and spent bonuses for correction and retry.
+
+Character alignment does not replace racewar side or account admission.
+For example, an evil Human Necromancer and a neutral Human Druid remain on the
+good racewar side. For Thri-kreen, Minotaur, and Tiefling, good **or neutral**
+alignment resolves to the good side; evil resolves to the evil side. Existing
+restricted-race side rules and account cooldowns still apply.
+
+WebSocket `get_hometowns` accepts the same three alignment strings for every
+race and echoes an explicit choice unchanged, so clients can correlate replies.
+Its race-only preview remains supported; final creation still validates hometown
+eligibility against the resolved side. A successful `create_character` response
+reports character `alignment` separately from `faction` (the effective racewar
+side: `good`, `evil`, `undead`, `neutral`, or `none`). Coordinate server
+rollout with the [paired browser update](https://github.com/LuminariMUD/DurisWeb/pull/142).
 
 ### Stat selection and tutorial starts
 
@@ -471,6 +483,17 @@ Existing focused checks provide different kinds of evidence:
 - [Creation prompt journey](../../tests/async/test_creation_prompt_journey.py):
   isolated real Telnet creation, correction, confirmation, and relog scenarios;
   it does not qualify every class or the WebSocket alignment path.
+- [Creation hometown/alignment checks](../../tests/async/test_creation_hometowns.py):
+  executable shared hometown policy and production WebSocket validation before
+  materialization, compiled for both backends with sanitizers. All alignment
+  codes, malformed/stale values, and retained stat state are covered. GN uses a
+  controlled handler input because the normal roster currently has no GN cell.
+- [Creation alignment journey](../../tests/async/run_creation_alignment_journey.py):
+  full-world Telnet/WebSocket creation, rejected submissions without partial
+  bodies, racewar admission, save/restart/relogin, and existing creation
+  overrides on isolated flat-file or MariaDB authority. With `--frontend-url`,
+  it also exercises the paired browser wizard and browser relogin in Chromium;
+  only the unrelated website HTTP shell/notification socket are fixtures.
 - [Unspecialize guard](../../tests/async/test_unspecialize_guard.py),
   [memorized spell eligibility](../../tests/async/test_memorized_spell_eligibility.py),
   [epic skill level gate](../../tests/async/test_epic_skill_level_gate.py), and
