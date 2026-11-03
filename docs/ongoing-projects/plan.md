@@ -1,6 +1,6 @@
 # Issue #611: preserve assigned NPC ship pursuit
 
-Status: planning complete; implementation has not started. Updated 2026-11-03.
+Status: implementation and local acceptance complete; preparing the focused review PR. Updated 2026-11-03.
 
 - Work item: [Duris #611](https://github.com/LuminariMUD/Duris/issues/611).
 - GitHub-linked development branch: [branch/issue-611-npc-pursuit](https://github.com/LuminariMUD/Duris/tree/branch/issue-611-npc-pursuit).
@@ -63,6 +63,18 @@ Read-only supporting sources include `ship_utils.c`, `ship_npc.c`, `map.c`, `shi
 
 ## Implementation sequence
 
+Execution checkpoint (2026-11-03): verified the worktree is clean at `744f4be77`,
+the remote implementation branch matches it, and master still matches the inspected
+base. The plan remains minimal: retain the two production changes and focused
+executable evidence; no encounter policy, schema, deployment, or release tag is needed.
+The source fix and its regression form one reviewable chunk and will be published
+together once local verification passes. The maintained fixture compiled on both
+backends before the fix: group retention and escort retaliation failed on their
+first heartbeat, and the unavailable-target case failed because an unloaded target
+was reacquired. These are expected baseline assertion failures, without sanitizer
+diagnostics. The two production corrections are now applied; final passing evidence
+is recorded in the implementation handoff below.
+
 ### 1. Turn the demonstrated failure into maintained executable coverage
 
 Add `test_npc_ship_targeting.py` using the real `ship_activity()`, `NPCShipAI::activity()`, `find_current_target()`, `find_new_target()`, `is_valid_target()`, `update_target()`, and escort retaliation. Execute production hash iteration, contact enumeration, range/bearing calculation, and `calculate_map_coords()`; these are the boundaries the existing fixture stubs away.
@@ -112,6 +124,75 @@ git diff --check
 The existing default build is MariaDB; the flat-file build uses the Makefile's separate backend object directories and a distinct binary, preserving both executables under `bin/`. Neither the tests nor builds require a live database, shared game server, production credentials, or mutations to player data. Fix failures caused by this change; do not widen into a full burn-in or wait for hosted CI.
 
 Review the final diff against this acceptance list and repeat ablation. Commit only necessary source/test/documentation changes, with no generated binaries or investigation scripts. Update this plan with exact passing commands and any unverified gameplay claims. The implementation PR should link #611 as its work item; this planning commit must not close the issue. Keep #474 as a compatibility reference.
+
+## Implementation handoff (2026-11-03)
+
+The heartbeat now distinguishes NPC availability from player lock policy. NPCs keep
+loaded, undocked, non-sinking same-map targets without a range or player-idle limit.
+Player locks still use the existing contact predicate and 300-tick inactivity timer.
+Both branches share the existing target-loss message and battle-stations refresh;
+timer, movement, AI and sinking-sweep ordering are unchanged. The existing AI validity
+predicate now rejects unloaded replacement candidates before considering the current
+target or race. No new public helper, stored state or encounter-selection rule was needed.
+
+The maintained targeting fixture extracts production spawn assignment, heartbeat,
+hash traversal, contacts, range/bearing, map coordinates and target AI directly.
+The lower-level factory, map rendering, captains/ammo and unrelated world/navigation/
+combat services are controlled explicitly. It does not dynamically rewrite the
+lifecycle fixture or copy production targeting logic.
+
+Acceptance evidence:
+
+- **Separate assigned pursuit:** four actual hash-ordered player hulls, an eligible
+  zero-frag `ATTACKBYNPC` decoy first, and three independently spawned pirate/hunter
+  attackers. The real outer factory produces exactly 45-room separation and ENGAGING
+  state before stationary updates. All three retain their distinct victims for 305
+  heartbeats for each scout bonus 0/1/2, initial idle timer 0/1, basic/advanced AI and
+  two victim/frag permutations. Maneuver counters prove dispatch on every update.
+- **Escort retaliation:** real escort spawning and `escort_attacked_by()` retain a
+  45-room attacker for 305 heartbeat/AI updates while preserving the separate charge.
+- **Unavailable targets:** real map/contact/heartbeat/AI paths reject unloaded,
+  docked, sinking, off-map and different-map targets for NPC and player ships. Three
+  updates confirm safe NPC transition to CRUISING and no unloaded reacquisition even
+  with that hull still present in the hash.
+- **Lifecycle compatibility:** the existing actual docking, purge, unload, deletion,
+  sinking and failed-persistence cases pass. Target/escort/boarding references clear
+  as appropriate, unrelated references survive, and additional post-removal heartbeats
+  pass under sanitizers. Sinking still intentionally ends its sweep after destruction.
+- **Player recovery:** actual lock/fire/volley/ram/summon paths retain 300-tick absent-
+  captain recovery, final-idle-tick combat refresh, explicit unlock and out-of-range
+  expiry. Summon remains blocked at battle-stations timer 1 and succeeds at 0 after
+  the existing 180-tick stand-down. This is not a character-death journey.
+- **Geometry/buffer compatibility:** exact 35/36/37-room scout boundaries, fractional
+  positions and altitude pass, with a byte-for-byte sentinel over all `contacts[]`
+  entries before/after valid and invalid contact probes.
+
+Final local validation (all exit 0):
+
+```sh
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_npc_ship_deletion.py
+make -C src -j8
+make -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/aiwithapex/projects/duris-issue-611/bin/server/dms_new-flatfile
+./scripts/format.sh --check
+./scripts/tidy.sh
+git diff --check
+```
+
+Both Python suites compile/run MySQL and flat-file variants under ASan/UBSan, with
+no findings. Build logs are ignored local files `bin/issue611-mariadb-build.log` and
+`bin/issue611-flatfile-build.log`; both executables are under this worktree's
+`bin/server/`. An initial flat-file invocation expanded its output path through the
+outer shell into the main checkout's ignored `bin/server/dms_new-flatfile`; it was
+not run or installed. The final command above uses an explicit worktree path.
+
+Final ablation retained only the two demonstrated production corrections, one
+self-contained boundary regression, narrow lifecycle/geometry assertions and this
+handoff. No additional implementation chunk or dependent PR is needed. Review and
+merge remain; no release tag, deployment, production mutation, full-world journey
+or hosted-CI wait is required for this review-ready scope. The original issue's
+historical incident reconstruction and broad reacquisition policy remain outside
+the proof. Tracked changes in other worktrees were preserved.
 
 ## Live follow-up and limits
 

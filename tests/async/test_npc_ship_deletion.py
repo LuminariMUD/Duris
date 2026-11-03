@@ -340,22 +340,25 @@ static void check_target_recovery() {
     ship->flags = target->flags = LOADED;
     ship->x = ship->y = target->x = target->y = 50;
     ship->target = target;
-    contacts[0].ship = target; contacts[0].range = 17;
-    const auto saved_contact = contacts[0];
-    contact_x = 35;
-    assert(ship_target_in_contact(ship));
-    target->x = 50.1f;
-    assert(!ship_target_in_contact(ship));
-    target->x = 50;
-    target->z = 1;
-    assert(!ship_target_in_contact(ship));
-    contact_bonus = 1;
-    assert(ship_target_in_contact(ship));
-    target->z = 0; contact_x = 37;
-    assert(!ship_target_in_contact(ship));
-    contact_bonus = 2;
-    assert(ship_target_in_contact(ship));
-    assert(!memcmp(&contacts[0], &saved_contact, sizeof(saved_contact)));
+    for (int i = 0; i < MAXSHIPS; ++i) {
+        contacts[i].ship = target;
+        contacts[i].range = 17 + i;
+    }
+    ContactData saved_contacts[MAXSHIPS];
+    memcpy(saved_contacts, contacts, sizeof contacts);
+    for (contact_bonus = 0; contact_bonus <= 2; ++contact_bonus) {
+        contact_x = 35 + contact_bonus;
+        assert(ship_target_in_contact(ship));
+        target->x = 50.1f;
+        assert(!ship_target_in_contact(ship));
+        target->x = 50;
+        target->z = 1;
+        assert(!ship_target_in_contact(ship));
+        --contact_x;
+        assert(ship_target_in_contact(ship));
+        target->z = 0;
+    }
+    assert(!memcmp(contacts, saved_contacts, sizeof contacts));
     contact_x = contact_bonus = 0;
     for (int invalid = 0; invalid < 4; ++invalid) {
         target->flags = invalid == 0 ? 0 : LOADED;
@@ -364,6 +367,7 @@ static void check_target_recovery() {
         same_map = invalid != 3;
         assert(!ship_target_in_contact(ship));
     }
+    assert(!memcmp(contacts, saved_contacts, sizeof contacts));
     target->flags = LOADED; same_map = true;
     // With no captain aboard, a nearby idle lock must eventually stand down.
     char_data captain{};
@@ -542,6 +546,7 @@ static void check_delete(bool ownerless, int db_id = 42) {
     char_from_room(&passenger);
     assert(freed_ships == before_freed + 1);
     persistence_ok = false;
+    ship_activity(); // No stale target/AI references after the real deletion.
     remove_runtime(observer);
     puts(ownerless ? "PASS ownerless player retained and logged" : "PASS failed player persistence retained, retry succeeds");
 }
@@ -570,10 +575,11 @@ static void check_ambiguous_delete() {
 }
 
 static void check_npc_removal(bool purge) {
-    P_ship ship = make_ship(NPCSHIP, 2), observer = make_ship(0, 3);
+    P_ship ship = make_ship(NPCSHIP, 2), observer = make_ship(NPCSHIP, 3);
     // Even a stale durable id must not send an NPC to the flat-file backend.
     ship->db_id = 99;
     observer->target = ship; cyrics_revenge = ship;
+    observer->npc_ai->escort = observer->npc_ai->did_board = ship;
     const auto ref = ship->runtime_ref;
     const int before = persistence_calls, objects_before = extracted_objects, freed_before = freed_ships;
     if (purge) {
@@ -585,10 +591,12 @@ static void check_npc_removal(bool purge) {
         assert(output_text.find("Ok.") != std::string::npos);
     } else assert(try_unload_npc_ship(ship));
     assert(!find_ship_by_runtime_ref(ref) && !observer->target && !cyrics_revenge);
+    assert(!observer->npc_ai->escort && !observer->npc_ai->did_board);
     assert(shipObjHash.size() == 1 && freed_ships == freed_before + 1);
     assert(extracted_objects == objects_before + 2);
     assert(!world[2].funct && !world[2].contents);
     assert(persistence_calls == before);
+    ship_activity(); // Exercise the next sweep after purge/unload freed the hull.
     remove_runtime(observer);
     puts(purge ? "PASS staff purge and reference cleanup" : "PASS normal NPC unload");
 }
@@ -624,12 +632,14 @@ static void check_ai_references() {
     unrelated->npc_ai->escort = unrelated->npc_ai->did_board = observer;
     world[1].number = 1;
     dock_ship(ship, 1);
+    ship_activity();
     assert(!observer->target);
     assert(observer->npc_ai->escort == ship && observer->npc_ai->did_board == ship);
     observer->target = ship;
     remove_runtime(ship);
     assert(!observer->target && !observer->npc_ai->escort && !observer->npc_ai->did_board);
     assert(unrelated->npc_ai->escort == observer && unrelated->npc_ai->did_board == observer);
+    ship_activity();
     remove_runtime(observer); remove_runtime(unrelated);
     puts("PASS destruction forgets NPC AI references; docking preserves them");
 }

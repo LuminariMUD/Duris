@@ -2522,15 +2522,27 @@ void ship_activity()
 			}
 
 			// Battle Stations!
-			// NPC pursuit is owned by its AI. The inactivity escape is for
-			// player ships whose captain can no longer reach the bridge.
-			if (ship->target != NULL &&
-			    (!ship_target_in_contact(ship) ||
-			     (!IS_NPC_SHIP(ship) && ship->timer[T_TARGET_IDLE] == 0)))
+			// NPC pursuit needs an available same-map target, regardless of range.
+			// Contact range and inactivity expiry apply only to player locks.
+			if (ship->target != NULL)
 			{
-				ship->target = NULL;
-				act_to_all_in_ship(
-					ship, "Target lost. Crew preparing to stand down.\r\n");
+				int x, y;
+				bool target_lost = IS_NPC_SHIP(ship) ?
+							   (!SHIP_LOADED(ship->target) ||
+							    SHIP_DOCKED(ship->target) ||
+							    SHIP_SINKING(ship->target) ||
+							    !calculate_map_coords(
+								    ship->location,
+								    ship->target->location, x, y)) :
+							   (!ship_target_in_contact(ship) ||
+							    ship->timer[T_TARGET_IDLE] == 0);
+				if (target_lost)
+				{
+					ship->target = NULL;
+					act_to_all_in_ship(
+						ship,
+						"Target lost. Crew preparing to stand down.\r\n");
+				}
 			}
 			if (ship->target != NULL)
 				ship->timer[T_BSTATION] = BSTATION;

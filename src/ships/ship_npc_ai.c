@@ -732,12 +732,14 @@ void NPCShipAI::update_target(int i) // index in contacts
 /*
  * Whether `tar` is something this ship will attack.
  *
- * Never a docked or sinking ship.  The current target always stays valid.
- * Otherwise the ship must belong to one of the four player racewar sides --
+ * Never an unloaded, docked or sinking ship.  An available current target
+ * stays valid; other ships must belong to one of the four player racewar sides --
  * which is what stops NPC ships attacking each other.
  */
 bool NPCShipAI::is_valid_target(P_ship tar)
 {
+	if (!SHIP_LOADED(tar))
+		return false;
 	if (SHIP_DOCKED(tar))
 		return false;
 	if (SHIP_SINKING(tar))
