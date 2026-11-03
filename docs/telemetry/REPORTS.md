@@ -42,8 +42,10 @@ detected instead of being hidden by latest-per-producer aggregation.
 SQL revisions: season scope `bd6f64faf` ([#630](https://github.com/LuminariMUD/Duris/pull/630));
 time ordering `1fa1e04c5` ([#631](https://github.com/LuminariMUD/Duris/pull/631)).
 The pending-refresh handoff in [#578](https://github.com/LuminariMUD/Duris/issues/578)
-is satisfied; its verification record awaits repository review/merge. The exporter
-quota incident remains separately tracked in [#446](https://github.com/LuminariMUD/Duris/issues/446).
+is satisfied; its verification record landed in
+[#633](https://github.com/LuminariMUD/Duris/pull/633). Both #578 and the historical
+exporter quota incident [#446](https://github.com/LuminariMUD/Duris/issues/446)
+are closed with the recorded observation/growth limits.
 
 All five saved reports executed with existing season-2 data. Activity returned
 235 characters with entries, 1,852 logical entries and 177 characters with
