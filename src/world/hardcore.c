@@ -362,6 +362,8 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 
 	// Match getLeaderBoardPtsWithShipFrags(), including integer experience division.
 	// Invalid frags lose only their frag contribution, not the player's entire ranking.
+	// Earned epics contribute to the score but must stay out of public columns:
+	// revealing another player's earned total can disclose private PvP details.
 	// Read on the writer; the leader board follows on a later pulse.
 	const bool queued = sql_read_for(
 		ch,
@@ -379,7 +381,7 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 			"LEFT JOIN ships s ON pd.name = s.owner_name "
 			"LEFT JOIN (SELECT pid, MAX(modifier) AS epics FROM player_affects "
 			"  WHERE type = %d GROUP BY pid) e ON e.pid = pd.pid "
-			"WHERE pd.level >= 1 AND pd.level < %d) ranked "
+			"WHERE pd.active = 1 AND pd.level >= 1 AND pd.level < %d) ranked "
 			"ORDER BY score DESC, name ASC, pid ASC "
 			"LIMIT %d",
 			config->score_level_points, config->score_experience_divisor,
@@ -393,6 +395,7 @@ void displayLeader(P_char ch, char *arg, int /*cmd*/)
 			const double divisor = hardcore_config_get()->score_display_divisor;
 			strcpy(buf,
 			       "\r\n&+y=-=-=-=-=-=-=-=-=-=--= &+rDuris Mud &+WLeader Board&+y =-=-=-=-=-=-=-=-=-=-=-&n\r\n\r\n");
+			// Deliberately omit an Epics column to protect players' PvP information.
 			snprintf(buf2, 2048, "&+WRank %-15s %3s %12s %9s %7s&n\r\n", "Name", "Lvl",
 				 "Score", "Frags", "Ship");
 			strcat(buf, buf2);

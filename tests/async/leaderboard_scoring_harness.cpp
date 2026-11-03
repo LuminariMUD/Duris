@@ -241,7 +241,8 @@ static void check_database_scores(P_char viewer)
 {
 	execute("CREATE TABLE player_data (pid INT PRIMARY KEY AUTO_INCREMENT, "
 		"name VARCHAR(64) COLLATE utf8mb4_unicode_ci, level TINYINT UNSIGNED, "
-		"exp BIGINT, frags BIGINT, epics BIGINT DEFAULT 0, numb_deaths BIGINT UNSIGNED)");
+		"exp BIGINT, frags BIGINT, epics BIGINT DEFAULT 0, numb_deaths BIGINT UNSIGNED, "
+		"active TINYINT NOT NULL DEFAULT 1)");
 	execute("CREATE TABLE ships (owner_name VARCHAR(64) COLLATE utf8mb4_unicode_ci UNIQUE, frags INT)");
 	execute("CREATE TABLE player_affects (pid INT, type SMALLINT, modifier INT)");
 	int pid = 0;
@@ -249,8 +250,10 @@ static void check_database_scores(P_char viewer)
 	{
 		++pid;
 		execute(sql_format(
-			"INSERT INTO player_data VALUES (%d,'%s',%d,%d,%ld,99999999,%lu)", pid,
-			player.name, player.level, player.experience, player.frags, player.deaths));
+			"INSERT INTO player_data (pid,name,level,exp,frags,epics,numb_deaths) "
+			"VALUES (%d,'%s',%d,%d,%ld,99999999,%lu)",
+			pid, player.name, player.level, player.experience, player.frags,
+			player.deaths));
 		execute(sql_format("INSERT INTO ships VALUES (LOWER('%s'),%d)", player.name,
 				   player.ship_frags));
 		// Unequal duplicate tags and unrelated affects must not duplicate characters or add credit.
@@ -259,6 +262,9 @@ static void check_database_scores(P_char viewer)
 			pid, TAG_EPICS_GAINED, player.earned, pid, TAG_EPICS_GAINED,
 			player.earned - 1, pid));
 	}
+	// Retired players must not displace active players, regardless of their name.
+	execute("INSERT INTO player_data (name,active,level,exp,frags,numb_deaths) VALUES "
+		"('~pwipe-30',0,56,0,99999,0),('Retiredname',0,56,0,99999,0)");
 	output.clear();
 	displayLeader(viewer, nullptr, 0);
 	const std::vector<std::string> expected_order = { "Wideearner", "Epicmaster", "Veteran",
@@ -278,6 +284,7 @@ static void check_database_scores(P_char viewer)
 	assert(output.find("-190.00") != std::string::npos);
 	assert(output.find("1.25") != std::string::npos);
 	assert(output.find("Rank") != std::string::npos);
+	// Individual earned epic totals stay hidden to protect PvP information.
 	assert(output.find("Epics") == std::string::npos);
 	assert(output.find("2000000001") == std::string::npos);
 	assert(output.find("240") == std::string::npos);
@@ -285,6 +292,8 @@ static void check_database_scores(P_char viewer)
 	assert(output.find("death penalties") == std::string::npos);
 	assert(output.find("Avatarstaff") == std::string::npos);
 	assert(output.find("Overlordstaff") == std::string::npos);
+	assert(output.find("~pwipe-") == std::string::npos);
+	assert(output.find("Retiredname") == std::string::npos);
 	const std::string before_deaths = output;
 	execute("UPDATE player_data SET numb_deaths=0");
 	output.clear();
@@ -306,7 +315,10 @@ static void check_database_scores(P_char viewer)
 				   i));
 	displayLeader(viewer, nullptr, 0);
 	assert(standings.size() == 20);
-	execute("DELETE FROM player_data WHERE level < 57");
+	for (const sql_row &row : standings)
+		assert(row[0] != std::string("Retiredname") &&
+		       std::string(row[0]).find("~pwipe-") == std::string::npos);
+	execute("DELETE FROM player_data WHERE active=1 AND level < 57");
 	output.clear();
 	displayLeader(viewer, nullptr, 0);
 	assert(standings.empty() && output.find("No players are ranked yet") != std::string::npos);
@@ -315,8 +327,8 @@ static void check_database_scores(P_char viewer)
 static void check_hardcore_database_scores(P_char viewer)
 {
 	execute("TRUNCATE TABLE player_data");
-	execute("ALTER TABLE player_data ADD active TINYINT NOT NULL DEFAULT 1, "
-		"ADD act2 BIGINT UNSIGNED DEFAULT 0, ADD secondary_class BIGINT UNSIGNED DEFAULT 2147483648, "
+	execute("ALTER TABLE player_data ADD act2 BIGINT UNSIGNED DEFAULT 0, "
+		"ADD secondary_class BIGINT UNSIGNED DEFAULT 2147483648, "
 		"ADD killed_by VARCHAR(64) DEFAULT NULL");
 	execute("INSERT INTO player_data (name,active,level,exp,frags,numb_deaths,act2,secondary_class,killed_by) VALUES "
 		"('Survivor',1,24,150000,0,1,8192,2147483648,NULL),"
