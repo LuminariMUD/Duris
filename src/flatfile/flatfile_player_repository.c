@@ -976,7 +976,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			flatfile_account_record account;
 			const auto owner = flatfile_account_load(root, snapshot.creation_account,
 								 &account, error);
-			if (owner != flatfile_account_result::ok || account.blocked)
+			if (owner != flatfile_account_result::ok)
 				return { owner == flatfile_account_result::io_error ?
 						 player_save_apply_outcome::retryable_failure :
 						 player_save_apply_outcome::terminal_failure,
@@ -993,6 +993,10 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 				return { player_save_apply_outcome::already_applied,
 					 materialized.revision, 0 };
 			}
+			// Account blocking controls new writes/admission, not whether this
+			// exact creation was already durably committed before the block.
+			if (account.blocked)
+				return { player_save_apply_outcome::terminal_failure, 0, EACCES };
 		}
 		if (identity == flatfile_identity_result::ok)
 			operations.push_back(std::move(identity_operation));

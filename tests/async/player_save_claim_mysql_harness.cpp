@@ -390,6 +390,23 @@ int main()
 			scalar(test_connection, "SELECT level FROM player_data WHERE pid=3") ==
 				"30",
 		"an initial retry must not overwrite a character that already continued");
+	execute(test_connection, "UPDATE accounts SET blocked=1 WHERE account_name='claim_probe'");
+	applied = player_snapshot_repository_apply(test_connection, unbased);
+	require(applied.outcome == player_save_apply_outcome::already_applied &&
+			scalar(test_connection, "SELECT level FROM player_data WHERE pid=3") ==
+				"30",
+		"blocking entry must not turn a committed initial snapshot into a failed creation");
+	auto blocked = snapshot_for(5, 1, "BlockedNew");
+	blocked.creation_account = "claim_probe";
+	applied = player_snapshot_repository_apply(test_connection, blocked);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.rolled_back &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=5") ==
+				"0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM account_characters WHERE pid=5") == "0",
+		"a blocked account must not commit a fresh character");
+	execute(test_connection, "UPDATE accounts SET blocked=0 WHERE account_name='claim_probe'");
 	auto conflicting = unbased;
 	execute(test_connection, "INSERT INTO accounts(account_name) VALUES ('other_creator')");
 	conflicting.creation_account = "other_creator";

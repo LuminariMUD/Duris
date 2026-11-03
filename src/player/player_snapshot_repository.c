@@ -1041,6 +1041,7 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 	*delivered_sequence = 0;
 	*wallet_revision = 0;
 	const bool creation = !snapshot.creation_account.empty();
+	bool account_allowed = true;
 	const auto name = std::find_if(snapshot.status_strings.begin(),
 				       snapshot.status_strings.end(),
 				       [](const player_snapshot_string &entry)
@@ -1052,15 +1053,17 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		    name == snapshot.status_strings.end() || name->value.empty())
 			return { false, EINVAL };
 		const auto account = execute(
-			connection, "SELECT account_name FROM accounts WHERE account_name=" +
+			connection, "SELECT COALESCE(blocked,0) FROM accounts WHERE account_name=" +
 					    quote(connection, snapshot.creation_account) +
-					    " AND COALESCE(blocked,0)=0 FOR UPDATE");
+					    " FOR UPDATE");
 		if (!account.ok)
 			return account;
 		MYSQL_RES *accounts = mysql_store_result(connection);
 		if (!accounts)
 			return { false, mysql_errno(connection) };
-		const bool found = mysql_fetch_row(accounts) != nullptr;
+		MYSQL_ROW owner = mysql_fetch_row(accounts);
+		const bool found = owner && owner[0];
+		account_allowed = found && !strcmp(owner[0], "0");
 		mysql_free_result(accounts);
 		if (!found)
 			return { false, EACCES };
@@ -1091,6 +1094,10 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 	mysql_free_result(rows);
 	if (!valid)
 		return { false, EEXIST };
+	// Blocking entry cannot undo a prior committed Keep. Permit reconciliation
+	// of that exact baseline, but refuse fresh creation or any newer capture.
+	if (creation && !account_allowed && (!present || *stored_revision < snapshot.revision))
+		return { false, EACCES };
 	if (creation)
 	{
 		result = execute(
