@@ -255,11 +255,6 @@ void extract_obj(P_obj object, int) {
     while (*link && *link!=object) link=&(*link)->next;
     assert(*link); *link=object->next;
 }
-void resetQuest(P_char ch) {
-    ch->only.pc->quest_active = 0;
-    ch->only.pc->quest_mob_vnum = 0;
-    ch->only.pc->quest_reward_item_count = 0;
-}
 uint64_t discoveries_at_level_save = 0;
 static void notify_level_advancement(P_char, int);
 static void advance_level_impl(P_char ch, bool notify_player, bool, std::uint64_t) {
@@ -819,6 +814,70 @@ int main() {
             assert(output.find("QUEST COMPLETE",output.find("QUEST COMPLETE")+1)==std::string::npos);
         }
     }
+    // ASK eligibility survives publication delays and durable receipt recovery.
+    // A stronger current bonus still applies, but two bonuses never multiply.
+    for (int captured : {0, TAG_RESTED, TAG_WELLRESTED}) {
+        for (int current : {0, TAG_RESTED, TAG_WELLRESTED}) {
+            const int percent = captured == TAG_WELLRESTED || current == TAG_WELLRESTED ? 200 :
+                                captured == TAG_RESTED || current == TAG_RESTED ? 150 : 100;
+            const int marker = captured == TAG_WELLRESTED ? PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING :
+                               captured == TAG_RESTED ? PLAYER_WORLD_QUEST_RESTED_REWARD_PENDING :
+                               PLAYER_WORLD_QUEST_REWARD_PENDING;
+            reset(); pc.quest_type = FIND_AND_ASK; defer_history = true;
+            rested_tag = captured;
+            quest_ask(&player, &mob);
+            assert(deferred_history && player.points.curr_exp == 0);
+            assert(captured_reward.experience == 1300 &&
+                   captured_reward.rested_percent == (captured == TAG_WELLRESTED ? 200 :
+                                                     captured == TAG_RESTED ? 150 : 0));
+            assert(captured_reward.pending_state(false) == marker);
+            // Duplicate interactions cannot publish a pending completion early.
+            quest_ask(&player, &mob);
+            assert(player.points.curr_exp == 0 && finished == 1);
+            rested_tag = current;
+            auto complete = std::move(deferred_history); deferred_history = {};
+            complete(&player);
+            assert(player.points.curr_exp == 1300 * percent / 100 && !pc.quest_active);
+            quest_line(1300 * percent / 100);
+            complete(&player);
+            quest_ask(&player, &mob);
+            assert(player.points.curr_exp == 1300 * percent / 100 && finished == 1);
+
+            reset(); pc.quest_type = FIND_AND_ASK;
+            pc.quest_accomplished = marker;
+            pc.quest_receiver = 1300; pc.quest_shares_left = pc.quest_kill_how_many = 0;
+            rested_tag = current;
+            // Any bartender may claim a committed receipt, using its stored ASK state.
+            quest_full_reward(&player, &mob, FIND_AND_KILL);
+            assert(player.points.curr_exp == 1300 * percent / 100 && !pc.quest_active && finished == 0);
+            quest_line(1300 * percent / 100);
+            quest_ask(&player, &mob);
+            assert(player.points.curr_exp == 1300 * percent / 100 && finished == 0);
+        }
+    }
+    // Retained eligibility still follows ordinary reductions and ceilings.
+    reset(); pc.quest_type = FIND_AND_ASK; rested_tag = TAG_WELLRESTED; defer_history = true;
+    quest_ask(&player, &mob);
+    rested_tag = 0; racial_exp_mods[RACE_HUMAN] = 0.75f; earned_multiplier = 0.5;
+    auto complete_ask = std::move(deferred_history); deferred_history = {};
+    complete_ask(&player);
+    assert(player.points.curr_exp == 975); quest_line(975);
+    reset();
+    assert(gain_exp_world_quest(&player, 100000, 200) == 3333);
+    reset(); player.points.curr_exp = global_exp_limit - 20;
+    assert(gain_exp_world_quest(&player, 1300, 200) == 20); quest_line(20);
+    reset(); rooms[0].room_flags = ROOM_SAFE;
+    assert(gain_exp_world_quest(&player, 1300, 200) == 0 && output.empty());
+
+    // KILL XP is immediate; a delayed completion cannot apply captured ASK rest.
+    reset(); rested_tag = TAG_RESTED; defer_history = true; pc.quest_kill_how_many = 4;
+    quest_kill(&player, &mob);
+    assert(player.points.curr_exp == 390 && captured_reward.experience == 0 &&
+           captured_reward.rested_percent == 0);
+    rested_tag = TAG_WELLRESTED;
+    auto complete_kill = std::move(deferred_history); deferred_history = {};
+    complete_kill(&player);
+    assert(player.points.curr_exp == 390 && !pc.quest_active);
     // Preserve each original high-level epic roll boundary.
     reset(); player.player.level = 56;
     for (int level = 46; level <= 55; ++level) {
@@ -1491,7 +1550,9 @@ def main() -> None:
         functions += [f"template <{parameters}>\n" + extract_function("limits.c", signature)]
     functions += [extract_function("limits.c", "int gain_exp_combat_share(")]
     functions += [extract_function("limits.c", "int gain_exp(")]
+    functions += [extract_function("limits.c", "int gain_exp_world_quest(")]
     functions += [extract_function("world_quest.c", signature) for signature in (
+        "void resetQuest(",
         "static int quest_epic_reward_amount(", "int quest_exp_reward(",
         "static player_world_quest_reward world_quest_prepare_reward(",
         "static P_obj world_quest_reward_by_uid(", "static bool world_quest_deliver_reward(",

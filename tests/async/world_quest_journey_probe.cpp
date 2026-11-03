@@ -4,6 +4,9 @@
 #include "world/world_quest_policy.h"
 #include "world/world_quest_policy_math.h"
 #include "persistence/persistence_checkpoint.h"
+#include "player/player_snapshot.h"
+#include "magic/spells.h"
+#include "world/difficulty.h"
 #include <cstdio>
 #include <cassert>
 #include <vector>
@@ -207,10 +210,14 @@ static int completion_calls = 0;
 static uint64_t completion_reward = 0;
 static int completion_reward_vnum = 0;
 static std::vector<uint64_t> completion_rewards;
-extern "C" void quest_gameplay_history(P_char ch, const void *raw_rewards)
+static int completion_xp = 0, completion_rest_percent = 0;
+extern "C" void quest_gameplay_history(P_char ch, const void *raw_rewards, const void *raw_values)
 {
 	assert(ch && IS_PC(ch));
 	const auto *rewards = static_cast<const std::vector<P_obj> *>(raw_rewards);
+	const auto &values = *static_cast<const player_world_quest_reward *>(raw_values);
+	completion_xp = values.experience;
+	completion_rest_percent = values.rested_percent;
 	completion_rewards.clear();
 	for (P_obj reward : *rewards)
 		if (reward)
@@ -233,12 +240,39 @@ extern "C" void quest_gameplay_reward_pause()
 {
 	if (access("quest-reward-pause", F_OK) != 0)
 		return;
-	FILE *ready = fopen("quest-reward-ready", "w");
+	FILE *ready = fopen("quest-reward-ready.tmp", "w");
 	assert(ready);
-	fputs("committed\n", ready);
+	fprintf(ready, "%d %d\n", completion_xp, completion_rest_percent);
 	fclose(ready);
+	assert(rename("quest-reward-ready.tmp", "quest-reward-ready") == 0);
 	while (access("quest-reward-pause", F_OK) == 0)
 		usleep(100000);
+}
+
+// Only the disposable rest journey creates these files. Normal reward capture,
+// saves, publication, crash/load and bartender claims remain production paths.
+extern "C" void quest_gameplay_set_rest(P_char ch, const char *path)
+{
+	FILE *input = fopen(path, "r");
+	if (!input)
+		return;
+	int percent = 0;
+	assert(fscanf(input, "%d", &percent) == 1);
+	fclose(input);
+	assert(percent == 0 || percent == 150 || percent == 200);
+	affect_from_char(ch, TAG_RESTED);
+	affect_from_char(ch, TAG_WELLRESTED);
+	if (percent)
+	{
+		affected_type af{};
+		af.type = percent == 200 ? TAG_WELLRESTED : TAG_RESTED;
+		af.duration = 150;
+		af.flags = AFFTYPE_PERM | AFFTYPE_NODISPEL | AFFTYPE_OFFLINE;
+		affect_to_char(ch, &af);
+	}
+	SET_BIT(ch->specials.act2, PLR2_EXP);
+	mark_player_dirty_components(GET_PID(ch),
+				     PLAYER_COMPONENT_AFFECTS | PLAYER_COMPONENT_STATUS);
 }
 
 static void number(cJSON *object, const char *key, long long value)
@@ -618,6 +652,17 @@ extern "C" void quest_gameplay_plan(P_char ch, const void *source_lookup, const 
 #endif
 
 	number(root, "completion_level", completion_level);
+	number(root, "completion_xp", completion_xp);
+	number(root, "completion_rest_percent", completion_rest_percent);
+	number(root, "rested_percent",
+	       affected_by_spell(ch, TAG_WELLRESTED) ? 200 :
+	       affected_by_spell(ch, TAG_RESTED)     ? 150 :
+						       0);
+	extern float racial_exp_mods[];
+	cJSON_AddNumberToObject(root, "xp_race_factor", racial_exp_mods[GET_RACE(ch)]);
+	cJSON_AddNumberToObject(root, "xp_earned_factor",
+				difficulty_multiplier(DIFFICULTY_EXP_EARNED));
+	number(root, "next_level_xp", new_exp_table[GET_LEVEL(ch) + 1]);
 	char_data completion_view = *ch;
 	completion_view.player.level = completion_level;
 	number(root, "completion_remaining_at_level",

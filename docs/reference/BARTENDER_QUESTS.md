@@ -127,7 +127,7 @@ saved accepted quest level, and `N` the original KILL quota.
 - **Mercenary money:** a character with `CLASS_MERCENARY` and current level
   above 24 requests `C * 1256 + random(1, 500)` copper at completion.
 
-The XP request passes through `gain_exp(..., EXP_WORLD_QUEST)`. Rested bonuses,
+The XP request passes through the normal `EXP_WORLD_QUEST` award path. Rested bonuses,
 the character's race modifier, the earned-XP difficulty dial, the per-award
 one-third-next-level cap, and the global/storage ceiling can change the credit.
 Arena, guild, and safe-room checks can suppress XP. With `toggle experience`
@@ -135,6 +135,12 @@ enabled, a positive mortal credit prints `Quest EXP:` using the actual credited
 amount. Ordinary combat XP is separate from the bartender per-kill award.
 
 Completion captures the scalar reward amounts at the completing interaction.
+An ASK completion also captures its active RESTED (1.5x) or WELLRESTED (2x)
+eligibility. Delivery applies the stronger of that captured eligibility and the
+current rest bonus exactly once, before ordinary race/difficulty modifiers and
+caps. Expiration while the reward is queued or awaiting a recovered claim does
+not remove the captured eligibility. This does not extend the character's affect
+or add a second XP bonus. KILL XP still uses rest active at each credited kill.
 The item count is rolled once and retained in `quest_reward_item_count`; failure
 while preparing a later item defers the complete batch and saves that decision
 for retry. The detached items, count, completion history, and a pending-reward marker commit together
@@ -154,6 +160,9 @@ remaining scalar rewards for a bartender claim without creating another batch
 or recording history again. The marker temporarily stores XP, epics and copper
 in the completed task's receiver, shares and credited-kill fields; these fields
 resume their ordinary meanings when the task is reset.
+ASK pending states 6 (RESTED) and 7 (WELLRESTED) preserve this eligibility in the
+existing `quest_accomplished` field on both backends; no migration is required.
+Older pending state 2 has no captured eligibility and keeps delivery-time rest.
 An unfinished legacy quest uses the new quantity formula on completion; already
 completed legacy work with no saved count keeps its original one-item entitlement.
 The single history row describes the base item; it is not a list of bonus items.

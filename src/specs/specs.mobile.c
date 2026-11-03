@@ -11289,7 +11289,7 @@ int world_quest(P_char ch, P_char pl, int cmd, char *arg)
 
 		if (pl->only.pc->quest_accomplished &&
 		    (pl->only.pc->quest_giver == GET_VNUM(ch) ||
-		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_REWARD_PENDING ||
+		     player_world_quest_ask_reward_pending(pl->only.pc->quest_accomplished) ||
 		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_PENDING ||
 		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED ||
 		     pl->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING))

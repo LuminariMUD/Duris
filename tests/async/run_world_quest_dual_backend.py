@@ -17,6 +17,7 @@ import shutil
 import signal
 import random
 import socket
+import struct
 import subprocess
 import tempfile
 import time
@@ -47,7 +48,7 @@ if not REWARD_CASES or any(len(case) != 4 or not 11 <= case[0] <= 56 or
 if not GAMEPLAY_CASES or any(case not in {(11, 2), (11, 1), (29, 1), (29, 2), (30, 1)}
                              for case in GAMEPLAY_CASES):
     raise ValueError("unsupported focused gameplay cases")
-if JOURNEY not in {"both", "recovery", "gameplay", "rewards", "reward-recovery", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
+if JOURNEY not in {"both", "recovery", "gameplay", "rewards", "reward-recovery", "rested-ask", "audit", "reported", "history", "history-failure", "history-failure-restart"}:
     raise ValueError("unsupported DURIS_WORLD_QUEST_JOURNEY scenario")
 if REQUESTED_BACKEND not in {"both", "mariadb", "flatfile"}:
     raise ValueError("DURIS_WORLD_QUEST_BACKEND must be both, mariadb, or flatfile")
@@ -460,7 +461,7 @@ def execute_disposable_sql(environment: dict[str, str], query: str) -> None:
 
 def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
                      database_environment, *, origin: int = BARTENDER_ROOM,
-                     cases=GAMEPLAY_CASES, recover_pending=None) -> tuple[MudClient, list[dict]]:
+                     cases=GAMEPLAY_CASES, recover_pending=None, complete_ask=None) -> tuple[MudClient, list[dict]]:
     from test_gmcp_control_journey import send_telnet, wait_telnet, telnet_packets, drain
 
     def enable_items(connection):
@@ -536,6 +537,8 @@ def perform_gameplay(client: MudClient, run_root: pathlib.Path, restart,
             if kind == 1 and target["kills"] > previous["kills"]:
                 current = target
             elif kind == 2:
+                if complete_ask:
+                    return complete_ask(client, target, accepted)
                 client.send(f"ask {target['selector']} {target['month']}")
                 outcome, _ = client.expect_any(("You gain some experience.",
                                                 "No-one by that name here..."), timeout=30)
@@ -695,6 +698,79 @@ def perform_reward_cases(client, run_root, restart, database_environment):
         case.update(expected_items=expected, restored=restored)
         results.append(case)
         (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
+    return client, results
+
+
+def perform_rested_ask(client, run_root, restart, database_environment):
+    results = []
+    completion_rest = run_root / "quest-rest-completion.txt"
+    delivery_rest = run_root / "quest-rest-delivery.txt"
+    pause = run_root / "quest-reward-pause"
+    ready = run_root / "quest-reward-ready"
+    delivery_rest.write_text("0\n")
+
+    def f32(value):
+        return struct.unpack("f", struct.pack("f", value))[0]
+
+    for percent in (150, 200):
+        for crash in (False, True):
+            completion_rest.write_text(f"{percent}\n")
+
+            def complete(current_client, target, accepted):
+                history = stored_gameplay_history(database_environment, accepted)
+                if crash:
+                    ready.unlink(missing_ok=True)
+                    pause.touch()
+                current_client.send(f"ask {target['selector']} {target['month']}")
+                if crash:
+                    deadline = time.monotonic() + 60
+                    while not ready.exists():
+                        require(time.monotonic() < deadline, "ASK did not reach committed publication")
+                        time.sleep(0.1)
+                    base, captured = map(int, ready.read_text().split())
+                    require(captured == percent, "ASK did not capture completion-time rest")
+                    current_client = restart(current_client, pause.unlink, crash=True)
+                    restored = settled_gameplay_snapshot(current_client, run_root)
+                    require(restored["active"] and restored["accomplished"] == (6 if percent == 150 else 7)
+                            and restored["receiver"] == base,
+                            "ASK base request or rest eligibility did not survive the crash")
+                    require(restored["xp"] == target["xp"] and
+                            stored_gameplay_history(database_environment, restored) == history + 1,
+                            "interrupted ASK published XP early or lost completion history")
+                    navigate_quest(current_client, run_root, returning=True)
+                    target = settled_gameplay_snapshot(current_client, run_root)
+                    current_client.send("ask bartender quest")
+                current_client.expect("You gain some experience.", timeout=60)
+                credited = settled_gameplay_snapshot(current_client, run_root)
+                if not crash:
+                    base = credited["completion_xp"]
+                    require(credited["completion_rest_percent"] == percent, "live ASK lost captured rest")
+                expected = int(f32(f32(f32(base * percent / 100) * target["xp_race_factor"]) *
+                                   target["xp_earned_factor"]))
+                require(0 < expected < target["next_level_xp"] // 3,
+                        "rest fixture unexpectedly hit an award cap")
+                require(not credited["active"] and credited["rested_percent"] == 0 and
+                        credited["progress_xp"] - target["progress_xp"] == expected and
+                        stored_gameplay_history(database_environment, credited) == history + 1,
+                        "expired ASK rest was lost, stacked, or history was repeated")
+                current_client.send("save")
+                current_client.expect("Save complete for Taverek.", timeout=120)
+                current_client = restart(current_client)
+                final = settled_gameplay_snapshot(current_client, run_root)
+                # Chaos login restores level 56, independent of this fixture's
+                # explicit level-11 setup. Compare the persisted XP balance.
+                require(not final["active"] and final["xp"] == credited["xp"] and
+                        stored_gameplay_history(database_environment, final) == history + 1 and
+                        {item["uid"] for item in credited["items"]} <= {item["uid"] for item in final["items"]},
+                        "saved ASK claim repeated XP/history or lost items after restart")
+                return current_client, [{"rest_percent": percent, "crash": crash, "base": base,
+                                          "expected_credit": expected, "credited": credited, "final": final}]
+
+            client, case = perform_gameplay(client, run_root, restart, database_environment,
+                                            cases=((11 if percent == 150 else 29, 2),),
+                                            complete_ask=complete)
+            results.extend(case)
+            (run_root / "quest-gameplay-results.json").write_text(json.dumps(results))
     return client, results
 
 
@@ -1301,7 +1377,19 @@ break *sql_world_quest_finish_async
 set $history_break=$bpnum
 commands
 silent
-call (void)quest_gameplay_history((char_data*)$rdi,(void*)$rsi)
+call (void)quest_gameplay_history((char_data*)$rdi,(void*)$rsi,(void*)$r8)
+continue
+end
+break *quest_ask
+commands
+silent
+call (void)quest_gameplay_set_rest((char_data*)$rdi,"quest-rest-completion.txt")
+continue
+end
+break *world_quest_deliver_reward
+commands
+silent
+call (void)quest_gameplay_set_rest((char_data*)$rdi,"quest-rest-delivery.txt")
 continue
 end
 break *_Z6numberii
@@ -1463,9 +1551,10 @@ run
                     "binary_sha256": hashlib.sha256(binary_path.read_bytes()).hexdigest(),
                     "catalog_ready_count": boot_count,
                 }
-            if JOURNEY in {"gameplay", "rewards", "reward-recovery"}:
+            if JOURNEY in {"gameplay", "rewards", "reward-recovery", "rested-ask"}:
                 journey = {"gameplay": perform_gameplay, "rewards": perform_reward_cases,
-                           "reward-recovery": perform_reward_recovery}[JOURNEY]
+                           "reward-recovery": perform_reward_recovery,
+                           "rested-ask": perform_rested_ask}[JOURNEY]
                 client, gameplay = journey(client, run_root, restart_gameplay, database_environment)
                 client.close()
                 client = None

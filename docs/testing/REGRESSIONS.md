@@ -526,6 +526,26 @@ covers per-recipient group feedback, inactive marks, existing eligibility
 rejection, and expiry message registration. Target eligibility and recipe
 persistence are stubbed; this is not a live-player or network journey.
 
+## Delayed ASK rested eligibility
+
+An admitted bartender ASK completion retains its RESTED/WELLRESTED eligibility
+through delayed publication and recovered claims. The stronger of captured and
+current rest applies once through the ordinary XP modifiers/caps. Legacy pending
+receipts retain delivery-time behavior; KILL XP remains immediate.
+
+`python3 tests/async/test_world_quest_xp_feedback.py` checks all nine captured/current
+rest combinations on both backend builds, repeated callbacks/interactions,
+recovered markers, reductions/caps, and unchanged delayed KILL XP. The player-save
+pipeline test verifies that the receipt stores the captured eligibility.
+
+`DURIS_WORLD_QUEST_JOURNEY=rested-ask python3 tests/async/run_world_quest_dual_backend.py`
+uses disposable MariaDB and flatfile servers and ordinary ASK/bartender commands.
+Debugger fixtures grant rest before completion and expire it before delivery.
+Both strengths are tested through live publication and a SIGKILL after commit
+before publication, then a recovered claim and another acknowledged-save/restart.
+Assertions check the exact single XP credit, one history entry, and retained items.
+It requires the full-world build dependencies, GDB and Docker for MariaDB.
+
 ## NPC quest staff inspection
 
 `qview <mobile-vnum>` displays authored dialogue, all completion requirements,

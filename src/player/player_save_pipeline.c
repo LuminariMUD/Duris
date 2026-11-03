@@ -409,9 +409,7 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 			if (quest.awaiting_reward)
 			{
 				snapshot.quest_values[3] =
-					quest.final_kill_reward ?
-						PLAYER_WORLD_QUEST_KILL_REWARD_PENDING :
-						PLAYER_WORLD_QUEST_REWARD_PENDING;
+					quest.reward.pending_state(quest.final_kill_reward);
 				// Once completed, receiver/share/kill counters are no longer used.
 				// The marker makes these fields a durable reward receipt until reset.
 				snapshot.quest_values[8] = quest.reward.experience;

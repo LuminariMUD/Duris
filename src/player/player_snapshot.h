@@ -280,12 +280,34 @@ constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_PENDING = 3;
 constexpr int PLAYER_WORLD_QUEST_KILL_REWARD_UNSECURED = 4;
 // Final kill XP is credited; remaining reward values are retained for history retry.
 constexpr int PLAYER_WORLD_QUEST_KILL_HISTORY_PENDING = 5;
+// ASK completion-time rest eligibility travels in the existing durable receipt.
+constexpr int PLAYER_WORLD_QUEST_RESTED_REWARD_PENDING = 6;
+constexpr int PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING = 7;
+
+constexpr bool player_world_quest_ask_reward_pending(int state)
+{
+	return state == PLAYER_WORLD_QUEST_REWARD_PENDING ||
+	       state == PLAYER_WORLD_QUEST_RESTED_REWARD_PENDING ||
+	       state == PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING;
+}
 
 struct player_world_quest_reward
 {
 	int32_t experience = 0;
 	int32_t epic = 0;
 	int32_t money = 0;
+	int32_t rested_percent = 0; // Minimum normal rest multiplier: 0, 150 or 200.
+
+	int pending_state(bool final_kill) const
+	{
+		if (final_kill)
+			return PLAYER_WORLD_QUEST_KILL_REWARD_PENDING;
+		if (rested_percent == 200)
+			return PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING;
+		if (rested_percent == 150)
+			return PLAYER_WORLD_QUEST_RESTED_REWARD_PENDING;
+		return PLAYER_WORLD_QUEST_REWARD_PENDING;
+	}
 };
 
 // An admitted quest completion travels with its player's status after-image.

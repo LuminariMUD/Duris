@@ -399,7 +399,7 @@ int main()
     auto reward_quest = quest;
     reward_quest.target = 15002;
     reward_quest.awaiting_reward = true;
-    reward_quest.reward = {260, 3, 400};
+    reward_quest.reward = {260, 3, 400, 200};
     player_item_snapshot reward_root{}, reward_child{}, reward_bonus{};
     reward_root.object_uid=9001; reward_root.vnum=1001;
     reward_root.parent_index=PLAYER_SNAPSHOT_NO_PARENT;
@@ -448,7 +448,7 @@ int main()
         const auto &saved = state.committed.at(46);
         assert(saved.pending_world_quest.awaiting_reward && saved.quest_values[0] == 1 &&
                saved.quest_values[1] == 15002 &&
-               saved.quest_values[3] == PLAYER_WORLD_QUEST_REWARD_PENDING &&
+               saved.quest_values[3] == PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING &&
                saved.quest_values[4] == 1234 && saved.quest_values[8] == 260 &&
                saved.quest_values[9] == 3 && saved.quest_values[10] == 400);
         assert((saved.components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY)) ==

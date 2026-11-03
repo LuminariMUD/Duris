@@ -1502,6 +1502,7 @@ int adjust_lvl_from_frags_period(P_char, int mod);
 int frag_lvl_adjustment(P_char, int mod);
 int tick_location_lvl_adjustment(P_char);
 int gain_exp(P_char, P_char, int, int);
+int gain_exp_world_quest(P_char, int, int);
 int death_exp_loss_level_threshold(void);
 void lose_level(P_char);
 void point_update(void);

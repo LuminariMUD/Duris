@@ -182,6 +182,13 @@ static player_world_quest_reward world_quest_prepare_reward(P_char ch, int type,
 {
 	player_world_quest_reward reward;
 	reward.experience = final_kill ? 0 : quest_exp_reward(ch, type);
+	if (!final_kill && type == FIND_AND_ASK)
+	{
+		if (affected_by_spell(ch, TAG_WELLRESTED))
+			reward.rested_percent = 200;
+		else if (affected_by_spell(ch, TAG_RESTED))
+			reward.rested_percent = 150;
+	}
 	if (GET_CLASS(ch, CLASS_MERCENARY) && GET_LEVEL(ch) > 24)
 		reward.money = GET_LEVEL(ch) * 1256 + number(1, 500);
 	reward.epic = quest_epic_reward_amount(ch);
@@ -292,7 +299,7 @@ static bool world_quest_deliver_reward(P_char ch, P_char quest_mob, int type, bo
 	quest_epic_reward(ch, type, values.epic);
 	if (!final_kill)
 	{
-		gain_exp(ch, NULL, values.experience, EXP_WORLD_QUEST);
+		gain_exp_world_quest(ch, values.experience, values.rested_percent);
 		if (quest_mob)
 			act("&+WYou gain some experience.&n", FALSE, quest_mob, 0, ch, TO_VICT);
 		else
@@ -398,9 +405,7 @@ static bool world_quest_start_reward(P_char ch, P_char quest_mob, int type, bool
 				actor->only.pc->quest_mob_vnum != target ||
 				actor->only.pc->quest_started != started)
 				    return true;
-			    actor->only.pc->quest_accomplished =
-				    final_kill ? PLAYER_WORLD_QUEST_KILL_REWARD_PENDING :
-						 PLAYER_WORLD_QUEST_REWARD_PENDING;
+			    actor->only.pc->quest_accomplished = values.pending_state(final_kill);
 			    P_char mob = mob_id ? find_character_by_runtime_id(mob_id) : NULL;
 			    if (mob && mob->in_room != actor->in_room)
 				    mob = NULL;
@@ -437,14 +442,19 @@ void quest_full_reward(P_char ch, P_char quest_mob, int type)
 		world_quest_start_reward(ch, quest_mob, FIND_AND_KILL, true);
 		return;
 	}
-	if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_REWARD_PENDING ||
+	if (player_world_quest_ask_reward_pending(ch->only.pc->quest_accomplished) ||
 	    ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_KILL_REWARD_PENDING)
 	{
 		const bool final_kill = ch->only.pc->quest_accomplished ==
 					PLAYER_WORLD_QUEST_KILL_REWARD_PENDING;
-		const player_world_quest_reward values = { ch->only.pc->quest_receiver,
-							   ch->only.pc->quest_shares_left,
-							   ch->only.pc->quest_kill_how_many };
+		player_world_quest_reward values = { ch->only.pc->quest_receiver,
+						     ch->only.pc->quest_shares_left,
+						     ch->only.pc->quest_kill_how_many };
+		if (ch->only.pc->quest_accomplished == PLAYER_WORLD_QUEST_WELLRESTED_REWARD_PENDING)
+			values.rested_percent = 200;
+		else if (ch->only.pc->quest_accomplished ==
+			 PLAYER_WORLD_QUEST_RESTED_REWARD_PENDING)
+			values.rested_percent = 150;
 		world_quest_deliver_reward(ch, quest_mob, final_kill ? FIND_AND_KILL : type,
 					   final_kill, {}, true, values);
 		return;

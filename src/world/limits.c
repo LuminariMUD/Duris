@@ -1216,8 +1216,8 @@ static bool divine_experience_active(P_char ch, P_char encounter)
 	return divine_boon_reward_zone_eligible(zone, side);
 }
 
-template <typename Amount>
-static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int type, bool divine)
+template <typename Amount> static int gain_exp_amount(P_char ch, P_char victim, const Amount value,
+						      int type, bool divine, int rested_percent = 0)
 {
 	// Bonus XP retains kill modifiers and feedback without counting another victim.
 	const bool kill_bonus = type == EXP_KILL_BONUS;
@@ -1282,12 +1282,12 @@ static int gain_exp_amount(P_char ch, P_char victim, const Amount value, int typ
 	{
 		;
 	}
-	else if (affected_by_spell(ch, TAG_WELLRESTED))
+	else if (rested_percent == 200 || affected_by_spell(ch, TAG_WELLRESTED))
 	{
 		progression_modifier_flags |= TELEMETRY_PROGRESSION_MODIFIER_WELLRESTED;
 		XP *= 2;
 	}
-	else if (affected_by_spell(ch, TAG_RESTED))
+	else if (rested_percent == 150 || affected_by_spell(ch, TAG_RESTED))
 	{
 		progression_modifier_flags |= TELEMETRY_PROGRESSION_MODIFIER_RESTED;
 		XP *= 1.5;
@@ -1804,6 +1804,12 @@ int gain_exp_combat_share(P_char ch, P_char victim, double precise_share, int or
 int gain_exp(P_char ch, P_char victim, const int value, int type)
 {
 	return gain_exp_combat_share(ch, victim, value, value, type);
+}
+
+int gain_exp_world_quest(P_char ch, int value, int rested_percent)
+{
+	// Extend captured ASK eligibility without stacking it with a current bonus.
+	return gain_exp_amount<float>(ch, NULL, value, EXP_WORLD_QUEST, false, rested_percent);
 }
 
 int gain_condition(P_char ch, int condition, int value)
