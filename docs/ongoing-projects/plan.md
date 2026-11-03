@@ -1,3 +1,9 @@
+# Active plan: PostHog free-tier telemetry (#446)
+
+Continue from [the issue-446 implementation plan](issue-446-posthog-free-plan.md).
+It records the scope, evidence, validation, PR sequence and remaining access needs.
+Updated 2026-11-03. The completed flight plan below is retained as history.
+
 # Issue #584: flight transport implementation plan
 
 Status: implementation, review follow-up and local acceptance complete. [PR #586](https://github.com/LuminariMUD/Duris/pull/586) and [PR #587](https://github.com/LuminariMUD/Duris/pull/587) were squash-merged in order; [PR #588](https://github.com/LuminariMUD/Duris/pull/588) is rebased directly onto the resulting master and ready to merge. Updated 2026-11-02. No deployment has been performed.

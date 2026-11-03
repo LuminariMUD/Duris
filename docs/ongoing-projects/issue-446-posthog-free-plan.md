@@ -2,7 +2,8 @@
 
 - Issue: [#446](https://github.com/LuminariMUD/Duris/issues/446)
 - Prepared: 2026-11-03
-- Status: planning complete; implementation and production changes have not started.
+- Status: implementation active; report scope and cached diagnostics are the first
+  review chunks. Production changes have not started.
 - Branch: `branch/issue-446-posthog-free-plan`
 - Local worktree: `/home/aiwithapex/projects/duris-issue-446-posthog-free-plan`
 - Source baseline: `96ef0ed6b` (`origin/master` when this worktree was created).
@@ -31,13 +32,15 @@ allowance is not a success metric; useful, representative coverage is.
 progression, encounter, and data-quality questions throughout the day, with a
 measured margin for launch-sized traffic.
 
-**Non-goals:** implementing this plan now; deployment or quota repair; new raw
+**Non-goals:** deployment or quota repair; new raw
 combat/action streams; account linkage; gameplay or balance changes; a telemetry
 service, SDK replacement, second writer, payload spool, or paid add-on. Preserve
 the existing worker, reducer, queue, journal, and gameplay independence.
 
-**Files:** this document is the only change in the planning commit. Later changes
-have conditional owners in the implementation sequence below.
+**Files:** this plan and `plan.md`; the five existing report SQL files,
+`REPORTS.md` and their local SQL runner for the confirmed season mismatch;
+`src/cmd/actinf.c` and its focused command regression for cached family diagnostics.
+Other implementation owners below remain conditional on measured demand.
 
 **Proof:** source tracing, read-only production configuration/log inspection,
 official pricing checks, executable local reducer/sender tests, reproducible
@@ -45,6 +48,32 @@ budget arithmetic, and Git checks. Current cloud ingestion and Duris organizatio
 billing remain unverified; they are explicit first-step implementation inputs.
 
 ## What the evidence establishes
+
+### Implementation checkpoint — 2026-11-03
+
+- The user confirms Duris is on the FREE tier and supplies production season 2.
+  No capture or identity key is recorded in this plan or any committed artifact.
+- Current read-only access checks again returned 404 for project 678214; the
+  connected organization lists four other projects and no Duris project.
+  A capture (`phc_`) key does not grant private reporting/billing API access.
+  Requested the correct account connection while continuing independent work.
+- Read-only production SSH still finds checkout `3c08535b3` and only the
+  15:33:18 startup health line. It does not establish current sender counters,
+  actual billing usage, ingestion or effective running scope.
+- Ablation: retain all six families, 30-minute summaries and existing limits.
+  Do not build a sampler, pacing controller or new storage while the excess is
+  unmeasured. Expose the already-cached per-family/per-kind counters through the
+  existing staff command, because the current command has only combined totals
+  and cloud health is unavailable. This is a diagnostic gap, not evidence that
+  any particular family dominates.
+- Delivery order: publish the plan/handoff, stack the season-2 SQL/fixture fix,
+  then stack the cached diagnostics with executable command coverage and builds.
+  Each chunk will be committed, pushed and left in a focused review PR.
+- Remaining acceptance: correct-account billing/query access; saved-query
+  comparison/refresh under #578; comparable busy-interval and UTC-rollover live
+  snapshots; measured family demand and organization headroom. Neither #446 nor
+  #578 can close on the local scope fix alone. Production deployment, journal
+  mutation, quota reset and new cloud capture campaigns remain outside this work.
 
 1. **The issue describes an October 28 incident.** It reports 46,700 native
    admissions in about three hours, `EDQUOT`, and zero historical SQL
