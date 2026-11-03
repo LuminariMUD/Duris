@@ -1409,19 +1409,37 @@ static void initial_creation_boundaries(const fs::path &root)
 		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
 				player_save_apply_outcome::already_applied,
 			"initial retry did not reconcile the committed snapshot");
+		account.blocked = 1;
+		require(flatfile_account_save(state, account, revision, &revision, &error) ==
+				flatfile_account_result::ok,
+			"block synthetic owner: " + error);
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+			"blocking entry invalidated an already committed creation: " + error);
+		int32_t blocked_pid = 0;
+		require(flatfile_identity_allocate_pid(state, &blocked_pid, &error) ==
+				flatfile_identity_result::ok,
+			"allocate blocked attempt PID");
+		auto blocked = snapshot;
+		blocked.pid = blocked_pid;
+		for (auto &field : blocked.status_strings)
+			if (field.field == player_status_string_field::name)
+				field.value = "BlockedNew";
+		require(flatfile_player_snapshot_apply(state, blocked, &error).outcome ==
+					player_save_apply_outcome::terminal_failure &&
+				flatfile_identity_lookup_pid(state, blocked_pid, &identity,
+							     &error) ==
+					flatfile_identity_result::not_found &&
+				flatfile_player_snapshot_read(state, blocked_pid, &stored,
+							      &error) ==
+					flatfile_player_load_result::not_found,
+			"blocked account published a fresh identity or snapshot: " + error);
+		account.blocked = 0;
+		require(flatfile_account_save(state, account, revision, &revision, &error) ==
+				flatfile_account_result::ok,
+			"unblock synthetic owner: " + error);
 		if (boundary < 0)
 		{
-			account.blocked = 1;
-			require(flatfile_account_save(state, account, revision, &revision,
-						      &error) == flatfile_account_result::ok,
-				"block initial owner");
-			require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
-					player_save_apply_outcome::already_applied,
-				"blocking after commit invalidated initial acknowledgment");
-			account.blocked = 0;
-			require(flatfile_account_save(state, account, revision, &revision,
-						      &error) == flatfile_account_result::ok,
-				"unblock initial owner");
 			auto quest = snapshot;
 			quest.revision = 2;
 			quest.quest_values = {};
@@ -1464,7 +1482,7 @@ static void initial_creation_boundaries(const fs::path &root)
 		int32_t competitor = 0;
 		require(flatfile_identity_allocate_pid(state, &competitor, &error) ==
 					flatfile_identity_result::ok &&
-				competitor == pid + (boundary < 0 ? 1 : 2),
+				competitor == pid + (boundary < 0 ? 2 : 3),
 			"allocate competing PID");
 		auto competing = snapshot;
 		competing.pid = competitor;
