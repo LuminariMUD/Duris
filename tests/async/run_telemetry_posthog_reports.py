@@ -186,6 +186,20 @@ def main():
         assert latest["resident_usec"] is None and latest["unavailable_inputs"] == 1
         print("PASS: late checkpoint evidence wins over occurrence/UUID order and unavailable comparisons stay unknown")
 
+        # The local inline fixture needs room for more than one report page.
+        db.query("SET max_query_size=4194304")
+        checkpoints = []
+        for index in range(501):
+            row = deepcopy(comparisons[-1])
+            row["properties"].update(duris_event_id=f"checkpoint-{index}",
+                                     duris_session_id=f"session-{index}")
+            checkpoints.append(row)
+        page = run(db, "time", checkpoints + [summary])
+        assert len(page) == 500 and page[0]["total_rows_before_limit"] > 500
+        assert page[0]["row_plane"] == "interval_delta"
+        assert any(row["row_plane"] == "checkpoint_gap_do_not_add" for row in page)
+        print("PASS: checkpoint reconciliation cannot hide additive time rows on the bounded first page")
+
 
 if __name__ == "__main__":
     main()

@@ -47,7 +47,10 @@ allocation. Window selection uses the exported fragment's event timestamp; it
 does not reconstruct interval endpoints inside that fragment.
 
 Time rows marked `checkpoint_gap_do_not_add` are reconciliation evidence and must
-never be added to interval deltas. XP is observed gameplay, not proof of a durable
+never be added to interval deltas. The bounded time table lists additive interval
+rows first so a large checkpoint population cannot hide time allocation. Its
+truncation count still covers both planes; use narrower scopes to inspect omitted
+rows. XP is observed gameplay, not proof of a durable
 save. Encounter run and actor rows are separate: do not sum run duration over actor
 rows or add pet damage to owner damage. Native terminal completeness and observed
 cloud actor counts are independent. Partial/unknown evidence stays visible.

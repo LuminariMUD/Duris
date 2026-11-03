@@ -78,5 +78,5 @@ WITH fragments AS (
 )
 SELECT *, count() OVER () AS total_rows_before_limit
 FROM planes
-ORDER BY row_plane, utc_day DESC, allocation, class_id, race_id, faction_id, level_band, zone, group_size, context, context_quality, session_id
+ORDER BY row_plane DESC, utc_day DESC, allocation, class_id, race_id, faction_id, level_band, zone, group_size, context, context_quality, session_id
 LIMIT 500
