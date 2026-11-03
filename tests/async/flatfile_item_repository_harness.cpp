@@ -948,6 +948,26 @@ int main(int argc, char **argv)
 			items[1].item_uid == 201,
 		"shop trades did not preserve exact shop custody");
 
+	// An exact uncommitted grant survives unrelated system-owner revision advances.
+	const auto replay_root = root / "creation-replay";
+	fs::create_directories(replay_root / "domains");
+	fs::permissions(replay_root, fs::perms::owner_all, fs::perm_options::replace);
+	fs::permissions(replay_root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	const auto bound = single_creation(240, 990001, 42, 0);
+	const auto unrelated = single_creation(241, 990002, 43, 0);
+	require(flatfile_item_repository_apply(replay_root.string(), unrelated).outcome ==
+				critical_apply_outcome::applied &&
+			flatfile_item_repository_apply(replay_root.string(), bound).outcome ==
+				critical_apply_outcome::applied &&
+			flatfile_item_repository_apply(replay_root.string(), bound).outcome ==
+				critical_apply_outcome::already_applied,
+		"unrelated creation invalidated the bound operation or its replay");
+	const auto collision = flatfile_item_repository_apply(replay_root.string(),
+							      single_creation(242, 990001, 44, 0));
+	require(collision.outcome == critical_apply_outcome::terminal_failure &&
+			collision.error_code == EEXIST,
+		"relaxed system revision must retain UID collision protection");
+
 	const fs::path authority = domains / "item_ownership";
 	{
 		std::fstream file(authority, std::ios::in | std::ios::out | std::ios::binary);

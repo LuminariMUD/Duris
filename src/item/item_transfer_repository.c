@@ -1056,9 +1056,11 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		return false;
 	result->from_owner_revision = from_revision;
 	result->to_owner_revision = to_revision;
+	const bool creation = payload.from_owner.type == item_owner_type::system;
 	// Memory is the authority for a player, room, corpse, locker or pet: saves move
 	// their revisions, so a transfer does not fence on them.
-	if (item_claim_owner_is_memory_held(payload.from_owner.type))
+	// New UID absence, rather than the shared mint revision, fences creation.
+	if (creation || item_claim_owner_is_memory_held(payload.from_owner.type))
 		payload.expected_from_revision = from_revision;
 	if (item_claim_owner_is_memory_held(payload.to_owner.type))
 		payload.expected_to_revision = to_revision;
@@ -1069,7 +1071,6 @@ bool item_transfer_repository_execute_at_offset(MYSQL *connection, const critica
 		return true;
 	}
 	std::vector<current_item> current;
-	const bool creation = payload.from_owner.type == item_owner_type::system;
 	if (creation)
 	{
 		std::vector<uint64_t> source_roots;

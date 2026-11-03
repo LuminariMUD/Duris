@@ -450,8 +450,12 @@ Fresh UID leases and isolated old physical recovery inputs prevent those histori
 from constructing or rewarding an old item. Legacy quest-trophy history has no
 enabled current gameplay caller; critical-test counters have no normal asset reader.
 
-The former `CRITICAL_COMMAND_JOURNAL_DIR` now holds only
-`locker-identification/<pid>.receipt` service receipts. Their filenames and encoded
+The former `CRITICAL_COMMAND_JOURNAL_DIR` holds locker-identification service
+receipts, combat-outcome evidence and `starter-kits/<pid>.kit` operation bindings.
+Preserve starter bindings with the authority snapshot; never remove one to force
+an automatic replacement kit. A backup refuses new or changed kit records during
+capture so completed grants cannot be paired with stale pending evidence.
+`locker-identification/<pid>.receipt` service receipts retain their own rules. Their filenames and encoded
 payment identities bind PID/account/side. Preserve prepared/paid/failed/delivered
 receipts: a recreated character gets a higher PID and cannot load/charge its old
 receipt, even on the same account. This is receipt identity, not a new season field.
