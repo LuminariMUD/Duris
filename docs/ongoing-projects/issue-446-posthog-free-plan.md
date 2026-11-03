@@ -59,33 +59,43 @@ so they cannot disappear behind valid snapshots. The mutation must fail at
 the health assertion, while the real five-report SQL suite must pass. No runtime
 or saved-query change is needed for this test repair.
 
+The XP report has the same bounded-page problem as time: `level_change` sorts
+before `observed_xp`, so 501 level transitions hide every XP allocation. The
+existing runner now reproduces that case and failed on the original order.
+Reverse only its plane ordering, preserving independent XP expansion, exact
+integers, level rows, scope filters and the 500-row/truncation contract. The full
+local report suite must pass, then synchronize the saved XP view and update its
+fingerprint in the acceptance record before merging #633.
+
 ### Implementation checkpoint — 2026-11-03
 
-- The user confirms Duris is on the FREE tier and supplies production season 2.
-  No capture or identity key is recorded in this plan or any committed artifact.
-- Current read-only access checks again returned 404 for project 678214; the
-  connected organization lists four other projects and no Duris project.
-  A capture (`phc_`) key does not grant private reporting/billing API access.
-  Requested the correct account connection while continuing independent work.
-- Read-only production SSH still finds checkout `3c08535b3` and only the
-  15:33:18 startup health line. It does not establish current sender counters,
-  actual billing usage, ingestion or effective running scope.
-- Ablation: retain all six families, 30-minute summaries and existing limits.
-  Do not build a sampler, pacing controller or new storage while the excess is
-  unmeasured. Expose the already-cached per-family/per-kind counters through the
-  existing staff command, because the current command has only combined totals
-  and cloud health is unavailable. This is a diagnostic gap, not evidence that
-  any particular family dominates.
-- Delivery order: publish the plan/handoff, stack the season-2 SQL/fixture fix,
-  then stack the cached diagnostics with executable command coverage and builds.
-  Each chunk will be committed, pushed and left in a focused review PR.
-  Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),
-  branch `branch/issue-446-posthog-free-plan`, head `04dd635c5`.
-- Remaining acceptance: correct-account billing/query access; saved-query
-  comparison/refresh under #578; comparable busy-interval and UTC-rollover live
-  snapshots; measured family demand and organization headroom. Neither #446 nor
-  #578 can close on the local scope fix alone. Production deployment, journal
-  mutation, quota reset and new cloud capture campaigns remain outside this work.
+- Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),
+  `branch/issue-446-posthog-free-plan`, head `04dd635c5`.
+- Season scope: [PR #630](https://github.com/LuminariMUD/Duris/pull/630),
+  `branch/issue-446-posthog-season2`, head `bd6f64faf`, based on #629.
+- Time-page repair: `branch/issue-446-posthog-time-page`, based on #630.
+  Acceptance/evidence follows that repair.
+  Review these in order; retarget each child after its parent merges. No release
+  tag, deployment, restart, migration, quota reset or capture campaign is needed.
+- The user confirms the FREE tier and production season 2. No capture/identity
+  key, credentials, raw player identities or private account responses are
+  recorded in committed artifacts.
+- The connector still returns 404 for project 678214. The user supplied a signed-in
+  browser; its **page-bound WebMCP PostHog tools** successfully access the correct
+  Duris project and billing. Reuse that session for follow-up rather than asking
+  for another capture key. The native connector's unrelated organization is not
+  evidence about Duris.
+- Read-only production SSH finds checkout `3c08535b3` and only the 15:33:18 startup
+  health line. Current ingestion and running scope are instead established by
+  query-visible season-2 data and the matching health producer.
+- Final ablation drops the proposed staff-command diagnostic code: all six family
+  counters and eight native-kind counters are already query-visible in health.
+  There is no demonstrated gap requiring a new accessor, collector or C/C++ edit.
+  Preserve all six families, 30-minute summaries and existing limits. Current
+  measured demand does not justify sampling or increasing quotas.
+- The original analysis and conditional reduction sequence below remain useful
+  historical/design context. The acceptance record immediately below supersedes
+  their earlier statements that billing and saved reports were inaccessible.
 
 ### Report scope chunk
 
@@ -107,6 +117,21 @@ git diff --check
 All five reports passed scope isolation/deduplication plus the existing rollback,
 quota/capacity, recovered incidents, pet overflow, context/XP dimensions and late
 checkpoint assertions. The installed dependency is local under ignored `bin/`.
+
+### Time-page repair
+
+Actual saved-report execution returned 500 checkpoint rows out of 19,457 total
+time rows, with no additive interval rows visible. The lexical plane ordering
+put reconciliation first. Reverse only that ordering so interval deltas appear
+first; keep all plane labels, exact arithmetic, separate gaps and truncation
+counts. A regression with 501 distinct reconciliation sessions and an ordinary
+interval failed before the change and passes afterward. The local inline SQL
+fixture raises only its parser's query-size limit to hold more than one page.
+No production query/memory/result limits are raised.
+
+Validation: the complete existing embedded ClickHouse report runner and
+`git diff --check` pass. A saved-view order update and verification will be
+recorded in the acceptance chunk, preserving the dashboard's date-filter binding.
 
 1. **The issue describes an October 28 incident.** It reports 46,700 native
    admissions in about three hours, `EDQUOT`, and zero historical SQL
