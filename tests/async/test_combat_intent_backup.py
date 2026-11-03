@@ -26,6 +26,70 @@ class CombatIntentBackupTests(Fixture):
         self.pending = self.store / ("c1" + "00" * 15 + ".intent")
         self.recorded = self.store / ("c2" + "00" * 15 + ".recorded")
 
+    def test_starter_evidence_precedes_authority_and_rejects_corruption(self):
+        import hashlib
+        store = self.p["journal_roots"]["critical"] / "starter-kits"
+        store.mkdir(mode=0o700)
+        (store / ".service-lock").touch(mode=0o600)
+        data = bytes([0]) + b"synthetic command qualified separately by native codec"
+        record = store / "42.kit"
+        record.write_bytes(data + hashlib.sha256(data).digest())
+        record.chmod(0o600)
+        stage = self.base / "starter-stage"
+        stage.mkdir(mode=0o700)
+        backup.journal_capture(stage, self.p, starter=True)
+        self.assertEqual((stage / "journals/critical/starter-kits/42.kit").read_bytes(), record.read_bytes())
+        record.write_bytes(b"x" + record.read_bytes()[1:])
+        other = self.base / "starter-invalid"
+        other.mkdir(mode=0o700)
+        with self.assertRaisesRegex(backup.BackupError, "journal_starter_checksum"):
+            backup.journal_capture(other, self.p, starter=True)
+
+    def test_new_starter_binding_during_authority_capture_refuses_backup(self):
+        store = self.p["journal_roots"]["critical"] / "starter-kits"
+        store.mkdir(mode=0o700)
+        previous = self.create()
+        preserved = backup.inventory(previous)
+        capture = backup.flatfile_capture
+        record = store / "42.kit"
+
+        def racing_capture(stage, p, capacity_base=None):
+            data = bytes([0]) + b"new immutable command qualified separately by native codec"
+            record.write_bytes(data + hashlib.sha256(data).digest())
+            record.chmod(0o600)
+            return capture(stage, p, capacity_base)
+
+        with mock.patch.object(backup, "flatfile_capture", side_effect=racing_capture):
+            result = backup.schedule(self.p, "flatfile-primary")
+        self.assertEqual(result["result"], "failed")
+        self.assertEqual(backup.inventory(previous), preserved)
+        self.assertEqual(len(backup.generations(self.p["root"])), 1)
+        self.assertFalse(list(self.p["root"].glob(".staging-*")))
+        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["result"], "ok")
+
+    def test_starter_completion_during_authority_capture_refuses_backup(self):
+        store = self.p["journal_roots"]["critical"] / "starter-kits"
+        store.mkdir(mode=0o700)
+        record = store / "42.kit"
+        pending = bytes([0]) + b"immutable command qualified separately by native codec"
+        record.write_bytes(pending + hashlib.sha256(pending).digest())
+        record.chmod(0o600)
+        previous = self.create()
+        preserved = backup.inventory(previous)
+        capture = backup.flatfile_capture
+
+        def racing_capture(stage, p, capacity_base=None):
+            completed = bytes([1]) + pending[1:]
+            record.write_bytes(completed + hashlib.sha256(completed).digest())
+            return capture(stage, p, capacity_base)
+
+        with mock.patch.object(backup, "flatfile_capture", side_effect=racing_capture):
+            result = backup.schedule(self.p, "flatfile-primary")
+        self.assertEqual(result["result"], "failed")
+        self.assertEqual(backup.inventory(previous), preserved)
+        self.assertEqual(len(backup.generations(self.p["root"])), 1)
+        self.assertEqual(backup.schedule(self.p, "flatfile-primary")["result"], "ok")
+
     def test_boot_lock_durable_evidence_temporaries_and_schedule(self):
         temporary = self.store / ("." + self.pending.name + ".tmp.123.4")
         temporary.write_bytes(b"unpublished partial command")

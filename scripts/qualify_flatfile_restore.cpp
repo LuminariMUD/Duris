@@ -20,6 +20,7 @@
 #include "persistence/persistence_log.h"
 #include "economy/divine_trade_repository.h"
 #include "combat/combat_outcome_intent.h"
+#include "item/starter_kit_intent.h"
 
 // Native parsers may log diagnostics containing identities; this process reports
 // only aggregate success or a fixed failure code.
@@ -137,6 +138,34 @@ static void qualify_combat_intents(const std::filesystem::path &directory)
 	}
 }
 
+static void qualify_starter_kits(const std::filesystem::path &directory)
+{
+	struct stat status{};
+	require(lstat(directory.c_str(), &status) == 0 && S_ISDIR(status.st_mode) &&
+		status.st_uid == geteuid() && !(status.st_mode & 0077));
+	for (const auto &entry : std::filesystem::directory_iterator(directory))
+	{
+		require(lstat(entry.path().c_str(), &status) == 0 && S_ISREG(status.st_mode) &&
+			status.st_uid == geteuid() && status.st_nlink == 1 &&
+			!(status.st_mode & 0077));
+		const auto name = entry.path().filename().string();
+		if (name == ".service-lock")
+		{
+			require(status.st_size == 0);
+			continue;
+		}
+		require(name.ends_with(".kit"));
+		const auto text = name.substr(0, name.size() - 4);
+		uint32_t pid = 0;
+		const auto parsed = std::from_chars(text.data(), text.data() + text.size(), pid);
+		require(parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size() &&
+			pid && pid <= INT32_MAX && text == std::to_string(pid));
+		critical_command command;
+		const auto state = starter_kit_intent_read(directory.string(), pid, &command);
+		require(state != starter_kit_state::absent && state != starter_kit_state::invalid);
+	}
+}
+
 // Durable recovery evidence plus retired, unread critical-command journal files.
 static void qualify_receipts(const std::filesystem::path &candidate)
 {
@@ -154,6 +183,8 @@ static void qualify_receipts(const std::filesystem::path &candidate)
 		}
 		if (name == "combat-intents")
 			qualify_combat_intents(entry.path());
+		else if (name == "starter-kits")
+			qualify_starter_kits(entry.path());
 		else
 		{
 			require(name == "locker-identification");

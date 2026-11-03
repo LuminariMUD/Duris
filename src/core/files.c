@@ -1298,6 +1298,86 @@ void locker_post_save_hook(P_char ch)
 		(*world[ch->in_room].funct)(ch->in_room, ch, (-81), NULL);
 }
 
+bool publish_initial_character_baseline(P_char ch)
+{
+	if (!ch || IS_NPC(ch) || !ch->desc || !ch->desc->account)
+		return false;
+#ifdef __NO_MYSQL__
+	flatfile_player_domain_record domains;
+	std::string domain_error;
+	const char *account = get_account_name_safe(ch);
+	if (!account || !*account || !strcmp(account, "Unknown"))
+	{
+		statuslog(
+			56,
+			"&+RALERT&n: new-player bank revision sync failed: missing account context");
+		return 0;
+	}
+	const auto domain_result =
+		flatfile_player_domain_load(persistence_mode_flatfile_root(), GET_PID(ch), account,
+					    GET_RACEWAR(ch), &domains, &domain_error);
+	if (domain_result != flatfile_player_domain_result::ok || !domains.domains.bank_revision ||
+	    std::any_of(domains.domains.bank.begin(), domains.domains.bank.end(),
+			[](uint64_t amount) { return amount > INT_MAX; }) ||
+	    std::any_of(domains.domains.wallet.begin(), domains.domains.wallet.end(),
+			[](uint64_t amount) { return amount > INT_MAX; }))
+	{
+		statuslog(56,
+			  "&+RALERT&n: new-player bank revision sync failed (domain result %d): %s",
+			  static_cast<int>(domain_result),
+			  domain_result == flatfile_player_domain_result::ok ?
+				  "invalid bank revision or currency balance overflow" :
+			  domain_error.empty() ? "authority load failed" :
+						 domain_error.c_str());
+		persistence_alert(AVATAR, "player", "redacted", "none", "none",
+				  "bank_revision_sync_failed", NULL);
+		return 0;
+	}
+	const item_owner_identity owner = { item_owner_type::player,
+					    static_cast<uint64_t>(GET_PID(ch)), 0 };
+	uint64_t owner_revision = 0;
+	std::vector<flatfile_item_ownership_record> owned_items;
+	std::string ownership_error;
+	const auto ownership = flatfile_item_repository_load_owner(persistence_mode_flatfile_root(),
+								   owner, &owner_revision,
+								   &owned_items, &ownership_error);
+	if (ownership != flatfile_item_repository_result::ok || !owner_revision ||
+	    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
+	{
+		statuslog(56, "&+RALERT&n: new-player item ownership revision sync failed");
+		persistence_alert(AVATAR, "player", "redacted", "none", "none",
+				  "ownership_revision_sync_failed", NULL);
+		return 0;
+	}
+	// Creation can precede CON_PLAYING, so hydrate this character explicitly.
+	// Publish only after every required authority read/validation succeeded.
+	const AccountBankBalances balances = { static_cast<int>(domains.domains.bank[0]),
+					       static_cast<int>(domains.domains.bank[1]),
+					       static_cast<int>(domains.domains.bank[2]),
+					       static_cast<int>(domains.domains.bank[3]) };
+	GET_BALANCE_COPPER(ch) = balances.copper;
+	GET_BALANCE_SILVER(ch) = balances.silver;
+	GET_BALANCE_GOLD(ch) = balances.gold;
+	GET_BALANCE_PLATINUM(ch) = balances.platinum;
+	ch->only.pc->bank_revision = domains.domains.bank_revision;
+	GET_COPPER(ch) = domains.domains.wallet[0];
+	GET_SILVER(ch) = domains.domains.wallet[1];
+	GET_GOLD(ch) = domains.domains.wallet[2];
+	GET_PLATINUM(ch) = domains.domains.wallet[3];
+	ch->only.pc->wallet_revision = domains.domains.wallet_revision;
+	publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
+					       domains.domains.bank_revision);
+#endif
+	if (!find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch)))
+		add_char_to_account(ch->desc);
+	const auto *membership =
+		find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch));
+	if (!membership || membership->pid != GET_PID(ch))
+		return false;
+	REMOVE_BIT(ch->runtime_flags, CHAR_RFLAG_NO_DB_BASELINE);
+	return true;
+}
+
 int writeCharacter(P_char ch, int type, int room)
 {
 	if (!ch || !GET_NAME(ch))
@@ -1372,80 +1452,8 @@ int writeCharacter(P_char ch, int type, int room)
 			    queued != player_save_pipeline_result::coalesced)
 				return 0;
 		}
-		if (establishing_baseline)
-		{
-			flatfile_player_domain_record domains;
-			std::string domain_error;
-			const char *account = get_account_name_safe(ch);
-			if (!account || !*account || !strcmp(account, "Unknown"))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player bank revision sync failed: missing account context");
-				return 0;
-			}
-			const auto domain_result = flatfile_player_domain_load(
-				persistence_mode_flatfile_root(), GET_PID(ch), account,
-				GET_RACEWAR(ch), &domains, &domain_error);
-			if (domain_result != flatfile_player_domain_result::ok ||
-			    !domains.domains.bank_revision ||
-			    std::any_of(domains.domains.bank.begin(), domains.domains.bank.end(),
-					[](uint64_t amount) { return amount > INT_MAX; }) ||
-			    std::any_of(domains.domains.wallet.begin(),
-					domains.domains.wallet.end(),
-					[](uint64_t amount) { return amount > INT_MAX; }))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player bank revision sync failed (domain result %d): %s",
-					static_cast<int>(domain_result),
-					domain_result == flatfile_player_domain_result::ok ?
-						"invalid bank revision or currency balance overflow" :
-					domain_error.empty() ? "authority load failed" :
-							       domain_error.c_str());
-				persistence_alert(AVATAR, "player", "redacted", "none", "none",
-						  "bank_revision_sync_failed", NULL);
-				return 0;
-			}
-			const item_owner_identity owner = { item_owner_type::player,
-							    static_cast<uint64_t>(GET_PID(ch)), 0 };
-			uint64_t owner_revision = 0;
-			std::vector<flatfile_item_ownership_record> owned_items;
-			std::string ownership_error;
-			const auto ownership = flatfile_item_repository_load_owner(
-				persistence_mode_flatfile_root(), owner, &owner_revision,
-				&owned_items, &ownership_error);
-			if (ownership != flatfile_item_repository_result::ok || !owner_revision ||
-			    !item_ownership_runtime_hydrate_owner(owner, owner_revision))
-			{
-				statuslog(
-					56,
-					"&+RALERT&n: new-player item ownership revision sync failed");
-				persistence_alert(AVATAR, "player", "redacted", "none", "none",
-						  "ownership_revision_sync_failed", NULL);
-				return 0;
-			}
-			// Creation can precede CON_PLAYING, so hydrate this character explicitly.
-			// Publish only after every required authority read/validation succeeded.
-			const AccountBankBalances balances = {
-				static_cast<int>(domains.domains.bank[0]),
-				static_cast<int>(domains.domains.bank[1]),
-				static_cast<int>(domains.domains.bank[2]),
-				static_cast<int>(domains.domains.bank[3])
-			};
-			GET_BALANCE_COPPER(ch) = balances.copper;
-			GET_BALANCE_SILVER(ch) = balances.silver;
-			GET_BALANCE_GOLD(ch) = balances.gold;
-			GET_BALANCE_PLATINUM(ch) = balances.platinum;
-			ch->only.pc->bank_revision = domains.domains.bank_revision;
-			GET_COPPER(ch) = domains.domains.wallet[0];
-			GET_SILVER(ch) = domains.domains.wallet[1];
-			GET_GOLD(ch) = domains.domains.wallet[2];
-			GET_PLATINUM(ch) = domains.domains.wallet[3];
-			ch->only.pc->wallet_revision = domains.domains.wallet_revision;
-			publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
-							       domains.domains.bank_revision);
-		}
+		if (establishing_baseline && !publish_initial_character_baseline(ch))
+			return 0;
 		if (!sync_account_character_projection(ch, room, TRUE))
 		{
 			statuslog(56,

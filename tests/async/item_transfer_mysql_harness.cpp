@@ -743,7 +743,30 @@ int main()
 	assert(item_uid_allocator_next() == allocator_start + 110);
 
 	check_memory_claims(connection);
-	for (uint8_t id = 1; id <= 24; ++id)
+	// Freeze one creation, commit another first, then replay the original bytes.
+	item_uid_allocator_reset_for_tests();
+	assert(item_uid_allocator_reserve(connection, 2));
+	const auto frozen_uid = item_uid_allocator_next();
+	const auto other_uid = item_uid_allocator_next();
+	root_uid = child_uid = frozen_uid;
+	const auto frozen = payload(system, player_one, item_transfer_reason::creation,
+				    owner_revision(connection, system),
+				    owner_revision(connection, player_one),
+				    ITEM_TRANSFER_ABSENT_REVISION, 1);
+	root_uid = child_uid = other_uid;
+	assert(apply(connection, 25,
+		     payload(system, player_two, item_transfer_reason::creation,
+			     owner_revision(connection, system),
+			     owner_revision(connection, player_two), ITEM_TRANSFER_ABSENT_REVISION,
+			     1))
+		       .outcome == critical_apply_outcome::applied);
+	assert(apply(connection, 26, frozen).outcome == critical_apply_outcome::applied);
+	assert(apply(connection, 26, frozen).outcome == critical_apply_outcome::already_applied);
+	const auto collision_after_revision = apply(connection, 27, frozen);
+	assert(collision_after_revision.outcome == critical_apply_outcome::terminal_failure &&
+	       collision_after_revision.error_code == EEXIST);
+
+	for (uint8_t id = 1; id <= 27; ++id)
 	{
 		const std::string hex = operation_hex(id);
 		execute(connection,

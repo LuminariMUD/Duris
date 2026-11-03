@@ -285,8 +285,9 @@ def sync_tree(root):
         sync_dir(base)
 
 
-def journal_capture(stage, p, capacity_base=None, *, combat=False):
-    """Combat evidence precedes the authority snapshot; locker receipts follow it."""
+def journal_capture(stage, p, capacity_base=None, *, combat=False, starter=False):
+    """Grant/combat evidence precedes authority; locker receipts follow it."""
+    evidence = combat or starter
     target = stage / "journals"
     target.mkdir(mode=0o700, exist_ok=True)
     used = (total_size(p["root"]) if capacity_base is None else capacity_base) + total_size(stage)
@@ -296,7 +297,7 @@ def journal_capture(stage, p, capacity_base=None, *, combat=False):
         nonlocal used
         source = secure_path(Path(source), False)
         size = source.stat().st_size
-        if combat and source.name != ".service-lock":
+        if evidence and source.name != ".service-lock":
             require(32 < size <= COMBAT_MAX_BYTES, "journal_combat_size")
         used += size
         require(used < p["max_bytes"], "capacity_headroom_required")
@@ -309,39 +310,45 @@ def journal_capture(stage, p, capacity_base=None, *, combat=False):
         require(name in JOURNAL_ROOTS, "invalid_journal_roots")
         destination = target / name
         destination.mkdir(mode=0o700, exist_ok=True)
-        if combat:
-            source = source / "combat-intents"
+        if evidence:
+            source = source / ("starter-kits" if starter else "combat-intents")
             if not source.exists() and not source.is_symlink():
-                continue  # Also support generations made before combat intents existed.
+                continue  # Also support generations made before these intents existed.
             secure_path(source, True)
-            destination = destination / "combat-intents"
+            destination = destination / ("starter-kits" if starter else "combat-intents")
 
         def ignore(directory, names):
             relative = Path(directory).relative_to(source)
-            require(relative in ({Path(".")} if combat else
+            require(relative in ({Path(".")} if evidence else
                                  {Path("."), Path("locker-identification")}),
                     "journal_filename")
             temporary = {x for x in names if
                          (combat and COMBAT_WRITE.fullmatch(x)) or
-                         (not combat and relative == Path("locker-identification") and
+                         (starter and re.fullmatch(r"\.\d+\.kit\.tmp\..+", x)) or
+                         (not evidence and relative == Path("locker-identification") and
                           RECEIPT_WRITE.fullmatch(x))}
             for entry in temporary:
                 secure_path(Path(directory) / entry, False)
-            return temporary | ({"combat-intents"} if not combat and relative == Path(".") else set())
+            return temporary | ({"combat-intents", "starter-kits"} if not evidence and relative == Path(".") else set())
 
         # A rename replaces a receipt whole, so the copy holds one whole version of each. It
         # is checked on its own: the directory may have moved on since.
         shutil.copytree(source, destination, symlinks=True, copy_function=copy,
-                        dirs_exist_ok=not combat, ignore=ignore)
+                        dirs_exist_ok=not evidence, ignore=ignore)
         for relative, metadata in inventory(target / name).items():
             receipt = RECEIPT.fullmatch(relative)
             intent = COMBAT_INTENT.fullmatch(relative)
             service_lock = relative in {"locker-identification/.service-lock",
-                                        "combat-intents/.service-lock"}
+                                        "combat-intents/.service-lock", "starter-kits/.service-lock"}
             if receipt:
                 require(int(receipt[1]) <= 2147483647, "journal_receipt_pid")
                 # The restore qualifier validates the checksum, payment and filename identity.
                 require(0 < metadata["bytes"] <= RECEIPT_MAX_BYTES, "journal_receipt_size")
+            elif re.fullmatch(r"starter-kits/[1-9][0-9]*\.kit", relative):
+                require(33 < metadata["bytes"] <= COMBAT_MAX_BYTES, "journal_starter_size")
+                data = (target / name / relative).read_bytes()
+                require(data[0] <= 2 and hashlib.sha256(data[:-32]).digest() == data[-32:],
+                        "journal_starter_checksum")
             elif intent:
                 require(int(intent[1], 16) != 0, "journal_combat_operation")
                 require(32 < metadata["bytes"] <= COMBAT_MAX_BYTES, "journal_combat_size")
@@ -704,6 +711,31 @@ def complete_generation(root, p, destination, event):
             "replica": replica}
 
 
+def verify_starter_capture(stage, p):
+    """No binding may cross the early evidence copy and authority snapshot."""
+    for name, root in p["journal_roots"].items():
+        source = Path(root) / "starter-kits"
+        captured = stage / "journals" / name / "starter-kits"
+        expected = {path.name for path in captured.glob("*.kit")}
+        seen = set()
+        if source.exists() or source.is_symlink():
+            secure_path(source, True)
+            for path in source.iterdir():
+                if path.name == ".service-lock" or re.fullmatch(r"\.\d+\.kit\.tmp\..+", path.name):
+                    continue
+                secure_path(path, False)
+                require(re.fullmatch(r"[1-9][0-9]*\.kit", path.name) and
+                        33 < path.stat().st_size <= COMBAT_MAX_BYTES, "journal_starter_changed")
+                data = path.read_bytes()
+                require(data[0] <= 2 and hashlib.sha256(data[:-32]).digest() == data[-32:],
+                        "journal_starter_checksum")
+                require(path.name in expected and
+                        data == (captured / path.name).read_bytes(),
+                        "journal_starter_changed")
+                seen.add(path.name)
+        require(seen == expected, "journal_starter_changed")
+
+
 def backup(p, mode):
     if mode == "mariadb-primary-flatfile-fallback":
         mode = "mariadb-primary"
@@ -771,8 +803,10 @@ def backup(p, mode):
             # commit cannot be newer than the snapshot; an active intent remains replayable
             # whether its idempotent command commits before or after the snapshot.
             journal_capture(stage, p, capacity_base, combat=True)
+            journal_capture(stage, p, capacity_base, starter=True)
             detail = (flatfile_capture(stage, p, capacity_base) if mode == "flatfile-primary"
                       else mariadb_capture(stage, p, capacity_base))
+            verify_starter_capture(stage, p)
             # The receipts come after the authority, so a paid, failed or delivered one is at
             # least as new as the database it is restored with. One still waiting on its payment
             # may have its charge in the snapshot but not its paid marker, which a restore would

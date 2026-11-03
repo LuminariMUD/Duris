@@ -208,6 +208,7 @@ void writer_main()
 			.completed_at_usec = completed,
 			.failed_field = applied.failed_field,
 			.rolled_back = applied.rolled_back,
+			.creation_not_committed = applied.creation_not_committed,
 		};
 		update_max(health.max_capture_to_apply_usec, started - job.queued_at_usec);
 		update_max(health.max_apply_usec, completed - started);

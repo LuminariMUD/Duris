@@ -369,6 +369,18 @@ class IsolatedServer:
         (self.run_root / "logs/log").mkdir(parents=True)
         (self.run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         make_fixture(self.run_root)
+        if self.full_world:
+            # A clean worktree has no ignored world.* outputs. Generate them
+            # from this checkout in the private runtime, with tools under bin/.
+            (self.run_root / "areas").unlink()
+            shutil.copytree(ROOT / "areas", self.run_root / "areas")
+            (self.run_root / "bin").symlink_to(ROOT / "bin", target_is_directory=True)
+            for command, directory in ((["make", "-j8"], ROOT / "areas/src"),
+                                       (["sh", "m_slow"], self.run_root / "areas")):
+                built = subprocess.run(command, cwd=directory, text=True,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       timeout=120)
+                require(built.returncode == 0, "isolated world build failed:\n" + built.stdout[-5000:])
         if self.prepare_run_root:
             self.prepare_run_root(self.run_root)
         generate_certificate(self.run_root)
@@ -479,17 +491,18 @@ class IsolatedServer:
         )
 
 
-def enter_account_name(client: MudClient) -> None:
+def enter_account_name(client: MudClient, name: str = ACCOUNT) -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
         client.expect("account name")
-    client.send(ACCOUNT)
+    client.send(name)
 
 
-def create_account(client: MudClient, password: str, smtp: FakeSmtpServer | None = None) -> None:
+def create_account(client: MudClient, password: str, smtp: FakeSmtpServer | None = None,
+                   *, name: str = ACCOUNT) -> None:
     """Create ACCOUNT with EMAIL on file and stop at the account menu."""
-    enter_account_name(client)
+    enter_account_name(client, name)
     client.expect("is this correct?")
     client.send("y")
     client.expect("email address")

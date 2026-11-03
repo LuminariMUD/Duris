@@ -655,6 +655,7 @@ player_snapshot_codec_result player_snapshot_encode(const player_snapshot &snaps
 			if (tag.has_cargo_effect)
 				encode_affect(out, tag.cargo_effect);
 		}
+		out.string(snapshot.creation_account, 50);
 		if (!out.valid || out.bytes.size() > PLAYER_SNAPSHOT_MAX_BYTES)
 			return player_snapshot_codec_result::limit_exceeded;
 		player_snapshot validated = {};
@@ -689,7 +690,7 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 		if (wire_version == 1 || wire_version == 3 || wire_version == 5 ||
 		    wire_version == 7 || wire_version == 8 || wire_version == 9 ||
 		    wire_version == 10 || wire_version == 11 || wire_version == 12 ||
-		    wire_version == 13)
+		    wire_version == 13 || wire_version == 14)
 			snapshot.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
 		if (snapshot.schema_version != PLAYER_SNAPSHOT_SCHEMA_VERSION)
 			return player_snapshot_codec_result::unsupported_version;
@@ -821,6 +822,8 @@ player_snapshot_codec_result player_snapshot_decode(const uint8_t *encoded, size
 					return player_snapshot_codec_result::invalid_value;
 			}
 		}
+		if (wire_version >= 15 && !in.string(snapshot.creation_account, 50))
+			return in.failure();
 		if (!valid_trade_tag(snapshot))
 			return player_snapshot_codec_result::invalid_value;
 		if (in.offset != in.size)

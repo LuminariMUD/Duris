@@ -956,6 +956,10 @@ struct room_data
 #define PLR3_EPICWATCH BIT_20 /* For Immortals: displays calls to epiclog */
 #define PLR3_PET_DAMAGE BIT_21
 #define PLR3_NOGMCP BIT_22 /* Player has disabled GMCP */
+#define PLR3_KEPT_CHARACTER BIT_23 /* approval policy was decided at Keep */
+#define PLR3_APPROVAL_PENDING BIT_24 /* staff decision survives disconnect/restart */
+#define PLR3_STARTER_KIT_PENDING BIT_25 /* first entry owes its bound kit */
+#define PLR3_CHAOS_STARTER_KIT BIT_26 /* kit policy decided before first entry */
 
 /* For players : Prompt flags (16 bits max) */
 #define PROMPT_NONE BIT_1
@@ -1694,12 +1698,13 @@ struct txt_q
 #define CON_ACCT_RESET_NEWPW 91 // account recovery: waiting for the new password
 #define CON_ACCT_RESET_NEWPW2 92 // account recovery: waiting for the confirmation
 #define CON_STAT_METHOD 93 // choose starting stat distribution before rolling
+#define CON_CREATION_SAVE 94 // waiting for a kept-character save or cancellation
 
 #define PLAYER_LOAD_MODE_NONE 0
 #define PLAYER_LOAD_MODE_ACCOUNT 1
 #define PLAYER_LOAD_MODE_ACCOUNT_DELETE 3
 
-#define TOTAL_CON 93
+#define TOTAL_CON 94
 
 enum ws_chargen_phase
 {

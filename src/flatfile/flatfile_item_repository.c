@@ -677,12 +677,12 @@ unsigned int apply_transfer(ownership_catalog *catalog, const item_transfer_payl
 	// Memory is the authority for a player, room, corpse, locker or pet: saves move
 	// their revisions, so a transfer does not fence on them, and it takes the items
 	// from whatever the catalog still says.
+	const bool creation = payload.from_owner.type == item_owner_type::system;
 	const bool memory_held = item_claim_owner_is_memory_held(payload.from_owner.type);
-	if ((!memory_held && from_owner->revision != payload.expected_from_revision) ||
+	if ((!creation && !memory_held && from_owner->revision != payload.expected_from_revision) ||
 	    (!item_claim_owner_is_memory_held(payload.to_owner.type) &&
 	     to_owner->revision != payload.expected_to_revision))
 		return ESTALE;
-	const bool creation = payload.from_owner.type == item_owner_type::system;
 	std::array<uint64_t, ITEM_TRANSFER_MAX_ITEMS> claimed_revisions = {};
 	if (!creation && memory_held)
 		for (size_t index = 0; index < payload.item_count; ++index)

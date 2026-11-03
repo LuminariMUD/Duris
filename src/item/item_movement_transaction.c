@@ -15,6 +15,8 @@
 #include "item/item_movement_transaction.h"
 
 #include "item/item_ownership_runtime.h"
+#include "item/starter_kit_intent.h"
+#include "player/player_revision_state.h"
 #include "guild/artifact_admission.h"
 #include "economy/collector_catalog_cache.h"
 #include "economy/collector_transaction.h"
@@ -30,6 +32,8 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
+#include <optional>
 #include <cstring>
 #include <deque>
 #include <new>
@@ -118,6 +122,10 @@ struct creation_grant_queue
 	bool announce_on_completion = false;
 	bool stop_on_failure = false;
 	bool publication_failed = false;
+	bool starter = false;
+	// Current, including a refused initialization capture; an older save cannot admit the kit.
+	player_revision_t baseline = 0;
+	std::optional<critical_command> bound_command;
 };
 
 struct displaced_creation_object
@@ -579,7 +587,7 @@ void pump_creation_grants()
 		P_char actor = find_live_player(current->first);
 		if (!actor)
 			continue;
-		if (!creation_grant_request_valid(request))
+		if (!queue.bound_command && !creation_grant_request_valid(request))
 		{
 			discard_creation_queue(actor, queue);
 			finish_creation_queue(current->first);
@@ -590,7 +598,7 @@ void pump_creation_grants()
 		item_movement_reject reject = item_movement_reject::none;
 		if (!start_creation_grant(actor, queue, &reject))
 		{
-			if (reject_is_transient(reject))
+			if (queue.bound_command || reject_is_transient(reject))
 				continue;
 			discard_creation_queue(actor, queue);
 			finish_creation_queue(current->first);
@@ -789,6 +797,13 @@ void creation_grant_batch_completion(P_char actor, bool committed,
 	{
 		logit(LOG_FILE, "item creation grant batch did not commit (pid=%u error=%u)",
 		      actor_pid, error_code);
+		if (queue.starter &&
+		    (!queue.bound_command ||
+		     !starter_kit_intent_finish(actor_pid, *queue.bound_command, false)))
+		{
+			note_creation_grant_publication_failure(actor, queue, actor_pid);
+			return;
+		}
 		discard_creation_queue(actor, queue);
 		finish_creation_queue(actor_pid);
 		if (business.completion)
@@ -821,8 +836,17 @@ void creation_grant_batch_completion(P_char actor, bool committed,
 		note_creation_grant_publication_failure(actor, queue, actor_pid);
 		return;
 	}
-	mark_player_dirty_components(actor_pid,
-				     PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY);
+	if (queue.starter && (!queue.bound_command ||
+			      !starter_kit_intent_finish(actor_pid, *queue.bound_command, true)))
+	{
+		note_creation_grant_publication_failure(actor, queue, actor_pid);
+		return;
+	}
+	if (queue.starter)
+		REMOVE_BIT(actor->specials.act3, PLR3_STARTER_KIT_PENDING);
+	mark_player_dirty_components(actor_pid, PLAYER_COMPONENT_STATUS |
+							PLAYER_COMPONENT_EQUIPMENT |
+							PLAYER_COMPONENT_INVENTORY);
 	queue.requests.clear();
 	queue.active = false;
 	finish_creation_queue(actor_pid);
@@ -901,6 +925,20 @@ bool submit_transfer(P_char actor, item_transfer_payload &payload,
 	catch (const std::bad_alloc &)
 	{
 		return reject_with(reject, item_movement_reject::allocation_failure);
+	}
+	auto kit = creation_grants.find(static_cast<uint32_t>(GET_PID(actor)));
+	if (creation_batch && kit != creation_grants.end() && kit->second.starter)
+	{
+		command.accepted_at_usec = static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::microseconds>(
+				std::chrono::system_clock::now().time_since_epoch())
+				.count());
+		if (!starter_kit_intent_bind(GET_PID(actor), command))
+		{
+			pending.erase(key);
+			return reject_with(reject, item_movement_reject::command_build_failure);
+		}
+		kit->second.bound_command = command;
 	}
 	const critical_submit_result submitted =
 		critical_command_coordinator_submit(std::move(command));
@@ -1071,6 +1109,39 @@ bool submit_grant_batch(P_char actor, const std::vector<P_obj> &roots,
 
 bool start_creation_grant(P_char actor, creation_grant_queue &queue, item_movement_reject *reject)
 {
+	if (queue.starter)
+	{
+		player_revision_snapshot revision{};
+		if (!player_revision_snapshot_copy(GET_PID(actor), &revision) ||
+		    revision.written_revision < queue.baseline)
+			return reject_with(reject, item_movement_reject::pending_conflict);
+		if (queue.bound_command)
+		{
+			const auto &command = *queue.bound_command;
+			item_transfer_payload payload{};
+			if (!item_transfer_command_decode_payload(command, &payload))
+				return reject_with(reject,
+						   item_movement_reject::command_build_failure);
+			const uint32_t pid = GET_PID(actor);
+			pending_movement entry{};
+			entry.actor_pid = pid;
+			entry.payload = payload;
+			entry.completion = creation_grant_batch_completion;
+			entry.context_size = sizeof(pid);
+			memcpy(entry.context.data(), &pid, sizeof(pid));
+			entry.creation_batch = true;
+			const auto key = operation_key(command.operation_id);
+			pending.emplace(key, entry);
+			const auto submitted = critical_command_coordinator_submit(command);
+			if (!critical_submit_result_keeps_operation(submitted))
+			{
+				pending.erase(key);
+				return reject_with(reject, coordinator_reject_reason(submitted));
+			}
+			queue.active = true;
+			return true;
+		}
+	}
 	item_movement_reject discarded = item_movement_reject::none;
 	if (!reject)
 		reject = &discarded;
@@ -1221,7 +1292,34 @@ void publish(std::unordered_map<std::string, pending_movement>::iterator found, 
 		entry.collector_invalidated = true;
 	}
 	if (committed && !entry.registry_applied)
-		entry.registry_applied = item_ownership_runtime_apply(entry.payload, result);
+	{
+		auto kit = creation_grants.find(entry.actor_pid);
+		if (kit != creation_grants.end() && kit->second.starter)
+		{
+			// A restart already hydrated committed custody. Do not replay old
+			// revisions over it or replace these UIDs with another kit.
+			entry.registry_applied = true;
+			for (size_t i = 0; i < entry.payload.item_count; ++i)
+			{
+				item_ownership_runtime_entry current{};
+				const auto &item = entry.payload.items[i];
+				uint64_t root = 0, parent = 0;
+				if (!item_transfer_target_topology(entry.payload, item.item_uid,
+								   &root, &parent) ||
+				    !item_ownership_runtime_lookup(item.item_uid, &current) ||
+				    current.root_item_uid != root ||
+				    current.parent_item_uid != parent ||
+				    !item_owner_identity_equal(current.owner,
+							       entry.payload.to_owner) ||
+				    current.vnum != item.vnum ||
+				    current.state != item_custody_state::active)
+					entry.registry_applied = false;
+			}
+		}
+		if (!entry.registry_applied)
+			entry.registry_applied =
+				item_ownership_runtime_apply(entry.payload, result);
+	}
 	if (committed && !entry.registry_applied)
 	{
 		if (!entry.publication_failed)
@@ -1260,9 +1358,17 @@ void publish(std::unordered_map<std::string, pending_movement>::iterator found, 
 	const std::string pending_key = found->first;
 	// A committed grant keeps its entry, and so its owner's fence, until the completion
 	// has published it live; a failed publication is retried when the player is ready.
-	if (!committed)
+	const bool starter = queue_found != creation_grants.end() && queue_found->second.starter;
+	if (!committed && !starter)
 		pending.erase(found);
 	completion(actor, committed, result, error_code, context.data(), context_size);
+	if (!committed && starter)
+	{
+		queue_found = creation_grants.find(actor_pid);
+		if (queue_found != creation_grants.end() && queue_found->second.publication_failed)
+			return;
+		pending.erase(pending_key);
+	}
 	if (committed)
 	{
 		queue_found = creation_grants.find(actor_pid);
@@ -1356,8 +1462,51 @@ bool item_creation_grant_submit_to_player_with_completion(
 				    false, nullptr, nullptr, 0, completion);
 }
 
-/** Reserve the player before any legacy kit objects or persistence work exist. */
-bool item_creation_grant_defer(P_char actor, item_creation_prepare_fn prepare)
+/** Resume the saved first grant without capturing a successor kit. */
+bool item_creation_grant_resume_starter(P_char actor)
+{
+	if (!actor || IS_NPC(actor) || GET_PID(actor) <= 0)
+		return true;
+	const uint32_t pid = GET_PID(actor);
+	if (item_movement_transaction_player_busy(actor))
+		return true;
+	critical_command command;
+	const auto state = starter_kit_intent_read(pid, &command);
+	if (state == starter_kit_state::absent)
+		return false;
+	if (state == starter_kit_state::committed)
+	{
+		REMOVE_BIT(actor->specials.act3, PLR3_STARTER_KIT_PENDING);
+		mark_player_dirty_components(pid, PLAYER_COMPONENT_STATUS);
+		return true;
+	}
+	if (state != starter_kit_state::pending)
+	{
+		send_to_char(
+			"Your starter grant needs staff recovery; its saved record has been retained.\r\n",
+			actor);
+		return true;
+	}
+	item_transfer_payload payload{};
+	std::vector<uint64_t> roots;
+	if (!item_transfer_command_decode_payload(command, &payload) ||
+	    !item_transfer_selected_roots(payload, &roots) || roots.empty() ||
+	    creation_grants.size() >= ITEM_MOVEMENT_PENDING_MAX)
+		return true;
+	creation_grant_queue queue;
+	queue.starter = queue.batch_submission = queue.blocks_actor_commands =
+		queue.stop_on_failure = true;
+	queue.bound_command = std::move(command);
+	player_revision_snapshot revision{};
+	player_revision_snapshot_copy(pid, &revision);
+	queue.baseline = revision.current_revision;
+	for (uint64_t uid : roots)
+		queue.requests.push_back({ uid, 0, pid, NOWHERE, false, true });
+	creation_grants.emplace(pid, std::move(queue));
+	return true;
+}
+
+bool item_creation_grant_defer(P_char actor, item_creation_prepare_fn prepare, bool starter)
 {
 	if (!actor || IS_NPC(actor) || GET_PID(actor) <= 0 || !prepare ||
 	    item_movement_transaction_player_busy(actor) ||
@@ -1368,6 +1517,10 @@ bool item_creation_grant_defer(P_char actor, item_creation_prepare_fn prepare)
 	{
 		creation_grant_queue queue;
 		queue.prepare = std::move(prepare);
+		queue.starter = starter;
+		player_revision_snapshot revision{};
+		player_revision_snapshot_copy(GET_PID(actor), &revision);
+		queue.baseline = revision.current_revision;
 		queue.batch_submission = true;
 		queue.blocks_actor_commands = true;
 		queue.stop_on_failure = true;
@@ -1464,7 +1617,7 @@ void item_creation_grant_prepare_pulse(void)
 }
 
 static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t count, P_char recipient,
-				 P_obj target_container, bool allow_pre_entry,
+				 P_obj target_container, bool allow_pre_entry, bool starter,
 				 item_movement_completion_fn completion, const void *context,
 				 size_t context_size)
 {
@@ -1491,6 +1644,10 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 	try
 	{
 		creation_grant_queue queue;
+		queue.starter = starter;
+		player_revision_snapshot revision{};
+		player_revision_snapshot_copy(GET_PID(actor), &revision);
+		queue.baseline = revision.current_revision;
 		queue.blocks_actor_commands = true;
 		queue.batch_submission = true;
 		queue.announce_on_completion = allow_pre_entry;
@@ -1514,17 +1671,18 @@ static bool queue_creation_batch(P_char actor, P_obj const *objects, size_t coun
 	item_movement_reject reject = item_movement_reject::none;
 	if (start_creation_grant(actor, found->second, &reject))
 		return true;
-	if (allow_pre_entry && reject_is_transient(reject))
+	if ((allow_pre_entry && reject_is_transient(reject)) || found->second.bound_command)
 		return true;
 	creation_grants.erase(found);
 	return false;
 }
 
 bool item_creation_grant_submit_batch_to_player_before_entry(P_char actor, P_obj const *objects,
-							     size_t count, P_char recipient)
+							     size_t count, P_char recipient,
+							     bool starter)
 {
-	return queue_creation_batch(actor, objects, count, recipient, nullptr, true, nullptr,
-				    nullptr, 0);
+	return queue_creation_batch(actor, objects, count, recipient, nullptr, true, starter,
+				    nullptr, nullptr, 0);
 }
 
 bool item_creation_grant_submit_batch_to_player(P_char actor, P_obj const *objects, size_t count,
@@ -1534,7 +1692,7 @@ bool item_creation_grant_submit_batch_to_player(P_char actor, P_obj const *objec
 {
 	return completion &&
 	       queue_creation_batch(actor, objects, count, recipient, target_container, false,
-				    completion, context, context_size);
+				    false, completion, context, context_size);
 }
 
 bool item_creation_grant_submit_to_room(P_char actor, P_obj object, int room)

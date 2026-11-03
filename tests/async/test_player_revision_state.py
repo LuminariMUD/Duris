@@ -81,6 +81,15 @@ int main()
     assert(snapshot.current_revision == std::numeric_limits<player_revision_t>::max());
     assert(snapshot.overflowed);
 
+    assert(player_revision_hydrate(9, 0));
+    assert(player_revision_snapshot_copy(9, &snapshot) && !snapshot.initial_creation);
+    player_revision_forget(9);
+    assert(player_revision_hydrate(9, 0, true));
+    assert(player_revision_snapshot_copy(9, &snapshot) && snapshot.initial_creation);
+    assert(player_revision_record_written(9, 1));
+    assert(player_revision_snapshot_copy(9, &snapshot) && !snapshot.initial_creation);
+    player_revision_forget(9);
+
     player_revision_forget(7);
     assert(!player_revision_snapshot_copy(7, &snapshot));
     assert(player_revision_state_count() == 1);

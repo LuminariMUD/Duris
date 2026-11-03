@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 14;
+constexpr uint32_t PLAYER_SNAPSHOT_SCHEMA_VERSION = 15;
 constexpr size_t PLAYER_SNAPSHOT_MAX_BYTES = 4 * 1024 * 1024;
 constexpr size_t PLAYER_SNAPSHOT_MAX_ROWS = 8192;
 constexpr size_t PLAYER_SNAPSHOT_MAX_OBJECTS = 4096;
@@ -373,6 +373,9 @@ struct player_snapshot
 	uint64_t wallet_revision = 0;
 	player_pending_trade_snapshot pending_trade{};
 	player_pending_world_quest pending_world_quest{};
+	// Immutable first-save authority. Ordinary saves leave this empty and cannot
+	// change an established owner; retries must match the original PID/name/owner.
+	std::string creation_account;
 };
 
 #endif
