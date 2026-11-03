@@ -414,6 +414,76 @@ int main()
 	std::cout
 		<< "[PASS] initial owner/membership/baselines, rollback, retry, competition and tombstone fences\n";
 
+	// A name can be reused without discarding the deleted PID's resurrection fence.
+	execute(test_connection,
+		"INSERT INTO account_characters(account_name,pid,char_name,deleted_at) "
+		"VALUES ('claim_probe',70001,'Recreated',NOW())");
+	auto recreated = snapshot_for(70002, 1, "Recreated");
+	recreated.creation_account = "claim_probe";
+	execute(test_connection,
+		"CREATE TRIGGER reject_recreated_mapping BEFORE INSERT ON account_characters "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic name reuse failure'");
+	require(player_snapshot_repository_apply(test_connection, recreated).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT char_name FROM account_characters WHERE pid=70001") ==
+				"Recreated" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_data WHERE pid=70002") == "0",
+		"failed name reuse must roll back the tombstone rename and initial character");
+	execute(test_connection, "DROP TRIGGER reject_recreated_mapping");
+	require(player_snapshot_repository_apply(test_connection, recreated).outcome ==
+			player_save_apply_outcome::applied,
+		"a new PID must be able to claim a deleted character's name");
+	auto resurrected = recreated;
+	resurrected.pid = 70001;
+	require(player_snapshot_repository_apply(test_connection, resurrected).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"name reuse must retain the deleted PID's fence");
+	require(scalar(test_connection,
+		       "SELECT COUNT(*) FROM account_characters WHERE pid=70001 AND deleted_at IS NOT NULL") ==
+			"1",
+		"name reuse discarded the deletion tombstone");
+
+	// A blocked account cannot turn an already committed creation into a failure.
+	execute(test_connection, "UPDATE accounts SET blocked=1 WHERE account_name='claim_probe'");
+	require(player_snapshot_repository_apply(test_connection, unbased).outcome ==
+			player_save_apply_outcome::already_applied,
+		"blocking after commit must not invalidate a durable creation acknowledgment");
+	auto blocked = snapshot_for(70003, 1, "BlockedFresh");
+	blocked.creation_account = "claim_probe";
+	require(player_snapshot_repository_apply(test_connection, blocked).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_data WHERE pid=70003") == "0",
+		"a blocked account must not create a fresh character");
+	execute(test_connection, "UPDATE accounts SET blocked=0 WHERE account_name='claim_probe'");
+
+	// The initial quest fallback has the same revision as the final quest save.
+	auto initial_quest = snapshot_for(70004, 1, "InitialQuest");
+	initial_quest.creation_account = "claim_probe";
+	initial_quest.pending_world_quest = {
+		true, 15001, 20, 9000, 0, 1800000000, "InitialQuest", "first completion"
+	};
+	initial_quest.pending_world_quest.before_quest[0] = 1;
+	initial_quest.pending_world_quest.before_quest[1] = 15001;
+	require(player_snapshot_repository_apply(test_connection, initial_quest).outcome ==
+				player_save_apply_outcome::applied &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM world_quest_accomplished WHERE pid=70004") ==
+				"1" &&
+			scalar(test_connection,
+			       "SELECT quest_active FROM player_data WHERE pid=70004") == "0",
+		"first-save reconciliation must commit the quest after its fallback");
+	execute(test_connection, "UPDATE player_data SET level=30,save_revision=2 WHERE pid=70004");
+	require(player_snapshot_repository_apply(test_connection, initial_quest).outcome ==
+				player_save_apply_outcome::already_applied &&
+			scalar(test_connection, "SELECT level FROM player_data WHERE pid=70004") ==
+				"30",
+		"an initial quest retry must preserve later player state");
+	std::cout
+		<< "[PASS] creation name reuse, blocked reconciliation and first quest continuation\n";
+
 	// A corpse save claims what the corpse holds and replaces its rows; a remove deletes
 	// them (persistence reset step 6).
 	const uint64_t corpse_owner = (static_cast<uint64_t>(3) << 32) | 555;

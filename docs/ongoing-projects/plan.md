@@ -21,13 +21,15 @@ Existing broken records receive a guarded, testable repair/release path. Ownersh
 
 - **Reproduction established on the inspected base.** Fresh MariaDB and flat-file builds ran the new real-socket `test_kept_character_journey.py`. MariaDB saved the synthetic kept character at level 0 / revision 1 / NULL owner; fresh account login had no selectable character. The flat-file control passed disconnect, account selection and cold restart. Fixture boot uses a disposable migrated schema, nonempty disposable credentials and a valid level-31 `level_cap` seed. It never reads checkout `.env`.
 - **Chunk 1: initial MariaDB ownership (locally qualified).** The save pipeline captures the initial account as owned snapshot data while the existing written revision is zero. Such captures include all components, including coalesced captures. The SQL transaction validates the account and exact PID/name/owner/mapping, rejects competing identities and tombstones, then publishes player, membership and opening balances together. A same-attempt retry recognizes a committed baseline without replaying older creation state. Snapshot schema 15 carries the account; supported schemas through 14 decode with an empty creation context. Ordinary saves leave an established owner alone.
-- **Ablation refinement:** use existing `written_revision == 0` to retain initial account context until completion; no additional transient baseline flag or synchronous game-loop SQL is needed. The rest of the original acceptance scope remains required. The current journey checks ownership/selectability only; it does not yet claim approval, resumption, delayed acknowledgment, grants or recovery coverage.
+- **Ablation refinement:** retain creation context in revision state until completion; materialized legacy revision-zero rows remain ordinary saves. No synchronous game-loop SQL is needed. The rest of the original acceptance scope remains required. The current journey checks ownership/selectability only; it does not yet claim approval, resumption, delayed acknowledgment, grants or recovery coverage.
 - **Git handoff:** [PR #628](https://github.com/LuminariMUD/Duris/pull/628) targets `master` from `branch/issue-612-kept-character-resume`; implementation commit `8bfa04068`. It is ready for review and intentionally does not close #612. No release tag is appropriate for this unmerged feature chunk.
 - **Separate fixture repair:** [PR #632](https://github.com/LuminariMUD/Duris/pull/632), `branch/issue-612-claim-fixture`, commit `2ef8057fa`, targets PR #628. A pre-existing compile failure passed bare UIDs to the current typed world-recovery API. The focused fixture-only change supplies complete synthetic floor records. Its save-claim test, build and formatting checks passed. Clean isolated worktree: `/home/aiwithapex/projects/duris-claim-fixture`.
 - **Chunk 2 locally qualified:** current worktree is on dependent `branch/issue-612-flatfile-creation`, based on PR #632's `2ef8057fa`. Initial identity, bank/player domains, item claims and usable snapshot are prepared under the existing snapshot → identity → authority lock order and committed through the existing authority journal. New flat-file account-list entries are deferred until baseline acknowledgment so ordinary account saves cannot publish a tentative membership. Existing domain establishment reuses that preparation; obsolete early-publication helpers were removed. No account scalar changes at Keep require an account after-image; the existing account is validated under the same authority fence. Standalone identity readers/mutators recover pending authority after-images before reading or advancing the PID catalog, preventing later recovery from rewinding allocated PIDs. Initial domains retain the captured wallet revision and existing shared bank balances.
 - **Chunk-2 Git handoff:** [PR #634](https://github.com/LuminariMUD/Duris/pull/634), `branch/issue-612-flatfile-creation`, implementation `09c5cea98`, targets PR #632 and is ready for review. The primary worktree remains `/home/aiwithapex/projects/duris-issue-612-kept-characters`.
 - **Next:** implement creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery on dependent branches. Keep this section current with PR links, exact passing commands and unresolved gates. Neither delivery chunk completes #612.
 - Synthetic build/test logs are under ignored `bin/tests/issue-612-*`. Pre-change evidence: `issue-612-before-mariadb.log` and `issue-612-before-flatfile.log`. No credentials, runtime state, generated artifacts or production identifiers are tracked.
+
+Chunk-1 adversarial review follow-up: preserve quest continuation after its same-revision initial fallback; allow deleted-name reuse while retaining the old PID tombstone (including rollback); distinguish newly allocated revision state from loaded legacy revision-zero rows; reconcile a committed Keep before enforcing later account blocking. Focused regressions cover these paths. Current master was merged with both shared-plan histories preserved. No schema or additional persistence service was needed.
 
 Chunk-1 proof (all passed locally on 2026-11-03):
 
@@ -233,3 +235,295 @@ Completion requires every acceptance scenario above, clean changed-line formatti
 This planning pass read current source/callers/tests and relevant diffs from the issue's base, verified the GitHub Development branch link and inspected the staged additions. Local-link existence checks and byte-for-byte preservation of the prior #584 plan passed; `git diff --cached --check` passed. No C/C++ changed, so no build, database test, or gameplay qualification was run or claimed for this documentation-only commit.
 
 Estimate for me to implement and locally validate the complete scope: **12-18 active hours**, including approximately 4-6 hours for both initial commit paths/codec/completion handling, 3-4 hours for resume/approval/grants, 1-2 hours for guarded recovery, and 4-6 hours for regression journeys, fault/restart qualification, and final review. This is agent execution time, not a human-team estimate. It includes the acceptance coverage above; production deployment/repair and time waiting for external ownership evidence are excluded. The main uncertainty is the required durable kit-operation binding and flat-file initial transaction/lock refactor; revise the estimate if those traces reveal additional compatibility work.
+
+---
+
+# Completed plan: PostHog free-tier telemetry (#446)
+
+Continue from [the issue-446 implementation plan](issue-446-posthog-free-plan.md).
+It records the scope, measured usage, validation, review fixes and growth limits.
+Merged in order: [#629](https://github.com/LuminariMUD/Duris/pull/629) →
+[#630](https://github.com/LuminariMUD/Duris/pull/630) →
+[#631](https://github.com/LuminariMUD/Duris/pull/631) →
+[#633](https://github.com/LuminariMUD/Duris/pull/633). Current traffic fits full
+collection; season scope and the bounded time/XP views are repaired and verified.
+Both #446 and #578 are closed. Continue from master; the task worktree is temporary.
+Updated 2026-11-03. The previous plans below are retained as history.
+
+# Issue #611: preserve assigned NPC ship pursuit
+
+Status: implementation, PR #627 review fixes and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
+
+- Work item: [Duris #611](https://github.com/LuminariMUD/Duris/issues/611).
+- GitHub-linked development branch: [branch/issue-611-npc-pursuit](https://github.com/LuminariMUD/Duris/tree/branch/issue-611-npc-pursuit).
+- Local worktree: `/home/aiwithapex/projects/duris-issue-611`.
+- Inspected base: `96ef0ed6b1c1e70edf8aaf560712edc322ce70f6` (`origin/master` when the worktree was created).
+- Method: [ablation](../../.agents/skills/ablation/SKILL.md), applied to the current source, existing tests, and every acceptance criterion below.
+- Compatibility context: closed [#474](https://github.com/LuminariMUD/Duris/issues/474), fixed by [PR #471](https://github.com/LuminariMUD/Duris/pull/471). Preserve its recovery behavior; neither item needs reopening or a second closure.
+
+The earlier flight-transport plan is preserved verbatim after this plan.
+
+## Outcome
+
+Pirates and hunters spawned to attack different player ships must retain those separate, valid assignments while approaching from approximately 45 map rooms away. Escort retaliation must also keep pursuing a valid attacker beyond player contact range. Player lock range, five-minute inactivity expiry, combat refreshes, and the existing 180-second battle-stations/summon cooldown must continue to work.
+
+This addresses the reproduced pile-on mechanism: the heartbeat currently discards each attacker's intended victim, then ordinary replacement selection can send all attackers after the same ship. A successful fix prevents that forced loss of valid assignments. It does not guarantee a universal limit on attackers per ship: legitimate reacquisition after a victim becomes unavailable still uses existing selection rules.
+
+## Non-goals
+
+No change to spawn positions, spawn odds, merchant encounter flags, frag-based difficulty, diplomats, player contact radius, replacement-target ordering, or encounter caps. No new persistent fields, migration, configuration option, target registry, telemetry system, production operation, or deployment. The reported group-leader/high-ranking-player preference is not an established selection rule. Reconstructing Rani's runs requires incident evidence that this checkout cannot supply.
+
+## What the code and executable checks establish
+
+Line numbers below refer to the inspected base. A comparison with the issue's cited `27f4c71cd` found no differences in the relevant ship sources, map-coordinate function's file, or lifecycle test.
+
+1. **The initial assignment is explicit.** [ship_npc.c](../../src/ships/ship_npc.c):1346 computes a 45-room spawn offset for pirates/hunters; at 1390 it assigns `ship->target` and `NPC_AI_ENGAGING`. Escorts start with a separate `escort` relationship; `NPCShipAI::escort_attacked_by()` at [ship_npc_ai.c](../../src/ships/ship_npc_ai.c):486 assigns their combat target.
+2. **The expiry condition has the reported scope error.** [ship_base.c](../../src/ships/ship_base.c):2527 applies `!ship_target_in_contact(ship)` to every ship. Only the `T_TARGET_IDLE == 0` branch excludes NPCs. Timer decrement precedes this block; NPC AI runs later, at 3138.
+3. **The contact predicate combines availability and player range.** [ship_utils.c](../../src/ships/ship_utils.c):1133 rejects unloaded, sinking, docked, or non-shared-map targets before checking 3-D range against `35 + scout bonus`. Removing its use for NPCs without preserving those availability checks would drop behavior the acceptance criteria explicitly require.
+4. **AI engagement and reacquisition are separate updates.** `NPCShipAI::activity()` at 262 fills contacts with `getcontacts(ship, false)`. An engaging ship whose target is missing changes to CRUISING and breaks; a later cruising update calls `find_new_target()`. `find_current_target()` at 623 checks the current target against enumerated contacts, skipping docked and sinking ships; failure starts maintenance but does not itself null the target pointer.
+5. **Replacement selection explains convergence but predates this regression.** `find_new_target()` at 649 takes the first valid non-diplomat contact. [ship_utils.c](../../src/ships/ship_utils.c):1150 enumerates the ship-object hash, subject to `MAXSHIPS`. `getcontacts(..., false)` imposes no distance cutoff; [map.c](../../src/world/map.c):388 requires a shared map zone without a 50-room bound. Neither active selection loop compares frags, group leadership, or existing attackers. `is_valid_target()` at 739 rejects docked/sinking ships but currently has no unloaded check, so preserving rejection of unloaded targets also requires checking reacquisition.
+6. **Lifetime cleanup already has an owner.** `dock_ship()` at [ship_base.c](../../src/ships/ship_base.c):3161 calls `clear_references_to_ship(..., false)`. `delete_ship()` calls it with `true` before freeing the ship; deletion also clears AI escort/boarding references. `try_unload_npc_ship()` at [ship_npc.c](../../src/ships/ship_npc.c):1566 uses that deletion path. Preserve these paths and the sinking sweep's intentional early return; do not replace raw-pointer cleanup with contact checks or runtime-pointer guesses.
+7. **Player recovery is already exercised, with a specific NPC blind spot.** [test_npc_ship_deletion.py](../../tests/async/test_npc_ship_deletion.py) executes the real heartbeat, lock, fire, volley, ram, summon, docking, and teardown functions. Its NPC AI and contact enumeration are stubs; the escort case is at zero distance. The fixture proves player recovery/lifecycle controls, but cannot prove distant NPC engagement. [ship_shop.c](../../src/ships/ship_shop.c):800 still gates summons on `T_BSTATION`; [ships.h](../../src/ships/ships.h):94 defines `BSTATION` as 180.
+
+Planning verification on this worktree:
+
+- `python3 tests/async/test_npc_ship_deletion.py` passed all cases in MySQL and flat-file builds with ASan/UBSan. This includes idle-lock recovery, combat refresh, actual summon refusal/acceptance at the cooldown boundary, docking, sinking, purge, unload, and reference cleanup.
+- After inspecting the supplied investigation fixture and its stubs, reran `python3 bin/tests/pirate_target_investigation.py` from #611 against the current source. Both backend builds reproduced three distinct 45-room assignments being cleared on update 1, all three selecting the same first eligible hash ship on update 2, and retaining that replacement on update 3. Replacing only the heartbeat in the generated harness with its pre-#471 body retained all three original assignments. Both variants ran under ASan/UBSan without findings. Independent selection cases also acquired a first-hash target at 145 rooms.
+
+The investigation script was generated under ignored `bin/` and removed after validation; its reproducible source remains in #611. It seeds spawn-equivalent state, holds ships stationary, and stubs navigation/combat/world/persistence services. It proves the heartbeat/target-selection mechanism; it does not execute random encounter spawning, establish production settings, or reproduce a live sailing trip. No C/C++ source has been changed, so full server builds belong to implementation verification below.
+
+## Ablation decisions
+
+- **Keep the NPC/player distinction at lock expiry.** Both range and inactivity policy are player-lock rules. Exempting only the inactivity timer leaves the reproduced failure intact.
+- **Keep NPC target availability separate from player range.** Use existing loaded/docked/sinking flags and `calculate_map_coords()` to reject unavailable NPC targets without imposing a distance limit. Keep this small check local to the heartbeat and reuse its single target-clearing/message path. The existing player contact helper stays unchanged. No new helper API, range option, or persistent state is needed.
+- **Keep unloaded-target rejection during replacement selection.** Add the loaded check to the existing AI validity predicate so the same heartbeat cannot clear an unloaded target and immediately reacquire it. Preserve all other eligibility/ordering rules. This is needed for #611's explicit unavailable-target acceptance criterion.
+- **Keep one focused real-AI regression alongside the lifecycle fixture.** A dedicated small executable fixture avoids changing every lifecycle test to depend on AI/navigation. Reuse `_paths.extract_function`, headers, sanitizer/compiler conventions, and existing hash/lifetime patterns. Do not build a general harness framework or use runtime string replacement of another test as the maintained solution.
+- **Drop encounter rebalance and target-selection redesign.** Randomization, nearest-target preference, per-player caps, spawn-distance changes, and extra tracking state would change unrelated gameplay without fixing the expiry boundary. Whole-map first-match reacquisition remains a separately evaluated concern.
+- **Drop a mandatory production investigation or new logging subsystem.** Existing source and deterministic executable evidence are sufficient to implement this fix. Future incident correlation can use the existing spawn log and runtime observations after a normal deployment.
+
+Every retained change addresses a traced failure or an explicit acceptance criterion. The small availability check and unloaded guard prevent the simple NPC exemption from weakening target safety.
+
+## Files
+
+- [src/ships/ship_base.c](../../src/ships/ship_base.c): separate NPC target availability from player range/inactivity expiry; clarify the nearby comment.
+- [src/ships/ship_npc_ai.c](../../src/ships/ship_npc_ai.c): reject unloaded replacement candidates in the existing validity check.
+- `tests/async/test_npc_ship_targeting.py` (new): deterministic production spawn-assignment/heartbeat/AI/contact regression, compiled for both backends under sanitizers.
+- [tests/async/test_npc_ship_deletion.py](../../tests/async/test_npc_ship_deletion.py): retain existing player-recovery and lifecycle controls; extend only where the acceptance matrix below lacks a real-path assertion, such as unavailable-target expiry through the heartbeat.
+- This document: record final implementation evidence and any justified scope changes. Preserve the earlier project's plan.
+
+Read-only supporting sources include `ship_utils.c`, `ship_npc.c`, `map.c`, `ship_control.c`, `ship_combat.c`, `ship_shop.c`, and `ships.h`. No changes to those files are presently required.
+
+## Implementation sequence
+
+Execution checkpoint (2026-11-03): verified the worktree is clean at `744f4be77`,
+the remote implementation branch matches it, and master still matches the inspected
+base. The plan remains minimal: retain the two production changes and focused
+executable evidence; no encounter policy, schema, deployment, or release tag is needed.
+The source fix and its regression form one reviewable chunk and will be published
+together once local verification passes. The maintained fixture compiled on both
+backends before the fix: group retention and escort retaliation failed on their
+first heartbeat, and the unavailable-target case failed because an unloaded target
+was reacquired. These are expected baseline assertion failures, without sanitizer
+diagnostics. The two production corrections are now applied; final passing evidence
+is recorded in the implementation handoff below.
+
+### 1. Turn the demonstrated failure into maintained executable coverage
+
+Add `test_npc_ship_targeting.py` using the real `ship_activity()`, `NPCShipAI::activity()`, `find_current_target()`, `find_new_target()`, `is_valid_target()`, `update_target()`, and escort retaliation. Execute production hash iteration, contact enumeration, range/bearing calculation, and `calculate_map_coords()`; these are the boundaries the existing fixture stubs away.
+
+Use deterministic map rooms and the real outer `try_load_npc_ship(target, type, level, ch)` overload to exercise the 45-room placement/assignment logic. Stub only its lower-level hull/crew factory and unrelated world services. Hold speed/orders at zero after assignment when checking target stability; assert the produced target, AI mode, and out-of-player-contact distance first. This executes the assignment path without claiming coverage of random encounter odds or full navigation. Use the existing extraction approach; do not copy production target logic into the fixture.
+
+The four-player/three-attacker setup must derive actual hash order rather than rely on allocation addresses. Put an eligible decoy first, with zero frags and `ATTACKBYNPC`, and assign the other three victims to a pirate/hunter mix. Vary the intended victims/frag rankings while keeping a competing eligible first contact. Verify that current code fails the assignment-retention assertions before applying the fix. Record baseline failure as expected evidence, then require the same assertions to pass after implementation.
+
+Test stubs must be explicit: captains/ammunition available; unrelated firing, steering, map rendering, world I/O and persistence controlled. Count the selected maneuver/engagement path so a no-op AI or an early return cannot masquerade as preserved pursuit. Include an escort whose real `escort_attacked_by()` assignment starts beyond player contact range.
+
+### 2. Correct the expiry boundary and retain unavailable-target handling
+
+In the heartbeat's existing target-loss block:
+
+- For players, retain `ship_target_in_contact()` and expiry when `T_TARGET_IDLE` reaches zero, preserving fractional position, altitude and scout bonuses.
+- For NPCs, clear the target only when it is unloaded, docked, sinking, or no longer shares a usable map with the attacker. Use existing flags and `calculate_map_coords()`; allow valid same-map pursuit beyond 35–37 rooms and with an expired player inactivity timer.
+- Keep one clearing/message path and the subsequent battle-stations refresh. Do not reorder timers, movement, AI updates, or sinking/deletion iteration.
+
+In `NPCShipAI::is_valid_target()`, reject unloaded candidates before the existing current-target/race checks. This must prevent immediate or subsequent reacquisition of an unloaded player hull still present in the hash. Leave diplomat handling, first-match order, current-target preservation, and the AI's ordinary mode transitions intact.
+
+Do not add a maximum NPC pursuit range. Map loss and lifecycle unavailability are distinct from a valid long approach. Retain the existing `MAXSHIPS` contact capacity and AI behavior if its current target is absent from that capped contact list; expanding that policy is outside this fix.
+
+### 3. Prove each acceptance criterion
+
+- **Pirates and hunters:** exercise both types at the actual approximately 45-room spawn separation for scout bonuses 0/1/2. Start `T_TARGET_IDLE` at both zero and one; run repeated heartbeat/AI updates across expiry and for more than 300 ticks with valid stationary targets. Assert the same target, ENGAGING mode, and an executed pursuit/maneuver path. Cover basic and advanced dispatch with controlled maneuver stubs.
+- **Group convergence:** three attackers retain three separate victims despite an eligible first-hash decoy, different frag rankings, and `ATTACKBYNPC` on that decoy. Repeat with changed victim assignments so success cannot depend on one favorable hash arrangement. Check several updates, including the first and second updates that formerly lost/replaced the victims.
+- **Escort pursuit:** call real retaliation, verify engagement beyond player range through real heartbeat/AI updates, and preserve the separate escort relationship.
+- **Unavailable and destroyed targets:** run docked, sinking, unloaded, off-map and different-map-zone cases for NPC and player locks. Assert lock loss and safe mode transition where the attacker is eligible for an AI tick. Keep an unloaded candidate in the hash and ensure cruising cannot select it. Through actual docking, purge/deletion and NPC unload paths, verify target/escort/boarding references clear before free, unrelated references survive, and the next heartbeat has no invalid access. Reuse lifecycle tests for their existing teardown coverage.
+- **#474 compatibility:** retain 300-tick idle player-lock expiry with no captain aboard, renewal by outgoing fire/incoming volleys/ram attempts, explicit `lock off`, and out-of-range expiry. Keep summon blocked while battle stations is positive and accepted only after the existing 180-tick stand-down; cover the lock's final idle tick and cooldown boundary. Death recovery is represented by an absent captain in the isolated fixture; do not describe that as a complete character-death journey.
+- **Player contact geometry and shared buffers:** keep the existing 35/36/37-room scout boundaries, fractional and altitude cases. Extend the helper's sentinel assertion to the entire shared `contacts[]` buffer so the expiry probe cannot silently corrupt another ship's prepared contacts. Exercise production contact enumeration in the new AI test, without requiring that buffer to remain unchanged across the AI's intentional refresh.
+- **Both persistence builds:** compile and execute the new test and existing lifecycle suite with MySQL and `__NO_MYSQL__`, under ASan/UBSan. Every case above must have a passing executable assertion or explicitly named existing control; a contact-helper-only pass is insufficient for assignment retention.
+
+### 4. Build, review, and record evidence
+
+Run the narrow suites during development, then the required local server builds and changed-line checks. From this worktree:
+
+```sh
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_npc_ship_deletion.py
+make -C src -j8
+make -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_new-flatfile"
+./scripts/format.sh --check
+./scripts/tidy.sh
+git diff --check
+```
+
+The existing default build is MariaDB; the flat-file build uses the Makefile's separate backend object directories and a distinct binary, preserving both executables under `bin/`. Neither the tests nor builds require a live database, shared game server, production credentials, or mutations to player data. Fix failures caused by this change; do not widen into a full burn-in or wait for hosted CI.
+
+Review the final diff against this acceptance list and repeat ablation. Commit only necessary source/test/documentation changes, with no generated binaries or investigation scripts. Update this plan with exact passing commands and any unverified gameplay claims. The implementation PR should link #611 as its work item; this planning commit must not close the issue. Keep #474 as a compatibility reference.
+
+## Implementation handoff (2026-11-03)
+
+Review delivery: implementation commit `08ea954ef` is pushed on the linked branch
+in [PR #627](https://github.com/LuminariMUD/Duris/pull/627), targeting `master`.
+The planning commit and implementation are one focused PR; no dependent stack is
+needed. This final documentation checkpoint records the published review location.
+The original pursuit implementation and local acceptance were complete at this checkpoint. The subsequent PR review repairs are recorded below. Keep #611 open until merge.
+
+The heartbeat now distinguishes NPC availability from player lock policy. NPCs keep
+loaded, undocked, non-sinking same-map targets without a range or player-idle limit.
+Player locks still use the existing contact predicate and 300-tick inactivity timer.
+Both branches share the existing target-loss message and battle-stations refresh;
+timer, movement, AI and sinking-sweep ordering are unchanged. The existing AI validity
+predicate now rejects unloaded replacement candidates before considering the current
+target or race. No new public helper, stored state or encounter-selection rule was needed.
+
+The maintained targeting fixture extracts production spawn assignment, heartbeat,
+hash traversal, contacts, range/bearing, map coordinates and target AI directly.
+The lower-level factory, map rendering, captains/ammo and unrelated world/navigation/
+combat services are controlled explicitly. It does not dynamically rewrite the
+lifecycle fixture or copy production targeting logic.
+
+Acceptance evidence:
+
+- **Separate assigned pursuit:** four actual hash-ordered player hulls, an eligible
+  zero-frag `ATTACKBYNPC` decoy first, and three independently spawned pirate/hunter
+  attackers. The real outer factory produces exactly 45-room separation and ENGAGING
+  state before stationary updates. All three retain their distinct victims for 305
+  heartbeats for each scout bonus 0/1/2, initial idle timer 0/1, basic/advanced AI and
+  two victim/frag permutations. Maneuver counters prove dispatch on every update.
+- **Escort retaliation:** real escort spawning and `escort_attacked_by()` retain a
+  45-room attacker for 305 heartbeat/AI updates while preserving the separate charge.
+- **Unavailable targets:** real map/contact/heartbeat/AI paths reject unloaded,
+  docked, sinking, off-map and different-map targets for NPC and player ships. Three
+  updates confirm safe NPC transition to CRUISING and no unloaded reacquisition even
+  with that hull still present in the hash.
+- **Lifecycle compatibility:** the existing actual docking, purge, unload, deletion,
+  sinking and failed-persistence cases pass. Target/escort/boarding references clear
+  as appropriate, unrelated references survive, and additional post-removal heartbeats
+  pass under sanitizers. Sinking still intentionally ends its sweep after destruction.
+- **Player recovery:** actual lock/fire/volley/ram/summon paths retain 300-tick absent-
+  captain recovery, final-idle-tick combat refresh, explicit unlock and out-of-range
+  expiry. Summon remains blocked at battle-stations timer 1 and succeeds at 0 after
+  the existing 180-tick stand-down. This is not a character-death journey.
+- **Geometry/buffer compatibility:** exact 35/36/37-room scout boundaries, fractional
+  positions and altitude pass, with a byte-for-byte sentinel over all `contacts[]`
+  entries before/after valid and invalid contact probes.
+
+Final local validation (all exit 0):
+
+```sh
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_npc_ship_deletion.py
+make -C src -j8
+make -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/aiwithapex/projects/duris-issue-611/bin/server/dms_new-flatfile
+./scripts/format.sh --check
+./scripts/tidy.sh
+git diff --check
+```
+
+Both Python suites compile/run MySQL and flat-file variants under ASan/UBSan, with
+no findings. Build logs are ignored local files `bin/issue611-mariadb-build.log` and
+`bin/issue611-flatfile-build.log`; both executables are under this worktree's
+`bin/server/`. An initial flat-file invocation expanded its output path through the
+outer shell into the main checkout's ignored `bin/server/dms_new-flatfile`; it was
+not run or installed. The final command above uses an explicit worktree path.
+
+Final ablation retained only the two demonstrated production corrections, one
+self-contained boundary regression, narrow lifecycle/geometry assertions and this
+handoff. No additional implementation chunk or dependent PR is needed. Review and
+merge remain; no release tag, deployment, production mutation, full-world journey
+or hosted-CI wait is required for this review-ready scope. The original issue's
+historical incident reconstruction and broad reacquisition policy remain outside
+the proof. Tracked changes in other worktrees were preserved.
+
+## PR #627 lifecycle review follow-up (2026-11-03)
+
+All three findings in review `5757540715` are valid. Before changing production
+code, the expanded lifecycle fixture reproduced the AI-triggered heap-use-after-free,
+passenger refusal without rearming, and lost expiry during blocked AI ticks on both
+backends. The targeting fixture also rejected the required distant-witness cleanup
+assertion on both backends. Baseline logs are ignored local evidence under
+`bin/pr627-deletion-baseline.log` and `bin/pr627-targeting-baseline.log`.
+
+The heartbeat now captures the existing runtime identity around NPC AI activity and
+ends the whole sweep if cleanup deleted the hull, avoiding both subsequent hull
+access and advancing an invalidated hash visitor. Expired NPC maintenance remains
+at 1 until AI can handle it; 0 remains the unarmed state, and player maintenance
+still counts down normally. Boarding postpones cleanup by the existing 10-tick
+witness delay. Cleanup witnesses must be loaded, undocked player hulls within
+`35 + scout bonus` using cached contact range. Unlimited pursuit contacts and their
+shared buffer remain intact. No public interface, state, helper or configuration
+was added.
+
+The lifecycle fixture now runs production AI, captain/passenger detection, contacts,
+unload and teardown inside the production heartbeat. It verifies room/crew/reference
+release, the intentional skipped tick for a later hash entry and its next update,
+and real removal despite loaded/unloaded 145-room witnesses. It also verifies
+boarding refusal/retry and pending expiry across mindblast, missing captain,
+failed map preparation, docking and anchoring. The targeting fixture uses real map
+coordinates and cached 3-D ranges to test all scout bonuses, exact range, fractional
+and altitude exclusions, loaded/docked/NPC eligibility and byte-for-byte contact
+buffer preservation. Only its terminal unload is counted; actual destruction is
+covered by the lifecycle fixture.
+
+Final local validation passed:
+
+```sh
+python3 tests/async/test_npc_ship_deletion.py
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_nevent_ship_volley_runtime.py
+python3 tests/async/test_ship_autopilot_group_safety.py
+python3 tests/async/test_ferry_ship_lifetime.py
+make -C src -j8
+make -s -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY=/home/aiwithapex/projects/duris-issue-611/bin/server/dms_new-flatfile
+./scripts/format.sh --check --rev origin/master
+./scripts/tidy.sh --rev origin/master
+git diff --check
+```
+
+Both NPC suites run both backends under ASan/UBSan. The unchanged pursuit,
+player-lock/combat and summon-cooldown controls also pass. No live sailing journey,
+database operation or deployment was performed. Hosted CI is not a completion gate.
+
+Final ablation keeps the three demonstrated repairs in the existing two ship
+sources and extends the existing two fixtures; no new test framework or runtime
+layer is needed. `origin/master` remains the branch ancestor at `96ef0ed6b`, so no
+rebase or carry-forward is necessary. Keep one review-fix commit after the published
+history, and squash the focused PR when merging; no dependent stack or release tag
+is warranted. The original checkout and unrelated worktrees remain preserved.
+
+## Live follow-up and limits
+
+No production binary, runtime settings, live hash order, or reporter incident timeline has been inspected here. The source fix and controlled regression can establish assignment retention and prevent the reproduced convergence; they cannot establish which original ships spawned each attacker in either report.
+
+If a pile-on is reported after deployment, capture run time/deployed revision, attacker identity/type, original victim, current victim, target-loss circumstances, participant hulls and diplomats. `try_load_pirate_ship()` already logs original owner and rooms at [ship_npc.c](../../src/ships/ship_npc.c):1315. That log alone does not establish subsequent pursuit. Evaluate any persistent whole-map reacquisition concern as separate gameplay work, using that evidence; do not silently broaden this patch.
+
+## Estimate for my implementation
+
+**Approximately 3–5 hours of active implementation and local verification** from this prepared branch:
+
+- 1–1.5 hours: maintained real-AI fixture, deterministic spawn/group cases, and expected baseline failures.
+- 0.5–1 hour: expiry/availability correction, unloaded reacquisition guard, and adversarial lifecycle/player compatibility cases.
+- 1.5–2.5 hours: both backend tests/builds, fixes revealed by those checks, formatting/tidy, final ablation review, and implementation handoff.
+
+This is my execution estimate, including regression work; it excludes reviewer turnaround and deployment. The production edit is small, while most of the time is proving the heartbeat/AI boundary and keeping player recovery intact. Unexpected compiler or fixture integration failures would require an updated estimate supported by the specific failure.
+
+---
+
+The completed flight-transport plan is preserved in [issue-584-flight-transport-plan.md](issue-584-flight-transport-plan.md).
