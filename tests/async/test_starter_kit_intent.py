@@ -10,6 +10,17 @@ HARNESS = r'''
 #include "item/item_transfer_command.h"
 #include <cassert>
 #include <fstream>
+#include <cerrno>
+#include <sys/stat.h>
+extern "C" int __real_fsync(int);
+bool fail_directory_sync = false;
+extern "C" int __wrap_fsync(int fd) {
+    struct stat state{};
+    if (fail_directory_sync && fstat(fd, &state) == 0 && S_ISDIR(state.st_mode)) {
+        fail_directory_sync = false; errno = EIO; return -1;
+    }
+    return __real_fsync(fd);
+}
 
 int main(int argc, char **argv) {
     assert(argc == 2 && starter_kit_intent_init(argv[1]));
@@ -41,7 +52,13 @@ int main(int argc, char **argv) {
     changed.operation_id.bytes[0] ^= 1;
     assert(!starter_kit_intent_bind(42, changed));
     assert(!starter_kit_intent_finish(42, changed, true));
+    fail_directory_sync = true;
+    assert(!starter_kit_intent_finish(42, command, true));
+    assert(starter_kit_intent_read(42, &stored) == starter_kit_state::committed);
     assert(starter_kit_intent_finish(42, command, true));
+    assert(starter_kit_intent_finish(42, command, true));
+    assert(!starter_kit_intent_finish(42, command, false));
+    assert(!starter_kit_intent_bind(42, command));
     starter_kit_intent_shutdown();
     assert(starter_kit_intent_init(argv[1]));
     assert(starter_kit_intent_read(42, &stored) == starter_kit_state::committed);
@@ -57,7 +74,10 @@ int main(int argc, char **argv) {
                                        critical_deadline_class::interactive));
     command.accepted_at_usec = 124;
     assert(starter_kit_intent_bind(44, command));
+    fail_directory_sync = true;
+    assert(!starter_kit_intent_finish(44, command, false));
     assert(starter_kit_intent_finish(44, command, false));
+    assert(!starter_kit_intent_finish(44, command, true));
     assert(starter_kit_intent_read(44, &stored) == starter_kit_state::rejected);
     assert(!starter_kit_intent_bind(44, command));
     starter_kit_intent_shutdown();
@@ -74,7 +94,7 @@ def main():
         subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined",
                         "-Isrc", str(source), "src/item/starter_kit_intent.c",
                         "src/item/item_transfer_command.c", "src/persistence/critical_command.c",
-                        "src/flatfile/flatfile_store.c", "-lcrypto", "-o", str(binary)],
+                        "src/flatfile/flatfile_store.c", "-lcrypto", "-Wl,--wrap=fsync", "-o", str(binary)],
                        cwd=ROOT, check=True)
         subprocess.run([str(binary), str(state)], check=True)
     print("PASS durable starter operation/UID binding, restart, refusal and corruption")
