@@ -284,6 +284,10 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))
 		return player_save_pipeline_result::capture_failed;
+	// Until a complete baseline has landed, even a coalesced save must carry
+	// everything needed to create a usable owned character.
+	if (!revision.written_revision)
+		components = PLAYER_CHECKPOINT_COMPONENT_ALL;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		auto pending = pending_world_quests.find(GET_PID(ch));
@@ -310,6 +314,19 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	}
 	try
 	{
+		if (!revision.written_revision)
+		{
+			if (!ch->desc || !ch->desc->account || !ch->desc->account->acct_name ||
+			    !ch->desc->account->acct_name[0])
+				return player_save_pipeline_result::capture_failed;
+			snapshot.creation_account = ch->desc->account->acct_name;
+			if (snapshot.creation_account.size() > 50 ||
+			    snapshot.creation_account.size() + sizeof(uint32_t) >
+				    PLAYER_SNAPSHOT_MAX_BYTES - snapshot.encoded_size_bound)
+				return player_save_pipeline_result::capture_failed;
+			snapshot.encoded_size_bound +=
+				snapshot.creation_account.size() + sizeof(uint32_t);
+		}
 		if (!shop_trade_transaction_capture_items(ch, &snapshot))
 			return player_save_pipeline_result::capture_failed;
 		std::lock_guard<std::mutex> lock(pipeline_mutex);

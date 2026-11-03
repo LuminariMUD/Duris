@@ -168,10 +168,16 @@ struct player
 {
     char_data ch = {};
     pc_only_data pc = {};
+    descriptor_data descriptor = {};
+    acct_entry account = {};
+    char account_name[32] = "Creator";
     explicit player(int pid)
     {
         ch.only.pc = &pc;
         pc.pid = pid;
+        ch.desc = &descriptor;
+        descriptor.account = &account;
+        account.acct_name = account_name;
     }
 };
 
@@ -253,6 +259,8 @@ int main()
     player_save_pipeline_resume();
     assert(player_save_pipeline_mark(41, PLAYER_COMPONENT_STATUS));
 
+    // The delayed immutable capture must not consult its descriptor/account again.
+    strcpy(bob.account_name, "ReplacedAccount");
     hold_writer(false);
     assert(persistence_writer_wait_idle(5000));
     // Bob's first save was being written; everything else in capture order.
@@ -264,7 +272,11 @@ int main()
         assert(state.committed[41].pending_trade.operation==trade.operation);
         assert(state.committed[41].pending_trade.payment==-80);
         assert(state.committed[42].pending_trade.operation==other_trade.operation);
+        assert(state.committed[42].creation_account == "Creator");
+        assert(state.committed[42].components == PLAYER_CHECKPOINT_COMPONENT_ALL);
+        assert(state.committed[41].creation_account.empty());
     }
+    strcpy(bob.account_name, "Creator");
     player_save_pipeline_release_trade(41);
     player_save_pipeline_release_trade(42);
 

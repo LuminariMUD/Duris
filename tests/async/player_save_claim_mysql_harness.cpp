@@ -334,9 +334,32 @@ int main()
 
 	// A character with no player_data row yet gets one instead of failing.
 	player_snapshot unbased = snapshot_for(3, 1, "Newcomer");
+	applied = player_snapshot_repository_apply(test_connection, unbased);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.rolled_back &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=3") ==
+				"0",
+		"a missing row must never be created without an owner");
+	unbased.creation_account = "claim_probe";
 	unbased.wallet_revision = 7; // Starter money has already changed in memory.
 	unbased.status_integers.push_back({ player_status_field::copper, 35, 0, false });
 	unbased.items = { item(1012, 512, PLAYER_SNAPSHOT_NO_PARENT) };
+	execute(test_connection,
+		"CREATE TRIGGER reject_new_mapping BEFORE INSERT ON account_characters "
+		"FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic creation failure'");
+	applied = player_snapshot_repository_apply(test_connection, unbased);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.rolled_back,
+		"initial mapping failure must report a confirmed rollback");
+	for (const char *table : { "player_data", "player_items", "currency_wallet_baseline",
+				   "epic_balance_baseline", "combat_frag_baseline" })
+		require(scalar(test_connection, "SELECT COUNT(*) FROM " + std::string(table) +
+							" WHERE pid=3") == "0",
+			"mapping failure published part of the initial character");
+	require(scalar(test_connection,
+		       "SELECT COUNT(*) FROM item_current_owner WHERE item_uid=1012") == "0",
+		"mapping failure published an item claim");
+	execute(test_connection, "DROP TRIGGER reject_new_mapping");
 	applied = player_snapshot_repository_apply(test_connection, unbased);
 	require(applied.outcome == player_save_apply_outcome::applied,
 		"a save for a character without a row must commit");
@@ -352,6 +375,44 @@ int main()
 			       "SELECT CONCAT(opening_copper,':',opening_revision) "
 			       "FROM currency_wallet_baseline WHERE pid=3") == "35:7",
 		"the starter wallet opening baseline must begin at its captured revision");
+	require(scalar(test_connection, "SELECT account_name FROM player_data WHERE pid=3") ==
+				"claim_probe" &&
+			scalar(test_connection,
+			       "SELECT CONCAT(account_name,':',char_name) FROM account_characters WHERE pid=3") ==
+				"claim_probe:Newcomer",
+		"initial owner and selectable membership must commit with the usable snapshot");
+	applied = player_snapshot_repository_apply(test_connection, unbased);
+	require(applied.outcome == player_save_apply_outcome::already_applied,
+		"an ambiguous initial commit must reconcile the same character");
+	execute(test_connection, "UPDATE player_data SET level=30,save_revision=2 WHERE pid=3");
+	applied = player_snapshot_repository_apply(test_connection, unbased);
+	require(applied.outcome == player_save_apply_outcome::already_applied &&
+			scalar(test_connection, "SELECT level FROM player_data WHERE pid=3") ==
+				"30",
+		"an initial retry must not overwrite a character that already continued");
+	auto conflicting = unbased;
+	execute(test_connection, "INSERT INTO accounts(account_name) VALUES ('other_creator')");
+	conflicting.creation_account = "other_creator";
+	require(player_snapshot_repository_apply(test_connection, conflicting).outcome ==
+			player_save_apply_outcome::terminal_failure,
+		"a retry must never transfer ownership");
+	conflicting = unbased;
+	conflicting.pid = 4;
+	require(player_snapshot_repository_apply(test_connection, conflicting).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=4") ==
+				"0",
+		"a competing PID must never take an existing name");
+	execute(test_connection, "UPDATE account_characters SET deleted_at=NOW() WHERE pid=3");
+	require(player_snapshot_repository_apply(test_connection, unbased).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM account_characters WHERE pid=3 AND deleted_at IS NOT NULL") ==
+				"1",
+		"a delayed creation retry must respect a deletion tombstone");
+	execute(test_connection, "UPDATE account_characters SET deleted_at=NULL WHERE pid=3");
+	std::cout
+		<< "[PASS] initial owner/membership/baselines, rollback, retry, competition and tombstone fences\n";
 
 	// A corpse save claims what the corpse holds and replaces its rows; a remove deletes
 	// them (persistence reset step 6).

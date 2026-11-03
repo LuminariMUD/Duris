@@ -1784,7 +1784,8 @@ int main(int argc, char **argv)
 	require(player_snapshot_encode(old_status, &legacy_bytes) ==
 			player_snapshot_codec_result::ok,
 		"could not encode legacy-compatible status fixture");
-	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1);
+	legacy_bytes.resize(legacy_bytes.size() - sizeof(uint64_t) - 1 - sizeof(uint32_t) -
+			    old_status.creation_account.size());
 	legacy_bytes[0] = 9; // Older status has no delivery field or wallet metadata.
 	player_snapshot legacy;
 	uint64_t legacy_sequence = 99;

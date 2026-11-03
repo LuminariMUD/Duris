@@ -432,13 +432,14 @@ int main(int argc, char **argv)
 	// Every proper prefix of a whole snapshot is truncated too.
 	auto full = snapshot_fixture();
 	full.wallet_revision = 42;
+	full.creation_account = "Creator";
 	std::vector<uint8_t> current, other;
 	require(player_snapshot_encode(full, &current) == player_snapshot_codec_result::ok,
 		"the snapshot fixture did not encode");
 	require(player_snapshot_decode(current.data(), current.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&
-			read_back.wallet_revision == 42,
-		"current snapshot lost its captured wallet revision");
+			read_back.wallet_revision == 42 && read_back.creation_account == "Creator",
+		"current snapshot lost its captured wallet revision or initial owner");
 	for (size_t length = 1; length < current.size(); ++length)
 		require(player_snapshot_decode(current.data(), length, &read_back) ==
 				player_snapshot_codec_result::truncated,
@@ -458,6 +459,9 @@ int main(int argc, char **argv)
 	const auto wire = [&](uint32_t version)
 	{
 		auto bytes = current;
+		if (version < 15)
+			bytes.resize(bytes.size() - sizeof(uint32_t) -
+				     full.creation_account.size());
 		if (version < 12)
 			bytes.resize(bytes.size() - 1);
 		if (version < 11)
@@ -556,12 +560,13 @@ int main(int argc, char **argv)
 					}),
 			"old player file did not load with empty flight discoveries: " + error);
 	}
-	for (uint32_t version : { 9u, 10u, 11u, 12u })
+	for (uint32_t version : { 9u, 10u, 11u, 12u, 13u, 14u })
 	{
 		const auto bytes = wire(version);
 		require(player_snapshot_decode(bytes.data(), bytes.size(), &read_back) ==
 					player_snapshot_codec_result::ok &&
 				read_back.wallet_revision == (version >= 11 ? 42u : 0u) &&
+				read_back.creation_account.empty() &&
 				read_back.schema_version == PLAYER_SNAPSHOT_SCHEMA_VERSION,
 			"old snapshot did not default its absent wallet revision");
 	}
@@ -674,7 +679,8 @@ int main(int argc, char **argv)
 	changed.status_integers.clear();
 	require(player_snapshot_encode(changed, &other) == player_snapshot_codec_result::ok,
 		"partial legacy fixture did not encode");
-	other.resize(other.size() - sizeof(uint64_t) - 1);
+	other.resize(other.size() - sizeof(uint64_t) - 1 - sizeof(uint32_t) -
+		     changed.creation_account.size());
 	put32(other, 0, 7);
 	require(player_snapshot_decode(other.data(), other.size(), &read_back) ==
 				player_snapshot_codec_result::ok &&
