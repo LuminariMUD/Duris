@@ -27,7 +27,11 @@ def native(scenario):
     output = subprocess.check_output(
         [str(ROOT / "bin/tests/telemetry-posthog-mariadb"), "reduce", scenario], text=True)
     rows = [json.loads(line) for line in output.splitlines()]
-    return [row for row in rows if "event" in row]
+    rows = [row for row in rows if "event" in row]
+    for row in rows:
+        row["properties"].update(duris_schema_version=1, duris_environment_id="1",
+                                 duris_season_id="2", duris_test_run=None)
+    return rows
 
 
 def literal(value):
@@ -46,8 +50,6 @@ def run(db, name, rows):
     sources = []
     for original in rows:
         row = deepcopy(original)
-        row["properties"].update(duris_schema_version=1, duris_environment_id="1",
-                                 duris_season_id="1", duris_test_run=None)
         columns = [literal(row["event"]) + " AS event",
                    "toDateTime(" + literal(row.get("_captured_at", NOW - timedelta(hours=1))
                                           .strftime("%Y-%m-%d %H:%M:%S")) + ") AS timestamp"]
@@ -75,8 +77,20 @@ def main():
             rows = ordinary + native("health-incidents") + native("encounter-open")
             result = run(db, name, rows)
             assert result, name
+            excluded = []
+            for field, value in (("duris_schema_version", 2), ("duris_environment_id", "2"),
+                                 ("duris_season_id", "1"), ("duris_test_run", "synthetic")):
+                for original in rows:
+                    other = deepcopy(original)
+                    other["properties"][field] = value
+                    for identity in ("duris_event_id", "duris_character_id", "duris_session_id",
+                                     "duris_run_id"):
+                        if other["properties"].get(identity) is not None:
+                            other["properties"][identity] += "-excluded-" + field
+                    excluded.append(other)
+            assert stable(result) == stable(run(db, name, rows + excluded)), name
             assert stable(result) == stable(run(db, name, rows + rows)), name
-        print("PASS: all five committed SQL reports execute and deduplicate repeated event IDs")
+        print("PASS: all five reports select only production season 2 and deduplicate event IDs")
 
         health = [row for row in native("health-incidents")
                   if row["event"] == "duris_telemetry_health"]

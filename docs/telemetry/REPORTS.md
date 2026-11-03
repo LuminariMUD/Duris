@@ -16,8 +16,10 @@ no governed metric matching these contracts when checked.
 | Delivery health and coverage | [13125346](https://us.posthog.com/project/678214/insights/Q1uzfy0I) | [health.sql](posthog/health.sql) |
 
 The bounded cloud fixture below qualified the original saved definitions.
-After merging the review corrections, refresh saved insights **13125343 (time),
-13125344 (XP), 13125345 (encounters), and 13125346 (health)** from the corresponding SQL files.
+After merging the review corrections and season-2 scope fix, compare and refresh
+all five saved insights, including **13125342 (activity)**, from the corresponding
+SQL files. Activity needs the current-season scope even though its other semantics
+were unchanged by the earlier review.
 That cloud refresh and a read-only query check are a separate follow-up; no new
 capture campaign is needed. The current review is qualified locally and does not
 claim those saved definitions have been refreshed. All five production queries
@@ -25,9 +27,15 @@ exclude the tagged synthetic traffic.
 The saved-definition comparison and any required refresh are tracked in
 [#578](https://github.com/LuminariMUD/Duris/issues/578); the exporter quota incident
 is tracked separately in [#446](https://github.com/LuminariMUD/Duris/issues/446).
-The starter dashboard is retained. Views select schema 1, environment 1, season 1,
-empty test tag and a rolling 31-day event window. Change the explicit SQL scope
-and bucket predicates for another authorized scope or captured cohort. Each query
+The starter dashboard is retained. The committed views select schema 1,
+environment 1, **season 2**, empty test tag and a rolling 31-day event window,
+matching the production configuration inspected on 2026-11-03. Saved cloud scopes
+remain unverified: the current connection returns 404 for project 678214.
+For historical season 1, copy the SQL and explicitly change
+`properties.duris_season_id = '2'` to `= '1'`; retain the environment, schema,
+test exclusion and desired UTC time window. Never change the server's season or
+combine identities across seasons to make a report appear populated. Change the
+explicit SQL scope and bucket predicates for another authorized scope or captured cohort. Each query
 deduplicates immutable `duris_event_id` before aggregation or array expansion.
 
 Activity measures opaque characters and logical sessions, not accounts or people.
@@ -74,7 +82,8 @@ PYTHONPATH=bin/tests/posthog-report-deps python3 tests/async/run_telemetry_posth
 
 This executes all five committed SQL definitions with embedded ClickHouse against
 native fixture rows and controlled rollback/reconciliation variants. It checks
-event deduplication, quota/capacity and recovered-incident visibility, consistent
+production season-2 selection with excluded season-1, other-environment,
+other-schema and synthetic rows, event deduplication, quota/capacity and recovered-incident visibility, consistent
 freshness, retained encounter overflow (including 640 pet damage), lower-bound
 duration labels, separate time-quality and XP zone/group buckets, and late checkpoint comparisons.
 The local adapter supplies HogQL's nullable `toInt` conversion and event-property
