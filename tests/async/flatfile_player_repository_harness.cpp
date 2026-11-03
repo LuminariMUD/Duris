@@ -11,6 +11,12 @@
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
+#include "flatfile/flatfile_account_reward_summon_repository.h"
+#include "flatfile/flatfile_association_repository.h"
+#include "flatfile/flatfile_frag_leaderboard_repository.h"
+#include "flatfile/flatfile_locker_repository.h"
+#include "flatfile/flatfile_recipe_repository.h"
+#include "flatfile/flatfile_spellbook_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_world_item_repository.h"
 #include "persistence/persistence_observability.h"
@@ -1414,11 +1420,41 @@ int main(int argc, char **argv)
 			"advance creation bank revision: " + error);
 		return 0;
 	}
-	if (argc == 3 && std::string(argv[2]) == "seed-combat")
+	if (argc == 3 &&
+	    (std::string(argv[2]) == "seed-combat" || std::string(argv[2]) == "seed-hardcore"))
 	{
 		std::string error;
 		require(flatfile_boon_establish(argv[1], {}, &error) == flatfile_boon_result::ok,
 			"seed empty combat boon catalog: " + error);
+		if (std::string(argv[2]) == "seed-hardcore")
+		{
+			// Minimal boot skips these catalogs; permanent character deletion needs
+			// the same initialized authorities as a normally provisioned world.
+			require(flatfile_account_reward_summon_establish(argv[1], {}, &error) ==
+					flatfile_account_reward_summon_result::ok,
+				"seed empty reward summon catalog: " + error);
+			require(flatfile_artifact_establish(argv[1], {}, &error) ==
+					flatfile_artifact_result::ok,
+				"seed empty artifact catalog: " + error);
+			require(flatfile_association_establish(argv[1], {}, &error) ==
+					flatfile_association_result::ok,
+				"seed empty association catalog: " + error);
+			require(flatfile_frag_leaderboard_establish(argv[1], {}, &error) ==
+					flatfile_frag_leaderboard_result::ok,
+				"seed empty frag leaderboard: " + error);
+			require(flatfile_locker_establish(argv[1], {}, {}, &error) ==
+					flatfile_locker_result::ok,
+				"seed empty locker catalog: " + error);
+			require(flatfile_ship_establish(argv[1], {}, &error) ==
+					flatfile_ship_result::ok,
+				"seed empty ship catalog: " + error);
+			require(flatfile_recipe_establish(argv[1], {}, &error) ==
+					flatfile_recipe_result::ok,
+				"seed empty recipe catalog: " + error);
+			require(flatfile_spellbook_establish(argv[1], {}, &error) ==
+					flatfile_spellbook_result::ok,
+				"seed empty spellbook catalog: " + error);
+		}
 		return 0;
 	}
 	// Offline fixture setup only, against the temporary state owned by the journey.

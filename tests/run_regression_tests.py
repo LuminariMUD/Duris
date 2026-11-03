@@ -54,6 +54,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_flatfile_newbie_regrant_journey.py",
         "test_flatfile_first_session_currency.py",
         "test_flatfile_full_world_boot.py",
+        "test_flatfile_hardcore_death_journey.py",
         "test_flight_network_journey.py",
         "test_frag_cap_journey.py",
         "test_generated_npc_journey.py",
