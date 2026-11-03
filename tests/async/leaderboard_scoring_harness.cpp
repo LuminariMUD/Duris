@@ -312,6 +312,59 @@ static void check_database_scores(P_char viewer)
 	assert(standings.empty() && output.find("No players are ranked yet") != std::string::npos);
 }
 
+static void check_hardcore_database_scores(P_char viewer)
+{
+	execute("TRUNCATE TABLE player_data");
+	execute("ALTER TABLE player_data ADD active TINYINT NOT NULL DEFAULT 1, "
+		"ADD act2 BIGINT UNSIGNED DEFAULT 0, ADD secondary_class BIGINT UNSIGNED DEFAULT 2147483648, "
+		"ADD killed_by VARCHAR(64) DEFAULT NULL");
+	execute("INSERT INTO player_data (name,active,level,exp,frags,numb_deaths,act2,secondary_class,killed_by) VALUES "
+		"('Survivor',1,24,150000,0,1,8192,2147483648,NULL),"
+		"('Fresh',1,1,0,0,0,8192,2147483648,NULL),"
+		"('Sentinel',1,9,0,0,1,8192,2147483648,'Notdead'),"
+		"('Fallen',1,16,0,0,5,0,2147483648,'Dragon'),"
+		"('Multiclass',1,10,0,0,2,8192,3,NULL),"
+		"('Ordinary',1,56,0,0,0,0,2147483648,NULL),"
+		"('~pwipe-180',0,56,0,0,0,8192,2147483648,NULL),"
+		"('Retiredkiller',0,56,0,0,5,0,2147483648,'Dragon')");
+	output.clear();
+	displayHardCore(viewer, nullptr, 0);
+	const std::vector<std::string> expected_names = { "Survivor", "Multiclass", "Fallen",
+							  "Sentinel", "Fresh" };
+	const int expected_scores[] = { 24015, 20000, 16100, 9000, 1000 };
+	const std::string expected_deaths[] = { "1", "2", "5", "1", "0" };
+	assert(standings.size() == expected_names.size());
+	for (size_t i = 0; i < standings.size(); ++i)
+	{
+		assert(standings[i][0] == expected_names[i]);
+		assert(std::stod(standings[i][1]) == expected_scores[i]);
+		assert(standings[i][2] == expected_deaths[i]);
+		const std::string killer = i == 2 ? "Dragon" : "-";
+		assert(standings[i][3] == killer);
+		// Verify the death count and killer appear in the same rendered player's row.
+		const size_t start = output.find(expected_names[i]);
+		assert(start != std::string::npos);
+		const std::string line = output.substr(start, output.find('\n', start) - start);
+		assert(line.find("&+W     " + expected_deaths[i] + "  " + killer) !=
+		       std::string::npos);
+	}
+	assert(output.find("Deaths") != std::string::npos);
+	assert(output.find("Final killer") != std::string::npos);
+	assert(output.find("Current characters only") != std::string::npos);
+	assert(output.find("'-' means no final killer recorded") != std::string::npos);
+	assert(output.find("240.15") != std::string::npos);
+	assert(output.find("Notdead") == std::string::npos);
+	assert(output.find("~pwipe-") == std::string::npos);
+	assert(output.find("Retiredkiller") == std::string::npos);
+	assert(output.find("Ordinary") == std::string::npos);
+	assert(output.find('\t') == std::string::npos);
+	execute("UPDATE player_data SET active=0");
+	output.clear();
+	displayHardCore(viewer, nullptr, 0);
+	assert(standings.empty());
+	assert(output.find("No Hardcore characters are ranked yet") != std::string::npos);
+}
+
 int main()
 {
 	boot_hardcore_config();
@@ -332,10 +385,13 @@ int main()
 			" CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 		execute("USE " + database);
 		check_database_scores(&viewer);
+		check_hardcore_database_scores(&viewer);
 		execute("DROP DATABASE " + database);
 		mysql_close(connection);
 		std::cout
 			<< "PASS: command SQL, ranking, staff exclusion, death-independent scores and display, epic spending and live score parity\n";
+		std::cout
+			<< "PASS: Hardcore rankings exclude retired characters and display deaths separately from final killers\n";
 	}
 	std::cout
 		<< "PASS: live scoring, arithmetic width, earned epics and ship ownership outside top 20\n";

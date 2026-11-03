@@ -235,9 +235,9 @@ void displayHardCore(P_char ch, char * /*arg*/, int /*cmd*/)
 			"   (CASE WHEN pd.frags < %d THEN pd.frags ELSE 0 END * %d)) * "
 			"  (CASE WHEN pd.secondary_class > 0 AND pd.secondary_class <> 2147483648 THEN %d ELSE 1 END) + "
 			"  (CASE WHEN pd.killed_by IS NOT NULL AND pd.killed_by <> 'Notdead' THEN %d ELSE 0 END) as score, "
-			"  COALESCE(pd.killed_by, 'Notdead') as killed_by "
+			"  pd.numb_deaths, COALESCE(NULLIF(pd.killed_by, 'Notdead'), '-') as killed_by "
 			"FROM player_data pd "
-			"WHERE (pd.act2 & 8192) > 0 OR pd.killed_by IS NOT NULL "
+			"WHERE pd.active = 1 AND ((pd.act2 & 8192) > 0 OR pd.killed_by IS NOT NULL) "
 			"ORDER BY score DESC "
 			"LIMIT %d",
 			config->score_level_points, config->score_experience_divisor,
@@ -248,9 +248,9 @@ void displayHardCore(P_char ch, char * /*arg*/, int /*cmd*/)
 		{
 			char name[MAX_STRING_LENGTH], buf[65536], buf2[2048];
 			const float divisor = (float)hardcore_config_get()->score_display_divisor;
-			strcpy(buf, "\t\r\n&+r-= &+LHall Of&+L Fame&+r =-&n\r\n\r\n");
-			snprintf(buf2, 2048, "   &+w%-15s           &+w%s           &+w%-15s\r\n",
-				 "Name", "Points", "Deaths/Killed by");
+			strcpy(buf, "\r\n&+r-= &+LHall Of&+L Fame&+r =-&n\r\n\r\n");
+			snprintf(buf2, 2048, "   &+w%-15s %10s %6s  %-15s\r\n", "Name", "Points",
+				 "Deaths", "Final killer");
 			strcat(buf, buf2);
 
 			for (const sql_row &row : rows)
@@ -261,15 +261,18 @@ void displayHardCore(P_char ch, char * /*arg*/, int /*cmd*/)
 					name[0] = toupper(name[0]);
 					const float pts = atof(row[1]) / divisor;
 
-					checked_snprintf(
-						buf2, 2048,
-						"   &+L%-15s          &+r% 6.2f\t      &+W%-15s\r\n",
-						name, pts, row[2] ? row[2] : "unknown");
+					checked_snprintf(buf2, 2048,
+							 "   &+L%-15s &+r%10.2f &+W%6s  %-15s\r\n",
+							 name, pts, row[2] ? row[2] : "0",
+							 row[3] ? row[3] : "-");
 					strcat(buf, buf2);
 				}
 			}
 
-			strcat(buf, "\r\n");
+			if (rows.empty())
+				strcat(buf, "No Hardcore characters are ranked yet.\r\n");
+			strcat(buf,
+			       "\r\nCurrent characters only. '-' means no final killer recorded.&n\r\n\r\n");
 
 			page_string(live->desc, buf, 1);
 		});
