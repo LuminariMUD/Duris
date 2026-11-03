@@ -1438,6 +1438,47 @@ static void initial_creation_boundaries(const fs::path &root)
 		require(flatfile_account_save(state, account, revision, &revision, &error) ==
 				flatfile_account_result::ok,
 			"unblock synthetic owner: " + error);
+		if (boundary < 0)
+		{
+			auto quest = snapshot;
+			quest.revision = 2;
+			quest.quest_values = {};
+			quest.pending_world_quest = {
+				true, 25001, 20, 9000, 0, 1800000001, "Player", "initial completion"
+			};
+			quest.pending_world_quest.before_quest[0] = 1;
+			quest.pending_world_quest.before_quest[1] = 25001;
+			require(flatfile_player_snapshot_apply(state, quest, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"creation quest must continue after its same-revision fallback");
+			int count = 0;
+			require(flatfile_world_quest_count_day(state.c_str(), pid, 20, 1800000001,
+							       &count, &error) ==
+						flatfile_world_quest_result::ok &&
+					count == 1 &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.quest_values[0] == 0,
+				"creation quest success omitted history or final state");
+			auto advanced = quest;
+			advanced.revision = 3;
+			advanced.creation_account.clear();
+			advanced.pending_world_quest = {};
+			for (auto &field : advanced.status_integers)
+				if (field.field == player_status_field::level)
+					field.signed_value = 1;
+			require(flatfile_player_snapshot_apply(state, advanced, &error).outcome ==
+						player_save_apply_outcome::applied &&
+					flatfile_player_snapshot_apply(state, quest, &error)
+							.outcome ==
+						player_save_apply_outcome::already_applied &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.revision == 3,
+				"initial quest replay overwrote later state");
+		}
 		int32_t competitor = 0;
 		require(flatfile_identity_allocate_pid(state, &competitor, &error) ==
 					flatfile_identity_result::ok &&
