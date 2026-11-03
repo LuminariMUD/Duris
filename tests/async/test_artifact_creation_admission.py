@@ -202,17 +202,32 @@ const object_template *find_object_template(int vnum) {
 }
 static size_t offline_released=0, offline_saves=0, corpse_saves=0, expiry_retries=0;
 static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
+static P_char offline_pet=nullptr, offline_pet_owner=nullptr;
+static bool offline_includes_pets=false, inspect_pet_snapshot=false;
 static std::vector<std::function<void(P_char)>> offline_callbacks;
-char *get_player_name_from_pid(int pid) { return pid==77 ? const_cast<char *>("Offline") : nullptr; }
+static int offline_requested_pid=0;
+char *get_player_name_from_pid(int pid) {
+ offline_requested_pid=pid;
+ return pid==77 ? const_cast<char *>("Offline") : pid==88 ? const_cast<char *>("Recipient") : nullptr;
+}
 bool is_pid_online(int,bool) { return owner_online; }
 bool player_load_pipeline_pid_pending(int) { return owner_loading; }
 bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { offline_callbacks.push_back(std::move(done)); return true; }
-bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
+bool player_load_offline(int pid,std::function<void(P_char)> done) {
+ offline_requested_pid=pid; offline_includes_pets=true;
+ if(pid!=77 && pid!=88) return false;
+ offline_callbacks.push_back(std::move(done)); return true;
+}
+bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done,bool) {
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
 static bool inspect_swap_snapshot=false;
 int writeCharacter(P_char owner,int,int) {
  ++offline_saves;
+ if(inspect_pet_snapshot && IS_PC(owner)) {
+  assert(owner==offline_pet_owner && owner->followers->follower==offline_pet);
+  assert(offline_pet->carrying && !IS_ARTIFACT(offline_pet->carrying) && !offline_pet->carrying->next_content);
+ }
  if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
  return offline_save_allowed ? 1 : 0;
 }
@@ -442,7 +457,7 @@ int main() {
  // Unqualified same-UID placement cannot register, mutate or retire the authority.
  auto *hydrated=read_object(900,VIRTUAL); hydrated->obj_uid=80002;
  player_item_snapshot saved={}; saved.equipment_slot=0;
- attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  assert(!legacy.live_object && !artifact_is_canonical(hydrated));
  artifact_update_location_sql(hydrated); artifact_feed_sql(&holder,hydrated,100,false,false);
  assert(legacy.timer==7777 && legacy.location==2000);
@@ -452,10 +467,10 @@ int main() {
  qualified.item_uid=qualified.payload_root_item_uid=80002;
  legacy.canonical_payloads={qualified}; legacy.population_reason=artifact_population_reason::complete;
  hydrated=read_object_for_recovery(qualified); assert(hydrated);
- attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  assert(legacy.live_object==hydrated && legacy.pending==artifact_pending::none && legacy.timer==7777);
  player_load_items_discard(&holder); assert(!legacy.live_object);
- hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved},{{}});
+ hydrated=read_object_for_recovery(qualified); assert(hydrated); attach_loaded_inventory(&holder,{hydrated},{0},{saved});
  auto *duplicate=read_object(900,VIRTUAL); duplicate->obj_uid=80002; obj_to_char(duplicate,&holder);
  assert(!artifact_is_canonical(duplicate) && legacy.live_object==hydrated); extract_obj(duplicate,TRUE);
  assert(legacy.identity_state==artifact_identity_state::present);
@@ -468,6 +483,14 @@ int main() {
 """
 HARNESS=HARNESS.replace("// OWNER_RECONCILIATION_CASES", r"""
 void owner_reconciliation_cases() {
+ player_load_result delayed;
+ delayed.outcome=player_load_outcome::applied; delayed.item_read_writer_sequence=0;
+ delayed.snapshot.items.resize(1); delayed.item_identities.resize(1);
+ delayed.snapshot.items[0].extra_flags=ITEM_ARTIFACT;
+ assert(player_load_items_qualify(&delayed)==EAGAIN && delayed.snapshot.items.size()==1);
+ delayed.snapshot.pets.resize(1); delayed.snapshot.pets[0].items=delayed.snapshot.items;
+ delayed.snapshot.items.clear(); delayed.item_identities.clear();
+ assert(player_load_items_qualify(&delayed)==EAGAIN && delayed.snapshot.pets[0].items.size()==1);
  for(int placement=0;placement<3;++placement) for(int stale=0;stale<5;++stale) {
   assert(!object_list && !pool.objs_used && writes.empty());
   artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
@@ -504,10 +527,10 @@ void owner_reconciliation_cases() {
   if(placement==2) {
    auto *bag=read_object(903,VIRTUAL); bag->obj_uid=5000;
    obj_to_obj(body,bag);
-   attach_loaded_inventory(&owner,{bag,body},{0},{saved,player_item_snapshot{}},{{},source.custody});
+   attach_loaded_inventory(&owner,{bag,body},{0},{saved,player_item_snapshot{}});
    assert(owner.carrying==unrelated && unrelated->next_content==bag && bag->contains==body);
   } else {
-   attach_loaded_inventory(&owner,{body},{0},{saved},{source.custody});
+   attach_loaded_inventory(&owner,{body},{0},{saved});
    assert(owner.carrying==unrelated);
    assert(placement==0 ? owner.equipment[0]==body : unrelated->next_content==body);
   }
@@ -541,8 +564,9 @@ void owner_reconciliation_cases() {
    assert(artifact_feed_sql(&owner,copy,900,false,false)==artifact_feed_result::rejected);
    extract_obj(copy,FALSE);
    const auto alerts=owner_mismatch_alerts;
-   // Every disagreement leaves authority intact instead of guessing an owner.
+   // Optional cache evidence cannot overrule the canonical body's live holder.
    for(int conflict=0;conflict<6;++conflict) {
+    row.location=88; row.timer=before;
     item_ownership_runtime_reset(); auto custody=source.custody;
     switch(conflict) {
      case 0: custody.owner.id=88; break;
@@ -552,12 +576,14 @@ void owner_reconciliation_cases() {
      case 4: custody.state=item_custody_state::quarantined; break;
     }
     if(conflict!=5) assert(item_ownership_runtime_hydrate(custody));
-    assert(!artifact_reconcile_player_owner(body) && row.location==88);
-    assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::no_effect);
-    assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::rejected);
-    assert(row.timer==before+900 && row.location==88 && row.canonical_item_uid==4242);
+    assert(artifact_reconcile_player_owner(body) && row.location==77 && row.timer==before);
+    assert(artifact_guild_state_capture(&owner,1,EPIC_BOON,operation,&payload)==artifact_guild_capture_status::ready);
+    assert(payload.artifact_count==1 && payload.artifacts[0].timer_before==before);
+    assert(artifact_feed_sql(&owner,body,900,false,false)==artifact_feed_result::positive);
+    assert(row.timer==before+900 && row.location==77 && row.canonical_item_uid==4242);
+    assert(artifact_binds.at(900).owner_pid==77 && artifact_binds.at(900).timer==666);
    }
-   assert(owner_mismatch_alerts==alerts+12);
+   assert(owner_mismatch_alerts==alerts);
    owner_mismatch_alerts=0;
   }
   assert(owner_mismatch_alerts==0);
@@ -581,7 +607,7 @@ void owner_reconciliation_cases() {
  std::cout<<"qualified worn/carried/nested owner reconciliation, first feed, conflicts and cancellation: PASS\n";
 }
 """)
-source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "unsigned int player_load_items_qualify(")))
+source=HARNESS.replace("// PLAYER_ATTACHMENT", "\n".join(extract_function("player_load_items.c", sig) for sig in ("void attach_loaded_inventory(", "void clear_item_uids(", "void player_load_items_discard(", "bool player_load_items_read_current(", "unsigned int player_load_items_qualify(")))
 source=source.replace("// RESTORE_CARRIED",extract_function("handler.c","static void append_obj_to_list(")+"\n"+extract_function("handler.c","void obj_to_char_at_end("))
 source=source.replace("// CONSTRUCTORS","\n".join(extract_function("db.c",sig) for sig in (
  "static P_obj instantiate_object_template_impl(","P_obj instantiate_object_template(const object_template &prototype)",
@@ -1186,6 +1212,77 @@ void offline_expiry_cases() {
   assert(offline_callbacks.size()==1 && offline.timer==1 && offline.location==99);
   offline_callbacks.front()(nullptr); offline_callbacks.clear();
  }
+ // Failed construction keeps the boot repair locator. Accepted recovery retires
+ // only player locators, and handoff/unload expiry follows the current player.
+ saved_holder.row_id=1; saved_holder.vnum=900; saved_holder.owner_reference=77;
+ saved_holder.payload_root_item_uid=saved_holder.item_uid;
+ saved_holder.extra_flags_present=true; saved_holder.extra_flags=ITEM_ARTIFACT; saved_holder.quantity=1;
+ saved_holder.custody_examined=saved_holder.custody_found=saved_holder.custody_owner_revision_found=true;
+ saved_holder.custody={81000,81000,0,saved_holder.payload_owner,1,1,900,item_custody_state::active};
+ auto world_source=saved_holder; world_source.domain=artifact_payload_domain::copyover_ground;
+ offline.canonical_payloads={saved_holder,world_source};
+ item_ownership_runtime_reset();
+ auto *recovered=read_object_for_recovery(saved_holder); assert(recovered);
+ extract_obj(recovered,FALSE);
+ assert(offline.canonical_payloads.size()==2 && !offline.live_object);
+ recovered=read_object_for_recovery(saved_holder); assert(recovered); obj_to_char(recovered,&owner);
+ assert(offline.canonical_payloads.size()==1 &&
+        offline.canonical_payloads[0].domain==artifact_payload_domain::copyover_ground);
+ pc.pid=88; artifact_update_sql(recovered,'Y',1);
+ assert(offline.location==88 && offline.timer==1 && artifact_is_canonical(recovered));
+ extract_obj(recovered,FALSE);
+ updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+ event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+ assert(offline_requested_pid==88 && offline_callbacks.size()==1 && !offline.live_object);
+ auto recipient=saved_holder; recipient.owner_reference=88;
+ recipient.payload_owner.id=recipient.custody.owner.id=88;
+ recovered=read_object_for_recovery(recipient); assert(recovered); obj_to_char(recovered,&owner);
+ offline_callbacks.front()(&owner); offline_callbacks.clear(); pc.pid=77;
+ assert(!offline.live_object && offline.identity_state==artifact_identity_state::retired &&
+        offline.canonical_item_uid==81000 && !object_list && !pool.objs_used);
+ artifact_save_pulse(true); drain();
+ // Boot and same-uptime unload expiry target the durable pet's player. The
+ // callback saves the remaining pet equipment before releasing temporary pets.
+ for(bool durable : {false,true}) {
+ artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
+ auto pet_source=saved_holder;
+ if(durable) {
+ pet_source.domain=artifact_payload_domain::pet;
+ pet_source.payload_owner={item_owner_type::pet,123,77};
+ pet_source.owner_context=77; pet_source.owner_reference=123;
+ pet_source.custody.owner=pet_source.payload_owner;
+ }
+ auto &pet_row=artifact_rows[900]; pet_row.type=ARTIFACT_MAJOR;
+ pet_row.identity_state=artifact_identity_state::present; pet_row.canonical_item_uid=81000;
+ // Qualified pet recovery must override a stale previous player's tracking,
+ // including after placement retires the saved boot locator and the pet unloads.
+ pet_row.owned=true; pet_row.locType=ARTIFACT_ON_PC; pet_row.location=99; pet_row.timer=1;
+ pet_row.canonical_payloads={pet_source};
+ char_data pet={}; npc_only_data pet_data={}; pet.only.npc=&pet_data;
+ pet.specials.act=ACT_ISNPC; pet.in_room=NOWHERE; pet.player.name=const_cast<char *>("Pet");
+ pet.durable_pet_uid=durable ? 123 : 0; pet.durable_pet_owner_pid=durable ? 77 : 0;
+ follow_type follower={&pet,nullptr}; owner.followers=&follower;
+ offline_pet=&pet; offline_pet_owner=&owner;
+ for(int attempt=0;attempt<2;++attempt) {
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(offline_requested_pid==77 && offline_includes_pets && offline_callbacks.size()==1);
+  auto *recovered_pet_item=read_object_for_recovery(pet_source); assert(recovered_pet_item);
+  obj_to_char(recovered_pet_item,&pet);
+  assert(pet_row.canonical_payloads.empty() && pet_row.offline_pet_owner_pid==77);
+  if(!attempt) {
+   player_load_items_discard(&pet);
+   offline_callbacks.front()(nullptr);
+  } else {
+   auto *sibling=read_object(903,VIRTUAL); obj_to_char(sibling,&pet);
+   inspect_pet_snapshot=true; offline_callbacks.front()(&owner); inspect_pet_snapshot=false;
+   assert(!owner.followers && !pet.carrying && pet_row.identity_state==artifact_identity_state::retired);
+  }
+  offline_callbacks.clear();
+ }
+ offline_pet=offline_pet_owner=nullptr;
+ artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
  // Qualified absence may clear obsolete timer tracking, preserving configured availability.
  artifact_rows.clear(); artifact_binds.clear();
  auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;
@@ -1580,10 +1677,11 @@ void monolith_cases() {
   command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
  owner.player.level=62; use(); assert(monolith.value[0]==2 && artifact_rows.at(900).timer==initial+14400 &&
   command_output.find("satisfaction")==std::string::npos); owner.player.level=51;
- artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==2 &&
-  artifact_rows.at(900).timer==initial+14400 && command_output.find("satisfaction")==std::string::npos);
- artifact_rows.at(900).location=55;
- monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+14400 &&
+ // Stale tracking repairs from the live wearer before the monolith feeds it.
+ artifact_rows.at(900).location=77; use(); assert(monolith.value[0]==1 &&
+  artifact_rows.at(900).location==55 && artifact_rows.at(900).timer==initial+21600 &&
+  command_output=="&+RYou feel a sense of satisfaction from above.&n\r\n");
+ monolith.value[0]=0; use(); assert(artifact_rows.at(900).timer==initial+21600 &&
   command_output.find("satisfaction")==std::string::npos);
  // Clamping an over-cap artifact keeps its negative feedback, without a false positive.
  monolith.value[0]=1; artifact_rows.at(900).timer=time(nullptr)+ARTIFACT_BLOOD_DAYS*SECS_PER_REAL_DAY+120;
@@ -1672,6 +1770,7 @@ bool char_to_room(P_char ch,int room,int) {
 }
 P_char find_character_by_runtime_id(uint64_t id) { return transformed_live && id==transformed_mob.runtime_id ? &transformed_mob : nullptr; }
 void extract_char(P_char ch) {
+ if(ch==offline_pet) { assert(!ch->carrying); offline_pet_owner->followers=nullptr; return; }
  if(IS_PC(ch)) { terminal_item_cleanup(ch); return; }
  if(ch==transformation_source) ++transformation_removals;
  else { assert(ch==&transformed_mob && transformed_live && !ch->carrying); transformed_live=false; }

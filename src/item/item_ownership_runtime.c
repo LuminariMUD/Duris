@@ -487,13 +487,18 @@ bool item_ownership_runtime_owner_revision(const item_owner_identity &owner, uin
 }
 
 bool item_ownership_runtime_apply(const item_transfer_payload &payload,
-				  const item_transfer_result &result)
+				  const item_transfer_result &result,
+				  const uint64_t *item_revisions)
 {
 	if (!payload.item_count || payload.item_count > ITEM_TRANSFER_MAX_ITEMS ||
 	    result.item_count != payload.item_count ||
 	    result.root_item_uid != item_transfer_result_root(payload))
 		return false;
 	const bool creation = payload.from_owner.type == item_owner_type::system;
+	if (item_revisions)
+		for (size_t index = 0; index < payload.item_count; ++index)
+			if (!item_revisions[index] || (creation && item_revisions[index] != 1))
+				return false;
 	// Memory is the authority for a player, room, corpse, locker or pet, and the
 	// repository claimed the items from it: this cache learns the committed state
 	// instead of checking what it last saw.
@@ -573,7 +578,9 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 		entry.item_uid = payload.items[index].item_uid;
 		entry.vnum = payload.items[index].vnum;
 		// A claim moved a revision this cache did not see; the result bounds it.
-		if (memory_held && !in_step)
+		if (item_revisions)
+			entry.item_revision = item_revisions[index];
+		else if (memory_held && !in_step)
 			entry.item_revision = result.max_item_revision;
 		else
 			++entry.item_revision;

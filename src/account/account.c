@@ -2413,6 +2413,16 @@ void account_player_load_complete(P_desc d, player_load_result result)
 		result.pid = d->player_load_pid;
 		result.outcome = player_load_outcome::stale;
 	}
+	if (!player_load_items_read_current(result))
+	{
+		// Preserve this descriptor's request and original deadline. An unrelated
+		// concurrent save should refresh the read, not bounce a valid login.
+		if (player_load_pipeline_submit(result.request) ==
+		    player_load_submit_outcome::accepted)
+			return;
+		result.outcome = player_load_outcome::retryable_failure;
+		result.error_code = EAGAIN;
+	}
 	if (d->player_load_pid <= 0 || result.outcome != player_load_outcome::applied)
 	{
 		d->player_load_request_id = 0;

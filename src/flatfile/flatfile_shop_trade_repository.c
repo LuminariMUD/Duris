@@ -20,6 +20,9 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_store.h"
 #include "economy/shop_trade_command.h"
+#include "economy/currency_value.h"
+#include "flatfile/flatfile_player_snapshot_file.h"
+#include "player/player_snapshot_codec.h"
 
 #include <algorithm>
 #include <array>
@@ -37,7 +40,7 @@
 namespace
 {
 constexpr std::array<uint8_t, 8> catalog_magic = { 'D', 'U', 'R', 'S', 'H', 'T', 'X', 0 };
-constexpr uint32_t catalog_version = 2;
+constexpr uint32_t catalog_version = 3;
 constexpr size_t catalog_maximum_operations = 262144;
 constexpr size_t catalog_maximum_bytes = 128 * 1024 * 1024;
 constexpr const char *catalog_filename = "shop_trade_operations";
@@ -47,6 +50,8 @@ struct operation_record
 {
 	critical_operation_id operation_id = {};
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> command_digest = {};
+	uint32_t player_pid = 0; // zero in legacy receipts without compound payment
+	int64_t payment = 0;
 	unsigned int result_code = 0;
 	uint32_t result_size = SHOP_TRADE_RESULT_BYTES;
 	std::array<uint8_t, SHOP_TRADE_RESULT_BYTES> result = {};
@@ -151,6 +156,8 @@ bool encode_catalog(const operation_catalog &catalog, std::vector<uint8_t> *byte
 		payload.raw(operation.operation_id.bytes.data(),
 			    operation.operation_id.bytes.size());
 		payload.raw(operation.command_digest.data(), operation.command_digest.size());
+		payload.number(operation.player_pid);
+		payload.number(operation.payment);
 		payload.number<uint32_t>(operation.result_code);
 		payload.number<uint32_t>(operation.result_size);
 		payload.raw(operation.result.data(), operation.result_size);
@@ -182,8 +189,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, operation_catalog *catalo
 	uint32_t version = 0, payload_size = 0;
 	uint64_t revision = 0;
 	if (!header.number(&version) || !header.number(&payload_size) ||
-	    !header.number(&revision) || (version != 1 && version != catalog_version) ||
-	    !revision || payload_size != bytes.size() - header_size)
+	    !header.number(&revision) || (version < 1 || version > catalog_version) || !revision ||
+	    payload_size != bytes.size() - header_size)
 		return false;
 	const uint8_t *payload_bytes = bytes.data() + header_size;
 	std::array<uint8_t, SHA256_DIGEST_LENGTH> digest = {};
@@ -213,6 +220,8 @@ bool decode_catalog(const std::vector<uint8_t> &bytes, operation_catalog *catalo
 				 operation.operation_id.bytes.size()) ||
 		    !payload.raw(operation.command_digest.data(),
 				 operation.command_digest.size()) ||
+		    (version >= 3 && (!payload.number(&operation.player_pid) ||
+				      !payload.number(&operation.payment))) ||
 		    !payload.number(&result_code) ||
 		    (version >= 2 && !payload.number(&operation.result_size)) ||
 		    operation.result_size > operation.result.size() ||
@@ -269,7 +278,109 @@ critical_apply_result repository_failure(bool io_error, unsigned int terminal_co
 			    critical_apply_outcome::terminal_failure,
 		 0, io_error ? static_cast<unsigned int>(EIO) : terminal_code };
 }
+flatfile_player_domain_result
+prepare_payment(const std::string &root, const flatfile_authority_lock &lock,
+		const shop_trade_payload &payload, int64_t payment, shop_trade_result *result,
+		std::vector<flatfile_authority_operation> *operations, std::string *error)
+{
+	player_snapshot snapshot;
+	const auto read = flatfile_player_snapshot_read(root, payload.player_pid, &snapshot, error);
+	if (read != flatfile_player_load_result::ok)
+		return read == flatfile_player_load_result::io_error ?
+			       flatfile_player_domain_result::io_error :
+			       flatfile_player_domain_result::invalid;
+	if (snapshot.wallet_revision != payload.expected_wallet_revision)
+		return flatfile_player_domain_result::conflict;
+	currency_vector before, after;
+	unsigned found = 0;
+	for (const auto &field : snapshot.status_integers)
+		if (field.field >= player_status_field::copper &&
+		    field.field <= player_status_field::platinum)
+		{
+			const unsigned index = static_cast<unsigned>(field.field) -
+					       static_cast<unsigned>(player_status_field::copper);
+			const int64_t value = field.is_unsigned ?
+						      static_cast<int64_t>(field.unsigned_value) :
+						      field.signed_value;
+			if ((found & (1U << index)) || value < 0 || value > INT32_MAX)
+				return flatfile_player_domain_result::invalid;
+			found |= 1U << index;
+			before.amount[index] = value;
+		}
+	critical_entity_key account;
+	if (found != 15 || !currency_wallet_after_value(before, payment, &after) ||
+	    !currency_account_key(payload.account_name.data(), 0, &account))
+		return flatfile_player_domain_result::conflict;
+	std::array<uint64_t, 4> wallet;
+	std::copy(after.amount.begin(), after.amount.end(), wallet.begin());
+	const auto prepared = flatfile_player_domain_prepare_wallet(
+		root, lock, payload.player_pid, payload.expected_wallet_revision, account.id,
+		wallet, operations, error);
+	if (prepared == flatfile_player_domain_result::ok)
+	{
+		result->wallet = after;
+		result->wallet_revision = payload.expected_wallet_revision + 1;
+	}
+	return prepared;
+}
 } // namespace
+
+flatfile_player_domain_result
+flatfile_shop_trade_settle_snapshot(const std::string &root, const flatfile_authority_lock &lock,
+				    player_snapshot *snapshot, std::string *error)
+{
+	if (!snapshot || !lock.matches(root))
+		return flatfile_player_domain_result::invalid;
+	operation_catalog catalog;
+	if (const auto read = load_catalog(root, &catalog, error); read != flatfile_read_result::ok)
+		return read == flatfile_read_result::io_error ?
+			       flatfile_player_domain_result::io_error :
+			       flatfile_player_domain_result::invalid;
+	const auto &tag = snapshot->pending_trade;
+	for (const auto &operation : catalog.operations)
+		if (operation.operation_id.bytes == tag.operation)
+		{
+			shop_trade_result result;
+			if (operation.player_pid != static_cast<uint32_t>(snapshot->pid) ||
+			    operation.payment != tag.payment || tag.has_cargo_effect ||
+			    CRYPTO_memcmp(operation.command_digest.data(), tag.command_hash.data(),
+					  tag.command_hash.size()) ||
+			    !shop_trade_command_decode_result(operation.result.data(),
+							      operation.result_size, &result) ||
+			    (!operation.result_code &&
+			     result.wallet_revision != tag.wallet_revision + 1))
+				return flatfile_player_domain_result::invalid;
+			if (!operation.result_code && operation.payment > 0 &&
+			    (snapshot->components & PLAYER_COMPONENT_INVENTORY))
+			{
+				uint64_t revision = 0;
+				std::vector<flatfile_item_ownership_record> owned;
+				const auto read = flatfile_item_repository_load_owner_locked(
+					root, lock,
+					{ item_owner_type::player, operation.player_pid, 0 },
+					&revision, &owned, error);
+				if (read != flatfile_item_repository_result::ok)
+					return read == flatfile_item_repository_result::io_error ?
+						       flatfile_player_domain_result::io_error :
+						       flatfile_player_domain_result::invalid;
+				const auto reconciled =
+					flatfile_shop_trade_materialization_reconcile(
+						root, lock, operation.player_pid, owned, snapshot,
+						error,
+						{ result.item_uids.data(), result.item_count });
+				if (reconciled != flatfile_shop_trade_materialization_result::ok)
+					return reconciled == flatfile_shop_trade_materialization_result::
+								       io_error ?
+						       flatfile_player_domain_result::io_error :
+						       flatfile_player_domain_result::invalid;
+			}
+			return player_snapshot_settle_trade(snapshot, !operation.result_code) ==
+					       player_snapshot_codec_result::ok ?
+				       flatfile_player_domain_result::ok :
+				       flatfile_player_domain_result::invalid;
+		}
+	return flatfile_player_domain_result::not_found;
+}
 
 bool flatfile_shop_trade_repository_validate(const std::string &root, std::string *error)
 {
@@ -316,7 +427,17 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 	    catalog.revision == std::numeric_limits<uint64_t>::max())
 		return { critical_apply_outcome::terminal_failure, catalog.revision, ENOSPC };
 
-	// The wallet is memory's: a purchase paid at submit and a sale is paid at commit.
+	// Payment and item custody must survive the same commit, including a crash
+	// before game-thread publication. The preceding capture supplies the purse.
+	const int64_t payment = payload.action == shop_trade_action::buy_existing ||
+						payload.action == shop_trade_action::buy_produced ?
+					-payload.price :
+				payload.action == shop_trade_action::discard_invalid ?
+					0 :
+					payload.price;
+	shop_trade_result result = {};
+	result.action = payload.action;
+	std::vector<flatfile_authority_operation> wallet_operations;
 	flatfile_item_shop_trade_mutation items;
 	flatfile_shopkeeper_trade_mutation shop;
 	flatfile_shop_trade_materialization_mutation materialization;
@@ -347,8 +468,16 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 				prepared == flatfile_shop_trade_materialization_result::io_error,
 				EILSEQ);
 	}
-	shop_trade_result result = {};
-	result.action = payload.action;
+	if (!result_code && payment)
+	{
+		const auto prepared = prepare_payment(root, lock, payload, payment, &result,
+						      &wallet_operations, &error);
+		if (prepared == flatfile_player_domain_result::io_error)
+			return repository_failure(true, EIO);
+		if (prepared != flatfile_player_domain_result::ok)
+			result_code = prepared == flatfile_player_domain_result::conflict ? ESTALE :
+											    EILSEQ;
+	}
 	if (!result_code)
 	{
 		result.shop_revision = shop.shop_revision;
@@ -361,6 +490,8 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 	operation_record operation = {};
 	operation.operation_id = command.operation_id;
 	operation.command_digest = digest;
+	operation.player_pid = payload.player_pid;
+	operation.payment = payment;
 	operation.result_code = result_code;
 	if (!shop_trade_command_encode_result(result, &operation.result))
 		return { critical_apply_outcome::terminal_failure, catalog.revision, EBADMSG };
@@ -392,7 +523,14 @@ critical_apply_result flatfile_shop_trade_repository_apply(const std::string &ro
 	{
 		return { critical_apply_outcome::retryable_failure, catalog.revision - 1, ENOMEM };
 	}
-	const auto committed = flatfile_authority_transaction_commit(root, lock, images, &error);
+	if (result_code)
+		wallet_operations.clear();
+	for (auto &image : images)
+		wallet_operations.push_back({ flatfile_authority_store::domains,
+					      flatfile_authority_operation_kind::write,
+					      std::move(image.filename), std::move(image.bytes) });
+	const auto committed = flatfile_authority_transaction_commit_operations(
+		root, lock, wallet_operations, &error);
 	if (committed != flatfile_authority_transaction_result::ok)
 		return repository_failure(
 			committed == flatfile_authority_transaction_result::io_error, EILSEQ);

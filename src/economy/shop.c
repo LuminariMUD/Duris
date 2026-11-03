@@ -230,23 +230,24 @@ static bool shop_stage_produced(P_char ch, P_obj stock, P_obj destination, int r
 
 static void shop_produced_completion(P_char ch, bool committed, const shop_trade_payload &payload)
 {
-	auto found = produced_purchase_batches.find(static_cast<uint32_t>(GET_PID(ch)));
+	const uint32_t pid = ch ? static_cast<uint32_t>(GET_PID(ch)) : payload.player_pid;
+	auto found = produced_purchase_batches.find(pid);
 	if (found == produced_purchase_batches.end() || found->second.item_uids.empty() ||
 	    found->second.item_uids.front() != payload.selected_item_uid)
 		return;
 	produced_purchase_batch batch = std::move(found->second);
 	produced_purchase_batches.erase(found);
-	if (ch->desc)
+	if (ch && ch->desc)
 		ch->desc->prompt_mode = TRUE;
 	if (!committed)
 	{
-		// Flat-file escrow is refunded by shop_trade_transaction; grant failures
-		// settle here after the grant queue relinquishes its objects.
-		if (!payload.multi_root)
+		// Flat-file payment was never charged. Grant failures settle here after
+		// the grant queue relinquishes its objects.
+		if (ch && !payload.multi_root)
 			shop_creation_refund(ch, batch);
 		shop_discard_produced(batch);
 		shop_purchase_report(ch, batch, 0);
-		if (batch.requested == 1)
+		if (ch && batch.requested == 1)
 			send_to_char(
 				"The purchase could not be delivered; you were not charged.\r\n",
 				ch);
@@ -256,6 +257,11 @@ static void shop_produced_completion(P_char ch, bool committed, const shop_trade
 	const int64_t total = batch.price * static_cast<int64_t>(batch.item_uids.size());
 	if (keeper && !batch.keeper_credited && total > 0)
 		ADD_MONEY(keeper, total);
+	if (!ch)
+	{
+		shop_discard_produced(batch); // durable delivery reconstructs the forest
+		return;
+	}
 	char message[MAX_STRING_LENGTH];
 	if (keeper)
 	{
@@ -486,8 +492,10 @@ static bool shop_trade_route_invalid_cleanup(P_char ch, P_char keeper, P_obj obj
 static void shop_trade_completion(P_char ch, bool committed, const shop_trade_result &result,
 				  unsigned int error_code, const shop_trade_payload &payload)
 {
-	if (!ch)
-		return;
+	// Durable delivery owns the absent actor's copies even if optional cache
+	// publication failed. Leaving those bodies live would duplicate them on load.
+	if (!ch && result.shop_revision && result.item_count)
+		committed = true;
 	if (payload.multi_root)
 	{
 		shop_produced_completion(ch, committed, payload);
@@ -506,7 +514,7 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 	const bool correct_location = object &&
 				      (payload.action != shop_trade_action::sell_store || keeper) &&
 				      ((produced && keeper && OBJ_NOWHERE(object) &&
-					(!payload.target_parent_item_uid ||
+					(!payload.target_parent_item_uid || !ch ||
 					 (destination && OBJ_CARRIED_BY(destination, ch) &&
 					  GET_ITEM_TYPE(destination) == ITEM_CONTAINER))) ||
 				       (!produced && buying && keeper && OBJ_CARRIED(object) &&
@@ -532,6 +540,8 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 		else if (produced && object && OBJ_NOWHERE(object) &&
 			 shop_trade_runtime_object_matches_payload(object, payload))
 			extract_obj(object, FALSE);
+		if (!ch)
+			return;
 		if (!durable_commit && error_code == ENOSPC)
 			send_to_char("You don't have enough money for that purchase.\r\n", ch);
 		else if (!durable_commit && error_code == ESTALE)
@@ -552,17 +562,26 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 	}
 	if (buying)
 	{
-		act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
+		if (ch)
+			act("$n buys $p.", FALSE, ch, object, 0, TO_ROOM);
 		if (keeper)
 		{
-			checked_substitute(message, MAX_STRING_LENGTH,
-					   shop_index[payload.shop_id].message_buy, GET_NAME(ch),
-					   coin_stringv(payload.price));
-			do_tell(keeper, message, 0);
+			if (ch)
+			{
+				checked_substitute(message, MAX_STRING_LENGTH,
+						   shop_index[payload.shop_id].message_buy,
+						   GET_NAME(ch), coin_stringv(payload.price));
+				do_tell(keeper, message, 0);
+			}
 			ADD_MONEY(keeper, payload.price);
 		}
 		if (!produced)
 			obj_from_char(object);
+		if (!ch)
+		{
+			extract_obj(object, FALSE); // the committed delivery owns this UID
+			return;
+		}
 		SET_BIT(object->extra2_flags, ITEM2_STOREITEM);
 		obj_to_char(object, ch);
 		if (payload.target_parent_item_uid)
@@ -576,19 +595,28 @@ static void shop_trade_completion(P_char ch, bool committed, const shop_trade_re
 		return;
 	}
 
-	act("$n sells $p.", FALSE, ch, object, 0, TO_ROOM);
-	sql_shop_sell(ch, object, payload.price);
+	if (ch)
+	{
+		act("$n sells $p.", FALSE, ch, object, 0, TO_ROOM);
+		sql_shop_sell(ch, object, payload.price);
+	}
 	if (keeper)
 	{
-		checked_substitute(message, MAX_STRING_LENGTH,
-				   shop_index[payload.shop_id].message_sell, GET_NAME(ch),
-				   coin_stringv(payload.price));
-		do_tell(keeper, message, 0);
+		if (ch)
+		{
+			checked_substitute(message, MAX_STRING_LENGTH,
+					   shop_index[payload.shop_id].message_sell, GET_NAME(ch),
+					   coin_stringv(payload.price));
+			do_tell(keeper, message, 0);
+		}
 		SUB_MONEY(keeper, payload.price, 0);
 	}
-	snprintf(message, MAX_STRING_LENGTH, "The shopkeeper gives you %s.\r\n",
-		 coin_stringv(payload.price));
-	send_to_char(message, ch);
+	if (ch)
+	{
+		snprintf(message, MAX_STRING_LENGTH, "The shopkeeper gives you %s.\r\n",
+			 coin_stringv(payload.price));
+		send_to_char(message, ch);
+	}
 	// The sale took the item out of the seller's inventory when it was submitted.
 	if (payload.action == shop_trade_action::sell_destroy)
 		extract_obj(object, TRUE);

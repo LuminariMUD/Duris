@@ -15,6 +15,7 @@
 #include "guild/artifact_guild_state.h"
 #include "persistence/persistence_log.h"
 #include "player/player_save_worker.h"
+#include "player/player_load_items.h"
 #include "economy/divine_boon_activity.h"
 #include "economy/divine_boon_delivery.h"
 #include "sql/sql_async.h"
@@ -38,6 +39,11 @@ HARNESS_STUB bool currency_transaction_wallet_busy(P_char ch)
 HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 {
 	return false;
+}
+struct player_snapshot;
+HARNESS_STUB bool shop_trade_transaction_capture_items(P_char, player_snapshot *)
+{
+	return true;
 }
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
@@ -130,7 +136,15 @@ HARNESS_STUB void artifact_restore_scope::commit()
 
 // Fixtures without artifact state still exercise their ordinary item lifecycle.
 HARNESS_STUB void artifact_object_placed(P_obj) {}
-HARNESS_STUB bool artifact_reconcile_player_owner(P_obj, const item_ownership_runtime_entry *)
+HARNESS_STUB bool artifact_tracks_vnum(int)
+{
+	return false;
+}
+HARNESS_STUB bool player_load_items_read_current(const player_load_result &)
+{
+	return true;
+}
+HARNESS_STUB bool artifact_reconcile_player_owner(P_obj)
 {
 	return false;
 }
@@ -146,6 +160,10 @@ HARNESS_STUB player_save_submit_result persistence_writer_submit(persistence_job
 {
 	errno = ESHUTDOWN;
 	return player_save_submit_result::unavailable;
+}
+HARNESS_STUB player_save_worker_health player_save_worker_health_copy()
+{
+	return {};
 }
 HARNESS_STUB void gmcp_char_vitals(P_char) {}
 HARNESS_STUB void gmcp_items_changed(P_char) {}

@@ -4,6 +4,8 @@
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "flatfile/flatfile_shopkeeper_repository.h"
 #include "player/player_snapshot_codec.h"
+#include "flatfile/flatfile_player_snapshot_file.h"
+#include "flatfile/flatfile_store.h"
 
 #include <cerrno>
 #include <algorithm>
@@ -69,7 +71,7 @@ static shop_trade_payload purchase(const std::vector<player_item_snapshot> &item
 	payload.racewar = 1;
 	strcpy(payload.account_name.data(), "shop-account");
 	payload.price = 100;
-	payload.expected_wallet_revision = 0;
+	payload.expected_wallet_revision = 1;
 	payload.expected_bank_revision = 1;
 	payload.expected_shop_revision = 1;
 	payload.selected_item_uid = items.front().object_uid;
@@ -121,28 +123,35 @@ static shop_trade_result result_of(const critical_apply_result &applied)
 
 // Build the actual historical v1 layout: one fixed 304-byte result, no
 // per-record length. The command ID/digest and all result fields are retained.
-static void historical_catalog(const fs::path &path)
+static std::vector<uint8_t> historical_catalog(const fs::path &path, uint32_t version = 1)
 {
 	std::ifstream input(path, std::ios::binary);
 	std::vector<uint8_t> current((std::istreambuf_iterator<char>(input)), {});
-	require(current.size() == 116 + SHOP_TRADE_RESULT_BYTES,
+	require(current.size() == 128 + SHOP_TRADE_RESULT_BYTES,
 		"expected one current operation record");
-	std::vector<uint8_t> legacy(current.begin(), current.begin() + 112);
-	legacy.insert(legacy.end(), current.begin() + 116,
-		      current.begin() + 116 + SHOP_TRADE_LEGACY_RESULT_BYTES);
+	std::vector<uint8_t> legacy(current.begin(), current.begin() + 108);
+	legacy.insert(legacy.end(), current.begin() + 120, current.begin() + 124);
+	if (version == 2)
+		legacy.insert(legacy.end(), current.begin() + 124, current.begin() + 128);
+	legacy.insert(legacy.end(), current.begin() + 128,
+		      current.begin() + 128 +
+			      (version == 1 ? SHOP_TRADE_LEGACY_RESULT_BYTES :
+					      SHOP_TRADE_RESULT_BYTES));
 	auto number = [&](size_t offset, uint32_t value)
 	{
 		for (size_t index = 0; index < 4; ++index)
 			legacy[offset + index] = static_cast<uint8_t>(value >> (index * 8));
 	};
-	number(8, 1);
+	number(8, version);
 	number(12, static_cast<uint32_t>(legacy.size() - 56));
-	legacy[113] = 1;
+	if (version == 1)
+		legacy[113] = 1;
 	SHA256(legacy.data() + 56, legacy.size() - 56, legacy.data() + 24);
 	std::ofstream output(path, std::ios::binary | std::ios::trunc);
 	output.write(reinterpret_cast<const char *>(legacy.data()),
 		     static_cast<std::streamsize>(legacy.size()));
 	require(output.good(), "could not write historical operation fixture");
+	return current;
 }
 
 int main(int argc, char **argv)
@@ -177,6 +186,28 @@ int main(int argc, char **argv)
 	require(flatfile_player_domain_establish(root.string(), player, &error) ==
 			flatfile_player_domain_result::ok,
 		"could not establish shop player: " + error);
+	player_snapshot baseline = {};
+	baseline.schema_version = PLAYER_SNAPSHOT_SCHEMA_VERSION;
+	baseline.pid = 42;
+	baseline.revision = 1;
+	baseline.components = PLAYER_CHECKPOINT_COMPONENT_ALL;
+	baseline.wallet_revision = 1;
+	baseline.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+	for (unsigned index = 0; index < 4; ++index)
+		baseline.status_integers.push_back(
+			{ static_cast<player_status_field>(
+				  static_cast<unsigned>(player_status_field::copper) + index),
+			  0, player.domains.wallet[index], true });
+	std::vector<uint8_t> baseline_bytes;
+	fs::create_directories(flatfile_player_snapshot_file::player_directory(root.string()));
+	fs::permissions(flatfile_player_snapshot_file::player_directory(root.string()),
+			fs::perms::owner_all, fs::perm_options::replace);
+	require(flatfile_player_snapshot_encode_file(&baseline, &baseline_bytes),
+		"encode pre-trade purse");
+	require(flatfile_atomic_write(
+			flatfile_player_snapshot_file::player_directory(root.string()),
+			flatfile_player_snapshot_file::player_filename(42), baseline_bytes, &error),
+		"save pre-trade purse: " + error);
 
 	const player_item_snapshot item = shop_item();
 	const player_item_snapshot child = shop_child();
@@ -224,13 +255,19 @@ int main(int argc, char **argv)
 			fs::exists(domains / ".critical-authority-transaction"),
 		"interrupted purchase did not preserve its cross-authority intent");
 
-	// The wallet is memory's: the purchase paid at submit, so the domain keeps its wallet.
+	// Recovering the interrupted item transaction must recover its payment too.
 	flatfile_player_domain_record loaded_player;
-	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
-					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 } &&
+	const auto recovered_player = flatfile_player_domain_load(root.string(), 42, "shop-account",
+								  1, &loaded_player, &error);
+	require(recovered_player == flatfile_player_domain_result::ok &&
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 9, 9 } &&
 			!fs::exists(domains / ".critical-authority-transaction"),
-		"player load did not recover interrupted purchase after-images");
+		"player load did not recover interrupted purchase after-images: status=" +
+			std::to_string(static_cast<int>(recovered_player)) +
+			" wallet=" + std::to_string(loaded_player.domains.wallet[0]) + "," +
+			std::to_string(loaded_player.domains.wallet[1]) + "," +
+			std::to_string(loaded_player.domains.wallet[2]) + "," +
+			std::to_string(loaded_player.domains.wallet[3]) + " " + error);
 
 	applied = flatfile_shop_trade_repository_apply(root.string(), purchase_command);
 	const shop_trade_result purchased = result_of(applied);
@@ -240,6 +277,57 @@ int main(int argc, char **argv)
 			purchased.item_uids[0] == 200 && purchased.item_revisions[0] == 2 &&
 			purchased.item_uids[1] == 201 && purchased.item_revisions[1] == 2,
 		"recovered purchase did not replay its exact result");
+	{
+		// A capture made after submit but before completion contains its old
+		// purse and receipt, possibly with unrelated income. Settle exactly once.
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "lock delayed purse capture");
+		auto delayed = baseline;
+		delayed.pending_trade.operation = purchase_command.operation_id.bytes;
+		delayed.pending_trade.payment = -100;
+		delayed.pending_trade.wallet_revision = 1;
+		std::vector<uint8_t> encoded;
+		require(critical_command_encode(purchase_command, &encoded) ==
+				critical_command_codec_result::ok,
+			"encode purchase receipt identity");
+		SHA256(encoded.data(), encoded.size(), delayed.pending_trade.command_hash.data());
+		auto wrong = delayed;
+		wrong.pending_trade.payment = -99;
+		require(flatfile_shop_trade_settle_snapshot(root.string(), lock, &wrong, &error) ==
+					flatfile_player_domain_result::invalid &&
+				wrong.wallet_revision == 1,
+			"receipt accepted a different payment");
+		wrong = delayed;
+		wrong.pending_trade.command_hash[0] ^= 1;
+		require(flatfile_shop_trade_settle_snapshot(root.string(), lock, &wrong, &error) ==
+				flatfile_player_domain_result::invalid,
+			"receipt accepted a different command");
+		delayed.status_integers[0].unsigned_value = 1;
+		++delayed.wallet_revision;
+		require(flatfile_shop_trade_settle_snapshot(root.string(), lock, &delayed,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				delayed.wallet_revision == 3 &&
+				!player_snapshot_trade_pending(delayed) &&
+				delayed.status_integers[0].unsigned_value == 1 &&
+				delayed.status_integers[2].unsigned_value == 9 &&
+				delayed.status_integers[3].unsigned_value == 9,
+			"delayed purchase capture lost unrelated income or missed its payment");
+	}
+	const auto current_catalog = historical_catalog(domains / "shop_trade_operations", 2);
+	const auto v2_replay =
+		flatfile_shop_trade_repository_apply(root.string(), purchase_command);
+	require(v2_replay.outcome == critical_apply_outcome::already_applied &&
+			v2_replay.result_size == applied.result_size &&
+			v2_replay.result_payload == applied.result_payload,
+		"version-2 receipt changed its original result");
+	{
+		std::ofstream restore(domains / "shop_trade_operations",
+				      std::ios::binary | std::ios::trunc);
+		restore.write(reinterpret_cast<const char *>(current_catalog.data()),
+			      current_catalog.size());
+		require(restore.good(), "restore current receipt fixture");
+	}
 	historical_catalog(domains / "shop_trade_operations");
 	const auto historical_result =
 		flatfile_shop_trade_repository_apply(root.string(), purchase_command);
@@ -312,13 +400,13 @@ int main(int argc, char **argv)
 
 	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 },
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 9, 9 },
 		"durable rejection changed player money");
 
 	shop_trade_payload sale = payload;
 	sale.action = shop_trade_action::sell_store;
 	sale.price = 50;
-	sale.expected_wallet_revision = 1;
+	sale.expected_wallet_revision = 2;
 	sale.expected_bank_revision = 2;
 	sale.expected_shop_revision = 2;
 	sale.stock_item_uid = 0;
@@ -326,9 +414,63 @@ int main(int argc, char **argv)
 	sale.stock_vnum = 0;
 	for (size_t index = 0; index < sale.item_count; ++index)
 		sale.items[index].expected_item_revision = 2;
-	applied = flatfile_shop_trade_repository_apply(root.string(), command(sale, 3));
+	const auto sale_command = command(sale, 3);
+	applied = flatfile_shop_trade_repository_apply(root.string(), sale_command);
 	require(applied.outcome == critical_apply_outcome::applied,
 		"could not commit retained sale for restart reconciliation");
+	player_snapshot second_capture;
+	const auto repeated_root = root.string() + "-repeated-sale";
+	{
+		// The disconnected seller's capture retains the held item. A committed
+		// receipt removes it before the save can claim it back from the shop.
+		flatfile_authority_lock lock;
+		require(lock.acquire(root.string(), &error), "lock delayed sale capture");
+		auto delayed = baseline;
+		delayed.wallet_revision = 2;
+		delayed.status_integers[2].unsigned_value = 9;
+		delayed.status_integers[3].unsigned_value = 9;
+		delayed.items = trade_items;
+		delayed.items.push_back(container);
+		delayed.pending_trade.operation = sale_command.operation_id.bytes;
+		delayed.pending_trade.payment = 50;
+		delayed.pending_trade.wallet_revision = 2;
+		std::vector<uint8_t> encoded;
+		require(critical_command_encode(sale_command, &encoded) ==
+				critical_command_codec_result::ok,
+			"encode sale receipt identity");
+		SHA256(encoded.data(), encoded.size(), delayed.pending_trade.command_hash.data());
+		second_capture = delayed;
+		require(flatfile_shop_trade_settle_snapshot(root.string(), lock, &delayed,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				!player_snapshot_trade_pending(delayed) &&
+				delayed.items.size() == 1 && delayed.items[0].object_uid == 700 &&
+				delayed.status_integers[1].unsigned_value == 5,
+			"committed sale capture reclaimed its sold item or missed its credit");
+		// The real save retires materialization evidence after its first full
+		// capture. A second queued capture still has the held sale graph/tag.
+		fs::copy(root, repeated_root, fs::copy_options::recursive);
+	}
+	{
+		flatfile_authority_lock repeated_lock;
+		require(repeated_lock.acquire(repeated_root, &error), "lock repeated sale capture");
+		flatfile_authority_operation retirement;
+		require(flatfile_shop_trade_materialization_prepare_player_remove(
+				repeated_root, repeated_lock, 42, &retirement, &error) ==
+					flatfile_shop_trade_materialization_result::ok &&
+				flatfile_authority_transaction_commit_operations(
+					repeated_root, repeated_lock, { retirement }, &error) ==
+					flatfile_authority_transaction_result::ok,
+			"retire first sale capture materialization evidence");
+		auto repeated = second_capture;
+		require(flatfile_shop_trade_settle_snapshot(repeated_root, repeated_lock, &repeated,
+							    &error) ==
+					flatfile_player_domain_result::ok &&
+				!player_snapshot_trade_pending(repeated) &&
+				repeated.items.size() == 1 && repeated.items[0].object_uid == 700 &&
+				repeated.status_integers[1].unsigned_value == 5,
+			"second sale capture restored sold UIDs after evidence retirement");
+	}
 	player_items.clear();
 	require(flatfile_item_repository_load_owner(root.string(), player_owner, &player_revision,
 						    &player_items, &error) ==
@@ -352,7 +494,7 @@ int main(int argc, char **argv)
 	produced_item.generated_key = 1300;
 	shop_trade_payload produced = purchase({ produced_item });
 	produced.action = shop_trade_action::buy_produced;
-	produced.expected_wallet_revision = 2;
+	produced.expected_wallet_revision = 3;
 	produced.expected_bank_revision = 3;
 	produced.expected_shop_revision = 3;
 	produced.selected_item_uid = 300;
@@ -407,7 +549,7 @@ int main(int argc, char **argv)
 			"materialization health did not report bounded catalog usage: " + error);
 	}
 	shop_trade_payload repurchase = payload;
-	repurchase.expected_wallet_revision = 3;
+	repurchase.expected_wallet_revision = 4;
 	repurchase.expected_bank_revision = 4;
 	repurchase.expected_shop_revision = 4;
 	repurchase.expected_stock_item_revision = 3;
@@ -441,7 +583,7 @@ int main(int argc, char **argv)
 	shop_trade_payload resale = payload;
 	resale.action = shop_trade_action::sell_store;
 	resale.price = 50;
-	resale.expected_wallet_revision = 4;
+	resale.expected_wallet_revision = 5;
 	resale.expected_bank_revision = 5;
 	resale.expected_shop_revision = 5;
 	resale.stock_item_uid = 0;
@@ -455,7 +597,7 @@ int main(int argc, char **argv)
 	shop_trade_payload cleanup = resale;
 	cleanup.action = shop_trade_action::discard_invalid;
 	cleanup.price = 0;
-	cleanup.expected_wallet_revision = 5;
+	cleanup.expected_wallet_revision = 6;
 	cleanup.expected_bank_revision = 6;
 	cleanup.expected_shop_revision = 6;
 	cleanup.stock_item_uid = 200;
@@ -481,8 +623,9 @@ int main(int argc, char **argv)
 		"invalid-stock cleanup did not recover and replay exactly");
 	require(flatfile_player_domain_load(root.string(), 42, "shop-account", 1, &loaded_player,
 					    &error) == flatfile_player_domain_result::ok &&
-			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 0, 0, 10 },
-		"the shop trades changed the player's saved wallet");
+			loaded_player.domains.wallet == std::array<uint64_t, 4>{ 0, 10, 7, 9 } &&
+			loaded_player.domains.wallet_revision == 6,
+		"shop payments were not committed exactly once with the item trades");
 	shops.clear();
 	require(flatfile_shopkeeper_list(root.string(), &shops, &error) ==
 				flatfile_shopkeeper_result::ok &&
@@ -570,6 +713,15 @@ int main(int argc, char **argv)
 	fs::create_directories(batch_root / "domains");
 	fs::permissions(batch_root, fs::perms::owner_all, fs::perm_options::replace);
 	fs::permissions(batch_root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	require(flatfile_player_domain_establish(batch_root.string(), player, &error) ==
+			flatfile_player_domain_result::ok,
+		"establish batch purse");
+	fs::create_directories(batch_root / "players");
+	fs::permissions(batch_root / "players", fs::perms::owner_all, fs::perm_options::replace);
+	require(flatfile_atomic_write((batch_root / "players").string(),
+				      flatfile_player_snapshot_file::player_filename(42),
+				      baseline_bytes, &error),
+		"save batch purse");
 	require(flatfile_shopkeeper_establish(batch_root.string(), { shop }, &error) ==
 			flatfile_shopkeeper_result::ok,
 		"could not establish batch shop");
@@ -680,6 +832,35 @@ int main(int argc, char **argv)
 			require(restored.items[index].parent_index == 0,
 				"restored root escaped its bag");
 	}
+	// A financial refusal records only its receipt. Prepared item/shop changes
+	// must never escape when the compound purse cannot cover the purchase.
+	{
+		flatfile_authority_lock lock;
+		require(lock.acquire(batch_root.string(), &error), "lock empty purse fixture");
+		critical_entity_key account;
+		require(currency_account_key("shop-account", 0, &account), "fixture account key");
+		std::vector<flatfile_authority_operation> writes;
+		require(flatfile_player_domain_prepare_wallet(batch_root.string(), lock, 42, 2,
+							      account.id, {}, &writes, &error) ==
+					flatfile_player_domain_result::ok &&
+				flatfile_authority_transaction_commit_operations(
+					batch_root.string(), lock, writes, &error) ==
+					flatfile_authority_transaction_result::ok,
+			"empty purse fixture commit");
+	}
+	auto unaffordable = purchase(trade_items);
+	unaffordable.expected_wallet_revision = 3;
+	unaffordable.expected_shop_revision = 2;
+	const auto declined = flatfile_shop_trade_repository_apply(batch_root.string(),
+								   command(unaffordable, 80));
+	require(declined.outcome == critical_apply_outcome::terminal_failure &&
+			declined.error_code == ESTALE &&
+			flatfile_item_repository_load_owner(batch_root.string(), shop_owner,
+							    &shop_revision, &remaining_shop_items,
+							    &error) ==
+				flatfile_item_repository_result::ok &&
+			remaining_shop_items.size() == 2 && shop_revision == 1,
+		"financial refusal transferred shop stock");
 	const auto old_replay =
 		flatfile_shop_trade_repository_apply(root.string(), purchase_command);
 	require(old_replay.result_size == historical_result.result_size &&

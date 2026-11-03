@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "player/player_load_items.h"
+#include "player/player_save_worker.h"
 #include "combat/trap_legacy.h"
 
 #include "net/comm.h"
@@ -364,8 +365,7 @@ void apply_extra_descriptions(P_obj object, const player_item_snapshot &item)
 
 void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects,
 			     const std::vector<size_t> &roots,
-			     const std::vector<player_item_snapshot> &items,
-			     const std::vector<item_ownership_runtime_entry> &ownership)
+			     const std::vector<player_item_snapshot> &items)
 {
 	P_obj carrying_tail = character->carrying;
 	while (carrying_tail && carrying_tail->next_content)
@@ -401,10 +401,10 @@ void attach_loaded_inventory(P_char character, const std::vector<P_obj> &objects
 				object->g_key = 1;
 		}
 	}
-	for (size_t index = 0; index < objects.size(); ++index)
+	for (P_obj object : objects)
 	{
-		artifact_object_placed(objects[index]);
-		artifact_reconcile_player_owner(objects[index], &ownership[index]);
+		artifact_object_placed(object);
+		artifact_reconcile_player_owner(object);
 	}
 	balance_affects(character);
 }
@@ -824,7 +824,7 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		for (size_t root : roots)
 			detached_roots->push_back(staged.objects[root]);
 	else
-		attach_loaded_inventory(character, staged.objects, roots, items, ownership);
+		attach_loaded_inventory(character, staged.objects, roots, items);
 	for (P_obj object : staged.objects)
 		artifact_object_placed(object);
 	staged.published = true;
@@ -963,11 +963,33 @@ bool player_load_item_graph_materialize(P_char character,
 		hydrate_ownership, false, metrics);
 }
 
+bool player_load_items_read_current(const player_load_result &result)
+{
+	if (result.outcome != player_load_outcome::applied ||
+	    result.item_read_writer_sequence == UINT64_MAX ||
+	    (result.item_read_writer_sequence &&
+	     result.item_read_writer_sequence == persistence_writer_read_sequence()))
+		return true;
+	for (const auto &item : result.snapshot.items)
+		if ((item.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(item.vnum))
+			return false;
+	for (const auto &pet : result.snapshot.pets)
+		for (const auto &item : pet.items)
+			if ((item.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(item.vnum))
+				return false;
+	for (const auto &source : result.item_sources)
+		if ((source.extra_flags & ITEM_ARTIFACT) || artifact_tracks_vnum(source.vnum))
+			return false;
+	return true;
+}
+
 unsigned int player_load_items_qualify(player_load_result *result)
 {
 	if (!result || result->outcome != player_load_outcome::applied ||
 	    result->snapshot.items.size() != result->item_identities.size())
 		return EINVAL;
+	if (!player_load_items_read_current(*result))
+		return EAGAIN;
 	try
 	{
 		auto &sources = result->item_sources;

@@ -38,6 +38,25 @@ not an upper bound on loss: batching, refused admission, writer retries, or an
 outage can leave older state unwritten. Inspect the writer's oldest age and the
 player's written revision when assessing durability.
 
+## Flat-file shop payments
+
+Shop trades reserve their signed wallet payment in memory without charging early.
+A full pre-trade capture is queued before the item is held and the command is
+submitted. The writer's tail-only replacement rule preserves that ordering.
+The shop command commits the purse, item custody, materialization evidence and
+receipt in one authority transaction, so a crash before completion cannot lose
+the payment or charge twice on replay. The game thread publishes the reserved
+payment once; a refused purchase needs no refund.
+
+Captures made while publication is pending carry the existing trade receipt tag.
+The writer matches the operation, command digest, player and payment before
+settling the capture, preserving unrelated wallet changes. A pending seller's
+held item stays in the capture until that receipt decides whether to retain it
+or reconcile the committed sale. Reservations are per player; an offline actor's
+completed payment releases the load hold so login can read the committed purse.
+Shop receipt catalog version 3 retains the settlement identity and payment;
+version 1 and 2 receipts still replay their original results.
+
 ## Game-thread SQL
 
 Code on the game thread that needs the database does not query it. It queues the SQL on the
