@@ -9,6 +9,7 @@
 #include "flatfile/flatfile_player_repository.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_codec.h"
+#include "world/world_recovery_pipeline.h"
 #include "core/defines.h"
 #include "core/files.h"
 
@@ -578,8 +579,12 @@ int main(int argc, char **argv)
 	// player_items: 1075's record keeps the newcomer's copy out, but player 39 does not
 	// hold it, so the floor copy is the one that comes back.
 	std::unordered_set<uint64_t> owned;
-	require(flatfile_item_repository_world_recovery_owned(
-			root, { 1072, 1075, 1079, 1005, 1004, 1099 }, &owned, &error) ==
+	const std::vector<world_recovery_authority_item> floor_items = {
+		{ 1072, 1072, 0, 3001, 572 }, { 1075, 1075, 0, 3001, 575 },
+		{ 1079, 1079, 0, 3001, 579 }, { 1005, 1005, 0, 3001, 505 },
+		{ 1004, 1004, 0, 3001, 504 }, { 1099, 1099, 0, 3001, 599 }
+	};
+	require(flatfile_item_repository_world_recovery_owned(root, floor_items, &owned, &error) ==
 				flatfile_item_repository_result::ok &&
 			(owned == std::unordered_set<uint64_t>{ 1072, 1079, 1005, 1004 }),
 		"world recovery counts what a load holds as owned, and only that: " + error);
