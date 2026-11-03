@@ -104,256 +104,262 @@ struct acct_entry *account_list = NULL;
 
 namespace
 {
-std::unordered_map<uint64_t, player_load_result> ready_player_loads;
+	std::unordered_map<uint64_t, player_load_result> ready_player_loads;
 
-struct account_deletion_identity
-{
-	int pid = 0;
-	std::string name;
-};
-
-void display_account_deletion_confirmation(P_desc d, bool retry)
-{
-	if (!d || !d->account || !d->account->acct_name)
-		return;
-	char prompt[1024];
-	checked_snprintf(
-		prompt, sizeof(prompt),
-		retry ? "\r\n&+RAccount deletion is already in progress.&n\r\n"
-			"Type the exact account name &+W%s&n to retry completion: " :
-			"\r\n&+R!!! PERMANENT ACCOUNT DELETION !!!&n\r\n"
-			"Every character and all live account data will be permanently deleted.\r\n"
-			"This cannot be cancelled after the deletion fence is written.\r\n\r\n"
-			"Type the exact account name &+W%s&n to continue, or &+WCANCEL&n: ",
-		d->account->acct_name);
-	SEND_TO_Q(prompt, d);
-	d->prompt_mode = TRUE;
-}
-
-bool capture_account_deletion_identities(P_desc d,
-					 std::vector<account_deletion_identity> *identities)
-{
-	if (!d || !d->account || !d->account->acct_name || !identities)
-		return false;
-	identities->clear();
-	auto append = [&](int pid, const char *name)
+	struct account_deletion_identity
 	{
-		if (pid <= 0 || !name || !name[0])
-			return false;
-		for (const auto &identity : *identities)
-			if (identity.pid == pid)
-				return !strcasecmp(identity.name.c_str(), name);
-		try
-		{
-			identities->push_back({ pid, name });
-			return true;
-		}
-		catch (const std::bad_alloc &)
-		{
-			return false;
-		}
+		int pid = 0;
+		std::string name;
 	};
-	for (struct acct_chars *character = d->account->acct_character_list; character;
-	     character = character->next)
-		if (!append(character->pid, character->charname))
-			return false;
-	for (P_desc other = descriptor_list; other; other = other->next)
-		if (other->account && other->account->acct_name && other->character &&
-		    !strcasecmp(other->account->acct_name, d->account->acct_name) &&
-		    !append(GET_PID(other->character), GET_NAME(other->character)))
-			return false;
-	return true;
-}
 
-bool account_deletion_locker_runtime_active(
-	const std::string &account_name, const std::vector<account_deletion_identity> &identities)
-{
-	std::string account_prefix = "account." + account_name + ".";
-	for (P_char character = character_list; character; character = character->next)
+	void display_account_deletion_confirmation(P_desc d, bool retry)
 	{
-		const char *name = GET_NAME(character);
-		if (!name)
-			continue;
-		if (!strncasecmp(name, account_prefix.c_str(), account_prefix.size()) &&
-		    strstr(name + account_prefix.size(), ".locker"))
-			return true;
-		for (const auto &identity : identities)
+		if (!d || !d->account || !d->account->acct_name)
+			return;
+		char prompt[1024];
+		checked_snprintf(
+			prompt, sizeof(prompt),
+			retry ? "\r\n&+RAccount deletion is already in progress.&n\r\n"
+				"Type the exact account name &+W%s&n to retry completion: " :
+				"\r\n&+R!!! PERMANENT ACCOUNT DELETION !!!&n\r\n"
+				"Every character and all live account data will be permanently deleted.\r\n"
+				"This cannot be cancelled after the deletion fence is written.\r\n\r\n"
+				"Type the exact account name &+W%s&n to continue, or &+WCANCEL&n: ",
+			d->account->acct_name);
+		SEND_TO_Q(prompt, d);
+		d->prompt_mode = TRUE;
+	}
+
+	bool capture_account_deletion_identities(P_desc d, std::vector<account_deletion_identity> *
+								   identities)
+	{
+		if (!d || !d->account || !d->account->acct_name || !identities)
+			return false;
+		identities->clear();
+		auto append = [&](int pid, const char *name)
 		{
-			std::string locker_name = identity.name + ".locker";
-			if (!strcasecmp(name, locker_name.c_str()))
-				return true;
-		}
-	}
-	return false;
-}
-
-void close_other_account_sessions(P_desc d)
-{
-	if (!d || !d->account || !d->account->acct_name)
-		return;
-	close_account_sessions_named(d->account->acct_name, d,
-				     "\r\nYour account is being permanently deleted.\r\n");
-}
-
-class account_deletion_drain_guard
-{
-    public:
-	account_deletion_drain_guard()
-	{
-		maintenance_scheduler_quiesce();
-		critical_command_coordinator_quiesce();
-		critical_outbox_quiesce();
-	}
-
-	~account_deletion_drain_guard()
-	{
-		if (player_quiesced_)
-			player_save_pipeline_resume();
-		critical_outbox_resume();
-		critical_command_coordinator_resume();
-		maintenance_scheduler_resume();
-	}
-
-	bool drain()
-	{
-		if (!maintenance_scheduler_drain(3000) ||
-		    !critical_command_coordinator_drain(3000) || !critical_outbox_drain(3000) ||
-		    !persistence_flush_all_character_saves())
-			return false;
-		player_save_pipeline_quiesce();
-		player_quiesced_ = true;
-		return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
-		       artifact_save_drain(3000);
-	}
-
-    private:
-	bool player_quiesced_ = false;
-};
-
-// The account's characters leave the game. Closing their sessions queued their terminal saves.
-void remove_deleted_account_characters(P_desc deleting_session,
-				       const std::vector<account_deletion_identity> &identities)
-{
-	for (P_char character = character_list, next = NULL; character; character = next)
-	{
-		next = character->next;
-		if (IS_NPC(character))
-			continue;
-		for (const auto &identity : identities)
-			if (GET_PID(character) == identity.pid)
+			if (pid <= 0 || !name || !name[0])
+				return false;
+			for (const auto &identity : *identities)
+				if (identity.pid == pid)
+					return !strcasecmp(identity.name.c_str(), name);
+			try
 			{
-				if (character->desc)
-				{
-					P_desc character_desc = character->desc;
-					character->desc = NULL;
-					character_desc->character = NULL;
-					if (character_desc != deleting_session)
-						close_socket(character_desc);
-				}
-				extract_char_after_terminal_save(character);
-				break;
+				identities->push_back({ pid, name });
+				return true;
 			}
+			catch(const std::bad_alloc &)
+			{
+				return false;
+			}
+		};
+		for (struct acct_chars *character = d->account->acct_character_list; character;
+		     character = character->next)
+			if (!append(character->pid, character->charname))
+				return false;
+		for (P_desc other = descriptor_list; other; other = other->next)
+			if (other->account && other->account->acct_name && other->character &&
+			    !strcasecmp(other->account->acct_name, d->account->acct_name) &&
+			    !append(GET_PID(other->character), GET_NAME(other->character)))
+				return false;
+		return true;
 	}
-}
 
-// The account's deletion committed: memory lets go of its characters.
-void forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
-{
-	for (const auto &identity : identities)
+	bool account_deletion_locker_runtime_active(
+		const std::string &account_name,
+		const std::vector<account_deletion_identity> &identities)
 	{
-		item_ownership_runtime_forget_player_domain(identity.pid);
-		player_revision_forget(identity.pid);
-		redis_invalidate_ship_snapshot(identity.name.c_str());
-		forget_deleted_guild_member(identity.name.c_str());
-		delete_ship_runtime(identity.name.c_str());
-	}
-}
-
-void display_account_login_pages(P_desc d)
-{
-	SEND_TO_Q("\r\n&+YNews:&n Type 'news' in game to read the latest updates.\r\n", d);
-	SEND_TO_Q(motd.c_str(), d);
-	SEND_TO_Q("\r\n*** PRESS RETURN: ", d);
-}
-
-bool prepare_account_reconnect(P_char character, P_desc descriptor)
-{
-	if (!character || !descriptor)
+		std::string account_prefix = "account." + account_name + ".";
+		for (P_char character = character_list; character; character = character->next)
+		{
+			const char *name = GET_NAME(character);
+			if (!name)
+				continue;
+			if (!strncasecmp(name, account_prefix.c_str(), account_prefix.size()) &&
+			    strstr(name + account_prefix.size(), ".locker"))
+				return true;
+			for (const auto &identity : identities)
+			{
+				std::string locker_name = identity.name + ".locker";
+				if (!strcasecmp(name, locker_name.c_str()))
+					return true;
+			}
+		}
 		return false;
+	}
 
-	const auto save_fenced = [character]()
-	{ return collector_service_player_save_fenced(character); };
-	const auto discard_stale_body = [character, descriptor]()
+	void close_other_account_sessions(P_desc d)
 	{
-		// Keep the account state machine attached to its menu descriptor.  A
-		// fenced linkdead body must not be extracted while it still owns the
-		// descriptor, because extract_char() would move that descriptor to the
-		// account menu as a side effect and the caller would lose its pending
-		// character-selection state.
-		if (descriptor->character == character)
-			descriptor->character = NULL;
-		character->desc = NULL;
-		SEND_TO_Q(
-			"Your previous session needs an authoritative inventory reload; loading a fresh character snapshot now.\r\n",
-			descriptor);
-		extract_char_after_terminal_save(character);
+		if (!d || !d->account || !d->account->acct_name)
+			return;
+		close_account_sessions_named(d->account->acct_name, d,
+					     "\r\nYour account is being permanently deleted.\r\n");
+	}
+
+	class account_deletion_drain_guard
+	{
+public:
+		account_deletion_drain_guard()
+		{
+			maintenance_scheduler_quiesce();
+			critical_command_coordinator_quiesce();
+			critical_outbox_quiesce();
+		}
+
+		~account_deletion_drain_guard()
+		{
+			if (player_quiesced_)
+				player_save_pipeline_resume();
+			critical_outbox_resume();
+			critical_command_coordinator_resume();
+			maintenance_scheduler_resume();
+		}
+
+		bool drain()
+		{
+			if (!maintenance_scheduler_drain(3000) ||
+			    !critical_command_coordinator_drain(3000) ||
+			    !critical_outbox_drain(3000) ||
+			    !persistence_flush_all_character_saves())
+				return false;
+			player_save_pipeline_quiesce();
+			player_quiesced_ = true;
+			return player_save_pipeline_drain(3000) && locker_async_drain(3000) &&
+			       artifact_save_drain(3000);
+		}
+
+private:
+		bool player_quiesced_ = false;
 	};
 
-	// Never replay a retained purchase or any other ready hook into a body
-	// whose graph is already fenced.
-	if (save_fenced())
+	// The account's characters leave the game. Closing their sessions queued their terminal saves.
+	void remove_deleted_account_characters(
+		P_desc deleting_session, const std::vector<account_deletion_identity> &identities)
 	{
-		discard_stale_body();
-		return false;
+		for (P_char character = character_list, next = NULL; character; character = next)
+		{
+			next = character->next;
+			if (IS_NPC(character))
+				continue;
+			for (const auto &identity : identities)
+				if (GET_PID(character) == identity.pid)
+				{
+					if (character->desc)
+					{
+						P_desc character_desc = character->desc;
+						character->desc = NULL;
+						character_desc->character = NULL;
+						if (character_desc != deleting_session)
+							close_socket(character_desc);
+					}
+					extract_char_after_terminal_save(character);
+					break;
+				}
+		}
 	}
 
-	// Keep the descriptor present while readiness callbacks run so a successful
-	// replay can report its result to the reconnecting player.  The caller only
-	// enters CON_PLAYING after this preflight succeeds.
-	character->desc = descriptor;
-	zone_touch_transaction_player_ready(character);
-	locker_identify_replay(character);
-	item_movement_transaction_player_ready(character);
-	shop_trade_transaction_player_ready(character);
-	auction_transaction_player_ready(character);
-	collector_transaction_player_ready(character);
-	collector_service_player_ready(character, false);
-	boon_reward_transaction_player_ready(character);
+	// The account's deletion committed: memory lets go of its characters.
+	void forget_deleted_account_characters(
+		const std::vector<account_deletion_identity> &identities)
+	{
+		for (const auto &identity : identities)
+		{
+			item_ownership_runtime_forget_player_domain(identity.pid);
+			player_revision_forget(identity.pid);
+			redis_invalidate_ship_snapshot(identity.name.c_str());
+			forget_deleted_guild_member(identity.name.c_str());
+			delete_ship_runtime(identity.name.c_str());
+		}
+	}
 
-	if (save_fenced())
+	void display_account_login_pages(P_desc d)
 	{
-		discard_stale_body();
-		return false;
+		SEND_TO_Q("\r\n&+YNews:&n Type 'news' in game to read the latest updates.\r\n", d);
+		SEND_TO_Q(motd.c_str(), d);
+		SEND_TO_Q("\r\n*** PRESS RETURN: ", d);
 	}
-	return true;
-}
 
-bool build_account_load_request(P_desc d, struct acct_chars *c, player_load_request *request_out)
-{
-	if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name || !request_out)
-		return false;
-	if (STATE(d) != CON_ACCT_DELETE_CHAR &&
-	    currency_transaction_chest_account_busy(d->account->acct_name))
+	bool prepare_account_reconnect(P_char character, P_desc descriptor)
 	{
-		SEND_TO_Q(
-			"Your chest purchase is still being secured; please try again shortly.\r\n",
-			d);
-		return false;
+		if (!character || !descriptor)
+			return false;
+
+		const auto save_fenced = [character]()
+		{ return collector_service_player_save_fenced(character); };
+		const auto discard_stale_body = [character, descriptor]()
+		{
+			// Keep the account state machine attached to its menu descriptor.  A
+			// fenced linkdead body must not be extracted while it still owns the
+			// descriptor, because extract_char() would move that descriptor to the
+			// account menu as a side effect and the caller would lose its pending
+			// character-selection state.
+			if (descriptor->character == character)
+				descriptor->character = NULL;
+			character->desc = NULL;
+			SEND_TO_Q(
+				"Your previous session needs an authoritative inventory reload; loading a fresh character snapshot now.\r\n",
+				descriptor);
+			extract_char_after_terminal_save(character);
+		};
+
+		// Never replay a retained purchase or any other ready hook into a body
+		// whose graph is already fenced.
+		if (save_fenced())
+		{
+			discard_stale_body();
+			return false;
+		}
+
+		// Keep the descriptor present while readiness callbacks run so a successful
+		// replay can report its result to the reconnecting player.  The caller only
+		// enters CON_PLAYING after this preflight succeeds.
+		character->desc = descriptor;
+		zone_touch_transaction_player_ready(character);
+		locker_identify_replay(character);
+		item_movement_transaction_player_ready(character);
+		shop_trade_transaction_player_ready(character);
+		auction_transaction_player_ready(character);
+		collector_transaction_player_ready(character);
+		collector_service_player_ready(character, false);
+		boon_reward_transaction_player_ready(character);
+
+		if (save_fenced())
+		{
+			discard_stale_body();
+			return false;
+		}
+		return true;
 	}
-	player_load_request request = {};
-	request.request_id = player_load_pipeline_next_request_id();
-	request.pid = c->pid;
-	request.account_name = d->account->acct_name;
-	if (STATE(d) == CON_ACCT_DELETE_CHAR)
+
+	bool build_account_load_request(P_desc d, struct acct_chars * c,
+					player_load_request * request_out)
 	{
-		// Confirmation only needs character metadata, not live items or pets.
-		request.include_items = false;
-		request.include_pets = false;
+		if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name ||
+		    !request_out)
+			return false;
+		if (STATE(d) != CON_ACCT_DELETE_CHAR &&
+		    currency_transaction_chest_account_busy(d->account->acct_name))
+		{
+			SEND_TO_Q(
+				"Your chest purchase is still being secured; please try again shortly.\r\n",
+				d);
+			return false;
+		}
+		player_load_request request = {};
+		request.request_id = player_load_pipeline_next_request_id();
+		request.pid = c->pid;
+		request.account_name = d->account->acct_name;
+		if (STATE(d) == CON_ACCT_DELETE_CHAR)
+		{
+			// Confirmation only needs character metadata, not live items or pets.
+			request.include_items = false;
+			request.include_pets = false;
+		}
+		request.deadline_usec =
+			persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
+		*request_out = std::move(request);
+		return true;
 	}
-	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
-	*request_out = std::move(request);
-	return true;
-}
 
 } // namespace
 
@@ -521,13 +527,14 @@ void send_account_password_prompt(P_desc d)
 static std::unordered_set<std::string> account_recovery_writes;
 #endif
 
-/* Apply only the password, and acknowledge it only after durable storage. */
-void account_apply_recovered_password(
-	P_acct fresh, const char *bcrypt_hash,
+/* Publish credential changes only after durable storage. Both paths share the
+ * same fence so a queued account snapshot cannot restore the old credentials. */
+static void account_apply_credentials(
+	P_acct fresh, const char *new_password, const char *verified_email,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	P_desc keep_session, account_recovery_apply_done done)
 {
-	if (!fresh || !bcrypt_hash || !*bcrypt_hash || !expected_fingerprint)
+	if (!fresh || (!new_password && !verified_email) || !expected_fingerprint)
 		return done(keep_session, account_recovery_apply_outcome::load_failed);
 
 	if (fresh->acct_blocked != 0)
@@ -543,9 +550,11 @@ void account_apply_recovered_password(
 		return done(keep_session, account_recovery_apply_outcome::superseded);
 
 	const std::string owner_name = fresh->acct_name;
-	const std::string password = bcrypt_hash;
-	const auto finish = [owner_name, password, done](P_desc requester,
-							 account_recovery_apply_outcome outcome)
+	const bool changing_email = verified_email != nullptr;
+	const std::string password = new_password ? new_password : "";
+	const std::string email = verified_email ? verified_email : "";
+	const auto finish = [owner_name, password, email, changing_email,
+			     done](P_desc requester, account_recovery_apply_outcome outcome)
 	{
 		if (outcome == account_recovery_apply_outcome::write_failed)
 		{
@@ -559,14 +568,19 @@ void account_apply_recovered_password(
 				if (session->account && session->account->acct_name &&
 				    !strcasecmp(owner_name.c_str(), session->account->acct_name))
 				{
-					if (session->account->acct_password)
-						FREE(session->account->acct_password);
-					session->account->acct_password = str_dup(password.c_str());
+					char **value = changing_email ?
+							       &session->account->acct_email :
+							       &session->account->acct_password;
+					if (*value)
+						FREE(*value);
+					*value = str_dup(changing_email ? email.c_str() :
+									  password.c_str());
 				}
-			close_account_sessions_named(
-				owner_name.c_str(), requester,
-				"\r\nThe password for this account was just reset from another connection. "
-				"Disconnecting.\r\n");
+			if (!changing_email)
+				close_account_sessions_named(
+					owner_name.c_str(), requester,
+					"\r\nThe password for this account was just reset from another connection. "
+					"Disconnecting.\r\n");
 		}
 		done(requester, outcome);
 	};
@@ -582,14 +596,16 @@ void account_apply_recovered_password(
 	const std::string old_password = fresh->acct_password ? fresh->acct_password : "";
 	const std::string old_email = fresh->acct_email ? fresh->acct_email : "";
 	const std::string update =
-		sql_format("UPDATE accounts SET password='%s' WHERE account_name='%s'",
-			   escape_str(password.c_str()).c_str(), name.c_str());
+		sql_format("UPDATE accounts SET %s='%s' WHERE account_name='%s'",
+			   changing_email ? "email" : "password",
+			   escape_str(changing_email ? email.c_str() : password.c_str()).c_str(),
+			   name.c_str());
 	const uint64_t wait_id = wait_for_writer(keep_session);
 	auto applied = std::make_shared<account_recovery_apply_outcome>(
 		account_recovery_apply_outcome::write_failed);
 	if (!sql_read_work(
-		    [name, old_password, old_email, password, update, applied](MYSQL *connection,
-									       sql_rows *)
+		    [name, old_password, old_email, password, email, changing_email, update,
+		     applied](MYSQL *connection, sql_rows *)
 		    {
 			    *applied = account_recovery_apply_outcome::write_failed;
 			    sql_rows rows;
@@ -604,11 +620,16 @@ void account_apply_recovered_password(
 				    *applied = account_recovery_apply_outcome::load_failed;
 			    else if (rows[0][2] && atoi(rows[0][2]) != 0)
 				    *applied = account_recovery_apply_outcome::fenced;
+			    else if (changing_email &&
+				     old_password != (rows[0][0] ? rows[0][0] : ""))
+				    *applied = account_recovery_apply_outcome::superseded;
+			    else if (changing_email && email == (rows[0][1] ? rows[0][1] : ""))
+				    *applied = account_recovery_apply_outcome::ok;
 			    else if (old_email != (rows[0][1] ? rows[0][1] : ""))
 				    *applied = account_recovery_apply_outcome::superseded;
 			    /* Recovery opts into replay after a lost COMMIT reply. This exact
 			     * salted hash identifies an already-applied retry. */
-			    else if (password == (rows[0][0] ? rows[0][0] : ""))
+			    else if (!changing_email && password == (rows[0][0] ? rows[0][0] : ""))
 				    *applied = account_recovery_apply_outcome::ok;
 			    else if (old_password != (rows[0][0] ? rows[0][0] : ""))
 				    *applied = account_recovery_apply_outcome::superseded;
@@ -633,13 +654,32 @@ void account_apply_recovered_password(
 	}
 #else
 
-	FREE(fresh->acct_password);
-	fresh->acct_password = str_dup(bcrypt_hash);
+	char **value = changing_email ? &fresh->acct_email : &fresh->acct_password;
+	if (*value)
+		FREE(*value);
+	*value = str_dup(changing_email ? email.c_str() : password.c_str());
 
 	finish(keep_session, write_account(fresh) == 1 ?
 				     account_recovery_apply_outcome::ok :
 				     account_recovery_apply_outcome::write_failed);
 #endif
+}
+
+void account_apply_recovered_password(
+	P_acct fresh, const char *bcrypt_hash,
+	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
+	P_desc keep_session, account_recovery_apply_done done)
+{
+	account_apply_credentials(fresh, bcrypt_hash, nullptr, expected_fingerprint, keep_session,
+				  done);
+}
+
+void account_apply_verified_email(
+	P_acct fresh, const char *email,
+	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
+	P_desc keep_session, account_recovery_apply_done done)
+{
+	account_apply_credentials(fresh, nullptr, email, expected_fingerprint, keep_session, done);
 }
 
 void select_accountname(P_desc d, char *arg)
@@ -812,28 +852,10 @@ static void finish_account_password(P_desc d, int password_valid, const char *ne
 	}
 
 	echo_on(d);
-#ifdef REQUIRE_EMAIL_VERIFICATION
-	if (is_account_confirmed(d))
-	{
-		// Display the news notice and MOTD before showing the account menu
-		display_account_login_pages(d);
-		update_account_iplist(d);
-		STATE(d) = CON_ACCT_RMOTD;
-		return;
-	}
-	else
-	{
-		confirm_account(d, NULL);
-		STATE(d) = CON_CONFIRM_ACCT;
-		return;
-	}
-#else
-	// Email verification disabled - skip confirmation and show the login pages
 	display_account_login_pages(d);
 	update_account_iplist(d);
 	STATE(d) = CON_ACCT_RMOTD;
 	return;
-#endif
 }
 
 bool account_login_password_pulse(P_desc d)
@@ -963,65 +985,69 @@ void display_account_menu(P_desc d, char *arg)
 	}
 }
 
+/* The account menu and registration use the same inbox-only challenge. */
+static void begin_account_email_verification(P_desc d, const char *email)
+{
+	const auto outcome = account_email_request(d->account, email, d->host);
+	if (outcome == account_recovery_request_outcome::queued ||
+	    outcome == account_recovery_request_outcome::suppressed)
+	{
+		SEND_TO_Q(
+			"\r\nCheck your inbox for a verification code. Your registered email stays unchanged\r\n"
+			"until you enter it. Codes expire in 15 minutes and at restart; requests are limited\r\n"
+			"to one every 10 minutes. Check spam, or contact staff if delivery fails.\r\n",
+			d);
+		STATE(d) = CON_CONFIRM_ACCT;
+		confirm_account(d, NULL);
+		return;
+	}
+	SEND_TO_Q(
+		outcome == account_recovery_request_outcome::disabled ?
+			"\r\nEmail verification is unavailable. Please contact staff.\r\n" :
+			"\r\nUnable to send a verification code now. Please try again later or contact staff.\r\n",
+		d);
+	STATE(d) = CON_DISPLAY_ACCT_MENU;
+	display_account_menu(d, NULL);
+}
+
 void confirm_account(P_desc d, char *arg)
 {
 	if (!arg)
 	{
-		SEND_TO_Q("Please enter the confirmation code shown above: ", d);
+		SEND_TO_Q("Enter the email verification code (or CANCEL): ", d);
 		return;
 	}
-
-	// Trim any whitespace from the input
-	while (*arg && isspace(*arg))
-		arg++;
-
-	// Fix doubled $ characters (MUD color code escaping)
-	// When user types $, it comes through as $$
-	char fixed_input[512];
-	char *src = arg;
-	char *dst = fixed_input;
-	while (*src && (dst - fixed_input) < 511)
+	if (!strcasecmp(arg, "CANCEL"))
 	{
-		*dst++ = *src++;
-		if (*(src - 1) == '$' && *src == '$')
-		{
-			src++; // Skip the doubled $
-		}
-	}
-	*dst = '\0';
-
-	if (str_cmp(fixed_input, d->account->acct_confirmation))
-	{
-		SEND_TO_Q("\r\n&+RInvalid confirmation code.&n\r\n", d);
-		SEND_TO_Q("Please try again or reconnect to get a new code.\r\n", d);
-		SEND_TO_Q("Please enter the confirmation code: ", d);
-		return; // Allow retry instead of disconnecting
-	}
-	else
-	{
-		SEND_TO_Q("\r\n&+GThank you for confirming your account!&n\r\n\r\n", d);
-		d->account->acct_confirmed = 1;
-		if (-1 == write_account(d->account))
-		{
-			SEND_TO_Q(
-				"Oh no, I couldn't write your account information to disk, notify a god!\r\n",
-				d);
-			statuslog(56, "&+RALERT&n: account confirmation save failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", "confirmation save failed");
-			d->account = free_account(d->account);
-			STATE(d) = CON_FLUSH;
-			return;
-		}
 		STATE(d) = CON_DISPLAY_ACCT_MENU;
 		display_account_menu(d, NULL);
-		if (-1 == write_account(d->account))
-		{
-			statuslog(56, "&+RALERT&n: confirmed account rewrite failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", "post-confirm menu save failed");
-		}
+		return;
 	}
+	account_email_complete(
+		d, arg,
+		[](P_desc reader, account_recovery_complete_outcome outcome)
+		{
+			if (!reader)
+				return;
+			if (outcome == account_recovery_complete_outcome::ok)
+			{
+				reader->account_recovery_attempts = 0;
+				SEND_TO_Q(
+					"\r\nEmail verified and saved. You can now recover your password with this inbox.\r\n",
+					reader);
+				STATE(reader) = CON_DISPLAY_ACCT_MENU;
+				display_account_menu(reader, NULL);
+				return;
+			}
+			SEND_TO_Q(
+				outcome == account_recovery_complete_outcome::write_failed ||
+						outcome == account_recovery_complete_outcome::
+								   load_failed ?
+					"\r\nYour email could not be saved. Please retry with the same code.\r\n" :
+					"\r\nInvalid or expired email verification code.\r\n",
+				reader);
+			confirm_account(reader, NULL);
+		});
 }
 
 void verify_account_name(P_desc d, char *arg)
@@ -1083,7 +1109,8 @@ void get_new_account_email(P_desc d, char *arg)
 		return;
 	}
 
-	if (is_email_taken(arg))
+	if (is_email_taken(arg) &&
+	    (!d->account->acct_email || strcasecmp(arg, d->account->acct_email)))
 	{
 		SEND_TO_Q(
 			"\r\n&+REmail already in use. &+WOnly one account per user please.&n If you are a new user please try a different email.\r\n",
@@ -1092,6 +1119,13 @@ void get_new_account_email(P_desc d, char *arg)
 		return;
 	}
 
+	if (STATE(d) == CON_ACCT_CHANGE_EMAIL)
+	{
+		begin_account_email_verification(d, arg);
+		return;
+	}
+	if (d->account->acct_email)
+		FREE(d->account->acct_email);
 	d->account->acct_email = str_dup(arg);
 	STATE(d) = CON_VERIFY_NEW_ACCT_EMAIL;
 	verify_new_account_email(d, NULL);
@@ -1271,35 +1305,31 @@ void verify_new_account_information(P_desc d, char *arg)
 	}
 	if ((arg[0] == 'y') || (arg[0] == 'Y'))
 	{
-#ifdef REQUIRE_EMAIL_VERIFICATION
-		SEND_TO_Q(
-			"You will receive a confimation code in your email.\r\nYou must confirm your account before using it.\r\n\r\n",
-			d);
-		generate_account_confirmation_code(d, NULL);
-		if (-1 == write_account(d->account))
+		const bool verify_email = account_recovery_enabled();
+		const std::string requested_email =
+			d->account->acct_email ? d->account->acct_email : "";
+		if (verify_email)
 		{
-			statuslog(56, "&+RALERT&n: account confirmation-code save failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", "confirmation code save failed");
+			FREE(d->account->acct_email);
+			d->account->acct_email = str_dup("");
 		}
-		// Don't disconnect - go straight to confirmation prompt
-		STATE(d) = CON_CONFIRM_ACCT;
-		SEND_TO_Q("Please enter the confirmation code shown above: ", d);
-#else
-		// Email verification disabled - skip confirmation and go directly to menu
-		SEND_TO_Q("&+GAccount created successfully!&n\r\n\r\n", d);
-		generate_account_confirmation_code(
-			d, NULL); // Still generates code (for display) but auto-confirms
-		if (-1 == write_account(d->account))
+		d->account->acct_confirmed = 1;
+		if (write_account(d->account) == -1)
 		{
-			statuslog(56, "&+RALERT&n: auto-confirmed account save failed");
-			persistence_alert(AVATAR, "account", "redacted", "none", "none",
-					  "write_failed", "auto-confirm save failed");
+			SEND_TO_Q("Account could not be saved. Please reconnect and try again.\r\n",
+				  d);
+			STATE(d) = CON_FLUSH;
+			return;
 		}
-		display_account_login_pages(d);
-		update_account_iplist(d);
-		STATE(d) = CON_ACCT_RMOTD;
-#endif
+		SEND_TO_Q("Account created successfully!\r\n", d);
+		if (verify_email)
+			begin_account_email_verification(d, requested_email.c_str());
+		else
+		{
+			display_account_login_pages(d);
+			update_account_iplist(d);
+			STATE(d) = CON_ACCT_RMOTD;
+		}
 		return;
 	}
 	else if ((arg[0] == 'n') || (arg[0] == 'N'))
@@ -2447,7 +2477,7 @@ void account_player_load_complete(P_desc d, player_load_result result)
 	{
 		ready_player_loads.emplace(completed_request_id, std::move(result));
 	}
-	catch (const std::bad_alloc &)
+	catch(const std::bad_alloc &)
 	{
 		d->player_load_request_id = 0;
 		d->player_load_pid = 0;
@@ -3383,86 +3413,6 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 			copy_account(d->account, acct);
 	}
 	return 1;
-}
-
-void generate_account_confirmation_code(P_desc d, char * /*arg*/)
-{
-	char a[256], b[256];
-
-	snprintf(a, 256, "%d%d", number(0, 32767), number(0, 2147483647));
-	snprintf(b, 256, "%s", CRYPT2(a, d->account->acct_name));
-
-	d->account->acct_confirmation = str_dup(b);
-	if (-1 == write_account(d->account))
-	{
-		statuslog(56, "&+RALERT&n: account confirmation-token save failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  "confirmation token save failed");
-	}
-
-	// Display confirmation code on screen
-	char display_buf[1024];
-	snprintf(display_buf, 1024,
-		 "\r\n&+Y========================================&n\r\n"
-		 "&+W*** Account Confirmation Code ***&n\r\n"
-		 "&+Y========================================&n\r\n\r\n"
-		 "Your confirmation code is: &+C%s&n\r\n\r\n"
-		 "&+YPLEASE WRITE THIS DOWN!&n\r\n"
-		 "&+Y========================================&n\r\n\r\n",
-		 d->account->acct_confirmation);
-	SEND_TO_Q(display_buf, d);
-
-#ifdef REQUIRE_EMAIL_VERIFICATION
-	// Only send email if verification is enabled
-	snprintf(a, 256, "/tmp/%s.confirmation", d->account->acct_name);
-	f = fopen(a, "w");
-	if (!f)
-	{
-		ereglog(AVATAR, "Couldn't open account confirmation temp file!");
-		SEND_TO_Q(
-			"&+YWarning: Could not send confirmation email, but you can still use the code displayed above.&n\r\n",
-			d);
-		return;
-	}
-
-	fprintf(f, "  *** Duris Account Confirmation Code ***\n\n\n");
-	fprintf(f, "Your account confirmation code is:  %s\n", d->account->acct_confirmation);
-	fclose(f);
-
-	snprintf(b, 256, "mail -s \"%s\" %s < %s", "Duris Account Confirmation",
-		 d->account->acct_email, a);
-	system(b);
-	unlink(a);
-
-	f = fopen(ACCOUNT_EMAIL_DB, "a");
-	if (!f)
-	{
-		statuslog(56, "Couldn't open Email DB!");
-	}
-	else
-	{
-		fprintf(f, "%s\n", d->account->acct_email);
-		fclose(f);
-	}
-
-	SEND_TO_Q(
-		"&+GAn email with your confirmation code has also been sent to your email address.&n\r\n",
-		d);
-#else
-	// Email verification disabled - auto-confirm account
-	SEND_TO_Q(
-		"&+G(Email verification is disabled - your account is automatically confirmed)&n\r\n",
-		d);
-	d->account->acct_confirmed = 1;
-	if (-1 == write_account(d->account))
-	{
-		statuslog(56, "&+RALERT&n: account auto-confirm persistence failed");
-		persistence_alert(AVATAR, "account", "redacted", "none", "none", "write_failed",
-				  "auto-confirm save failed");
-	}
-#endif
-
-	return;
 }
 
 void display_account_information_to_char(P_char ch, P_acct account)

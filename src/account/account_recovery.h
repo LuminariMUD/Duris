@@ -123,7 +123,8 @@ account_recovery_request(const char *acct_name, const char *acct_email_or_null, 
 			 const char *host, uint64_t *request_id_out);
 account_recovery_check_outcome
 account_recovery_check(const char *acct_name, const char *typed_code,
-		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF]);
+		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF],
+		       bool email_verification = false);
 using account_recovery_done =
 	std::function<void(struct descriptor_data *, account_recovery_complete_outcome)>;
 /* fresh is borrowed for this call. done runs after durable application, with a null
@@ -131,6 +132,12 @@ using account_recovery_done =
 void account_recovery_complete(const char *acct_name, const char *normalized_code,
 			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
 			       struct acct_entry *fresh, account_recovery_done done);
+/* Authenticated inbox ownership: the destination stays pending until the code is
+ * redeemed. Shares the bounded store, expiry, attempt and request limits with reset. */
+account_recovery_request_outcome account_email_request(struct acct_entry *account,
+						       const char *new_email, const char *host);
+void account_email_complete(struct descriptor_data *d, const char *typed_code,
+			    account_recovery_done done);
 void account_recovery_invalidate(const char *acct_name);
 void account_recovery_forget(const char *acct_name);
 size_t account_recovery_pulse(void);

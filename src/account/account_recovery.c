@@ -38,456 +38,479 @@
 
 namespace
 {
-static_assert(ACCOUNT_RECOVERY_FINGERPRINT_LEN == SHA256_DIGEST_LENGTH,
-	      "the credential fingerprint is a raw SHA256 digest");
+	static_assert(ACCOUNT_RECOVERY_FINGERPRINT_LEN == SHA256_DIGEST_LENGTH,
+		      "the credential fingerprint is a raw SHA256 digest");
 
-/* A host key is either the descriptor's literal host text or its IPv6 /64 prefix. */
-constexpr size_t host_key_bytes = sizeof(descriptor_data::host);
-static_assert(host_key_bytes >= INET6_ADDRSTRLEN, "an IPv6 key must fit a host slot");
-static_assert(sizeof(descriptor_data::account_recovery_code) == ACCOUNT_RECOVERY_CODE_BUF,
-	      "structs.h keeps the literal 33 for the descriptor code buffer");
+	/* A host key is either the descriptor's literal host text or its IPv6 /64 prefix. */
+	constexpr size_t host_key_bytes = sizeof(descriptor_data::host);
+	static_assert(host_key_bytes >= INET6_ADDRSTRLEN, "an IPv6 key must fit a host slot");
+	static_assert(sizeof(descriptor_data::account_recovery_code) == ACCOUNT_RECOVERY_CODE_BUF,
+		      "structs.h keeps the literal 33 for the descriptor code buffer");
 
-constexpr char reset_subject[] = "Duris account password reset";
+	constexpr char reset_subject[] = "Duris account password reset";
 
-struct recovery_entry
-{
-	unsigned char digest[SHA256_DIGEST_LENGTH] = {}; /* SHA256(code); zeroed once !live */
-	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN] = {};
-	time_t issued_at = 0;
-	time_t expires_at = 0;
-	time_t cooldown_until = 0; /* the entry survives as a tombstone until then */
-	unsigned attempts = 0;
-	bool live = false;
-	bool verified = false;
-	uint64_t request_id = 0; /* mail job id; 0 when nothing was queued */
-};
-
-struct host_slot
-{
-	char host[host_key_bytes];
-	time_t window_start;
-	unsigned requests;
-	time_t last_used;
-};
-
-/* Guarded plaintext: the code is cleansed however the scope is left. */
-struct code_buffer
-{
-	char text[ACCOUNT_RECOVERY_CODE_BUF] = {};
-
-	~code_buffer() { OPENSSL_cleanse(text, sizeof text); }
-};
-
-std::unordered_map<std::string, recovery_entry> entries;
-host_slot host_slots[ACCOUNT_RECOVERY_HOST_SLOTS];
-time_t (*clock_fn)(void) = nullptr;
-time_t last_terminal_statuslog = 0;
-time_t last_evict_statuslog = 0;
-uint64_t noticed_evicted_live = 0;
-uint64_t noticed_host_slots_recycled = 0;
-unsigned pulse_calls = 0;
-account_recovery_health health;
-
-time_t now_time()
-{
-	return clock_fn ? clock_fn() : time(nullptr);
-}
-
-bool expired(const recovery_entry &entry, time_t now)
-{
-	return entry.expires_at < now;
-}
-
-/* Neither the token nor its cooldown has anything left to protect. */
-bool dead(const recovery_entry &entry, time_t now)
-{
-	return entry.expires_at < now && entry.cooldown_until < now;
-}
-
-void kill_token(recovery_entry *entry)
-{
-	entry->live = false;
-	entry->verified = false;
-	OPENSSL_cleanse(entry->digest, sizeof entry->digest);
-}
-
-bool digest_matches(const unsigned char *stored, size_t stored_length,
-		    const unsigned char *computed, size_t computed_length)
-{
-	if (stored_length != SHA256_DIGEST_LENGTH || computed_length != SHA256_DIGEST_LENGTH)
-		return false;
-	return CRYPTO_memcmp(stored, computed, SHA256_DIGEST_LENGTH) == 0;
-}
-
-bool entry_matches(const recovery_entry &entry, const unsigned char digest[SHA256_DIGEST_LENGTH])
-{
-	return digest_matches(entry.digest, sizeof entry.digest, digest, SHA256_DIGEST_LENGTH);
-}
-
-bool digest_of_code(const char *code, unsigned char digest[SHA256_DIGEST_LENGTH])
-{
-	return SHA256(reinterpret_cast<const unsigned char *>(code), ACCOUNT_RECOVERY_CODE_HEX_LEN,
-		      digest) != nullptr;
-}
-
-/* RAND_bytes(16) -> 32 lowercase hex digits; only the digest outlives the caller. */
-bool issue_code(char code[ACCOUNT_RECOVERY_CODE_BUF], unsigned char digest[SHA256_DIGEST_LENGTH])
-{
-	unsigned char random_bytes[ACCOUNT_RECOVERY_CODE_HEX_LEN / 2] = {};
-	if (RAND_bytes(random_bytes, sizeof random_bytes) != 1)
-		return false;
-	static const char hex[] = "0123456789abcdef";
-	for (size_t index = 0; index < sizeof random_bytes; ++index)
+	struct recovery_entry
 	{
-		code[index * 2] = hex[random_bytes[index] >> 4];
-		code[index * 2 + 1] = hex[random_bytes[index] & 0x0f];
+		unsigned char digest[SHA256_DIGEST_LENGTH] = {}; /* SHA256(code); zeroed once !live */
+		unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN] = {};
+		time_t issued_at = 0;
+		time_t expires_at = 0;
+		time_t cooldown_until = 0; /* the entry survives as a tombstone until then */
+		unsigned attempts = 0;
+		bool live = false;
+		bool verified = false;
+		uint64_t request_id = 0; /* mail job id; 0 when nothing was queued */
+		std::string pending_email; /* nonempty only for an inbox-ownership challenge */
+	};
+
+	struct host_slot
+	{
+		char host[host_key_bytes];
+		time_t window_start;
+		unsigned requests;
+		time_t last_used;
+	};
+
+	/* Guarded plaintext: the code is cleansed however the scope is left. */
+	struct code_buffer
+	{
+		char text[ACCOUNT_RECOVERY_CODE_BUF] = {};
+
+		~code_buffer() { OPENSSL_cleanse(text, sizeof text); }
+	};
+
+	/* Account creation excludes ':'. A suffix separates the two purposes while
+ * retaining one bounded store and the shared per-host request budget. */
+	std::unordered_map<std::string, recovery_entry> entries;
+	host_slot host_slots[ACCOUNT_RECOVERY_HOST_SLOTS];
+	time_t (*clock_fn)(void) = nullptr;
+	time_t last_terminal_statuslog = 0;
+	time_t last_evict_statuslog = 0;
+	uint64_t noticed_evicted_live = 0;
+	uint64_t noticed_host_slots_recycled = 0;
+	unsigned pulse_calls = 0;
+	account_recovery_health health;
+
+	time_t now_time()
+	{
+		return clock_fn ? clock_fn() : time(nullptr);
 	}
-	code[ACCOUNT_RECOVERY_CODE_HEX_LEN] = '\0';
-	OPENSSL_cleanse(random_bytes, sizeof random_bytes);
-	return digest_of_code(code, digest);
-}
 
-/* Drop ' ' and '-' and lower-case; true only for exactly 32 hex digits. */
-bool normalize_code(const char *typed, char out[ACCOUNT_RECOVERY_CODE_BUF])
-{
-	size_t length = 0;
-	bool well_formed = typed != nullptr;
-	for (const char *cursor = typed; well_formed && *cursor; ++cursor)
+	bool expired(const recovery_entry &entry, time_t now)
 	{
-		unsigned char c = static_cast<unsigned char>(*cursor);
-		if (c == ' ' || c == '-')
-			continue;
-		if (c >= 'A' && c <= 'F')
-			c = static_cast<unsigned char>(c + ('a' - 'A'));
-		bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-		if (!hex || length >= ACCOUNT_RECOVERY_CODE_HEX_LEN)
-			well_formed = false;
-		else
-			out[length++] = static_cast<char>(c);
+		return entry.expires_at < now;
 	}
-	if (length != ACCOUNT_RECOVERY_CODE_HEX_LEN)
-		well_formed = false;
-	if (!well_formed)
-	{
-		OPENSSL_cleanse(out, ACCOUNT_RECOVERY_CODE_BUF);
-		return false;
-	}
-	out[length] = '\0';
-	return true;
-}
 
-void host_key(const char *host, char out[host_key_bytes])
-{
-	/* An empty key would read as a free slot; give unknown peers one real bucket. */
-	if (!host || !*host)
-		host = "unknown";
-	const socklen_t out_size = static_cast<socklen_t>(host_key_bytes);
-	if (strchr(host, ':'))
+	/* Neither the token nor its cooldown has anything left to protect. */
+	bool dead(const recovery_entry &entry, time_t now)
 	{
-		struct in6_addr address;
-		if (inet_pton(AF_INET6, host, &address) == 1)
+		return entry.expires_at < now && entry.cooldown_until < now;
+	}
+
+	void kill_token(recovery_entry * entry)
+	{
+		entry->live = false;
+		entry->verified = false;
+		OPENSSL_cleanse(entry->digest, sizeof entry->digest);
+	}
+
+	bool digest_matches(const unsigned char *stored, size_t stored_length,
+			    const unsigned char *computed, size_t computed_length)
+	{
+		if (stored_length != SHA256_DIGEST_LENGTH ||
+		    computed_length != SHA256_DIGEST_LENGTH)
+			return false;
+		return CRYPTO_memcmp(stored, computed, SHA256_DIGEST_LENGTH) == 0;
+	}
+
+	bool entry_matches(const recovery_entry &entry,
+			   const unsigned char digest[SHA256_DIGEST_LENGTH])
+	{
+		return digest_matches(entry.digest, sizeof entry.digest, digest,
+				      SHA256_DIGEST_LENGTH);
+	}
+
+	bool digest_of_code(const char *code, unsigned char digest[SHA256_DIGEST_LENGTH])
+	{
+		return SHA256(reinterpret_cast<const unsigned char *>(code),
+			      ACCOUNT_RECOVERY_CODE_HEX_LEN, digest) != nullptr;
+	}
+
+	/* RAND_bytes(16) -> 32 lowercase hex digits; only the digest outlives the caller. */
+	bool issue_code(char code[ACCOUNT_RECOVERY_CODE_BUF],
+			unsigned char digest[SHA256_DIGEST_LENGTH])
+	{
+		unsigned char random_bytes[ACCOUNT_RECOVERY_CODE_HEX_LEN / 2] = {};
+		if (RAND_bytes(random_bytes, sizeof random_bytes) != 1)
+			return false;
+		static const char hex[] = "0123456789abcdef";
+		for (size_t index = 0; index < sizeof random_bytes; ++index)
 		{
-			/* comm.c strips the ::ffff: prefix, but a mapped IPv4 peer that slipped
-			 * through must not collapse every IPv4 client into one "::" bucket. */
-			bool mapped_v4 = address.s6_addr[10] == 0xff && address.s6_addr[11] == 0xff;
-			for (size_t index = 0; mapped_v4 && index < 10; ++index)
-				mapped_v4 = address.s6_addr[index] == 0;
-			if (mapped_v4)
+			code[index * 2] = hex[random_bytes[index] >> 4];
+			code[index * 2 + 1] = hex[random_bytes[index] & 0x0f];
+		}
+		code[ACCOUNT_RECOVERY_CODE_HEX_LEN] = '\0';
+		OPENSSL_cleanse(random_bytes, sizeof random_bytes);
+		return digest_of_code(code, digest);
+	}
+
+	/* Drop ' ' and '-' and lower-case; true only for exactly 32 hex digits. */
+	bool normalize_code(const char *typed, char out[ACCOUNT_RECOVERY_CODE_BUF])
+	{
+		size_t length = 0;
+		bool well_formed = typed != nullptr;
+		for (const char *cursor = typed; well_formed && *cursor; ++cursor)
+		{
+			unsigned char c = static_cast<unsigned char>(*cursor);
+			if (c == ' ' || c == '-')
+				continue;
+			if (c >= 'A' && c <= 'F')
+				c = static_cast<unsigned char>(c + ('a' - 'A'));
+			bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
+			if (!hex || length >= ACCOUNT_RECOVERY_CODE_HEX_LEN)
+				well_formed = false;
+			else
+				out[length++] = static_cast<char>(c);
+		}
+		if (length != ACCOUNT_RECOVERY_CODE_HEX_LEN)
+			well_formed = false;
+		if (!well_formed)
+		{
+			OPENSSL_cleanse(out, ACCOUNT_RECOVERY_CODE_BUF);
+			return false;
+		}
+		out[length] = '\0';
+		return true;
+	}
+
+	void host_key(const char *host, char out[host_key_bytes])
+	{
+		/* An empty key would read as a free slot; give unknown peers one real bucket. */
+		if (!host || !*host)
+			host = "unknown";
+		const socklen_t out_size = static_cast<socklen_t>(host_key_bytes);
+		if (strchr(host, ':'))
+		{
+			struct in6_addr address;
+			if (inet_pton(AF_INET6, host, &address) == 1)
 			{
-				struct in_addr embedded;
-				memcpy(&embedded, address.s6_addr + 12, sizeof embedded);
-				if (inet_ntop(AF_INET, &embedded, out, out_size))
-					return;
+				/* comm.c strips the ::ffff: prefix, but a mapped IPv4 peer that slipped
+			 * through must not collapse every IPv4 client into one "::" bucket. */
+				bool mapped_v4 = address.s6_addr[10] == 0xff &&
+						 address.s6_addr[11] == 0xff;
+				for (size_t index = 0; mapped_v4 && index < 10; ++index)
+					mapped_v4 = address.s6_addr[index] == 0;
+				if (mapped_v4)
+				{
+					struct in_addr embedded;
+					memcpy(&embedded, address.s6_addr + 12, sizeof embedded);
+					if (inet_ntop(AF_INET, &embedded, out, out_size))
+						return;
+				}
+				else
+				{
+					/* A subscriber usually holds a whole /64: key the window on it. */
+					memset(address.s6_addr + 8, 0, 8);
+					if (inet_ntop(AF_INET6, &address, out, out_size))
+						return;
+				}
+			}
+		}
+		size_t length = strnlen(host, host_key_bytes - 1);
+		memcpy(out, host, length);
+		out[length] = '\0';
+	}
+
+	void claim_host_slot(host_slot * slot, const char *key, time_t now)
+	{
+		memset(slot, 0, sizeof *slot);
+		memcpy(slot->host, key, strnlen(key, sizeof slot->host - 1));
+		slot->window_start = now;
+		slot->last_used = now;
+	}
+
+	/* Find or claim the slot for a key: empty first, then an expired window, then LRU. */
+	host_slot *host_slot_for(const char *key, time_t now)
+	{
+		host_slot *first_empty = nullptr;
+		host_slot *expired_window = nullptr;
+		host_slot *oldest = &host_slots[0];
+		for (size_t index = 0; index < ACCOUNT_RECOVERY_HOST_SLOTS; ++index)
+		{
+			host_slot *slot = &host_slots[index];
+			if (!slot->host[0])
+			{
+				first_empty = slot;
+				break;
+			}
+			if (!strcmp(slot->host, key))
+			{
+				slot->last_used = now;
+				return slot;
+			}
+			if (!expired_window &&
+			    slot->window_start + ACCOUNT_RECOVERY_HOST_WINDOW_SEC < now)
+				expired_window = slot;
+			if (slot->last_used < oldest->last_used)
+				oldest = slot;
+		}
+		host_slot *victim = first_empty ? first_empty : expired_window;
+		if (!victim)
+		{
+			/* Displacing a live window loosens the brake; count it so it is visible. */
+			victim = oldest;
+			++health.host_slots_recycled;
+		}
+		claim_host_slot(victim, key, now);
+		return victim;
+	}
+
+	/* Full store: drop everything dead first, then the single oldest entry. */
+	void make_room(time_t now)
+	{
+		if (entries.size() < ACCOUNT_RECOVERY_MAX_ENTRIES)
+			return;
+		for (auto it = entries.begin(); it != entries.end();)
+		{
+			if (dead(it->second, now))
+			{
+				it = entries.erase(it);
+				++health.evicted_dead;
 			}
 			else
-			{
-				/* A subscriber usually holds a whole /64: key the window on it. */
-				memset(address.s6_addr + 8, 0, 8);
-				if (inet_ntop(AF_INET6, &address, out, out_size))
-					return;
-			}
+				++it;
 		}
-	}
-	size_t length = strnlen(host, host_key_bytes - 1);
-	memcpy(out, host, length);
-	out[length] = '\0';
-}
-
-void claim_host_slot(host_slot *slot, const char *key, time_t now)
-{
-	memset(slot, 0, sizeof *slot);
-	memcpy(slot->host, key, strnlen(key, sizeof slot->host - 1));
-	slot->window_start = now;
-	slot->last_used = now;
-}
-
-/* Find or claim the slot for a key: empty first, then an expired window, then LRU. */
-host_slot *host_slot_for(const char *key, time_t now)
-{
-	host_slot *first_empty = nullptr;
-	host_slot *expired_window = nullptr;
-	host_slot *oldest = &host_slots[0];
-	for (size_t index = 0; index < ACCOUNT_RECOVERY_HOST_SLOTS; ++index)
-	{
-		host_slot *slot = &host_slots[index];
-		if (!slot->host[0])
-		{
-			first_empty = slot;
-			break;
-		}
-		if (!strcmp(slot->host, key))
-		{
-			slot->last_used = now;
-			return slot;
-		}
-		if (!expired_window && slot->window_start + ACCOUNT_RECOVERY_HOST_WINDOW_SEC < now)
-			expired_window = slot;
-		if (slot->last_used < oldest->last_used)
-			oldest = slot;
-	}
-	host_slot *victim = first_empty ? first_empty : expired_window;
-	if (!victim)
-	{
-		/* Displacing a live window loosens the brake; count it so it is visible. */
-		victim = oldest;
-		++health.host_slots_recycled;
-	}
-	claim_host_slot(victim, key, now);
-	return victim;
-}
-
-/* Full store: drop everything dead first, then the single oldest entry. */
-void make_room(time_t now)
-{
-	if (entries.size() < ACCOUNT_RECOVERY_MAX_ENTRIES)
-		return;
-	for (auto it = entries.begin(); it != entries.end();)
-	{
-		if (dead(it->second, now))
-		{
-			it = entries.erase(it);
+		if (entries.size() < ACCOUNT_RECOVERY_MAX_ENTRIES)
+			return;
+		auto oldest = entries.begin();
+		if (oldest == entries.end())
+			return;
+		for (auto it = entries.begin(); it != entries.end(); ++it)
+			if (it->second.issued_at < oldest->second.issued_at)
+				oldest = it;
+		if (oldest->second.live)
+			++health.evicted_live;
+		else
 			++health.evicted_dead;
-		}
-		else
-			++it;
+		entries.erase(oldest);
 	}
-	if (entries.size() < ACCOUNT_RECOVERY_MAX_ENTRIES)
-		return;
-	auto oldest = entries.begin();
-	if (oldest == entries.end())
-		return;
-	for (auto it = entries.begin(); it != entries.end(); ++it)
-		if (it->second.issued_at < oldest->second.issued_at)
-			oldest = it;
-	if (oldest->second.live)
-		++health.evicted_live;
-	else
-		++health.evicted_dead;
-	entries.erase(oldest);
-}
 
-void sweep(time_t now)
-{
-	for (auto it = entries.begin(); it != entries.end();)
+	void sweep(time_t now)
 	{
-		if (dead(it->second, now))
+		for (auto it = entries.begin(); it != entries.end();)
 		{
-			it = entries.erase(it);
-			++health.expired;
+			if (dead(it->second, now))
+			{
+				it = entries.erase(it);
+				++health.expired;
+			}
+			else
+				++it;
 		}
-		else
-			++it;
 	}
-}
 
-std::unordered_map<std::string, recovery_entry>::iterator find_by_request_id(uint64_t request_id)
-{
-	if (request_id == 0)
+	std::unordered_map<std::string, recovery_entry>::iterator find_by_request_id(
+		uint64_t request_id)
+	{
+		if (request_id == 0)
+			return entries.end();
+		for (auto it = entries.begin(); it != entries.end(); ++it)
+			if (it->second.request_id == request_id)
+				return it;
 		return entries.end();
-	for (auto it = entries.begin(); it != entries.end(); ++it)
-		if (it->second.request_id == request_id)
-			return it;
-	return entries.end();
-}
-
-/* ASCII by construction: the canonical name is printable ASCII, the code is hex. */
-std::string render_body(const char *canonical_name, const char *code)
-{
-	std::string display(canonical_name);
-	if (!display.empty() && display[0] >= 'a' && display[0] <= 'z')
-		display[0] = static_cast<char>(display[0] - ('a' - 'A'));
-
-	/* Reserve up front so no discarded reallocation keeps a copy of the code. */
-	std::string body;
-	body.reserve(512);
-	body += "Someone asked to reset the password of the Duris account ";
-	body += display;
-	body += ".\r\n\r\nReset code: ";
-	for (size_t index = 0; index < ACCOUNT_RECOVERY_CODE_HEX_LEN; ++index)
-	{
-		if (index && index % 8 == 0)
-			body.push_back('-');
-		body.push_back(code[index]);
 	}
-	body += "\r\n\r\nType it at the prompt within 15 minutes. It works once.\r\n"
-		"If you did not request this, ignore this message; nothing changes.\r\n";
-	return body;
-}
 
-const char *request_outcome_name(account_recovery_request_outcome outcome)
-{
-	switch (outcome)
+	/* ASCII by construction: the canonical name is printable ASCII, the code is hex. */
+	std::string render_body(const char *canonical_name, const char *code,
+				bool email_verification)
 	{
-	case account_recovery_request_outcome::disabled:
-		return "disabled";
-	case account_recovery_request_outcome::invalid_name:
-		return "invalid_name";
-	case account_recovery_request_outcome::queued:
-		return "queued";
-	case account_recovery_request_outcome::suppressed:
-		return "suppressed";
-	case account_recovery_request_outcome::host_limited:
-		return "host_limited";
-	case account_recovery_request_outcome::capacity:
+		std::string display(canonical_name);
+		if (!display.empty() && display[0] >= 'a' && display[0] <= 'z')
+			display[0] = static_cast<char>(display[0] - ('a' - 'A'));
+
+		/* Reserve up front so no discarded reallocation keeps a copy of the code. */
+		std::string body;
+		body.reserve(512);
+		body += email_verification ?
+				"Someone asked to register this email for the Duris account " :
+				"Someone asked to reset the password of the Duris account ";
+		body += display;
+		body += email_verification ? ".\r\n\r\nVerification code: " :
+					     ".\r\n\r\nReset code: ";
+		for (size_t index = 0; index < ACCOUNT_RECOVERY_CODE_HEX_LEN; ++index)
+		{
+			if (index && index % 8 == 0)
+				body.push_back('-');
+			body.push_back(code[index]);
+		}
+		body += "\r\n\r\nType it at the prompt within 15 minutes. It works once.\r\n"
+			"If you did not request this, ignore this message; nothing changes.\r\n";
+		return body;
+	}
+
+	const char *request_outcome_name(account_recovery_request_outcome outcome)
+	{
+		switch (outcome)
+		{
+		case account_recovery_request_outcome::disabled:
+			return "disabled";
+		case account_recovery_request_outcome::invalid_name:
+			return "invalid_name";
+		case account_recovery_request_outcome::queued:
+			return "queued";
+		case account_recovery_request_outcome::suppressed:
+			return "suppressed";
+		case account_recovery_request_outcome::host_limited:
+			return "host_limited";
+		case account_recovery_request_outcome::capacity:
+			return "capacity";
+		}
 		return "capacity";
 	}
-	return "capacity";
-}
 
-const char *mail_outcome_name(mail_outcome outcome)
-{
-	switch (outcome)
+	const char *mail_outcome_name(mail_outcome outcome)
 	{
-	case mail_outcome::sent:
-		return "sent";
-	case mail_outcome::retryable_failure:
-		return "retryable";
-	case mail_outcome::terminal_failure:
+		switch (outcome)
+		{
+		case mail_outcome::sent:
+			return "sent";
+		case mail_outcome::retryable_failure:
+			return "retryable";
+		case mail_outcome::terminal_failure:
+			return "terminal";
+		}
 		return "terminal";
 	}
-	return "terminal";
-}
 
-/* One wizard notice per minute however many sends fail; integer codes only, never prose. */
-void notice_terminal_failure(const mail_result &result, time_t now)
-{
-	if (last_terminal_statuslog != 0 && now - last_terminal_statuslog < 60)
-		return;
-	statuslog(56, "&+RALERT&n: account recovery mail failing (curl=%d smtp=%ld)",
-		  result.curl_code, result.smtp_code);
-	last_terminal_statuslog = now;
-}
+	/* One wizard notice per minute however many sends fail; integer codes only, never prose. */
+	void notice_terminal_failure(const mail_result &result, time_t now)
+	{
+		if (last_terminal_statuslog != 0 && now - last_terminal_statuslog < 60)
+			return;
+		statuslog(56, "&+RALERT&n: account recovery mail failing (curl=%d smtp=%ld)",
+			  result.curl_code, result.smtp_code);
+		last_terminal_statuslog = now;
+	}
 
-/* A store-fill or host-table flood is visible from these counters, once a minute. */
-void notice_evictions(time_t now)
-{
-	const bool news = health.evicted_live != noticed_evicted_live ||
-			  health.host_slots_recycled != noticed_host_slots_recycled;
-	if (!news || (last_evict_statuslog != 0 && now - last_evict_statuslog < 60))
-		return;
-	statuslog(56, "account recovery store evicted live tokens=%llu host slots recycled=%llu",
-		  static_cast<unsigned long long>(health.evicted_live),
-		  static_cast<unsigned long long>(health.host_slots_recycled));
-	last_evict_statuslog = now;
-	noticed_evicted_live = health.evicted_live;
-	noticed_host_slots_recycled = health.host_slots_recycled;
-}
+	/* A store-fill or host-table flood is visible from these counters, once a minute. */
+	void notice_evictions(time_t now)
+	{
+		const bool news = health.evicted_live != noticed_evicted_live ||
+				  health.host_slots_recycled != noticed_host_slots_recycled;
+		if (!news || (last_evict_statuslog != 0 && now - last_evict_statuslog < 60))
+			return;
+		statuslog(
+			56,
+			"account recovery store evicted live tokens=%llu host slots recycled=%llu",
+			static_cast<unsigned long long>(health.evicted_live),
+			static_cast<unsigned long long>(health.host_slots_recycled));
+		last_evict_statuslog = now;
+		noticed_evicted_live = health.evicted_live;
+		noticed_host_slots_recycled = health.host_slots_recycled;
+	}
 
-account_recovery_request_outcome
-perform_request(const char *acct_name, const char *acct_email_or_null, char acct_blocked,
+	account_recovery_request_outcome perform_request(
+		const char *acct_name, const char *acct_email_or_null, char acct_blocked,
 		const unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN], const char *host,
-		uint64_t *request_id_out, uint64_t *logged_id)
-{
-	if (!account_recovery_enabled())
-		return account_recovery_request_outcome::disabled;
+		uint64_t *request_id_out, uint64_t *logged_id, bool email_verification = false)
+	{
+		if (!account_recovery_enabled())
+			return account_recovery_request_outcome::disabled;
 
-	char name[ACCOUNT_RECOVERY_NAME_BUF];
-	if (!account_recovery_canonical_name(acct_name, name))
-	{
-		++health.invalid_name;
-		return account_recovery_request_outcome::invalid_name;
-	}
+		char name[ACCOUNT_RECOVERY_NAME_BUF];
+		if (!account_recovery_canonical_name(acct_name, name))
+		{
+			++health.invalid_name;
+			return account_recovery_request_outcome::invalid_name;
+		}
 
-	const time_t now = now_time();
+		const time_t now = now_time();
 
-	/* The host window is spent before the store is touched, whatever happens next. */
-	char key[host_key_bytes];
-	host_key(host, key);
-	host_slot *slot = host_slot_for(key, now);
-	if (slot->window_start + ACCOUNT_RECOVERY_HOST_WINDOW_SEC < now)
-	{
-		slot->window_start = now;
-		slot->requests = 0;
-	}
-	if (slot->requests >= ACCOUNT_RECOVERY_HOST_MAX_REQUESTS)
-	{
-		++health.host_limited;
-		return account_recovery_request_outcome::host_limited;
-	}
-	++slot->requests;
+		/* The host window is spent before the store is touched, whatever happens next. */
+		char key[host_key_bytes];
+		host_key(host, key);
+		host_slot *slot = host_slot_for(key, now);
+		if (slot->window_start + ACCOUNT_RECOVERY_HOST_WINDOW_SEC < now)
+		{
+			slot->window_start = now;
+			slot->requests = 0;
+		}
+		if (slot->requests >= ACCOUNT_RECOVERY_HOST_MAX_REQUESTS)
+		{
+			++health.host_limited;
+			return account_recovery_request_outcome::host_limited;
+		}
+		++slot->requests;
 
-	auto found = entries.find(name);
-	if (found != entries.end() && now < found->second.cooldown_until)
-	{
-		++health.suppressed_cooldown;
-		return account_recovery_request_outcome::suppressed;
-	}
-	if (found == entries.end())
-	{
-		make_room(now);
-		found = entries.emplace(std::string(name), recovery_entry()).first;
-	}
-	recovery_entry &entry = found->second;
-	entry = recovery_entry();
+		const std::string store_key =
+			std::string(name) + (email_verification ? ":email" : "");
+		auto found = entries.find(store_key);
+		if (found != entries.end() && now < found->second.cooldown_until)
+		{
+			++health.suppressed_cooldown;
+			return account_recovery_request_outcome::suppressed;
+		}
+		if (found == entries.end())
+		{
+			make_room(now);
+			found = entries.emplace(store_key, recovery_entry()).first;
+		}
+		recovery_entry &entry = found->second;
+		entry = recovery_entry();
 
-	code_buffer code;
-	if (!issue_code(code.text, entry.digest))
-	{
-		entries.erase(found);
-		++health.capacity;
-		return account_recovery_request_outcome::capacity;
-	}
-	entry.issued_at = now;
-	entry.expires_at = now + ACCOUNT_RECOVERY_TTL_SEC;
-	entry.cooldown_until = now + ACCOUNT_RECOVERY_COOLDOWN_SEC;
-	entry.live = true;
-	if (fingerprint)
-		memcpy(entry.fingerprint, fingerprint, ACCOUNT_RECOVERY_FINGERPRINT_LEN);
+		code_buffer code;
+		if (!issue_code(code.text, entry.digest))
+		{
+			entries.erase(found);
+			++health.capacity;
+			return account_recovery_request_outcome::capacity;
+		}
+		entry.issued_at = now;
+		entry.expires_at = now + ACCOUNT_RECOVERY_TTL_SEC;
+		entry.cooldown_until = now + ACCOUNT_RECOVERY_COOLDOWN_SEC;
+		entry.live = true;
+		if (fingerprint)
+			memcpy(entry.fingerprint, fingerprint, ACCOUNT_RECOVERY_FINGERPRINT_LEN);
 
-	/* A blocked or address-less account still leaves a tombstone: same clock, same counters. */
-	if (acct_blocked != 0)
-	{
-		kill_token(&entry);
-		++health.suppressed_blocked;
-		return account_recovery_request_outcome::suppressed;
-	}
-	if (!acct_email_or_null || !*acct_email_or_null || !is_valid_email(acct_email_or_null))
-	{
-		kill_token(&entry);
-		++health.suppressed_no_destination;
-		return account_recovery_request_outcome::suppressed;
-	}
+		/* A blocked or address-less account still leaves a tombstone: same clock, same counters. */
+		if (acct_blocked != 0)
+		{
+			kill_token(&entry);
+			++health.suppressed_blocked;
+			return account_recovery_request_outcome::suppressed;
+		}
+		if (!acct_email_or_null || !*acct_email_or_null ||
+		    !is_valid_email(acct_email_or_null))
+		{
+			kill_token(&entry);
+			++health.suppressed_no_destination;
+			return account_recovery_request_outcome::suppressed;
+		}
 
-	std::string body = render_body(name, code.text);
-	const std::string to(acct_email_or_null);
-	const uint64_t request_id = mail_sender_next_request_id();
-	const mail_submit_outcome submitted =
-		mail_sender_submit(request_id, to, reset_subject, body);
-	OPENSSL_cleanse(body.data(), body.size());
-	if (submitted != mail_submit_outcome::accepted)
-	{
-		/* Our outage must not become the player's lockout: no tombstone, retry at once. */
-		entries.erase(found);
-		++health.capacity;
-		return account_recovery_request_outcome::capacity;
+		if (email_verification)
+			entry.pending_email = acct_email_or_null;
+		std::string body = render_body(name, code.text, email_verification);
+		const std::string to(acct_email_or_null);
+		const uint64_t request_id = mail_sender_next_request_id();
+		const mail_submit_outcome submitted = mail_sender_submit(
+			request_id, to,
+			email_verification ? "Duris account email verification" : reset_subject,
+			body);
+		OPENSSL_cleanse(body.data(), body.size());
+		if (submitted != mail_submit_outcome::accepted)
+		{
+			/* Our outage must not become the player's lockout: no tombstone, retry at once. */
+			entries.erase(found);
+			++health.capacity;
+			return account_recovery_request_outcome::capacity;
+		}
+		entry.request_id = request_id;
+		++health.queued;
+		*logged_id = request_id;
+		if (request_id_out)
+			*request_id_out = request_id;
+		return account_recovery_request_outcome::queued;
 	}
-	entry.request_id = request_id;
-	++health.queued;
-	*logged_id = request_id;
-	if (request_id_out)
-		*request_id_out = request_id;
-	return account_recovery_request_outcome::queued;
-}
 } // namespace
 
 bool account_recovery_canonical_name(const char *raw, char out[ACCOUNT_RECOVERY_NAME_BUF])
@@ -590,7 +613,7 @@ account_recovery_request(const char *acct_name, const char *acct_email_or_null, 
 
 account_recovery_check_outcome
 account_recovery_check(const char *acct_name, const char *typed_code,
-		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF])
+		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF], bool email_verification)
 {
 	++health.checks;
 	/* The caller's buffer holds plaintext only after an acceptance; every other exit
@@ -604,8 +627,9 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 		return account_recovery_check_outcome::rejected;
 	}
 	const time_t now = now_time();
-	auto found = entries.find(name);
-	if (found == entries.end() || !found->second.live || expired(found->second, now))
+	auto found = entries.find(std::string(name) + (email_verification ? ":email" : ""));
+	if (found == entries.end() || !found->second.live || expired(found->second, now) ||
+	    email_verification != !found->second.pending_email.empty())
 	{
 		/* Nothing to protect, so nothing to count; the adapter's one text hides which. */
 		++health.rejected;
@@ -641,11 +665,12 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 	return account_recovery_check_outcome::rejected;
 }
 
-void account_recovery_complete(const char *acct_name, const char *normalized_code,
-			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
-			       struct acct_entry *fresh, account_recovery_done done)
+static void complete_code(const char *acct_name, const char *normalized_code,
+			  const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			  struct acct_entry *fresh, account_recovery_done done,
+			  bool email_verification)
 {
-	if (!is_bcrypt_hash(new_bcrypt_hash))
+	if (!email_verification && !is_bcrypt_hash(new_bcrypt_hash))
 		return done(keep_session, account_recovery_complete_outcome::bad_hash);
 
 	/* The apply helper's write_account reallocates every same-name descriptor's account
@@ -658,9 +683,11 @@ void account_recovery_complete(const char *acct_name, const char *normalized_cod
 		return done(keep_session, account_recovery_complete_outcome::rejected);
 	}
 	const time_t now = now_time();
-	auto found = entries.find(name);
+	const std::string store_key = std::string(name) + (email_verification ? ":email" : "");
+	auto found = entries.find(store_key);
 	unsigned char digest[SHA256_DIGEST_LENGTH] = {};
 	const bool valid = found != entries.end() && found->second.live && found->second.verified &&
+			   email_verification == !found->second.pending_email.empty() &&
 			   !expired(found->second, now) && normalized_code &&
 			   strlen(normalized_code) == ACCOUNT_RECOVERY_CODE_HEX_LEN &&
 			   digest_of_code(normalized_code, digest) &&
@@ -675,53 +702,112 @@ void account_recovery_complete(const char *acct_name, const char *normalized_cod
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
 	memcpy(fingerprint, found->second.fingerprint, sizeof fingerprint);
 	const uint64_t request_id = found->second.request_id;
-	account_apply_recovered_password(
-		fresh, new_bcrypt_hash, fingerprint, keep_session,
-		[name = std::string(name), request_id, done](descriptor_data *requester,
-							     account_recovery_apply_outcome applied)
+	const auto finished = [name = std::string(name), store_key, request_id, done,
+			       email_verification](descriptor_data *requester,
+						   account_recovery_apply_outcome applied)
+	{
+		/* A delayed reply must not consume a replacement code issued in the meantime. */
+		auto found = entries.find(store_key);
+		recovery_entry *entry = found != entries.end() &&
+							found->second.request_id == request_id ?
+						&found->second :
+						nullptr;
+		switch (applied)
 		{
-			/* A delayed reply must not consume a replacement code issued in the meantime. */
-			auto found = entries.find(name);
-			recovery_entry *entry =
-				found != entries.end() && found->second.request_id == request_id ?
-					&found->second :
-					nullptr;
-			switch (applied)
+		case account_recovery_apply_outcome::ok:
+		{
+			if (entry)
+				kill_token(
+					entry); /* single use; the tombstone keeps the cooldown */
+			++health.completed;
+			auto other = entries.find(email_verification ? name : name + ":email");
+			if (other != entries.end())
+				kill_token(&other->second);
+			if (email_verification)
+				statuslog(56, "account email verified (account=redacted)");
+			else
 			{
-			case account_recovery_apply_outcome::ok:
-				if (entry)
-					kill_token(
-						entry); /* single use; the tombstone keeps the cooldown */
-				++health.completed;
 				logit(LOG_PLAYER, "account recovery completed (account=redacted)");
 				statuslog(
 					56,
 					"account password reset by email completed (account=redacted)");
-				return done(requester, account_recovery_complete_outcome::ok);
-			case account_recovery_apply_outcome::fenced:
-				if (entry)
-					kill_token(entry);
-				++health.fenced;
-				return done(requester, account_recovery_complete_outcome::fenced);
-			case account_recovery_apply_outcome::superseded:
-				if (entry)
-					kill_token(entry);
-				++health.superseded;
-				return done(requester,
-					    account_recovery_complete_outcome::superseded);
-			case account_recovery_apply_outcome::load_failed:
-				++health.load_failed; /* token kept: the player retries with the same code */
-				return done(requester,
-					    account_recovery_complete_outcome::load_failed);
-			case account_recovery_apply_outcome::write_failed:
-				++health.write_failed;
-				return done(requester,
-					    account_recovery_complete_outcome::write_failed);
 			}
+			return done(requester, account_recovery_complete_outcome::ok);
+		}
+		case account_recovery_apply_outcome::fenced:
+			if (entry)
+				kill_token(entry);
+			++health.fenced;
+			return done(requester, account_recovery_complete_outcome::fenced);
+		case account_recovery_apply_outcome::superseded:
+			if (entry)
+				kill_token(entry);
+			++health.superseded;
+			return done(requester, account_recovery_complete_outcome::superseded);
+		case account_recovery_apply_outcome::load_failed:
+			++health.load_failed; /* token kept: the player retries with the same code */
+			return done(requester, account_recovery_complete_outcome::load_failed);
+		case account_recovery_apply_outcome::write_failed:
 			++health.write_failed;
-			done(requester, account_recovery_complete_outcome::write_failed);
-		});
+			return done(requester, account_recovery_complete_outcome::write_failed);
+		}
+		++health.write_failed;
+		done(requester, account_recovery_complete_outcome::write_failed);
+	};
+	if (email_verification)
+		account_apply_verified_email(fresh, found->second.pending_email.c_str(),
+					     fingerprint, keep_session, finished);
+	else
+		account_apply_recovered_password(fresh, new_bcrypt_hash, fingerprint, keep_session,
+						 finished);
 	OPENSSL_cleanse(fingerprint, sizeof fingerprint);
+}
+
+void account_recovery_complete(const char *acct_name, const char *normalized_code,
+			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			       struct acct_entry *fresh, account_recovery_done done)
+{
+	complete_code(acct_name, normalized_code, new_bcrypt_hash, keep_session, fresh, done,
+		      false);
+}
+
+account_recovery_request_outcome account_email_request(P_acct account, const char *new_email,
+						       const char *host)
+{
+	if (!account || !is_valid_email(new_email))
+		return account_recovery_request_outcome::invalid_name;
+	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
+	account_recovery_credential_fingerprint(account->acct_password, account->acct_email,
+						fingerprint);
+	uint64_t request_id = 0;
+	const auto outcome = perform_request(account->acct_name, new_email, account->acct_blocked,
+					     fingerprint, host, nullptr, &request_id, true);
+	OPENSSL_cleanse(fingerprint, sizeof fingerprint);
+	return outcome;
+}
+
+void account_email_complete(P_desc d, const char *typed_code, account_recovery_done done)
+{
+	char normalized[ACCOUNT_RECOVERY_CODE_BUF];
+	if (!d || !d->account ||
+	    d->account_recovery_attempts >= ACCOUNT_RECOVERY_MAX_DESCRIPTOR_ATTEMPTS ||
+	    account_recovery_check(d->account->acct_name, typed_code, normalized, true) !=
+		    account_recovery_check_outcome::accepted)
+	{
+		if (d)
+			++d->account_recovery_attempts;
+		return done(d, account_recovery_complete_outcome::rejected);
+	}
+	account_read(d, d->account->acct_name,
+		     [code = std::string(normalized), done](P_desc reader, bool, P_acct fresh)
+			     mutable
+		     {
+			     complete_code(reader->account->acct_name, code.c_str(), nullptr,
+					   reader, fresh, done, true);
+			     free_account(fresh);
+			     OPENSSL_cleanse(code.data(), code.size());
+		     });
+	OPENSSL_cleanse(normalized, sizeof normalized);
 }
 
 void account_recovery_invalidate(const char *acct_name)
@@ -729,11 +815,15 @@ void account_recovery_invalidate(const char *acct_name)
 	char name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(acct_name, name))
 		return;
-	auto found = entries.find(name);
-	if (found == entries.end())
-		return;
-	kill_token(&found->second);
-	++health.invalidated;
+	for (const std::string &key : { std::string(name), std::string(name) + ":email" })
+	{
+		auto found = entries.find(key);
+		if (found != entries.end())
+		{
+			kill_token(&found->second);
+			++health.invalidated;
+		}
+	}
 }
 
 void account_recovery_forget(const char *acct_name)
@@ -741,8 +831,8 @@ void account_recovery_forget(const char *acct_name)
 	char name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(acct_name, name))
 		return;
-	if (entries.erase(name))
-		++health.forgotten;
+	health.forgotten += entries.erase(name);
+	health.forgotten += entries.erase(std::string(name) + ":email");
 }
 
 /* Runs every 500 ms (inside comm.c's `if (!(pulse % 2))`); the expire sweep runs every

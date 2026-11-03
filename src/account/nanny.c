@@ -4142,11 +4142,9 @@ void nanny(P_desc d, char *arg)
 			        break;
 			        */
 
-#ifdef REQUIRE_EMAIL_VERIFICATION
 	case CON_CONFIRM_ACCT:
 		confirm_account(d, arg);
 		break;
-#endif
 
 	case CON_VERIFY_NEW_ACCT_NAME:
 		verify_account_name(d, arg);

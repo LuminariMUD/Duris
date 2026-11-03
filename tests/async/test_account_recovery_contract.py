@@ -379,7 +379,7 @@ def test_code_entry_texts() -> None:
 
 def test_log_hygiene() -> None:
     apply_body = function_body(
-        account, r"void\s+account_apply_recovered_password\s*\("
+        account, r"void\s+account_apply_credentials\s*\("
     ) or ""
     for label, text in (
         ("account_recovery.c", core),
@@ -662,8 +662,8 @@ def test_account_c() -> None:
     )
     completion = body_of(account, r"\bvoid\s+finish_account_password\s*\(", "finish_account_password")
     check(
-        completion.count("display_account_login_pages(d);") == 2,
-        "password completion preserves both email-verification login-page paths",
+        completion.count("display_account_login_pages(d);") == 1 and "confirm_account(" not in completion,
+        "password login does not treat a legacy screen-disclosed code as inbox ownership",
     )
     select = body_of(account, r"\bvoid\s+select_accountname\s*\(", "select_accountname")
     check("send_account_password_prompt(reader)" in select, "select_accountname uses the prompt helper")
@@ -688,12 +688,18 @@ def test_account_c() -> None:
         )
     delete = body_of(account, r"\bvoid\s+verify_delete_account\s*\(", "verify_delete_account")
     check("account_recovery_forget(" in delete, "verify_delete_account forgets the entry")
-    for function in ("ws_cmd_change_email", "ws_cmd_change_password"):
+    for function in ("ws_cmd_change_password",):
         body = body_of(ws, r"\bvoid\s+" + function + r"\s*\(", function)
         check(
             ordered(body, "write_account(", "account_recovery_invalidate("),
             f"{function} invalidates the outstanding token after its write_account",
         )
+    email_change = body_of(ws, r"void\s+ws_cmd_change_email\s*\(", "ws_cmd_change_email")
+    check("write_account(" not in email_change and "ws_begin_email_verification(" in email_change,
+          "WebSocket email changes require an inbox challenge before any save")
+    confirmation = body_of(account, r"void\s+confirm_account\s*\(", "confirm_account")
+    check("account_email_complete(" in confirmation and "acct_confirmation" not in confirmation,
+          "telnet confirms inbox codes rather than the legacy disclosed confirmation string")
     wrapper = body_of(
         account, r"\bvoid\s+close_other_account_sessions\s*\(", "close_other_account_sessions"
     )
@@ -703,7 +709,7 @@ def test_account_c() -> None:
     )
     apply_body = body_of(
         account,
-        r"void\s+account_apply_recovered_password\s*\(",
+        r"void\s+account_apply_credentials\s*\(",
         "account_apply_recovered_password",
     )
     check(
@@ -725,8 +731,8 @@ def test_account_c() -> None:
         "apply never touches acct_name after write_account( (C2 use-after-free)",
     )
     complete = body_of(
-        core, r"void\s+account_recovery_complete\s*\(",
-        "account_recovery_complete",
+        core, r"void\s+complete_code\s*\(",
+        "complete_code",
     )
     apply_at = complete.find("account_apply_recovered_password(")
     check(
@@ -749,8 +755,8 @@ def test_attempt_counter_ownership() -> None:
     literal = "account_recovery_attempts = 0"
     sites = [(path, text.count(literal)) for path, text in all_sources.items() if literal in text]
     check(
-        sorted(sites) == [("src/account/account_recovery_nanny.c", 2), ("src/net/ws_handlers.c", 1)],
-        "'account_recovery_attempts = 0' appears exactly 3 times: nanny x2, ws_handlers x1",
+        sorted(sites) == [("src/account/account.c", 1), ("src/account/account_recovery_nanny.c", 2), ("src/net/ws_handlers.c", 2)],
+        "attempts reset only on close or successful reset/inbox verification",
         str(sites),
     )
     closed = body_of(

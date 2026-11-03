@@ -109,6 +109,14 @@ void account_apply_recovered_password(
 		done(keep_session, scripted_apply);
 }
 
+void account_apply_verified_email(
+	struct acct_entry *fresh, const char *email,
+	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
+	struct descriptor_data *keep_session, account_recovery_apply_done done)
+{
+	account_apply_recovered_password(fresh, email, expected_fingerprint, keep_session, done);
+}
+
 namespace
 {
 enum class send_mode
@@ -327,9 +335,12 @@ account_recovery_complete_outcome complete(const std::string &name, const char *
 /* The 8-8-8-8 form the mail body carries, back to the 32 hex digits the core checks. */
 std::string code_from(const std::string &message)
 {
-	const size_t at = message.find("Reset code: ");
-	require(at != std::string::npos, "rendered message carries no reset code line");
-	const std::string dashed = message.substr(at + strlen("Reset code: "), 35);
+	const char *label = message.find("Verification code: ") != std::string::npos ?
+				    "Verification code: " :
+				    "Reset code: ";
+	const size_t at = message.find(label);
+	require(at != std::string::npos, "rendered message carries no code line");
+	const std::string dashed = message.substr(at + strlen(label), 35);
 	std::string code;
 	for (char c : dashed)
 		if (c != '-')
@@ -556,6 +567,56 @@ void section_a_request_renders_mail()
 			health.entries == 1,
 		"health counters do not describe one queued live token");
 	passed("a_request_renders_mail");
+}
+
+void section_email_verification()
+{
+	fresh();
+	acct_entry account = {};
+	account.acct_name = const_cast<char *>("Mailowner");
+	account.acct_email = const_cast<char *>("old@duris.test");
+	account.acct_password = const_cast<char *>(bcrypt_shaped_hash);
+	const char *destination = "new@duris.test";
+	require(account_email_request(&account, destination, next_host().c_str()) ==
+			account_recovery_request_outcome::queued,
+		"verification was not queued");
+	wait_worker_idle();
+	const auto job = captured_at(0);
+	require(job.to == destination, "verification used the old inbox");
+	require(job.message.find("Subject: Duris account email verification\r\n") !=
+			std::string::npos,
+		"verification subject missing");
+	require(!strcmp(account.acct_email, "old@duris.test"), "request changed registered email");
+	const auto at = job.message.find("Verification code: ");
+	require(at != std::string::npos, "verification code missing from mail");
+	const auto code = job.message.substr(at + strlen("Verification code: "), 35);
+	char normalized[ACCOUNT_RECOVERY_CODE_BUF];
+	require(account_recovery_check(account.acct_name, code.c_str(), normalized) ==
+			account_recovery_check_outcome::rejected,
+		"verification code reset a password");
+	require(account_recovery_check(account.acct_name, code.c_str(), normalized, true) ==
+			account_recovery_check_outcome::accepted,
+		"verification code rejected");
+	require(account_email_request(&account, "other@duris.test", next_host().c_str()) ==
+			account_recovery_request_outcome::suppressed,
+		"verification cooldown bypassed");
+	uint64_t id = 0;
+	require(request("Mailowner", "old@duris.test", 0, next_host(), &id) ==
+			account_recovery_request_outcome::queued,
+		"verification blocked password recovery");
+	wait_worker_idle();
+	const auto reset = code_from(captured_at(1).message);
+	require(account_recovery_check(account.acct_name, reset.c_str(), normalized, true) ==
+			account_recovery_check_outcome::rejected,
+		"reset code verified an inbox");
+	account_recovery_invalidate(account.acct_name);
+	require(account_recovery_check(account.acct_name, code.c_str(), normalized, true) ==
+			account_recovery_check_outcome::rejected,
+		"credential change retained verification");
+	require(account_recovery_check(account.acct_name, reset.c_str(), normalized) ==
+			account_recovery_check_outcome::rejected,
+		"credential change retained reset");
+	passed("email_verification");
 }
 
 void section_b_suppressed_tombstone()
@@ -1223,6 +1284,7 @@ int main(int argc, char **argv)
 	section_render();
 	section_canonical_name();
 	section_a_request_renders_mail();
+	section_email_verification();
 	section_b_suppressed_tombstone();
 	section_c_canonical_keying();
 	section_d_check_normalises_without_consuming();

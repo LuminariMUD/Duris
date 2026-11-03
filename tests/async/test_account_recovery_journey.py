@@ -487,7 +487,7 @@ def enter_account_name(client: MudClient) -> None:
     client.send(ACCOUNT)
 
 
-def create_account(client: MudClient, password: str) -> None:
+def create_account(client: MudClient, password: str, smtp: FakeSmtpServer | None = None) -> None:
     """Create ACCOUNT with EMAIL on file and stop at the account menu."""
     enter_account_name(client)
     client.expect("is this correct?")
@@ -502,8 +502,16 @@ def create_account(client: MudClient, password: str) -> None:
     client.send(password)
     client.expect("information correct?")
     client.send("y")
-    client.expect("PRESS RETURN")
-    client.send("")
+    if smtp is not None:
+        client.expect("Enter the email verification code (or CANCEL): ")
+        payload = smtp.wait_for_payloads(1, timeout=20)[0]
+        match = re.search(rb"Verification code: ([0-9a-f-]{35})", payload)
+        require(match is not None, "registration did not email an inbox verification code")
+        client.send(match[1].decode())
+        client.expect("Email verified and saved")
+    else:
+        client.expect("PRESS RETURN")
+        client.send("")
     client.expect("Please select an option")
 
 
@@ -588,7 +596,10 @@ def run_enabled_journey(binary: pathlib.Path) -> None:
                 server.wait_for_status_line(BOOT_ENABLED_LINE)
 
                 client = MudClient(server.plain_port)
-                create_account(client, OLD_PASSWORD)
+                create_account(client, OLD_PASSWORD, smtp)
+                with smtp.lock:
+                    smtp.payloads.clear()
+                    smtp.connections = 0
                 leave_account_menu(client)
                 client = None
 
