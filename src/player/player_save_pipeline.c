@@ -284,9 +284,9 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	player_component_mask_t components = 0;
 	if (!player_revision_queue(GET_PID(ch), &queued_revision, &components))
 		return player_save_pipeline_result::capture_failed;
-	// Until a complete baseline has landed, even a coalesced save must carry
+	// Until a new character has a baseline, even a coalesced save must carry
 	// everything needed to create a usable owned character.
-	if (!revision.written_revision)
+	if (revision.initial_creation)
 		components = PLAYER_CHECKPOINT_COMPONENT_ALL;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
@@ -314,7 +314,7 @@ player_save_pipeline_result player_save_pipeline_checkpoint_dirty(P_char ch, int
 	}
 	try
 	{
-		if (!revision.written_revision)
+		if (revision.initial_creation)
 		{
 			if (!ch->desc || !ch->desc->account || !ch->desc->account->acct_name ||
 			    !ch->desc->account->acct_name[0])
