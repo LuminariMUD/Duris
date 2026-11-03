@@ -257,7 +257,7 @@ def main():
     deferred = nanny.split("!item_creation_grant_resume_starter(ch)", 1)[1].split("sql_connectIP(ch)", 1)[0]
     assert "PLR3_CHAOS_STARTER_KIT" in deferred
     assert "load_chaos_new_character_kit(ch, true);" in deferred
-    assert "else\n\t\t\tload_obj_to_newbies(ch);" in deferred
+    assert re.search(r"else\s+load_obj_to_newbies\(ch\);", deferred)
     constants = (ROOT / "src/core/constant.c").read_text()
     arrays = [re.search(r"^const (?:int|struct playable_race_info) " + name +
                         r"\[.*?\n\};", constants, re.S | re.M).group(0)

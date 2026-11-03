@@ -2082,14 +2082,19 @@ void enter_game(P_desc d)
 				  NULL);
 	}
 #endif
-	if (IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING) &&
-	    !item_creation_grant_resume_starter(ch))
+	if (IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING))
 	{
-		if (IS_SET(ch->specials.act3, PLR3_CHAOS_STARTER_KIT))
-			load_chaos_new_character_kit(ch, true);
-		else
-			load_obj_to_newbies(ch);
+		if (!item_creation_grant_resume_starter(ch))
+		{
+			if (IS_SET(ch->specials.act3, PLR3_CHAOS_STARTER_KIT))
+				load_chaos_new_character_kit(ch, true);
+			else
+				load_obj_to_newbies(ch);
+		}
 	}
+	else if (IS_SET(ch->specials.act2, PLR2_NEWBIEEQ) && !ch->carrying)
+		// Explicit legacy restoration is separate from the one-time first kit.
+		load_obj_to_newbies(ch);
 
 	sql_connectIP(ch);
 	sql_world_quest_history_load(ch);
