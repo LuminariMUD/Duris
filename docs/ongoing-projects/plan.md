@@ -1,3 +1,136 @@
+# Issue #611: preserve assigned NPC ship pursuit
+
+Status: planning complete; implementation has not started. Updated 2026-11-03.
+
+- Work item: [Duris #611](https://github.com/LuminariMUD/Duris/issues/611).
+- GitHub-linked development branch: [branch/issue-611-npc-pursuit](https://github.com/LuminariMUD/Duris/tree/branch/issue-611-npc-pursuit).
+- Local worktree: `/home/aiwithapex/projects/duris-issue-611`.
+- Inspected base: `96ef0ed6b1c1e70edf8aaf560712edc322ce70f6` (`origin/master` when the worktree was created).
+- Method: [ablation](../../.agents/skills/ablation/SKILL.md), applied to the current source, existing tests, and every acceptance criterion below.
+- Compatibility context: closed [#474](https://github.com/LuminariMUD/Duris/issues/474), fixed by [PR #471](https://github.com/LuminariMUD/Duris/pull/471). Preserve its recovery behavior; neither item needs reopening or a second closure.
+
+The earlier flight-transport plan is preserved verbatim after this plan.
+
+## Outcome
+
+Pirates and hunters spawned to attack different player ships must retain those separate, valid assignments while approaching from approximately 45 map rooms away. Escort retaliation must also keep pursuing a valid attacker beyond player contact range. Player lock range, five-minute inactivity expiry, combat refreshes, and the existing 180-second battle-stations/summon cooldown must continue to work.
+
+This addresses the reproduced pile-on mechanism: the heartbeat currently discards each attacker's intended victim, then ordinary replacement selection can send all attackers after the same ship. A successful fix prevents that forced loss of valid assignments. It does not guarantee a universal limit on attackers per ship: legitimate reacquisition after a victim becomes unavailable still uses existing selection rules.
+
+## Non-goals
+
+No change to spawn positions, spawn odds, merchant encounter flags, frag-based difficulty, diplomats, player contact radius, replacement-target ordering, or encounter caps. No new persistent fields, migration, configuration option, target registry, telemetry system, production operation, or deployment. The reported group-leader/high-ranking-player preference is not an established selection rule. Reconstructing Rani's runs requires incident evidence that this checkout cannot supply.
+
+## What the code and executable checks establish
+
+Line numbers below refer to the inspected base. A comparison with the issue's cited `27f4c71cd` found no differences in the relevant ship sources, map-coordinate function's file, or lifecycle test.
+
+1. **The initial assignment is explicit.** [ship_npc.c](../../src/ships/ship_npc.c):1346 computes a 45-room spawn offset for pirates/hunters; at 1390 it assigns `ship->target` and `NPC_AI_ENGAGING`. Escorts start with a separate `escort` relationship; `NPCShipAI::escort_attacked_by()` at [ship_npc_ai.c](../../src/ships/ship_npc_ai.c):486 assigns their combat target.
+2. **The expiry condition has the reported scope error.** [ship_base.c](../../src/ships/ship_base.c):2527 applies `!ship_target_in_contact(ship)` to every ship. Only the `T_TARGET_IDLE == 0` branch excludes NPCs. Timer decrement precedes this block; NPC AI runs later, at 3138.
+3. **The contact predicate combines availability and player range.** [ship_utils.c](../../src/ships/ship_utils.c):1133 rejects unloaded, sinking, docked, or non-shared-map targets before checking 3-D range against `35 + scout bonus`. Removing its use for NPCs without preserving those availability checks would drop behavior the acceptance criteria explicitly require.
+4. **AI engagement and reacquisition are separate updates.** `NPCShipAI::activity()` at 262 fills contacts with `getcontacts(ship, false)`. An engaging ship whose target is missing changes to CRUISING and breaks; a later cruising update calls `find_new_target()`. `find_current_target()` at 623 checks the current target against enumerated contacts, skipping docked and sinking ships; failure starts maintenance but does not itself null the target pointer.
+5. **Replacement selection explains convergence but predates this regression.** `find_new_target()` at 649 takes the first valid non-diplomat contact. [ship_utils.c](../../src/ships/ship_utils.c):1150 enumerates the ship-object hash, subject to `MAXSHIPS`. `getcontacts(..., false)` imposes no distance cutoff; [map.c](../../src/world/map.c):388 requires a shared map zone without a 50-room bound. Neither active selection loop compares frags, group leadership, or existing attackers. `is_valid_target()` at 739 rejects docked/sinking ships but currently has no unloaded check, so preserving rejection of unloaded targets also requires checking reacquisition.
+6. **Lifetime cleanup already has an owner.** `dock_ship()` at [ship_base.c](../../src/ships/ship_base.c):3161 calls `clear_references_to_ship(..., false)`. `delete_ship()` calls it with `true` before freeing the ship; deletion also clears AI escort/boarding references. `try_unload_npc_ship()` at [ship_npc.c](../../src/ships/ship_npc.c):1566 uses that deletion path. Preserve these paths and the sinking sweep's intentional early return; do not replace raw-pointer cleanup with contact checks or runtime-pointer guesses.
+7. **Player recovery is already exercised, with a specific NPC blind spot.** [test_npc_ship_deletion.py](../../tests/async/test_npc_ship_deletion.py) executes the real heartbeat, lock, fire, volley, ram, summon, docking, and teardown functions. Its NPC AI and contact enumeration are stubs; the escort case is at zero distance. The fixture proves player recovery/lifecycle controls, but cannot prove distant NPC engagement. [ship_shop.c](../../src/ships/ship_shop.c):800 still gates summons on `T_BSTATION`; [ships.h](../../src/ships/ships.h):94 defines `BSTATION` as 180.
+
+Planning verification on this worktree:
+
+- `python3 tests/async/test_npc_ship_deletion.py` passed all cases in MySQL and flat-file builds with ASan/UBSan. This includes idle-lock recovery, combat refresh, actual summon refusal/acceptance at the cooldown boundary, docking, sinking, purge, unload, and reference cleanup.
+- After inspecting the supplied investigation fixture and its stubs, reran `python3 bin/tests/pirate_target_investigation.py` from #611 against the current source. Both backend builds reproduced three distinct 45-room assignments being cleared on update 1, all three selecting the same first eligible hash ship on update 2, and retaining that replacement on update 3. Replacing only the heartbeat in the generated harness with its pre-#471 body retained all three original assignments. Both variants ran under ASan/UBSan without findings. Independent selection cases also acquired a first-hash target at 145 rooms.
+
+The investigation script was generated under ignored `bin/` and removed after validation; its reproducible source remains in #611. It seeds spawn-equivalent state, holds ships stationary, and stubs navigation/combat/world/persistence services. It proves the heartbeat/target-selection mechanism; it does not execute random encounter spawning, establish production settings, or reproduce a live sailing trip. No C/C++ source has been changed, so full server builds belong to implementation verification below.
+
+## Ablation decisions
+
+- **Keep the NPC/player distinction at lock expiry.** Both range and inactivity policy are player-lock rules. Exempting only the inactivity timer leaves the reproduced failure intact.
+- **Keep NPC target availability separate from player range.** Use existing loaded/docked/sinking flags and `calculate_map_coords()` to reject unavailable NPC targets without imposing a distance limit. Keep this small check local to the heartbeat and reuse its single target-clearing/message path. The existing player contact helper stays unchanged. No new helper API, range option, or persistent state is needed.
+- **Keep unloaded-target rejection during replacement selection.** Add the loaded check to the existing AI validity predicate so the same heartbeat cannot clear an unloaded target and immediately reacquire it. Preserve all other eligibility/ordering rules. This is needed for #611's explicit unavailable-target acceptance criterion.
+- **Keep one focused real-AI regression alongside the lifecycle fixture.** A dedicated small executable fixture avoids changing every lifecycle test to depend on AI/navigation. Reuse `_paths.extract_function`, headers, sanitizer/compiler conventions, and existing hash/lifetime patterns. Do not build a general harness framework or use runtime string replacement of another test as the maintained solution.
+- **Drop encounter rebalance and target-selection redesign.** Randomization, nearest-target preference, per-player caps, spawn-distance changes, and extra tracking state would change unrelated gameplay without fixing the expiry boundary. Whole-map first-match reacquisition remains a separately evaluated concern.
+- **Drop a mandatory production investigation or new logging subsystem.** Existing source and deterministic executable evidence are sufficient to implement this fix. Future incident correlation can use the existing spawn log and runtime observations after a normal deployment.
+
+Every retained change addresses a traced failure or an explicit acceptance criterion. The small availability check and unloaded guard prevent the simple NPC exemption from weakening target safety.
+
+## Files
+
+- [src/ships/ship_base.c](../../src/ships/ship_base.c): separate NPC target availability from player range/inactivity expiry; clarify the nearby comment.
+- [src/ships/ship_npc_ai.c](../../src/ships/ship_npc_ai.c): reject unloaded replacement candidates in the existing validity check.
+- `tests/async/test_npc_ship_targeting.py` (new): deterministic production spawn-assignment/heartbeat/AI/contact regression, compiled for both backends under sanitizers.
+- [tests/async/test_npc_ship_deletion.py](../../tests/async/test_npc_ship_deletion.py): retain existing player-recovery and lifecycle controls; extend only where the acceptance matrix below lacks a real-path assertion, such as unavailable-target expiry through the heartbeat.
+- This document: record final implementation evidence and any justified scope changes. Preserve the earlier project's plan.
+
+Read-only supporting sources include `ship_utils.c`, `ship_npc.c`, `map.c`, `ship_control.c`, `ship_combat.c`, `ship_shop.c`, and `ships.h`. No changes to those files are presently required.
+
+## Implementation sequence
+
+### 1. Turn the demonstrated failure into maintained executable coverage
+
+Add `test_npc_ship_targeting.py` using the real `ship_activity()`, `NPCShipAI::activity()`, `find_current_target()`, `find_new_target()`, `is_valid_target()`, `update_target()`, and escort retaliation. Execute production hash iteration, contact enumeration, range/bearing calculation, and `calculate_map_coords()`; these are the boundaries the existing fixture stubs away.
+
+Use deterministic map rooms and the real outer `try_load_npc_ship(target, type, level, ch)` overload to exercise the 45-room placement/assignment logic. Stub only its lower-level hull/crew factory and unrelated world services. Hold speed/orders at zero after assignment when checking target stability; assert the produced target, AI mode, and out-of-player-contact distance first. This executes the assignment path without claiming coverage of random encounter odds or full navigation. Use the existing extraction approach; do not copy production target logic into the fixture.
+
+The four-player/three-attacker setup must derive actual hash order rather than rely on allocation addresses. Put an eligible decoy first, with zero frags and `ATTACKBYNPC`, and assign the other three victims to a pirate/hunter mix. Vary the intended victims/frag rankings while keeping a competing eligible first contact. Verify that current code fails the assignment-retention assertions before applying the fix. Record baseline failure as expected evidence, then require the same assertions to pass after implementation.
+
+Test stubs must be explicit: captains/ammunition available; unrelated firing, steering, map rendering, world I/O and persistence controlled. Count the selected maneuver/engagement path so a no-op AI or an early return cannot masquerade as preserved pursuit. Include an escort whose real `escort_attacked_by()` assignment starts beyond player contact range.
+
+### 2. Correct the expiry boundary and retain unavailable-target handling
+
+In the heartbeat's existing target-loss block:
+
+- For players, retain `ship_target_in_contact()` and expiry when `T_TARGET_IDLE` reaches zero, preserving fractional position, altitude and scout bonuses.
+- For NPCs, clear the target only when it is unloaded, docked, sinking, or no longer shares a usable map with the attacker. Use existing flags and `calculate_map_coords()`; allow valid same-map pursuit beyond 35–37 rooms and with an expired player inactivity timer.
+- Keep one clearing/message path and the subsequent battle-stations refresh. Do not reorder timers, movement, AI updates, or sinking/deletion iteration.
+
+In `NPCShipAI::is_valid_target()`, reject unloaded candidates before the existing current-target/race checks. This must prevent immediate or subsequent reacquisition of an unloaded player hull still present in the hash. Leave diplomat handling, first-match order, current-target preservation, and the AI's ordinary mode transitions intact.
+
+Do not add a maximum NPC pursuit range. Map loss and lifecycle unavailability are distinct from a valid long approach. Retain the existing `MAXSHIPS` contact capacity and AI behavior if its current target is absent from that capped contact list; expanding that policy is outside this fix.
+
+### 3. Prove each acceptance criterion
+
+- **Pirates and hunters:** exercise both types at the actual approximately 45-room spawn separation for scout bonuses 0/1/2. Start `T_TARGET_IDLE` at both zero and one; run repeated heartbeat/AI updates across expiry and for more than 300 ticks with valid stationary targets. Assert the same target, ENGAGING mode, and an executed pursuit/maneuver path. Cover basic and advanced dispatch with controlled maneuver stubs.
+- **Group convergence:** three attackers retain three separate victims despite an eligible first-hash decoy, different frag rankings, and `ATTACKBYNPC` on that decoy. Repeat with changed victim assignments so success cannot depend on one favorable hash arrangement. Check several updates, including the first and second updates that formerly lost/replaced the victims.
+- **Escort pursuit:** call real retaliation, verify engagement beyond player range through real heartbeat/AI updates, and preserve the separate escort relationship.
+- **Unavailable and destroyed targets:** run docked, sinking, unloaded, off-map and different-map-zone cases for NPC and player locks. Assert lock loss and safe mode transition where the attacker is eligible for an AI tick. Keep an unloaded candidate in the hash and ensure cruising cannot select it. Through actual docking, purge/deletion and NPC unload paths, verify target/escort/boarding references clear before free, unrelated references survive, and the next heartbeat has no invalid access. Reuse lifecycle tests for their existing teardown coverage.
+- **#474 compatibility:** retain 300-tick idle player-lock expiry with no captain aboard, renewal by outgoing fire/incoming volleys/ram attempts, explicit `lock off`, and out-of-range expiry. Keep summon blocked while battle stations is positive and accepted only after the existing 180-tick stand-down; cover the lock's final idle tick and cooldown boundary. Death recovery is represented by an absent captain in the isolated fixture; do not describe that as a complete character-death journey.
+- **Player contact geometry and shared buffers:** keep the existing 35/36/37-room scout boundaries, fractional and altitude cases. Extend the helper's sentinel assertion to the entire shared `contacts[]` buffer so the expiry probe cannot silently corrupt another ship's prepared contacts. Exercise production contact enumeration in the new AI test, without requiring that buffer to remain unchanged across the AI's intentional refresh.
+- **Both persistence builds:** compile and execute the new test and existing lifecycle suite with MySQL and `__NO_MYSQL__`, under ASan/UBSan. Every case above must have a passing executable assertion or explicitly named existing control; a contact-helper-only pass is insufficient for assignment retention.
+
+### 4. Build, review, and record evidence
+
+Run the narrow suites during development, then the required local server builds and changed-line checks. From this worktree:
+
+```sh
+python3 tests/async/test_npc_ship_targeting.py
+python3 tests/async/test_npc_ship_deletion.py
+make -C src -j8
+make -C src -j8 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_new-flatfile"
+./scripts/format.sh --check
+./scripts/tidy.sh
+git diff --check
+```
+
+The existing default build is MariaDB; the flat-file build uses the Makefile's separate backend object directories and a distinct binary, preserving both executables under `bin/`. Neither the tests nor builds require a live database, shared game server, production credentials, or mutations to player data. Fix failures caused by this change; do not widen into a full burn-in or wait for hosted CI.
+
+Review the final diff against this acceptance list and repeat ablation. Commit only necessary source/test/documentation changes, with no generated binaries or investigation scripts. Update this plan with exact passing commands and any unverified gameplay claims. The implementation PR should link #611 as its work item; this planning commit must not close the issue. Keep #474 as a compatibility reference.
+
+## Live follow-up and limits
+
+No production binary, runtime settings, live hash order, or reporter incident timeline has been inspected here. The source fix and controlled regression can establish assignment retention and prevent the reproduced convergence; they cannot establish which original ships spawned each attacker in either report.
+
+If a pile-on is reported after deployment, capture run time/deployed revision, attacker identity/type, original victim, current victim, target-loss circumstances, participant hulls and diplomats. `try_load_pirate_ship()` already logs original owner and rooms at [ship_npc.c](../../src/ships/ship_npc.c):1315. That log alone does not establish subsequent pursuit. Evaluate any persistent whole-map reacquisition concern as separate gameplay work, using that evidence; do not silently broaden this patch.
+
+## Estimate for my implementation
+
+**Approximately 3–5 hours of active implementation and local verification** from this prepared branch:
+
+- 1–1.5 hours: maintained real-AI fixture, deterministic spawn/group cases, and expected baseline failures.
+- 0.5–1 hour: expiry/availability correction, unloaded reacquisition guard, and adversarial lifecycle/player compatibility cases.
+- 1.5–2.5 hours: both backend tests/builds, fixes revealed by those checks, formatting/tidy, final ablation review, and implementation handoff.
+
+This is my execution estimate, including regression work; it excludes reviewer turnaround and deployment. The production edit is small, while most of the time is proving the heartbeat/AI boundary and keeping player recovery intact. Unexpected compiler or fixture integration failures would require an updated estimate supported by the specific failure.
+
+---
+
 # Issue #584: flight transport implementation plan
 
 Status: implementation, review follow-up and local acceptance complete. [PR #586](https://github.com/LuminariMUD/Duris/pull/586) and [PR #587](https://github.com/LuminariMUD/Duris/pull/587) were squash-merged in order; [PR #588](https://github.com/LuminariMUD/Duris/pull/588) is rebased directly onto the resulting master and ready to merge. Updated 2026-11-02. No deployment has been performed.
