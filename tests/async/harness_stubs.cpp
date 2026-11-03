@@ -26,6 +26,17 @@
 #include <cerrno>
 
 #define HARNESS_STUB __attribute__((weak))
+// Fixtures without the account creation state machine have no pending Keep.
+HARNESS_STUB bool account_creation_pending(int)
+{
+	return false;
+}
+HARNESS_STUB bool account_creation_owner_pending(const char *)
+{
+	return false;
+}
+HARNESS_STUB void account_creation_saved(const player_save_completion &) {}
+HARNESS_STUB void account_creation_pulse() {}
 // Fixtures without the player-save pipeline have no pending quest transition.
 HARNESS_STUB bool player_save_pipeline_world_quest_pending(int)
 {

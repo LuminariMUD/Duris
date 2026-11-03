@@ -5,6 +5,7 @@
 // log; the rest of the save commits. This drives
 // player_snapshot_repository_apply() against a real server.
 #include "item/item_claim_repository.h"
+#include "account/account.h"
 #include "core/files.h"
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
@@ -351,6 +352,8 @@ int main()
 	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
 			applied.rolled_back,
 		"initial mapping failure must report a confirmed rollback");
+	require(applied.creation_not_committed,
+		"mapping rollback must prove this initial attempt published no character");
 	for (const char *table : { "player_data", "player_items", "currency_wallet_baseline",
 				   "epic_balance_baseline", "combat_frag_baseline" })
 		require(scalar(test_connection, "SELECT COUNT(*) FROM " + std::string(table) +
@@ -406,6 +409,16 @@ int main()
 			scalar(test_connection,
 			       "SELECT COUNT(*) FROM account_characters WHERE pid=5") == "0",
 		"a blocked account must not commit a fresh character");
+	require(applied.creation_not_committed,
+		"blocked fresh creation must permit attempt-scoped cleanup");
+	auto missing_owner = snapshot_for(6, 1, "MissingOwner");
+	missing_owner.creation_account = "absent_account";
+	applied = player_snapshot_repository_apply(test_connection, missing_owner);
+	require(applied.outcome == player_save_apply_outcome::terminal_failure &&
+			applied.creation_not_committed &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=6") ==
+				"0",
+		"missing owner with no initial row must release only its empty attempt");
 	execute(test_connection, "UPDATE accounts SET blocked=0 WHERE account_name='claim_probe'");
 	auto conflicting = unbased;
 	execute(test_connection, "INSERT INTO accounts(account_name) VALUES ('other_creator')");
@@ -486,6 +499,35 @@ int main()
 		"an initial quest retry must preserve later player state");
 	std::cout
 		<< "[PASS] creation name reuse, blocked reconciliation and first quest continuation\n";
+
+	// The account lock serializes the final available slot across first saves.
+	execute(test_connection, "INSERT INTO accounts(account_name) VALUES ('limit_probe')");
+	for (int i = 1; i < MAX_CHARS_PER_ACCOUNT; ++i)
+		execute(test_connection,
+			"INSERT INTO account_characters(account_name,pid,char_name) VALUES "
+			"('limit_probe'," +
+				std::to_string(81000 + i) + ",'LimitSeed" + std::to_string(i) +
+				"')");
+	auto last_slot = snapshot_for(82001, 1, "Lastslot");
+	last_slot.creation_account = "limit_probe";
+	require(player_snapshot_repository_apply(test_connection, last_slot).outcome ==
+				player_save_apply_outcome::applied &&
+			player_snapshot_repository_apply(test_connection, last_slot).outcome ==
+				player_save_apply_outcome::already_applied,
+		"the last slot must commit and its retry must remain valid at the cap");
+	auto excess = last_slot;
+	excess.pid = 82002;
+	for (auto &field : excess.status_strings)
+		if (field.field == player_status_string_field::name)
+			field.value = "Overlimit";
+	const auto capped = player_snapshot_repository_apply(test_connection, excess);
+	require(capped.outcome == player_save_apply_outcome::terminal_failure &&
+			capped.creation_not_committed &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM player_data WHERE pid=82002") == "0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM account_characters WHERE pid=82002") == "0",
+		"an over-limit creation must publish no character or membership");
 
 	// A corpse save claims what the corpse holds and replaces its rows; a remove deletes
 	// them (persistence reset step 6).

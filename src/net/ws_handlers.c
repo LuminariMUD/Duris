@@ -2123,8 +2123,6 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 {
 	cJSON *name_item, *race_item, *class_item, *sex_item, *align_item;
 	cJSON *hometown_item, *hardcore_item, *newbie_item;
-	cJSON *response;
-	char *json_str;
 	const char *name;
 	int race_id, class_id, sex, alignment;
 	int hometown_id, is_hardcore, is_newbie;
@@ -2132,6 +2130,12 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 
 	if (!ws_chargen_allowed(d))
 		return;
+	if (d->account->num_chars >= MAX_CHARS_PER_ACCOUNT)
+	{
+		ws_send_system(d, "error",
+			       "Your account already has the maximum number of characters.");
+		return;
+	}
 	if (d->chargen_phase != CHARGEN_READY)
 	{
 		ws_send_system(d, "error", "Complete the preceding stat creation steps first");
@@ -2401,56 +2405,70 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	/* copy account password to character */
 	strlcpy(ch->only.pc->pwd, d->account->acct_password, sizeof ch->only.pc->pwd);
 
-#ifdef USE_ACCOUNT
-	add_char_to_account(d);
-#endif
-
-	/* save character to disk */
-	if (chaos_mud_enabled())
-		schedule_chaos_new_character_kit_before_entry(ch);
-	else
-		writeCharacter(ch, RENT_QUIT, NOWHERE);
-
-	account_racewar_admission admission = {};
-	if (!account_commit_character_admission(d, ch, false, &admission))
-	{
-		char message[512];
-		account_format_racewar_denial(&admission, message, sizeof(message));
-		ws_send_system(d, "error", message);
-		item_creation_grant_cancel_batch_before_entry(ch);
-		d->character = NULL;
-		ch->desc = NULL;
-		free_char(ch);
+	if (!keep_new_character(d))
 		ws_reset_chargen(d);
-		STATE(d) = CON_ACCT_SELECT_CHAR;
-		ws_send_auth_success(d, d->account->acct_name);
-		return;
+}
+
+void ws_finish_kept_character(P_desc d, bool created)
+{
+	P_char ch = d->character;
+	const bool waiting = IS_SET(ch->specials.act3, PLR3_APPROVAL_PENDING);
+	const int race_id = GET_RACE(ch);
+	const int class_id = flag2idx(ch->player.m_class);
+	const int alignment = GET_ALIGNMENT(ch) / 1000;
+	const int resolved_racewar = GET_RACEWAR(ch);
+	const int actual_hometown = d->chargen_hometown;
+	const bool is_hardcore = IS_SET(ch->specials.act2, PLR2_HARDCORE_CHAR);
+	const bool is_newbie = IS_SET(ch->specials.act2, PLR2_NEWBIE);
+	if (!waiting)
+	{
+		account_racewar_admission admission = {};
+		const auto *membership =
+			find_char_in_list(d->account->acct_character_list, GET_NAME(ch));
+		if (!account_commit_character_admission(d, ch, membership && membership->blocked,
+							&admission))
+		{
+			char message[512];
+			account_format_racewar_denial(&admission, message, sizeof(message));
+			ws_send_system(d, "error", message);
+			item_creation_grant_cancel_batch_before_entry(ch);
+			d->character = NULL;
+			ch->desc = NULL;
+			free_char(ch);
+			ws_reset_chargen(d);
+			STATE(d) = CON_ACCT_SELECT_CHAR;
+			ws_send_auth_success(d, d->account->acct_name);
+			return;
+		}
+
+		logit(LOG_NEW, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
+		statuslog(ch->player.level, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
+
+		/* set connection state before entering game */
+		STATE(d) = CON_PLAYING;
+		enter_game(d);
+		/* Entry raises a new character from level 0 to 1; publish that projection too. */
+		const int projection_room = ch->in_room >= 0 && ch->in_room <= top_of_world ?
+						    world[ch->in_room].number :
+						    ch->specials.was_in_room;
+		if (!sync_account_character_projection(ch, projection_room, TRUE))
+			statuslog(56, "WebSocket new-character account projection save failed");
+		d->prompt_mode = !item_creation_grant_blocks_commands(ch);
+
+		/* send full game state via gmcp */
+		ws_send_full_game_state(d);
 	}
-
-	logit(LOG_NEW, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
-	statuslog(ch->player.level, "%s [%s] new WebSocket player.", GET_NAME(ch), d->host);
-
-	ws_reset_chargen(d);
-	/* set connection state before entering game */
-	STATE(d) = CON_PLAYING;
-	enter_game(d);
-	/* Entry raises a new character from level 0 to 1; publish that projection too. */
-	const int projection_room = ch->in_room >= 0 && ch->in_room <= top_of_world ?
-					    world[ch->in_room].number :
-					    ch->specials.was_in_room;
-	if (!sync_account_character_projection(ch, projection_room, TRUE))
-		statuslog(56, "WebSocket new-character account projection save failed");
-	d->prompt_mode = !item_creation_grant_blocks_commands(ch);
-
-	/* send full game state via gmcp */
-	ws_send_full_game_state(d);
-
-	/* send success response */
-	response = cJSON_CreateObject();
+	if (!created)
+		return;
+	/* Only a matching committed Keep reaches this response. */
+	cJSON *response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "create_character");
 	cJSON_AddStringToObject(response, "status", "created");
-	cJSON_AddStringToObject(response, "message", "Character created successfully!");
-	cJSON_AddStringToObject(response, "name", capitalized_name);
+	cJSON_AddStringToObject(response, "message",
+				waiting ? "Character saved; waiting for staff approval." :
+					  "Character created successfully!");
+	cJSON_AddBoolToObject(response, "waitingForApproval", waiting);
+	cJSON_AddStringToObject(response, "name", GET_NAME(ch));
 	cJSON_AddStringToObject(response, "race", race_names_table[race_id].normal);
 	cJSON_AddStringToObject(response, "class", class_names_table[class_id].normal);
 	cJSON_AddStringToObject(response, "alignment", ws_get_class_alignment(alignment));
@@ -2467,7 +2485,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		cJSON_AddStringToObject(response, "hometown", town_name_list[actual_hometown]);
 	}
 
-	json_str = cJSON_PrintUnformatted(response);
+	char *json_str = cJSON_PrintUnformatted(response);
 	if (json_str)
 	{
 		websocket_send_text(d, json_str);
@@ -2475,6 +2493,7 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 	}
 
 	cJSON_Delete(response);
+	ws_reset_chargen(d);
 }
 
 /* validate character name - check if already taken */

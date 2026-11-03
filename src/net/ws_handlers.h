@@ -30,6 +30,7 @@ void ws_cmd_game(struct descriptor_data *d, cJSON *data);
 void ws_cmd_chargen_options(struct descriptor_data *d, cJSON *data);
 void ws_cmd_roll_stats(struct descriptor_data *d, cJSON *data);
 void ws_cmd_create_character(struct descriptor_data *d, cJSON *data);
+void ws_finish_kept_character(struct descriptor_data *d, bool created);
 
 /* account menu handlers */
 void ws_cmd_account_info(struct descriptor_data *d, cJSON *data);

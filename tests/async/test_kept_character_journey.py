@@ -4,6 +4,7 @@
 MariaDB runs through with_disposable_mariadb.sh; neither leg reads checkout .env.
 """
 import argparse
+import fcntl
 from contextlib import contextmanager
 import json
 import os
@@ -57,9 +58,9 @@ def persistence(backend):
         sql("DROP DATABASE " + database, False)
 
 
-def login(server):
+def login(server, name=account.ACCOUNT):
     client = account.MudClient(server.plain_port)
-    account.enter_account_name(client)
+    account.enter_account_name(client, name)
     client.expect("Please enter your password:")
     account.login_to_menu(client, account.OLD_PASSWORD)
     return client
@@ -85,19 +86,42 @@ def check_membership(server, sql):
         client.close()
 
 
-def saved_character(server, sql, inspector):
+def character_choices(client, name="Taverek"):
+    creation.start_character(client)
+    creation.reply(client, name, "Is this correct?")
+    creation.reply(client, "y", "meet these criteria?")
+    creation.reply(client, "y", creation.RACE_MENU)
+    creation.finish_character_choices(client)
+
+
+def websocket_character(client, name="Taverek"):
+    options = client.command("chargen_options")
+    human = next(race for race in options["races"] if race["id"] == 1)
+    warrior = next(kind for kind in human["classes"] if kind["name"].lower() == "warrior")
+    homes = client.command("get_hometowns", {"race": 1}, "hometowns")
+    home = next(home for home in homes["options"] if "Plane" in home["name"])
+    client.command("roll_stats", {"race": 1, "method": "default"})
+    for stat in ("str", "dex", "agi", "luk"):
+        client.command("add_bonus", {"stat": stat}, "bonus_added")
+    return client.command("create_character", {"name": name, "race": 1, "class": warrior["id"],
+                          "sex": 1, "alignment": "good", "hometown": home["id"], "newbie": True})
+
+
+def saved_character(server, sql, inspector, name="Taverek"):
     if sql:
         row = sql("SELECT pid,level,base_str,base_dex,base_agi,base_con,base_pow,"
                   "base_int,base_wis,base_cha,base_kar,base_luk FROM player_data "
-                  "WHERE name='Taverek' AND active=1")
+                  f"WHERE name='{name}' AND active=1")
         values = list(map(int, row.split()))
         return values[0], values[1], values[2:]
     snapshots = list((server.state_root / "players").glob("*.snapshot"))
-    assert len(snapshots) == 1, snapshots
-    pid = int(snapshots[0].stem)
-    record = json.loads(subprocess.check_output(
-        [str(inspector), str(server.state_root), "inspect", str(pid)], text=True))
-    return pid, record["membership_level"], record["base_stats"]
+    for snapshot in snapshots:
+        pid = int(snapshot.stem)
+        record = json.loads(subprocess.check_output(
+            [str(inspector), str(server.state_root), "inspect", str(pid)], text=True))
+        if record["name"].lower() == name.lower():
+            return pid, record["membership_level"], record["base_stats"]
+    raise AssertionError(f"No saved {name} in {snapshots}")
 
 
 def websocket_text(client, needle):
@@ -130,7 +154,8 @@ def override_entry(original, server, sql, inspector, protocol):
                 pass
             creation.reply(replacement, "1", "Taverek")
             creation.reply(replacement, "1", "(Y/N)")
-            creation.reply(replacement, "y", "Your starter kit is ready")
+            creation.reply(replacement, "y", "PRESS RETURN")
+            creation.reply(replacement, "", "Your starter kit is ready")
             replacement.expect("Pos: standing >")
             creation.reply(replacement, "save", "Save complete for Taverek.")
         after = saved_character(server, sql, inspector)
@@ -154,19 +179,148 @@ def override_entry(original, server, sql, inspector, protocol):
             replacement.close()
 
 
-def run(binary, backend, *, override=None):
+@contextmanager
+def pause_writer(server, sql, pid=None):
+    if sql:
+        env = server.environment
+        command = ["mysql", "--protocol=tcp", "--skip-ssl", "-h", env["DB_HOST"],
+                   "-P", env["DB_PORT"], "-u", env["DB_USER"], "-N", "-B",
+                   "--unbuffered", env["DB_NAME"]]
+        lock = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                text=True, env=env, bufsize=1)
+        try:
+            row = (f"SELECT pid FROM player_data WHERE pid={pid}" if pid else
+                   f"SELECT account_name FROM accounts WHERE account_name='{account.ACCOUNT}'")
+            lock.stdin.write("START TRANSACTION; " + row + " FOR UPDATE;\n")
+            lock.stdin.flush()
+            assert lock.stdout.readline().strip() == (str(pid) if pid else account.ACCOUNT)
+            yield
+        finally:
+            lock.communicate("COMMIT;\n", timeout=10)
+            assert lock.returncode == 0
+    else:
+        # This fresh fixture's first PID is 1. Its player-file lock blocks the
+        # writer without blocking monotonic PID allocation on the game loop.
+        players = server.state_root / "players"
+        players.mkdir(mode=0o700, exist_ok=True)
+        with (players / f".player-{pid or 1}.lock").open("a") as lock:
+            os.chmod(lock.name, 0o600)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def delayed_disconnect(client, server, sql, inspector, reject=False):
+    if reject:
+        if sql:
+            sql("CREATE TRIGGER reject_kept_mapping BEFORE INSERT ON account_characters "
+                "FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic kept rollback'")
+        else:
+            subprocess.run([str(inspector), str(server.state_root), "block-account", account.ACCOUNT, "1"], check=True)
+    cached = None
+    with pause_writer(server, sql):
+        response = creation.reply(client, "y", "Saving your character. Please wait.")
+        client._receive()
+        assert "PRESS RETURN" not in response + client.pending.decode(errors="replace"), response
+        probe = WebSocketClient(server.websocket_port)
+        try:
+            result = probe.command("validate_name", {"name": "tAvErEk"})
+            assert result["valid"] is False, "pending Keep did not reserve its name"
+            client.close()
+            deadline = time.monotonic() + 10
+            while "Losing player: Taverek" not in server.runtime_logs():
+                assert time.monotonic() < deadline, "pre-entry disconnect did not retire its body"
+                time.sleep(0.05)
+            result = probe.command("validate_name", {"name": "Taverek"})
+            assert result["valid"] is False, "disconnect released an unresolved reservation"
+            assert server.process.poll() is None, "server stopped during delayed Keep"
+        finally:
+            probe.close()
+        if not sql and not reject:
+            cached = login(server)  # a login before commit initially has no membership
+    if reject:
+        probe = WebSocketClient(server.websocket_port)
+        try:
+            deadline = time.monotonic() + 15
+            while not probe.command("validate_name", {"name": "Taverek"})["valid"]:
+                assert time.monotonic() < deadline, "known failed Keep retained its reservation"
+                time.sleep(0.05)
+        finally:
+            probe.close()
+        if sql:
+            assert sql("SELECT COUNT(*) FROM player_data WHERE name='Taverek'") == "0"
+            assert sql("SELECT COUNT(*) FROM account_characters WHERE char_name='Taverek'") == "0"
+            sql("DROP TRIGGER reject_kept_mapping")
+        else:
+            assert not list((server.state_root / "players").glob("*.snapshot"))
+            subprocess.run([str(inspector), str(server.state_root), "block-account", account.ACCOUNT, "0"], check=True)
+        server.shutdown()
+        creation.reboot(server)
+        probe = WebSocketClient(server.websocket_port)
+        try:
+            assert probe.command("validate_name", {"name": "Taverek"})["valid"]
+        finally:
+            probe.close()
+        retry = login(server)
+        try:
+            character_choices(retry)
+            creation.reply(retry, "y", "PRESS RETURN")
+            if sql:
+                assert int(sql("SELECT pid FROM player_data WHERE name='Taverek'")) > 1
+            else:
+                assert all(int(path.stem) > 1 for path in (server.state_root / "players").glob("*.snapshot"))
+        finally:
+            retry.close()
+        check_membership(server, sql)
+        server.shutdown()
+        creation.reboot(server)
+        check_membership(server, sql)
+        server.shutdown()
+        return
+    deadline = time.monotonic() + 15
+    while not (sql("SELECT COUNT(*) FROM player_data WHERE name='Taverek' AND save_revision>0") == "1"
+               if sql else (server.state_root / "players/1.snapshot").is_file()):
+        assert time.monotonic() < deadline, "released writer did not commit the kept character"
+        time.sleep(0.05)
+    if cached:
+        deadline = time.monotonic() + 10
+        try:
+            while True:
+                cached.send("1")
+                result, _ = cached.expect_any(("Taverek", "Account currently doesn't have any characters"))
+                if result == "Taverek":
+                    break
+                cached.expect(creation.MENU)
+                assert time.monotonic() < deadline, "commit did not refresh a logged-in account cache"
+                time.sleep(0.05)
+        finally:
+            cached.close()
+    check_membership(server, sql)
+    server.shutdown()
+    creation.reboot(server)
+    check_membership(server, sql)
+    server.shutdown()
+
+
+def run(binary, backend, *, override=None, delay=False, reject=False):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
-    if override and backend == "flatfile":
+    if (override or reject) and backend == "flatfile":
         subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
                         "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
-        if override == "websocket":
+        if override == "websocket" or delay:
             environment = dict(environment, DURIS_WEBSOCKET="TRUE")
         with account.IsolatedServer(binary, environment) as server:
             client = account.MudClient(server.plain_port)
             try:
-                creation.reach_race(client)
-                creation.finish_character_choices(client)
+                account.create_account(client, account.OLD_PASSWORD)
+                character_choices(client)
+                if delay:
+                    delayed_disconnect(client, server, sql, inspector, reject)
+                    print(f"PASS: {backend} delayed Keep {'rollback releases only its attempt' if reject else 'stays responsive/reserved after disconnect, commits and survives restart'}")
+                    return
                 creation.reply(client, "y", "PRESS RETURN")
                 if override:
                     # Read the real committed baseline before selecting it from
@@ -207,5 +361,7 @@ if __name__ == "__main__":
     parser.add_argument("--server", type=Path, required=True)
     parser.add_argument("--override", choices=("telnet", "websocket"), nargs="?", const="telnet",
                         help="select the kept character while its original pre-entry socket remains open")
+    parser.add_argument("--delay", action="store_true", help="hold the initial writer and disconnect before acknowledgment")
+    parser.add_argument("--reject", action="store_true", help="refuse the delayed initial save and verify reservation cleanup")
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend, override=args.override)
+    run(args.server.resolve(), args.backend, override=args.override, delay=args.delay or args.reject, reject=args.reject)

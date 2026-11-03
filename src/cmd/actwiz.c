@@ -7809,66 +7809,21 @@ void do_finger(P_char ch, char *arg, int /*cmd*/)
 
 void do_decline(P_char ch, char *arg, int /*cmd*/)
 {
-	char Gbuf2[MAX_STRING_LENGTH], f_a[MAX_STRING_LENGTH], Gbuf1[MAX_STRING_LENGTH];
-	P_desc d, i;
-
-	arg = skip_spaces(arg);
-	if (!*arg)
-	{
-		send_to_char("Usage: decline <charname> [reason]\n", ch);
-		return;
-	}
-	arg = one_argument(arg, f_a);
-	for (d = descriptor_list; d; d = d->next)
+	char name[MAX_INPUT_LENGTH];
+	arg = one_argument(skip_spaces(arg), name);
+	if (!*name)
+		return send_to_char("Usage: decline <charname> [reason]\n", ch);
+	for (P_desc d = descriptor_list; d; d = d->next)
 		if (STATE(d) == CON_ACCEPTWAIT && d->character &&
-		    !str_cmp(GET_NAME(d->character), f_a))
+		    !str_cmp(GET_NAME(d->character), name))
 		{
-			if (!arg || !*arg)
-			{
-				SEND_TO_Q(
-					"\n\nYour new character application has been declined. It is highly probable\n",
-					d);
-				SEND_TO_Q(
-					"that either your name does not suit fantasy theme, or something else is\n"
-					"inappropriate to the theme Duris strives to maintain.\n\n",
-					d);
-				SEND_TO_Q("Please enter another, more suitable fantasy name:", d);
-			}
-			else
-			{
-				SEND_TO_Q(
-					"\n\nYour new character application has been declined.\nReason supplied was:",
-					d);
-				SEND_TO_Q(arg, d);
-				SEND_TO_Q("\n\nPlease enter another, more suitable fantasy name:",
-					  d);
-			}
-			d->character->only.pc->prestige = 0;
-			logit(LOG_NEWCHAR, "%s declined new char %s (%s): %s.", GET_NAME(ch),
-			      GET_NAME(d->character), (*d->host ? d->host : "UNKNOWN"),
-			      (arg ? arg : "NO REASON GIVEN"));
-			snprintf(Gbuf1, MAX_STRING_LENGTH,
-				 "&+c*** STATUS: %s declined new player %s. (%s)\n", GET_NAME(ch),
-				 GET_NAME(d->character), arg);
-			snprintf(Gbuf2, MAX_STRING_LENGTH,
-				 "&+c*** STATUS: Someone declined new player %s. (%s)\n",
-				 GET_NAME(d->character), arg);
-			for (i = descriptor_list; i; i = i->next)
-				if (!i->connected && i->character &&
-				    IS_SET(i->character->specials.act, PLR_PETITION) &&
-				    IS_TRUSTED(i->character))
-				{
-					if (!CAN_SEE(i->character, ch))
-						send_to_char(Gbuf2, i->character);
-					else
-						send_to_char(Gbuf1, i->character);
-					//    deny_name(GET_NAME(d->character));
-					STATE(d) = CON_NEW_NAME;
-				}
-
-			deny_name(GET_NAME(d->character));
-
-			return;
+			if (!decline_kept_character(d, arg))
+				return send_to_char(
+					"That application is still saving. Please retry shortly.\n",
+					ch);
+			logit(LOG_NEWCHAR, "%s requested decline of %s: %s", GET_NAME(ch), name,
+			      arg);
+			return send_to_char("Saving the character cancellation.\n", ch);
 		}
 	send_to_char("Decline what new player's application?\n", ch);
 }
@@ -7892,7 +7847,7 @@ void do_approve(P_char ch, char *arg, int /*cmd*/)
 			 "&+cAC: Post-creation approval system is now %s.\n",
 			 approve_modes[approve_mode]);
 		send_to_char(Gbuf1, ch);
-		if (approve_mode == APPROVE_ON)
+		// Already-kept applications still need a decision when new approvals are off.
 		{
 			send_to_char("List of characters needing approval:\n", ch);
 			for (d1 = descriptor_list; d1; d1 = d1->next)
@@ -7986,16 +7941,25 @@ void do_approve(P_char ch, char *arg, int /*cmd*/)
 			if (STATE(d1) == CON_ACCEPTWAIT && d1->character &&
 			    !str_cmp(GET_NAME(d1->character), arg))
 			{
-				logit(LOG_NEWCHAR, "%s approved new char %s from %s.", GET_NAME(ch),
-				      GET_NAME(d1->character), (*d1->host ? d1->host : "UNKNOWN"));
+				if (!approve_kept_character(d1))
+				{
+					send_to_char(
+						"Approval could not be saved; the application remains pending.\n",
+						ch);
+					return;
+				}
+				logit(LOG_NEWCHAR, "%s requested approval of new char %s from %s.",
+				      GET_NAME(ch), GET_NAME(d1->character),
+				      (*d1->host ? d1->host : "UNKNOWN"));
 				snprintf(Gbuf1, MAX_STRING_LENGTH,
-					 "&+c*** STATUS: %s approved new player %s from %s.\n",
+					 "&+c*** STATUS: %s is approving new player %s from %s.\n",
 					 GET_NAME(ch), GET_NAME(d1->character),
 					 *d1->host ? d1->host : "&+WUNKNOWN&n");
-				snprintf(Gbuf2, MAX_STRING_LENGTH,
-					 "&+c*** STATUS: Someone approved new player %s from %s.\n",
-					 GET_NAME(d1->character),
-					 *d1->host ? d1->host : "&+WUNKNOWN&n");
+				snprintf(
+					Gbuf2, MAX_STRING_LENGTH,
+					"&+c*** STATUS: Someone is approving new player %s from %s.\n",
+					GET_NAME(d1->character),
+					*d1->host ? d1->host : "&+WUNKNOWN&n");
 
 				for (d2 = descriptor_list; d2; d2 = d2->next)
 				{
@@ -8009,14 +7973,6 @@ void do_approve(P_char ch, char *arg, int /*cmd*/)
 							send_to_char(Gbuf1, d2->character);
 					}
 				}
-
-				SEND_TO_Q(
-					"\nYour application for character has been approved. Welcome into ranks of\nthe players of Duris!\n\n",
-					d1);
-				SEND_TO_Q("\n*** PRESS RETURN:\n", d1);
-				STATE(d1) = CON_WELCOME;
-				approve_name(GET_NAME(d1->character));
-				schedule_chaos_new_character_kit_before_entry(d1->character);
 
 				return;
 			}

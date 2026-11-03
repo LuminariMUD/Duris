@@ -96,7 +96,7 @@ void retire_ended_player(int pid)
 	player_revision_snapshot revision = {};
 	if (player_revision_snapshot_copy(pid, &revision) && revision.session_ended &&
 	    !live_player(pid) && !player_save_pipeline_world_quest_pending(pid) &&
-	    !player_save_worker_pid_pending(pid))
+	    !account_creation_pending(pid) && !player_save_worker_pid_pending(pid))
 		player_revision_forget(pid);
 }
 
@@ -110,6 +110,8 @@ bool completion_succeeded(const player_save_completion &completion)
 /** Account for one writer completion on the game thread. */
 void finish_completion(const player_save_completion &completion)
 {
+	if (completion.kind == persistence_job_kind::player)
+		account_creation_saved(completion);
 	if (trace_player_saves())
 		logit(LOG_STATUS,
 		      "PLAYER SAVE TRACE: stage=completion mono_us=%llu kind=%s owner=%llu revision=%llu components=%llu outcome=%u error=%u retries=%u queued_us=%llu started_us=%llu completed_us=%llu",
@@ -536,7 +538,9 @@ void player_save_pipeline_pulse(void)
 		const size_t completed =
 			player_save_worker_pulse(completions, PLAYER_SAVE_PIPELINE_PULSE_BUDGET);
 		for (size_t index = 0; index < completed; ++index)
+		{
 			finish_completion(completions[index]);
+		}
 		// Finish the entire batch before retiring any previous session's revision.
 		for (size_t index = 0; index < completed; ++index)
 			if (completions[index].kind == persistence_job_kind::player)
@@ -544,6 +548,7 @@ void player_save_pipeline_pulse(void)
 		if (completed < PLAYER_SAVE_PIPELINE_PULSE_BUDGET)
 			break;
 	}
+	account_creation_pulse();
 	// A failed terminal save can outlive its actor. Retain the last immutable
 	// capture and retry it rather than dropping the pending history on logout.
 	std::vector<std::pair<int, std::shared_ptr<player_snapshot>>> retry;
@@ -707,6 +712,8 @@ bool player_save_pipeline_load_held(int pid)
 {
 	if (pid <= 0)
 		return false;
+	if (account_creation_pending(pid))
+		return true;
 	{
 		std::lock_guard<std::mutex> lock(pipeline_mutex);
 		if (trade_captures.count(pid) || pending_world_quests.count(pid))

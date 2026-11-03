@@ -14,6 +14,7 @@
 
 #include "player/player_snapshot_repository.h"
 
+#include "account/account.h"
 #include "core/defines.h"
 #include "core/files.h"
 #include "economy/collector_eligibility.h"
@@ -1033,15 +1034,17 @@ query_result apply_components(MYSQL *connection, const player_snapshot &snapshot
 // A missing row requires the immutable first-save account. Identity, membership,
 // components and opening balances are published by the same transaction.
 query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapshot, bool *created,
-			       player_revision_t *stored_revision, uint64_t *delivered_sequence,
-			       uint64_t *wallet_revision)
+			       bool *creation_absent, player_revision_t *stored_revision,
+			       uint64_t *delivered_sequence, uint64_t *wallet_revision)
 {
 	*created = false;
+	*creation_absent = false;
 	*stored_revision = 0;
 	*delivered_sequence = 0;
 	*wallet_revision = 0;
 	const bool creation = !snapshot.creation_account.empty();
-	bool account_blocked = false;
+	bool account_allowed = true;
+	bool account_exists = true;
 	const auto name = std::find_if(snapshot.status_strings.begin(),
 				       snapshot.status_strings.end(),
 				       [](const player_snapshot_string &entry)
@@ -1061,12 +1064,11 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		MYSQL_RES *accounts = mysql_store_result(connection);
 		if (!accounts)
 			return { false, mysql_errno(connection) };
-		const auto account_row = mysql_fetch_row(accounts);
-		const bool found = account_row != nullptr;
-		account_blocked = found && account_row[0] && strcmp(account_row[0], "0");
+		MYSQL_ROW owner = mysql_fetch_row(accounts);
+		const bool found = owner && owner[0];
+		account_exists = found;
+		account_allowed = found && !strcmp(owner[0], "0");
 		mysql_free_result(accounts);
-		if (!found)
-			return { false, EACCES };
 	}
 	query_result result = execute(
 		connection,
@@ -1079,6 +1081,7 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		return { false, mysql_errno(connection) };
 	MYSQL_ROW row = mysql_fetch_row(rows);
 	const bool present = row != nullptr;
+	*creation_absent = creation && !present;
 	if (present && row[0] && row[1] && row[2])
 	{
 		*stored_revision = strtoull(row[0], nullptr, 10);
@@ -1094,6 +1097,12 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 	mysql_free_result(rows);
 	if (!valid)
 		return { false, EEXIST };
+	if (creation && !account_exists)
+		return { false, EACCES };
+	// Blocking entry cannot undo a prior committed Keep. Permit reconciliation
+	// of that exact baseline, but refuse fresh creation or any newer capture.
+	if (creation && !account_allowed && (!present || *stored_revision < snapshot.revision))
+		return { false, EACCES };
 	if (creation)
 	{
 		result = execute(
@@ -1153,13 +1162,25 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		if (conflict)
 			return { false, EEXIST };
 	}
-	// Admission cannot invalidate an exact creation that already committed.
-	if (creation && account_blocked && (!present || *stored_revision < snapshot.revision))
-		return { false, EACCES };
 	if (present)
 		return { true, 0 };
 	if (!creation)
 		return { false, ENOENT };
+	// The account row is locked, so concurrent first saves share the same cap.
+	result = execute(
+		connection,
+		"SELECT COUNT(*) FROM account_characters WHERE deleted_at IS NULL AND account_name=" +
+			quote(connection, snapshot.creation_account) + " FOR UPDATE");
+	if (!result.ok)
+		return result;
+	rows = mysql_store_result(connection);
+	if (!rows)
+		return { false, mysql_errno(connection) };
+	row = mysql_fetch_row(rows);
+	const bool room = row && row[0] && strtoull(row[0], nullptr, 10) < MAX_CHARS_PER_ACCOUNT;
+	mysql_free_result(rows);
+	if (!room)
+		return { false, ENOSPC };
 	*created = true;
 	return execute(connection,
 		       "INSERT INTO player_data (pid,name,account_name,active) VALUES (" +
@@ -1286,6 +1307,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		return failure(query.error_code);
 	std::vector<claimed_graph> claims;
 	bool created = false;
+	bool creation_absent = false;
 	player_revision_t stored_revision = 0;
 	uint64_t stored_delivery_sequence = 0, stored_wallet_revision = 0;
 	bool unresolved_trade = false;
@@ -1308,8 +1330,9 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		}
 	}
 	if (query.ok)
-		query = ensure_player_row(connection, snapshot, &created, &stored_revision,
-					  &stored_delivery_sequence, &stored_wallet_revision);
+		query = ensure_player_row(connection, snapshot, &created, &creation_absent,
+					  &stored_revision, &stored_delivery_sequence,
+					  &stored_wallet_revision);
 	if (query.ok && !snapshot.creation_account.empty() && !created &&
 	    stored_revision >= snapshot.revision)
 	{
@@ -1434,6 +1457,7 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 		}
 		if (!connection_error(query.error_code))
 			result.rolled_back = execute(connection, "ROLLBACK").ok;
+		result.creation_not_committed = creation_absent && result.rolled_back;
 		return result;
 	}
 	query = execute(connection, "COMMIT");
@@ -1441,12 +1465,12 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 	{
 		// A lost connection may or may not have committed. The save is a full
 		// replacement, so writing it again is always safe.
-		if (!connection_error(query.error_code))
-			execute(connection, "ROLLBACK");
-		return { connection_error(query.error_code) ?
-				 player_save_apply_outcome::ambiguous_commit :
-				 failure(query.error_code).outcome,
-			 0, query.error_code };
+		if (connection_error(query.error_code))
+			return { player_save_apply_outcome::ambiguous_commit, 0, query.error_code };
+		auto result = failure(query.error_code);
+		result.rolled_back = execute(connection, "ROLLBACK").ok;
+		result.creation_not_committed = creation_absent && result.rolled_back;
+		return result;
 	}
 	for (const claimed_graph &claim : claims)
 		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);

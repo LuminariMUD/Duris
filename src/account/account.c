@@ -1617,6 +1617,12 @@ void account_confirm_char(P_desc d, char *arg)
 		}
 
 		account_racewar_admission committed_admission = {};
+		if (!GET_LEVEL(ch))
+		{
+			d->character = ch;
+			continue_kept_character(d);
+			return;
+		}
 		if (!account_commit_character_admission(d, ch, c->blocked, &committed_admission))
 		{
 			char buf[512];
@@ -2207,7 +2213,12 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	P_char ch = NULL;
 	for (P_desc candidate = descriptor_list; candidate; candidate = candidate->next)
 	{
-		if (candidate != d && candidate->character && GET_NAME(candidate->character) &&
+		if (candidate == d || !candidate->character || !candidate->account || !d->account ||
+		    !candidate->account->acct_name || !d->account->acct_name ||
+		    strcasecmp(candidate->account->acct_name, d->account->acct_name))
+			continue;
+		P_char owner = GET_PLYR(candidate->character);
+		if (IS_PC(owner) && GET_PID(owner) == c->pid && GET_NAME(candidate->character) &&
 		    !strcasecmp(GET_NAME(candidate->character), c->charname))
 		{
 			previous_descriptor = candidate;
@@ -2219,8 +2230,8 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	{
 		for (P_char candidate = character_list; candidate; candidate = candidate->next)
 		{
-			if (IS_PC(candidate) && !candidate->desc && GET_NAME(candidate) &&
-			    !strcasecmp(GET_NAME(candidate), c->charname))
+			if (IS_PC(candidate) && GET_PID(candidate) == c->pid && !candidate->desc &&
+			    GET_NAME(candidate) && !strcasecmp(GET_NAME(candidate), c->charname))
 			{
 				ch = candidate;
 				break;
@@ -2244,7 +2255,16 @@ int is_char_in_game(struct acct_chars *c, P_desc d)
 	}
 
 	if (previous_descriptor)
+	{
+		// close_socket() frees non-playing bodies. Reload the committed PID
+		// through the normal save hold and approval continuation instead.
+		if (STATE(previous_descriptor) != CON_PLAYING)
+		{
+			close_socket(previous_descriptor);
+			return 0;
+		}
 		close_socket(previous_descriptor);
+	}
 	if (!prepare_account_reconnect(ch, d))
 		return 0;
 	if (!account_commit_character_admission(d, ch, blocked, &admission))
@@ -2609,41 +2629,56 @@ void account_new_char_name(P_desc d, char *arg)
 	return;
 }
 
-void add_char_to_account(P_desc d)
+struct acct_chars account_kept_character_projection(P_char player)
 {
-	P_char player = d->character;
-	struct acct_chars *c = NULL;
-	// Flat-file membership is committed with the first snapshot. Do not expose
-	// a tentative list entry to an unrelated account save before that commit.
-#ifdef __NO_MYSQL__
-	player_revision_snapshot revision = {};
-	if (!player_revision_snapshot_copy(GET_PID(player), &revision) ||
-	    !revision.written_revision)
-		return;
-#endif
+	struct acct_chars value
+	{
+	};
+	value.pid = GET_PID(player);
+	value.count = 1;
+	value.last = time(NULL);
+	value.blocked = 0;
+	value.racewar = account_admission_racewar(GET_RACEWAR(player), false);
+	value.player_racewar = GET_RACEWAR(player);
+	value.level = GET_LEVEL(player);
+	value.race = GET_RACE(player);
+	value.m_class = player->player.m_class;
+	value.secondary_class = player->player.secondary_class;
+	value.spec = player->player.spec;
+	return value;
+}
 
+bool account_publish_kept_character(P_acct account, const struct acct_chars &value,
+				    const char *name)
+{
+	for (struct acct_chars *c = account->acct_character_list; c; c = c->next)
+	{
+		if (c->pid == value.pid)
+			return c->charname && !strcasecmp(c->charname, name);
+		if (c->charname && !strcasecmp(c->charname, name))
+			return false;
+	}
+	struct acct_chars *c = nullptr;
 	CREATE(c, struct acct_chars, 1, MEM_TAG_OTHER);
 	if (!c)
+		return false;
+	*c = value;
+	c->charname = str_dup(name);
+	c->next = account->acct_character_list;
+	account->acct_character_list = c;
+	++account->num_chars;
+	return true;
+}
+
+void add_char_to_account(P_desc d)
+{
+	player_revision_snapshot revision{};
+	if (!player_revision_snapshot_copy(GET_PID(d->character), &revision) ||
+	    !revision.written_revision)
 		return;
-
-	c->pid = GET_PID(player);
-	c->charname = str_dup(player->player.name);
-	c->count = 1;
-	c->last = time(NULL);
-	c->blocked = 0;
-	c->racewar = account_admission_racewar(GET_RACEWAR(player), false);
-	c->player_racewar = GET_RACEWAR(player);
-	c->level = GET_LEVEL(player);
-	c->race = GET_RACE(player);
-	c->m_class = player->player.m_class;
-	c->secondary_class = player->player.secondary_class;
-	c->spec = player->player.spec;
-	c->next = d->account->acct_character_list;
-	d->account->acct_character_list = c;
-
-	/* The first full snapshot captures this account before queueing. Its writer
-	 * transaction commits the owned player, membership and opening balances together;
-	 * an ordinary account save cannot establish a usable character by itself. */
+	(void)account_publish_kept_character(d->account,
+					     account_kept_character_projection(d->character),
+					     GET_NAME(d->character));
 }
 
 int sync_account_character_projection(P_char player, int room, int persist)
@@ -3367,7 +3402,10 @@ int write_account(P_acct acct) // returns -1 if error, 1 if no errors
 	}
 #else
 	std::string flatfile_error;
-	if (!flatfile_account_state_save(acct, &flatfile_error))
+	// During Keep, save account settings without projecting a cached list over
+	// the first snapshot's independently committed membership.
+	if (!flatfile_account_state_save(acct, &flatfile_error,
+					 !account_creation_owner_pending(acct->acct_name)))
 	{
 		logit(LOG_FILE, "flat-file account save failed");
 		return -1;

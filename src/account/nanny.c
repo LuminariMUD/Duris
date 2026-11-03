@@ -2350,7 +2350,7 @@ int is_invited(char *name)
 	return (pfile_exists("Players/Invited", name));
 }
 
-void create_denied_file(const char *dir, char *name)
+void create_denied_file(const char *dir, const char *name)
 {
 	char buf[256], *buff;
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -2371,12 +2371,12 @@ void create_denied_file(const char *dir, char *name)
 	}
 }
 
-void approve_name(char *name)
+void approve_name(const char *name)
 {
 	create_denied_file("Players/Accepted", name);
 }
 
-void deny_name(char *name)
+void deny_name(const char *name)
 {
 	create_denied_file(BADNAME_DIR, name);
 }
@@ -4093,6 +4093,340 @@ void wimps_in_approve_queue(void)
  */
 /*=========================================================================*/
 
+namespace
+{
+enum class kept_save_kind
+{
+	initial,
+	approval,
+	legacy_policy
+};
+
+struct kept_save
+{
+	uint64_t request;
+	uint64_t runtime;
+	player_revision_t revision;
+	std::string name;
+	std::string account;
+	kept_save_kind kind;
+	struct acct_chars projection
+	{
+	};
+	bool ready = false;
+	player_save_completion completion{};
+};
+std::map<int, kept_save> kept_saves;
+
+void decide_creation_approval(P_char ch)
+{
+	SET_BIT(ch->specials.act3, PLR3_KEPT_CHARACTER);
+	if (approve_mode && !IS_TRUSTED(ch) && !pfile_exists("Players/Accepted", GET_NAME(ch)))
+		SET_BIT(ch->specials.act3, PLR3_APPROVAL_PENDING);
+	else
+		REMOVE_BIT(ch->specials.act3, PLR3_APPROVAL_PENDING);
+}
+
+void kept_save_refused(P_desc d, kept_save_kind kind)
+{
+	if (kind == kept_save_kind::initial)
+	{
+		release_preentry_character(d);
+		if (d->websocket)
+		{
+			STATE(d) = CON_ACCT_SELECT_CHAR;
+			ws_send_auth_success(d, d->account->acct_name);
+		}
+		else
+		{
+			STATE(d) = CON_DISPLAY_ACCT_MENU;
+			display_account_menu(d, nullptr);
+		}
+	}
+	else if (kind == kept_save_kind::approval)
+	{
+		SET_BIT(d->character->specials.act3, PLR3_APPROVAL_PENDING);
+		STATE(d) = CON_ACCEPTWAIT;
+	}
+	else
+		STATE(d) = CON_FLUSH;
+}
+
+bool save_kept_character(P_desc d, kept_save_kind kind)
+{
+	P_char ch = d->character;
+	const int pid = GET_PID(ch);
+	uint64_t request = 0;
+	if (kept_saves.count(pid))
+		return false;
+	try
+	{
+		if (kept_saves.size() >= PLAYER_SAVE_PIPELINE_MAX_SNAPSHOTS)
+		{
+			if (kind == kept_save_kind::initial)
+				sql_player_names_forget(pid);
+			SEND_TO_Q("Character saving is busy. Please try again later.\r\n", d);
+			kept_save_refused(d, kind);
+			return false;
+		}
+		request = wait_for_writer(d);
+		kept_saves.emplace(pid, kept_save{ request, ch->runtime_id, 0, GET_NAME(ch),
+						   d->account->acct_name, kind });
+		kept_saves.at(pid).projection = account_kept_character_projection(ch);
+		STATE(d) = CON_CREATION_SAVE;
+		if (d->websocket)
+			ws_send_system(d, "info", "Saving your character. Please wait.");
+		else
+			SEND_TO_Q("\r\nSaving your character. Please wait.\r\n", d);
+		const auto queued = player_save_pipeline_request(
+			ch, PLAYER_CHECKPOINT_COMPONENT_ALL, RENT_QUIT, NOWHERE);
+		if (queued == player_save_pipeline_result::queued ||
+		    queued == player_save_pipeline_result::coalesced)
+		{
+			player_revision_snapshot revision{};
+			player_revision_snapshot_copy(pid, &revision);
+			kept_saves.at(pid).revision = revision.acknowledged_revision;
+			return true;
+		}
+		kept_saves.erase(pid);
+	}
+	catch (const std::bad_alloc &)
+	{
+		kept_saves.erase(pid);
+	}
+	if (request)
+		writer_replied(request);
+	if (kind == kept_save_kind::initial)
+		sql_player_names_forget(pid);
+	SEND_TO_Q("Your character could not be saved. Please try again later.\r\n", d);
+	kept_save_refused(d, kind);
+	return false;
+}
+}
+
+bool account_creation_pending(int pid)
+{
+	return kept_saves.count(pid) != 0;
+}
+
+bool account_creation_owner_pending(const char *name)
+{
+	for (const auto &[pid, saved] : kept_saves)
+	{
+		(void)pid;
+		if (saved.kind == kept_save_kind::initial && name &&
+		    !strcasecmp(saved.account.c_str(), name))
+			return true;
+	}
+	return false;
+}
+
+void account_creation_saved(const player_save_completion &completion)
+{
+	const auto found = kept_saves.find(completion.pid);
+	if (found == kept_saves.end() || completion.revision < found->second.revision)
+		return;
+	found->second.completion = completion;
+	found->second.ready = true;
+}
+
+void account_creation_pulse()
+{
+	for (auto found = kept_saves.begin(); found != kept_saves.end();)
+	{
+		const int pid = found->first;
+		if (!found->second.ready || player_save_worker_pid_pending(pid))
+		{
+			++found;
+			continue;
+		}
+		const kept_save saved = found->second;
+		const bool committed =
+			saved.completion.outcome == player_save_apply_outcome::applied ||
+			saved.completion.outcome == player_save_apply_outcome::already_applied;
+		const bool unresolved = !committed && saved.kind == kept_save_kind::initial &&
+					!saved.completion.creation_not_committed;
+		if (unresolved)
+		{
+			found->second.ready = false;
+			++found;
+		}
+		else
+			found = kept_saves.erase(found);
+		P_desc d = writer_replied(saved.request);
+		if (d && (!d->character || d->character->runtime_id != saved.runtime ||
+			  GET_PID(d->character) != pid || !d->account ||
+			  strcasecmp(d->account->acct_name, saved.account.c_str()) ||
+			  !GET_NAME(d->character) ||
+			  strcasecmp(GET_NAME(d->character), saved.name.c_str()) ||
+			  STATE(d) != CON_CREATION_SAVE))
+			d = nullptr;
+		if (unresolved)
+		{
+			statuslog(56, "Character creation unresolved pid=%d; name remains reserved",
+				  pid);
+			if (d)
+			{
+				SEND_TO_Q(
+					"The character save could not be confirmed. Please contact staff before retrying.\r\n",
+					d);
+				STATE(d) = CON_FLUSH;
+			}
+			continue;
+		}
+		if (!committed)
+		{
+			if (saved.kind == kept_save_kind::initial)
+				sql_player_names_forget(pid);
+			if (d)
+			{
+				SEND_TO_Q(
+					"Your character could not be saved. Please try again later.\r\n",
+					d);
+				kept_save_refused(d, saved.kind);
+			}
+			if (!d || saved.kind == kept_save_kind::initial)
+				player_save_pipeline_end_session(pid);
+			continue;
+		}
+#ifdef __NO_MYSQL__
+		// The persistent catalog now owns the reservation.
+		sql_player_names_release(pid, saved.name.c_str());
+#endif
+		if (saved.kind == kept_save_kind::initial)
+			for (P_desc cached = descriptor_list; cached; cached = cached->next)
+				if (cached->account && cached->account->acct_name &&
+				    !strcasecmp(cached->account->acct_name,
+						saved.account.c_str()) &&
+				    !account_publish_kept_character(
+					    cached->account, saved.projection, saved.name.c_str()))
+					statuslog(
+						56,
+						"Kept-character account cache requires reload pid=%d",
+						pid);
+		if (saved.kind == kept_save_kind::approval)
+			approve_name(saved.name.c_str());
+		if (!d)
+		{
+			player_save_pipeline_end_session(pid);
+			continue;
+		}
+		if (saved.kind == kept_save_kind::initial &&
+		    !publish_initial_character_baseline(d->character))
+		{
+			SEND_TO_Q(
+				"Your character was saved, but could not be prepared for entry. Please reconnect.\r\n",
+				d);
+			STATE(d) = CON_FLUSH;
+			continue;
+		}
+		if (saved.kind == kept_save_kind::approval)
+			SEND_TO_Q("Your character has been approved.\r\n", d);
+		continue_kept_character(d, saved.kind == kept_save_kind::initial);
+	}
+}
+
+bool keep_new_character(P_desc d)
+{
+	decide_creation_approval(d->character);
+	if (chaos_mud_enabled())
+		mark_chaos_starter_reward_intents(d->character);
+	return save_kept_character(d, kept_save_kind::initial);
+}
+
+void continue_kept_character(P_desc d, bool created)
+{
+	P_char ch = d->character;
+	if (!IS_SET(ch->specials.act3, PLR3_KEPT_CHARACTER))
+	{
+		// Supported older snapshots have no approval decision. Apply the legacy
+		// policy once and persist it before exposing a continuation.
+		decide_creation_approval(ch);
+		(void)save_kept_character(d, kept_save_kind::legacy_policy);
+		return;
+	}
+	if (IS_SET(ch->specials.act3, PLR3_APPROVAL_PENDING))
+	{
+		STATE(d) = CON_ACCEPTWAIT;
+		SEND_TO_Q(
+			"Your character is saved and is waiting for staff approval. You may reconnect later.\r\n",
+			d);
+		newby_announce(d);
+		if (d->websocket && created)
+			ws_finish_kept_character(d, true);
+		return;
+	}
+	if (chaos_mud_enabled())
+		schedule_chaos_new_character_kit_before_entry(ch);
+	if (d->websocket)
+		ws_finish_kept_character(d, created);
+	else
+	{
+		STATE(d) = CON_RMOTD;
+		SEND_TO_Q("\r\n*** PRESS RETURN:\r\n", d);
+	}
+}
+
+bool approve_kept_character(P_desc d)
+{
+	if (!d || !d->character || STATE(d) != CON_ACCEPTWAIT || GET_LEVEL(d->character) ||
+	    !IS_SET(d->character->specials.act3, PLR3_APPROVAL_PENDING))
+		return false;
+	REMOVE_BIT(d->character->specials.act3, PLR3_APPROVAL_PENDING);
+	return save_kept_character(d, kept_save_kind::approval);
+}
+
+bool decline_kept_character(P_desc d, const char *reason)
+{
+	if (!d || !d->character || STATE(d) != CON_ACCEPTWAIT || GET_LEVEL(d->character) ||
+	    !IS_SET(d->character->specials.act3, PLR3_APPROVAL_PENDING) ||
+	    player_save_pipeline_load_held(GET_PID(d->character)) ||
+	    item_movement_transaction_player_busy(d->character))
+		return false;
+	const int pid = GET_PID(d->character);
+	const uint64_t runtime = d->character->runtime_id;
+	const std::string name = GET_NAME(d->character);
+	const std::string explanation = reason ? reason : "";
+	const uint64_t request = wait_for_writer(d);
+	STATE(d) = CON_CREATION_SAVE;
+	SEND_TO_Q("Staff are declining your application. Saving the cancellation...\r\n", d);
+	delete_character(
+		d->character, true,
+		[pid, runtime, name, explanation, request](character_delete_result result)
+		{
+			if (result == character_delete_result::deleted)
+				deny_name(name.c_str());
+			P_desc reader = writer_replied(request);
+			if (!reader || !reader->character ||
+			    reader->character->runtime_id != runtime ||
+			    GET_PID(reader->character) != pid)
+				return;
+			if (result != character_delete_result::deleted)
+			{
+				SEND_TO_Q(
+					"The cancellation could not be confirmed. Please contact staff.\r\n",
+					reader);
+				STATE(reader) = result == character_delete_result::refused ?
+							CON_ACCEPTWAIT :
+							CON_FLUSH;
+				return;
+			}
+			SEND_TO_Q("Your character application was declined.\r\n", reader);
+			if (!explanation.empty())
+			{
+				SEND_TO_Q(explanation.c_str(), reader);
+				SEND_TO_Q("\r\n", reader);
+			}
+			release_preentry_character(reader);
+			STATE(reader) = CON_DISPLAY_ACCT_MENU;
+			if (reader->websocket)
+				ws_send_auth_success(reader, reader->account->acct_name);
+			else
+				display_account_menu(reader, nullptr);
+		});
+	return true;
+}
+
 void nanny(P_desc d, char *arg)
 {
 	if (STATE(d) == CON_FLUSH)
@@ -4390,50 +4724,8 @@ void nanny(P_desc d, char *arg)
 			logit(LOG_NEW, "%s [%s] new player.", GET_NAME(d->character), d->host);
 			statuslog(d->character->player.level, "%s [%s] new player.",
 				  GET_NAME(d->character), d->host);
-			add_char_to_account(d);
 			SEND_TO_Q(motd.c_str(), d);
-			/*
-			 * The character is complete.  There is no rules-agreement
-			 * gate: the rules stay available through the `rules`
-			 * command and `help rules`, and a new character now goes
-			 * straight to the approval decision, which is what the
-			 * WebSocket creation path has always done.
-			 */
-			if (pfile_exists("Players/Accepted", GET_NAME(d->character)))
-			{
-				SEND_TO_Q(
-					"This name has been accepted before, and it is accepted once more.\r\n\r\n"
-					"*** PRESS RETURN:\r\n",
-					d);
-				STATE(d) = CON_RMOTD;
-				statuslog(d->character->player.level,
-					  "%s auto-accepted due to having been accepted before.",
-					  GET_NAME(d->character));
-				schedule_chaos_new_character_kit_before_entry(d->character);
-			}
-			else if (!IS_TRUSTED(d->character) && approve_mode)
-			{
-				/* Do not pregrant Chaos equipment before approval. If approval mode
-				 * is re-enabled, schedule it from the approval-success transition. */
-				SEND_TO_Q(
-					"Now you have to wait for your character to be approved by a god.\r\nProcess should not take long.\r\nIf no god is on to approve you, you will &+WNOT&N be auto-approved.\r\n",
-					d);
-				STATE(d) = CON_ACCEPTWAIT;
-				d->character->only.pc->pc_timer[PC_TIMER_HEAVEN] =
-					time(NULL) -
-					d->character->only.pc->pc_timer[PC_TIMER_HEAVEN];
-				newby_announce(d);
-			}
-			else
-			{
-				// Approval mode is OFF - proceed directly
-				SEND_TO_Q("\r\n*** PRESS RETURN:\r\n", d);
-				if (chaos_mud_enabled())
-					schedule_chaos_new_character_kit_before_entry(d->character);
-				else
-					writeCharacter(d->character, 2, NOWHERE);
-				STATE(d) = CON_RMOTD;
-			}
+			(void)keep_new_character(d);
 		}
 		break;
 
@@ -4441,6 +4733,10 @@ void nanny(P_desc d, char *arg)
 		SEND_TO_Q(
 			"You cannot do anything during this period. If the time you have waited is\r\ntoo long (by your point of view), you can come back later on.\r\n",
 			d);
+		break;
+
+	case CON_CREATION_SAVE:
+		SEND_TO_Q("Your character is still being saved.\r\n", d);
 		break;
 
 	case CON_PLAYER_LOAD:
@@ -4460,7 +4756,10 @@ void nanny(P_desc d, char *arg)
 		if (d->character)
 		{
 			account_racewar_admission admission = {};
-			if (!account_commit_character_admission(d, d->character, false, &admission))
+			const auto *membership = find_char_in_list(d->account->acct_character_list,
+								   GET_NAME(d->character));
+			if (!account_commit_character_admission(
+				    d, d->character, membership && membership->blocked, &admission))
 			{
 				char buf[512];
 				account_format_racewar_denial(&admission, buf, sizeof(buf));
@@ -4475,6 +4774,13 @@ void nanny(P_desc d, char *arg)
 			echo_on(d);
 			STATE(d) = CON_PLAYING;
 			enter_game(d);
+			P_char entered = d->character;
+			const int projection_room = entered->in_room >= 0 && entered->in_room <=
+										     top_of_world ?
+							    world[entered->in_room].number :
+							    entered->specials.was_in_room;
+			if (!sync_account_character_projection(entered, projection_room, TRUE))
+				statuslog(56, "Kept-character entry projection could not be saved");
 			d->prompt_mode = !item_creation_grant_blocks_commands(d->character);
 		}
 		break;

@@ -196,6 +196,11 @@ def reboot(server):
         server.process.args, cwd=server.run_root, env=server.environment,
         text=True, stdout=server.output, stderr=subprocess.STDOUT,
     )
+    deadline = time.monotonic() + 120
+    while "Entering game loop." not in server.server_output():
+        require(server.process.poll() is None and time.monotonic() < deadline,
+                "isolated restart did not boot:\n" + server.server_output()[-4000:])
+        time.sleep(0.05)
 
 
 def invitation_rejection(client, server, *, invited=False):

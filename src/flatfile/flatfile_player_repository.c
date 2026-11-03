@@ -845,9 +845,9 @@ flatfile_player_snapshot_prepare_remove(const std::string &root,
 	return flatfile_player_load_result::ok;
 }
 
-player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
-							const player_snapshot &captured,
-							std::string *error)
+static player_save_apply_result apply_player_snapshot(const std::string &root,
+						      const player_snapshot &captured,
+						      std::string *error, bool *creation_absent)
 {
 	if (captured.pending_world_quest.present && !captured.pending_world_quest.fallback_only)
 	{
@@ -931,6 +931,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	*creation_absent = !snapshot.creation_account.empty() &&
+			   loaded == flatfile_player_load_result::not_found;
 	if (loaded == flatfile_player_load_result::not_found &&
 	    snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
 		return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
@@ -1302,6 +1304,19 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	for (const flatfile_item_claim &claim : claims)
 		item_claim_log_dupes("save_left_out", claim.owner, claim.outcome);
 	return { player_save_apply_outcome::applied, snapshot.revision, 0 };
+}
+
+player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
+							const player_snapshot &snapshot,
+							std::string *error)
+{
+	bool creation_absent = false;
+	auto result = apply_player_snapshot(root, snapshot, error, &creation_absent);
+	// Publication failures after the authority journal are retried by the ordered
+	// writer. Only a terminal refusal before publication can release this attempt.
+	result.creation_not_committed =
+		creation_absent && result.outcome == player_save_apply_outcome::terminal_failure;
+	return result;
 }
 
 namespace
