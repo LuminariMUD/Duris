@@ -1041,6 +1041,7 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 	*delivered_sequence = 0;
 	*wallet_revision = 0;
 	const bool creation = !snapshot.creation_account.empty();
+	bool account_blocked = false;
 	const auto name = std::find_if(snapshot.status_strings.begin(),
 				       snapshot.status_strings.end(),
 				       [](const player_snapshot_string &entry)
@@ -1052,15 +1053,17 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		    name == snapshot.status_strings.end() || name->value.empty())
 			return { false, EINVAL };
 		const auto account = execute(
-			connection, "SELECT account_name FROM accounts WHERE account_name=" +
+			connection, "SELECT COALESCE(blocked,0) FROM accounts WHERE account_name=" +
 					    quote(connection, snapshot.creation_account) +
-					    " AND COALESCE(blocked,0)=0 FOR UPDATE");
+					    " FOR UPDATE");
 		if (!account.ok)
 			return account;
 		MYSQL_RES *accounts = mysql_store_result(connection);
 		if (!accounts)
 			return { false, mysql_errno(connection) };
-		const bool found = mysql_fetch_row(accounts) != nullptr;
+		const auto account_row = mysql_fetch_row(accounts);
+		const bool found = account_row != nullptr;
+		account_blocked = found && account_row[0] && strcmp(account_row[0], "0");
 		mysql_free_result(accounts);
 		if (!found)
 			return { false, EACCES };
@@ -1095,7 +1098,7 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 	{
 		result = execute(
 			connection,
-			"SELECT pid,account_name,char_name,deleted_at FROM account_characters WHERE pid=" +
+			"SELECT pid,account_name,char_name,deleted_at,id FROM account_characters WHERE pid=" +
 				std::to_string(snapshot.pid) +
 				" OR char_name=" + quote(connection, name->value) + " FOR UPDATE");
 		if (!result.ok)
@@ -1103,17 +1106,39 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		rows = mysql_store_result(connection);
 		if (!rows)
 			return { false, mysql_errno(connection) };
-		row = mysql_fetch_row(rows);
-		const bool matching =
-			row && present && row[0] &&
-			strtoull(row[0], nullptr, 10) == static_cast<uint64_t>(snapshot.pid) &&
-			row[1] && !strcasecmp(row[1], snapshot.creation_account.c_str()) &&
-			row[2] && !strcasecmp(row[2], name->value.c_str()) && !row[3];
-		const bool mapping_valid = (!row && !present) ||
-					   (matching && !mysql_fetch_row(rows));
+		bool mapping_valid = !present;
+		std::vector<std::string> retired_mappings;
+		while ((row = mysql_fetch_row(rows)))
+		{
+			const bool same_pid = row[0] && strtoull(row[0], nullptr, 10) ==
+								static_cast<uint64_t>(snapshot.pid);
+			const bool matching =
+				same_pid && present && row[1] &&
+				!strcasecmp(row[1], snapshot.creation_account.c_str()) && row[2] &&
+				!strcasecmp(row[2], name->value.c_str()) && !row[3];
+			if (matching && !mapping_valid)
+				mapping_valid = true;
+			else if (!same_pid && !present && row[3] && row[4])
+				retired_mappings.emplace_back(row[4]);
+			else
+			{
+				mapping_valid = false;
+				break;
+			}
+		}
 		mysql_free_result(rows);
 		if (!mapping_valid)
 			return { false, EEXIST };
+		// Keep the old PID tombstone, releasing only its reusable public name.
+		for (const auto &id : retired_mappings)
+		{
+			result = execute(
+				connection,
+				"UPDATE account_characters SET char_name=CONCAT('~deleted-',id) WHERE id=" +
+					id);
+			if (!result.ok)
+				return result;
+		}
 		result = execute(connection, "SELECT pid FROM player_data WHERE name=" +
 						     quote(connection, name->value) +
 						     " AND active=1 AND pid<>" +
@@ -1128,6 +1153,9 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 		if (conflict)
 			return { false, EEXIST };
 	}
+	// Admission cannot invalidate an exact creation that already committed.
+	if (creation && account_blocked && (!present || *stored_revision < snapshot.revision))
+		return { false, EACCES };
 	if (present)
 		return { true, 0 };
 	if (!creation)
@@ -1305,7 +1333,23 @@ player_save_apply_result apply_snapshot(MYSQL *connection, const player_snapshot
 				query = { complete, complete ? 0u : static_cast<unsigned>(EILSEQ) };
 			}
 		}
-		if (query.ok)
+		bool reconciled = true;
+		if (query.ok && snapshot.pending_world_quest.present &&
+		    !snapshot.pending_world_quest.fallback_only)
+		{
+			world_quest_history_match match;
+			query = find_world_quest_history(connection, snapshot, &match);
+			if (query.ok && match != world_quest_history_match::same)
+			{
+				// Equal revision can be only the committed fallback. Finish its
+				// quest, but never replay it over a newer character revision.
+				reconciled = false;
+				if (match != world_quest_history_match::absent ||
+				    stored_revision != snapshot.revision)
+					query = { false, EILSEQ };
+			}
+		}
+		if (query.ok && reconciled)
 		{
 			const auto rollback = execute(connection, "ROLLBACK");
 			return rollback.ok ?

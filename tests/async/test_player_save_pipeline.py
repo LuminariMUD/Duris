@@ -205,13 +205,32 @@ std::vector<std::string> take_order()
 int main()
 {
     assert(player_save_pipeline_init());
+    // A migrated durable row may still have save_revision=0 and no descriptor.
+    player legacy(45);
+    legacy.ch.desc = nullptr;
+    assert(player_revision_hydrate(45, 0));
+    assert(player_save_pipeline_request(&legacy.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::queued);
+    assert(persistence_writer_wait_idle(5000));
+    player_save_pipeline_pulse();
+    assert((take_order() == std::vector<std::string>{"45:1"}));
+    assert(state.committed[45].creation_account.empty());
+    player_revision_forget(45);
+
     player alice(41), bob(42), carol(44);
     alice.ch.next = &bob.ch;
     bob.ch.next = &carol.ch;
     character_list = &alice.ch;
     assert(player_revision_hydrate(41, 7));
-    assert(player_revision_hydrate(42, 0));
-    assert(player_revision_hydrate(44, 0));
+    assert(player_revision_hydrate(42, 0, true));
+    assert(player_revision_hydrate(44, 0, true));
+    player unsaved(46);
+    unsaved.ch.desc = nullptr;
+    assert(player_revision_hydrate(46, 0, true));
+    assert(player_save_pipeline_request(&unsaved.ch, PLAYER_COMPONENT_STATUS, 1, 3001) ==
+           player_save_pipeline_result::capture_failed);
+    player_revision_forget(46);
+
 
     // Nothing dirty, nothing captured.
     assert(player_save_pipeline_checkpoint_dirty(&alice.ch, 1, 3001) ==
@@ -759,7 +778,7 @@ silent = section(ACTOTH, "bool do_save_silent(P_char ch", "void do_save(P_char")
 assert silent.index("player_save_pipeline_is_nonterminal_type") < silent.index("fopen(tmp_buf")
 assert silent.index("player_save_pipeline_request") < silent.index("writeCharacter(ch")
 init_char = section(NANNY, "void init_char(P_char ch)", "int approve_mode")
-assert "player_revision_hydrate(ch->only.pc->pid, 0)" in init_char
+assert "player_revision_hydrate(ch->only.pc->pid, 0, true)" in init_char
 print("[PASS] ordinary direct and manual saves branch before legacy mutation and I/O")
 
 mark = section(CHECKPOINT, "void mark_player_dirty_components(int pid", "int get_dirty_player_count(void)")
