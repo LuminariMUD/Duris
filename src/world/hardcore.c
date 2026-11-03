@@ -237,7 +237,8 @@ void displayHardCore(P_char ch, char * /*arg*/, int /*cmd*/)
 			"  (CASE WHEN pd.killed_by IS NOT NULL AND pd.killed_by <> 'Notdead' THEN %d ELSE 0 END) as score, "
 			"  pd.numb_deaths, COALESCE(NULLIF(pd.killed_by, 'Notdead'), '-') as killed_by "
 			"FROM player_data pd "
-			"WHERE pd.active = 1 AND ((pd.act2 & 8192) > 0 OR pd.killed_by IS NOT NULL) "
+			"WHERE pd.active = 1 AND ((pd.act2 & 8192) > 0 OR "
+			"(pd.killed_by IS NOT NULL AND pd.killed_by <> 'Notdead')) "
 			"ORDER BY score DESC "
 			"LIMIT %d",
 			config->score_level_points, config->score_experience_divisor,

@@ -337,6 +337,7 @@ static void check_hardcore_database_scores(P_char viewer)
 		"('Fallen',1,16,0,0,5,0,2147483648,'Dragon'),"
 		"('Multiclass',1,10,0,0,2,8192,3,NULL),"
 		"('Ordinary',1,56,0,0,0,0,2147483648,NULL),"
+		"('Ordinarysentinel',1,56,0,0,0,0,2147483648,'Notdead'),"
 		"('~pwipe-180',0,56,0,0,0,8192,2147483648,NULL),"
 		"('Retiredkiller',0,56,0,0,5,0,2147483648,'Dragon')");
 	output.clear();
