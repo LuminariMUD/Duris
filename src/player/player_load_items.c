@@ -1017,7 +1017,7 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		for (const auto &source : sources)
 			connect(source.row_id, source.parent_row_id);
 		// Repository filtering omits foreign payloads before the materialized
-		// list exists. Qualify those raw sources too, preserving artifact roots.
+		// list exists. Preserve damaged artifact sources, not proven old-holder copies.
 		const item_owner_identity player = { item_owner_type::player,
 						     static_cast<uint64_t>(result->pid), 0 };
 		for (auto &source : sources)
@@ -1029,6 +1029,11 @@ unsigned int player_load_items_qualify(player_load_result *result)
 			projection.domain = artifact_payload_domain::player;
 			projection.row_id = source.row_id;
 			projection.parent_row_id = source.parent_row_id;
+			const auto parent = source_by_id.find(source.parent_row_id);
+			projection.parent_missing = source.parent_row_id &&
+						    parent == source_by_id.end();
+			projection.parent_item_uid =
+				parent == source_by_id.end() ? 0 : sources[parent->second].item_uid;
 			projection.item_uid = source.item_uid;
 			projection.vnum = source.vnum;
 			projection.extra_flags = source.extra_flags;
@@ -1042,12 +1047,18 @@ unsigned int player_load_items_qualify(player_load_result *result)
 			projection.custody_owner_revision_found =
 				source.custody_owner_revision_found;
 			projection.custody = source.custody;
-			const unsigned int error = artifact_player_source_error(projection);
-			if (error && error != EIDRM)
+			const char *reason = nullptr;
+			const unsigned int error =
+				artifact_player_source_error(projection, nullptr, &reason);
+			if (error && error != EIDRM && error != EXDEV)
+			{
 				source.retain = true;
+				artifact_log_source_error(projection, error, reason,
+							  "source_retained");
+			}
 		}
 		std::vector<artifact_payload_projection> projections(items.size());
-		std::vector<bool> retired(items.size(), false);
+		std::vector<bool> omitted(items.size(), false);
 		std::vector<size_t> withheld;
 		bool alerted = false;
 		for (size_t index = 0; index < items.size(); ++index)
@@ -1057,6 +1068,7 @@ unsigned int player_load_items_qualify(player_load_result *result)
 			auto &projection = projections[index];
 			projection.domain = artifact_payload_domain::player;
 			projection.row_id = identity.database_id;
+			projection.read_writer_sequence = result->item_read_writer_sequence;
 			projection.item_uid = item.object_uid;
 			projection.vnum = item.vnum;
 			projection.extra_flags = item.extra_flags;
@@ -1097,22 +1109,26 @@ unsigned int player_load_items_qualify(player_load_result *result)
 				connect(identity.database_id,
 					identities[item.parent_index].database_id);
 			}
-			const unsigned int error = artifact_player_source_error(projection);
-			if (error == EIDRM)
+			const char *reason = nullptr;
+			const unsigned int error =
+				artifact_player_source_error(projection, nullptr, &reason);
+			if (error == EAGAIN)
 			{
-				// Durable retirement proves this copy cannot return. Omit it from
-				// the next save; the normal topology recovery preserves its contents.
-				retired[index] = true;
+				artifact_log_source_error(projection, error, reason,
+							  "fresh_read_required");
+				return error; // Fresh login/read; never turn a delayed reply into retention.
+			}
+			if (error == EIDRM || error == EXDEV)
+			{
+				// Retirement or another saved holder proves this copy cannot return.
+				// Normal topology recovery preserves any independently owned contents.
+				omitted[index] = true;
 			}
 			else if (error)
 			{
 				if (raw == source_by_id.end())
 					return ENODATA; // No trustworthy retention selector: do not save a loss.
 				sources[raw->second].retain = true;
-				const char *reason =
-					error == EEXIST ? "physical_copy_exists" :
-					error == ESTALE ? "custody_or_topology_mismatch" :
-							  "canonical_or_source_unavailable";
 				if (!alerted)
 				{
 					persistence_alert(
@@ -1123,10 +1139,8 @@ unsigned int player_load_items_qualify(player_load_result *result)
 						(unsigned long long)identity.database_id);
 					alerted = true;
 				}
-				logit(LOG_ARTIFACT,
-				      "artifact_identity/player_load: pid=%d vnum=%d uid=%llu row=%llu error=%u reason=%s outcome=source_retained",
-				      result->pid, item.vnum, (unsigned long long)item.object_uid,
-				      (unsigned long long)identity.database_id, error, reason);
+				artifact_log_source_error(projection, error, reason,
+							  "source_retained");
 			}
 		}
 		std::vector<bool> held(sources.size(), false);
@@ -1155,7 +1169,7 @@ unsigned int player_load_items_qualify(player_load_result *result)
 		for (size_t index = 0; index < items.size(); ++index)
 		{
 			const auto raw = source_by_id.find(identities[index].database_id);
-			if (retired[index] || (raw != source_by_id.end() && held[raw->second]))
+			if (omitted[index] || (raw != source_by_id.end() && held[raw->second]))
 				continue;
 			kept.push_back(items[index]);
 			kept_identities.push_back(identities[index]);

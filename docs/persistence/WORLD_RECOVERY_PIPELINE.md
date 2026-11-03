@@ -19,16 +19,16 @@ Fuzzy state is restricted to reconstructible NPC position/state, doors, zone tim
 world-pop objects. NPC equipment and inventory are omitted, and NPC-carried gold is
 captured as zero so a cross-time generation cannot replay currency into the persisted
 player economy. Floor item trees retain stable UIDs and hierarchy. An object that changes
-places while the capture runs can be met twice, in a container and by itself; it is
-written once, in the tree it was met in first. Capture marks items
-that have live SQL custody and omits trees whose custody disagrees with their floor
-location; restore requires complete SQL reconciliation of every marked item before
-materializing anything. The custody is the in-memory ledger's. It names a character for
-every item the character logged in with or was granted, and a drop does not change it, so
-capture and the floor journal omit such an item once it is dropped and recovery does not
-bring it back. An item picked up during the session has no entry, a save's claim adds
-none, and it is captured where it lies. An unmarked item is looked up at restore. When an ownership record
-names an owner for it, other than a character whose save no longer has the item, it was
+places while the capture runs can be met twice. That inconsistent capture fails without
+replacing the last published generation; a later capture can retry. New recovery captures and floor journal
+records follow actual placement without consulting the optional ownership cache.
+Restore looks up saved holdings to exclude a copy already held elsewhere. Legacy marked
+records still require complete custody reconciliation before materialization.
+Native file copyover may also carry cached metadata that matches the actual domain and
+topology, including logical roots inside player corpses; stale former-holder metadata
+is omitted without withholding the physical tree. An active room claim matching the
+captured room, vnum and topology also permits recovery. When an ownership record
+names another owner for it, other than a character whose save no longer has the item, it was
 taken and saved after the capture: its tree is left out, since the holder has the item and
 a second one would take the uid from them at the next taker's save. A record that names a
 character whose save does not have the item (nor, on flat-file, a delivery still pending to

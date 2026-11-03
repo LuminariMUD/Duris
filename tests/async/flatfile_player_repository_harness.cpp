@@ -298,7 +298,8 @@ static void inspect_authority(const std::string &root, int32_t pid)
 			first = false;
 			std::cout << "{\"uid\":" << item.item_uid << ",\"vnum\":" << item.vnum
 				  << ",\"root\":" << item.root_item_uid
-				  << ",\"parent\":" << item.parent_item_uid << '}';
+				  << ",\"parent\":" << item.parent_item_uid
+				  << ",\"revision\":" << item.item_revision << '}';
 		}
 		std::cout << ']';
 		std::cout

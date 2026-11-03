@@ -725,13 +725,14 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 	(void)authoritative;
 	return count == 0 && authoritative_capacity == 0;
 }
-bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
-						std::unordered_set<uint64_t> *owned)
+bool sql_persistence_world_recovery_items_owned(
+	const std::vector<world_recovery_authority_item> &items,
+	std::unordered_set<uint64_t> *owned)
 {
 	const char *root = persistence_mode_flatfile_root();
 	std::string error;
 	return owned && root &&
-	       flatfile_item_repository_world_recovery_owned(root, item_uids, owned, &error) ==
+	       flatfile_item_repository_world_recovery_owned(root, items, owned, &error) ==
 		       flatfile_item_repository_result::ok;
 }
 bool sql_hydrate_item_owner_revisions(void)
@@ -5992,19 +5993,22 @@ bool sql_persistence_reconcile_world_recovery_items(const world_recovery_authori
 	return true;
 }
 
-bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
-						std::unordered_set<uint64_t> *owned)
+bool sql_persistence_world_recovery_items_owned(
+	const std::vector<world_recovery_authority_item> &items,
+	std::unordered_set<uint64_t> *owned)
 {
 	constexpr size_t QUERY_BATCH_SIZE = 256;
 	if (!owned || !DB)
 		return false;
 	try
 	{
-		for (size_t begin = 0; begin < item_uids.size(); begin += QUERY_BATCH_SIZE)
+		for (size_t begin = 0; begin < items.size(); begin += QUERY_BATCH_SIZE)
 		{
-			const size_t end = std::min(item_uids.size(), begin + QUERY_BATCH_SIZE);
+			const size_t end = std::min(items.size(), begin + QUERY_BATCH_SIZE);
 			std::string query =
-				"SELECT own.item_uid FROM item_current_owner own WHERE NOT "
+				"SELECT own.item_uid,own.owner_type,own.owner_id,own.owner_context_id,"
+				"own.root_item_uid,COALESCE(own.parent_item_uid,0),own.vnum,own.state "
+				"FROM item_current_owner own WHERE NOT "
 				"(own.owner_type=" +
 				std::to_string(static_cast<unsigned>(item_owner_type::player)) +
 				" AND own.state=" +
@@ -6016,7 +6020,7 @@ bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &ite
 			{
 				if (index != begin)
 					query.push_back(',');
-				query += std::to_string(item_uids[index]);
+				query += std::to_string(items[index].item_uid);
 			}
 			query.push_back(')');
 			MYSQL_RES *result = db_query("%s", query.c_str());
@@ -6024,7 +6028,26 @@ bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &ite
 				return false;
 			MYSQL_ROW row;
 			while ((row = mysql_fetch_row(result)))
-				owned->insert(strtoull(row[0], NULL, 10));
+			{
+				const uint64_t uid = strtoull(row[0], NULL, 10);
+				const auto planned = std::find_if(items.begin() + begin,
+								  items.begin() + end,
+								  [&](const auto &item)
+								  { return item.item_uid == uid; });
+				if (planned != items.begin() + end &&
+				    strtoul(row[1], NULL, 10) ==
+					    static_cast<unsigned>(item_owner_type::room) &&
+				    strtoull(row[2], NULL, 10) ==
+					    static_cast<uint64_t>(planned->room_vnum) &&
+				    strtoull(row[3], NULL, 10) == 0 &&
+				    strtoull(row[4], NULL, 10) == planned->root_item_uid &&
+				    strtoull(row[5], NULL, 10) == planned->parent_item_uid &&
+				    strtol(row[6], NULL, 10) == planned->vnum &&
+				    strtoul(row[7], NULL, 10) ==
+					    static_cast<unsigned>(item_custody_state::active))
+					continue;
+				owned->insert(uid);
+			}
 			mysql_free_result(result);
 		}
 	}

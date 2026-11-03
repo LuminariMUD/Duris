@@ -12,6 +12,7 @@
 #include "core/structs.h"
 #include "guild/artifact_cache_codec.h"
 #include "guild/artifact_admission.h"
+#include "item/item_claim.h"
 #include "guild/artifact_population.h"
 #include "guild/artifact_guild_state.h"
 #include "guild/artifact_guild_delivery.h"
@@ -1036,69 +1037,146 @@ static int artifact_pet_owner_pid(P_char holder)
 }
 
 static unsigned int artifact_owned_source_error(const artifact_payload_projection &source,
-						P_obj object)
+						P_obj object, const char **reason = nullptr)
 {
+	if (reason)
+		*reason = "admitted";
+	const auto refuse = [&](unsigned int error, const char *condition)
+	{
+		if (reason)
+			*reason = condition;
+		return error;
+	};
 	const auto identity = artifact_row_for_uid(source.item_uid);
 	if (identity != artifact_rows.cend() && identity->first != source.vnum)
-		return ESTALE;
+		return refuse(ESTALE, "canonical_vnum_mismatch");
 	if (identity != artifact_rows.cend() &&
 	    (std::binary_search(identity->second.rejected_item_uids.begin(),
 				identity->second.rejected_item_uids.end(), source.item_uid) ||
 	     (identity->second.identity_state == artifact_identity_state::retired &&
 	      identity->second.canonical_item_uid == source.item_uid)))
-		return EIDRM;
+		return refuse(EIDRM, "retired_or_superseded_uid");
 	const auto found = artifact_rows.find(source.vnum);
 	if (!(source.extra_flags & ITEM_ARTIFACT) &&
 	    (found == artifact_rows.end() || found->second.canonical_item_uid != source.item_uid))
 		return 0;
-	if (!artifact_cache_loaded ||
-	    artifact_source_owner_type(source.domain) == item_owner_type::unknown ||
-	    source.role != artifact_payload_role::stored || !source.row_id || !source.item_uid ||
-	    !source.extra_flags_present || !(source.extra_flags & ITEM_ARTIFACT) ||
-	    source.quantity != 1 || source.source_quarantined || source.parent_missing ||
-	    source.parent_owner_disagrees || !item_owner_identity_valid(source.payload_owner) ||
+	if (!artifact_cache_loaded)
+		return refuse(ENODATA, "canonical_catalog_unavailable");
+	if (artifact_source_owner_type(source.domain) == item_owner_type::unknown ||
+	    source.role != artifact_payload_role::stored)
+		return refuse(ENODATA, "source_domain_or_role_invalid");
+	if (!source.row_id || !source.item_uid || !source.payload_root_item_uid)
+		return refuse(ENODATA, "source_identity_missing");
+	if (!source.extra_flags_present || !(source.extra_flags & ITEM_ARTIFACT))
+		return refuse(ENODATA, "source_artifact_flag_missing");
+	if (source.quantity != 1)
+		return refuse(ENODATA, "source_quantity_invalid");
+	if (source.source_quarantined)
+		return refuse(ENODATA, "source_quarantined");
+	if (source.parent_missing)
+		return refuse(ENODATA, "source_parent_missing");
+	if (source.parent_owner_disagrees)
+		return refuse(ENODATA, "source_topology_mismatch");
+	if (!item_owner_identity_valid(source.payload_owner) ||
 	    source.payload_owner.type != artifact_source_owner_type(source.domain) ||
 	    source.owner_context != source.payload_owner.context_id ||
-	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference) ||
-	    !source.payload_root_item_uid || !source.custody_examined || !source.custody_found ||
-	    !source.custody_owner_revision_found)
-		return ENODATA;
-	const auto &custody = source.custody;
-	if (custody.item_uid != source.item_uid || custody.vnum != source.vnum ||
-	    custody.state != item_custody_state::active || !custody.item_revision ||
-	    !item_owner_identity_equal(custody.owner, source.payload_owner) ||
-	    custody.root_item_uid != source.payload_root_item_uid ||
-	    custody.parent_item_uid != source.parent_item_uid)
-		return ESTALE;
-	item_ownership_runtime_entry current = {};
-	if (item_ownership_runtime_lookup(source.item_uid, &current) &&
-	    (current.vnum != custody.vnum || current.state != custody.state ||
-	     !item_owner_identity_equal(current.owner, custody.owner) ||
-	     current.root_item_uid != custody.root_item_uid ||
-	     current.parent_item_uid != custody.parent_item_uid ||
-	     current.item_revision > custody.item_revision))
-		return ESTALE;
+	    source.payload_owner.id != static_cast<uint64_t>(source.owner_reference))
+		return refuse(ENODATA, "source_owner_invalid");
+	if (!source.custody_examined || !source.custody_found)
+		return refuse(ENODATA, "captured_custody_unavailable");
 	if (found == artifact_rows.end() ||
 	    found->second.identity_state != artifact_identity_state::present ||
 	    found->second.canonical_item_uid != source.item_uid)
-		return ENODATA;
+		return refuse(ENODATA, "canonical_identity_unavailable");
+	const auto &custody = source.custody;
+	if (custody.item_uid != source.item_uid)
+		return refuse(ESTALE, "captured_uid_mismatch");
+	if (custody.vnum != source.vnum)
+		return refuse(ESTALE, "captured_vnum_mismatch");
+	if (custody.state != item_custody_state::active)
+		return refuse(ESTALE, "captured_state_not_active");
+	if (!custody.item_revision)
+		return refuse(ESTALE, "captured_item_revision_missing");
+	if (!item_owner_identity_valid(custody.owner) || !custody.root_item_uid)
+		return refuse(ESTALE, "captured_custody_invalid");
+	if (!item_owner_identity_equal(custody.owner, source.payload_owner))
+	{
+		// A known identity with valid foreign custody is an expected old-holder
+		// copy, not damaged source evidence. Refuse construction but let the
+		// former holder's next save remove it. Unqualified population evidence
+		// still needs preservation until a trustworthy current payload exists.
+		if ((found->second.population_reason == artifact_population_reason::complete ||
+		     !found->second.canonical_payloads.empty() || found->second.live_object) &&
+		    item_claim_owner_is_memory_held(custody.owner.type))
+			return refuse(EXDEV, "saved_copy_owned_elsewhere");
+		return refuse(ESTALE, "captured_owner_mismatch");
+	}
+	if (!source.custody_owner_revision_found)
+		return refuse(ENODATA, "captured_custody_unavailable");
+	if (custody.root_item_uid != source.payload_root_item_uid)
+		return refuse(ESTALE, "captured_root_mismatch");
+	if (custody.parent_item_uid != source.parent_item_uid)
+		return refuse(ESTALE, "captured_parent_mismatch");
+	// The cache is optional bookkeeping, not a second ownership authority.
+	// A delayed reader must instead refresh its saved cut if any writer work
+	// overlapped it, including another holder's handoff/save/unload.
+	if (source.read_writer_sequence != UINT64_MAX &&
+	    (!source.read_writer_sequence ||
+	     source.read_writer_sequence != persistence_writer_read_sequence()))
+		return refuse(EAGAIN, "writer_overlap_requires_fresh_read");
 	if ((found->second.live_object && found->second.live_object != object) ||
 	    found->second.pending == artifact_pending::creation)
-		return EEXIST;
+		return refuse(EEXIST, "physical_copy_exists_or_creation_pending");
 	return 0;
 }
 
-unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object)
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj object,
+					  const char **reason)
 {
-	return source.domain == artifact_payload_domain::player ?
-		       artifact_owned_source_error(source, object) :
-		       ENODATA;
+	if (source.domain == artifact_payload_domain::player)
+		return artifact_owned_source_error(source, object, reason);
+	if (reason)
+		*reason = "source_domain_not_player";
+	return ENODATA;
+}
+
+void artifact_log_source_error(const artifact_payload_projection &source, unsigned int error,
+			       const char *reason, const char *outcome)
+{
+	item_ownership_runtime_entry cache = {};
+	const bool cached = item_ownership_runtime_lookup(source.item_uid, &cache);
+	const auto &custody = source.custody;
+	logit(LOG_ARTIFACT,
+	      "artifact_identity/source: uid=%llu vnum=%d row=%llu error=%u reason=%s outcome=%s "
+	      "source(owner=%u/%llu/%llu root=%llu parent=%llu) "
+	      "captured(found=%d uid=%llu vnum=%d state=%u owner=%u/%llu/%llu root=%llu parent=%llu item_revision=%llu owner_revision=%llu) "
+	      "cache(bookkeeping_only=1 found=%d vnum=%d state=%u owner=%u/%llu/%llu root=%llu parent=%llu item_revision=%llu owner_revision=%llu) "
+	      "read_writer_sequence=%llu current_writer_sequence=%llu",
+	      (unsigned long long)source.item_uid, source.vnum, (unsigned long long)source.row_id,
+	      error, reason, outcome, (unsigned)source.payload_owner.type,
+	      (unsigned long long)source.payload_owner.id,
+	      (unsigned long long)source.payload_owner.context_id,
+	      (unsigned long long)source.payload_root_item_uid,
+	      (unsigned long long)source.parent_item_uid, source.custody_found,
+	      (unsigned long long)custody.item_uid, custody.vnum, (unsigned)custody.state,
+	      (unsigned)custody.owner.type, (unsigned long long)custody.owner.id,
+	      (unsigned long long)custody.owner.context_id,
+	      (unsigned long long)custody.root_item_uid,
+	      (unsigned long long)custody.parent_item_uid,
+	      (unsigned long long)custody.item_revision, (unsigned long long)custody.owner_revision,
+	      cached, cache.vnum, (unsigned)cache.state, (unsigned)cache.owner.type,
+	      (unsigned long long)cache.owner.id, (unsigned long long)cache.owner.context_id,
+	      (unsigned long long)cache.root_item_uid, (unsigned long long)cache.parent_item_uid,
+	      (unsigned long long)cache.item_revision, (unsigned long long)cache.owner_revision,
+	      (unsigned long long)source.read_writer_sequence,
+	      (unsigned long long)persistence_writer_read_sequence());
 }
 
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source)
 {
 	const auto refuse = [&](int error, const char *reason)
 	{
+		artifact_log_source_error(source, error, reason, "construction_refused");
 		const auto known = artifact_rows.find(source.vnum);
 		persistence_alert(
 			AVATAR, "artifact_identity/recovery", "redacted", "none", "none", reason,
@@ -1132,9 +1210,10 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 				  item_owner_type::unknown;
 	if (owned_source)
 	{
-		const unsigned int error = artifact_owned_source_error(source, object);
+		const char *reason = nullptr;
+		const unsigned int error = artifact_owned_source_error(source, object, &reason);
 		if (error)
-			return refuse(error, "owned_source_unqualified");
+			return refuse(error, reason);
 	}
 	if (!artifact_cache_loaded || object->R_num < 0 || !object->obj_uid ||
 	    !source.extra_flags_present || source.quantity != 1 ||
@@ -4066,7 +4145,34 @@ static void arti_hunt_owner(P_char ch, const char *name, const player_load_resul
 			(unsigned long long)custody.parent_item_uid,
 			(unsigned long long)custody.item_revision, owner_revision.c_str());
 		logit(LOG_ARTIFACT, "artifact_hunt/%d: %s", result.pid, row);
-		if (candidates++ < 16)
+		const bool displayed = candidates++ < 16;
+		if (displayed)
+			send_to_char_f(ch, "%s\r\n", row);
+		item_ownership_runtime_entry cache = {};
+		const bool cached = item_ownership_runtime_lookup(source.item_uid, &cache);
+		const bool matching = cached && source.custody_found &&
+				      cache.vnum == custody.vnum && cache.state == custody.state &&
+				      item_owner_identity_equal(cache.owner, custody.owner) &&
+				      cache.root_item_uid == custody.root_item_uid &&
+				      cache.parent_item_uid == custody.parent_item_uid &&
+				      cache.item_revision == custody.item_revision;
+		snprintf(
+			row, sizeof(row),
+			"cache uid=%llu bookkeeping_only=1 found=%d comparison=%s vnum=%d state=%u owner_type=%s(%u) owner=%llu context=%llu root=%llu parent=%llu item_revision=%llu owner_revision=%llu",
+			(unsigned long long)source.item_uid, cached,
+			!cached		      ? "missing" :
+			!source.custody_found ? "unavailable" :
+			matching	      ? "matching" :
+						"different",
+			cache.vnum, (unsigned)cache.state, item_owner_type_label(cache.owner.type),
+			(unsigned)cache.owner.type, (unsigned long long)cache.owner.id,
+			(unsigned long long)cache.owner.context_id,
+			(unsigned long long)cache.root_item_uid,
+			(unsigned long long)cache.parent_item_uid,
+			(unsigned long long)cache.item_revision,
+			(unsigned long long)cache.owner_revision);
+		logit(LOG_ARTIFACT, "artifact_hunt/%d: %s", result.pid, row);
+		if (displayed)
 			send_to_char_f(ch, "%s\r\n", row);
 	}
 	if (candidates)

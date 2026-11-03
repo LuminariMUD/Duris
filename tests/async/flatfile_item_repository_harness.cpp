@@ -6,6 +6,7 @@
 #include "flatfile/flatfile_world_item_repository.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
 #include "player/player_snapshot_codec.h"
+#include "world/world_recovery_pipeline.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -162,7 +163,7 @@ static critical_command nested_single_creation(uint8_t discriminator, uint64_t i
 	return command;
 }
 
-static item_transfer_result result_of(const critical_apply_result &applied)
+static item_transfer_result transfer_result_of(const critical_apply_result &applied)
 {
 	item_transfer_result result = {};
 	require(item_transfer_command_decode_result(applied.result_payload.data(),
@@ -240,6 +241,39 @@ int main(int argc, char **argv)
 		{ 301, 300, 300, baseline_owner, 1, 701, item_custody_state::active },
 	};
 	std::string error;
+	const fs::path recovery_root = root / "room-recovery";
+	fs::create_directories(recovery_root / "domains");
+	fs::permissions(recovery_root, fs::perms::owner_all, fs::perm_options::replace);
+	fs::permissions(recovery_root / "domains", fs::perms::owner_all, fs::perm_options::replace);
+	const item_owner_identity floor_owner = { item_owner_type::room, 1200, 0 };
+	require(flatfile_item_repository_establish_owner(
+			recovery_root.string(), floor_owner,
+			{ { 900, 900, 0, floor_owner, 1, 700, item_custody_state::active },
+			  { 901, 900, 900, floor_owner, 1, 701, item_custody_state::active } },
+			&error) == flatfile_item_baseline_result::applied,
+		"room-recovery custody fixture failed");
+	for (int mismatch = 0; mismatch < 5; ++mismatch)
+	{
+		std::vector<world_recovery_authority_item> captured = {
+			{ 900, 900, 0, 1200, 700 }, { 901, 900, 900, 1200, 701 }
+		};
+		if (mismatch == 1)
+			captured[0].room_vnum = captured[1].room_vnum = 1201;
+		if (mismatch == 2)
+			++captured[0].vnum;
+		if (mismatch == 3)
+			++captured[0].root_item_uid;
+		if (mismatch == 4)
+			captured[1].parent_item_uid = 0;
+		std::unordered_set<uint64_t> owned_floor;
+		require(flatfile_item_repository_world_recovery_owned(
+				recovery_root.string(), captured, &owned_floor, &error) ==
+					flatfile_item_repository_result::ok &&
+				owned_floor.size() == (mismatch == 0 ? 0 :
+						       mismatch == 1 ? 2 :
+								       1),
+			"room recovery did not distinguish matching placement from conflicting custody");
+	}
 	require(flatfile_item_repository_establish_owner(root.string(), baseline_owner, baseline,
 							 &error) ==
 			flatfile_item_baseline_result::applied,
@@ -378,7 +412,7 @@ int main(int argc, char **argv)
 		"multi-root item creation did not apply: outcome=" +
 			std::to_string(static_cast<unsigned int>(batch_applied.outcome)) +
 			" error=" + std::to_string(batch_applied.error_code));
-	const item_transfer_result batch_result = result_of(batch_applied);
+	const item_transfer_result batch_result = transfer_result_of(batch_applied);
 	require(batch_result.root_item_uid == 200 && batch_result.item_count == 4 &&
 			batch_result.from_owner_revision == 1 &&
 			batch_result.to_owner_revision == 1 && batch_result.max_item_revision == 1,
@@ -401,8 +435,41 @@ int main(int argc, char **argv)
 		"multi-root item creation topology did not round trip: " + error);
 	batch_applied = flatfile_item_repository_apply(creation_batch_root.string(), batch_create);
 	require(batch_applied.outcome == critical_apply_outcome::already_applied &&
-			result_of(batch_applied).to_owner_revision == 1,
+			transfer_result_of(batch_applied).to_owner_revision == 1,
 		"multi-root item creation replay was not idempotent");
+	// A repaired player's bag has custody but no exact cached revision. The
+	// repository still claims the parent and persists every created root under it.
+	item_transfer_payload into_repaired = {};
+	require(item_transfer_command_decode_payload(batch_create, &into_repaired),
+		"could not decode repaired-container creation fixture");
+	into_repaired.expected_from_revision = into_repaired.expected_to_revision = 1;
+	into_repaired.target_root_item_uid = into_repaired.target_parent_item_uid = 200;
+	into_repaired.expected_target_parent_revision = 0;
+	into_repaired.item_count = 2;
+	into_repaired.items[0] = { 204, 204,
+				   0,	ITEM_TRANSFER_ABSENT_REVISION,
+				   704, item_custody_state::absent };
+	into_repaired.items[1] = { 205, 205,
+				   0,	ITEM_TRANSFER_ABSENT_REVISION,
+				   705, item_custody_state::absent };
+	critical_command repaired_create = {};
+	require(item_transfer_command_build(&repaired_create, operation(17), into_repaired,
+					    critical_source_site::command,
+					    critical_deadline_class::interactive),
+		"could not build creation into unknown-revision container");
+	repaired_create.accepted_at_usec = 17;
+	require(flatfile_item_repository_apply(creation_batch_root.string(), repaired_create)
+				.outcome == critical_apply_outcome::applied,
+		"creation into unknown-revision container failed");
+	require(flatfile_item_repository_load_owner(creation_batch_root.string(),
+						    { item_owner_type::player, 44, 0 },
+						    &batch_owner_revision, &batch_items, &error) ==
+				flatfile_item_repository_result::ok &&
+			batch_items.size() == 6 && batch_items[4].root_item_uid == 200 &&
+			batch_items[4].parent_item_uid == 200 &&
+			batch_items[5].root_item_uid == 200 &&
+			batch_items[5].parent_item_uid == 200,
+		"unknown-revision destination lost batch parentage");
 
 	const critical_command create = creation(1);
 	critical_apply_result applied = flatfile_item_repository_apply(root.string(), create);
@@ -410,7 +477,7 @@ int main(int argc, char **argv)
 		"item creation did not apply: outcome=" +
 			std::to_string(static_cast<unsigned int>(applied.outcome)) +
 			" error=" + std::to_string(applied.error_code));
-	item_transfer_result result = result_of(applied);
+	item_transfer_result result = transfer_result_of(applied);
 	require(result.root_item_uid == 100 && result.item_count == 2 &&
 			result.from_owner_revision == 1 && result.to_owner_revision == 1 &&
 			result.max_item_revision == 1,
@@ -428,7 +495,7 @@ int main(int argc, char **argv)
 
 	applied = flatfile_item_repository_apply(root.string(), create);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
-			result_of(applied).to_owner_revision == 1,
+			transfer_result_of(applied).to_owner_revision == 1,
 		"replayed creation was not idempotent");
 	applied = flatfile_item_repository_apply(root.string(), creation(1, 8));
 	require(applied.outcome == critical_apply_outcome::terminal_failure &&
@@ -473,7 +540,7 @@ int main(int argc, char **argv)
 			applied.error_code == EIO,
 		"interrupted transfer did not leave recoverable atomic intent");
 	applied = flatfile_item_repository_apply(root.string(), transfer);
-	result = result_of(applied);
+	result = transfer_result_of(applied);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
 			result.from_owner_revision == 2 && result.to_owner_revision == 1 &&
 			result.max_item_revision == 2,
@@ -579,7 +646,7 @@ int main(int argc, char **argv)
 		"interrupted room grant did not retain composite intent");
 	applied = flatfile_item_repository_apply(room_root.string(), room_create_command);
 	require(applied.outcome == critical_apply_outcome::already_applied &&
-			result_of(applied).to_owner_revision == 1,
+			transfer_result_of(applied).to_owner_revision == 1,
 		"room grant did not recover atomically");
 	std::vector<flatfile_room_item_record> room_records;
 	require(flatfile_world_item_list_rooms(room_root.string(), &room_records, &error) ==
@@ -630,8 +697,8 @@ int main(int argc, char **argv)
 	room_reparent_command.accepted_at_usec = 10;
 	applied = flatfile_item_repository_apply(room_root.string(), room_reparent_command);
 	require(applied.outcome == critical_apply_outcome::applied &&
-			result_of(applied).from_owner_revision == 2 &&
-			result_of(applied).to_owner_revision == 2,
+			transfer_result_of(applied).from_owner_revision == 2 &&
+			transfer_result_of(applied).to_owner_revision == 2,
 		"saved storage child removal did not apply");
 	room_records.clear();
 	require(flatfile_world_item_list_rooms(room_root.string(), &room_records, &error) ==

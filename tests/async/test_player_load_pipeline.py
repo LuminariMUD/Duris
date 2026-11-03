@@ -436,7 +436,7 @@ assert "player_load_pipeline_set_hold(player_save_pipeline_load_held)" in COMM
 # An offline load names the character by pid when it exists, so the worker holds it behind
 # the character's queued saves like a login, and a copy saved back is never older.
 OFFLINE = (SRC / "player_load_offline.c").read_text()
-assert "const int pid = sql_get_player_pid(name);" in OFFLINE
+assert "pid = sql_get_player_pid(name);" in OFFLINE
 assert "request.pid = pid;" in OFFLINE and "request.player_name = name;" in OFFLINE
 validity = REPOSITORY[REPOSITORY.index("bool player_load_request_valid(") :]
 assert contains(validity, "request.pid > 0 && request.account_name.size() <= PLAYER_LOAD_ACCOUNT_MAX")

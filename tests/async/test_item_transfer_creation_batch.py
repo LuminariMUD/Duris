@@ -120,7 +120,9 @@ int main()
     auto parent = payload;
     parent.target_parent_item_uid = 900;
     parent.target_root_item_uid = 900;
-    assert(!builds(parent, 5));
+    // A repaired live container can have an unknown cached revision. The
+    // repository claims this memory-held parent and reads its actual revision.
+    assert(builds(parent, 5));
     parent.expected_target_parent_revision = 3;
     assert(builds(parent, 11));
     uint64_t target_root = 0, target_parent = 0;

@@ -157,12 +157,12 @@ def run(binary, backend, report):
                     # Saved physical rows are MariaDB's live inventory source;
                     # legacy sales can leave historical custody-only records.
                     rows = sql("SELECT i.item_uid,i.vnum,i.root_item_uid,COALESCE(i.parent_item_uid,0),"
-                               "COALESCE(parent.obj_uid,0) FROM item_current_owner i "
+                               "COALESCE(parent.obj_uid,0),i.item_revision FROM item_current_owner i "
                                "JOIN player_items physical ON physical.obj_uid=i.item_uid AND physical.pid=i.owner_id "
                                "LEFT JOIN player_items parent ON parent.id=physical.container_id "
                                f"JOIN player_data p ON p.pid=i.owner_id WHERE i.owner_type=1 AND p.name='{PLAYER}' "
                                "AND i.state=1 ORDER BY i.item_uid")
-                    items = [dict(zip(("uid", "vnum", "root", "parent", "physical_parent"), map(int, row.split("\t"))))
+                    items = [dict(zip(("uid", "vnum", "root", "parent", "physical_parent", "revision"), map(int, row.split("\t"))))
                              for row in rows.splitlines()]
                     return {"wallet": wallet, "player_items": items}
                 return json.loads(subprocess.check_output([str(inspector), env["FLATFILE_STATE_DIR"], "inspect", "1"], text=True))
@@ -281,14 +281,33 @@ def run(binary, backend, report):
                 assert "gives you" in sold_ration, sold_ration
                 save(player, PLAYER)
                 assert "created" in command(god, f"load obj {TRINKET}")
+                save(god, GOD)
                 assert "Ok." in command(god, "give trinket " + PLAYER)
+                save(player, PLAYER)
+                # Hydrate this revision, then ordinary handoffs/save claims leave
+                # that cache behind. Sale/buyback must publish exact later versions.
+                stop(); boot()
+                god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
+                command(god, f"goto {ROOM}")
+                command(god, "transfer " + PLAYER)
+                command(god, "vis 0")
+                command(god, "setbit room here flag ROOM_MAGIC_LIGHT 1")
+                response = command(player, "give trinket " + GOD)
+                assert "Ok." in response, response
+                save(god, GOD)
+                assert "Ok." in command(god, "give trinket " + PLAYER)
+                save(player, PLAYER)
+                before_trade = next(row for row in inspect()["player_items"] if row["vnum"] == TRINKET)
                 sold_trinket = action(player, "sell trinket", "The shopkeeper gives you")
                 assert "gives you" in sold_trinket, sold_trinket
                 save(player, PLAYER)
                 assert "You now have a finite stock trinket." in action(
                     player, "buy trinket", "You now have a finite stock trinket.")
                 save(player, PLAYER)
+                after_trade = next(row for row in inspect()["player_items"] if row["vnum"] == TRINKET)
+                assert after_trade["uid"] == before_trade["uid"] and after_trade["revision"] == before_trade["revision"] + 2
                 evidence["checks"].append("single inventory purchase, produced sale and finite-stock sell/buy")
+                evidence["checks"].append("ordinary handoff claims followed by exact-revision sale and buyback")
                 staff_coins = re.search(r"Coins carried:[^\r\n]+", command(god, "score"))[0]
                 before_ops = operations()
                 free_purchase = command(god, "buy ration purchasebag 20", timeout=60)

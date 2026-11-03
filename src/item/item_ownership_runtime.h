@@ -27,7 +27,7 @@ struct item_ownership_runtime_entry
 	uint64_t root_item_uid;
 	uint64_t parent_item_uid;
 	item_owner_identity owner;
-	uint64_t item_revision;
+	uint64_t item_revision; // zero when this optional cache has no exact saved revision
 	uint64_t owner_revision;
 	int32_t vnum;
 	item_custody_state state;

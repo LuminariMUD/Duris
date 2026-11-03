@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "combat/trap_legacy.h"
+#include "classes/necromancy.h"
 #include "guild/artifact_admission.h"
 #include "guild/artifact_population_repository.h"
 #include "world/world_recovery_pipeline.h"
@@ -57,8 +58,9 @@ extern int top_of_zone_table;
 extern bool sql_persistence_reconcile_world_recovery_items(
 	const world_recovery_authority_item *items, size_t count,
 	item_ownership_runtime_entry *authoritative, size_t authoritative_capacity);
-extern bool sql_persistence_world_recovery_items_owned(const std::vector<uint64_t> &item_uids,
-						       std::unordered_set<uint64_t> *owned);
+extern bool
+sql_persistence_world_recovery_items_owned(const std::vector<world_recovery_authority_item> &items,
+					   std::unordered_set<uint64_t> *owned);
 namespace
 {
 /* Recovery fixtures are intentionally linkable without the gameplay module;
@@ -295,10 +297,10 @@ bool submit_capture()
 }
 
 bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t parent_uid,
-		       world_recovery_item_snapshot *items, uint32_t *count, bool *skip,
+		       world_recovery_item_snapshot *items, uint32_t *count,
 		       std::vector<item_ownership_runtime_entry> *copyover_custody)
 {
-	if (!object || room_vnum <= 0 || !items || !count || !skip ||
+	if (!object || room_vnum <= 0 || !items || !count ||
 	    *count >= WORLD_RECOVERY_MAX_ITEM_TREE || !object->obj_uid || OBJ_VNUM(object) <= 0)
 		return false;
 	const uint64_t item_uid = object->obj_uid;
@@ -311,46 +313,40 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 	entry.parent_item_uid = parent_uid;
 	entry.vnum = OBJ_VNUM(object);
 	entry.type = object->type;
-	item_ownership_runtime_entry authority = {};
-	if (item_ownership_runtime_lookup(item_uid, &authority))
+	if (copyover_custody)
 	{
-		bool authority_required = true;
-		if (copyover_custody)
+		// The physical tree is authoritative. Native copyover may reuse matching
+		// bookkeeping, but must never carry a former holder's custody forward.
+		item_owner_identity owner = { item_owner_type::room,
+					      static_cast<uint64_t>(room_vnum), 0 };
+		uint64_t logical_root = root_uid, logical_parent = parent_uid;
+		for (P_obj current = object; OBJ_INSIDE(current) && current->loc.inside;
+		     current = current->loc.inside)
 		{
-			// A synchronous hotboot hands off the live ledger. Its logical custody
-			// roots (for example, corpse contents) need not match the physical tree.
-			if (authority.item_uid != item_uid || !authority.root_item_uid ||
-			    !item_owner_identity_valid(authority.owner) ||
-			    authority.vnum != entry.vnum ||
-			    authority.state != item_custody_state::active)
-				return false;
-			copyover_custody->push_back(authority);
-		}
-		else
-		{
-			const item_owner_identity expected_owner = {
-				item_owner_type::room, static_cast<uint64_t>(room_vnum), 0
-			};
-			if (!item_owner_identity_equal(authority.owner, expected_owner) ||
-			    authority.root_item_uid != root_uid ||
-			    authority.parent_item_uid != parent_uid ||
-			    authority.vnum != entry.vnum ||
-			    authority.state != item_custody_state::active)
+			P_obj parent = current->loc.inside;
+			if (parent->type == ITEM_CORPSE &&
+			    IS_SET(parent->value[CORPSE_FLAGS], PC_CORPSE) &&
+			    parent->value[CORPSE_PID] > 0 && parent->value[CORPSE_SAVEID] > 0)
 			{
-				if (authority.owner.type != item_owner_type::player ||
-				    authority.vnum != entry.vnum ||
-				    authority.state != item_custody_state::active)
-				{
-					*skip = true;
-					return true;
-				}
-				// A drop/save can leave the former player claim behind. Keep
-				// the live floor tree; recovery still excludes saved holdings.
-				authority_required = false;
+				owner = { item_owner_type::corpse,
+					  item_corpse_owner_id(parent->value[CORPSE_PID],
+							       parent->value[CORPSE_SAVEID]),
+					  0 };
+				logical_root = current->obj_uid;
+				logical_parent = current == object ? 0 : parent_uid;
+				break;
 			}
 		}
-		if (authority_required)
+		item_ownership_runtime_entry authority = {};
+		if (item_ownership_runtime_lookup(item_uid, &authority) &&
+		    item_owner_identity_equal(authority.owner, owner) &&
+		    authority.root_item_uid == logical_root &&
+		    authority.parent_item_uid == logical_parent && authority.vnum == entry.vnum &&
+		    authority.state == item_custody_state::active)
+		{
+			copyover_custody->push_back(authority);
 			entry.flags |= WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED;
+		}
 	}
 	for (int index = 0; index < NUMB_OBJ_VALS; ++index)
 		entry.values[index] = object->value[index];
@@ -399,7 +395,7 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 		entry.affect_modifiers[index] = object->affected[index].modifier;
 	}
 	for (P_obj child = object->contains; child; child = child->next_content)
-		if (!capture_item_tree(child, room_vnum, root_uid, item_uid, items, count, skip,
+		if (!capture_item_tree(child, room_vnum, root_uid, item_uid, items, count,
 				       copyover_custody))
 			return false;
 	return true;
@@ -411,8 +407,7 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 	if (!object || !buffer || room_vnum <= 0 || maximum < sizeof(world_recovery_object_record))
 		return -1;
 	uint32_t count = 0;
-	bool skip = false;
-	if (!capture_item_tree(object, room_vnum, 0, 0, capture_items.data(), &count, &skip,
+	if (!capture_item_tree(object, room_vnum, 0, 0, capture_items.data(), &count,
 			       copyover_custody) ||
 	    !count)
 	{
@@ -421,8 +416,6 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 		      OBJ_VNUM(object), count, object->obj_uid ? "set" : "missing");
 		return -1;
 	}
-	if (skip)
-		return 0;
 	const size_t size = sizeof(world_recovery_object_record) +
 			    static_cast<size_t>(count) * sizeof(world_recovery_item_snapshot);
 	if (size > maximum)
@@ -591,7 +584,7 @@ void publisher_main()
 
 // An object that changes places while a capture runs can be met twice, in a container and
 // then by itself, and boot refuses a generation that holds an item twice. The capture
-// keeps the tree it met an item in first.
+// rejects the inconsistent generation rather than dropping an overlapping tree.
 bool capture_tree_is_new(int record_size)
 {
 	const size_t count = (record_size - sizeof(world_recovery_object_record)) /
@@ -656,7 +649,7 @@ bool capture_one_record()
 			try
 			{
 				if (size > 0 && !capture_tree_is_new(size))
-					return true;
+					return false;
 			}
 			catch (const std::bad_alloc &)
 			{
@@ -1283,17 +1276,19 @@ bool floor_record_repeats(const recovery_plan &plan, const std::vector<unsigned 
 // first holder would lose the item.
 bool leave_out_owned_trees(recovery_plan *plan)
 {
-	std::vector<uint64_t> item_uids;
+	std::vector<world_recovery_authority_item> items;
 	std::unordered_set<uint64_t> owned, left_out;
 	try
 	{
 		for (const planned_object &object : plan->objects)
 			for (const world_recovery_item_snapshot &item : object.items)
 				if (!(item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED))
-					item_uids.push_back(item.item_uid);
-		if (item_uids.empty())
+					items.push_back({ item.item_uid, item.root_item_uid,
+							  item.parent_item_uid, object.room_vnum,
+							  item.vnum });
+		if (items.empty())
 			return true;
-		if (!sql_persistence_world_recovery_items_owned(item_uids, &owned))
+		if (!sql_persistence_world_recovery_items_owned(items, &owned))
 			return false;
 		std::erase_if(plan->objects,
 			      [&](const planned_object &object)

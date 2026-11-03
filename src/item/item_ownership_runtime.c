@@ -572,16 +572,16 @@ bool item_ownership_runtime_apply(const item_transfer_payload &payload,
 		if (!item_transfer_target_topology(payload, payload.items[index].item_uid,
 						   &target_root, &target_parent))
 			return false;
-		const bool in_step = entry.item_uid == payload.items[index].item_uid &&
-				     entry.item_revision ==
-					     payload.items[index].expected_item_revision;
 		entry.item_uid = payload.items[index].item_uid;
 		entry.vnum = payload.items[index].vnum;
-		// A claim moved a revision this cache did not see; the result bounds it.
+		// Claims can advance revisions this cache never saw. A single item's
+		// maximum is exact; a batch maximum says nothing about each member.
+		// Preserve custody metadata, with zero denoting an unknown revision.
 		if (item_revisions)
 			entry.item_revision = item_revisions[index];
-		else if (memory_held && !in_step)
-			entry.item_revision = result.max_item_revision;
+		else if (memory_held)
+			entry.item_revision = payload.item_count == 1 ? result.max_item_revision :
+									0;
 		else
 			++entry.item_revision;
 		entry.root_item_uid = target_root;

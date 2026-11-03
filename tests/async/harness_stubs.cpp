@@ -144,6 +144,10 @@ HARNESS_STUB bool player_load_items_read_current(const player_load_result &)
 {
 	return true;
 }
+HARNESS_STUB void artifact_log_source_error(const artifact_payload_projection &, unsigned int,
+					    const char *, const char *)
+{
+}
 HARNESS_STUB bool artifact_reconcile_player_owner(P_obj)
 {
 	return false;

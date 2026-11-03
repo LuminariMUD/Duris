@@ -195,8 +195,6 @@ bool validate_payload(const item_transfer_payload &payload)
 		// Independent creations can share a player-owned destination container.
 		if (payload.selected_item_uid || (!creation && !destruction) ||
 		    (creation && payload.to_owner.type != item_owner_type::player) ||
-		    (creation && payload.target_parent_item_uid &&
-		     !payload.expected_target_parent_revision) ||
 		    (payload.target_parent_item_uid ? !payload.target_root_item_uid :
 						      payload.target_root_item_uid != 0))
 			return false;

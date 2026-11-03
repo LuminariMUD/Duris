@@ -263,7 +263,8 @@ P_obj read_object_for_recovery(const artifact_payload_projection &source) {
 P_obj read_object_for_creation_repair(const artifact_payload_projection &source) {
     ++creation_repair_reads; return read_object_for_recovery(source);
 }
-unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj) {
+unsigned int artifact_player_source_error(const artifact_payload_projection &source, P_obj, const char **reason) {
+    if(reason) *reason="fixture_refusal";
     return refused_artifact_vnum && source.vnum==refused_artifact_vnum ? refused_artifact_errno : 0;
 }
 P_obj read_object(int rnum, int)

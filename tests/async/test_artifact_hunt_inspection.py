@@ -71,7 +71,13 @@ source = source.replace("// CALL", r"""
  raw(6,903,70005,0,1,true,0);
  cut.item_sources[2].custody_found=cut.item_sources[2].custody_owner_revision_found=true;
  cut.item_sources[2].custody={70000,70000,0,{item_owner_type::room,2300,0},2,3,900,item_custody_state::active};
+ assert(item_ownership_runtime_hydrate({70000,80000,80000,{item_owner_type::player,88,0},9,10,900,item_custody_state::active}));
  arti_hunt_owner(&staff,"Offline",cut);
+ assert(output.find("cache uid=70000 bookkeeping_only=1 found=1 comparison=different")!=std::string::npos);
+ assert(output.find("owner=88 context=0 root=80000 parent=80000 item_revision=9 owner_revision=10")!=std::string::npos);
+ item_ownership_runtime_entry unchanged={};
+ assert(item_ownership_runtime_lookup(70000,&unchanged) && unchanged.item_revision==9 && unchanged.owner.id==88);
+ assert(output.find("comparison=missing")!=std::string::npos);
  assert(output.find("read-only")!=std::string::npos && output.find("vnum=900 uid=0 row=1")!=std::string::npos);
  assert(output.find("quantity=7")!=std::string::npos && output.find("vnum=902 uid=70002 row=2 parent_row=1")!=std::string::npos);
  assert(output.find("state=retired")!=std::string::npos && output.find("canonical_uid=70000 state=present")!=std::string::npos);
@@ -119,6 +125,8 @@ with tempfile.TemporaryDirectory(prefix="duris-artifact-hunt-") as temporary:
     subprocess.run(["g++","-std=c++20","-Wall","-Wextra","-Werror","-D__NO_MYSQL__","-Isrc",
                     "-ffunction-sections","-fdata-sections","-fsanitize=address,undefined",
                     "-fno-sanitize-recover=all","-fno-pie","-no-pie",str(cpp),str(HARNESS_STUBS),
+                    "src/item/item_ownership_runtime.c","src/item/item_transfer_command.c",
+                    "src/player/player_snapshot_codec.c","src/persistence/critical_command.c","-lcrypto",
                     "-Wl,--gc-sections","-o",str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary)],cwd=ROOT,check=True,timeout=20,env={**os.environ,"ASAN_OPTIONS":"detect_leaks=1"})
 print("native artifact source hunt preserves physical objects and canonical state")

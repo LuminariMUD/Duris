@@ -31,6 +31,7 @@
 #include "persistence/persistence_mode.h"
 #include "player/player_snapshot_codec.h"
 #include "world/vnum.obj.h"
+#include "world/world_recovery_pipeline.h"
 #include "core/defines.h"
 
 #include <algorithm>
@@ -169,7 +170,7 @@ std::string domains_directory(const std::string &root)
 	return root + "/domains";
 }
 
-bool owner_less(const item_owner_identity &left, const item_owner_identity &right)
+bool item_owner_less(const item_owner_identity &left, const item_owner_identity &right)
 {
 	if (left.type != right.type)
 		return left.type < right.type;
@@ -201,7 +202,7 @@ owner_state *find_owner(ownership_catalog *catalog, const item_owner_identity &o
 	auto found =
 		std::lower_bound(catalog->owners.begin(), catalog->owners.end(), owner,
 				 [](const owner_state &entry, const item_owner_identity &candidate)
-				 { return owner_less(entry.owner, candidate); });
+				 { return item_owner_less(entry.owner, candidate); });
 	return found != catalog->owners.end() && item_owner_identity_equal(found->owner, owner) ?
 		       &*found :
 		       nullptr;
@@ -216,7 +217,7 @@ owner_state *ensure_owner(ownership_catalog *catalog, const item_owner_identity 
 	auto at =
 		std::lower_bound(catalog->owners.begin(), catalog->owners.end(), owner,
 				 [](const owner_state &entry, const item_owner_identity &candidate)
-				 { return owner_less(entry.owner, candidate); });
+				 { return item_owner_less(entry.owner, candidate); });
 	try
 	{
 		at = catalog->owners.insert(at, { owner, 0 });
@@ -310,7 +311,7 @@ bool valid_catalog(const ownership_catalog &catalog)
 {
 	if (!std::is_sorted(catalog.owners.begin(), catalog.owners.end(),
 			    [](const owner_state &left, const owner_state &right)
-			    { return owner_less(left.owner, right.owner); }) ||
+			    { return item_owner_less(left.owner, right.owner); }) ||
 	    !std::is_sorted(catalog.items.begin(), catalog.items.end(), item_less))
 		return false;
 	for (size_t index = 0; index < catalog.owners.size(); ++index)
@@ -1454,7 +1455,7 @@ flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint6
 }
 
 flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
-	const std::string &root, const std::vector<uint64_t> &uids,
+	const std::string &root, const std::vector<world_recovery_authority_item> &items,
 	std::unordered_set<uint64_t> *owned, std::string *error)
 {
 	if (root.empty() || !owned)
@@ -1476,11 +1477,24 @@ flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
 		return loaded;
 	try
 	{
-		const std::unordered_set<uint64_t> wanted(uids.begin(), uids.end());
+		std::unordered_map<uint64_t, const world_recovery_authority_item *> wanted;
+		for (const auto &item : items)
+			wanted.emplace(item.item_uid, &item);
 		std::unordered_map<uint64_t, std::unordered_set<uint64_t>> held;
 		for (const auto &record : catalog.items)
 		{
-			if (!wanted.count(record.item_uid))
+			const auto found_item = wanted.find(record.item_uid);
+			if (found_item == wanted.end())
+				continue;
+			const auto &planned = *found_item->second;
+			if (item_owner_identity_equal(record.owner,
+						      { item_owner_type::room,
+							static_cast<uint64_t>(planned.room_vnum),
+							0 }) &&
+			    record.state == item_custody_state::active &&
+			    record.vnum == planned.vnum &&
+			    record.root_item_uid == planned.root_item_uid &&
+			    record.parent_item_uid == planned.parent_item_uid)
 				continue;
 			if (active_player_record(record))
 			{
@@ -1990,7 +2004,7 @@ flatfile_item_repository_result flatfile_item_repository_prepare_claim(
 		}
 		// The holdings of each claimer and of every owner that lost an item changed:
 		// advance each of their revisions once.
-		std::sort(changed_owners.begin(), changed_owners.end(), owner_less);
+		std::sort(changed_owners.begin(), changed_owners.end(), item_owner_less);
 		changed_owners.erase(std::unique(changed_owners.begin(), changed_owners.end(),
 						 item_owner_identity_equal),
 				     changed_owners.end());
@@ -2054,7 +2068,7 @@ flatfile_item_repository_result flatfile_item_repository_prepare_player_remove(
 	auto owner =
 		std::lower_bound(catalog.owners.begin(), catalog.owners.end(), player,
 				 [](const owner_state &candidate, const item_owner_identity &value)
-				 { return owner_less(candidate.owner, value); });
+				 { return item_owner_less(candidate.owner, value); });
 	if (owner == catalog.owners.end() || !item_owner_identity_equal(owner->owner, player))
 		return flatfile_item_repository_result::invalid;
 	catalog.owners.erase(owner);
@@ -2199,7 +2213,7 @@ prepare_custody_remove(const std::string &root, const flatfile_authority_lock &l
 		auto at = std::lower_bound(catalog.owners.begin(), catalog.owners.end(), owner,
 					   [](const owner_state &candidate,
 					      const item_owner_identity &value)
-					   { return owner_less(candidate.owner, value); });
+					   { return item_owner_less(candidate.owner, value); });
 		if (at == catalog.owners.end() || !item_owner_identity_equal(at->owner, owner))
 			return flatfile_item_repository_result::invalid;
 		catalog.owners.erase(at);

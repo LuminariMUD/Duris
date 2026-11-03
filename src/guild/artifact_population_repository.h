@@ -70,6 +70,7 @@ struct artifact_payload_projection
 	// Revision zero is valid; a missing authority row remains distinct.
 	bool custody_owner_revision_found = false;
 	item_ownership_runtime_entry custody = {};
+	uint64_t read_writer_sequence = UINT64_MAX; // boot/direct sources have no async read
 };
 
 // Boot/offline inspection only: no writers may mutate the selected stores while

@@ -186,10 +186,13 @@ int main()
     for (auto owner_type : {item_owner_type::pet, item_owner_type::player})
     {
         fixture f; f.pet.durable_pet_uid = 123; f.pet.durable_pet_owner_pid = 42;
+        // Teardown preserves stable pet custody and an already-committed return
+        // even when the optional cache has no exact per-item revision.
         for (auto uid : {9001ULL, 9002ULL}) {
             item_ownership_runtime_entry entry{};
             entry.item_uid = uid; entry.state = item_custody_state::active;
-            entry.owner = {owner_type, owner_type == item_owner_type::pet ? 123ULL : 42ULL, 0};
+            entry.owner = {owner_type, owner_type == item_owner_type::pet ? 123ULL : 42ULL,
+                           owner_type == item_owner_type::pet ? 42ULL : 0ULL};
             custody[uid] = entry;
         }
         hostile = true;

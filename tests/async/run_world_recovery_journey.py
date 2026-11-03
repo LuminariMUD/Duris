@@ -18,6 +18,8 @@ A real server on a disposable MariaDB and Redis, with the mini world:
   was raised, and the boot restores the generation;
 - with no interval set, captures are 600 seconds apart and a generation is accepted for
   1,200.
+A floor tree with a matching active SQL room claim must keep its physical UID through
+the crash and subsequent player pickup/save.
 Run it through with_disposable_mariadb.sh (make test-db).
 """
 import os
@@ -171,11 +173,33 @@ def run(binary: Path) -> None:
 
             on = dict(REDIS_WORLD_STATE="TRUE", REDIS_WORLD_STATE_INTERVAL="5",
                       REDIS_WORLD_STATE_MAX_AGE="60")
-            server, _ = boot(**on)
+            server, port = boot(**on)
             wait_for("the maximum age did not follow the interval", 10, lambda:
                      "redis world state enabled: interval=5s, max_age=605s" in log("sys"))
             first = wait_for("no generation was published", 60, acknowledged)[-1]
             assert not re.search(ALERT, log("file")), log("file")[-1500:]
+
+            # A floor grant can have SQL room custody with no separate room
+            # payload. Its matching claim must not discard the Redis snapshot.
+            client = journey.MudClient(port)
+            journey.create_character(client, account="Roomclaimac", character="Roomclaimer",
+                                     email="roomclaim@example.invalid")
+            client.send("save"); client.expect("Save complete for Roomclaimer.", timeout=60)
+            claimant = sql("SELECT pid FROM player_data WHERE name='Roomclaimer'")
+            floor_root = sql("SELECT own.item_uid FROM item_current_owner own "
+                             "JOIN player_items i ON i.obj_uid=own.item_uid "
+                             f"WHERE i.pid={claimant} AND i.container_id IS NULL "
+                             "AND i.equip_slot=0 AND i.item_type=15 ORDER BY i.id LIMIT 1")
+            assert floor_root, "starter bag fixture missing"
+            client.send("drop all"); client.expect("You drop", timeout=20)
+            sql("INSERT IGNORE INTO item_owner_revision "
+                "(owner_type,owner_id,owner_context_id,revision) VALUES(3,22800,0,1)")
+            sql("UPDATE item_current_owner SET owner_type=3,owner_id=22800,owner_context_id=0 "
+                f"WHERE root_item_uid={floor_root} AND owner_type=1 AND owner_id={claimant}")
+            claim_sequence = acknowledged()[-1]
+            wait_for("the claimed floor tree was not captured", 60,
+                     lambda: acknowledged(claim_sequence))
+            client.close()
 
             # Redis stops: the third attempt in a row that publishes nothing raises the
             # run's one alert.
@@ -212,12 +236,19 @@ def run(binary: Path) -> None:
             killed = time.monotonic()
             last = int(redis_cli("GET", current))
             time.sleep(65)
-            server, _ = boot(**on)
+            server, port = boot(**on)
             wait_for("the generation was not restored", 10, lambda:
                      f"redis: restored world recovery generation sequence={last} "
                      in log("sys") and "Crash recovery complete" in log("status"))
             print(f"crash: generation {last} was restored {time.monotonic() - killed:.0f} s "
                   "after the kill, past the 60 s it was configured with", flush=True)
+            client = journey.reconnect_character(port, account="Roomclaimac", character="Roomclaimer")
+            client.send("get bag"); client.expect("You get", timeout=20)
+            client.send("save"); client.expect("Save complete for Roomclaimer.", timeout=60)
+            assert sql(f"SELECT COUNT(*) FROM player_items WHERE pid={claimant} "
+                       f"AND obj_uid={floor_root}") == "1", "matching room claim lost its floor UID"
+            client.close()
+            print("matching active room claim recovered its physical floor UID", flush=True)
             stop()
 
             server, _ = boot(REDIS_WORLD_STATE="TRUE")

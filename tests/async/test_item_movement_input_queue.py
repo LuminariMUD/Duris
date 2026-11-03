@@ -1141,6 +1141,26 @@ int main()
     character_list = nullptr;
     actor.desc = nullptr;
 
+	// Ordinary purchases can target a bag repaired with unknown cached revision.
+	obj_data repaired_bag = {};
+	repaired_bag.obj_uid = 900; repaired_bag.R_num = 0; repaired_bag.type = ITEM_CONTAINER;
+	repaired_bag.loc_p = LOC_CARRIED; repaired_bag.loc.carrying = &actor;
+	actor.carrying = &repaired_bag; character_list = &actor;
+	grant_first.loc_p = grant_second.loc_p = LOC_NOWHERE;
+	grant_first.next = &grant_second; grant_second.next = &repaired_bag;
+	repaired_bag.next = nullptr; object_list = &grant_first;
+	assert(item_ownership_runtime_hydrate({900,900,0,{item_owner_type::player,42,0},
+	                                      0,1,object_indexes[0].virtual_number,item_custody_state::active}));
+	command_submitted = false;
+	assert(item_creation_grant_submit_batch_to_player(&actor,grants,2,&actor,&repaired_bag,
+	                                                 held_grant_completion,nullptr,0));
+	item_transfer_payload repaired_purchase = {};
+	assert(command_submitted && item_transfer_command_decode_payload(submitted_command,&repaired_purchase));
+	assert(repaired_purchase.multi_root && repaired_purchase.item_count==2 &&
+	       repaired_purchase.target_parent_item_uid==900 && repaired_purchase.expected_target_parent_revision==0);
+	item_movement_transaction_reset_for_tests(); item_ownership_runtime_reset();
+	character_list = nullptr; object_list = nullptr; actor.carrying = nullptr;
+
 	printf("item movement input queue runtime: ok\n");
 	return 0;
 }

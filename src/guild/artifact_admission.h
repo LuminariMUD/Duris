@@ -11,8 +11,13 @@ struct artifact_payload_projection;
 // Materialized player payloads use a consistent source cut plus current custody.
 // Zero also covers ordinary objects; a known canonical UID cannot clear its flag.
 // EIDRM identifies a durably retired copy: omit it and preserve its contents.
+// EAGAIN requires a fresh read after overlapping writer activity; do not retain it.
+// EXDEV is a confirmed old-holder copy: refuse construction and omit the saved row.
 unsigned int artifact_player_source_error(const artifact_payload_projection &source,
-					  P_obj object = nullptr);
+					  P_obj object = nullptr, const char **reason = nullptr);
+// Restricted persistence diagnostics; no source or runtime state is changed.
+void artifact_log_source_error(const artifact_payload_projection &source, unsigned int error,
+			       const char *reason, const char *outcome);
 // Qualified owned or pinned ground payload: saved UID/flags precede procedures.
 // Player payloads match current custody; ground payloads match a pinned boot projection.
 bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &source);

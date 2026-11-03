@@ -201,12 +201,14 @@ int main()
 	batch.items[0] = { 101, 101, 0, 3, 8, item_custody_state::active };
 	batch.items[1] = { 204, 204, 0, 4, 11, item_custody_state::active };
 	assert(item_ownership_runtime_apply(batch, { 101, 2, 13, 2, 5, 0 }));
+	// The operator-repair completion has no per-item versions. Claims can have
+	// changed either member unseen: retain custody, not an invented exact version.
 	assert(item_ownership_runtime_lookup(101, &absent) &&
 	       item_owner_identity_equal(absent.owner, room) && absent.root_item_uid == 101 &&
-	       absent.parent_item_uid == 0 && absent.item_revision == 4);
+	       absent.parent_item_uid == 0 && absent.item_revision == 0);
 	assert(item_ownership_runtime_lookup(204, &absent) &&
 	       item_owner_identity_equal(absent.owner, room) && absent.root_item_uid == 204 &&
-	       absent.parent_item_uid == 0 && absent.item_revision == 5);
+	       absent.parent_item_uid == 0 && absent.item_revision == 0);
 
 	item_ownership_runtime_reset();
 	const item_owner_identity collector_corpse = {
@@ -402,6 +404,7 @@ int main()
 	       item_owner_identity_equal(absent.owner, retained_player));
 	assert(item_ownership_runtime_owner_revision(retained_player, &owner_revision) &&
 	       owner_revision == 4);
+	for (uint64_t submitted_revision : {4,99})
 	{
 		uint64_t owner_after = 0;
 		assert(item_ownership_runtime_owner_revision(player, &owner_after));
@@ -414,7 +417,7 @@ int main()
 		learned.to_owner = { item_owner_type::room, 1300, 0 };
 		learned.selected_item_uid = 150;
 		learned.target_root_item_uid = 150;
-		learned.items[0] = { 150, 150, 0, 99, 7, item_custody_state::active };
+		learned.items[0] = { 150, 150, 0, submitted_revision, 7, item_custody_state::active };
 		item_ownership_runtime_entry moved = {};
 		assert(item_ownership_runtime_apply(learned, { 150, 1, owner_after + 1, 2, 9, 0 }));
 		assert(item_ownership_runtime_lookup(150, &moved) && moved.item_revision == 9 &&

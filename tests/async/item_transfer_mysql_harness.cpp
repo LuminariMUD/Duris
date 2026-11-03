@@ -576,7 +576,7 @@ int main()
 	container_batch.multi_root = true;
 	container_batch.target_root_item_uid = container_uid;
 	container_batch.target_parent_item_uid = container_uid;
-	container_batch.expected_target_parent_revision = 1;
+	container_batch.expected_target_parent_revision = 0; // unknown after container repair
 	container_batch.item_count = 50;
 	std::vector<player_item_snapshot> batch_snapshots;
 	std::string created_uids;

@@ -22,6 +22,7 @@ from run_world_quest_dual_backend import setup_run_root
 ROOT = journey.ROOT
 GOD, GOD_ACCOUNT = 'Ownerwarden', 'Ownerstaff'
 PLAYER, ACCOUNT = 'Ownerwearer', 'Ownerplayer'
+RECIPIENT, RECIPIENT_ACCOUNT = 'Ownerguest', 'Ownerguestac'
 ARTIFACT = 900000
 
 
@@ -95,6 +96,10 @@ def run(binary, backend, inspector, conflicts_only=False):
             def save(client, name):
                 client.send('save'); client.expect('Save complete for ' + name + '.', timeout=60)
 
+            def camp(client):
+                client.send('camp'); client.expect('ACCOUNT MENU', timeout=60)
+                client.close(); clients.remove(client)
+
             def artifact():
                 if sql:
                     fields = sql(f'SELECT COALESCE(canonical_item_uid,0),identity_state,owned,loc_type,location,timer_epoch,bind_owner_pid,bind_timer_epoch FROM artifact_domain_state WHERE vnum={ARTIFACT}')
@@ -121,11 +126,15 @@ def run(binary, backend, inspector, conflicts_only=False):
                 command(god, 'setbit room here flag NO_MOB 1')
                 command(god, 'purge')
                 command(god, 'setbit room here flag SAFE 0')
+                command(god, 'setbit room here sect field')
                 command(god, 'transfer ' + PLAYER)
 
             try:
                 boot()
-                for name, account in ((GOD, GOD_ACCOUNT), (PLAYER, ACCOUNT)):
+                characters = [(GOD, GOD_ACCOUNT), (PLAYER, ACCOUNT)]
+                if not conflicts_only:
+                    characters.append((RECIPIENT, RECIPIENT_ACCOUNT))
+                for name, account in characters:
                     client = journey.MudClient(plain); clients.append(client)
                     journey.create_character(client, expected_room=None, account=account, character=name,
                                              email=name.lower() + '@example.invalid')
@@ -158,6 +167,56 @@ def run(binary, backend, inspector, conflicts_only=False):
                 assert artifact() == initial, 'shutdown changed artifact owner/timer/soul'
                 custody(initial['uid'])
 
+                if not conflicts_only:
+                    # Ordinary movement/save does not synchronize the process-local
+                    # ownership cache. Receive, save and unload in this uptime, then
+                    # repeatedly load the unchanged physical UID with that old cache.
+                    boot()
+                    god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
+                    recipient = login(RECIPIENT, RECIPIENT_ACCOUNT)
+                    repair_room(god)
+                    command(god, 'transfer ' + RECIPIENT)
+                    command(god, 'setbit char ' + RECIPIENT + ' level 51')
+                    command(god, 'restore ' + RECIPIENT)
+                    # Stow starter gear before removing the worn artifact so
+                    # the handoff obeys the mortal carry-count limit.
+                    command(player, 'put all satchel'); command(recipient, 'put all satchel')
+                    assert 'You stop using' in command(player, 'remove stone')
+                    assert 'Ok.' in command(player, 'give stone ' + RECIPIENT)
+                    command(recipient, 'wear stone')
+                    save(recipient, RECIPIENT)
+                    received = artifact()
+                    assert received['uid'] == initial['uid'] and received['timer'] == initial['timer']
+                    # Ordinary handoff may legitimately change soul binding.
+                    # Relogin must preserve the resulting state without another switch.
+                    for attempt in range(2):
+                        camp(recipient)
+                        recipient = login(RECIPIENT, RECIPIENT_ACCOUNT)
+                        command(god, 'transfer ' + RECIPIENT)
+                        assert 'ioun stone' in command(recipient, 'equipment')
+                        assert 'staff review' not in bytes(recipient.transcript).decode(errors='replace')
+                        save(recipient, RECIPIENT)
+                        assert artifact() == received
+                    # Handoff back also leaves the cache behind. Keep the original
+                    # wearer as the subject of the existing feed/restart controls.
+                    assert 'You stop using' in command(recipient, 'remove stone')
+                    assert 'Ok.' in command(recipient, 'give stone ' + PLAYER)
+                    command(player, 'wear stone')
+                    save(player, PLAYER); save(recipient, RECIPIENT)
+                    returned = artifact()
+                    assert returned['uid'] == initial['uid'] and returned['timer'] == initial['timer']
+                    camp(player)
+                    player = login(PLAYER, ACCOUNT)
+                    assert 'ioun stone' in command(player, 'equipment')
+                    assert 'small wooden mace' in command(player, 'inventory') + command(player, 'equipment') + command(player, 'look in satchel')
+                    save(player, PLAYER)
+                    settle(lambda: artifact() == returned, 'relogin changed handoff timer/soul state')
+                    initial = returned
+                    custody(initial['uid'])
+                    stop()
+                    evidence.append({'same_uptime_handoffs': 2, 'repeated_recipient_logins': 2, 'after': initial})
+                    print(f'PASS {backend}: ordinary handoffs, save/unload and repeated same-uptime login preserve UID, timer and soul', flush=True)
+
                 expected = initial
                 for stale_type in (() if conflicts_only else (4, 2, 1, 3)):
                     before = artifact()
@@ -170,7 +229,7 @@ def run(binary, backend, inspector, conflicts_only=False):
                     boot()
                     god, player = login(GOD, GOD_ACCOUNT), login(PLAYER, ACCOUNT)
                     assert 'ioun stone' in command(player, 'equipment')
-                    assert 'small wooden mace' in command(player, 'inventory') + command(player, 'equipment')
+                    assert 'small wooden mace' in command(player, 'inventory') + command(player, 'equipment') + command(player, 'look in satchel')
                     expected = dict(before, owned=1, type=3, location=pid)
                     settle(lambda: artifact() == expected, f'restored tracking did not reconcile: expected={expected}')
                     repair_room(god)
@@ -183,8 +242,16 @@ def run(binary, backend, inspector, conflicts_only=False):
                     command(god, 'setbit char raoul level 53')
                     command(god, 'setbit char raoul npcact ELITE 1')
                     command(god, 'setbit char raoul hit 1')
-                    player.send('kill raoul')
-                    player.expect('You have gained 4 epic points.', timeout=60)
+                    # Low luck can end the opening attack with a random fumble.
+                    # Retry that explicit outcome; the award must still feed once.
+                    for _ in range(5):
+                        player.send('kill raoul')
+                        outcome, _ = player.expect_any(
+                            ('You have gained 4 epic points.', 'You stumble'), timeout=60)
+                        if outcome == 'You have gained 4 epic points.':
+                            break
+                    else:
+                        raise AssertionError('elite-award fixture repeatedly fumbled')
                     player.expect('sense of satisfaction', timeout=30)
                     expected['timer'] += 3600
                     settle(lambda: artifact() == expected, f'first award did not feed exactly once: expected={expected}')

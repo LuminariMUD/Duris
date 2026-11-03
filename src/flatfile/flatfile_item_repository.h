@@ -32,6 +32,8 @@
 #include <unordered_set>
 #include <vector>
 
+struct world_recovery_authority_item;
+
 struct flatfile_item_ownership_record
 {
 	uint64_t item_uid = 0;
@@ -178,11 +180,11 @@ flatfile_item_repository_result
 flatfile_item_repository_reap_unheld_player_items(const std::string &root, uint64_t *deleted,
 						  std::string *error,
 						  const std::vector<uint64_t> *retained = nullptr);
-// World recovery: add to *owned each of uids that has an owner. A player's active
+// World recovery: add to *owned each captured item held elsewhere. A player's active
 // record counts only when the player's next load holds the item (its file, its pets, or
-// a delivery still pending), as MariaDB asks player_items; any other record counts.
+// a delivery still pending). A matching active room claim does not exclude its snapshot.
 flatfile_item_repository_result flatfile_item_repository_world_recovery_owned(
-	const std::string &root, const std::vector<uint64_t> &uids,
+	const std::string &root, const std::vector<world_recovery_authority_item> &items,
 	std::unordered_set<uint64_t> *owned, std::string *error);
 flatfile_item_baseline_result
 flatfile_item_repository_establish_owner(const std::string &root, const item_owner_identity &owner,
