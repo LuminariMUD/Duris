@@ -53,9 +53,12 @@ struct player_revision_snapshot
 	player_component_mask_t unacknowledged_components;
 	bool overflowed;
 	bool session_ended = false;
+	// Newly allocated PID, rather than a loaded legacy row at revision zero.
+	bool initial_creation = false;
 };
 
-bool player_revision_hydrate(int pid, player_revision_t durable_revision);
+bool player_revision_hydrate(int pid, player_revision_t durable_revision,
+			     bool initial_creation = false);
 bool player_revision_mark(int pid, player_component_mask_t components,
 			  player_revision_t *revision_out);
 // The revision and components a save captures now: everything not yet acknowledged.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real leaderboard command and live score functions; optional disposable SQL.
+"""Run the leaderboard/Hardcore commands and live scores; optional disposable SQL.
 
 Use with_disposable_mariadb.sh for SQL ranking and formatting coverage as well.
 """

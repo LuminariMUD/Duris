@@ -356,8 +356,15 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		}
 	}
 
-	// The first save is queued like any other: the writer inserts the player row.
-	if (GET_PID(newch) <= 0 || !writeCharacter(newch, RENT_QUIT, NOWHERE))
+	// Supply immutable first-save authority without borrowing the staff's live
+	// descriptor. The writer captures the account before this local context ends.
+	descriptor_data creation_context = {};
+	creation_context.account = ch->desc->account;
+	creation_context.character = newch;
+	newch->desc = &creation_context;
+	const bool saved = GET_PID(newch) > 0 && writeCharacter(newch, RENT_QUIT, NOWHERE);
+	newch->desc = nullptr;
+	if (!saved)
 	{
 		send_to_char("failed to save character to database.\r\n", ch);
 		sql_player_names_forget(GET_PID(newch));
@@ -365,45 +372,11 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	// link to account, queued on the writer behind the character's first save
-	{
-		if (!sql_queue(
-			    "INSERT INTO account_characters "
-			    "(account_name, pid, char_name, created_at, deleted_at) "
-			    "VALUES('%s', %d, '%s', NOW(), NULL) "
-			    "ON DUPLICATE KEY UPDATE char_name = VALUES(char_name), deleted_at = NULL",
-			    escape_str(ch->desc->account->acct_name).c_str(), GET_PID(newch),
-			    escape_str(newch->player.name).c_str()))
-		{
-			send_to_char("failed to link character to account.\r\n", ch);
-			logit(LOG_DEBUG, "wiz_newchar: failed to link %s to account %s",
-			      newch->player.name, ch->desc->account->acct_name);
-			delete_character(newch, false);
-			free_char(newch);
-			return;
-		}
-	}
-
-	// update in-memory account state for immediate visibility
-	{
-		struct acct_chars *c;
-		CREATE(c, struct acct_chars, 1, MEM_TAG_OTHER);
-		memset(c, 0, sizeof(struct acct_chars));
-		c->pid = GET_PID(newch);
-		c->charname = str_dup(newch->player.name);
-		c->count = 1;
-		c->last = time(NULL);
-		c->racewar = account_admission_racewar(GET_RACEWAR(newch), false);
-		c->player_racewar = GET_RACEWAR(newch);
-		c->level = GET_LEVEL(newch);
-		c->race = GET_RACE(newch);
-		c->m_class = newch->player.m_class;
-		c->secondary_class = newch->player.secondary_class;
-		c->spec = newch->player.spec;
-		c->next = ch->desc->account->acct_character_list;
-		ch->desc->account->acct_character_list = c;
-		ch->desc->account->num_chars++;
-	}
+	// The first snapshot owns the durable membership. Flat-file baseline
+	// acknowledgment may already have published its in-memory entry.
+	if (!find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(newch)))
+		add_char_to_account(&creation_context);
+	ch->desc->account->num_chars++;
 
 	// log it
 	logit(LOG_WIZ, "%s created test character %s (race %d, class %d, level %d, maxskills %s)",

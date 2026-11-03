@@ -23,7 +23,7 @@ WITH deduplicated AS (
       AND event IN ('duris_character_summary', 'duris_level_change')
       AND properties.duris_schema_version = 1
       AND properties.duris_environment_id = '1'
-      AND properties.duris_season_id = '1'
+      AND properties.duris_season_id = '2'
       AND coalesce(properties.duris_test_run, '') = ''
     GROUP BY event_id
 ), buckets AS (
@@ -72,5 +72,5 @@ WITH deduplicated AS (
 )
 SELECT *, count() OVER () AS total_rows_before_limit
 FROM planes
-ORDER BY row_plane, utc_day DESC, class_id, race_id, faction_id, level_band, zone, group_size, observed_level, source, reason, modifier_flags, character_id, before_level
+ORDER BY row_plane DESC, utc_day DESC, class_id, race_id, faction_id, level_band, zone, group_size, observed_level, source, reason, modifier_flags, character_id, before_level
 LIMIT 500
