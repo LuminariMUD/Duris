@@ -1,6 +1,6 @@
 # Issue #611: preserve assigned NPC ship pursuit
 
-Status: implementation and local acceptance complete; preparing the focused review PR. Updated 2026-11-03.
+Status: implementation and local acceptance complete; [PR #627](https://github.com/LuminariMUD/Duris/pull/627) is open and ready for review. Updated 2026-11-03.
 
 - Work item: [Duris #611](https://github.com/LuminariMUD/Duris/issues/611).
 - GitHub-linked development branch: [branch/issue-611-npc-pursuit](https://github.com/LuminariMUD/Duris/tree/branch/issue-611-npc-pursuit).
@@ -126,6 +126,12 @@ The existing default build is MariaDB; the flat-file build uses the Makefile's s
 Review the final diff against this acceptance list and repeat ablation. Commit only necessary source/test/documentation changes, with no generated binaries or investigation scripts. Update this plan with exact passing commands and any unverified gameplay claims. The implementation PR should link #611 as its work item; this planning commit must not close the issue. Keep #474 as a compatibility reference.
 
 ## Implementation handoff (2026-11-03)
+
+Review delivery: implementation commit `08ea954ef` is pushed on the linked branch
+in [PR #627](https://github.com/LuminariMUD/Duris/pull/627), targeting `master`.
+The planning commit and implementation are one focused PR; no dependent stack is
+needed. This final documentation checkpoint records the published review location.
+No implementation or local acceptance work remains. Keep #611 open until merge.
 
 The heartbeat now distinguishes NPC availability from player lock policy. NPCs keep
 loaded, undocked, non-sinking same-map targets without a range or player-idle limit.
