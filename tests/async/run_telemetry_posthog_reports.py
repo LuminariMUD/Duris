@@ -27,7 +27,11 @@ def native(scenario):
     output = subprocess.check_output(
         [str(ROOT / "bin/tests/telemetry-posthog-mariadb"), "reduce", scenario], text=True)
     rows = [json.loads(line) for line in output.splitlines()]
-    return [row for row in rows if "event" in row]
+    rows = [row for row in rows if "event" in row]
+    for row in rows:
+        row["properties"].update(duris_schema_version=1, duris_environment_id="1",
+                                 duris_season_id="2", duris_test_run=None)
+    return rows
 
 
 def literal(value):
@@ -46,8 +50,6 @@ def run(db, name, rows):
     sources = []
     for original in rows:
         row = deepcopy(original)
-        row["properties"].update(duris_schema_version=1, duris_environment_id="1",
-                                 duris_season_id="1", duris_test_run=None)
         columns = [literal(row["event"]) + " AS event",
                    "toDateTime(" + literal(row.get("_captured_at", NOW - timedelta(hours=1))
                                           .strftime("%Y-%m-%d %H:%M:%S")) + ") AS timestamp"]
@@ -75,8 +77,22 @@ def main():
             rows = ordinary + native("health-incidents") + native("encounter-open")
             result = run(db, name, rows)
             assert result, name
+            excluded = []
+            for field, value in (("duris_schema_version", 2), ("duris_environment_id", "2"),
+                                 ("duris_season_id", "1"), ("duris_test_run", "synthetic")):
+                for original in rows:
+                    other = deepcopy(original)
+                    other["properties"][field] = value
+                    for identity in ("duris_event_id", "duris_character_id", "duris_session_id",
+                                     "duris_run_id"):
+                        if other["properties"].get(identity) is not None:
+                            other["properties"][identity] += "-excluded-" + field
+                    if other["event"] == "duris_telemetry_health":
+                        other["properties"]["producer_boot_id"] = "10001"
+                    excluded.append(other)
+            assert stable(result) == stable(run(db, name, rows + excluded)), name
             assert stable(result) == stable(run(db, name, rows + rows)), name
-        print("PASS: all five committed SQL reports execute and deduplicate repeated event IDs")
+        print("PASS: all five reports select only production season 2 and deduplicate event IDs")
 
         health = [row for row in native("health-incidents")
                   if row["event"] == "duris_telemetry_health"]
@@ -171,6 +187,34 @@ def main():
         latest, = run(db, "time", comparisons + [invalid])
         assert latest["resident_usec"] is None and latest["unavailable_inputs"] == 1
         print("PASS: late checkpoint evidence wins over occurrence/UUID order and unavailable comparisons stay unknown")
+
+        # The local inline fixture needs room for more than one report page.
+        db.query("SET max_query_size=4194304")
+        checkpoints = []
+        for index in range(501):
+            row = deepcopy(comparisons[-1])
+            row["properties"].update(duris_event_id=f"checkpoint-{index}",
+                                     duris_session_id=f"session-{index}")
+            checkpoints.append(row)
+        page = run(db, "time", checkpoints + [summary])
+        assert len(page) == 500 and page[0]["total_rows_before_limit"] > 500
+        assert page[0]["row_plane"] == "interval_delta"
+        assert any(row["row_plane"] == "checkpoint_gap_do_not_add" for row in page)
+        print("PASS: checkpoint reconciliation cannot hide additive time rows on the bounded first page")
+
+        level_change = next(row for row in native("release-mix")
+                            if row["event"] == "duris_level_change")
+        levels = []
+        for index in range(501):
+            row = deepcopy(level_change)
+            row["properties"].update(duris_event_id=f"level-{index}",
+                                     duris_character_id=f"character-{index}")
+            levels.append(row)
+        page = run(db, "xp", levels + [xp_summary])
+        assert len(page) == 500 and page[0]["total_rows_before_limit"] > 500
+        assert page[0]["row_plane"] == "observed_xp"
+        assert any(row["row_plane"] == "level_change" for row in page)
+        print("PASS: level changes cannot hide observed XP rows on the bounded first page")
 
 
 if __name__ == "__main__":
