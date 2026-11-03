@@ -18,6 +18,7 @@
 #include "economy/collector_eligibility.h"
 #include "economy/divine_trade_repository.h"
 #include "flatfile/flatfile_collector_repository.h"
+#include "flatfile/flatfile_account_repository.h"
 #include "flatfile/flatfile_identity_repository.h"
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
@@ -608,24 +609,17 @@ bool merge_snapshot(const player_snapshot &incoming, player_snapshot *materializ
 	return true;
 }
 
-flatfile_player_domain_result establish_domain_baseline(const std::string &root,
-							const player_snapshot &snapshot,
-							std::string *error)
+flatfile_player_domain_result
+prepare_domain_baseline(const std::string &root, const flatfile_authority_lock &authority,
+			const player_snapshot &snapshot, const flatfile_identity_record &identity,
+			std::vector<flatfile_authority_operation> *operations, std::string *error)
 {
-	flatfile_identity_record identity;
-	const flatfile_identity_result identity_loaded =
-		flatfile_identity_lookup_pid(root, snapshot.pid, &identity, error);
-	if (identity_loaded != flatfile_identity_result::ok)
-		return identity_loaded == flatfile_identity_result::io_error ?
-			       flatfile_player_domain_result::io_error :
-		       identity_loaded == flatfile_identity_result::not_found ?
-			       flatfile_player_domain_result::not_found :
-			       flatfile_player_domain_result::invalid;
 	const std::string *name = snapshot_player_name(snapshot);
 	int64_t racewar = 0;
 	flatfile_player_domain_record record;
 	record.pid = snapshot.pid;
 	record.account_name = identity.account;
+	record.domains.wallet_revision = snapshot.wallet_revision;
 	if (!identity.active || !name || !same_authority_key(*name, identity.name) ||
 	    !snapshot_signed(snapshot, player_status_field::racewar, &racewar) ||
 	    racewar < INT8_MIN || racewar > INT8_MAX || identity.racewar != racewar ||
@@ -655,7 +649,8 @@ flatfile_player_domain_result establish_domain_baseline(const std::string &root,
 	}
 	record.domains.base_stat_revision = 1;
 	record.racewar = static_cast<int8_t>(racewar);
-	return flatfile_player_domain_establish_initial_player(root, record, error);
+	return flatfile_player_domain_prepare_initial_player(root, authority, record, operations,
+							     error);
 }
 } // namespace
 
@@ -889,32 +884,28 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	flatfile_player_snapshot_lock snapshot_lock;
 	if (!snapshot_lock.acquire(root, snapshot.pid, error))
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
-	// The authority lock is not reentrant, and a new player's domain baseline takes it
-	// itself, so it is held around each step rather than for the whole save.
-	auto authority = std::make_unique<flatfile_authority_lock>();
-	const auto lock_authority = [&]() -> player_save_apply_result
-	{
-		if (!authority->acquire(root, error))
-			return { player_save_apply_outcome::retryable_failure, 0, EIO };
-		const auto recovered =
-			flatfile_authority_transaction_recover(root, *authority, error);
-		if (recovered != flatfile_authority_transaction_result::ok)
-			return { recovered == flatfile_authority_transaction_result::io_error ?
-					 player_save_apply_outcome::retryable_failure :
-					 player_save_apply_outcome::terminal_failure,
-				 0, EIO };
-		return { player_save_apply_outcome::applied, 0, 0 };
-	};
-	player_save_apply_result locked = lock_authority();
-	if (locked.outcome != player_save_apply_outcome::applied)
-		return locked;
+	// Match character deletion's lock order; no initial after-image is published
+	// until the complete snapshot/domain/identity transaction has been prepared.
+	flatfile_identity_lock identity_lock;
+	if (!identity_lock.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	flatfile_authority_lock authority;
+	if (!authority.acquire(root, error))
+		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	const auto recovered = flatfile_authority_transaction_recover(root, authority, error);
+	if (recovered != flatfile_authority_transaction_result::ok)
+		return { recovered == flatfile_authority_transaction_result::io_error ?
+				 player_save_apply_outcome::retryable_failure :
+				 player_save_apply_outcome::terminal_failure,
+			 0, EIO };
+	std::vector<flatfile_authority_operation> operations;
 	if (snapshot.pending_world_quest.present && snapshot.pending_world_quest.fallback_only)
 	{
 		const auto &quest = snapshot.pending_world_quest;
 		bool committed = false;
 		const auto found = flatfile_world_quest_record_matches(
-			root, *authority, snapshot.pid, quest.target, quest.level,
-			quest.occurred_at, &committed, error);
+			root, authority, snapshot.pid, quest.target, quest.level, quest.occurred_at,
+			&committed, error);
 		if (found != flatfile_world_quest_result::ok)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (committed)
@@ -924,9 +915,9 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	if (revised)
 	{
 		auto settled =
-			flatfile_shop_trade_settle_snapshot(root, *authority, revised.get(), error);
+			flatfile_shop_trade_settle_snapshot(root, authority, revised.get(), error);
 		if (settled == flatfile_player_domain_result::not_found)
-			settled = divine_trade_flatfile_settle_snapshot(root, *authority,
+			settled = divine_trade_flatfile_settle_snapshot(root, authority,
 									revised.get(), error);
 		if (settled == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
@@ -940,6 +931,93 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 	if (loaded == flatfile_player_load_result::io_error)
 		return { player_save_apply_outcome::retryable_failure, 0, EIO };
+	if (loaded == flatfile_player_load_result::not_found &&
+	    snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
+		return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
+	flatfile_identity_record initial_identity;
+	if (loaded == flatfile_player_load_result::not_found || !snapshot.creation_account.empty())
+	{
+		const auto *name = snapshot_player_name(snapshot);
+		int64_t racewar = 0, value = 0;
+		if (!name || !snapshot_signed(snapshot, player_status_field::racewar, &racewar) ||
+		    racewar < INT8_MIN || racewar > INT8_MAX)
+			return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
+		initial_identity.pid = snapshot.pid;
+		initial_identity.name = *name;
+		initial_identity.account = snapshot.creation_account;
+		initial_identity.racewar = static_cast<int8_t>(racewar);
+		initial_identity.login_count = 1;
+		if (snapshot_signed(snapshot, player_status_field::birth_time, &value))
+			initial_identity.last_login = value;
+		if (snapshot_signed(snapshot, player_status_field::level, &value))
+			initial_identity.level = value;
+		if (snapshot_signed(snapshot, player_status_field::race, &value))
+			initial_identity.race = value;
+		if (snapshot_signed(snapshot, player_status_field::class_primary, &value))
+			initial_identity.primary_class = value;
+		if (snapshot_signed(snapshot, player_status_field::class_secondary, &value))
+			initial_identity.secondary_class = value;
+		flatfile_authority_operation identity_operation;
+		const auto identity = flatfile_identity_prepare_initial_player(
+			root, identity_lock, authority, &initial_identity, &identity_operation,
+			error);
+		if (identity != flatfile_identity_result::ok &&
+		    identity != flatfile_identity_result::unchanged)
+			return { identity == flatfile_identity_result::io_error ?
+					 player_save_apply_outcome::retryable_failure :
+					 player_save_apply_outcome::terminal_failure,
+				 0,
+				 static_cast<unsigned>(
+					 identity == flatfile_identity_result::not_found ?
+						 ENOENT :
+						 EEXIST) };
+		if (!snapshot.creation_account.empty())
+		{
+			if (loaded == flatfile_player_load_result::ok &&
+			    materialized.revision >= snapshot.revision)
+			{
+				const auto *stored_name = snapshot_player_name(materialized);
+				if (!stored_name || !same_authority_key(*stored_name, *name) ||
+				    !same_authority_key(materialized.creation_account,
+							snapshot.creation_account))
+					return { player_save_apply_outcome::terminal_failure, 0,
+						 EILSEQ };
+				bool committed = true;
+				if (snapshot.pending_world_quest.present &&
+				    !snapshot.pending_world_quest.fallback_only)
+				{
+					const auto &quest = snapshot.pending_world_quest;
+					const auto found = flatfile_world_quest_record_matches(
+						root, authority, snapshot.pid, quest.target,
+						quest.level, quest.occurred_at, &committed, error);
+					if (found != flatfile_world_quest_result::ok)
+						return {
+							player_save_apply_outcome::retryable_failure,
+							0, EIO
+						};
+					// Only an equal-revision fallback may continue into its quest.
+					if (!committed &&
+					    materialized.revision != snapshot.revision)
+						return { player_save_apply_outcome::terminal_failure,
+							 0, EILSEQ };
+				}
+				if (committed)
+					return { player_save_apply_outcome::already_applied,
+						 materialized.revision, 0 };
+			}
+			// A policy change cannot invalidate an already committed creation.
+			flatfile_account_record account;
+			const auto owner = flatfile_account_load(root, snapshot.creation_account,
+								 &account, error);
+			if (owner != flatfile_account_result::ok || account.blocked)
+				return { owner == flatfile_account_result::io_error ?
+						 player_save_apply_outcome::retryable_failure :
+						 player_save_apply_outcome::terminal_failure,
+					 0, EACCES };
+		}
+		if (identity == flatfile_identity_result::ok)
+			operations.push_back(std::move(identity_operation));
+	}
 	if (unresolved_trade)
 	{
 		if (loaded != flatfile_player_load_result::ok)
@@ -1003,15 +1081,9 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	}
 	if (loaded == flatfile_player_load_result::not_found)
 	{
-		if (snapshot.components != PLAYER_CHECKPOINT_COMPONENT_ALL)
-			return { player_save_apply_outcome::terminal_failure, 0, ENOENT };
 		new_player = true;
-		authority = std::make_unique<flatfile_authority_lock>();
-		const flatfile_player_domain_result domain_baseline =
-			establish_domain_baseline(root, snapshot, error);
-		locked = lock_authority();
-		if (locked.outcome != player_save_apply_outcome::applied)
-			return locked;
+		const flatfile_player_domain_result domain_baseline = prepare_domain_baseline(
+			root, authority, snapshot, initial_identity, &operations, error);
 		if (domain_baseline == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (domain_baseline != flatfile_player_domain_result::ok)
@@ -1069,7 +1141,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
 		}
 		const auto prepared = flatfile_item_repository_prepare_claim(
-			root, *authority, &claims, &claimed, &audits, error);
+			root, authority, &claims, &claimed, &audits, error);
 		if (prepared == flatfile_item_repository_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (prepared != flatfile_item_repository_result::ok &&
@@ -1120,7 +1192,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	if ((snapshot.components & held_components) == held_components)
 	{
 		const auto retired = flatfile_shop_trade_materialization_prepare_player_remove(
-			root, *authority, static_cast<uint32_t>(snapshot.pid), &delivered, error);
+			root, authority, static_cast<uint32_t>(snapshot.pid), &delivered, error);
 		if (retired == flatfile_shop_trade_materialization_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		if (retired != flatfile_shop_trade_materialization_result::ok &&
@@ -1144,8 +1216,8 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 					 }))
 				return { player_save_apply_outcome::terminal_failure, 0, EILSEQ };
 		const auto prepared = flatfile_world_quest_prepare_record(
-			root, *authority, snapshot.pid, quest.target, quest.level,
-			quest.occurred_at, &quest_history, error);
+			root, authority, snapshot.pid, quest.target, quest.level, quest.occurred_at,
+			&quest_history, error);
 		if (prepared != flatfile_world_quest_result::ok)
 			return { prepared == flatfile_world_quest_result::io_error ?
 					 player_save_apply_outcome::retryable_failure :
@@ -1168,12 +1240,12 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 		snapshot_signed(snapshot, player_status_field::old_frags, &balances.old_frags);
 	if (incoming_sequence > stored_sequence && !new_player && !saves_balances)
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	if (saves_balances)
+	if (saves_balances && !new_player)
 	{
 		balances.divine_boon_delivery_seq = incoming_sequence;
 		balances.wallet_revision = snapshot.wallet_revision;
 		const auto prepared = flatfile_player_domain_prepare_saved_balances(
-			root, *authority, static_cast<uint32_t>(snapshot.pid), balances,
+			root, authority, static_cast<uint32_t>(snapshot.pid), balances,
 			&saved_balances, error);
 		if (prepared == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
@@ -1199,7 +1271,6 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	std::vector<uint8_t> bytes;
 	if (!flatfile_player_snapshot_encode_file(&materialized, &bytes))
 		return { player_save_apply_outcome::terminal_failure, 0, EINVAL };
-	std::vector<flatfile_authority_operation> operations;
 	try
 	{
 		if (snapshot.pending_world_quest.present &&
@@ -1209,7 +1280,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 			operations.push_back(std::move(claimed));
 		if (delivered_changed)
 			operations.push_back(std::move(delivered));
-		if (saves_balances)
+		if (saves_balances && !new_player)
 			operations.push_back(std::move(saved_balances));
 		operations.push_back({ flatfile_authority_store::players,
 				       flatfile_authority_operation_kind::write,
@@ -1219,7 +1290,7 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	{
 		return { player_save_apply_outcome::retryable_failure, 0, ENOMEM };
 	}
-	const auto committed = flatfile_authority_transaction_commit_operations(root, *authority,
+	const auto committed = flatfile_authority_transaction_commit_operations(root, authority,
 										operations, error);
 	if (committed != flatfile_authority_transaction_result::ok)
 		return { committed == flatfile_authority_transaction_result::io_error ?

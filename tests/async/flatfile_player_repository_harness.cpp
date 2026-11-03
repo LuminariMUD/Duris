@@ -12,6 +12,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_artifact_repository.h"
 #include "flatfile/flatfile_account_reward_summon_repository.h"
+#include "flatfile/flatfile_account_repository.h"
 #include "flatfile/flatfile_association_repository.h"
 #include "flatfile/flatfile_frag_leaderboard_repository.h"
 #include "flatfile/flatfile_locker_repository.h"
@@ -1301,6 +1302,186 @@ static void divine_trade_settlement(const fs::path &base)
 		<< "Divine trade purchase/sale recovery passed at journal and all six after-image boundaries\n";
 }
 
+static void initial_creation_boundaries(const fs::path &root)
+{
+	for (int boundary = -1; boundary <= 5; ++boundary)
+	{
+		const auto state = (root / std::to_string(boundary)).string();
+		for (const auto &directory :
+		     { fs::path(state), fs::path(state) / "players", fs::path(state) / "domains",
+		       fs::path(state) / "identities", fs::path(state) / "identities/names",
+		       fs::path(state) / "identities/accounts" })
+		{
+			fs::create_directories(directory);
+			fs::permissions(directory, fs::perms::owner_all, fs::perm_options::replace);
+		}
+		std::string error;
+		int32_t pid = 0;
+		require(flatfile_identity_allocate_pid(state, &pid, &error) ==
+				flatfile_identity_result::ok,
+			"allocate initial PID: " + error);
+		flatfile_account_record account;
+		account.name = "Keeper";
+		account.password_hash = "synthetic-hash";
+		uint64_t revision = 0;
+		require(flatfile_account_save(state, account, 0, &revision, &error) ==
+				flatfile_account_result::ok,
+			"save synthetic owner: " + error);
+		auto snapshot = make_full(1);
+		snapshot.pid = pid;
+		snapshot.creation_account = account.name;
+		snapshot.status_integers.push_back(
+			{ player_status_field::birth_time, 1800000000, 0, false });
+		for (auto &field : snapshot.status_integers)
+			if (field.field == player_status_field::level)
+				field.signed_value = 0;
+		const char *fault =
+			boundary < 0  ? "DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT" :
+			boundary == 0 ? "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL" :
+					"DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_OPERATION";
+		const auto step = std::to_string(boundary);
+		setenv(fault, step.c_str(), 1);
+		const auto failed = flatfile_player_snapshot_apply(state, snapshot, &error);
+		unsetenv(fault);
+		require(failed.outcome == player_save_apply_outcome::retryable_failure,
+			"creation fault boundary " + step + " did not fire: " + error);
+		flatfile_identity_record identity;
+		player_snapshot stored;
+		if (boundary < 0)
+		{
+			require(flatfile_identity_lookup_pid(state, pid, &identity, &error) ==
+						flatfile_identity_result::not_found &&
+					flatfile_player_snapshot_read(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::not_found,
+				"uncommitted creation published identity or snapshot");
+			flatfile_player_domain_record absent;
+			require(flatfile_player_domain_load(state, pid, account.name, 0, &absent,
+							    &error) ==
+					flatfile_player_domain_result::not_found,
+				"uncommitted creation published domains");
+			require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"retry after unpublished creation: " + error);
+		}
+		else
+		{
+			// Allocation itself must recover the journal before advancing the
+			// catalog, so the identity after-image cannot rewind its high water.
+			int32_t next = 0;
+			require(flatfile_identity_allocate_pid(state, &next, &error) ==
+						flatfile_identity_result::ok &&
+					next == pid + 1,
+				"interrupted creation rewound or blocked the PID allocator: " +
+					error);
+			require(flatfile_player_domain_restore_recover(state, &error) ==
+					flatfile_player_domain_result::ok,
+				"recover creation after-images: " + error);
+		}
+		require(flatfile_identity_lookup_pid(state, pid, &identity, &error) ==
+					flatfile_identity_result::ok &&
+				identity.active && identity.account == account.name &&
+				identity.name == "Player" && identity.login_count == 1 &&
+				identity.last_login == 1800000000,
+			"recovery lost initial owner/membership: " + error);
+		require(flatfile_player_snapshot_load(state, pid, &stored, &error) ==
+					flatfile_player_load_result::ok &&
+				std::equal(stored.status_integers.begin(),
+					   stored.status_integers.end(),
+					   snapshot.status_integers.begin(),
+					   snapshot.status_integers.end(),
+					   [](const auto &left, const auto &right)
+					   {
+						   return left.field == right.field &&
+							  left.signed_value == right.signed_value &&
+							  left.unsigned_value ==
+								  right.unsigned_value &&
+							  left.is_unsigned == right.is_unsigned;
+					   }),
+			"recovery lost kept stats/options: " + error);
+		flatfile_player_domain_record domains;
+		require(flatfile_player_domain_load(state, pid, account.name, 0, &domains,
+						    &error) == flatfile_player_domain_result::ok &&
+				domains.domains.base_stats[0] == 50 &&
+				domains.domains.base_stats[9] == 59 &&
+				domains.domains.wallet[0] == 11,
+			"recovery lost initial domains: " + error);
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::already_applied,
+			"initial retry did not reconcile the committed snapshot");
+		if (boundary < 0)
+		{
+			account.blocked = 1;
+			require(flatfile_account_save(state, account, revision, &revision,
+						      &error) == flatfile_account_result::ok,
+				"block initial owner");
+			require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+					player_save_apply_outcome::already_applied,
+				"blocking after commit invalidated initial acknowledgment");
+			account.blocked = 0;
+			require(flatfile_account_save(state, account, revision, &revision,
+						      &error) == flatfile_account_result::ok,
+				"unblock initial owner");
+			auto quest = snapshot;
+			quest.revision = 2;
+			quest.quest_values = {};
+			quest.pending_world_quest = {
+				true, 25001, 20, 9000, 0, 1800000001, "Player", "initial completion"
+			};
+			quest.pending_world_quest.before_quest[0] = 1;
+			quest.pending_world_quest.before_quest[1] = 25001;
+			require(flatfile_player_snapshot_apply(state, quest, &error).outcome ==
+					player_save_apply_outcome::applied,
+				"creation quest must continue after its same-revision fallback");
+			int count = 0;
+			require(flatfile_world_quest_count_day(state.c_str(), pid, 20, 1800000001,
+							       &count, &error) ==
+						flatfile_world_quest_result::ok &&
+					count == 1 &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.quest_values[0] == 0,
+				"creation quest success omitted history or final state");
+			auto advanced = quest;
+			advanced.revision = 3;
+			advanced.creation_account.clear();
+			advanced.pending_world_quest = {};
+			for (auto &field : advanced.status_integers)
+				if (field.field == player_status_field::level)
+					field.signed_value = 1;
+			require(flatfile_player_snapshot_apply(state, advanced, &error).outcome ==
+						player_save_apply_outcome::applied &&
+					flatfile_player_snapshot_apply(state, quest, &error)
+							.outcome ==
+						player_save_apply_outcome::already_applied &&
+					flatfile_player_snapshot_load(state, pid, &stored,
+								      &error) ==
+						flatfile_player_load_result::ok &&
+					stored.revision == 3,
+				"initial quest replay overwrote later state");
+		}
+		int32_t competitor = 0;
+		require(flatfile_identity_allocate_pid(state, &competitor, &error) ==
+					flatfile_identity_result::ok &&
+				competitor == pid + (boundary < 0 ? 1 : 2),
+			"allocate competing PID");
+		auto competing = snapshot;
+		competing.pid = competitor;
+		require(flatfile_player_snapshot_apply(state, competing, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"competing PID stole the kept name");
+		require(flatfile_identity_sync_account(state, account.name, {}, &error) ==
+				flatfile_identity_result::ok,
+			"seed exact creation tombstone");
+		require(flatfile_player_snapshot_apply(state, snapshot, &error).outcome ==
+				player_save_apply_outcome::terminal_failure,
+			"late initial snapshot resurrected a tombstoned identity");
+	}
+	std::cout
+		<< "atomic first character: precommit, journal and five after-images, replay, competition and tombstones passed\n";
+}
+
 int main(int argc, char **argv)
 {
 	if (argc == 4 && std::string(argv[2]) == "stale-membership")
@@ -1748,6 +1929,7 @@ int main(int argc, char **argv)
 	require(argc == 2, "state root argument required");
 	const fs::path root = argv[1];
 	saved_wallet_matrix(root / "saved-wallet");
+	initial_creation_boundaries(root / "initial-creation");
 	divine_trade_settlement(root / "trade-settlement");
 	const fs::path players = root / "players";
 	const fs::path identities = root / "identities/names";

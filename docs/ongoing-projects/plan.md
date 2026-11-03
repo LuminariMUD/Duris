@@ -1,6 +1,6 @@
 # Issue #612: durable Keep and resumable first entry
 
-Status: implementation in progress; initial MariaDB ownership delivered in open [PR #628](https://github.com/LuminariMUD/Duris/pull/628). No production operation performed. Updated 2026-11-03.
+Status: implementation in progress; persistence chunks delivered in open [PR #628](https://github.com/LuminariMUD/Duris/pull/628) → [PR #632](https://github.com/LuminariMUD/Duris/pull/632) → [PR #634](https://github.com/LuminariMUD/Duris/pull/634). No production operation performed. Updated 2026-11-03.
 
 - Work item: [Duris #612](https://github.com/LuminariMUD/Duris/issues/612).
 - GitHub Development branch: [branch/issue-612-kept-character-resume](https://github.com/LuminariMUD/Duris/tree/branch/issue-612-kept-character-resume).
@@ -23,7 +23,10 @@ Existing broken records receive a guarded, testable repair/release path. Ownersh
 - **Chunk 1: initial MariaDB ownership (locally qualified).** The save pipeline captures the initial account as owned snapshot data while the existing written revision is zero. Such captures include all components, including coalesced captures. The SQL transaction validates the account and exact PID/name/owner/mapping, rejects competing identities and tombstones, then publishes player, membership and opening balances together. A same-attempt retry recognizes a committed baseline without replaying older creation state. Snapshot schema 15 carries the account; supported schemas through 14 decode with an empty creation context. Ordinary saves leave an established owner alone.
 - **Ablation refinement:** retain creation context in revision state until completion; materialized legacy revision-zero rows remain ordinary saves. No synchronous game-loop SQL is needed. The rest of the original acceptance scope remains required. The current journey checks ownership/selectability only; it does not yet claim approval, resumption, delayed acknowledgment, grants or recovery coverage.
 - **Git handoff:** [PR #628](https://github.com/LuminariMUD/Duris/pull/628) targets `master` from `branch/issue-612-kept-character-resume`; implementation commit `8bfa04068`. It is ready for review and intentionally does not close #612. No release tag is appropriate for this unmerged feature chunk.
-- **Next:** stack a dependent branch for atomic flat-file first publication, then creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery. Keep this section current with PR links, exact passing commands and unresolved gates.
+- **Separate fixture repair:** [PR #632](https://github.com/LuminariMUD/Duris/pull/632), `branch/issue-612-claim-fixture`, commit `2ef8057fa`, targets PR #628. A pre-existing compile failure passed bare UIDs to the current typed world-recovery API. The focused fixture-only change supplies complete synthetic floor records. Its save-claim test, build and formatting checks passed. Clean isolated worktree: `/home/aiwithapex/projects/duris-claim-fixture`.
+- **Chunk 2 locally qualified:** current worktree is on dependent `branch/issue-612-flatfile-creation`, based on PR #632's `2ef8057fa`. Initial identity, bank/player domains, item claims and usable snapshot are prepared under the existing snapshot → identity → authority lock order and committed through the existing authority journal. New flat-file account-list entries are deferred until baseline acknowledgment so ordinary account saves cannot publish a tentative membership. Existing domain establishment reuses that preparation; obsolete early-publication helpers were removed. No account scalar changes at Keep require an account after-image; the existing account is validated under the same authority fence. Standalone identity readers/mutators recover pending authority after-images before reading or advancing the PID catalog, preventing later recovery from rewinding allocated PIDs. Initial domains retain the captured wallet revision and existing shared bank balances.
+- **Chunk-2 Git handoff:** [PR #634](https://github.com/LuminariMUD/Duris/pull/634), `branch/issue-612-flatfile-creation`, implementation `09c5cea98`, targets PR #632 and is ready for review. The primary worktree remains `/home/aiwithapex/projects/duris-issue-612-kept-characters`.
+- **Next:** implement creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery on dependent branches. Keep this section current with PR links, exact passing commands and unresolved gates. Neither delivery chunk completes #612.
 - Synthetic build/test logs are under ignored `bin/tests/issue-612-*`. Pre-change evidence: `issue-612-before-mariadb.log` and `issue-612-before-flatfile.log`. No credentials, runtime state, generated artifacts or production identifiers are tracked.
 
 Chunk-1 adversarial review follow-up: preserve quest continuation after its same-revision initial fallback; allow deleted-name reuse while retaining the old PID tombstone (including rollback); distinguish newly allocated revision state from loaded legacy revision-zero rows; reconcile a committed Keep before enforcing later account blocking. Focused regressions cover these paths. Current master was merged with both shared-plan histories preserved. No schema or additional persistence service was needed.
@@ -47,9 +50,34 @@ git diff --check
 
 The MariaDB journey verifies owner, mapping and all three opening baselines **before** account login, so projection repair cannot mask a missing creation commit. The repository harness exercises rejected mapping insertion (all player/item/baseline writes roll back), same-attempt reconciliation, protection against replay over a later level, conflicting owner/PID and deletion tombstones. Codec tests round-trip the initial account and decode schema 14 plus all previously supported versions. Existing legacy-byte fixtures now omit schema-15 metadata, and the reset probe includes the production mapping-tombstone statement before checking reset postconditions. These are fixture compatibility updates, not changes to reset behavior.
 
+Chunk-2 proof (all passed locally on 2026-11-03):
+
+```sh
+make -C src -j6
+make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/issue-612-flatfile -j6
+python3 tests/async/test_flatfile_player_repository.py
+python3 tests/async/test_flatfile_player_domain_repository.py
+python3 tests/async/test_new_player_bank_hydration.py
+python3 tests/async/test_flatfile_account_membership.py
+python3 tests/async/test_flatfile_identity_repository.py
+python3 tests/async/test_flatfile_character_delete.py
+python3 tests/async/test_player_save_claim.py
+python3 tests/async/test_kept_character_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new
+./scripts/format.sh --check
+git diff --check
+```
+
+The executable repository fixture rejects an unpublished first commit without any identity/domain/snapshot, recovers after the journal and each of five after-images, preserves all captured status fields and authoritative stats, retains membership count/time, and verifies replay, name competition, tombstones and monotonic PID allocation across recovery. Ordinary wallet, trade receipt and bank/deletion journeys remain green. Four harness manifests now link the account repository used to validate an initial owner.
+
+Additional details for the next implementation session:
+
+- Flat-file `sql_player_names_set/hold/release` are currently no-ops and name checks use the persistent catalog. The upcoming asynchronous saving state must retain an attempt-scoped reservation until the writer resolves, including after descriptor loss; repository competition guards alone do not prove the pending-name policy.
+- A rollback of a retry transaction does not prove that an earlier ambiguous first commit never landed. Completion cleanup must reconcile the exact committed identity before releasing a reservation. Qualify an account being blocked after commit/before reconciliation too, and preserve a committed Keep while entry is denied.
+- The current Keep UI still advertises Return before save acknowledgment, accepted-name/approval branches still need a common baseline, and account selection/override still need safe pre-entry routing. Chaos and ordinary kit resumption remain unimplemented acceptance gates; inventory emptiness is not a completion receipt. No recovery command or operations guide has been delivered yet.
+
 ## Non-goals
 
-No production queries, migrations, data repair, server restart, deployment, or bulk deletion in this planning task. Future production repair requires the user's permission and a per-record decision. No rested-bonus policy change, name-expiry service, PID reuse, blanket level-0 cleanup, global save-pipeline rewrite, new persistence backend, or changes to unrelated item-authority work.
+No production queries, migrations, data repair, server restart, deployment, or bulk deletion in this implementation. Future production repair requires the user's permission and a per-record decision. No rested-bonus policy change, name-expiry service, PID reuse, blanket level-0 cleanup, global save-pipeline rewrite, new persistence backend, or changes to unrelated item-authority work.
 
 #612 stays open until prevention, resumption, recovery capability, and the acceptance journeys below are implemented and proven. Historical #238/#489/#417 and merged item work are context, not additional issues to close.
 
