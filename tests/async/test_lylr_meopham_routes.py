@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Verify reciprocal Lylrstas/Meopham access without damaging wilderness routes."""
+"""Verify Lylrstas and both Meopham entrances with isolated map markers."""
 import argparse
 from pathlib import Path
 from test_falling_world_exits import read_rooms
 
 ROOT = Path(__file__).resolve().parents[2]
-IDS = (540876, 540476, 540875, 540877, 539281, 538881, 539282, 539681, 539280, 541276)
+IDS = (540876, 540476, 540875, 540877, 539281, 538881, 539282, 539681, 539280,
+       541276, 538481, 538880, 538882)
 REVERSE = (2, 3, 0, 1, 5, 4)
 
 def extract(text, number):
@@ -29,19 +30,22 @@ def load(areas, generated=False):
     return rooms
 
 def check(rooms):
-    for src, direction, target in ((540876, 2, 82200), (539281, 4, 82240)):
+    for src, direction, target in ((540876, 2, 82200), (539281, 0, 82240),
+                                    (539281, 4, 82240)):
         assert rooms[src][2].get(direction) == target, (src, direction)
         assert rooms[target][2].get(REVERSE[direction]) == src, (target, REVERSE[direction])
     assert rooms[82240][2].get(2) == 539281
-    for direction, target in enumerate((538881, 539282, 539681, 539280)):
+    for direction, target in ((1, 539282), (2, 539681), (3, 539280)):
         assert rooms[539281][2].get(direction) == target
         assert rooms[target][2].get(REVERSE[direction]) == 539281
-    assert rooms[541276][:2] == (0, 0), 'marker must remain inert'
+    for marker in (541276, 538881):
+        assert rooms[marker][:2] == (0, 0), (marker, 'marker must remain inert')
+        for src in IDS:
+            assert marker not in rooms[src][2].values(), src
+    for neighbor, terrain in ((538481, 3), (538880, 2), (538882, 3)):
+        assert rooms[neighbor][:2] == (terrain, 0), (neighbor, 'wilderness terrain changed')
     for direction, target in ((0, 540476), (1, 540877), (3, 540875)):
         assert rooms[540876][2].get(direction) == target
-    for src in IDS:
-        if src != 541276:
-            assert 541276 not in rooms[src][2].values(), src
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
@@ -50,7 +54,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     rooms = load(args.areas, args.generated)
     check(rooms)
-    for src, direction in ((540876, 2), (539281, 4)):
+    for src, direction in ((540876, 2), (539281, 0), (539281, 4)):
         sector, fall, exits = rooms[src]
         rooms[src] = (sector, fall, {d: target for d, target in exits.items() if d != direction})
         try:

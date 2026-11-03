@@ -3923,7 +3923,7 @@ bool damage(P_char ch, P_char victim, double dam, int attacktype)
 		if (!IS_FIGHTING(ch) && (ch->in_room == victim->in_room))
 		{
 			set_fighting(ch, victim);
-			attack_back(ch, victim, attacktype > FIRST_SKILL);
+			return attack_back(ch, victim, attacktype > FIRST_SKILL) != DAM_NONEDEAD;
 		}
 		return FALSE;
 	}
@@ -4858,7 +4858,20 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 
 	if (!IS_FIGHTING(ch) && !(flags & PHSDAM_NOENGAGE) && ch->in_room == victim->in_room)
 	{
+		const attack_continuation continuation = begin_attack_continuation(ch, victim);
 		set_fighting(ch, victim);
+		// Starting combat can breathe, flee, or kill before this strike lands.
+		const attack_continuation_result checked = check_attack_continuation(continuation);
+		if (checked.outcome == attack_continuation_outcome::actor_gone)
+		{
+			P_char target =
+				find_character_by_runtime_id(continuation.target_runtime_id);
+			return IS_ALIVE(target) ? DAM_CHARDEAD : DAM_BOTHDEAD;
+		}
+		if (checked.outcome == attack_continuation_outcome::target_gone)
+			return DAM_VICTDEAD;
+		if (!checked.can_continue())
+			return DAM_NONEDEAD;
 	}
 
 	dragonfist = FALSE;
@@ -5133,7 +5146,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	if (dam <= 5 || (flags & PHSDAM_NOSHIELDS))
 	{
 		if (!(flags & PHSDAM_NOENGAGE))
-			attack_back(ch, victim, TRUE);
+			return attack_back(ch, victim, TRUE);
 		return result;
 	}
 
@@ -7078,7 +7091,17 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	}
 
 	if (!IS_FIGHTING(ch))
+	{
+		const attack_continuation continuation =
+			begin_attack_continuation(ch, victim, weapon);
 		set_fighting(ch, victim);
+		const attack_continuation_result checked = check_attack_continuation(continuation);
+		if (!checked.can_continue())
+			return FALSE;
+		ch = checked.actor;
+		victim = checked.target;
+		weapon = checked.weapon;
+	}
 
 	/* The blind and eyeless cannot see "flashing lights." - Lucrot */
 	if (IS_AFFECTED4(victim, AFF4_DAZZLER) && !IS_AFFECTED5(ch, AFF5_DAZZLEE) &&
@@ -7756,6 +7779,8 @@ void set_fighting(P_char ch, P_char vict)
 {
 	P_char victim = vict;
 	char Gbuf[10];
+	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
+		return;
 	if (collector_presence_is_npc(ch) || collector_presence_is_npc(victim))
 		return;
 
@@ -7882,6 +7907,7 @@ void set_fighting(P_char ch, P_char vict)
 		stop_memorizing(ch);
 	if (!IS_DRAGOON(victim))
 		stop_memorizing(victim);
+	const attack_continuation continuation = begin_attack_continuation(ch, victim);
 
 	/* call for initial 'dragon fear' check.  -JAB */
 
@@ -7891,6 +7917,8 @@ void set_fighting(P_char ch, P_char vict)
 			DragonCombat(ch, TRUE);
 		else
 			DragonCombat(ch, FALSE); // Attack but don't roar.
+		if (!check_attack_continuation(continuation).can_continue())
+			return;
 	}
 
 	/* Code for memory */
@@ -7934,15 +7962,25 @@ void set_fighting(P_char ch, P_char vict)
 			send_to_char("I'm afraid you aren't quite up to mounted combat.\r\n", ch);
 			act("$n quickly slides off $N's back.", TRUE, ch, 0, mount, TO_NOTVICT);
 			stop_riding(ch);
+			if (!check_attack_continuation(continuation).can_continue())
+				return;
 		}
 	}
 
-	if (has_innate(ch, INNATE_ANTI_EVIL) && IS_EVIL(vict))
-		do_innate_anti_evil(ch, vict);
+	if (has_innate(ch, INNATE_ANTI_EVIL) && IS_EVIL(victim))
+	{
+		do_innate_anti_evil(ch, victim);
+		if (!check_attack_continuation(continuation).can_continue())
+			return;
+	}
 	if (has_innate(ch, INNATE_DECREPIFY))
-		do_innate_decrepify(ch, vict);
+	{
+		do_innate_decrepify(ch, victim);
+		if (!check_attack_continuation(continuation).can_continue())
+			return;
+	}
 	if (GET_CHAR_SKILL(ch, SKILL_DREAD_WRATH))
-		do_dread_wrath(ch, vict);
+		do_dread_wrath(ch, victim);
 }
 
 void MoveAllAttackers(P_char ch, P_char v)
@@ -9993,8 +10031,15 @@ int battle_frenzy(P_char ch, P_char victim)
 
 void engage(P_char ch, P_char victim)
 {
+	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
+		return;
+	const attack_continuation continuation = begin_attack_continuation(ch, victim);
 	if (!IS_FIGHTING(ch))
+	{
 		set_fighting(ch, victim);
+		if (!check_attack_continuation(continuation).can_continue())
+			return;
+	}
 
 	if (!IS_FIGHTING(victim))
 		set_fighting(victim, ch);

@@ -4,10 +4,46 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 02, 2026&n
+&+WUpdated: November 03, 2026&n
 
-Welcome back! Browse the races, take flight and check the shops.
+Welcome back! Explore your class, skills and spells with the new guides.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/03/26&n &+L-&n &+YPlan your next skill, spell or specialization&n
+&+W----------------------------------------------------------------------&n
+
+&+CYour character, and the paths ahead&n
+&+Y-&n &+C'skills'&n shows your progress; &+C'skills <class or specialization>'&n
+  lists unlock levels and caps. Try &+C'skills info bash'&n for details
+  and your learned, taught and current ratings. Songs and instruments
+  are included; epic skills keep their separate training rules.
+&+Y-&n &+C'spells'&n shows your class access, future circles and relevant
+  carried spellbook entries. Use &+C'spells <class or specialization>'&n
+  for a reference or &+C'spells info fireball'&n for details and your access.
+  Class access and a book do not replace preparation or casting requirements.
+&+Y-&n Browse &+C'class list'&n, narrow it with &+C'class list grey elf'&n,
+  compare &+C'class specs warrior'&n, or read &+C'class info guardian'&n.
+  &+C'class innates <class or specialization>'&n shows inherited abilities
+  and unlock levels. Disabled and special choices show their restrictions.
+
+&+CBonuses that reach the right skill&n
+&+Y-&n Skill-granting and skill-boosting effects now contribute to your
+  effective rating, including skills with higher-numbered identities.
+  Those effects keep the intended skill when surviving a restart.
+&+Y-&n The leaderboard hides individual earned-epic totals; total earned
+  epics still contribute to its score.
+&+Y-&n The wailing face of a pygmie banshee now counts as a unique artifact.
+&+Y-&n Combat no longer continues a stale attack when an opening action
+  removes or moves a participant, fixing a crash involving dragon attacks.
+
+&+CFind the command you meant&n
+&+Y-&n New help includes &+C'help flight paths'&n, &+C'help human innates'&n,
+  &+C'help race list'&n, &+C'help attach'&n, &+C'help major globe'&n,
+  &+C'help endurance aura'&n and &+C'help totem mastery'&n.
+&+Y-&n Read &+C'help enhance weapon'&n or &+C'help enhance material'&n before
+  crafting, and &+C'help summon ship'&n before calling your ship: summoning
+  costs coins, takes time, removes passengers and clears mortal owners' cargo.
+  Dragoon specialization pointers explain the class's creation restriction.
 
 &+R11/02/26&n &+L-&n &+YKnow your race, keep your ride&n
 &+W----------------------------------------------------------------------&n
