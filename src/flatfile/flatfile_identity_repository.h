@@ -79,7 +79,7 @@ class flatfile_identity_lock
 	flatfile_identity_prepare_remove(const std::string &, const flatfile_identity_lock &,
 					 const flatfile_authority_lock &, int32_t,
 					 const std::string &, flatfile_authority_operation *,
-					 std::string *);
+					 std::string *, uint64_t);
 	friend flatfile_identity_result
 	flatfile_identity_prepare_sync_account(const std::string &, const flatfile_identity_lock &,
 					       const flatfile_authority_lock &, const std::string &,
@@ -124,11 +124,16 @@ flatfile_identity_result flatfile_identity_prepare_sync_account(
 	const flatfile_authority_lock &authority_lock, const std::string &account,
 	const std::vector<flatfile_identity_record> &records,
 	flatfile_authority_operation *operation, std::string *error);
-flatfile_identity_result
-flatfile_identity_prepare_remove(const std::string &root,
-				 const flatfile_identity_lock &identity_lock,
-				 const flatfile_authority_lock &authority_lock, int32_t pid,
-				 const std::string &expected_name,
-				 flatfile_authority_operation *operation, std::string *error);
+flatfile_identity_result flatfile_identity_prepare_remove(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority_lock, int32_t pid,
+	const std::string &expected_name, flatfile_authority_operation *operation,
+	std::string *error, uint64_t expected_catalog_revision = 0);
+// Explicit staff repair, retaining the existing snapshot and monetary authority.
+flatfile_identity_result flatfile_identity_prepare_recovered_kept(
+	const std::string &root, const flatfile_identity_lock &identity_lock,
+	const flatfile_authority_lock &authority, const flatfile_identity_record &record,
+	uint64_t expected_catalog_revision, flatfile_authority_operation *operation,
+	std::string *error);
 
 #endif

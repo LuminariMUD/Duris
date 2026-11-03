@@ -1398,15 +1398,15 @@ bool sql_save_account(struct acct_entry *acc)
 
 /* Repair selectable account mappings only after safe opening baselines exist.
  * Returns 0 or the MySQL error; *repaired counts the mappings it changed. */
-static unsigned int sql_repair_account_character_projection(MYSQL *connection,
-							    const std::string &escaped_account,
-							    int *repaired)
+unsigned int sql_repair_account_character_projection(MYSQL *connection,
+						     const std::string &escaped_account,
+						     int *repaired, int only_pid)
 {
 	const std::string eligibility = sql_format(
-		"pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') AND NOT EXISTS ("
+		"pd.active=1 AND (%d=0 OR pd.pid=%d) AND LOWER(pd.account_name)=LOWER('%s') AND NOT EXISTS ("
 		"SELECT 1 FROM account_characters tombstone WHERE tombstone.deleted_at IS NOT NULL "
 		"AND (tombstone.pid=pd.pid OR LOWER(tombstone.char_name)=LOWER(pd.name)))",
-		escaped_account.c_str());
+		only_pid, only_pid, escaped_account.c_str());
 	const std::string baselines[] = {
 		sql_format(
 			"INSERT INTO currency_wallet_baseline(pid,opening_copper,opening_silver,"
@@ -1448,32 +1448,33 @@ static unsigned int sql_repair_account_character_projection(MYSQL *connection,
 			       "AND (LOWER(keeper.char_name)=LOWER(pd.name) OR keeper.id<stale.id) "
 			       "WHERE stale.deleted_at IS NULL "
 			       "AND LOWER(stale.char_name)<>LOWER(pd.name) "
-			       "AND LOWER(pd.account_name)=LOWER('%s')",
-			       escaped_account.c_str())))
+			       "AND LOWER(pd.account_name)=LOWER('%s') AND (%d=0 OR pd.pid=%d)",
+			       escaped_account.c_str(), only_pid, only_pid)))
 		return error_code;
 	const my_ulonglong duplicates = mysql_affected_rows(connection);
 
 	if (const unsigned int error_code = sql_execute(
 		    connection,
-		    sql_format("INSERT INTO account_characters "
-			       "(id, account_name, pid, char_name, created_at, deleted_at) "
-			       "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), "
-			       "NULL FROM player_data pd "
-			       "LEFT JOIN account_characters active_mapping "
-			       "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
-			       "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
-			       "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
-			       "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
-			       "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') "
-			       "AND NOT EXISTS ("
-			       "SELECT 1 FROM account_characters tombstone "
-			       "WHERE tombstone.deleted_at IS NOT NULL "
-			       "AND (tombstone.pid=pd.pid "
-			       "OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
-			       "ON DUPLICATE KEY UPDATE "
-			       "account_name=VALUES(account_name), pid=VALUES(pid), "
-			       "char_name=VALUES(char_name), deleted_at=NULL",
-			       escaped_account.c_str())))
+		    sql_format(
+			    "INSERT INTO account_characters "
+			    "(id, account_name, pid, char_name, created_at, deleted_at) "
+			    "SELECT active_mapping.id, pd.account_name, pd.pid, pd.name, NOW(), "
+			    "NULL FROM player_data pd "
+			    "LEFT JOIN account_characters active_mapping "
+			    "ON active_mapping.pid=pd.pid AND active_mapping.deleted_at IS NULL "
+			    "JOIN currency_wallet_baseline wallet ON wallet.pid=pd.pid "
+			    "JOIN epic_balance_baseline epic ON epic.pid=pd.pid "
+			    "JOIN combat_frag_baseline combat ON combat.pid=pd.pid "
+			    "WHERE pd.active=1 AND LOWER(pd.account_name)=LOWER('%s') AND (%d=0 OR pd.pid=%d) "
+			    "AND NOT EXISTS ("
+			    "SELECT 1 FROM account_characters tombstone "
+			    "WHERE tombstone.deleted_at IS NOT NULL "
+			    "AND (tombstone.pid=pd.pid "
+			    "OR LOWER(tombstone.char_name)=LOWER(pd.name))) "
+			    "ON DUPLICATE KEY UPDATE "
+			    "account_name=VALUES(account_name), pid=VALUES(pid), "
+			    "char_name=VALUES(char_name), deleted_at=NULL",
+			    escaped_account.c_str(), only_pid, only_pid)))
 		return error_code;
 
 	const my_ulonglong affected = mysql_affected_rows(connection) + duplicates;

@@ -1,6 +1,6 @@
 # Issue #612: durable Keep and resumable first entry
 
-Status: implementation in progress; open review stack [#628](https://github.com/LuminariMUD/Duris/pull/628) → [#632](https://github.com/LuminariMUD/Duris/pull/632) → [#634](https://github.com/LuminariMUD/Duris/pull/634) → [#635](https://github.com/LuminariMUD/Duris/pull/635) → [#636](https://github.com/LuminariMUD/Duris/pull/636) → [#639](https://github.com/LuminariMUD/Duris/pull/639). No production operation performed. Updated 2026-11-03.
+Status: implementation complete and locally qualified; review stack [#628](https://github.com/LuminariMUD/Duris/pull/628) → [#632](https://github.com/LuminariMUD/Duris/pull/632) → [#634](https://github.com/LuminariMUD/Duris/pull/634) → [#635](https://github.com/LuminariMUD/Duris/pull/635) → [#636](https://github.com/LuminariMUD/Duris/pull/636) → [#639](https://github.com/LuminariMUD/Duris/pull/639) → [#640](https://github.com/LuminariMUD/Duris/pull/640). No production operation performed. Updated 2026-11-04.
 
 - Work item: [Duris #612](https://github.com/LuminariMUD/Duris/issues/612).
 - GitHub Development branch: [branch/issue-612-kept-character-resume](https://github.com/LuminariMUD/Duris/tree/branch/issue-612-kept-character-resume).
@@ -334,4 +334,53 @@ python3 tests/async/test_chaos_kit_runtime.py
 git diff --check
 ```
 
-Next required chunk: privileged guarded inspect/attach/release and its operations guide. Final acceptance still includes the complete approval/accepted-name/Chaos matrix, recovery refusal/rollback/pending-work fixtures, name competition and fault/restart evidence. Issue #612 must remain open until those gates pass.
+Git handoff: [PR #640](https://github.com/LuminariMUD/Duris/pull/640), `bfd62ec59`, targets #639 and is ready for review. The active worktree is now on dependent `branch/issue-612-kept-recovery`.
+
+The final chunk below delivers the recovery command and operations guide and completes the approval/accepted-name/Chaos matrix, recovery guards, name competition and fault/restart evidence. The issue remains open for review and merge of the stack.
+
+## Final recovery and acceptance: complete
+
+The worktree is on `branch/issue-612-kept-recovery`, based on #640 (`bfd62ec59`). This is the final implementation/review chunk; do not create more prerequisite branches. No production data, server, deployment or release tag has been touched.
+
+Implemented `keptchar inspect|attach|release` at OVERLORD, with exact PID/name, explicit verified account/expected owner and evidence reference. It rejects live/loaded/loading bodies, pending saves/critical commands/starter records, established or accepted characters, conflicting owners/tombstones, and unproven snapshot/domain state. MariaDB uses the existing projection repair scoped to one PID; native attachment prepares one guarded identity after-image while retaining the original snapshot and financial authority. Repair publishes into live account caches and holds stale native membership projection during the operation.
+
+Deletion now shares a PID/name implementation with ordinary `delete_character`, rather than fabricating a loaded body or implementing a second deletion. The native recovery guard permits genuinely absent per-player snapshot/domains only after checking the catalog generation and expected snapshot version; ordinary deletion's fail-closed policy is unchanged. MariaDB retains a tombstone even for an ownerless row with no mapping. Reusing a spelling retires the old mapping's spelling internally while retaining its PID fence, so delayed old captures cannot resurrect it. Cache cleanup checks PID as well as name. The operator guide is `docs/operations/kept-character-recovery.md`.
+
+Proof already passed on the current chunk: both builds; actual privileged recovery on both backends including account loading/cold entry and a cached account session; SQL forced rollback; native identity rollback/journal/after-image fault recovery and stale-generation/owner conflict controls; actual competing accounts for a case-insensitive name; a real dropped successful MariaDB COMMIT reply with descriptor loss, reservation retention, reconciliation and cold entry; all sixteen ordinary/accepted × approval off/on × Chaos off/on cases, with all ten stats and once-only bank/epic/frigate rewards. The existing `select_keepchar` recheck already prevents the competition; a redundant extra guard was removed after tracing and proving it.
+
+Final review found the login worker reads pending membership through the load hold callback. Registry key insertion/removal and worker membership reads now use short mutex holds; immutable creation payloads stay game-thread owned. Both delayed-login journeys and the normal approval/decline and account-menu deletion regressions pass after that fix. Existing member counters and block metadata are retained in repaired live account caches. Final formatting/tidy and diff checks pass. All implementation and local verification gates are complete; Git publication is recorded below. CI was not required or awaited. No production repair, merge, deployment or release tag was performed.
+
+Final local proof (2026-11-04; all passed):
+
+```sh
+make -C src -j8
+make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/issue-612-flatfile -j8
+python3 tests/async/test_kept_character_lifecycle.py
+python3 tests/async/test_account_character_delete_runtime.py
+python3 tests/async/test_flatfile_identity_repository.py
+python3 tests/async/test_flatfile_character_delete.py
+python3 tests/async/test_player_save_pipeline.py
+python3 tests/async/test_flatfile_account_membership.py
+python3 tests/async/test_racewar_admission.py
+bash tests/async/run_player_save_claim_mysql.sh
+python3 tests/async/test_kept_character_recovery_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_recovery_journey.py --backend mariadb --server bin/server/dms_new
+python3 tests/async/test_kept_character_competition.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_competition.py --backend mariadb --server bin/server/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_ambiguous_commit.py --server bin/server/dms_new
+python3 tests/async/test_kept_character_matrix.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new
+python3 tests/async/test_kept_character_matrix.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new --chaos
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_matrix.py --backend mariadb --server bin/server/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_matrix.py --backend mariadb --server bin/server/dms_new --chaos
+python3 tests/async/test_kept_character_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new --delay
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_journey.py --backend mariadb --server bin/server/dms_new --delay
+python3 tests/async/test_kept_character_approval_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_character_approval_journey.py --backend mariadb --server bin/server/dms_new
+./scripts/format.sh --staged --check
+./scripts/tidy.sh --staged
+git diff --cached --check
+```
+
+The four matrix invocations execute sixteen distinct combinations, including cold restart before entry and after rewards. Both recovery journeys exercise ownerless/known-owner missing membership, missing snapshot release, wrong identity and legitimate-character refusal, cached-account publication, live bodies, a disconnected held save, a retained pending grant, new-PID name reuse, and cold account entry without changing the ten chosen stats. MariaDB forces rollback; native identity tests interrupt before commit, after journal and after image, then recover the exact identity and reject stale generations and competing owners. The SQL repository additionally proves a new spelling claimant cannot remove the retired PID's tombstone or revive its delayed capture. The COMMIT proxy is a disposable local test seam only; it drops an actual successful database acknowledgment and proves reconciliation without losing the reservation or creating another character.
+
+Git handoff: the final recovery/qualification branch is `branch/issue-612-kept-recovery`, targeting #640. The final PR link and implementation commit are added after publication. All required implementation and verification work is complete; the next action is maintainer review of the open stack.

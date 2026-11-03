@@ -227,6 +227,14 @@ static void inspect_authority(const std::string &root, int32_t pid)
 		std::cout << domains.domains.wallet[i];
 	}
 	std::cout << "],\"wallet_revision\":" << domains.domains.wallet_revision;
+	std::cout << ",\"epics\":" << domains.domains.epics << ",\"bank\":[";
+	for (size_t i = 0; i < domains.domains.bank.size(); ++i)
+	{
+		if (i)
+			std::cout << ',';
+		std::cout << domains.domains.bank[i];
+	}
+	std::cout << ']';
 	std::cout << ",\"coin_items\":[";
 	bool first_coin = true;
 	for (const auto &item : snapshot.items)
@@ -1508,7 +1516,8 @@ int main(int argc, char **argv)
 			"empty spellbook authority: " + error);
 		return 0;
 	}
-	if (argc == 4 && std::string(argv[2]) == "starter-pending")
+	if (argc == 4 &&
+	    (std::string(argv[2]) == "starter-pending" || std::string(argv[2]) == "legacy-kept"))
 	{
 		// Offline disposable fixture: simulate loss of the post-grant snapshot.
 		std::string error;
@@ -1520,8 +1529,16 @@ int main(int argc, char **argv)
 		for (auto &field : snapshot.status_integers)
 			if (field.field == player_status_field::action_flags_3)
 			{
-				field.unsigned_value |= BIT_25;
-				field.signed_value |= BIT_25;
+				if (std::string(argv[2]) == "starter-pending")
+				{
+					field.unsigned_value |= BIT_25;
+					field.signed_value |= BIT_25;
+				}
+				else
+				{
+					field.unsigned_value &= ~(BIT_23 | BIT_24);
+					field.signed_value &= ~(BIT_23 | BIT_24);
+				}
 				found = true;
 			}
 		require(found, "missing action flags in disposable fixture");

@@ -593,6 +593,7 @@ void do_tedit(P_char, char *, int);
 void do_depiss(P_char, char *, int);
 void do_repiss(P_char, char *, int);
 void do_approve(P_char, char *, int);
+void do_keptchar(P_char, char *, int);
 void do_advance(P_char, char *, int);
 void do_affectpurge(P_char, char *, int);
 void do_allow(P_char, char *, int);
@@ -1168,6 +1169,9 @@ enum class character_delete_result
 // game before done runs.
 void delete_character(P_char ch, bool delete_locker = true,
 		      std::function<void(character_delete_result)> done = {});
+struct kept_character_recovery_record;
+void delete_kept_character(const kept_character_recovery_record &record,
+			   std::function<void(character_delete_result)> done);
 P_obj read_one_object(char *);
 int restoreAffects(char *, P_char);
 int restoreCharOnly(P_char, char *);

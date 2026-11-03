@@ -35,6 +35,7 @@ PRELUDE = r'''
 #include <cassert>
 #include <cstdlib>
 #include <map>
+#include <mutex>
 #include <new>
 #include <string>
 
@@ -57,7 +58,8 @@ void statuslog(int, const char *, ...) {}
 bool chaos_mud_enabled() { return false; }
 bool pfile_exists(const char *, char *) { return accepted; }
 void mark_chaos_starter_reward_intents(P_char) { assert(false); }
-void schedule_chaos_new_character_kit_before_entry(P_char) { assert(false); }
+bool kept_character_recovery_pending(int) { return false; }
+bool kept_character_recovery_owner_pending(const char *) { return false; }
 void newby_announce(P_desc) {}
 void display_account_menu(P_desc, char *) {}
 void ws_send_system(P_desc, const char *, const char *) {}

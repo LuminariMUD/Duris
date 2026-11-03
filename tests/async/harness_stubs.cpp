@@ -382,3 +382,13 @@ HARNESS_STUB bool obj_name_matches(P_char, P_obj object, const char *name)
 void __attribute__((weak)) update_group_vitals(P_char) {}
 // Non-group fixtures do not deliver group observer notifications.
 HARNESS_STUB void update_groupies(P_char, bool) {}
+
+__attribute__((weak)) bool kept_character_recovery_pending(int)
+{
+	return false;
+}
+
+__attribute__((weak)) bool kept_character_recovery_owner_pending(const char *)
+{
+	return false;
+}

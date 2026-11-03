@@ -1287,7 +1287,8 @@ const char *command[MAX_CMD] = {
 	"last",
 	"race",
 	"class",
-	"\n" /* MAX_CMD = 876, MAX_CMD_LIST = 1000 */
+	"keptchar",
+	"\n" /* MAX_CMD = 877, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3012,6 +3013,7 @@ void assign_command_pointers(void)
 	/* wizcommands */
 
 	CMD_GRT(CMD_APPROVE, STAT_DEAD + POS_PRONE, do_approve, AVATAR);
+	CMD_GRT(CMD_KEPTCHAR, STAT_DEAD + POS_PRONE, do_keptchar, OVERLORD);
 	CMD_GRT(CMD_ADVANCE, STAT_DEAD + POS_PRONE, do_advance, GREATER_G);
 	CMD_GRT(CMD_ALLOW, STAT_DEAD + POS_PRONE, do_allow, GREATER_G);
 	CMD_GRT(CMD_AT, STAT_DEAD + POS_PRONE, do_at, AVATAR);

@@ -19,6 +19,7 @@ with tempfile.TemporaryDirectory(prefix="duris-flat-identity-test-") as temporar
             "-Wextra",
             "-Wpedantic",
             "-Werror",
+            "-DDURIS_FLATFILE_AUTHORITY_FAULT_TEST",
             "-Isrc",
             "tests/async/flatfile_identity_repository_harness.cpp",
             rel("flatfile_identity_repository.c"),

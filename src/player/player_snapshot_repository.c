@@ -1120,9 +1120,27 @@ query_result ensure_player_row(MYSQL *connection, const player_snapshot &snapsho
 			strtoull(row[0], nullptr, 10) == static_cast<uint64_t>(snapshot.pid) &&
 			row[1] && !strcasecmp(row[1], snapshot.creation_account.c_str()) &&
 			row[2] && !strcasecmp(row[2], name->value.c_str()) && !row[3];
-		const bool mapping_valid = (!row && !present) ||
-					   (matching && !mysql_fetch_row(rows));
+		bool mapping_valid = (!row && !present) || (matching && !mysql_fetch_row(rows));
+		// Keep the retired PID's tombstone while freeing the spelling for a
+		// genuinely new identity. A delayed save of that PID still finds it.
+		const uint64_t retired_pid = row && row[0] ? strtoull(row[0], nullptr, 10) : 0;
+		const bool reuse_retired_name =
+			!present && row && row[3] && retired_pid &&
+			retired_pid != static_cast<uint64_t>(snapshot.pid) && row[2] &&
+			!strcasecmp(row[2], name->value.c_str()) && !mysql_fetch_row(rows);
 		mysql_free_result(rows);
+		if (reuse_retired_name)
+		{
+			result = execute(
+				connection,
+				"UPDATE account_characters SET char_name=CONCAT(char_name,'#retired-',pid) WHERE pid=" +
+					std::to_string(retired_pid) +
+					" AND deleted_at IS NOT NULL AND char_name=" +
+					quote(connection, name->value));
+			if (!result.ok)
+				return result;
+			mapping_valid = true;
+		}
 		if (!mapping_valid)
 			return { false, EEXIST };
 		result = execute(connection, "SELECT pid FROM player_data WHERE name=" +

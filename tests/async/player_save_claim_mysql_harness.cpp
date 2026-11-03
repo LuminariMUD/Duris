@@ -440,6 +440,24 @@ int main()
 				"1",
 		"a delayed creation retry must respect a deletion tombstone");
 	execute(test_connection, "UPDATE account_characters SET deleted_at=NULL WHERE pid=3");
+	// Retire the complete old identity, then reuse only its spelling. The old
+	// PID's retained tombstone must reject a delayed initial capture afterward.
+	execute(test_connection, "UPDATE account_characters SET deleted_at=NOW() WHERE pid=3");
+	execute(test_connection, "DELETE FROM player_data WHERE pid=3");
+	auto replacement = snapshot_for(8, 1, "Newcomer");
+	replacement.creation_account = "claim_probe";
+	require(player_snapshot_repository_apply(test_connection, replacement).outcome ==
+			player_save_apply_outcome::applied,
+		"a retired spelling must be reusable by a new PID");
+	require(player_snapshot_repository_apply(test_connection, unbased).outcome ==
+				player_save_apply_outcome::terminal_failure &&
+			scalar(test_connection, "SELECT COUNT(*) FROM player_data WHERE pid=3") ==
+				"0" &&
+			scalar(test_connection,
+			       "SELECT COUNT(*) FROM account_characters WHERE pid=3 AND deleted_at IS NOT NULL") ==
+				"1",
+		"name reuse must retain the old PID fence");
+
 	std::cout
 		<< "[PASS] initial owner/membership/baselines, rollback, retry, competition and tombstone fences\n";
 

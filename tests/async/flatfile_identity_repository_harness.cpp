@@ -160,6 +160,94 @@ int main(int argc, char **argv)
 			highest == reserved_pid + worker_count * allocations_per_worker,
 		"concurrent allocations lost or duplicated a publication");
 
+	// The recovery command prepares exactly this identity after-image. Exercise
+	// confirmed rollback and restart recovery through the production journal.
+	for (int step = 0; step < 3; ++step)
+	{
+		int32_t pid = 0;
+		require(flatfile_identity_allocate_pid(root.string(), &pid, &error) ==
+				flatfile_identity_result::ok,
+			"recovery allocation");
+		flatfile_identity_record missing;
+		require(flatfile_identity_lookup_pid(root.string(), pid, &missing, &error) ==
+				flatfile_identity_result::not_found,
+			"recovery must start absent");
+		flatfile_identity_record recovered;
+		recovered.pid = pid;
+		recovered.name = "Recovery" + std::string(1, 'a' + step);
+		recovered.account = "recovery";
+		recovered.active = true;
+		const char *faults[] = { "DURIS_FLATFILE_TEST_FAIL_BEFORE_AUTHORITY_COMMIT",
+					 "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_JOURNAL",
+					 "DURIS_FLATFILE_TEST_INTERRUPT_AFTER_AUTHORITY_IMAGE" };
+		{
+			flatfile_identity_lock identity;
+			flatfile_authority_lock authority;
+			require(identity.acquire(root.string(), &error) &&
+					authority.acquire(root.string(), &error),
+				"recovery locks");
+			flatfile_authority_operation operation;
+			require(flatfile_identity_prepare_recovered_kept(
+					root.string(), identity, authority, recovered,
+					missing.catalog_revision + 1, &operation,
+					&error) == flatfile_identity_result::conflict,
+				"stale recovery generation must be refused");
+			require(flatfile_identity_prepare_recovered_kept(
+					root.string(), identity, authority, recovered,
+					missing.catalog_revision, &operation,
+					&error) == flatfile_identity_result::ok,
+				"prepare recovered identity");
+			setenv(faults[step], "1", 1);
+			const auto committed = flatfile_authority_transaction_commit_operations(
+				root.string(), authority, { operation }, &error);
+			unsetenv(faults[step]);
+			require(committed == flatfile_authority_transaction_result::io_error,
+				"recovery fault did not fire");
+		}
+		const auto result =
+			flatfile_identity_lookup_pid(root.string(), pid, &record, &error);
+		if (!step)
+		{
+			require(result == flatfile_identity_result::not_found,
+				"rollback published an identity");
+			flatfile_identity_lock identity;
+			flatfile_authority_lock authority;
+			require(identity.acquire(root.string(), &error) &&
+					authority.acquire(root.string(), &error),
+				"retry recovery locks");
+			flatfile_authority_operation operation;
+			require(flatfile_identity_prepare_recovered_kept(
+					root.string(), identity, authority, recovered,
+					record.catalog_revision, &operation,
+					&error) == flatfile_identity_result::ok,
+				"retry recovery preparation");
+			require(flatfile_authority_transaction_commit_operations(
+					root.string(), authority, { operation }, &error) ==
+					flatfile_authority_transaction_result::ok,
+				"retry recovery commit");
+		}
+		else
+			require(result == flatfile_identity_result::ok &&
+					record.account == recovered.account &&
+					record.name == recovered.name,
+				"restart did not recover exact identity after-image");
+		require(flatfile_identity_lookup_pid(root.string(), pid, &record, &error) ==
+				flatfile_identity_result::ok,
+			"recover ownership for conflict check");
+		flatfile_identity_lock identity;
+		flatfile_authority_lock authority;
+		require(identity.acquire(root.string(), &error) &&
+				authority.acquire(root.string(), &error),
+			"conflict recovery locks");
+		recovered.account = "different_owner";
+		flatfile_authority_operation operation;
+		require(flatfile_identity_prepare_recovered_kept(root.string(), identity, authority,
+								 recovered, record.catalog_revision,
+								 &operation, &error) ==
+				flatfile_identity_result::conflict,
+			"recovery must not transfer an existing owner");
+	}
+
 	require(flatfile_identity_lookup_name(root.string(), "../escape", &record, &error) ==
 			flatfile_identity_result::invalid,
 		"unsafe identity name was accepted");
