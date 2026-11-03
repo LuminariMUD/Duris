@@ -3,9 +3,10 @@
  *
  * MAIN THREAD ONLY, no mutex.  A RAM token store keyed by canonical account
  * name, a per-host request window, and the boot/pulse/shutdown glue around the
- * mail_sender worker.  Nothing here loads an account or touches a descriptor;
- * the telnet and WebSocket adapters own all player I/O.  Only SHA256 digests of
- * codes persist in memory; every plaintext buffer is cleansed before it goes
+ * mail_sender worker. The authenticated email-completion adapter reads a fresh
+ * account before applying its pending address; the telnet and WebSocket adapters
+ * own all player I/O. Only SHA256 digests of codes persist in the token store;
+ * every plaintext buffer is cleansed before it goes
  * out of scope, and no log line ever carries a code, an address, a host or an
  * account name.
  */

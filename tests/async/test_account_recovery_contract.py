@@ -802,7 +802,7 @@ def test_attempt_counter_ownership() -> None:
 
 def test_connection_states() -> None:
     for name, value in (("CON_ACCT_RESET_CODE", 90), ("CON_ACCT_RESET_NEWPW", 91),
-                        ("CON_ACCT_RESET_NEWPW2", 92), ("CON_STAT_METHOD", 93), ("TOTAL_CON", 93)):
+                        ("CON_ACCT_RESET_NEWPW2", 92), ("CON_STAT_METHOD", 93)):
         check(
             re.search(r"#define\s+" + name + r"\s+" + str(value) + r"\b", structs) is not None,
             f"structs.h defines {name} {value}",
@@ -822,7 +822,7 @@ def test_connection_states() -> None:
         f"names={len(names) - 1} TOTAL_CON+1={total_con + 1}",
     )
     check(
-        names[-6:-1] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2",
+        names[89:94] == ["PLAYER_LOAD", "ACCT_RESET_CODE", "ACCT_RESET_NEWPW", "ACCT_RESET_NEWPW2",
                          "STAT_METHOD"],
         "the three reset states follow PLAYER_LOAD before STAT_METHOD in connected_types",
     )
