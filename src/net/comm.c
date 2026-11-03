@@ -4921,6 +4921,8 @@ static void process_line(P_desc t, char *in)
 		out[0] = '\0';
 	}
 
+	const bool private_code = t->connected == CON_CONFIRM_ACCT ||
+				  t->connected == CON_ACCT_RESET_CODE;
 	note_player_input_activity(t, out);
 
 	int k = strlen(out);
@@ -4931,14 +4933,19 @@ static void process_line(P_desc t, char *in)
 			k--; // max 3, we have validated
 		out[k] = 0;
 
-		checked_snprintf(buffer, sizeof buffer, "Line too long. Truncated to:\r\n%s\r\n",
-				 out);
+		if (private_code)
+			strlcpy(buffer, "Line too long.\r\n", sizeof buffer);
+		else
+			checked_snprintf(buffer, sizeof buffer,
+					 "Line too long. Truncated to:\r\n%s\r\n", out);
 		if (write_to_descriptor(t, buffer) < 0)
 			return;
 	}
 
 	/* handle '!' to repeat last command */
-	if ((*out != '!') || !*t->last_input || !t->character || t->connected)
+	if (private_code)
+		t->last_input[0] = '\0';
+	else if ((*out != '!') || !*t->last_input || !t->character || t->connected)
 		memcpy(t->last_input, out, k + 1);
 	else
 		strcpy(out, t->last_input);
@@ -4950,7 +4957,7 @@ static void process_line(P_desc t, char *in)
 	}
 	write_to_q(out, &t->input, 0);
 
-	snoop_by_data *snoop_by_ptr = t->snoop.snoop_by_list;
+	snoop_by_data *snoop_by_ptr = private_code ? nullptr : t->snoop.snoop_by_list;
 
 	while (snoop_by_ptr)
 	{

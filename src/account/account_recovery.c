@@ -23,6 +23,7 @@
 #include <openssl/sha.h>
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -38,103 +39,100 @@
 
 namespace
 {
-	static_assert(ACCOUNT_RECOVERY_FINGERPRINT_LEN == SHA256_DIGEST_LENGTH,
-		      "the credential fingerprint is a raw SHA256 digest");
+static_assert(ACCOUNT_RECOVERY_FINGERPRINT_LEN == SHA256_DIGEST_LENGTH,
+	      "the credential fingerprint is a raw SHA256 digest");
 
-	/* A host key is either the descriptor's literal host text or its IPv6 /64 prefix. */
-	constexpr size_t host_key_bytes = sizeof(descriptor_data::host);
-	static_assert(host_key_bytes >= INET6_ADDRSTRLEN, "an IPv6 key must fit a host slot");
-	static_assert(sizeof(descriptor_data::account_recovery_code) == ACCOUNT_RECOVERY_CODE_BUF,
-		      "structs.h keeps the literal 33 for the descriptor code buffer");
+/* A host key is either the descriptor's literal host text or its IPv6 /64 prefix. */
+constexpr size_t host_key_bytes = sizeof(descriptor_data::host);
+static_assert(host_key_bytes >= INET6_ADDRSTRLEN, "an IPv6 key must fit a host slot");
+static_assert(sizeof(descriptor_data::account_recovery_code) == ACCOUNT_RECOVERY_CODE_BUF,
+	      "structs.h keeps the literal 33 for the descriptor code buffer");
 
-	constexpr char reset_subject[] = "Duris account password reset";
+constexpr char reset_subject[] = "Duris account password reset";
 
-	struct recovery_entry
-	{
-		unsigned char digest[SHA256_DIGEST_LENGTH] = {}; /* SHA256(code); zeroed once !live */
-		unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN] = {};
-		time_t issued_at = 0;
-		time_t expires_at = 0;
-		time_t cooldown_until = 0; /* the entry survives as a tombstone until then */
-		unsigned attempts = 0;
-		bool live = false;
-		bool verified = false;
-		uint64_t request_id = 0; /* mail job id; 0 when nothing was queued */
-		std::string pending_email; /* nonempty only for an inbox-ownership challenge */
-	};
+struct recovery_entry
+{
+	unsigned char digest[SHA256_DIGEST_LENGTH] = {}; /* SHA256(code); zeroed once !live */
+	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN] = {};
+	time_t issued_at = 0;
+	time_t expires_at = 0;
+	time_t cooldown_until = 0; /* the entry survives as a tombstone until then */
+	unsigned attempts = 0;
+	bool live = false;
+	bool verified = false;
+	uint64_t request_id = 0; /* mail job id; 0 when nothing was queued */
+	std::string pending_email; /* nonempty only for an inbox-ownership challenge */
+};
 
-	struct host_slot
-	{
-		char host[host_key_bytes];
-		time_t window_start;
-		unsigned requests;
-		time_t last_used;
-	};
+struct host_slot
+{
+	char host[host_key_bytes];
+	time_t window_start;
+	unsigned requests;
+	time_t last_used;
+};
 
-	/* Guarded plaintext: the code is cleansed however the scope is left. */
-	struct code_buffer
-	{
-		char text[ACCOUNT_RECOVERY_CODE_BUF] = {};
+/* Guarded plaintext: the code is cleansed however the scope is left. */
+struct code_buffer
+{
+	char text[ACCOUNT_RECOVERY_CODE_BUF] = {};
 
-		~code_buffer() { OPENSSL_cleanse(text, sizeof text); }
-	};
+	~code_buffer() { OPENSSL_cleanse(text, sizeof text); }
+};
 
-	/* Account creation excludes ':'. A suffix separates the two purposes while
+/* Account creation excludes ':'. A suffix separates the two purposes while
  * retaining one bounded store and the shared per-host request budget. */
-	std::unordered_map<std::string, recovery_entry> entries;
-	host_slot host_slots[ACCOUNT_RECOVERY_HOST_SLOTS];
-	time_t (*clock_fn)(void) = nullptr;
-	time_t last_terminal_statuslog = 0;
-	time_t last_evict_statuslog = 0;
-	uint64_t noticed_evicted_live = 0;
-	uint64_t noticed_host_slots_recycled = 0;
-	unsigned pulse_calls = 0;
-	account_recovery_health health;
+std::unordered_map<std::string, recovery_entry> entries;
+host_slot host_slots[ACCOUNT_RECOVERY_HOST_SLOTS];
+time_t (*clock_fn)(void) = nullptr;
+time_t last_terminal_statuslog = 0;
+time_t last_evict_statuslog = 0;
+uint64_t noticed_evicted_live = 0;
+uint64_t noticed_host_slots_recycled = 0;
+unsigned pulse_calls = 0;
+account_recovery_health health;
 
-	time_t now_time()
-	{
-		return clock_fn ? clock_fn() : time(nullptr);
-	}
+time_t now_time()
+{
+	return clock_fn ? clock_fn() : time(nullptr);
+}
 
-	bool expired(const recovery_entry &entry, time_t now)
-	{
-		return entry.expires_at < now;
-	}
+bool expired(const recovery_entry &entry, time_t now)
+{
+	return entry.expires_at < now;
+}
 
-	/* Neither the token nor its cooldown has anything left to protect. */
-	bool dead(const recovery_entry &entry, time_t now)
-	{
-		return entry.expires_at < now && entry.cooldown_until < now;
-	}
+/* Neither the token nor its cooldown has anything left to protect. */
+bool dead(const recovery_entry &entry, time_t now)
+{
+	return entry.expires_at < now && entry.cooldown_until < now;
+}
 
-	void kill_token(recovery_entry * entry)
-	{
-		entry->live = false;
-		entry->verified = false;
-		OPENSSL_cleanse(entry->digest, sizeof entry->digest);
-	}
+void kill_token(recovery_entry *entry)
+{
+	entry->live = false;
+	entry->verified = false;
+	OPENSSL_cleanse(entry->digest, sizeof entry->digest);
+}
 
-	bool digest_matches(const unsigned char *stored, size_t stored_length,
-			    const unsigned char *computed, size_t computed_length)
-	{
-		if (stored_length != SHA256_DIGEST_LENGTH ||
-		    computed_length != SHA256_DIGEST_LENGTH)
-			return false;
-		return CRYPTO_memcmp(stored, computed, SHA256_DIGEST_LENGTH) == 0;
-	}
+bool digest_matches(const unsigned char *stored, size_t stored_length,
+		    const unsigned char *computed, size_t computed_length)
+{
+	if (stored_length != SHA256_DIGEST_LENGTH || computed_length != SHA256_DIGEST_LENGTH)
+		return false;
+	return CRYPTO_memcmp(stored, computed, SHA256_DIGEST_LENGTH) == 0;
+}
 
-	bool entry_matches(const recovery_entry &entry,
-			   const unsigned char digest[SHA256_DIGEST_LENGTH])
-	{
-		return digest_matches(entry.digest, sizeof entry.digest, digest,
-				      SHA256_DIGEST_LENGTH);
-	}
+bool entry_matches(const recovery_entry &entry, const unsigned char digest[SHA256_DIGEST_LENGTH])
+{
+	return digest_matches(entry.digest, sizeof entry.digest, digest, SHA256_DIGEST_LENGTH);
+}
 
-	bool digest_of_code(const char *code, unsigned char digest[SHA256_DIGEST_LENGTH])
-	{
-		return SHA256(reinterpret_cast<const unsigned char *>(code),
-			      ACCOUNT_RECOVERY_CODE_HEX_LEN, digest) != nullptr;
-	}
+bool digest_of_code(const char *code, unsigned char digest[SHA256_DIGEST_LENGTH])
+{
+	return SHA256(reinterpret_cast<const unsigned char *>(code), ACCOUNT_RECOVERY_CODE_HEX_LEN,
+		      digest) != nullptr;
+}
 
 	/* RAND_bytes(16) -> 32 lowercase hex digits; only the digest outlives the caller. */
 	bool issue_code(char code[ACCOUNT_RECOVERY_CODE_BUF],
@@ -221,7 +219,7 @@ namespace
 		out[length] = '\0';
 	}
 
-	void claim_host_slot(host_slot * slot, const char *key, time_t now)
+	void claim_host_slot(host_slot *slot, const char *key, time_t now)
 	{
 		memset(slot, 0, sizeof *slot);
 		memcpy(slot->host, key, strnlen(key, sizeof slot->host - 1));
@@ -309,8 +307,8 @@ namespace
 		}
 	}
 
-	std::unordered_map<std::string, recovery_entry>::iterator find_by_request_id(
-		uint64_t request_id)
+	std::unordered_map<std::string, recovery_entry>::iterator
+	find_by_request_id(uint64_t request_id)
 	{
 		if (request_id == 0)
 			return entries.end();
@@ -409,10 +407,11 @@ namespace
 		noticed_host_slots_recycled = health.host_slots_recycled;
 	}
 
-	account_recovery_request_outcome perform_request(
-		const char *acct_name, const char *acct_email_or_null, char acct_blocked,
-		const unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN], const char *host,
-		uint64_t *request_id_out, uint64_t *logged_id, bool email_verification = false)
+	account_recovery_request_outcome
+	perform_request(const char *acct_name, const char *acct_email_or_null, char acct_blocked,
+			const unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
+			const char *host, uint64_t *request_id_out, uint64_t *logged_id,
+			bool email_verification = false)
 	{
 		if (!account_recovery_enabled())
 			return account_recovery_request_outcome::disabled;
@@ -788,26 +787,26 @@ account_recovery_request_outcome account_email_request(P_acct account, const cha
 
 void account_email_complete(P_desc d, const char *typed_code, account_recovery_done done)
 {
-	char normalized[ACCOUNT_RECOVERY_CODE_BUF];
+	code_buffer normalized;
 	if (!d || !d->account ||
 	    d->account_recovery_attempts >= ACCOUNT_RECOVERY_MAX_DESCRIPTOR_ATTEMPTS ||
-	    account_recovery_check(d->account->acct_name, typed_code, normalized, true) !=
+	    account_recovery_check(d->account->acct_name, typed_code, normalized.text, true) !=
 		    account_recovery_check_outcome::accepted)
 	{
 		if (d)
 			++d->account_recovery_attempts;
 		return done(d, account_recovery_complete_outcome::rejected);
 	}
+	// The read callback may be discarded on disconnect. Copies of its shared
+	// buffer are cleansed when the last holder goes away, even without a reply.
+	auto code = std::make_shared<code_buffer>(normalized);
 	account_read(d, d->account->acct_name,
-		     [code = std::string(normalized), done](P_desc reader, bool, P_acct fresh)
-			     mutable
+		     [code, done](P_desc reader, bool, P_acct fresh)
 		     {
-			     complete_code(reader->account->acct_name, code.c_str(), nullptr,
-					   reader, fresh, done, true);
+			     complete_code(reader->account->acct_name, code->text, nullptr, reader,
+					   fresh, done, true);
 			     free_account(fresh);
-			     OPENSSL_cleanse(code.data(), code.size());
 		     });
-	OPENSSL_cleanse(normalized, sizeof normalized);
 }
 
 void account_recovery_invalidate(const char *acct_name)

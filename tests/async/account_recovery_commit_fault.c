@@ -61,7 +61,10 @@ int STDCALL mysql_real_query(MYSQL *connection, const char *query, unsigned long
 	}
 	const int result = real_query(connection, query, length);
 	const char update[] = "UPDATE accounts SET password=";
-	if (!result && length >= sizeof(update) - 1 && !memcmp(query, update, sizeof(update) - 1))
+	const char create[] = "INSERT INTO accounts(account_name,password,email,confirmed)";
+	if (!result &&
+	    ((length >= sizeof(update) - 1 && !memcmp(query, update, sizeof(update) - 1)) ||
+	     (length >= sizeof(create) - 1 && !memcmp(query, create, sizeof(create) - 1))))
 		recovery_connection = connection;
 	if (committing || (length == 8 && !memcmp(query, "ROLLBACK", 8)))
 		recovery_connection = NULL;

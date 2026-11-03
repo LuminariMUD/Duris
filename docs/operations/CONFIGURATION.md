@@ -654,7 +654,8 @@ off the password prompt is unchanged and `?` answers one not-available line.
 
 With mail enabled, new accounts receive an inbox-ownership challenge on both clients.
 They can log in while verification is pending, but no recovery address is stored until
-the code is redeemed. Existing accounts keep their current address until a replacement
+the code is redeemed. If mail is unavailable, registration still works and leaves the
+recovery address blank. Existing accounts keep their current address until a replacement
 is verified. To add a missing address, replace an outdated one, or confirm the same inbox,
 use telnet account-menu option **5**, or the browser account **Email** tab. An address
 confirmation typed during registration only checks spelling; ownership requires the

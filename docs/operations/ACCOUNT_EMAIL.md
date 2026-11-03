@@ -5,9 +5,9 @@
 If you can log in, use account-menu option **5** on telnet, or **Account → Email** in
 the browser client. Enter an inbox you control, then enter the verification code from
 that inbox. This also lets you verify your existing address or add a missing one.
-Your recovery address stays unchanged until verification succeeds. New accounts created
-with mail enabled have no recovery address until this step is complete. You can still
-play while verification is pending; return to the account menu to finish later.
+Your recovery address stays unchanged until verification succeeds. New accounts have no
+recovery address until this step is complete, including when mail is unavailable.
+You can still play while verification is pending; return to the account menu to finish later.
 
 If you forgot your password, enter your account name and type **?** at the telnet
 password prompt. In the browser client choose **Forgot password?** on the login panel.

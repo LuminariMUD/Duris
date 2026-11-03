@@ -1654,69 +1654,38 @@ void ws_cmd_register(struct descriptor_data *d, cJSON *data)
 				    hashed_desc->account = free_account(hashed_desc->account);
 				    return;
 			    }
-			    /* The name is checked on the writer, behind every account save queued
-			     * before it. */
-			    account_read(
-				    hashed_desc, hashed_desc->account->acct_name,
-				    [hash = std::string(hash)](P_desc completed_desc, bool ok,
-							       P_acct existing)
+			    if (pwipe_launch_closed_at(time(NULL)))
+			    {
+				    pwipe_launch_deny(hashed_desc);
+				    return;
+			    }
+			    if (hashed_desc->account->acct_password)
+				    FREE(hashed_desc->account->acct_password);
+			    hashed_desc->account->acct_password = str_dup(hash);
+			    const std::string requested_email = hashed_desc->account->acct_email;
+			    account_create(
+				    hashed_desc,
+				    [requested_email](P_desc reader, bool ok)
 				    {
-					    if (!ok || existing ||
-						is_email_taken(completed_desc->account->acct_email))
+					    if (!ok)
 					    {
-						    free_account(existing);
 						    ws_send_auth_failed(
-							    completed_desc,
+							    reader,
 							    "Unable to create account with those details");
-						    completed_desc->account =
-							    free_account(completed_desc->account);
+						    reader->account = free_account(reader->account);
 						    return;
 					    }
-					    if (pwipe_launch_closed_at(time(NULL)))
-					    {
-						    pwipe_launch_deny(completed_desc);
-						    return;
-					    }
-					    completed_desc->account->acct_password =
-						    str_dup(hash.c_str());
-
-					    /* Login is allowed while inbox ownership is pending. No recovery
-					     * destination is stored until the emailed code is redeemed. */
-					    const std::string requested_email =
-						    completed_desc->account->acct_email;
-					    const bool verify_email = account_recovery_enabled();
-					    if (verify_email)
-					    {
-						    FREE(completed_desc->account->acct_email);
-						    completed_desc->account->acct_email =
-							    str_dup("");
-					    }
-					    completed_desc->account->acct_confirmed = 1;
-
-					    /* save account to disk */
-					    if (write_account(completed_desc->account) == -1)
-					    {
-						    ws_send_auth_failed(
-							    completed_desc,
-							    "Failed to save account - server error");
-						    statuslog(
-							    56,
-							    "&+RALERT&n: WebSocket account write failed");
-						    completed_desc->account =
-							    free_account(completed_desc->account);
-						    return;
-					    }
-
 					    statuslog(56, "WebSocket: New account created");
-
-					    STATE(completed_desc) = CON_ACCT_SELECT_CHAR;
-					    ws_send_auth_success(
-						    completed_desc,
-						    completed_desc->account->acct_name);
-					    if (verify_email)
+					    STATE(reader) = CON_ACCT_SELECT_CHAR;
+					    ws_send_auth_success(reader,
+								 reader->account->acct_name);
+					    if (account_recovery_enabled())
 						    ws_begin_email_verification(
-							    completed_desc,
-							    requested_email.c_str());
+							    reader, requested_email.c_str());
+					    else
+						    ws_send_system(
+							    reader, "info",
+							    "Email verification is unavailable; no recovery address was saved.");
 				    });
 		    }))
 	{

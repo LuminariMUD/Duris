@@ -104,101 +104,100 @@ struct acct_entry *account_list = NULL;
 
 namespace
 {
-	std::unordered_map<uint64_t, player_load_result> ready_player_loads;
+std::unordered_map<uint64_t, player_load_result> ready_player_loads;
 
-	struct account_deletion_identity
-	{
-		int pid = 0;
-		std::string name;
-	};
+struct account_deletion_identity
+{
+	int pid = 0;
+	std::string name;
+};
 
-	void display_account_deletion_confirmation(P_desc d, bool retry)
-	{
-		if (!d || !d->account || !d->account->acct_name)
-			return;
-		char prompt[1024];
-		checked_snprintf(
-			prompt, sizeof(prompt),
-			retry ? "\r\n&+RAccount deletion is already in progress.&n\r\n"
-				"Type the exact account name &+W%s&n to retry completion: " :
-				"\r\n&+R!!! PERMANENT ACCOUNT DELETION !!!&n\r\n"
-				"Every character and all live account data will be permanently deleted.\r\n"
-				"This cannot be cancelled after the deletion fence is written.\r\n\r\n"
-				"Type the exact account name &+W%s&n to continue, or &+WCANCEL&n: ",
-			d->account->acct_name);
-		SEND_TO_Q(prompt, d);
-		d->prompt_mode = TRUE;
-	}
+void display_account_deletion_confirmation(P_desc d, bool retry)
+{
+	if (!d || !d->account || !d->account->acct_name)
+		return;
+	char prompt[1024];
+	checked_snprintf(
+		prompt, sizeof(prompt),
+		retry ? "\r\n&+RAccount deletion is already in progress.&n\r\n"
+			"Type the exact account name &+W%s&n to retry completion: " :
+			"\r\n&+R!!! PERMANENT ACCOUNT DELETION !!!&n\r\n"
+			"Every character and all live account data will be permanently deleted.\r\n"
+			"This cannot be cancelled after the deletion fence is written.\r\n\r\n"
+			"Type the exact account name &+W%s&n to continue, or &+WCANCEL&n: ",
+		d->account->acct_name);
+	SEND_TO_Q(prompt, d);
+	d->prompt_mode = TRUE;
+}
 
-	bool capture_account_deletion_identities(P_desc d, std::vector<account_deletion_identity> *
-								   identities)
-	{
-		if (!d || !d->account || !d->account->acct_name || !identities)
-			return false;
-		identities->clear();
-		auto append = [&](int pid, const char *name)
-		{
-			if (pid <= 0 || !name || !name[0])
-				return false;
-			for (const auto &identity : *identities)
-				if (identity.pid == pid)
-					return !strcasecmp(identity.name.c_str(), name);
-			try
-			{
-				identities->push_back({ pid, name });
-				return true;
-			}
-			catch(const std::bad_alloc &)
-			{
-				return false;
-			}
-		};
-		for (struct acct_chars *character = d->account->acct_character_list; character;
-		     character = character->next)
-			if (!append(character->pid, character->charname))
-				return false;
-		for (P_desc other = descriptor_list; other; other = other->next)
-			if (other->account && other->account->acct_name && other->character &&
-			    !strcasecmp(other->account->acct_name, d->account->acct_name) &&
-			    !append(GET_PID(other->character), GET_NAME(other->character)))
-				return false;
-		return true;
-	}
-
-	bool account_deletion_locker_runtime_active(
-		const std::string &account_name,
-		const std::vector<account_deletion_identity> &identities)
-	{
-		std::string account_prefix = "account." + account_name + ".";
-		for (P_char character = character_list; character; character = character->next)
-		{
-			const char *name = GET_NAME(character);
-			if (!name)
-				continue;
-			if (!strncasecmp(name, account_prefix.c_str(), account_prefix.size()) &&
-			    strstr(name + account_prefix.size(), ".locker"))
-				return true;
-			for (const auto &identity : identities)
-			{
-				std::string locker_name = identity.name + ".locker";
-				if (!strcasecmp(name, locker_name.c_str()))
-					return true;
-			}
-		}
+bool capture_account_deletion_identities(P_desc d,
+					 std::vector<account_deletion_identity> *identities)
+{
+	if (!d || !d->account || !d->account->acct_name || !identities)
 		return false;
-	}
-
-	void close_other_account_sessions(P_desc d)
+	identities->clear();
+	auto append = [&](int pid, const char *name)
 	{
-		if (!d || !d->account || !d->account->acct_name)
-			return;
-		close_account_sessions_named(d->account->acct_name, d,
-					     "\r\nYour account is being permanently deleted.\r\n");
+		if (pid <= 0 || !name || !name[0])
+			return false;
+		for (const auto &identity : *identities)
+			if (identity.pid == pid)
+				return !strcasecmp(identity.name.c_str(), name);
+		try
+		{
+			identities->push_back({ pid, name });
+			return true;
+		}
+		catch (const std::bad_alloc &)
+		{
+			return false;
+		}
+	};
+	for (struct acct_chars *character = d->account->acct_character_list; character;
+	     character = character->next)
+		if (!append(character->pid, character->charname))
+			return false;
+	for (P_desc other = descriptor_list; other; other = other->next)
+		if (other->account && other->account->acct_name && other->character &&
+		    !strcasecmp(other->account->acct_name, d->account->acct_name) &&
+		    !append(GET_PID(other->character), GET_NAME(other->character)))
+			return false;
+	return true;
+}
+
+bool account_deletion_locker_runtime_active(
+	const std::string &account_name, const std::vector<account_deletion_identity> &identities)
+{
+	std::string account_prefix = "account." + account_name + ".";
+	for (P_char character = character_list; character; character = character->next)
+	{
+		const char *name = GET_NAME(character);
+		if (!name)
+			continue;
+		if (!strncasecmp(name, account_prefix.c_str(), account_prefix.size()) &&
+		    strstr(name + account_prefix.size(), ".locker"))
+			return true;
+		for (const auto &identity : identities)
+		{
+			std::string locker_name = identity.name + ".locker";
+			if (!strcasecmp(name, locker_name.c_str()))
+				return true;
+		}
 	}
+	return false;
+}
+
+void close_other_account_sessions(P_desc d)
+{
+	if (!d || !d->account || !d->account->acct_name)
+		return;
+	close_account_sessions_named(d->account->acct_name, d,
+				     "\r\nYour account is being permanently deleted.\r\n");
+}
 
 	class account_deletion_drain_guard
 	{
-public:
+	    public:
 		account_deletion_drain_guard()
 		{
 			maintenance_scheduler_quiesce();
@@ -228,13 +227,14 @@ public:
 			       artifact_save_drain(3000);
 		}
 
-private:
+	    private:
 		bool player_quiesced_ = false;
 	};
 
 	// The account's characters leave the game. Closing their sessions queued their terminal saves.
-	void remove_deleted_account_characters(
-		P_desc deleting_session, const std::vector<account_deletion_identity> &identities)
+	void
+	remove_deleted_account_characters(P_desc deleting_session,
+					  const std::vector<account_deletion_identity> &identities)
 	{
 		for (P_char character = character_list, next = NULL; character; character = next)
 		{
@@ -259,8 +259,8 @@ private:
 	}
 
 	// The account's deletion committed: memory lets go of its characters.
-	void forget_deleted_account_characters(
-		const std::vector<account_deletion_identity> &identities)
+	void
+	forget_deleted_account_characters(const std::vector<account_deletion_identity> &identities)
 	{
 		for (const auto &identity : identities)
 		{
@@ -331,8 +331,8 @@ private:
 		return true;
 	}
 
-	bool build_account_load_request(P_desc d, struct acct_chars * c,
-					player_load_request * request_out)
+	bool build_account_load_request(P_desc d, struct acct_chars *c,
+					player_load_request *request_out)
 	{
 		if (!d || !c || c->pid <= 0 || !d->account || !d->account->acct_name ||
 		    !request_out)
@@ -1014,11 +1014,13 @@ void confirm_account(P_desc d, char *arg)
 {
 	if (!arg)
 	{
+		echo_off(d);
 		SEND_TO_Q("Enter the email verification code (or CANCEL): ", d);
 		return;
 	}
 	if (!strcasecmp(arg, "CANCEL"))
 	{
+		echo_on(d);
 		STATE(d) = CON_DISPLAY_ACCT_MENU;
 		display_account_menu(d, NULL);
 		return;
@@ -1031,6 +1033,7 @@ void confirm_account(P_desc d, char *arg)
 				return;
 			if (outcome == account_recovery_complete_outcome::ok)
 			{
+				echo_on(reader);
 				reader->account_recovery_attempts = 0;
 				SEND_TO_Q(
 					"\r\nEmail verified and saved. You can now recover your password with this inbox.\r\n",
@@ -1290,6 +1293,70 @@ void verify_new_account_password(P_desc d, char *arg)
 	OPENSSL_cleanse(arg, strlen(arg));
 }
 
+void account_create(P_desc d, std::function<void(P_desc, bool)> done)
+{
+	P_acct account = d->account;
+	if (!account || !account->acct_name || !account->acct_password || !*account->acct_password)
+		return done(d, false);
+	// A registration address is only a challenge destination, even when mail is off.
+	if (account->acct_email)
+		FREE(account->acct_email);
+	account->acct_email = str_dup("");
+	account->acct_confirmed = 1;
+#ifdef __NO_MYSQL__
+	std::string error;
+	// The native account revision CAS requires absence for a revision-zero create.
+	return done(d,
+		    !account->persistence_revision && flatfile_account_state_save(account, &error));
+#else
+	const std::string name = escape_str(account->acct_name);
+	const std::string password = account->acct_password;
+	const std::string insert = sql_format(
+		"INSERT INTO accounts(account_name,password,email,confirmed) VALUES('%s','%s','',1)",
+		name.c_str(), escape_str(password.c_str()).c_str());
+	const auto inserted = std::make_shared<bool>(false);
+	const auto request = wait_for_writer(d);
+	if (!sql_read_work(
+		    [name, password, insert, inserted](MYSQL *connection,
+						       sql_rows *) -> unsigned int
+		    {
+			    // A duplicate first attempt must fail even if a provisional cache
+			    // copied the winner's hash. Only our own prior INSERT can reconcile.
+			    if (*inserted)
+			    {
+				    sql_rows rows;
+				    if (const auto error = sql_select(
+						connection,
+						sql_format(
+							"SELECT password,blocked FROM accounts WHERE account_name='%s' FOR UPDATE",
+							name.c_str()),
+						&rows))
+					    return error;
+				    if (!rows.empty())
+					    return rows[0][0] && password == rows[0][0] &&
+								   (!rows[0][1] ||
+								    !atoi(rows[0][1])) ?
+							   0U :
+							   EEXIST;
+			    }
+			    const auto error = sql_execute(connection, insert);
+			    if (!error)
+				    *inserted = true;
+			    return error;
+		    },
+		    [request, done](bool ok, const sql_rows &)
+		    {
+			    if (P_desc reader = writer_replied(request))
+				    done(reader, ok);
+		    },
+		    true))
+	{
+		writer_replied(request);
+		done(d, false);
+	}
+#endif
+}
+
 void verify_new_account_information(P_desc d, char *arg)
 {
 	if (pwipe_launch_closed_at(time(NULL)))
@@ -1305,31 +1372,35 @@ void verify_new_account_information(P_desc d, char *arg)
 	}
 	if ((arg[0] == 'y') || (arg[0] == 'Y'))
 	{
-		const bool verify_email = account_recovery_enabled();
 		const std::string requested_email =
 			d->account->acct_email ? d->account->acct_email : "";
-		if (verify_email)
-		{
-			FREE(d->account->acct_email);
-			d->account->acct_email = str_dup("");
-		}
-		d->account->acct_confirmed = 1;
-		if (write_account(d->account) == -1)
-		{
-			SEND_TO_Q("Account could not be saved. Please reconnect and try again.\r\n",
-				  d);
-			STATE(d) = CON_FLUSH;
-			return;
-		}
-		SEND_TO_Q("Account created successfully!\r\n", d);
-		if (verify_email)
-			begin_account_email_verification(d, requested_email.c_str());
-		else
-		{
-			display_account_login_pages(d);
-			update_account_iplist(d);
-			STATE(d) = CON_ACCT_RMOTD;
-		}
+		account_create(
+			d,
+			[requested_email](P_desc reader, bool ok)
+			{
+				if (!ok)
+				{
+					SEND_TO_Q(
+						"Account could not be created. Please reconnect and try again.\r\n",
+						reader);
+					reader->account = free_account(reader->account);
+					STATE(reader) = CON_FLUSH;
+					return;
+				}
+				SEND_TO_Q("Account created successfully!\r\n", reader);
+				if (account_recovery_enabled())
+					begin_account_email_verification(reader,
+									 requested_email.c_str());
+				else
+				{
+					SEND_TO_Q(
+						"Email verification is unavailable; no recovery address was saved.\r\n",
+						reader);
+					display_account_login_pages(reader);
+					update_account_iplist(reader);
+					STATE(reader) = CON_ACCT_RMOTD;
+				}
+			});
 		return;
 	}
 	else if ((arg[0] == 'n') || (arg[0] == 'N'))
@@ -2497,7 +2568,7 @@ void account_player_load_complete(P_desc d, player_load_result result)
 	{
 		ready_player_loads.emplace(completed_request_id, std::move(result));
 	}
-	catch(const std::bad_alloc &)
+	catch (const std::bad_alloc &)
 	{
 		d->player_load_request_id = 0;
 		d->player_load_pid = 0;
