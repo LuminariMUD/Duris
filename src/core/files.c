@@ -1446,6 +1446,9 @@ int writeCharacter(P_char ch, int type, int room)
 			publish_account_bank_balances_revision(account, GET_RACEWAR(ch), &balances,
 							       domains.domains.bank_revision);
 		}
+		if (establishing_baseline && ch->desc && ch->desc->account &&
+		    !find_char_in_list(ch->desc->account->acct_character_list, GET_NAME(ch)))
+			add_char_to_account(ch->desc);
 		if (!sync_account_character_projection(ch, room, TRUE))
 		{
 			statuslog(56,
