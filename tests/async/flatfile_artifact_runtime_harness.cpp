@@ -139,13 +139,14 @@ void obj_to_room(P_obj object, int room)
 	delete object;
 }
 
-void obj_to_char(P_obj object, P_char character)
+bool obj_to_char(P_obj object, P_char character)
 {
 	require(object && character == &boot_mob, "invalid boot NPC placement");
 	require(object->obj_uid == static_cast<unsigned long>(object->g_key * 100 + 1),
 		"NPC canonical UID lost");
 	++mob_load_count;
 	delete object;
+	return false;
 }
 
 void extract_obj(P_obj object, int)
@@ -356,9 +357,10 @@ int main(int argc, char **argv)
 	require(item_ownership_runtime_hydrate(disputed), "could not seed disputed custody");
 	feedback.clear();
 	artifact_feed_sql(&owner, &worn, 60);
-	require(feedback.empty() && get_artifact_data_sql(701, &data) && data.timer == feed_start &&
-			data.location == 77,
-		"rejected cross-owner direct feed changed state or published satisfaction");
+	require(feedback == std::vector<std::string>{ satisfaction } &&
+			get_artifact_data_sql(701, &data) && data.timer == feed_start + 60 &&
+			data.location == 42,
+		"stale cached custody overruled the canonical live wearer");
 	disputed.owner.id = 42;
 	require(item_ownership_runtime_hydrate(disputed), "could not restore fixture custody");
 	artifact_update_sql(701, true, FLATFILE_ARTIFACT_ON_PLAYER, 42, feed_start, 1);

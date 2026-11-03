@@ -103,10 +103,11 @@ void artifact_feed_to_min_sql(P_obj,int) {}
 bool artifact_is_canonical(P_obj) { return false; }
 void obj_from_obj(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
 void obj_from_room(P_obj obj) { obj->loc_p=LOC_NOWHERE; }
-void obj_to_char(P_obj obj,P_char ch) {
+bool obj_to_char(P_obj obj,P_char ch) {
  assert(IS_ALIVE(ch)); ++pickups;
- if(crumble) { object_list=obj->next; delete obj; return; }
+ if(crumble) { object_list=obj->next; delete obj; return false; }
  obj->loc_p=LOC_CARRIED; obj->loc.carrying=ch;
+ return true;
 }
 void extract_obj(P_obj obj,int) { object_list=obj->next; delete obj; }
 void add_coins(P_obj,int,int,int,int) {}

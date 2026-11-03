@@ -32,7 +32,6 @@
 #include "classes/necromancy.h"
 #include "economy/collector_presence.h"
 #include "economy/nexus_stones.h"
-#include "item/item_ownership_runtime.h"
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "core/profile.h"
@@ -7067,16 +7066,12 @@ int IsBetterObject(P_char ch, P_obj obj, int foo)
 					act("You stop using $p.", FALSE, ch, foob, 0, TO_CHAR);
 					act("$n stops using $p.", TRUE, ch, foob, 0, TO_ROOM);
 					foo2 = unequip_char(ch, l);
-					obj_to_char(foo2, ch);
+					const bool object_survived = obj_to_char(foo2, ch);
 					wear(ch, obj, equipment_pos_table[a][1], 1);
 					CharWait(ch, 1);
-					IsBetterObject(ch, foo2, a + 1); /*
-					                                  * Nifty recursive
-					                                  * call to make of
-					                                  * use item if it
-					                                  * can be used
-					                                  * elsewhere
-					                                  */
+					// Try the replaced item in the remaining equipment slots.
+					if (object_survived)
+						IsBetterObject(ch, foo2, a + 1);
 					return 1;
 				}
 			}
@@ -7099,9 +7094,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 
 	if (obj_index[obj->R_num].virtual_number == 101) /* Dont wear the helm of ooc! */
 		return;
-	item_ownership_runtime_entry ownership = {};
-	const bool authoritative = obj->obj_uid &&
-				   item_ownership_runtime_lookup(obj->obj_uid, &ownership);
 
 	/*
 	 * Keep containers around, for our mobs 'collections'..
@@ -7109,11 +7101,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 	 */
 	if (obj->type == ITEM_CONTAINER)
 	{
-		// The mobile-claim commit records this object as a detached root. Do not
-		// immediately reparent other authoritative inventory beneath it without a
-		// second transaction; equipping below is topology-neutral and remains safe.
-		if (authoritative)
-			return;
 		/*
 		 * Just for sake of .. fun .., mobs archive stuff in containers.
 		 */
@@ -7143,8 +7130,6 @@ void CheckEqWorthUsing(P_char ch, P_obj obj)
 			return;
 	}
 	if (IsBetterObject(ch, obj, 0))
-		return;
-	if (authoritative)
 		return;
 
 	for (ob = ch->carrying; ob; ob = ob2)

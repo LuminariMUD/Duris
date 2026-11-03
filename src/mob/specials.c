@@ -353,6 +353,8 @@ void npc_steal(P_char ch, P_char vict)
 				act("You suddenly feel like relieving $N of $S spare equipment.. ",
 				    FALSE, ch, obj, vict, TO_CHAR);
 				act("You unequip $p and steal it.", FALSE, ch, obj, 0, TO_CHAR);
+				// Heavy items increase the chance of getting caught.
+				percent -= GET_OBJ_WEIGHT(obj);
 				if (loc)
 				{
 					obj = unequip_char(vict, loc);
@@ -373,8 +375,6 @@ void npc_steal(P_char ch, P_char vict)
 					obj_from_char(obj);
 					obj_to_char(obj, ch);
 				}
-				/* success, but heavy stuff increases chance of getting caught */
-				percent -= GET_OBJ_WEIGHT(obj);
 			}
 			else
 			{

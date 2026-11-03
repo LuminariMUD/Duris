@@ -67,7 +67,7 @@ void add_coins(P_obj pile,int c,int s,int g,int p)
     pile->value[0]+=c; pile->value[1]+=s; pile->value[2]+=g; pile->value[3]+=p;
 }
 void extract_obj(P_obj,int = FALSE) { ++extracted; }
-void obj_to_char(P_obj obj,P_char ch) { obj->loc_p=LOC_CARRIED;obj->loc.carrying=ch; }
+bool obj_to_char(P_obj obj,P_char ch) { obj->loc_p=LOC_CARRIED;obj->loc.carrying=ch; return true; }
 void obj_to_room(P_obj obj,int room)
 {
     obj->loc_p=LOC_ROOM; obj->loc.room=room; ++placed;

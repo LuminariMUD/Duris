@@ -57,7 +57,7 @@ bool collector_service_player_busy(P_char) { return false; }
 void collector_catalog_cache_invalidate(void) {}
 void extract_obj(P_obj, int) {}
 void obj_from_char(P_obj object) { object->loc_p = LOC_NOWHERE; }
-void obj_to_char(P_obj object, P_char ch) { object->loc_p = LOC_CARRIED; object->loc.carrying = ch; }
+bool obj_to_char(P_obj object, P_char ch) { object->loc_p = LOC_CARRIED; object->loc.carrying = ch; return true; }
 void obj_to_obj(P_obj object, P_obj container) { object->loc_p = LOC_INSIDE; object->loc.inside = container; }
 void obj_to_room(P_obj, int) {}
 void mark_player_dirty_components(int, player_component_mask_t) {}

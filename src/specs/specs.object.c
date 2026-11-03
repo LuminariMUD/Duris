@@ -2918,7 +2918,8 @@ int living_necroplasm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 			if (!number(0, 4))
 			{
 				obj_from_room(obj);
-				obj_to_char(obj, i);
+				if (!obj_to_char(obj, i))
+					return TRUE;
 				act("$p &+Lcrawls over to $n &+Land jumps at $m!", FALSE, i, obj, 0,
 				    TO_ROOM);
 				act("$p &+Lcrawls up to you and jumps at you!", FALSE, i, obj, 0,
@@ -2932,7 +2933,8 @@ int living_necroplasm(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 	// if it's in the HOLD slot, return to inventory
 	if (OBJ_WORN_BY(obj, ch) && (obj == ch->equipment[HOLD]))
 	{
-		obj_to_char(unequip_char(ch, HOLD), ch);
+		if (!obj_to_char(unequip_char(ch, HOLD), ch))
+			return TRUE;
 	}
 	// if not worn, but carried, equip self
 	if (OBJ_CARRIED_BY(obj, ch))
@@ -3900,7 +3902,8 @@ int good_evil_sword(P_obj obj, P_char ch, int cmd, char *arg)
 			}
 			if (slot < MAX_WEAR)
 			{
-				obj_to_char(unequip_char(ch, slot), ch);
+				if (!obj_to_char(unequip_char(ch, slot), ch))
+					return TRUE;
 			}
 		}
 	}
@@ -5199,14 +5202,16 @@ int holy_weapon(P_obj obj, P_char ch, int cmd, char *arg)
 		{
 			if (OBJ_WORN(obj))
 			{
-				obj_to_char(unequip_char(ch,
+				if (!obj_to_char(
+					    unequip_char(ch,
 							 (ch->equipment[WIELD] == obj) ?
 								 WIELD :
 							 (ch->equipment[SECONDARY_WEAPON] == obj) ?
 								 SECONDARY_WEAPON :
 							 (ch->equipment[HOLD] == obj) ? HOLD :
 											WEAR_NONE),
-					    ch);
+					    ch))
+					return TRUE;
 			}
 			obj_from_char(obj);
 
@@ -6308,8 +6313,7 @@ int llyms_altar(P_obj obj, P_char ch, int cmd, char *arg)
 	  act ("$p is wrenched from $n's hand and plunges into $P!", TRUE, ch, treasure, obj, TO_ROOM);
 	 */
 
-	obj_to_char(unequip_char(ch, HOLD), ch);
-	obj_from_char(treasure);
+	unequip_char(ch, HOLD);
 	extract_obj(treasure, TRUE); // Not an arti, but 'in game.'
 
 	// They get blessed, unless they're already blessed, in which case, they  get money.
@@ -13052,8 +13056,9 @@ int disarm_pick_gloves(P_obj obj, P_char ch, int cmd, char *arg)
 
 		if (weap)
 		{
-			obj_to_char(weap, vict);
 			strip_holy_sword(vict);
+			if (!obj_to_char(weap, vict))
+				return TRUE;
 
 			act("You hear a soft tingling laughter as your gloves lash onto", FALSE, ch,
 			    obj, vict, TO_CHAR);

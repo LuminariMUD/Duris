@@ -108,7 +108,7 @@ bool is_natural_mount(P_char, P_char) { std::abort(); }
 void stop_riding(P_char) { std::abort(); }
 room_affect *get_spell_from_room(P_room, int) { return nullptr; }
 void CharWait(P_char, int) {}
-void startPvP(P_char, bool) { std::abort(); }
+void startPvP(P_char actor, bool) { assert(IS_PC(actor)); }
 void set_short_affected_by(P_char, int, int) {}
 // Run real string teardown and retire heap objects, exposing accesses after release to ASan.
 void release_obj_mem(P_obj object) { delete object; }
@@ -146,9 +146,13 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, co
     ++mark_events; return {};
 }
 void MobRetaliateRange(P_char, P_char) {}
-void obj_to_char(P_obj object, P_char victim) {
+bool obj_to_char(P_obj object, P_char victim) {
     assert(victim == &target && object->loc_p == LOC_NOWHERE);
+    if (IS_OBJ_STAT2(object, ITEM2_CRUMBLELOOT) && IS_PC(victim) && !IS_TRUSTED(victim)) {
+        ++destroyed; free_obj(object); return false;
+    }
     object->loc_p = LOC_CARRIED; object->loc.carrying = victim; ++delivered;
+    return true;
 }
 void affect_from_char(P_char, int) { std::abort(); }
 int BOUNDED(int low, int value, int high) { return MAX(low, MIN(value, high)); }
@@ -336,7 +340,7 @@ static void controls() {
     destroyed = 0;
 }
 
-static void hit_control(bool starter, bool returning, int condition, int death = 0) {
+static void hit_control(bool starter, bool returning, int condition, int death = 0, bool crumble = false) {
     char_data ch{}; pc_only_data pc{}; npc_only_data npc{};
     ch.only.pc = &pc; pc.pid = 42;
     ch.player.name = const_cast<char *>("Archer");
@@ -344,6 +348,8 @@ static void hit_control(bool starter, bool returning, int condition, int death =
     ch.curr_stats.Str = ch.curr_stats.Dex = 100;
     target = {}; target.only.npc = &npc; target.specials.act = ACT_ISNPC;
     target.specials.position = POS_STANDING | STAT_NORMAL;
+    pc_only_data target_pc{};
+    if (crumble) { target.only.pc=&target_pc; target.specials.act=0; target.player.level=1; }
     obj_data bow{}, quiver{};
     P_obj arrow = new obj_data{};
     bow.type = ITEM_FIREWEAPON; bow.value[0] = 30; bow.value[1] = 100;
@@ -351,6 +357,7 @@ static void hit_control(bool starter, bool returning, int condition, int death =
     quiver.type = ITEM_QUIVER; quiver.loc_p = LOC_NOWHERE;
     quiver.value[0] = 10; quiver.value[3] = 1;
     arrow->type = ITEM_MISSILE; arrow->loc_p = LOC_NOWHERE; arrow->condition = condition;
+    arrow->extra2_flags = crumble ? ITEM2_CRUMBLELOOT : 0;
     set_keywords(arrow, "custom arrow");
     set_short_description(arrow, "a custom arrow");
     if (starter) {
@@ -362,16 +369,18 @@ static void hit_control(bool starter, bool returning, int condition, int death =
     force_hit = true; cursed = returning; scrapped = delivered = 0;
     damage_result = death == 1 ? DAM_VICTDEAD : DAM_NONEDEAD;
     enchant_kills = death == 2;
-    int destroyed_before = destroyed;
+    int destroyed_before = destroyed, damage_before = damage_calls;
     char argument[] = "target";
     do_fire(&ch, argument, CMD_FIRE);
     assert(quiver.value[3] == (returning ? 1 : 0));
     const bool broken = !returning && condition <= 5;
     assert(scrapped == (broken && !death ? 1 : 0));
-    assert(destroyed == destroyed_before + (broken && death ? 1 : 0));
-    assert(delivered == (!returning && condition > 5 ? 1 : 0));
+    const bool crumbled = crumble && !returning && !broken;
+    assert(destroyed == destroyed_before + ((broken && death) || crumbled ? 1 : 0));
+    assert(delivered == (!returning && condition > 5 && !crumble ? 1 : 0));
+    assert(damage_calls == damage_before + 1);
     assert(pending.empty() && !rooms[0].contents);
-    if (!broken) {
+    if (!broken && !crumbled) {
         assert(arrow->condition == (returning ? condition : condition - 5));
         if (returning) obj_from_obj(arrow);
         free_obj(arrow);
@@ -498,7 +507,8 @@ int main() {
     for (bool variant : {false, true}) {
         mark_control(variant); gather_control(variant); volley_control(variant);
     }
-    puts("fire/gather: 384 x 50 cycles; decay, 10 hit/retirement, 100 mark expiry, room/corpse gather and 2 volley controls passed");
+    for (int death : {0, 1, 2}) hit_control(false, false, 100, death, true);
+    puts("fire/gather: 384 x 50 cycles; decay, 13 hit/retirement, 100 mark expiry, room/corpse gather and 2 volley controls passed");
 }
 '''.replace("// PRODUCTION", strings + "\n" + handler + "\n" + materialize + "\n" + decay_callback + "\n" + commands)
 

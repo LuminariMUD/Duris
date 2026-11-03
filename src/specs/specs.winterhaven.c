@@ -4929,11 +4929,11 @@ int lancer_gift(P_obj obj, P_char ch, int cmd, char *arg)
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 				gift = make_gem_gift();
-				obj_to_char(gift, ch);
-				act("You receive $p.", TRUE, ch, gift, vict, TO_CHAR);
+				if (obj_to_char(gift, ch))
+					act("You receive $p.", TRUE, ch, gift, vict, TO_CHAR);
 				gift = make_gem_gift();
-				obj_to_char(gift, ch);
-				act("You receive $p.", TRUE, ch, gift, vict, TO_CHAR);
+				if (obj_to_char(gift, ch))
+					act("You receive $p.", TRUE, ch, gift, vict, TO_CHAR);
 				return TRUE;
 			}
 		}

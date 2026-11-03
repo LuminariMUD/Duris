@@ -202,9 +202,10 @@ P_obj read_object(int, int)
 {
 	std::abort();
 }
-void obj_to_char(P_obj, P_char)
+bool obj_to_char(P_obj, P_char)
 {
 	std::abort();
+	return true;
 }
 
 // EPIC_AWARD_FUNCTIONS

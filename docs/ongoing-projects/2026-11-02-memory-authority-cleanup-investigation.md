@@ -52,9 +52,24 @@ ready for review; do not merge or tag a release as part of this task.
    used for creation grants and adopted-object operator repair. Its generic
    result still contains only a maximum: mixed-revision memory-held repair
    publication needs separate treatment before calling the revision audit done.
-4. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
+4. **NPC containers:** implemented on `branch/issue-583-npc-containers`, stacked
+   on #591. Removed both cache vetoes: newly received bags can organize inventory,
+   and newly received ordinary items can enter carried bags. Reuses normal `put()`
+   permissions, equipment evaluation and trap handling. Real organizer/put/cache
+   regression cases pass alongside `test_put_trap_lifecycle.py`,
+   `test_get_trap_lifecycle.py`, `test_items_move_in_memory.py`,
+   `test_item_movement_input_queue.py`, and `make -C src -j4`.
+   Review follow-up: `obj_to_char()` now reports whether the body survived,
+   including dummy redirection. Give/slip preserve owner saves while skipping
+   object feedback, artifact checks and triggers after extraction. Audited other
+   callers: guarded post-transfer access in shops, auction pickups, soulbind,
+   removal, decay and item procs; retained arrows until damage/enchantment use
+   finishes. ASan/UBSan coverage includes trusted/untrusted senders and recipients,
+   removal/replacement, decay, refused/redirected placement and fatal/nonfatal
+   crumbleloot hits. Matching standalone fixtures use the new return signature.
+5. **Remaining:** artifact source admission plus delayed-read/save/unload proof;
    old-holder source cleanup versus damaged-component retention; generic repair
-   revision publication; physical floor/copyover capture; NPC container organization;
+   revision publication; physical floor/copyover capture;
    pet/NORENT compatibility review; specific refusal diagnostics and existing
    inspection; backend and end-to-end acceptance journeys listed below.
 

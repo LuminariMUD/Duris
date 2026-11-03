@@ -26,12 +26,13 @@ int shop_producing(P_obj object, int)
 {
 	return object->R_num == 0;
 }
-void obj_to_char(P_obj object, P_char keeper)
+bool obj_to_char(P_obj object, P_char keeper)
 {
 	object->next_content = keeper->carrying;
 	keeper->carrying = object;
 	object->loc_p = LOC_CARRIED;
 	object->loc.carrying = keeper;
+	return true;
 }
 void obj_from_char(P_obj object)
 {

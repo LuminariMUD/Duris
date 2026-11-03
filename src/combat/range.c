@@ -893,6 +893,10 @@ void do_fire(P_char ch, char *argument, int cmd)
 				notch_skill(ch, SKILL_CRITICAL_SHOT, 5);
 			}
 
+			// Keep crumbleloot alive until damage messages and enchantments finish.
+			const bool crumble_missile = !carrow &&
+						     IS_OBJ_STAT2(missile, ITEM2_CRUMBLELOOT) &&
+						     IS_PC(victim) && !IS_TRUSTED(victim);
 			// Cursed arrows don't take damage and auto-return.
 			bool scrap_missile = FALSE;
 			if (!carrow)
@@ -903,7 +907,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 							  missile->condition - (number(1, 5)));
 				}
 				scrap_missile = missile->condition <= 0;
-				if (!scrap_missile)
+				if (!scrap_missile && !crumble_missile)
 				{
 					obj_to_char(missile, victim);
 				}
@@ -967,6 +971,13 @@ void do_fire(P_char ch, char *argument, int cmd)
 			{
 				if (IS_ALIVE(victim))
 					MakeScrap(victim, missile);
+				else
+					extract_obj(missile);
+			}
+			else if (crumble_missile)
+			{
+				if (IS_ALIVE(victim))
+					obj_to_char(missile, victim);
 				else
 					extract_obj(missile);
 			}

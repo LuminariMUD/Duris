@@ -11,6 +11,9 @@ functions += "\n".join(extract_function("actobj.c", signature) for signature in 
     "bool bulk_put_destination_available(", "void start_bulk_put(",
     "static bool reject_put_trap(", "bool put(P_char ch,",
 ))
+mobact = (ROOT / "src/mob/mobact.c").read_text()
+container_macro = mobact[mobact.index("#define IS_CONTAINER("):].split("\n\n", 1)[0]
+functions += "\n" + container_macro + "\n" + extract_function("mobact.c", "void CheckEqWorthUsing(")
 harness = (ROOT / "tests/async/put_trap_lifecycle_harness.cpp").read_text()
 harness = harness.replace("// PUT_FUNCTIONS", functions)
 build = ROOT / "bin/tests"
@@ -22,7 +25,10 @@ with tempfile.TemporaryDirectory(prefix="put-trap-lifecycle-", dir=build) as dir
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
-        "-Isrc", "-I/usr/include/mysql", str(source), str(HARNESS_STUBS), "-o", str(binary)
+        "-Isrc", "-I/usr/include/mysql", str(source), str(HARNESS_STUBS),
+        "src/item/item_ownership_runtime.c", "src/item/item_transfer_command.c",
+        "src/player/player_snapshot_codec.c", "src/persistence/critical_command.c",
+        "-lcrypto", "-o", str(binary)
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], check=True, timeout=30)
 print("single/bulk put: permissions, trap rejection, extraction and earlier destination saves passed")

@@ -235,12 +235,13 @@ void equip_char(P_char ch, P_obj obj, int slot, int)
 {
 	ch->equipment[slot] = obj;
 }
-void obj_to_char(P_obj obj, P_char ch)
+bool obj_to_char(P_obj obj, P_char ch)
 {
 	obj->next_content = ch->carrying;
 	ch->carrying = obj;
 	obj->loc_p = LOC_CARRIED;
 	obj->loc.carrying = ch;
+	return true;
 }
 void obj_from_char(P_obj obj)
 {

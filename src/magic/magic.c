@@ -22567,8 +22567,7 @@ static bool give_soulbind_item(P_char source, P_char victim, P_obj object)
 	if (!source || !victim || !object || !OBJ_CARRIED_BY(object, source))
 		return false;
 	obj_from_char(object);
-	obj_to_char(object, victim);
-	return OBJ_CARRIED_BY(object, victim);
+	return obj_to_char(object, victim) && OBJ_CARRIED_BY(object, victim);
 }
 
 struct soulbind_reload_context

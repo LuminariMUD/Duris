@@ -266,12 +266,13 @@ void obj_to_room(P_obj obj, int room)
 	obj->next_content = world[room].contents;
 	world[room].contents = obj;
 }
-void obj_to_char(P_obj obj, P_char ch)
+bool obj_to_char(P_obj obj, P_char ch)
 {
 	obj->loc_p = LOC_CARRIED;
 	obj->loc.carrying = ch;
 	obj->next_content = ch->carrying;
 	ch->carrying = obj;
+	return true;
 }
 void obj_from_char(P_obj obj)
 {

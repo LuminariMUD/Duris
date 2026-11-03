@@ -76,12 +76,13 @@ P_obj read_object_for_creation(int object_rnum, int)
     return object;
 }
 
-void obj_to_char(P_obj object, P_char mob)
+bool obj_to_char(P_obj object, P_char mob)
 {
     object->loc_p = LOC_CARRIED;
     object->loc.carrying = mob;
     object->next_content = mob->carrying;
     mob->carrying = object;
+    return true;
 }
 
 void equip_char(P_char mob, P_obj object, int slot, int)

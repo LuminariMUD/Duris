@@ -50,7 +50,7 @@ void send_to_char(const char *message, P_char) { output += message; }
 void do_look(P_char, char *, int) {}
 void spell_armor(int, P_char, char *, int, P_char, P_obj) { ++armor_buffs; }
 void spell_bless(int, P_char, char *, int, P_char, P_obj) { ++bless_buffs; }
-void obj_to_char(P_obj, P_char) { ++gifts; }
+bool obj_to_char(P_obj, P_char) { ++gifts; return true; }
 int generic_find(const char *, int, P_char, P_char *character, P_obj *object) {
     *character = nullptr; *object = found; return FIND_OBJ_ROOM;
 }

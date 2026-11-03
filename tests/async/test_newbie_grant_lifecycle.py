@@ -100,7 +100,7 @@ P_char find_player_by_pid(int pid)
             return ch;
     return nullptr;
 }
-void obj_to_char(P_obj obj, P_char ch)
+bool obj_to_char(P_obj obj, P_char ch)
 {
     assert(OBJ_NOWHERE(obj));
     // Grants publish only once their creation has committed.
@@ -112,6 +112,7 @@ void obj_to_char(P_obj obj, P_char ch)
     obj->loc.carrying = ch;
     obj->next_content = ch->carrying;
     ch->carrying = obj;
+    return true;
 }
 void obj_from_char(P_obj obj)
 {
@@ -607,7 +608,7 @@ int main()
 
 
 def main() -> int:
-    to_char = extract_function("handler.c", "void obj_to_char(")
+    to_char = extract_function("handler.c", "P_obj find_live_object(") + "\n" + extract_function("handler.c", "bool obj_to_char(")
     # Memory is the authority: obj_to_char places an object without asking the
     # ownership catalog. Grants still publish only after their creation commits.
     assert "item_ownership_runtime_lookup" not in to_char

@@ -530,7 +530,7 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 				unequip_char(ch, WIELD);
 				obj_to_char(pick, ch);
 			}
-			if (ch->equipment[WIELD2] == pick)
+			else if (ch->equipment[WIELD2] == pick)
 			{
 				unequip_char(ch, WIELD2);
 				obj_to_char(pick, ch);

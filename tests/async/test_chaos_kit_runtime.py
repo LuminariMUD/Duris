@@ -79,7 +79,7 @@ int training_dummy_parse_class(const char *token) { return !strcmp(token, "necro
 int training_dummy_parse_race(const char *token) { return !strcmp(token, "githzerai") ? RACE_GITHZERAI : -1; }
 static P_obj given = nullptr;
 static P_char given_to = nullptr;
-void obj_to_char(P_obj object, P_char recipient) { given = object; given_to = recipient; }
+bool obj_to_char(P_obj object, P_char recipient) { given = object; given_to = recipient; return true; }
 static room_data rooms[1]{};
 P_room world = rooms;
 static std::string wizlogged, sql_logged;

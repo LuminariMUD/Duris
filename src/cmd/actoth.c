@@ -1322,7 +1322,8 @@ bool forage_sect(P_char ch, int sector, bool poisoned)
 			forage_obj->value[3] = 10 + number(0, 10);
 	}
 
-	obj_to_char(forage_obj, ch);
+	if (!obj_to_char(forage_obj, ch))
+		return TRUE;
 	snprintf(buf, MAX_STRING_LENGTH, "Searching %s, you manage to find $p.", text);
 	act(buf, FALSE, ch, forage_obj, 0, TO_CHAR);
 	act("Foraging around, $n comes up with $p.", TRUE, ch, forage_obj, 0, TO_ROOM);
@@ -3684,12 +3685,12 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 			act("You unequip $p and steal it.", FALSE, ch, obj, 0, TO_CHAR);
 			obj = unequip_char(victim, eq_pos);
 			remove_owned_artifact_sql(obj);
-			obj_to_char(obj, ch);
+			const bool object_survived = obj_to_char(obj, ch);
 			/*
 				 * success, but heavy stuff increases chance of getting caught
 				 */
 			// percent -= GET_OBJ_WEIGHT(obj);
-			if (IS_PC(victim))
+			if (object_survived && IS_PC(victim))
 			{
 				wizlog(MINLVLIMMORTAL,
 				       "%s &=LMjust stole &n%s (%d) from %s (%d) with percent (%d)\n",
@@ -3748,9 +3749,9 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 					affect_from_char(victim, TAG_PERMINVIS);
 
 				obj_from_char(obj);
-				obj_to_char(obj, ch);
+				const bool object_survived = obj_to_char(obj, ch);
 				notch_skill(ch, SKILL_STEAL, 10);
-				if (IS_PC(victim))
+				if (object_survived && IS_PC(victim))
 				{
 					wizlog(MINLVLIMMORTAL,
 					       "%s &=LMjust stole &n%s (%d) from %s (%d) percent (%d)",

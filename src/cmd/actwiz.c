@@ -203,7 +203,6 @@ void which_spec(P_char ch, char *argument);
 void which_food(P_char ch, char *argument);
 void which_weapon(P_char ch, char *argument);
 void which_armor(P_char ch, char *argument);
-void choronize(char *argument);
 int SpammingNchat(P_char ch);
 
 /*
@@ -3763,7 +3762,6 @@ void do_nchat(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	choronize(argument);
 	if (is_abbrev(
 		    "PANIC!  You couldn't escape! PANIC!  You couldn't escape! PANIC!  You couldn't escape!",
 		    argument))
@@ -13068,23 +13066,6 @@ void stat_skill(P_char ch, char *arg)
 					       skills[skl].m_class[cls - 1].rlevel[spec],
 					       skills[skl].m_class[cls - 1].maxlearn[spec]);
 			}
-		}
-	}
-}
-
-void choronize(char *argument)
-{
-	char *index;
-
-	while ((index = strcasestr(argument, "fucking")) != NULL)
-	{
-		snprintf(index, MAX_STRING_LENGTH, "Choron");
-		index += strlen("Choron");
-		*index = ' ';
-		while (*index != '\0')
-		{
-			*index = index[1];
-			index++;
 		}
 	}
 }

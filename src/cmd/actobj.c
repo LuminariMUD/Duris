@@ -4343,11 +4343,8 @@ void do_give(P_char ch, char *argument, int cmd)
 	act("$n gives $p to $N.", 1, ch, obj, vict, TO_NOTVICT);
 	act("$n gives you $p.", 0, ch, obj, vict, TO_VICT);
 	send_to_char("Ok.\r\n", ch);
-	// DEFERRED: use-after-free — obj_to_char may free obj via crumbleloot
-	// extraction (handler.c), but callers below dereference obj (IS_ARTIFACT,
-	// short_description, R_num). Fix requires obj_to_char returning freed-status.
-	obj_to_char(obj, vict);
-	if (IS_TRUSTED(ch))
+	const bool object_survived = obj_to_char(obj, vict);
+	if (object_survived && IS_TRUSTED(ch))
 	{
 		if (IS_ARTIFACT(obj))
 			logit(LOG_OBJ, "%s gives artifact %s (%d) to %s.", J_NAME(ch),
@@ -4371,7 +4368,8 @@ void do_give(P_char ch, char *argument, int cmd)
 							     PLAYER_COMPONENT_EQUIPMENT |
 							     PLAYER_COMPONENT_INVENTORY);
 #ifndef __NO_MYSQL__
-		artifact_switch_check(ch, obj);
+		if (object_survived)
+			artifact_switch_check(ch, obj);
 #endif
 	}
 	/*
@@ -4381,7 +4379,8 @@ void do_give(P_char ch, char *argument, int cmd)
 	room_light(ch->in_room, REAL);
 	nq_action_check(ch, vict, NULL);
 
-	studioproc_give(vict, obj, ch); /* last: a GIVE trigger may purge vict */
+	if (object_survived)
+		studioproc_give(vict, obj, ch); /* last: a GIVE trigger may purge vict */
 }
 
 void weight_change_object(P_obj obj, int weight)
@@ -5823,10 +5822,7 @@ int remove_item(P_char ch, P_obj obj, int position)
 					"&+rAs you remove the &+Ymaje&+rst&+Yic &+Yrobe&+r, you feel your enhanced &+mpower&+r fade.&n\r\n",
 					ch);
 			}
-			const bool crumbles = IS_OBJ_STAT2(obj, ITEM2_CRUMBLELOOT) && IS_PC(ch) &&
-					      !IS_TRUSTED(ch);
-			obj_to_char(obj, ch);
-			return crumbles ? REMOVE_EXTRACTED : result;
+			return obj_to_char(obj, ch) ? result : REMOVE_EXTRACTED;
 		}
 		else
 		{

@@ -962,7 +962,8 @@ int relic_proc(P_obj obj, P_char ch, int cmd, char *arg)
 				}
 				if (potion)
 				{
-					obj_to_char(potion, ch);
+					if (!obj_to_char(potion, ch))
+						return TRUE;
 					act("Your $q &+Mhums&+W briefly.", FALSE, ch, potion,
 					    potion, TO_CHAR);
 					act("$n's $q &+Mhums&+W briefly.", TRUE, ch, potion, NULL,
@@ -1219,22 +1220,27 @@ int random_quest_mob_proc(P_char ch, P_char pl, int cmd, char *arg)
 			gain_epic(pl, EPIC_RANDOM_ZONE, 0, value_pts / 100);
 
 			obj = create_stones();
-			obj_to_char(obj, pl);
-
-			act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
-			act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+			if (obj_to_char(obj, pl))
+			{
+				act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
+				act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+			}
 
 			while (1)
 			{
 				obj = create_material(ch, GET_LEVEL(ch), GET_LEVEL(ch));
-				obj_to_char(obj, pl);
-				act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
-				act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+				if (obj_to_char(obj, pl))
+				{
+					act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
+					act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+				}
 
 				obj = create_random_eq(ch, GET_LEVEL(ch), GET_LEVEL(ch), -1, -1);
-				obj_to_char(obj, pl);
-				act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
-				act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+				if (obj_to_char(obj, pl))
+				{
+					act("$n gives $q to $N!", TRUE, ch, obj, pl, TO_NOTVICT);
+					act("$n gives you $q ", TRUE, ch, obj, pl, TO_VICT);
+				}
 
 				if (number(0, 2))
 					return 1;

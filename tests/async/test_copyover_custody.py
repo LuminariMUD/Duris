@@ -167,8 +167,9 @@ void equip_char(P_char mob, P_obj object, int slot, int) {
  mob->equipment[slot]=object; object->loc_p=LOC_WORN; object->loc.wearing=mob;
  GET_MAX_HIT(mob)=5; GET_MAX_MANA(mob)=6; GET_MAX_VITALITY(mob)=7;
 }
-void obj_to_char(P_obj object, P_char mob) {
+bool obj_to_char(P_obj object, P_char mob) {
  object->loc_p=LOC_CARRIED; object->loc.carrying=mob; object->next_content=mob->carrying; mob->carrying=object;
+ return true;
 }
 void obj_to_char_at_end(P_obj object,P_char mob) { obj_to_char(object,mob); }
 P_obj find_live_object(P_obj expected,uint64_t uid) {

@@ -246,8 +246,9 @@ void flat_item_claim_completed(P_char ch, bool committed, const auction_command_
 				ch);
 			continue;
 		}
-		obj_to_char(object, ch);
-		send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n", object->short_description);
+		if (obj_to_char(object, ch))
+			send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n",
+				       object->short_description);
 	}
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |
@@ -1574,8 +1575,9 @@ void auction_item_claim_completed(P_char ch, bool committed, const auction_comma
 				ch);
 			continue;
 		}
-		obj_to_char(object, ch);
-		send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n", object->short_description);
+		if (obj_to_char(object, ch))
+			send_to_char_f(ch, "&+WYou pick up &n%s&+W.&n\r\n",
+				       object->short_description);
 	}
 	mark_player_dirty_components(GET_PID(ch), PLAYER_COMPONENT_STATUS |
 							  PLAYER_COMPONENT_EQUIPMENT |

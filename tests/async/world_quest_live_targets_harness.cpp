@@ -43,9 +43,10 @@ time_info_data time_info{};
 const char *month_name[] = { "Moon" };
 P_char character_list = nullptr;
 P_obj object_list = nullptr;
-void obj_to_char(P_obj, P_char)
+bool obj_to_char(P_obj, P_char)
 {
 	std::abort();
+	return true;
 }
 
 std::deque<room_direction_data> exits;

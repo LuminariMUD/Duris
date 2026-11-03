@@ -1378,7 +1378,8 @@ void obj_from_room(P_obj);
 int set_obj_condition(P_obj object, int condition);
 void set_obj_extra_flags(P_obj object, unsigned flags);
 void set_obj_extra2_flags(P_obj object, unsigned flags);
-void obj_to_char(P_obj obj, P_char ch);
+// Returns false for a null or extracted object; true does not imply placement succeeded.
+bool obj_to_char(P_obj obj, P_char ch);
 void obj_to_char_at_end(P_obj obj, P_char ch);
 void obj_to_obj(P_obj, P_obj);
 void obj_to_obj_at_end(P_obj, P_obj);

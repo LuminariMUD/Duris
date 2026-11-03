@@ -510,7 +510,8 @@ int blackness_sword(P_obj obj, P_char ch, int cmd, char *arg)
 	send_to_char("The ankh around your neck disappears with a hollow pop.\n\n", ch);
 	// Actually get the sword.
 	obj_from_room(obj);
-	obj_to_char(obj, ch);
+	if (!obj_to_char(obj, ch))
+		return TRUE;
 	act("You get $p.", FALSE, ch, obj, 0, TO_CHAR);
 	act("$n gets $p.", TRUE, ch, obj, 0, TO_ROOM);
 

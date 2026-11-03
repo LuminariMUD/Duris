@@ -161,21 +161,23 @@ void do_slip(P_char ch, char *argument, int /*cmd*/)
 
 			/* transfer the obj */
 			obj_from_char(obj);
-			obj_to_char(obj, vict);
-			// If this is not suppost to be a secretive hand off, uncomment below.
-			// act("$n slips $p to $N.", 1, ch, obj, vict, TO_NOTVICT);
-			act("You successfuly slip $p into $N's pockets!", 0, ch, obj, vict,
-			    TO_CHAR);
-
-			/* for now repor it anytime */
-			if (IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
+			if (obj_to_char(obj, vict))
 			{
-				statuslog(GET_LEVEL(ch), "%s slips %s to %s.", J_NAME(ch),
-					  obj->short_description, J_NAME(vict));
-				logit(LOG_WIZ, "%s slips %s to %s.", J_NAME(ch),
-				      obj->short_description, J_NAME(vict));
-				sql_log(ch, WIZLOG, "Slips %s to %s", obj->short_description,
-					J_NAME(vict));
+				// If this is not suppost to be a secretive hand off, uncomment below.
+				// act("$n slips $p to $N.", 1, ch, obj, vict, TO_NOTVICT);
+				act("You successfuly slip $p into $N's pockets!", 0, ch, obj, vict,
+				    TO_CHAR);
+
+				/* for now repor it anytime */
+				if (IS_TRUSTED(ch) && GET_LEVEL(ch) < OVERLORD)
+				{
+					statuslog(GET_LEVEL(ch), "%s slips %s to %s.", J_NAME(ch),
+						  obj->short_description, J_NAME(vict));
+					logit(LOG_WIZ, "%s slips %s to %s.", J_NAME(ch),
+					      obj->short_description, J_NAME(vict));
+					sql_log(ch, WIZLOG, "Slips %s to %s",
+						obj->short_description, J_NAME(vict));
+				}
 			}
 			if (ch != vict)
 			{

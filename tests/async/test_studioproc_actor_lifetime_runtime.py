@@ -78,7 +78,7 @@ P_char read_mobile(int, int) { return nullptr; }
 P_obj read_object_for_creation(int, int) { return nullptr; }
 P_obj find_live_object(P_obj, uint64_t) { return nullptr; }
 void obj_to_room(P_obj, int) {}
-void obj_to_char(P_obj, P_char) {}
+bool obj_to_char(P_obj, P_char) { return true; }
 void extract_obj(P_obj, int) {}
 void extract_char(P_char) {}
 static void destroy_actor(P_char actor, bool delete_storage, bool replace);

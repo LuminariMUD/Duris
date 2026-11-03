@@ -359,12 +359,13 @@ void obj_from_room(P_obj object)
 	*link = object->next_content;
 	object->next_content = nullptr;
 }
-void obj_to_char(P_obj object, P_char ch)
+bool obj_to_char(P_obj object, P_char ch)
 {
 	object->loc_p = LOC_CARRIED;
 	object->loc.carrying = ch;
 	object->next_content = ch->carrying;
 	ch->carrying = object;
+	return true;
 }
 void obj_to_room(P_obj, int)
 {

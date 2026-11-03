@@ -280,11 +280,12 @@ void extract_obj(P_obj item)
 	assert(found != objects.end());
 	objects.erase(found);
 }
-void obj_to_char(P_obj item, P_char mob)
+bool obj_to_char(P_obj item, P_char mob)
 {
 	detach(item);
 	item->next_content = mob->carrying;
 	mob->carrying = item;
+	return true;
 }
 void obj_to_room(P_obj item, int room)
 {

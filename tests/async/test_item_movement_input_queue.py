@@ -72,20 +72,6 @@ GET_PLAYING = extract(
 DISPATCH_PLAYING = extract(
     COMM_PATH, "static void dispatch_playing_command(P_char character, char *input)"
 )
-CHECK_EQ_WORTH_USING = extract(
-    SRC / "mobact.c", "void CheckEqWorthUsing(P_char ch, P_obj obj)"
-)
-# Authoritative scavenged roots still get the normal equipment evaluation. The
-# later guard only blocks an unjournaled reparent into an already-carried bag.
-equip_check = CHECK_EQ_WORTH_USING.index("if (IsBetterObject(ch, obj, 0))")
-authoritative_root_guard = CHECK_EQ_WORTH_USING.index(
-    "if (authoritative)", equip_check
-)
-container_reparent = CHECK_EQ_WORTH_USING.index(
-    "for (ob = ch->carrying; ob; ob = ob2)", authoritative_root_guard
-)
-assert equip_check < authoritative_root_guard < container_reparent
-
 PRELUDE = r'''
 #include "core/utils.h"
 #include "economy/currency_transaction.h"
@@ -252,12 +238,13 @@ void send_to_char(const char *text, P_char) { grant_messages += text; }
 void send_to_char(const char *, P_char, int) {}
 void extract_obj(P_obj object, int) { ++extracted_count; extracted_uids.push_back(object->obj_uid); }
 void obj_from_char(P_obj) {}
-void obj_to_char(P_obj object, P_char actor)
+bool obj_to_char(P_obj object, P_char actor)
 {
     object->loc_p = LOC_CARRIED;
     object->loc.carrying = actor;
     object->next_content = actor->carrying;
     actor->carrying = object;
+    return true;
 }
 void obj_to_obj(P_obj, P_obj) {}
 void obj_to_room(P_obj, int) {}
