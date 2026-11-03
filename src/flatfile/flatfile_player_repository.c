@@ -22,6 +22,7 @@
 #include "flatfile/flatfile_item_repository.h"
 #include "flatfile/flatfile_player_domain_repository.h"
 #include "flatfile/flatfile_shop_trade_materialization.h"
+#include "flatfile/flatfile_shop_trade_repository.h"
 #include "flatfile/flatfile_store.h"
 #include "persistence/persistence_observability.h"
 #include "persistence/persistence_log.h"
@@ -922,8 +923,11 @@ player_save_apply_result flatfile_player_snapshot_apply(const std::string &root,
 	bool unresolved_trade = false;
 	if (revised)
 	{
-		const auto settled = divine_trade_flatfile_settle_snapshot(root, *authority,
-									   revised.get(), error);
+		auto settled =
+			flatfile_shop_trade_settle_snapshot(root, *authority, revised.get(), error);
+		if (settled == flatfile_player_domain_result::not_found)
+			settled = divine_trade_flatfile_settle_snapshot(root, *authority,
+									revised.get(), error);
 		if (settled == flatfile_player_domain_result::io_error)
 			return { player_save_apply_outcome::retryable_failure, 0, EIO };
 		unresolved_trade = settled != flatfile_player_domain_result::ok;

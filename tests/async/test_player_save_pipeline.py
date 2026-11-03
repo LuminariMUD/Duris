@@ -3,6 +3,7 @@
 
 from _paths import SRC, rel, extract_function
 import subprocess
+import re
 import tempfile
 from pathlib import Path
 from _paths import HARNESS_STUBS
@@ -213,8 +214,9 @@ int main()
     player_pending_trade_snapshot trade;
     trade.operation[0]=1;trade.command_hash[0]=2;trade.payment=-80;
     assert(player_save_pipeline_reserve_trade(41,trade));
-    assert(!player_save_pipeline_reserve_trade(42,trade));
-    player_save_pipeline_release_trade(42);
+    auto other_trade=trade; other_trade.operation[0]=3;
+    assert(player_save_pipeline_reserve_trade(42,other_trade));
+    assert(!player_save_pipeline_reserve_trade(41,trade));
     // A queued save leaves its owner clean: the writer has it.
     hold_writer(true);
     assert(player_save_pipeline_request(&bob.ch, PLAYER_COMPONENT_SKILLS, 1, 3001) ==
@@ -261,9 +263,10 @@ int main()
         std::lock_guard<std::mutex> lock(state.mutex);
         assert(state.committed[41].pending_trade.operation==trade.operation);
         assert(state.committed[41].pending_trade.payment==-80);
-        assert(!player_snapshot_trade_pending(state.committed[42]));
+        assert(state.committed[42].pending_trade.operation==other_trade.operation);
     }
     player_save_pipeline_release_trade(41);
+    player_save_pipeline_release_trade(42);
 
 
     // A failed write is reported and its owner is dirty again.
@@ -760,7 +763,7 @@ print("[PASS] autosave is local and the Redis dirty-save fork is retired")
 
 assert "player_save_pipeline_init()" in COMM
 assert "player_save_pipeline_pulse();" in COMM
-assert "player_save_pipeline_finish(shutdown_writer_deadline_usec," in COMM
+assert re.search(r"player_save_pipeline_finish\(\s*shutdown_writer_deadline_usec\s*-\s*SHUTDOWN_LOCKER_RECOVERY_USEC,", COMM)
 assert "player_save_pipeline_shutdown();" in section(
     (SRC / "player_save_pipeline.c").read_text(), "std::vector<persistence_job_owner> player_save_pipeline_finish(",
     "player_save_pipeline_health player_save_pipeline_health_copy(void)")

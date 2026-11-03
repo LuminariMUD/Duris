@@ -114,7 +114,8 @@ int main()
     const auto reserved_revision=alice.pc.wallet_revision;
     assert(currency_transaction_reserve_trade(&alice.ch,-80));
     assert(wallet(&alice.ch)[0]==100 && alice.pc.wallet_revision==reserved_revision);
-    assert(!currency_transaction_reserve_trade(&twin.ch,1));
+    assert(currency_transaction_reserve_trade(&twin.ch,1));
+    assert(!currency_transaction_reserve_trade(&alice.ch,1));
     assert(currency_transaction_submit_wallet_value(&alice.ch,-30,
       currency_reason_type::wallet_spend,0,critical_source_site::command,
       critical_deadline_class::interactive,completion,nullptr,0));
@@ -124,7 +125,8 @@ int main()
       critical_deadline_class::interactive,completion,nullptr,0));
     assert(last_committed && wallet(&alice.ch)==(std::array<int64_t,4>{0,8,0,0}));
     currency_transaction_release_trade(999); // another player cannot release it
-    assert(!currency_transaction_reserve_trade(&twin.ch,1));
+    assert(!currency_transaction_reserve_trade(&alice.ch,1));
+    currency_transaction_release_trade(46);
     currency_transaction_release_trade(44);
     assert(currency_transaction_submit_wallet_value(&alice.ch,-80,
       currency_reason_type::wallet_spend,0,critical_source_site::command,
@@ -137,6 +139,9 @@ int main()
       currency_reason_type::wallet_reward,0,critical_source_site::command,
       critical_deadline_class::interactive,completion,nullptr,0));
     assert(!last_committed && last_error==ENOSPC && GET_PLATINUM(&alice.ch)==INT_MAX-1);
+    currency_transaction_release_trade(44);
+    GET_PLATINUM(&alice.ch)=INT_MAX;
+    assert(!currency_transaction_reserve_trade(&alice.ch,1000));
     currency_transaction_reset_for_tests();
     assert(currency_transaction_reserve_trade(&twin.ch,0));
     currency_transaction_release_trade(46);

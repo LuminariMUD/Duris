@@ -2,6 +2,8 @@
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
 #include "core/utils.h"
+#include "player/player_save_pipeline.h"
+#include "player/player_snapshot_codec.h"
 
 #include <cassert>
 #include <cstdarg>
@@ -35,6 +37,7 @@ bool batch_ready = false;
 bool decline_wallet = false;
 int ownership_calls = 0;
 bool completion_committed = false;
+bool completion_offline = false, ownership_allowed = true;
 unsigned int completion_error = 0;
 
 shop_trade_payload trade(shop_trade_action action, uint64_t uid)
@@ -46,7 +49,7 @@ shop_trade_payload trade(shop_trade_action action, uint64_t uid)
 	payload.racewar = 1;
 	strcpy(payload.account_name.data(), "shop-account");
 	payload.price = 100;
-	payload.expected_wallet_revision = 2;
+	payload.expected_wallet_revision = pc.wallet_revision;
 	payload.expected_bank_revision = 3;
 	payload.expected_shop_revision = 4;
 	payload.selected_item_uid = uid;
@@ -80,6 +83,18 @@ shop_trade_payload trade(shop_trade_action action, uint64_t uid)
 	}
 	else
 		payload.items[0] = { uid, uid, 0, 5, 800, item_custody_state::active };
+	if (action == shop_trade_action::sell_store || action == shop_trade_action::sell_destroy)
+	{
+		player_item_snapshot item = {};
+		item.object_uid = uid;
+		item.vnum = 800;
+		item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+		std::vector<uint8_t> blob;
+		assert(player_item_snapshot_list_encode({ item }, &blob) ==
+		       player_snapshot_codec_result::ok);
+		payload.item_blob_size = blob.size();
+		std::copy(blob.begin(), blob.end(), payload.item_blob.begin());
+	}
 	return payload;
 }
 
@@ -116,8 +131,9 @@ critical_completion completion(const shop_trade_result &result)
 void completed(P_char completed_character, bool committed, const shop_trade_result &,
 	       unsigned int error_code, const shop_trade_payload &)
 {
-	assert(completed_character == &character);
+	assert(!completed_character || completed_character == &character);
 	completion_called = true;
+	completion_offline = !completed_character;
 	++completion_count;
 	completion_committed = committed;
 	completion_error = error_code;
@@ -127,6 +143,47 @@ bool prepare_batch(P_char, const shop_trade_payload &, const shop_trade_result &
 	return batch_ready;
 }
 } // namespace
+
+P_room world = nullptr;
+static bool reserved = false;
+bool currency_transaction_reserve_trade(P_char buyer, int64_t payment)
+{
+	assert(buyer == &character);
+	if (reserved || decline_wallet || (payment < 0 && wallet < -payment))
+		return false;
+	reserved = true;
+	return true;
+}
+void currency_transaction_release_trade(uint32_t pid)
+{
+	assert(pid == 42);
+	reserved = false;
+}
+bool currency_transaction_publish_trade(P_char buyer, int64_t payment)
+{
+	assert(buyer == &character && reserved);
+	if (decline_wallet)
+		return false;
+	wallet += payment;
+	++pc.wallet_revision;
+	return true;
+}
+bool player_save_pipeline_reserve_trade(uint32_t pid, const player_pending_trade_snapshot &tag)
+{
+	assert(pid == 42 && tag.wallet_revision == pc.wallet_revision);
+	return true;
+}
+void player_save_pipeline_release_trade(uint32_t pid)
+{
+	assert(pid == 42);
+}
+player_save_pipeline_result player_save_pipeline_request(P_char buyer, player_component_mask_t, int,
+							 int)
+{
+	assert(buyer == &character && (!character.carrying || sold_place == place::inventory));
+	++saves;
+	return player_save_pipeline_result::queued;
+}
 
 critical_submit_result critical_command_coordinator_submit(critical_command command)
 {
@@ -187,13 +244,18 @@ P_char find_player_by_pid(int pid)
 }
 
 bool item_ownership_runtime_apply(const item_transfer_payload &payload,
-				  const item_transfer_result &result)
+				  const item_transfer_result &result,
+				  const uint64_t *item_revisions)
 {
+	assert(item_revisions);
+	for (size_t index = 0; index < payload.item_count; ++index)
+		assert(item_revisions[index] ==
+		       (payload.from_owner.type == item_owner_type::system ? 1 : 6));
 	published_transfer = payload;
 	published_transfer_result = result;
-	ownership_published = true;
+	ownership_published = ownership_allowed;
 	++ownership_calls;
-	return true;
+	return ownership_allowed;
 }
 
 bool shop_trade_runtime_can_advance(uint32_t shop_id, uint64_t expected_revision,
@@ -213,14 +275,16 @@ int main()
 {
 	character.only.pc = &pc;
 	pc.pid = 42;
+	pc.wallet_revision = 2;
+	character.in_room = NOWHERE;
 
 	shop_trade_payload produced = trade(shop_trade_action::buy_produced, 300);
 	produced.target_root_item_uid = 700;
 	produced.target_parent_item_uid = 700;
 	produced.expected_target_parent_revision = 5;
-	// The price leaves the wallet at submit, after the buyer's save is queued.
+	// Funds are reserved at submit and paid only at committed publication.
 	assert(shop_trade_transaction_submit(&character, produced, completed));
-	assert(wallet == 900 && saves == 1);
+	assert(wallet == 1000 && saves == 1);
 	assert(shop_trade_transaction_player_busy(&character));
 	assert(!shop_trade_transaction_submit(&character, produced, completed));
 	critical_completion produced_completion =
@@ -237,11 +301,11 @@ int main()
 	       published_transfer_result.to_owner_revision == 8 &&
 	       !shop_trade_transaction_player_busy(&character));
 
-	// A refused purchase gives the price back.
+	// A refused purchase never debits the price.
 	completion_called = completion_committed = false;
 	assert(shop_trade_transaction_submit(
 		&character, trade(shop_trade_action::buy_existing, 303), completed));
-	assert(wallet == 800);
+	assert(wallet == 900);
 	critical_completion refused =
 		completion(result(shop_trade_action::buy_existing, 303, 8, 6));
 	refused.outcome = critical_apply_outcome::terminal_failure;
@@ -263,6 +327,11 @@ int main()
 	const shop_trade_payload destroyed = trade(shop_trade_action::sell_destroy, 301);
 	assert(shop_trade_transaction_submit(&character, destroyed, completed));
 	assert(sold_place == place::held && saves == 1);
+	player_snapshot held_capture = {};
+	held_capture.pid = 42;
+	held_capture.components = PLAYER_COMPONENT_INVENTORY;
+	assert(shop_trade_transaction_capture_items(&character, &held_capture));
+	assert(held_capture.items.size() == 1 && held_capture.items[0].object_uid == 301);
 	critical_completion refused_sale =
 		completion(result(shop_trade_action::sell_destroy, 301, 9, 2));
 	refused_sale.outcome = critical_apply_outcome::terminal_failure;
@@ -290,10 +359,12 @@ int main()
 		completion(result(shop_trade_action::sell_destroy, 301, 9, 2));
 	player_online = false;
 	shop_trade_transaction_handle_completions(&destroyed_completion, 1);
-	assert(shop_trade_transaction_player_busy(&character) && wallet == 900 &&
-	       !ownership_published && !completion_called);
+	assert(!shop_trade_transaction_player_busy(&character) && wallet == 900 &&
+	       ownership_published && completion_called && completion_offline);
 	player_online = true;
-	// A sale is paid when it commits; a seller who left is paid on return.
+	// Login reads the compound purse; completion must not pay it twice.
+	wallet = 1000;
+	++pc.wallet_revision;
 	shop_trade_transaction_player_ready(&character);
 	assert(wallet == 1000 && ownership_published && shop_revision_published &&
 	       completion_called && completion_committed && sold_place == place::held &&
@@ -318,6 +389,26 @@ int main()
 	       published_transfer_result.to_owner_revision == 3 &&
 	       !shop_trade_transaction_player_busy(&character));
 
+	// A publication refusal retains the obligation; a later retry pays once.
+	sold.obj_uid = 350;
+	sold_place = place::inventory;
+	character.carrying = &sold;
+	const auto retry_sale = trade(shop_trade_action::sell_store, 350);
+	const int callbacks_before_retry = completion_count,
+		  ownership_before_retry = ownership_calls;
+	assert(shop_trade_transaction_submit(&character, retry_sale, completed));
+	const auto retry_completion = completion(result(shop_trade_action::sell_store, 350, 11, 4));
+	decline_wallet = true;
+	shop_trade_transaction_handle_completions(&retry_completion, 1);
+	assert(wallet == 1000 && completion_count == callbacks_before_retry &&
+	       ownership_calls == ownership_before_retry &&
+	       shop_trade_transaction_player_busy(&character));
+	decline_wallet = false;
+	shop_trade_transaction_player_ready(&character);
+	assert(wallet == 1100 && completion_count == callbacks_before_retry + 1);
+	shop_trade_transaction_handle_completions(&retry_completion, 1);
+	assert(wallet == 1100 && completion_count == callbacks_before_retry + 1);
+	wallet = 1000;
 	// A committed forest waits for every live root before applying ownership or
 	// crediting the keeper. Reconnect retries it once; duplicate completions do not.
 	auto batch = trade(shop_trade_action::buy_produced, 400);
@@ -335,7 +426,7 @@ int main()
 	assert(wallet == 1000 && !shop_trade_transaction_player_busy(&character));
 	decline_wallet = false;
 	assert(shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
-	assert(wallet == 500 && shop_trade_transaction_blocks_commands(&character));
+	assert(wallet == 1000 && shop_trade_transaction_blocks_commands(&character));
 	auto batch_result = result(shop_trade_action::buy_produced, 400, 11, 4);
 	batch_result.item_count = 50;
 	for (size_t index = 0; index < batch_result.item_count; ++index)
@@ -345,12 +436,10 @@ int main()
 	}
 	const auto batch_completion = completion(batch_result);
 	const int previous_callbacks = completion_count, previous_ownership = ownership_calls;
-	player_online = false;
 	shop_trade_transaction_handle_completions(&batch_completion, 1);
-	player_online = true;
 	shop_trade_transaction_player_ready(&character);
 	assert(completion_count == previous_callbacks && ownership_calls == previous_ownership &&
-	       shop_trade_transaction_player_busy(&character) && wallet == 500);
+	       shop_trade_transaction_player_busy(&character) && wallet == 1000);
 	batch_ready = true;
 	shop_trade_transaction_player_ready(&character);
 	assert(completion_count == previous_callbacks + 1 &&
@@ -368,5 +457,19 @@ int main()
 	const auto free_completion = completion(batch_result);
 	shop_trade_transaction_handle_completions(&free_completion, 1);
 	assert(wallet == 500 && !shop_trade_transaction_player_busy(&character));
+	// An absent actor's durable forest must relinquish its live copies even
+	// when optional cache publication fails, so login cannot duplicate them.
+	batch.price = 100;
+	batch.expected_wallet_revision = pc.wallet_revision;
+	assert(shop_trade_transaction_submit(&character, batch, completed, prepare_batch));
+	const int before_offline = completion_count;
+	const auto offline_batch = completion(batch_result);
+	player_online = false;
+	ownership_allowed = false;
+	shop_trade_transaction_handle_completions(&offline_batch, 1);
+	assert(!shop_trade_transaction_player_busy(&character) && completion_offline &&
+	       completion_count == before_offline + 1 && wallet == 500);
+	player_online = true;
+	ownership_allowed = true;
 	shop_trade_transaction_reset_for_tests();
 }

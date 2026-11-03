@@ -22,7 +22,10 @@
 #include <cstddef>
 
 constexpr size_t SHOP_TRADE_PENDING_MAX = 128;
+struct player_snapshot;
 
+// character is null when the durable result arrives after the actor unloaded;
+// finish shop-side placement and discard copies owned by durable player delivery.
 using shop_trade_completion_fn = void (*)(P_char character, bool committed,
 					  const shop_trade_result &result, unsigned int error_code,
 					  const shop_trade_payload &payload);
@@ -38,6 +41,9 @@ void shop_trade_transaction_handle_completions(const critical_completion *comple
 void shop_trade_transaction_player_ready(P_char character);
 bool shop_trade_transaction_player_busy(P_char character);
 bool shop_trade_transaction_blocks_commands(P_char character);
+// Keep a pending sale's held graph in captures until its receipt can decide
+// whether to remove it. Otherwise a declined sale plus disconnect loses it.
+bool shop_trade_transaction_capture_items(P_char character, player_snapshot *snapshot);
 void shop_trade_transaction_reset_for_tests(void);
 
 #endif

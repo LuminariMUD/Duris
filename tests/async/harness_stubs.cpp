@@ -40,6 +40,11 @@ HARNESS_STUB bool shop_trade_transaction_blocks_commands(P_char)
 {
 	return false;
 }
+struct player_snapshot;
+HARNESS_STUB bool shop_trade_transaction_capture_items(P_char, player_snapshot *)
+{
+	return true;
+}
 // Isolated affect/abort fixtures have no shoreline movement callback to execute.
 HARNESS_STUB void event_water_crossing(P_char, P_char, P_obj, void *) {}
 // Isolated terminal-save fixtures have no account projection or departure state.

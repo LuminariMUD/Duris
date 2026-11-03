@@ -45,8 +45,7 @@ namespace
 {
 currency_transaction_health health = {};
 
-uint32_t reserved_trade_pid;
-int64_t reserved_trade_payment;
+std::unordered_map<uint32_t, int64_t> reserved_trade_payments;
 std::unordered_map<uint32_t, int64_t> reserved_world_quests;
 uint32_t reserved_chest_pid = 0;
 std::string reserved_chest_account;
@@ -194,10 +193,11 @@ bool apply(P_char character, const currency_command_payload &payload,
 			return true;
 		}
 	}
-	if (reserved_trade_pid == payload.pid)
+	if (auto reserved = reserved_trade_payments.find(payload.pid);
+	    reserved != reserved_trade_payments.end())
 	{
 		currency_vector eventual;
-		if (!currency_wallet_after_value(result.wallet, reserved_trade_payment, &eventual))
+		if (!currency_wallet_after_value(result.wallet, reserved->second, &eventual))
 		{
 			++health.rejected;
 			if (completion)
@@ -282,7 +282,8 @@ bool currency_transaction_prepare_identify(P_char character, int64_t cost,
 {
 	std::string account;
 	if (!command || cost <= 0 || currency_transaction_chest_busy(character) ||
-	    reserved_trade_pid || !player_account(character, &account))
+	    reserved_trade_payments.count(GET_PID(character)) ||
+	    !player_account(character, &account))
 		return false;
 	currency_vector wallet_delta = {}, bank_delta = {};
 	const bool use_bank = GET_MONEY(character) < cost;
@@ -378,8 +379,7 @@ currency_transaction_health currency_transaction_health_copy(void)
 
 void currency_transaction_reset_for_tests(void)
 {
-	reserved_trade_pid = 0;
-	reserved_trade_payment = 0;
+	reserved_trade_payments.clear();
 	reserved_world_quests.clear();
 	reserved_chest_pid = 0;
 	reserved_chest_account.clear();
@@ -387,8 +387,9 @@ void currency_transaction_reset_for_tests(void)
 }
 
 bool currency_transaction_reserve_trade(P_char character, int64_t payment)
+try
 {
-	if (!character || IS_NPC(character) || GET_PID(character) <= 0 || reserved_trade_pid ||
+	if (!character || IS_NPC(character) || GET_PID(character) <= 0 ||
 	    currency_transaction_wallet_busy(character))
 		return false;
 	const currency_vector before{ { GET_COPPER(character), GET_SILVER(character),
@@ -396,18 +397,16 @@ bool currency_transaction_reserve_trade(P_char character, int64_t payment)
 	currency_vector after;
 	if (!currency_wallet_after_value(before, payment, &after))
 		return false;
-	reserved_trade_pid = static_cast<uint32_t>(GET_PID(character));
-	reserved_trade_payment = payment;
-	return true;
+	return reserved_trade_payments.emplace(GET_PID(character), payment).second;
+}
+catch (const std::bad_alloc &)
+{
+	return false;
 }
 
 void currency_transaction_release_trade(uint32_t pid)
 {
-	if (reserved_trade_pid == pid)
-	{
-		reserved_trade_pid = 0;
-		reserved_trade_payment = 0;
-	}
+	reserved_trade_payments.erase(pid);
 }
 
 bool currency_transaction_publish_trade(P_char character, int64_t payment)
@@ -437,7 +436,7 @@ try
 	if (!character || IS_NPC(character) || !character->only.pc || GET_PID(character) <= 0 ||
 	    fee <= 0 || character->only.pc->wallet_revision == UINT64_MAX ||
 	    currency_transaction_wallet_busy(character) ||
-	    reserved_trade_pid == static_cast<uint32_t>(GET_PID(character)) ||
+	    reserved_trade_payments.count(GET_PID(character)) ||
 	    auction_transaction_player_busy(character) ||
 	    collector_transaction_player_busy(character) ||
 	    shop_trade_transaction_player_busy(character))
@@ -507,8 +506,8 @@ bool currency_transaction_chest_busy(P_char character)
 bool currency_transaction_reserve_chest(P_char character)
 {
 	std::string account;
-	if (reserved_chest_pid || reserved_trade_pid || !player_account(character, &account) ||
-	    currency_transaction_wallet_busy(character) ||
+	if (reserved_chest_pid || !reserved_trade_payments.empty() ||
+	    !player_account(character, &account) || currency_transaction_wallet_busy(character) ||
 	    auction_transaction_player_busy(character) ||
 	    collector_transaction_player_busy(character) ||
 	    shop_trade_transaction_player_busy(character))
