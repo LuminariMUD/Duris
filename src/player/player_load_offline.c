@@ -65,21 +65,25 @@ P_char materialize(const player_load_result &result)
 	return character;
 }
 bool submit_offline(const char *name, bool include_items,
-		    std::function<void(const player_load_result &)> done)
+		    std::function<void(const player_load_result &)> done, bool include_pets = false,
+		    int pid = 0)
 {
-	if (!name || !*name || !done)
+	if ((!name || !*name) && pid <= 0)
+		return false;
+	if (!done)
 		return false;
 	player_load_request request = {};
 	request.request_id = player_load_pipeline_next_request_id();
 	// By pid when the character exists: the load then waits for its queued saves, as a
 	// login does, so a copy that is saved back is never older than them.
-	const int pid = sql_get_player_pid(name);
+	if (pid <= 0)
+		pid = sql_get_player_pid(name);
 	if (pid > 0)
 		request.pid = pid;
 	else
 		request.player_name = name;
 	request.include_items = include_items;
-	request.include_pets = false;
+	request.include_pets = include_pets;
 	request.deadline_usec = persistence_observability_now_usec() + PLAYER_LOAD_TIMEOUT_USEC;
 	if (player_load_pipeline_submit(request) != player_load_submit_outcome::accepted)
 		return false;
@@ -88,17 +92,20 @@ bool submit_offline(const char *name, bool include_items,
 }
 
 bool submit_offline_for(P_char ch, const char *name, bool include_items,
-			std::function<void(P_char, const player_load_result &)> done)
+			std::function<void(P_char, const player_load_result &)> done,
+			bool include_pets = false)
 {
 	if (!ch || !done)
 		return false;
 	const uint64_t runtime_id = ch->runtime_id;
-	if (submit_offline(name, include_items,
-			   [runtime_id, done = std::move(done)](const player_load_result &result)
-			   {
-				   if (P_char live = find_character_by_runtime_id(runtime_id))
-					   done(live, result);
-			   }))
+	if (submit_offline(
+		    name, include_items,
+		    [runtime_id, done = std::move(done)](const player_load_result &result)
+		    {
+			    if (P_char live = find_character_by_runtime_id(runtime_id))
+				    done(live, result);
+		    },
+		    include_pets))
 		return true;
 	send_to_char("That is not available right now.\r\n", ch);
 	return false;
@@ -117,8 +124,18 @@ bool player_load_offline(const char *name, bool include_items, std::function<voi
 		});
 }
 
+bool player_load_offline(int pid, std::function<void(P_char)> done)
+{
+	if (pid <= 0 || !done)
+		return false;
+	return submit_offline(
+		nullptr, true, [done = std::move(done)](const player_load_result &result)
+		{ done(can_materialize_items(result) ? materialize(result) : nullptr); }, true,
+		pid);
+}
+
 bool player_load_offline_for(P_char ch, const char *name, bool include_items,
-			     std::function<void(P_char, P_char)> done)
+			     std::function<void(P_char, P_char)> done, bool include_pets)
 {
 	if (!done)
 		return false;
@@ -136,7 +153,8 @@ bool player_load_offline_for(P_char ch, const char *name, bool include_items,
 				return;
 			}
 			done(live, materialize(result));
-		});
+		},
+		include_pets);
 }
 
 bool player_load_offline_inspect_for(P_char ch, const char *name,

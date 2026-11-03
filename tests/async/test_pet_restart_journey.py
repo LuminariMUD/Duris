@@ -5,6 +5,7 @@ Usage: python3 tests/async/test_pet_restart_journey.py [/absolute/flatfile/serve
 Without a server it builds one, as the other flat-file journeys do.
 """
 import os
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -118,6 +119,30 @@ def run(binary):
                 print(f"restart cycle {cycle + 1}: identity, base stats, gear, deadlines, held UID passed", flush=True)
                 if cycle == 0:
                     stop()
+            stop()
+            # The owner stays offline while the maintenance event loads the
+            # complete pet graph, retires only its expired artifact, and saves it.
+            artifact_vnum, artifact_uid = map(int, subprocess.check_output(
+                [str(journey.INSPECTOR), str(state), "seed-pet-artifact", "1"], text=True).strip().split("|"))
+            before_expiry = rows()
+            boot()
+            deadline = time.monotonic() + 90
+            while True:
+                tracked = json.loads(subprocess.check_output(
+                    [str(journey.INSPECTOR), str(state), "artifact-owner", str(artifact_vnum)], text=True))
+                current = rows()
+                if tracked["identity"] == 2 and all(str(artifact_uid) not in row[3:] for row in current):
+                    break
+                assert process.poll() is None and time.monotonic() < deadline, (tracked, current)
+                time.sleep(.2)
+            assert len(current) == len(before_expiry) == 3, (before_expiry, current)
+            assert {uid for row in current for uid in row[3:]} == expected_uids
+            stop(); boot()
+            client = journey.reconnect_character(port)
+            client.send("save")
+            client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+            assert {uid for row in rows() for uid in row[3:]} == expected_uids
+            print("offline pet artifact expiry preserves pets and sibling UIDs across restart", flush=True)
             stop()
             rows("arm-expiry")
             boot()

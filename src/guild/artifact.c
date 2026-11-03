@@ -147,6 +147,7 @@ struct artifact_row
 	artifact_population_reason population_reason = artifact_population_reason::incomplete;
 	std::vector<artifact_payload_projection> canonical_payloads = {};
 	P_obj live_object = nullptr;
+	int offline_pet_owner_pid = 0; // live pet placement survives its later unload
 	artifact_pending pending = artifact_pending::none;
 	uint64_t previous_uid = 0;
 	artifact_identity_state previous_state = artifact_identity_state::unresolved;
@@ -1024,6 +1025,16 @@ static item_owner_type artifact_source_owner_type(artifact_payload_domain domain
 	}
 }
 
+static int artifact_pet_owner_pid(P_char holder)
+{
+	if (!holder || !IS_NPC(holder))
+		return 0;
+	if (holder->durable_pet_owner_pid)
+		return holder->durable_pet_owner_pid;
+	P_char master = GET_MASTER(holder);
+	return master && IS_PC(master) ? GET_PID(master) : 0;
+}
+
 static unsigned int artifact_owned_source_error(const artifact_payload_projection &source,
 						P_obj object)
 {
@@ -1188,6 +1199,13 @@ bool artifact_begin_recovery(P_obj object, const artifact_payload_projection &so
 	row.previous_state = row.identity_state;
 	row.live_object = object;
 	row.pending = artifact_pending::recovery;
+	// Legacy pet graphs use player custody and acquire their follower link
+	// after staging. Keep that qualified player until placement can resolve it.
+	row.offline_pet_owner_pid = source.payload_owner.type == item_owner_type::player ?
+					    source.payload_owner.id :
+				    source.payload_owner.type == item_owner_type::pet ?
+					    source.payload_owner.context_id :
+					    0;
 	++arti_cache_generation;
 	return true;
 }
@@ -1233,15 +1251,27 @@ void artifact_object_placed(P_obj object)
 	if (row.live_object != object || row.canonical_item_uid != object->obj_uid)
 		return;
 	const bool recovery = row.pending == artifact_pending::recovery;
+	P_obj root = object;
+	while (OBJ_INSIDE(root) && root->loc.inside)
+		root = root->loc.inside;
+	P_char holder = OBJ_WORN(root)	  ? root->loc.wearing :
+			OBJ_CARRIED(root) ? root->loc.carrying :
+					    nullptr;
+	if (!holder || !IS_NPC(holder) || artifact_pet_owner_pid(holder))
+		row.offline_pet_owner_pid = artifact_pet_owner_pid(holder);
 	row.pending = artifact_pending::none;
 	row.previous_uid = 0;
 	row.previous_state = artifact_identity_state::unresolved;
 	if (recovery)
 	{
-		// Player payloads are mutable: accepted live placement supersedes their
+		// Player and pet payloads are mutable: live placement supersedes their
 		// boot locators. Keep pinned world sources for source-qualified recovery.
-		std::erase_if(row.canonical_payloads, [](const auto &source)
-			      { return source.domain == artifact_payload_domain::player; });
+		std::erase_if(row.canonical_payloads,
+			      [](const auto &source)
+			      {
+				      return source.domain == artifact_payload_domain::player ||
+					     source.domain == artifact_payload_domain::pet;
+			      });
 		++arti_cache_generation;
 		return;
 	}
@@ -2536,6 +2566,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 		obj1 = arti;
 	}
 
+	artifact_rows.at(vnum).offline_pet_owner_pid = 0;
 	if (OBJ_WORN(obj1) || OBJ_CARRIED(obj1))
 	{
 		// More bug handling.
@@ -2561,6 +2592,7 @@ void artifact_update_sql(P_obj arti, char owned, time_t timer)
 			return;
 		}
 		locType = IS_NPC(owner) ? ARTIFACT_ON_NPC : ARTIFACT_ON_PC;
+		artifact_rows.at(vnum).offline_pet_owner_pid = artifact_pet_owner_pid(owner);
 		// Death unequips items before the durable corpse handoff. Keep the
 		// persistent owner identity while that transfer still owns the item.
 		location = IS_NPC(owner) ? GET_VNUM(owner) : GET_PID(owner);
@@ -2921,6 +2953,12 @@ artifact_feed_result artifact_feed_sql(P_char owner, P_obj arti, int feed_second
 // with it and their artifact rows stay as they are, since its save holds them.
 static void release_offline_owner(P_char owner)
 {
+	while (owner->followers)
+	{
+		P_char pet = owner->followers->follower;
+		player_load_items_discard(pet);
+		extract_char(pet);
+	}
 	player_load_items_discard(owner);
 	free_char(owner);
 }
@@ -2966,6 +3004,13 @@ static P_obj artifact_on_owner(P_char owner, int vnum)
 	if ((OBJ_CARRIED(root) && root->loc.carrying == owner) ||
 	    (OBJ_WORN(root) && root->loc.wearing == owner))
 		return object;
+	P_char holder = OBJ_CARRIED(root) ? root->loc.carrying :
+			OBJ_WORN(root)	  ? root->loc.wearing :
+					    nullptr;
+	if (holder && IS_NPC(holder))
+		for (follow_type *follow = owner->followers; follow; follow = follow->next)
+			if (follow->follower == holder)
+				return object;
 	return nullptr;
 }
 
@@ -3579,9 +3624,9 @@ void arti_files_to_sql(P_char ch, char *arg)
 			extract_obj(arti, FALSE);
 			// super: the owner loads off the loop and gets a copy there.
 			if (super)
-				player_load_offline_for(ch, pname, true,
-							[vnum](P_char staff, P_char owner)
-							{ arti_files_give(staff, owner, vnum); });
+				player_load_offline_for(
+					ch, pname, true, [vnum](P_char staff, P_char owner)
+					{ arti_files_give(staff, owner, vnum); }, true);
 		}
 	}
 
@@ -3624,8 +3669,8 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 	if (!owner)
 	{
 		logit(LOG_ARTIFACT,
-		      "event_artifact_check_poof_sql: Could not load pfile of '%s' %d, to poof arti vnum %d.",
-		      get_player_name_from_pid(pid), pid, vnum);
+		      "event_artifact_check_poof_sql: Could not load pid=%d to poof arti vnum=%d.",
+		      pid, vnum);
 		return;
 	}
 	// In the game now, or another copy of it is loading: the next pass poofs it.
@@ -3660,7 +3705,7 @@ static void poof_loaded_owner(int vnum, int pid, P_char owner)
 	}
 	logit(LOG_ARTIFACT,
 	      "event_artifact_check_poof_sql: poofed vnum=%d for offline pid=%d ('%s')", vnum, pid,
-	      get_player_name_from_pid(pid));
+	      GET_NAME(owner));
 	release_offline_owner(owner);
 }
 
@@ -3671,15 +3716,7 @@ static bool poof_offline_artifact(int vnum, int pid)
 	logit(LOG_ARTIFACT,
 	      "event_artifact_check_poof_sql: poofing vnum=%d on offline pid=%d ('%s')", vnum, pid,
 	      name ? name : "unknown");
-	// Missing owner metadata is not proof that the physical UID is absent.
-	if (!name)
-	{
-		persistence_alert(AVATAR, "artifact_identity/offline_expiry", "redacted", "none",
-				  "none", "owner_unavailable", "vnum=%d pid=%d tracking_retained=1",
-				  vnum, pid);
-		return false;
-	}
-	return player_load_offline(name, true, [vnum, pid](P_char owner)
+	return player_load_offline(pid, [vnum, pid](P_char owner)
 				   { poof_loaded_owner(vnum, pid, owner); });
 }
 
@@ -3729,16 +3766,23 @@ void event_artifact_check_poof_sql(P_char /*ch*/, P_char /*vict*/, P_obj /*obj*/
 		// Boot qualification knows the saved holder even when legacy tracking
 		// still names a room or an earlier owner. Placement clears these sources,
 		// so they cannot override a later live transfer.
-		int location = row.locType == ARTIFACT_ON_PC ? row.location : 0;
+		int location = row.locType == ARTIFACT_ON_PC ? row.location :
+							       row.offline_pet_owner_pid;
 		for (const auto &source : row.canonical_payloads)
-			if (source.domain == artifact_payload_domain::player &&
-			    source.item_uid == row.canonical_item_uid &&
-			    source.payload_owner.type == item_owner_type::player &&
-			    source.payload_owner.id > 0 && source.payload_owner.id <= INT_MAX)
+		{
+			uint64_t pid = 0;
+			if (source.domain == artifact_payload_domain::pet &&
+			    source.payload_owner.type == item_owner_type::pet)
+				pid = source.payload_owner.context_id;
+			else if (source.domain == artifact_payload_domain::player &&
+				 source.payload_owner.type == item_owner_type::player)
+				pid = source.payload_owner.id;
+			if (source.item_uid == row.canonical_item_uid && pid > 0 && pid <= INT_MAX)
 			{
-				location = static_cast<int>(source.payload_owner.id);
+				location = static_cast<int>(pid);
 				break;
 			}
+		}
 		if (location > 0)
 		{
 			if (!is_pid_online(location, TRUE) &&
@@ -4326,7 +4370,8 @@ void arti_poof_sql(P_char ch, char *arg)
 										     P_char owner) {
 					arti_poof_loaded(staff, owner, vnum, expected_uid,
 							 shown.c_str());
-				});
+				},
+				true);
 		return;
 	}
 	poof_artifact(arti);
@@ -4814,12 +4859,13 @@ void arti_swap_sql(P_char ch, char *arg)
 	const char *owner_name = get_player_name_from_pid(artidata.location);
 	if (!owner_name)
 		send_to_char_f(ch, "Could not load pfile of %d.\n\r", artidata.location);
-	else if (!player_load_offline_for(ch, owner_name, true,
-					  [vnum1, vnum2, expected_uid, shown](P_char staff,
-									      P_char dummy) {
-						  arti_swap_loaded(staff, dummy, vnum1, vnum2,
-								   expected_uid, shown.c_str());
-					  }))
+	else if (!player_load_offline_for(
+			 ch, owner_name, true,
+			 [vnum1, vnum2, expected_uid, shown](P_char staff, P_char dummy) {
+				 arti_swap_loaded(staff, dummy, vnum1, vnum2, expected_uid,
+						  shown.c_str());
+			 },
+			 true))
 		send_to_char("Could not queue that pfile load; swap refused.\r\n", ch);
 }
 

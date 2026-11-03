@@ -202,6 +202,8 @@ const object_template *find_object_template(int vnum) {
 }
 static size_t offline_released=0, offline_saves=0, corpse_saves=0, expiry_retries=0;
 static bool owner_online=false, owner_loading=false, offline_save_allowed=true;
+static P_char offline_pet=nullptr, offline_pet_owner=nullptr;
+static bool offline_includes_pets=false, inspect_pet_snapshot=false;
 static std::vector<std::function<void(P_char)>> offline_callbacks;
 static int offline_requested_pid=0;
 char *get_player_name_from_pid(int pid) {
@@ -211,12 +213,21 @@ char *get_player_name_from_pid(int pid) {
 bool is_pid_online(int,bool) { return owner_online; }
 bool player_load_pipeline_pid_pending(int) { return owner_loading; }
 bool player_load_offline(const char *,bool,std::function<void(P_char)> done) { offline_callbacks.push_back(std::move(done)); return true; }
-bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done) {
+bool player_load_offline(int pid,std::function<void(P_char)> done) {
+ offline_requested_pid=pid; offline_includes_pets=true;
+ if(pid!=77 && pid!=88) return false;
+ offline_callbacks.push_back(std::move(done)); return true;
+}
+bool player_load_offline_for(P_char staff,const char *,bool,std::function<void(P_char,P_char)> done,bool) {
  offline_callbacks.push_back([staff,done=std::move(done)](P_char owner) { done(staff,owner); }); return true;
 }
 static bool inspect_swap_snapshot=false;
 int writeCharacter(P_char owner,int,int) {
  ++offline_saves;
+ if(inspect_pet_snapshot && IS_PC(owner)) {
+  assert(owner==offline_pet_owner && owner->followers->follower==offline_pet);
+  assert(offline_pet->carrying && !IS_ARTIFACT(offline_pet->carrying) && !offline_pet->carrying->next_content);
+ }
  if(inspect_swap_snapshot) assert(!artifact_on_owner(owner,900) && artifact_on_owner(owner,902));
  return offline_save_allowed ? 1 : 0;
 }
@@ -1222,6 +1233,46 @@ void offline_expiry_cases() {
  assert(!offline.live_object && offline.identity_state==artifact_identity_state::retired &&
         offline.canonical_item_uid==81000 && !object_list && !pool.objs_used);
  artifact_save_pulse(true); drain();
+ // Boot and same-uptime unload expiry target the durable pet's player. The
+ // callback saves the remaining pet equipment before releasing temporary pets.
+ for(bool durable : {false,true}) {
+ artifact_rows.clear(); artifact_binds.clear(); item_ownership_runtime_reset();
+ auto pet_source=saved_holder;
+ if(durable) {
+ pet_source.domain=artifact_payload_domain::pet;
+ pet_source.payload_owner={item_owner_type::pet,123,77};
+ pet_source.owner_context=77; pet_source.owner_reference=123;
+ pet_source.custody.owner=pet_source.payload_owner;
+ }
+ auto &pet_row=artifact_rows[900]; pet_row.type=ARTIFACT_MAJOR;
+ pet_row.identity_state=artifact_identity_state::present; pet_row.canonical_item_uid=81000;
+ pet_row.owned=true; pet_row.locType=ARTIFACT_ON_NPC; pet_row.location=42; pet_row.timer=1;
+ pet_row.canonical_payloads={pet_source};
+ char_data pet={}; npc_only_data pet_data={}; pet.only.npc=&pet_data;
+ pet.specials.act=ACT_ISNPC; pet.in_room=NOWHERE; pet.player.name=const_cast<char *>("Pet");
+ pet.durable_pet_uid=durable ? 123 : 0; pet.durable_pet_owner_pid=durable ? 77 : 0;
+ follow_type follower={&pet,nullptr}; owner.followers=&follower;
+ offline_pet=&pet; offline_pet_owner=&owner;
+ for(int attempt=0;attempt<2;++attempt) {
+  updateArtis=false; event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr); updateArtis=true;
+  event_artifact_check_poof_sql(nullptr,nullptr,nullptr,nullptr);
+  assert(offline_requested_pid==77 && offline_includes_pets && offline_callbacks.size()==1);
+  auto *recovered_pet_item=read_object_for_recovery(pet_source); assert(recovered_pet_item);
+  obj_to_char(recovered_pet_item,&pet);
+  assert(pet_row.canonical_payloads.empty() && pet_row.offline_pet_owner_pid==77);
+  if(!attempt) {
+   player_load_items_discard(&pet);
+   offline_callbacks.front()(nullptr);
+  } else {
+   auto *sibling=read_object(903,VIRTUAL); obj_to_char(sibling,&pet);
+   inspect_pet_snapshot=true; offline_callbacks.front()(&owner); inspect_pet_snapshot=false;
+   assert(!owner.followers && !pet.carrying && pet_row.identity_state==artifact_identity_state::retired);
+  }
+  offline_callbacks.clear();
+ }
+ offline_pet=offline_pet_owner=nullptr;
+ artifact_save_pulse(true); drain(); assert(!object_list && !pool.objs_used);
+ }
  // Qualified absence may clear obsolete timer tracking, preserving configured availability.
  artifact_rows.clear(); artifact_binds.clear();
  auto &absent=artifact_rows[900]; absent.type=ARTIFACT_MAJOR; absent.identity_state=artifact_identity_state::absent;
@@ -1709,6 +1760,7 @@ bool char_to_room(P_char ch,int room,int) {
 }
 P_char find_character_by_runtime_id(uint64_t id) { return transformed_live && id==transformed_mob.runtime_id ? &transformed_mob : nullptr; }
 void extract_char(P_char ch) {
+ if(ch==offline_pet) { assert(!ch->carrying); offline_pet_owner->followers=nullptr; return; }
  if(IS_PC(ch)) { terminal_item_cleanup(ch); return; }
  if(ch==transformation_source) ++transformation_removals;
  else { assert(ch==&transformed_mob && transformed_live && !ch->carrying); transformed_live=false; }

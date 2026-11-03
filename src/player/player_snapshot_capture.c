@@ -619,7 +619,8 @@ player_snapshot_capture_result capture_pets(P_char ch, int save_intent, player_s
 			snapshot.pets.back().order = order++;
 			snapshot.pets.back().room_vnum = snapshot.room_vnum;
 		}
-	if (save_intent != RENT_CRASH && save_intent != RENT_CRASH2)
+	if (save_intent != RENT_CRASH && save_intent != RENT_CRASH2 &&
+	    save_intent != RENT_POOFARTI && save_intent != RENT_SWAPARTI)
 		return player_snapshot_capture_result::ok;
 	std::unordered_set<const follow_type *> followers_seen;
 	for (const follow_type *follow = ch->followers; follow; follow = follow->next)
@@ -645,9 +646,13 @@ player_snapshot_capture_result capture_pets(P_char ch, int save_intent, player_s
 		row.vitality = GET_VITALITY(pet);
 		row.max_vitality = GET_MAX_VITALITY(pet);
 		row.charm_duration = -1;
-		if (pet->in_room < 0 || pet->in_room > top_of_world)
+		if (pet->in_room == NOWHERE)
+			// Offline maintenance loads followers without publishing them in a room.
+			row.room_vnum = snapshot.room_vnum;
+		else if (pet->in_room < 0 || pet->in_room > top_of_world)
 			return player_snapshot_capture_result::malformed_source;
-		row.room_vnum = world[pet->in_room].number;
+		else
+			row.room_vnum = world[pet->in_room].number;
 		if (!summoned_pet_capture(pet, &row.restore_state) ||
 		    !budget.add(row.restore_state.size()))
 			return player_snapshot_capture_result::malformed_source;
