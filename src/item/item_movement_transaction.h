@@ -34,7 +34,11 @@ enum class item_creation_prepare_result
 using item_creation_prepare_fn = std::function<item_creation_prepare_result(P_char, P_obj *)>;
 using item_creation_grant_completion_fn = void (*)(P_char actor, uint64_t item_uid, bool committed,
 						   unsigned int error_code);
-bool item_creation_grant_defer(P_char actor, item_creation_prepare_fn prepare);
+bool item_creation_grant_defer(P_char actor, item_creation_prepare_fn prepare,
+			       bool starter = false);
+// True means a saved grant was resumed, completed, or safely withheld.
+// False permits preparing the first kit, because no operation has been bound.
+bool item_creation_grant_resume_starter(P_char actor);
 void item_creation_grant_prepare_pulse(void);
 
 constexpr size_t ITEM_MOVEMENT_PENDING_MAX = 1024;
@@ -81,7 +85,8 @@ bool item_creation_grant_submit_to_player_with_completion(
 // Admit all detached roots before starting any ownership operation. A refused
 // batch leaves every object with the caller; an accepted batch owns every root.
 bool item_creation_grant_submit_batch_to_player_before_entry(P_char actor, P_obj const *objects,
-							     size_t count, P_char recipient);
+							     size_t count, P_char recipient,
+							     bool starter = false);
 // Ordinary command batch: one final callback after all roots are published or
 // terminally rejected. Refused admission leaves every root with the caller.
 bool item_creation_grant_submit_batch_to_player(P_char actor, P_obj const *objects, size_t count,

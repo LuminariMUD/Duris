@@ -267,14 +267,17 @@ def sexless_chaos_menu(client, server):
         reply(client, "z", RACE_MENU)
 
 
-def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=False, method=""):
+def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=False, method="", chaos=False):
     reply(client, "h", "Male or Female")
     if exercise_retries:
         reply(client, "?", "Please select either F")
-    reply(client, "m", "H (for Hardcore), N (for Normal)")
-    if exercise_retries:
-        reply(client, "?", "H (for Hardcore), N (for Normal)")
-    reply(client, "h" if choose_hardcore else "n", "Class Selection")
+    if chaos:
+        reply(client, "m", "Class Selection")
+    else:
+        reply(client, "m", "H (for Hardcore), N (for Normal)")
+        if exercise_retries:
+            reply(client, "?", "H (for Hardcore), N (for Normal)")
+        reply(client, "h" if choose_hardcore else "n", "Class Selection")
     client.expect(RACE_MENU)
     if exercise_retries:
         reply(client, "?", "Class Selection")

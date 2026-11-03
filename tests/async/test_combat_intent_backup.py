@@ -26,6 +26,25 @@ class CombatIntentBackupTests(Fixture):
         self.pending = self.store / ("c1" + "00" * 15 + ".intent")
         self.recorded = self.store / ("c2" + "00" * 15 + ".recorded")
 
+    def test_starter_evidence_precedes_authority_and_rejects_corruption(self):
+        import hashlib
+        store = self.p["journal_roots"]["critical"] / "starter-kits"
+        store.mkdir(mode=0o700)
+        (store / ".service-lock").touch(mode=0o600)
+        data = bytes([0]) + b"synthetic command qualified separately by native codec"
+        record = store / "42.kit"
+        record.write_bytes(data + hashlib.sha256(data).digest())
+        record.chmod(0o600)
+        stage = self.base / "starter-stage"
+        stage.mkdir(mode=0o700)
+        backup.journal_capture(stage, self.p, starter=True)
+        self.assertEqual((stage / "journals/critical/starter-kits/42.kit").read_bytes(), record.read_bytes())
+        record.write_bytes(b"x" + record.read_bytes()[1:])
+        other = self.base / "starter-invalid"
+        other.mkdir(mode=0o700)
+        with self.assertRaisesRegex(backup.BackupError, "journal_starter_checksum"):
+            backup.journal_capture(other, self.p, starter=True)
+
     def test_boot_lock_durable_evidence_temporaries_and_schedule(self):
         temporary = self.store / ("." + self.pending.name + ".tmp.123.4")
         temporary.write_bytes(b"unpublished partial command")

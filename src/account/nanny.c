@@ -872,9 +872,10 @@ bool chaos_kit_equipment_ready(P_char ch, P_char report_to)
 	return ready;
 }
 
-static void load_chaos_new_character_kit(P_char ch)
+static void load_chaos_new_character_kit(P_char ch, bool starter = false)
 {
-	if (!ch || IS_NPC(ch) || ch->carrying || item_movement_transaction_player_busy(ch))
+	if (!ch || IS_NPC(ch) || (!starter && ch->carrying) ||
+	    item_movement_transaction_player_busy(ch))
 		return;
 	const int class_id = flag2idx(ch->player.m_class);
 	if (class_id < 1 || class_id > CLASS_COUNT)
@@ -892,7 +893,7 @@ static void load_chaos_new_character_kit(P_char ch)
 	}
 
 	if (!item_creation_grant_submit_batch_to_player_before_entry(ch, kit.roots.data(),
-								     kit.count, ch))
+								     kit.count, ch, starter))
 	{
 		statuslog(56, "&+RALERT&n: CHAOS starter kit grant could not be queued");
 		send_to_char(
@@ -901,22 +902,6 @@ static void load_chaos_new_character_kit(P_char ch)
 		return;
 	}
 	kit.count = 0; // The coordinator now owns every root, including bag contents.
-}
-
-void schedule_chaos_new_character_kit_before_entry(P_char ch)
-{
-	if (!ch || !chaos_mud_enabled())
-		return;
-	mark_chaos_starter_reward_intents(ch);
-	if (!writeCharacter(ch, 2, NOWHERE))
-	{
-		statuslog(56, "&+RALERT&n: new-player baseline save failed; CHAOS kit withheld");
-		send_to_char(
-			"Your CHAOS equipment kit could not be prepared safely; please contact staff.\r\n",
-			ch);
-		return;
-	}
-	load_chaos_new_character_kit(ch);
 }
 
 void restore_chaos_character_kit(P_char staff, const char *name)
@@ -1158,7 +1143,8 @@ static P_obj materialize_legacy_newbie_item(P_char ch, const prepared_newbie_ite
 /** Reserve a PC kit now and prepare it in bounded slices on later game pulses. */
 void load_obj_to_newbies(P_char ch)
 {
-	if (!ch || item_movement_transaction_player_busy(ch) || (ch->carrying && IS_PC(ch)))
+	if (!ch || item_movement_transaction_player_busy(ch) ||
+	    (ch->carrying && IS_PC(ch) && !IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING)))
 		return;
 	if (IS_NPC(ch))
 	{
@@ -1190,7 +1176,8 @@ void load_obj_to_newbies(P_char ch)
 				    return item_creation_prepare_result::failed;
 			    return ++index == plan.size() ? item_creation_prepare_result::ready :
 							    item_creation_prepare_result::more;
-		    }))
+		    },
+		    IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING)))
 		send_to_char("Your starter kit is being prepared...\r\n", ch);
 	else
 		send_to_char(
@@ -1934,34 +1921,13 @@ void enter_game(P_desc d)
 
 	if (!GET_LEVEL(ch))
 	{
-		/* Finish all level-one initialization before writing the authority baseline,
-		 * but defer do_start's legacy item grant until that baseline is durable. */
+		// Level one is the durable initialization boundary. The kit waits for
+		// the final post-entry snapshot acknowledgment before submitting.
+		SET_BIT(ch->specials.act3, PLR3_STARTER_KIT_PENDING);
+		if (!IS_SET(ch->specials.act3, PLR3_KEPT_CHARACTER) && chaos_mud_enabled())
+			SET_BIT(ch->specials.act3, PLR3_CHAOS_STARTER_KIT);
 		do_start_deferred_newbie_kit(ch, 0);
-		/* Creation grants are durable item-transfer commands.  Establish the new
-		 * player's authority before the first grant is submitted; otherwise a
-		 * clean flat-file install rejects every starter item because the target
-		 * player does not exist yet. */
-		if (writeCharacter(ch, 1, NOWHERE))
-		{
-			/* Chaos equipment is queued before CON_PLAYING, after the accepted
-			 * rules baseline; only the legacy non-Chaos kit starts here. */
-			if (!chaos_mud_enabled())
-				load_obj_to_newbies(ch);
-		}
-		else
-		{
-			statuslog(
-				56,
-				"&+RALERT&n: new-player baseline save failed; starter kit withheld");
-			persistence_alert(AVATAR, "player", "redacted", "none", "none",
-					  "baseline_save_failed", NULL);
-			send_to_char(
-				"Your starter kit could not be granted safely; please contact staff.\r\n",
-				ch);
-		}
 	}
-	else if (IS_SET(ch->specials.act2, PLR2_NEWBIEEQ) && !ch->carrying)
-		load_obj_to_newbies(ch);
 
 	// hack to handle improperly set highest_level
 	if (ch->only.pc->highest_level > MAXLVL)
@@ -2116,6 +2082,15 @@ void enter_game(P_desc d)
 				  NULL);
 	}
 #endif
+	if (IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING) &&
+	    !item_creation_grant_resume_starter(ch))
+	{
+		if (IS_SET(ch->specials.act3, PLR3_CHAOS_STARTER_KIT))
+			load_chaos_new_character_kit(ch, true);
+		else
+			load_obj_to_newbies(ch);
+	}
+
 	sql_connectIP(ch);
 	sql_world_quest_history_load(ch);
 	epic_bonus_hydrate(ch);
@@ -4121,6 +4096,8 @@ std::map<int, kept_save> kept_saves;
 void decide_creation_approval(P_char ch)
 {
 	SET_BIT(ch->specials.act3, PLR3_KEPT_CHARACTER);
+	if (chaos_mud_enabled())
+		SET_BIT(ch->specials.act3, PLR3_CHAOS_STARTER_KIT);
 	if (approve_mode && !IS_TRUSTED(ch) && !pfile_exists("Players/Accepted", GET_NAME(ch)))
 		SET_BIT(ch->specials.act3, PLR3_APPROVAL_PENDING);
 	else
@@ -4356,8 +4333,6 @@ void continue_kept_character(P_desc d, bool created)
 			ws_finish_kept_character(d, true);
 		return;
 	}
-	if (chaos_mud_enabled())
-		schedule_chaos_new_character_kit_before_entry(ch);
 	if (d->websocket)
 		ws_finish_kept_character(d, created);
 	else

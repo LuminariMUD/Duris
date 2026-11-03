@@ -2125,7 +2125,6 @@ void load_obj_to_newbies(P_char);
 void nanny(P_desc, char *);
 void newby_announce(P_desc);
 void print_recommended_action(P_desc);
-void schedule_chaos_new_character_kit_before_entry(P_char);
 void restore_chaos_character_kit(P_char, const char *);
 bool chaos_kit_equipment_ready(P_char, P_char);
 void equip_chaos_kit(P_char);

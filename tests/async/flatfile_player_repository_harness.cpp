@@ -1,3 +1,5 @@
+#include "flatfile/flatfile_player_snapshot_file.h"
+#include "flatfile/flatfile_store.h"
 #include "economy/divine_trade_repository.h"
 #include "player/player_snapshot_codec.h"
 #include "flatfile/flatfile_world_quest_history.h"
@@ -1504,6 +1506,33 @@ int main(int argc, char **argv)
 		require(flatfile_spellbook_establish(root, {}, &error) ==
 				flatfile_spellbook_result::ok,
 			"empty spellbook authority: " + error);
+		return 0;
+	}
+	if (argc == 4 && std::string(argv[2]) == "starter-pending")
+	{
+		// Offline disposable fixture: simulate loss of the post-grant snapshot.
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_read(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			error);
+		bool found = false;
+		for (auto &field : snapshot.status_integers)
+			if (field.field == player_status_field::action_flags_3)
+			{
+				field.unsigned_value |= BIT_25;
+				field.signed_value |= BIT_25;
+				found = true;
+			}
+		require(found, "missing action flags in disposable fixture");
+		std::vector<uint8_t> bytes;
+		require(flatfile_player_snapshot_encode_file(&snapshot, &bytes),
+			"encode starter fixture");
+		require(flatfile_atomic_write(
+				flatfile_player_snapshot_file::player_directory(argv[1]),
+				flatfile_player_snapshot_file::player_filename(snapshot.pid), bytes,
+				&error),
+			error);
 		return 0;
 	}
 	if (argc == 5 && std::string(argv[2]) == "block-account")

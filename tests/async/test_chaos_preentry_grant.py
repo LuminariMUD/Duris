@@ -26,45 +26,23 @@ enter_game = NANNY.split("void enter_game", 1)[1].split("void reconnect", 1)[0]
 chaos_loader = NANNY.split("static void load_chaos_new_character_kit", 1)[1].split(
     "void load_obj_to_newbies", 1
 )[0]
-schedule_helper = NANNY.split("void schedule_chaos_new_character_kit_before_entry", 1)[1].split(
-    "void load_obj_to_newbies", 1
-)[0]
-approval_success = ACTWIZ.split("void do_approve", 1)[1].split("void do_invite", 1)[0]
-
-# The grant must have an explicit, non-blocking pre-entry mode.
-assert "item_creation_grant_submit_batch_to_player_before_entry" in TRANSACTION_H
-assert "allow_pre_entry" in TRANSACTION_C
-assert "announce_on_completion" in TRANSACTION_C
-assert "Your Chaos Equipment has been prepared!!" in TRANSACTION_C
-
-# Completing a new character must schedule after the baseline save and before the
-# transition to CON_RMOTD; the old enter_game submission must be gone.  The
-# rules-agreement gate that used to host this branch is retired, so it now lives
-# in the creation state that finishes the character.
-preentry_call = "schedule_chaos_new_character_kit_before_entry(d->character)"
-assert preentry_call in keepchar
+# Automatic first kits are now withheld throughout pre-entry/approval states.
+continuation = NANNY.split("void continue_kept_character", 1)[1].split("bool approve_kept_character", 1)[0]
+assert "load_chaos_new_character_kit" not in continuation
+assert "PLR3_STARTER_KIT_PENDING" in enter_game
+assert "item_creation_grant_resume_starter(ch)" in enter_game
+assert "load_chaos_new_character_kit(ch, true)" in enter_game
+assert enter_game.index("writeCharacter(ch, 1, NOWHERE)") < enter_game.index("item_creation_grant_resume_starter(ch)")
+assert "starter_kit_intent_bind(GET_PID(actor), command)" in TRANSACTION_C
+assert "queue.baseline" in TRANSACTION_C and "revision.written_revision" in TRANSACTION_C
+assert "starter_kit_intent_finish" in TRANSACTION_C
 
 # The retired gate must not come back.
 assert "official and legal response" not in NANNY
 assert "case CON_DISCLMR:" not in NANNY
 assert "case CON_GET_RETURN:" not in NANNY
-assert "writeCharacter(ch, 2, NOWHERE)" in schedule_helper
-assert schedule_helper.index("writeCharacter(ch, 2, NOWHERE)") < schedule_helper.index("load_chaos_new_character_kit(ch)")
-assert "load_chaos_new_character_kit(ch);" not in enter_game
 assert "item_creation_grant_submit_batch_to_player_before_entry(ch, kit.roots.data()," in chaos_loader
 assert "kit.count = 0;" in chaos_loader
-assert chaos_loader.index("if (!build_chaos_kit(ch, kit))") < chaos_loader.index("item_creation_grant_submit_batch_to_player_before_entry")
-assert chaos_loader.index("item_creation_grant_submit_batch_to_player_before_entry") < chaos_loader.index("kit.count = 0;")
-assert "item_creation_grant_mark_blocking(ch)" not in chaos_loader
-
-# Approval mode must withhold the grant while a character waits, then schedule
-# it only after staff records a successful approval.
-approval_call = "schedule_chaos_new_character_kit_before_entry(d1->character)"
-assert "void schedule_chaos_new_character_kit_before_entry(P_char);" in PROTOTYPES
-assert approval_call in approval_success
-assert approval_success.index("approve_name(GET_NAME(d1->character))") < approval_success.index(
-    approval_call
-)
 
 # A pre-entry direct-to-player grant may validate by durable PID ownership, but
 # target-container grants must not silently inherit this exception.

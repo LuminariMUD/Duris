@@ -86,12 +86,12 @@ def check_membership(server, sql):
         client.close()
 
 
-def character_choices(client, name="Taverek"):
+def character_choices(client, name="Taverek", *, chaos=False):
     creation.start_character(client)
     creation.reply(client, name, "Is this correct?")
     creation.reply(client, "y", "meet these criteria?")
     creation.reply(client, "y", creation.RACE_MENU)
-    creation.finish_character_choices(client)
+    creation.finish_character_choices(client, chaos=chaos)
 
 
 def websocket_character(client, name="Taverek"):

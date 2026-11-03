@@ -142,6 +142,7 @@
 #include "persistence/critical_outbox.h"
 #include "economy/currency_transaction.h"
 #include "item/item_movement_transaction.h"
+#include "item/starter_kit_intent.h"
 #include "item/item_ownership_runtime.h"
 #include "economy/shop_trade_transaction.h"
 #include "item/item_uid_allocator.h"
@@ -1251,6 +1252,9 @@ int run_the_game(int port, int sslport)
 	if (!locker_identify_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
 		logit(LOG_STATUS,
 		      "Locker identification unavailable: receipt storage could not initialize.");
+	if (!starter_kit_intent_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
+		logit(LOG_STATUS,
+		      "Starter kits unavailable: durable intent storage could not initialize.");
 	if (!combat_outcome_transaction_init(getenv("CRITICAL_COMMAND_JOURNAL_DIR")))
 		persistence_alert(AVATAR, "combat_outcome", "pipeline", "none", "none",
 				  "intent_recovery_failed",

@@ -1,6 +1,6 @@
 # Issue #612: durable Keep and resumable first entry
 
-Status: implementation in progress; open review stack [#628](https://github.com/LuminariMUD/Duris/pull/628) → [#632](https://github.com/LuminariMUD/Duris/pull/632) → [#634](https://github.com/LuminariMUD/Duris/pull/634) → [#635](https://github.com/LuminariMUD/Duris/pull/635) → [#636](https://github.com/LuminariMUD/Duris/pull/636). No production operation performed. Updated 2026-11-03.
+Status: implementation in progress; open review stack [#628](https://github.com/LuminariMUD/Duris/pull/628) → [#632](https://github.com/LuminariMUD/Duris/pull/632) → [#634](https://github.com/LuminariMUD/Duris/pull/634) → [#635](https://github.com/LuminariMUD/Duris/pull/635) → [#636](https://github.com/LuminariMUD/Duris/pull/636) → [#639](https://github.com/LuminariMUD/Duris/pull/639). No production operation performed. Updated 2026-11-03.
 
 - Work item: [Duris #612](https://github.com/LuminariMUD/Duris/issues/612).
 - GitHub Development branch: [branch/issue-612-kept-character-resume](https://github.com/LuminariMUD/Duris/tree/branch/issue-612-kept-character-resume).
@@ -30,7 +30,9 @@ Existing broken records receive a guarded, testable repair/release path. Ownersh
 - **Reconciliation Git handoff:** [PR #635](https://github.com/LuminariMUD/Duris/pull/635), implementation `352e098aa`, targets #634 from `branch/issue-612-creation-ack` and is ready for review. Next work will qualify and fix the pre-entry connection-override lifetime boundary before changing acknowledgment transitions.
 - **Takeover qualification:** [PR #636](https://github.com/LuminariMUD/Duris/pull/636), `branch/issue-612-preentry-override`, implementation `ef895b288`, targets #635 and is ready for review. The maintained socket journey now tests Telnet and WebSocket takeover of an ordinary kept level-0 character on both backends, compares the same PID and all ten stored base stats before/after first entry, and cold-restarts/relogs again. All four cases pass on existing runtime code. Telnet authentication closes the old same-account descriptor before selection; WebSocket `enter` closes the matching pre-entry descriptor before queuing account confirmation. The source-risk branch in `is_char_in_game()` was not exercised by these normal journeys, so this chunk adds verification rather than a speculative runtime patch. Preserve these controls and requalify the lifetime boundary when the new asynchronous saving state makes additional pre-entry states reachable; the planned PID/owner checks and approval routing remain part of steps 3–4.
 - **Durable Keep implementation:** primary worktree `/home/aiwithapex/projects/duris-issue-612-kept-characters` is on `branch/issue-612-durable-keep`, based on #636's `ef895b288`. The common saving-state implementation is locally qualified for ordinary and accepted-name Keep, approval, mixed-transport takeover, delayed completion and confirmed failure/retry. `nanny.c` tracks immutable PID/revision/name/account/runtime/request context and consumes player-save completions after outstanding PID jobs settle. Keep and approval updates use existing `wait_for_writer` IDs; decline uses `delete_character(..., done)`. Saved `PLR3_KEPT_CHARACTER`/`PLR3_APPROVAL_PENDING` bits preserve the decision across reconnect/configuration changes. Level-0 selection routes to the shared continuation; non-playing override closes/reloads a verified PID/account. Flat-file reservations exist in memory until commit, and `publish_initial_character_baseline()` shares post-commit bank/item/membership publication. A `creation_not_committed` result distinguishes a proven empty initial attempt from an uncertain failed retry. No production operations. This chunk does not finish starter-grant durability, guarded recovery or the final Chaos/fault acceptance matrix.
-- **Next:** implement creation acknowledgment/cleanup, approval/first-entry/grant resumption and guarded recovery on dependent branches. Keep this section current with PR links, exact passing commands and unresolved gates. Neither delivery chunk completes #612.
+- **Durable Keep Git handoff:** [PR #639](https://github.com/LuminariMUD/Duris/pull/639), `fcaa29209`, targets #636 and is ready for review.
+- **Active chunk:** `branch/issue-612-starter-grants` depends on #639. First kits now move after level-one initialization; full operation/UID binding is being implemented in the existing critical-command journal directory using the existing atomic store and item-transfer coordinator. Local qualification is still pending.
+- **Next:** finish starter-grant durability and guarded recovery, then qualify the final acceptance matrix. Keep this section current with PR links, exact passing commands and unresolved gates. Neither delivery chunk completes #612.
 - Synthetic build/test logs are under ignored `bin/tests/issue-612-*`. Pre-change evidence: `issue-612-before-mariadb.log` and `issue-612-before-flatfile.log`. No credentials, runtime state, generated artifacts or production identifiers are tracked.
 
 Chunk-1 proof (all passed locally on 2026-11-03):
@@ -71,7 +73,7 @@ git diff --check
 
 The executable repository fixture rejects an unpublished first commit without any identity/domain/snapshot, recovers after the journal and each of five after-images, preserves all captured status fields and authoritative stats, retains membership count/time, and verifies replay, name competition, tombstones and monotonic PID allocation across recovery. Ordinary wallet, trade receipt and bank/deletion journeys remain green. Four harness manifests now link the account repository used to validate an initial owner.
 
-Additional details for the next implementation session:
+Historical acknowledgment notes (superseded by the durable Keep and starter-grant chunks below):
 
 - Flat-file `sql_player_names_set/hold/release` are currently no-ops and name checks use the persistent catalog. The upcoming asynchronous saving state must retain an attempt-scoped reservation until the writer resolves, including after descriptor loss; repository competition guards alone do not prove the pending-name policy.
 - A rollback of a retry transaction does not prove that an earlier ambiguous first commit never landed. Completion cleanup must reconcile the exact committed identity before releasing a reservation. Qualify an account being blocked after commit/before reconciliation too, and preserve a committed Keep while entry is denied.
@@ -295,3 +297,41 @@ Completion requires every acceptance scenario above, clean changed-line formatti
 This planning pass read current source/callers/tests and relevant diffs from the issue's base, verified the GitHub Development branch link and inspected the staged additions. Local-link existence checks and byte-for-byte preservation of the prior #584 plan passed; `git diff --cached --check` passed. No C/C++ changed, so no build, database test, or gameplay qualification was run or claimed for this documentation-only commit.
 
 Estimate for me to implement and locally validate the complete scope: **12-18 active hours**, including approximately 4-6 hours for both initial commit paths/codec/completion handling, 3-4 hours for resume/approval/grants, 1-2 hours for guarded recovery, and 4-6 hours for regression journeys, fault/restart qualification, and final review. This is agent execution time, not a human-team estimate. It includes the acceptance coverage above; production deployment/repair and time waiting for external ownership evidence are excluded. The main uncertainty is the required durable kit-operation binding and flat-file initial transaction/lock refactor; revise the estimate if those traces reveal additional compatibility work.
+
+## Starter-grant chunk: implementation and proof
+
+`branch/issue-612-starter-grants` depends on PR #639. Automatic Chaos and ordinary kits now start only after first-entry initialization, with a saved pending bit and frozen kit kind. A level-zero pre-entry disconnect creates no kit or detached inventory; this removes the old pre-entry-body/item lifetime boundary rather than adding another cleanup path. Level one remains the durable initialization boundary. The queue requires the initialization's current revision to be written, including after a refused capture; an older baseline cannot admit a grant.
+
+The existing item-transfer coordinator has only volatile pending commands, so it cannot supply a restart binding by itself. A narrow `starter-kits/<pid>.kit` record under `CRITICAL_COMMAND_JOURNAL_DIR` retains the complete checksummed command, operation ID, item UIDs, and pending/committed/rejected result. It is atomically written before submission. Queue refusals and reconnects retain that exact command. Both repositories supply existing idempotent receipts; replay recognizes already hydrated matching custody without rewinding its revisions. Completion records survive item consumption, so inventory emptiness never causes a fresh automatic kit. Manual staff Chaos restoration remains an explicit independent grant. No new schema, service, background queue, or generic workflow framework was added.
+
+Backup captures starter evidence before the authority snapshot, as it already does for combat intents, and the native restore qualifier validates the PID, command, checksum and permissions. Preserve this directory with the database/native state; pending or corrupt evidence must not be deleted to force a regrant. Unknown/rejected grants remain retained for staff investigation. No production operation or release tag has occurred.
+
+Local proof on 2026-11-03:
+
+- Both server builds passed. `test_starter_kit_intent.py` executes reopen/replay binding, replacement/cross-PID refusal, terminal rejection and checksum corruption.
+- `test_item_movement_prompt_runtime.py` executes the production queue with initialization not yet written, process-state loss before application, exact-command replay, one live publication and a durable completion marker; its existing prompt/transport/batch controls pass too. The transport fixture now sends real file writes to the filesystem instead of swallowing them through its `write()` wrapper.
+- Full-world `test_character_stat_choice_journey.py --full-world` passed Telnet default/advanced and WebSocket default/advanced/legacy creation, kit readiness and cold relog with all ten saved stats preserved.
+- Full-world `test_kept_starter_grant_journey.py` passed flat-file ordinary Telnet, ordinary WebSocket and Chaos Telnet; MariaDB ordinary Telnet and Chaos WebSocket. It checks pre-entry disconnect with no kit, a committed transfer with lost callback and an older pending snapshot, exact operation/UID reuse, account entry and unchanged stats/level. Actual records also pass the native restore qualifier.
+- `test_combat_intent_backup.py` passed all eight tests, including starter evidence capture and corruption rejection; the native restore qualifier builds. Relevant Chaos source contracts and preparation runtime pass.
+
+Exact representative commands (all paths relative to the worktree):
+
+```sh
+make -C src -j8
+make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/issue-612-flatfile -j8
+python3 tests/async/test_starter_kit_intent.py
+python3 tests/async/test_item_movement_prompt_runtime.py
+python3 tests/async/test_character_stat_choice_journey.py --binary bin/issue-612-flatfile/server/dms_new --full-world
+python3 tests/async/test_kept_starter_grant_journey.py --backend flatfile --server bin/issue-612-flatfile/server/dms_new --chaos
+bash tests/async/with_disposable_mariadb.sh python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server bin/server/dms_new --chaos --transport websocket
+python3 tests/async/test_combat_intent_backup.py
+python3 scripts/build_restore_qualifier.py
+python3 tests/async/test_chaos_preentry_grant.py
+python3 tests/async/test_chaos_infinite_starting_grants.py
+python3 tests/async/test_chaos_new_character_kit.py
+python3 tests/async/test_chaos_kit_runtime.py
+./scripts/format.sh --check
+git diff --check
+```
+
+Next required chunk: privileged guarded inspect/attach/release and its operations guide. Final acceptance still includes the complete approval/accepted-name/Chaos matrix, recovery refusal/rollback/pending-work fixtures, name competition and fault/restart evidence. Issue #612 must remain open until those gates pass.

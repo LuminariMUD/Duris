@@ -958,6 +958,8 @@ struct room_data
 #define PLR3_NOGMCP BIT_22 /* Player has disabled GMCP */
 #define PLR3_KEPT_CHARACTER BIT_23 /* approval policy was decided at Keep */
 #define PLR3_APPROVAL_PENDING BIT_24 /* staff decision survives disconnect/restart */
+#define PLR3_STARTER_KIT_PENDING BIT_25 /* first entry owes its bound kit */
+#define PLR3_CHAOS_STARTER_KIT BIT_26 /* kit policy decided before first entry */
 
 /* For players : Prompt flags (16 bits max) */
 #define PROMPT_NONE BIT_1
