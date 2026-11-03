@@ -145,14 +145,55 @@ exits. Cyric's footprint fills an unused grid square; the other seven replace
 mountain squares. All seven unrelated markers retain their original routes. The travel rooms keep their terrain and reciprocal zone exits,
 including the Mushroom Caverns pool and the falling Underworld Shafts passage.
 
+## Surface entrance markers and Temple of the Sun
+
+For [issue #610](https://github.com/LuminariMUD/Duris/issues/610), every reported
+entrance is to have a visible marker, including secondary entrances and small
+caves. The approved footprints and reciprocal travel routes are:
+
+- Caves of Mt. Skelenak: marker `557270` east of
+  `557269 E <-> 4125 W`, and marker `557276` south of
+  `556876 S <-> 4131 N`.
+- Kimordril: marker `543261` north of `543661 N <-> 95658 S`.
+  Its other existing markers and entrances remain in place.
+- Lylrstas: marker `541276`, labeled `Lylrstas`, south of
+  `540876 S <-> 82200 N`.
+- Northern Lakes and Settlements: marker `537888` west of
+  `537889 W <-> 75337 E`, at Murar Falls. The approach remains water.
+- Gorblaat's Cave: marker `612285` north of `612685 N <-> 97900 S`.
+  This label identifies the cave component of the surface minizones.
+- Valley of Crushk: the existing `547733` footprint is renamed for the zone
+  and uses the zone sector, north of `548133 N <-> 2060 S`.
+- The Temple of the Sun: marker `554129` on EM/GC at grid `(129,135)`,
+  east of `554128 E <-> 82493 W`, in the light and spacious forest beside
+  the coastal highway. This replaces `541275 E <-> 82493 W` and separates
+  the Temple from Lylrstas. The old approach stays forest without an east
+  exit into the Lylrstas marker. Fort Marigot retains
+  `519317 E <-> 5315 W` at the Temple's historical site.
+
+All eight footprints use `SECT_INSIDE` and the existing marker flags, retain
+any additional existing flags, and have no incoming exits. Actual travel rooms
+retain their terrain, and all unrelated zone interiors, resets and quests stay
+intact. The new Temple footprint replaces one forest square; every other
+previously reachable mainland land room remains connected.
+
+Meopham's marker placement is the remaining owner decision. Until it is chosen,
+`538881` stays forest, `539281 N <-> 538881 S` stays open, and
+`539281 U <-> 82240 D` plus the older `82240 S -> 539281` remain intact.
+Restoring the historical marker at `538881` and the historical
+`539281 N <-> 82240 S` entrance would deliberately replace that forest route;
+an alternative footprint can preserve the current route.
+
 ## Verification commands and boundaries
 
 ```sh
 python3 tests/async/test_issue37_zone_routes.py
 python3 tests/async/test_ud_zone_markers.py
+python3 tests/async/test_surface_zone_markers.py
 make world
 python3 tests/async/test_issue37_zone_routes.py --generated
 python3 tests/async/test_ud_zone_markers.py --generated
+python3 tests/async/test_surface_zone_markers.py --generated
 python3 tests/async/test_falling_world_exits.py
 python3 tests/async/test_documentation_contract.py
 ```

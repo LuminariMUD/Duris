@@ -786988,10 +786988,6 @@ D1
 ~
 ~
 0 0 537489
-D2
-~
-~
-0 0 537888
 D3
 ~
 ~
@@ -795367,10 +795363,6 @@ D0
 ~
 ~
 0 0 537487
-D1
-~
-~
-0 0 537888
 D2
 ~
 ~
@@ -795381,9 +795373,9 @@ D3
 0 0 537886
 S
 #537888
-&+LAn &+CIc&+cy M&+Lou&+Cnt&+cai&+Ln P&+Cea&+ck&n~
+Northern Lakes and Settlements~
 ~
-5000 0 5 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -803780,10 +803772,6 @@ S
 &+LAn &+CIc&+cy M&+Lou&+Cnt&+cai&+Ln P&+Cea&+ck&n~
 ~
 5000 0 5 0
-D0
-~
-~
-0 0 537888
 D1
 ~
 ~
@@ -866473,10 +866461,6 @@ D0
 ~
 ~
 0 0 540875
-D1
-~
-~
-0 0 82493
 D2
 ~
 ~
@@ -866487,7 +866471,7 @@ D3
 0 0 541274
 S
 #541276
-Lylr~
+Lylrstas~
 ~
 5000 134250688 0 0
 D0
@@ -899771,10 +899755,6 @@ D1
 ~
 ~
 0 0 542862
-D2
-~
-~
-0 0 543261
 D3
 ~
 ~
@@ -908130,10 +908110,6 @@ D0
 ~
 ~
 0 0 542860
-D1
-~
-~
-0 0 543261
 D2
 ~
 ~
@@ -908144,9 +908120,9 @@ D3
 0 0 543259
 S
 #543261
-&+LMountains of the Great Divide&n~
+Kimordril~
 ~
-5000 0 5 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -908180,10 +908156,6 @@ D2
 ~
 ~
 0 0 543662
-D3
-~
-~
-0 0 543261
 S
 #543263
 &+LMountains of the Great Divide&n~
@@ -1002045,9 +1002017,9 @@ D3
 0 0 547731
 S
 #547733
-&+cPharr Mountains~
+Valley of Crushk~
 ~
-5000 134250692 5 0
+5000 134250692 0 0
 D0
 ~
 ~
@@ -1127925,10 +1127897,6 @@ D1
 ~
 ~
 0 0 553730
-D2
-~
-~
-0 0 554129
 D3
 ~
 ~
@@ -1136301,9 +1136269,10 @@ D0
 ~
 0 0 553728
 D1
+A woodland path leads east into the Temple of the Sun.
 ~
 ~
-0 0 554129
+0 0 82493
 D2
 ~
 ~
@@ -1136314,9 +1136283,9 @@ D3
 0 0 554127
 S
 #554129
-&+gA Light and Spacious Forest&n~
+The Temple of the Sun~
 ~
-5000 0 3 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1136350,10 +1136319,6 @@ D2
 ~
 ~
 0 0 554530
-D3
-~
-~
-0 0 554129
 S
 #554131
 &+gEndless Plains of Grassy Pastures&n~
@@ -1144717,10 +1144682,6 @@ S
 &+gEndless Plains of Grassy Pastures&n~
 ~
 5000 0 2 0
-D0
-~
-~
-0 0 554129
 D1
 ~
 ~
@@ -1193902,10 +1193863,6 @@ D1
 ~
 ~
 0 0 556871
-D2
-~
-~
-0 0 557270
 D3
 ~
 ~
@@ -1202275,9 +1202232,9 @@ D3
 0 0 557268
 S
 #557270
-&+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
+Caves of Mt. Skelenak~
 ~
-5000 0 5 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1202311,10 +1202268,6 @@ D2
 ~
 ~
 0 0 557671
-D3
-~
-~
-0 0 557270
 S
 #557272
 &+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
@@ -1202387,10 +1202340,6 @@ D0
 ~
 ~
 0 0 556875
-D1
-~
-~
-0 0 557276
 D2
 ~
 ~
@@ -1202401,9 +1202350,9 @@ D3
 0 0 557274
 S
 #557276
-&+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
+Caves of Mt. Skelenak~
 ~
-5000 0 5 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -1202437,10 +1202386,6 @@ D2
 ~
 ~
 0 0 557677
-D3
-~
-~
-0 0 557276
 S
 #557278
 &+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
@@ -1210674,10 +1210619,6 @@ S
 &+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
 ~
 5000 0 5 0
-D0
-~
-~
-0 0 557270
 D1
 ~
 ~
@@ -1210800,10 +1210741,6 @@ S
 &+yThe Picturesque &+CMisty &+yMountains of &+BLake Kilfray&n~
 ~
 5000 0 5 0
-D0
-~
-~
-0 0 557276
 D1
 ~
 ~
@@ -2348984,10 +2348921,6 @@ D1
 ~
 ~
 0 0 611886
-D2
-~
-~
-0 0 612285
 D3
 ~
 ~
@@ -2357355,10 +2357288,6 @@ D0
 ~
 ~
 0 0 611884
-D1
-~
-~
-0 0 612285
 D2
 ~
 ~
@@ -2357369,9 +2357298,9 @@ D3
 0 0 612283
 S
 #612285
-&+yThe &+wCloudy &+ySlopes of the &+LDark&+yPeak Mountains&n~
+Gorblaat's Cave~
 ~
-5000 0 5 0
+5000 134250688 0 0
 D0
 ~
 ~
@@ -2357405,10 +2357334,6 @@ D2
 ~
 ~
 0 0 612686
-D3
-~
-~
-0 0 612285
 S
 #612287
 &+yThe &+wCloudy &+ySlopes of the &+LDark&+yPeak Mountains&n~
