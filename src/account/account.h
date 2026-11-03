@@ -135,6 +135,14 @@ void account_apply_recovered_password(
 	struct acct_entry *fresh, const char *bcrypt_hash,
 	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
 	struct descriptor_data *keep_session, account_recovery_apply_done done);
+// Create a fresh account without overwriting an existing name. Acknowledgment
+// follows durable storage, and the callback only runs for a live session.
+void account_create(struct descriptor_data *d,
+		    std::function<void(struct descriptor_data *, bool)> done);
+void account_apply_verified_email(
+	struct acct_entry *fresh, const char *email,
+	const unsigned char expected_fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN],
+	struct descriptor_data *keep_session, account_recovery_apply_done done);
 /* Reads the named account: on the writer, behind the saves queued before it, while d
  * waits with its input held (MariaDB), or at once (flat-file). done runs while d is still
  * connected, with the account, which it then owns, or null when there is none; ok is

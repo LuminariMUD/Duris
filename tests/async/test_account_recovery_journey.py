@@ -499,8 +499,8 @@ def enter_account_name(client: MudClient, name: str = ACCOUNT) -> None:
     client.send(name)
 
 
-def create_account(client: MudClient, password: str, *, name: str = ACCOUNT) -> None:
-    """Create ACCOUNT with EMAIL on file and stop at the account menu."""
+def enter_account_details(client: MudClient, password: str, *, name: str = ACCOUNT) -> None:
+    """Fill a registration up to its final confirmation, without saving."""
     enter_account_name(client, name)
     client.expect("is this correct?")
     client.send("y")
@@ -513,9 +513,23 @@ def create_account(client: MudClient, password: str, *, name: str = ACCOUNT) -> 
     client.expect("Please re-enter the same password to confirm:  ")
     client.send(password)
     client.expect("information correct?")
+
+
+def create_account(client: MudClient, password: str, smtp: FakeSmtpServer | None = None,
+                   *, name: str = ACCOUNT) -> None:
+    """Register and verify the inbox when a local SMTP fixture is supplied."""
+    enter_account_details(client, password, name=name)
     client.send("y")
-    client.expect("PRESS RETURN")
-    client.send("")
+    if smtp is not None:
+        client.expect("Enter the email verification code (or CANCEL): ")
+        payload = smtp.wait_for_payloads(1, timeout=20)[0]
+        match = re.search(rb"Verification code: ([0-9a-f-]{35})", payload)
+        require(match is not None, "registration did not email an inbox verification code")
+        client.send(match[1].decode())
+        client.expect("Email verified and saved")
+    else:
+        client.expect("PRESS RETURN")
+        client.send("")
     client.expect("Please select an option")
 
 
@@ -600,7 +614,10 @@ def run_enabled_journey(binary: pathlib.Path) -> None:
                 server.wait_for_status_line(BOOT_ENABLED_LINE)
 
                 client = MudClient(server.plain_port)
-                create_account(client, OLD_PASSWORD)
+                create_account(client, OLD_PASSWORD, smtp)
+                with smtp.lock:
+                    smtp.payloads.clear()
+                    smtp.connections = 0
                 leave_account_menu(client)
                 client = None
 

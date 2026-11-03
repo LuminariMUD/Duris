@@ -27,6 +27,54 @@ def choose_password(client, code, password):
     client.send(password)
 
 
+def check_registration_guards(server, sql):
+    """A delayed Telnet confirmation cannot overwrite a committed web signup."""
+    account = "Claimrace"
+    stale = journey.MudClient(server.plain_port)
+    claimant = WebSocketClient(server.websocket_port)
+    try:
+        journey.enter_account_details(stale, journey.NEW_PASSWORD, name=account)
+        auth = claimant.command("register", {"account": account, "password": journey.OLD_PASSWORD,
+                                             "email": "claim@example.invalid"}, "auth")
+        assert auth["status"] == "success", auth
+        deadline = time.monotonic() + 10
+        original = ""
+        while not original:
+            original = sql("SELECT password FROM accounts WHERE account_name='Claimrace'")
+            assert time.monotonic() < deadline, "the first signup never landed"
+            if not original:
+                time.sleep(0.05)
+        # A normal account save refreshes same-name caches, including the stale
+        # form. Even a copied winning hash cannot prove its first INSERT applied.
+        result = claimant.command("change_password", {"currentPassword": journey.OLD_PASSWORD,
+                                  "newPassword": "WinnerOnlyFixturePassword"}, "account")
+        assert result["action"] == "password_changed", result
+        deadline = time.monotonic() + 10
+        while True:
+            rotated = sql("SELECT password FROM accounts WHERE account_name='Claimrace'")
+            if rotated != original:
+                break
+            assert time.monotonic() < deadline, "winner's password update did not land"
+            time.sleep(0.05)
+        original = rotated
+        issues = []
+        if sql("SELECT email FROM accounts WHERE account_name='Claimrace'") != "":
+            issues.append("mail-disabled signup saved an unverified recovery address")
+        stale.send("y")
+        answer, _ = stale.expect_any(("Account could not be created", "Account created successfully"))
+        if answer == "Account created successfully":
+            stale.expect("PRESS RETURN")
+            stale.send("")
+            stale.expect("Please select an option")
+            issues.append("stale Telnet signup entered the winner's account menu without its password")
+        if sql("SELECT password FROM accounts WHERE account_name='Claimrace'") != original:
+            issues.append("stale Telnet signup overwrote the committed password")
+        assert not issues, "; ".join(issues)
+    finally:
+        claimant.close()
+        stale.close()
+
+
 def run(binary):
     database = "recovery_test_" + uuid.uuid4().hex[:12]
     host = os.environ["TEST_DB_HOST"]
@@ -73,7 +121,7 @@ def run(binary):
         raise AssertionError("reset never reached its transaction")
 
     @contextmanager
-    def boot(extra_environment=None):
+    def boot(extra_environment=None, *, mail_enabled=True):
         def prepare(runtime):
             # Match the other gameplay journeys' short, isolated camping timer.
             properties = runtime / "lib/duris.properties"
@@ -83,7 +131,7 @@ def run(binary):
 
         smtp = journey.FakeSmtpServer()
         try:
-            with journey.IsolatedServer(binary, dict(environment, MAIL_ENABLED="TRUE",
+            with journey.IsolatedServer(binary, dict(environment, MAIL_ENABLED="TRUE" if mail_enabled else "FALSE",
                     MAIL_HOST=host, MAIL_PORT=str(smtp.port), MAIL_TLS="FALSE",
                     MAIL_FROM=journey.MAIL_FROM, **(extra_environment or {})),
                     prepare_run_root=prepare) as server:
@@ -111,9 +159,74 @@ def run(binary):
             subprocess.run(["python3", "scripts/migration_runner.py", *args], cwd=journey.ROOT,
                            env=environment, check=True, capture_output=True)
 
+        with boot(mail_enabled=False) as (server, _):
+            check_registration_guards(server, sql)
+        print("PASS: first signup wins and mail-disabled registration stores no unverified address", flush=True)
+
+        with boot() as (server, smtp):
+            client = WebSocketClient(server.websocket_port)
+            try:
+                auth = client.command("register", {"account": "Emailowner", "password": journey.OLD_PASSWORD,
+                    "email": "owner@example.invalid"}, "auth")
+                assert auth["status"] == "success"
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == "", \
+                    "unverified registration stored a recovery destination"
+                payload = smtp.wait_for_payloads(1, timeout=20)[0]
+                match = journey.re.search(rb"Verification code: ([0-9a-f-]{35})", payload)
+                assert match, "registration did not send an inbox challenge"
+                code = match[1].decode()
+                response = client.command("confirm_email", {"code": "wrong"}, "account")
+                # Registration also emits its pending-code acknowledgement.
+                if response["action"] == "email_verification_requested":
+                    response = client.receive()
+                assert response["action"] == "error"
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == ""
+                sql("CREATE TRIGGER reject_email BEFORE UPDATE ON accounts FOR EACH ROW "
+                    "SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='synthetic email write failure'")
+                response = client.command("confirm_email", {"code": code}, "account")
+                assert response["action"] == "error" and "saved" in response["error"]
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == ""
+                sql("DROP TRIGGER reject_email")
+                response = client.command("confirm_email", {"code": code}, "account")
+                assert response["action"] == "email_changed"
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == "owner@example.invalid"
+                response = client.command("confirm_email", {"code": code}, "account")
+                assert response["action"] == "error", "verification code was reusable"
+                response = client.command("request_reset", {"account": "Emailowner"}, "account")
+                assert response["action"] == "reset_requested"
+                reset_code = journey.CODE_PATTERN.search(smtp.wait_for_payloads(2, timeout=20)[1])[1].decode()
+                response = client.command("confirm_email", {"code": reset_code}, "account")
+                assert response["action"] == "error", "reset token verified an email address"
+                response = client.command("complete_reset", {"account": "Emailowner", "code": code,
+                    "newPassword": journey.NEW_PASSWORD}, "account")
+                assert response["action"] == "error", "verification token reset a password"
+                journey.require_no_secret_leak(server, (code, code.replace("-", ""), "owner@example.invalid"))
+            finally:
+                client.close()
+        print("PASS: inbox ownership, durable failure/retry, single use and purpose isolation", flush=True)
+
+        with boot() as (server, smtp):
+            client = WebSocketClient(server.websocket_port)
+            try:
+                client.command("login", {"account": "Emailowner", "password": journey.OLD_PASSWORD}, "auth")
+                response = client.command("change_email", {"newEmail": "replacement@example.invalid"}, "account")
+                assert response["action"] == "email_verification_requested"
+                payload = smtp.wait_for_payloads(1, timeout=20)[0]
+                code = journey.re.search(rb"Verification code: ([0-9a-f-]{35})", payload)[1].decode()
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == "owner@example.invalid"
+                response = client.command("confirm_email", {"code": code}, "account")
+                assert response["action"] == "email_changed"
+                assert sql("SELECT email FROM accounts WHERE account_name='Emailowner'") == "replacement@example.invalid"
+            finally:
+                client.close()
+        print("PASS: existing account keeps its recovery inbox until replacement is verified", flush=True)
+
         with boot() as (server, smtp):
             other = journey.MudClient(server.plain_port)
-            journey.create_account(other, journey.OLD_PASSWORD)
+            journey.create_account(other, journey.OLD_PASSWORD, smtp)
+            with smtp.lock:
+                smtp.payloads.clear()
+                smtp.connections = 0
             original = stored_password()
             # Legacy SQL NULL has the same unblocked meaning as account loading.
             sql(f"UPDATE accounts SET blocked=NULL WHERE account_name='{journey.ACCOUNT}'")
@@ -216,6 +329,37 @@ def run(binary):
                            cwd=journey.ROOT, check=True)
             arm = runtime / "commit-fault"
             reached = Path(str(arm) + ".reached")
+            for mode, name in (("before", "Ackbefore"), ("after", "Ackafter")):
+                with boot({"LD_PRELOAD": str(preload),
+                           "DURIS_TEST_RECOVERY_COMMIT_FAULT": str(arm)},
+                          mail_enabled=False) as (server, _):
+                    client = journey.MudClient(server.plain_port)
+                    try:
+                        journey.enter_account_details(client, journey.OLD_PASSWORD, name=name)
+                        arm.write_text(mode)
+                        client.send("y")
+                        deadline = time.monotonic() + 20
+                        while not reached.exists():
+                            assert time.monotonic() < deadline, "registration COMMIT fault was not reached"
+                            time.sleep(0.05)
+                        password_query = f"SELECT password FROM accounts WHERE account_name='{name}'"
+                        committed = sql(password_query)
+                        assert bool(committed) == (mode == "after")
+                        client._receive()
+                        assert b"Account created successfully" not in client.transcript
+                        arm.unlink()
+                        client.expect("Account created successfully")
+                        client.expect("PRESS RETURN")
+                        client.send("")
+                        client.expect("Please select an option")
+                        final = sql(password_query)
+                        assert final and (not committed or final == committed)
+                        assert sql(f"SELECT email FROM accounts WHERE account_name='{name}'") == ""
+                    finally:
+                        arm.unlink(missing_ok=True)
+                        reached.unlink(missing_ok=True)
+                        client.close()
+            print("PASS: registration reconciles lost COMMIT replies before and after application", flush=True)
             for mode, old, new in (("before", journey.OLD_PASSWORD, journey.NEW_PASSWORD),
                                    ("after", journey.NEW_PASSWORD, journey.OLD_PASSWORD)):
                 with boot({"LD_PRELOAD": str(preload),

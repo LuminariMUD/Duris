@@ -29,6 +29,7 @@ EXPECTED_SECTIONS = (
     "render",
     "canonical_name",
     "a_request_renders_mail",
+    "email_verification",
     "b_suppressed_tombstone",
     "c_canonical_keying",
     "d_check_normalises_without_consuming",

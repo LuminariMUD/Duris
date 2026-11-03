@@ -3,9 +3,10 @@
  *
  * MAIN THREAD ONLY, no mutex.  A RAM token store keyed by canonical account
  * name, a per-host request window, and the boot/pulse/shutdown glue around the
- * mail_sender worker.  Nothing here loads an account or touches a descriptor;
- * the telnet and WebSocket adapters own all player I/O.  Only SHA256 digests of
- * codes persist in memory; every plaintext buffer is cleansed before it goes
+ * mail_sender worker. The authenticated email-completion adapter reads a fresh
+ * account before applying its pending address; the telnet and WebSocket adapters
+ * own all player I/O. Only SHA256 digests of codes persist in the token store;
+ * every plaintext buffer is cleansed before it goes
  * out of scope, and no log line ever carries a code, an address, a host or an
  * account name.
  */
@@ -23,6 +24,7 @@
 #include <openssl/sha.h>
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -60,6 +62,7 @@ struct recovery_entry
 	bool live = false;
 	bool verified = false;
 	uint64_t request_id = 0; /* mail job id; 0 when nothing was queued */
+	std::string pending_email; /* nonempty only for an inbox-ownership challenge */
 };
 
 struct host_slot
@@ -78,6 +81,8 @@ struct code_buffer
 	~code_buffer() { OPENSSL_cleanse(text, sizeof text); }
 };
 
+/* Account creation excludes ':'. A suffix separates the two purposes while
+ * retaining one bounded store and the shared per-host request budget. */
 std::unordered_map<std::string, recovery_entry> entries;
 host_slot host_slots[ACCOUNT_RECOVERY_HOST_SLOTS];
 time_t (*clock_fn)(void) = nullptr;
@@ -311,7 +316,7 @@ std::unordered_map<std::string, recovery_entry>::iterator find_by_request_id(uin
 }
 
 /* ASCII by construction: the canonical name is printable ASCII, the code is hex. */
-std::string render_body(const char *canonical_name, const char *code)
+std::string render_body(const char *canonical_name, const char *code, bool email_verification)
 {
 	std::string display(canonical_name);
 	if (!display.empty() && display[0] >= 'a' && display[0] <= 'z')
@@ -320,9 +325,10 @@ std::string render_body(const char *canonical_name, const char *code)
 	/* Reserve up front so no discarded reallocation keeps a copy of the code. */
 	std::string body;
 	body.reserve(512);
-	body += "Someone asked to reset the password of the Duris account ";
+	body += email_verification ? "Someone asked to register this email for the Duris account " :
+				     "Someone asked to reset the password of the Duris account ";
 	body += display;
-	body += ".\r\n\r\nReset code: ";
+	body += email_verification ? ".\r\n\r\nVerification code: " : ".\r\n\r\nReset code: ";
 	for (size_t index = 0; index < ACCOUNT_RECOVERY_CODE_HEX_LEN; ++index)
 	{
 		if (index && index % 8 == 0)
@@ -396,7 +402,7 @@ void notice_evictions(time_t now)
 account_recovery_request_outcome
 perform_request(const char *acct_name, const char *acct_email_or_null, char acct_blocked,
 		const unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN], const char *host,
-		uint64_t *request_id_out, uint64_t *logged_id)
+		uint64_t *request_id_out, uint64_t *logged_id, bool email_verification = false)
 {
 	if (!account_recovery_enabled())
 		return account_recovery_request_outcome::disabled;
@@ -426,7 +432,8 @@ perform_request(const char *acct_name, const char *acct_email_or_null, char acct
 	}
 	++slot->requests;
 
-	auto found = entries.find(name);
+	const std::string store_key = std::string(name) + (email_verification ? ":email" : "");
+	auto found = entries.find(store_key);
 	if (found != entries.end() && now < found->second.cooldown_until)
 	{
 		++health.suppressed_cooldown;
@@ -435,7 +442,7 @@ perform_request(const char *acct_name, const char *acct_email_or_null, char acct
 	if (found == entries.end())
 	{
 		make_room(now);
-		found = entries.emplace(std::string(name), recovery_entry()).first;
+		found = entries.emplace(store_key, recovery_entry()).first;
 	}
 	recovery_entry &entry = found->second;
 	entry = recovery_entry();
@@ -468,11 +475,14 @@ perform_request(const char *acct_name, const char *acct_email_or_null, char acct
 		return account_recovery_request_outcome::suppressed;
 	}
 
-	std::string body = render_body(name, code.text);
+	if (email_verification)
+		entry.pending_email = acct_email_or_null;
+	std::string body = render_body(name, code.text, email_verification);
 	const std::string to(acct_email_or_null);
 	const uint64_t request_id = mail_sender_next_request_id();
-	const mail_submit_outcome submitted =
-		mail_sender_submit(request_id, to, reset_subject, body);
+	const mail_submit_outcome submitted = mail_sender_submit(
+		request_id, to,
+		email_verification ? "Duris account email verification" : reset_subject, body);
 	OPENSSL_cleanse(body.data(), body.size());
 	if (submitted != mail_submit_outcome::accepted)
 	{
@@ -590,7 +600,7 @@ account_recovery_request(const char *acct_name, const char *acct_email_or_null, 
 
 account_recovery_check_outcome
 account_recovery_check(const char *acct_name, const char *typed_code,
-		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF])
+		       char normalized_out[ACCOUNT_RECOVERY_CODE_BUF], bool email_verification)
 {
 	++health.checks;
 	/* The caller's buffer holds plaintext only after an acceptance; every other exit
@@ -604,8 +614,9 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 		return account_recovery_check_outcome::rejected;
 	}
 	const time_t now = now_time();
-	auto found = entries.find(name);
-	if (found == entries.end() || !found->second.live || expired(found->second, now))
+	auto found = entries.find(std::string(name) + (email_verification ? ":email" : ""));
+	if (found == entries.end() || !found->second.live || expired(found->second, now) ||
+	    email_verification != !found->second.pending_email.empty())
 	{
 		/* Nothing to protect, so nothing to count; the adapter's one text hides which. */
 		++health.rejected;
@@ -641,11 +652,12 @@ account_recovery_check(const char *acct_name, const char *typed_code,
 	return account_recovery_check_outcome::rejected;
 }
 
-void account_recovery_complete(const char *acct_name, const char *normalized_code,
-			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
-			       struct acct_entry *fresh, account_recovery_done done)
+static void complete_code(const char *acct_name, const char *normalized_code,
+			  const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			  struct acct_entry *fresh, account_recovery_done done,
+			  bool email_verification)
 {
-	if (!is_bcrypt_hash(new_bcrypt_hash))
+	if (!email_verification && !is_bcrypt_hash(new_bcrypt_hash))
 		return done(keep_session, account_recovery_complete_outcome::bad_hash);
 
 	/* The apply helper's write_account reallocates every same-name descriptor's account
@@ -658,9 +670,11 @@ void account_recovery_complete(const char *acct_name, const char *normalized_cod
 		return done(keep_session, account_recovery_complete_outcome::rejected);
 	}
 	const time_t now = now_time();
-	auto found = entries.find(name);
+	const std::string store_key = std::string(name) + (email_verification ? ":email" : "");
+	auto found = entries.find(store_key);
 	unsigned char digest[SHA256_DIGEST_LENGTH] = {};
 	const bool valid = found != entries.end() && found->second.live && found->second.verified &&
+			   email_verification == !found->second.pending_email.empty() &&
 			   !expired(found->second, now) && normalized_code &&
 			   strlen(normalized_code) == ACCOUNT_RECOVERY_CODE_HEX_LEN &&
 			   digest_of_code(normalized_code, digest) &&
@@ -675,53 +689,112 @@ void account_recovery_complete(const char *acct_name, const char *normalized_cod
 	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
 	memcpy(fingerprint, found->second.fingerprint, sizeof fingerprint);
 	const uint64_t request_id = found->second.request_id;
-	account_apply_recovered_password(
-		fresh, new_bcrypt_hash, fingerprint, keep_session,
-		[name = std::string(name), request_id, done](descriptor_data *requester,
-							     account_recovery_apply_outcome applied)
+	const auto finished = [name = std::string(name), store_key, request_id, done,
+			       email_verification](descriptor_data *requester,
+						   account_recovery_apply_outcome applied)
+	{
+		/* A delayed reply must not consume a replacement code issued in the meantime. */
+		auto found = entries.find(store_key);
+		recovery_entry *entry = found != entries.end() &&
+							found->second.request_id == request_id ?
+						&found->second :
+						nullptr;
+		switch (applied)
 		{
-			/* A delayed reply must not consume a replacement code issued in the meantime. */
-			auto found = entries.find(name);
-			recovery_entry *entry =
-				found != entries.end() && found->second.request_id == request_id ?
-					&found->second :
-					nullptr;
-			switch (applied)
+		case account_recovery_apply_outcome::ok:
+		{
+			if (entry)
+				kill_token(
+					entry); /* single use; the tombstone keeps the cooldown */
+			++health.completed;
+			auto other = entries.find(email_verification ? name : name + ":email");
+			if (other != entries.end())
+				kill_token(&other->second);
+			if (email_verification)
+				statuslog(56, "account email verified (account=redacted)");
+			else
 			{
-			case account_recovery_apply_outcome::ok:
-				if (entry)
-					kill_token(
-						entry); /* single use; the tombstone keeps the cooldown */
-				++health.completed;
 				logit(LOG_PLAYER, "account recovery completed (account=redacted)");
 				statuslog(
 					56,
 					"account password reset by email completed (account=redacted)");
-				return done(requester, account_recovery_complete_outcome::ok);
-			case account_recovery_apply_outcome::fenced:
-				if (entry)
-					kill_token(entry);
-				++health.fenced;
-				return done(requester, account_recovery_complete_outcome::fenced);
-			case account_recovery_apply_outcome::superseded:
-				if (entry)
-					kill_token(entry);
-				++health.superseded;
-				return done(requester,
-					    account_recovery_complete_outcome::superseded);
-			case account_recovery_apply_outcome::load_failed:
-				++health.load_failed; /* token kept: the player retries with the same code */
-				return done(requester,
-					    account_recovery_complete_outcome::load_failed);
-			case account_recovery_apply_outcome::write_failed:
-				++health.write_failed;
-				return done(requester,
-					    account_recovery_complete_outcome::write_failed);
 			}
+			return done(requester, account_recovery_complete_outcome::ok);
+		}
+		case account_recovery_apply_outcome::fenced:
+			if (entry)
+				kill_token(entry);
+			++health.fenced;
+			return done(requester, account_recovery_complete_outcome::fenced);
+		case account_recovery_apply_outcome::superseded:
+			if (entry)
+				kill_token(entry);
+			++health.superseded;
+			return done(requester, account_recovery_complete_outcome::superseded);
+		case account_recovery_apply_outcome::load_failed:
+			++health.load_failed; /* token kept: the player retries with the same code */
+			return done(requester, account_recovery_complete_outcome::load_failed);
+		case account_recovery_apply_outcome::write_failed:
 			++health.write_failed;
-			done(requester, account_recovery_complete_outcome::write_failed);
-		});
+			return done(requester, account_recovery_complete_outcome::write_failed);
+		}
+		++health.write_failed;
+		done(requester, account_recovery_complete_outcome::write_failed);
+	};
+	if (email_verification)
+		account_apply_verified_email(fresh, found->second.pending_email.c_str(),
+					     fingerprint, keep_session, finished);
+	else
+		account_apply_recovered_password(fresh, new_bcrypt_hash, fingerprint, keep_session,
+						 finished);
 	OPENSSL_cleanse(fingerprint, sizeof fingerprint);
+}
+
+void account_recovery_complete(const char *acct_name, const char *normalized_code,
+			       const char *new_bcrypt_hash, struct descriptor_data *keep_session,
+			       struct acct_entry *fresh, account_recovery_done done)
+{
+	complete_code(acct_name, normalized_code, new_bcrypt_hash, keep_session, fresh, done,
+		      false);
+}
+
+account_recovery_request_outcome account_email_request(P_acct account, const char *new_email,
+						       const char *host)
+{
+	if (!account || !is_valid_email(new_email))
+		return account_recovery_request_outcome::invalid_name;
+	unsigned char fingerprint[ACCOUNT_RECOVERY_FINGERPRINT_LEN];
+	account_recovery_credential_fingerprint(account->acct_password, account->acct_email,
+						fingerprint);
+	uint64_t request_id = 0;
+	const auto outcome = perform_request(account->acct_name, new_email, account->acct_blocked,
+					     fingerprint, host, nullptr, &request_id, true);
+	OPENSSL_cleanse(fingerprint, sizeof fingerprint);
+	return outcome;
+}
+
+void account_email_complete(P_desc d, const char *typed_code, account_recovery_done done)
+{
+	code_buffer normalized;
+	if (!d || !d->account ||
+	    d->account_recovery_attempts >= ACCOUNT_RECOVERY_MAX_DESCRIPTOR_ATTEMPTS ||
+	    account_recovery_check(d->account->acct_name, typed_code, normalized.text, true) !=
+		    account_recovery_check_outcome::accepted)
+	{
+		if (d)
+			++d->account_recovery_attempts;
+		return done(d, account_recovery_complete_outcome::rejected);
+	}
+	// The read callback may be discarded on disconnect. Copies of its shared
+	// buffer are cleansed when the last holder goes away, even without a reply.
+	auto code = std::make_shared<code_buffer>(normalized);
+	account_read(d, d->account->acct_name,
+		     [code, done](P_desc reader, bool, P_acct fresh)
+		     {
+			     complete_code(reader->account->acct_name, code->text, nullptr, reader,
+					   fresh, done, true);
+			     free_account(fresh);
+		     });
 }
 
 void account_recovery_invalidate(const char *acct_name)
@@ -729,11 +802,15 @@ void account_recovery_invalidate(const char *acct_name)
 	char name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(acct_name, name))
 		return;
-	auto found = entries.find(name);
-	if (found == entries.end())
-		return;
-	kill_token(&found->second);
-	++health.invalidated;
+	for (const std::string &key : { std::string(name), std::string(name) + ":email" })
+	{
+		auto found = entries.find(key);
+		if (found != entries.end())
+		{
+			kill_token(&found->second);
+			++health.invalidated;
+		}
+	}
 }
 
 void account_recovery_forget(const char *acct_name)
@@ -741,8 +818,8 @@ void account_recovery_forget(const char *acct_name)
 	char name[ACCOUNT_RECOVERY_NAME_BUF];
 	if (!account_recovery_canonical_name(acct_name, name))
 		return;
-	if (entries.erase(name))
-		++health.forgotten;
+	health.forgotten += entries.erase(name);
+	health.forgotten += entries.erase(std::string(name) + ":email");
 }
 
 /* Runs every 500 ms (inside comm.c's `if (!(pulse % 2))`); the expire sweep runs every

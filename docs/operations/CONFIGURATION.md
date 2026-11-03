@@ -652,6 +652,33 @@ typing `?` at the telnet password prompt, or through the WebSocket `request_rese
 from one bounded worker thread. The feature is off unless `MAIL_ENABLED=TRUE`; while it is
 off the password prompt is unchanged and `?` answers one not-available line.
 
+With mail enabled, new accounts receive an inbox-ownership challenge on both clients.
+They can log in while verification is pending, but no recovery address is stored until
+the code is redeemed. If mail is unavailable, registration still works and leaves the
+recovery address blank. Existing accounts keep their current address until a replacement
+is verified. To add a missing address, replace an outdated one, or confirm the same inbox,
+use telnet account-menu option **5**, or the browser account **Email** tab. An address
+confirmation typed during registration only checks spelling; ownership requires the
+separate code delivered by email. No confirmation code is displayed by the server.
+
+WebSocket `change_email` takes `{ "newEmail": "player@example.com" }` and replies with
+`account/email_verification_requested` when queued; `confirm_email` takes `{ "code": "..." }`
+and replies with `account/email_changed` only after durable storage. Both require a
+player session authenticated by password. A reset code cannot verify an address, and an
+email-verification code cannot reset a password. These two purposes have separate
+10-minute account cooldowns and share the per-address request budget and bounded store.
+Verification codes use the same 15-minute expiry and five-guess limit as reset codes.
+Delivery failure removes the pending token and allows an immediate retry subject to the
+per-address budget. A definite storage failure preserves the code for retry; meanwhile
+the old recovery address stays unchanged. Changing credentials invalidates older codes.
+
+The browser login panel exposes **Forgot password?**, using the existing reset commands.
+The website login links there because both logins use the same MUD account credentials.
+If mail is disabled, email changes report that verification is unavailable; existing
+accounts can still log in. Accounts created while mail was disabled retain the legacy
+address on file; verify or replace it through the same account-menu path after activation.
+See [player instructions and staff fallback](ACCOUNT_EMAIL.md).
+
 Recovery resets the password; it never retrieves or emails the old password. A successful
 reset requires a saved email address that the player can access. The success reply, code
 consumption and disconnection of other sessions happen only after the password is stored.
@@ -665,7 +692,7 @@ disconnected requester does not cancel an already submitted write.
 
 | Variable | Requirement | Meaning |
 | --- | --- | --- |
-| `MAIL_ENABLED` | Optional; `TRUE` or `FALSE` (case-insensitive), default `FALSE` | Enable switch. Unset, empty, or `FALSE` disables password reset by email; any other value is rejected. |
+| `MAIL_ENABLED` | Optional; `TRUE` or `FALSE` (case-insensitive), default `FALSE` | Enable switch for recovery and inbox verification. Unset, empty, or `FALSE` disables them; any other value is rejected. |
 | `MAIL_HOST` | Required when `MAIL_ENABLED=TRUE` | SMTP relay host name or address, 1-253 bytes, accepted by libcurl's URL parser as a bare host (no `/`, `@`, `?`, `#`, or whitespace). Loopback means `localhost`, `127.0.0.1`, or `::1`. |
 | `MAIL_PORT` | Optional; `1`-`65535`, default `587` | SMTP TCP port. `465` selects implicit TLS (`smtps://`); every other port uses `smtp://` with STARTTLS when `MAIL_TLS` is `TRUE`. |
 | `MAIL_TLS` | Optional; `TRUE` or `FALSE` (case-insensitive), default `TRUE` | `TRUE` requires TLS for the whole session (a relay that refuses STARTTLS fails the send; there is no opportunistic mode). `FALSE` is accepted only for a loopback `MAIL_HOST` with no credentials. |

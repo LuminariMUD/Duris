@@ -444,7 +444,14 @@ required but unavailable, and timeout classification after a successful greeting
 Successful TLS negotiation and SMTP AUTH are not exercised, so these fixtures do not
 qualify a real relay.
 
-The MariaDB journey uses a disposable database and the same fake relay. It checks telnet
+The core harness also checks verification/reset purpose separation, independent account
+cooldowns, and invalidation of both kinds of code. New-account fixtures redeem inbox
+verification before exercising recovery.
+
+The MariaDB journey uses a disposable database and the same fake relay. It checks
+inbox ownership before storing a registration address, wrong and reused verification
+codes, failure and same-code retry for durable email writes, and retention of the old
+recovery address while a replacement is pending. It also checks telnet
 and unauthenticated WebSocket recovery, failed writes and same-code retry, single use,
 session revocation, restart persistence, account fences changed while saving, loop
 responsiveness, lost COMMIT replies before and after application, and cooldown timestamp

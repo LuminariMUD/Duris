@@ -11935,15 +11935,17 @@ NOTE: This spell can only be effective when cast on a medium sized or
 #
 PASSWORD
 ===========================================================================
-The "password" option, seen at the entry menu, allows you to change your
-character's password. Players should make it a rule to change their 
-passwords often to avoid the unpleasantness of having someone else gain 
-control of their character. It is the players' responsibility to safeguard 
-themselves by ensuring that they use a different password on each MUD they 
-log into. Gods are *not* responsible for any "hacked" or "stolen" 
-characters.
+Your password belongs to your account and protects all its characters. Use a
+unique password. Never share it or your email verification and reset codes.
+
+Change your account password with option 6 in the telnet account menu, or
+Account -> Password in the browser client.
+
+Forgot your password? Type ? at the telnet account password prompt, or choose
+Forgot password? in the browser client. Recovery must be enabled and your
+account must have an email address whose inbox you can access.
 ===========================================================================
-See also: RULES, REIMBURSEMENT
+See also: "PASSWORD RECOVERY", "ACCOUNT EMAIL", RULES
 
 #
 "PATH OF FROST" (Spell)
@@ -27918,3 +27920,31 @@ routes and fares. Buy the listed ticket and give it to that same carrier.
 Read 'help flights' for discovery, prices, restrictions and special trips.
 See also: Flights, Travel.
 #
+
+#
+"PASSWORD RECOVERY" "ACCOUNT EMAIL"
+===========================================================================
+To add or update your recovery email while logged in, choose option 5 in the
+telnet account menu, or Account -> Email in the browser client. Enter an inbox
+you control, then enter the verification code emailed there. Your registered
+address changes only after the code is accepted and the change is saved.
+You can use this same path to verify your current address or replace an old
+one. New accounts can play while verification is pending, but cannot recover
+by email until an inbox is verified.
+
+If you forgot your account password, enter your account name and type ? at
+the telnet password prompt. In the browser, choose Forgot password? at login.
+Read the emailed reset code, enter it, choose a new password and log in.
+The website uses the same account password.
+
+Codes work once and expire after 15 minutes or a game restart/copyover. Each
+account can request one verification code and one reset code per 10 minutes;
+each client address can request five codes in 10 minutes. Five wrong guesses
+exhaust a code. Check spam if mail does not arrive, then retry later. A request
+response does not reveal whether an account or email exists. If saving fails,
+retry the same code while it is valid. If recovery is unavailable, ask staff.
+
+Cannot access the registered inbox and cannot log in? Ask staff for manual
+account-ownership checks. Never give anyone your mailbox password.
+===========================================================================
+See also: PASSWORD, RULES
