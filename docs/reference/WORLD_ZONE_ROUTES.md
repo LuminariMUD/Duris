@@ -158,6 +158,8 @@ caves. The approved footprints and reciprocal travel routes are:
   Its other existing markers and entrances remain in place.
 - Lylrstas: marker `541276`, labeled `Lylrstas`, south of
   `540876 S <-> 82200 N`.
+- Meopham: restored marker `538881` north of `539281 N <-> 82240 S`.
+  The additional `539281 U <-> 82240 D` route stays unchanged.
 - Northern Lakes and Settlements: marker `537888` west of
   `537889 W <-> 75337 E`, at Murar Falls. The approach remains water.
 - Gorblaat's Cave: marker `612285` north of `612685 N <-> 97900 S`.
@@ -171,18 +173,19 @@ caves. The approved footprints and reciprocal travel routes are:
   exit into the Lylrstas marker. Fort Marigot retains
   `519317 E <-> 5315 W` at the Temple's historical site.
 
-All eight footprints use `SECT_INSIDE` and the existing marker flags, retain
+All nine footprints use `SECT_INSIDE` and the existing marker flags, retain
 any additional existing flags, and have no incoming exits. Actual travel rooms
 retain their terrain, and all unrelated zone interiors, resets and quests stay
-intact. The new Temple footprint replaces one forest square; every other
-previously reachable mainland land room remains connected.
+intact. The Temple and Meopham footprints replace two forest squares; every
+other previously reachable mainland land room remains connected.
 
-Meopham's marker placement is the remaining owner decision. Until it is chosen,
-`538881` stays forest, `539281 N <-> 538881 S` stays open, and
-`539281 U <-> 82240 D` plus the older `82240 S -> 539281` remain intact.
-Restoring the historical marker at `538881` and the historical
-`539281 N <-> 82240 S` entrance would deliberately replace that forest route;
-an alternative footprint can preserve the current route.
+The owner approved Meopham's historical marker placement at `538881`.
+Remove the incoming `538481 S`, `538880 E` and `538882 W` links to that
+footprint. Redirect the southern approach `539281 N` directly into `82240`,
+whose south exit already returns to `539281`. The footprint itself is not
+walkable. Both the north/south and up/down zone entrance pairs remain
+available, while the other east/south/west wilderness routes from `539281`
+stay intact. No placement decisions remain for issue #610.
 
 ## Verification commands and boundaries
 
@@ -190,10 +193,12 @@ an alternative footprint can preserve the current route.
 python3 tests/async/test_issue37_zone_routes.py
 python3 tests/async/test_ud_zone_markers.py
 python3 tests/async/test_surface_zone_markers.py
+python3 tests/async/test_lylr_meopham_routes.py
 make world
 python3 tests/async/test_issue37_zone_routes.py --generated
 python3 tests/async/test_ud_zone_markers.py --generated
 python3 tests/async/test_surface_zone_markers.py --generated
+python3 tests/async/test_lylr_meopham_routes.py --generated
 python3 tests/async/test_falling_world_exits.py
 python3 tests/async/test_documentation_contract.py
 ```

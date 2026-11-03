@@ -14,6 +14,7 @@ ENTRANCES = (
     (557276, 'Caves of Mt. Skelenak', 556876, 2, 4131, 11),
     (543261, 'Kimordril', 543661, 0, 95658, 4),
     (541276, 'Lylrstas', 540876, 2, 82200, 2),
+    (538881, 'Meopham', 539281, 0, 82240, 2),
     (537888, 'Northern Lakes and Settlements', 537889, 3, 75337, 7),
     (612285, "Gorblaat's Cave", 612685, 0, 97900, 4),
     (547733, 'Valley of Crushk', 548133, 0, 2060, 1),
@@ -79,8 +80,7 @@ def check(rooms, records):
                                       (554529, 3, 554528), (554528, 0, 554128)):
         assert rooms[start][2].get(direction) == target, (start, 'Temple detour')
         assert rooms[target][2].get(REVERSE[direction]) == start, (target, 'detour return')
-    # Meopham placement is still undecided: preserve its existing forest path and U/D route.
-    assert rooms[538881][:2] == (3, 0)
+    # Meopham has both the restored north/south entrance and the existing U/D route.
     check_lylr_routes(rooms)
 
 
@@ -102,4 +102,4 @@ if __name__ == '__main__':
         else:
             raise AssertionError(f'missing return edge not caught: {target}')
         rooms[target] = (sector, fall, exits)
-    print('Eight surface markers, reciprocal routes, Temple relocation and Meopham passed.')
+    print('Nine surface markers, reciprocal routes, Temple relocation and Meopham passed.')
