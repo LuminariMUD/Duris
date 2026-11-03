@@ -50,6 +50,24 @@ and Git checks. Exact current scope and remaining growth limits are recorded bel
 
 ## What the evidence establishes
 
+### Merge review — 2026-11-03
+
+The health isolation fixture originally reused the in-scope producer identity
+for excluded rows. Latest-per-producer selection could hide those rows even if
+the season predicate was removed; a disposable SQL mutation reproduced the
+false pass. Excluded health rows now have a distinct numeric producer identity,
+so they cannot disappear behind valid snapshots. The mutation must fail at
+the health assertion, while the real five-report SQL suite must pass. No runtime
+or saved-query change is needed for this test repair.
+
+The XP report has the same bounded-page problem as time: `level_change` sorts
+before `observed_xp`, so 501 level transitions hide every XP allocation. The
+existing runner now reproduces that case and failed on the original order.
+Reverse only its plane ordering, preserving independent XP expansion, exact
+integers, level rows, scope filters and the 500-row/truncation contract. The full
+local report suite must pass, then synchronize the saved XP view and update its
+fingerprint in the acceptance record before merging #633.
+
 ### Implementation checkpoint — 2026-11-03
 
 - Plan/handoff: [PR #629](https://github.com/LuminariMUD/Duris/pull/629),

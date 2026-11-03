@@ -78,7 +78,8 @@ never be added to interval deltas. The bounded time table lists additive interva
 rows first so a large checkpoint population cannot hide time allocation. Its
 truncation count still covers both planes; use narrower scopes to inspect omitted
 rows. XP is observed gameplay, not proof of a durable
-save. Encounter run and actor rows are separate: do not sum run duration over actor
+save. Its bounded table likewise lists observed XP before level transitions so
+a large transition population cannot hide the XP allocations. Encounter run and actor rows are separate: do not sum run duration over actor
 rows or add pet damage to owner damage. Native terminal completeness and observed
 cloud actor counts are independent. Partial/unknown evidence stays visible.
 The 500-row tables expose `total_rows_before_limit` where aggregation could be

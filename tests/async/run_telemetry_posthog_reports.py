@@ -87,6 +87,8 @@ def main():
                                      "duris_run_id"):
                         if other["properties"].get(identity) is not None:
                             other["properties"][identity] += "-excluded-" + field
+                    if other["event"] == "duris_telemetry_health":
+                        other["properties"]["producer_boot_id"] = "10001"
                     excluded.append(other)
             assert stable(result) == stable(run(db, name, rows + excluded)), name
             assert stable(result) == stable(run(db, name, rows + rows)), name
@@ -199,6 +201,20 @@ def main():
         assert page[0]["row_plane"] == "interval_delta"
         assert any(row["row_plane"] == "checkpoint_gap_do_not_add" for row in page)
         print("PASS: checkpoint reconciliation cannot hide additive time rows on the bounded first page")
+
+        level_change = next(row for row in native("release-mix")
+                            if row["event"] == "duris_level_change")
+        levels = []
+        for index in range(501):
+            row = deepcopy(level_change)
+            row["properties"].update(duris_event_id=f"level-{index}",
+                                     duris_character_id=f"character-{index}")
+            levels.append(row)
+        page = run(db, "xp", levels + [xp_summary])
+        assert len(page) == 500 and page[0]["total_rows_before_limit"] > 500
+        assert page[0]["row_plane"] == "observed_xp"
+        assert any(row["row_plane"] == "level_change" for row in page)
+        print("PASS: level changes cannot hide observed XP rows on the bounded first page")
 
 
 if __name__ == "__main__":
