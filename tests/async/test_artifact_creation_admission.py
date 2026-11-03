@@ -1254,7 +1254,9 @@ void offline_expiry_cases() {
  }
  auto &pet_row=artifact_rows[900]; pet_row.type=ARTIFACT_MAJOR;
  pet_row.identity_state=artifact_identity_state::present; pet_row.canonical_item_uid=81000;
- pet_row.owned=true; pet_row.locType=ARTIFACT_ON_NPC; pet_row.location=42; pet_row.timer=1;
+ // Qualified pet recovery must override a stale previous player's tracking,
+ // including after placement retires the saved boot locator and the pet unloads.
+ pet_row.owned=true; pet_row.locType=ARTIFACT_ON_PC; pet_row.location=99; pet_row.timer=1;
  pet_row.canonical_payloads={pet_source};
  char_data pet={}; npc_only_data pet_data={}; pet.only.npc=&pet_data;
  pet.specials.act=ACT_ISNPC; pet.in_room=NOWHERE; pet.player.name=const_cast<char *>("Pet");
