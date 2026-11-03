@@ -131,8 +131,12 @@ def create(server, name, race_name, class_name, alignment, *, rejects=True, expe
                          "good_neutral": ("good", "neutral")}.get(cls["alignment"], (cls["alignment"],))
             for invalid in set(("good", "neutral", "evil")) - set(permitted):
                 client.command("create_character", {**data, "alignment": invalid}, "error")
-            # Disabled, forbidden, fractional class IDs, and missing multi-choice values.
-            for invalid in (3, 29, 11.5):
+            # These normal test races forbid Psionicist (3); creation policy
+            # disables Dragoon (30). Assert metadata as well as submission,
+            # so an accidentally enabled option cannot silently skip its test.
+            if server["env"]["CREATION_ALL_CLASSES"] == "FALSE":
+                assert not any(c["id"] in (3, 30) for c in race["classes"]), race
+            for invalid in (3, 30, 11.5):
                 if not any(c["id"] == invalid for c in race["classes"]):
                     client.command("create_character", {**data, "class": invalid}, "error")
             if len(permitted) > 1:
