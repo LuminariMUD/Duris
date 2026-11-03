@@ -31,11 +31,15 @@ typedef struct char_data *P_char;
  * called then.
  */
 bool player_load_offline(const char *name, bool include_items, std::function<void(P_char)> done);
+// Maintenance loads the known PID's full graph without a name lookup. The
+// caller must also unload the temporary pets after saving their equipment.
+bool player_load_offline(int pid, std::function<void(P_char)> done);
 // For a command of ch's: done and materialization run only while ch is still in the
 // game. Item loads refuse an active/loading owner before construction, notifying
 // ch without calling done. A load that cannot be queued also tells ch.
 bool player_load_offline_for(P_char ch, const char *name, bool include_items,
-			     std::function<void(P_char ch, P_char loaded)> done);
+			     std::function<void(P_char ch, P_char loaded)> done,
+			     bool include_pets = false);
 // Read-only inspection of the original item source cut, including retained/stale
 // rows. No character or item is constructed. done borrows the result only for the
 // callback and runs only while ch is still in the game, including failed reads.

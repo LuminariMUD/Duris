@@ -1309,6 +1309,67 @@ int main(int argc, char **argv)
 			"seed stale membership: " + error);
 		return 0;
 	}
+	if (argc == 4 && std::string(argv[2]) == "seed-pet-artifact")
+	{
+		// Disposable serving fixture, with its server stopped. Move an existing
+		// leaf UID into a durable pet, preserving that pet's original equipment.
+		std::string error;
+		player_snapshot snapshot;
+		require(flatfile_player_snapshot_read(argv[1], std::stoi(argv[3]), &snapshot,
+						      &error) == flatfile_player_load_result::ok,
+			"read pet artifact fixture: " + error);
+		auto pet = std::find_if(snapshot.pets.begin(), snapshot.pets.end(),
+					[](const auto &row)
+					{ return row.hold_reason == pet_hold_reason::none; });
+		require(pet != snapshot.pets.end() && !pet->items.empty(),
+			"fixture needs durable pet equipment");
+		// Earlier restart controls intentionally seed legacy pets. Upgrade this
+		// isolated fixture through the normal save/claim path.
+		if (!pet->pet_uid)
+			pet->pet_uid = 100001;
+		auto leaf = std::find_if(
+			snapshot.items.begin(), snapshot.items.end(),
+			[&](const auto &row)
+			{
+				const auto index = &row - snapshot.items.data();
+				return row.parent_index == PLAYER_SNAPSHOT_NO_PARENT &&
+				       row.type != ITEM_CONTAINER &&
+				       std::none_of(snapshot.items.begin(), snapshot.items.end(),
+						    [&](const auto &child)
+						    { return child.parent_index == index; });
+			});
+		require(leaf != snapshot.items.end(), "fixture needs an inventory leaf");
+		auto artifact = *leaf;
+		const auto index = leaf - snapshot.items.begin();
+		snapshot.items.erase(leaf);
+		for (auto &item : snapshot.items)
+			if (item.parent_index > index)
+				--item.parent_index;
+		artifact.equipment_slot = 0;
+		artifact.extra_flags |= ITEM_ARTIFACT;
+		pet->items.push_back(artifact);
+		++snapshot.revision;
+		snapshot.components = PLAYER_CHECKPOINT_COMPONENT_ALL;
+		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;
+		require(flatfile_player_snapshot_apply(argv[1], snapshot, &error).outcome ==
+				player_save_apply_outcome::applied,
+			"save pet artifact fixture: " + error);
+		flatfile_artifact_record record;
+		record.vnum = artifact.vnum;
+		record.owned = true;
+		record.location_type = FLATFILE_ARTIFACT_ON_NPC;
+		record.location = pet->mob_vnum;
+		record.timer = 1;
+		record.type = 1;
+		record.last_update = time(nullptr);
+		record.canonical_item_uid = artifact.object_uid;
+		record.identity_state = artifact_identity_state::present;
+		require(flatfile_artifact_snapshot_apply(argv[1], { record }, &error) ==
+				flatfile_artifact_result::ok,
+			"seed pet artifact: " + error);
+		std::cout << artifact.vnum << '|' << artifact.object_uid << '\n';
+		return 0;
+	}
 	if ((argc == 4 || argc == 5) && std::string(argv[2]) == "artifact-owner")
 	{
 		std::string error;

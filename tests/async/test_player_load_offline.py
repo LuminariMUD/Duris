@@ -244,6 +244,14 @@ int main() {
     result.request_id=request_id;
     assert(player_load_offline_complete(result) && leased_inspected && allocated==before_allocated);
     descriptor_list=nullptr;
+    // Artifact expiry can explicitly request the full pet component; ordinary
+    // offline and staff inspection calls above continue to exclude it.
+    assert(player_load_offline(42, [](P_char loaded) {
+        assert(loaded); player_load_items_discard(loaded); free_char(loaded);
+    }));
+    assert(submitted.pid==42 && submitted.player_name.empty() && submitted.include_items && submitted.include_pets);
+    result.request_id=request_id;
+    assert(player_load_offline_complete(result));
     submit_allowed = false;
     assert(!player_load_offline_for(actor, "Offline", true, [](P_char, P_char) { ++completed; }));
     result.request_id = request_id;

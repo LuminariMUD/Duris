@@ -406,7 +406,7 @@ int main()
     malformed.items[0].object_uid = 701;
     held.pets.push_back(malformed);
     pc.held_pets = &held;
-    for (int intent : {RENT_CRASH, RENT_QUIT, RENT_DEATH}) {
+    for (int intent : {RENT_CRASH, RENT_QUIT, RENT_DEATH, RENT_POOFARTI, RENT_SWAPARTI}) {
         player_snapshot saved;
         assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_PETS, intent, 22800, &saved) == player_snapshot_capture_result::ok);
         assert(saved.pets[0].hold_reason == pet_hold_reason::legacy_summon);
