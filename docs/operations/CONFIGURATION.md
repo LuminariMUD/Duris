@@ -32,8 +32,9 @@ reload keeps the active settings. Zero stops scheduled attempts. Lowering the
 cap stops attempts while the current population meets or exceeds it. Existing
 NPCs remain in the world, and the next scheduled tick reads the active value.
 
-The global cap applies to scheduled prototype-1255 generation, including
-off-map and owned members of the counted population. Staff `randobj mob`,
+The global cap counts unmarked prototype-1255 NPCs, including off-map and
+owned instances. It excludes fixed and custom training dummies by their
+instance marker. Staff `randobj mob`,
 themed prototype 1256, and zone resets are separate creation paths. Each
 scheduled tick can attempt at most one spawn, roughly every 120 seconds.
 

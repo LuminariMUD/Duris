@@ -1,6 +1,6 @@
 # Issue #655: configurable roaming-NPC cap and training-dummy accounting
 
-Status: implementation resumed. Configurable cap ready for review as the first chunk.
+Status: configuration PR open. Population change qualified in focused tests.
 Date: 2026-11-04.
 Branch: `branch/issue-655-roaming-npc-cap`.
 Base: fetched `origin/master`, `af3829b85671480cdae23ae703da6ed1ca50a11a`.
@@ -184,7 +184,7 @@ small explicit `main()` that runs its checks under direct Python invocation,
 while retaining pytest compatibility. Prove that both invocation routes
 execute assertions, including a controlled failing assertion in an isolated
 test copy; a successful process exit with no checks is insufficient. Confirm
-normal runner discovery of the new tests and actual execution of the old ones.
+normal runner discovery and execution of the extended tests.
 
 ## 3. Qualify generated-NPC identity and recovery
 
@@ -246,11 +246,9 @@ do not call it repaired or silently drop it from the handoff.
 ## Validation and delivery after resumption
 
 Run the smallest applicable checks as each change lands, with ASan/UBSan for
-native population, property-validation, and persistence fixtures. Future
-commands include:
+native population, property-validation, and persistence fixtures. Commands include:
 
 ```sh
-python3 tests/async/test_random_mapmob_population.py
 python3 tests/async/test_issue263_property_reload.py
 python3 tests/async/test_training_dummy_contract.py
 python3 -m pytest -q tests/async/test_training_dummy_contract.py
@@ -293,7 +291,8 @@ The user's original checkout is independent. The first branch remains
 `branch/issue-655-roaming-npc-cap`, based on `master`. Each later PR targets its
 immediate dependency. Keep this handoff current on the newest branch.
 
-- **Configuration** — the spawner reads the validated property at each
+- **Configuration** ([PR #657](https://github.com/LuminariMUD/Duris/pull/657),
+  commit `073515e0d`) — the spawner reads the validated property at each
   invocation. Both write boundaries share one parser. A malformed set glob
   matching the loaded cap is rejected before editing any properties. The
   existing transactional loader, setter, saver, and baseline handling do
@@ -302,8 +301,16 @@ immediate dependency. Keep this handoff current on the newest branch.
   Passed: both development builds (MariaDB and flat file), the expanded
   issue-263 test with ASan/UBSan and float-cast checking, and formatting
   and whitespace checks.
-- **Population and test invocation** — next. The first PR deliberately leaves
-  membership as all 1255 NPCs so the cap can be reviewed independently.
+- **Population and test invocation** — branch `branch/issue-655-roaming-npc-population`
+  targets the configuration branch. The scan now excludes instances through
+  `training_dummy_is()`. Extending the existing ASan/UBSan harness shares the
+  real spawner and properties setup. The mixed-population assertion failed
+  against the configuration-only spawner and passed after the fix, including
+  69/71 marked targets, an owned roamer, `NOWHERE`, themed and fallback NPCs,
+  zero, last-slot insertion, and retry after failed generation. Both backend
+  builds passed. The dummy contract passed 15 checks via direct Python and
+  pytest, and an isolated failing assertion was detected by both. The normal
+  regression runner found and passed the dummy and property checks.
 - **Recovery and legacy** — pending the population change. Reuse the existing
   generated-NPC and isolated DB/Redis journeys where they cover the required
   path. Run the full-world acceptance against disposable data. No release tag,

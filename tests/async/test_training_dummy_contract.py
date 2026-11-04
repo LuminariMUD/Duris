@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from _paths import extract_function
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -212,8 +214,20 @@ def test_dummy_snapshots_are_skipped_and_recreated_by_bootstrap():
     copyover = source("src/persistence/copyover.c")
     recovery = source("src/world/world_recovery_pipeline.c")
 
-    assert 'copyover_training_dummy_is(ch)' in copyover
+    selector = extract_function("copyover.c", "static bool copyover_world_mob(P_char mob)")
+    assert "copyover_training_dummy_is(mob)" in selector
     assert '(IS_NPC(mob) && mob->only.npc && mob->only.npc->training_dummy)' in copyover
     assert 'recovery_training_dummy_is(ch)' in recovery
     assert 'ch->only.npc->summoned_instance || recovery_training_dummy_is(ch)' in recovery
     assert 'recovery_training_dummy_is(mob)' in recovery
+
+
+def main():
+    checks = [check for name, check in globals().items() if name.startswith("test_")]
+    for check in checks:
+        check()
+    print(f"{len(checks)} training dummy contract checks passed")
+
+
+if __name__ == "__main__":
+    main()

@@ -17,6 +17,8 @@ def main():
         (work / "lib").mkdir()
         (work / "spawn_random_mapmob.inc").write_text(
             extract_function("random.mob.c", "void spawn_random_mapmob()"))
+        (work / "training_dummy_is.inc").write_text(
+            extract_function("training_dummy.c", "bool training_dummy_is("))
         for mode, flags in [("sql", []), ("flatfile", ["-D__NO_MYSQL__", "-I" + str(ROOT / "src/no_mysql")])]:
             binary = work / mode
             subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror",
@@ -33,7 +35,8 @@ def main():
             for case in ("keys", "reload-missing", "reload-read", "reload-close-source",
                          "reload-malformed", "reload-limit", "save-missing", "save-open",
                          "save-read", "save-write", "save-flush", "save-close-source",
-                         "save-close-target", "save-rename", "save-malformed", "mapmob-cap"):
+                         "save-close-target", "save-rename", "save-malformed", "mapmob-cap",
+                         "mapmob-population"):
                 with tempfile.TemporaryDirectory(prefix=case + "-", dir=work) as scenario:
                     (Path(scenario) / "lib").mkdir()
                     if case == "mapmob-cap":

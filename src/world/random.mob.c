@@ -25,6 +25,7 @@
 #include "combat/arena.h"
 #include "combat/arenadef.h"
 #include "combat/justice.h"
+#include "combat/training_dummy.h"
 #include "world/map.h"
 #include "core/mm.h"
 #include "item/objmisc.h"
@@ -577,7 +578,8 @@ void spawn_random_mapmob()
 	PROFILE_START(random_mob_create);
 	for (random_mob = character_list; random_mob; random_mob = random_mob->next)
 	{
-		if (IS_NPC(random_mob) && GET_VNUM(random_mob) == 1255)
+		if (IS_NPC(random_mob) && GET_VNUM(random_mob) == 1255 &&
+		    !training_dummy_is(random_mob))
 		{
 			count++;
 		}
