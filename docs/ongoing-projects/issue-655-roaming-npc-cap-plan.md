@@ -400,3 +400,27 @@ PRs at local integration commit `83f39d5e4`. Run
 worktree to reproduce it. The exact revision, command, log, and eventual
 exit status are under `bin/tests/master-gates-verification/` there.
 The per-case logs are under `bin/tests/db/` until the next DB run.
+
+The integrated run verified the original overlap and epic-training failures.
+Its follow-up PRs cover new failures exposed under parallel load.
+
+- [#693](https://github.com/LuminariMUD/Duris/pull/693), stacked on #692,
+  moves the full-world capture and artifact matrix before the serial loop
+  benchmark. The concurrent NPC hotboot hit the existing player writer
+  drain deadline. The capture pulse limit and hotboot guards are retained.
+- [#694](https://github.com/LuminariMUD/Duris/pull/694) waits for the locker
+  door acknowledgement after an asynchronous save. The entire disposable
+  locker journey passed, including the failed guest departure.
+- [#695](https://github.com/LuminariMUD/Duris/pull/695) verifies that a failed
+  native exec retires its handoff file. The complete MariaDB telemetry
+  journey passed with a paced injected outage, failed and successful
+  copyover, and reconnect.
+- [#696](https://github.com/LuminariMUD/Duris/pull/696) refreshes stale report
+  reads once per artifact generation. The native regression passed, and the
+  restored world published all six distinct report caches. Its loaded
+  connection pulse exceeded 250 ms during the parallel retest. Repeat the
+  serial capture, artifact matrix, and loop benchmark after the two full
+  gates finish.
+
+The second full test-all log is /tmp/duris-test-all-01d190929.log. Keep the
+original and integration DB logs separate from the focused follow-up logs.
