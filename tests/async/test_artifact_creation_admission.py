@@ -16,6 +16,7 @@ HARNESS = r"""
 #include "redis/redis_floor_runtime.h"
 #include "world/world_recovery_pipeline.h"
 #include "world/world_recovery_codec.h"
+#include "persistence/copyover.h"
 #include "item/encumbrance_policy.h"
 #include "player/player_snapshot.h"
 #include "player/player_load_items.h"
@@ -757,15 +758,12 @@ void reset_matrix(const std::vector<artifact_population_template> &original) {
 """.replace("// RESET_CASES","\n".join(parts))
 source=source.replace("// NEST_CHECK",extract_function("handler.c","bool obj_can_nest("))
 source=source.replace("// RESET",reset_harness)
-restore_support=r"""
+restore_support = "".join(
+    extract_function("world_recovery_pipeline.c", f"struct {name}") + ";\n"
+    for name in ("planned_mob", "recovery_plan")
+) + r"""
 // Keep the actual restore coordinator; world planning/materialization I/O is
 // controlled here, while its callback uses the real artifact/constructor code.
-struct recovery_plan {
- std::vector<world_recovery_authority_item> authority_items;
- std::vector<int> mobs;
- std::vector<planned_object> objects;
- world_recovery_header header={};
-};
 bool fail_materialization=false,materializing=false,native_fixture=false,native_existing_fixture=false,native_existing_late_fail=false;
 planned_object native_existing_plan;
 bool world_recovery_read_copyover_object_record(const char *,size_t,world_recovery_copyover_tree *tree) {
