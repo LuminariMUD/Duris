@@ -97,7 +97,7 @@ P_char get_linked_char(P_char ch, ush_int type)
 
 int real_room(int vnum)
 {
-    if (vnum == 60005 && rooms[1].number == vnum) return 1;
+    if ((vnum == 60005 || vnum == 0) && rooms[1].number == vnum) return 1;
     return vnum == 100 ? 0 : vnum == 200 ? 1 : -1;
 }
 
@@ -705,6 +705,8 @@ int main()
         dummy.only.npc = &target;
         roamer.specials.act = dummy.specials.act = ACT_ISNPC;
         roamer.points.hit = roamer.points.max_hit = 123;
+        roamer.in_room = 1;
+        rooms[1].number = 0; // The Void is a valid mobile location.
         npc.idnum = 77;
         npc.shopkeeper_shop_id = -1;
         target.training_dummy = true;
@@ -740,7 +742,7 @@ int main()
         assert(header.mob_count == 1 && header.object_count == 2);
         const auto restore = [&]() {
             assert(world_recovery_restore(published.data(), published.size(), 300, 0, nullptr));
-            assert(character_list && GET_IDNUM(character_list) == 77);
+            assert(character_list && GET_IDNUM(character_list) == 77 && character_list->in_room == 1);
             assert(GET_HIT(character_list) == 123 && GET_MAX_HIT(character_list) == 123);
         };
         restore();
@@ -777,6 +779,7 @@ int main()
 
         objects_read = objects_extracted = 0;
         mob_indexes[0].virtual_number = 2000;
+        rooms[1].number = 200;
         world_recovery_pipeline_reset_for_tests();
     }
 

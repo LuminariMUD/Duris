@@ -303,8 +303,8 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 		       world_recovery_item_snapshot *items, uint32_t *count,
 		       std::vector<item_ownership_runtime_entry> *copyover_custody)
 {
-	if (!object || room_vnum <= 0 || !items || !count ||
-	    *count >= WORLD_RECOVERY_MAX_ITEM_TREE || !object->obj_uid || OBJ_VNUM(object) <= 0)
+	if (!object || !items || !count || *count >= WORLD_RECOVERY_MAX_ITEM_TREE ||
+	    !object->obj_uid || OBJ_VNUM(object) <= 0)
 		return false;
 	const uint64_t item_uid = object->obj_uid;
 	if (!root_uid)
@@ -405,9 +405,11 @@ bool capture_item_tree(P_obj object, int room_vnum, uint64_t root_uid, uint64_t 
 }
 
 int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximum,
-			std::vector<item_ownership_runtime_entry> *copyover_custody = nullptr)
+			std::vector<item_ownership_runtime_entry> *copyover_custody = nullptr,
+			std::optional<int32_t> roamer_slot = {})
 {
-	if (!object || !buffer || room_vnum <= 0 || maximum < sizeof(world_recovery_object_record))
+	if (!object || !buffer || room_vnum < 0 || (room_vnum == 0 && !roamer_slot) ||
+	    maximum < sizeof(world_recovery_object_record))
 		return -1;
 	uint32_t count = 0;
 	if (!capture_item_tree(object, room_vnum, 0, 0, capture_items.data(), &count,
@@ -421,13 +423,16 @@ int write_object_record(P_obj object, int room_vnum, char *buffer, size_t maximu
 	}
 	const size_t size = sizeof(world_recovery_object_record) +
 			    static_cast<size_t>(count) * sizeof(world_recovery_item_snapshot);
-	if (size > maximum)
+	const size_t slot_bytes = roamer_slot ? sizeof(*roamer_slot) : 0;
+	if (size + slot_bytes > maximum)
 		return -1;
 	const world_recovery_object_record record = { room_vnum, count };
 	memcpy(buffer, &record, sizeof(record));
 	memcpy(buffer + sizeof(record), capture_items.data(),
 	       static_cast<size_t>(count) * sizeof(world_recovery_item_snapshot));
-	return static_cast<int>(size);
+	if (roamer_slot)
+		memcpy(buffer + size, &*roamer_slot, slot_bytes);
+	return static_cast<int>(size + slot_bytes);
 }
 
 int write_mob_record(P_char mob, char *buffer, size_t maximum)
@@ -606,20 +611,19 @@ bool capture_roamer_items(P_char mob)
 	size_t item_count = 0;
 	auto capture = [&](P_obj item, int32_t slot)
 	{
-		constexpr size_t slot_bytes = sizeof(slot);
 		const int size = write_object_record(
 			item, room, reinterpret_cast<char *>(capture_buffer.data()),
-			capture_buffer.size() - slot_bytes);
+			capture_buffer.size(), nullptr, slot);
 		if (size <= 0)
 			return false;
-		item_count += (size - sizeof(world_recovery_object_record)) /
+		const int tree_size = size - sizeof(slot);
+		item_count += (tree_size - sizeof(world_recovery_object_record)) /
 			      sizeof(world_recovery_item_snapshot);
-		if (item_count > WORLD_RECOVERY_MAX_ITEM_TREE || !capture_tree_is_new(size))
+		if (item_count > WORLD_RECOVERY_MAX_ITEM_TREE || !capture_tree_is_new(tree_size))
 			return false;
-		memcpy(capture_buffer.data() + size, &slot, slot_bytes);
 		if (!append_record(active_capture.generation,
 				   world_recovery_record_type::roamer_item, capture_buffer.data(),
-				   size + slot_bytes))
+				   size))
 			return false;
 		++active_capture.generation.object_count;
 		return true;
