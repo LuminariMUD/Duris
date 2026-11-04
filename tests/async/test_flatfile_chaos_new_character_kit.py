@@ -377,8 +377,8 @@ def create_chaos_character(client: MudClient, class_name: str = "Warrior", align
     client.send("m")
     client.expect("Class Selection")
     client.send(class_name.lower())
-    selection, _ = client.expect_any(("Alignment only affects", "Hometown Selection"))
-    if selection == "Alignment only affects":
+    selection, _ = client.expect_any(("Alignment Selection", "Hometown Selection"))
+    if selection == "Alignment Selection":
         client.send(alignment)
         client.expect("Hometown Selection")
     client.expect("Your selection")

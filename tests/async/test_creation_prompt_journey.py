@@ -285,8 +285,9 @@ def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=
         reply(client, "4", "This is not an allowed class for your race!")
         client.expect("Class Selection")
         client.expect(RACE_MENU)
-    reply(client, "w", "Alignment only affects")
-    client.expect(RACE_MENU)
+    reply(client, "w", "Alignment Selection")
+    prompt = client.expect(RACE_MENU)
+    require("Your race determines your racewar side." in prompt, prompt)
     if exercise_retries:
         reply(client, "?", "Please choose an alignment: ")
     reply(client, "g", RACE_MENU)
@@ -353,8 +354,10 @@ def method_home_routes(client, server, *, alignment):
     reply(client, "n", "Class Selection")
     client.expect(RACE_MENU)
     if alignment:
-        reply(client, "w", "Alignment only affects")
-        client.expect(RACE_MENU)
+        reply(client, "w", "Alignment Selection")
+        prompt = client.expect(RACE_MENU)
+        require("Your alignment determines your racewar side." in prompt, prompt)
+        require("Evil joins the evil side. Good and Neutral join the good side." in prompt, prompt)
         menu = reply(client, "e", RACE_MENU)
     else:
         menu = reply(client, "w", RACE_MENU)
