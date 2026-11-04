@@ -47,6 +47,8 @@
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_outbox.h"
 #include "player/player_save_pipeline.h"
+#include "player/player_save_worker.h"
+#include "player/player_load_items.h"
 #include "player/player_load_materialize.h"
 #include "player/player_load_pets.h"
 #include "player/player_load_pipeline.h"
@@ -1877,8 +1879,22 @@ static P_char copyover_load_player(const copyover_desc &entry, int version, P_de
 	const bool worker_loaded =
 		player_load_pipeline_wait(request, &result, PLAYER_LOAD_TIMEOUT_USEC / 1000);
 	if (!worker_loaded || result.request_id != request.request_id ||
-	    result.outcome != player_load_outcome::applied)
+	    result.outcome != player_load_outcome::applied ||
+	    !player_load_items_read_current(result))
 	{
+		// Startup writes can overlap the first read. Refresh against an idle
+		// writer within the original deadline before attaching artifact custody.
+		const uint64_t retry_now = persistence_observability_now_usec();
+		const uint64_t remaining = request.deadline_usec > retry_now ?
+						   (request.deadline_usec - retry_now) / 1000 :
+						   0;
+		if (!player_load_items_read_current(result) &&
+		    !persistence_writer_wait_idle(remaining))
+		{
+			logit(LOG_STATUS,
+			      "copyover: player artifact read could not reach an idle writer");
+			return nullptr;
+		}
 		player_load_result retry = {};
 		if (!player_load_pipeline_execute_sync(request, &retry) ||
 		    retry.request_id != request.request_id)
