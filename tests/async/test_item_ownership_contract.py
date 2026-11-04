@@ -108,10 +108,12 @@ class ItemOwnershipContractTests(unittest.TestCase):
         self.assertIn("item_ownership_runtime_hydrate_owner(owner, revision)", helper)
         self.assertIn("items.empty()", helper)
         boot = comm[comm.index("if (!persistence_mode_requires_mysql() &&\n\t    !item_uid_allocator_reserve") :]
-        self.assertLess(
-            boot.index("hydrate_flatfile_system_item_owner()"),
-            boot.index("redis_init()"),
-        )
+        # Recovery replays durable custody before revisions enter memory.
+        # World loading and gameplay then use the hydrated system owner.
+        self.assertLess(boot.index("locker_recovery_boot()"),
+                        boot.index("hydrate_flatfile_system_item_owner()"))
+        self.assertLess(boot.index("hydrate_flatfile_system_item_owner()"),
+                        boot.index("boot_db(mini_mode)"))
 
     def test_snapshot_repositories_do_not_write_owner_authority(self):
         for name in ("player_snapshot_repository.c", "sql_player.c", "files.c"):
