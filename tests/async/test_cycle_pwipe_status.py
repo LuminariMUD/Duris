@@ -83,6 +83,21 @@ class FilesystemWipeTest(unittest.TestCase):
             self.assertEqual((archive / "recovering.consuming/image").read_bytes(), b"COPYisolated")
             self.assertTrue((archive / "publication.consuming").is_dir())
 
+    def test_player_only_handoff_is_archived(self):
+        published = self.root / "copyover.dat"
+        claimed = published.with_suffix(".dat.recovering")
+        barrier = claimed.with_suffix(".recovering.consuming")
+        barrier.mkdir()
+        for path in (published, claimed, barrier / "image"):
+            path.write_bytes(b"CPYP" + path.name.encode())
+        self.assertEqual(self.run_wipe("--check").returncode, 0)
+        self.assertEqual(self.run_wipe().returncode, 0)
+        archive, = (self.root / "Players/Backup").glob("pwipe-copyover.*")
+        for name, original in (("publication", published), ("recovering", claimed),
+                               ("recovering.consuming/image", barrier / "image")):
+            self.assertFalse(original.exists())
+            self.assertEqual((archive / name).read_bytes(), b"CPYP" + original.name.encode())
+
     def test_native_input_inside_wiped_tree_is_archived_first(self):
         source = self.root / "Players/a/native.dat"
         source.write_bytes(b"COPYinside season store")

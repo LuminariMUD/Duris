@@ -57,11 +57,13 @@ check_recovery_parent() {
   done
 }
 check_native_image() {
-  local path="$1"
-  if [[ -L "$path" || ! -f "$path" || ! -r "$path" || "$(head -c 4 -- "$path")" != COPY ]]; then
-    echo "Unsafe or unrecognized native handoff image: $path" >&2
-    return 1
+  local path="$1" magic
+  if [[ ! -L "$path" && -f "$path" && -r "$path" ]] &&
+     magic=$(head -c 4 -- "$path") && [[ "$magic" == COPY || "$magic" == CPYP ]]; then
+    return 0
   fi
+  echo "Unsafe or unrecognized native handoff image: $path" >&2
+  return 1
 }
 check_copyover_state() {
   local index="$1" path="${COPYOVER_SOURCES[$1]}" parent

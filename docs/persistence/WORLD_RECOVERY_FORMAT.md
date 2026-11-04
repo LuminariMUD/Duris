@@ -184,3 +184,30 @@ topology. SQL reconciliation aborts if called. Idle worker drains and unrelated
 player/NPC/network services are fixture boundaries; no live game or production
 state is involved. The same fixture fails on the previous room-only copyover
 implementation before reaching process replacement.
+
+### Player-only copyover handoff
+
+Version 20 appends the authenticated account and ship cabin identity to each
+descriptor record. Static rooms use virtual room numbers in both modes.
+A persistent ship cabin uses the ship's database ID and layout slot, with its
+saved anchorage as fallback. A missing room falls back to the player's home or
+birthplace. Readers preserve the room encoding of supported older images.
+Use a cold restart when downgrading to a reader older than version 21.
+
+Standalone `copyover` uses magic `CPYP` and requires zero mob, object and door
+counts. Version 21 stores a Redis checkpoint after the three listener descriptors
+and before the player records. It contains the acknowledged generation sequence,
+namespace, season epoch, and authenticated manifest tag, which binds the upload
+identity and payload digest. Published sequence keys are immutable. Publication atomically
+clears floor deltas, so the matching floor cut is empty. A zero sequence denotes
+disabled world recovery. A legacy `CPYP` handoff can start only with world
+recovery disabled. A version 20 image with a Redis checkpoint is retained for
+operator review because it identifies the payload without identifying the upload.
+
+Both modes require durable player saves before publishing. The replacement
+validates the checkpoint before world loading and excludes it from fresh-world
+population and materialization. The inherited listeners must validate and boot
+must be ready before the replacement deletes the checkpoint. Redis compares the
+generation, floor cut, and writer lease atomically. Failure leaves recovery
+evidence available for inspection and cold recovery. Normal corpse, storage,
+and shop restoration remains enabled for standalone copyover.

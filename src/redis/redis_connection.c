@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstring>
+#include <fcntl.h>
 #include <mutex>
 #include <new>
 #include <string>
@@ -147,7 +148,15 @@ redisContext *redis_connection_open_with_timeout(const struct redis_connection_s
 			redisConnectWithTimeout(settings->host.c_str(), settings->port,
 						connect_timeout) :
 			redisConnectUnixWithTimeout(settings->unix_socket.c_str(), connect_timeout);
-	if (!context || context->err)
+	if (!context || (context->err && context->fd == REDIS_INVALID_FD))
+		return context;
+	const int flags = fcntl(context->fd, F_GETFD);
+	if (flags < 0 || fcntl(context->fd, F_SETFD, flags | FD_CLOEXEC) < 0)
+	{
+		redisFree(context);
+		return nullptr;
+	}
+	if (context->err)
 		return context;
 	if (settings->tls)
 	{

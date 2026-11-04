@@ -900,6 +900,42 @@ bool artifacts_stage_population(const std::vector<artifact_payload_projection> &
 	}
 }
 
+#ifdef __NO_MYSQL__
+void artifacts_save_boot_population()
+{
+	try
+	{
+		std::vector<flatfile_artifact_record> records;
+		for (const auto &[vnum, row] : artifact_rows)
+			if (row.save.dirty)
+			{
+				const auto bind = artifact_binds.find(vnum);
+				records.push_back(artifact_flat_capture(
+					vnum, row,
+					bind == artifact_binds.end() ? artifact_bind_row{} :
+								       bind->second));
+			}
+		if (records.empty())
+			return;
+		if (artifact_queue_flat(std::move(records), std::make_shared<sql_write_receipt>()))
+		{
+			// Boot writes synchronously, before any game thread can change these rows.
+			for (auto &[vnum, row] : artifact_rows)
+				row.save.dirty = false;
+			return;
+		}
+		logit(LOG_ARTIFACT,
+		      "Artifact boot snapshot failed (error=%d); queued retries remain dirty.",
+		      errno);
+	}
+	catch (const std::bad_alloc &)
+	{
+		logit(LOG_ARTIFACT,
+		      "Artifact boot snapshot allocation failed; queued retries remain dirty.");
+	}
+}
+#endif
+
 bool artifact_begin_creation(P_obj object)
 {
 	if (!object || !IS_ARTIFACT(object))

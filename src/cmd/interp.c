@@ -1288,7 +1288,8 @@ const char *command[MAX_CMD] = {
 	"race",
 	"class",
 	"keptchar",
-	"\n" /* MAX_CMD = 877, MAX_CMD_LIST = 1000 */
+	"copyover",
+	"\n" /* MAX_CMD = 878, MAX_CMD_LIST = 1000 */
 };
 
 const char *fill_words[] = { "in", "from", "with", "the", "on", "at", "to", "\n" };
@@ -3072,6 +3073,7 @@ void assign_command_pointers(void)
 	CMD_GRT(CMD_SETBIT, STAT_DEAD + POS_PRONE, do_setbit, GREATER_G);
 	CMD_GRT(CMD_SHUTDOW, STAT_DEAD + POS_PRONE, do_shutdow, FORGER);
 	CMD_GRT(CMD_SHUTDOWN, STAT_DEAD + POS_PRONE, do_shutdown, FORGER);
+	CMD_GRT(CMD_COPYOVER, STAT_DEAD + POS_PRONE, do_copyover, FORGER);
 	CMD_GRT(CMD_SILENCE, STAT_DEAD + POS_PRONE, do_silence, AVATAR);
 	CMD_GRT(CMD_SNOOP, STAT_DEAD + POS_PRONE, do_snoop, GREATER_G);
 	CMD_GRT(CMD_SNOWBALL, STAT_DEAD + POS_PRONE, do_action, AVATAR);

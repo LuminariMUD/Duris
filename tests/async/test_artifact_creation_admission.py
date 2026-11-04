@@ -79,9 +79,10 @@ bool redis_invalidate_artifact_cache() {
  return true;
 }
 const char *persistence_mode_flatfile_root() { return "fixture"; }
+static auto snapshot_result = flatfile_artifact_result::ok;
 flatfile_artifact_result flatfile_artifact_snapshot_apply(const std::string &,
  const std::vector<flatfile_artifact_record> &records,std::string *) {
- captures.push_back(records); return flatfile_artifact_result::ok;
+ captures.push_back(records); return snapshot_result;
 }
 player_save_submit_result persistence_writer_submit(persistence_job_kind kind,uint64_t,size_t,
  persistence_job_write_fn write) {
@@ -332,7 +333,19 @@ int main() {
  };
  fail_invalidation=true;
  assert(stage(true) && fail_invalidation); // canonical staging does not need the report cache
- fail_invalidation=false; artifact_save_pulse(true); drain();
+ fail_invalidation=false;
+ booting=true;
+ snapshot_result=flatfile_artifact_result::io_error;
+ artifacts_save_boot_population();
+ assert(captures.size()==1 && captures.front().size()==2 && artifact_save_pulse(false)==2 && writes.empty());
+ captures.clear();
+ snapshot_result=flatfile_artifact_result::ok;
+ artifacts_save_boot_population();
+ assert(captures.size()==1 && captures.front().size()==2 && !artifact_save_pulse(false) && writes.empty());
+ captures.clear();
+ artifacts_save_boot_population();
+ assert(captures.empty());
+ booting=false;
  obj_data invalid={}; invalid.R_num=-1; invalid.extra_flags=ITEM_ARTIFACT; invalid.obj_uid=123;
  assert(!artifact_begin_creation(&invalid) && errno==ENODATA && !clone_obj(&invalid));
  artifact_object_extracted(&invalid,true); assert(!artifact_is_canonical(&invalid));

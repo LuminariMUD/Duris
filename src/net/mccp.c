@@ -235,43 +235,36 @@ int compress_start(P_desc player, int mccp_version)
 	return 0;
 }
 
-/* ZMUD seems not to handle Z_FINISH event properly, so socket needs
- to be closed immediatly after stopping compression! */
 int compress_end(P_desc player, int flush)
 {
-	unsigned char dummy[1] = { ' ' };
-	int status, len;
-
 	if (!player->out_compress || !player->z_str)
 		return 0;
 
-	player->z_str->avail_in = 0;
-	player->z_str->next_in = dummy;
-	player->z_str->next_out = (Bytef *)player->out_compress_buf;
-	player->z_str->avail_out = COMPRESS_BUF_SIZE;
-
-	/* flush all pending data, Z_OK means there's still more data to process */
+	int status = Z_STREAM_END;
 	if (flush)
 	{
+		player->z_str->avail_in = 0;
 		do
 		{
+			player->z_str->next_out = (Bytef *)player->out_compress_buf;
+			player->z_str->avail_out = COMPRESS_BUF_SIZE;
 			status = deflate(player->z_str, Z_FINISH);
 			if (status != Z_STREAM_END && status != Z_OK)
+				break;
+			const int length = COMPRESS_BUF_SIZE - player->z_str->avail_out;
+			if (raw_write_to_descriptor(player, player->out_compress_buf, length) < 0)
 			{
+				status = Z_ERRNO;
 				break;
 			}
-			len = (long)player->z_str->next_out - (long)player->out_compress_buf;
-			if (raw_write_to_descriptor(player, player->out_compress_buf, len) < 0)
-				break;
 		} while (status != Z_STREAM_END);
 	}
 
-	deflateEnd(player->z_str); /* free memory allocated by zlib */
+	deflateEnd(player->z_str);
 	FREE(player->out_compress_buf);
 	FREE(player->z_str);
 	player->out_compress = 0;
-
-	return 0;
+	return status == Z_STREAM_END ? 0 : -1;
 }
 
 /* use this function whenever you want to send anything to player,

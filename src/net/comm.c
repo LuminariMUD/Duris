@@ -457,7 +457,7 @@ void request_shutdown(int shutdown_type, const char *issuer, const char *reason)
 		shutdownData.eShutdownType = TimedShutdownData::REBOOT;
 		break;
 	case 3:
-		shutdownData.eShutdownType = TimedShutdownData::COPYOVER;
+		shutdownData.eShutdownType = TimedShutdownData::HOTBOOT;
 		break;
 	default:
 		shutdownData.eShutdownType = TimedShutdownData::OK;
@@ -832,6 +832,12 @@ int main(int argc, char **argv)
 			"copyover",
 			"No validated copyover image is available; inspect the publication and .recovering paths before retrying");
 	redis_init();
+	const auto *handoff = copyover_boot ? copyover_boot_evidence() : nullptr;
+	const bool fresh_copyover = handoff && !copyover_restores_world();
+	if (fresh_copyover && !redis_world_prepare_copyover(handoff->redis_checkpoint))
+		fatal_boot_error(
+			"copyover",
+			"Redis world does not match the copyover checkpoint; player handoff retained");
 
 	// Pin recovery before any custody cleanup, including ordinary cold boots.
 	if (!copyover_boot)
@@ -868,7 +874,10 @@ int main(int argc, char **argv)
 		      population.unavailable_sources.empty() ?
 			      "allocation or unprepared input" :
 			      population.unavailable_sources.c_str());
-	reap_unheld_player_items_at_boot();
+	// During a Redis-backed fresh boot the old floor cut is still a fallback.
+	// Leave its custody alone until a subsequent boot can reap against live evidence.
+	if (!fresh_copyover || !handoff->redis_checkpoint.sequence)
+		reap_unheld_player_items_at_boot();
 
 	// Property hooks now also own main-thread item-action cancellation. Bind
 	// before loading them; the event pool is initialized later during world boot.
@@ -899,7 +908,8 @@ int main(int argc, char **argv)
 	{
 		std::string boot_error;
 		if (!shopkeeper_boot_begin("shopkeeper-boot",
-					   copyover_boot || redis_world_recovery_boot_active(),
+					   copyover_restores_world() ||
+						   redis_world_recovery_boot_active(),
 					   &boot_error))
 			fatal_boot_error("shopkeeper", "Could not record boot state: %s",
 					 boot_error.c_str());
@@ -1014,6 +1024,30 @@ static void remove_hostname_files(const char *prefix)
 		if (!strncmp(entry->d_name, prefix, length) && strcmp(entry->d_name, ".") &&
 		    strcmp(entry->d_name, "..") && strcmp(entry->d_name, ".gitignore"))
 			unlinkat(dirfd(directory), entry->d_name, 0);
+	closedir(directory);
+}
+
+// All old resolver threads have exited. Retain names only for inherited peers.
+static void prune_copyover_hostname_files()
+{
+	DIR *directory = opendir("lib/etc/hosts");
+	if (!directory)
+		return;
+	while (const struct dirent *entry = readdir(directory))
+	{
+		if (!strcmp(entry->d_name, ".") || !strcmp(entry->d_name, "..") ||
+		    !strcmp(entry->d_name, ".gitignore"))
+			continue;
+		bool retained = false;
+		for (P_desc d = descriptor_list; d && !retained; d = d->next)
+		{
+			char filename[128];
+			snprintf(filename, sizeof filename, "%d.%s", d->descriptor, d->host);
+			retained = !strcmp(entry->d_name, filename);
+		}
+		if (!retained)
+			unlinkat(dirfd(directory), entry->d_name, 0);
+	}
 	closedir(directory);
 }
 
@@ -2737,18 +2771,22 @@ void game_loop(int port, int sslport)
 				   offsetof(struct descriptor_data, next),
 				   mm_find_best_chunk(sizeof(struct descriptor_data), 25, 110));
 
-	// copyover recovery - pool must exist first
+	// Copyover recovery needs the descriptor pool. Refuse before reconciling
+	// the world if its inherited listeners cannot be used.
 	if (copyover_boot)
 	{
-		if (copyover_recover(&recovered_mother_desc, &recovered_mother_desc_ssl,
-				     &recovered_ws_desc))
+		if (!copyover_recover(&recovered_mother_desc, &recovered_mother_desc_ssl,
+				      &recovered_ws_desc))
 		{
-			copyover_restore_combat();
-			// recalculate avg mob level now that mobs are restored
-			calc_zone_mob_level();
+			// Return through normal shutdown so every worker is joined.
+			logit(LOG_STATUS,
+			      "FATAL: copyover recovery failed; requesting graceful cold restart");
+			_reboot = 1;
+			return;
 		}
-		// Failed recovery leaves the listeners invalid. The socket-selection
-		// branch below returns through normal shutdown, joining every worker.
+		if (copyover_restores_world())
+			copyover_restore_combat();
+		calc_zone_mob_level();
 	}
 
 	// redis crash recovery - restore world state from redis snapshot
@@ -2793,7 +2831,7 @@ void game_loop(int port, int sslport)
 	// fallback). Reconcile legacy duplicated generations before world ticks.
 	if (!mini_mode)
 	{
-		reconcile_shopkeepers(copyover_boot != 0);
+		reconcile_shopkeepers(copyover_restores_world());
 		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		{
 			std::string error;
@@ -2815,23 +2853,12 @@ void game_loop(int port, int sslport)
 #endif
 
 	// use recovered sockets if copyover, otherwise create new ones
-	if (copyover_boot && recovered_mother_desc >= 0)
+	if (copyover_boot)
 	{
 		logit(LOG_STATUS, "Using recovered sockets from copyover");
 		s = recovered_mother_desc;
 		S = recovered_mother_desc_ssl;
 		WS = recovered_ws_desc;
-	}
-	else if (copyover_boot)
-	{
-		/* The inherited listeners are still open, so this process cannot safely
-		 * bind replacements.  Return through normal shutdown to join every worker;
-		 * exit(1) here left joinable std::threads and turned a rejected copyover into
-		 * SIGABRT plus a core dump.  The supervisor then performs a cold restart. */
-		logit(LOG_STATUS,
-		      "FATAL: copyover recovery failed; requesting graceful cold restart");
-		_reboot = 1;
-		return;
 	}
 	else
 	{
@@ -2871,6 +2898,16 @@ void game_loop(int port, int sslport)
 	if (!discord_bridge_init())
 		logit(LOG_STATUS,
 		      "WARNING: Discord bridge failed to start; check DURIS_DISCORD settings or port availability");
+
+	if (copyover_boot)
+	{
+		if (!copyover_restores_world() && !redis_world_discard_for_copyover())
+			fatal_boot_error(
+				"copyover",
+				"Redis checkpoint changed during boot; recovery evidence retained");
+		prune_copyover_hostname_files();
+		copyover_commit_boot();
+	}
 
 	// store in file-scope statics for copyover access
 	mother_desc = s;

@@ -51,14 +51,15 @@ int main() {
         assert(copyover_has_durable_shopkeepers() == (version>=13));
     }
     assert(remove(COPYOVER_FILE)==0);
-    puts("copyover versions 12-19: record widths and durable shopkeeper provenance PASS");
+    puts("copyover versions 12-20: record widths and durable shopkeeper provenance PASS");
 }
 '''
 db = (ROOT / "src/world/db.c").read_text()
-selection_start = db.index("if (!copyover_boot || copyover_has_durable_shopkeepers() ||")
+selection_start = db.index("if (!copyover_restores_world() || copyover_has_durable_shopkeepers() ||")
 selection = db[selection_start:db.index("remember_boot_shopkeepers();", selection_start)]
 setup = r"""
 int copyover_boot=0, backend=0, restored_shops=0;
+bool copyover_restores_world() { return copyover_boot != 0; }
 constexpr int PERSISTENCE_MODE_FLATFILE_PRIMARY=1;
 int persistence_mode_get() { return backend; }
 void restore_shopkeepers() { ++restored_shops; }

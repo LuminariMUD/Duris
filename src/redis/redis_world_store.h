@@ -51,11 +51,13 @@ uint64_t redis_world_store_consume_clean_shutdown(const struct redis_world_store
 bool redis_world_store_consume_generation(
 	const struct redis_world_store_config *config, uint64_t sequence,
 	const std::vector<unsigned char> &generation,
-	const std::vector<std::vector<unsigned char>> &floor_records);
+	const std::vector<std::vector<unsigned char>> &floor_records,
+	const char *writer_token = nullptr, const unsigned char *manifest_tag = nullptr);
 // The dedicated reader connection can fail while the caller's WATCH connection is healthy.
 bool redis_world_store_read_generation(const struct redis_world_store_config *config,
 				       uint64_t sequence, std::vector<unsigned char> *generation,
-				       bool *transport_failure = nullptr);
+				       bool *transport_failure = nullptr,
+				       unsigned char *manifest_tag = nullptr);
 bool redis_world_store_publish(const struct redis_world_store_config *config,
 			       const char *writer_token, uint64_t lease_msec,
 			       const unsigned char *data, size_t size, uint64_t sequence,
@@ -64,6 +66,7 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 					const char *writer_token, uint64_t lease_msec,
 					const unsigned char *data, size_t size, uint64_t sequence,
 					int64_t timestamp, uint32_t checksum,
-					redis_shared_command_outcome *outcome);
+					redis_shared_command_outcome *outcome,
+					unsigned char *manifest_tag = nullptr);
 
 #endif

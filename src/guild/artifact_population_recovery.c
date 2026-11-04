@@ -199,9 +199,14 @@ unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &sna
 	}
 	if (snapshot.bytes.size() > WORLD_RECOVERY_MAX_BYTES)
 		return E2BIG;
+	const bool players_only = !memcmp(snapshot.header.magic, COPYOVER_PLAYERS_MAGIC, 4);
 	if (snapshot.bytes.size() < sizeof(copyover_header) ||
-	    memcmp(snapshot.header.magic, COPYOVER_MAGIC, 4) || snapshot.header.num_mobs < 0 ||
-	    snapshot.header.num_objects < 0 ||
+	    (memcmp(snapshot.header.magic, COPYOVER_MAGIC, 4) && !players_only) ||
+	    (players_only &&
+	     (snapshot.header.version < 19 || snapshot.header.version > COPYOVER_VERSION ||
+	      snapshot.header.num_mobs || snapshot.header.num_objects ||
+	      snapshot.header.num_rooms)) ||
+	    snapshot.header.num_mobs < 0 || snapshot.header.num_objects < 0 ||
 	    static_cast<size_t>(snapshot.header.num_mobs) != snapshot.mobs.size() ||
 	    static_cast<size_t>(snapshot.header.num_objects) != snapshot.objects.size())
 		return EINVAL;

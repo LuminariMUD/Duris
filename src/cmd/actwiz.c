@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "persistence/copyover.h"
 #include "net/discord_petition.h"
 #include "account/creation_availability_config.h"
 #include "net/comm.h"
@@ -4288,8 +4289,10 @@ static const char *scheduled_shutdown_type_name(int shutdown_type, bool uppercas
 		return uppercase ? "SHUTDOWN" : "shutdown";
 	case TimedShutdownData::PWIPE:
 		return uppercase ? "PWIPE" : "pwipe";
+	case TimedShutdownData::HOTBOOT:
+	case TimedShutdownData::AUTOREBOOT_HOTBOOT:
+		return uppercase ? "HOTBOOT" : "hotboot";
 	case TimedShutdownData::COPYOVER:
-	case TimedShutdownData::AUTOREBOOT_COPYOVER:
 		return uppercase ? "COPYOVER" : "copyover";
 	default:
 		return uppercase ? "REBOOT" : "reboot";
@@ -4336,11 +4339,14 @@ void timedShutdown(P_char, P_char, P_obj, void * /*data*/)
 		}
 	}
 	const bool manual = shutdownData.eShutdownType != TimedShutdownData::AUTOREBOOT &&
-			    shutdownData.eShutdownType != TimedShutdownData::AUTOREBOOT_COPYOVER;
+			    shutdownData.eShutdownType != TimedShutdownData::AUTOREBOOT_HOTBOOT;
 	const bool pending = shutdownData.eShutdownType == TimedShutdownData::PWIPE ||
 			     shutdownData.reboot_time != 0 || shutdownData.next_warning >= 0;
 	if (manual && pending &&
-	    (!issuer || !can_exec_cmd(issuer, CMD_SHUTDOWN) ||
+	    (!issuer ||
+	     !can_exec_cmd(issuer, shutdownData.eShutdownType == TimedShutdownData::COPYOVER ?
+					   CMD_COPYOVER :
+					   CMD_SHUTDOWN) ||
 	     (shutdownData.eShutdownType == TimedShutdownData::PWIPE &&
 	      GET_LEVEL(issuer) < OVERLORD)))
 	{
@@ -4389,21 +4395,25 @@ void timedShutdown(P_char, P_char, P_obj, void * /*data*/)
 			break;
 
 		case TimedShutdownData::COPYOVER:
+		case TimedShutdownData::HOTBOOT:
+			copyover_preserve_world = action == TimedShutdownData::HOTBOOT;
 			snprintf(buf, 500,
-				 "\r\n%s begins a copyover; your connection will be preserved.\r\n",
-				 shutdownData.IssuedBy);
+				 "\r\n%s begins a %s; please wait while the MUD restarts.\r\n",
+				 shutdownData.IssuedBy,
+				 scheduled_shutdown_type_name(action, false));
 			send_to_all(buf);
-			log_shutdown("Copyover");
+			log_shutdown(copyover_preserve_world ? "Hotboot" : "Copyover");
 			write_shutdown_info(shutdownData.IssuedBy, shutdownData.Reason);
 			shutdownflag = _copyover = 1;
 			break;
 
-		case TimedShutdownData::AUTOREBOOT_COPYOVER:
+		case TimedShutdownData::AUTOREBOOT_HOTBOOT:
+			copyover_preserve_world = true;
 			snprintf(
 				buf, 500,
 				"\r\nDuris fades into nothing, as the world begins its reconstruction...\r\n");
 			send_to_all(buf);
-			log_shutdown("Auto-reboot with copyover");
+			log_shutdown("Auto-reboot with hotboot");
 			shutdownflag = _autoboot = _copyover = 1;
 			break;
 
@@ -4465,7 +4475,7 @@ void timedShutdown(P_char, P_char, P_obj, void * /*data*/)
 		if (secs <= 1)
 		{
 			cancel_shutdown_ticks(timedShutdown);
-			if (issuer)
+			if (issuer && shutdownData.eShutdownType != TimedShutdownData::COPYOVER)
 			{
 				int old_level = GET_LEVEL(issuer);
 				issuer->player.level = MAXLVL;
@@ -4545,12 +4555,83 @@ void displayShutdownMsg(P_char ch)
 	send_to_char(buf, ch);
 }
 
+void do_copyover(P_char ch, char *argument, int /*cmd*/)
+{
+	if (IS_NPC(ch))
+		return;
+	char arg[MAX_INPUT_LENGTH];
+	argument = one_argument(argument, arg);
+	while (isspace(static_cast<unsigned char>(*argument)))
+		++argument;
+	if (*argument)
+	{
+		send_to_char("Syntax: copyover [seconds | cancel]\r\n", ch);
+		return;
+	}
+	if (!str_cmp(arg, "cancel"))
+	{
+		if (shutdownData.eShutdownType != TimedShutdownData::COPYOVER ||
+		    str_cmp(shutdownData.IssuedBy, GET_NAME(ch)))
+		{
+			send_to_char("You have no scheduled copyover to cancel.\r\n", ch);
+			return;
+		}
+		cancel_shutdown_ticks(timedShutdown);
+		shutdownData.eShutdownType = TimedShutdownData::NONE;
+		send_to_all("&+R*** Scheduled copyover cancelled. ***&n\r\n");
+		sql_log(ch, WIZLOG, "Copyover cancelled by %s", GET_NAME(ch));
+		return;
+	}
+	long seconds = 0;
+	if (*arg)
+	{
+		char *end = nullptr;
+		errno = 0;
+		seconds = strtol(arg, &end, 10);
+		if (errno || !end || *end || seconds < 0 || seconds > INT_MAX ||
+		    !isdigit(static_cast<unsigned char>(arg[0])))
+		{
+			send_to_char(
+				"Invalid copyover delay. Use a nonnegative whole number of seconds.\r\n",
+				ch);
+			return;
+		}
+	}
+	if (shutdownData.eShutdownType != TimedShutdownData::NONE)
+	{
+		send_to_char("A restart or shutdown is already scheduled; cancel it first.\r\n",
+			     ch);
+		return;
+	}
+	shutdownData.eShutdownType = TimedShutdownData::COPYOVER;
+	shutdownData.reboot_time = seconds ? time(nullptr) + seconds : 0;
+	shutdownData.next_warning = -1;
+	strlcpy(shutdownData.IssuedBy, GET_NAME(ch), sizeof shutdownData.IssuedBy);
+	strlcpy(shutdownData.Reason, "Fresh-world copyover", sizeof shutdownData.Reason);
+	sql_log(ch, WIZLOG, "Copyover initiated by %s in %ld seconds", GET_NAME(ch), seconds);
+	timedShutdown(nullptr, nullptr, nullptr, nullptr);
+}
+
 void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 {
 	char buf[100], arg[MAX_STRING_LENGTH];
 	if (IS_NPC(ch))
 		return;
 	argument = one_argument(argument, arg);
+	if (!str_cmp(arg, "copyover"))
+	{
+		send_to_char(
+			"Use copyover for a fresh world, or shutdown hotboot to preserve the world.\r\n",
+			ch);
+		return;
+	}
+	if (shutdownData.eShutdownType == TimedShutdownData::COPYOVER)
+	{
+		send_to_char(
+			"A copyover is scheduled; its initiator can use copyover cancel first.\r\n",
+			ch);
+		return;
+	}
 	const bool pwipe = !str_cmp(arg, "pwipe");
 	if (pwipe)
 	{
@@ -4610,19 +4691,19 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 
 	if (shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT)
 	{
-		if (!str_cmp(arg, "copyover"))
+		if (!str_cmp(arg, "hotboot"))
 		{
-			shutdownData.eShutdownType = TimedShutdownData::AUTOREBOOT_COPYOVER;
-			send_to_all("&+R*** Code will copyover at auto reboot. ***&N\n");
+			shutdownData.eShutdownType = TimedShutdownData::AUTOREBOOT_HOTBOOT;
+			send_to_all("&+R*** Code will hotboot at auto reboot. ***&N\n");
 		}
 		return;
 	}
-	if (shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_COPYOVER)
+	if (shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_HOTBOOT)
 	{
-		if (!str_cmp(arg, "copyover"))
+		if (!str_cmp(arg, "hotboot"))
 		{
 			shutdownData.eShutdownType = TimedShutdownData::AUTOREBOOT;
-			send_to_all("&+R*** Code will no longer copyover at auto reboot. ***&N\n");
+			send_to_all("&+R*** Code will no longer hotboot at auto reboot. ***&N\n");
 		}
 		return;
 	}
@@ -4637,8 +4718,8 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 			requested = TimedShutdownData::REBOOT;
 		else if (!str_cmp(arg, "autoreboot"))
 			requested = TimedShutdownData::AUTOREBOOT;
-		else if (!str_cmp(arg, "copyover"))
-			requested = TimedShutdownData::COPYOVER;
+		else if (!str_cmp(arg, "hotboot"))
+			requested = TimedShutdownData::HOTBOOT;
 		else if (pwipe)
 			requested = TimedShutdownData::PWIPE;
 		else if (!crash)
@@ -4662,13 +4743,13 @@ void do_shutdown(P_char ch, char *argument, int /*cmd*/)
 	if (!*arg)
 	{
 		send_to_char(
-			"Syntax: shutdown <ok | reboot | copyover | autoreboot> [minutes] [reason]\r\n"
+			"Syntax: shutdown <ok | reboot | hotboot | autoreboot> [minutes] [reason]\r\n"
 			"        shutdown pwipe confirm yes\r\n"
 			"\r\n"
 			"Examples:\r\n"
 			"  shutdown reboot                    - Immediate reboot\r\n"
 			"  shutdown reboot 5 emergency patch  - Reboot in 5 minutes with reason\r\n"
-			"  shutdown copyover fixing bug       - Hot restart with reason\r\n"
+			"  shutdown hotboot fixing bug       - Hot restart with reason\r\n"
 			"  shutdown ok server maintenance     - Stop without restart\r\n"
 			"\r\n"
 			"Manual countdowns cancel when the issuer leaves play, disconnects or loses permission.\r\n"
@@ -4968,6 +5049,22 @@ void do_switch(P_char ch, char *argument, int cmd)
 	}
 }
 
+bool return_from_staff_switch(P_desc d)
+{
+	if (!d || !d->character || !d->original || IS_NPC(d->original) ||
+	    d->original->only.pc->switched != d->character || IS_MORPH(d->character))
+		return false;
+	P_char controlled = d->character;
+	send_to_char("You return to your original body.\n", controlled);
+	d->character = d->original;
+	d->original = nullptr;
+	d->character->only.pc->switched = nullptr;
+	d->character->desc = d;
+	controlled->desc = nullptr;
+	gmcp_session_update(d);
+	return true;
+}
+
 void do_return(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	/*  if(CHAR_POLYMORPH_OBJ(ch))
@@ -4994,21 +5091,7 @@ void do_return(P_char ch, char * /*argument*/, int /*cmd*/)
 		send_to_char("Use \"shape me\" to return to your normal form.\n", ch);
 		return;
 	}
-	if (ch->desc->original->only.pc->switched)
-	{
-		P_char switched_mob = ch->desc->character; // Save reference to the mob
-
-		send_to_char("You return to your original body.\n", ch);
-
-		ch->desc->character = ch->desc->original;
-		ch->desc->original = 0;
-		ch->desc->character->only.pc->switched = 0;
-
-		ch->desc->character->desc = ch->desc;
-		gmcp_session_update(ch->desc);
-		switched_mob->desc = 0; // Clear the MOB's desc, not ch->desc
-	}
-	else /* switched body due to shape change  */
+	if (!return_from_staff_switch(ch->desc))
 		send_to_char("No effect.\n", ch);
 }
 

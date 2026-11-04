@@ -63,6 +63,7 @@ bool npc_case() { const char *s=getenv("COPYOVER_TEST_CASE"); return !strcmp(s,"
 bool shop_case() { return npc_case() && strcmp(getenv("COPYOVER_TEST_CASE"),"npc"); }
 int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc->shopkeeper_shop_id : -1; }
 
+#include "classes/necromancy.h"
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/critical_command_coordinator.h"
@@ -76,6 +77,9 @@ int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc-
 #include <unistd.h>
 #include <cstdarg>
 #include <sys/syscall.h>
+#include <sys/file.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 // The fixture's logit() writes nothing, so there is no log thread to flush before the exec.
 void flush_log_writer(void) {}
@@ -119,17 +123,26 @@ void player_save_pipeline_quiesce() {}
 void player_save_pipeline_resume() {}
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
+bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *) { std::abort(); }
+int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
 void redis_world_writer_release() {}
+void redis_world_writer_reclaim_after_copyover() {}
+bool return_from_staff_switch(P_desc) { std::abort(); }
+int telnet_flush_output(P_desc) { std::abort(); }
+P_ship get_ship_from_char(P_char) { std::abort(); }
+P_ship find_ship_by_database_id(uint32_t) { std::abort(); }
 bool persistence_flush_all_character_saves() { return true; }
 bool persistence_log_drain(unsigned timeout_ms) { assert(timeout_ms == 3000); return true; }
 
 // Empty-world boundaries: reaching these would make the fixture invalid.
-bool start_hatred_check(P_char) { std::abort(); }
+void schedule_pc_events(P_char) { std::abort(); }
 bool persistence_save_character_terminal(P_char, int) { std::abort(); }
 bool persistence_save_character_terminal_database_acknowledged(P_char, int) { std::abort(); }
 int websocket_send_text(P_desc, const char *) { std::abort(); }
 int compress_end(P_desc, int) { std::abort(); }
-void write_to_q(const char *, txt_q *, int) { std::abort(); }
+void write_to_q(const char *, txt_q *, int) {
+    assert(!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race"));
+}
 uint64_t persistence_observability_now_usec() { std::abort(); }
 uint64_t player_load_pipeline_next_request_id() { std::abort(); }
 bool player_load_pipeline_wait(player_load_request, player_load_result *, uint64_t) { std::abort(); }
@@ -201,7 +214,16 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
         FILE *other=fopen(from,"wb");
         assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
     }
-    return static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+    const int result = static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+    if (result == 0 && !strcmp(scenario, "binary-race") &&
+        !strcmp(to, "bin/server/dms") && flags == RENAME_EXCHANGE) {
+        int publisher = open("bin/server", O_RDONLY | O_DIRECTORY);
+        assert(publisher >= 0 && flock(publisher, LOCK_EX | LOCK_NB) < 0 && errno == EWOULDBLOCK);
+        close(publisher);
+        // Simulate an out-of-band publisher ignoring the lock at the old race point.
+        assert(!rename("bin/server/racing", "bin/server/dms_new"));
+    }
+    return result;
 }
 
 extern "C" int unlink(const char *path) noexcept {
@@ -227,6 +249,10 @@ extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
     assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 5 : 1));
     assert(!header.num_descriptors && header.num_mobs==(npc ? 1 : 0));
     std::fclose(file);
+    if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+        errno = ENOENT;
+        return -1;
+    }
     char executable[] = "/proc/self/exe", phase[] = "recover";
     char *args[] = {executable, phase, nullptr};
     execv(executable, args);
@@ -245,6 +271,17 @@ item_ownership_runtime_entry custody(uint64_t uid)
     entry.vnum = 1000;
     entry.state = item_custody_state::active;
     return entry;
+}
+
+static int listener()
+{
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    assert(fd >= 0 && bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof address) == 0);
+    assert(listen(fd, 1) == 0);
+    return fd;
 }
 
 int main(int argc, char **argv)
@@ -306,8 +343,9 @@ int main(int argc, char **argv)
             GET_MAX_HIT(mob)=333; GET_HIT(mob)=222; GET_MAX_MANA(mob)=211; GET_MANA(mob)=111;
             GET_MAX_VITALITY(mob)=123; GET_VITALITY(mob)=99;
         }
+        const int plain = listener(), tls = listener();
         if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") || !strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race")) {
-            assert(!copyover_save(-1,-1,-1));
+            assert(!copyover_save(plain,tls,-1));
             const std::string competing=!strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race") ? std::string(COPYOVER_FILE)+".recovering" : COPYOVER_FILE;
             FILE *other=fopen(competing.c_str(),"rb"); char bytes[11];
             assert(other && fread(bytes,sizeof(bytes),1,other)==1 && fclose(other)==0);
@@ -317,10 +355,38 @@ int main(int argc, char **argv)
             puts("[PASS] competing publication survives atomic publish refusal; live objects and custody remain");
             return 0;
         }
-        copyover_save(-1, -1, -1);
+        if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+            int pair[2];
+            assert(!socketpair(AF_UNIX, SOCK_STREAM, 0, pair));
+            descriptor_data tls_menu = {}, web_menu = {};
+            tls_menu.descriptor = pair[0];
+            tls_menu.connected = CON_DISPLAY_ACCT_MENU;
+            tls_menu.sslses = reinterpret_cast<gnutls_session_t>(1);
+            tls_menu.telnet_output_len = 1024 * 1024 - 16;
+            tls_menu.next = &web_menu;
+            web_menu.descriptor = pair[1];
+            web_menu.connected = CON_DISPLAY_ACCT_MENU;
+            web_menu.websocket = web_menu.ws_handshake_done = 1;
+            web_menu.ws_output_len = 1024 * 1024 - 16;
+            descriptor_list = &tls_menu;
+            struct stat before = {}, after = {}, racing = {}, staged = {};
+            assert(!stat("bin/server/dms", &before) && !stat("bin/server/racing", &racing));
+            assert(!copyover_save(plain, tls, -1));
+            assert(!stat("bin/server/dms", &after) && before.st_ino == after.st_ino);
+            assert(!stat("bin/server/dms_new", &staged) && racing.st_ino == staged.st_ino);
+            assert(access(COPYOVER_FILE, F_OK) < 0 && errno == ENOENT);
+            assert(!tls_menu.write_failed && !web_menu.write_failed &&
+                   !(fcntl(pair[0], F_GETFD) & FD_CLOEXEC) && !(fcntl(pair[1], F_GETFD) & FD_CLOEXEC));
+            assert(tls_menu.telnet_output_len == 1024 * 1024 - 16 &&
+                   web_menu.ws_output_len == 1024 * 1024 - 16);
+            puts("[PASS] racing publication preserved both binaries and congested menu sockets after failed exec");
+            return 0;
+        }
+        copyover_save(plain, tls, -1);
         assert(false && "copyover_save failed before process replacement");
     }
     assert(argc == 2 && !std::strcmp(argv[1], "recover"));
+    copyover_boot = 1;
     restoring_npc_items=true;
     assert(!object_list && item_ownership_runtime_size() == 0);
     // A newer in-memory custody revision must survive a rejected handoff;
@@ -397,7 +463,10 @@ int main(int argc, char **argv)
     }
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
     if(npc_case()) assert(npc_holder.affected && npc_holder.affected->loc2==1251);
-    assert(telnet == -1 && tls == -1 && websocket == -1);
+    assert(telnet >= 0 && tls >= 0 && telnet != tls && websocket == -1);
+    close(telnet);
+    close(tls);
+    copyover_commit_boot();
     assert(copyover_recover(&telnet, &tls, &websocket) == 0);
     assert((access(COPYOVER_FILE, F_OK) == 0) == new_publication);
     assert((access(claimed.c_str(), F_OK) == 0) == changed);
@@ -485,8 +554,14 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
+    for scenario in ("binary-race", "shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
-        state.mkdir()
+        server = state / "bin/server"
+        server.mkdir(parents=True)
+        if scenario == "binary-race":
+            for name in ("dms", "dms_new", "racing"):
+                binary = server / name
+                binary.write_text(name)
+                binary.chmod(0o755)
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
                        env=dict(os.environ, COPYOVER_TEST_CASE=scenario, COPYOVER_STATE_FILE="copyover.dat"))

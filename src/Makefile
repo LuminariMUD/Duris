@@ -635,26 +635,21 @@ dms_new: $(DMS_BINARY)
 
 FORCE:
 
-# The server binary has one stable runtime path, but its object graph and link
-# dependencies differ by persistence backend and build profile. Keep each
-# combination's objects isolated and update this stamp when either selection
-# changes so a switch cannot leave an up-to-date binary linked for the prior
-# runtime role.
-$(BACKEND_STAMP): FORCE
-	@mkdir -p $(dir $@)
-	@set -eu; \
-	backend='$(PERSISTENCE_BACKEND)'; \
-	profile='$(BUILD_PROFILE)'; \
-	identity="$$backend/$$profile"; \
-	if [ ! -f "$@" ] || [ "$$(cat "$@")" != "$$identity" ]; then \
-		printf '%s\n' "$$identity" >"$@.tmp"; \
-		mv "$@.tmp" "$@"; \
-	fi
+# A backend/profile switch must relink even if its objects are older than the
+# previous binary. Publish the build stamp only with a completed link.
+DMS_BUILD_ID := $(PERSISTENCE_BACKEND)/$(BUILD_PROFILE)
+DMS_PROFILE_CHANGED := $(shell test "$$(cat "$(BACKEND_STAMP)" 2>/dev/null)" = "$(DMS_BUILD_ID)" || echo yes)
 
-$(DMS_BINARY): $(DMS_OBJS) $(BACKEND_STAMP)
+$(DMS_BINARY): $(DMS_OBJS) $(if $(DMS_PROFILE_CHANGED),FORCE)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(LDFLAGS) -rdynamic -g -o $@ $(DMS_OBJS) $(LIBS)
-	chmod a+rx $@
+	@set -eu; tmp=$$(mktemp "$@.XXXXXX"); trap 'rm -f "$$tmp" "$$tmp.backend"' EXIT; \
+	$(CC) $(CFLAGS) $(LDFLAGS) -rdynamic -g -o "$$tmp" $(DMS_OBJS) $(LIBS); \
+	chmod 755 "$$tmp"; \
+	printf '%s\n' "$(DMS_BUILD_ID)" >"$$tmp.backend"; \
+	exec 8<"$(dir $@)"; flock -x 8; \
+	rm -f "$(BACKEND_STAMP)"; \
+	mv -T "$$tmp" "$@"; \
+	mv -T "$$tmp.backend" "$(BACKEND_STAMP)"
 
 pfile: $(PFILE_BINARY)
 
@@ -688,7 +683,9 @@ $(SERVER_BIN_DIR)/%.so: %.c
 	ld -shared -o $@ /usr/lib/crtbeginS.o $(OBJDIR)/$*.o /usr/lib/crtendS.o
 
 clean-server:
-	rm -f $(DMS_BINARY) $(BACKEND_STAMP)
+	@if [ -d "$(dir $(DMS_BINARY))" ]; then \
+		flock -x "$(dir $(DMS_BINARY))" rm -f "$(DMS_BINARY)" "$(BACKEND_STAMP)"; \
+	fi
 	rm -rf $(OBJDIR)
 
 clean: clean-server

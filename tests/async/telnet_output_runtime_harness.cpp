@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cerrno>
+#include <chrono>
+#include <poll.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,6 +26,11 @@ int websocket_send_text(P_desc, const char *)
 	abort();
 }
 int write_to_descriptor(P_desc, const char *);
+int compress_end(P_desc, int);
+void __free(void *value, const char *, int)
+{
+	free(value);
+}
 int raw_write_to_descriptor(P_desc, const char *, int);
 int write_to_descriptor_binary(P_desc, const unsigned char *, size_t);
 static std::string delivered, retry_record;
@@ -77,6 +84,54 @@ static void reset(bool use_tls, std::vector<int> sequence)
 	tls = use_tls;
 	sentbytes = 0;
 }
+#include "copyover_telnet.inc"
+
+static bool poll_timeout;
+extern "C" int __wrap_poll(pollfd *fds, nfds_t count, int timeout)
+{
+	assert(count == 1 && fds[0].events == POLLOUT && timeout > 0);
+	if (poll_timeout)
+		return 0;
+	fds[0].revents = POLLOUT;
+	return 1;
+}
+
+static void copyover_mccp(const std::string &text)
+{
+	descriptor_data d{};
+	d.out_compress = MCCP_VER2;
+	d.z_str = static_cast<z_stream *>(calloc(1, sizeof(z_stream)));
+	d.out_compress_buf = static_cast<char *>(malloc(COMPRESS_BUF_SIZE));
+	assert(deflateInit(d.z_str, Z_DEFAULT_COMPRESSION) == Z_OK);
+	reset(false, {});
+	assert(write_to_descriptor_binary(&d, (const unsigned char *)text.data(), text.size()) ==
+	       0);
+	// Emit only one byte of the trailer, then apply backpressure at each flush.
+	results = { 1, -EAGAIN, -EAGAIN };
+	assert(compress_end(&d, 1) == 0 && d.telnet_output_len > d.telnet_output_offset);
+	poll_timeout = true;
+	auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+	assert(!flush_copyover_telnet(&d, deadline));
+	assert(d.telnet_output_len > d.telnet_output_offset && !d.write_failed);
+	poll_timeout = false;
+	results = { -EAGAIN, 1, -EAGAIN };
+	call_index = 0;
+	assert(flush_copyover_telnet(&d, deadline) && !d.telnet_output_len);
+	assert(write_to_descriptor(&d, "plaintext") == 0);
+	z_stream decoder{};
+	assert(inflateInit(&decoder) == Z_OK);
+	std::string decoded(text.size() + 1, '\0');
+	decoder.next_in = (Bytef *)delivered.data();
+	decoder.avail_in = delivered.size();
+	decoder.next_out = (Bytef *)decoded.data();
+	decoder.avail_out = decoded.size();
+	assert(inflate(&decoder, Z_FINISH) == Z_STREAM_END);
+	assert(decoded.substr(0, decoder.total_out) == text);
+	assert(std::string(reinterpret_cast<char *>(decoder.next_in), decoder.avail_in) ==
+	       "plaintext");
+	inflateEnd(&decoder);
+}
+
 int main()
 {
 	std::string banner;
@@ -168,5 +223,6 @@ int main()
 		assert(write_to_descriptor(&d, oversized.c_str()) < 0 && d.write_failed);
 		telnet_free_output(&d);
 	}
+	copyover_mccp(banner);
 	puts("Telnet/TLS short-write, backpressure, failure, cleanup and MCCP tests passed");
 }

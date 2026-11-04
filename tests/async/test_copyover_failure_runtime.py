@@ -8,7 +8,7 @@ from _paths import ROOT, extract_function
 source = 'copyover.c'
 
 comm = (ROOT / "src/net/comm.c").read_text()
-restore = comm[comm.index("\t// copyover recovery - pool must exist first"):comm.index("\t// redis crash recovery - restore world state from redis snapshot")]
+restore = comm[comm.index("\t// Copyover recovery needs the descriptor pool."):comm.index("\t// redis crash recovery - restore world state from redis snapshot")]
 sockets = comm[comm.index("\t// use recovered sockets if copyover, otherwise create new ones"):comm.index('\telse\n\t{\n\t\tlogit(LOG_STATUS, "Opening mother connection.")')]
 shutdown_case = r"""
 #include <thread>
@@ -18,6 +18,7 @@ static int reboot_requested=0, post_restore=0;
 int copyover_recover(int *plain,int *tls,int *ws) {
  *plain=recovery_ok ? 11 : -1; *tls=*ws=-1; return recovery_ok;
 }
+bool copyover_restores_world() { return true; }
 void copyover_restore_combat() { ++post_restore; }
 void calc_zone_mob_level() { ++post_restore; }
 void fatal_boot_error(const char *,const char *,...) { std::abort(); }
@@ -59,7 +60,6 @@ void write_to_q(const char *text, txt_q *queue, int wrap) {
     assert(std::string(text) == "failed" && wrap == 1);
     queued.push_back(queue);
 }
-static void raw_write_to_fd(int, const char *) { std::abort(); }
 ''' + extract_function(source, 'const char *copyover_state_file()') + '\n' + extract_function(source, 'static void notify_copyover_failure(') + r'''
 int main() {
     unsetenv("COPYOVER_STATE_FILE");
@@ -83,6 +83,10 @@ int main() {
     notify_copyover_failure("failed");
     assert(resumed == 3 && queued.size() == 4);
     for (int i=0; i<4; ++i) assert(queued[i] == &desc[i].output);
+    queued.clear();
+    desc[3].ws_handshake_done = true;
+    notify_copyover_failure("failed", true);
+    assert(resumed == 6 && queued.size() == 5 && queued.back() == &desc[4].output);
     puts("copyover state path and queued Telnet/MCCP/TLS/WebSocket failure notices passed");
 }
 '''

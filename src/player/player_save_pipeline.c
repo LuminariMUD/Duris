@@ -495,9 +495,15 @@ player_save_terminal_result player_save_pipeline_terminal(P_char ch, int save_in
 	}
 	// Every terminal call captures the caller's current intent and room.
 	player_revision_t revision = 0;
-	if (!player_revision_mark(pid, PLAYER_CHECKPOINT_COMPONENT_ALL, &revision))
+	auto components = PLAYER_CHECKPOINT_COMPONENT_ALL & ~ch->only.pc->unloaded_components;
+	if (components & (PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY))
+		components |= PLAYER_COMPONENT_EQUIPMENT | PLAYER_COMPONENT_INVENTORY;
+	if (!player_revision_mark(pid, components, &revision))
 		return player_save_terminal_result::unavailable;
 	const auto checkpoint = player_save_pipeline_checkpoint_dirty(ch, save_intent, room_vnum);
+	if (checkpoint != player_save_pipeline_result::queued &&
+	    checkpoint != player_save_pipeline_result::coalesced)
+		return player_save_terminal_result::unavailable;
 	if (trace_player_saves())
 		logit(LOG_STATUS,
 		      "PLAYER SAVE TRACE: stage=terminal_begin mono_us=%llu pid=%d revision=%llu checkpoint=%u intent=%d timeout_ms=%llu",

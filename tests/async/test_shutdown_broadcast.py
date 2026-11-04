@@ -27,7 +27,7 @@ harness = r'''
 #include <unistd.h>
 
 #define WIZLOG "wiz"
-command_info cmd_info[CMD_SHUTDOWN + 1] = {};
+command_info cmd_info[CMD_COPYOVER + 1] = {};
 void sql_log(P_char, const char *, const char *, ...);
 static int wipe_calls = 0, restore_calls = 0;
 static bool mysql_required = true, wipe_succeeds = true, crossed = false;
@@ -67,6 +67,7 @@ static time_t now = 100000;
 time_t test_time(time_t *) { return now; }
 #define time test_time
 
+bool copyover_preserve_world = true;
 int shutdownflag = 0, _reboot = 0, _copyover = 0, _autoboot = 0, _pwipe = 0;
 TimedShutdownData shutdownData = {0, -1, TimedShutdownData::NONE, "", ""};
 P_desc descriptor_list = nullptr;
@@ -86,6 +87,7 @@ for filename, signature in (
     ("actwiz.c", "void write_shutdown_info("),
     ("actwiz.c", "static void cancel_shutdown_ticks("),
     ("actwiz.c", "void timedShutdown("),
+    ("actwiz.c", "void do_copyover("),
     ("actwiz.c", "void do_shutdown("),
     ("comm.c", "void request_shutdown("),
 ):
@@ -99,6 +101,7 @@ int main()
     issuer.only.pc = &issuer_pc;
     cmd_info[CMD_SHUTDOWN].minimum_level = FORGER;
     cmd_info[CMD_SHUTDOWN].grantable = 1;
+    cmd_info[CMD_COPYOVER] = cmd_info[CMD_SHUTDOWN];
     char name[] = "Zusuk";
     issuer.player.name = name;
     issuer.player.level = OVERLORD;
@@ -114,8 +117,8 @@ int main()
     auto command = [&](std::string text) {
         char verb[MAX_INPUT_LENGTH];
         char *argument = one_argument(text.data(), verb);
-        assert(!strcmp(verb, "shutdown"));
-        do_shutdown(&issuer, argument, 0);
+        if (!strcmp(verb, "copyover")) do_copyover(&issuer, argument, 0);
+        else { assert(!strcmp(verb, "shutdown")); do_shutdown(&issuer, argument, 0); }
     };
     auto reset = [&]() {
         shutdownData = {0, -1, TimedShutdownData::NONE, "", ""};
@@ -159,7 +162,7 @@ int main()
     assert(shutdownflag && _reboot);
     assert(saved() == "Zusuk|" + reason);
 
-    for (const char *kind : {"ok", "reboot", "copyover"})
+    for (const char *kind : {"ok", "reboot", "hotboot"})
     {
         // Both immediate and timed commands announce the supplied text verbatim.
         for (const char *delay : {"", "3 "})
@@ -207,7 +210,7 @@ int main()
     const auto retained = shutdownData;
     for (const char *invalid : {"pwipe", "pwipe confirm", "pwipe yes", "pwipe confirm no",
                                "pwipe confirm yes extra", "pwipe confirm the yes", "invalid",
-                               "reboot -1", "reboot 2junk", "copyover 99999999999999999999999"}) {
+                               "reboot -1", "reboot 2junk", "hotboot 99999999999999999999999"}) {
         output.clear();
         command(std::string("shutdown ") + invalid);
         assert(shutdownData.eShutdownType == retained.eShutdownType &&
@@ -252,7 +255,7 @@ int main()
                !wipe_calls && !shutdownflag && !active_ticks());
         assert(output[&second.output].find("cancelled") != std::string::npos);
     }
-    for (const char *kind : {"ok", "reboot", "copyover"}) {
+    for (const char *kind : {"ok", "reboot", "hotboot"}) {
         reset(); command(std::string("shutdown ") + kind + " 3");
         first.connected = CON_MAIN_MENU; fire();
         assert(shutdownData.eShutdownType == TimedShutdownData::NONE &&
@@ -289,13 +292,49 @@ int main()
                !shutdownflag && !wipe_calls && !active_ticks());
     }
     reset(); command("shutdown autoreboot 5 scheduled automation");
-    command("shutdown copyover");
-    assert(shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_COPYOVER);
+    command("shutdown hotboot");
+    assert(shutdownData.eShutdownType == TimedShutdownData::AUTOREBOOT_HOTBOOT);
     descriptor_list = &second; now += 301; fire(); fire();
     assert(_autoboot && _copyover && !wipe_calls && !active_ticks());
     reset(); command("shutdown pwipe confirm yes"); descriptor_list = &second;
     request_shutdown(2, "Launcher", "signal");
     assert(_reboot && !_pwipe && !wipe_calls && !active_ticks());
+
+    reset(); command("shutdown copyover");
+    assert(!shutdownflag && shutdownData.eShutdownType == TimedShutdownData::NONE);
+    assert(output[&first.output].find("shutdown hotboot") != std::string::npos);
+    reset(); command("copyover");
+    assert(shutdownflag && _copyover && !copyover_preserve_world && !restore_calls);
+    reset(); command("shutdown hotboot");
+    now += 1; fire();
+    assert(shutdownflag && _copyover && copyover_preserve_world);
+    reset(); command("copyover 20");
+    assert(shutdownData.eShutdownType == TimedShutdownData::COPYOVER && shutdownData.reboot_time == now + 20);
+    assert(output[&second.output].find("20 seconds") != std::string::npos);
+    for (const char *invalid : {"copyover -1", "copyover nonsense", "copyover 1x", "copyover 99999999999999999", "copyover 1 extra", "shutdown", "shutdown hotboot"}) {
+        command(invalid);
+        assert(shutdownData.eShutdownType == TimedShutdownData::COPYOVER && shutdownData.reboot_time == now + 20);
+    }
+    char other_name[] = "Other"; issuer.player.name = other_name;
+    command("copyover cancel");
+    assert(shutdownData.eShutdownType == TimedShutdownData::COPYOVER);
+    issuer.player.name = name;
+    now += 20; fire(); fire();
+    assert(shutdownflag && _copyover && !copyover_preserve_world && !restore_calls);
+    reset(); command("copyover 120"); command("copyover cancel");
+    assert(shutdownData.eShutdownType == TimedShutdownData::NONE && !active_ticks() && !shutdownflag);
+    for (bool departure : {false, true}) {
+        reset(); command("copyover 30");
+        if (departure) first.connected = CON_MAIN_MENU;
+        else issuer.player.level = 1;
+        fire();
+        assert(shutdownData.eShutdownType == TimedShutdownData::NONE && !active_ticks() && !shutdownflag);
+    }
+    reset(); issuer.player.level = GREATER_G;
+    int copyover_grant[] = {CMD_COPYOVER}; issuer_pc.gcmd_arr = copyover_grant; issuer_pc.numb_gcmd = 1;
+    command("copyover 20"); now += 20; fire(); fire();
+    assert(_copyover && !copyover_preserve_world && !restore_calls);
+    puts("Standalone copyover seconds, mode, permission, cancellation and deprecated spelling checks pass");
     puts("Shutdown parsing/permission/cancellation/deadline/switch/automation/signal checks pass");
     puts("Shutdown reasons reach playing clients once; countdown, cancellation and saved reasons pass");
 }

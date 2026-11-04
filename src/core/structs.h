@@ -2727,10 +2727,11 @@ struct TimedShutdownData
 		NONE,
 		OK,
 		REBOOT,
-		COPYOVER,
+		HOTBOOT,
 		AUTOREBOOT,
-		AUTOREBOOT_COPYOVER,
-		PWIPE
+		AUTOREBOOT_HOTBOOT,
+		PWIPE,
+		COPYOVER
 	} eShutdownType;
 	char IssuedBy[50];
 	char Reason[256];

@@ -37,6 +37,7 @@ extern "C" int __wrap_open(const char *path, int flags, ...)
 static room_data rooms[1] = {};
 static index_data objects[1] = {}, mobs[1] = {};
 P_room world = rooms;
+int copyover_boot = 1;
 P_index obj_index = objects, mob_index = mobs;
 extern const int top_of_world = 0;
 static unsigned int template_reads = 0, custody_reads = 0, short_updates = 0;
@@ -73,12 +74,15 @@ static void write_bytes(const std::string &path, const std::vector<char> &bytes)
 	assert(output.good());
 }
 
-static std::vector<char> descriptor_image(int version, const copyover_desc &desc)
+static std::vector<char> descriptor_image(int version, const copyover_desc &desc,
+					  const redis_copyover_checkpoint *checkpoint = nullptr)
 {
 	static_assert(offsetof(copyover_desc, gmcp_supports) == 660,
 		      "versions 12-17 have a frozen 660-byte descriptor record");
+	static_assert(offsetof(copyover_desc, account_name) == 736,
+		      "versions 18-19 include the original descriptor tail padding");
 	copyover_header header{};
-	memcpy(header.magic, COPYOVER_MAGIC, 4);
+	memcpy(header.magic, checkpoint ? COPYOVER_PLAYERS_MAGIC : COPYOVER_MAGIC, 4);
 	header.version = version;
 	header.num_descriptors = 1;
 	FILE *file = tmpfile();
@@ -86,6 +90,8 @@ static std::vector<char> descriptor_image(int version, const copyover_desc &desc
 	assert(fwrite(&header, sizeof(header), 1, file) == 1);
 	const int sockets[3] = { -1, -1, -1 };
 	assert(fwrite(sockets, sizeof(sockets), 1, file) == 1);
+	if (checkpoint && version >= 20)
+		assert(fwrite(checkpoint, sizeof *checkpoint, 1, file) == 1);
 	assert(fwrite(&desc, copyover_desc_bytes_for_version(version), 1, file) == 1);
 	if (version >= 15)
 	{
@@ -260,6 +266,52 @@ int main(int argc, char **argv)
 	const std::string path = "copyover.dat", claimed = path + ".recovering";
 	const auto valid = image();
 
+	if (std::string(argv[1]) == "players")
+	{
+		copyover_desc desc{};
+		strcpy(desc.player_name, "Player");
+		desc.room = 1200;
+		redis_copyover_checkpoint checkpoint = {};
+		strcpy(checkpoint.key_namespace, "duris:local:copyover");
+		checkpoint.epoch = 12;
+		checkpoint.sequence = 34;
+		checkpoint.manifest_tag[0] = 56;
+		auto bytes = descriptor_image(COPYOVER_VERSION, desc, &checkpoint);
+		write_bytes(path, bytes);
+		copyover_boot_snapshot snapshot;
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
+		assert(snapshot.mobs.empty() && snapshot.objects.empty());
+		assert(snapshot.redis_checkpoint.epoch == 12 &&
+		       snapshot.redis_checkpoint.sequence == 34 &&
+		       snapshot.redis_checkpoint.manifest_tag[0] == 56);
+		auto invalid_checkpoint = checkpoint;
+		memset(invalid_checkpoint.key_namespace, 'x',
+		       sizeof invalid_checkpoint.key_namespace);
+		write_bytes(path, descriptor_image(COPYOVER_VERSION, desc, &invalid_checkpoint));
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		write_bytes(path, descriptor_image(19, desc, &checkpoint));
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready &&
+		       !snapshot.redis_checkpoint.sequence);
+		artifact_recovery_population population;
+		assert(!artifact_population_read_copyover(snapshot, &population) &&
+		       population.items.empty());
+		for (const auto offset :
+		     { offsetof(copyover_header, num_mobs), offsetof(copyover_header, num_objects),
+		       offsetof(copyover_header, num_rooms) })
+		{
+			auto corrupt = bytes;
+			const int count = 1;
+			memcpy(corrupt.data() + offset, &count, sizeof(count));
+			write_bytes(path, corrupt);
+			assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		}
+		write_bytes(path, bytes);
+		assert(copyover_prepare_boot() == copyover_boot_result::ready);
+		assert(!copyover_restores_world());
+		std::cout
+			<< "player-only handoff rejects world records and is exclusively claimed\n";
+		return 0;
+	}
 	if (std::string(argv[1]) == "protocol")
 	{
 		copyover_desc desc{};
@@ -311,7 +363,7 @@ int main(int argc, char **argv)
 		invalid.gmcp_session_context[10] = 'z';
 		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
-		std::cout << "copyover descriptor protocol versions 12-19 passed\n";
+		std::cout << "copyover descriptor protocol versions 12 through current passed\n";
 		return 0;
 	}
 	if (std::string(argv[1]) == "formats")

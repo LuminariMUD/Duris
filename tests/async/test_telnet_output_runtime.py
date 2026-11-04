@@ -3,18 +3,20 @@
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "bin/tests"
 BUILD.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="telnet-output-", dir=BUILD) as directory:
     binary = Path(directory) / "telnet_output_runtime"
+    helper = Path(directory) / "copyover_telnet.inc"
+    helper.write_text(extract_function("copyover.c", "bool flush_copyover_telnet("))
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wlogical-op", "-D__NO_MYSQL__",
         "-ffunction-sections", "-fdata-sections", f"-I{ROOT / 'src'}",
-        f"-I{ROOT / 'src/no_mysql'}", str(ROOT / "tests/async/telnet_output_runtime_harness.cpp"),
-        str(ROOT / "src/net/mccp.c"), str(ROOT / "src/net/unicode.c"), "-Wl,--gc-sections", "-Wl,--wrap=write", "-lz",
+        f"-I{ROOT / 'src/no_mysql'}", f"-I{directory}", str(ROOT / "tests/async/telnet_output_runtime_harness.cpp"),
+        str(ROOT / "src/net/mccp.c"), str(ROOT / "src/net/unicode.c"), "-Wl,--gc-sections", "-Wl,--wrap=write", "-Wl,--wrap=poll", "-lz",
         str(HARNESS_STUBS), "-o", str(binary)
     ], check=True, cwd=ROOT, timeout=120)
     subprocess.run([str(binary)], check=True, cwd=ROOT, timeout=30)

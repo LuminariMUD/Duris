@@ -1599,19 +1599,28 @@ python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_flat
 python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_flat --nonroot
 ```
 
-The journey saves a synthetic player, promotes its offline snapshot to staff and restarts
-with the state file's parent directory missing, so the real copyover command fails. The
-same client then runs `look` and an acknowledged `save`, which proves transport and the
-save worker resumed. With the directory created, a second attempt publishes, execs the
-staged binary, recovers and removes the state file, and `look` and `save` run on the
-original socket. MCCP is decoded with zlib, and plaintext in the stream fails the test.
-It runs plain and MCCP, as the ordinary and the non-root fixture.
+The flat-file journey injects an unavailable handoff path, a terminal player
+write failure, and an executable with a missing interpreter. It verifies that
+the live inventory, login sockets, and prior executable survive failure. It
+then retries without removing a publication by hand. Fresh copyover and hotboot
+exercise login and account-menu disconnect, switched-session identity, durable
+linkdead inventory, periodic player events, and hostname cleanup. The custody
+fixture races a staged publisher at the exchange boundary and verifies rollback
+with congested TLS and WebSocket queues. The fresh case also checks TLS and
+WebSocket disconnect and rejects an
+inherited socket whose handoff account does not match the player repository.
 
-Not covered: the complete release image (the journeys use a minimal world), and full TLS
-and WebSocket player sessions across a failed or successful copyover; the failure helper
-is tested with separate TLS and WebSocket descriptor queues. A disconnect after a
-successful copyover, once seen with a full-world Docker server and TinTin, was never
-reproduced.
+```sh
+python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_flat --fresh --full-world
+python3 tests/async/run_copyover_runtime_journey.py /absolute/path/dms_mariadb --redis-failures
+python3 tests/async/test_redis_world_store_live.py
+```
+
+The private MariaDB and Redis journey checks successful checkpoint consumption,
+failed publication without an exec, and predecessor retention when the
+replacement fails to load properties. It compares Redis socket inodes across
+two real process replacements. The live Redis harness also replaces the manifest,
+the floor cut, and the writer lease at the handoff boundary.
 
 ## Corpse bulk loot
 

@@ -568,7 +568,7 @@ must leave their live paths before a new season activates. The guarded filesyste
 step archives the publication, claim and either `.consuming` barrier directory
 under a private `Players/Backup/pwipe-copyover.*` directory, with the configured
 source path recorded. A consumption barrier may be empty or contain only its native
-`image`. Existing images must be readable regular files with native `COPY` magic;
+`image`. Existing images must be readable regular files with native `COPY` or `CPYP` magic;
 symlinks, unknown types/content, inaccessible parents and unsafe backup paths fail
 preflight before destructive SQL. Canonical absolute or data-root-relative custom
 paths with existing parent directories are supported, including a separate state

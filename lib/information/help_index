@@ -22540,9 +22540,36 @@ nothing but answer. Use 'shutdown' for real shutdowns.
 See also: SHUTDOWN
 ===========================================================================
 #
+COPYOVER (Immortal Command)
+===========================================================================
+Syntax: copyover [seconds]
+        copyover cancel
+
+Normally a Forger command (level 61); trusted staff may receive a copyover grant.
+With no delay, copyover restarts immediately. Delays use whole seconds. Only the
+initiator can cancel; the countdown also cancels if they leave play or lose
+permission. Cancel any other scheduled shutdown or restart first.
+
+Copyover saves players, equipment and pets, keeps playing plain Telnet connections,
+and loads a fresh world. Zones repopulate, fights end, groups must reform, and
+ordinary dropped items disappear. Separately saved corpses, storage, ships and
+shop records follow their normal reboot persistence.
+
+Login, account-menu, WebSocket and TLS sessions disconnect when the new server
+starts. When their connection can accept it, they receive a notice to reconnect
+in about 20 seconds. Pending saves must succeed before those sessions disconnect.
+If the executable fails to start, current sessions stay connected.
+
+Use shutdown hotboot to preserve the live world. Login and account-menu
+sessions reconnect after hotboot. Hotboot cancels if an in-game session cannot
+survive the handoff.
+
+See also: SHUTDOWN
+===========================================================================
+#
 SHUTDOWN (Immortal Command)
 ===========================================================================
-Syntax: shutdown ok|reboot|copyover|autoreboot [minutes] [reason]
+Syntax: shutdown ok|reboot|hotboot|autoreboot [minutes] [reason]
         shutdown pwipe confirm yes   (Overlord, MariaDB-primary only)
 
 Normally a Forger command (level 61); trusted staff may also use an explicit
@@ -22550,8 +22577,11 @@ shutdown grant. Optional delays are nonnegative whole minutes. Reasons for ordin
 a manual countdown; a valid new request replaces it. Invalid input leaves an
 existing countdown unchanged. Manual countdowns cancel if the issuer leaves play,
 disconnects or loses the required permission, including the final pending tick.
-Automatic reboots continue independently; shutdown copyover toggles their hotboot
-mode. Cancellation applies before execution begins.
+Automatic reboots continue independently; shutdown hotboot toggles their hotboot
+mode. Cancellation applies before execution begins. Hotboot preserves the live
+world and playing Telnet sessions. It cancels when a playing session cannot
+survive the handoff. Use the standalone copyover command for a fresh world. A scheduled copyover must be
+cancelled with copyover cancel by its initiator before using shutdown.
 
 Pwipe requires the full confirm phrase with no extra arguments and Overlord
 permission. It gives five minutes to cancel and is announced as PWIPE. Account

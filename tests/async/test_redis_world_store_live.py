@@ -34,6 +34,7 @@ def main() -> None:
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <string>
 #include <vector>
 
 static redisReply *run(redisContext *context, const char *command)
@@ -129,6 +130,10 @@ int main(int argc, char **argv)
     assert(!redis_world_store_claim_fence(&config, writer_a, lease));
     assert(!redis_world_store_renew_fence(&config, writer_a, lease));
     assert(redis_world_store_renew_fence(&config, writer_b, lease));
+    assert(!redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
+                                      1, time(nullptr), 22));
+    assert(redis_world_store_read_generation(&config, 1, &loaded));
+    assert(loaded.size() == sizeof(first) - 1 && !memcmp(loaded.data(), first, loaded.size()));
     assert(redis_world_store_publish(&config, writer_b, lease, second, sizeof(second) - 1,
                                      2, time(nullptr), 22));
     reply = run(context, "MGET mud:season:42:world_state:current mud:season:42:world_state:generation:1 mud:season:42:world_state:generation:2");
@@ -214,58 +219,47 @@ int main(int argc, char **argv)
     rotated.previous_authentication_secret = recovery_secret;
     assert(redis_world_store_read_generation(&rotated, 4, &loaded));
     assert(loaded == large);
-    std::vector<unsigned char> forged_chunk(REDIS_WORLD_GENERATION_CHUNK_BYTES);
-    memcpy(forged_chunk.data(), large.data(), forged_chunk.size());
-    forged_chunk[0] ^= 0xff;
-    reply = (redisReply *)redisCommand(
-        context,
-        "SET mud:season:42:world_state:generation:4:upload:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:chunk:000 %b",
-        forged_chunk.data(), forged_chunk.size());
-    assert(reply && reply->type == REDIS_REPLY_STATUS);
-    freeReplyObject(reply);
-    assert(!redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded.empty());
-    assert(redis_world_store_publish(&config, writer_b, lease, large.data(), large.size(),
-                                     4, time(nullptr), 59));
     reply = run(context, "GET mud:season:42:world_state:generation:4");
-    assert(reply->type == REDIS_REPLY_STRING &&
-           reply->len == REDIS_WORLD_GENERATION_MANIFEST_BYTES);
-    std::vector<unsigned char> forged_manifest(reply->str, reply->str + reply->len);
+    assert(reply->type == REDIS_REPLY_STRING && reply->len == REDIS_WORLD_GENERATION_MANIFEST_BYTES);
+    const std::vector<unsigned char> manifest(reply->str, reply->str + reply->len);
+    const std::string chunk_prefix =
+        "mud:season:42:world_state:generation:4:upload:" + std::string(reply->str + 24, 32) + ":chunk:";
     freeReplyObject(reply);
+    const auto set = [&](const std::string &key, const unsigned char *data, size_t size) {
+        auto *result = (redisReply *)redisCommand(context, "SET %s %b EX 3600", key.c_str(), data, size);
+        assert(result && result->type == REDIS_REPLY_STATUS);
+        freeReplyObject(result);
+    };
+    const size_t chunk_bytes = REDIS_WORLD_GENERATION_CHUNK_BYTES;
+    std::vector<unsigned char> forged_chunk(large.begin(), large.begin() + chunk_bytes);
+    forged_chunk[0] ^= 0xff;
+    set(chunk_prefix + "000", forged_chunk.data(), forged_chunk.size());
+    assert(!redis_world_store_read_generation(&config, 4, &loaded) && loaded.empty());
+    set(chunk_prefix + "000", large.data(), chunk_bytes);
+
+    const std::string manifest_key = "mud:season:42:world_state:generation:4";
+    std::vector<unsigned char> forged_manifest = manifest;
     forged_manifest[88] ^= 0xff;
-    reply = (redisReply *)redisCommand(
-        context, "SET mud:season:42:world_state:generation:4 %b",
-        forged_manifest.data(), forged_manifest.size());
-    assert(reply && reply->type == REDIS_REPLY_STATUS);
-    freeReplyObject(reply);
-    assert(!redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded.empty());
-    reply = run(context, "TTL mud:season:42:world_state:generation:4:upload:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:chunk:000");
+    set(manifest_key, forged_manifest.data(), forged_manifest.size());
+    assert(!redis_world_store_read_generation(&config, 4, &loaded) && loaded.empty());
+    set(manifest_key, manifest.data(), manifest.size());
+
+    reply = run(context, ("TTL " + chunk_prefix + "000").c_str());
     assert(reply->type == REDIS_REPLY_INTEGER && reply->integer > 3500 && reply->integer <= 3600);
     freeReplyObject(reply);
-    freeReplyObject(run(context, "DEL mud:season:42:world_state:generation:4:upload:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:chunk:001"));
-    assert(!redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded.empty());
-    assert(redis_world_store_publish(&config, writer_b, lease, large.data(), large.size(),
-                                     4, time(nullptr), 56));
-    std::vector<unsigned char> oversized(REDIS_WORLD_GENERATION_CHUNK_BYTES + 1, 1);
-    reply = (redisReply *)redisCommand(
-        context,
-        "SET mud:season:42:world_state:generation:4:upload:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb:chunk:001 %b",
-        oversized.data(), oversized.size());
-    assert(reply && reply->type == REDIS_REPLY_STATUS);
-    freeReplyObject(reply);
-    assert(!redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded.empty());
-    assert(redis_world_store_publish(&config, writer_b, lease, large.data(), large.size(),
-                                     4, time(nullptr), 57));
+    freeReplyObject(run(context, ("DEL " + chunk_prefix + "001").c_str()));
+    assert(!redis_world_store_read_generation(&config, 4, &loaded) && loaded.empty());
+    std::vector<unsigned char> oversized(chunk_bytes + 1, 1);
+    set(chunk_prefix + "001", oversized.data(), oversized.size());
+    assert(!redis_world_store_read_generation(&config, 4, &loaded) && loaded.empty());
+    set(chunk_prefix + "001", large.data() + chunk_bytes, chunk_bytes);
+
     freeReplyObject(run(context, "SET mud:season:42:world_state:generation:4 bad"));
-    assert(!redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded.empty());
-    assert(redis_world_store_publish(&config, writer_b, lease, large.data(), large.size(),
-                                     4, time(nullptr), 58));
-    assert(redis_world_store_read_generation(&config, 4, &loaded));
-    assert(loaded == large);
+    assert(!redis_world_store_read_generation(&config, 4, &loaded) && loaded.empty());
+    assert(!redis_world_store_publish(&config, writer_b, lease, large.data(), large.size(),
+                                      4, time(nullptr), 58));
+    set(manifest_key, manifest.data(), manifest.size());
+    assert(redis_world_store_read_generation(&config, 4, &loaded) && loaded == large);
     reply = run(context, "MGET mud:season:42:world_state:current mud:season:43:world_state:current");
     assert(reply->type == REDIS_REPLY_ARRAY && reply->elements == 2);
     assert(reply->element[0]->type == REDIS_REPLY_STRING && !strcmp(reply->element[0]->str, "4"));

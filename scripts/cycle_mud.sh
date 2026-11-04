@@ -286,6 +286,9 @@ fi
 while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
 	DATESTR=$(date +%C%y.%m.%d-%H.%M.%S)
 
+  # Serialize binary selection and publication with make and live copyover.
+  exec 8<"$SERVER_BIN_DIR" || exit 1
+  flock -x 8 || exit 1
   # A staged binary built for another backend or profile is left where it is and
   # the runtime binary keeps running: the regression suite stages a development
   # build, and a launcher that exited here was restarted every ten seconds.
@@ -342,6 +345,8 @@ while [[ $RESULT != 0 && $RESULT != 55 && $RESULT != 58 ]]; do
       fi
     fi
   fi
+
+  exec 8<&-
 
   # The last run's logs move into logs/old-logs/<date>/, and the oldest of those
   # go until the archive fits in DURIS_LOG_ARCHIVE_MB. The game opens logs/log/*

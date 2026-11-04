@@ -8,6 +8,7 @@
 #include "sql/sql.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cerrno>
 #include <map>
 #include <memory>
@@ -153,7 +154,11 @@ const artifact_population_boot_snapshot &artifact_population_prepare_boot(bool n
 			staged.unavailable_sources += "native publication; ";
 		}
 
-		const auto redis = redis_world_prepare_boot();
+		const auto *handoff = native_copyover ? copyover_boot_evidence() : nullptr;
+		const bool players_only = handoff &&
+					  !memcmp(handoff->header.magic, COPYOVER_PLAYERS_MAGIC, 4);
+		const auto redis = players_only ? redis_world_boot_result::disabled :
+						  redis_world_prepare_boot();
 		if (redis == redis_world_boot_result::failed)
 		{
 			complete = false;
