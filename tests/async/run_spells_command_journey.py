@@ -105,7 +105,9 @@ def run(binary, backend):
                 process = boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
+                raw_start = len(player.raw_transcript)
                 own = command(player, "spells")
+                raw_own = player.raw_transcript[raw_start:]
                 header = f">====[ {PLAYER} | Conjurer | Max Circle 1 ]====<"
                 footer = "See: spells <class or specialization> | spells info <spell name>"
                 own_lines = own.splitlines()
@@ -113,6 +115,9 @@ def run(binary, backend):
                 assert footer in own_lines and "magic missile [in spellbook]" in own_lines
                 assert "12th CIRCLE:" in own_lines
                 assert "(circle accessible)" not in own and "(future circle)" not in own
+                assert b"\x1b[0;1;30mburning hands" in raw_own
+                assert b"\x1b[0;1;37mspells <class or specialization>" in raw_own
+                assert b"\x1b[0;1;37mspells info <spell name>" in raw_own
                 staff = command(god, "spells")
                 assert f">====[ {GOD} | Warrior | Max Circle 12 ]====<" in staff
                 assert "No eligible spells" in staff
@@ -185,10 +190,10 @@ def run(binary, backend):
                 # Real dispatcher and NPC inspection, including class/reserved collisions.
                 command(god, "load mob 11")
                 assert "BASE CLASS" in command(god, "spells cleric")
-                assert ">====[ " in command(god, "spells target cleric")
-                assert ">====[ " in command(god, "spells target all")
                 assert "Matching names:" in command(god, "spells s")
-                assert ">====[ " in command(god, "spells target s")
+                for alias in ("cleric", "all", "s"):
+                    assert ">====[ raoul cleric all s | None | Max Circle 1 ]====<" in command(
+                        god, f"spells target {alias}")
                 command(god, "toggle paging yes")
                 god.send("spells all")
                 god.expect("BASE-CLASS CIRCLE REFERENCE")

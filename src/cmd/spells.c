@@ -128,6 +128,8 @@ void personal_spells(P_char ch, P_char target)
 {
 	std::ostringstream out;
 	out << "&+C>====[ " << GET_NAME(target) << " |";
+	if (!target->player.m_class)
+		out << " " << class_names_table[0].normal;
 	for (int cls = 1; cls <= CLASS_COUNT; ++cls)
 		if (target->player.m_class & (1U << (cls - 1)))
 			out << " " << class_names_table[cls].ansi << "&+C";
