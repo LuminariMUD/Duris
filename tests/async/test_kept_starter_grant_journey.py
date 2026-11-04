@@ -4,12 +4,17 @@ import argparse
 import hashlib
 from pathlib import Path
 import subprocess
+import sys
 
 import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
-from test_kept_character_journey import persistence, login, character_choices, websocket_character, websocket_text, saved_character
+from test_kept_character_journey import kept_journey_binary, persistence, login, character_choices, websocket_character, websocket_text, saved_character
 from test_flatfile_chaos_new_character_kit import read_item_ownership
+
+sys.path.insert(0, str(account.ROOT / "scripts"))
+from build_restore_qualifier import build as build_restore_qualifier
+
 
 
 def run(binary, backend, chaos, transport):
@@ -20,6 +25,7 @@ def run(binary, backend, chaos, transport):
     with persistence(backend) as (environment, sql):
         environment.update(DURIS_WEBSOCKET="TRUE", CHAOS_MUD="TRUE" if chaos else "FALSE")
         with account.IsolatedServer(binary, environment, full_world=True) as server:
+            qualifier = build_restore_qualifier(server.run_root / "bin/qualify_flatfile_restore")
             client = None
             try:
                 if transport == "websocket":
@@ -72,8 +78,7 @@ def run(binary, backend, chaos, transport):
                 client.close()
                 server.shutdown()
                 (server.run_root / "ISOLATED_RESTORE").touch()
-                subprocess.run([str(account.ROOT / "bin/tools/qualify_flatfile_restore"),
-                                "--receipts", str(server.run_root)], check=True)
+                subprocess.run([str(qualifier), "--receipts", str(server.run_root)], check=True)
                 # Model a committed transfer whose process died before recording its
                 # callback. Keep command bytes, operation ID and every item UID exact.
                 pending = bytes([0]) + data[1:-32]
@@ -111,9 +116,10 @@ def run(binary, backend, chaos, transport):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
-    parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--server", type=Path)
     parser.add_argument("--chaos", action="store_true")
     parser.add_argument("--transport", choices=("telnet", "websocket"), default="telnet")
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend, args.chaos, args.transport)
+    with kept_journey_binary(args.server, args.backend) as binary:
+        run(binary, args.backend, args.chaos, args.transport)

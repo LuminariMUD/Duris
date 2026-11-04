@@ -11,7 +11,7 @@ import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_flatfile_combat_journey import make_overlord
 from test_kept_character_approval_journey import enter_staff, STAFF
-from test_kept_character_journey import persistence, login, character_choices, saved_character
+from test_kept_character_journey import kept_journey_binary, persistence, login, character_choices, saved_character
 
 
 def run(binary, backend, chaos):
@@ -121,8 +121,11 @@ def run(binary, backend, chaos):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
-    parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--server", type=Path)
     parser.add_argument("--chaos", action="store_true")
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend, args.chaos)
+    with kept_journey_binary(args.server, args.backend) as binary:
+        run(binary, args.backend, args.chaos)
+        if args.server is None and not args.chaos:
+            run(binary, args.backend, True)

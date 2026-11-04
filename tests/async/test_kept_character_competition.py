@@ -8,11 +8,14 @@ import time
 import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
-from test_kept_character_journey import persistence, login, character_choices, pause_writer, saved_character
+from test_kept_character_journey import kept_journey_binary, persistence, login, character_choices, pause_writer, saved_character
 
 
 def run(binary, backend):
     inspector = account.ROOT / "bin/tests/kept-character-inspector"
+    if backend == "flatfile":
+        subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
+                        "--build-inspector", str(inspector)], cwd=account.ROOT, check=True)
     with persistence(backend) as (environment, sql):
         with account.IsolatedServer(binary, dict(environment, DURIS_WEBSOCKET="TRUE")) as server:
             winner = account.MudClient(server.plain_port)
@@ -62,7 +65,8 @@ def run(binary, backend):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
-    parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--server", type=Path)
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend)
+    with kept_journey_binary(args.server, args.backend) as binary:
+        run(binary, args.backend)
