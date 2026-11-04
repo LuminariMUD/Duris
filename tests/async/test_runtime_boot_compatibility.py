@@ -74,12 +74,14 @@ class RuntimeBootCompatibilityTest(unittest.TestCase):
             self.comm.index("return (0);", self.comm.index(mysql_boundary))
         ]
         initialize = main.index("initialize_mysql()")
-        hydrate = main.index("sql_hydrate_item_owner_revisions()")
         redis = main.index("redis_init()")
+        replay = main.index("locker_recovery_boot()")
+        hydrate = main.index("sql_hydrate_item_owner_revisions()")
         run_game = main.index("run_the_game(port, sslport)")
-        self.assertLess(initialize, hydrate)
-        self.assertLess(hydrate, redis)
-        self.assertLess(redis, run_game)
+        self.assertLess(initialize, redis)
+        self.assertLess(redis, replay)
+        self.assertLess(replay, hydrate)
+        self.assertLess(hydrate, run_game)
 
         game = self.comm[self.comm.index("int run_the_game(int port, int sslport)"):
                          self.comm.index("void game_loop(int port, int sslport)")]
