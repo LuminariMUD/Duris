@@ -493,7 +493,11 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 staged_binary.write_text("synthetic invalid executable\n")
                 staged_binary.chmod(0o700)
                 process.send_signal(signal.SIGUSR1)
-                client.expect("Copyover FAILED", timeout=60)
+                exec_failed = "Copyover FAILED! Server remains live."
+                outcome, text = client.expect_any((
+                    exec_failed, "Copyover FAILED - server remains live."), timeout=60)
+                assert outcome == exec_failed, text
+                assert not copyover_state.exists(), "failed exec left a published handoff image"
                 client.send("look"); client.expect("The Regression Arena")
                 save()
                 until(lambda: any(row["event"] == "duris_encounter_summary" and
@@ -503,7 +507,6 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                           row["properties"].get("transition") == "logical_exit"
                           for row in received), "capture did not recover after failed copyover")
                 shutil.copy2(binary, staged_binary)
-                copyover_state.unlink()
                 process.send_signal(signal.SIGUSR1)
                 client.expect("Copyover complete!", timeout=90)
                 client.send("look"); client.expect("The Regression Arena")
