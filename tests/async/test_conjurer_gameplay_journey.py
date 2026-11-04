@@ -392,7 +392,7 @@ PH 0 0 -1
             for name, form in [('Aerilon', 396), ('Nerilon', 686), ('Pyrilon', 685)]:
                 assert f'{form}:' in lines[name], state_text
             assert state_text.count('pet=1100:24:') == 1, state_text
-            staff.send('shutdown copyover')
+            staff.send('shutdown hotboot')
             for client in clients:
                 client.expect('Copyover complete!', timeout=90)
                 drain(client)

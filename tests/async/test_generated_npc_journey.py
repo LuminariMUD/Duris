@@ -339,7 +339,7 @@ def run(binary, mode='file', full_world=None):
                         status = runtime / 'logs/log/status'
                         for attempt in range(3):
                             offset = status.stat().st_size
-                            client.send('shutdown copyover')
+                            client.send('shutdown hotboot')
                             outcome, _ = client.expect_any(
                                 ('Copyover complete!', 'Copyover FAILED'), timeout=120)
                             if outcome == 'Copyover complete!':
@@ -414,7 +414,7 @@ def run(binary, mode='file', full_world=None):
                 if cycle<2:
                     client.send('save'); client.expect('Save complete for Taverek.',timeout=30)
                     if mode == 'file':
-                        client.send('shutdown copyover'); client.expect('Copyover complete!',timeout=90)
+                        client.send('shutdown hotboot'); client.expect('Copyover complete!',timeout=90)
                         client.send('save'); client.expect('Save complete for Taverek.',timeout=30)
                     else:
                         deadline = time.monotonic() + 60
