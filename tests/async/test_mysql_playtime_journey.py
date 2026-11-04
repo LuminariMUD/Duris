@@ -222,7 +222,7 @@ def run(server):
                     process = boot()
                     client = journey.reconnect_character(plain)
                     before_copyover = save("pre-copyover")
-                    client.send("shutdown copyover")
+                    client.send("shutdown hotboot")
                     client.expect("*** Copyover complete! ***", timeout=60)
                     assert process.poll() is None
                     after_copyover = save("post-copyover")
