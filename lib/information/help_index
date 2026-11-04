@@ -27422,6 +27422,8 @@ requirements and remaining enhancements without consuming anything.
 An item needs a matching higher template and cannot exceed its permitted
 stat cap, currently 150% of its base stat. Some item affects forbid enhancing.
 The item-value limit for your level is three times your character level.
+Every form of enhancement must raise the item value shown by the game.
+If it cannot, you keep your item, materials and money.
 
 Superior enhancement costs 1 platinum plus 0.1 platinum per current item
 value, once per use, in addition to the listed materials. Materials must
