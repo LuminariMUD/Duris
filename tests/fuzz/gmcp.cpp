@@ -161,6 +161,15 @@ int websocket_send_json(struct descriptor_data *, const char *, const char *)
 	return 0;
 }
 
+int64_t spell_preparation_estimate(P_char ch, bool &active)
+{
+	// This target exercises unauthenticated descriptors only.
+	if (ch)
+		std::abort();
+	active = false;
+	return 0;
+}
+
 uint64_t latency_trace_monotonic_us()
 {
 	return 1000000;
