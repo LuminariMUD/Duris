@@ -2619,6 +2619,12 @@ void ws_cmd_get_hometowns(struct descriptor_data *d, cJSON *data)
 		alignment = align_item->valuestring;
 		racewar = ws_resolve_racewar_side(race_id, selected_alignment);
 	}
+	else if (race_id == RACE_TIEFLING)
+	{
+		ws_send_system(d, "error",
+			       "Choose an alignment before requesting Tiefling hometowns");
+		return;
+	}
 	else if (strcmp(faction, "neutral"))
 	{
 		alignment = faction;

@@ -206,12 +206,18 @@ int main() {
                     RACEWAR_GOOD : RACEWAR_EVIL)) && avail_hometowns[home][race] == 1));
     }
     all_races = false;
-    for (int race : {RACE_THRIKREEN, RACE_MINOTAUR, RACE_TIEFLING}) {
+    for (int race : {RACE_THRIKREEN, RACE_MINOTAUR}) {
         const auto homes = menu(race, nullptr);
         assert(homes.size() == 1);
         assert(homes[0] != HOME_NEWBIE && homes[0] != HOME_PLANE_OF_LIFE &&
             homes[0] != HOME_WUTVR && homes[0] != HOME_PLANE_OF_CHAOS);
     }
+    auto *tiefling_request = cJSON_CreateObject();
+    cJSON_AddNumberToObject(tiefling_request, "race", RACE_TIEFLING);
+    json.clear(); error.clear();
+    ws_cmd_get_hometowns(&d, tiefling_request);
+    assert(error == "Choose an alignment before requesting Tiefling hometowns" && json.empty());
+    cJSON_Delete(tiefling_request);
     assert(!creation_hometown_available(-1, RACEWAR_GOOD, HOME_NEWBIE));
     assert(!creation_hometown_available(LAST_RACE + 1, RACEWAR_GOOD, HOME_NEWBIE));
     for (const char *request : {"{\"race\":1.5}", "{\"race\":0}", "{\"race\":9999}",
