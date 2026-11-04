@@ -15,7 +15,7 @@ table = re.sub(r'(\{ "[^"]+", )(\w+)( \})',
                                  else 'NULL') + m[3], table)
 macros = innates[innates.index('#define ADD_RACIAL_INNATE'):innates.index('float regen_factor')]
 arrays = innates[innates.index('char racial_innates['):innates.index('extern const struct race_names')]
-planes = re.search(r'const char \*planes_name\[\] = \{.*?\};', source('spells.c').read_text(), re.S).group()
+planes = re.search(r'const char \*planes_name\[\] = \{.*?\};', source('magic/spells.c').read_text(), re.S).group()
 prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
