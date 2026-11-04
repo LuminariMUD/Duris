@@ -364,9 +364,10 @@ under `db-cases/` in the same baseline log directory.
 
 The focused `test-all` fixes in #663–#676 and #680 landed on master.
 PR #656 already covered the command-attribute issue raised in #662. The
-separate full `test-all` rerun uses
-`/home/aiwithapex/projects/duris-master-test-all`. Keep both gate results
-tied to their exact tested revisions.
+first coordinated full `test-all` rerun on `49fabec2c` finished with 930
+passes and 11 failures. #685 and #691 addressed all 11. Its log is
+`/tmp/duris-test-all-49fabec2c.log`. The next coordinated run uses
+`/home/aiwithapex/projects/duris-master-test-all`.
 
 - [#681](https://github.com/LuminariMUD/Duris/pull/681) qualified the playtime
   journey with the current hotboot command.
