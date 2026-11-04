@@ -35,7 +35,7 @@ assert "chaos_material_pouch_is_active(material)" in source
 assert "if (!pouch_material && itemvalue(material) < minval)" in source
 assert "if (!pouch_material)" in source
 assert "chaos_material_pouch_is_active(pouch)" in source
-legacy_success = source.index("obj_to_char(robj, ch);", source.index("void enhance"))
+legacy_success = source.index("if (!obj_to_char(robj, ch))", source.index("void enhance"))
 pouch_cleanup_guard = source.index("if (!pouch_material)", legacy_success)
 physical_donor_extract = source.index("obj_from_char(material);", legacy_success)
 assert pouch_cleanup_guard < physical_donor_extract
