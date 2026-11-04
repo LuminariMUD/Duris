@@ -34,6 +34,7 @@ enum class world_recovery_record_type : uint8_t
 	object = 2,
 	door = 3,
 	zone = 4,
+	roamer_item = 5, // Object tree and signed wear slot, following its NPC record.
 };
 
 bool world_recovery_encode_header(const world_recovery_header *header, unsigned char *output,

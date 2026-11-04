@@ -727,7 +727,7 @@ bool world_recovery_encode_record_header(world_recovery_record_type type, uint32
 		return false;
 	const uint8_t raw_type = static_cast<uint8_t>(type);
 	if (raw_type < static_cast<uint8_t>(world_recovery_record_type::mob) ||
-	    raw_type > static_cast<uint8_t>(world_recovery_record_type::zone))
+	    raw_type > static_cast<uint8_t>(world_recovery_record_type::roamer_item))
 		return false;
 	put_u32(output, payload_size);
 	output[4] = raw_type;
@@ -745,7 +745,7 @@ bool world_recovery_decode_record_header(const unsigned char *data, size_t size,
 		return false;
 	const uint8_t raw_type = data[4];
 	if (raw_type < static_cast<uint8_t>(world_recovery_record_type::mob) ||
-	    raw_type > static_cast<uint8_t>(world_recovery_record_type::zone))
+	    raw_type > static_cast<uint8_t>(world_recovery_record_type::roamer_item))
 		return false;
 	*type = static_cast<world_recovery_record_type>(raw_type);
 	*payload_size = get_u32(data);
@@ -763,6 +763,21 @@ bool world_recovery_encode_record(world_recovery_record_type type, const unsigne
 	case world_recovery_record_type::object:
 		return encode_object(native_data, native_size, output, output_capacity,
 				     output_size);
+	case world_recovery_record_type::roamer_item:
+	{
+		constexpr size_t bytes = sizeof(int32_t);
+		if (!native_data || native_size < bytes || output_capacity < bytes)
+			return false;
+		int32_t slot;
+		memcpy(&slot, native_data + native_size - bytes, bytes);
+		if (slot < -1 || slot >= MAX_WEAR ||
+		    !encode_object(native_data, native_size - bytes, output,
+				   output_capacity - bytes, output_size))
+			return false;
+		put_i32(output + *output_size, slot);
+		*output_size += bytes;
+		return true;
+	}
 	case world_recovery_record_type::door:
 		return encode_door(native_data, native_size, output, output_capacity, output_size);
 	case world_recovery_record_type::zone:
@@ -783,6 +798,17 @@ bool world_recovery_record_native_size(world_recovery_record_type type,
 		return mob_native_size(wire_data, wire_size, native_size);
 	case world_recovery_record_type::object:
 		return object_native_size(wire_data, wire_size, native_size);
+	case world_recovery_record_type::roamer_item:
+	{
+		constexpr size_t bytes = sizeof(int32_t);
+		if (!object_native_size(wire_data, wire_size >= bytes ? wire_size - bytes : 0,
+					native_size))
+			return false;
+		const int32_t slot = get_i32(wire_data + wire_size - bytes);
+		*native_size += bytes;
+		return slot >= -1 && slot < MAX_WEAR &&
+		       *native_size <= WORLD_RECOVERY_MAX_RECORD_BYTES;
+	}
 	case world_recovery_record_type::door:
 		*native_size = sizeof(copyover_room);
 		return wire_data && wire_size == DOOR_WIRE_BYTES;
@@ -802,6 +828,25 @@ bool world_recovery_decode_record(world_recovery_record_type type, const unsigne
 		return decode_mob(wire_data, wire_size, native_record);
 	case world_recovery_record_type::object:
 		return decode_object(wire_data, wire_size, native_record);
+	case world_recovery_record_type::roamer_item:
+	{
+		constexpr size_t bytes = sizeof(int32_t);
+		size_t native_size;
+		if (!world_recovery_record_native_size(type, wire_data, wire_size, &native_size) ||
+		    !decode_object(wire_data, wire_size - bytes, native_record))
+			return false;
+		const int32_t slot = get_i32(wire_data + wire_size - bytes);
+		try
+		{
+			native_record->resize(native_size);
+		}
+		catch (const std::bad_alloc &)
+		{
+			return false;
+		}
+		memcpy(native_record->data() + native_size - bytes, &slot, bytes);
+		return true;
+	}
 	case world_recovery_record_type::door:
 		if (!decode_fixed<copyover_room>(wire_data, wire_size, DOOR_WIRE_BYTES,
 						 native_record))

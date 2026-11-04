@@ -143,6 +143,8 @@ struct planned_object
 	int room_vnum = 0;
 	std::vector<world_recovery_item_snapshot> items;
 	P_obj existing_root = nullptr;
+	std::optional<size_t> roamer;
+	int wear_slot = -1;
 	bool detached = false;
 };
 
@@ -151,6 +153,7 @@ struct recovery_plan
 	world_recovery_header header = {};
 	std::vector<planned_mob> mobs;
 	std::vector<planned_object> objects;
+	std::vector<planned_object> roamer_items;
 	std::vector<copyover_room> doors;
 	std::vector<zone_age_entry> zones;
 	std::vector<world_recovery_authority_item> authority_items;
@@ -597,6 +600,46 @@ bool capture_tree_is_new(int record_size)
 	return true;
 }
 
+bool capture_roamer_items(P_char mob)
+{
+	const int room = world[mob->in_room].number;
+	size_t item_count = 0;
+	auto capture = [&](P_obj item, int32_t slot)
+	{
+		constexpr size_t slot_bytes = sizeof(slot);
+		const int size = write_object_record(
+			item, room, reinterpret_cast<char *>(capture_buffer.data()),
+			capture_buffer.size() - slot_bytes);
+		if (size <= 0)
+			return false;
+		item_count += (size - sizeof(world_recovery_object_record)) /
+			      sizeof(world_recovery_item_snapshot);
+		if (item_count > WORLD_RECOVERY_MAX_ITEM_TREE || !capture_tree_is_new(size))
+			return false;
+		memcpy(capture_buffer.data() + size, &slot, slot_bytes);
+		if (!append_record(active_capture.generation,
+				   world_recovery_record_type::roamer_item, capture_buffer.data(),
+				   size + slot_bytes))
+			return false;
+		++active_capture.generation.object_count;
+		return true;
+	};
+	try
+	{
+		for (int slot = 0; slot < MAX_WEAR; ++slot)
+			if (mob->equipment[slot] && !capture(mob->equipment[slot], slot))
+				return false;
+		for (P_obj item = mob->carrying; item; item = item->next_content)
+			if (!capture(item, -1))
+				return false;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
+	}
+	return true;
+}
+
 bool capture_one_record()
 {
 	switch (active_capture.stage)
@@ -619,7 +662,8 @@ bool capture_one_record()
 							capture_buffer.data(), size))
 				return false;
 			++active_capture.generation.mob_count;
-			return true;
+			// Item trees immediately follow their owning ordinary 1255 record.
+			return GET_VNUM(ch) != 1255 || capture_roamer_items(ch);
 		}
 		active_capture.stage = capture_stage::objects;
 		active_capture.next_object = object_list;
@@ -984,6 +1028,7 @@ bool world_recovery_validate(const unsigned char *data, size_t size, int max_age
 			++mobs;
 			break;
 		case world_recovery_record_type::object:
+		case world_recovery_record_type::roamer_item:
 			++objects;
 			break;
 		case world_recovery_record_type::door:
@@ -1052,7 +1097,8 @@ bool existing_tree_matches(const planned_object &planned)
 }
 
 bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t size,
-		       artifact_payload_domain domain, uint64_t context)
+		       artifact_payload_domain domain, uint64_t context,
+		       std::optional<size_t> roamer = {}, int wear_slot = -1)
 {
 	if (!plan)
 		return false;
@@ -1060,16 +1106,27 @@ bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t si
 	planned_object planned;
 	planned.source_domain = domain;
 	planned.source_context = context;
+	planned.roamer = roamer;
+	planned.wear_slot = wear_slot;
+	planned.detached = roamer.has_value();
 	if (!world_recovery_read_object_record(data, size, &record, &planned.items))
 		return false;
 	planned.room_vnum = record.room_vnum;
 	planned.room_rnum = real_room(record.room_vnum);
 	if (planned.room_rnum < 0 || planned.room_rnum > top_of_world)
 		return false;
+	if (roamer)
+	{
+		copyover_mob owner{};
+		memcpy(&owner, plan->mobs[*roamer].record.data(), sizeof(owner));
+		if (owner.room != record.room_vnum)
+			return false;
+	}
 	const auto root_uid = planned.items[0].item_uid;
 	for (const auto &item : planned.items)
 	{
-		if (real_object(item.vnum) < 0)
+		if (real_object(item.vnum) < 0 ||
+		    (roamer && (item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED)))
 			return false;
 		try
 		{
@@ -1088,11 +1145,12 @@ bool add_object_record(recovery_plan *plan, const unsigned char *data, size_t si
 	planned.existing_root = find_object_uid(root_uid);
 	for (const world_recovery_item_snapshot &item : planned.items)
 		if (find_object_uid(item.item_uid) &&
-		    (!planned.existing_root || !existing_tree_matches(planned)))
+		    (roamer || !planned.existing_root || !existing_tree_matches(planned)))
 			return false;
 	try
 	{
-		plan->objects.push_back(std::move(planned));
+		auto &objects = roamer ? plan->roamer_items : plan->objects;
+		objects.push_back(std::move(planned));
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -1109,6 +1167,9 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 		return false;
 	size_t offset = WORLD_RECOVERY_WIRE_HEADER_BYTES;
 	size_t record_index = 0;
+	bool follows_roamer = false;
+	std::array<bool, MAX_WEAR> slots{};
+	size_t roamer_item_count = 0;
 	while (offset < size)
 	{
 		world_recovery_record_type type = {};
@@ -1131,6 +1192,8 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 			return false;
 		}
 		const unsigned char *record_data = native_record.data();
+		if (type != world_recovery_record_type::roamer_item)
+			follows_roamer = false;
 		switch (type)
 		{
 		case world_recovery_record_type::mob:
@@ -1169,11 +1232,32 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 			{
 				planned.record = std::move(native_record);
 				plan->mobs.push_back(std::move(planned));
+				follows_roamer = entry.vnum == 1255;
+				slots.fill(false);
+				roamer_item_count = 0;
 			}
 			catch (const std::bad_alloc &)
 			{
 				return false;
 			}
+			break;
+		}
+		case world_recovery_record_type::roamer_item:
+		{
+			if (!follows_roamer)
+				return false;
+			int32_t slot;
+			const size_t tree_bytes = native_record.size() - sizeof(slot);
+			memcpy(&slot, record_data + tree_bytes, sizeof(slot));
+			if (slot >= 0 && std::exchange(slots[slot], true))
+				return false;
+			roamer_item_count += (tree_bytes - sizeof(world_recovery_object_record)) /
+					     sizeof(world_recovery_item_snapshot);
+			if (roamer_item_count > WORLD_RECOVERY_MAX_ITEM_TREE ||
+			    !add_object_record(plan, record_data, tree_bytes,
+					       artifact_payload_domain::redis_generation,
+					       plan->header.sequence, plan->mobs.size() - 1, slot))
+				return false;
 			break;
 		}
 		case world_recovery_record_type::object:
@@ -1245,15 +1329,17 @@ bool build_recovery_plan(const unsigned char *data, size_t size, int max_age_sec
 		++record_index;
 	}
 	const bool counts_match = plan->mobs.size() == plan->header.mob_count &&
-				  plan->objects.size() == plan->header.object_count &&
+				  plan->objects.size() + plan->roamer_items.size() ==
+					  plan->header.object_count &&
 				  plan->doors.size() == plan->header.door_count &&
 				  plan->zones.size() == plan->header.zone_count;
 	if (!counts_match)
 		logit(LOG_SYS,
 		      "redis: world recovery semantic counts rejected mobs=%zu/%u objs=%zu/%u doors=%zu/%u zones=%zu/%u",
-		      plan->mobs.size(), plan->header.mob_count, plan->objects.size(),
-		      plan->header.object_count, plan->doors.size(), plan->header.door_count,
-		      plan->zones.size(), plan->header.zone_count);
+		      plan->mobs.size(), plan->header.mob_count,
+		      plan->objects.size() + plan->roamer_items.size(), plan->header.object_count,
+		      plan->doors.size(), plan->header.door_count, plan->zones.size(),
+		      plan->header.zone_count);
 	return counts_match;
 }
 
@@ -1280,11 +1366,14 @@ bool leave_out_owned_trees(recovery_plan *plan)
 	std::unordered_set<uint64_t> owned, left_out;
 	try
 	{
+		// A roamer has no room custody. Even a SQL claim in the same
+		// room supersedes its captured copy.
 		for (const planned_object &object : plan->objects)
 			for (const world_recovery_item_snapshot &item : object.items)
 				if (!(item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED))
 					items.push_back({ item.item_uid, item.root_item_uid,
-							  item.parent_item_uid, object.room_vnum,
+							  item.parent_item_uid,
+							  object.roamer ? 0 : object.room_vnum,
 							  item.vnum });
 		if (items.empty())
 			return true;
@@ -1526,6 +1615,23 @@ bool materialize_plan(const recovery_plan &plan,
 		}
 		if (!planned.existing_root)
 			created_objects.push_back(object);
+		if (planned.roamer)
+		{
+			P_char mob = created_mobs[*planned.roamer];
+			if (planned.wear_slot >= 0)
+				equip_char(mob, object, planned.wear_slot, 9);
+			else
+				obj_to_char_at_end(object, mob);
+			const bool attached = planned.wear_slot >= 0 ?
+						      mob->equipment[planned.wear_slot] == object :
+						      OBJ_CARRIED(object) &&
+							      object->loc.carrying == mob;
+			if (!attached)
+			{
+				rollback_materialized(&created_mobs, &created_objects);
+				return false;
+			}
+		}
 		++applied_objects;
 	}
 	if (created_mobs.size() != plan.mobs.size() || applied_objects != plan.objects.size())
@@ -1538,6 +1644,25 @@ bool materialize_plan(const recovery_plan &plan,
 	{
 		rollback_materialized(&created_mobs, &created_objects);
 		return false;
+	}
+	// Item records are grouped by their owner. Recompute once after the
+	// last attachment and restore resources against the recovered gear.
+	std::optional<size_t> last_roamer;
+	for (const auto &object : plan.objects)
+	{
+		if (!object.roamer || object.roamer == last_roamer)
+			continue;
+		last_roamer = object.roamer;
+		P_char mob = created_mobs[*object.roamer];
+		copyover_mob saved{};
+		memcpy(&saved, plan.mobs[*object.roamer].record.data(), sizeof(saved));
+		affect_total(mob, FALSE);
+		GET_MAX_HIT(mob) = saved.max_hit;
+		GET_HIT(mob) = saved.hit;
+		GET_MAX_MANA(mob) = saved.max_mana;
+		GET_MANA(mob) = saved.mana;
+		GET_MAX_VITALITY(mob) = saved.max_vitality;
+		GET_VITALITY(mob) = saved.vitality;
 	}
 	if (!item_ownership_runtime_hydrate_many_atomic(authoritative.data(), authoritative.size()))
 	{
@@ -1586,6 +1711,11 @@ static bool prepare_recovery_plan(const unsigned char *data, size_t size, int ma
 		logit(LOG_SYS, "redis: world recovery semantic plan validation failed");
 		return false;
 	}
+	// A later floor delta wins over the fuzzy snapshot of a roamer's item.
+	// Temporarily remove roamer trees from the generation's overlap index.
+	for (const auto &tree : plan->roamer_items)
+		for (const auto &item : tree.items)
+			plan->item_uids.erase(item.item_uid);
 	size_t repeated = 0;
 	for (size_t index = 0; index < floor_record_count; ++index)
 	{
@@ -1606,6 +1736,22 @@ static bool prepare_recovery_plan(const unsigned char *data, size_t size, int ma
 			      index);
 			return false;
 		}
+	}
+	try
+	{
+		for (auto &tree : plan->roamer_items)
+		{
+			const bool moved_to_floor = std::any_of(
+				tree.items.begin(), tree.items.end(), [&](const auto &item)
+				{ return plan->item_uids.count(item.item_uid) != 0; });
+			if (!moved_to_floor)
+				plan->objects.push_back(std::move(tree));
+		}
+		plan->roamer_items.clear();
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
 	}
 	if (repeated)
 		logit(LOG_SYS, "redis: world recovery left out %zu floor records of items it holds",

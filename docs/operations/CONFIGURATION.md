@@ -411,8 +411,16 @@ process, or logging I/O for floor drops, pickups, or snapshot preflight.
 World capture is an explicitly fuzzy crash-recovery snapshot with a hard five-minute
 capture deadline. The game thread gives it at most 2 ms every second pulse, and a capture of
 the full world takes about 20 seconds; an expired capture is discarded and retried later
-rather than published. NPC inventory/equipment and
-carried gold are excluded from recovery. Before any recovery entity is created, every
+rather than published. The snapshot carries item trees for ordinary, unowned
+prototype-1255 roamers, including worn slots and item UIDs. Each roamer can
+contribute up to 512 items, including nested items. Marked training dummies
+are recreated at boot. Other NPCs follow the existing zone item rehydration
+policy. NPC currency is excluded. A later floor delta takes precedence over
+a roamer's captured tree, and current durable custody takes precedence over
+the snapshot. Readers accept existing generations that lack roamer items.
+Use a binary with roamer-item support to restore a generation that contains them.
+
+Before any recovery entity is created, every
 floor-item UID is looked up in SQL: an item captured with the room's custody must still
 have it, or nothing is restored, and an item captured without custody that an owner holds
 by then is left out with its tree. An owner holds an item when an ownership record names
