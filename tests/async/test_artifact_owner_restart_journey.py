@@ -237,7 +237,9 @@ def run(binary, backend, inspector, conflicts_only=False):
                     # This case measures only the elite award. A luck-based random
                     # epic is a separate legitimate award and would also feed it.
                     command(god, 'setbit char ' + PLAYER + ' luck -1000')
-                    assert re.search(r'\bLuk:\s+1\b', command(player, 'attributes'))
+                    # setbit schedules a stat recalculation for the next game pulse.
+                    settle(lambda: re.search(r'\bLuk:\s+1\b', command(player, 'attributes')),
+                           'effective luck did not settle at 1')
                     command(god, 'load mob 11')
                     command(god, 'setbit char raoul level 53')
                     command(god, 'setbit char raoul npcact ELITE 1')

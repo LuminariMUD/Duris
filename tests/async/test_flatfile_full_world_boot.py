@@ -344,9 +344,10 @@ def build_server(build_root):
 
 with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") as build_tmp:
     binary = build_server(pathlib.Path(build_tmp))
-    inspector = pathlib.Path(build_tmp) / "authority-inspector"
+    inspector = journey.INSPECTOR
+    # The inspector links the authority repositories while other journeys build theirs.
     subprocess.run(["python3", "tests/async/test_flatfile_player_repository.py",
-                    "--build-inspector", str(inspector)], cwd=ROOT, check=True, timeout=180)
+                    "--build-inspector", str(inspector)], cwd=ROOT, check=True, timeout=300)
     record("build_complete", binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest())
     for attempt in range(1, REPEATS + 1):
         with fixture_directory("state") as state_tmp:
@@ -561,6 +562,7 @@ with tempfile.TemporaryDirectory(prefix="full-world-build-", dir=ROOT / "bin") a
                     "operations/wal",
                     "domains",
                     "manifests",
+                    "locker-shutdown",
                 }
                 actual_dirs = {
                     str(path.relative_to(state_root))

@@ -121,7 +121,10 @@ def configure(runtime, class_name, profile):
     text = re.sub(r"^[MGE] .*\n", "", zone.read_text(), flags=re.M)
     zone.write_text(text)
     properties = runtime / "lib/duris.properties"
-    properties.write_text(properties.read_text() + "\nhitpoints.class.Warrior=5000.000\n")
+    # Keep low-level hits above the integer truncation in melee_damage.
+    # A zero-damage hit still consumes the arrow but emits no hit message.
+    properties.write_text(properties.read_text() +
+                          "\nhitpoints.class.Warrior=5000.000\narchery.diceFactor=12.000\n")
 
 
 def run(binary, inspector, race, class_name="ranger", profile=None):

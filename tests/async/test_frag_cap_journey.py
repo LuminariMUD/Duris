@@ -165,8 +165,15 @@ def run(backend, binary):
                 assert re.search(r"Level:\s*31\b", plain_text(command(player, "score"))), "cap granted an early level"
                 durable = fixture("inspect")
                 assert "LEVEL 31 " in durable and re.search(r"SCORES (\d+):10",durable) and int(re.search(r"SCORES (\d+):10",durable).group(1)) > 10, durable
-                shown = plain_text(command(player, "fraglist"))
-                assert "Good currently leads" in shown, shown
+                # The durable receipt precedes publication to the live fraglist.
+                deadline = time.monotonic() + 20
+                while True:
+                    shown = plain_text(command(player, "fraglist"))
+                    assert "Faction level caps: Good 31 / Evil 31" in shown, shown
+                    if "Good currently leads" in shown:
+                        break
+                    assert time.monotonic() < deadline and time.time() < earliest, shown
+                    time.sleep(0.1)
                 print(f"{backend}: ordinary PvP receipt changed the provisional leader without opening early", flush=True)
 
                 deadline = time.monotonic() + 190

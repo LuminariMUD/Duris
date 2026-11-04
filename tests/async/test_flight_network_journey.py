@@ -100,11 +100,11 @@ def command(client, text, timeout=20):
     return bytes(client.transcript[start:]).decode(errors='replace')
 
 
-def run(binary, backend, build, interruptions_only=False, reconnect_only=False):
-    inspector = build / 'flight-inspector'
+def run(binary, backend, interruptions_only=False, reconnect_only=False):
+    inspector = journey.INSPECTOR
     if backend == 'flatfile':
         subprocess.run(['python3', 'tests/async/test_flatfile_player_repository.py',
-                        '--build-inspector', str(inspector)], cwd=ROOT, check=True, timeout=180)
+                        '--build-inspector', str(inspector)], cwd=ROOT, check=True, timeout=300)
     with tempfile.TemporaryDirectory(prefix='flight-' + backend + '-', dir=ROOT / 'bin/tests') as temporary:
         runtime = Path(temporary)
         _, critical, output_path = setup_run_root(runtime)
@@ -546,7 +546,7 @@ def main():
         else:
             assert args.backend == 'flatfile', 'pass a MariaDB binary with --server'
             binary = journey.build_flatfile_server(build / 'server')
-        run(binary, args.backend, build, args.interruptions_only, args.reconnect_only)
+        run(binary, args.backend, args.interruptions_only, args.reconnect_only)
 
 
 if __name__ == '__main__':
