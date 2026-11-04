@@ -264,12 +264,19 @@ PROFILE_DEFINE(random_mob_create)
 bool do_profile = false;
 P_index mob_index;
 static int spawn_attempts;
+static P_char next_spawn;
 P_char create_random_mob(int theme, int level)
 {
 	assert(theme == -1 && level == 0);
 	++spawn_attempts;
-	return nullptr;
+	if (next_spawn)
+	{
+		next_spawn->next = character_list;
+		character_list = next_spawn;
+	}
+	return next_spawn;
 }
+#include "training_dummy_is.inc"
 #include "spawn_random_mapmob.inc"
 
 static void expect_spawn_attempts(int population, int attempts)
@@ -290,6 +297,107 @@ static void expect_spawn_attempts(int population, int attempts)
 	spawn_attempts = 0;
 	spawn_random_mapmob();
 	assert(spawn_attempts == attempts);
+	character_list = nullptr;
+	mob_index = nullptr;
+}
+
+static void check_mapmob_population(P_char actor)
+{
+	std::ofstream("lib/duris.properties") << "random.mapmob.populationCap=45.000\n";
+	assert(initialize_properties());
+	index_data prototypes[4]{};
+	prototypes[0].virtual_number = 1255;
+	prototypes[1].virtual_number = 1256;
+	prototypes[2].virtual_number = 7;
+	prototypes[3].virtual_number = 11;
+	mob_index = prototypes;
+
+	char_data player{};
+	char_data extras[3]{};
+	npc_only_data extra_data[3]{};
+	character_list = &player;
+	for (int i = 0; i < 3; ++i)
+	{
+		extra_data[i].R_num = i + 1;
+		extra_data[i].training_dummy = i == 1;
+		extras[i].specials.act = ACT_ISNPC;
+		extras[i].only.npc = &extra_data[i];
+		extras[i].next = character_list;
+		character_list = &extras[i];
+	}
+	const auto other_characters = character_list;
+
+	for (int dummies : { 0, 69, 71 })
+	{
+		std::vector<char_data> targets(dummies);
+		std::vector<npc_only_data> profiles(dummies);
+		character_list = other_characters;
+		for (int i = 0; i < dummies; ++i)
+		{
+			profiles[i].training_dummy = true;
+			profiles[i].training_dummy_fixed = i % 2 == 0;
+			targets[i].only.npc = &profiles[i];
+			targets[i].specials.act = ACT_ISNPC;
+			targets[i].player.name = const_cast<char *>("renamed target");
+			targets[i].next = character_list;
+			character_list = &targets[i];
+		}
+		const auto dummy_list = character_list;
+		for (int limit : { 45, 2, 60, 0 })
+		{
+			command(actor, ("set random.mapmob.populationCap " + std::to_string(limit))
+					       .c_str());
+			for (int population : { 0, std::max(0, limit - 1), limit, limit + 1 })
+			{
+				std::vector<char_data> roamers(population + 1);
+				std::vector<npc_only_data> instances(population + 1);
+				for (int i = 0; i <= population; ++i)
+				{
+					roamers[i].only.npc = &instances[i];
+					roamers[i].specials.act = ACT_ISNPC;
+					roamers[i].player.name =
+						const_cast<char *>("training dummy");
+					roamers[i].in_room = i % 2 ? NOWHERE : 1;
+				}
+				char_link_data pet{};
+				pet.type = LNK_PET;
+				pet.linking = &player;
+				pet.linked = &roamers.front();
+				player.linking = &pet;
+				roamers.front().linked = &pet;
+
+				character_list = dummy_list;
+				for (int i = 0; i < population; ++i)
+				{
+					roamers[i].next = character_list;
+					character_list = &roamers[i];
+				}
+
+				spawn_attempts = 0;
+				const int allowed = population < limit;
+				const auto initial_list = character_list;
+				spawn_random_mapmob();
+				assert(spawn_attempts == allowed && character_list == initial_list);
+
+				// First generation failed. Try again and insert a roamer.
+				next_spawn = &roamers.back();
+				spawn_random_mapmob();
+				assert(spawn_attempts == 2 * allowed);
+				assert(character_list == (allowed ? next_spawn : initial_list));
+				next_spawn = nullptr;
+
+				spawn_random_mapmob();
+				assert(spawn_attempts ==
+				       2 * allowed + (population + allowed < limit));
+				player.linking = nullptr;
+				for (const auto &profile : profiles)
+					assert(profile.training_dummy);
+				for (const auto &instance : instances)
+					assert(!instance.training_dummy);
+			}
+		}
+	}
+	assert(prototypes[0].virtual_number == 1255);
 	character_list = nullptr;
 	mob_index = nullptr;
 }
@@ -364,6 +472,8 @@ int main(int argc, char **argv)
 	{
 		if (std::strcmp(argv[1], "mapmob-cap") == 0)
 			check_mapmob_cap(&actor);
+		else if (std::strcmp(argv[1], "mapmob-population") == 0)
+			check_mapmob_population(&actor);
 		else
 			failure_case(&actor, argv[1]);
 		for (int i = 0; i < properties_count; ++i)
