@@ -466,7 +466,7 @@ static struct enhance_index_entry *find_stat_enhance_target(P_obj source, int ap
 	{
 		if (enhance_entry_modifier(entry, apply_loc) != desired_mod)
 			continue;
-		if (source_wear && !(entry->wear_flags & source_wear))
+		if (!(entry->wear_flags & source_wear))
 			continue;
 		if (!best || entry->vnum < best->vnum)
 			best = entry;

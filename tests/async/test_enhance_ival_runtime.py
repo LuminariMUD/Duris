@@ -462,6 +462,11 @@ static void test_superior()
     hold_only_match.next = &wis;
     enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = &hold_only_match;
     assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == &wis);
+    item.wear_flags = ITEM_TAKE | ITEM_HOLD;
+    assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == nullptr);
+    item.wear_flags = ITEM_TAKE | ITEM_WEAR_BACK;
+    assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == nullptr);
+    item.wear_flags = base.wear_flags;
     enhance_stat_table[enhance_stat_hash(APPLY_STR)] = &str;
 
     const int low = get_matstart(&target);
