@@ -84,8 +84,11 @@ int main()
 	assert(player_snapshot_decode(bytes.data(), bytes.size(), &decoded) ==
 	       player_snapshot_codec_result::ok);
 	assert(decode_output_preferences(decoded.output_preferences) == first.state());
+	// These fields are empty in this fixture. The suffix contains the
+	// wallet revision, pending-trade bit, and creation-account length.
+	constexpr size_t later_fields = sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t);
 	bytes.resize(bytes.size() - snapshot.output_preferences.size() - sizeof(uint32_t) -
-		     sizeof(uint64_t) - sizeof(uint8_t));
+		     later_fields);
 	for (uint8_t version : { 1, 3 })
 	{
 		bytes[0] = version;
