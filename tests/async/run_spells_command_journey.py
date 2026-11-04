@@ -15,6 +15,7 @@ from test_flight_network_journey import authority, command
 ROOT = journey.ROOT
 PLAYER, ACCOUNT = "Spellscholar", "Spellsacct"
 GOD, GOD_ACCOUNT = "Spellwarden", "Spellstaff"
+BLIGHTER, BLIGHTER_ACCOUNT = "Spellruin", "Ruinacct"
 
 
 def run(binary, backend):
@@ -89,12 +90,16 @@ def run(binary, backend):
 
             try:
                 process = boot()
-                for name, account in ((PLAYER, ACCOUNT), (GOD, GOD_ACCOUNT)):
+                for name, account, class_key, race_key, alignment in (
+                    (PLAYER, ACCOUNT, "j", "h", "g"),
+                    (GOD, GOD_ACCOUNT, "w", "h", "g"),
+                    (BLIGHTER, BLIGHTER_ACCOUNT, "x", "d", "e"),
+                ):
                     client = journey.MudClient(plain)
                     clients.append(client)
-                    journey.create_character(client, account=account, character=name,
+                    journey.create_character(client, expected_room=None, account=account, character=name,
                                              email=name.lower() + "@example.invalid",
-                                             class_name="j" if name == PLAYER else "w")
+                                             class_name=class_key, race_name=race_key, alignment=alignment)
                     client.send("save")
                     client.expect("Save complete for " + name + ".", timeout=30)
                 stop()
@@ -105,6 +110,9 @@ def run(binary, backend):
                 process = boot()
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
+                blighter = login(BLIGHTER, BLIGHTER_ACCOUNT)
+                assert "deforest is your spell interface" in command(blighter, "spells")
+                assert "spell slots available" in command(blighter, "deforest")
                 raw_start = len(player.raw_transcript)
                 own = command(player, "spells")
                 raw_own = player.raw_transcript[raw_start:]
@@ -115,15 +123,19 @@ def run(binary, backend):
                 assert footer in own_lines and "magic missile [in spellbook]" in own_lines
                 assert "12th CIRCLE:" in own_lines
                 assert "(circle accessible)" not in own and "(future circle)" not in own
+                assert own_lines[own_lines.index(footer) - 1] == "memorize is your spell interface"
                 assert b"\x1b[0;1;30mburning hands" in raw_own
+                assert b"\x1b[0;1;37mmemorize\x1b[0m is your spell interface" in raw_own
                 assert b"\x1b[0;1;37mspells <class or specialization>" in raw_own
                 assert b"\x1b[0;1;37mspells info <spell name>" in raw_own
                 staff = command(god, "spells")
                 assert f">====[ {GOD} | Warrior | Max Circle 12 ]====<" in staff
                 assert "No eligible spells" in staff
+                assert "is your spell interface" not in staff
                 assert "BASE-CLASS CIRCLE REFERENCE" not in staff
                 inspected = command(god, "spells " + PLAYER)
                 assert header in inspected and footer in inspected
+                assert "is your spell interface" not in inspected
                 assert header in command(god, "spells target " + PLAYER)
                 assert "staff-only" in command(player, "spells " + GOD)
                 assert "staff-only" in command(player, "spells target " + GOD)
@@ -144,6 +156,9 @@ def run(binary, backend):
                 fire = command(player, "spells FiRe-MaGuS")
                 assert "SPECIALIZATION" in fire and "  * fire form" in fire.splitlines()
                 assert "  magic missile" in fire.splitlines()
+                assert "memorize is the default spell interface" in fire
+                for name in ("blighter", "storm bringer"):
+                    assert "deforest is the default spell interface" in command(player, f"spells {name}")
                 assert "fire form" not in command(player, "spells conjurer")
                 wizard = command(player, "spells wizard")
                 assert "  * anti-magic ray" in wizard.splitlines()

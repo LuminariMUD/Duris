@@ -122,6 +122,59 @@ bool meming_class(P_char ch)
 		IS_MEMING_CLASS(ch->player.secondary_class));
 }
 
+static bool can_assimilate(P_char ch)
+{
+	return IS_PUNDEAD(ch) || IS_NPC(ch) || IS_ANGEL(ch) || IS_UNDEADRACE(ch) ||
+	       is_wearing_necroplasm(ch) || GET_CLASS(ch, CLASS_WARLOCK);
+}
+
+const char *spell_interface_command(P_char ch)
+{
+	// Mana takes precedence over spell slots in the casting path.
+	if (USES_MANA(ch))
+		return "will";
+	if (USES_FOCUS(ch))
+		return "focus";
+	if (USES_COMMUNE(ch))
+		return "commune";
+	if (USES_DEFOREST(ch))
+		return "deforest";
+	if (USES_TUPOR(ch))
+		return "tupor";
+	if (can_assimilate(ch))
+		return "assimilate";
+	if (praying_class(ch))
+		return "pray";
+	if (meming_class(ch))
+		return "memorize";
+	return nullptr;
+}
+
+const char *default_spell_interface_command(unsigned int cls)
+{
+	switch (cls)
+	{
+	case CLASS_PSIONICIST:
+	case CLASS_MINDFLAYER:
+		return "will";
+	case CLASS_DRUID:
+	case CLASS_RANGER:
+	case CLASS_DRAGOON:
+		return "commune";
+	case CLASS_BLIGHTER:
+		return "deforest";
+	case CLASS_ETHERMANCER:
+		return "tupor";
+	case CLASS_WARLOCK:
+		return "assimilate";
+	}
+	if (IS_PRAYING_CLASS(cls))
+		return "pray";
+	if (IS_MEMING_CLASS(cls))
+		return "memorize";
+	return nullptr;
+}
+
 int IS_SEMI_CASTER(P_char ch)
 {
 	unsigned int first = ch->player.m_class;
@@ -1282,9 +1335,7 @@ void do_assimilate(P_char ch, char *argument, int cmd)
 {
 	int circle, available, need_mem = 0;
 
-	if (cmd == CMD_ASSIMILATE &&
-	    !(IS_PUNDEAD(ch) || IS_NPC(ch) || IS_ANGEL(ch) || IS_UNDEADRACE(ch) ||
-	      is_wearing_necroplasm(ch) || GET_CLASS(ch, CLASS_WARLOCK)))
+	if (cmd == CMD_ASSIMILATE && !can_assimilate(ch))
 	{
 		send_to_char("&+LThe powers of the dark ignore you...\n", ch);
 		return;

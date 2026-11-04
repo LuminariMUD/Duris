@@ -22,6 +22,8 @@ Skill skills[MAX_AFFECT_TYPES + 1];
 static std::string output, help_name, help_result = "Syntax: cast 'fireball' <victim>";
 static P_char visible, book_target;
 static int lookups, book_checks;
+static bool wearing_necroplasm;
+int is_wearing_necroplasm(P_char) { return wearing_necroplasm; }
 void send_to_char(const char *text, P_char) { output += text; }
 void send_to_char_f(P_char, const char *format, ...) {
     char text[8192]; va_list args; va_start(args, format);
@@ -86,11 +88,13 @@ int main() {
                    "\n1st CIRCLE:\nburning hands\n"
                    "\n3rd CIRCLE:\nfireball [in spellbook]\nZeta spell\n"
                    "\n12th CIRCLE:\nmirror image\n"
-                   "\nSee: spells <class or specialization> | spells info <spell name>\n");
+                   "\nmemorize is your spell interface\n"
+                   "See: spells <class or specialization> | spells info <spell name>\n");
     assert(lookups == 0 && book_target == &ch);
     assert(output.find("&+B1st CIRCLE:&n\nburning hands\n") != std::string::npos);
     assert(output.find("&+B3rd CIRCLE:&n\n&+Lfireball [in spellbook]&n\n") != std::string::npos);
-    assert(output.ends_with("See: &+Wspells <class or specialization>&n | "
+    assert(output.ends_with("&+Wmemorize&n is your spell interface\n"
+                            "See: &+Wspells <class or specialization>&n | "
                             "&+Wspells info <spell name>&n\n"));
     assert(run(&ch, "all").find("staff only") != std::string::npos);
     assert(run(&ch, "a").find("staff only") != std::string::npos);
@@ -103,6 +107,7 @@ int main() {
     assert(text.find("Circle 1\n  burning hands\n") != std::string::npos);
     assert(text.find("Circle 2\n  fireball\n") != std::string::npos);
     assert(text.find("\n  * indicates spells gained from spec.\n") != std::string::npos);
+    assert(text.find("memorize is the default spell interface") != std::string::npos);
     text = run(&ch, "conjurer");
     assert(text.find("fire form") == std::string::npos && text.find('*') == std::string::npos);
     assert(text.find("fireball") < text.find("Zeta spell"));
@@ -165,10 +170,15 @@ int main() {
     ch.player.m_class = CLASS_CONJURER; ch.player.race = RACE_ILLITHID;
     run(&ch, ""); assert(book_checks == 0);
     ch.player.race = RACE_HUMAN; ch.player.m_class = CLASS_WARRIOR;
-    assert(run(&ch, "").find("No eligible spells") != std::string::npos);
+    text = run(&ch, "");
+    assert(text.find("No eligible spells") != std::string::npos);
+    assert(text.find("is your spell interface") == std::string::npos);
+    assert(run(&ch, "warrior").find("default spell interface") == std::string::npos);
     ch.player.level = 62;
     assert(run(&ch, "").starts_with(">====[ Scholar | Warrior | Max Circle 12 ]====<\n"));
-    assert(run(&ch, "target Cleric").starts_with(">====[ Cleric | Cleric | Max Circle 6 ]====<\n") && lookups == 1);
+    text = run(&ch, "target Cleric");
+    assert(text.starts_with(">====[ Cleric | Cleric | Max Circle 6 ]====<\n") && lookups == 1);
+    assert(text.find("is your spell interface") == std::string::npos);
     assert(run(&ch, "someone").starts_with(">====[ Cleric | Cleric | Max Circle 6 ]====<\n"));
     assert(run(&ch, "Cleric").find("BASE CLASS") != std::string::npos && lookups == 0);
     assert(run(&ch, "target").find("Provide one visible") != std::string::npos && lookups == 0);
@@ -195,7 +205,46 @@ int main() {
     assert(run(&ch, "al").find("staff only") != std::string::npos);
     assert(run(&ch, "info internal spell").find("Provide a known") != std::string::npos);
     run(&ch, "target Trainer"); assert(lookups == 0);
-    puts("PASS: spells routes, all names, effective grants, real circle rules, book paths, NPCs and permissions");
+
+    for (int cls : {CLASS_SHAMAN, CLASS_DRUID, CLASS_RANGER, CLASS_DRAGOON, CLASS_BLIGHTER,
+                    CLASS_CLERIC, CLASS_PSIONICIST, CLASS_WARLOCK, CLASS_ETHERMANCER})
+        add(SPELL_MAGIC_MISSILE, "magic missile", cls, 1);
+    ch.player.level = 6;
+    const struct {
+        int primary, secondary, race;
+        const char *command;
+    } interfaces[] = {
+        {CLASS_SHAMAN, 0, RACE_HUMAN, "memorize"},
+        {CLASS_DRUID, 0, RACE_HUMAN, "commune"},
+        {CLASS_RANGER, 0, RACE_HUMAN, "commune"},
+        {CLASS_DRAGOON, 0, RACE_HUMAN, "commune"},
+        {CLASS_BLIGHTER, 0, RACE_HUMAN, "deforest"},
+        {CLASS_CLERIC, 0, RACE_HUMAN, "pray"},
+        {CLASS_PSIONICIST, 0, RACE_HUMAN, "will"},
+        {CLASS_WARLOCK, 0, RACE_HUMAN, "assimilate"},
+        {CLASS_ETHERMANCER, 0, RACE_HUMAN, "tupor"},
+        {CLASS_CONJURER, 0, RACE_HARPY, "tupor"},
+        {CLASS_CONJURER, 0, RACE_PSBEAST, "focus"},
+        {CLASS_CONJURER, 0, RACE_LICH, "assimilate"},
+        {CLASS_CLERIC, 0, RACE_ANGEL, "assimilate"},
+        {CLASS_WARRIOR, CLASS_BLIGHTER, RACE_HUMAN, "deforest"},
+        {CLASS_WARRIOR, CLASS_SHAMAN, RACE_HUMAN, "memorize"},
+        {CLASS_CLERIC, CLASS_BLIGHTER, RACE_HUMAN, "pray"},
+        {CLASS_DRUID, 0, RACE_ILLITHID, "will"},
+    };
+    for (const auto &[primary, secondary, race, command] : interfaces) {
+        ch.player.m_class = primary; ch.player.secondary_class = secondary; ch.player.race = race;
+        run(&ch, "");
+        assert(output.find(std::string("\n&+W") + command + "&n is your spell interface\nSee:") != std::string::npos);
+        if (!secondary && race == RACE_HUMAN) {
+            run(&ch, class_names_table[flag2idx(primary)].normal);
+            assert(output.find(std::string("\n  &+W") + command + "&n is the default spell interface\n") != std::string::npos);
+        }
+    }
+    ch.player.m_class = CLASS_CONJURER; ch.player.race = RACE_HUMAN;
+    wearing_necroplasm = true;
+    assert(run(&ch, "").find("assimilate is your spell interface") != std::string::npos);
+    puts("PASS: spells routes, grants, spell interfaces, circle rules, book paths, NPCs and permissions");
 }
 '''
 
@@ -210,6 +259,10 @@ def main():
         ("utility.c", "ClassSkillInfo SKILL_DATA_ALL("),
         ("memorize.c", "int get_spell_circle(P_char ch, int spl)"),
         ("memorize.c", "int get_max_circle("), ("memorize.c", "bool book_class("),
+        ("memorize.c", "bool praying_class("), ("memorize.c", "bool meming_class("),
+        ("memorize.c", "static bool can_assimilate("),
+        ("memorize.c", "const char *spell_interface_command("),
+        ("memorize.c", "const char *default_spell_interface_command("),
         ("wikihelp.c", "string trim("),
     )]
     build = ROOT / "bin/tests"

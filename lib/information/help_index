@@ -27728,12 +27728,14 @@ spells info <spell name>
 Bare spells shows your own spells, including for staff. Spells are grouped by
 circle and name. Spells above your maximum circle are dimmed. The header shows
 your class, specialization, secondary class and maximum circle.
+Your spell interface command appears below the list when applicable.
 Book markers check inventory, hands and belt only for spellbook users.
 Circle access and book presence do not mean a spell is prepared or ready to cast.
 
 Use spells cleric for base grants or spells fire magus for a complete effective
 specialization catalog. An asterisk marks spells gained from the specialization.
 Lost base spells are listed separately. Bard songs and instruments use skills.
+The catalog shows the class's default spell interface when applicable.
 Catalogs are reference information, independent of your race, class and level.
 
 Use spells info fireball for registered aggression, class/spec circles and

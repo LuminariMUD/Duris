@@ -1864,6 +1864,8 @@ P_obj Find_process_entry(P_char, P_obj, int);
 P_obj SpellBookAtHand(P_char);
 bool meming_class(P_char);
 bool praying_class(P_char);
+const char *spell_interface_command(P_char);
+const char *default_spell_interface_command(unsigned int cls);
 void *has_memorized(P_char, int);
 int knows_spell(P_char, int);
 void use_spell(P_char, int);

@@ -176,7 +176,13 @@ void personal_spells(P_char ch, P_char target)
 	}
 	if (entries.empty())
 		out << "\n  No eligible spells for this character's current classes/specialization.\n";
-	out << "\nSee: &+Wspells <class or specialization>&n | &+Wspells info <spell name>&n\n";
+	out << "\n";
+	if (!entries.empty() && ch == target)
+	{
+		if (const char *command = spell_interface_command(target))
+			out << "&+W" << command << "&n is your spell interface\n";
+	}
+	out << "See: &+Wspells <class or specialization>&n | &+Wspells info <spell name>&n\n";
 	send_to_char(out.str().c_str(), ch);
 }
 
@@ -233,7 +239,13 @@ void catalog(P_char ch, int cls, int spec)
 				out << "  " << name << "\n";
 		}
 	}
-	out << "\n  Details: &+Wspells info <spell name>&n\n";
+	out << "\n";
+	if (count)
+	{
+		if (const char *command = default_spell_interface_command(1U << (cls - 1)))
+			out << "  &+W" << command << "&n is the default spell interface\n";
+	}
+	out << "  Details: &+Wspells info <spell name>&n\n";
 	send_to_char(out.str().c_str(), ch);
 }
 
