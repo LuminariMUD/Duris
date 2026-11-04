@@ -1,6 +1,6 @@
 # Issue #655: configurable roaming-NPC cap and training-dummy accounting
 
-Status: implemented and qualified locally. Stacked PRs are ready for review.
+Status: implemented and qualified locally. The linked PRs track integration.
 Date: 2026-11-04.
 Branch: `branch/issue-655-roaming-npc-cap`.
 Base: fetched `origin/master`, `af3829b85671480cdae23ae703da6ed1ca50a11a`.
