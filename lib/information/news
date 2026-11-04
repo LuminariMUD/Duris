@@ -4,10 +4,35 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 03, 2026&n
+&+WUpdated: November 04, 2026&n
 
-Welcome back! Keep your new character and verify your recovery inbox.
+Welcome back! Clearer spell lists and totems that leave your hands free.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/04/26&n &+L-&n &+YKnow your spells, free your hands&n
+&+W----------------------------------------------------------------------&n
+
+&+CShaman totems within reach&n
+&+Y-&n Cast with a matching totem directly in inventory or in any equipment
+  slot; totems inside bags do not count. Totemic Mastery recognizes the
+  same locations. Read &+C'help totems'&n.
+&+Y-&n Missing-totem messages name the required sphere and tier. Casting
+  commands wait for pending item transfers before checking your equipment.
+
+&+CFind your spell and its preparation command&n
+&+Y-&n &+C'spells'&n shows a compact class header and dims future circles.
+  Specialization catalogs mark added spells with an asterisk and list
+  lost base spells separately: try &+C'spells fire magus'&n.
+&+Y-&n Spell lists show the applicable preparation or resource command,
+  such as &+C'memorize'&n, &+C'pray'&n or &+C'will'&n. Class catalogs show the
+  class default; your personal list follows your actual spell interface.
+&+Y-&n Compatible clients can display an estimate for your whole spell
+  preparation or slot-recovery queue, including paused work. Meditation,
+  terrain and combat can change the time; zero is not proof of readiness.
+
+&+CFind the explanation&n
+&+Y-&n New help covers &+C'bloodlust'&n, &+C'blue haze'&n, &+C'deramuth'&n and
+  &+C'lantan scientific tools'&n. Use &+C'help <topic>'&n for rules and commands.
 
 &+R11/03/26&n &+L-&n &+YKeep your character, secure your account&n
 &+W----------------------------------------------------------------------&n

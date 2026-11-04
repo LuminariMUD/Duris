@@ -28008,3 +28008,61 @@ live bodies, pending saves or unresolved starter grants. Wait for the
 committed result and inspect again after a refusal or failure. Re-login to
 refresh an open account menu. Production repairs require owner permission.
 #
+BLOODLUST (General Information)
+===========================================================================
+Bloodlust is a temporary damage bonus against ordinary NPCs, not players
+or player-owned pets. It builds automatically from qualifying kills while
+you are below level 50. The victim must be no more than five levels below
+you and cannot be a player-owned or conjured pet.
+
+Further qualifying kills build or refresh the effect. Its maximum strength
+decreases above level 40. Ogres retain it longer than other races.
+Use 'bonus' to inspect your active Bloodlust and remaining duration.
+See also: BONUS, EXPERIENCE, EFFECTS
+===========================================================================
+
+#
+BLUE HAZE (General Information)
+===========================================================================
+Syntax: smoke <herb> <pipe>
+
+Blue Haze is a smoking herb. Carry the herb and a pipe, or hold them in
+your hands. Smoking consumes the herb and leaves your lungs needing time
+to recover; the normal smoking restrictions apply.
+
+It changes casting speed and can grant temporary hit points and hitroll.
+Existing vitality spells prevent its vitality benefits from stacking.
+Black Kush halves its duration. Smoking Blue Haze again extends the
+existing effect rather than adding another set of bonuses; it does not
+add vitality benefits that were blocked on the first smoke.
+See also: HERBS, EFFECTS, VITALITY
+===========================================================================
+
+#
+DERAMUTH (General Information)
+===========================================================================
+Deramuth is a port in Alatorin, in the Shanatar mountains, with a merchant
+district and shipyard. Its ferry docks serve Fort Boyard, Sarmiz'Duul and
+Venan'Trut. Check the dock and ship to identify your route before boarding.
+
+Use 'buy ticket' at the route's ticket machine and keep your ticket for
+the journey. Use 'enter <ship>' to board a docked ferry. From its boarding
+area, 'look out' shows the current port and 'disembark' takes you ashore.
+You must be standing and out of combat to disembark.
+See also: FERRY, SHIPS, SHIP_COMMANDS
+===========================================================================
+
+#
+LANTAN SCIENTIFIC TOOLS (General Information)
+===========================================================================
+Carry a set directly in your inventory when using 'salvage <item>'.
+The tools are consumed during salvage. They protect against destruction
+from a failed Salvage skill roll and improve recipe discovery chances;
+they do not guarantee a recipe or make an ineligible item salvageable.
+
+You still need the Salvage skill. Use 'examine <item>' for the assessment
+your skill allows, and read 'help recipes' for learning and using recipes.
+See also: SALVAGE, RECIPES, CRAFT, FORGE
+===========================================================================
+
+#
