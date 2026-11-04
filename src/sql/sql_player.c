@@ -3053,7 +3053,10 @@ static bool sql_load_saved_item_affects(int item_id, P_obj obj)
 	int count = 0;
 	while ((row = mysql_fetch_row(result)))
 		if (!sql_set_item_affect(obj, atoi(row[0]), atoi(row[1]), row[2], count))
-			break;
+		{
+			mysql_free_result(result);
+			return false;
+		}
 	mysql_free_result(result);
 	return true;
 }

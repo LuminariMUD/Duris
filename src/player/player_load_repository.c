@@ -155,7 +155,9 @@ bool within_budget(const player_load_result &result)
 {
 	// Reserve the final COMMIT in the total query budget.
 	return result.metrics.query_count < PLAYER_LOAD_QUERY_MAX &&
-	       result.metrics.row_count <= PLAYER_SNAPSHOT_MAX_ROWS &&
+	       result.metrics.row_count - result.metrics.fixed_affect_rows <=
+		       PLAYER_SNAPSHOT_MAX_ROWS &&
+	       result.metrics.fixed_affect_rows <= PLAYER_SNAPSHOT_MAX_OBJECTS * MAX_OBJ_AFFECT &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
 
@@ -196,7 +198,8 @@ bool execute(MYSQL *connection, const char *sql, player_load_result *result)
 	return rc == 0;
 }
 
-bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *result)
+bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *result,
+		       bool fixed_affect = false)
 {
 	if (!rows || !row || !result)
 		return false;
@@ -205,6 +208,8 @@ bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *resul
 	if (!lengths)
 		return false;
 	++result->metrics.row_count;
+	if (fixed_affect)
+		++result->metrics.fixed_affect_rows;
 	for (unsigned int column = 0; column < columns; ++column)
 		result->metrics.byte_count += row[column] ? lengths[column] : 0;
 	return within_budget(*result);
@@ -372,7 +377,8 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 }
 
 template <typename Callback> bool load_rows(MYSQL *connection, const std::string &sql,
-					    player_load_result *result, Callback callback)
+					    player_load_result *result, Callback callback,
+					    bool item_metadata = false)
 {
 	MYSQL_RES *rows = query(connection, sql, result);
 	if (!rows)
@@ -380,7 +386,10 @@ template <typename Callback> bool load_rows(MYSQL *connection, const std::string
 	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(rows)))
 	{
-		if (!add_result_budget(rows, row, result))
+		// Fixed slots are part of the item in the snapshot budget. Keep counting
+		// their wire bytes and cap their physical row count separately.
+		const bool fixed_affect = item_metadata && row[0] && row[0][0] == '0' && row[7];
+		if (!add_result_budget(rows, row, result, fixed_affect))
 		{
 			mysql_free_result(rows);
 			result->outcome = player_load_outcome::limit_exceeded;
@@ -1121,7 +1130,8 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    return append_loaded_extra_description(item.extra_descriptions, row[5],
 								   row[6], result) ||
 				   result->outcome != player_load_outcome::limit_exceeded;
-		    }))
+		    },
+		    true))
 		return false;
 	result->item_sources = std::move(source);
 	return result->snapshot.items.size() == result->item_identities.size();
@@ -1386,33 +1396,35 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 		"player_pet_item_extra_descr ed JOIN player_pet_items ppi ON ppi.id=ed.item_id "
 		"JOIN player_pets pp ON pp.id=ppi.pet_id WHERE pp.owner_pid=" +
 		pid + " ORDER BY 1,9,2,3";
-	if (!load_rows(connection, metadata_sql, result,
-		       [&](MYSQL_ROW row)
-		       {
-			       uint64_t row_kind = 0;
-			       uint64_t database_id = 0;
-			       if (!parse_unsigned(row[0], 1, &row_kind) ||
-				   !parse_unsigned(row[2], UINT64_MAX, &database_id))
-				       return false;
-			       const auto found = metadata_indices.find(database_id);
-			       if (found == metadata_indices.end())
-				       return true;
-			       const size_t pet_index = found->second.first;
-			       const size_t item_index = found->second.second;
-			       player_item_snapshot &item =
-				       result->snapshot.pets[pet_index].items[item_index];
-			       player_load_item_identity &identity =
-				       result->pet_identities[pet_index].item_identities[item_index];
-			       if (row_kind == 0)
-			       {
-				       return load_item_affect(
-					       row, item, identity,
-					       legacy_affect_counts[pet_index][item_index], result);
-			       }
-			       return append_loaded_extra_description(item.extra_descriptions,
-								      row[5], row[6], result) ||
-				      result->outcome != player_load_outcome::limit_exceeded;
-		       }))
+	if (!load_rows(
+		    connection, metadata_sql, result,
+		    [&](MYSQL_ROW row)
+		    {
+			    uint64_t row_kind = 0;
+			    uint64_t database_id = 0;
+			    if (!parse_unsigned(row[0], 1, &row_kind) ||
+				!parse_unsigned(row[2], UINT64_MAX, &database_id))
+				    return false;
+			    const auto found = metadata_indices.find(database_id);
+			    if (found == metadata_indices.end())
+				    return true;
+			    const size_t pet_index = found->second.first;
+			    const size_t item_index = found->second.second;
+			    player_item_snapshot &item =
+				    result->snapshot.pets[pet_index].items[item_index];
+			    player_load_item_identity &identity =
+				    result->pet_identities[pet_index].item_identities[item_index];
+			    if (row_kind == 0)
+			    {
+				    return load_item_affect(
+					    row, item, identity,
+					    legacy_affect_counts[pet_index][item_index], result);
+			    }
+			    return append_loaded_extra_description(item.extra_descriptions, row[5],
+								   row[6], result) ||
+				   result->outcome != player_load_outcome::limit_exceeded;
+		    },
+		    true))
 		return false;
 	result->authoritative_pet_item_count = pet_owned_count;
 	return result->snapshot.pets.size() == result->pet_identities.size();

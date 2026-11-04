@@ -142,6 +142,7 @@ struct player_load_metrics
 {
 	uint32_t query_count = 0;
 	uint32_t row_count = 0;
+	uint32_t fixed_affect_rows = 0;
 	uint64_t byte_count = 0;
 	uint64_t transaction_usec = 0;
 };
