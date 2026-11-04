@@ -83,8 +83,9 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                 "(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,"
                 "item_revision,vnum,state) VALUES "
                 "(800000000002,800000000001,800000000001,3,22800,1,5,1);"
-                f"INSERT INTO saved_item_affects(item_id,location,modifier)"
-                f" VALUES ({root_id},1,3);"
+                f"INSERT INTO saved_item_affects(item_id,affect_slot,location,modifier)"
+                f" VALUES ({root_id},0,1,3),({root_id},1,0,0),"
+                f"({root_id},2,1,3),({root_id},3,20,-1);"
                 f"INSERT INTO saved_item_extra_descr(item_id,keyword,description)"
                 f" VALUES ({root_id},'recovery stitching','The stitches are intact.')")
         if reject_child:
@@ -415,10 +416,13 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                                "800000000001,800000000002")
                     assert sql("SELECT COUNT(*) FROM saved_item_recovery_handoff "
                                "WHERE retired_at IS NOT NULL") == "1"
-                    assert sql("SELECT COUNT(*) FROM saved_item_affects a "
-                               "JOIN saved_items i ON i.id=a.item_id "
-                               "WHERE i.obj_uid=800000000001 AND a.location=1 "
-                               "AND a.modifier=3") == "1"
+                    def assert_affect_slots():
+                        assert sql("SELECT GROUP_CONCAT(CONCAT_WS(':',a.affect_slot,"
+                                   "a.location,a.modifier) ORDER BY a.affect_slot) "
+                                   "FROM saved_item_affects a JOIN saved_items i ON i.id=a.item_id "
+                                   "WHERE i.obj_uid=800000000001") == "0:1:3,1:0:0,2:1:3,3:20:-1"
+
+                    assert_affect_slots()
                     assert sql("SELECT COUNT(*) FROM saved_item_extra_descr e "
                                "JOIN saved_items i ON i.id=e.item_id "
                                "WHERE i.obj_uid=800000000001 "
@@ -463,6 +467,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                                    "WHERE item_key='item.uid.800000000001'") == "2"
                         assert sql("SELECT COUNT(*) FROM saved_items "
                                    "WHERE item_key='restore_allocator_1'") == "0"
+                        assert_affect_slots()
                     print("fixed: nested UID graph, affects and metadata survived two restarts",
                           flush=True)
                     return

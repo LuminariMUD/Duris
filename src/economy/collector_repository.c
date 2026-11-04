@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "sql/item_affect_rows.h"
 #include "economy/collector_repository.h"
 #include "item/item_claim.h"
 
@@ -1051,23 +1052,9 @@ bool insert_player_item(MYSQL *connection, uint32_t pid, const player_item_snaps
 		return false;
 	}
 	*database_id = static_cast<uint32_t>(item_id);
-	std::unordered_set<uint64_t> affect_keys;
-	for (const auto &affect : item.affects)
-		if (affect[0] || affect[1])
-		{
-			const uint64_t key =
-				(static_cast<uint64_t>(static_cast<uint16_t>(affect[0])) << 32) |
-				static_cast<uint32_t>(affect[1]);
-			if (!affect_keys.insert(key).second)
-				continue;
-			if (!execute(
-				    connection,
-				    "INSERT INTO player_item_affects(item_id,location,modifier) VALUES(" +
-					    std::to_string(item_id) + "," +
-					    std::to_string(affect[0]) + "," +
-					    std::to_string(affect[1]) + ")"))
-				return false;
-		}
+	if (!execute(connection,
+		     sql_item_affect_insert("player_item_affects", item_id, item.affects)))
+		return false;
 	std::unordered_set<std::string> description_keys;
 	for (const auto &description : item.extra_descriptions)
 	{

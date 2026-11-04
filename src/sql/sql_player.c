@@ -1,3 +1,4 @@
+#include "sql/item_affect_rows.h"
 #include "combat/trap_legacy.h"
 #include "economy/divine_trade_runtime.h"
 // sql_player.c
@@ -1027,36 +1028,22 @@ static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 	return true;
 }
 
-// Set obj's affects to its stored (location, modifier) rows. Any stored row replaces
-// the prototype's affects; duplicates are dropped.
-static void sql_set_item_affects(P_obj obj, const std::vector<std::pair<int, int>> &affects)
+// Load the indexed rows first. The first indexed row replaces all prototype
+// slots, and subsequent legacy rows (if any) are ignored.
+static bool sql_set_item_affect(P_obj obj, int location, int modifier, const char *slot_text,
+				int &count)
 {
-	if (affects.empty())
-		return;
-	for (int a = 0; a < MAX_OBJ_AFFECT; a++)
-	{
-		obj->affected[a].location = 0;
-		obj->affected[a].modifier = 0;
-	}
-	int aff_idx = 0;
-	for (const auto &[loc, mod] : affects)
-	{
-		if (aff_idx >= MAX_OBJ_AFFECT)
-			break;
-		bool is_dup = false;
-		for (int d = 0; d < aff_idx; d++)
-			if (obj->affected[d].location == loc && obj->affected[d].modifier == mod)
-			{
-				is_dup = true;
-				break;
-			}
-		if (!is_dup)
-		{
-			obj->affected[aff_idx].location = loc;
-			obj->affected[aff_idx].modifier = mod;
-			aff_idx++;
-		}
-	}
+	if (!slot_text && count < 0)
+		return true;
+	const int slot = slot_text ? atoi(slot_text) : count;
+	if (slot < 0 || slot >= MAX_OBJ_AFFECT)
+		return false;
+	if (slot_text && count == 0)
+		memset(obj->affected, 0, sizeof(obj->affected));
+	obj->affected[slot].location = location;
+	obj->affected[slot].modifier = modifier;
+	count = slot_text ? -1 : count + 1;
+	return true;
 }
 
 static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)
@@ -2087,10 +2074,27 @@ static P_obj locker_items_from_index(const locker_row_index &index, int locker_i
 		const auto affects = index.affects.find(item_id);
 		if (affects != index.affects.end())
 		{
-			std::vector<std::pair<int, int>> stored;
+			int count = 0;
 			for (const sql_row *affect : affects->second)
-				stored.emplace_back(atoi((*affect)[2]), atoi((*affect)[3]));
-			sql_set_item_affects(obj, stored);
+			{
+				const char *slot = (*affect)[4];
+				const int location = atoi((*affect)[2]);
+				const int modifier = atoi((*affect)[3]);
+				if (!slot && count >= 0)
+				{
+					// The compact legacy locker format historically dropped duplicate pairs.
+					if (count == 0)
+						memset(obj->affected, 0, sizeof(obj->affected));
+					if (std::any_of(obj->affected, obj->affected + count,
+							[=](const auto &saved) {
+								return saved.location == location &&
+								       saved.modifier == modifier;
+							}))
+						continue;
+				}
+				if (!sql_set_item_affect(obj, location, modifier, slot, count))
+					break;
+			}
 		}
 		const auto extras = index.extras.find(item_id);
 		if (extras != index.extras.end())
@@ -2309,6 +2313,7 @@ enum corpse_load_column
 	CORPSE_COL_ITEM_ACTION_DESCRIPTION,
 	CORPSE_COL_ITEM_AFFECT_LOCATION,
 	CORPSE_COL_ITEM_AFFECT_MODIFIER,
+	CORPSE_COL_ITEM_AFFECT_SLOT,
 	CORPSE_COL_ITEM_UID,
 	CORPSE_COL_ITEM_CONDITION,
 	CORPSE_COL_SHORT_DESCRIPTION,
@@ -2381,6 +2386,7 @@ bool sql_load_all_corpses(void)
 	// a row whose item failed to load must not have its affects applied to the
 	// previous, unrelated object.
 	bool last_item_stored = false;
+	int affect_count = 0;
 	int loaded = 0;
 	MYSQL_ROW row;
 
@@ -2392,7 +2398,7 @@ bool sql_load_all_corpses(void)
 		"ci.weight, ci.cost, ci.timer, "
 		"ci.extra_flags, ci.value0, ci.value1, ci.value2, ci.value3, ci.value4, "
 		"ci.value5, ci.value6, ci.value7, ci.name, ci.short_descr, ci.description, "
-		"ci.action_descr, COALESCE(cia.location, -1), COALESCE(cia.modifier, 0), "
+		"ci.action_descr, COALESCE(cia.location, -1), COALESCE(cia.modifier, 0), cia.affect_slot, "
 		"ci.obj_uid, ci.item_condition, "
 		"c.short_descr, c.description, c.name, c.weight, "
 		"c.value0, c.value1, c.value2, c.value3, c.value4, c.value5, c.value7, "
@@ -2401,7 +2407,7 @@ bool sql_load_all_corpses(void)
 		"FROM corpses c "
 		"LEFT JOIN corpse_items ci ON ci.corpse_id = c.id "
 		"LEFT JOIN corpse_item_affects cia ON cia.item_id = ci.id "
-		"ORDER BY c.id, ci.id, cia.id");
+		"ORDER BY c.id, ci.id, cia.affect_slot IS NULL, cia.id");
 	if (!result)
 		goto cleanup;
 	if (mysql_num_fields(result) != CORPSE_COL_COUNT)
@@ -2568,17 +2574,22 @@ bool sql_load_all_corpses(void)
 			if (aff_loc >= 0)
 			{
 				P_obj obj = obj_map[num_objs - 1];
-				for (int i = 0; i < MAX_OBJ_AFFECT; i++)
+				const char *slot = row[CORPSE_COL_ITEM_AFFECT_SLOT];
+				if (!slot && affect_count >= 0)
 				{
-					if (obj->affected[i].location == 0 &&
-					    obj->affected[i].modifier == 0)
-					{
-						obj->affected[i].location = aff_loc;
-						obj->affected[i].modifier =
-							atoi(row[CORPSE_COL_ITEM_AFFECT_MODIFIER]);
-						break;
-					}
+					// Legacy corpse rows filled the first empty slot after the first row.
+					affect_count = MAX_OBJ_AFFECT;
+					for (int i = 0; i < MAX_OBJ_AFFECT; i++)
+						if (obj->affected[i].location == 0 &&
+						    obj->affected[i].modifier == 0)
+						{
+							affect_count = i;
+							break;
+						}
 				}
+				sql_set_item_affect(obj, aff_loc,
+						    atoi(row[CORPSE_COL_ITEM_AFFECT_MODIFIER]),
+						    slot, affect_count);
 			}
 			continue;
 		}
@@ -2682,12 +2693,12 @@ bool sql_load_all_corpses(void)
 			continue;
 		}
 
+		affect_count = 0;
 		int aff_loc = atoi(row[CORPSE_COL_ITEM_AFFECT_LOCATION]);
 		if (aff_loc >= 0)
-		{
-			obj->affected[0].location = aff_loc;
-			obj->affected[0].modifier = atoi(row[CORPSE_COL_ITEM_AFFECT_MODIFIER]);
-		}
+			sql_set_item_affect(obj, aff_loc,
+					    atoi(row[CORPSE_COL_ITEM_AFFECT_MODIFIER]),
+					    row[CORPSE_COL_ITEM_AFFECT_SLOT], affect_count);
 
 		sql_load_item_extra_descr_from_table(item_id, obj, "corpse_item");
 
@@ -3030,25 +3041,33 @@ bool sql_save_shopkeeper(P_char ch, int shop_nr)
 	       submitted == player_save_submit_result::replaced;
 }
 
+static bool sql_load_saved_item_affects(int item_id, P_obj obj)
+{
+	MYSQL_RES *result = db_query(
+		"SELECT location, modifier, affect_slot FROM saved_item_affects WHERE item_id=%d "
+		"ORDER BY affect_slot IS NULL, id",
+		item_id);
+	if (!result)
+		return false;
+	MYSQL_ROW row;
+	int count = 0;
+	while ((row = mysql_fetch_row(result)))
+		if (!sql_set_item_affect(obj, atoi(row[0]), atoi(row[1]), row[2], count))
+			break;
+	mysql_free_result(result);
+	return true;
+}
+
 static bool sql_save_saved_item_affects(int item_id, P_obj obj)
 {
 	if (!obj || !DB || item_id <= 0)
 		return false;
 
-	for (int i = 0; i < MAX_OBJ_AFFECT; i++)
-	{
-		if (obj->affected[i].location != 0 || obj->affected[i].modifier != 0)
-		{
-			char query[256];
-			snprintf(
-				query, sizeof(query),
-				"INSERT INTO saved_item_affects (item_id, location, modifier) VALUES (%d, %d, %d)",
-				item_id, obj->affected[i].location, obj->affected[i].modifier);
-			if (!sql_run_query(query))
-				return false;
-		}
-	}
-	return true;
+	decltype(player_item_snapshot::affects) affects;
+	for (size_t slot = 0; slot < affects.size(); ++slot)
+		affects[slot] = { obj->affected[slot].location, obj->affected[slot].modifier };
+	return sql_run_query(
+		sql_item_affect_insert("saved_item_affects", item_id, affects).c_str());
 }
 
 static int sql_save_saved_item_recursive(const char *item_key, int room_vnum, P_obj obj,
@@ -3576,12 +3595,13 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 	}
 
 	// query 4: load all item affects
-	result = db_query("SELECT sia.item_id, sia.location, sia.modifier "
-			  "FROM shopkeeper_item_affects sia "
-			  "INNER JOIN shopkeeper_items si ON sia.item_id = si.id "
-			  "INNER JOIN shopkeepers s ON si.shopkeeper_id = s.id "
-			  "WHERE (%d < 0 OR s.shop_id=%d) ORDER BY sia.item_id",
-			  only_shop, only_shop);
+	result = db_query(
+		"SELECT sia.item_id, sia.location, sia.modifier, sia.affect_slot "
+		"FROM shopkeeper_item_affects sia "
+		"INNER JOIN shopkeeper_items si ON sia.item_id = si.id "
+		"INNER JOIN shopkeepers s ON si.shopkeeper_id = s.id "
+		"WHERE (%d < 0 OR s.shop_id=%d) ORDER BY sia.item_id, sia.affect_slot IS NULL, sia.id",
+		only_shop, only_shop);
 	if (!result)
 	{
 		discard_shopkeeper_restore_stage(keepers, all_items, false);
@@ -3601,14 +3621,10 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 				if (t->item_id != aff_item_id)
 					continue;
 				matched = true;
-				if (t->affect_count == 0)
+				if (t->affect_count == 0 && !row[3])
 					memset(t->obj->affected, 0, sizeof(t->obj->affected));
-				if (t->affect_count < MAX_OBJ_AFFECT)
-				{
-					t->obj->affected[t->affect_count].location = location;
-					t->obj->affected[t->affect_count++].modifier = modifier;
-					placed = true;
-				}
+				placed = sql_set_item_affect(t->obj, location, modifier, row[3],
+							     t->affect_count);
 				break;
 			}
 			if (!matched || !placed)
@@ -4143,24 +4159,7 @@ static P_obj sql_load_saved_item_contents(const char *item_key, int room_vnum, i
 		if (!sql_load_item_extra_descr_from_table(item_id, obj, "saved_item"))
 			*valid = false;
 
-		char aff_query[128];
-		snprintf(aff_query, sizeof(aff_query),
-			 "SELECT location, modifier FROM saved_item_affects WHERE item_id=%d",
-			 item_id);
-		MYSQL_RES *aff_result = db_query("%s", aff_query);
-		if (aff_result)
-		{
-			MYSQL_ROW aff_row;
-			int aff_idx = 0;
-			while ((aff_row = mysql_fetch_row(aff_result)) && aff_idx < MAX_OBJ_AFFECT)
-			{
-				obj->affected[aff_idx].location = atoi(aff_row[0]);
-				obj->affected[aff_idx].modifier = atoi(aff_row[1]);
-				aff_idx++;
-			}
-			mysql_free_result(aff_result);
-		}
-		else
+		if (!sql_load_saved_item_affects(item_id, obj))
 			*valid = false;
 
 		obj->contains = sql_load_saved_item_contents(item_key, room_vnum, item_id,
@@ -4662,24 +4661,7 @@ void sql_restore_saved_items(void)
 		if (!sql_load_item_extra_descr_from_table(item_id, obj, "saved_item"))
 			valid = false;
 
-		char aff_query[128];
-		snprintf(aff_query, sizeof(aff_query),
-			 "SELECT location, modifier FROM saved_item_affects WHERE item_id=%d",
-			 item_id);
-		MYSQL_RES *aff_result = db_query("%s", aff_query);
-		if (aff_result)
-		{
-			MYSQL_ROW aff_row;
-			int aff_idx = 0;
-			while ((aff_row = mysql_fetch_row(aff_result)) && aff_idx < MAX_OBJ_AFFECT)
-			{
-				obj->affected[aff_idx].location = atoi(aff_row[0]);
-				obj->affected[aff_idx].modifier = atoi(aff_row[1]);
-				aff_idx++;
-			}
-			mysql_free_result(aff_result);
-		}
-		else
+		if (!sql_load_saved_item_affects(item_id, obj))
 			valid = false;
 
 		obj->contains = sql_load_saved_item_contents(item_key, room_vnum, item_id, 0,

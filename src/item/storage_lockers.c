@@ -3376,9 +3376,9 @@ static unsigned int locker_entry_read(MYSQL *connection, const locker_entry &ent
 		     rows)) ||
 	    (error_code = sql_select(
 		     connection,
-		     "SELECT 'affect', a.item_id, a.location, a.modifier "
+		     "SELECT 'affect', a.item_id, a.location, a.modifier, a.affect_slot "
 		     "FROM locker_item_affects a JOIN locker_items li ON li.id=a.item_id" +
-			     of_locker + " ORDER BY a.id",
+			     of_locker + " ORDER BY a.affect_slot IS NULL, a.id",
 		     rows)))
 		return error_code;
 	return sql_select(connection,

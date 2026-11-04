@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "sql/item_affect_rows.h"
 #include "player/player_snapshot_repository.h"
 
 #include "account/account.h"
@@ -595,26 +596,11 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 			return { false, EIO };
 		ids.push_back(item_id);
 
-		std::unordered_set<uint64_t> affect_keys;
+		result = execute(connection,
+				 sql_item_affect_insert(tables.affects, item_id, row.affects));
+		if (!result.ok)
+			return result;
 		std::unordered_set<std::string> description_keys;
-		for (const auto &affect : row.affects)
-		{
-			if (!affect[0] && !affect[1])
-				continue;
-			const uint64_t key =
-				(static_cast<uint64_t>(static_cast<uint16_t>(affect[0])) << 32) |
-				static_cast<uint32_t>(affect[1]);
-			if (!affect_keys.insert(key).second)
-				continue;
-			result = execute(connection,
-					 "INSERT INTO " + std::string(tables.affects) +
-						 " (item_id,location,modifier) VALUES (" +
-						 std::to_string(item_id) + "," +
-						 std::to_string(affect[0]) + "," +
-						 std::to_string(affect[1]) + ")");
-			if (!result.ok)
-				return result;
-		}
 		for (const auto &description : row.extra_descriptions)
 		{
 			if (description.keyword.empty())

@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "sql/item_affect_rows.h"
 #include "item/item_transfer_repository.h"
 #include "item/item_claim_repository.h"
 #include "core/defines.h"
@@ -376,23 +377,9 @@ bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payl
 		    !run_sql(connection, "DELETE FROM player_item_extra_descr WHERE item_id=" +
 						 std::to_string(item_id)))
 			return false;
-		std::unordered_set<uint64_t> affects;
-		for (const auto &affect : snapshot.affects)
-		{
-			if (!affect[0] && !affect[1])
-				continue;
-			const uint64_t key =
-				(static_cast<uint64_t>(static_cast<uint16_t>(affect[0])) << 32) |
-				static_cast<uint32_t>(affect[1]);
-			if (affects.insert(key).second &&
-			    !run_sql(
-				    connection,
-				    "INSERT INTO player_item_affects(item_id,location,modifier) VALUES(" +
-					    std::to_string(item_id) + "," +
-					    std::to_string(affect[0]) + "," +
-					    std::to_string(affect[1]) + ")"))
-				return false;
-		}
+		if (!run_sql(connection, sql_item_affect_insert("player_item_affects", item_id,
+								snapshot.affects)))
+			return false;
 		std::unordered_set<std::string> descriptions;
 		for (const auto &description : snapshot.extra_descriptions)
 		{
