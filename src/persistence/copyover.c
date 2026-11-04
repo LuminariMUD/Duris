@@ -87,6 +87,7 @@ extern void nonblock(int s);
 extern void clear_char(P_char ch);
 
 static int copyover_in_progress = 0;
+bool copyover_preserve_world = true;
 
 static bool copyover_version_supported(int version)
 {
@@ -191,6 +192,12 @@ bool copyover_has_durable_shopkeepers()
 	return current;
 }
 
+bool copyover_restores_world()
+{
+	const auto *image = copyover_boot_evidence();
+	return copyover_boot && image && !memcmp(image->header.magic, COPYOVER_MAGIC, 4);
+}
+
 int is_copyover_boot(void)
 {
 	return copyover_in_progress;
@@ -242,10 +249,10 @@ static int write_desc_entry(FILE *fp, P_desc d)
 	if (ch && GET_NAME(ch))
 	{
 		strlcpy(entry.player_name, GET_NAME(ch), sizeof(entry.player_name));
-		entry.room = ch->in_room;
+		entry.room = copyover_preserve_world ? ch->in_room : world[ch->in_room].number;
 
 		// save combat state
-		if (ch->specials.fighting)
+		if (copyover_preserve_world && ch->specials.fighting)
 		{
 			P_char target = ch->specials.fighting;
 			if (IS_NPC(target))
@@ -667,7 +674,10 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		return false;
 	memcpy(&snapshot->header, snapshot->bytes.data(), sizeof(snapshot->header));
 	const auto &header = snapshot->header;
-	if (memcmp(header.magic, COPYOVER_MAGIC, 4) ||
+	const bool players_only = !memcmp(header.magic, COPYOVER_PLAYERS_MAGIC, 4);
+	if ((memcmp(header.magic, COPYOVER_MAGIC, 4) && !players_only) ||
+	    (players_only && (header.version != COPYOVER_VERSION || header.num_mobs ||
+			      header.num_objects || header.num_rooms)) ||
 	    !copyover_version_supported(header.version) || header.num_descriptors < 0 ||
 	    header.num_mobs < 0 || header.num_objects < 0 || header.num_rooms < 0 ||
 	    header.num_combat || header.num_zones ||
@@ -1108,21 +1118,10 @@ static void notify_ws_copyover(P_desc d)
 
 	// send json message so web client knows whats happening
 	const char *msg =
-		"{\"type\":\"system\",\"data\":{\"status\":\"copyover\",\"message\":\"Server updating, please wait...\"}}";
+		"{\"type\":\"system\",\"data\":{\"status\":\"copyover\",\"message\":\"The MUD is copying over and should be back up in about 20 seconds. Please reconnect.\"}}";
 
 	// wrap in websocket frame
 	websocket_send_text(d, msg);
-}
-
-// notify ssl users before disconnect
-static void notify_ssl_copyover(P_desc d)
-{
-	if (!d->sslses || d->descriptor < 0)
-		return;
-
-	const char *msg = "\r\n*** Copyover in progress. Reconnecting... ***\r\n";
-	// use raw write since we're about to close
-	gnutls_record_send(d->sslses, msg, strlen(msg));
 }
 
 // count how many of each thing we need to save
@@ -1147,6 +1146,9 @@ static void count_copyover_items(int *num_descs, int *num_mobs, int *num_objs, i
 			(*num_descs)++;
 		}
 	}
+
+	if (!copyover_preserve_world)
+		return;
 
 	// Count living mobs (skip linked pets; player-owned pets are saved per descriptor).
 	// Training dummies are bootstrapped from the current creation-room table;
@@ -1229,10 +1231,10 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			"\r\n*** Copyover cancelled: starter equipment is still being granted; retry after completion. ***\r\n");
 		return false;
 	}
-	// Only playing plain-Telnet descriptors can survive exec. Leave every
-	// connection on the live process if even one would be dropped.
+	// World-preserving hotboot retains its all-connections-survive policy.
+	// Standalone copyover notifies unsupported sessions after saves are durable.
 	for (d = descriptor_list; d; d = d->next)
-		if (d->descriptor >= 0 &&
+		if (copyover_preserve_world && d->descriptor >= 0 &&
 		    (d->connected != CON_PLAYING || !d->character || d->websocket || d->sslses))
 		{
 			logit(LOG_STATUS,
@@ -1324,6 +1326,17 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
+	// A fresh world also removes linkdead bodies; save their current player/pet state.
+	if (!copyover_preserve_world)
+		for (ch = character_list; ch; ch = ch->next)
+			if (!IS_NPC(ch) && !ch->desc &&
+			    !persistence_save_character_terminal_database_acknowledged(ch,
+										       RENT_CRASH))
+			{
+				notify_copyover_failure(
+					"\r\n*** Copyover cancelled: a linkdead player save failed. ***\r\n");
+				return false;
+			}
 	// Preserve custom shop item state that the basic NPC file record omits. The saves go
 	// to the writer, so they are queued before the drain below.
 	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
@@ -1382,6 +1395,16 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 
+	// Seal a current Redis generation, including any floor-only changes, so the
+	// replacement can retire that exact predecessor without restoring it.
+	if (!copyover_preserve_world && redis_world_runtime_enabled() &&
+	    (!redis_save_world_state() || !redis_world_recovery_drain(30000)))
+	{
+		notify_copyover_failure(
+			"\r\n*** Copyover cancelled: world checkpoint failed. ***\r\n");
+		return false;
+	}
+
 	// Terminal player/shop/locker callbacks can have produced newer snapshots.
 	if (!artifact_guild_transaction_drain(3000))
 	{
@@ -1412,7 +1435,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 
 	// write header
 	memset(&header, 0, sizeof(header));
-	memcpy(header.magic, COPYOVER_MAGIC, 4);
+	memcpy(header.magic, copyover_preserve_world ? COPYOVER_MAGIC : COPYOVER_PLAYERS_MAGIC, 4);
 	header.version = COPYOVER_VERSION;
 	header.timestamp = time(NULL);
 	header.num_descriptors = num_descs;
@@ -1465,64 +1488,70 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 
-	// Write mobs (skip linked pets; player-owned pets are saved per descriptor).
-	// Training dummies are recreated by training_dummy_bootstrap() during boot.
-	for (ch = character_list; ch; ch = ch->next)
+	if (copyover_preserve_world)
 	{
-		if (copyover_world_mob(ch))
+		// Write mobs (skip linked pets; player-owned pets are saved per descriptor).
+		// Training dummies are recreated by training_dummy_bootstrap() during boot.
+		for (ch = character_list; ch; ch = ch->next)
 		{
-			if (!write_mob_entry(fp, ch) || !write_mob_affects(fp, ch) ||
-			    !write_mob_inventory(fp, ch) || !write_generated_npc_state(fp, ch))
+			if (copyover_world_mob(ch))
 			{
-				logit(LOG_STATUS, "copyover: failed to write mob entry for %s",
-				      GET_NAME(ch));
-				notify_copyover_failure(
-					"\r\n*** Copyover FAILED - server remains live. ***\r\n");
-				fclose(fp);
-				unlink(copyover_tmp);
-				return false;
-			}
-		}
-	}
-
-	std::vector<char> object_buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
-	// write objects on ground, skip ship stuff - already loaded
-	// also skip objects in ship rooms (dynamic vnums 60000-64999)
-	for (obj = object_list; obj; obj = obj->next)
-	{
-		if (copyover_root_room(obj) >= 0)
-		{
-			if (!write_obj_entry(fp, obj, object_buffer))
-			{
-				logit(LOG_STATUS, "copyover: failed to write object entry vnum %d",
-				      OBJ_VNUM(obj));
-				notify_copyover_failure(
-					"\r\n*** Copyover FAILED - server remains live. ***\r\n");
-				fclose(fp);
-				unlink(copyover_tmp);
-				return false;
-			}
-		}
-	}
-
-	// write door states
-	for (room = 0; room <= top_of_world; room++)
-	{
-		for (dir = 0; dir < NUM_EXITS; dir++)
-		{
-			if (world[room].dir_option[dir] &&
-			    IS_SET(world[room].dir_option[dir]->exit_info, EX_ISDOOR))
-			{
-				if (!write_room_door(fp, room, dir))
+				if (!write_mob_entry(fp, ch) || !write_mob_affects(fp, ch) ||
+				    !write_mob_inventory(fp, ch) ||
+				    !write_generated_npc_state(fp, ch))
 				{
 					logit(LOG_STATUS,
-					      "copyover: failed to write room door %d/%d", room,
-					      dir);
+					      "copyover: failed to write mob entry for %s",
+					      GET_NAME(ch));
 					notify_copyover_failure(
 						"\r\n*** Copyover FAILED - server remains live. ***\r\n");
 					fclose(fp);
 					unlink(copyover_tmp);
 					return false;
+				}
+			}
+		}
+
+		std::vector<char> object_buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
+		// write objects on ground, skip ship stuff - already loaded
+		// also skip objects in ship rooms (dynamic vnums 60000-64999)
+		for (obj = object_list; obj; obj = obj->next)
+		{
+			if (copyover_root_room(obj) >= 0)
+			{
+				if (!write_obj_entry(fp, obj, object_buffer))
+				{
+					logit(LOG_STATUS,
+					      "copyover: failed to write object entry vnum %d",
+					      OBJ_VNUM(obj));
+					notify_copyover_failure(
+						"\r\n*** Copyover FAILED - server remains live. ***\r\n");
+					fclose(fp);
+					unlink(copyover_tmp);
+					return false;
+				}
+			}
+		}
+
+		// write door states
+		for (room = 0; room <= top_of_world; room++)
+		{
+			for (dir = 0; dir < NUM_EXITS; dir++)
+			{
+				if (world[room].dir_option[dir] &&
+				    IS_SET(world[room].dir_option[dir]->exit_info, EX_ISDOOR))
+				{
+					if (!write_room_door(fp, room, dir))
+					{
+						logit(LOG_STATUS,
+						      "copyover: failed to write room door %d/%d",
+						      room, dir);
+						notify_copyover_failure(
+							"\r\n*** Copyover FAILED - server remains live. ***\r\n");
+						fclose(fp);
+						unlink(copyover_tmp);
+						return false;
+					}
 				}
 			}
 		}
@@ -1572,21 +1601,27 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	      num_mobs, num_objs, num_rooms);
 
 	// Prerequisite saves are acknowledged and the complete image is published.
-	// Only now may non-preservable transports be disconnected.
+	// Only now may unsupported sessions receive the notice and disconnect.
 	for (d = descriptor_list; d; d = d->next)
 	{
-		if (d->descriptor < 0 || d->connected != CON_PLAYING || !d->character)
+		if (d->descriptor < 0)
 			continue;
-		if (d->websocket)
+		if (!copyover_descriptor_is_eligible(d))
 		{
-			notify_ws_copyover(d);
-			close(d->descriptor);
-			d->descriptor = -1;
-		}
-		else if (d->sslses)
-		{
-			notify_ssl_copyover(d);
-			gnutls_bye(d->sslses, GNUTLS_SHUT_WR);
+			if (d->websocket)
+				notify_ws_copyover(d);
+			else
+				write_to_descriptor(
+					d,
+					"\r\n*** The MUD is copying over and should be back up in about 20 seconds. Please reconnect. ***\r\n");
+			if (d->out_compress)
+				compress_end(d, 1);
+			if (d->sslses)
+			{
+				gnutls_bye(d->sslses, GNUTLS_SHUT_WR);
+				gnutls_deinit(d->sslses);
+				d->sslses = nullptr;
+			}
 			close(d->descriptor);
 			d->descriptor = -1;
 		}
@@ -1813,7 +1848,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 
 	// read and verify header
 	if (fread(&header, sizeof(header), 1, fp) != 1 ||
-	    memcmp(header.magic, COPYOVER_MAGIC, 4) != 0 ||
+	    (memcmp(header.magic, COPYOVER_MAGIC, 4) &&
+	     memcmp(header.magic, COPYOVER_PLAYERS_MAGIC, 4)) ||
 	    !copyover_version_supported(header.version))
 	{
 		logit(LOG_STATUS, "copyover_recover: invalid header or version mismatch");
@@ -1930,7 +1966,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				character_list = ch;
 
 				// use room from copyover data, not pfile
-				save_room = desc_entry.room;
+				save_room = copyover_restores_world() ? desc_entry.room :
+									real_room(desc_entry.room);
 				if (save_room < 0 || save_room > top_of_world)
 				{
 					save_room = 0;

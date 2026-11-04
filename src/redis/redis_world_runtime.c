@@ -1298,6 +1298,28 @@ bool redis_consume_world_state(void)
 #endif
 }
 
+bool redis_world_discard_for_copyover()
+{
+	const auto state = redis_world_prepare_boot();
+	if (state == redis_world_boot_result::disabled || state == redis_world_boot_result::absent)
+		return true;
+#ifndef __NO_REDIS__
+	if (state == redis_world_boot_result::ready)
+	{
+		const auto config = redis_world_store_config_copy();
+		if (!redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
+							  world_boot_snapshot.generation,
+							  world_boot_snapshot.floor_records))
+			return false;
+		world_boot_snapshot = {};
+		world_boot_result = redis_world_boot_result::absent;
+		world_boot_restored = recovery_boot = clean_restart_boot = false;
+		return true;
+	}
+#endif
+	return false;
+}
+
 bool redis_world_validate_boot(void)
 {
 #ifdef __NO_REDIS__

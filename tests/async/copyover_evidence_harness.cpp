@@ -37,6 +37,7 @@ extern "C" int __wrap_open(const char *path, int flags, ...)
 static room_data rooms[1] = {};
 static index_data objects[1] = {}, mobs[1] = {};
 P_room world = rooms;
+int copyover_boot = 1;
 P_index obj_index = objects, mob_index = mobs;
 extern const int top_of_world = 0;
 static unsigned int template_reads = 0, custody_reads = 0, short_updates = 0;
@@ -260,6 +261,37 @@ int main(int argc, char **argv)
 	const std::string path = "copyover.dat", claimed = path + ".recovering";
 	const auto valid = image();
 
+	if (std::string(argv[1]) == "players")
+	{
+		copyover_desc desc{};
+		strcpy(desc.player_name, "Player");
+		desc.room = 1200;
+		auto bytes = descriptor_image(COPYOVER_VERSION, desc);
+		memcpy(bytes.data(), COPYOVER_PLAYERS_MAGIC, 4);
+		write_bytes(path, bytes);
+		copyover_boot_snapshot snapshot;
+		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::ready);
+		assert(snapshot.mobs.empty() && snapshot.objects.empty());
+		artifact_recovery_population population;
+		assert(!artifact_population_read_copyover(snapshot, &population) &&
+		       population.items.empty());
+		for (const auto offset :
+		     { offsetof(copyover_header, num_mobs), offsetof(copyover_header, num_objects),
+		       offsetof(copyover_header, num_rooms) })
+		{
+			auto corrupt = bytes;
+			const int count = 1;
+			memcpy(corrupt.data() + offset, &count, sizeof(count));
+			write_bytes(path, corrupt);
+			assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
+		}
+		write_bytes(path, bytes);
+		assert(copyover_prepare_boot() == copyover_boot_result::ready);
+		assert(!copyover_restores_world());
+		std::cout
+			<< "player-only handoff rejects world records and is exclusively claimed\n";
+		return 0;
+	}
 	if (std::string(argv[1]) == "protocol")
 	{
 		copyover_desc desc{};

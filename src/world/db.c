@@ -740,7 +740,7 @@ void boot_db(int mini_mode)
 		 * corpses.  Loading SQL corpses first materializes their stable child UIDs
 		 * under a newly allocated root and makes recovery reject the same children
 		 * as duplicates.  A cold boot still restores the durable SQL image. */
-		if (!copyover_boot)
+		if (!copyover_restores_world())
 		{
 			fprintf(stderr, "-- Player corpses\n");
 			logit(LOG_STATUS, "Reloading Player corpses.");
@@ -748,7 +748,7 @@ void boot_db(int mini_mode)
 		}
 
 		/* Saved ground/storage objects are in the same copyover world graph. */
-		if (!copyover_boot)
+		if (!copyover_restores_world())
 		{
 			logit(LOG_STATUS, "Reloading SavedItems.");
 			restoreSavedItems();
@@ -758,7 +758,7 @@ void boot_db(int mini_mode)
 		logit(LOG_STATUS, "Reloading Shopkeepers.");
 		// Durable catalogs retain full stock properties and revision state.
 		// Native recovery reuses their matching UID bodies before reconciliation.
-		if (!copyover_boot || copyover_has_durable_shopkeepers() ||
+		if (!copyover_restores_world() || copyover_has_durable_shopkeepers() ||
 		    persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 			restore_shopkeepers();
 		remember_boot_shopkeepers();
@@ -773,7 +773,7 @@ void boot_db(int mini_mode)
 		logit(LOG_STATUS, "Setting up player-side artifact list.");
 		setupMortArtiList_sql();
 		// skip loading artifacts from db during copyover - they're restored from copyover.dat
-		if (!copyover_boot)
+		if (!copyover_restores_world())
 		{
 			/* Redis recovery owns floor materialization when its validated generation
 			 * is active. Loading the legacy vnum-only artifact row first would create
@@ -3096,7 +3096,7 @@ static void stage_artifact_population()
 			fatal_boot_error("artifact_identity",
 					 "Object prototype catalog exceeds population limit");
 		const auto &population = artifact_population_boot_evidence();
-		const bool restorable = copyover_boot ||
+		const bool restorable = copyover_restores_world() ||
 					redis_world_prepare_boot() !=
 						redis_world_boot_result::ready ||
 					redis_world_validate_boot();

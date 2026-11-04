@@ -63,6 +63,7 @@ bool npc_case() { const char *s=getenv("COPYOVER_TEST_CASE"); return !strcmp(s,"
 bool shop_case() { return npc_case() && strcmp(getenv("COPYOVER_TEST_CASE"),"npc"); }
 int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc->shopkeeper_shop_id : -1; }
 
+#include "classes/necromancy.h"
 #include "persistence/locker_async.h"
 #include "persistence/maintenance_scheduler.h"
 #include "persistence/critical_command_coordinator.h"
@@ -119,6 +120,9 @@ void player_save_pipeline_quiesce() {}
 void player_save_pipeline_resume() {}
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
+bool redis_world_runtime_enabled() { return false; }
+bool redis_save_world_state() { assert(false); return false; }
+int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
 void redis_world_writer_release() {}
 bool persistence_flush_all_character_saves() { return true; }
 bool persistence_log_drain(unsigned timeout_ms) { assert(timeout_ms == 3000); return true; }

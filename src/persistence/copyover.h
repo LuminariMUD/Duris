@@ -18,6 +18,7 @@
 const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
+#define COPYOVER_PLAYERS_MAGIC "CPYP" // same records, without the live world
 #define COPYOVER_VERSION 19 // full skill selectors; reads versions 12-18 too
 
 // copyover file header
@@ -207,6 +208,8 @@ typedef struct copyover_obj_content copyover_carried_item;
 
 // copyover state - set during copyover boot
 extern int copyover_boot;
+extern bool copyover_preserve_world;
+bool copyover_restores_world();
 
 // main copyover functions
 bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc);

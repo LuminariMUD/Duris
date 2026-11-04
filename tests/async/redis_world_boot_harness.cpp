@@ -200,6 +200,22 @@ static void pinning_checks(redisContext *other, int port)
 		publish(first, 1);
 		put_floor(other, 202, floor);
 	};
+	// Player-only copyover retires the sealed predecessor without materializing
+	// any world records; even the following cold boot must see an empty world.
+	seeded();
+	assert(redis_world_discard_for_copyover() && restore_calls == 0);
+	assert(redis_world_prepare_boot() == redis_world_boot_result::absent);
+	assert(world_sequence_floor >= 1);
+	reset_boot();
+	assert(redis_world_prepare_boot() == redis_world_boot_result::absent);
+	seeded();
+	assert(redis_world_prepare_boot() == redis_world_boot_result::ready);
+	publish(second, 2);
+	assert(!redis_world_discard_for_copyover() && restore_calls == 0);
+	{
+		uint64_t retained = 0;
+		assert(redis_world_boot_sequence(&retained) && retained == 2);
+	}
 	for (int phase : { 1, 2 })
 	{
 		seeded();

@@ -192,8 +192,12 @@ lookup dataset, followed by item UID reservation and pool initialization. See
 After world boot, two recovery paths may apply before socket input is accepted:
 
 - **Copyover recovery** (`copyover_boot`, `src/persistence/copyover.c`): listening sockets
-  and live player connections are re-inherited from `copyover.dat`; combat state
-  is restored by `copyover_restore_combat()`.
+  and eligible live player connections are re-inherited from `copyover.dat`.
+  `shutdown hotboot [minutes] [reason]` preserves the world and restores combat.
+  Standalone `copyover [seconds]` carries players into a normal fresh zone boot,
+  ends combat, and notifies/disconnects login/menu, TLS and WebSocket sessions.
+  `copyover cancel` cancels the initiator's countdown. Both use the existing save
+  gates; the launcher's SIGUSR1 retains world-preserving hotboot behavior.
 - **Redis restart recovery**: after a graceful restart or an unclean exit, a world generation
   is restored only after schema, completeness, sequence, checksum, size, and age
   validation. The generation and bounded binary floor-item trees are combined into one

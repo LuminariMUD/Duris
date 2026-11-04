@@ -65,6 +65,8 @@ struct redis_world_boot_snapshot
 redis_world_boot_result redis_world_prepare_boot(void);
 const redis_world_boot_snapshot *redis_world_boot_evidence(void);
 bool redis_consume_world_state(void);
+// A player-only handoff deliberately retires its predecessor world before normal zone boot.
+bool redis_world_discard_for_copyover();
 void event_save_world_state(P_char ch, P_char victim, P_obj obj, void *data);
 void redis_world_recovery_pulse(void);
 bool redis_world_recovery_drain(uint64_t timeout_msec);

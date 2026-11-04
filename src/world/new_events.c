@@ -2021,7 +2021,7 @@ void ne_init_events(void)
 
 		// skip zone reset during copyover/crash_recovery - mobs preserved from before
 		// but still initialize lifespan so zone timers work
-		if (copyover_boot || redis_world_recovery_boot_active())
+		if (copyover_restores_world() || redis_world_recovery_boot_active())
 		{
 			// just set lifespan without spawning mobs
 			// for Redis restart recovery, zone ages are restored later

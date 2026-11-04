@@ -457,7 +457,7 @@ void request_shutdown(int shutdown_type, const char *issuer, const char *reason)
 		shutdownData.eShutdownType = TimedShutdownData::REBOOT;
 		break;
 	case 3:
-		shutdownData.eShutdownType = TimedShutdownData::COPYOVER;
+		shutdownData.eShutdownType = TimedShutdownData::HOTBOOT;
 		break;
 	default:
 		shutdownData.eShutdownType = TimedShutdownData::OK;
@@ -832,6 +832,10 @@ int main(int argc, char **argv)
 			"copyover",
 			"No validated copyover image is available; inspect the publication and .recovering paths before retrying");
 	redis_init();
+	if (copyover_boot && !copyover_restores_world() && !redis_world_discard_for_copyover())
+		fatal_boot_error(
+			"copyover",
+			"Could not retire the previous Redis world; player handoff retained");
 
 	// Pin recovery before any custody cleanup, including ordinary cold boots.
 	if (!copyover_boot)
@@ -899,7 +903,8 @@ int main(int argc, char **argv)
 	{
 		std::string boot_error;
 		if (!shopkeeper_boot_begin("shopkeeper-boot",
-					   copyover_boot || redis_world_recovery_boot_active(),
+					   copyover_restores_world() ||
+						   redis_world_recovery_boot_active(),
 					   &boot_error))
 			fatal_boot_error("shopkeeper", "Could not record boot state: %s",
 					 boot_error.c_str());
@@ -2743,7 +2748,8 @@ void game_loop(int port, int sslport)
 		if (copyover_recover(&recovered_mother_desc, &recovered_mother_desc_ssl,
 				     &recovered_ws_desc))
 		{
-			copyover_restore_combat();
+			if (copyover_restores_world())
+				copyover_restore_combat();
 			// recalculate avg mob level now that mobs are restored
 			calc_zone_mob_level();
 		}
@@ -2793,7 +2799,7 @@ void game_loop(int port, int sslport)
 	// fallback). Reconcile legacy duplicated generations before world ticks.
 	if (!mini_mode)
 	{
-		reconcile_shopkeepers(copyover_boot != 0);
+		reconcile_shopkeepers(copyover_restores_world());
 		if (persistence_mode_get() == PERSISTENCE_MODE_FLATFILE_PRIMARY)
 		{
 			std::string error;
@@ -2961,6 +2967,14 @@ resume_game_loop:
 			_reboot = 0;
 			_copyover = 0;
 			_autoboot = 0;
+			// Exec can fail after a player-only handoff disconnects unsupported
+			// sessions. Finish their normal cleanup with the save workers resumed.
+			for (P_desc d = descriptor_list, next; d; d = next)
+			{
+				next = d->next;
+				if (d->descriptor < 0)
+					close_socket(d);
+			}
 			goto resume_game_loop;
 		}
 		return;

@@ -68,10 +68,10 @@ checks = {
         "exit(1);" not in comm[comm.index("else if (copyover_boot)"):
                                comm.index("else", comm.index("else if (copyover_boot)") + 5)],
     "copyover defers SQL corpse restoration":
-        "if (!copyover_boot)" in db[db.index("-- Player corpses") - 500:
+        "if (!copyover_restores_world())" in db[db.index("-- Player corpses") - 500:
                                      db.index("Reloading SavedItems")],
     "copyover defers SQL saved-ground restoration":
-        "if (!copyover_boot)" in db[db.index("Saved ground/storage objects"):
+        "if (!copyover_restores_world())" in db[db.index("Saved ground/storage objects"):
                                      db.index("-- Shopkeepers")],
     "shutdown names what it could not write":
         "report_unwritten_saves(player_save_pipeline_finish(" in comm and "not_written" in comm,
@@ -106,6 +106,9 @@ HARNESS = r'''
 
 index_data mob_indexes[2] = {};
 P_index mob_index = mob_indexes;
+bool copyover_preserve_world = true;
+room_data rooms[1] = {};
+P_room world = rooms;
 
 int panic_corruption_int(const char *, const char *, ...)
 {

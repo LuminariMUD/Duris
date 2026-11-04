@@ -18,6 +18,7 @@ static int reboot_requested=0, post_restore=0;
 int copyover_recover(int *plain,int *tls,int *ws) {
  *plain=recovery_ok ? 11 : -1; *tls=*ws=-1; return recovery_ok;
 }
+bool copyover_restores_world() { return true; }
 void copyover_restore_combat() { ++post_restore; }
 void calc_zone_mob_level() { ++post_restore; }
 void fatal_boot_error(const char *,const char *,...) { std::abort(); }

@@ -184,3 +184,18 @@ topology. SQL reconciliation aborts if called. Idle worker drains and unrelated
 player/NPC/network services are fixture boundaries; no live game or production
 state is involved. The same fixture fails on the previous room-only copyover
 implementation before reaching process replacement.
+
+### Player-only copyover handoff
+
+Standalone `copyover` uses the same version-19 header and descriptor/telemetry
+records with magic `CPYP`. Mob, object and door counts must be zero. Descriptor
+rooms are virtual room numbers in this mode so changed area ordering cannot move
+players into the wrong room. Existing `COPY` images and older supported versions
+retain their world-preserving `shutdown hotboot` behavior and room encoding.
+
+Both modes acknowledge player/domain saves before publishing the handoff. The
+player-only replacement retires the exact pinned Redis world generation and floor
+records before population classification and normal world boot. A changed or
+unavailable Redis image refuses boot with the native claim retained. Normal
+corpse/storage/shop restoration remains enabled; old transient mobs, ground items,
+doors and combat are not replayed, including on the following restart.

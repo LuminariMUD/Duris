@@ -121,8 +121,11 @@ missing optional protocol state defaults off. No new state file, account
 preference or synchronous repository read is added. On supported Telnet/MCCP
 hotboot, the entry key is unchanged, `resumed:true` and a new process marker
 invalidate process-local snapshot revision baselines. Views resynchronize;
-login actions do not rerun. WebSocket/TLS copyover eligibility retains the
-existing refusal policy. Ordinary reconnect creates a fresh connection context.
+login actions do not rerun. `shutdown hotboot` retains the WebSocket/TLS refusal
+policy. Standalone `copyover` preserves the same Telnet protocol/session state but
+boots a fresh world; unsupported sessions receive the approximately 20-second
+restart notice and disconnect after player saves succeed. Ordinary reconnect
+creates a fresh connection context.
 
 ## Duris.Time, version 1
 
