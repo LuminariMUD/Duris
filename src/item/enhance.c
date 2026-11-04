@@ -220,6 +220,8 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		newval = sval + enhance_ival_gain_normal;
 	}
 
+	const int64_t max_result_value =
+		static_cast<int64_t>(enhance_ival_cap) + enhance_original_max_roll;
 	/* Cascade search through the ival hash table.
 	 * Try exact match first, then cascade in the configured direction.
 	 * cascade_down_first=1: try lower ival values first, then higher
@@ -250,8 +252,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 								    (newval - cascade_step);
 			}
 
-			if (cascade_ival <= sval ||
-			    cascade_ival > enhance_ival_cap + enhance_original_max_roll)
+			if (cascade_ival <= sval || cascade_ival > max_result_value)
 				continue;
 
 			/* Look up in hash table */
@@ -274,8 +275,13 @@ void enhance(P_char ch, P_obj source, P_obj material)
 				if (!robj)
 					continue;
 				if ((wearflags & robj->wear_flags) &&
-				    is_enhance_pool_candidate(robj) && itemvalue(robj) > sval)
-					break;
+				    is_enhance_pool_candidate(robj))
+				{
+					const int candidate_value = itemvalue(robj);
+					if (candidate_value > sval &&
+					    candidate_value <= max_result_value)
+						break;
+				}
 				extract_obj(robj);
 				robj = NULL;
 			}
@@ -313,10 +319,10 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	}
 	SET_BIT(robj->extra_flags, ITEM_NOREPAIR);
 	const int final_value = itemvalue(robj);
-	if (final_value <= sval)
+	if (final_value <= sval || final_value > max_result_value)
 	{
 		extract_obj(robj);
-		send_to_char("The replacement would not improve your item's value.\r\n", ch);
+		send_to_char("No eligible higher-value replacement could be prepared.\r\n", ch);
 		return;
 	}
 	// A failed transfer can destroy the replacement. Preserve the player's inputs.
@@ -1352,7 +1358,7 @@ int enhance_cost_high_amount = 10000;
 int enhance_search_vnum_min = 1300;
 int enhance_search_vnum_max = 134000;
 int enhance_search_max_attempts = 20000;
-int enhance_wear_skip_mask = 15;
+int enhance_wear_skip_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
 int enhance_original_max_roll = 4;
 int enhance_original_cascade_down_first = 1;
 int enhance_level_gate_multiplier = 3;
