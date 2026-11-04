@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "sql/item_affect_rows.h"
+#include "sql/item_instance_fields.h"
 #include "player/player_snapshot_repository.h"
 
 #include "account/account.h"
@@ -565,7 +566,8 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 		    << (tables.quantity ? "quantity," : "")
 		    << "weight,cost,timer,extra_flags,wear_flags,item_type,value0,value1,value2,"
 		       "value3,value4,value5,value6,value7,name,short_descr,description,action_descr,"
-		       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,item_material,obj_uid"
+		       "bitvector1,bitvector2,bitvector3,bitvector4,bitvector5,item_material,obj_uid,"
+		       "extra2_flags,anti_flags,anti2_flags,craftsmanship"
 		    << (tables.condition ? ",item_condition" : "") << ") VALUES (" << owner_values
 		    << ',' << row.vnum;
 		if (tables.equip_slot)
@@ -584,7 +586,9 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 		    << optional_item_string(connection, row, 8, row.action_description);
 		for (uint64_t bitvector : row.bitvectors)
 			sql << ',' << bitvector;
-		sql << ',' << static_cast<int>(row.material) << ',' << row.object_uid;
+		sql << ',' << static_cast<int>(row.material) << ',' << row.object_uid << ','
+		    << sql_item_permanent_extra2(row) << ',' << row.anti_flags << ','
+		    << row.anti2_flags << ',' << row.craftsmanship;
 		if (tables.condition)
 			sql << ',' << row.condition;
 		sql << ')';

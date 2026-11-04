@@ -675,6 +675,26 @@ item_row_outcome parse_item_payload(MYSQL_ROW row, player_load_result *result,
 	    !parse_signed(row[30], INT16_MIN, INT16_MAX, &signed_field))
 		return item_row_outcome::invalid;
 	item->condition = static_cast<int16_t>(signed_field);
+	// A NULL field is an older payload with no override; zero is an override.
+	constexpr uint16_t flag_masks[] = { PLAYER_LOAD_ITEM_OVERRIDE_EXTRA2_FLAGS,
+					    PLAYER_LOAD_ITEM_OVERRIDE_ANTI_FLAGS,
+					    PLAYER_LOAD_ITEM_OVERRIDE_ANTI2_FLAGS };
+	uint32_t *const flags[] = { &item->extra2_flags, &item->anti_flags, &item->anti2_flags };
+	for (size_t index = 0; index < std::size(flags); ++index)
+		if (row[42 + index])
+		{
+			if (!parse_unsigned(row[42 + index], UINT32_MAX, &unsigned_field))
+				return item_row_outcome::invalid;
+			*flags[index] = static_cast<uint32_t>(unsigned_field);
+			identity->override_mask |= flag_masks[index];
+		}
+	if (row[45])
+	{
+		if (!parse_signed(row[45], INT16_MIN, INT16_MAX, &signed_field))
+			return item_row_outcome::invalid;
+		item->craftsmanship = static_cast<int16_t>(signed_field);
+		identity->override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_CRAFTSMANSHIP;
+	}
 	if (identity->override_mask & ~PLAYER_LOAD_ITEM_OVERRIDE_ALL)
 		return item_row_outcome::invalid;
 	const item_owner_identity expected =
@@ -853,7 +873,8 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		"own.parent_item_uid,own.owner_type,own.owner_id,own.owner_context_id,"
 		"own.item_revision,own.vnum,own.state,owner_revision.revision,"
 		"((own.vnum=3 OR (pi.item_type=20 AND own.vnum=pi.vnum)) AND own.state=2 AND "
-		"own.owner_type=8 AND own.owner_id=0 AND own.owner_context_id=0) FROM player_items pi "
+		"own.owner_type=8 AND own.owner_id=0 AND own.owner_context_id=0),"
+		"pi.extra2_flags,pi.anti_flags,pi.anti2_flags,pi.craftsmanship FROM player_items pi "
 		"LEFT JOIN item_current_owner own ON own.item_uid=pi.obj_uid LEFT JOIN "
 		"item_owner_revision owner_revision ON owner_revision.owner_type=own.owner_type "
 		"AND owner_revision.owner_id=own.owner_id AND "
@@ -1255,7 +1276,8 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 		"ppi.bitvector3,ppi.bitvector4,ppi.bitvector5,ppi.item_material,ppi.obj_uid,"
 		"ppi.item_condition,own.item_uid,own.root_item_uid,own.parent_item_uid,"
 		"own.owner_type,own.owner_id,own.owner_context_id,own.item_revision,own.vnum,"
-		"own.state,owner_revision.revision,ppi.pet_id FROM player_pet_items ppi JOIN "
+		"own.state,owner_revision.revision,ppi.pet_id,"
+		"ppi.extra2_flags,ppi.anti_flags,ppi.anti2_flags,ppi.craftsmanship FROM player_pet_items ppi JOIN "
 		"player_pets pp ON pp.id=ppi.pet_id LEFT JOIN item_current_owner own ON "
 		"own.item_uid=ppi.obj_uid LEFT JOIN item_owner_revision owner_revision ON "
 		"owner_revision.owner_type=own.owner_type AND owner_revision.owner_id=own.owner_id "

@@ -1028,6 +1028,19 @@ static bool sql_merge_duplicate_spellbook(struct extra_descr_data *existing,
 	return true;
 }
 
+static void sql_restore_item_instance_fields(P_obj obj, const char *extra2, const char *anti,
+					     const char *anti2, const char *craftsmanship)
+{
+	if (extra2)
+		obj->extra2_flags = strtoul(extra2, nullptr, 10);
+	if (anti)
+		obj->anti_flags = strtoul(anti, nullptr, 10);
+	if (anti2)
+		obj->anti2_flags = strtoul(anti2, nullptr, 10);
+	if (craftsmanship)
+		obj->craftsmanship = atoi(craftsmanship);
+}
+
 // Load the indexed rows first. The first indexed row replaces all prototype
 // slots, and subsequent legacy rows (if any) are ignored.
 static bool sql_set_item_affect(P_obj obj, int location, int modifier, const char *slot_text,
@@ -2069,6 +2082,7 @@ static P_obj locker_items_from_index(const locker_row_index &index, int locker_i
 		}
 		if (row[22] && *row[22])
 			obj->condition = atoi(row[22]);
+		sql_restore_item_instance_fields(obj, row[40], row[41], row[42], row[43]);
 		obj->db_item_id = item_id;
 
 		const auto affects = index.affects.find(item_id);
@@ -2335,6 +2349,10 @@ enum corpse_load_column
 	CORPSE_COL_ITEM_BITVECTOR3,
 	CORPSE_COL_ITEM_BITVECTOR4,
 	CORPSE_COL_ITEM_BITVECTOR5,
+	CORPSE_COL_ITEM_EXTRA2_FLAGS,
+	CORPSE_COL_ITEM_ANTI_FLAGS,
+	CORPSE_COL_ITEM_ANTI2_FLAGS,
+	CORPSE_COL_ITEM_CRAFTSMANSHIP,
 	CORPSE_COL_COUNT
 };
 
@@ -2403,7 +2421,8 @@ bool sql_load_all_corpses(void)
 		"c.short_descr, c.description, c.name, c.weight, "
 		"c.value0, c.value1, c.value2, c.value3, c.value4, c.value5, c.value7, "
 		"ci.wear_flags, ci.item_type, ci.item_material, "
-		"ci.bitvector1, ci.bitvector2, ci.bitvector3, ci.bitvector4, ci.bitvector5 "
+		"ci.bitvector1, ci.bitvector2, ci.bitvector3, ci.bitvector4, ci.bitvector5, "
+		"ci.extra2_flags, ci.anti_flags, ci.anti2_flags, ci.craftsmanship "
 		"FROM corpses c "
 		"LEFT JOIN corpse_items ci ON ci.corpse_id = c.id "
 		"LEFT JOIN corpse_item_affects cia ON cia.item_id = ci.id "
@@ -2680,6 +2699,10 @@ bool sql_load_all_corpses(void)
 			obj->bitvector4 = strtoul(row[CORPSE_COL_ITEM_BITVECTOR4], NULL, 10);
 		if (row[CORPSE_COL_ITEM_BITVECTOR5])
 			obj->bitvector5 = strtoul(row[CORPSE_COL_ITEM_BITVECTOR5], NULL, 10);
+		sql_restore_item_instance_fields(obj, row[CORPSE_COL_ITEM_EXTRA2_FLAGS],
+						 row[CORPSE_COL_ITEM_ANTI_FLAGS],
+						 row[CORPSE_COL_ITEM_ANTI2_FLAGS],
+						 row[CORPSE_COL_ITEM_CRAFTSMANSHIP]);
 
 		char owner_ref[32];
 		snprintf(owner_ref, sizeof(owner_ref), "%llu",
@@ -3140,19 +3163,20 @@ static int sql_save_saved_item_recursive(const char *item_key, int room_vnum, P_
 		"weight, cost, timer, extra_flags, "
 		"value0, value1, value2, value3, value4, value5, value6, value7, "
 		"name, short_descr, description, action_descr, wear_flags, item_type, bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, "
-		"item_material, obj_uid"
+		"item_material, obj_uid, extra2_flags, anti_flags, anti2_flags, craftsmanship"
 		") VALUES ("
 		"'%s', %d, %d, %s, 1, "
 		"%d, %d, %ld, %lu, "
 		"%d, %d, %d, %d, %d, %d, %d, %d, "
 		"%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-		"%s, %lu"
+		"%s, %lu, %u, %u, %u, %d"
 		")",
 		esc_key ? esc_key : "", room_vnum, vnum, container_str, obj->weight, obj->cost,
 		(long)obj->timer[0], (unsigned long)obj->extra_flags, obj->value[0], obj->value[1],
 		obj->value[2], obj->value[3], obj->value[4], obj->value[5], obj->value[6],
 		obj->value[7], name_str, short_str, desc_str, action_str, wear_str, type_str,
-		bv1_str, bv2_str, bv3_str, bv4_str, bv5_str, material_str, obj->obj_uid);
+		bv1_str, bv2_str, bv3_str, bv4_str, bv5_str, material_str, obj->obj_uid,
+		obj->extra2_flags, obj->anti_flags, obj->anti2_flags, obj->craftsmanship);
 
 	if (esc_key)
 		free(esc_key);
@@ -3426,7 +3450,8 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 		"SELECT si.id, si.shopkeeper_id, si.vnum, si.equip_slot, si.weight, si.cost, si.timer, "
 		"si.extra_flags, si.value0, si.value1, si.value2, si.value3, si.value4, si.value5, "
 		"si.value6, si.value7, si.name, si.short_descr, si.description, si.action_descr, si.container_id, "
-		"si.wear_flags, si.item_type, si.item_material, si.bitvector1, si.bitvector2, si.bitvector3, si.bitvector4, si.bitvector5, si.obj_uid "
+		"si.wear_flags, si.item_type, si.item_material, si.bitvector1, si.bitvector2, si.bitvector3, si.bitvector4, si.bitvector5, si.obj_uid, "
+		"si.extra2_flags, si.anti_flags, si.anti2_flags, si.craftsmanship "
 		"FROM shopkeeper_items si "
 		"INNER JOIN shopkeepers s ON si.shopkeeper_id = s.id "
 		"WHERE (%d < 0 OR s.shop_id=%d) ORDER BY si.shopkeeper_id, si.id",
@@ -3552,6 +3577,7 @@ static bool sql_restore_shopkeeper_catalog(int only_shop, P_char *restored, bool
 				obj->bitvector4 = strtoul(row[27], NULL, 10);
 			if (row[28])
 				obj->bitvector5 = strtoul(row[28], NULL, 10);
+			sql_restore_item_instance_fields(obj, row[30], row[31], row[32], row[33]);
 			obj->db_item_id = item_id;
 			if (!sql_load_item_extra_descr_from_table(item_id, obj, "shopkeeper_item"))
 			{
@@ -4050,7 +4076,7 @@ static P_obj sql_load_saved_item_contents(const char *item_key, int room_vnum, i
 		 "name, short_descr, description, action_descr, "
 		 "wear_flags, item_type, item_material, "
 		 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, "
-		 "obj_uid "
+		 "obj_uid, extra2_flags, anti_flags, anti2_flags, craftsmanship "
 		 "FROM saved_items WHERE item_key='%s' AND container_id=%d",
 		 esc_key, container_id);
 	free(esc_key);
@@ -4158,6 +4184,7 @@ static P_obj sql_load_saved_item_contents(const char *item_key, int room_vnum, i
 									   source_ids, valid));
 			continue;
 		}
+		sql_restore_item_instance_fields(obj, row[27], row[28], row[29], row[30]);
 		obj->db_item_id = item_id;
 		if (!sql_load_item_extra_descr_from_table(item_id, obj, "saved_item"))
 			*valid = false;
@@ -4526,7 +4553,7 @@ void sql_restore_saved_items(void)
 			 "name, short_descr, description, action_descr, "
 			 "wear_flags, item_type, item_material, "
 			 "bitvector1, bitvector2, bitvector3, bitvector4, bitvector5, "
-			 "obj_uid "
+			 "obj_uid, extra2_flags, anti_flags, anti2_flags, craftsmanship "
 			 "FROM saved_items WHERE container_id IS NULL ORDER BY id DESC");
 	if (!result)
 	{
@@ -4660,6 +4687,7 @@ void sql_restore_saved_items(void)
 			extract_obj(obj, FALSE);
 			continue;
 		}
+		sql_restore_item_instance_fields(obj, row[29], row[30], row[31], row[32]);
 		obj->db_item_id = item_id;
 		if (!sql_load_item_extra_descr_from_table(item_id, obj, "saved_item"))
 			valid = false;

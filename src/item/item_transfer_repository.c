@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "sql/item_affect_rows.h"
+#include "sql/item_instance_fields.h"
 #include "item/item_transfer_repository.h"
 #include "item/item_claim_repository.h"
 #include "core/defines.h"
@@ -353,7 +354,11 @@ bool materialize_direct_player_items(MYSQL *connection, const item_transfer_payl
 			       << snapshot.bitvectors[bitvector];
 		values << ",item_material=" << static_cast<unsigned int>(snapshot.material)
 		       << ",obj_uid=" << snapshot.object_uid
-		       << ",item_condition=" << snapshot.condition;
+		       << ",item_condition=" << snapshot.condition
+		       << ",extra2_flags=" << sql_item_permanent_extra2(snapshot)
+		       << ",anti_flags=" << snapshot.anti_flags
+		       << ",anti2_flags=" << snapshot.anti2_flags
+		       << ",craftsmanship=" << snapshot.craftsmanship;
 		if (item_id)
 		{
 			if (!run_sql(connection, "UPDATE player_items SET " + values.str() +

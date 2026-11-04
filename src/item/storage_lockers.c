@@ -3370,6 +3370,7 @@ static unsigned int locker_entry_read(MYSQL *connection, const locker_entry &ent
 		     "li.description, li.action_descr, li.obj_uid, li.item_condition, li.bitvector1, "
 		     "li.bitvector2, li.bitvector3, li.bitvector4, li.bitvector5, li.item_material, "
 		     "li.chest_id, li.container_id, " SQL_ITEM_OWNER_COLUMNS
+		     ", li.extra2_flags, li.anti_flags, li.anti2_flags, li.craftsmanship "
 		     " FROM locker_items li LEFT JOIN item_current_owner current_item "
 		     "ON current_item.item_uid=li.obj_uid " SQL_ITEM_OWNER_REVISION_JOIN +
 			     of_locker + " ORDER BY li.id",

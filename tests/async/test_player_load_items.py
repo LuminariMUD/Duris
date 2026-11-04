@@ -277,6 +277,13 @@ P_obj read_object(int rnum, int)
     object->loc.room = NOWHERE;
     object->type = rnum == 100 ? ITEM_CONTAINER : ITEM_OTHER;
     object->weight = rnum == 100 ? 2 : 3;
+    if (rnum == 104)
+    {
+        object->extra2_flags = ITEM2_CRAFTED;
+        object->anti_flags = 11;
+        object->anti2_flags = 12;
+        object->craftsmanship = 13;
+    }
     if (rnum == 102)
     {
         auto *normal = static_cast<extra_descr_data *>(std::calloc(1, sizeof(extra_descr_data)));
@@ -815,6 +822,32 @@ int main()
             assert(metrics.outcome==player_load_item_materialize_outcome::ownership_failure && !owner.character.carrying);
         }
         refused_artifact_vnum=0; refused_artifact_errno=EEXIST;
+    }
+    {
+        // Two SQL items with the same prototype. Old NULLs keep its flags
+        // and quality, while explicit zeros and nonzero instance overrides win.
+        reset_test_state();
+        test_character owner(42);
+        auto result = base_result();
+        add_item(result, 1, 9, 104, PLAYER_SNAPSHOT_NO_PARENT, 0);
+        add_item(result, 2, 10, 104, PLAYER_SNAPSHOT_NO_PARENT, 0);
+        result.snapshot.items[1].anti_flags = 25;
+        result.snapshot.items[1].craftsmanship = 28;
+        result.item_identities[1].override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_EXTRA2_FLAGS |
+            PLAYER_LOAD_ITEM_OVERRIDE_ANTI_FLAGS | PLAYER_LOAD_ITEM_OVERRIDE_ANTI2_FLAGS |
+            PLAYER_LOAD_ITEM_OVERRIDE_CRAFTSMANSHIP;
+        player_load_item_materialize_metrics metrics = {};
+        assert(materialize_fixture_items(&owner.character, result, &metrics));
+        P_obj legacy = owner.character.carrying;
+        P_obj instance = legacy->next_content;
+        if (legacy->obj_uid == 10)
+            std::swap(legacy, instance);
+        assert(legacy->obj_uid == 9 && legacy->extra2_flags == ITEM2_CRAFTED &&
+               legacy->anti_flags == 11 && legacy->anti2_flags == 12 && legacy->craftsmanship == 13);
+        assert(instance->obj_uid == 10 && instance->extra2_flags == 0 &&
+               instance->anti_flags == 25 && instance->anti2_flags == 0 &&
+               instance->craftsmanship == 28);
+        player_load_items_discard(&owner.character);
     }
     {
         reset_test_state();
