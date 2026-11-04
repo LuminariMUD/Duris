@@ -3,8 +3,7 @@
 from pathlib import Path
 import subprocess
 import tempfile
-from _paths import ROOT, extract_function
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, ROOT, extract_function
 
 HARNESS=r'''
 #include "world/generated_npc_state.h"
@@ -19,9 +18,20 @@ HARNESS=r'''
 #include <vector>
 index_data indexes[3]={};
 P_index mob_index=indexes;
+extern const int top_of_world = 0;
 char *str_dup(const char *s) { return strdup(s); }
 void str_free(const char *s) { free(const_cast<char *>(s)); }
-'''+extract_function('copyover.c','static bool write_generated_npc_state(')+'\n'+r'''
+''' + '\n'.join(extract_function(file, signature) for file, signature in [
+    ('copyover.c', 'static bool write_generated_npc_state('),
+    ('copyover.c', 'bool copyover_training_dummy_is('),
+    ('copyover.c', 'static bool copyover_world_mob('),
+    ('world_recovery_pipeline.c', 'bool recovery_training_dummy_is('),
+    ('training_dummy.c', 'bool training_dummy_is('),
+    ('training_dummy.c', 'bool training_dummy_target_allowed('),
+    ('training_dummy.c', 'bool training_dummy_spellup_target_allowed('),
+    ('training_dummy.c', 'bool training_dummy_capture_target_allowed('),
+    ('affects.c', 'P_char get_linked_char('),
+]) + '\n' + r'''
 static void clear_strings(P_char mob) {
  str_free(mob->player.name); str_free(mob->player.short_descr); str_free(mob->player.long_descr);
  mob->player.name=mob->player.short_descr=mob->player.long_descr=nullptr;
@@ -40,6 +50,10 @@ int main() {
   original.player.m_class=4; original.player.secondary_class=8;
   original.specials.alignment=-350;
   original.points.base_hit=5421; original.points.base_mana=52; original.points.base_vitality=83;
+  assert(copyover_world_mob(&original) && !recovery_training_dummy_is(&original));
+  assert(training_dummy_target_allowed(&restored,&original));
+  assert(training_dummy_spellup_target_allowed(&restored,&original));
+  assert(training_dummy_capture_target_allowed(&original));
   original.points.base_armor=-73; original.points.base_hitroll=61; original.points.base_damroll=62;
   original.points.damnodice=12; original.points.damsizedice=13;
   for(size_t i=0;i<10;++i) original.base_stats[i]=90+i;
@@ -88,6 +102,27 @@ int main() {
    assert(!strcmp(restored.player.short_descr,"Theran the wandering guardian"));
    std::string again; assert(generated_npc_capture(&restored,&again) && again==encoded);
   }
+  if (type==0) {
+   for (bool fixed : {false, true}) {
+    npc.training_dummy=true;
+    npc.training_dummy_fixed=fixed;
+    original.points.base_hit=1000000;
+    original.specials.act|=ACT_SENTINEL;
+    assert(!copyover_world_mob(&original) && recovery_training_dummy_is(&original));
+    assert(!training_dummy_target_allowed(&restored,&original));
+    assert(!training_dummy_spellup_target_allowed(&restored,&original));
+    assert(!training_dummy_capture_target_allowed(&original));
+    // Model an explicitly supplied old payload by bypassing today's writers.
+    std::string legacy, tagged, payload;
+    assert(generated_npc_capture(&original,&legacy) && !legacy.empty());
+    assert(generated_npc_extension_encode(1255,legacy,&tagged));
+    assert(generated_npc_extension_decode(1255,tagged.data(),tagged.size(),&payload));
+    assert(generated_npc_apply(&restored,payload));
+    assert(!training_dummy_is(&restored) && restored.points.base_hit==1000000);
+    assert(restored.specials.act & ACT_SENTINEL);
+    assert(copyover_world_mob(&restored) && !recovery_training_dummy_is(&restored));
+   }
+  }
   // Current file version has a bounded extension. The old native layout stays
   // intact; ordinary/legacy wire records remain accepted without an extension.
   assert(generated_npc_apply(&restored,""));
@@ -105,11 +140,13 @@ int main() {
  puts("generated NPC state: file extension, Redis wire, repeated identity/stats/flags/owned strings, ordinary control and malformed/legacy handling passed");
 }
 '''
-with tempfile.TemporaryDirectory(prefix='generated-npc-') as directory:
+output = ROOT / 'bin/tests'
+output.mkdir(parents=True, exist_ok=True)
+with tempfile.TemporaryDirectory(prefix='generated-npc-', dir=output) as directory:
     cpp=Path(directory)/'test.cpp'; binary=Path(directory)/'test'
     cpp.write_text(HARNESS)
     subprocess.run(['g++','-std=c++20','-Wall','-Wextra','-Werror','-D__NO_MYSQL__',
-        '-Isrc','-Isrc/no_mysql','-fsanitize=address,undefined','-g',str(cpp),
+        '-Isrc','-Isrc/no_mysql','-fsanitize=address,undefined','-fno-pie','-no-pie','-g',str(cpp),
         'src/world/generated_npc_state.c','src/world/generated_npc_runtime.c',
         'src/player/pet_restore_state.c','src/world/world_recovery_codec.c',str(HARNESS_STUBS), '-o',str(binary)],cwd=ROOT,check=True)
     subprocess.run([str(binary)],check=True)
