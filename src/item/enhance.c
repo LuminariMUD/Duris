@@ -1073,6 +1073,13 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 		mod = 1;
 	}
 
+	// Slot 2 belongs to the essence only after this item has been enhanced.
+	if (source->affected[2].location != APPLY_NONE && !IS_OBJ_STAT2(source, ITEM2_ENHANCED))
+	{
+		send_to_char("This item has no free slot for an essence.\r\n", ch);
+		return;
+	}
+
 	if (source->affected[2].location == loc)
 	{
 		if (source->affected[2].modifier / mod >= enhance_mod_max_steps)

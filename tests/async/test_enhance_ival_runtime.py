@@ -359,11 +359,23 @@ static void test_essence()
     assert(health.loc_p == LOC_CARRIED && loads.empty() && extracted.empty());
     assert(charges == 0 && GET_MONEY(&ch) == 10000);
 
+    source = base;
+    source.affected[2] = {APPLY_INT, 1};
+    auto overwritten = source;
+    overwritten.affected[2] = {APPLY_HIT, 3};
+    assert(itemvalue(&overwritten) > itemvalue(&source));
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].location == APPLY_INT && source.affected[2].modifier == 1);
+    assert(output.find("no free slot") != std::string::npos);
+    assert(source.extra2_flags == 0 && health.loc_p == LOC_CARRIED);
+    assert(charges == 0 && GET_MONEY(&ch) == 10000);
+
     // Raw valuation increases from 5 * .8032 to 6 * .8032; both truncate to 4.
     source = base;
     source.extra_flags = ITEM_TWOHANDS;
     source.affected[0] = {APPLY_AC, -2};
     source.affected[2] = {APPLY_HIT_REG, 2};
+    source.extra2_flags = ITEM2_ENHANCED;
     assert(itemvalue(&source) == 4);
     modenhance(&ch, &source, &endurance);
     assert(source.affected[2].location == APPLY_HIT_REG && source.affected[2].modifier == 2);
