@@ -82,26 +82,37 @@ int main() {
     npc.player.m_class = CLASS_CONJURER | CLASS_CLERIC;
     npc.player.level = 50; npc.specials.act = ACT_ISNPC;
     auto text = run(&ch, "");
-    assert(text.find("Scholar : SPELLS") != std::string::npos && lookups == 0);
-    assert(text.find("Circle 1 (circle accessible)") != std::string::npos);
-    assert(text.find("Circle 3 (future circle)") != std::string::npos);
-    assert(text.find("Circle 12 (future circle)") != std::string::npos);
-    assert(text.find("fireball [in spellbook]") != std::string::npos);
-    assert(text.find("fireball") < text.find("Zeta spell"));
-    assert(book_target == &ch && text.find("capless spell") == std::string::npos);
-    assert(text.find("Undefined") == std::string::npos && text.find("invalid circle") == std::string::npos);
+    assert(text == ">====[ Scholar | Conjurer | Max Circle 1 ]====<\n"
+                   "\n1st CIRCLE:\nburning hands\n"
+                   "\n3rd CIRCLE:\nfireball [in spellbook]\nZeta spell\n"
+                   "\n12th CIRCLE:\nmirror image\n"
+                   "\nSee: spells <class or specialization> | spells info <spell name>\n");
+    assert(lookups == 0 && book_target == &ch);
+    assert(output.find("&+B1st CIRCLE:&n\nburning hands\n") != std::string::npos);
+    assert(output.find("&+B3rd CIRCLE:&n\n&+Lfireball [in spellbook]&n\n") != std::string::npos);
+    assert(output.ends_with("See: &+Wspells <class or specialization>&n | "
+                            "&+Wspells info <spell name>&n\n"));
     assert(run(&ch, "all").find("staff only") != std::string::npos);
     assert(run(&ch, "a").find("staff only") != std::string::npos);
     visible = &other;
     assert(run(&ch, "Cleric").find("BASE CLASS") != std::string::npos && lookups == 0);
     assert(run(&ch, "target Cleric").find("staff-only") != std::string::npos && lookups == 0);
     assert(run(&ch, "stranger").find("staff-only") != std::string::npos && lookups == 0);
-    assert(run(&ch, "fire magus").find("fire form") != std::string::npos);
-    assert(run(&ch, "fire magus").find("burning hands") != std::string::npos);
-    assert(run(&ch, "conjurer").find("fire form") == std::string::npos);
+    text = run(&ch, "fire magus");
+    assert(text.find("Circle 10\n  * fire form\n") != std::string::npos);
+    assert(text.find("Circle 1\n  burning hands\n") != std::string::npos);
+    assert(text.find("Circle 2\n  fireball\n") != std::string::npos);
+    assert(text.find("\n  * indicates spells gained from spec.\n") != std::string::npos);
     text = run(&ch, "conjurer");
+    assert(text.find("fire form") == std::string::npos && text.find('*') == std::string::npos);
     assert(text.find("fireball") < text.find("Zeta spell"));
-    assert(run(&ch, "WaTeR-MaGuS").find("Spells lost from base class:\n  fireball") != std::string::npos);
+    text = run(&ch, "WaTeR-MaGuS");
+    assert(text.find("\n  Spells lost from base class:\n  fireball") != std::string::npos);
+    assert(text.find('*') == std::string::npos);
+    fire.rlevel[SPEC_WATER] = 1;
+    text = run(&ch, "water magus");
+    assert(text.find("Circle 1\n  burning hands\n  * fire form\n") != std::string::npos);
+    assert(text.find("\n  * indicates spells gained from spec. Spells lost from base class:\n  fireball") != std::string::npos);
     assert(run(&ch, "assassin").find("(Rogue)") != std::string::npos);
     assert(run(&ch, "thief").find("(Rogue)") != std::string::npos);
     assert(run(&ch, "dark knight").find("(Anti-Paladin)") != std::string::npos);
@@ -131,8 +142,9 @@ int main() {
     ch.player.spec = SPEC_FIRE;
     assert(run(&ch, "info fire form").find("Circle 10 (added)") != std::string::npos);
     assert(run(&ch, "info fireball").find("Your required Circle: 2") != std::string::npos);
-    ch.player.spec = 0;
     ch.player.secondary_class = CLASS_CLERIC;
+    assert(run(&ch, "").starts_with(">====[ Scholar | Conjurer / Fire Magus + Cleric | Max Circle 3 ]====<\n"));
+    ch.player.spec = 0;
     assert(run(&ch, "info heal").find("Your required Circle: 7") != std::string::npos);
     // A primary grant takes precedence even if a secondary grant is earlier.
     skills[SPELL_FIREBALL].m_class[flag2idx(CLASS_CLERIC)-1].rlevel[0] = 1;
@@ -155,9 +167,9 @@ int main() {
     ch.player.race = RACE_HUMAN; ch.player.m_class = CLASS_WARRIOR;
     assert(run(&ch, "").find("No eligible spells") != std::string::npos);
     ch.player.level = 62;
-    assert(run(&ch, "").find("Scholar : SPELLS") != std::string::npos);
-    assert(run(&ch, "target Cleric").find("Cleric : SPELLS") != std::string::npos && lookups == 1);
-    assert(run(&ch, "someone").find("Cleric : SPELLS") != std::string::npos);
+    assert(run(&ch, "").starts_with(">====[ Scholar | Warrior | Max Circle 12 ]====<\n"));
+    assert(run(&ch, "target Cleric").starts_with(">====[ Cleric | Cleric | Max Circle 6 ]====<\n") && lookups == 1);
+    assert(run(&ch, "someone").starts_with(">====[ Cleric | Cleric | Max Circle 6 ]====<\n"));
     assert(run(&ch, "Cleric").find("BASE CLASS") != std::string::npos && lookups == 0);
     assert(run(&ch, "target").find("Provide one visible") != std::string::npos && lookups == 0);
     assert(run(&ch, "target Cleric extra").find("Provide one visible") != std::string::npos && lookups == 0);
@@ -166,7 +178,7 @@ int main() {
     assert(run(&ch, "info internal spell").find("No ordinary class/specialization grants") != std::string::npos);
     visible = &npc;
     text = run(&ch, "target Trainer");
-    assert(text.find("Trainer : SPELLS") != std::string::npos && book_checks == 0);
+    assert(text.starts_with(">====[ Trainer | Cleric Conjurer | Max Circle 10 ]====<\n") && book_checks == 0);
     assert(text.find("heal") != std::string::npos && text.find("fireball") != std::string::npos);
     visible = nullptr;
     assert(run(&ch, "target absent").find("No such visible") != std::string::npos);

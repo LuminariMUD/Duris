@@ -29247,7 +29247,7 @@ no new dedicated cooldown. Its existing target restrictions remain.
 #0
 
 Spells
-Spells - Last Edited: 2026-11-02
+Spells - Last Edited: 2026-11-04
 ============================================================
 Browse your spells, class spell circles, and individual spell details.
 
@@ -29258,14 +29258,14 @@ spells <class or specialization>
 spells info <spell name>
 
 Bare spells shows your own spells, including for staff. Spells are grouped by
-Circle and name; future circles are labeled. Your class, specialization,
-secondary class and current maximum Circle describe whose access is shown.
+circle and name. Spells above your maximum circle are dimmed. The header shows
+your class, specialization, secondary class and maximum circle.
 Book markers check inventory, hands and belt only for spellbook users.
 Circle access and book presence do not mean a spell is prepared or ready to cast.
 
 Use spells cleric for base grants or spells fire magus for a complete effective
-specialization catalog, including inherited spells and changes. Lost base
-spells are listed separately. Bard songs and instruments remain in skills.
+specialization catalog. An asterisk marks spells gained from the specialization.
+Lost base spells are listed separately. Bard songs and instruments use skills.
 Catalogs are reference information, independent of your race, class and level.
 
 Use spells info fireball for registered aggression, class/spec circles and
