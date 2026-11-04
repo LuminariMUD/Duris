@@ -29,9 +29,9 @@ handover  a character takes the banana after the capture and a checkpoint saves 
           what makes that older copy load as stale. The floor copy is restored, the giver
           loads without it, and only one character holds it after both save (the review of
           MR !13).
-midcapture  a banana is taken out of a basket on the floor and dropped while a capture of
-          12,000 more objects runs. The capture meets it twice and the drop is journaled as
-          well; the generation holds it once, in the basket, and the boot restores it.
+midcapture  a banana is taken out of a basket while a new capture walks 12,000 more
+          objects. The inconsistent capture sees it twice and is rejected. The boot restores
+          the prior generation and leaves the redundant journaled drop out.
 slowread  Redis answers every other read of the current sequence in 300 ms, past the 100 ms
           the game loop's connection allows, as on a busy host. The boot asks again each
           time, and restores and consumes the generation.
@@ -472,26 +472,34 @@ def handover(rig: Rig) -> None:
 
 
 def midcapture(rig: Rig) -> None:
+    # Allow a second capture soon, with time to observe its failure and crash
+    # before a third capture can replace the last valid generation.
+    rig.env["REDIS_WORLD_STATE_INTERVAL"] = "20"
     rig.boot()
     client = enter(rig)
-    # Between the player checkpoints 5 and 35 seconds after the boot, so that no save finds
-    # the banana in the character's hands and records it as the character's.
+    # Between the player checkpoints 5 and 35 seconds after the boot, so that no
+    # save records the banana as carried during this floor-to-basket move.
     time.sleep(max(0, 7 - (time.monotonic() - rig.booted)))
     client.send("get banana")
     client.send("put banana basket")
     client.expect("You get a banana", timeout=10)
     client.expect("Ok.", timeout=10)
     assert time.monotonic() - rig.booted < 27, "the character entered too late"
-    rig.wait_for("no capture started", 60, lambda:
-                 "starting bounded world recovery capture" in rig.log("sys"))
+    first = rig.generation()
+
+    starting = "starting bounded world recovery capture"
+    captures = rig.log("sys").count(starting)
+    rig.wait_for("no second capture started", 60, lambda: rig.log("sys").count(starting) > captures)
     client.send("get banana basket")
     client.send("drop banana")
     client.expect("You drop a banana", timeout=10)
-    assert not re.search(ACKNOWLEDGED, rig.log("sys")), "the capture ended before the drop"
-    first = rig.generation()
+    rig.wait_for("the overlapping capture was not rejected", 45, lambda:
+                 "world recovery capture failed stage=2" in rig.log("sys"))
     floor_drops = f"{rig.namespace}:season:1:floor_drops"
     rig.wait_for("the drop was not journaled", 45, lambda:
                  rig.redis_cli("HLEN", floor_drops) == "1")
+    assert re.findall(ACKNOWLEDGED, rig.log("sys")) == [str(first)], \
+        "an inconsistent or newer generation replaced the prior valid one"
     client.close()
     rig.kill()
 
@@ -502,9 +510,8 @@ def midcapture(rig: Rig) -> None:
     floor, basket = screen(client, "look"), screen(client, "look in basket")
     client.close()
     assert "banana lies here" not in floor and "banana" in basket, floor + basket
-    print(f"midcapture: generation {first} held the banana once, in the basket it left "
-          "while the capture ran; the boot restored it and left the journaled drop out",
-          flush=True)
+    print(f"midcapture: rejected an overlapping capture; generation {first} restored the banana "
+          "once, in the basket, and left the redundant journaled drop out", flush=True)
 
 
 def slowread(rig: Rig) -> None:
