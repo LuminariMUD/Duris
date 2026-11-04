@@ -8,8 +8,8 @@ stays here no harness or journey can show:
 
   1. a death no longer waits on a recovery event, and coin piles load with the other items;
   2. enter_game() bounds a restored room before it indexes the world;
-  3. a new character's starter kit is granted once, after its baseline save, and withheld
-     when that save fails (a crash between them is what the order guards);
+  3. first-entry starter kit preparation follows the level-one checkpoint, and
+     submission waits for its acknowledged revision;
   4. a MariaDB character's pid comes from the name index (no journey makes two).
 """
 
@@ -38,16 +38,30 @@ assert enter_game.index("if (r_room < 0 || r_room > top_of_world)") < enter_game
     "if (zone_table[world[r_room].zone].flags & ZONE_CLOSED)"
 ), "enter_game must bound a restored room before indexing world and zone_table"
 
-# 3. One starter grant, after the baseline save, withheld when it fails.
-newbie_grant = NANNY[NANNY.index("if (!GET_LEVEL(ch))") :]
-newbie_grant = newbie_grant[: newbie_grant.index("else if (IS_SET(ch->specials.act2")]
-assert newbie_grant.count("load_obj_to_newbies(ch)") == 1
-assert (
-    newbie_grant.index("do_start_deferred_newbie_kit(ch, 0)")
-    < newbie_grant.index("if (writeCharacter(ch, 1, NOWHERE))")
-    < newbie_grant.index("load_obj_to_newbies(ch)")
-    < newbie_grant.index("starter kit withheld")
-), "a new character's kit is granted after its baseline save, and withheld if that fails"
+# 3. First entry sets the durable pending bit and queues a checkpoint before
+# resuming a saved kit or preparing a fresh one. The queue owns the write fence.
+checkpoint = enter_game.index("writeCharacter(ch, 1, NOWHERE)")
+starter = section(enter_game[checkpoint:], "if (IS_SET(ch->specials.act3, PLR3_STARTER_KIT_PENDING))",
+                  "else if (IS_SET(ch->specials.act2, PLR2_NEWBIEEQ)")
+assert (enter_game.index("SET_BIT(ch->specials.act3, PLR3_STARTER_KIT_PENDING)")
+        < enter_game.index("do_start_deferred_newbie_kit(ch, 0)") < checkpoint)
+assert (starter.index("if (!item_creation_grant_resume_starter(ch))")
+        < starter.index("load_chaos_new_character_kit(ch, true)")
+        < starter.index("load_obj_to_newbies(ch)"))
+assert starter.count("load_obj_to_newbies(ch)") == 1
+
+movement = (SRC / "item_movement_transaction.c").read_text()
+grant_defer = section(movement, "bool item_creation_grant_defer(", "\n}\n")
+assert (grant_defer.index("player_revision_snapshot_copy(")
+        < grant_defer.index("queue.baseline = revision.current_revision")
+        < grant_defer.index("creation_grants.emplace("))
+grant_start = section(movement, "bool start_creation_grant(P_char actor, creation_grant_queue &queue, "
+                      "item_movement_reject *reject)\n{", "\n}\n")
+assert (grant_start.index("if (queue.starter)")
+        < grant_start.index("revision.written_revision < queue.baseline")
+        < grant_start.index("item_movement_reject::pending_conflict")
+        < grant_start.index("critical_command_coordinator_submit(command)")
+        < grant_start.index("submit_grant_batch(")), "starter kit submission requires its durable checkpoint"
 
 # 4. The pid of a MariaDB character comes from the in-memory name index.
 init_char = section(NANNY, "void init_char(P_char ch)", "\n}\n")
