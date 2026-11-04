@@ -376,9 +376,10 @@ tied to their exact tested revisions.
   luck change before testing artifact and guild rewards. Tracing after that
   fix showed an independent copyover bug. A player read can overlap startup
   writer work, and copyover drops the connection when artifact admission
-  requests a fresh read. The follow-up branch is
-  `branch/gate-copyover-refresh-artifact` in
-  `/home/aiwithapex/projects/duris-master-gate-contracts`.
+  requests a fresh read. [#689](https://github.com/LuminariMUD/Duris/pull/689)
+  refreshes the read within the original player-load deadline. The standard
+  MariaDB journey passed through native copyover, clean restart, and the
+  canonical artifact swaps. The remaining artifact cases are running.
 - [#687](https://github.com/LuminariMUD/Duris/pull/687) qualified restart
   from a valid checkpoint after deliberately causing an overlapping capture
   to be rejected.
