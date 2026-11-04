@@ -10,6 +10,8 @@ from _paths import HARNESS_STUBS, ROOT, source
 
 HARNESS = r"""
 #include <cassert>
+#include <map>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -31,7 +33,13 @@ static bool lucky;
 static bool refuse_delivery;
 static bool refuse_wallet_submit;
 static bool refuse_wallet_commit;
+static int unavailable_vnum;
 static int charges;
+static std::string output;
+static std::string keywords;
+static std::string description;
+static std::map<int, int> materials;
+static int pouch_usage;
 
 extern const struct stat_data stat_factor[LAST_RACE + 1] = {};
 int get_mincircle(int) { std::abort(); }
@@ -64,14 +72,26 @@ bool currency_transaction_submit(P_char ch, const currency_vector &wallet, const
     return true;
 }
 
+int SUB_MONEY(P_char ch, int amount, int)
+{
+    const int remaining = GET_MONEY(ch) - amount;
+    assert(remaining >= 0);
+    GET_PLATINUM(ch) = remaining / 1000;
+    GET_COPPER(ch) = remaining % 1000;
+    ++charges;
+    return 0;
+}
+
 P_obj read_object(int vnum, int mode)
 {
     assert(mode == VIRTUAL);
     loads.push_back(vnum);
-    for (const auto &prototype : prototypes)
-        if (vnum && indices[prototype.R_num].virtual_number == vnum)
+    if (!vnum || vnum == unavailable_vnum)
+        return nullptr;
+    for (size_t slot = 0; slot < std::size(prototypes); ++slot)
+        if (indices[slot].virtual_number == vnum)
         {
-            auto obj = new obj_data(prototype);
+            auto obj = new obj_data(prototypes[slot]);
             temporary.insert(obj);
             return obj;
         }
@@ -104,6 +124,70 @@ bool obj_to_char(P_obj obj, P_char)
     return true;
 }
 
+void send_to_char(const char *message, P_char) { output += message; }
+bool isname(const char *name, const char *keywords) { return !strcmp(name, keywords); }
+
+P_obj get_obj_in_list_vis(P_char, const char *name, P_obj list, bool)
+{
+    for (auto obj = list; obj; obj = obj->next_content)
+        if (isname(name, obj->name))
+            return obj;
+    return nullptr;
+}
+
+void half_chop(char *input, char *word, char *rest)
+{
+    while (*input == ' ')
+        ++input;
+    while (*input && *input != ' ')
+        *word++ = *input++;
+    *word = '\0';
+    while (*input == ' ')
+        ++input;
+    memmove(rest, input, strlen(input) + 1);
+}
+
+void set_keywords(P_obj obj, const char *name)
+{
+    keywords = name;
+    obj->name = keywords.data();
+}
+
+void set_short_description(P_obj obj, const char *text)
+{
+    description = text;
+    obj->short_description = description.data();
+}
+
+void describe_encrusted_enhanced(P_obj) { std::abort(); }
+
+int vnum_in_inv(P_char, int vnum)
+{
+    const auto entry = materials.find(vnum);
+    return entry == materials.end() ? 0 : entry->second;
+}
+
+void vnum_from_inv(P_char, int vnum, int count)
+{
+    assert(materials[vnum] >= count);
+    materials[vnum] -= count;
+}
+
+bool chaos_material_pouch_can_record_generated(P_char, const chaos_material_pouch_usage *, size_t)
+{
+    return true;
+}
+
+bool chaos_material_pouch_record_generated(P_char, const chaos_material_pouch_usage *usage,
+                                           size_t count)
+{
+    for (size_t i = 0; i < count; ++i)
+        pouch_usage += usage[i].count;
+    return true;
+}
+
+void chaos_material_pouch_report_generated_failure(P_char, const char *) { std::abort(); }
+
 static obj_data &fixture(int slot, int vnum, int ac = 0)
 {
     auto &obj = prototypes[slot];
@@ -112,6 +196,10 @@ static obj_data &fixture(int slot, int vnum, int ac = 0)
     indices[slot].virtual_number = vnum;
     obj.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_ARMS;
     obj.type = ac ? ITEM_ARMOR : ITEM_WORN;
+    static char fixture_name[] = "fixture";
+    static char fixture_description[] = "a fixture";
+    obj.name = fixture_name;
+    obj.short_description = fixture_description;
     obj.value[0] = ac;
     obj.loc_p = LOC_CARRIED;
     return obj;
@@ -136,6 +224,7 @@ static void clear_attempt()
     loads.clear();
     extracted.clear();
     charges = 0;
+    output.clear();
 }
 
 static void test_replacement()
@@ -252,10 +341,174 @@ static void test_replacement()
     active_pouch = nullptr;
 }
 
+static void test_essence()
+{
+    char_data ch{};
+    ch.in_room = NOWHERE;
+    GET_PLATINUM(&ch) = 10;
+    auto &base = fixture(0, 90010);
+    auto source = base;
+    auto &health = fixture(1, 400254);
+    auto &endurance = fixture(2, 400258);
+    source.affected[0] = {APPLY_STR, 1};
+    source.affected[2] = {APPLY_DAMROLL, 3};
+    assert(itemvalue(&source) == 40);
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].location == APPLY_DAMROLL && source.affected[2].modifier == 3);
+    assert(source.extra2_flags == 0 && source.name == base.name);
+    assert(health.loc_p == LOC_CARRIED && loads.empty() && extracted.empty());
+    assert(charges == 0 && GET_MONEY(&ch) == 10000);
+
+    // Raw valuation increases from 5 * .8032 to 6 * .8032; both truncate to 4.
+    source = base;
+    source.extra_flags = ITEM_TWOHANDS;
+    source.affected[0] = {APPLY_AC, -2};
+    source.affected[2] = {APPLY_HIT_REG, 2};
+    assert(itemvalue(&source) == 4);
+    modenhance(&ch, &source, &endurance);
+    assert(source.affected[2].location == APPLY_HIT_REG && source.affected[2].modifier == 2);
+    assert(endurance.loc_p == LOC_CARRIED && loads.empty() && extracted.empty());
+    assert(charges == 0 && GET_MONEY(&ch) == 10000);
+
+    source = base;
+    unavailable_vnum = OBJ_VNUM(&source);
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
+    assert(source.name == base.name && extracted.empty());
+    assert(health.loc_p == LOC_CARRIED && charges == 0 && GET_MONEY(&ch) == 10000);
+    unavailable_vnum = 0;
+    clear_attempt();
+
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].location == APPLY_HIT && source.affected[2].modifier == 3);
+    assert(IS_OBJ_STAT2(&source, ITEM2_ENHANCED) && strstr(source.name, "enhanced"));
+    assert(health.loc_p == LOC_NOWHERE && charges == 1 && GET_MONEY(&ch) == 9000);
+    assert((extracted == std::vector<int>{400254, 90010}));
+    clear_attempt();
+
+    health.loc_p = LOC_CARRIED;
+    source.affected[2].modifier = 9;
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].modifier == 9 && health.loc_p == LOC_CARRIED && charges == 0);
+
+    enhance_mod_max_steps = 100;
+    source.affected[2].modifier = 126;
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].modifier == 126 && health.loc_p == LOC_CARRIED && charges == 0);
+    assert(GET_MONEY(&ch) == 9000 && loads.empty() && extracted.empty());
+    source.affected[2].modifier = 124;
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].modifier == SCHAR_MAX && health.loc_p == LOC_NOWHERE);
+    assert(charges == 1 && GET_MONEY(&ch) == 8000);
+    clear_attempt();
+}
+
+static void test_superior()
+{
+    char_data ch{};
+    ch.player.level = 60;
+    ch.in_room = NOWHERE;
+    GET_PLATINUM(&ch) = 20;
+    char command[] = "fixture";
+    char preview[] = "fixture missing";
+
+    // Holy cloth from breale.obj. A WIS tier exists, but -4 DAMROLL keeps iVal at 1.
+    auto &base = fixture(0, 2623, 3);
+    base.material = MAT_CLOTH;
+    base.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_BODY;
+    base.affected[0] = {APPLY_WIS, 2};
+    base.affected[1] = {APPLY_DAMROLL, -4};
+    auto item = base;
+    ch.carrying = &item;
+    auto &target = fixture(1, 90020);
+    target.material = MAT_CLOTH;
+    target.wear_flags = base.wear_flags;
+    target.affected[0] = {APPLY_WIS, 3};
+    target.affected[1] = {APPLY_STR, 3};
+    enhance_index_entry wis{}, str{};
+    wis.vnum = OBJ_VNUM(&target);
+    wis.ival = itemvalue(&target);
+    wis.wear_flags = target.wear_flags;
+    wis.apply_loc[0] = APPLY_WIS;
+    wis.apply_mod[0] = 3;
+    str = wis;
+    str.apply_loc[0] = APPLY_STR;
+    enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = &wis;
+    enhance_stat_table[enhance_stat_hash(APPLY_STR)] = &str;
+
+    const int low = get_matstart(&target);
+    const int high = low + 4;
+    materials = {{low, 20}, {high, 20}};
+    const auto initial_materials = materials;
+    assert(itemvalue(&item) == 1);
+    do_enhance(&ch, preview, 0);
+    assert(output.find("No superior enhancement") != std::string::npos);
+    clear_attempt();
+    active_pouch = &fixture(6, VOBJ_CHAOS_CRAFT_POUCH);
+    do_enhance(&ch, command, 0);
+    assert(output.find("No superior enhancement") != std::string::npos);
+    assert(item.affected[0].modifier == 2 && item.name == base.name);
+    assert(item.short_description == base.short_description && pouch_usage == 0);
+    assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == initial_materials);
+    active_pouch = nullptr;
+    clear_attempt();
+
+    base.affected[1] = {APPLY_STR, 2};
+    item = base;
+    const int original_value = itemvalue(&item);
+    const int per_ival = enhance_stat_platinum_per_ival;
+    enhance_stat_platinum_per_ival = INT_MAX;
+    do_enhance(&ch, command, 0);
+    assert(output.find("No superior enhancement") != std::string::npos);
+    assert(charges == 0 && materials == initial_materials && item.affected[0].modifier == 2);
+    clear_attempt();
+    enhance_stat_platinum_per_ival = per_ival;
+
+    const double multiplier = enhance_stat_material_quantity_multiplier;
+    // Each individual tribute fits in an int; aggregating two identical tributes does not.
+    enhance_stat_material_quantity_multiplier = 600000000;
+    do_enhance(&ch, command, 0);
+    assert(output.find("No superior enhancement") != std::string::npos);
+    assert(charges == 0 && materials == initial_materials && item.affected[1].modifier == 2);
+    clear_attempt();
+    enhance_stat_material_quantity_multiplier = 1e100;
+    do_enhance(&ch, command, 0);
+    assert(output.find("No superior enhancement") != std::string::npos);
+    assert(charges == 0 && materials == initial_materials && item.affected[1].modifier == 2);
+    clear_attempt();
+    enhance_stat_material_quantity_multiplier = multiplier;
+
+    materials.clear();
+    do_enhance(&ch, command, 0);
+    assert(output.find("Materials required for the next enhancement") != std::string::npos);
+    assert(charges == 0 && item.affected[0].modifier == 2 && item.affected[1].modifier == 2);
+    clear_attempt();
+
+    materials = initial_materials;
+    GET_PLATINUM(&ch) = 0;
+    do_enhance(&ch, command, 0);
+    assert(output.find("It will require") != std::string::npos);
+    assert(charges == 0 && materials == initial_materials && item.affected[0].modifier == 2);
+    clear_attempt();
+
+    GET_PLATINUM(&ch) = 20;
+    do_enhance(&ch, command, 0);
+    assert(item.affected[0].modifier == 3 && item.affected[1].modifier == 3);
+    assert(itemvalue(&item) > original_value && strstr(item.short_description, "su&+wp"));
+    assert(charges == 1 && GET_MONEY(&ch) == 20000 - (1000 + original_value * per_ival));
+    assert(materials[low] == 20 - 2 * ((wis.ival + 4) % 5));
+    assert(materials[high] == 20 - 2 * ((wis.ival + 4) / 5));
+    clear_attempt();
+    enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = nullptr;
+    enhance_stat_table[enhance_stat_hash(APPLY_STR)] = nullptr;
+}
+
 int main()
 {
     load_enhance_config();
     test_replacement();
+    test_essence();
+    test_superior();
 }
 """
 
@@ -266,16 +519,22 @@ def main():
     itemvalue = tradeskill.split("int itemvalue(P_obj obj)\n", 1)[1].split(
         "\nvoid do_salvation(", 1
     )[0]
+    get_matstart = tradeskill.split("int get_matstart(P_obj obj)\n", 1)[1].split(
+        "\nvoid do_refine(", 1
+    )[0]
     with tempfile.TemporaryDirectory(dir=ROOT / "bin") as tmp:
         cpp = Path(tmp) / "enhance.cpp"
         binary = Path(tmp) / "enhance"
-        cpp.write_text(HARNESS + "\nint itemvalue(P_obj obj)\n" + itemvalue)
+        cpp.write_text(
+            HARNESS + "\nint itemvalue(P_obj obj)\n" + itemvalue
+            + "\nint get_matstart(P_obj obj)\n" + get_matstart
+        )
         subprocess.run(
             [
                 "g++", "-std=c++20", "-g", "-ffunction-sections", "-fdata-sections",
                 "-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all",
                 "-fno-pie", "-no-pie", "-Isrc", str(cpp), str(HARNESS_STUBS),
-                "src/core/safe_format.c", "-Wl,--gc-sections", "-lbsd", "-o", str(binary),
+                "src/core/safe_format.c", "src/item/salvage.c", "-Wl,--gc-sections", "-lbsd", "-o", str(binary),
             ],
             cwd=ROOT,
             check=True,

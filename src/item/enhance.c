@@ -9,6 +9,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <limits.h>
 #include "net/comm.h"
 #include "world/db.h"
 #include "world/events.h"
@@ -438,10 +439,13 @@ static int enhance_entry_modifier(const struct enhance_index_entry *entry, int a
 	return 0;
 }
 
-/* A superior stat may reach floor(1.5 * its positive prototype modifier). */
+/* Cap the configured prototype multiplier at the largest stored modifier. */
 static int enhance_stat_cap(int base_modifier)
 {
-	return base_modifier > 0 ? (int)(base_modifier * enhance_stat_cap_multiplier) : 0;
+	if (base_modifier <= 0)
+		return 0;
+	const double cap = base_modifier * enhance_stat_cap_multiplier;
+	return cap >= SCHAR_MAX ? SCHAR_MAX : static_cast<int>(cap);
 }
 
 /* Find the deterministic next template: exact stat value, compatible wear slot, lowest vnum. */
@@ -491,6 +495,7 @@ struct superior_enhancement_plan
 	int slots[MAX_OBJ_AFFECT];
 	int slot_count;
 	int remaining_enhancements;
+	int cost;
 	struct superior_material_requirement materials[MAX_SUPERIOR_MATERIALS];
 	int material_count;
 };
@@ -514,6 +519,8 @@ static bool superior_plan_add_material(struct superior_enhancement_plan *plan, i
 	{
 		if (plan->materials[i].vnum == vnum)
 		{
+			if (count > INT_MAX - plan->materials[i].count)
+				return FALSE;
 			plan->materials[i].count += count;
 			return TRUE;
 		}
@@ -545,6 +552,8 @@ static int superior_stat_remaining_steps(P_obj item, int apply_loc, int current,
 static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancement_plan *plan)
 {
 	int i;
+	const int source_value = itemvalue(item);
+	obj_data proposed = *item;
 
 	memset(plan, 0, sizeof(*plan));
 	for (i = 0; i < MAX_OBJ_AFFECT; i++)
@@ -554,8 +563,6 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		int remaining;
 		int low_vnum;
 		int high_vnum;
-		int high_count;
-		int low_count;
 		struct enhance_index_entry *target;
 		P_obj target_obj;
 
@@ -574,21 +581,32 @@ static bool build_superior_enhancement_plan(P_obj item, struct superior_enhancem
 		low_vnum = get_matstart(target_obj);
 		extract_obj(target_obj);
 		high_vnum = low_vnum + 4;
-		high_count = (target->ival + 4) / 5;
-		low_count = (target->ival + 4) - high_count * 5;
-		low_count = (int)(low_count * enhance_stat_material_quantity_multiplier + 0.999999);
-		high_count =
-			(int)(high_count * enhance_stat_material_quantity_multiplier + 0.999999);
-		if (!superior_plan_add_material(plan, low_vnum, low_count) ||
-		    !superior_plan_add_material(plan, high_vnum, high_count))
+		const int64_t material_value = static_cast<int64_t>(target->ival) + 4;
+		const double low_count =
+			(material_value % 5) * enhance_stat_material_quantity_multiplier + 0.999999;
+		const double high_count =
+			(material_value / 5) * enhance_stat_material_quantity_multiplier + 0.999999;
+		if (!(low_count >= 0 && low_count < INT_MAX + 1.0) ||
+		    !(high_count >= 0 && high_count < INT_MAX + 1.0) ||
+		    !superior_plan_add_material(plan, low_vnum, static_cast<int>(low_count)) ||
+		    !superior_plan_add_material(plan, high_vnum, static_cast<int>(high_count)))
 			return FALSE;
 
+		++proposed.affected[i].modifier;
 		plan->slots[plan->slot_count++] = i;
 		remaining = superior_stat_remaining_steps(item, item->affected[i].location,
 							  item->affected[i].modifier, cap);
 		plan->remaining_enhancements = MAX(plan->remaining_enhancements, remaining);
 	}
-	return plan->slot_count > 0;
+	if (plan->slot_count == 0 || itemvalue(&proposed) <= source_value)
+		return FALSE;
+
+	const int64_t cost = enhance_stat_platinum_base +
+			     static_cast<int64_t>(source_value) * enhance_stat_platinum_per_ival;
+	if (cost > INT_MAX)
+		return FALSE;
+	plan->cost = static_cast<int>(cost);
+	return TRUE;
 }
 
 static bool superior_plan_has_materials(P_char ch, P_obj pouch,
@@ -639,7 +657,7 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 {
 	char buf[MAX_STRING_LENGTH];
 	int i;
-	int cost = enhance_stat_platinum_base + itemvalue(source) * enhance_stat_platinum_per_ival;
+	const int cost = plan->cost;
 
 	if (!superior_plan_has_materials(ch, pouch, plan))
 		return FALSE;
@@ -767,7 +785,7 @@ void do_enhance(P_char ch, char *argument, int /*cmd*/)
 		if (!build_superior_enhancement_plan(source, &plan))
 		{
 			send_to_char(
-				"&+yThis item has no further superior enhancement available.\r\n",
+				"&+yNo superior enhancement that increases this item's value is available.\r\n",
 				ch);
 			return;
 		}
@@ -808,7 +826,7 @@ void do_enhance(P_char ch, char *argument, int /*cmd*/)
 				show_superior_requirements(ch, source, pouch, &plan);
 			else
 				send_to_char(
-					"&+yThis item has no further superior enhancement available.\r\n",
+					"&+yNo superior enhancement that increases this item's value is available.\r\n",
 					ch);
 		}
 		else
@@ -993,7 +1011,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 
 	char buf[MAX_STRING_LENGTH];
 	const char *modstring;
-	int mod = 0, loctype = 0;
+	int mod;
 	int cost = 0;
 	// Deliberately no enhance_material_ival_delta floor here.  That floor is
 	// enhance()'s rule for arbitrary salvage: the material has to be roughly
@@ -1042,10 +1060,6 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	if (!loc)
 		return send_to_char("&=rYBuggy essence material, please tell a god!&n\n", ch);
 
-	if (source->affected[2].location == loc)
-		loctype = 1;
-	else
-		source->affected[2].location = loc;
 	modstring = modenhance_names[loc];
 
 	switch (loc)
@@ -1059,20 +1073,40 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 		mod = 1;
 	}
 
-	if (loctype == 1)
+	if (source->affected[2].location == loc)
 	{
-		// IF they've been modified less than 3 times.
-		if (source->affected[2].modifier / mod < enhance_mod_max_steps)
-			source->affected[2].modifier += mod;
-		else
+		if (source->affected[2].modifier / mod >= enhance_mod_max_steps)
 		{
 			send_to_char("Your enhancement was a failure.  Too much magic.\n", ch);
 			return;
 		}
+		mod += source->affected[2].modifier;
 	}
-	else
-		source->affected[2].modifier = mod;
+	if (mod > SCHAR_MAX)
+	{
+		send_to_char("Your enhancement was a failure.  Too much magic.\n", ch);
+		return;
+	}
 
+	obj_data proposed = *source;
+	proposed.affected[2].location = loc;
+	proposed.affected[2].modifier = mod;
+	const int final_value = itemvalue(&proposed);
+	if (final_value <= itemvalue(source))
+	{
+		send_to_char("That essence would not improve your item's value.\r\n", ch);
+		return;
+	}
+
+	const bool encrusted = IS_ENCRUSTED(source);
+	P_obj tempobj = encrusted ? nullptr : read_object(OBJ_VNUM(source), VIRTUAL);
+	if (!encrusted && !tempobj)
+	{
+		send_to_char("The original item template is unavailable.\r\n", ch);
+		return;
+	}
+
+	source->affected[2] = proposed.affected[2];
 	SET_BIT(source->extra2_flags, ITEM2_ENHANCED);
 
 	SUB_MONEY(ch, cost, 0);
@@ -1081,16 +1115,15 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	act("&+BYour enhancement is a success! Your &n$p&+B now feels slightly more powerful!\r\n",
 	    FALSE, ch, source, 0, TO_CHAR);
 	snprintf(buf, MAX_STRING_LENGTH, "&+wApplied property: %s&+w. Final item value: %d.&n\r\n",
-		 modstring, itemvalue(source));
+		 modstring, final_value);
 	send_to_char(buf, ch);
 
 	obj_from_char(material);
 	extract_obj(material);
 
-	if (IS_ENCRUSTED(source))
+	if (encrusted)
 		return describe_encrusted_enhanced(source);
 
-	P_obj tempobj = read_object(OBJ_VNUM(source), VIRTUAL);
 	char tempdesc[MAX_STRING_LENGTH], short_desc[MAX_STRING_LENGTH],
 		keywords[MAX_STRING_LENGTH];
 
