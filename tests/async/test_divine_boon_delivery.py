@@ -12,9 +12,9 @@ with tempfile.TemporaryDirectory(prefix="divine-delivery-", dir=output_root) as 
     source = Path(directory) / "delivery.cpp"
     text = (ROOT / "tests/async/divine_boon_delivery_harness.cpp").read_text()
     pipeline = (ROOT / "src/player/player_save_pipeline.c").read_text()
-    text = text.replace("// PENDING_WORLD_QUEST_STATE",
-                        pipeline[pipeline.index("struct pending_world_quest_save"):
-                                 pipeline.index("/** Cache the explicit diagnostic switch")])
+    first_state = pipeline.index("std::unordered_map<uint32_t, player_pending_trade_snapshot> trade_captures;")
+    end_state = pipeline.index("/** Cache the explicit diagnostic switch", first_state)
+    text = text.replace("// PENDING_SAVE_STATE", pipeline[first_state:end_state])
     for marker, path, signature in (
         ("CHECKPOINT_BODY", "player/player_save_pipeline.c", "player_save_pipeline_result player_save_pipeline_checkpoint_dirty("),
         ("LOAD_HOLD_BODY", "player/player_save_pipeline.c", "bool player_save_pipeline_load_held("),

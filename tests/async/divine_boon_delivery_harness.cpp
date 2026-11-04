@@ -17,6 +17,7 @@
 #include "world/epic_bonus.h"
 #include "economy/nexus_stones.h"
 #include "player/player_save_pipeline.h"
+#include "economy/shop_trade_transaction.h"
 #include "player/player_snapshot_capture.h"
 #include "item/storage_lockers.h"
 #include "persistence/persistence_observability.h"
@@ -57,9 +58,7 @@ std::string combat_journal;
 bool combat_queue_available = true;
 bool player_available = true;
 std::mutex pipeline_mutex;
-// PENDING_WORLD_QUEST_STATE
-uint32_t trade_player_pid = 0;
-player_pending_trade_snapshot trade_capture;
+// PENDING_SAVE_STATE
 player_save_pipeline_health health;
 struct captured
 {
@@ -479,9 +478,9 @@ int main(int argc, char **argv)
 	assert(player_save_pipeline_load_held(1));
 	assert(!player_save_pipeline_load_held(0));
 	worker_pending = false;
-	trade_player_pid = 1;
+	trade_captures.emplace(1, player_pending_trade_snapshot{});
 	assert(player_save_pipeline_load_held(1) && !player_save_pipeline_load_held(2));
-	trade_player_pid = 0;
+	trade_captures.erase(1);
 	assert(!player_save_pipeline_load_held(1));
 
 	// The real outcome submitter defers this epic delta until a committed result.
