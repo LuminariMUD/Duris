@@ -29,6 +29,8 @@ static P_obj result;
 static P_obj active_pouch;
 static bool lucky;
 static bool refuse_delivery;
+static bool refuse_wallet_submit;
+static bool refuse_wallet_commit;
 static int charges;
 
 extern const struct stat_data stat_factor[LAST_RACE + 1] = {};
@@ -40,12 +42,26 @@ bool chaos_starter_materials_enabled() { return true; }
 P_obj chaos_material_pouch_find(P_char) { return active_pouch; }
 void set_obj_extra_flags(P_obj obj, unsigned flags) { obj->extra_flags = flags; }
 
-int SUB_MONEY(P_char ch, int amount, int)
+bool currency_transaction_submit(P_char ch, const currency_vector &wallet, const currency_vector &,
+                                 currency_reason_type reason, int64_t, critical_source_site,
+                                 critical_deadline_class, currency_completion_fn complete,
+                                 const void *context, size_t context_size)
 {
-    assert(amount == 10000);
-    GET_PLATINUM(ch) -= amount / 1000;
-    ++charges;
-    return 0;
+    if (refuse_wallet_submit)
+        return false;
+    if (!refuse_wallet_commit)
+    {
+        for (size_t i = 0; i < wallet.amount.size(); ++i)
+        {
+            const int64_t amount = ch->points.cash[i] + wallet.amount[i];
+            assert(amount >= 0 && amount <= INT_MAX);
+            ch->points.cash[i] = static_cast<int>(amount);
+        }
+        if (reason == currency_reason_type::wallet_spend)
+            ++charges;
+    }
+    complete(ch, !refuse_wallet_commit, {}, 0, static_cast<const uint8_t *>(context), context_size);
+    return true;
 }
 
 P_obj read_object(int vnum, int mode)
@@ -71,6 +87,8 @@ void obj_from_char(P_obj obj)
 void extract_obj(P_obj obj, int)
 {
     extracted.push_back(OBJ_VNUM(obj));
+    if (result == obj)
+        result = nullptr;
     if (temporary.erase(obj))
         delete obj;
 }
@@ -204,6 +222,17 @@ static void test_replacement()
     assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
     clear_attempt();
     refuse_delivery = false;
+
+    for (bool *refusal : {&refuse_wallet_submit, &refuse_wallet_commit})
+    {
+        *refusal = true;
+        enhance(&ch, &source, &donor);
+        assert(!result && charges == 0 && GET_MONEY(&ch) == 20000);
+        assert((extracted == std::vector<int>{83202}));
+        assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
+        clear_attempt();
+        *refusal = false;
+    }
 
     // No upgrade with a physical donor, then with an empty pool and a Chaos pouch.
     enhance_ival_table[enhance_hash(91)] = nullptr;

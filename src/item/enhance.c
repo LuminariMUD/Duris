@@ -20,6 +20,8 @@
 #include "core/utils.h"
 #include "item/enhance.h"
 #include "economy/tradeskill.h"
+#include "economy/currency_transaction.h"
+#include "economy/currency_value.h"
 #include "item/objmisc.h"
 #include "combat/chaos_materials.h"
 
@@ -63,6 +65,41 @@ static bool enhancement_system_ready = false;
 extern P_room world;
 extern struct zone_data *zone_table;
 extern int top_of_zone_table;
+
+static int64_t enhancement_wallet_balance(P_char ch)
+{
+	return GET_COPPER(ch) + 10LL * GET_SILVER(ch) + 100LL * GET_GOLD(ch) +
+	       1000LL * GET_PLATINUM(ch);
+}
+
+/* Submission and commitment are distinct. The wallet calls this completion synchronously. */
+static bool apply_enhancement_wallet_delta(P_char ch, const currency_vector &delta,
+					   currency_reason_type reason)
+{
+	uint8_t committed = 0;
+	currency_transaction_submit(
+		ch, delta, {}, reason, 0, critical_source_site::command,
+		critical_deadline_class::interactive,
+		[](P_char, bool applied, const currency_command_result &, unsigned int,
+		   const uint8_t *context, size_t) { *const_cast<uint8_t *>(context) = applied; },
+		&committed, sizeof(committed));
+	return committed;
+}
+
+static bool charge_enhancement(P_char ch, int cost, currency_vector &debit)
+{
+	if (cost == 0)
+		return true;
+
+	const currency_vector before = { { GET_COPPER(ch), GET_SILVER(ch), GET_GOLD(ch),
+					   GET_PLATINUM(ch) } };
+	if (cost > 0 && currency_wallet_value_delta(before, -cost, &debit) &&
+	    apply_enhancement_wallet_delta(ch, debit, currency_reason_type::wallet_spend))
+		return true;
+
+	send_to_char("The enhancement payment could not be completed.\r\n", ch);
+	return false;
+}
 
 void enhance(P_char ch, P_obj source, P_obj material)
 {
@@ -150,7 +187,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		cost = enhance_cost_high_amount;
 	}
 
-	if (GET_MONEY(ch) < cost)
+	if (enhancement_wallet_balance(ch) < cost)
 	{
 		snprintf(buf, MAX_STRING_LENGTH,
 			 "It will require &+W%d platinum&n to &+Benhance&n this item.\r\n",
@@ -288,7 +325,12 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		return;
 	}
 
-	SUB_MONEY(ch, cost, 0);
+	currency_vector debit{};
+	if (!charge_enhancement(ch, cost, debit))
+	{
+		extract_obj(robj);
+		return;
+	}
 	send_to_char("Your pockets feel &+Wlighter&n.\r\n", ch);
 
 	act("&+BYour enhancement is a success! You now have &n$p&+B!", FALSE, ch, robj, 0, TO_CHAR);
