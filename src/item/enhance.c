@@ -661,7 +661,7 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 
 	if (!superior_plan_has_materials(ch, pouch, plan))
 		return FALSE;
-	if (GET_MONEY(ch) < cost)
+	if (enhancement_wallet_balance(ch) < cost)
 	{
 		snprintf(buf, sizeof(buf),
 			 "&+yIt will require &+W%d platinum&+y to enhance this item.\r\n",
@@ -669,9 +669,9 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 		send_to_char(buf, ch);
 		return FALSE;
 	}
+	chaos_material_pouch_usage generated[MAX_SUPERIOR_MATERIALS];
 	if (pouch)
 	{
-		chaos_material_pouch_usage generated[MAX_SUPERIOR_MATERIALS];
 		for (i = 0; i < plan->material_count; ++i)
 			generated[i] = { plan->materials[i].vnum,
 					 static_cast<uint64_t>(plan->materials[i].count) };
@@ -682,23 +682,28 @@ static bool perform_superior_enhancement(P_char ch, P_obj source, P_obj pouch,
 		}
 	}
 
-	/* All availability checks precede every state mutation, preserving atomicity. */
-	SUB_MONEY(ch, cost, 0);
+	currency_vector debit{};
+	if (!charge_enhancement(ch, cost, debit))
+		return FALSE;
+	if (pouch && !chaos_material_pouch_record_generated(ch, generated, plan->material_count))
+	{
+		// The ledger did not change. Undo the debit in the original denominations.
+		for (auto &coins : debit.amount)
+			coins = -coins;
+		if (cost > 0 &&
+		    !apply_enhancement_wallet_delta(ch, debit, currency_reason_type::refund))
+			logit(LOG_STATUS, "Superior enhancement payment rollback failed for pid %d",
+			      GET_PID(ch));
+		chaos_material_pouch_report_generated_failure(ch, "superior-enhance");
+		return FALSE;
+	}
+
 	if (!pouch)
 		for (i = 0; i < plan->material_count; i++)
 			vnum_from_inv(ch, plan->materials[i].vnum, plan->materials[i].count);
 	for (i = 0; i < plan->slot_count; i++)
 		source->affected[plan->slots[i]].modifier++;
 	mark_item_superior(source);
-	if (pouch)
-	{
-		chaos_material_pouch_usage generated[MAX_SUPERIOR_MATERIALS];
-		for (i = 0; i < plan->material_count; ++i)
-			generated[i] = { plan->materials[i].vnum,
-					 static_cast<uint64_t>(plan->materials[i].count) };
-		if (!chaos_material_pouch_record_generated(ch, generated, plan->material_count))
-			chaos_material_pouch_report_generated_failure(ch, "superior-enhance");
-	}
 
 	snprintf(
 		buf, sizeof(buf),
@@ -1024,7 +1029,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	if (val <= 20)
 	{
 		cost = 1000;
-		if (GET_MONEY(ch) < cost)
+		if (enhancement_wallet_balance(ch) < cost)
 		{
 			send_to_char(
 				"It will require &+W1 platinum&n to &+Benhance&n this item.\r\n",
@@ -1035,7 +1040,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	else if (val <= 30)
 	{
 		cost = 20000;
-		if (GET_MONEY(ch) < cost)
+		if (enhancement_wallet_balance(ch) < cost)
 		{
 			send_to_char(
 				"It will require &+W20 platinum&n to &+Benhance&n this item.\r\n",
@@ -1046,7 +1051,7 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 	else
 	{
 		cost = 100000;
-		if (GET_MONEY(ch) < cost)
+		if (enhancement_wallet_balance(ch) < cost)
 		{
 			send_to_char(
 				"It will require &+W100 platinum&n to &+Benhance&n this item.\r\n",
@@ -1113,10 +1118,16 @@ void modenhance(P_char ch, P_obj source, P_obj material)
 		return;
 	}
 
+	currency_vector debit{};
+	if (!charge_enhancement(ch, cost, debit))
+	{
+		if (tempobj)
+			extract_obj(tempobj);
+		return;
+	}
 	source->affected[2] = proposed.affected[2];
 	SET_BIT(source->extra2_flags, ITEM2_ENHANCED);
 
-	SUB_MONEY(ch, cost, 0);
 	send_to_char("Your pockets feel &+Wlighter&n.\r\n", ch);
 
 	act("&+BYour enhancement is a success! Your &n$p&+B now feels slightly more powerful!\r\n",

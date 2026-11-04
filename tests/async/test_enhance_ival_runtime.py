@@ -33,6 +33,7 @@ static bool lucky;
 static bool refuse_delivery;
 static bool refuse_wallet_submit;
 static bool refuse_wallet_commit;
+static bool refuse_pouch_write;
 static int unavailable_vnum;
 static int charges;
 static std::string output;
@@ -70,16 +71,6 @@ bool currency_transaction_submit(P_char ch, const currency_vector &wallet, const
     }
     complete(ch, !refuse_wallet_commit, {}, 0, static_cast<const uint8_t *>(context), context_size);
     return true;
-}
-
-int SUB_MONEY(P_char ch, int amount, int)
-{
-    const int remaining = GET_MONEY(ch) - amount;
-    assert(remaining >= 0);
-    GET_PLATINUM(ch) = remaining / 1000;
-    GET_COPPER(ch) = remaining % 1000;
-    ++charges;
-    return 0;
 }
 
 P_obj read_object(int vnum, int mode)
@@ -181,12 +172,17 @@ bool chaos_material_pouch_can_record_generated(P_char, const chaos_material_pouc
 bool chaos_material_pouch_record_generated(P_char, const chaos_material_pouch_usage *usage,
                                            size_t count)
 {
+    if (refuse_pouch_write)
+        return false;
     for (size_t i = 0; i < count; ++i)
         pouch_usage += usage[i].count;
     return true;
 }
 
-void chaos_material_pouch_report_generated_failure(P_char, const char *) { std::abort(); }
+void chaos_material_pouch_report_generated_failure(P_char, const char *)
+{
+    output += "ledger write failed";
+}
 
 static obj_data &fixture(int slot, int vnum, int ac = 0)
 {
@@ -391,6 +387,15 @@ static void test_essence()
     unavailable_vnum = 0;
     clear_attempt();
 
+    refuse_wallet_commit = true;
+    modenhance(&ch, &source, &health);
+    assert(source.affected[2].location == APPLY_NONE && source.extra2_flags == 0);
+    assert(source.name == base.name && health.loc_p == LOC_CARRIED);
+    assert(charges == 0 && GET_MONEY(&ch) == 10000);
+    assert((extracted == std::vector<int>{90010}));
+    clear_attempt();
+    refuse_wallet_commit = false;
+
     modenhance(&ch, &source, &health);
     assert(source.affected[2].location == APPLY_HIT && source.affected[2].modifier == 3);
     assert(IS_OBJ_STAT2(&source, ITEM2_ENHANCED) && strstr(source.name, "enhanced"));
@@ -504,6 +509,13 @@ static void test_superior()
     clear_attempt();
 
     GET_PLATINUM(&ch) = 20;
+    refuse_wallet_commit = true;
+    do_enhance(&ch, command, 0);
+    assert(charges == 0 && GET_MONEY(&ch) == 20000 && materials == initial_materials);
+    assert(item.affected[0].modifier == 2 && item.short_description == base.short_description);
+    clear_attempt();
+    refuse_wallet_commit = false;
+
     do_enhance(&ch, command, 0);
     assert(item.affected[0].modifier == 3 && item.affected[1].modifier == 3);
     assert(itemvalue(&item) > original_value && strstr(item.short_description, "su&+wp"));
@@ -511,6 +523,39 @@ static void test_superior()
     assert(materials[low] == 20 - 2 * ((wis.ival + 4) % 5));
     assert(materials[high] == 20 - 2 * ((wis.ival + 4) / 5));
     clear_attempt();
+
+    active_pouch = &prototypes[6];
+    item = base;
+    materials.clear();
+    GET_PLATINUM(&ch) = 20;
+    GET_GOLD(&ch) = 25;
+    GET_SILVER(&ch) = 11;
+    GET_COPPER(&ch) = 40;
+    const int original_money = GET_MONEY(&ch);
+
+    refuse_wallet_commit = true;
+    do_enhance(&ch, command, 0);
+    assert(charges == 0 && GET_MONEY(&ch) == original_money && pouch_usage == 0);
+    assert(item.affected[0].modifier == 2 && item.short_description == base.short_description);
+    clear_attempt();
+    refuse_wallet_commit = false;
+
+    refuse_pouch_write = true;
+    do_enhance(&ch, command, 0);
+    assert(output.find("ledger write failed") != std::string::npos && pouch_usage == 0);
+    assert(GET_PLATINUM(&ch) == 20 && GET_GOLD(&ch) == 25);
+    assert(GET_SILVER(&ch) == 11 && GET_COPPER(&ch) == 40);
+    assert(item.affected[0].modifier == 2 && item.short_description == base.short_description);
+    clear_attempt();
+    refuse_pouch_write = false;
+
+    do_enhance(&ch, command, 0);
+    assert(item.affected[0].modifier == 3 && item.affected[1].modifier == 3);
+    assert(charges == 1 && GET_MONEY(&ch) == original_money - (1000 + original_value * per_ival));
+    assert(pouch_usage == 2 * ((wis.ival + 4) % 5 + (wis.ival + 4) / 5));
+    assert(materials.empty());
+    clear_attempt();
+    active_pouch = nullptr;
     enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = nullptr;
     enhance_stat_table[enhance_stat_hash(APPLY_STR)] = nullptr;
 }
