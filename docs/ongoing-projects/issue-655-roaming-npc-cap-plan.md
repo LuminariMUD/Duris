@@ -351,3 +351,92 @@ immediate dependency. Keep this handoff current on the newest branch.
 The [regression guide](../testing/REGRESSIONS.md#full-world-roaming-npc-cap-and-recovery)
 contains the reproduction commands and outcomes. The [runbook](../operations/RUNBOOK.md#scheduled-roaming-npcs)
 contains the runtime controls and legacy diagnosis procedure.
+
+## Merged-master gate follow-up
+
+The implementation stack (#657–#661) landed through `7713fae16`.
+The first complete `make test-all` run on that revision recorded 912 passes
+and 30 failures across 942 cases. The baseline logs and exact revision are in
+`/home/aiwithapex/projects/duris-issue655-roaming-npc-cap/bin/tests/master-gates-7713fae16/`.
+The same checkout finished the original full `make test-db` gate with
+97 passes and six failures across 103 cases. Its per-case logs are archived
+under `db-cases/` in the same baseline log directory.
+
+The focused `test-all` fixes in #663–#676 and #680 landed on master.
+PR #656 already covered the command-attribute issue raised in #662. The
+first coordinated full `test-all` rerun on `49fabec2c` finished with 930
+passes and 11 failures. #685 and #691 addressed all 11. Its log is
+`/tmp/duris-test-all-49fabec2c.log`. The next coordinated run uses
+`/home/aiwithapex/projects/duris-master-test-all`.
+
+- [#681](https://github.com/LuminariMUD/Duris/pull/681) qualified the playtime
+  journey with the current hotboot command.
+- [#683](https://github.com/LuminariMUD/Duris/pull/683) qualified epic training
+  after synchronously publishing the fixture's effective HP.
+- [#686](https://github.com/LuminariMUD/Duris/pull/686) waits for the effective
+  luck change before testing artifact and guild rewards. Tracing after that
+  fix showed an independent copyover bug. A player read can overlap startup
+  writer work, and copyover drops the connection when artifact admission
+  requests a fresh read. [#689](https://github.com/LuminariMUD/Duris/pull/689)
+  landed as `b1d5d2b97` and refreshes the read within the original player-load
+  deadline. All seven MariaDB artifact cases and all eight copyover
+  regressions passed. Both native hotboots and canonical artifact swaps
+  are covered.
+- [#687](https://github.com/LuminariMUD/Duris/pull/687) qualified restart
+  from a valid checkpoint after deliberately causing an overlapping capture
+  to be rejected.
+- [#690](https://github.com/LuminariMUD/Duris/pull/690) repaired the shared
+  maintenance linkage for the address-retention and statistics harnesses.
+  Both passed in disposable MariaDB after reproducing the original failures.
+- [#692](https://github.com/LuminariMUD/Duris/pull/692) isolates the latency
+  benchmark after the parallel database cases and preserves its 3-second
+  budget. The original parallel run measured 3.25 seconds. The standalone
+  run measured 1.00 second across 17 re-entries, with at most 16 queued
+  shop saves per pulse.
+
+The full DB rerun used master `01d190929` plus the six DB
+PRs at local integration commit `83f39d5e4`. Run
+`TEST_DB_JOBS=6 make test-db -j8 CC='ccache g++'` from the issue
+worktree to reproduce it. The exact revision, command, log, and eventual
+exit status are under `bin/tests/master-gates-verification/` there.
+The per-case logs are archived in `db-cases/` beside the gate log.
+
+The integrated run completed 108 passes and four failures across 112 cases.
+The serial loop benchmark passed with a slowest re-entry of 1.00 second.
+The overlap, epic-training, address-retention, and statistics cases passed.
+The following PRs cover the four failures from the integration run.
+
+- [#693](https://github.com/LuminariMUD/Duris/pull/693), stacked on #692,
+  moves the full-world capture and artifact matrix before the serial loop
+  benchmark. The concurrent NPC hotboot hit the existing player writer
+  drain deadline. The capture pulse limit and hotboot guards are retained.
+- [#694](https://github.com/LuminariMUD/Duris/pull/694) waits for the locker
+  door acknowledgement after an asynchronous save. The entire disposable
+  locker journey passed, including the failed guest departure.
+- [#695](https://github.com/LuminariMUD/Duris/pull/695) verifies that a failed
+  native exec retires its handoff file. The complete MariaDB telemetry
+  journey passed with a paced injected outage, failed and successful
+  copyover, and reconnect.
+- [#696](https://github.com/LuminariMUD/Duris/pull/696) refreshes invalidated
+  report batches and retries rejected SQL reads and Redis writes by key.
+  The first check counted callbacks, which could pass with missing Redis
+  keys. The revised full-world check clears the six keys before restarting,
+  then verifies all six values and a recovered artifact in its staff report.
+  That local rerun restored a 69.5 MiB generation with no pulses over 250 ms
+  during capture.
+
+The second full test-all passed all 941 cases on master `01d190929` with
+zero failures or timeouts. Its log is `/tmp/duris-test-all-01d190929.log`.
+The serial DB retests use local revision `1dabede8d` and the exact three
+serial commands from the proposed runner. They write the revision, logs,
+and eventual exit status to `/home/aiwithapex/projects/duris-master-gate-contracts/bin/tests/gate-db-serial/`.
+
+The serial DB retest exited 0. World capture passed in 88 seconds and
+restored a 69.5 MiB generation and logged all six report callbacks. This
+historical run used the log-only report check. No pulse exceeded 250 ms. All seven artifact scenarios passed in 1,069 seconds,
+including the NPC hotboot, and the loop benchmark passed in 177 seconds
+with a slowest re-entry of 1.00 second. The separate complete locker and
+telemetry retests also passed. All four failures from the full integration
+run therefore passed their follow-ups. The 108/112 result belongs to the
+full integration run. The later fixes were verified with the focused
+journeys and the three commands from the proposed serial runner.
