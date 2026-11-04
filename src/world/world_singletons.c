@@ -57,7 +57,7 @@ size_t keeper_stock(P_char keeper)
 	return count;
 }
 
-bool place_replicated_shop_at_home(P_char keeper, int shop)
+bool place_shopkeeper_at_home(P_char keeper, int shop)
 {
 	if (!keeper || !shop_index || shop < 0 || shop >= number_of_shops)
 		return false;
@@ -255,18 +255,18 @@ void reconcile_shopkeepers(bool recovered_inventory)
 		if (!keeper && is_replicated_shop(shop))
 		{
 			keeper = read_mobile(shop_index[shop].keeper, REAL);
-			if (keeper && !place_replicated_shop_at_home(keeper, shop))
+			if (keeper && !place_shopkeeper_at_home(keeper, shop))
 			{
 				keeper = nullptr;
 			}
 		}
 		if (!keeper)
 			continue;
-		// Shop zero was historically roaming and may be restored from any of the
-		// five dealer rooms. Preserve its durable identity and inventory, then
-		// return it to its newly configured home before filling the other rooms.
-		if (shop_index[shop].shop_is_roaming && is_replicated_shop(shop) &&
-		    !place_replicated_shop_at_home(keeper, shop))
+		// Recovery can load a fixed keeper away from its configured room.
+		// The flat-file catalog requires the home room for fixed shops. The
+		// historical roaming dealer in the replicated set also needs its anchor.
+		if ((!shop_index[shop].shop_is_roaming || is_replicated_shop(shop)) &&
+		    !place_shopkeeper_at_home(keeper, shop))
 			continue;
 		bind_shopkeeper(keeper, shop);
 		for (P_char duplicate : candidates)

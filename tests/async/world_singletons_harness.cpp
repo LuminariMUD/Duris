@@ -793,6 +793,18 @@ int main()
 	reconcile_shopkeepers(false);
 	assert_local_dealers();
 
+	// A fixed keeper whose prototype can wander is still the same shop after
+	// file copyover. Return it to the configured room before catalog capture.
+	P_char fixed = mob_at(3, 4);
+	bind_shopkeeper(fixed, 1);
+	P_obj fixed_stock = read_object(4, REAL);
+	obj_to_char(fixed_stock, fixed);
+	const auto fixed_id = GET_IDNUM(fixed);
+	reconcile_shopkeepers(true);
+	assert(fixed->in_room == 5 && GET_BIRTHPLACE(fixed) == rooms[5].number);
+	assert(GET_IDNUM(fixed) == fixed_id && fixed_stock->loc.carrying == fixed);
+	assert(live_shopkeepers(1) == std::vector<P_char>{ fixed });
+
 	// A recovered generation with zero dealers converges to the same five
 	// identities and independently snapshot-able inventories.
 	clear_world();
