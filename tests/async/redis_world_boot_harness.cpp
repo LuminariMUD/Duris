@@ -212,11 +212,19 @@ static void pinning_checks(redisContext *other, int port)
 	checkpoint.epoch = 42;
 	checkpoint.sequence = 1;
 	strcpy(checkpoint.key_namespace, "mud");
-	assert(SHA256(first.data(), first.size(), checkpoint.digest));
 	auto sealed = [&]
 	{
-		seeded();
-		publish(first, 1); // Publication atomically clears the floor cut.
+		reset_boot();
+		if (!world_context || world_context->err)
+			assert(redis_reconnect());
+		command("FLUSHDB");
+		assert(redis_world_store_claim_fence(&config, writer, 600000));
+		world_recovery_header header = {};
+		assert(world_recovery_validate(first.data(), first.size(), world_state_max_age, 1,
+					       &header));
+		assert(redis_world_store_publish_observed(
+			&config, writer, 600000, first.data(), first.size(), 1, header.timestamp,
+			header.checksum, nullptr, checkpoint.manifest_tag));
 		assert(redis_world_store_release_fence(&config, writer));
 		world_writer_token.clear();
 		world_writer_epoch = 0;
@@ -231,6 +239,26 @@ static void pinning_checks(redisContext *other, int port)
 	assert(world_sequence_floor >= 1);
 	reset_boot();
 	assert(redis_world_prepare_boot() == redis_world_boot_result::absent);
+
+	sealed();
+	assert(redis_world_prepare_copyover(checkpoint));
+	// Even byte-identical payloads from a recreated store have a new manifest.
+	constexpr const char *replacement_writer = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+	command("FLUSHDB");
+	assert(redis_world_store_claim_fence(&config, replacement_writer, 600000));
+	{
+		world_recovery_header header = {};
+		assert(world_recovery_validate(first.data(), first.size(), world_state_max_age, 1,
+					       &header));
+		assert(redis_world_store_publish(&config, replacement_writer, 600000, first.data(),
+						 first.size(), 1, header.timestamp,
+						 header.checksum));
+	}
+	assert(redis_world_store_release_fence(&config, replacement_writer));
+	assert(!redis_world_discard_for_copyover());
+	assert(redis_world_boot_sequence(&retained) && retained == 1);
+	reset_boot();
+	assert(!redis_world_prepare_copyover(checkpoint));
 
 	sealed();
 	publish(second, 2); // Another process publishes before the replacement pins.

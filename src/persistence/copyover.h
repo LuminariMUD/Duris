@@ -20,7 +20,7 @@ const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
 #define COPYOVER_PLAYERS_MAGIC "CPYP" // same records, without the live world
-#define COPYOVER_VERSION 20 // account and ship identity; reads versions 12-19
+#define COPYOVER_VERSION 21 // CPYP binds the authenticated Redis manifest; reads COPY 12-20
 
 // copyover file header
 struct copyover_header

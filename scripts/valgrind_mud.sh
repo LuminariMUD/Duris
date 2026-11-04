@@ -96,10 +96,19 @@ if (( BUILD )); then
   make -C src
 fi
 
+# Use the same publication lock as copyover and replace the runtime atomically.
+exec 8<bin/server
+flock -x 8
+
 if [[ -f "$STAGED_BINARY" ]] && { (( BUILD )) || [[ ! -f "$RUNTIME_BINARY" ]] || [[ "$STAGED_BINARY" -nt "$RUNTIME_BINARY" ]]; }; then
   mkdir -p bin/server/history
-  cp -f "$STAGED_BINARY" "$RUNTIME_BINARY"
+  tmp=$(mktemp "$RUNTIME_BINARY.XXXXXX")
+  if ! cp -p "$STAGED_BINARY" "$tmp" || ! mv -T "$tmp" "$RUNTIME_BINARY"; then
+    rm -f "$tmp"
+    exit 1
+  fi
 fi
+exec 8<&-
 
 if [[ ! -x "$RUNTIME_BINARY" ]]; then
   echo "ERROR: $RUNTIME_BINARY not found. Run with --build." >&2

@@ -43,7 +43,6 @@
 #ifndef __NO_REDIS__
 #include <hiredis/hiredis.h>
 #include <openssl/rand.h>
-#include <openssl/sha.h>
 #endif
 
 namespace
@@ -109,6 +108,9 @@ std::chrono::steady_clock::time_point world_writer_renew_after;
 std::chrono::steady_clock::time_point world_degraded_log_after;
 const char *world_degraded_reason = "none";
 unsigned int world_capture_failures = 0;
+// Written only by the publisher. The game thread reads after draining the
+// pipeline, whose mutex publishes the completion after the callback returns.
+unsigned char world_published_manifest_tag[32] = {};
 
 auto redis_world_recovery_ensure_initialized() -> bool;
 
@@ -527,7 +529,8 @@ bool redis_publish_world_generation(const unsigned char *data, size_t size,
 	return redis_world_store_publish_observed(&config, world_writer_token.c_str(),
 						  world_writer_lease_msec, data, size,
 						  header->sequence, header->timestamp,
-						  header->checksum, outcome);
+						  header->checksum, outcome,
+						  world_published_manifest_tag);
 }
 
 bool redis_world_recovery_ensure_initialized()
@@ -1201,7 +1204,7 @@ bool redis_capture_boot_snapshot(redis_world_boot_snapshot *snapshot)
 		const auto config = redis_world_store_config_copy();
 		bool transport_failure = false;
 		if (!redis_world_store_read_generation(&config, staged.sequence, &staged.generation,
-						       &transport_failure))
+						       &transport_failure, staged.manifest_tag))
 		{
 			if (transport_failure)
 			{
@@ -1302,9 +1305,9 @@ bool redis_consume_world_state(void)
 	    world_boot_result != redis_world_boot_result::ready)
 		return false;
 	const auto config = redis_world_store_config_copy();
-	if (!redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
-						  world_boot_snapshot.generation,
-						  world_boot_snapshot.floor_records))
+	if (!redis_world_store_consume_generation(
+		    &config, world_boot_snapshot.sequence, world_boot_snapshot.generation,
+		    world_boot_snapshot.floor_records, nullptr, world_boot_snapshot.manifest_tag))
 		return false;
 	world_boot_restored = false;
 	return true;
@@ -1331,12 +1334,13 @@ bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *checkpoint)
 		if (!redis_world_boot_read([&] { return redis_capture_boot_snapshot(&cut); }) ||
 		    cut.sequence != acknowledged || !cut.floor_records.empty() ||
 		    world_key_namespace.size() >= sizeof checkpoint->key_namespace ||
-		    !SHA256(cut.generation.data(), cut.generation.size(), checkpoint->digest))
+		    memcmp(cut.manifest_tag, world_published_manifest_tag, sizeof cut.manifest_tag))
 			return false;
 		memcpy(checkpoint->key_namespace, world_key_namespace.c_str(),
 		       world_key_namespace.size() + 1);
 		checkpoint->epoch = world_runtime_epoch;
 		checkpoint->sequence = acknowledged;
+		memcpy(checkpoint->manifest_tag, cut.manifest_tag, sizeof checkpoint->manifest_tag);
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -1361,10 +1365,8 @@ bool redis_world_prepare_copyover(const redis_copyover_checkpoint &checkpoint)
 	    world_boot_snapshot.sequence != checkpoint.sequence ||
 	    !world_boot_snapshot.floor_records.empty())
 		return false;
-	unsigned char digest[SHA256_DIGEST_LENGTH];
-	return SHA256(world_boot_snapshot.generation.data(), world_boot_snapshot.generation.size(),
-		      digest) &&
-	       !memcmp(digest, checkpoint.digest, sizeof digest);
+	return !memcmp(world_boot_snapshot.manifest_tag, checkpoint.manifest_tag,
+		       sizeof checkpoint.manifest_tag);
 #else
 	return false;
 #endif
@@ -1379,9 +1381,9 @@ bool redis_world_discard_for_copyover()
 	// Renew in case boot took longer than the lease. The compare/delete also
 	// checks this token inside Redis, so a later lease change cannot authorize it.
 	if (!redis_world_writer_fence_claim() ||
-	    !redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
-						  world_boot_snapshot.generation, {},
-						  world_writer_token.c_str()))
+	    !redis_world_store_consume_generation(
+		    &config, world_boot_snapshot.sequence, world_boot_snapshot.generation, {},
+		    world_writer_token.c_str(), world_boot_snapshot.manifest_tag))
 		return false;
 	world_boot_snapshot = {};
 	world_boot_result = redis_world_boot_result::absent;

@@ -51,6 +51,10 @@ fi
 STAGED_BINARY="bin/server/dms_new"
 RUNTIME_BINARY="bin/server/dms"
 
+# Use the same publication lock as copyover and replace the runtime atomically.
+exec 8<bin/server
+flock -x 8
+
 if [[ ! -x "$STAGED_BINARY" ]]; then
   echo "ERROR: $STAGED_BINARY not found. Run 'make -C src' first." >&2
   exit 1
@@ -59,7 +63,12 @@ fi
 ulimit -c unlimited 2>/dev/null || echo "WARNING: could not enable unlimited core dumps." >&2
 
 mkdir -p bin/server/history
-cp -f "$STAGED_BINARY" "$RUNTIME_BINARY"
+tmp=$(mktemp "$RUNTIME_BINARY.XXXXXX")
+if ! cp -p "$STAGED_BINARY" "$tmp" || ! mv -T "$tmp" "$RUNTIME_BINARY"; then
+  rm -f "$tmp"
+  exit 1
+fi
+exec 8<&-
 
 echo "Generating list of function names.."
 scripts/event_names.sh "$RUNTIME_BINARY" > lib/misc/event_names

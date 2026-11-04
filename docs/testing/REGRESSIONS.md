@@ -1603,8 +1603,11 @@ The flat-file journey injects an unavailable handoff path, a terminal player
 write failure, and an executable with a missing interpreter. It verifies that
 the live inventory, login sockets, and prior executable survive failure. It
 then retries without removing a publication by hand. Fresh copyover and hotboot
-exercise login-screen disconnect, switched-session identity, and hostname
-cleanup. The fresh case also checks TLS and WebSocket disconnect and rejects an
+exercise login and account-menu disconnect, switched-session identity, durable
+linkdead inventory, periodic player events, and hostname cleanup. The custody
+fixture races a staged publisher at the exchange boundary and verifies rollback
+with congested TLS and WebSocket queues. The fresh case also checks TLS and
+WebSocket disconnect and rejects an
 inherited socket whose handoff account does not match the player repository.
 
 ```sh
@@ -1615,8 +1618,9 @@ python3 tests/async/test_redis_world_store_live.py
 
 The private MariaDB and Redis journey checks successful checkpoint consumption,
 failed publication without an exec, and predecessor retention when the
-replacement fails to load properties. The live Redis harness also replaces
-the checkpoint, the floor cut, and the writer lease at the handoff boundary.
+replacement fails to load properties. It compares Redis socket inodes across
+two real process replacements. The live Redis harness also replaces the manifest,
+the floor cut, and the writer lease at the handoff boundary.
 
 ## Corpse bulk loot
 

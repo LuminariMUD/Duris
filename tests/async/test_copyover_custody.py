@@ -77,6 +77,7 @@ int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc-
 #include <unistd.h>
 #include <cstdarg>
 #include <sys/syscall.h>
+#include <sys/file.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -125,9 +126,7 @@ bool redis_world_recovery_drain(uint64_t) { return true; }
 bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *) { std::abort(); }
 int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
 void redis_world_writer_release() {}
-void redis_world_writer_reclaim_after_copyover() { std::abort(); }
-bool before_account_login(const descriptor_data *) { std::abort(); }
-bool websocket_is_authenticated_service(const descriptor_data *) { std::abort(); }
+void redis_world_writer_reclaim_after_copyover() {}
 bool return_from_staff_switch(P_desc) { std::abort(); }
 int telnet_flush_output(P_desc) { std::abort(); }
 P_ship get_ship_from_char(P_char) { std::abort(); }
@@ -136,12 +135,14 @@ bool persistence_flush_all_character_saves() { return true; }
 bool persistence_log_drain(unsigned timeout_ms) { assert(timeout_ms == 3000); return true; }
 
 // Empty-world boundaries: reaching these would make the fixture invalid.
-bool start_hatred_check(P_char) { std::abort(); }
+void schedule_pc_events(P_char) { std::abort(); }
 bool persistence_save_character_terminal(P_char, int) { std::abort(); }
 bool persistence_save_character_terminal_database_acknowledged(P_char, int) { std::abort(); }
 int websocket_send_text(P_desc, const char *) { std::abort(); }
 int compress_end(P_desc, int) { std::abort(); }
-void write_to_q(const char *, txt_q *, int) { std::abort(); }
+void write_to_q(const char *, txt_q *, int) {
+    assert(!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race"));
+}
 uint64_t persistence_observability_now_usec() { std::abort(); }
 uint64_t player_load_pipeline_next_request_id() { std::abort(); }
 bool player_load_pipeline_wait(player_load_request, player_load_result *, uint64_t) { std::abort(); }
@@ -213,7 +214,16 @@ extern "C" int renameat2(int from_directory,const char *from,int to_directory,co
         FILE *other=fopen(from,"wb");
         assert(other && fwrite("replacement",11,1,other)==1 && fclose(other)==0);
     }
-    return static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+    const int result = static_cast<int>(syscall(SYS_renameat2,from_directory,from,to_directory,to,flags));
+    if (result == 0 && !strcmp(scenario, "binary-race") &&
+        !strcmp(to, "bin/server/dms") && flags == RENAME_EXCHANGE) {
+        int publisher = open("bin/server", O_RDONLY | O_DIRECTORY);
+        assert(publisher >= 0 && flock(publisher, LOCK_EX | LOCK_NB) < 0 && errno == EWOULDBLOCK);
+        close(publisher);
+        // Simulate an out-of-band publisher ignoring the lock at the old race point.
+        assert(!rename("bin/server/racing", "bin/server/dms_new"));
+    }
+    return result;
 }
 
 extern "C" int unlink(const char *path) noexcept {
@@ -239,6 +249,10 @@ extern "C" int fixture_execl(const char *path, const char *, ...) noexcept
     assert(header.version == COPYOVER_VERSION && header.num_objects == (npc ? 5 : 1));
     assert(!header.num_descriptors && header.num_mobs==(npc ? 1 : 0));
     std::fclose(file);
+    if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+        errno = ENOENT;
+        return -1;
+    }
     char executable[] = "/proc/self/exe", phase[] = "recover";
     char *args[] = {executable, phase, nullptr};
     execv(executable, args);
@@ -339,6 +353,33 @@ int main(int argc, char **argv)
             extract_obj(corpse,FALSE); item_ownership_runtime_reset();
             assert(!object_list);
             puts("[PASS] competing publication survives atomic publish refusal; live objects and custody remain");
+            return 0;
+        }
+        if (!strcmp(getenv("COPYOVER_TEST_CASE"), "binary-race")) {
+            int pair[2];
+            assert(!socketpair(AF_UNIX, SOCK_STREAM, 0, pair));
+            descriptor_data tls_menu = {}, web_menu = {};
+            tls_menu.descriptor = pair[0];
+            tls_menu.connected = CON_DISPLAY_ACCT_MENU;
+            tls_menu.sslses = reinterpret_cast<gnutls_session_t>(1);
+            tls_menu.telnet_output_len = 1024 * 1024 - 16;
+            tls_menu.next = &web_menu;
+            web_menu.descriptor = pair[1];
+            web_menu.connected = CON_DISPLAY_ACCT_MENU;
+            web_menu.websocket = web_menu.ws_handshake_done = 1;
+            web_menu.ws_output_len = 1024 * 1024 - 16;
+            descriptor_list = &tls_menu;
+            struct stat before = {}, after = {}, racing = {}, staged = {};
+            assert(!stat("bin/server/dms", &before) && !stat("bin/server/racing", &racing));
+            assert(!copyover_save(plain, tls, -1));
+            assert(!stat("bin/server/dms", &after) && before.st_ino == after.st_ino);
+            assert(!stat("bin/server/dms_new", &staged) && racing.st_ino == staged.st_ino);
+            assert(access(COPYOVER_FILE, F_OK) < 0 && errno == ENOENT);
+            assert(!tls_menu.write_failed && !web_menu.write_failed &&
+                   !(fcntl(pair[0], F_GETFD) & FD_CLOEXEC) && !(fcntl(pair[1], F_GETFD) & FD_CLOEXEC));
+            assert(tls_menu.telnet_output_len == 1024 * 1024 - 16 &&
+                   web_menu.ws_output_len == 1024 * 1024 - 16);
+            puts("[PASS] racing publication preserved both binaries and congested menu sockets after failed exec");
             return 0;
         }
         copyover_save(plain, tls, -1);
@@ -513,8 +554,14 @@ with tempfile.TemporaryDirectory(prefix="duris-copyover-custody-") as temp:
                             "src/redis/redis_command_observability.c", str(HARNESS_STUBS), "-Wl,--gc-sections",
                             "-lz", "-pthread", "-lgnutls", "-lbsd", "-o", str(temp / "fixture")],
                    cwd=ROOT, check=True)
-    for scenario in ("shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
+    for scenario in ("binary-race", "shop", "foreign-shop", "npc", "consume-race", "claim-race", "normal", "newer", "changed", "publish-race", "newer-owner", "mixed-owner"):
         state = temp / scenario
-        state.mkdir()
+        server = state / "bin/server"
+        server.mkdir(parents=True)
+        if scenario == "binary-race":
+            for name in ("dms", "dms_new", "racing"):
+                binary = server / name
+                binary.write_text(name)
+                binary.chmod(0o755)
         subprocess.run([str(temp / "fixture")], cwd=state, check=True, timeout=60,
                        env=dict(os.environ, COPYOVER_TEST_CASE=scenario, COPYOVER_STATE_FILE="copyover.dat"))

@@ -192,15 +192,17 @@ descriptor record. Static rooms use virtual room numbers in both modes.
 A persistent ship cabin uses the ship's database ID and layout slot, with its
 saved anchorage as fallback. A missing room falls back to the player's home or
 birthplace. Readers preserve the room encoding of supported older images.
-Use a cold restart when downgrading to a reader older than version 20.
+Use a cold restart when downgrading to a reader older than version 21.
 
 Standalone `copyover` uses magic `CPYP` and requires zero mob, object and door
-counts. Version 20 adds a Redis checkpoint after the three listener descriptors
+counts. Version 21 stores a Redis checkpoint after the three listener descriptors
 and before the player records. It contains the acknowledged generation sequence,
-namespace, season epoch, and SHA-256 of the generation. Publication atomically
+namespace, season epoch, and authenticated manifest tag, which binds the upload
+identity and payload digest. Published sequence keys are immutable. Publication atomically
 clears floor deltas, so the matching floor cut is empty. A zero sequence denotes
 disabled world recovery. A legacy `CPYP` handoff can start only with world
-recovery disabled because it lacks this checkpoint.
+recovery disabled. A version 20 image with a Redis checkpoint is retained for
+operator review because it identifies the payload without identifying the upload.
 
 Both modes require durable player saves before publishing. The replacement
 validates the checkpoint before world loading and excludes it from fresh-world

@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -65,6 +66,7 @@
 
 #define DMS_STAGED_BINARY "bin/server/dms_new"
 #define DMS_RUNTIME_BINARY "bin/server/dms"
+#define DMS_SERVER_DIR "bin/server"
 #define DMS_HISTORY_DIR "bin/server/history"
 #define DMS_COPYOVER_BACKUP "bin/server/history/dms.copyover"
 
@@ -244,6 +246,98 @@ struct copyover_fd_flags
 			return false;
 		saved[fd] = old;
 		return true;
+	}
+};
+
+// The directory lock is shared with the binary build and launcher. Move the
+// candidate out of the public staging name before exchanging it with the live
+// binary, so a new staged build can never replace the rollback inode.
+struct copyover_binary_promotion
+{
+	int lock_fd = -1;
+	bool promoted = false;
+
+	~copyover_binary_promotion()
+	{
+		if (lock_fd >= 0)
+			close(lock_fd);
+	}
+
+	bool prepare()
+	{
+		lock_fd = open(DMS_SERVER_DIR, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+		if (lock_fd < 0 || flock(lock_fd, LOCK_EX | LOCK_NB) != 0)
+			return false;
+
+		struct stat staged = {}, runtime = {}, candidate = {};
+		if (lstat(DMS_STAGED_BINARY, &staged) != 0)
+			return errno == ENOENT;
+		if (lstat(DMS_RUNTIME_BINARY, &runtime) != 0)
+			return false;
+		if (!S_ISREG(staged.st_mode) || !S_ISREG(runtime.st_mode))
+		{
+			errno = EINVAL;
+			return false;
+		}
+		if (access(DMS_STAGED_BINARY, X_OK) != 0 ||
+		    (mkdir(DMS_HISTORY_DIR, 0755) != 0 && errno != EEXIST))
+			return false;
+
+		char path[] = DMS_HISTORY_DIR "/.copyover.XXXXXX";
+		const int placeholder = mkostemp(path, O_CLOEXEC);
+		if (placeholder < 0)
+			return false;
+		close(placeholder);
+		if (rename(DMS_STAGED_BINARY, path) != 0)
+		{
+			const int error = errno;
+			unlink(path);
+			errno = error;
+			return false;
+		}
+		if (lstat(path, &candidate) != 0 || candidate.st_dev != staged.st_dev ||
+		    candidate.st_ino != staged.st_ino)
+			return reject_candidate(path, ESTALE);
+		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_RUNTIME_BINARY, RENAME_EXCHANGE) != 0)
+			return reject_candidate(path, errno);
+
+		struct stat backup = {}, active = {};
+		int error = ESTALE;
+		if (lstat(path, &backup) == 0 && backup.st_dev == runtime.st_dev &&
+		    backup.st_ino == runtime.st_ino && lstat(DMS_RUNTIME_BINARY, &active) == 0 &&
+		    active.st_dev == staged.st_dev && active.st_ino == staged.st_ino)
+		{
+			if (rename(path, DMS_COPYOVER_BACKUP) == 0)
+			{
+				promoted = true;
+				return true;
+			}
+			error = errno;
+		}
+		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_RUNTIME_BINARY, RENAME_EXCHANGE) != 0)
+		{
+			logit(LOG_STATUS, "copyover: executable exchange rollback failed: %s",
+			      strerror(errno));
+			return false;
+		}
+		return reject_candidate(path, error);
+	}
+
+	static bool reject_candidate(const char *path, int error)
+	{
+		// Preserve a concurrent publication and leave our candidate in history
+		// if its staging name has already been taken.
+		if (renameat2(AT_FDCWD, path, AT_FDCWD, DMS_STAGED_BINARY, RENAME_NOREPLACE) != 0)
+			logit(LOG_STATUS, "copyover: executable candidate retained at %s", path);
+		errno = error;
+		return false;
+	}
+
+	void rollback() const
+	{
+		if (promoted && rename(DMS_COPYOVER_BACKUP, DMS_RUNTIME_BINARY) != 0)
+			logit(LOG_STATUS, "copyover: executable rollback failed: %s",
+			      strerror(errno));
 	}
 };
 
@@ -776,7 +870,8 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 			return false;
 		memcpy(&checkpoint, snapshot->bytes.data() + offset, sizeof checkpoint);
 		offset += sizeof checkpoint;
-		if (!memchr(checkpoint.key_namespace, 0, sizeof checkpoint.key_namespace) ||
+		if ((header.version < 21 && checkpoint.sequence) ||
+		    !memchr(checkpoint.key_namespace, 0, sizeof checkpoint.key_namespace) ||
 		    (checkpoint.sequence && (!checkpoint.epoch || !checkpoint.key_namespace[0])) ||
 		    (!checkpoint.sequence && (checkpoint.epoch || checkpoint.key_namespace[0])))
 			return false;
@@ -1305,11 +1400,11 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			"\r\n*** Copyover cancelled: starter equipment is still being granted; retry after completion. ***\r\n");
 		return false;
 	}
-	// Hotboot protects authenticated sessions. Login sockets cannot veto it.
+	// Hotboot protects in-game sessions that would lose their live state.
 	for (d = descriptor_list; d; d = d->next)
 		if (copyover_preserve_world && d->descriptor >= 0 &&
-		    !copyover_descriptor_is_eligible(d) &&
-		    (!before_account_login(d) || websocket_is_authenticated_service(d)))
+		    !copyover_descriptor_is_eligible(d) && d->connected == CON_PLAYING &&
+		    d->character)
 		{
 			logit(LOG_STATUS,
 			      "copyover: non-preservable connection fd=%d state=%d ws=%d ssl=%d; aborting",
@@ -1406,17 +1501,15 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 	}
-	// A fresh world also removes linkdead bodies; save their current player/pet state.
-	if (!copyover_preserve_world)
-		for (ch = character_list; ch; ch = ch->next)
-			if (!IS_NPC(ch) && !ch->desc &&
-			    !persistence_save_character_terminal_database_acknowledged(ch,
-										       RENT_CRASH))
-			{
-				notify_copyover_failure(
-					"\r\n*** Copyover cancelled: a linkdead player save failed. ***\r\n");
-				return false;
-			}
+	// Neither handoff serializes descriptorless PCs.
+	for (ch = character_list; ch; ch = ch->next)
+		if (!IS_NPC(ch) && !ch->desc &&
+		    !persistence_save_character_terminal_database_acknowledged(ch, RENT_CRASH))
+		{
+			notify_copyover_failure(
+				"\r\n*** Copyover cancelled: a linkdead player save failed. ***\r\n");
+			return false;
+		}
 	// Preserve custom shop item state that the basic NPC file record omits. The saves go
 	// to the writer, so they are queued before the drain below.
 	if (!mini_mode && !snapshot_shopkeepers_for_copyover())
@@ -1713,40 +1806,10 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// exec new binary
 	snprintf(exec_buf, sizeof(exec_buf), "%d", RUNNING_PORT);
 
-	// Exchange the paths atomically, including when the old file is owned
-	// by the installer and the server cannot hard-link it.
-	bool promoted = false;
-	struct stat staged = {};
-	int promotion_error = 0;
-	if (lstat(DMS_STAGED_BINARY, &staged) == 0)
+	copyover_binary_promotion binary;
+	if (!binary.prepare())
 	{
-		if (stat(DMS_STAGED_BINARY, &staged) != 0)
-			promotion_error = errno;
-		else if (!S_ISREG(staged.st_mode))
-			promotion_error = EINVAL;
-		else if (access(DMS_STAGED_BINARY, X_OK) != 0 ||
-			 (mkdir(DMS_HISTORY_DIR, 0755) != 0 && errno != EEXIST) ||
-			 renameat2(AT_FDCWD, DMS_STAGED_BINARY, AT_FDCWD, DMS_RUNTIME_BINARY,
-				   RENAME_EXCHANGE) != 0)
-			promotion_error = errno;
-		else if (rename(DMS_STAGED_BINARY, DMS_COPYOVER_BACKUP) != 0)
-		{
-			promotion_error = errno;
-			if (renameat2(AT_FDCWD, DMS_STAGED_BINARY, AT_FDCWD, DMS_RUNTIME_BINARY,
-				      RENAME_EXCHANGE) != 0)
-				logit(LOG_STATUS,
-				      "copyover: executable exchange rollback failed: %s",
-				      strerror(errno));
-		}
-		else
-			promoted = true;
-	}
-	else if (errno != ENOENT)
-		promotion_error = errno;
-	if (promotion_error)
-	{
-		logit(LOG_STATUS, "copyover: executable promotion failed: %s",
-		      strerror(promotion_error));
+		logit(LOG_STATUS, "copyover: executable promotion failed: %s", strerror(errno));
 		if (!consume_copyover_image(published_path, validated))
 			logit(LOG_STATUS, "copyover: failed publication retained for review");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
@@ -1757,8 +1820,13 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// compression and WebSocket state intact for the live-process failure path.
 	for (d = descriptor_list; d; d = d->next)
 		if (d->descriptor >= 0 && !copyover_descriptor_is_eligible(d) &&
-		    d->connected != CON_SSLNEGO)
+		    d->connected != CON_SSLNEGO && !d->write_failed &&
+		    d->telnet_output_len == d->telnet_output_offset &&
+		    d->ws_output_len == d->ws_output_offset &&
+		    d->ws_control_output_len == d->ws_control_output_offset)
 		{
+			// Skip congested transports. A reconnect hint must not mark a
+			// live session failed if the exec returns.
 			if (d->websocket)
 			{
 				if (d->ws_handshake_done)
@@ -1768,6 +1836,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 				write_to_descriptor(
 					d,
 					"\r\n*** If disconnected, please reconnect in about 20 seconds. ***\r\n");
+			d->write_failed = 0;
 		}
 
 	logit(LOG_STATUS, "copyover: executing new binary...");
@@ -1782,8 +1851,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 
 	const int error = errno;
 	redis_world_writer_reclaim_after_copyover();
-	if (promoted && rename(DMS_COPYOVER_BACKUP, DMS_RUNTIME_BINARY) != 0)
-		logit(LOG_STATUS, "copyover: executable rollback failed: %s", strerror(errno));
+	binary.rollback();
 	if (!consume_copyover_image(published_path, validated))
 		logit(LOG_STATUS, "copyover: failed publication retained for review");
 	logit(LOG_STATUS, "copyover: execl failed: %s", strerror(error));
@@ -2102,7 +2170,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				char_to_room(ch, save_room, -1);
 				player_load_pets_place(ch);
 				epic_bonus_hydrate(ch);
-				start_hatred_check(ch);
+				schedule_pc_events(ch);
 
 				// stash fighting info for later restoration
 				ch->specials.copyover_fighting_type = desc_entry.fighting_type;

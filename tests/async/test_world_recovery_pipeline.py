@@ -1529,7 +1529,7 @@ assert "world_recovery_pipeline_set_sequence_floor(world_sequence_floor)" in ens
 publisher = STORE[STORE.index("bool redis_world_store_publish"):]
 for token in (
     "WORLD_PUBLISH_SCRIPT",
-    "EVAL %b 9",
+    "EVAL %b 10",
     "size > WORLD_RECOVERY_MAX_BYTES",
     "REDIS_WORLD_GENERATION_CHUNK_BYTES",
     "REDIS_WORLD_GENERATION_MANIFEST_BYTES",
@@ -1558,7 +1558,7 @@ for token in ("SEASON_INFIX", "world_state:writer_fence",
 for token in ("redis_world_store_mark_clean_shutdown",
               "redis_world_store_consume_clean_shutdown"):
     assert token in STORE
-assert publisher.index("GET %s") < publisher.index("EVAL %b 9")
+assert publisher.index("GET %s") < publisher.index("EVAL %b 10")
 assert "header.sequence != staged.sequence" in section(WORLD_RUNTIME, "bool redis_capture_boot_snapshot", "redis_world_boot_result redis_world_prepare_boot")
 assert "world_recovery_restore" in section(WORLD_RUNTIME, "bool redis_load_world_state", "void event_save_world_state")
 consume = section(WORLD_RUNTIME, "bool redis_consume_world_state", "bool redis_load_world_state")

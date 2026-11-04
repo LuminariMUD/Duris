@@ -54,6 +54,7 @@ enum class redis_world_boot_result
 struct redis_world_boot_snapshot
 {
 	uint64_t sequence = 0;
+	unsigned char manifest_tag[32] = {};
 	std::vector<unsigned char> generation;
 	// Complete encoded floor values, including their wire prefix.
 	std::vector<std::vector<unsigned char>> floor_records;
@@ -72,7 +73,7 @@ struct redis_copyover_checkpoint
 	uint64_t epoch;
 	uint64_t sequence;
 	char key_namespace[128];
-	unsigned char digest[32];
+	unsigned char manifest_tag[32];
 };
 bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *checkpoint);
 bool redis_world_prepare_copyover(const redis_copyover_checkpoint &checkpoint);

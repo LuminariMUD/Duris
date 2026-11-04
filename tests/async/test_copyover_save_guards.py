@@ -37,13 +37,16 @@ checks = {
     "copyover returns failure": body.count("return false;") >= 10,
     "copyover refuses sessions that cannot survive exec before any save or close":
         body.index("non-preservable connection") < save and
-        "before_account_login(d)" in body,
+        "d->connected == CON_PLAYING" in body[:save],
     "ships precede characters": body.index("drain_pending_ship_saves") < save,
     "lockers precede characters": body.index("locker_async_drain") < save,
     "connected saves precede remaining flush": save < flush,
     "copyover terminal saves require database acknowledgement":
         "persistence_save_character_terminal_database_acknowledged(" in body and
         "persistence_save_character_terminal(d->character" not in body,
+    "both modes save descriptorless PCs before publication":
+        body.index("if (!IS_NPC(ch) && !ch->desc") < flush and
+        "if (!copyover_preserve_world)" not in body[save:flush],
     "all saves precede publication": flush < publish,
     "pipeline drain precedes publication": flush < drain < publish,
     "pipeline drain is bounded": "player_save_pipeline_drain(30000)" in body,

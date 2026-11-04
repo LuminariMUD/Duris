@@ -4085,7 +4085,7 @@ void resolve_descriptor_hostname_async(const char *address, int descriptor)
 /* Whether d has not logged in to an account: negotiating TLS, waiting for a WebSocket
  * handshake, at a prompt to log in, create an account or reset its password, or
  * closing.  Any name gets a connection past the account name prompt. */
-bool before_account_login(const struct descriptor_data *d)
+static bool before_account_login(const struct descriptor_data *d)
 {
 	switch (d->connected)
 	{

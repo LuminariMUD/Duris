@@ -275,7 +275,7 @@ int main(int argc, char **argv)
 		strcpy(checkpoint.key_namespace, "duris:local:copyover");
 		checkpoint.epoch = 12;
 		checkpoint.sequence = 34;
-		checkpoint.digest[0] = 56;
+		checkpoint.manifest_tag[0] = 56;
 		auto bytes = descriptor_image(COPYOVER_VERSION, desc, &checkpoint);
 		write_bytes(path, bytes);
 		copyover_boot_snapshot snapshot;
@@ -283,7 +283,7 @@ int main(int argc, char **argv)
 		assert(snapshot.mobs.empty() && snapshot.objects.empty());
 		assert(snapshot.redis_checkpoint.epoch == 12 &&
 		       snapshot.redis_checkpoint.sequence == 34 &&
-		       snapshot.redis_checkpoint.digest[0] == 56);
+		       snapshot.redis_checkpoint.manifest_tag[0] == 56);
 		auto invalid_checkpoint = checkpoint;
 		memset(invalid_checkpoint.key_namespace, 'x',
 		       sizeof invalid_checkpoint.key_namespace);
@@ -363,7 +363,7 @@ int main(int argc, char **argv)
 		invalid.gmcp_session_context[10] = 'z';
 		write_bytes(path, descriptor_image(COPYOVER_VERSION, invalid));
 		assert(copyover_read_file(path, &snapshot) == copyover_boot_result::failed);
-		std::cout << "copyover descriptor protocol versions 12-20 passed\n";
+		std::cout << "copyover descriptor protocol versions 12 through current passed\n";
 		return 0;
 	}
 	if (std::string(argv[1]) == "formats")

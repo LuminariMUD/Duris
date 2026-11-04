@@ -1419,6 +1419,7 @@ int io_con_hitp(P_char);
 void assign_innates();
 void event_hatred_check(P_char, P_char, P_obj, void *);
 bool start_hatred_check(P_char);
+void schedule_pc_events(P_char);
 string list_innates(int, int, int);
 void do_innate_decrepify(P_char, P_char);
 bool has_divine_force(P_char);

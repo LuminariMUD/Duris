@@ -22555,14 +22555,14 @@ and loads a fresh world. Zones repopulate, fights end, groups must reform, and
 ordinary dropped items disappear. Separately saved corpses, storage, ships and
 shop records follow their normal reboot persistence.
 
-Login/menu, WebSocket and TLS sessions receive a notice that the MUD is copying
-over and should be back up in about 20 seconds, then disconnect. Reconnect after
-the restart. Pending saves must succeed before those sessions disconnect. If
-the executable fails to start, the current sessions stay connected.
+Login, account-menu, WebSocket and TLS sessions disconnect when the new server
+starts. When their connection can accept it, they receive a notice to reconnect
+in about 20 seconds. Pending saves must succeed before those sessions disconnect.
+If the executable fails to start, current sessions stay connected.
 
-Use shutdown hotboot to preserve the live world. Login-screen sessions may
-reconnect after hotboot. Hotboot cancels if an authenticated session cannot
-survive the handoff. The old shutdown copyover spelling is no longer accepted.
+Use shutdown hotboot to preserve the live world. Login and account-menu
+sessions reconnect after hotboot. Hotboot cancels if an in-game session cannot
+survive the handoff.
 
 See also: SHUTDOWN
 ===========================================================================
@@ -22579,8 +22579,8 @@ existing countdown unchanged. Manual countdowns cancel if the issuer leaves play
 disconnects or loses the required permission, including the final pending tick.
 Automatic reboots continue independently; shutdown hotboot toggles their hotboot
 mode. Cancellation applies before execution begins. Hotboot preserves the live
-world and playing Telnet sessions; it refuses sessions it cannot preserve. Use
-the standalone copyover command for a fresh world. A scheduled copyover must be
+world and playing Telnet sessions. It cancels when a playing session cannot
+survive the handoff. Use the standalone copyover command for a fresh world. A scheduled copyover must be
 cancelled with copyover cancel by its initiator before using shutdown.
 
 Pwipe requires the full confirm phrase with no extra arguments and Overlord

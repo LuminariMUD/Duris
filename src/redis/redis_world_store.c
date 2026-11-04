@@ -40,6 +40,7 @@
 
 namespace
 {
+constexpr size_t MANIFEST_TAG_OFFSET = 88;
 static_assert(REDIS_WORLD_GENERATION_MAX_CHUNKS * REDIS_WORLD_GENERATION_CHUNK_BYTES ==
 	      WORLD_RECOVERY_MAX_BYTES);
 
@@ -58,21 +59,28 @@ struct world_keys
 
 // The writer publishes while it holds the fence or nobody does, as it renews: a lease that
 // ran out, or that Redis lost in a restart, is taken again here.
-constexpr const char *WORLD_PUBLISH_SCRIPT = "local fence=redis.call('GET',KEYS[1]) "
-					     "if fence and fence~=ARGV[1] then return 0 end "
-					     "local current=redis.call('GET',KEYS[2]) "
-					     "if ARGV[2]=='' then if current then return 0 end "
-					     "elseif current~=ARGV[2] then return 0 end "
-					     "redis.call('SET',KEYS[3],ARGV[3]) "
-					     "redis.call('EXPIRE',KEYS[3],ARGV[8]) "
-					     "redis.call('SET',KEYS[2],ARGV[4]) "
-					     "redis.call('SET',KEYS[4],ARGV[5]) "
-					     "redis.call('SET',KEYS[5],ARGV[4]) "
-					     "redis.call('SET',KEYS[6],ARGV[6]) "
-					     "redis.call('SET',KEYS[7],'1') "
-					     "redis.call('DEL',KEYS[8],KEYS[9]) "
-					     "redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7]) "
-					     "return 1";
+constexpr const char *WORLD_PUBLISH_SCRIPT =
+	"local fence=redis.call('GET',KEYS[1]) "
+	"if fence and fence~=ARGV[1] then return 0 end "
+	"local current=redis.call('GET',KEYS[2]) "
+	"if ARGV[2]=='' then if current then return 0 end "
+	"elseif current~=ARGV[2] then return 0 end "
+	"local manifest=redis.call('GET',KEYS[3]) "
+	"if current==ARGV[4] then "
+	"  if manifest==ARGV[3] then return 1 else return 0 end "
+	"end "
+	"if manifest then return 0 end "
+	"redis.call('SET',KEYS[3],ARGV[3]) "
+	"redis.call('EXPIRE',KEYS[3],ARGV[8]) "
+	"redis.call('SET',KEYS[2],ARGV[4]) "
+	"redis.call('SET',KEYS[4],ARGV[5]) "
+	"redis.call('SET',KEYS[5],ARGV[4]) "
+	"redis.call('SET',KEYS[6],ARGV[6]) "
+	"redis.call('SET',KEYS[7],'1') "
+	"redis.call('DEL',KEYS[8],KEYS[9]) "
+	"if current then redis.call('DEL',KEYS[10]) end "
+	"redis.call('SET',KEYS[1],ARGV[1],'PX',ARGV[7]) "
+	"return 1";
 
 bool format_key(char *buffer, size_t size, const char *key_namespace, uint64_t epoch,
 		const char *suffix)
@@ -167,7 +175,7 @@ bool manifest_tag(const redis_world_store_config *config, uint64_t sequence,
 	if (!config || !config->key_namespace || !*config->key_namespace || !sequence ||
 	    !manifest_prefix || !authentication_secret_valid(secret) || !tag)
 		return false;
-	constexpr size_t signed_manifest_bytes = 88;
+	constexpr size_t signed_manifest_bytes = MANIFEST_TAG_OFFSET;
 	std::array<unsigned char, 256> authenticated = {};
 	const size_t namespace_size = strlen(config->key_namespace);
 	const size_t required = signed_manifest_bytes + namespace_size + 1 + 16;
@@ -190,12 +198,12 @@ bool manifest_tag(const redis_world_store_config *config, uint64_t sequence,
 
 bool encode_manifest(const redis_world_store_config *config, uint64_t sequence,
 		     unsigned char *output, size_t output_size, const unsigned char *generation,
-		     size_t generation_size, const char *upload_token)
+		     size_t generation_size, const char *writer_token, char (&upload_token)[33])
 {
 	if (!config || !authentication_secret_valid(config->authentication_secret) || !sequence ||
 	    !output || output_size < REDIS_WORLD_GENERATION_MANIFEST_BYTES || !generation ||
-	    !generation_size || generation_size > WORLD_RECOVERY_MAX_BYTES || !upload_token ||
-	    strlen(upload_token) != 32)
+	    !generation_size || generation_size > WORLD_RECOVERY_MAX_BYTES || !writer_token ||
+	    strlen(writer_token) != 32)
 		return false;
 	const size_t chunks = (generation_size + REDIS_WORLD_GENERATION_CHUNK_BYTES - 1) /
 			      REDIS_WORLD_GENERATION_CHUNK_BYTES;
@@ -206,10 +214,19 @@ bool encode_manifest(const redis_world_store_config *config, uint64_t sequence,
 	put_u64(output + 8, generation_size);
 	put_u32(output + 16, static_cast<uint32_t>(chunks));
 	put_u32(output + 20, REDIS_WORLD_GENERATION_CHUNK_BYTES);
-	memcpy(output + 24, upload_token, 32);
-	if (!SHA256(generation, generation_size, output + 56))
+	unsigned char *digest = output + 56;
+	unsigned char upload_digest[SHA256_DIGEST_LENGTH];
+	unsigned int upload_size = 0;
+	if (!SHA256(generation, generation_size, digest) ||
+	    !HMAC(EVP_sha256(), writer_token, 32, digest, SHA256_DIGEST_LENGTH, upload_digest,
+		  &upload_size) ||
+	    upload_size != sizeof upload_digest)
 		return false;
-	return manifest_tag(config, sequence, output, config->authentication_secret, output + 88);
+	for (size_t index = 0; index < 16; ++index)
+		snprintf(upload_token + 2 * index, 3, "%02x", upload_digest[index]);
+	memcpy(output + 24, upload_token, 32);
+	return manifest_tag(config, sequence, output, config->authentication_secret,
+			    output + MANIFEST_TAG_OFFSET);
 }
 
 bool decode_manifest(const redis_world_store_config *config, uint64_t sequence,
@@ -226,12 +243,13 @@ bool decode_manifest(const redis_world_store_config *config, uint64_t sequence,
 	bool authenticated =
 		authentication_secret_valid(config->authentication_secret) &&
 		manifest_tag(config, sequence, data, config->authentication_secret, expected_tag) &&
-		CRYPTO_memcmp(expected_tag, data + 88, SHA256_DIGEST_LENGTH) == 0;
+		CRYPTO_memcmp(expected_tag, data + MANIFEST_TAG_OFFSET, SHA256_DIGEST_LENGTH) == 0;
 	if (!authenticated && authentication_secret_valid(config->previous_authentication_secret))
 		authenticated = manifest_tag(config, sequence, data,
 					     config->previous_authentication_secret,
 					     expected_tag) &&
-				CRYPTO_memcmp(expected_tag, data + 88, SHA256_DIGEST_LENGTH) == 0;
+				CRYPTO_memcmp(expected_tag, data + MANIFEST_TAG_OFFSET,
+					      SHA256_DIGEST_LENGTH) == 0;
 	if (!authenticated)
 		return false;
 	const uint64_t total = get_u64(data + 8);
@@ -335,23 +353,11 @@ bool delete_chunk_batch(redisContext *context, const redis_world_store_config *c
 }
 
 bool delete_generation_artifacts(redisContext *context, const redis_world_store_config *config,
-				 uint64_t sequence, const char *upload_token, bool delete_manifest)
+				 uint64_t sequence, const char *upload_token)
 {
 	if (!context || !config || !sequence || !upload_token)
 		return false;
 	bool valid = true;
-	if (delete_manifest)
-	{
-		char manifest[160];
-		valid = generation_key(manifest, sizeof manifest, config, sequence);
-		if (valid)
-		{
-			redisReply *reply = command(context, "DEL %s", manifest);
-			valid = reply && reply->type == REDIS_REPLY_INTEGER;
-			if (reply)
-				freeReplyObject(reply);
-		}
-	}
 	for (size_t first = 0; first < REDIS_WORLD_GENERATION_MAX_CHUNKS; first += 16)
 		valid = delete_chunk_batch(
 				context, config, sequence, upload_token, first,
@@ -563,7 +569,8 @@ uint64_t redis_world_store_consume_clean_shutdown(const struct redis_world_store
 bool redis_world_store_consume_generation(
 	const redis_world_store_config *config, uint64_t sequence,
 	const std::vector<unsigned char> &generation,
-	const std::vector<std::vector<unsigned char>> &floor_records, const char *writer_token)
+	const std::vector<std::vector<unsigned char>> &floor_records, const char *writer_token,
+	const unsigned char *expected_tag)
 {
 	world_keys keys = {};
 	char generation_key_buffer[160];
@@ -589,6 +596,8 @@ bool redis_world_store_consume_generation(
 			     reinterpret_cast<const unsigned char *>(manifest->str), manifest->len,
 			     &generation_size, &chunk_count, upload_token, sizeof upload_token,
 			     expected_digest) ||
+	    (expected_tag && CRYPTO_memcmp(expected_tag, manifest->str + MANIFEST_TAG_OFFSET,
+					   SHA256_DIGEST_LENGTH)) ||
 	    generation_size != generation.size() ||
 	    !SHA256(generation.data(), generation.size(), actual_digest) ||
 	    CRYPTO_memcmp(expected_digest, actual_digest, sizeof expected_digest))
@@ -670,8 +679,7 @@ bool redis_world_store_consume_generation(
 		if (reply)
 			freeReplyObject(reply);
 		if (consumed)
-			delete_generation_artifacts(context.get(), config, sequence, upload_token,
-						    false);
+			delete_generation_artifacts(context.get(), config, sequence, upload_token);
 		return consumed;
 	}
 	catch (const std::bad_alloc &)
@@ -682,7 +690,7 @@ bool redis_world_store_consume_generation(
 
 bool redis_world_store_read_generation(const struct redis_world_store_config *config,
 				       uint64_t sequence, std::vector<unsigned char> *generation,
-				       bool *transport_failure)
+				       bool *transport_failure, unsigned char *manifest_tag)
 {
 	if (transport_failure)
 		*transport_failure = false;
@@ -711,6 +719,8 @@ bool redis_world_store_read_generation(const struct redis_world_store_config *co
 				     reinterpret_cast<const unsigned char *>(manifest->str),
 				     manifest->len, &generation_size, &chunk_count, upload_token,
 				     sizeof upload_token, generation_digest);
+	if (valid && manifest_tag)
+		memcpy(manifest_tag, manifest->str + MANIFEST_TAG_OFFSET, SHA256_DIGEST_LENGTH);
 	if (manifest)
 		freeReplyObject(manifest);
 	try
@@ -765,7 +775,8 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 					const char *writer_token, uint64_t lease_msec,
 					const unsigned char *data, size_t size, uint64_t sequence,
 					int64_t timestamp, uint32_t checksum,
-					redis_shared_command_outcome *outcome)
+					redis_shared_command_outcome *outcome,
+					unsigned char *manifest_tag)
 {
 	if (outcome)
 		*outcome = REDIS_SHARED_OUTCOME_ERROR_REPLY;
@@ -796,26 +807,43 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 	if (current_reply)
 		freeReplyObject(current_reply);
 
-	char expected[32] = {};
-	const int expected_length = previous_sequence ?
-					    snprintf(expected, sizeof expected, "%llu",
-						     (unsigned long long)previous_sequence) :
-					    0;
-	if (expected_length < 0 || (size_t)expected_length >= sizeof expected)
-		valid = false;
+	// Different writers or payloads get separate chunk keys. An identical retry
+	// can acknowledge its original manifest without modifying the head or floor.
+	const bool retry = previous_sequence == sequence;
+	char previous_manifest[160] = {};
+	char previous_upload_token[33] = {};
+	valid = valid && previous_sequence <= sequence;
+	if (valid && previous_sequence && !retry)
+	{
+		valid = generation_key(previous_manifest, sizeof previous_manifest, config,
+				       previous_sequence);
+		if (valid)
+			manifest_upload_token(context, config, previous_sequence,
+					      previous_upload_token, sizeof previous_upload_token);
+	}
+	const std::string expected = previous_sequence ? std::to_string(previous_sequence) : "";
+	char upload_token[33] = {};
 	std::array<unsigned char, REDIS_WORLD_GENERATION_MANIFEST_BYTES> manifest = {};
 	valid = valid && encode_manifest(config, sequence, manifest.data(), manifest.size(), data,
-					 size, writer_token);
+					 size, writer_token, upload_token);
+	if (valid && retry)
+	{
+		std::vector<unsigned char> existing;
+		unsigned char tag[SHA256_DIGEST_LENGTH];
+		valid = redis_world_store_read_generation(config, sequence, &existing, nullptr,
+							  tag) &&
+			!CRYPTO_memcmp(tag, manifest.data() + MANIFEST_TAG_OFFSET, sizeof tag);
+	}
 	const size_t chunk_count = (size + REDIS_WORLD_GENERATION_CHUNK_BYTES - 1) /
 				   REDIS_WORLD_GENERATION_CHUNK_BYTES;
-	for (size_t index = 0; valid && index < chunk_count; ++index)
+	for (size_t index = 0; valid && !retry && index < chunk_count; ++index)
 	{
 		char chunk_key[192];
 		const size_t offset = index * REDIS_WORLD_GENERATION_CHUNK_BYTES;
 		const size_t chunk_size =
 			std::min(REDIS_WORLD_GENERATION_CHUNK_BYTES, size - offset);
 		valid = generation_chunk_key(chunk_key, sizeof chunk_key, config, sequence,
-					     writer_token, static_cast<unsigned int>(index)) &&
+					     upload_token, static_cast<unsigned int>(index)) &&
 			status_ok(command(context, "SET %s %b EX %llu", chunk_key, data + offset,
 					  chunk_size,
 					  (unsigned long long)config->generation_ttl_seconds));
@@ -824,11 +852,12 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 	{
 		redisReply *reply = command(
 			context,
-			"EVAL %b 9 %s %s %s %s %s %s %s %s %s %b %b %b %llu %lld %u %llu %llu",
+			"EVAL %b 10 %s %s %s %s %s %s %s %s %s %s %b %b %b %llu %lld %u %llu %llu",
 			WORLD_PUBLISH_SCRIPT, strlen(WORLD_PUBLISH_SCRIPT), keys.fence,
 			keys.current, generation, keys.timestamp, keys.sequence, keys.checksum,
-			keys.complete, keys.floor_drops, keys.floor_drop_index, writer_token,
-			strlen(writer_token), expected, (size_t)expected_length, manifest.data(),
+			keys.complete, keys.floor_drops, keys.floor_drop_index,
+			previous_manifest[0] ? previous_manifest : generation, writer_token,
+			strlen(writer_token), expected.data(), expected.size(), manifest.data(),
 			manifest.size(), (unsigned long long)sequence, (long long)timestamp,
 			checksum, (unsigned long long)lease_msec,
 			(unsigned long long)config->generation_ttl_seconds);
@@ -837,17 +866,12 @@ bool redis_world_store_publish_observed(const struct redis_world_store_config *c
 			freeReplyObject(reply);
 	}
 	const redis_shared_command_outcome failure_outcome = redis_command_outcome(context, false);
-	if (!valid)
-		delete_generation_artifacts(context, config, sequence, writer_token, false);
-
-	if (valid && previous_sequence && previous_sequence != sequence)
-	{
-		char previous_upload_token[33] = {};
-		if (manifest_upload_token(context, config, previous_sequence, previous_upload_token,
-					  sizeof previous_upload_token))
-			delete_generation_artifacts(context, config, previous_sequence,
-						    previous_upload_token, true);
-	}
+	// Failed attempts expire by TTL. A lost reply may follow a committed EVAL.
+	if (valid && previous_upload_token[0])
+		delete_generation_artifacts(context, config, previous_sequence,
+					    previous_upload_token);
+	if (valid && manifest_tag)
+		memcpy(manifest_tag, manifest.data() + MANIFEST_TAG_OFFSET, SHA256_DIGEST_LENGTH);
 	redisFree(context);
 	if (outcome)
 		*outcome = valid ? REDIS_SHARED_OUTCOME_SUCCESS : failure_outcome;

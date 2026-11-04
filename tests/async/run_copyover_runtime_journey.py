@@ -20,6 +20,7 @@ import zlib
 import test_flatfile_combat_journey as journey
 from test_gmcp_control_journey import negotiate, wait_telnet, telnet_packets
 from test_flight_network_journey import command
+from run_racial_pulse_journey import paged
 from test_connection_limit_journey import send_frame, take_frame, upgrade
 
 
@@ -88,6 +89,54 @@ def login_roundtrip(session, received):
     receive_until(session, b'is this correct?')
 
 
+def redis_socket_inodes(pid, port):
+    proc = Path(f'/proc/{pid}')
+    remote = f'0100007F:{port:04X}'
+    tcp = (proc / 'net/tcp').read_text().splitlines()[1:]
+    candidates = {f'socket:[{row[9]}]' for line in tcp if (row := line.split())[2] == remote}
+    opened = set()
+    for fd in (proc / 'fd').iterdir():
+        try:
+            opened.add(os.readlink(fd))
+        except FileNotFoundError:
+            pass  # A short-lived Redis operation may have finished.
+    return opened & candidates
+
+
+def account_menu(port):
+    session = journey.MudClient(port)
+    entry, _ = session.expect_any(('term type', 'account name'))
+    if entry == 'term type':
+        session.send('9')
+        session.expect('account name')
+    # A login to the playing account would evict its existing connection.
+    session.send('Menucopytest')
+    session.expect('is this correct?')
+    session.send('y')
+    session.expect('email address')
+    session.send('menucopytest@example.test')
+    session.expect('is this correct?')
+    session.send('y')
+    session.expect('enter your password')
+    session.send(journey.PASSWORD)
+    session.expect('Please re-enter the same password to confirm:  ')
+    session.send(journey.PASSWORD)
+    session.expect('information correct?')
+    session.send('y')
+    session.expect('PRESS RETURN')
+    session.send('')
+    session.expect('Please select an option')
+    return session
+
+
+def player_periodic_events(client):
+    events = {'event_autosave', 'event_hatred_check', 'event_smite_evil',
+              'event_halfling_check', 'event_righteous_aura_check',
+              'event_bleak_foeman_check', 'event_blood_tithe'}
+    status = paged(client, f'stat char {journey.CHARACTER}', 'event_autosave')
+    return {event for event in events if event in status}
+
+
 def add_full_world_arena(runtime):
     # Keep the real world and its required services. Only replace the arena
     # room, mobs and loot marker in copies of the generated inputs.
@@ -129,8 +178,16 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
         (runtime / 'logs/log/.gitignore').write_text('*\n')
         (runtime / 'journals' / 'critical').mkdir(parents=True, mode=0o700)
         (runtime / 'bin/server').mkdir(parents=True)
-        shutil.copy2(binary, runtime / 'bin/server/dms')
-        shutil.copy2(binary, runtime / 'bin/server/dms_new')
+        active = runtime / 'bin/server/dms'
+        staged = runtime / 'bin/server/dms_new'
+        shutil.copy2(binary, active)
+        shutil.copy2(active, staged)
+        event_names = runtime / 'lib/misc/event_names'
+        event_names.parent.mkdir(exist_ok=True)
+        event_names.unlink(missing_ok=True)  # replace the fixture's link, never the source
+        with event_names.open('w') as output:
+            subprocess.run([str(journey.ROOT / 'scripts/event_names.sh'), str(active)],
+                           check=True, stdout=output)
         path = root / 'copyover-state/copyover.dat'
         port, tls, websocket = journey.available_ports()
         env = dict(PATH=os.environ.get('PATH', '/usr/bin:/bin'), ENVIRONMENT='local',
@@ -254,20 +311,23 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                     assert redis('ACL', 'SETUSER', 'default', '+eval') == 'OK'
                 client.send('look'); client.expect('The Regression Arena')
 
-                client.send('copyover')
-                client.expect('Copyover complete!', timeout=60)
-                assert not path.exists() and not redis('GET', current)
-                assert 'generation and floor handoff acknowledged' in (
-                    runtime / 'logs/log/sys').read_text(errors='replace')
-
-                # Let the SQL boot's bounded artifact retries finish before
-                # asking for another handoff and injecting the replacement error.
-                client.send('save')
-                client.expect(f'Save complete for {journey.CHARACTER}.')
-                time.sleep(6)
-                staged = runtime / 'bin/server/dms_new'
+                for _ in range(2):
+                    before = redis_socket_inodes(process.pid, redis_port)
+                    assert before, 'fixture has no live Redis connections'
+                    client.send('copyover')
+                    client.expect('Copyover complete!', timeout=60)
+                    after = redis_socket_inodes(process.pid, redis_port)
+                    assert after and before.isdisjoint(after), (before, after)
+                    assert not path.exists() and not redis('GET', current)
+                    assert 'generation and floor handoff acknowledged' in (
+                        runtime / 'logs/log/sys').read_text(errors='replace')
+                    # Let the SQL boot finish its bounded artifact retries.
+                    client.send('save')
+                    client.expect(f'Save complete for {journey.CHARACTER}.')
+                    time.sleep(6)
+                print('two real execs replaced every Redis socket', flush=True)
                 valid = runtime / 'bin/server/fixture-replacement'
-                shutil.copy2(binary, valid)
+                shutil.copy2(active, valid)
                 staged.write_text(f'#!/bin/sh\nmv lib/duris.properties lib/duris.properties.fixture\n'
                                   f'exec {valid} --minimal -C {port}\n')
                 staged.chmod(0o700)
@@ -323,8 +383,6 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 original_snapshot.replace(snapshot)
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.')
 
-            staged = runtime / 'bin/server/dms_new'
-            active = runtime / 'bin/server/dms'
             active_inode = active.stat().st_ino
             staged.unlink()
             staged.mkdir()
@@ -364,7 +422,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             client.send('save'); client.expect(f'Save complete for {journey.CHARACTER}.', timeout=30)
             assert process.poll() is None and not path.exists() and not claimed.exists()
             assert active.stat().st_ino == active_inode, 'failed promotion left the broken binary active'
-            shutil.copy2(binary, staged)
+            shutil.copy2(active, staged)
             if nonroot: os.chown(staged, 10001, 10001)
             if compressed:
                 client.enable_compression()
@@ -375,12 +433,17 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                     '#22799\nThe Inserted Room~\nA new room changes runtime indices.\n~\n1 0 0\nS\n#22800\n'))
             print('failed player write and failed exec preserved state, sockets and retryability', flush=True)
             switched_target = 'dummy'
-            if fresh and not compressed:
+            if not compressed:
                 switched_target = 'Sarel'
                 other = journey.MudClient(port)
                 try:
                     journey.create_character(other, account='Altcopytest', character=switched_target,
                                              email='altcopytest@example.test')
+                    command(client, 'load obj 32')
+                    command(client, 'give pizza Sarel')
+                    assert 'pizza' in command(other, 'inventory').lower()
+                    other.send('save')
+                    other.expect('Save complete for Sarel.')
                 finally:
                     other.close()
                 client.expect('has lost', timeout=15)
@@ -395,7 +458,10 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             # Account-prompt clients cannot veto either type of restart.
             idle = socket.create_connection(('127.0.0.1', port), timeout=10)
             idle.recv(65536)
-            disconnected = [idle]
+            menu = account_menu(port)
+            disconnected = [idle, menu.socket]
+            expected_events = player_periodic_events(client)
+            assert {'event_autosave', 'event_hatred_check'} <= expected_events, expected_events
             if fresh:
                 tls_client = ssl._create_unverified_context().wrap_socket(
                     socket.create_connection(('127.0.0.1', tls), timeout=10), server_hostname='localhost')
@@ -412,7 +478,16 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
             packet_cursor = len(telnet_packets(client))
             client.send(f'switch {switched_target}')
             client.expect('Ok.', timeout=15)
-            client.send('copyover' if fresh else 'shutdown hotboot')
+            if switched_target == 'Sarel':
+                # Staff-only commands target the original body when switched.
+                # Eat from the controlled PC's saved inventory before the handoff.
+                client.send('eat pizza')
+                client.expect('You eat')
+                assert 'pizza' not in command(client, 'inventory').lower()
+            if not fresh and switched_target == 'Sarel':
+                process.send_signal(signal.SIGUSR1)
+            else:
+                client.send('copyover' if fresh else 'shutdown hotboot')
             client.expect('Copyover complete!', timeout=90)
             for session in disconnected:
                 received = b''
@@ -425,6 +500,14 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 assert b'about 20 seconds' in received, received
             assert not stale_host.exists(), 'dropped descriptor hostname survived exec'
             assert f'Score information for {journey.CHARACTER}' in command(client, 'score')
+            recovered_events = player_periodic_events(client)
+            assert recovered_events == expected_events, (expected_events, recovered_events)
+            if switched_target == 'Sarel':
+                other = journey.reconnect_character(port, account='Altcopytest', character='Sarel')
+                try:
+                    assert 'pizza' not in command(other, 'inventory').lower()
+                finally:
+                    other.close()
             after = command(client, 'look').lower()
             assert ('raoul' in after) == fresh, after
             assert ('banana' in after) != fresh, after
@@ -460,7 +543,7 @@ def run(binary, compressed, nonroot=False, fresh=False, full_world=False, redis_
                 # Corrupt only the account binding in the sealed descriptor before boot.
                 # The player repository still returns its original authenticated account.
                 valid = runtime / 'bin/server/fixture-replacement'
-                shutil.copy2(binary, valid)
+                shutil.copy2(active, valid)
                 args = [str(valid), *([] if full_world else ['--minimal']), '-C', str(port)]
                 staged.write_text(f"""#!/usr/bin/env python3
 import os, pathlib
@@ -490,7 +573,11 @@ os.execv({str(valid)!r}, {args!r})
             print(journey.runtime_logs(runtime))
             if client: print(client.transcript.decode(errors='replace')[-6000:])
             raise
-        finally: stop()
+        finally:
+            stop()
+            if redis_server:
+                redis_server.terminate()
+                redis_server.wait(timeout=10)
 
 
 if __name__ == '__main__':

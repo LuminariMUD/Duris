@@ -16,7 +16,7 @@ assert 'PORT="${1:-4000}"' in body, "GDB must default to development port 4000"
 assert "PORT == 7777" in body, "GDB wrapper no longer refuses the production port"
 assert 'STAGED_BINARY="bin/server/dms_new"' in body
 assert 'RUNTIME_BINARY="bin/server/dms"' in body
-assert 'cp -f "$STAGED_BINARY" "$RUNTIME_BINARY"' in body, (
+assert 'cp -p "$STAGED_BINARY" "$tmp"' in body and 'flock -x 8' in body, (
     "GDB wrapper must preserve the staged build output"
 )
 assert 'mv "$STAGED_BINARY" "$RUNTIME_BINARY"' not in body
