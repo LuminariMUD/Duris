@@ -162,10 +162,18 @@ static void put_floor(redisContext *context, uint64_t uid, const std::vector<uns
 	freeReplyObject(reply);
 }
 
+static bool floor_quiesced;
+void redis_floor_runtime_set_quiesced(bool quiesced)
+{
+	floor_quiesced = quiesced;
+}
+
 static void reset_boot()
 {
 	world_boot_prepared = false;
 	world_boot_restored = false;
+	world_copyover_discard_pending = false;
+	floor_quiesced = false;
 	world_boot_result = redis_world_boot_result::failed;
 	world_boot_snapshot = {};
 	clean_restart_boot = false;
@@ -200,22 +208,50 @@ static void pinning_checks(redisContext *other, int port)
 		publish(first, 1);
 		put_floor(other, 202, floor);
 	};
-	// Player-only copyover retires the sealed predecessor without materializing
-	// any world records; even the following cold boot must see an empty world.
-	seeded();
-	assert(redis_world_discard_for_copyover() && restore_calls == 0);
+	redis_copyover_checkpoint checkpoint = {};
+	checkpoint.epoch = 42;
+	checkpoint.sequence = 1;
+	strcpy(checkpoint.key_namespace, "mud");
+	assert(SHA256(first.data(), first.size(), checkpoint.digest));
+	auto sealed = [&]
+	{
+		seeded();
+		publish(first, 1); // Publication atomically clears the floor cut.
+		assert(redis_world_store_release_fence(&config, writer));
+		world_writer_token.clear();
+		world_writer_epoch = 0;
+	};
+	uint64_t retained = 0;
+	sealed();
+	assert(redis_world_prepare_copyover(checkpoint) && restore_calls == 0 && floor_quiesced);
+	// Boot preflight never deletes the fallback, including if boot stops here.
+	assert(redis_world_boot_sequence(&retained) && retained == 1);
+	assert(redis_world_discard_for_copyover() && restore_calls == 0 && !floor_quiesced);
 	assert(redis_world_prepare_boot() == redis_world_boot_result::absent);
 	assert(world_sequence_floor >= 1);
 	reset_boot();
 	assert(redis_world_prepare_boot() == redis_world_boot_result::absent);
-	seeded();
-	assert(redis_world_prepare_boot() == redis_world_boot_result::ready);
-	publish(second, 2);
+
+	sealed();
+	publish(second, 2); // Another process publishes before the replacement pins.
+	assert(redis_world_store_release_fence(&config, writer));
+	assert(!redis_world_prepare_copyover(checkpoint) && restore_calls == 0);
+	assert(redis_world_boot_sequence(&retained) && retained == 2);
+
+	sealed();
+	assert(redis_world_prepare_copyover(checkpoint));
+	put_floor(other, 202, floor); // A floor write after boot preflight is a different cut.
 	assert(!redis_world_discard_for_copyover() && restore_calls == 0);
-	{
-		uint64_t retained = 0;
-		assert(redis_world_boot_sequence(&retained) && retained == 2);
-	}
+	assert(redis_world_boot_sequence(&retained) && retained == 1);
+
+	sealed();
+	assert(redis_world_prepare_copyover(checkpoint));
+	assert(redis_world_store_release_fence(&config, world_writer_token.c_str()));
+	assert(redis_world_store_claim_fence(&config, writer, 600000));
+	assert(!redis_world_discard_for_copyover() && restore_calls == 0);
+	assert(redis_world_boot_sequence(&retained) && retained == 1);
+	world_writer_token.clear();
+	world_writer_epoch = 0;
 	for (int phase : { 1, 2 })
 	{
 		seeded();

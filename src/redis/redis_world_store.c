@@ -563,7 +563,7 @@ uint64_t redis_world_store_consume_clean_shutdown(const struct redis_world_store
 bool redis_world_store_consume_generation(
 	const redis_world_store_config *config, uint64_t sequence,
 	const std::vector<unsigned char> &generation,
-	const std::vector<std::vector<unsigned char>> &floor_records)
+	const std::vector<std::vector<unsigned char>> &floor_records, const char *writer_token)
 {
 	world_keys keys = {};
 	char generation_key_buffer[160];
@@ -597,11 +597,12 @@ bool redis_world_store_consume_generation(
 	// the restored cut. A same-count replacement is a change, not permission to
 	// delete it. Every comparison precedes every write in this atomic script.
 	constexpr const char *script =
+		"if ARGV[4]~='' and redis.call('GET',KEYS[10])~=ARGV[4] then return 0 end "
 		"if redis.call('GET',KEYS[1])~=ARGV[1] or redis.call('GET',KEYS[2])~=ARGV[2] then return 0 end "
 		"local n=tonumber(ARGV[3]) "
 		"if redis.call('HLEN',KEYS[8])~=n or redis.call('ZCARD',KEYS[9])~=n then return 0 end "
-		"for i=0,n-1 do local uid=ARGV[4+2*i] "
-		"if redis.call('HGET',KEYS[8],uid)~=ARGV[5+2*i] or not redis.call('ZSCORE',KEYS[9],uid) then return 0 end end "
+		"for i=0,n-1 do local uid=ARGV[5+2*i] "
+		"if redis.call('HGET',KEYS[8],uid)~=ARGV[6+2*i] or not redis.call('ZSCORE',KEYS[9],uid) then return 0 end end "
 		"redis.call('DEL',KEYS[1],KEYS[2],KEYS[3],KEYS[4],KEYS[5],KEYS[6],KEYS[7],KEYS[8],KEYS[9]) return 1";
 	try
 	{
@@ -630,7 +631,7 @@ bool redis_world_store_consume_generation(
 			return false;
 		std::vector<const char *> arguments = { "EVAL",
 							script,
-							"9",
+							"10",
 							keys.current,
 							generation_key_buffer,
 							keys.timestamp,
@@ -640,9 +641,11 @@ bool redis_world_store_consume_generation(
 							keys.clean_shutdown,
 							keys.floor_drops,
 							keys.floor_drop_index,
+							keys.fence,
 							seq.c_str(),
 							manifest->str,
-							count.c_str() };
+							count.c_str(),
+							writer_token ? writer_token : "" };
 		std::vector<size_t> lengths;
 		arguments.reserve(arguments.size() + 2 * floor_records.size());
 		for (size_t index = 0; index < floor_records.size(); ++index)
@@ -652,8 +655,8 @@ bool redis_world_store_consume_generation(
 				reinterpret_cast<const char *>(floor_records[index].data()));
 		}
 		lengths.reserve(arguments.size());
-		for (size_t index = 0; index < 15; ++index)
-			lengths.push_back(index == 13 ? manifest->len : strlen(arguments[index]));
+		for (size_t index = 0; index < 17; ++index)
+			lengths.push_back(index == 14 ? manifest->len : strlen(arguments[index]));
 		for (size_t index = 0; index < floor_records.size(); ++index)
 		{
 			lengths.push_back(uids[index].size());

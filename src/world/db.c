@@ -3096,7 +3096,7 @@ static void stage_artifact_population()
 			fatal_boot_error("artifact_identity",
 					 "Object prototype catalog exceeds population limit");
 		const auto &population = artifact_population_boot_evidence();
-		const bool restorable = copyover_restores_world() ||
+		const bool restorable = copyover_boot ||
 					redis_world_prepare_boot() !=
 						redis_world_boot_result::ready ||
 					redis_world_validate_boot();

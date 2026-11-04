@@ -5049,6 +5049,22 @@ void do_switch(P_char ch, char *argument, int cmd)
 	}
 }
 
+bool return_from_staff_switch(P_desc d)
+{
+	if (!d || !d->character || !d->original || IS_NPC(d->original) ||
+	    d->original->only.pc->switched != d->character || IS_MORPH(d->character))
+		return false;
+	P_char controlled = d->character;
+	send_to_char("You return to your original body.\n", controlled);
+	d->character = d->original;
+	d->original = nullptr;
+	d->character->only.pc->switched = nullptr;
+	d->character->desc = d;
+	controlled->desc = nullptr;
+	gmcp_session_update(d);
+	return true;
+}
+
 void do_return(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	/*  if(CHAR_POLYMORPH_OBJ(ch))
@@ -5075,21 +5091,7 @@ void do_return(P_char ch, char * /*argument*/, int /*cmd*/)
 		send_to_char("Use \"shape me\" to return to your normal form.\n", ch);
 		return;
 	}
-	if (ch->desc->original->only.pc->switched)
-	{
-		P_char switched_mob = ch->desc->character; // Save reference to the mob
-
-		send_to_char("You return to your original body.\n", ch);
-
-		ch->desc->character = ch->desc->original;
-		ch->desc->original = 0;
-		ch->desc->character->only.pc->switched = 0;
-
-		ch->desc->character->desc = ch->desc;
-		gmcp_session_update(ch->desc);
-		switched_mob->desc = 0; // Clear the MOB's desc, not ch->desc
-	}
-	else /* switched body due to shape change  */
+	if (!return_from_staff_switch(ch->desc))
 		send_to_char("No effect.\n", ch);
 }
 

@@ -2164,10 +2164,23 @@ bool persistence_save_character_terminal(P_char ch, int type)
 	return true;
 }
 
-/** Copyover drains the writer after queuing every save. */
+/** A copyover may discard the live body only after this revision lands. */
 bool persistence_save_character_terminal_database_acknowledged(P_char ch, int type)
 {
-	return persistence_save_character_terminal(ch, type);
+	if (!ch || IS_NPC(ch) || GET_PID(ch) <= 0 || !GET_NAME(ch))
+		return false;
+	const int room = calculate_save_room(ch, type, ch->in_room);
+	if (player_save_pipeline_terminal(ch, type, room, 5000) !=
+	    player_save_terminal_result::database_acknowledged)
+		return false;
+	locker_post_save_hook(ch);
+	if (!sync_account_character_projection(ch, room, FALSE) ||
+	    !save_account_character_departure(ch))
+		return false;
+	if (struct deferred_save_slot *slot = find_deferred_save_slot(GET_PID(ch)))
+		memset(slot, 0, sizeof(*slot));
+	clear_manual_save_status(GET_PID(ch));
+	return true;
 }
 
 /** Queue a terminal save for every live player; the caller drains the writer. */

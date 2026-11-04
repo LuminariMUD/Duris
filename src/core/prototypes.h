@@ -639,6 +639,7 @@ void do_release(P_char, char *, int);
 void do_reroll(P_char, char *, int);
 void do_restore(P_char, char *, int);
 void do_return(P_char, char *, int);
+bool return_from_staff_switch(P_desc);
 void do_revoke(P_char, char *, int);
 /*void do_revoketitle(P_char, char *, int);*/
 void do_secret(P_char, char *, int);

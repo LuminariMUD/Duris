@@ -1367,6 +1367,7 @@ void reset_zone(int zone, int force_item_repop)
 }
 @GROUND_LOADER@
 int copyover_boot = 0;
+bool copyover_restores_world() { return copyover_boot != 0; }
 int is_copyover_boot() { return 0; }
 void addOnMobArtis_sql() {}
 void run_artifact_boot();
@@ -1412,7 +1413,7 @@ FALLBACK_SUPPORT = FALLBACK_SUPPORT.replace(
 HARNESS = HARNESS.replace("int main()", FALLBACK_SUPPORT + "\nint main()", 1)
 
 
-COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + extract_function("copyover.c", "bool copyover_training_dummy_is(") + section(COPYOVER, "static bool copyover_world_mob", "// raw write to socket fd")
+COPYOVER_HELPERS = section(COPYOVER, "int copyover_write_obj_to_buffer", "int copyover_write_door_to_buffer") + COPYOVER[COPYOVER.index("P_obj copyover_restore_obj_from_buffer"):] + extract_function("copyover.c", "bool copyover_training_dummy_is(") + section(COPYOVER, "static bool copyover_world_mob", "// notify websocket users before disconnect")
 TAKEABILITY = section(
     (SRC / "item/item_command_policy.c").read_text(),
     "bool item_command_object_is_takeable",
@@ -1569,7 +1570,8 @@ store_consume = section(
     STORE, "bool redis_world_store_consume_generation", "bool redis_world_store_read_generation"
 )
 assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store_consume
-assert "keys.current" in store_consume and "generation_key_buffer" in store_consume and "keys.fence" not in store_consume
+assert "keys.current" in store_consume and "generation_key_buffer" in store_consume
+assert "keys.fence" in store_consume and "writer_token ? writer_token" in store_consume
 assert "redis_consume_world_state()" in COMM
 assert "redis_clear_world_state();" not in section(
     COMM, "// redis crash recovery - restore world state from redis snapshot", "PROFILES(RESET)"

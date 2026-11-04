@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed copyover ordering and live-process recovery contracts."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,16 +28,16 @@ save = body.index("persistence_save_character_terminal")
 flush = body.index("persistence_flush_all_character_saves")
 drain = body.index("player_save_pipeline_drain")
 publish = body.index("renameat2(AT_FDCWD, copyover_tmp")
-close = body.index("close(d->descriptor)")
-prepare_client = body.index("copyover_prepare_socket(d->descriptor)")
-progress_notice = body.index("*** Copyover in progress... ***")
+prepare_client = body.index("fd_flags.prepare(d->descriptor, inherit)")
+finish_compression = body.index("compress_end(d, 1)")
+progress_notice = body.index("If disconnected, please reconnect")
 execute = body.index("execl(")
 
 checks = {
     "copyover returns failure": body.count("return false;") >= 10,
     "copyover refuses sessions that cannot survive exec before any save or close":
         body.index("non-preservable connection") < save and
-        body.index("non-preservable connection") < close,
+        "before_account_login(d)" in body,
     "ships precede characters": body.index("drain_pending_ship_saves") < save,
     "lockers precede characters": body.index("locker_async_drain") < save,
     "connected saves precede remaining flush": save < flush,
@@ -49,11 +49,15 @@ checks = {
     "pipeline drain is bounded": "player_save_pipeline_drain(30000)" in body,
     "copyover abort reopens pipeline": "player_save_pipeline_resume();" in
                                        copyover[copyover.index("static void notify_copyover_failure"):
-                                                copyover.index("static void raw_write_to_fd", copyover.index("static void notify_copyover_failure"))],
-    "publication precedes descriptor close": publish < close,
-    "publication precedes client fd mutation": publish < prepare_client,
-    "publication precedes progress notice": publish < progress_notice,
-    "descriptor close precedes exec": close < execute,
+                                                copyover.index("static int write_desc_entry", copyover.index("static void notify_copyover_failure"))],
+    "no premature descriptor close": "close(d->descriptor)" not in body,
+    "prepared fds and drained MCCP precede publication": prepare_client < finish_compression < publish,
+    "publication precedes progress notice": publish < progress_notice < execute,
+    "replacement validates listeners and commits Redis before accepting commands":
+        comm.index("copyover_recover(&recovered_mother_desc") <
+        comm.index("redis_world_discard_for_copyover()") < comm.index("copyover_commit_boot()") <
+        comm.index('fprintf(stderr, "Entering game loop.'),
+    "failed exec retires its own publication": execute < body.rindex("consume_copyover_image(published_path, validated)"),
     "failure says server remains live": "server remains live" in body,
     "copyover runs inside live game loop": "copyover_save(s, S, WS)" in
                                            comm[comm.index("void game_loop("):],
@@ -65,8 +69,8 @@ checks = {
     "failed recovery uses graceful shutdown":
         "copyover recovery failed; requesting graceful cold restart" in comm and
         "_reboot = 1;" in comm and
-        "exit(1);" not in comm[comm.index("else if (copyover_boot)"):
-                               comm.index("else", comm.index("else if (copyover_boot)") + 5)],
+        "exit(1);" not in comm[comm.index("// Copyover recovery needs the descriptor pool."):
+                               comm.index("// redis crash recovery - restore world state")],
     "copyover defers SQL corpse restoration":
         "if (!copyover_restores_world())" in db[db.index("-- Player corpses") - 500:
                                      db.index("Reloading SavedItems")],
@@ -99,6 +103,8 @@ assert all(checks.values())
 
 HARNESS = r'''
 #include "core/utils.h"
+#include "account/account.h"
+#include "ships/ships.h"
 #include "persistence/copyover.h"
 #include <cassert>
 #include <cstdlib>
@@ -107,8 +113,22 @@ HARNESS = r'''
 index_data mob_indexes[2] = {};
 P_index mob_index = mob_indexes;
 bool copyover_preserve_world = true;
-room_data rooms[1] = {};
+room_data rooms[4] = {};
 P_room world = rooms;
+const int top_of_world = 3;
+static ShipData ship = {};
+static bool ship_exists = true;
+P_ship get_ship_from_char(P_char) { return &ship; }
+P_ship find_ship_by_database_id(uint32_t id)
+{
+    return ship_exists && id == 42 ? &ship : nullptr;
+}
+int real_room(int vnum)
+{
+    for (int room = 0; room <= top_of_world; ++room)
+        if (rooms[room].number == vnum) return room;
+    return NOWHERE;
+}
 
 int panic_corruption_int(const char *, const char *, ...)
 {
@@ -121,7 +141,7 @@ P_char get_linked_char(P_char ch, ush_int type)
         if (link->type == type) return link->linked;
     return nullptr;
 }
-''' + descriptor_capture + r'''
+''' + descriptor_capture + '\n' + extract_function('copyover.c', 'static int copyover_player_room(') + r'''
 int main()
 {
     char_data owner = {}, pet = {}, unrelated = {};
@@ -151,6 +171,17 @@ int main()
     descriptor_data descriptor = {};
     descriptor.descriptor = 10;
     descriptor.character = &owner;
+    acct_entry account = {};
+    account.acct_name = const_cast<char *>("testaccount");
+    descriptor.account = &account;
+    rooms[0].number = VROOM_SHIPS_START;
+    rooms[1].number = 100;
+    rooms[2].number = VROOM_SHIPS_START + 1;
+    ship.anchor = 100;
+    ship.room_count = 1;
+    ship.room[0].roomnum = rooms[0].number;
+    ship.db_id = 42;
+    SET_BIT(ship.flags, LOADED);
     descriptor.gmcp_supports = 7;
     descriptor.gmcp_interests = 2;
     descriptor.gmcp_session_generation = 9007199254740993ULL;
@@ -172,6 +203,19 @@ int main()
     assert(!strcmp(saved.gmcp_session_context, descriptor.gmcp_session_context));
 
     assert(saved.pet_vnums[0] == 1201);
+    assert(!strcmp(saved.account_name, "testaccount"));
+    assert(saved.ship_id == 42 && saved.ship_room_slot == 0 && saved.room == 100);
+    ship.room[0].roomnum = rooms[2].number;
+    assert(copyover_player_room(saved, 20, false, &owner) == 2);
+    assert(copyover_player_room(saved, 20, true, &owner) == 2);
+    ship_exists = false;
+    assert(copyover_player_room(saved, 20, false, &owner) == 1);
+    ship_exists = true;
+    saved.ship_room_slot = 2;
+    assert(copyover_player_room(saved, 20, true, &owner) == 1);
+    saved.room = 1;
+    assert(copyover_player_room(saved, 19, true, &owner) == 1);
+    puts("Copyover cabin identity survives pool reassignment and falls back ashore");
 }
 '''
 with tempfile.TemporaryDirectory(prefix="duris-copyover-pet-owner-") as directory:

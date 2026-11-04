@@ -203,8 +203,9 @@ unsigned int artifact_population_read_copyover(const copyover_boot_snapshot &sna
 	if (snapshot.bytes.size() < sizeof(copyover_header) ||
 	    (memcmp(snapshot.header.magic, COPYOVER_MAGIC, 4) && !players_only) ||
 	    (players_only &&
-	     (snapshot.header.version != COPYOVER_VERSION || snapshot.header.num_mobs ||
-	      snapshot.header.num_objects || snapshot.header.num_rooms)) ||
+	     (snapshot.header.version < 19 || snapshot.header.version > COPYOVER_VERSION ||
+	      snapshot.header.num_mobs || snapshot.header.num_objects ||
+	      snapshot.header.num_rooms)) ||
 	    snapshot.header.num_mobs < 0 || snapshot.header.num_objects < 0 ||
 	    static_cast<size_t>(snapshot.header.num_mobs) != snapshot.mobs.size() ||
 	    static_cast<size_t>(snapshot.header.num_objects) != snapshot.objects.size())

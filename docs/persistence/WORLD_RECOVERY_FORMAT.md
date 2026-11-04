@@ -187,15 +187,25 @@ implementation before reaching process replacement.
 
 ### Player-only copyover handoff
 
-Standalone `copyover` uses the same version-19 header and descriptor/telemetry
-records with magic `CPYP`. Mob, object and door counts must be zero. Descriptor
-rooms are virtual room numbers in this mode so changed area ordering cannot move
-players into the wrong room. Existing `COPY` images and older supported versions
-retain their world-preserving `shutdown hotboot` behavior and room encoding.
+Version 20 appends the authenticated account and ship cabin identity to each
+descriptor record. Static rooms use virtual room numbers in both modes.
+A persistent ship cabin uses the ship's database ID and layout slot, with its
+saved anchorage as fallback. A missing room falls back to the player's home or
+birthplace. Readers preserve the room encoding of supported older images.
+Use a cold restart when downgrading to a reader older than version 20.
 
-Both modes acknowledge player/domain saves before publishing the handoff. The
-player-only replacement retires the exact pinned Redis world generation and floor
-records before population classification and normal world boot. A changed or
-unavailable Redis image refuses boot with the native claim retained. Normal
-corpse/storage/shop restoration remains enabled; old transient mobs, ground items,
-doors and combat are not replayed, including on the following restart.
+Standalone `copyover` uses magic `CPYP` and requires zero mob, object and door
+counts. Version 20 adds a Redis checkpoint after the three listener descriptors
+and before the player records. It contains the acknowledged generation sequence,
+namespace, season epoch, and SHA-256 of the generation. Publication atomically
+clears floor deltas, so the matching floor cut is empty. A zero sequence denotes
+disabled world recovery. A legacy `CPYP` handoff can start only with world
+recovery disabled because it lacks this checkpoint.
+
+Both modes require durable player saves before publishing. The replacement
+validates the checkpoint before world loading and excludes it from fresh-world
+population and materialization. The inherited listeners must validate and boot
+must be ready before the replacement deletes the checkpoint. Redis compares the
+generation, floor cut, and writer lease atomically. Failure leaves recovery
+evidence available for inspection and cold recovery. Normal corpse, storage,
+and shop restoration remains enabled for standalone copyover.

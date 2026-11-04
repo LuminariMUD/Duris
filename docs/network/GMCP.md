@@ -121,11 +121,12 @@ missing optional protocol state defaults off. No new state file, account
 preference or synchronous repository read is added. On supported Telnet/MCCP
 hotboot, the entry key is unchanged, `resumed:true` and a new process marker
 invalidate process-local snapshot revision baselines. Views resynchronize;
-login actions do not rerun. `shutdown hotboot` retains the WebSocket/TLS refusal
-policy. Standalone `copyover` preserves the same Telnet protocol/session state but
-boots a fresh world; unsupported sessions receive the approximately 20-second
-restart notice and disconnect after player saves succeed. Ordinary reconnect
-creates a fresh connection context.
+login actions do not rerun. `shutdown hotboot` refuses when an authenticated
+session cannot survive the restart. Login screens can reconnect after either
+mode. Standalone `copyover` boots a fresh world and also disconnects playing TLS
+and WebSocket sessions. Sockets marked for disconnect close on successful
+exec. If exec fails, those sessions stay connected. Ordinary reconnect creates
+a fresh connection context.
 
 ## Duris.Time, version 1
 
@@ -355,7 +356,7 @@ The booted `tests/async/test_gmcp_control_journey.py` journey covers real Telnet
 and WebSocket dispatch, character entry/return/reconnect, preference changes,
 staff clock mutation and invalid WebSocket module input on disposable state.
 The original-socket copyover journey verifies context/generation continuity
-with and without MCCP, and the native copyover matrix covers versions 12-18.
+with and without MCCP, and the native copyover matrix covers versions 12-20.
 The [local cost check](#short-local-cost-check--2026-11-01) records matched
 event-loop/serializer measurements; [#498](https://github.com/LuminariMUD/Duris/issues/498)
 retains the client handoff and delivery scope. These focused checks do not establish

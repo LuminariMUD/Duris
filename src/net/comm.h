@@ -29,6 +29,7 @@
 
 // Discard queued gameplay and an unfinished input line, preserving output.
 void flush_input_queue(P_desc descriptor);
+bool before_account_login(const struct descriptor_data *d);
 
 /* following was io.h, for asych I/O operations, not used currently.  If we
    ever use it, makes more sense for it to be here.  JAB */

@@ -65,7 +65,17 @@ struct redis_world_boot_snapshot
 redis_world_boot_result redis_world_prepare_boot(void);
 const redis_world_boot_snapshot *redis_world_boot_evidence(void);
 bool redis_consume_world_state(void);
-// A player-only handoff deliberately retires its predecessor world before normal zone boot.
+// Acknowledged world bytes and their empty floor cut (publication clears the
+// floor atomically). A zero sequence denotes recovery disabled in the source.
+struct redis_copyover_checkpoint
+{
+	uint64_t epoch;
+	uint64_t sequence;
+	char key_namespace[128];
+	unsigned char digest[32];
+};
+bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *checkpoint);
+bool redis_world_prepare_copyover(const redis_copyover_checkpoint &checkpoint);
 bool redis_world_discard_for_copyover();
 void event_save_world_state(P_char ch, P_char victim, P_obj obj, void *data);
 void redis_world_recovery_pulse(void);
@@ -74,5 +84,6 @@ bool redis_world_recovery_quiesce(void);
 // A copyover gives the lease up before its exec; the image it starts claims it at boot. If
 // the exec fails, this process takes it again at its next renewal.
 void redis_world_writer_release(void);
+void redis_world_writer_reclaim_after_copyover(void);
 
 #endif

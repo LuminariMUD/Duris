@@ -5,6 +5,7 @@
 
 #include "guild/artifact_admission.h"
 #include "account/pwipe_launch.h"
+#include "account/account.h"
 #include "persistence/persistence_log.h"
 #include "core/prototypes.h"
 #include "world/world_singletons.h"
@@ -22,7 +23,7 @@
 #include "player/pet_restore_state.h"
 #include <errno.h>
 #include <fcntl.h>
-#include <gnutls/gnutls.h>
+#include <poll.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <stdio.h>
@@ -35,6 +36,7 @@
 #include "core/defines.h"
 #include "core/files.h"
 #include "net/gmcp.h"
+#include "net/mccp.h"
 #include "core/mm.h"
 #include "ships/ships.h"
 #include "net/ttype.h"
@@ -52,6 +54,7 @@
 #include "world/world_recovery_pipeline.h"
 #include "world/epic_bonus.h"
 #include "telemetry/telemetry_runtime.h"
+#include <chrono>
 #include <new>
 #include <memory>
 #include <map>
@@ -96,7 +99,11 @@ static bool copyover_version_supported(int version)
 
 static size_t copyover_desc_bytes_for_version(int version)
 {
-	return version < 18 ? offsetof(copyover_desc, gmcp_supports) : sizeof(copyover_desc);
+	if (version < 18)
+		return offsetof(copyover_desc, gmcp_supports);
+	if (version < 20)
+		return offsetof(copyover_desc, account_name);
+	return sizeof(copyover_desc);
 }
 
 static size_t copyover_mob_bytes_for_version(int version)
@@ -210,18 +217,61 @@ void copyover_clear_boot(void)
 	pinned_copyover_state = copyover_boot_result::failed;
 }
 
-void copyover_prepare_socket(int fd)
+namespace
 {
-	int flags = fcntl(fd, F_GETFD);
-	if (flags >= 0)
+struct copyover_fd_flags
+{
+	std::array<int, FD_SETSIZE> saved;
+	copyover_fd_flags() { saved.fill(-1); }
+	~copyover_fd_flags()
 	{
-		fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC);
+		for (size_t fd = 0; fd < saved.size(); ++fd)
+			if (saved[fd] >= 0)
+				fcntl(fd, F_SETFD, saved[fd]);
+	}
+
+	bool prepare(int fd, bool inherit)
+	{
+		if (fd < 0 || static_cast<size_t>(fd) >= saved.size())
+			return false;
+		const int old = fcntl(fd, F_GETFD);
+		if (old < 0)
+			return false;
+		const int next = inherit ? old & ~FD_CLOEXEC : old | FD_CLOEXEC;
+		if (next == old)
+			return true;
+		if (fcntl(fd, F_SETFD, next) < 0)
+			return false;
+		saved[fd] = old;
+		return true;
+	}
+};
+
+bool flush_copyover_telnet(P_desc d, std::chrono::steady_clock::time_point deadline)
+{
+	for (;;)
+	{
+		if (telnet_flush_output(d) < 0)
+			return false;
+		if (!d->telnet_output_len)
+			return true;
+		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+					       deadline - std::chrono::steady_clock::now())
+					       .count();
+		if (remaining <= 0)
+			return false;
+		pollfd ready = { d->descriptor, POLLOUT, 0 };
+		const int result = poll(&ready, 1, remaining);
+		if ((result <= 0 && (result == 0 || errno != EINTR)) ||
+		    (ready.revents & (POLLERR | POLLHUP | POLLNVAL)))
+			return false;
 	}
 }
+} // namespace
 
-static void raw_write_to_fd(int fd, const char *msg);
+static bool consume_copyover_image(const std::string &path, const copyover_boot_snapshot &expected);
 
-static void notify_copyover_failure(const char *message)
+static void notify_copyover_failure(const char *message, bool include_login = false)
 {
 	P_desc d;
 	critical_command_coordinator_resume();
@@ -230,7 +280,9 @@ static void notify_copyover_failure(const char *message)
 
 	for (d = descriptor_list; d; d = d->next)
 	{
-		if (d->descriptor > 0 && d->connected == CON_PLAYING && d->character)
+		if (d->descriptor >= 0 && ((d->connected == CON_PLAYING && d->character) ||
+					   (include_login && d->connected != CON_SSLNEGO &&
+					    (!d->websocket || d->ws_handshake_done))))
 		{
 			SEND_TO_Q(message, d);
 		}
@@ -249,7 +301,34 @@ static int write_desc_entry(FILE *fp, P_desc d)
 	if (ch && GET_NAME(ch))
 	{
 		strlcpy(entry.player_name, GET_NAME(ch), sizeof(entry.player_name));
-		entry.room = copyover_preserve_world ? ch->in_room : world[ch->in_room].number;
+		entry.room = NOWHERE;
+		if (ch->in_room >= 0 && ch->in_room <= top_of_world)
+		{
+			entry.room = world[ch->in_room].number;
+			if (IS_SHIP_ROOM(ch->in_room))
+			{
+				const int cabin = entry.room;
+				entry.room = NOWHERE;
+				if (const auto *ship = get_ship_from_char(ch))
+				{
+					entry.room = ship->anchor;
+					if (ship->db_id > 0)
+						for (int slot = 0; slot < ship->room_count; ++slot)
+							if (SHIP_ROOM_NUM(ship, slot) == cabin)
+							{
+								entry.ship_id = ship->db_id;
+								entry.ship_room_slot = slot;
+								break;
+							}
+				}
+			}
+		}
+#ifdef USE_ACCOUNT
+		if (!d->account || !d->account->acct_name || !*d->account->acct_name ||
+		    strlcpy(entry.account_name, d->account->acct_name, sizeof entry.account_name) >=
+			    sizeof entry.account_name)
+			return false;
+#endif
 
 		// save combat state
 		if (copyover_preserve_world && ch->specials.fighting)
@@ -676,8 +755,8 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 	const auto &header = snapshot->header;
 	const bool players_only = !memcmp(header.magic, COPYOVER_PLAYERS_MAGIC, 4);
 	if ((memcmp(header.magic, COPYOVER_MAGIC, 4) && !players_only) ||
-	    (players_only && (header.version != COPYOVER_VERSION || header.num_mobs ||
-			      header.num_objects || header.num_rooms)) ||
+	    (players_only &&
+	     (header.version < 19 || header.num_mobs || header.num_objects || header.num_rooms)) ||
 	    !copyover_version_supported(header.version) || header.num_descriptors < 0 ||
 	    header.num_mobs < 0 || header.num_objects < 0 || header.num_rooms < 0 ||
 	    header.num_combat || header.num_zones ||
@@ -690,6 +769,18 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 	    static_cast<size_t>(header.num_rooms) > snapshot->bytes.size() / sizeof(copyover_room))
 		return false;
 	size_t offset = sizeof(header) + 3 * sizeof(int);
+	if (players_only && header.version >= 20)
+	{
+		auto &checkpoint = snapshot->redis_checkpoint;
+		if (sizeof checkpoint > snapshot->bytes.size() - offset)
+			return false;
+		memcpy(&checkpoint, snapshot->bytes.data() + offset, sizeof checkpoint);
+		offset += sizeof checkpoint;
+		if (!memchr(checkpoint.key_namespace, 0, sizeof checkpoint.key_namespace) ||
+		    (checkpoint.sequence && (!checkpoint.epoch || !checkpoint.key_namespace[0])) ||
+		    (!checkpoint.sequence && (checkpoint.epoch || checkpoint.key_namespace[0])))
+			return false;
+	}
 	for (int index = 0; index < header.num_descriptors; ++index)
 	{
 		if (copyover_desc_bytes_for_version(header.version) >
@@ -704,6 +795,11 @@ bool inspect_copyover(copyover_boot_snapshot *snapshot)
 		    !memchr(desc.ttype_client, 0, sizeof(desc.ttype_client)) ||
 		    !memchr(desc.ttype_terminal, 0, sizeof(desc.ttype_terminal)) ||
 		    desc.num_pets < 0 || desc.num_pets > 10)
+			return false;
+		if (header.version >= 20 &&
+		    (!memchr(desc.account_name, 0, sizeof desc.account_name) ||
+		     (desc.ship_id &&
+		      (desc.ship_room_slot < 0 || desc.ship_room_slot >= MAX_SHIP_ROOM))))
 			return false;
 		if (header.version >= 18)
 		{
@@ -862,7 +958,8 @@ copyover_boot_result copyover_prepare_boot()
 		const std::string source = copyover_state_file();
 		pinned_copyover_path = source + ".recovering";
 		struct stat original = {}, retained = {};
-		if (!lstat((pinned_copyover_path + ".consuming").c_str(), &retained) ||
+		if (!lstat((source + ".consuming").c_str(), &retained) || errno != ENOENT ||
+		    !lstat((pinned_copyover_path + ".consuming").c_str(), &retained) ||
 		    errno != ENOENT)
 			return pinned_copyover_state;
 		if (lstat(source.c_str(), &original) == 0)
@@ -1087,29 +1184,6 @@ static P_obj read_obj_entry(FILE *fp, copyover_npc_roots *npc_roots = nullptr)
 	return object;
 }
 
-// raw write to socket fd
-static void raw_write_to_fd(int fd, const char *msg)
-{
-	if (fd < 0)
-		return;
-
-	size_t remaining = strlen(msg);
-	while (remaining > 0)
-	{
-		ssize_t written = write(fd, msg, remaining);
-		if (written < 0 && errno == EINTR)
-			continue;
-		if (written <= 0)
-		{
-			logit(LOG_STATUS, "copyover: write to descriptor %d failed: %s", fd,
-			      strerror(errno));
-			return;
-		}
-		msg += written;
-		remaining -= static_cast<size_t>(written);
-	}
-}
-
 // notify websocket users before disconnect
 static void notify_ws_copyover(P_desc d)
 {
@@ -1118,7 +1192,7 @@ static void notify_ws_copyover(P_desc d)
 
 	// send json message so web client knows whats happening
 	const char *msg =
-		"{\"type\":\"system\",\"data\":{\"status\":\"copyover\",\"message\":\"The MUD is copying over and should be back up in about 20 seconds. Please reconnect.\"}}";
+		"{\"type\":\"system\",\"data\":{\"status\":\"copyover\",\"message\":\"The MUD is copying over. If disconnected, please reconnect in about 20 seconds.\"}}";
 
 	// wrap in websocket frame
 	websocket_send_text(d, msg);
@@ -1201,8 +1275,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 
 	const std::string published_path = COPYOVER_FILE;
 	const std::string recovering_path = published_path + ".recovering";
-	for (const auto &pending :
-	     { published_path, recovering_path, recovering_path + ".consuming" })
+	for (const auto &pending : { published_path, published_path + ".consuming", recovering_path,
+				     recovering_path + ".consuming" })
 	{
 		struct stat retained = {};
 		if (!lstat(pending.c_str(), &retained))
@@ -1231,11 +1305,11 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			"\r\n*** Copyover cancelled: starter equipment is still being granted; retry after completion. ***\r\n");
 		return false;
 	}
-	// World-preserving hotboot retains its all-connections-survive policy.
-	// Standalone copyover notifies unsupported sessions after saves are durable.
+	// Hotboot protects authenticated sessions. Login sockets cannot veto it.
 	for (d = descriptor_list; d; d = d->next)
 		if (copyover_preserve_world && d->descriptor >= 0 &&
-		    (d->connected != CON_PLAYING || !d->character || d->websocket || d->sslses))
+		    !copyover_descriptor_is_eligible(d) &&
+		    (!before_account_login(d) || websocket_is_authenticated_service(d)))
 		{
 			logit(LOG_STATUS,
 			      "copyover: non-preservable connection fd=%d state=%d ws=%d ssl=%d; aborting",
@@ -1245,11 +1319,19 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 			return false;
 		}
 
+	for (d = descriptor_list; d; d = d->next)
+		if (d->descriptor >= 0 && d->connected == CON_PLAYING && d->original &&
+		    !return_from_staff_switch(d))
+		{
+			notify_copyover_failure(
+				"\r\n*** Copyover cancelled: a player must return to their original body. ***\r\n");
+			return false;
+		}
+
 	logit(LOG_STATUS, "copyover: saving world state...");
 	logit(LOG_STATUS, "copyover: world=%p top_of_world=%d", (void *)world, top_of_world);
 
-	// First pass: prove every persistence prerequisite while all descriptors and
-	// transport settings still belong to the live process.
+	// Prove each persistence prerequisite while the live process owns the sockets.
 	flush_pending_ship_saves();
 	if (!drain_pending_ship_saves())
 	{
@@ -1299,9 +1381,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 
-	// Prove every connected player save before closing any descriptor or
-	// publishing copyover state. The terminal helper consumes a pending slot
-	// as the final save instead of writing the same character twice.
+	// Require every connected player's terminal revision before publication.
 	for (d = descriptor_list; d; d = d_next)
 	{
 		d_next = d->next;
@@ -1387,7 +1467,7 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
 		return false;
 	}
-	if (!redis_world_recovery_drain(3000))
+	if (copyover_preserve_world && !redis_world_recovery_drain(3000))
 	{
 		critical_command_coordinator_resume();
 		logit(LOG_STATUS, "copyover: world recovery drain failed, aborting copyover");
@@ -1395,10 +1475,8 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		return false;
 	}
 
-	// Seal a current Redis generation, including any floor-only changes, so the
-	// replacement can retire that exact predecessor without restoring it.
-	if (!copyover_preserve_world && redis_world_runtime_enabled() &&
-	    (!redis_save_world_state() || !redis_world_recovery_drain(30000)))
+	redis_copyover_checkpoint redis_checkpoint = {};
+	if (!copyover_preserve_world && !redis_world_checkpoint_for_copyover(&redis_checkpoint))
 	{
 		notify_copyover_failure(
 			"\r\n*** Copyover cancelled: world checkpoint failed. ***\r\n");
@@ -1447,7 +1525,9 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	if (fwrite(&header, sizeof(header), 1, fp) != 1 ||
 	    fwrite(&mother_desc, sizeof(int), 1, fp) != 1 ||
 	    fwrite(&mother_desc_ssl, sizeof(int), 1, fp) != 1 ||
-	    fwrite(&ws_desc, sizeof(int), 1, fp) != 1)
+	    fwrite(&ws_desc, sizeof(int), 1, fp) != 1 ||
+	    (!copyover_preserve_world &&
+	     fwrite(&redis_checkpoint, sizeof redis_checkpoint, 1, fp) != 1))
 	{
 		logit(LOG_STATUS, "copyover: failed to write header/sockets");
 		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
@@ -1574,6 +1654,29 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 		unlink(copyover_tmp);
 		return false;
 	}
+	copyover_fd_flags fd_flags;
+	bool sockets_ready = fd_flags.prepare(mother_desc, true) &&
+			     fd_flags.prepare(mother_desc_ssl, true) &&
+			     (ws_desc < 0 || fd_flags.prepare(ws_desc, true));
+	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+	for (d = descriptor_list; sockets_ready && d; d = d->next)
+	{
+		if (d->descriptor < 0)
+			continue;
+		const bool inherit = copyover_descriptor_is_eligible(d);
+		sockets_ready = fd_flags.prepare(d->descriptor, inherit);
+		if (sockets_ready && inherit)
+			sockets_ready = flush_copyover_telnet(d, deadline) &&
+					compress_end(d, 1) == 0 &&
+					flush_copyover_telnet(d, deadline);
+	}
+	if (!sockets_ready)
+	{
+		unlink(copyover_tmp);
+		notify_copyover_failure(
+			"\r\n*** Copyover cancelled: socket handoff could not drain or prepare. ***\r\n");
+		return false;
+	}
 	if (renameat2(AT_FDCWD, copyover_tmp, AT_FDCWD, COPYOVER_FILE, RENAME_NOREPLACE) != 0)
 	{
 		logit(LOG_STATUS, "copyover: failed to publish %s as %s: %s", copyover_tmp,
@@ -1584,12 +1687,14 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	}
 
 	// RENAME_NOREPLACE protects the publication, but not a recovery claim
-	// created during the drains/write. Fence that second name before touching
-	// sockets or executing. Retain both images for disposition on refusal.
+	// created during the drains/write. Preserve that claim and retire only
+	// our own unused publication.
 	struct stat recovery_claim = {};
 	if (!lstat(recovering_path.c_str(), &recovery_claim) || errno != ENOENT ||
 	    !lstat((recovering_path + ".consuming").c_str(), &recovery_claim) || errno != ENOENT)
 	{
+		if (!consume_copyover_image(published_path, validated))
+			logit(LOG_STATUS, "copyover: failed publication retained for review");
 		logit(LOG_STATUS,
 		      "copyover: recovery claim appeared at publication; retaining live process");
 		notify_copyover_failure(
@@ -1600,46 +1705,6 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	logit(LOG_STATUS, "copyover: saved %d descs, %d mobs, %d objs, %d doors", num_descs,
 	      num_mobs, num_objs, num_rooms);
 
-	// Prerequisite saves are acknowledged and the complete image is published.
-	// Only now may unsupported sessions receive the notice and disconnect.
-	for (d = descriptor_list; d; d = d->next)
-	{
-		if (d->descriptor < 0)
-			continue;
-		if (!copyover_descriptor_is_eligible(d))
-		{
-			if (d->websocket)
-				notify_ws_copyover(d);
-			else
-				write_to_descriptor(
-					d,
-					"\r\n*** The MUD is copying over and should be back up in about 20 seconds. Please reconnect. ***\r\n");
-			if (d->out_compress)
-				compress_end(d, 1);
-			if (d->sslses)
-			{
-				gnutls_bye(d->sslses, GNUTLS_SHUT_WR);
-				gnutls_deinit(d->sslses);
-				d->sslses = nullptr;
-			}
-			close(d->descriptor);
-			d->descriptor = -1;
-		}
-		else
-		{
-			copyover_prepare_socket(d->descriptor);
-			if (d->out_compress)
-				compress_end(d, 1);
-			raw_write_to_fd(d->descriptor, "\r\n*** Copyover in progress... ***\r\n");
-		}
-	}
-
-	// prepare listener sockets
-	copyover_prepare_socket(mother_desc);
-	copyover_prepare_socket(mother_desc_ssl);
-	if (ws_desc > 0)
-		copyover_prepare_socket(ws_desc);
-
 	// Best-effort diagnostics only; authoritative persistence has separate gates.
 	if (!persistence_log_drain(3000))
 		fprintf(stderr,
@@ -1648,39 +1713,62 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	// exec new binary
 	snprintf(exec_buf, sizeof(exec_buf), "%d", RUNNING_PORT);
 
-	// Promote the staged binary if one exists. All executable artifacts stay
-	// below bin/, including the rollback copy.
-	if (access(DMS_STAGED_BINARY, X_OK) == 0)
+	// Exchange the paths atomically, including when the old file is owned
+	// by the installer and the server cannot hard-link it.
+	bool promoted = false;
+	struct stat staged = {};
+	int promotion_error = 0;
+	if (lstat(DMS_STAGED_BINARY, &staged) == 0)
 	{
-		int old_binary_renamed = 0;
-		if (mkdir(DMS_HISTORY_DIR, 0755) != 0 && errno != EEXIST)
+		if (stat(DMS_STAGED_BINARY, &staged) != 0)
+			promotion_error = errno;
+		else if (!S_ISREG(staged.st_mode))
+			promotion_error = EINVAL;
+		else if (access(DMS_STAGED_BINARY, X_OK) != 0 ||
+			 (mkdir(DMS_HISTORY_DIR, 0755) != 0 && errno != EEXIST) ||
+			 renameat2(AT_FDCWD, DMS_STAGED_BINARY, AT_FDCWD, DMS_RUNTIME_BINARY,
+				   RENAME_EXCHANGE) != 0)
+			promotion_error = errno;
+		else if (rename(DMS_STAGED_BINARY, DMS_COPYOVER_BACKUP) != 0)
 		{
-			logit(LOG_STATUS, "copyover: failed to create %s: %s", DMS_HISTORY_DIR,
-			      strerror(errno));
-		}
-		logit(LOG_STATUS, "copyover: promoting %s to %s", DMS_STAGED_BINARY,
-		      DMS_RUNTIME_BINARY);
-		if (rename(DMS_RUNTIME_BINARY, DMS_COPYOVER_BACKUP) == 0)
-		{
-			old_binary_renamed = 1;
+			promotion_error = errno;
+			if (renameat2(AT_FDCWD, DMS_STAGED_BINARY, AT_FDCWD, DMS_RUNTIME_BINARY,
+				      RENAME_EXCHANGE) != 0)
+				logit(LOG_STATUS,
+				      "copyover: executable exchange rollback failed: %s",
+				      strerror(errno));
 		}
 		else
-		{
-			logit(LOG_STATUS, "copyover: failed to rename %s to %s: %s",
-			      DMS_RUNTIME_BINARY, DMS_COPYOVER_BACKUP, strerror(errno));
-		}
-		if (rename(DMS_STAGED_BINARY, DMS_RUNTIME_BINARY) != 0)
-		{
-			logit(LOG_STATUS, "copyover: failed to install %s as %s: %s",
-			      DMS_STAGED_BINARY, DMS_RUNTIME_BINARY, strerror(errno));
-			if (old_binary_renamed &&
-			    rename(DMS_COPYOVER_BACKUP, DMS_RUNTIME_BINARY) != 0)
-			{
-				logit(LOG_STATUS, "copyover: failed to restore %s from %s: %s",
-				      DMS_RUNTIME_BINARY, DMS_COPYOVER_BACKUP, strerror(errno));
-			}
-		}
+			promoted = true;
 	}
+	else if (errno != ENOENT)
+		promotion_error = errno;
+	if (promotion_error)
+	{
+		logit(LOG_STATUS, "copyover: executable promotion failed: %s",
+		      strerror(promotion_error));
+		if (!consume_copyover_image(published_path, validated))
+			logit(LOG_STATUS, "copyover: failed publication retained for review");
+		notify_copyover_failure("\r\n*** Copyover FAILED - server remains live. ***\r\n");
+		return false;
+	}
+
+	// Close-on-exec commits the disconnect only if exec succeeds. Leave TLS,
+	// compression and WebSocket state intact for the live-process failure path.
+	for (d = descriptor_list; d; d = d->next)
+		if (d->descriptor >= 0 && !copyover_descriptor_is_eligible(d) &&
+		    d->connected != CON_SSLNEGO)
+		{
+			if (d->websocket)
+			{
+				if (d->ws_handshake_done)
+					notify_ws_copyover(d);
+			}
+			else
+				write_to_descriptor(
+					d,
+					"\r\n*** If disconnected, please reconnect in about 20 seconds. ***\r\n");
+		}
 
 	logit(LOG_STATUS, "copyover: executing new binary...");
 	// The log thread does not live through the exec.
@@ -1692,31 +1780,29 @@ bool copyover_save(int mother_desc, int mother_desc_ssl, int ws_desc)
 	else
 		execl(DMS_RUNTIME_BINARY, "dms", "-C", exec_buf, (char *)NULL);
 
-	// if we get here, exec failed
-	logit(LOG_STATUS, "copyover: execl failed: %s", strerror(errno));
-
-	// try to tell players
-	for (d = descriptor_list; d; d = d->next)
-	{
-		if (d->descriptor > 0)
-		{
-			raw_write_to_fd(d->descriptor, "\r\n*** Copyover FAILED! ***\r\n");
-		}
-	}
+	const int error = errno;
+	redis_world_writer_reclaim_after_copyover();
+	if (promoted && rename(DMS_COPYOVER_BACKUP, DMS_RUNTIME_BINARY) != 0)
+		logit(LOG_STATUS, "copyover: executable rollback failed: %s", strerror(errno));
+	if (!consume_copyover_image(published_path, validated))
+		logit(LOG_STATUS, "copyover: failed publication retained for review");
+	logit(LOG_STATUS, "copyover: execl failed: %s", strerror(error));
+	notify_copyover_failure("\r\n*** Copyover FAILED! Server remains live. ***\r\n", true);
 	return false;
 }
 
 // find_player_by_name already declared in prototypes.h
 
 // load a player character for copyover recovery
-static P_char copyover_load_player(const char *name, P_desc d, std::string *account_name)
+static P_char copyover_load_player(const copyover_desc &entry, int version, P_desc d,
+				   std::string *account_name)
 {
 	P_char player;
 	player_load_request request = {};
 	player_load_result result = {};
 	const uint64_t now = persistence_observability_now_usec();
 	request.request_id = player_load_pipeline_next_request_id();
-	request.player_name = name ? name : "";
+	request.player_name = entry.player_name;
 	request.deadline_usec = now + PLAYER_LOAD_TIMEOUT_USEC;
 	request.include_items = true;
 	request.include_pets = true;
@@ -1735,6 +1821,16 @@ static P_char copyover_load_player(const char *name, P_desc d, std::string *acco
 		}
 		result = std::move(retry);
 	}
+#ifdef USE_ACCOUNT
+	if (version >= 20 &&
+	    (!entry.account_name[0] || strcasecmp(entry.account_name, result.account_name.c_str())))
+	{
+		logit(LOG_STATUS, "copyover: saved account no longer owns %s", entry.player_name);
+		return nullptr;
+	}
+#else
+	(void)version;
+#endif
 	// The player repository supplies the authoritative owner, before materialization
 	// can attach items/pets or publish a restored player to the world.
 	if (!pwipe_launch_allows_at(result.account_name.c_str(), time(NULL)))
@@ -1776,14 +1872,13 @@ static P_char copyover_load_player(const char *name, P_desc d, std::string *acco
 
 // Move the public claim into a private directory before checking/removing it.
 // A crash or failed restoration leaves a visible barrier for later boot/save.
-static bool consume_copyover_claim()
+static bool consume_copyover_image(const std::string &path, const copyover_boot_snapshot &expected)
 {
-	const std::string directory = pinned_copyover_path + ".consuming";
+	const std::string directory = path + ".consuming";
 	const std::string isolated = directory + "/image";
 	if (mkdir(directory.c_str(), 0700))
 		return false;
-	if (renameat2(AT_FDCWD, pinned_copyover_path.c_str(), AT_FDCWD, isolated.c_str(),
-		      RENAME_NOREPLACE))
+	if (renameat2(AT_FDCWD, path.c_str(), AT_FDCWD, isolated.c_str(), RENAME_NOREPLACE))
 	{
 		rmdir(directory.c_str());
 		return false;
@@ -1792,17 +1887,43 @@ static bool consume_copyover_claim()
 	// Moving across directories may change ctime. Verify the isolated inode and
 	// complete pinned bytes; copyover_read_file checks stability during the read.
 	if (copyover_read_file(isolated, &current) != copyover_boot_result::ready ||
-	    pinned_copyover.identity.st_dev != current.identity.st_dev ||
-	    pinned_copyover.identity.st_ino != current.identity.st_ino ||
-	    pinned_copyover.bytes != current.bytes)
+	    expected.identity.st_dev != current.identity.st_dev ||
+	    expected.identity.st_ino != current.identity.st_ino || expected.bytes != current.bytes)
 	{
 		// Never overwrite another publication while returning the changed claim.
-		if (!renameat2(AT_FDCWD, isolated.c_str(), AT_FDCWD, pinned_copyover_path.c_str(),
+		if (!renameat2(AT_FDCWD, isolated.c_str(), AT_FDCWD, path.c_str(),
 			       RENAME_NOREPLACE))
 			rmdir(directory.c_str());
 		return false;
 	}
 	return !unlink(isolated.c_str()) && !rmdir(directory.c_str());
+}
+
+static int copyover_player_room(const copyover_desc &entry, int version, bool preserve_world,
+				P_char ch)
+{
+	if (version >= 20 && entry.ship_id)
+		if (const auto *ship = find_ship_by_database_id(entry.ship_id);
+		    ship && SHIP_LOADED(ship) && entry.ship_room_slot >= 0 &&
+		    entry.ship_room_slot < ship->room_count && entry.ship_room_slot < MAX_SHIP_ROOM)
+		{
+			const int cabin = real_room(SHIP_ROOM_NUM(ship, entry.ship_room_slot));
+			if (cabin >= 0 && IS_SHIP_ROOM(cabin))
+				return cabin;
+		}
+	int room = version < 20 && preserve_world ? entry.room : real_room(entry.room);
+	if (room < 0 || room > top_of_world)
+		room = real_room(GET_BIRTHPLACE(ch) ? GET_BIRTHPLACE(ch) : GET_HOME(ch));
+	return room >= 0 && room <= top_of_world ? room : 0;
+}
+
+static bool copyover_is_listener(int fd)
+{
+	int accepting = 0;
+	socklen_t length = sizeof accepting;
+	return fd >= 0 && fd < FD_SETSIZE &&
+	       getsockopt(fd, SOL_SOCKET, SO_ACCEPTCONN, &accepting, &length) == 0 &&
+	       accepting == 1;
 }
 
 int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
@@ -1867,6 +1988,15 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		logit(LOG_STATUS, "copyover_recover: failed to read listener sockets");
 		goto copyover_recover_fail;
 	}
+
+	if (!copyover_restores_world() && header.version >= 20 &&
+	    fseek(fp, sizeof(redis_copyover_checkpoint), SEEK_CUR))
+		goto copyover_recover_fail;
+	if (!copyover_is_listener(*mother_desc) || !copyover_is_listener(*mother_desc_ssl) ||
+	    (*ws_desc != -1 && !copyover_is_listener(*ws_desc)) ||
+	    *mother_desc == *mother_desc_ssl || *ws_desc == *mother_desc ||
+	    *ws_desc == *mother_desc_ssl)
+		goto copyover_recover_fail;
 
 	// restore descriptors
 	for (i = 0; i < header.num_descriptors; i++)
@@ -1941,7 +2071,7 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 		if (desc_entry.player_name[0])
 		{
 			std::string account_name;
-			ch = copyover_load_player(desc_entry.player_name, d, &account_name);
+			ch = copyover_load_player(desc_entry, header.version, d, &account_name);
 			if (ch)
 			{
 				d->character = ch;
@@ -1965,13 +2095,8 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 				ch->next = character_list;
 				character_list = ch;
 
-				// use room from copyover data, not pfile
-				save_room = copyover_restores_world() ? desc_entry.room :
-									real_room(desc_entry.room);
-				if (save_room < 0 || save_room > top_of_world)
-				{
-					save_room = 0;
-				}
+				save_room = copyover_player_room(desc_entry, header.version,
+								 copyover_restores_world(), ch);
 				ch->in_room = NOWHERE;
 				// Recovery restores location without running movement hazards or procs.
 				char_to_room(ch, save_room, -1);
@@ -1986,9 +2111,6 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 					strlcpy(ch->specials.copyover_fighting_name,
 						desc_entry.fighting_name,
 						sizeof(ch->specials.copyover_fighting_name));
-
-				raw_write_to_fd(d->descriptor,
-						"\r\n*** Copyover complete! ***\r\n");
 
 				logit(LOG_STATUS, "copyover: restored %s fd=%d room=%d fighting=%d",
 				      desc_entry.player_name, d->descriptor, save_room,
@@ -2280,10 +2402,6 @@ int copyover_recover(int *mother_desc, int *mother_desc_ssl, int *ws_desc)
 	fclose(fp);
 	artifacts.commit();
 	pinned_copyover_loaded = true;
-	if (!consume_copyover_claim())
-		logit(LOG_STATUS,
-		      "copyover_recover: claim changed or could not be consumed; inspect .recovering and .recovering.consuming");
-	logit(LOG_STATUS, "copyover_recover: complete");
 	return success;
 
 copyover_recover_fail:
@@ -2298,6 +2416,19 @@ copyover_recover_fail:
 	pinned_copyover_state = copyover_boot_result::failed;
 	logit(LOG_STATUS, "copyover_recover: failed; claimed state retained for disposition");
 	return 0;
+}
+
+void copyover_commit_boot()
+{
+	if (!pinned_copyover_loaded)
+		return;
+	if (!consume_copyover_image(pinned_copyover_path, pinned_copyover))
+		logit(LOG_STATUS,
+		      "copyover_recover: claim could not be consumed; inspect recovery paths");
+	for (P_desc d = descriptor_list; d; d = d->next)
+		if (d->connected == CON_PLAYING && d->character)
+			write_to_descriptor(d, "\r\n*** Copyover complete! ***\r\n");
+	logit(LOG_STATUS, "copyover_recover: complete");
 }
 
 // link up fighting pointers after zones loaded

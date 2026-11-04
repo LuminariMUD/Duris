@@ -8,6 +8,7 @@
 
 #include "core/structs.h" // for P_char, P_desc, etc
 #include "world/transport.h"
+#include "redis/redis_world_runtime.h"
 #include <cstddef>
 #include <array>
 #include <cstdio>
@@ -19,7 +20,7 @@ const char *copyover_state_file();
 #define COPYOVER_FILE copyover_state_file()
 #define COPYOVER_MAGIC "COPY"
 #define COPYOVER_PLAYERS_MAGIC "CPYP" // same records, without the live world
-#define COPYOVER_VERSION 19 // full skill selectors; reads versions 12-18 too
+#define COPYOVER_VERSION 20 // account and ship identity; reads versions 12-19
 
 // copyover file header
 struct copyover_header
@@ -75,6 +76,11 @@ struct copyover_desc
 	uint64_t gmcp_input_sequence;
 	unsigned char gmcp_command_receipts;
 	char gmcp_session_context[33];
+
+	// v20 appends after the complete v18/v19 struct, including its tail padding.
+	alignas(uint64_t) char account_name[64];
+	uint32_t ship_id;
+	int ship_room_slot;
 };
 
 // mob state for copyover
@@ -179,6 +185,7 @@ struct copyover_record_span
 struct copyover_boot_snapshot
 {
 	copyover_header header = {};
+	redis_copyover_checkpoint redis_checkpoint = {};
 	std::vector<char> bytes;
 	std::vector<copyover_record_span> mobs;
 	std::vector<copyover_record_span> objects;
@@ -218,9 +225,7 @@ void copyover_restore_combat(void);
 int is_copyover_boot(void);
 bool copyover_has_durable_shopkeepers();
 void copyover_clear_boot(void);
-
-// helper to clear fd_cloexec on accepted sockets
-void copyover_prepare_socket(int fd);
+void copyover_commit_boot();
 
 int copyover_write_mob_to_buffer(P_char mob, char *buf, size_t max_len);
 int copyover_write_obj_to_buffer(P_obj obj, char *buf, size_t max_len);

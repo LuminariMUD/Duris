@@ -77,6 +77,8 @@ int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc-
 #include <unistd.h>
 #include <cstdarg>
 #include <sys/syscall.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 
 // The fixture's logit() writes nothing, so there is no log thread to flush before the exec.
 void flush_log_writer(void) {}
@@ -120,10 +122,16 @@ void player_save_pipeline_quiesce() {}
 void player_save_pipeline_resume() {}
 bool player_save_pipeline_drain(uint64_t) { return true; }
 bool redis_world_recovery_drain(uint64_t) { return true; }
-bool redis_world_runtime_enabled() { return false; }
-bool redis_save_world_state() { assert(false); return false; }
+bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *) { std::abort(); }
 int write_to_descriptor(P_desc, const char *) { assert(false); return -1; }
 void redis_world_writer_release() {}
+void redis_world_writer_reclaim_after_copyover() { std::abort(); }
+bool before_account_login(const descriptor_data *) { std::abort(); }
+bool websocket_is_authenticated_service(const descriptor_data *) { std::abort(); }
+bool return_from_staff_switch(P_desc) { std::abort(); }
+int telnet_flush_output(P_desc) { std::abort(); }
+P_ship get_ship_from_char(P_char) { std::abort(); }
+P_ship find_ship_by_database_id(uint32_t) { std::abort(); }
 bool persistence_flush_all_character_saves() { return true; }
 bool persistence_log_drain(unsigned timeout_ms) { assert(timeout_ms == 3000); return true; }
 
@@ -251,6 +259,17 @@ item_ownership_runtime_entry custody(uint64_t uid)
     return entry;
 }
 
+static int listener()
+{
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    sockaddr_in address = {};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    assert(fd >= 0 && bind(fd, reinterpret_cast<sockaddr *>(&address), sizeof address) == 0);
+    assert(listen(fd, 1) == 0);
+    return fd;
+}
+
 int main(int argc, char **argv)
 {
     rooms[0].number = 100; rooms[1].number = 200;
@@ -310,8 +329,9 @@ int main(int argc, char **argv)
             GET_MAX_HIT(mob)=333; GET_HIT(mob)=222; GET_MAX_MANA(mob)=211; GET_MANA(mob)=111;
             GET_MAX_VITALITY(mob)=123; GET_VITALITY(mob)=99;
         }
+        const int plain = listener(), tls = listener();
         if (!strcmp(getenv("COPYOVER_TEST_CASE"),"publish-race") || !strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race")) {
-            assert(!copyover_save(-1,-1,-1));
+            assert(!copyover_save(plain,tls,-1));
             const std::string competing=!strcmp(getenv("COPYOVER_TEST_CASE"),"claim-race") ? std::string(COPYOVER_FILE)+".recovering" : COPYOVER_FILE;
             FILE *other=fopen(competing.c_str(),"rb"); char bytes[11];
             assert(other && fread(bytes,sizeof(bytes),1,other)==1 && fclose(other)==0);
@@ -321,10 +341,11 @@ int main(int argc, char **argv)
             puts("[PASS] competing publication survives atomic publish refusal; live objects and custody remain");
             return 0;
         }
-        copyover_save(-1, -1, -1);
+        copyover_save(plain, tls, -1);
         assert(false && "copyover_save failed before process replacement");
     }
     assert(argc == 2 && !std::strcmp(argv[1], "recover"));
+    copyover_boot = 1;
     restoring_npc_items=true;
     assert(!object_list && item_ownership_runtime_size() == 0);
     // A newer in-memory custody revision must survive a rejected handoff;
@@ -401,7 +422,10 @@ int main(int argc, char **argv)
     }
     assert(copyover_recover(&telnet, &tls, &websocket) == 1);
     if(npc_case()) assert(npc_holder.affected && npc_holder.affected->loc2==1251);
-    assert(telnet == -1 && tls == -1 && websocket == -1);
+    assert(telnet >= 0 && tls >= 0 && telnet != tls && websocket == -1);
+    close(telnet);
+    close(tls);
+    copyover_commit_boot();
     assert(copyover_recover(&telnet, &tls, &websocket) == 0);
     assert((access(COPYOVER_FILE, F_OK) == 0) == new_publication);
     assert((access(claimed.c_str(), F_OK) == 0) == changed);

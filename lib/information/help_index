@@ -22557,11 +22557,12 @@ shop records follow their normal reboot persistence.
 
 Login/menu, WebSocket and TLS sessions receive a notice that the MUD is copying
 over and should be back up in about 20 seconds, then disconnect. Reconnect after
-the restart. Pending saves must succeed before those sessions disconnect.
+the restart. Pending saves must succeed before those sessions disconnect. If
+the executable fails to start, the current sessions stay connected.
 
-Use shutdown hotboot to preserve the live world instead. Hotboot cancels if any
-connection cannot survive its handoff. The old shutdown copyover spelling is
-no longer accepted.
+Use shutdown hotboot to preserve the live world. Login-screen sessions may
+reconnect after hotboot. Hotboot cancels if an authenticated session cannot
+survive the handoff. The old shutdown copyover spelling is no longer accepted.
 
 See also: SHUTDOWN
 ===========================================================================

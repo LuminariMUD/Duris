@@ -43,6 +43,7 @@
 #ifndef __NO_REDIS__
 #include <hiredis/hiredis.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 #endif
 
 namespace
@@ -76,6 +77,7 @@ bool clean_restart_boot = false;
 int world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
 int world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
 bool world_recovery_quiesced = false;
+bool world_copyover_discard_pending = false;
 std::string world_writer_token;
 std::string world_authentication_secret;
 std::string world_previous_authentication_secret;
@@ -530,7 +532,7 @@ bool redis_publish_world_generation(const unsigned char *data, size_t size,
 
 bool redis_world_recovery_ensure_initialized()
 {
-	if (world_recovery_quiesced || world_writer_retryable)
+	if (world_recovery_quiesced || world_copyover_discard_pending || world_writer_retryable)
 		return false;
 	if (world_recovery_pipeline_health_copy().initialized)
 		return true;
@@ -781,7 +783,7 @@ bool redis_world_runtime_start(const redis_world_runtime_config *config)
 	clean_restart_boot = false;
 	world_state_interval = WORLD_STATE_INTERVAL_DEFAULT;
 	world_state_max_age = WORLD_STATE_INTERVAL_DEFAULT + WORLD_STATE_INTERVAL_MARGIN;
-	world_recovery_quiesced = false;
+	world_recovery_quiesced = world_copyover_discard_pending = false;
 	world_writer_token.clear();
 	world_writer_lease_msec = 0;
 	world_writer_epoch = 0;
@@ -889,8 +891,8 @@ void redis_world_runtime_shutdown(bool pwipe)
 		// The players are saved and gone. One last capture, so that a clean restart
 		// restores the world as this shutdown leaves it and not as the last periodic
 		// capture, up to an interval ago, had it.
-		if (recovery_drained && !pwipe && !world_writer_token.empty() &&
-		    redis_save_world_state())
+		if (recovery_drained && !pwipe && !world_copyover_discard_pending &&
+		    !world_writer_token.empty() && redis_save_world_state())
 			recovery_drained = redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC);
 		if (!recovery_drained)
 			logit(LOG_SYS, "redis: world recovery drain timed out during shutdown");
@@ -905,8 +907,8 @@ void redis_world_runtime_shutdown(bool pwipe)
 	const bool floor_drained = redis_floor_store_shutdown(FLOOR_DRAIN_TIMEOUT_MSEC);
 	if (!floor_drained)
 		logit(LOG_SYS, "redis: floor worker drain timed out during shutdown");
-	if (!pwipe && !world_recovery_quiesced && recovery_drained && floor_drained &&
-	    world_enabled && !world_writer_token.empty())
+	if (!pwipe && !world_recovery_quiesced && !world_copyover_discard_pending &&
+	    recovery_drained && floor_drained && world_enabled && !world_writer_token.empty())
 	{
 		const redis_world_store_config config = redis_world_store_config_copy();
 		if (!redis_world_store_mark_clean_shutdown(&config, world_writer_token.c_str()))
@@ -1112,6 +1114,17 @@ void redis_world_writer_release(void)
 #endif
 }
 
+void redis_world_writer_reclaim_after_copyover(void)
+{
+#ifndef __NO_REDIS__
+	if (world_enabled && !world_writer_token.empty() && !redis_world_writer_fence_claim())
+	{
+		redis_floor_runtime_set_quiesced(true);
+		redis_world_writer_retry_schedule("writer_lease_unavailable_after_exec_failure");
+	}
+#endif
+}
+
 bool redis_world_recovery_quiesce(void)
 {
 #ifdef __NO_REDIS__
@@ -1298,26 +1311,84 @@ bool redis_consume_world_state(void)
 #endif
 }
 
-bool redis_world_discard_for_copyover()
+bool redis_world_checkpoint_for_copyover(redis_copyover_checkpoint *checkpoint)
 {
-	const auto state = redis_world_prepare_boot();
-	if (state == redis_world_boot_result::disabled || state == redis_world_boot_result::absent)
-		return true;
+	*checkpoint = {};
 #ifndef __NO_REDIS__
-	if (state == redis_world_boot_result::ready)
-	{
-		const auto config = redis_world_store_config_copy();
-		if (!redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
-							  world_boot_snapshot.generation,
-							  world_boot_snapshot.floor_records))
-			return false;
-		world_boot_snapshot = {};
-		world_boot_result = redis_world_boot_result::absent;
-		world_boot_restored = recovery_boot = clean_restart_boot = false;
+	if (!world_recovery_requested())
 		return true;
+	if (!world_enabled || !redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC))
+		return false;
+	const auto previous = world_recovery_pipeline_health_copy().last_acknowledged_sequence;
+	if (!redis_save_world_state() || !redis_world_recovery_drain(WORLD_DRAIN_TIMEOUT_MSEC))
+		return false;
+	const auto acknowledged = world_recovery_pipeline_health_copy().last_acknowledged_sequence;
+	if (acknowledged <= previous || !redis_world_writer_fence_claim())
+		return false;
+	try
+	{
+		redis_world_boot_snapshot cut;
+		if (!redis_world_boot_read([&] { return redis_capture_boot_snapshot(&cut); }) ||
+		    cut.sequence != acknowledged || !cut.floor_records.empty() ||
+		    world_key_namespace.size() >= sizeof checkpoint->key_namespace ||
+		    !SHA256(cut.generation.data(), cut.generation.size(), checkpoint->digest))
+			return false;
+		memcpy(checkpoint->key_namespace, world_key_namespace.c_str(),
+		       world_key_namespace.size() + 1);
+		checkpoint->epoch = world_runtime_epoch;
+		checkpoint->sequence = acknowledged;
+	}
+	catch (const std::bad_alloc &)
+	{
+		return false;
 	}
 #endif
+	return true;
+}
+
+bool redis_world_prepare_copyover(const redis_copyover_checkpoint &checkpoint)
+{
+	if (!checkpoint.sequence)
+		return redis_world_prepare_boot() == redis_world_boot_result::disabled;
+#ifndef __NO_REDIS__
+	if (!world_enabled || checkpoint.epoch != world_runtime_epoch ||
+	    world_key_namespace != checkpoint.key_namespace || !redis_world_writer_fence_claim())
+		return false;
+	// Startup may materialize a fresh world but cannot publish over its fallback.
+	world_copyover_discard_pending = true;
+	redis_floor_runtime_set_quiesced(true);
+	if (redis_world_prepare_boot() != redis_world_boot_result::ready ||
+	    world_boot_snapshot.sequence != checkpoint.sequence ||
+	    !world_boot_snapshot.floor_records.empty())
+		return false;
+	unsigned char digest[SHA256_DIGEST_LENGTH];
+	return SHA256(world_boot_snapshot.generation.data(), world_boot_snapshot.generation.size(),
+		      digest) &&
+	       !memcmp(digest, checkpoint.digest, sizeof digest);
+#else
 	return false;
+#endif
+}
+
+bool redis_world_discard_for_copyover()
+{
+#ifndef __NO_REDIS__
+	if (!world_copyover_discard_pending)
+		return world_boot_result == redis_world_boot_result::disabled;
+	const auto config = redis_world_store_config_copy();
+	// Renew in case boot took longer than the lease. The compare/delete also
+	// checks this token inside Redis, so a later lease change cannot authorize it.
+	if (!redis_world_writer_fence_claim() ||
+	    !redis_world_store_consume_generation(&config, world_boot_snapshot.sequence,
+						  world_boot_snapshot.generation, {},
+						  world_writer_token.c_str()))
+		return false;
+	world_boot_snapshot = {};
+	world_boot_result = redis_world_boot_result::absent;
+	world_copyover_discard_pending = false;
+	redis_floor_runtime_set_quiesced(false);
+#endif
+	return true;
 }
 
 bool redis_world_validate_boot(void)
