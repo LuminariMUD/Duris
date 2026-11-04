@@ -67,8 +67,9 @@ def snapshot():
             npc = ch['only']['npc']
             prototype = int(prototypes[int(npc['R_num'])]['virtual_number'])
             if prototype == 1255 or bool(npc['training_dummy']):
-                room = world[int(ch['in_room'])]
-                zone_flags = int(zones[int(room['zone'])]['flags'])
+                room_index = int(ch['in_room'])
+                room = world[room_index] if room_index >= 0 else None
+                zone_flags = int(zones[int(room['zone'])]['flags']) if room is not None else 0
                 slots = ch['equipment']
                 lo, hi = slots.type.range()
                 equipment = [item_signature(slots[i]) if int(slots[i]) else None for i in range(lo, hi + 1)]
@@ -77,7 +78,7 @@ def snapshot():
                 while int(item):
                     items.append(item_signature(item))
                     item = item['next_content']
-                rows.append(dict(id=int(npc['idnum']), room=int(room['number']),
+                rows.append(dict(id=int(npc['idnum']), room=int(room['number']) if room is not None else -1,
                                  marked=bool(npc['training_dummy']), fixed=bool(npc['training_dummy_fixed']),
                                  name=ch['player']['name'].string(), description=ch['player']['long_descr'].string(),
                                  prototype=prototype, hit=int(ch['points']['base_hit']),
@@ -90,6 +91,21 @@ def snapshot():
                                  items=sorted(items), equipment=equipment))
         ch = ch['next']
     return rows
+
+def find_roamer(saved_id):
+    # Saved NPC IDs can collide with unrelated allocations after recovery.
+    ch = gdb.parse_and_eval('character_list')
+    prototypes = gdb.parse_and_eval('mob_index')
+    matches = []
+    while int(ch):
+        if int(ch['specials']['act']) & npc_bit:
+            npc = ch['only']['npc']
+            if (int(npc['idnum']) == saved_id and not bool(npc['training_dummy'])
+                    and int(prototypes[int(npc['R_num'])]['virtual_number']) == 1255):
+                matches.append(ch)
+        ch = ch['next']
+    assert len(matches) == 1
+    return matches[0]
 """
 
 
@@ -121,14 +137,9 @@ def qualify_roamers(process, runtime, client, recover):
         return {key: value for key, value in row.items() if key not in ('room', 'eligible')}
 
     def roamer_action(row, action):
-        return ('break run_activity_phase\ncontinue\npython\n'
-                "ch = gdb.parse_and_eval('character_list')\n"
-                "while int(ch) and (not int(ch['specials']['act']) & npc_bit "
-                f"or int(ch['only']['npc']['idnum']) != {row['id']}):\n"
-                "    ch = ch['next']\n"
-                "assert int(ch) and not bool(ch['only']['npc']['training_dummy'])\n"
-                "gdb.set_convenience_variable('roamer', ch)\n"
-                "end\n" + action)
+        return ('break run_activity_phase\ncontinue\n'
+                f"python gdb.set_convenience_variable('roamer', find_roamer({row['id']}))\n"
+                + action)
 
     def set_cap(cap, save=False):
         client.send(f'properties set random.mapmob.populationCap {cap}')
@@ -276,8 +287,18 @@ def run(binary, mode='file', full_world=None):
         def stop():
             nonlocal client,process,output
             if client: client.close(); client=None
-            if process and process.poll() is None: process.terminate(); process.wait(timeout=30)
-            if output: output.close()
+            try:
+                if process and process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=10)
+                        raise
+            finally:
+                if output:
+                    output.close()
         def boot():
             nonlocal process,output
             output=(runtime/'server.out').open('w')
@@ -409,10 +430,21 @@ def run(binary, mode='file', full_world=None):
             if client: print(client.transcript.decode(errors='replace')[-9000:])
             raise
         finally:
-            stop()
-            if redis:
-                redis.terminate(); redis.wait(timeout=15)
-            if database: sql('DROP DATABASE '+database, False)
+            try:
+                stop()
+            finally:
+                try:
+                    if redis:
+                        redis.terminate()
+                        try:
+                            redis.wait(timeout=15)
+                        except subprocess.TimeoutExpired:
+                            redis.kill()
+                            redis.wait(timeout=10)
+                            raise
+                finally:
+                    if database:
+                        sql('DROP DATABASE '+database, False)
 
 if __name__=='__main__':
     if len(sys.argv) > 1:
