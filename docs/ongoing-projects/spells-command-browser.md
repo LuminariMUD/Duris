@@ -49,6 +49,8 @@ browser; a separate `levels` or `circles` command is unnecessary for this scope.
 - Group spells by ascending circle under ordinal headings, alphabetically within
   each circle. Dim spells above the maximum circle shown in the header.
 - End with one `See` line linking to the class/spec catalog and spell details.
+  The caller's own list shows their current spell interface above that line
+  when they have spells and an applicable casting, preparation, or recovery command.
 - Preserve relevant spellbook presence markers using the existing accessible
   book lookup modes. Display them only where the character's preparation path
   uses them; do not imply that every caster needs a spellbook or uses mana.
@@ -74,6 +76,7 @@ browser; a separate `levels` or `circles` command is unnecessary for this scope.
   circles, and removals applied. Prefix additions with `*` and explain the
   marker alongside the lost-spells heading when both apply. Include
   `spells info <spell name>` navigation.
+- Show the base class's default spell interface in both catalogs when applicable.
 - Use the initialized class/spec definitions and supported circle bounds.
   Treat zero/invalid circles and removed grants correctly; do not recover a
   removed spell by falling back to the base class.
