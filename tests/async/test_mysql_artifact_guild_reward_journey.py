@@ -232,7 +232,8 @@ def run(binary, case):
                 # Keep independent luck-based random epics out of the elite feed totals.
                 command(god, 'setbit char ' + PLAYER + ' luck -1000')
                 assert 'Class: Necromancer' in command(player, 'score')
-                assert re.search(r'\bLuk:\s+1\b', command(player, 'attributes'))
+                settle(lambda: re.search(r'\bLuk:\s+1\b', command(player, 'attributes')),
+                       'the effective luck change was not published')
                 assert 'new association is set up' in command(god, 'supervise found ' + PLAYER + ' n Rewardguild')
                 settle(lambda: sql("SELECT COUNT(*) FROM guilds WHERE TRIM(name)='Rewardguild'") == '1', 'guild snapshot missing')
                 gid = int(sql("SELECT id FROM guilds WHERE TRIM(name)='Rewardguild'"))
