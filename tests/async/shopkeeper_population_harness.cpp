@@ -597,7 +597,7 @@ int main(int argc, char **argv)
 		add_item(11, 71);
 		add_item(11, 72, 1);
 		saved_affects = { { "11", "1", "2", "3", "4", "0", "0", "0", "0", "0" } };
-		saved_item_affects = { { "2", "3", "4" } };
+		saved_item_affects = { { "2", "3", "4", "2" } };
 		shop_index[0].number_items_produced = shop_index[1].number_items_produced = 1;
 		shop_index[0].producing[0] = 80;
 		shop_index[1].producing[0] = 81;
@@ -608,6 +608,10 @@ int main(int argc, char **argv)
 		assert(has_item(first, 70) && has_item(first, 80) && !has_item(first, 81));
 		assert(has_item(second, 71) && has_item(second, 81) && !has_item(second, 80));
 		assert(second->equipment[0]->R_num == 72 && second->affects == 1);
+		for (P_obj stock = second->carrying; stock; stock = stock->next_content)
+			if (stock->R_num == 71)
+				assert(stock->affected[2].location == 3 &&
+				       stock->affected[2].modifier == 4);
 		assert(has_item(ambiguous, 90) && !has_item(first, 90));
 		assert(has_item(second, 91) == (scenario == "refill-shared"));
 		assert(shop_index[0].dirty && shop_index[1].dirty);

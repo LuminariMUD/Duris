@@ -6,6 +6,8 @@ import os
 import subprocess
 import tempfile
 
+from _paths import extract_function
+
 ROOT = Path(__file__).resolve().parents[2]
 db = (ROOT / "src/world/db.c").read_text()
 files = (ROOT / "src/core/files.c").read_text()
@@ -19,7 +21,8 @@ restore = sql[restore_start:sql.index("// True while the periodic save's next pu
 harness = (ROOT / "tests/async/shopkeeper_population_harness.cpp").read_text()
 harness = harness.replace("// PRODUCTION_HELPER", helper)
 harness = harness.replace("// PRODUCTION_RESET", reset)
-harness = harness.replace("// PRODUCTION_RESTORE", restore)
+slot_loader = extract_function("sql_player.c", "static bool sql_set_item_affect(")
+harness = harness.replace("// PRODUCTION_RESTORE", slot_loader + "\n" + restore)
 stock = (ROOT / "src/economy/shopkeeper_restock.c").read_text()
 harness = harness.replace("// PRODUCTION_RESTOCK", stock[stock.index("std::vector<P_obj> shopkeeper_reboot_stock"):])
 
