@@ -1823,7 +1823,6 @@ cp -a areas "$fixture/"
 mkdir -p "$fixture/bin/areas"
 ln -s "$PWD/bin/areas/tools" "$fixture/bin/areas/tools"
 (cd "$fixture/areas" && ./m_slow)
-python3 tests/async/test_flatfile_player_repository.py --build-inspector "$PWD/bin/tests/coin-death-inspector"
 python3 tests/async/test_generated_npc_journey.py bin/server/dms_flatfile file "$fixture/areas"
 bash tests/async/with_disposable_mariadb.sh \
   python3 tests/async/test_generated_npc_journey.py bin/server/dms_new redis "$fixture/areas"

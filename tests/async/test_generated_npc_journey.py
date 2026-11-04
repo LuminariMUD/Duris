@@ -278,7 +278,10 @@ def run(binary, mode='file', full_world=None):
             for arguments in [('adopt','--kind','fresh_bootstrap'),('run',)]:
                 subprocess.run(['python3','scripts/migration_runner.py',*arguments],cwd=journey.ROOT,env=env,check=True)
         else:
-            subprocess.run([str(journey.INSPECTOR),str(state),'seed-combat'],check=True)
+            subprocess.run([sys.executable, 'tests/async/test_flatfile_player_repository.py',
+                            '--build-inspector', str(journey.INSPECTOR)],
+                           cwd=journey.ROOT, check=True, timeout=180)
+            subprocess.run([str(journey.INSPECTOR), str(state), 'seed-combat'], check=True)
         cpp=root/'staff.cpp'; cpp.write_text(FIXTURE); fixture=root/'staff'
         subprocess.run(['g++','-std=c++20','-Isrc',str(cpp),'src/player/player_snapshot_codec.c',
             'src/flatfile/flatfile_player_snapshot_file.c','src/flatfile/flatfile_store.c','-lcrypto','-o',str(fixture)],cwd=journey.ROOT,check=True)
