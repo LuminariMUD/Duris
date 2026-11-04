@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix="private-chests-", dir=build) as tmp:
     harness = (ROOT / "tests/async/private_chest_regressions.cpp").read_text()
     harness = harness.replace("// COMMAND_ARGUMENTS", arguments).replace("// AUDIT_PRODUCTION", audit)
     harness = harness.replace("// ACCOUNT_IDENTITY", extract_function("account/account.c", "const char *get_account_name_safe("))
-    source.write_text(harness)
+    source.write_text(harness + "\n" + extract_function("core/utility.c", "int BOUNDED("))
     subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
                     "-Wl,--gc-sections", "-Wl,--wrap=getrandom", "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2",

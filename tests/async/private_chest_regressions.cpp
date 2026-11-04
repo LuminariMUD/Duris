@@ -788,7 +788,6 @@ int main()
 		assert(removal_records.size() == before_removal + 1);
 		auto doomed = read_object(1, REAL);
 		const auto doomed_uid = doomed->obj_uid;
-		obj_to_room(doomed, 0);
 		assert(DamageOneItem(&actor, SPLDAM_GENERIC, doomed, true));
 		assert(removal_records.size() == before_removal + 2);
 		assert(removal_records.back().find("cause=damage uid=" +
