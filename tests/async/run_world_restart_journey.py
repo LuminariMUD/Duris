@@ -489,15 +489,20 @@ def midcapture(rig: Rig) -> None:
 
     starting = "starting bounded world recovery capture"
     captures = rig.log("sys").count(starting)
+    before_capture = len(rig.log("sys"))
     rig.wait_for("no second capture started", 60, lambda: rig.log("sys").count(starting) > captures)
     client.send("get banana basket")
     client.send("drop banana")
     client.expect("You drop a banana", timeout=10)
     rig.wait_for("the overlapping capture was not rejected", 45, lambda:
-                 "world recovery capture failed stage=2" in rig.log("sys"))
+                 "world recovery capture failed stage=2" in rig.log("sys")[before_capture:])
     floor_drops = f"{rig.namespace}:season:1:floor_drops"
     rig.wait_for("the drop was not journaled", 45, lambda:
                  rig.redis_cli("HLEN", floor_drops) == "1")
+    banana_uid = rig.redis_cli("HKEYS", floor_drops)
+    assert banana_uid.isdecimal(), banana_uid
+    capture_log = rig.log("sys")[before_capture:].rsplit(starting, 1)[-1]
+    assert re.search(rf"capture rejected duplicate item uid={banana_uid} vnum=15\b", capture_log), capture_log
     assert re.findall(ACKNOWLEDGED, rig.log("sys")) == [str(first)], \
         "an inconsistent or newer generation replaced the prior valid one"
     client.close()
