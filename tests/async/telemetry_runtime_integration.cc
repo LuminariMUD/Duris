@@ -878,7 +878,6 @@ void check_copyover_durability_barrier(bool blocked, bool rejected, bool unavail
 	const auto enter = make_enter(options.producer, options.config);
 	assert(telemetry_runtime_session_enter(enter).outcome ==
 	       telemetry_runtime_outcome::accepted);
-	std::thread unblocker;
 	if (blocked)
 	{
 		// Fill one batch and wait for its callback before measuring the deadline;
@@ -917,12 +916,10 @@ void check_copyover_durability_barrier(bool blocked, bool rejected, bool unavail
 		// Admitted records are still owned by the blocked repository call.
 		const auto health = telemetry_transport_health_copy();
 		assert(health.admitted_control > 0U && health.applied_records == 0U);
-		unblocker = std::thread(
-			[&]
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(150));
-				fake.apply_callback.unblock();
-			});
+		// The first flush has proved the deadline with the callback blocked.
+		// Release it before testing recovery, so an artificial sleep does not
+		// consume most of the next flush's budget.
+		fake.apply_callback.unblock();
 	}
 	// Simulate failed exec: normal admissions and the same worker remain live.
 	assert(telemetry_runtime_record_evidence({ enter.session,
@@ -938,8 +935,6 @@ void check_copyover_durability_barrier(bool blocked, bool rejected, bool unavail
 	// Even an oversized caller deadline is capped by the runtime's 250ms limit.
 	const auto next = telemetry_runtime_flush_for_copyover(now + 5'000'000U);
 	assert(std::chrono::steady_clock::now() - next_start < std::chrono::milliseconds(350));
-	if (unblocker.joinable())
-		unblocker.join();
 	assert(next == (rejected || unavailable ? telemetry_runtime_outcome::queue_full :
 						  telemetry_runtime_outcome::accepted));
 	std::printf("copyover barrier: blocked=%u rejected=%u unavailable=%u first=%u "

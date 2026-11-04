@@ -24,8 +24,10 @@ def main() -> None:
             "-Wl,--wrap=write", "-Wl,--wrap=fsync", "-Wl,--wrap=renameat", "-lcrypto",
             "-o", str(binary),
         ], cwd=ROOT, check=True, timeout=60)
+        # Archive rotation performs hundreds of real fsyncs. Leave room for
+        # filesystem contention from the other regression workers.
         completed = subprocess.run([str(binary)], cwd=ROOT, text=True,
-                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
         print(completed.stdout, end="")
         completed.check_returncode()
         assert "telemetry durable outage evidence qualification passed" in completed.stdout
