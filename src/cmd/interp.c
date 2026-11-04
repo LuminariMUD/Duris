@@ -1454,6 +1454,10 @@ bool cmd_depends_on_item_movement(int cmd)
 	case CMD_POUR:
 	case CMD_QUAFF:
 	case CMD_RECITE:
+	case CMD_CAST:
+	case CMD_INSTACAST:
+	case CMD_SPELLWEAVE:
+	case CMD_WILL:
 	case CMD_RELOAD:
 	case CMD_SALVAGE:
 	case CMD_SIP:

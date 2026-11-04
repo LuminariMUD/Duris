@@ -94,9 +94,9 @@ def run(binary):
                     def cast(spell):
                         return command(shaman, f"cast '{spell}' {SHAMAN}")
 
-                    def expect_cast(spell):
+                    def expect_cast(spell, effect):
                         result = cast(spell)
-                        assert "You start chanting" in result, result
+                        assert effect in result, result
 
                     def expect_missing(spell, requirement, color):
                         start = len(shaman.raw_transcript)
@@ -111,18 +111,18 @@ def run(binary):
                         move_item("get " + item, "You get")
 
                     # The spirit focus works loose in inventory and around the neck.
-                    expect_cast("spirit armor")
+                    expect_cast("spirit armor", "You feel protective spirits watching over you.")
                     move_item("put quartz bag", "Ok.")
                     expect_missing("spirit armor", "Lesser Spirit", b"\x1b[0;1;36m")
                     move_item("get quartz bag", "You get")
                     move_item("wear quartz neck", "around your neck")
-                    expect_cast("spirit armor")
+                    expect_cast("spirit armor", "The spirits seem refreshed.")
 
                     move_item("drop obsidian", "You drop")
                     expect_missing("cold ward", "Lesser Elemental", b"\x1b[0;1;31m")
                     move_item("get obsidian", "You get")
                     move_item("hold obsidian", "You hold")
-                    expect_cast("cold ward")
+                    expect_cast("cold ward", "You feel protected from the cold!")
 
                     move_item("drop bear", "You drop")
                     command(god, "load obj 105")
@@ -131,7 +131,7 @@ def run(binary):
                     expect_missing("lionrage", "Greater Animal", b"\x1b[0;1;33m")
                     move_item("drop raven", "You drop")
                     move_item("get bear", "You get")
-                    expect_cast("lionrage")
+                    expect_cast("lionrage", "You feel strength and power courses through your veins!")
             except BaseException:
                 print(log.read_text(errors="replace")[-4000:])
                 raise

@@ -18765,8 +18765,8 @@ See also: SPAM, KENON, KVARK
 #
 TOTEMS (General Information)
 ===========================================================================
-Totems are required by Shamans to cast their spells, as they allow them to
-focus their energies into magic.
+Single-class Shamans use totems to focus their spells. Multiclass Shamans
+can cast without a totem.
 
 Shaman spells are divided into "spheres" -animal, elemental, and
 spiritual. Lesser totems are used to cast spells in a certain sphere below
@@ -18775,14 +18775,13 @@ over. Totems can also grant more than one sphere or high/low-level spells.
 Keep the matching totem equipped or directly in your inventory to cast.
 Totems inside containers don't count. Memorizing doesn't require a totem.
 
-Newbie Shamans load with three totems (raven, limestone, ivory), each of
-which grants the lower spells for a certain sphere. (raven =animal,
-limestone =elemental, ivory =spiritual).
+The Shaman starter kit includes totems. Successful lore on a totem shows
+which spheres and tiers it grants.
 
 Higher totems can be bought at various Shaman-related stores around the
 mud, as well as created by the "Minor Creation" spell.
 ===========================================================================
-See also: SHAMAN, SKILL_SHAMAN
+See also: SHAMAN, SKILL_SHAMAN, TOTEMIC MASTERY
 
 #
 "TOWER OF IRON WILL" (Spell)
