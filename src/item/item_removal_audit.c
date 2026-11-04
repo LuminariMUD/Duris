@@ -87,5 +87,6 @@ void audit_item_removal(const char *cause, const item_removal_location &source,
 		 destination.room, destination.holder_pid, destination.holder_mob_vnum,
 		 static_cast<unsigned long long>(destination.holder_runtime_id), destination.uid,
 		 destination.vnum, damage_type);
-	persistence_log_submit(record);
+	if (!persistence_log_submit(record))
+		logit(LOG_STATUS, "%s", record);
 }

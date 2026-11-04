@@ -345,6 +345,8 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	snprintf(buf, MAX_STRING_LENGTH, "&+wFinal item value: %d.&n\r\n", final_value);
 	send_to_char(buf, ch);
 	const auto replaced = capture_item_removal(source);
+	const auto donor = pouch_material ? item_removal_location{} :
+					    capture_item_removal(material);
 	obj_from_char(source);
 	extract_obj(source);
 	if (!pouch_material)
@@ -352,7 +354,10 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		obj_from_char(material);
 		extract_obj(material);
 	}
-	audit_item_removal("enhance_replacement", replaced, capture_item_removal(robj));
+	const auto result = capture_item_removal(robj);
+	audit_item_removal("enhance_replacement", replaced, result);
+	if (!pouch_material)
+		audit_item_removal("enhance_donor", donor, result);
 	statuslog(ch->player.level,
 		  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!", GET_NAME(ch),
 		  obj_index[robj->R_num].virtual_number, robj->short_description, final_value,

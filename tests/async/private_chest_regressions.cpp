@@ -788,9 +788,19 @@ int main()
 		assert(removal_records.size() == before_removal + 1);
 		auto doomed = read_object(1, REAL);
 		const auto doomed_uid = doomed->obj_uid;
+		auto child = read_object(1, REAL);
+		const auto child_uid = child->obj_uid;
+		doomed->contains = child;
+		child->loc_p = LOC_INSIDE;
+		child->loc.inside = doomed;
 		assert(DamageOneItem(&actor, SPLDAM_GENERIC, doomed, true));
-		assert(removal_records.size() == before_removal + 2);
+		assert(removal_records.size() == before_removal + 3);
+		assert(removal_records[before_removal + 1].find("cause=damage uid=" +
+								std::to_string(doomed_uid)) !=
+		       std::string::npos);
 		assert(removal_records.back().find("cause=damage uid=" +
+						   std::to_string(child_uid)) != std::string::npos);
+		assert(removal_records.back().find("source=container source_container_uid=" +
 						   std::to_string(doomed_uid)) !=
 		       std::string::npos);
 

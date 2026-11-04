@@ -66,6 +66,10 @@ def run(binary):
         assert "cause=enhance_replacement" in replacement and f"destination_pid={pid} " in replacement
         result_uid = int(re.search(r"\bresult_uid=(\d+)", replacement).group(1))
         assert result_uid and result_uid != UPGRADE_UID
+        donor, = item_records(DONOR_UID)
+        assert "cause=enhance_donor" in donor and f"holder_pid={pid} " in donor
+        assert f"result_uid={result_uid} " in donor
+        assert rig.sql(f"SELECT COUNT(*) FROM player_items WHERE obj_uid={DONOR_UID}") == "0"
         assert rig.sql(f"SELECT pid FROM player_items WHERE obj_uid={result_uid}") == pid
         assert rig.sql(f"SELECT pid FROM player_items WHERE obj_uid={BAIT_UID}") == pid
         assert not item_records(BAIT_UID) and not item_records(HEAVY_UID), records()

@@ -42,6 +42,13 @@ harness = r'''
 #define LOG_FILE "logs/log/file"
 #define checked_snprintf snprintf
 std::vector<std::string> broadcasts;
+std::vector<std::string> fallback;
+void logit(const char *path, const char *format, ...) {
+    assert(std::string(path) == "logs/log/status");
+    char text[4096]; va_list args; va_start(args, format);
+    vsnprintf(text, sizeof(text), format, args); va_end(args);
+    fallback.emplace_back(text);
+}
 void wizlog(int level, const char *format, ...) {
     assert(level == AVATAR);
     char text[4096]; va_list args; va_start(args, format);
@@ -219,6 +226,8 @@ int main(int argc, char **argv) {
         audit_item_removal("scrap", removed);
     assert(clock_type::now() - begin < std::chrono::seconds(1));
     assert(persistence_log_snapshot().rejected == before.rejected + 40000);
+    assert(fallback.size() == 20000);
+    assert(fallback.back().find("domain=item_removal cause=scrap uid=82 vnum=1252 room=22800") == 0);
     persistence_alert(AVATAR, "player_save", "private", "private", "private", "terminal_save_failed", "retry=%d", 1);
     assert(broadcasts.size() == 1);
     assert(broadcasts[0].find("terminal_save_failed") != std::string::npos);
