@@ -24,6 +24,7 @@ with_disposable_mariadb.sh (make test-db); --server picks the executable.
 """
 from pathlib import Path
 import argparse
+import json
 import os
 import re
 import shutil
@@ -49,7 +50,6 @@ RESTORED = (r'restored world recovery generation sequence=(\d+) mobs=(\d+) objs=
 REHYDRATED = r'rehydrated recovered NPC zone items matched_mobs=(\d+) loaded_items=(\d+)'
 CREATED = r'arti_update_sql: Creating entry: vnum: (\d+),'
 QUEST_COUNT = rb'\xff\xfa\xc9Quest\.Status \{"remaining":\d+,[^\xff]*\xff\xf0'
-LISTED = r'redis: cached artifact list type=([1-3]) godlist=([01])'
 
 
 class Player(budget.Mortal):
@@ -90,7 +90,6 @@ def boot_sql_missing(sql, log):
     queues its row and its domain-state row. Domain-only identities also retain artifacts
     absent from this boot's resets. Each outpost queues its building's hit points
     over the 0 its row began with. The frag list read fills the cache on the first pulse.
-    The six artifact lists are read once the world is final and cached on a later pulse.
     """
     created = sorted(set(map(int, re.findall(CREATED, log('artifact')))))
     missing = [] if created else ['any artifact']
@@ -102,8 +101,6 @@ def boot_sql_missing(sql, log):
         missing.append('outpost hit points')
     if 'redis: cached fraglist' not in log('sys'):
         missing.append('the frag list cache')
-    if len(set(re.findall(LISTED, log('sys')))) < 6:
-        missing.append('the artifact list caches')
     return missing
 
 
@@ -168,6 +165,16 @@ def run(server, players):
              '--appendonly', 'no', '--dir', str(runtime / 'redis')],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+        report_keys = {(kind, staff): f"{environment['REDIS_NAMESPACE']}:season:1:cache:artifact:{kind}:{staff}"
+                       for kind in range(1, 4) for staff in (0, 1)}
+
+        def redis_cli(*args):
+            return subprocess.check_output(
+                ['redis-cli', '--raw', '-p', str(redis_port), *args], text=True)
+
+        def report_values():
+            return redis_cli('MGET', *report_keys.values()).splitlines()
+
         def log(name):
             path = runtime / 'logs/log' / name
             return path.read_text(errors='replace') if path.exists() else ''
@@ -192,9 +199,14 @@ def run(server, players):
             process, plain, boot_seconds = boot()
             assert 'sql job' not in log('file'), log('file')[-2000:]
             written = time.monotonic() + 30
-            while boot_sql_missing(sql, log):
-                assert time.monotonic() < written, \
-                    'the boot did not write: ' + ', '.join(boot_sql_missing(sql, log))
+            while True:
+                missing = boot_sql_missing(sql, log)
+                values = report_values()
+                if len(values) != len(report_keys) or not all(values):
+                    missing.append('the artifact list caches')
+                if not missing:
+                    break
+                assert time.monotonic() < written, 'the boot did not write: ' + ', '.join(missing)
                 time.sleep(0.5)
             mortals = [Player(plain, number) for number in range(players)]
             for mortal in mortals:
@@ -233,7 +245,13 @@ def run(server, players):
             process.kill()
             process.wait()
             killed = time.monotonic()
-            before_restore = len(log('sys'))
+            world_artifacts = {
+                tuple(map(int, row.split())) for row in
+                sql('SELECT type, vnum, locType, location FROM artifacts WHERE locType IN (2, 4)').splitlines()
+            }
+            assert world_artifacts, 'no NPC or floor artifacts were captured'
+            redis_cli('DEL', *report_keys.values())
+            assert redis_cli('EXISTS', *report_keys.values()).strip() == '0'
             process, _, _ = boot()
             while not (re.search(RESTORED, log('sys')) and
                        'Crash recovery complete' in log('status')):
@@ -242,13 +260,22 @@ def run(server, players):
                     log('sys')[-2000:] + log('status')[-2000:]
                 time.sleep(0.5)
             recovery_seconds = time.monotonic() - killed
-            # The restore stores a row for each artifact it puts back; the lists are read
-            # after it, so this boot caches them too.
-            while len(set(re.findall(LISTED, log('sys')[before_restore:]))) < 6:
+            # Check Redis itself. A log line can also be emitted when its write is rejected.
+            values = report_values()
+            while len(values) != len(report_keys) or not all(values):
                 assert process.poll() is None, 'the server exited'
-                assert time.monotonic() - killed < 330, \
-                    'the restored boot did not cache the artifact lists:\n' + log('sys')[-2000:]
+                assert time.monotonic() - killed < 330, 'the recovered Redis reports did not all publish'
                 time.sleep(0.5)
+                values = report_values()
+            reports = {identity: json.loads(value) for identity, value in zip(report_keys, values)}
+            for (kind, staff), report in reports.items():
+                assert report['type'] == kind and report['godlist'] is bool(staff), report
+            recovered_report_items = {
+                (kind, item['vnum'], item['locType'], item['location'])
+                for (kind, staff), report in reports.items() if staff
+                for item in report['artifacts']
+            }
+            assert recovered_report_items & world_artifacts, 'staff reports omitted the recovered world artifacts'
             restored, mobs, objects, doors, zones = map(
                 int, re.search(RESTORED, log('sys')).groups())
             matched, carried = map(int, re.search(REHYDRATED, log('status')).groups())

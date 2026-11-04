@@ -576,16 +576,17 @@ bool redis_invalidate_epic_zones(void)
 	return cache_delete(REDIS_CACHE_EPIC_ZONES);
 }
 
-void redis_cache_artifact_list(int type, bool godlist, const char *json)
+bool redis_cache_artifact_list(int type, bool godlist, const char *json)
 {
 #ifndef __NO_REDIS__
 	if (!report_cache_enabled || type < 1 || type > 3 || !json)
-		return;
-	cache_set_ex(artifact_key(type, godlist), artifact_cache_ttl_seconds, json);
+		return false;
+	return cache_set_ex(artifact_key(type, godlist), artifact_cache_ttl_seconds, json);
 #else
 	(void)type;
 	(void)godlist;
 	(void)json;
+	return false;
 #endif
 }
 

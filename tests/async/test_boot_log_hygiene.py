@@ -92,6 +92,8 @@ assert game_loop.count("arti_cache_init();") == 1
 for restore in ("copyover_recover(", "redis_world_recovery_boot_clear();",
                 "initialize_transport();"):
     assert index(game_loop, restore) < index(game_loop, "arti_cache_init();"), restore
+artifact = (SRC / "artifact.c").read_text()
+assert artifact.count("arti_cache_init();") == 0
 
 
 # --- a connection line builds no time stamp of its own ------------------------

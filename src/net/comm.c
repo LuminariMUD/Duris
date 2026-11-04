@@ -2475,6 +2475,10 @@ static void run_recurring_persistence_phase(game_loop_pulse_context &ctx)
 	sql_ship_write_pulse();
 #endif
 	artifact_guild_transaction_pulse();
+#ifndef __NO_MYSQL__
+	if (!(pulse % WAIT_SEC))
+		arti_cache_retry();
+#endif
 	if (!(pulse % (WAIT_SEC * 60)))
 		sql_mud_info_refresh();
 	maintenance_result maintenance_results[MAINTENANCE_COMPLETION_MAX] = {};

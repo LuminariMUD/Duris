@@ -87,7 +87,9 @@ struct job
 };
 static std::vector<job> jobs;
 static bool accepting = true;
-static size_t cache_writes = 0, cache_invalidations = 0;
+static size_t cache_invalidations = 0;
+static std::vector<std::pair<int, bool>> cache_writes;
+static bool reject_next_cache_read = false, reject_next_cache_write = false;
 static std::vector<std::function<void(bool, const sql_rows &)>> cache_reads;
 index_data indexes[1] = {};
 P_index obj_index = indexes;
@@ -166,6 +168,12 @@ char *coins_to_string(int, int, int, int, const char *)
 bool sql_read_at(persistence_query_site, std::string,
 		 std::function<void(bool, const sql_rows &)> done)
 {
+	if (reject_next_cache_read)
+	{
+		reject_next_cache_read = false;
+		errno = EAGAIN;
+		return false;
+	}
 	cache_reads.push_back(std::move(done));
 	return true;
 }
@@ -217,9 +225,15 @@ bool redis_invalidate_artifact_cache()
 	++cache_invalidations;
 	return true;
 }
-void redis_cache_artifact_list(int, bool, const char *)
+bool redis_cache_artifact_list(int type, bool staff, const char *)
 {
-	++cache_writes;
+	if (reject_next_cache_write)
+	{
+		reject_next_cache_write = false;
+		return false;
+	}
+	cache_writes.emplace_back(type, staff);
+	return true;
 }
 static size_t report_object_reads = 0;
 const object_template *find_object_template(int vnum)
@@ -961,15 +975,33 @@ int main(int argc, char **argv)
 	assert(contains(jobs[0], "NULLIF(1600, 0)"));
 	auto stale_reads = std::move(cache_reads);
 	cache_reads.clear();
+	reject_next_cache_read = true;
 	for (auto &read : stale_reads)
 		read(true, {});
-	assert(cache_writes == 0); // No report from the stale generation.
-	assert(cache_reads.size() == 6); // One refresh for all six stale callbacks.
+	assert(cache_writes.empty()); // No report from the stale generation.
+	assert(cache_reads.empty()); // Stale completions leave refresh to the pulse.
+	arti_cache_retry();
+	assert(cache_reads.size() == 5); // One admission refused.
+	arti_cache_retry();
+	assert(cache_reads.size() == 6); // Retry only the rejected key.
+	arti_cache_retry();
+	assert(cache_reads.size() == 6);
 	auto refreshed_reads = std::move(cache_reads);
 	cache_reads.clear();
+	reject_next_cache_write = true;
 	for (auto &read : refreshed_reads)
 		read(true, {});
-	assert(cache_writes == 6 && cache_reads.empty());
+	assert(cache_writes.size() == 5 && cache_reads.empty());
+	arti_cache_retry();
+	assert(cache_reads.size() == 1); // Re-read only the rejected Redis publication.
+	auto retry = std::move(cache_reads.front());
+	cache_reads.clear();
+	retry(true, {});
+	assert(cache_writes.size() == 6 && cache_reads.empty());
+	for (int type = 1; type <= 3; ++type)
+		for (bool staff : { false, true })
+			assert(std::count(cache_writes.begin(), cache_writes.end(),
+					  std::pair{ type, staff }) == 1);
 	artifact_row_store(900, { true, ARTIFACT_ON_PC, 77, 1600, ARTIFACT_MAJOR });
 	artifact_bind_store(900, 77, 17);
 	assert(jobs.size() == 3);
@@ -990,7 +1022,9 @@ int main(int argc, char **argv)
 	auto late_read = std::move(cache_reads.front());
 	cache_reads.clear();
 	late_read(true, {});
-	assert(cache_writes == 6 && cache_reads.size() == 6);
+	assert(cache_writes.size() == 6 && cache_reads.empty());
+	arti_cache_retry();
+	assert(cache_reads.size() == 6);
 	assert(jobs.size() == 4 && contains(jobs.back(), "VALUES(900,88,18)"));
 	finish(3);
 	assert(artifact_save_pulse(false) == 0);
