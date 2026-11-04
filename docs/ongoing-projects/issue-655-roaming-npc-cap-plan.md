@@ -379,19 +379,24 @@ passes and 11 failures. #685 and #691 addressed all 11. Its log is
   writer work, and copyover drops the connection when artifact admission
   requests a fresh read. [#689](https://github.com/LuminariMUD/Duris/pull/689)
   landed as `b1d5d2b97` and refreshes the read within the original player-load
-  deadline. The ground and NPC cases passed native copyover, clean restart,
-  and the canonical artifact swaps. All eight copyover regressions passed.
+  deadline. All seven MariaDB artifact cases and all eight copyover
+  regressions passed. Both native hotboots and canonical artifact swaps
+  are covered.
 - [#687](https://github.com/LuminariMUD/Duris/pull/687) qualified restart
   from a valid checkpoint after deliberately causing an overlapping capture
   to be rejected.
 - [#690](https://github.com/LuminariMUD/Duris/pull/690) repaired the shared
   maintenance linkage for the address-retention and statistics harnesses.
   Both passed in disposable MariaDB after reproducing the original failures.
-- The latency benchmark exceeded its 3-second re-entry budget during the
-  parallel baseline. The local branch
-  `branch/gate-isolate-mariadb-loop-budget` runs that benchmark after the
-  parallel database tests and keeps the budget. Run the actual benchmark on
-  a quiet host before publishing the change.
+- [#692](https://github.com/LuminariMUD/Duris/pull/692) isolates the latency
+  benchmark after the parallel database cases and preserves its 3-second
+  budget. The original parallel run measured 3.25 seconds. The standalone
+  run measured 1.00 second across 17 re-entries, with at most 16 queued
+  shop saves per pulse.
 
-After the baseline finishes, rerun `make test-db` with the verified
-focused changes applied and record the integration revision and result.
+The full DB rerun is running from master `01d190929` plus the six DB
+PRs at local integration commit `83f39d5e4`. Run
+`TEST_DB_JOBS=6 make test-db -j8 CC='ccache g++'` from the issue
+worktree to reproduce it. The exact revision, command, log, and eventual
+exit status are under `bin/tests/master-gates-verification/` there.
+The per-case logs are under `bin/tests/db/` until the next DB run.
