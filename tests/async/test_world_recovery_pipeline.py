@@ -156,8 +156,8 @@ void extract_obj(P_obj object, int)
         P_obj *link = &object->loc.carrying->carrying;
         while (*link && *link != object)
             link = &(*link)->next_content;
-        assert(*link == object);
-        *link = object->next_content;
+        if (*link)
+            *link = object->next_content;
     }
     while (object->contains)
     {
