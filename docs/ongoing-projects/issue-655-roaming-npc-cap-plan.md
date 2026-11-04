@@ -394,15 +394,17 @@ passes and 11 failures. #685 and #691 addressed all 11. Its log is
   run measured 1.00 second across 17 re-entries, with at most 16 queued
   shop saves per pulse.
 
-The full DB rerun is running from master `01d190929` plus the six DB
+The full DB rerun used master `01d190929` plus the six DB
 PRs at local integration commit `83f39d5e4`. Run
 `TEST_DB_JOBS=6 make test-db -j8 CC='ccache g++'` from the issue
 worktree to reproduce it. The exact revision, command, log, and eventual
 exit status are under `bin/tests/master-gates-verification/` there.
-The per-case logs are under `bin/tests/db/` until the next DB run.
+The per-case logs are archived in `db-cases/` beside the gate log.
 
-The integrated run verified the original overlap and epic-training failures.
-Its follow-up PRs cover new failures exposed under parallel load.
+The integrated run completed 108 passes and four failures across 112 cases.
+The serial loop benchmark passed with a slowest re-entry of 1.00 second.
+The overlap, epic-training, address-retention, and statistics cases passed.
+The following PRs cover the four failures from the integration run.
 
 - [#693](https://github.com/LuminariMUD/Duris/pull/693), stacked on #692,
   moves the full-world capture and artifact matrix before the serial loop
