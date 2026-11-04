@@ -3517,6 +3517,8 @@ bool creation_hometown_available(int race, int racewar, int hometown)
 		return racewar == RACEWAR_GOOD && avail_hometowns[hometown][race] == 1;
 	if (hometown == HOME_WUTVR || hometown == HOME_PLANE_OF_CHAOS)
 		return racewar == RACEWAR_EVIL && avail_hometowns[hometown][race] == 1;
+	if (race == RACE_TIEFLING && racewar == RACEWAR_EVIL)
+		return hometown == HOME_ARACHDRATHOS;
 	return avail_hometowns[hometown][race] == 1;
 }
 
@@ -3554,7 +3556,11 @@ int find_hometown(int race, bool force, int racewar)
 	}
 	for (i = 0; i <= LAST_HOME; i++)
 	{
-		if (creation_hometown_available(race, force ? RACEWAR_NONE : racewar, i))
+		// A default hometown skips the optional tutorial starts.
+		if (force && (i == HOME_NEWBIE || i == HOME_PLANE_OF_LIFE || i == HOME_WUTVR ||
+			      i == HOME_PLANE_OF_CHAOS))
+			continue;
+		if (creation_hometown_available(race, racewar, i))
 		{
 			if (home == 0)
 				home = i;
@@ -3580,21 +3586,9 @@ void find_starting_location(P_char ch, int hometown)
 	int guild_num;
 	char Gbuf1[MAX_STRING_LENGTH];
 
-	// I think this is kind've hacky, but it will work!
-	// -- Eikel
-	if (GET_RACE(ch) == RACE_TIEFLING && hometown != HOME_WUTVR &&
-	    hometown != HOME_PLANE_OF_CHAOS)
-	{
-		if (GET_ALIGNMENT(ch) < 0)
-		{
-			GET_HOME(ch) = guild_locations[HOME_ARACHDRATHOS][0];
-			return;
-		}
-	}
-
 	if (hometown == 0)
 	{
-		hometown = find_hometown(GET_RACE(ch), true);
+		hometown = find_hometown(GET_RACE(ch), true, GET_RACEWAR(ch));
 		if (hometown == HOME_CHOICE)
 			hometown = 0;
 	}

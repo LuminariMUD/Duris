@@ -2262,7 +2262,8 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
-	const int actual_hometown = hometown_item ? hometown_id : find_hometown(race_id, true);
+	const int actual_hometown = hometown_item ? hometown_id :
+						    find_hometown(race_id, true, resolved_racewar);
 	if (!creation_hometown_available(race_id, resolved_racewar, actual_hometown))
 	{
 		ws_send_system(d, "error", "That hometown is not available for your race and side");

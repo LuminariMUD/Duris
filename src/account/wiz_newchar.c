@@ -284,7 +284,9 @@ void do_newchar(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	// set hometown
-	GET_HOME(newch) = find_hometown(race_id, FALSE);
+	GET_HOME(newch) = race_id == RACE_TIEFLING ?
+				  find_hometown(race_id, true, GET_RACEWAR(newch)) :
+				  find_hometown(race_id, false);
 	GET_BIRTHPLACE(newch) = GET_HOME(newch);
 	GET_ORIG_BIRTHPLACE(newch) = GET_HOME(newch);
 
