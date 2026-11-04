@@ -1742,8 +1742,9 @@ aggression, act flags and four coin balances, and reloading only the template lo
 The bounded `GNP1` extension carries those fields in the portable state codec, without
 pet ownership or summon timers.
 
-- File copyover version 14 appends the extension after each NPC's inventory. The fixed
-  record layout is unchanged and readers still accept versions 12 and 13.
+- File copyover added the extension in version 14. The current format
+  also retains actual item payloads and UIDs. Readers still accept versions
+  12 and 13, which predate the extension.
 - The Redis record codec accepts an optional validated extension after its affects and
   transport data; ordinary wire records stay byte-compatible.
 - Recovery applies owned strings and base attributes before affects and equipment, then
@@ -1777,9 +1778,75 @@ commands and runs two live file copyovers with stable IDs, counts and base stats
 forced crash, a clean reboot and the kept identity. Redis needs a SQL season epoch, so a
 flat-file server cannot run it.
 
-Not covered: the full random-world generator (the journeys use controlled instances of
-1255 and 1256), and generated equipment across a file copyover, which still stores NPC
-equipment by vnum.
+### Full-world roaming NPC cap and recovery
+
+`test_issue263_property_reload.py` executes the real file and staff property
+controls and the scheduled spawner with a generator double under
+ASan/UBSan and float-cast checking. It covers missing and shipped defaults
+of 45, valid caps of 2, 60, and 0, signed-range rounding, rejected file
+reloads and wildcard sets, save/reload/revert, and the attempt boundaries.
+The mixed-population case failed before the marker exclusion and covers 69
+or 71 fixed/custom targets, dummy-like unmarked NPCs, pets, `NOWHERE`,
+unrelated prototypes, insertion of the last allowed NPC, and failed attempts.
+
+```sh
+python3 tests/async/test_issue263_property_reload.py
+python3 tests/async/test_training_dummy_contract.py
+python3 -m pytest -q tests/async/test_training_dummy_contract.py
+python3 tests/run_regression_tests.py --match training_dummy --jobs 1
+python3 tests/run_regression_tests.py --match issue263_property_reload --jobs 1
+python3 tests/async/test_flatfile_shopkeeper_bootstrap.py
+```
+
+The contract suite runs 15 checks through direct Python and pytest. An isolated
+copy with an intentionally failing assertion failed through both entry points.
+The native generated-state test also checks gameplay and recovery selectors
+for marked and unmarked 1255s. An explicitly supplied old dummy payload can
+restore the sentinel bit and million base HP while losing its marker. The
+current writers exclude marked targets, and the payload test does not
+establish the contents of any deployed checkpoint.
+
+The full-world option uses the real scheduler, generator, staff commands,
+item custody, file copyover, and Redis recovery. It uses GDB with the
+unstripped development build on Linux. All game, SQL, and Redis state is
+disposable, and the test permits its own debugger without changing host
+settings. Generate areas in a private copy. Run the MariaDB case through the
+disposable database helper.
+
+```sh
+make -C src -j12 CC='ccache g++' PERSISTENCE_BACKEND=mariadb
+make -C src -j12 CC='ccache g++' PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/server/dms_flatfile"
+make -C areas/src -j8
+mkdir -p bin/tests
+fixture=$(mktemp -d "$PWD/bin/tests/roaming-world-XXXXXX")
+cp -a areas "$fixture/"
+mkdir -p "$fixture/bin/areas"
+ln -s "$PWD/bin/areas/tools" "$fixture/bin/areas/tools"
+(cd "$fixture/areas" && ./m_slow)
+python3 tests/async/test_generated_npc_journey.py bin/server/dms_flatfile file "$fixture/areas"
+bash tests/async/with_disposable_mariadb.sh \
+  python3 tests/async/test_generated_npc_journey.py bin/server/dms_new redis "$fixture/areas"
+```
+
+The isolated runs counted 71 fixed targets in 71 distinct rooms on each backend.
+The natural scheduler produced an ordinary equipped roamer at cap one with
+zone prose and eligible map placement. Both file copyovers and the separate
+Redis crash and clean-restart cycles preserved the roamer's name, NPC ID,
+base state, worn slots, carried items, and item UIDs. Boot recreated all fixed
+targets once and omitted the custom one. The post-recovery gate blocked an
+additional spawn at cap one. At cap zero, it blocked generation after real
+extraction, and raising the cap to one admitted a replacement. File copyover
+was retried after its existing artifact writer guard had deferred one attempt.
+The Redis full-world run used `2ce38f5b3`. The follow-up for the Void passed
+the sanitizer pipeline regression and both server builds.
+
+The recovery pipeline regression exercises marked exclusion, worn and carried
+UIDs, floor precedence, durable ownership, and malformed slot rejection.
+The artifact population regression checks the same floor precedence during
+boot inspection. An actual disposable startup also refused cap `2147483647`
+before entering the game loop, since it rounds outside the signed integer
+range in the float store. The compiled generator tables confirmed that zone
+165 selects halflings and allows the shaman class.
 
 ## Guardian rescue all and guarding two people
 

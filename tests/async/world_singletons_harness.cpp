@@ -477,6 +477,14 @@ int main()
 		obj_to_char(read_object(4, REAL), ordinary);
 		obj_to_char(read_object(4, REAL), ordinary);
 		char bytes[4096];
+		for (bool fixed : { false, true })
+		{
+			ordinary->only.npc->training_dummy = true;
+			ordinary->only.npc->training_dummy_fixed = fixed;
+			assert(copyover_write_mob_to_buffer(ordinary, bytes, sizeof(bytes)) == -1);
+		}
+		ordinary->only.npc->training_dummy = false;
+		ordinary->only.npc->training_dummy_fixed = false;
 		const int size = copyover_write_mob_to_buffer(ordinary, bytes, sizeof(bytes));
 		assert(size > 0);
 		extract_char(ordinary);

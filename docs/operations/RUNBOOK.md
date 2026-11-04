@@ -1652,6 +1652,40 @@ cap rejects a matching set command or file reload before applying changes. If
 an older file lacks the key, add the shipped entry and reload before using
 `show` or `set` on it.
 
+#### Diagnose a full cap or a suspected legacy target
+
+1. Identify the running executable through the service PID. Match its hash
+   or build ID against the deployed artifact and record the source revision.
+   Check that revision for the instance-marker exclusion in
+   `spawn_random_mapmob()`. Record the active cap with `properties show`
+   and compare it with the service's `lib/duris.properties`. The missing-key
+   fallback is 45 on builds with the setting.
+2. Use a symbol-matched, read-only diagnostic with the service owner's
+   coordination. A debugger attach briefly stops the game. Walk the live
+   `character_list`, selecting NPCs whose `mob_index[R_num].virtual_number`
+   is 1255. Count each group using `only.npc->training_dummy`, and record
+   each candidate's runtime ID, NPC ID, room vnum, base HP, and act flags.
+   Only the unmarked group counts. Also record the latest boot's recovery
+   mode, checkpoint or generation, and the checkpoint's writer revision
+   where available. The population probe in the [generated NPC
+   journey](../../tests/async/test_generated_npc_journey.py) shows the field
+   traversal. Its test actions are for disposable processes.
+3. Current file and Redis writers omit marked targets. Boot recreates one
+   fixed target per selected room. Custom targets disappear on recovery.
+   Older writers could save a target without its marker, and recovery cannot
+   reconstruct the marker. If that is suspected, inspect a private copy of
+   the checkpoint in an isolated instance. Correlate the record, writer
+   history, and live NPC identity. Prototype, room, name, HP, and sentinel
+   state are supporting observations. They cannot establish provenance alone.
+4. With owner authorization and positive identification, go to the
+   candidate's room and use `stat mob <keyword>` to confirm the instance
+   number and vnum. Use targeted `purge <keyword>` only when it resolves to
+   that same individual in the room. Recount by marker after extraction
+   and verify that only the identified unmarked instance left, fixed
+   targets remain, and the next eligible scheduler tick can replenish a
+   slot below the cap. With uncertain identity, preserve the checkpoint
+   and record the unresolved case.
+
 ## Development vs production checklist
 
 - Development: local/development/test `ENVIRONMENT`, loopback database host,
