@@ -27948,3 +27948,61 @@ Cannot access the registered inbox and cannot log in? Ask staff for manual
 account-ownership checks. Never give anyone your mailbox password.
 ===========================================================================
 See also: PASSWORD, RULES
+#
+"CONTROLLER SPELLS"
+Controller is a Summoner specialization. Read 'help Controller Skills' for
+the base progression and 'help Controller' for specialization changes.
+Use 'spells controller' for current circle requirements, or 'spells' to
+see your own access and preparation.
+#
+"ASSASSINS"
+For the normal Rogue specialization, read 'help Rogue Assassin'.
+The retired standalone class is described by 'help Assassin'. Use
+'class info assassin' to inspect the current specialization.
+#
+"MAGICAL REDUCTION"
+Magical Reduction is a passive racial innate of Mountain Dwarves and
+Duergar, available from level 1. It contributes a 20% reduction to generic
+magical damage, alongside other damage modifiers. It does not provide this
+reduction against elemental damage and is separate from Magic Resistance.
+No command or activation cost is required. See 'help innates'.
+#
+"SUICIDE"
+Syntax: suicide
+
+This command kills your character after a Yes/No confirmation. Answer No
+to cancel. Normal death rules still apply, including Hardcore lives;
+it is not an account or character deletion command.
+
+You cannot use it while asleep, bound, jailed, or under recent PvP delay.
+Ocean and ship combat can also prevent it. Trusted staff cannot use it.
+Repeated use can send you to the cage. Read 'help death' and
+'help hardcore' before confirming.
+#
+
+"ACCOUNT EMAIL"
+To add, replace or verify a recovery inbox, use account-menu option 5 on
+telnet or Account -> Email in the browser client. Enter the code sent to
+the new inbox. Your current address stays unchanged until the code is
+accepted and saved; new accounts can play before verifying an address.
+
+Read 'help password recovery' for code expiry, request limits, password
+reset instructions and the staff fallback when you cannot access an inbox.
+#
+"KEPTCHAR"
+Overlord only. Inspect a broken, unentered character before any repair:
+  keptchar inspect <pid> <expected-name>
+  keptchar attach <pid> <expected-name> <verified-account> <evidence-ref>
+  keptchar release <pid> <expected-name> <expected-owner-or--> <evidence-ref>
+
+Ordinary kept characters resume through their account without this command.
+Verify ownership independently; a name, email or level alone is not proof.
+Attach preserves the existing character's stats, items and approval state.
+Release deletes the broken attempt and retains its retired identity; it
+cannot reconstruct a missing snapshot. Use '-' only for an ownerless row.
+
+Repairs refuse established or accepted characters, conflicting ownership,
+live bodies, pending saves or unresolved starter grants. Wait for the
+committed result and inspect again after a refusal or failure. Re-login to
+refresh an open account menu. Production repairs require owner permission.
+#
