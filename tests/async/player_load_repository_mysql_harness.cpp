@@ -685,6 +685,33 @@ int main()
 	assert(empty.outcome == player_load_outcome::applied && empty.snapshot.items.empty());
 	assert(empty.item_owner_revision == 7 &&
 	       empty.metrics.query_count == PLAYER_LOAD_QUERY_MAX);
+	// Four SQL rows encode the inline affect array even for an unafflicted item.
+	const std::string inventory_pid = std::to_string(pid);
+	for (int start = 0; start < 2000; start += 200)
+	{
+		std::string insert = "INSERT INTO player_items(id,pid,vnum,obj_uid) VALUES";
+		for (int i = start; i < start + 200; ++i)
+		{
+			if (i != start)
+				insert += ',';
+			insert += '(' + std::to_string(3000 + i) + ',' + inventory_pid + ",101," +
+				  std::to_string(910000 + i) + ')';
+		}
+		execute_sql(connection, insert);
+	}
+	for (int slot = 0; slot < 4; ++slot)
+		execute_sql(
+			connection,
+			"INSERT INTO player_item_affects(item_id,affect_slot,location,modifier) "
+			"SELECT id," +
+				std::to_string(slot) + ",0,0 FROM player_items");
+	const auto large_inventory = execute_load(connection, request, 85);
+	assert(large_inventory.outcome == player_load_outcome::applied);
+	assert(large_inventory.snapshot.items.size() == 2000);
+	assert(large_inventory.metrics.fixed_affect_rows == 8000);
+	execute_sql(connection, "DELETE FROM player_item_affects");
+	execute_sql(connection, "DELETE FROM player_items");
+
 	execute_sql(connection, "DELETE FROM item_owner_revision");
 	player_load_result never_owned = execute_load(connection, request, 86);
 	assert(never_owned.outcome == player_load_outcome::applied &&

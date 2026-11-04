@@ -32,7 +32,7 @@ def last_body(text, signature, next_signature):
 # affects, then its extra descriptions (merging duplicate spellbook rows), before it
 # goes into a private chest.
 locker_loader = body(SQL, "static P_obj locker_items_from_index(", "P_obj sql_locker_items_from_rows(")
-assert index(locker_loader, "sql_set_item_affects(obj, stored)") < index(
+assert index(locker_loader, "sql_set_item_affect(obj, location, modifier, slot, count)") < index(
 	locker_loader, 'sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3], "locker_item",'
 )
 assert index(locker_loader, 'sql_add_item_extra_descr(obj, (*extra)[2], (*extra)[3], "locker_item",') < index(

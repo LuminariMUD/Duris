@@ -155,7 +155,9 @@ bool within_budget(const player_load_result &result)
 {
 	// Reserve the final COMMIT in the total query budget.
 	return result.metrics.query_count < PLAYER_LOAD_QUERY_MAX &&
-	       result.metrics.row_count <= PLAYER_SNAPSHOT_MAX_ROWS &&
+	       result.metrics.row_count - result.metrics.fixed_affect_rows <=
+		       PLAYER_SNAPSHOT_MAX_ROWS &&
+	       result.metrics.fixed_affect_rows <= PLAYER_SNAPSHOT_MAX_OBJECTS * MAX_OBJ_AFFECT &&
 	       result.metrics.byte_count <= PLAYER_SNAPSHOT_MAX_BYTES;
 }
 
@@ -196,7 +198,8 @@ bool execute(MYSQL *connection, const char *sql, player_load_result *result)
 	return rc == 0;
 }
 
-bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *result)
+bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *result,
+		       bool fixed_affect = false)
 {
 	if (!rows || !row || !result)
 		return false;
@@ -205,6 +208,8 @@ bool add_result_budget(MYSQL_RES *rows, MYSQL_ROW row, player_load_result *resul
 	if (!lengths)
 		return false;
 	++result->metrics.row_count;
+	if (fixed_affect)
+		++result->metrics.fixed_affect_rows;
 	for (unsigned int column = 0; column < columns; ++column)
 		result->metrics.byte_count += row[column] ? lengths[column] : 0;
 	return within_budget(*result);
@@ -372,7 +377,8 @@ bool load_status(MYSQL *connection, const player_load_request &request, player_l
 }
 
 template <typename Callback> bool load_rows(MYSQL *connection, const std::string &sql,
-					    player_load_result *result, Callback callback)
+					    player_load_result *result, Callback callback,
+					    bool item_metadata = false)
 {
 	MYSQL_RES *rows = query(connection, sql, result);
 	if (!rows)
@@ -380,7 +386,10 @@ template <typename Callback> bool load_rows(MYSQL *connection, const std::string
 	MYSQL_ROW row;
 	while ((row = mysql_fetch_row(rows)))
 	{
-		if (!add_result_budget(rows, row, result))
+		// Fixed slots are part of the item in the snapshot budget. Keep counting
+		// their wire bytes and cap their physical row count separately.
+		const bool fixed_affect = item_metadata && row[0] && row[0][0] == '0' && row[7];
+		if (!add_result_budget(rows, row, result, fixed_affect))
 		{
 			mysql_free_result(rows);
 			result->outcome = player_load_outcome::limit_exceeded;
@@ -773,6 +782,45 @@ bool append_loaded_extra_description(
 	return true;
 }
 
+// Indexed rows sort before legacy rows. NULL slots use the old compact,
+// deduplicated order only if no indexed rows exist for the item.
+bool load_item_affect(MYSQL_ROW row, player_item_snapshot &item,
+		      player_load_item_identity &identity, int &legacy_count,
+		      player_load_result *result)
+{
+	int64_t location = 0;
+	int64_t modifier = 0;
+	if (!parse_signed(row[3], 0, UINT8_MAX, &location) ||
+	    !parse_signed(row[4], INT8_MIN, INT8_MAX, &modifier))
+		return true;
+	const std::array<int16_t, 2> affect = { static_cast<int16_t>(location),
+						static_cast<int16_t>(modifier) };
+	int64_t slot = 0;
+	if (row[7])
+	{
+		if (!parse_signed(row[7], 0, item.affects.size() - 1, &slot))
+			return false;
+		legacy_count = -1;
+	}
+	else
+	{
+		if (legacy_count < 0)
+			return true;
+		const auto end = item.affects.begin() + legacy_count;
+		if (std::find(item.affects.begin(), end, affect) != end)
+			return true;
+		if (static_cast<size_t>(legacy_count) == item.affects.size())
+		{
+			result->outcome = player_load_outcome::limit_exceeded;
+			return false;
+		}
+		slot = legacy_count++;
+	}
+	item.affects[slot] = affect;
+	identity.override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_AFFECTS;
+	return true;
+}
+
 bool load_items(MYSQL *connection, player_load_result *result)
 {
 	const std::string pid = std::to_string(result->pid);
@@ -1025,10 +1073,10 @@ bool load_items(MYSQL *connection, player_load_result *result)
 		identity.owner_revision = result->item_owner_revision;
 	result->authoritative_item_count = result->item_identities.size();
 
-	std::vector<std::unordered_set<uint64_t>> affects;
+	std::vector<int> legacy_affect_counts;
 	try
 	{
-		affects.resize(result->snapshot.items.size());
+		legacy_affect_counts.resize(result->snapshot.items.size());
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -1037,13 +1085,13 @@ bool load_items(MYSQL *connection, player_load_result *result)
 	}
 	const std::string metadata_sql =
 		"SELECT 0 AS row_kind,ia.id AS metadata_id,ia.item_id,ia.location,"
-		"ia.modifier,NULL AS keyword,NULL AS description FROM player_item_affects ia "
+		"ia.modifier,NULL AS keyword,NULL AS description,ia.affect_slot,ia.affect_slot IS NULL AS legacy_slot FROM player_item_affects ia "
 		"JOIN player_items pi ON pi.id=ia.item_id WHERE pi.pid=" +
 		pid +
-		" UNION ALL SELECT 1,ed.id,ed.item_id,0,0,ed.keyword,ed.description FROM "
+		" UNION ALL SELECT 1,ed.id,ed.item_id,0,0,ed.keyword,ed.description,NULL,0 FROM "
 		"player_item_extra_descr ed JOIN player_items pi ON pi.id=ed.item_id WHERE "
 		"pi.pid=" +
-		pid + " ORDER BY row_kind,metadata_id,item_id";
+		pid + " ORDER BY 1,9,2,3";
 	previous_bytes = result->metrics.byte_count;
 	if (!load_rows(
 		    connection, metadata_sql, result,
@@ -1073,38 +1121,8 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    player_load_item_identity &identity = result->item_identities[index];
 			    if (row_kind == 0)
 			    {
-				    int64_t location = 0;
-				    int64_t modifier = 0;
-				    if (!parse_signed(row[3], 0, UINT8_MAX, &location) ||
-					!parse_signed(row[4], INT8_MIN, INT8_MAX, &modifier))
-					    return true;
-				    const uint64_t key =
-					    (static_cast<uint64_t>(static_cast<uint16_t>(location))
-					     << 32) |
-					    static_cast<uint8_t>(modifier);
-				    try
-				    {
-					    if (!affects[index].insert(key).second)
-						    return true;
-				    }
-				    catch (const std::bad_alloc &)
-				    {
-					    result->outcome =
-						    player_load_outcome::retryable_failure;
-					    return false;
-				    }
-				    if (affects[index].size() > PLAYER_LOAD_ITEM_AFFECT_MAX)
-				    {
-					    result->outcome = player_load_outcome::limit_exceeded;
-					    return false;
-				    }
-				    const size_t affect_index = affects[index].size() - 1;
-				    item.affects[affect_index] = {
-					    static_cast<int16_t>(location),
-					    static_cast<int16_t>(modifier),
-				    };
-				    identity.override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_AFFECTS;
-				    return true;
+				    return load_item_affect(row, item, identity,
+							    legacy_affect_counts[index], result);
 			    }
 			    // Exact duplicates are semantically identical, and legacy raw
 			    // spellbook rows are normalized without reading their truncated bitmap.
@@ -1112,7 +1130,8 @@ bool load_items(MYSQL *connection, player_load_result *result)
 			    return append_loaded_extra_description(item.extra_descriptions, row[5],
 								   row[6], result) ||
 				   result->outcome != player_load_outcome::limit_exceeded;
-		    }))
+		    },
+		    true))
 		return false;
 	result->item_sources = std::move(source);
 	return result->snapshot.items.size() == result->item_identities.size();
@@ -1355,12 +1374,13 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 			return false;
 	}
 
-	std::vector<std::vector<std::unordered_set<uint64_t>>> affects;
+	std::vector<std::vector<int>> legacy_affect_counts;
 	try
 	{
-		affects.resize(result->snapshot.pets.size());
+		legacy_affect_counts.resize(result->snapshot.pets.size());
 		for (size_t pet_index = 0; pet_index < result->snapshot.pets.size(); ++pet_index)
-			affects[pet_index].resize(result->snapshot.pets[pet_index].items.size());
+			legacy_affect_counts[pet_index].resize(
+				result->snapshot.pets[pet_index].items.size());
 	}
 	catch (const std::bad_alloc &)
 	{
@@ -1368,14 +1388,14 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 		return false;
 	}
 	const std::string metadata_sql =
-		"SELECT 0,ia.id,ia.item_id,ia.location,ia.modifier,NULL,NULL FROM "
+		"SELECT 0,ia.id,ia.item_id,ia.location,ia.modifier,NULL,NULL,ia.affect_slot,ia.affect_slot IS NULL FROM "
 		"player_pet_item_affects ia JOIN player_pet_items ppi ON ppi.id=ia.item_id JOIN "
 		"player_pets pp ON pp.id=ppi.pet_id WHERE pp.owner_pid=" +
 		pid +
-		" UNION ALL SELECT 1,ed.id,ed.item_id,0,0,ed.keyword,ed.description FROM "
+		" UNION ALL SELECT 1,ed.id,ed.item_id,0,0,ed.keyword,ed.description,NULL,0 FROM "
 		"player_pet_item_extra_descr ed JOIN player_pet_items ppi ON ppi.id=ed.item_id "
 		"JOIN player_pets pp ON pp.id=ppi.pet_id WHERE pp.owner_pid=" +
-		pid + " ORDER BY 1,2,3";
+		pid + " ORDER BY 1,9,2,3";
 	if (!load_rows(
 		    connection, metadata_sql, result,
 		    [&](MYSQL_ROW row)
@@ -1396,43 +1416,15 @@ bool load_pets(MYSQL *connection, player_load_result *result)
 				    result->pet_identities[pet_index].item_identities[item_index];
 			    if (row_kind == 0)
 			    {
-				    int64_t location = 0;
-				    int64_t modifier = 0;
-				    if (!parse_signed(row[3], 0, UINT8_MAX, &location) ||
-					!parse_signed(row[4], INT8_MIN, INT8_MAX, &modifier))
-					    return true;
-				    const uint64_t key =
-					    (static_cast<uint64_t>(static_cast<uint16_t>(location))
-					     << 32) |
-					    static_cast<uint8_t>(modifier);
-				    auto &item_affects = affects[pet_index][item_index];
-				    try
-				    {
-					    if (!item_affects.insert(key).second)
-						    return true;
-				    }
-				    catch (const std::bad_alloc &)
-				    {
-					    result->outcome =
-						    player_load_outcome::retryable_failure;
-					    return false;
-				    }
-				    if (item_affects.size() > PLAYER_LOAD_ITEM_AFFECT_MAX)
-				    {
-					    result->outcome = player_load_outcome::limit_exceeded;
-					    return false;
-				    }
-				    item.affects[item_affects.size() - 1] = {
-					    static_cast<int16_t>(location),
-					    static_cast<int16_t>(modifier),
-				    };
-				    identity.override_mask |= PLAYER_LOAD_ITEM_OVERRIDE_AFFECTS;
-				    return true;
+				    return load_item_affect(
+					    row, item, identity,
+					    legacy_affect_counts[pet_index][item_index], result);
 			    }
 			    return append_loaded_extra_description(item.extra_descriptions, row[5],
 								   row[6], result) ||
 				   result->outcome != player_load_outcome::limit_exceeded;
-		    }))
+		    },
+		    true))
 		return false;
 	result->authoritative_pet_item_count = pet_owned_count;
 	return result->snapshot.pets.size() == result->pet_identities.size();

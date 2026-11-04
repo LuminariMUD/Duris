@@ -47,7 +47,8 @@ chests = "\n".join(extract_function("item/storage_lockers.c", signature) for sig
     "bool EqApplyChest::ItemFits(",
     "bool EqAffectChest::ItemFits(",
 ))
-loader = SQL[SQL.index("#define MAX_CONTAINER_LOAD_DEPTH"):SQL.index(
+slot_loader = extract_function("sql_player.c", "static bool sql_set_item_affect(")
+loader = slot_loader + "\n" + SQL[SQL.index("#define MAX_CONTAINER_LOAD_DEPTH"):SQL.index(
     "/* The statement that deletes the personal", SQL.index("#define MAX_CONTAINER_LOAD_DEPTH"))]
 
 harness = r'''
@@ -227,7 +228,6 @@ bool sql_persistence_item_owner_fields_match(
     unsigned long long, const char *, unsigned long long, unsigned long long, const char *const *) {
     return true;
 }
-static void sql_set_item_affects(P_obj, const std::vector<std::pair<int, int>> &) {}
 static void sql_add_item_extra_descr(P_obj, const char *, const char *, const char *, int,
                                    extra_descr_data **) {}
 

@@ -24,7 +24,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
         nested_replay: bool = False, fault_stage: str | None = None,
         reject_child: bool = False, concurrent_save: bool = False,
         concurrent_child: bool = False,
-        malformed_child: bool = False) -> None:
+        malformed_child: bool = False, invalid_affect_slot: bool = False) -> None:
     host = os.environ.get("TEST_DB_HOST", "127.0.0.1")
     port = os.environ.get("TEST_DB_PORT", "3306")
     assert host in ("127.0.0.1", "localhost", "::1")
@@ -83,8 +83,9 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                 "(item_uid,root_item_uid,parent_item_uid,owner_type,owner_id,"
                 "item_revision,vnum,state) VALUES "
                 "(800000000002,800000000001,800000000001,3,22800,1,5,1);"
-                f"INSERT INTO saved_item_affects(item_id,location,modifier)"
-                f" VALUES ({root_id},1,3);"
+                f"INSERT INTO saved_item_affects(item_id,affect_slot,location,modifier)"
+                f" VALUES ({root_id},0,1,3),({root_id},1,0,0),"
+                f"({root_id},2,1,3),({root_id},3,20,-1);"
                 f"INSERT INTO saved_item_extra_descr(item_id,keyword,description)"
                 f" VALUES ({root_id},'recovery stitching','The stitches are intact.')")
         if reject_child:
@@ -95,6 +96,9 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
         if malformed_child:
             sql("UPDATE saved_items SET vnum=999999 "
                 "WHERE item_key='restore_allocator_1' AND container_id IS NOT NULL")
+        if invalid_affect_slot:
+            sql(f"INSERT INTO saved_item_affects(item_id,affect_slot,location,modifier)"
+                f" VALUES ({root_id},255,1,2)")
         with tempfile.TemporaryDirectory(prefix="restore-allocator-") as temporary:
             game = Path(temporary)
             (game / "logs/log").mkdir(parents=True)
@@ -220,7 +224,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                           flush=True)
                     return
                 assert process.poll() is None and "Entering game loop." in logs, logs[-2000:]
-                if count and not boot_only and not malformed_child:
+                if count and not boot_only and not (malformed_child or invalid_affect_slot):
                     client = journey.MudClient(game_port)
                     journey.create_character(client, expected_room=None)
                     client.pending.clear()
@@ -229,7 +233,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                     assert "recovery backpack" in room, room
                     if count == 2:
                         assert "recovery note" in room, room
-                if malformed_child:
+                if malformed_child or invalid_affect_slot:
                     assert sql("SELECT COUNT(*) FROM saved_items "
                                "WHERE item_key='restore_allocator_1'") == "2"
                     assert sql("SELECT COUNT(*) FROM saved_item_recovery_handoff") == "0"
@@ -239,9 +243,12 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                     client.send("look")
                     room = client.expect("Pos: standing >", timeout=20)
                     assert "recovery backpack" not in room, room
-                    sql("UPDATE saved_items SET vnum=5 "
-                        "WHERE item_key='restore_allocator_1' "
-                        "AND container_id IS NOT NULL")
+                    if invalid_affect_slot:
+                        sql(f"DELETE FROM saved_item_affects WHERE item_id={root_id} AND affect_slot=255")
+                    else:
+                        sql("UPDATE saved_items SET vnum=5 "
+                            "WHERE item_key='restore_allocator_1' "
+                            "AND container_id IS NOT NULL")
                     client.close()
                     client = None
                     process.terminate()
@@ -273,7 +280,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                                "WHERE item_key='restore_allocator_1'") == "0"
                     assert sql("SELECT COUNT(*) FROM saved_items "
                                "WHERE item_key='item.uid.800000000001'") == "2"
-                    print("malformed child: source retained, repaired graph replayed once",
+                    print("malformed saved item: source retained, repaired graph replayed once",
                           flush=True)
                     return
                 if concurrent_save:
@@ -415,10 +422,13 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                                "800000000001,800000000002")
                     assert sql("SELECT COUNT(*) FROM saved_item_recovery_handoff "
                                "WHERE retired_at IS NOT NULL") == "1"
-                    assert sql("SELECT COUNT(*) FROM saved_item_affects a "
-                               "JOIN saved_items i ON i.id=a.item_id "
-                               "WHERE i.obj_uid=800000000001 AND a.location=1 "
-                               "AND a.modifier=3") == "1"
+                    def assert_affect_slots():
+                        assert sql("SELECT GROUP_CONCAT(CONCAT_WS(':',a.affect_slot,"
+                                   "a.location,a.modifier) ORDER BY a.affect_slot) "
+                                   "FROM saved_item_affects a JOIN saved_items i ON i.id=a.item_id "
+                                   "WHERE i.obj_uid=800000000001") == "0:1:3,1:0:0,2:1:3,3:20:-1"
+
+                    assert_affect_slots()
                     assert sql("SELECT COUNT(*) FROM saved_item_extra_descr e "
                                "JOIN saved_items i ON i.id=e.item_id "
                                "WHERE i.obj_uid=800000000001 "
@@ -463,6 +473,7 @@ def run(binary: Path, count: int, expect_abort: bool, malformed: bool = False,
                                    "WHERE item_key='item.uid.800000000001'") == "2"
                         assert sql("SELECT COUNT(*) FROM saved_items "
                                    "WHERE item_key='restore_allocator_1'") == "0"
+                        assert_affect_slots()
                     print("fixed: nested UID graph, affects and metadata survived two restarts",
                           flush=True)
                     return
@@ -540,6 +551,9 @@ if __name__ == "__main__":
         sys.exit(0)
     if "--concurrent-child" in sys.argv[2:]:
         run(binary, 1, False, nested_replay=True, concurrent_child=True)
+        sys.exit(0)
+    if "--invalid-affect-slot" in sys.argv[2:]:
+        run(binary, 1, False, nested_replay=True, invalid_affect_slot=True)
         sys.exit(0)
     if "--malformed-child" in sys.argv[2:]:
         run(binary, 1, False, nested_replay=True, malformed_child=True)

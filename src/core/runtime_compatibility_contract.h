@@ -72,9 +72,9 @@ constexpr const char *RUNTIME_TABLE_SQL_LIST =
 	"'world_quest_accomplished','zone_story_quest_state','zone_touch_outcome',"
 	"'zone_touch_outcome_participant','zone_touches','zone_trophy','zones'";
 constexpr const char *RUNTIME_MYSQL8_METADATA_FINGERPRINT =
-	"1a5573a8d21381d8086ffdfbf671de7bbb9ba49db39a2067b241a3b5a426fd67";
+	"eb56fa0c651275ab8602cc76ed730e249846bbaf4358a44e19b828c6dbde8a53";
 constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
-	"e46d722582dd5d81e20164214eca7b2aa0d0e322ec63dbe2a9bae51d7b05f8df";
+	"b50e7206b74f63e022d346f3c3530753666a70bddda4a0de27e478b35eb7baa3";
 /* Includes the six telemetry stores introduced by migration 0014, the two
  * rollup stores introduced by migration 0017, the five Collector authority
  * stores introduced by migration 0018, corpse catalog authority introduced by
@@ -109,15 +109,16 @@ constexpr const char *RUNTIME_MARIADB10_11_METADATA_FINGERPRINT =
  * Migration 0055 adds accepted bartender origin and replacement entitlement.
  * Migration 0057 adds the shared frag-cap snapshot.
  * Migration 0058 freezes bartender reward item quantities.
+ * Migration 0059 preserves fixed item affects by slot.
  * Fingerprints are measured on MySQL 8 and MariaDB 10.11. */
-constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0058_world_quest_reward_count";
-constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 59;
+constexpr const char *RUNTIME_MIGRATION_HEAD_ID = "0059_item_affect_slots";
+constexpr unsigned RUNTIME_MIGRATION_HEAD_SEQUENCE = 60;
 constexpr const char *RUNTIME_MIGRATION_APPLY_CHECKSUM =
-	"d2ec137c50a0e5e4c91af6090c2e07c92959de4c192974c92088d716b040ccef";
+	"939ddcba780f27c11b38a935e974994cf69c8b64c7129a43c8549f4eb319709f";
 constexpr const char *RUNTIME_MIGRATION_VERIFY_CHECKSUM =
-	"dc73918bc2426edbc0a607b4577eb6e86b9cec72b43f9d4c5346424013651316";
+	"2aa02d7e1702a6883d62466f0de1bfc2b145526c6d5486e7b1837ff24542e2e2";
 constexpr const char *RUNTIME_MIGRATION_HISTORY_CHECKSUM =
-	"e25d35a885b54213809a6555565a005dfc258579a1ff68c053effe676821e5d6";
+	"a36471ea989bee70c7377215d0778583867c5923c639f4fdb834473117bf36a5";
 constexpr const char *LOOKUP_DATASET_NAME = "race_class";
 constexpr unsigned LOOKUP_DATASET_VERSION = 1;
 constexpr const char *RUNTIME_DB_CHARACTER_SET = "utf8mb4";

@@ -215,6 +215,11 @@ for replay in 1 2; do
         # 154-column shape, so it is valid before 0022 but cannot describe the
         # later shape on the second idempotence replay. Later verifiers cover
         # the resulting shape; do not weaken the first-pass check.
+        # 0059 replaces the value-based affect index. Replaying 0002 after
+        # slot-aware writes would delete legitimate equal bonuses.
+        if [[ "$replay" == 2 && "$(basename "$file")" == 0002_player_item_metadata_uniqueness.* ]]; then
+            continue
+        fi
         if [[ "$replay" == 2 && "$(basename "$file")" == "0014_telemetry_storage.sh" ]]; then
             continue
         fi
