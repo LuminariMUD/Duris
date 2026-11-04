@@ -47,12 +47,19 @@ assert "player_load_items_discard(owner);" in body("static void release_offline_
 assert "!player_load_pipeline_pid_pending(location) &&" in body("void event_artifact_check_poof_sql(")
 assert "offline_poofs" not in artifact
 # An owner that could not be loaded keeps the row for the next pass: clearing it would leave
-# the artifact on a character whose row says it is gone. Only a missing character clears it.
+# the artifact on a character whose row says it is gone. A missing name is
+# diagnostic only, and a loaded owner without the canonical item retains the row.
 poof = body("static void poof_loaded_owner(")
 not_loaded = poof[poof.index("if (!owner)") : poof.index("return;", poof.index("if (!owner)"))]
-assert "artifact_expire" not in not_loaded and "release_offline_owner" not in not_loaded
-missing = body("static bool poof_offline_artifact(")
-assert "owner_unavailable" in missing and "tracking_retained=1" in missing
+assert "Could not load pid=" in not_loaded
+for mutation in ("retire_expired_artifact(", "artifact_update_sql(", "release_offline_owner("):
+    assert mutation not in not_loaded
+missing_name = body("static bool poof_offline_artifact(")
+assert (missing_name.index('name ? name : "unknown"') < missing_name.index("return player_load_offline(pid,")
+        < missing_name.index("poof_loaded_owner(vnum, pid, owner);"))
+no_target = poof[poof.index("if (!arti)") : poof.index("if (!retire_expired_artifact(")]
+assert "canonical_target_unavailable" in no_target and "tracking_retained=1" in no_target
+assert "return;" in no_target
 assert "artifact_expire(" not in artifact
 assert "retire_expired_artifact(arti)" in body("static void poof_loaded_owner(")
 assert "artifact_on_owner(owner, vnum)" in body("static void poof_loaded_owner(")
