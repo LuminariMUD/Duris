@@ -35,63 +35,46 @@ extern struct time_info_data time_info;
 extern Skill skills[];
 extern const char *spells[];
 
-/*
-   returns TRUE if object passed allows whoever to cast spell specified by spl
- */
-bool checkTotem(P_char ch, P_obj obj, int skill)
+// Returns the required totem's description, or nullptr if the shaman has it.
+const char *missing_shaman_totem(P_char ch, int skill)
 {
-	int val0;
-
-	if (!obj || (obj->type != ITEM_TOTEM) || (skill < 0) || !ch)
-		return FALSE;
-
-	if (IS_MULTICLASS_PC(ch))
+	const bool multiclass = IS_MULTICLASS_PC(ch);
+	const bool greater = get_spell_circle(ch, skill) >= 6;
+	const auto targets = skills[skill].targets;
+	int flag = 0;
+	const char *required = "casting";
+	if (IS_SET(targets, TAR_ANIMAL))
 	{
-		return TRUE;
+		flag = greater ? TOTEM_GR_ANIM : TOTEM_LESS_ANIM;
+		required = greater ? "&+YGreater Animal&n" : "&+YLesser Animal&n";
 	}
-	val0 = obj->value[0];
-
-	if (IS_SET(skills[skill].targets, TAR_ANIMAL))
+	else if (IS_SET(targets, TAR_ELEMENTAL))
 	{
-		if (get_spell_circle(ch, skill) >= 6)
-			return (val0 & TOTEM_GR_ANIM);
-		return (val0 & TOTEM_LESS_ANIM);
+		flag = greater ? TOTEM_GR_ELEM : TOTEM_LESS_ELEM;
+		required = greater ? "&+RGreater Elemental&n" : "&+RLesser Elemental&n";
 	}
-
-	if (IS_SET(skills[skill].targets, TAR_ELEMENTAL))
+	else if (IS_SET(targets, TAR_SPIRIT))
 	{
-		if (get_spell_circle(ch, skill) >= 6)
-			return (val0 & TOTEM_GR_ELEM);
-		return (val0 & TOTEM_LESS_ELEM);
+		flag = greater ? TOTEM_GR_SPIR : TOTEM_LESS_SPIR;
+		required = greater ? "&+CGreater Spirit&n" : "&+CLesser Spirit&n";
 	}
 
-	if (IS_SET(skills[skill].targets, TAR_SPIRIT))
+	const auto matches = [multiclass, flag](P_obj obj) {
+		return obj && GET_ITEM_TYPE(obj) == ITEM_TOTEM &&
+		       (multiclass || IS_SET(obj->value[0], flag));
+	};
+
+	for (int slot = 0; slot < MAX_WEAR; ++slot)
 	{
-		if (get_spell_circle(ch, skill) >= 6)
-			return (val0 & TOTEM_GR_SPIR);
-		return (val0 & TOTEM_LESS_SPIR);
+		P_obj obj = ch->equipment[slot];
+		if (matches(obj) ||
+		    (obj && (slot == WIELD || slot == HOLD) && OBJ_VNUM(obj) == 139004))
+			return nullptr;
 	}
-
-	send_to_char("&+Werror: &nunrecognized sphere in checkTotem().  notify somebody.\n", ch);
-	return FALSE;
-}
-
-/*
-   check if character has right totem for spell
- */
-
-bool hasTotem(P_char ch, int skill)
-{
-	if (!ch)
-		return FALSE;
-	if ((ch->equipment[WIELD] &&
-	     obj_index[ch->equipment[WIELD]->R_num].virtual_number == 139004) ||
-	    (ch->equipment[HOLD] && obj_index[ch->equipment[HOLD]->R_num].virtual_number == 139004))
-		return TRUE;
-	if (checkTotem(ch, ch->equipment[WIELD], skill) || checkTotem(ch, ch->equipment[HOLD], skill) /*||
-                                                                                                   checkTotem(ch, ch->equipment[WEAR_NECK_1], skill) ||
-                                                                                                   checkTotem(ch, ch->equipment[WEAR_NECK_2], skill) */ )
-		return TRUE;
-	else
-		return FALSE;
+	for (P_obj obj = ch->carrying; obj; obj = obj->next_content)
+	{
+		if (matches(obj))
+			return nullptr;
+	}
+	return required;
 }
