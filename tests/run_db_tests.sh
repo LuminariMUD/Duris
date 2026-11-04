@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# make test-db: the isolated database legs and the MariaDB journeys, side by side.
-# One test per line below: a name, then its command. Every test brings its own
-# container, so each line stands alone. Logs are kept under bin/tests/db/.
+# make test-db: isolated database legs and MariaDB journeys.
+# Each test brings its own container. Run the latency measurement after the
+# parallel tests so their database and compiler load cannot skew it.
+# Logs are kept under bin/tests/db/.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -48,7 +49,6 @@ hatred_journey $DB python3 tests/async/run_innate_hatred_journey.py --backend ma
 epic_task_recovery_journey $DB python3 tests/async/test_epic_task_recovery_journey.py --server $SERVER
 epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
 artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
-game_loop_budget $DB python3 tests/async/test_mysql_game_loop_budget_journey.py --server $SERVER
 world_recovery $DB python3 tests/async/run_world_recovery_journey.py $SERVER
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py $SERVER crash
 world_capture $DB python3 tests/async/test_mysql_world_capture_journey.py --server $SERVER
@@ -142,6 +142,8 @@ account_character_identity $DB tests/async/run_account_character_identity_mysql.
 account_character_projection $DB tests/async/run_account_character_projection_mysql.sh
 EOF
 status=$?
+run_one game_loop_budget "$DB" python3 tests/async/test_mysql_game_loop_budget_journey.py \
+    --server "$SERVER" || status=1
 
 for failed in "$LOGS"/*.failed; do
     [ -e "$failed" ] || continue
