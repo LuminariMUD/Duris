@@ -599,7 +599,13 @@ bool capture_tree_is_new(int record_size)
 			     sizeof(world_recovery_item_snapshot);
 	for (size_t index = 0; index < count; ++index)
 		if (active_capture.item_uids.count(capture_items[index].item_uid))
+		{
+			logit(LOG_SYS,
+			      "redis: world recovery capture rejected duplicate item uid=%llu vnum=%d",
+			      static_cast<unsigned long long>(capture_items[index].item_uid),
+			      capture_items[index].vnum);
 			return false;
+		}
 	for (size_t index = 0; index < count; ++index)
 		active_capture.item_uids.insert(capture_items[index].item_uid);
 	return true;
