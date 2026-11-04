@@ -1,7 +1,10 @@
 // The production registry, sorting, authorization and receipt code is compiled
 // intact. Only world/prototype, capture and writer/SQL services are controlled.
 #include "item/storage_lockers.c"
+#include "combat/damage.h"
+#include "item/objmisc.h"
 #include "net/unicode.h"
+#include "persistence/persistence_log.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdlib>
@@ -12,6 +15,18 @@ P_room world = rooms;
 extern const int top_of_world = 1;
 static index_data indices[1]{};
 P_index obj_index = indices;
+P_index mob_index = indices;
+material_data materials[1]{};
+int set_obj_condition(P_obj object, int condition)
+{
+	return object->condition = condition;
+}
+static std::vector<std::string> removal_records;
+bool persistence_log_submit(const char *record)
+{
+	removal_records.emplace_back(record);
+	return true;
+}
 P_char character_list = NULL;
 P_obj object_list = NULL;
 persistence_mode persistence_mode_get()
@@ -717,6 +732,7 @@ int main()
 		obj_to_obj(first, bag);
 		obj_to_obj(second, bag);
 		const auto before_scrap = audit_writes.size();
+		const auto before_removal = removal_records.size();
 		for (int failure = 0; failure < 3; ++failure)
 		{
 			event_ids_before_failure = failure;
@@ -731,8 +747,15 @@ int main()
 		assert(OBJ_INSIDE(bag) && bag->contains == second && !sql_chest_log_pending(7) &&
 		       audit_writes.size() == before_scrap);
 		refuse_scrap_prototype = false;
+		assert(removal_records.size() == before_removal);
 		const uint64_t bag_uid = bag->obj_uid;
 		assert(MakeScrap(&actor, bag));
+		assert(removal_records.size() == before_removal + 1);
+		assert(removal_records.back().find("cause=scrap uid=" + std::to_string(bag_uid)) !=
+		       std::string::npos);
+		assert(removal_records.back().find("source=container source_container_uid=" +
+						   std::to_string(object->obj_uid)) !=
+		       std::string::npos);
 		assert(OBJ_ROOM(first) && OBJ_ROOM(second));
 		assert(audit_writes.size() == before_scrap + 3);
 		assert(audit_writes[before_scrap].first.find(
@@ -762,6 +785,25 @@ int main()
 		extract_obj(first, TRUE);
 		obj_from_room(second);
 		extract_obj(second, TRUE);
+		assert(removal_records.size() == before_removal + 1);
+		auto doomed = read_object(1, REAL);
+		const auto doomed_uid = doomed->obj_uid;
+		auto child = read_object(1, REAL);
+		const auto child_uid = child->obj_uid;
+		doomed->contains = child;
+		child->loc_p = LOC_INSIDE;
+		child->loc.inside = doomed;
+		assert(DamageOneItem(&actor, SPLDAM_GENERIC, doomed, true));
+		assert(removal_records.size() == before_removal + 3);
+		assert(removal_records[before_removal + 1].find("cause=damage uid=" +
+								std::to_string(doomed_uid)) !=
+		       std::string::npos);
+		assert(removal_records.back().find("cause=damage uid=" +
+						   std::to_string(child_uid)) != std::string::npos);
+		assert(removal_records.back().find("source=container source_container_uid=" +
+						   std::to_string(doomed_uid)) !=
+		       std::string::npos);
+
 		// An abandoned operation releases its reservation and submits no false event.
 		const auto before_cancel = audit_writes.size();
 		{

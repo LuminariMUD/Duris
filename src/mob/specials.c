@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <strings.h>
 #include "combat/damage.h"
+#include "item/item_removal_audit.h"
 #include "world/map.h"
 #include "magic/spells.h"
 
@@ -355,26 +356,14 @@ void npc_steal(P_char ch, P_char vict)
 				act("You unequip $p and steal it.", FALSE, ch, obj, 0, TO_CHAR);
 				// Heavy items increase the chance of getting caught.
 				percent -= GET_OBJ_WEIGHT(obj);
+				const auto source = capture_item_removal(obj);
 				if (loc)
-				{
 					obj = unequip_char(vict, loc);
-					if (IS_ARTIFACT(obj))
-					{
-						statuslog(
-							MINLVLIMMORTAL,
-							"npc_steal: %s &+Rjust stole&n '%s' %d from %s.",
-							J_NAME(ch), OBJ_SHORT(obj), OBJ_VNUM(obj),
-							J_NAME(vict));
-						// Don't need this; it's handled in unequip_char & obj_to_char.
-						//   artifact_update_location_sql( obj );
-					}
-					obj_to_char(obj, ch);
-				}
 				else
-				{
 					obj_from_char(obj);
-					obj_to_char(obj, ch);
-				}
+				if (obj && obj_to_char(obj, ch) && OBJ_CARRIED_BY(obj, ch))
+					audit_item_removal("npc_theft", source,
+							   capture_item_removal(obj));
 			}
 			else
 			{

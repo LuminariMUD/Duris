@@ -42,6 +42,18 @@ static std::string description;
 static std::map<int, int> materials;
 static int pouch_usage;
 
+static std::vector<std::string> removal_causes;
+item_removal_location capture_item_removal(P_obj obj)
+{
+    return {.vnum = OBJ_VNUM(obj)};
+}
+
+void audit_item_removal(const char *cause, const item_removal_location &,
+                        const item_removal_location &, int)
+{
+    removal_causes.emplace_back(cause);
+}
+
 extern const struct stat_data stat_factor[LAST_RACE + 1] = {};
 int get_mincircle(int) { std::abort(); }
 int get_ival_from_proc(obj_proc_type) { std::abort(); }
@@ -217,6 +229,7 @@ static void clear_attempt()
         extract_obj(result);
     assert(temporary.empty());
     result = nullptr;
+    removal_causes.clear();
     loads.clear();
     extracted.clear();
     charges = 0;
@@ -295,6 +308,7 @@ static void test_replacement()
     GET_PLATINUM(&ch) = 20;
     source.loc_p = donor.loc_p = LOC_CARRIED;
     enhance(&ch, &source, &donor);
+    assert((removal_causes == std::vector<std::string>{"enhance_replacement", "enhance_donor"}));
     assert(result && OBJ_VNUM(result) == 83202);
     assert((loads == std::vector<int>{90003, 90004, 90002, 90000, 83277, 83202}));
     assert((extracted == std::vector<int>{90004, 90002, 90000, 83277, 98963, 90001}));
@@ -317,6 +331,7 @@ static void test_replacement()
         *refusal = true;
         enhance(&ch, &source, &donor);
         assert(!result && charges == 0 && GET_MONEY(&ch) == 20000);
+        assert(removal_causes.empty());
         assert((extracted == std::vector<int>{83202}));
         assert(source.loc_p == LOC_CARRIED && donor.loc_p == LOC_CARRIED);
         clear_attempt();

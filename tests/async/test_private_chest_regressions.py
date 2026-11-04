@@ -24,12 +24,13 @@ with tempfile.TemporaryDirectory(prefix="private-chests-", dir=build) as tmp:
     harness = (ROOT / "tests/async/private_chest_regressions.cpp").read_text()
     harness = harness.replace("// COMMAND_ARGUMENTS", arguments).replace("// AUDIT_PRODUCTION", audit)
     harness = harness.replace("// ACCOUNT_IDENTITY", extract_function("account/account.c", "const char *get_account_name_safe("))
-    source.write_text(harness)
+    source.write_text(harness + "\n" + extract_function("core/utility.c", "int BOUNDED("))
     subprocess.run(["g++", "-std=c++20", "-g", "-O1", "-ffunction-sections", "-fdata-sections",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
                     "-Wl,--gc-sections", "-Wl,--wrap=getrandom", "-Isrc", "-I/usr/include/mysql", "-I/usr/include/libxml2",
                     str(source), "src/persistence/critical_command.c",
-                    "src/player/player_snapshot_codec.c", "src/world/condition.c", str(HARNESS_STUBS),
+                    "src/player/player_snapshot_codec.c", "src/world/condition.c",
+                    "src/item/item_removal_audit.c", str(HARNESS_STUBS),
                     "-lbsd", "-lmysqlclient", "-lcrypto", "-o", str(binary)], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True, timeout=30,
                    env={**os.environ, "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1"})
