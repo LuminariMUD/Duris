@@ -87,6 +87,17 @@ def run(binary):
                 player.send('save')
                 player.expect('Save complete for ' + PLAYER + '.', timeout=60)
 
+            def training_baseline(missing):
+                # Staff edits queue a derived-stat refresh. Restore computes it
+                # synchronously, then set the exact injury the purchase must retain.
+                command(god, f'restore {PLAYER}')
+                restored = stats(command(player, 'score'))
+                assert restored['hp'] == restored['max_hp'], restored
+                command(god, f'setbit char {PLAYER} hit {restored["max_hp"] - missing}')
+                before = stats(command(player, 'score'))
+                assert before['max_hp'] - before['hp'] == missing, before
+                return before
+
             try:
                 boot()
                 for name, account in ((PLAYER, ACCOUNT), (GOD, GOD_ACCOUNT)):
@@ -120,10 +131,7 @@ def run(binary):
 
                 for level, learned, missing in ((30, 10, 0), (31, 20, 30)):
                     command(god, f'setbit char {PLAYER} level {level}')
-                    initial = stats(command(player, 'score'))
-                    command(god, f'setbit char {PLAYER} hit {initial["max_hp"] - missing}')
-                    before = stats(command(player, 'score'))
-                    assert before['max_hp'] - before['hp'] == missing, before
+                    before = training_baseline(missing)
                     packet_start = len(player.transcript)
                     purchased = command(player, 'practice toughness')
                     after = stats(purchased)
@@ -150,7 +158,7 @@ def run(binary):
 
                 command(god, f"setbit char {PLAYER} skill 'toughness' 95")
                 command(god, f"setbit char {PLAYER} taught 'toughness' 95")
-                before = stats(command(player, 'score'))
+                before = training_baseline(30)
                 mastered = command(player, 'practice toughness')
                 after = stats(mastered)
                 assert 'You have mastered' in mastered, mastered
@@ -189,9 +197,7 @@ def run(binary):
                 command(god, f"setbit char {PLAYER} taught 'toughness' 0")
                 player.socket.sendall(bytes([255, 253, 201]))
                 for learned, missing in ((10, 0), (20, 30)):
-                    initial = stats(command(player, 'score'))
-                    command(god, f'setbit char {PLAYER} hit {initial["max_hp"] - missing}')
-                    before = stats(command(player, 'score'))
+                    before = training_baseline(missing)
                     packet_start = len(player.transcript)
                     purchased = command(player, 'practice toughness')
                     assert 'improve your mastery of' in purchased, purchased
