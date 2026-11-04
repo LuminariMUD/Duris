@@ -207,8 +207,9 @@ restricted-race side rules and account cooldowns still apply.
 
 WebSocket `get_hometowns` accepts the same three alignment strings for every
 race and echoes an explicit choice unchanged, so clients can correlate replies.
-Its race-only preview remains supported; final creation still validates hometown
-eligibility against the resolved side. A successful `create_character` response
+Tiefling requests must supply alignment because the selectable hometown depends
+on the resolved side. Final creation validates hometown eligibility against that
+side. A successful `create_character` response
 reports character `alignment` separately from `faction` (the effective racewar
 side: `good`, `evil`, `undead`, `neutral`, or `none`). Coordinate server
 rollout with the [paired browser update](https://github.com/LuminariMUD/DurisWeb/pull/142).

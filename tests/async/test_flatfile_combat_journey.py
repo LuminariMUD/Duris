@@ -397,7 +397,7 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
                      character: str = CHARACTER, email: str = EMAIL,
                      hometown: str | None = None, race_name: str = "h",
                      existing_account: bool = False, alignment: str = "g",
-                     hardcore: bool = False) -> None:
+                     hardcore: bool = False, expected_hometown: str | None = None) -> None:
     entry, _ = client.expect_any(("term type", "account name"))
     if entry == "term type":
         client.send("9")
@@ -451,6 +451,8 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
         prompt, _ = client.expect_any(("Hometown Selection", "Your stat rolling system [D]:"))
     if prompt == "Hometown Selection":
         menu = client.expect("Your selection")
+        if expected_hometown:
+            require(f"{hometown}) {expected_hometown}" in menu, menu)
         if hometown is None:
             # Keep the existing preference for the optional first introduction,
             # using the actual offered key (Life can be L; Chaos uses C).
@@ -468,7 +470,9 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
         client.send(stat)
     client.expect("swap stats")
     client.send("n")
-    client.expect("keep this character")
+    summary = client.expect("keep this character")
+    if expected_hometown:
+        require(f"HOMETOWN: {expected_hometown}" in summary.splitlines(), summary)
     client.send("y")
     # No rules-agreement gate: keeping the character goes straight to the motd.
     client.expect("PRESS RETURN")

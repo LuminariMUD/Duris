@@ -125,7 +125,9 @@ int main() {
             for (int home = 0; home <= LAST_HOME; ++home) {
                 const bool good_tutorial = home == HOME_NEWBIE || home == HOME_PLANE_OF_LIFE;
                 const bool evil_tutorial = home == HOME_WUTVR || home == HOME_PLANE_OF_CHAOS;
-                const bool expected = good_tutorial ? good : evil_tutorial ? !good : avail_hometowns[home][race.race_id] == 1;
+                const bool expected = good_tutorial ? good : evil_tutorial ? !good :
+                    race.race_id == RACE_TIEFLING && !good ? home == HOME_ARACHDRATHOS :
+                    avail_hometowns[home][race.race_id] == 1;
                 assert(creation_hometown_available(race.race_id, side, home) == expected);
                 if (!expected) continue;
                 ++count;
@@ -153,11 +155,13 @@ int main() {
             }
             assert(count == static_cast<int>(homes.size()));
             assert(find_hometown(race.race_id, false, side) == (count > 1 ? HOME_CHOICE : homes[0]));
-            const int racial_home = find_hometown(race.race_id, true);
+            const int racial_home = find_hometown(race.race_id, true, side);
+            if (race.race_id == RACE_TIEFLING)
+                assert(racial_home == (good ? HOME_NAXVARAN : HOME_ARACHDRATHOS));
             assert(racial_home != HOME_NEWBIE && racial_home != HOME_PLANE_OF_LIFE &&
                 racial_home != HOME_WUTVR && racial_home != HOME_PLANE_OF_CHAOS);
             d.chargen_race = race.race_id;
-            for (const char *home : {"0", "-1", "999999", "22.5", "\"22\"", "null", "false", "{}", "[]", "22", "23", "25", "26", "1", "13", "omitted"}) {
+            for (const char *home : {"0", "-1", "999999", "22.5", "\"22\"", "null", "false", "{}", "[]", "22", "23", "25", "26", "1", "3", "13", "14", "omitted"}) {
                 const bool omitted = !strcmp(home, "omitted");
                 std::string request = "{\"name\":\"Pupil\",\"race\":" + std::to_string(race.race_id) +
                     ",\"class\":1,\"sex\":1,\"alignment\":\"" + alignment + "\"";
@@ -180,10 +184,15 @@ int main() {
     assert(menu(RACE_FIRBOLG, nullptr).size() == 3);
     assert(menu(RACE_OGRE, nullptr).size() == 3);
     ch.player.race = RACE_TIEFLING;
-    ch.specials.alignment = -1000;
+    ch.player.racewar = RACEWAR_EVIL;
     ch.player.m_class = CLASS_WARRIOR;
-    find_starting_location(&ch, 0);
-    assert(GET_HOME(&ch) == guild_locations[HOME_ARACHDRATHOS][0]);
+    for (int home : {0, HOME_ARACHDRATHOS}) {
+        find_starting_location(&ch, home);
+        assert(GET_HOME(&ch) == 36329);
+    }
+    ch.player.racewar = RACEWAR_GOOD;
+    find_starting_location(&ch, HOME_NAXVARAN);
+    assert(GET_HOME(&ch) == guild_locations[HOME_NAXVARAN][flag2idx(CLASS_WARRIOR)]);
     // The unlocked legacy roster retains its existing good tutorial rows;
     // the approved additions do not give every nominally-good legacy race
     // new towns. The outer creation admission still owns the unlock toggle.
@@ -197,12 +206,18 @@ int main() {
                     RACEWAR_GOOD : RACEWAR_EVIL)) && avail_hometowns[home][race] == 1));
     }
     all_races = false;
-    for (int race : {RACE_THRIKREEN, RACE_MINOTAUR, RACE_TIEFLING}) {
+    for (int race : {RACE_THRIKREEN, RACE_MINOTAUR}) {
         const auto homes = menu(race, nullptr);
         assert(homes.size() == 1);
         assert(homes[0] != HOME_NEWBIE && homes[0] != HOME_PLANE_OF_LIFE &&
             homes[0] != HOME_WUTVR && homes[0] != HOME_PLANE_OF_CHAOS);
     }
+    auto *tiefling_request = cJSON_CreateObject();
+    cJSON_AddNumberToObject(tiefling_request, "race", RACE_TIEFLING);
+    json.clear(); error.clear();
+    ws_cmd_get_hometowns(&d, tiefling_request);
+    assert(error == "Choose an alignment before requesting Tiefling hometowns" && json.empty());
+    cJSON_Delete(tiefling_request);
     assert(!creation_hometown_available(-1, RACEWAR_GOOD, HOME_NEWBIE));
     assert(!creation_hometown_available(LAST_RACE + 1, RACEWAR_GOOD, HOME_NEWBIE));
     for (const char *request : {"{\"race\":1.5}", "{\"race\":0}", "{\"race\":9999}",

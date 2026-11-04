@@ -2262,7 +2262,8 @@ void ws_cmd_create_character(struct descriptor_data *d, cJSON *data)
 		return;
 	}
 
-	const int actual_hometown = hometown_item ? hometown_id : find_hometown(race_id, true);
+	const int actual_hometown = hometown_item ? hometown_id :
+						    find_hometown(race_id, true, resolved_racewar);
 	if (!creation_hometown_available(race_id, resolved_racewar, actual_hometown))
 	{
 		ws_send_system(d, "error", "That hometown is not available for your race and side");
@@ -2617,6 +2618,12 @@ void ws_cmd_get_hometowns(struct descriptor_data *d, cJSON *data)
 		}
 		alignment = align_item->valuestring;
 		racewar = ws_resolve_racewar_side(race_id, selected_alignment);
+	}
+	else if (race_id == RACE_TIEFLING)
+	{
+		ws_send_system(d, "error",
+			       "Choose an alignment before requesting Tiefling hometowns");
+		return;
 	}
 	else if (strcmp(faction, "neutral"))
 	{
