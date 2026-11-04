@@ -502,12 +502,17 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 assert not copyover_state.exists(), "failed exec left a published handoff image"
                 client.send("look"); client.expect("The Regression Arena")
                 save()
-                until(lambda: any(row["event"] == "duris_encounter_summary" and
-                                  row["properties"].get("actor_kind") == "pet"
-                                  for row in received) and
-                      any(row["event"] == "duris_session" and
-                          row["properties"].get("transition") == "logical_exit"
-                          for row in received), "capture did not recover after failed copyover")
+                received_before_advance = len(received)
+                companion = reconnect(companion_name, companion_account)
+                client.send("advance " + companion_name + " 11")
+                companion.expect("You raise a level!")
+                until(lambda: any(row["event"] == "duris_level_change" and
+                                  row["properties"].get("before_level") == 10 and
+                                  row["properties"].get("after_level") == 11
+                                  for row in received[received_before_advance:]),
+                      "fresh level change did not reach capture after failed copyover")
+                companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
+                companion.close(); companion = None
                 shutil.copy2(binary, staged_binary)
                 process.send_signal(signal.SIGUSR1)
                 client.expect("Copyover complete!", timeout=90)
