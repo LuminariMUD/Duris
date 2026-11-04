@@ -251,6 +251,8 @@ static void test_replacement()
     wrong_slot.R_num = 5;
     wrong_slot.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_LEGS;
 
+    auto &over_cap = fixture(7, 90004, 80);
+    assert(itemvalue(&over_cap) > enhance_ival_cap + enhance_original_max_roll);
     assert(itemvalue(&source) == 88);
     assert(itemvalue(&lower) == 87);
     assert(itemvalue(&higher) == 91);
@@ -282,18 +284,20 @@ static void test_replacement()
     enhance_original_cascade_down_first = true;
 
     // Failed loads, changed wear and stale high-valued index entries in one bucket.
-    enhance_index_entry stale_lower{}, stale_equal{}, stale_wear{}, missing{}, same_bucket{};
+    enhance_index_entry stale_lower{}, stale_equal{}, stale_wear{}, stale_cap{}, missing{};
+    enhance_index_entry same_bucket{};
     index_entry(same_bucket, 83202, 89);
     index_entry(stale_lower, 83277, 89);
     index_entry(stale_equal, 90000, 89);
     index_entry(stale_wear, 90002, 89);
+    index_entry(stale_cap, 90004, 89);
     index_entry(missing, 90003, 89);
     GET_PLATINUM(&ch) = 20;
     source.loc_p = donor.loc_p = LOC_CARRIED;
     enhance(&ch, &source, &donor);
     assert(result && OBJ_VNUM(result) == 83202);
-    assert((loads == std::vector<int>{90003, 90002, 90000, 83277, 83202}));
-    assert((extracted == std::vector<int>{90002, 90000, 83277, 98963, 90001}));
+    assert((loads == std::vector<int>{90003, 90004, 90002, 90000, 83277, 83202}));
+    assert((extracted == std::vector<int>{90004, 90002, 90000, 83277, 98963, 90001}));
     assert(charges == 1 && GET_PLATINUM(&ch) == 10);
     clear_attempt();
 
@@ -450,7 +454,19 @@ static void test_superior()
     wis.apply_mod[0] = 3;
     str = wis;
     str.apply_loc[0] = APPLY_STR;
-    enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = &wis;
+    auto &wrong_slot = fixture(2, 90019);
+    wrong_slot.wear_flags = ITEM_TAKE | ITEM_HOLD | ITEM_WEAR_LEGS;
+    auto hold_only_match = wis;
+    hold_only_match.vnum = OBJ_VNUM(&wrong_slot);
+    hold_only_match.wear_flags = wrong_slot.wear_flags;
+    hold_only_match.next = &wis;
+    enhance_stat_table[enhance_stat_hash(APPLY_WIS)] = &hold_only_match;
+    assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == &wis);
+    item.wear_flags = ITEM_TAKE | ITEM_HOLD;
+    assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == nullptr);
+    item.wear_flags = ITEM_TAKE | ITEM_WEAR_BACK;
+    assert(find_stat_enhance_target(&item, APPLY_WIS, 3) == nullptr);
+    item.wear_flags = base.wear_flags;
     enhance_stat_table[enhance_stat_hash(APPLY_STR)] = &str;
 
     const int low = get_matstart(&target);
@@ -562,7 +578,10 @@ static void test_superior()
 
 int main()
 {
+    const auto expected_mask = ITEM_TAKE | ITEM_HOLD | ITEM_ATTACH_BELT | ITEM_WEAR_BACK;
+    assert(enhance_wear_skip_mask == expected_mask);
     load_enhance_config();
+    assert(enhance_wear_skip_mask == expected_mask);
     test_replacement();
     test_essence();
     test_superior();
