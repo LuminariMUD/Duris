@@ -212,13 +212,15 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 assert body["api_key"] == "phc_native_gameplay"
                 attempts.append(len(body["batch"]))
                 status = response["status"]
+                # Leave time for the in-game save during the injected outage.
+                retry_after = "15" if status == 503 else "1"
                 if cloud and status == 200:
                     status = forward(body["batch"])
                 if status == 200:
                     received.extend(body["batch"])
                 self.send_response(status)
                 if status != 200:
-                    self.send_header("Retry-After", "1")
+                    self.send_header("Retry-After", retry_after)
                 self.send_header("Content-Length", "2")
                 self.end_headers()
                 self.wfile.write(b"{}")
@@ -470,9 +472,9 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 client.send("order followers kill raoul")
                 client.expect("is dead! R.I.P.", timeout=45)
                 print("PASS level/group/player/pet gameplay", backend, flush=True)
+                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
                 response["status"] = 503
                 prior_attempts = len(attempts)
-                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
                 companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
                 companion.close(); companion = None
                 until(lambda: len(attempts) > prior_attempts, "outage did not reach capture endpoint")
@@ -493,17 +495,25 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 staged_binary.write_text("synthetic invalid executable\n")
                 staged_binary.chmod(0o700)
                 process.send_signal(signal.SIGUSR1)
-                client.expect("Copyover FAILED", timeout=60)
+                exec_failed = "Copyover FAILED! Server remains live."
+                outcome, text = client.expect_any((
+                    exec_failed, "Copyover FAILED - server remains live."), timeout=60)
+                assert outcome == exec_failed, text
+                assert not copyover_state.exists(), "failed exec left a published handoff image"
                 client.send("look"); client.expect("The Regression Arena")
                 save()
-                until(lambda: any(row["event"] == "duris_encounter_summary" and
-                                  row["properties"].get("actor_kind") == "pet"
-                                  for row in received) and
-                      any(row["event"] == "duris_session" and
-                          row["properties"].get("transition") == "logical_exit"
-                          for row in received), "capture did not recover after failed copyover")
+                received_before_advance = len(received)
+                companion = reconnect(companion_name, companion_account)
+                client.send("advance " + companion_name + " 11")
+                companion.expect("You raise a level!")
+                until(lambda: any(row["event"] == "duris_level_change" and
+                                  row["properties"].get("before_level") == 10 and
+                                  row["properties"].get("after_level") == 11
+                                  for row in received[received_before_advance:]),
+                      "fresh level change did not reach capture after failed copyover")
+                companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
+                companion.close(); companion = None
                 shutil.copy2(binary, staged_binary)
-                copyover_state.unlink()
                 process.send_signal(signal.SIGUSR1)
                 client.expect("Copyover complete!", timeout=90)
                 client.send("look"); client.expect("The Regression Arena")
