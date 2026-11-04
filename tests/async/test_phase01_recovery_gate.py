@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Final Phase 01 ordering, ownership, fault, and bounded-load gate."""
 
-from _paths import SRC, rel
+from _paths import SRC, extract_function, rel
 import subprocess
 import tempfile
 from pathlib import Path
@@ -154,10 +154,10 @@ assert "player_snapshot_capture" in PIPELINE
 assert "apply_callback(job.snapshot" in WORKER
 assert "P_char" not in WORKER and "P_obj" not in WORKER
 assert "publish_callback(generation.blob.data()," in WORLD
-publisher = WORLD[WORLD.index("void publisher_main()"): WORLD.index("bool capture_one_record()")]
+publisher = extract_function("world_recovery_pipeline.c", "void publisher_main()")
 assert "P_char" not in publisher and "P_obj" not in publisher
-assert "redis_world_recovery_drain(3000)" in COMM
-assert "redis_world_recovery_drain(3000)" in COPYOVER
+assert "redis_world_recovery_drain(shutdown_writer_remaining_msec(3000))" in COMM
+assert "if (copyover_preserve_world && !redis_world_recovery_drain(3000))" in COPYOVER
 
 for existing_gate in (
     "test_player_save_worker.py",
