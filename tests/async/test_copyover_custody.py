@@ -69,8 +69,10 @@ int singleton_shop_id(P_char mob) { return mob && mob->only.npc ? mob->only.npc-
 #include "persistence/critical_command_coordinator.h"
 #include "persistence/critical_outbox.h"
 #include "player/player_save_pipeline.h"
+#include "player/player_save_worker.h"
 #include "redis/redis_world_runtime.h"
 #include "player/player_load_pipeline.h"
+#include "player/player_load_items.h"
 #include "player/player_load_materialize.h"
 #include "core/mm.h"
 #include "telemetry/telemetry_runtime.h"
@@ -147,6 +149,8 @@ uint64_t persistence_observability_now_usec() { std::abort(); }
 uint64_t player_load_pipeline_next_request_id() { std::abort(); }
 bool player_load_pipeline_wait(player_load_request, player_load_result *, uint64_t) { std::abort(); }
 bool player_load_pipeline_execute_sync(player_load_request, player_load_result *) { std::abort(); }
+bool player_load_items_read_current(const player_load_result &) { std::abort(); }
+bool persistence_writer_wait_idle(uint64_t) { std::abort(); }
 bool player_load_materialize(P_char, const player_load_result &) { std::abort(); }
 void player_load_pets_place(P_char) { std::abort(); }
 void epic_bonus_hydrate(P_char) { std::abort(); }
