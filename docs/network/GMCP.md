@@ -5,7 +5,7 @@ The same packages use Telnet GMCP subnegotiation and the existing WebSocket
 existing defaults. New versioned streams require explicit support and interest.
 This document describes the implemented control, time, lifecycle and combat
 state/damage and owner-item slices of issue #498. Requested nested contents use
-the same bounded owner-item scheduler. Actions and command results remain pending.
+the same bounded owner-item scheduler. Spell preparation is an owner-only snapshot. Actions and command results remain pending.
 
 ## Negotiation and interest
 
@@ -416,3 +416,34 @@ legs. No general benchmark framework or periodic telemetry service was added.
 After this measurement, the focused worn-container selector lookup was corrected
 without changing any measured flush/workload path. Its native regression and
 both builds pass; the short timing evidence remains applicable.
+
+## Char.SpellPreparation, version 1
+
+Include `"Char.SpellPreparation 1"` in both `Core.Supports.Set` and
+`Duris.Subscribe` alongside any other streams the client uses. Advertise
+`"Duris.Capabilities 1"` in Supports to enable subscriptions.
+
+```json
+{"state":"active","estimatedSeconds":37}
+```
+
+The snapshot describes the whole queue of unprepared spells for memorization
+and prayer, or the missing spell slots across all circles for slot recovery
+such as commune, deforest, assimilate, tupor, and focus. The estimate uses the
+scheduled step's remaining time and the current baseline cost of later steps.
+Actual timing can change with meditation, terrain, and combat delays. Seconds
+are rounded up to the nearest whole second.
+
+- `active` means a recovery event is scheduled. Count down locally from receipt
+  and replace the estimate when the next snapshot arrives.
+- `paused` means spells or slots are pending without a scheduled recovery
+  event. Display the estimate without counting down.
+- `complete` means no pending work is reported and has an estimate of zero.
+  A local countdown reaching zero only exhausts the estimate.
+
+Expect a fresh snapshot on subscription, character entry, return to the
+original body, or GMCP re-enable. Clear the display when the stream becomes
+inactive in `Duris.Capabilities`, or when the connection closes. While staff
+control another body, the stream reports `complete`. Queue and schedule changes
+coalesce at the existing GMCP flush. An unchanged queue sends no countdown
+packets.

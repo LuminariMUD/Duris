@@ -6120,6 +6120,7 @@ void do_restore(P_char ch, char *argument, int cmd)
 					for (j = 1; j <= MAX_CIRCLE; j++)
 						victim->specials.undead_spell_slots[j] =
 							max_spells_in_circle(victim, j);
+					gmcp_spell_preparation_changed(victim);
 				}
 				GET_COND(victim, FULL) = IS_TRUSTED(victim) ? -1 : 24;
 				GET_COND(victim, THIRST) = IS_TRUSTED(victim) ? -1 : 24;
@@ -6227,6 +6228,7 @@ void do_restore(P_char ch, char *argument, int cmd)
 			for (i = 1; i <= MAX_CIRCLE; i++)
 				victim->specials.undead_spell_slots[i] =
 					max_spells_in_circle(victim, i);
+			gmcp_spell_preparation_changed(victim);
 		}
 		if (GET_STAT(victim) < STAT_SLEEPING)
 			SET_POS(victim, GET_POS(victim) + STAT_NORMAL);

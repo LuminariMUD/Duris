@@ -152,6 +152,7 @@ static void prepare_battle_baseline(P_char victim)
 		for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
 			victim->specials.undead_spell_slots[circle] =
 				max_spells_in_circle(victim, circle);
+		gmcp_spell_preparation_changed(victim);
 	}
 	mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_STATUS |
 							      PLAYER_COMPONENT_SKILLS |
@@ -201,6 +202,7 @@ static bool prepare_battle_spells(P_char staff, P_char victim)
 	for (auto *af = victim->affected; af; af = af->next)
 		if (af->type == TAG_MEMORIZE)
 			af->flags |= MEMTYPE_FULL;
+	gmcp_spell_preparation_changed(victim);
 	mark_player_dirty_components(GET_PID(victim), PLAYER_COMPONENT_AFFECTS);
 	send_to_char_f(staff, "Battleprep: %s has %d newly prepared spells.\r\n", GET_NAME(victim),
 		       pending);

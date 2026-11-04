@@ -360,7 +360,9 @@ void DelayCommune(P_char ch, int delay)
 			const unsigned long long new_delay = extension > ULLONG_MAX - old_time ?
 								     ULLONG_MAX :
 								     old_time + extension;
-			if (!nevent_reschedule_after(nevent_handle_from_event(e), new_delay))
+			if (nevent_reschedule_after(nevent_handle_from_event(e), new_delay))
+				gmcp_spell_preparation_changed(ch);
+			else
 				logit(LOG_EXIT,
 				      "DelayCommune: failed to reschedule memorize event");
 		}

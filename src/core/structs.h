@@ -1844,6 +1844,7 @@ struct descriptor_data
 	gmcp_combat_subject gmcp_combat_subjects[2];
 	uint64_t gmcp_combat_revision;
 	bool gmcp_combat_state_sent;
+	bool gmcp_spell_preparation_pending;
 	uint64_t gmcp_items_epoch;
 	uint64_t gmcp_items_body;
 	uint64_t gmcp_items_revision;

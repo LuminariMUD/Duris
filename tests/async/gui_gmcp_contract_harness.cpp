@@ -481,6 +481,17 @@ bool player_load_item_graph_materialize_detached(const std::vector<player_item_s
 {
 	return false; // Restoration itself is covered by the publication/load harnesses.
 }
+static unsigned preparation_estimates;
+static int64_t preparation_pulses;
+static bool preparation_active;
+
+int64_t spell_preparation_estimate(P_char, bool &active)
+{
+	++preparation_estimates;
+	active = preparation_active;
+	return preparation_pulses;
+}
+
 #include "production.inc"
 
 static std::string payload(P_desc d, const char *package)
@@ -2088,10 +2099,73 @@ static void items_fairness_contract()
 	descriptor_list = saved_list;
 }
 
+static void spell_preparation_contract()
+{
+	char_data actor{};
+	pc_only_data pc{};
+	descriptor_data d{};
+	actor.only.pc = &pc;
+	actor.player.name = const_cast<char *>("Preparer");
+	actor.runtime_id = 301;
+	actor.desc = &d;
+	d.character = &actor;
+	d.descriptor = 61;
+	d.connected = CON_PLAYING;
+	d.gmcp_enabled = 1;
+	descriptor_list = &d;
+
+	const auto send = [&](const char *input)
+	{
+		gmcp_handle_input(&d, input, strlen(input));
+		gmcp_flush_initial_states();
+	};
+	send("Core.Supports.Set [\"Duris.Capabilities 1\",\"Char.SpellPreparation 1\"]");
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 0);
+	assert(std::find(packages[&d].begin(), packages[&d].end(), "Char.SpellPreparation") ==
+	       packages[&d].end());
+
+	send("Duris.Subscribe [\"Char.SpellPreparation 1\"]");
+	assert(preparation_estimates == 1);
+	assert(payload(&d, "Char.SpellPreparation") ==
+	       "{\"state\":\"complete\",\"estimatedSeconds\":0}");
+
+	preparation_pulses = WAIT_SEC * 12 + 1;
+	preparation_active = true;
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_flush_initial_states();
+	for (int flush = 0; flush < 4; ++flush)
+		gmcp_flush_initial_states();
+	assert(preparation_estimates == 2);
+	assert(payload(&d, "Char.SpellPreparation") ==
+	       "{\"state\":\"active\",\"estimatedSeconds\":13}");
+
+	gmcp_handle_negotiation(&d, TELNET_DONT);
+	preparation_active = false;
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 2);
+	gmcp_handle_negotiation(&d, TELNET_DO);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 3);
+	assert(payload(&d, "Char.SpellPreparation") ==
+	       "{\"state\":\"paused\",\"estimatedSeconds\":13}");
+
+	send("Duris.Subscribe []");
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 3);
+	preparation_pulses = 0;
+	descriptor_list = nullptr;
+}
+
 int main()
 {
 	for (auto &label : where)
 		label = "wielded";
+	spell_preparation_contract();
 	items_contract(false);
 	items_contract(true);
 	nested_items_contract(false);

@@ -15,6 +15,28 @@ import tempfile
 import test_flatfile_combat_journey as journey
 from run_item_pilot_journey import Server
 from run_paladin_balance_journey import command
+from test_gmcp_control_journey import drain, send_telnet, telnet_packets, wait_telnet
+
+
+PREPARATION = "Char.SpellPreparation"
+COMPLETE = {"state": "complete", "estimatedSeconds": 0}
+
+
+def support_preparation(client):
+    client.socket.sendall(b"\xff\xfd\xc9")
+    send_telnet(client, "Core.Supports.Set", ["Duris.Capabilities 1", PREPARATION + " 1"])
+    caps = wait_telnet(client, "Duris.Capabilities", predicate=lambda value:
+                       PREPARATION in value["supported"])
+    assert caps["features"][PREPARATION] == 1 and PREPARATION not in caps["active"], caps
+
+
+def subscribe_preparation(client):
+    send_telnet(client, "Duris.Subscribe", [PREPARATION + " 1"])
+
+
+def preparation(client, after, state, timeout=8):
+    return wait_telnet(client, PREPARATION, after, lambda value: value["state"] == state,
+                       timeout=timeout)
 
 
 def configure(root):
@@ -60,6 +82,10 @@ def run(binary):
             staff = server.client = journey.reconnect_character(server.port)
             command(staff, "toggle page off")
             command(staff, "vis 0")
+            support_preparation(staff)
+            subscribe_preparation(staff)
+            assert preparation(staff, 0, "complete") == COMPLETE
+            staff_before = len(telnet_packets(staff))
             for name, cls, spell in (("Battlecleric", "c", "full heal"),
                                      ("Battlemage", "s", "incendiary cloud")):
                 client = journey.MudClient(server.port)
@@ -79,11 +105,39 @@ def run(binary):
                     inventory = command(client, "inventory")
                     assert "master spellbook" in inventory, inventory
                 request = ("pray" if cls == "c" else "memorize")
+                # Keep the real preparation events long enough for several GMCP flushes.
+                timing_stat = "wis" if cls == "c" else "int"
+                command(staff, f"setbit char {name} {timing_stat} 20")
                 command(client, "rest")
+                support_preparation(client)
                 queued = command(client, f"{request} {spell}")
                 assert f"You are {'praying for' if cls == 'c' else 'memorizing'} {spell}" in queued, queued
+                drain(client)
+                assert not any(package == PREPARATION for package, _ in telnet_packets(client))
+                subscribe_preparation(client)
+                active = preparation(client, 0, "active")
+                assert active["estimatedSeconds"] > 0, active
+                queued_count = 1
+                if cls == "c":
+                    before = len(telnet_packets(client))
+                    command(client, f"{request} {spell}")
+                    added = preparation(client, before, "active")
+                    assert added["estimatedSeconds"] > active["estimatedSeconds"], (active, added)
+                    queued_count = 2
+                before = len(telnet_packets(client))
+                command(client, "stand")
+                paused = preparation(client, before, "paused")
+                assert paused["estimatedSeconds"] > 0, paused
+                before = len(telnet_packets(client))
+                drain(client)
+                assert not any(package == PREPARATION for package, _ in telnet_packets(client)[before:])
+                command(client, "rest")
+                command(client, request)
+                preparation(client, before, "active")
+                before = len(telnet_packets(client))
                 prepared = command(staff, f"battleprep {name} spells")
-                assert "1 newly prepared spells" in prepared, prepared
+                assert preparation(client, before, "complete") == COMPLETE
+                assert f"{queued_count} newly prepared spells" in prepared, prepared
                 spells = command(client, request)
                 assert "You have memorized" in spells and spell in spells, spells
                 command(client, "stand")
@@ -92,6 +146,27 @@ def run(binary):
                 print(f"{name}: level 56, queued spell ready, native save complete", flush=True)
                 client.close()
                 clients.remove(client)
+            druid = journey.MudClient(server.port)
+            clients.append(druid)
+            journey.create_character(druid, account="Battledruid", character="Battledruid",
+                                     email="battledruid@example.invalid", class_name="d")
+            command(druid, "toggle page off")
+            assert "Battledruid baseline ready" in command(staff, "battleprep Battledruid baseline")
+            command(staff, "setbit char Battledruid agi 100")
+            command(staff, "setbit char Battledruid wis 20")
+            support_preparation(druid)
+            subscribe_preparation(druid)
+            assert preparation(druid, 0, "complete") == COMPLETE
+            before = len(telnet_packets(druid))
+            command(druid, "cast 'barkskin' self")
+            active = preparation(druid, before, "active")
+            assert active["estimatedSeconds"] > 0, active
+            assert preparation(druid, before, "complete", timeout=active["estimatedSeconds"] + 15) == COMPLETE
+
+            drain(staff)
+            assert not any(package == PREPARATION for package, _ in telnet_packets(staff)[staff_before:])
+            druid.close()
+            clients.remove(druid)
             server.stop()
             assert server.process.returncode == 0
             server.start()
@@ -105,7 +180,8 @@ def run(binary):
                 client.close(); clients.remove(client)
             print(json.dumps({"result": "passed", "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                               "verified": ["staff command dispatch", "mortal denial", "native advancement",
-                                           "master book load/give", "pray/memorize queues", "save/restart/reload"]}))
+                                           "master book load/give", "pray/memorize queues", "private spell preparation GMCP",
+                                                        "slot recovery", "save/restart/reload"]}))
         except Exception as error:
             raise AssertionError(f"{error}\nServer output:\n{server.output_path.read_text()[-6000:]}") from error
         finally:

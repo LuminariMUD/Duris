@@ -15389,6 +15389,7 @@ void spell_feeblemind(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 						if (i >= 1)
 						{
 							victim->specials.undead_spell_slots[j]--;
+							gmcp_spell_preparation_changed(victim);
 							i--;
 							continue;
 						}
@@ -19157,6 +19158,7 @@ void spell_vampire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] in
 			ch->specials.undead_spell_slots[get_spell_circle(ch, afp->modifier)]++;
 		}
 	}
+	gmcp_spell_preparation_changed(ch);
 }
 
 void spell_cloak_of_fear(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vict,

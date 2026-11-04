@@ -10,6 +10,7 @@
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "core/utility.h"
@@ -86,7 +87,8 @@ float fake_sqrt_table[] = { .3311,  .3467,  .3631,  .3802,  .3981,  .4169,  .436
 double lfactor[MAX_CIRCLE] = { 400.0000,  565.6854,  692.8203,	800.0000,  894.4272,  979.7959,
 			       1058.3005, 1131.3708, 1200.0000, 1264.9110, 1324.0000, 1370.1234 };
 
-static int get_circle_memtime(P_char ch, int circle, bool bStatOnly = false);
+static int get_circle_memtime(P_char ch, int circle, bool bStatOnly = false,
+			      bool roll_nature_bonus = true);
 static int calculate_harpy_time(P_char ch, int circle, bool bStatOnly = false);
 static int calculate_undead_time(P_char ch, int circle, bool bStatOnly = false);
 
@@ -607,12 +609,14 @@ void stop_memorizing(P_char ch, memorization_stop_reason reason)
 	{
 		show_stop_memorizing(ch, reason);
 		disarm_char_nevents(ch, event_memorize);
+		gmcp_spell_preparation_changed(ch);
 	}
 }
 
 // Keep pending spell choices intact so the player can resume after a rejection.
 static bool schedule_memorize(P_char ch, int delay, const int *time = nullptr)
 {
+	gmcp_spell_preparation_changed(ch);
 	if (add_event(event_memorize, delay, ch, 0, 0, 0, time, time ? sizeof(*time) : 0))
 		return true;
 
@@ -727,7 +731,7 @@ int calculate_harpy_time(P_char ch, int circle, bool bStatOnly)
 	return (int)remem_time;
 }
 
-int get_circle_memtime(P_char ch, int circle, bool bStatOnly)
+int get_circle_memtime(P_char ch, int circle, bool bStatOnly, bool roll_nature_bonus)
 {
 	float time_mult, time;
 	P_nevent e;
@@ -859,7 +863,8 @@ int get_circle_memtime(P_char ch, int circle, bool bStatOnly)
 		time = time * modifier;
 
 		// reduction in time if you have the epic skill
-		if (OUTSIDE(ch) && GET_CHAR_SKILL(ch, SKILL_NATURES_SANCTITY) > number(1, 100))
+		if (roll_nature_bonus && OUTSIDE(ch) &&
+		    GET_CHAR_SKILL(ch, SKILL_NATURES_SANCTITY) > number(1, 100))
 		{
 			time = time * .65;
 		}
@@ -914,7 +919,8 @@ int get_circle_memtime(P_char ch, int circle, bool bStatOnly)
 		}
 
 		// reduction in time if you have the epic skill
-		if (OUTSIDE(ch) && GET_CHAR_SKILL(ch, SKILL_NATURES_RUIN) > number(1, 100))
+		if (roll_nature_bonus && OUTSIDE(ch) &&
+		    GET_CHAR_SKILL(ch, SKILL_NATURES_RUIN) > number(1, 100))
 		{
 			time = time * .65;
 		}
@@ -1297,14 +1303,79 @@ int memorize_last_spell(P_char ch)
 	if (last_spell)
 	{
 		last_spell->flags |= MEMTYPE_FULL;
+		gmcp_spell_preparation_changed(ch);
 		return last_spell->modifier;
 	}
 
 	return FALSE;
 }
 
+static bool uses_slot_recovery(P_char ch)
+{
+	return GET_CLASS(ch, CLASS_WARLOCK) || IS_PUNDEAD(ch) || USES_COMMUNE(ch) ||
+	       USES_DEFOREST(ch) || USES_TUPOR(ch) || IS_UNDEADRACE(ch) ||
+	       is_wearing_necroplasm(ch) || USES_FOCUS(ch) || IS_ANGEL(ch);
+}
+
+int64_t spell_preparation_estimate(P_char ch, bool &active)
+{
+	active = false;
+	if (!ch || IS_NPC(ch) || ch->in_room == NOWHERE || !IS_ALIVE(ch) || USES_MANA(ch))
+		return 0;
+
+	int pending[MAX_CIRCLE + 1] = {};
+	int first = 0;
+	if (uses_slot_recovery(ch))
+	{
+		const int max_circle = get_max_circle(ch);
+		for (int circle = max_circle; circle > 0; --circle)
+		{
+			pending[circle] = max_spells_in_circle(ch, circle, max_circle) -
+					  ch->specials.undead_spell_slots[circle];
+			if (!first && pending[circle] > 0)
+				first = circle;
+		}
+	}
+	else
+	{
+		for (const affected_type *af = ch->affected; af; af = af->next)
+		{
+			if (af->type != TAG_MEMORIZE || (af->flags & MEMTYPE_FULL))
+				continue;
+			const int circle = get_spell_circle(ch, af->modifier);
+			if (circle <= 0 || circle > MAX_CIRCLE)
+				continue;
+			++pending[circle];
+			if (!first)
+				first = circle;
+		}
+	}
+	if (!first)
+		return 0;
+
+	int64_t pulses = 0;
+	if (const P_nevent event = get_scheduled(ch, event_memorize))
+	{
+		active = true;
+		pulses = std::max(1, ne_event_time(event));
+		// The meditation check may schedule the second half of this interval.
+		if (event->data)
+			pulses += *static_cast<const int *>(event->data) / 2;
+		--pending[first];
+	}
+	// Future steps are estimates. Reading them must never roll a proc or train a skill.
+	for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
+	{
+		if (pending[circle] > 0)
+			pulses += static_cast<int64_t>(pending[circle]) *
+				  std::max(1, get_circle_memtime(ch, circle, true, false));
+	}
+	return pulses;
+}
+
 void event_memorize(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 {
+	gmcp_spell_preparation_changed(ch);
 	int time = 0;
 
 	if (data)
@@ -1319,9 +1390,7 @@ void event_memorize(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		return;
 	}
 
-	if (GET_CLASS(ch, CLASS_WARLOCK) || IS_PUNDEAD(ch) || USES_COMMUNE(ch) ||
-	    USES_DEFOREST(ch) || USES_TUPOR(ch) || IS_UNDEADRACE(ch) || is_wearing_necroplasm(ch) ||
-	    USES_FOCUS(ch) || IS_ANGEL(ch))
+	if (uses_slot_recovery(ch))
 	{
 		handle_undead_mem(ch);
 	}
@@ -2110,6 +2179,7 @@ void use_spell(P_char ch, int spell)
 		if (ch->specials.undead_spell_slots[get_spell_circle(ch, spell)] > 0)
 		{
 			ch->specials.undead_spell_slots[get_spell_circle(ch, spell)] -= 1;
+			gmcp_spell_preparation_changed(ch);
 		}
 
 		if ((USES_COMMUNE(ch) || USES_FOCUS(ch) || USES_DEFOREST(ch)) &&
@@ -2874,6 +2944,7 @@ void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 					    "spell.mordenkainensLucubration.spellMemChance", 80))
 			{
 				af->flags |= MEMTYPE_FULL;
+				gmcp_spell_preparation_changed(ch);
 				snprintf(buff, MAX_STRING_LENGTH,
 					 "&+WYou regain the power of %s!\n", spells[af->modifier]);
 				send_to_char(buff, ch);
@@ -2897,6 +2968,7 @@ void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 					    "spell.mordenkainensLucubration.spellMemChance", 80))
 				{
 					ch->specials.undead_spell_slots[i]++;
+					gmcp_spell_preparation_changed(ch);
 					snprintf(
 						buff, MAX_STRING_LENGTH,
 						"&+WYou regain power in the %d%s circle of magic!\n",

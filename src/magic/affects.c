@@ -2007,6 +2007,8 @@ void affect_to_end(P_char ch, struct affected_type *af)
 		prev->next = afp;
 	else
 		ch->affected = afp;
+	if (afp->type == TAG_MEMORIZE)
+		gmcp_spell_preparation_changed(ch);
 }
 
 void affect_remove(P_char ch, struct affected_type *af)
@@ -2063,6 +2065,9 @@ void affect_remove(P_char ch, struct affected_type *af)
 		// Remove af from the list.
 		hjp->next = af->next;
 	}
+
+	if (af->type == TAG_MEMORIZE)
+		gmcp_spell_preparation_changed(ch);
 
 	// Handle race changes.
 	if (af->type == TAG_RACE_CHANGE || af->type == SPELL_DRACONIC_APOTHEOSIS)

@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -295,6 +296,7 @@ int flow_amulet(P_obj obj, P_char ch, int cmd, char *arg)
 											  "th")));
 							send_to_char(buf, ch);
 							ch->specials.undead_spell_slots[circle]++;
+							gmcp_spell_preparation_changed(ch);
 							break;
 						}
 					}

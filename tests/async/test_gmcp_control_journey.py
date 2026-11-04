@@ -503,9 +503,13 @@ def run(binary, evidence):
             require(websocket_entry["context"] != reentered["context"], "WebSocket reused the Telnet context")
             require(0 <= state["hour"] <= 23 and state["process"] == websocket_entry["process"], f"wrong WebSocket clock scope: {state}")
             before = len(websocket.messages)
-            send_websocket(websocket, "Core.Supports.Add", ["Char.Items 1"])
+            send_websocket(websocket, "Core.Supports.Add", ["Char.Items 1", "Char.SpellPreparation 1"])
             wait_websocket(websocket, "Duris.Capabilities", lambda value: "Char.Items" in value["supported"], after=before)
-            send_websocket(websocket, "Duris.Subscribe", ["Duris.Time 1", "Char.Items 1"])
+            send_websocket(websocket, "Duris.Subscribe",
+                           ["Duris.Time 1", "Char.Items 1", "Char.SpellPreparation 1"])
+            websocket_preparation = wait_websocket(websocket, "Char.SpellPreparation", after=before)
+            require(websocket_preparation == {"state": "complete", "estimatedSeconds": 0},
+                    "WebSocket did not receive the idle preparation snapshot")
             websocket_items = wait_websocket(websocket, "Char.Items.List", lambda value:
                 value["location"] == "inv" and value["complete"], after=before)
             require(websocket_items["context"] == websocket_entry["context"] and
