@@ -1,7 +1,6 @@
 // The hourly address prune (ADR 0003) on a real database. Runs the maintenance job with
 // the given row budget until it reports complete, printing each run's outcome and rows.
 // Arguments: host port user password database row-budget.
-#include "combat/frag_cap_config.h"
 #include "persistence/maintenance_repository.h"
 #include "persistence/persistence_observability.h"
 #include "sql/sql_pool.h"
@@ -15,11 +14,6 @@ static MYSQL *connection;
 extern "C" MYSQL *sql_pool_acquire(void)
 {
 	return connection;
-}
-// The prune never reaches the level cap job.
-const struct frag_cap_config *frag_cap_config_get(void)
-{
-	return nullptr;
 }
 
 int main(int argc, char **argv)
