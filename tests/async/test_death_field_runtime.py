@@ -16,6 +16,7 @@ PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/events.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
