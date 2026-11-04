@@ -252,7 +252,7 @@ try
 	// Reuse the interpreter's item dependency policy. Spell/special interaction
 	// commands can also consume or receive items without a movement transaction.
 	const bool inventory = cmd_depends_on_item_movement(command) || command == CMD_NONE ||
-			       command == CMD_CAST || command == CMD_STEAL || command == CMD_READ ||
+			       command == CMD_STEAL || command == CMD_READ ||
 			       command == CMD_EXAMINE || command == CMD_FORAGE ||
 			       command == CMD_ORDER || command == CMD_OFFER;
 	return { body->runtime_id, actor.pid, fingerprint(body, inventory), inventory };

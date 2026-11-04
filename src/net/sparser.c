@@ -1907,7 +1907,10 @@ bool parse_spell(P_char ch, char *argument, struct spell_target_data *target_dat
 
 	/* check for shaman's totem */
 
-	if (ch && GET_CLASS(ch, CLASS_SHAMAN) && !IS_NPC(ch) && !hasTotem(ch, spl))
+	const char *required_totem = GET_CLASS(ch, CLASS_SHAMAN) && !IS_NPC(ch) ?
+					     missing_shaman_totem(ch, spl) :
+					     nullptr;
+	if (required_totem)
 	{
 		if (IS_TRUSTED(ch))
 		{
@@ -1926,9 +1929,10 @@ bool parse_spell(P_char ch, char *argument, struct spell_target_data *target_dat
 		}
 		else
 		{
-			send_to_char("You aren't holding the correct totem to cast that spell.\n",
-				     ch);
-			// CharWait(ch, PULSE_VIOLENCE);
+			send_to_char_f(
+				ch,
+				"You need a %s totem equipped or in your inventory for that spell!\n",
+				required_totem);
 			return FALSE;
 		}
 	}
@@ -2498,11 +2502,12 @@ void do_cast(P_char ch, char *argument, int cmd)
 		// This function calls CharWait appropriately
 		dura = chant_mastery_bonus(ch, dura);
 	}
-	else if (GET_CHAR_SKILL(ch, SKILL_TOTEMIC_MASTERY) > number(50, 200) && hasTotem(ch, spl))
+	else if (GET_CHAR_SKILL(ch, SKILL_TOTEMIC_MASTERY) > number(50, 200) &&
+		 !missing_shaman_totem(ch, spl))
 	{
 		act("&+yYou call upon the powers of the &+wspirit &+Lrealm&+y, channeling your power...&n",
 		    FALSE, ch, 0, 0, TO_CHAR);
-		act("&+y$n &+ygrasps his totem tightly, and begins communing with the &+wspirits&+y.&n",
+		act("&+y$n &+ychannels the power of a totem and communes with the &+wspirits&+y.&n",
 		    TRUE, ch, 0, 0, TO_ROOM);
 		dura = (int)(dura * .75);
 		CharWait(ch, dura);

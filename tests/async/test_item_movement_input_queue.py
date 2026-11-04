@@ -40,7 +40,8 @@ for command in (
     "CMD_INVENTORY", "CMD_FIRE", "CMD_APPLY", "CMD_BANDAGE", "CMD_DRINK",
     "CMD_EAT", "CMD_FILL", "CMD_POUR", "CMD_QUAFF", "CMD_RECITE",
     "CMD_RELOAD", "CMD_SALVAGE", "CMD_SIP", "CMD_SMOKE", "CMD_TASTE",
-    "CMD_THROW", "CMD_THROWPOTION", "CMD_USE",
+    "CMD_THROW", "CMD_THROWPOTION", "CMD_USE", "CMD_CAST", "CMD_INSTACAST",
+    "CMD_SPELLWEAVE", "CMD_WILL",
     "CMD_ASK", "CMD_VALUE", "CMD_REPAIR", "CMD_APPRAISE", "CMD_LORE",
     "CMD_WRITE", "CMD_ITEMMANA", "CMD_AUCTION", "CMD_FORGE", "CMD_REFINE",
     "CMD_ENHANCE", "CMD_CRAFT", "CMD_ENCRUST", "CMD_SPELLBIND", "CMD_FIX",
@@ -160,6 +161,10 @@ int ordered_command_number(const char *);
 #define CMD_QUIT 67
 #define CMD_CAMP 68
 #define CMD_BACKSTAB 69
+#define CMD_CAST 70
+#define CMD_INSTACAST 71
+#define CMD_SPELLWEAVE 72
+#define CMD_WILL 73
 
 static const char *command[] = {
 	"get", "take", "drop", "put", "give", "wear", "wield", "grab", "hold",
@@ -170,7 +175,7 @@ static const char *command[] = {
 	"repair", "appraise", "lore", "write", "itemmana", "auction", "forge", "refine",
 	"enhance", "craft", "encrust", "spellbind", "fix", "mix", "mixpoison", "smelt",
 	"enchant", "make", "scribe", "disguise", "lock", "unlock", "pick", "rent", "quit",
-	"camp", "backstab", "\n"
+	"camp", "backstab", "cast", "instacast", "spellweave", "will", "\n"
 };
 
 P_obj object_list = NULL;
@@ -421,6 +426,11 @@ void command_interpreter(P_char actor, char *input)
 		++inventory_dispatches;
 		return;
 	}
+	if (!strcmp(input, "cast 'spirit armor'"))
+	{
+		assert(publication_count == 2);
+		return;
+	}
 	if (!strcmp(input, "wear roast"))
 	{
 		assert(actor->carrying == fixture_backpack && fixture_backpack->contains);
@@ -550,6 +560,10 @@ int main()
 	assert(!input_allowed_while_item_moving("eat roast"));
 	assert(!input_allowed_while_item_moving("quaff potion"));
 	assert(!input_allowed_while_item_moving("recite scroll"));
+	assert(!input_allowed_while_item_moving("cast 'spirit armor'"));
+	assert(!input_allowed_while_item_moving("instacast 'spirit armor'"));
+	assert(!input_allowed_while_item_moving("spellweave 'spirit armor'"));
+	assert(!input_allowed_while_item_moving("will 'spirit armor'"));
 	assert(input_command_number("backstab target") == CMD_BACKSTAB);
 	assert(!input_allowed_while_item_moving("reload bow arrow"));
 	assert(!input_allowed_while_item_moving("use wand target"));
@@ -573,6 +587,7 @@ int main()
 	push(&q, "put all.roast bp");
 	push(&q, "equipment");
 	push(&q, "inventory");
+	push(&q, "cast 'spirit armor'");
 	push(&q, "wear roast");
 	assert(get_playing_cmd_from_q(&actor, &q, dest));
 	expect_text(dest, "score", "safe command during movement");
@@ -615,7 +630,7 @@ int main()
 	   each dependent command exactly once in its original order. */
 	const char *expected[] = {
 		"repair pick", "value pick", "put all.roast bp", "equipment", "inventory",
-		"wear roast"
+		"cast 'spirit armor'", "wear roast"
 	};
 	for (const char *command_text : expected)
 	{
