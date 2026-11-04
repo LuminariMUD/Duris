@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the character-delete disposition inventory and runtime fence."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 import json
 import pathlib
 
@@ -63,7 +63,8 @@ for entry in entries:
         raise SystemExit(f"unsafe evidence path for {entry['id']}")
     path = ROOT / relative
     token = evidence.get("token")
-    if not path.is_file() or not isinstance(token, str) or not token or token not in path.read_text():
+    if (not path.is_file() or not isinstance(token, str) or not token
+            or " ".join(token.split()) not in " ".join(path.read_text().split())):
         raise SystemExit(f"stale evidence for {entry['id']}")
 
 blockers = {entry["id"] for entry in entries if entry["disposition"] == "unimplemented"}
@@ -72,12 +73,14 @@ if blockers and manifest.get("runtime_exposure") != "fenced":
 if not blockers and manifest.get("runtime_exposure") not in {"fenced", "enabled"}:
     raise SystemExit("complete character deletion has an invalid exposure state")
 
-files_source = (SRC / "files.c").read_text()
-forget_start = files_source.index("character_delete_result forget_deleted_character(")
-forget_body = files_source[forget_start : files_source.index("\n}\n", forget_start)]
-start = files_source.index("void delete_character(P_char ch, bool delete_locker,")
-end = files_source.index("void PurgeCorpseFile", start)
-delete_body = files_source[start:end]
+forget_body = " ".join(extract_function(
+    "files.c", "character_delete_result forget_deleted_character(").split())
+delete_body = extract_function("files.c", "delete_character_identity(const deleted_character &deleted")
+live_entry = extract_function("files.c", "void delete_character(P_char ch, bool delete_locker,")
+guild_staging = live_entry.find("GET_ASSOC(ch)->statements_without_member(ch)")
+live_call = live_entry.find("delete_character_identity(deleted, delete_locker, std::move(guild_work)")
+if not 0 <= guild_staging < live_call:
+    raise SystemExit("live character deletion must stage guild membership before the shared transaction")
 # MariaDB: one writer job runs every statement in one transaction; memory lets go of
 # the character only once it commits.
 runtime_calls = [
@@ -85,11 +88,12 @@ runtime_calls = [
     "UPDATE frag_leaderboard SET deleted_at = NOW()",
     "remove_all_locker_access_statement(deleted.name.c_str())",
     "remove_all_artifacts_sql(deleted.pid)",
-    "GET_ASSOC(ch)->statements_without_member(ch)",
     "sql_delete_locker_statement(deleted.pid, 0)",
     "sql_delete_ship_statement(deleted.name.c_str())",
     "DELETE FROM player_data WHERE pid=%d",
     "sql_read_work(",
+    "guild_work(connection)",
+    "sql_execute(connection, statement)",
     "done(forget_deleted_character(deleted));",
 ]
 forget_calls = [
