@@ -429,3 +429,13 @@ zero failures or timeouts. Its log is `/tmp/duris-test-all-01d190929.log`.
 The serial DB retests use local revision `1dabede8d` and the exact three
 serial commands from the proposed runner. They write the revision, logs,
 and eventual exit status to `/home/aiwithapex/projects/duris-master-gate-contracts/bin/tests/gate-db-serial/`.
+
+The serial DB retest exited 0. World capture passed in 88 seconds and
+restored a 69.5 MiB generation plus all six report caches. No pulse
+exceeded 250 ms. All seven artifact scenarios passed in 1,069 seconds,
+including the NPC hotboot, and the loop benchmark passed in 177 seconds
+with a slowest re-entry of 1.00 second. The separate complete locker and
+telemetry retests also passed. All four failures from the full integration
+run therefore passed their follow-ups. The 108/112 result belongs to the
+full integration run. The later fixes were verified with the focused
+journeys and the three commands from the proposed serial runner.
