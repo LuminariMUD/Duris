@@ -361,10 +361,10 @@ static void check_mapmob_population(P_char actor)
 				}
 				char_link_data pet{};
 				pet.type = LNK_PET;
-				pet.linking = &player;
-				pet.linked = &roamers.front();
-				player.linking = &pet;
-				roamers.front().linked = &pet;
+				pet.linking = &roamers.front();
+				pet.linked = &player;
+				player.linked = &pet;
+				roamers.front().linking = &pet;
 
 				character_list = dummy_list;
 				for (int i = 0; i < population; ++i)
@@ -389,7 +389,7 @@ static void check_mapmob_population(P_char actor)
 				spawn_random_mapmob();
 				assert(spawn_attempts ==
 				       2 * allowed + (population + allowed < limit));
-				player.linking = nullptr;
+				player.linked = nullptr;
 				for (const auto &profile : profiles)
 					assert(profile.training_dummy);
 				for (const auto &instance : instances)
