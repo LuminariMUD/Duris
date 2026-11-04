@@ -102,7 +102,7 @@ assert "is_replicated_shop(configured_shop)" in DB
 assert "bool is_replicated_shop(int shop)" in SINGLETONS
 assert "SET_BIT(keeper->specials.act, ACT_SENTINEL)" in SINGLETONS
 assert "read_mobile(shop_index[shop].keeper, REAL)" in SINGLETONS
-assert "place_replicated_shop_at_home(keeper, shop)" in SINGLETONS
+assert "place_shopkeeper_at_home(keeper, shop)" in SINGLETONS
 assert "char_to_room(keeper, home, -2)" in SINGLETONS
 assert "char_in_list(keeper)" in SINGLETONS
 assert "saved.insert(shop)" in SINGLETONS
