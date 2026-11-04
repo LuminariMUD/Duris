@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make test-db: isolated database legs and MariaDB journeys.
-# Each test brings its own container. Run the latency measurement after the
-# parallel tests so their database and compiler load cannot skew it.
+# Each test brings its own container. Keep full-world handoff, recovery
+# and latency measurements outside the parallel database and compiler load.
 # Logs are kept under bin/tests/db/.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -47,7 +47,6 @@ kept_character_chaos_matrix $DB python3 tests/async/test_kept_character_matrix.p
 kept_character_recovery $DB python3 tests/async/test_kept_character_recovery_journey.py --backend mariadb --server SERVER_BINARY
 kept_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY
 kept_chaos_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server SERVER_BINARY --chaos --transport websocket
-artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server SERVER_BINARY
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server SERVER_BINARY
 divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server SERVER_BINARY
 epic_training_journey $DB python3 tests/async/test_mysql_epic_training_journey.py --server SERVER_BINARY
@@ -59,7 +58,6 @@ epic_task_catalog $DB python3 tests/async/test_epic_task_catalog_mysql.py
 artifact_population_repository $DB python3 tests/async/test_artifact_population_repository.py
 world_recovery $DB python3 tests/async/run_world_recovery_journey.py SERVER_BINARY
 world_restart_crash $DB python3 tests/async/run_world_restart_journey.py SERVER_BINARY crash
-world_capture $DB python3 tests/async/test_mysql_world_capture_journey.py --server SERVER_BINARY
 legacy_migration tests/async/run_legacy_migration_mysql.sh
 telemetry_repository $DB python3 tests/async/test_telemetry_repository.py --sql-fixture
 telemetry_schema_boot $DB python3 tests/async/run_telemetry_schema_boot_journey.py --server SERVER_BINARY
@@ -150,6 +148,10 @@ account_character_identity $DB tests/async/run_account_character_identity_mysql.
 account_character_projection $DB tests/async/run_account_character_projection_mysql.sh
 EOF
 status=$?
+run_one world_capture "$DB" python3 tests/async/test_mysql_world_capture_journey.py \
+    --server "$SERVER" || status=1
+run_one artifact_guild_reward_journey "$DB" python3 tests/async/test_mysql_artifact_guild_reward_journey.py \
+    --server "$SERVER" || status=1
 run_one game_loop_budget "$DB" python3 tests/async/test_mysql_game_loop_budget_journey.py \
     --server "$SERVER" || status=1
 
