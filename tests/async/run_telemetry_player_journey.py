@@ -212,13 +212,15 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 assert body["api_key"] == "phc_native_gameplay"
                 attempts.append(len(body["batch"]))
                 status = response["status"]
+                # Leave time for the in-game save during the injected outage.
+                retry_after = "15" if status == 503 else "1"
                 if cloud and status == 200:
                     status = forward(body["batch"])
                 if status == 200:
                     received.extend(body["batch"])
                 self.send_response(status)
                 if status != 200:
-                    self.send_header("Retry-After", "1")
+                    self.send_header("Retry-After", retry_after)
                 self.send_header("Content-Length", "2")
                 self.end_headers()
                 self.wfile.write(b"{}")
@@ -470,9 +472,9 @@ def run(backend: str, performance: bool = False, cloud: bool = False) -> None:
                 client.send("order followers kill raoul")
                 client.expect("is dead! R.I.P.", timeout=45)
                 print("PASS level/group/player/pet gameplay", backend, flush=True)
+                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
                 response["status"] = 503
                 prior_attempts = len(attempts)
-                companion.send("save"); companion.expect(f"Save complete for {companion_name}.")
                 companion.send("quit"); companion.expect("ACCOUNT MENU", timeout=30)
                 companion.close(); companion = None
                 until(lambda: len(attempts) > prior_attempts, "outage did not reach capture endpoint")
