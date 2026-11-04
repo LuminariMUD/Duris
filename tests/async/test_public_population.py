@@ -63,12 +63,18 @@ void account_read(P_desc d, const char *, account_read_done done) { done(d, true
 bool char_to_room(P_char ch, int room, int) { ch->in_room = room; return true; }
 void player_load_pets_place(P_char) {}
 void epic_bonus_hydrate(P_char) {}
-bool start_hatred_check(P_char) { return true; }
+void schedule_pc_events(P_char) {}
 void raw_write_to_fd(int, const char *) {}
-P_char copyover_load_player(const char *name, P_desc, std::string *) {
+P_char copyover_load_player(const copyover_desc &entry, int version, P_desc, std::string *) {
+    assert(version == COPYOVER_VERSION);
     for (auto &ch : restored)
-        if (!strcmp(GET_NAME(&ch), name)) return &ch;
+        if (!strcmp(GET_NAME(&ch), entry.player_name)) return &ch;
     return nullptr;
+}
+bool copyover_restores_world() { return true; }
+int copyover_player_room(const copyover_desc &, int version, bool preserve_world, P_char) {
+    assert(version == COPYOVER_VERSION && preserve_world);
+    return 0;
 }
 
 @UPDATE_POPULATION@
