@@ -26,6 +26,7 @@
 #include <chrono>
 #include <thread>
 #include <memory>
+#include <optional>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
@@ -1718,15 +1719,18 @@ static void artifact_bind_maintenance_update(int vnum, int owner_pid, long timer
 	artifact_bind_store(vnum, owner_pid, static_cast<int>(timer));
 }
 
-// Fills the Redis artifact lists. Called once the boot's world is final (game_loop()): an
-// artifact that boot loads after a list is read makes that read stale, and it is dropped.
+// Start one set of Redis list reads once the world is final. If artifact updates
+// invalidate any in-flight read, the first stale completion refreshes all six.
 void arti_cache_init(void)
 {
 	if (!redis_report_cache_enabled())
 		return;
+	static std::optional<unsigned int> submitted_generation;
+	if (submitted_generation == arti_cache_generation)
+		return;
+	submitted_generation = arti_cache_generation;
 
-	int t;
-	for (t = 1; t <= 3; t++)
+	for (int t = 1; t <= 3; t++)
 	{
 		arti_redis_cache(t, FALSE);
 		arti_redis_cache(t, TRUE);
@@ -1847,8 +1851,13 @@ void arti_redis_cache(int type, bool Godlist)
 	sql_read(artifact_list_query(type, Godlist),
 		 [type, Godlist, generation](bool ok, const sql_rows &rows)
 		 {
-			 if (!ok || generation != arti_cache_generation)
+			 if (!ok)
 				 return;
+			 if (generation != arti_cache_generation)
+			 {
+				 arti_cache_init();
+				 return;
+			 }
 			 char *json = arti_generate_json(type, Godlist, rows);
 			 if (!json)
 				 return;

@@ -88,7 +88,7 @@ struct job
 static std::vector<job> jobs;
 static bool accepting = true;
 static size_t cache_writes = 0, cache_invalidations = 0;
-static std::function<void(bool, const sql_rows &)> cache_read;
+static std::vector<std::function<void(bool, const sql_rows &)>> cache_reads;
 index_data indexes[1] = {};
 P_index obj_index = indexes;
 char guild_default_titles[ASC_NUM_RANKS][ASC_MAX_STR_RANK] = {};
@@ -166,7 +166,7 @@ char *coins_to_string(int, int, int, int, const char *)
 bool sql_read_at(persistence_query_site, std::string,
 		 std::function<void(bool, const sql_rows &)> done)
 {
-	cache_read = std::move(done);
+	cache_reads.push_back(std::move(done));
 	return true;
 }
 static std::function<void(bool, const sql_rows &)> sync_done;
@@ -954,16 +954,22 @@ int main(int argc, char **argv)
 	indexes[0].virtual_number = 900;
 	artifact_rows[900] = { true, ARTIFACT_ON_PC, 42, 1000, ARTIFACT_MAJOR };
 	artifact_binds[900] = { 42, 0 };
-	arti_redis_cache(ARTIFACT_MAJOR, true);
-	assert(cache_read);
+	arti_cache_init();
+	assert(cache_reads.size() == 6);
 	artifact_feed_set_timer(900, 1600);
 	assert(artifact_rows.at(900).timer == 1600 && artifact_save_pulse(false) == 1);
 	assert(contains(jobs[0], "NULLIF(1600, 0)"));
-	cache_read(true, {});
-	assert(cache_writes == 0); // earlier in-flight read was invalidated
-	arti_redis_cache(ARTIFACT_MAJOR, true);
-	cache_read(true, {});
-	assert(cache_writes == 1);
+	auto stale_reads = std::move(cache_reads);
+	cache_reads.clear();
+	for (auto &read : stale_reads)
+		read(true, {});
+	assert(cache_writes == 0); // No report from the stale generation.
+	assert(cache_reads.size() == 6); // One refresh for all six stale callbacks.
+	auto refreshed_reads = std::move(cache_reads);
+	cache_reads.clear();
+	for (auto &read : refreshed_reads)
+		read(true, {});
+	assert(cache_writes == 6 && cache_reads.empty());
 	artifact_row_store(900, { true, ARTIFACT_ON_PC, 77, 1600, ARTIFACT_MAJOR });
 	artifact_bind_store(900, 77, 17);
 	assert(jobs.size() == 3);
@@ -980,8 +986,11 @@ int main(int argc, char **argv)
 	arti_redis_cache(ARTIFACT_MAJOR, true);
 	accepting = true;
 	artifact_save_pulse(true);
-	cache_read(true, {});
-	assert(cache_writes == 1);
+	assert(cache_reads.size() == 1);
+	auto late_read = std::move(cache_reads.front());
+	cache_reads.clear();
+	late_read(true, {});
+	assert(cache_writes == 6 && cache_reads.size() == 6);
 	assert(jobs.size() == 4 && contains(jobs.back(), "VALUES(900,88,18)"));
 	finish(3);
 	assert(artifact_save_pulse(false) == 0);

@@ -49,7 +49,7 @@ RESTORED = (r'restored world recovery generation sequence=(\d+) mobs=(\d+) objs=
 REHYDRATED = r'rehydrated recovered NPC zone items matched_mobs=(\d+) loaded_items=(\d+)'
 CREATED = r'arti_update_sql: Creating entry: vnum: (\d+),'
 QUEST_COUNT = rb'\xff\xfa\xc9Quest\.Status \{"remaining":\d+,[^\xff]*\xff\xf0'
-LISTED = 'redis: cached artifact list'
+LISTED = r'redis: cached artifact list type=([1-3]) godlist=([01])'
 
 
 class Player(budget.Mortal):
@@ -102,7 +102,7 @@ def boot_sql_missing(sql, log):
         missing.append('outpost hit points')
     if 'redis: cached fraglist' not in log('sys'):
         missing.append('the frag list cache')
-    if log('sys').count(LISTED) < 6:
+    if len(set(re.findall(LISTED, log('sys')))) < 6:
         missing.append('the artifact list caches')
     return missing
 
@@ -233,7 +233,7 @@ def run(server, players):
             process.kill()
             process.wait()
             killed = time.monotonic()
-            listed = log('sys').count(LISTED)
+            before_restore = len(log('sys'))
             process, _, _ = boot()
             while not (re.search(RESTORED, log('sys')) and
                        'Crash recovery complete' in log('status')):
@@ -244,7 +244,7 @@ def run(server, players):
             recovery_seconds = time.monotonic() - killed
             # The restore stores a row for each artifact it puts back; the lists are read
             # after it, so this boot caches them too.
-            while log('sys').count(LISTED) < listed + 6:
+            while len(set(re.findall(LISTED, log('sys')[before_restore:]))) < 6:
                 assert process.poll() is None, 'the server exited'
                 assert time.monotonic() - killed < 330, \
                     'the restored boot did not cache the artifact lists:\n' + log('sys')[-2000:]
