@@ -19,9 +19,11 @@ create = extract_function("ws_handlers.c", "void ws_cmd_create_character(")
 prefix = create[:create.index("\t/* store chargen options in descriptor */")]
 prefix = prefix.replace("\tcJSON *response;\n", "").replace("\tchar *json_str;\n", "")
 prefix += "\t++accepted; selected_home = actual_hometown; selected_alignment = alignment; selected_side = resolved_racewar;\n}\n"
-assert create.index("!creation_hometown_available(") < create.index("mm_get(")
-for mutation in ("init_char(ch)", "add_char_to_account(d)", "writeCharacter(ch"):
-    assert create.index("!creation_hometown_available(") < create.index(mutation)
+assert (create.index("!creation_hometown_available(")
+        < create.index("/* store chargen options in descriptor */")
+        < create.index("mm_get(")
+        < create.index("init_char(ch)")
+        < create.index("keep_new_character(d)"))
 nanny = source("nanny.c").read_text()
 assert nanny.count("find_hometown(GET_RACE(d->character), false, GET_RACEWAR(d->character))") == 2
 
@@ -85,6 +87,8 @@ cases = r'''
 int main() {
     char_data ch{};
     descriptor_data d{};
+    acct_entry account{};
+    d.account = &account;
     d.character = &ch;
     d.chargen_phase = CHARGEN_READY;
     auto menu = [&](int race, const char *alignment) {
