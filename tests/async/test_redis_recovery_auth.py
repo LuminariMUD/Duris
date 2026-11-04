@@ -21,9 +21,10 @@ assert "REDIS_WORLD_GENERATION_MANIFEST_BYTES = 120" in HEADER
 
 for token in (
     'memcpy(output, "WRG2", 4)',
-    "SHA256(generation, generation_size, output + 56)",
+    "unsigned char *digest = output + 56",
+    "SHA256(generation, generation_size, digest)",
     "HMAC(EVP_sha256()",
-    "CRYPTO_memcmp(expected_tag, data + 88, SHA256_DIGEST_LENGTH)",
+    "CRYPTO_memcmp(expected_tag, data + MANIFEST_TAG_OFFSET, SHA256_DIGEST_LENGTH)",
     "config->previous_authentication_secret",
     "config->key_namespace",
     "config->season_epoch",

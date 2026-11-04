@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Contracts for clean-shutdown ownership found by the Valgrind command sweep."""
 
-from _paths import SRC
+from _paths import SRC, extract_function
 from pathlib import Path
 import subprocess
 import tempfile
@@ -96,15 +96,12 @@ harness = r'''
 #include <ctime>
 #include <string>
 using P_char = void *;
-struct TimedShutdownData {
-    time_t reboot_time;
-    enum { NONE, OK, REBOOT, COPYOVER, AUTOREBOOT, AUTOREBOOT_COPYOVER, PWIPE } eShutdownType;
-} shutdownData;
+''' + extract_function("structs.h", "struct TimedShutdownData") + r''';
+TimedShutdownData shutdownData{};
 std::string message;
 void send_to_char(const char *text, P_char) { message = text; }
-''' + body(actwiz, "static const char *scheduled_shutdown_type_name(",
-           "/** Execute an immediate shutdown") + \
-    body(actwiz, "void displayShutdownMsg(", "void do_shutdown(") + r'''
+''' + extract_function("actwiz.c", "static const char *scheduled_shutdown_type_name(") + \
+    extract_function("actwiz.c", "void displayShutdownMsg(") + r'''
 bool would_autoreboot() {
     int autoreboot_delay_minutes = 60;
 ''' + autoreboot + r'''
@@ -112,7 +109,7 @@ bool would_autoreboot() {
     return false;
 }
 int main() {
-    shutdownData = {0, TimedShutdownData::OK};
+    shutdownData.eShutdownType = TimedShutdownData::OK;
     displayShutdownMsg(nullptr);
     assert(message.find("in 0 seconds") != std::string::npos);
     assert(!would_autoreboot());
@@ -126,6 +123,9 @@ int main() {
     assert(would_autoreboot());
     shutdownData.reboot_time = time(nullptr) + 60;
     assert(!would_autoreboot());
+    shutdownData.eShutdownType = TimedShutdownData::HOTBOOT;
+    displayShutdownMsg(nullptr);
+    assert(message.find("HOTBOOT") != std::string::npos);
     shutdownData.eShutdownType = TimedShutdownData::COPYOVER;
     displayShutdownMsg(nullptr);
     assert(message.find("COPYOVER") != std::string::npos);

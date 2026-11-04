@@ -205,7 +205,7 @@ assert "bool take_reaped_child_status(pid_t pid, int *status)" in signals
 print("[PASS] player and world persistence child paths are fully retired")
 
 publisher = store[store.index("bool redis_world_store_publish"):]
-assert "WORLD_PUBLISH_SCRIPT" in publisher and "EVAL %b 9" in publisher
+assert "WORLD_PUBLISH_SCRIPT" in publisher and "EVAL %b 10" in publisher
 assert "redis.call('GET',KEYS[1])~=ARGV[1]" in store
 assert "current~=ARGV[2]" in store
 assert "reply->type == REDIS_REPLY_INTEGER && reply->integer == 1" in publisher

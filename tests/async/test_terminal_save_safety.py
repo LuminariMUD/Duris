@@ -71,10 +71,7 @@ checks = {
     "missing locker character vetoes leave": "return false;" in locker_missing_character,
 }
 
-terminal_helper = actoth[
-    actoth.index("bool persistence_save_character_terminal"):
-    actoth.index("bool persistence_save_all_characters_terminal")
-]
+terminal_helper = extract_function("actoth.c", "bool persistence_save_character_terminal(")
 checks["terminal helper queues and returns"] = (
     "player_save_pipeline_request(ch, PLAYER_CHECKPOINT_COMPONENT_ALL, type, room)" in terminal_helper
     and "player_save_pipeline_terminal" not in terminal_helper

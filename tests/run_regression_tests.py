@@ -23,8 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TEST_DIRECTORY = ROOT / "tests" / "async"
 MAX_AUTOMATIC_JOBS = 8
 # A test still running at its deadline is ended with its process group and counted as a
-# failure. A pooled test may first build a server artifact (about three minutes); the
-# slowest journey measured 309 s on a loaded host.
+# failure. A pooled test may first build a server artifact (about three minutes).
+# Long gameplay journeys run in a separate phase with their own deadline.
 POOLED_DEADLINE_SECONDS = 900
 JOURNEY_DEADLINE_SECONDS = 1800
 # How often a line names the tests still running.
@@ -34,6 +34,7 @@ RESOURCE_INTENSIVE_TEST_NAMES = frozenset(
         "test_account_recovery_journey.py",
         "test_assassin_combat_journey.py",
         "test_artifact_owner_restart_journey.py",
+        "test_castle_key_reset_journey.py",
         "test_character_stat_choice_journey.py",
         "test_coin_denomination_journey.py",
         "test_conjurer_gameplay_journey.py",

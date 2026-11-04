@@ -65,7 +65,7 @@ assert "REDIS_LEGACY_FLOOR_PICKUPS" not in WORLD
 assert "redis_epoch_key(floor_key, sizeof floor_key" in WORLD
 assert "REDIS_FLOOR_DROP_INDEX_SUFFIX" in WORLD
 store = (SRC / "redis_world_store.c").read_text(encoding="ascii")
-assert "redis.call('HGET',KEYS[8],uid)~=ARGV[5+2*i]" in store
+assert "redis.call('HGET',KEYS[8],uid)~=ARGV[6+2*i]" in store
 assert "keys.floor_drops" in store and "keys.floor_drop_index" in store
 
 print("Redis floor deltas are gated on world recovery")

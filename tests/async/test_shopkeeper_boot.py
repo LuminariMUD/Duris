@@ -2,6 +2,7 @@
 """Clean cold boots may restock; crashes and recovery never grant that permission."""
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 
@@ -82,7 +83,10 @@ with tempfile.TemporaryDirectory(prefix="shopkeeper-boot-", dir=output) as tempo
 comm = (ROOT / "src/net/comm.c").read_text()
 assert comm.index('shopkeeper_boot_begin("shopkeeper-boot"') < comm.index(
     "const int game_exit_status = run_the_game(port, sslport)")
-assert "copyover_boot || redis_world_recovery_boot_active()" in comm
+assert re.search(
+    r'shopkeeper_boot_begin\("shopkeeper-boot",\s*copyover_restores_world\(\)\s*\|\|'
+    r'\s*redis_world_recovery_boot_active\(\)', comm
+)
 assert comm.index('shopkeeper_boot_finish("shopkeeper-boot"') > comm.index("shutdown_mysql();")
 assert "!mini_mode && shutdownflag && !_copyover &&" in comm
 assert "game_exit_status == 0 || game_exit_status == 52 || game_exit_status == 54" in comm

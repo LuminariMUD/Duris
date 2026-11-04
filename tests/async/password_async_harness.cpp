@@ -2,14 +2,13 @@
 #include "core/structs.h"
 #include "core/utils.h"
 #include "account/password_async.h"
-#include "net/command_latency.h"
 #include "net/comm.h"
 #include <openssl/crypto.h>
 #include <cassert>
 #include <chrono>
 #include <cstdarg>
 #include <thread>
-#include <time.h>
+#include <crypt.h>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -58,27 +57,16 @@ void persistence_alert(int, const char *, const char *, const char *, const char
 }
 void account_recovery_invalidate(const char *) {}
 using Clock = std::chrono::steady_clock;
-static command_latency_tracker tracker = {};
-// A call is timed by this thread's CPU, not the wall clock: on a loaded machine
-// the wall clock also counts time the scheduler gives other processes, which
-// made a call "slow" with no work in it. Hashing on this thread still costs it
-// a bcrypt (cost 12, far over the 50 ms threshold), and a call that waits for
-// the worker instead leaves no pulse pending, which `pending_pulses > 0` catches.
-static uint64_t thread_cpu_us()
+// The real bcrypt calls must run outside the descriptor thread.
+static thread_local bool descriptor_thread = false;
+extern "C" char *__real_crypt_r(const char *, const char *, crypt_data *);
+extern "C" char *__wrap_crypt_r(const char *phrase, const char *setting, crypt_data *data)
 {
-	timespec now;
-	clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
-	return (uint64_t)now.tv_sec * 1000000 + (uint64_t)now.tv_nsec / 1000;
-}
-static void record(uint64_t start_us, command_latency_kind kind, int state)
-{
-	command_latency_event event = {};
-	command_latency_event_prepare(&event, kind, state, 1, "test",
-				      kind == COMMAND_LATENCY_NANNY ? "nanny" : "open");
-	command_latency_record(&tracker, &event, thread_cpu_us() - start_us);
+	assert(!descriptor_thread);
+	return __real_crypt_r(phrase, setting, data);
 }
 static int pending_pulses = 0;
-static void drain(P_desc d, command_latency_kind kind)
+static void drain(P_desc d)
 {
 	auto deadline = Clock::now() + std::chrono::seconds(15);
 	while (d->password_request)
@@ -86,9 +74,9 @@ static void drain(P_desc d, command_latency_kind kind)
 		// Only the completion asks for prompt framing (IAC GA); a pending pulse
 		// that did would frame an empty prompt on every pulse while hashing.
 		d->prompt_mode = FALSE;
-		auto start = thread_cpu_us();
+
 		assert(password_async_pulse(d));
-		record(start, kind, STATE(d));
+
 		if (d->password_request)
 		{
 			assert(!d->prompt_mode);
@@ -100,10 +88,6 @@ static void drain(P_desc d, command_latency_kind kind)
 		std::this_thread::sleep_for(std::chrono::milliseconds(1));
 	}
 }
-static void no_slow(const char *line, void *)
-{
-	assert(!strstr(line, "COMMAND OP SLOW"));
-}
 int main(int argc, char **)
 {
 	const rlimit no_core{ 0, 0 };
@@ -114,6 +98,7 @@ int main(int argc, char **)
 		__free(nullptr, __FILE__, __LINE__);
 		return 0;
 	}
+	descriptor_thread = true;
 	auto desc = std::make_unique<descriptor_data>();
 	P_desc d = desc.get();
 	auto acct = std::make_unique<std::remove_pointer_t<P_acct>>();
@@ -126,34 +111,34 @@ int main(int argc, char **)
 	// mismatch/retry and the confirmed account password-change save branch.
 	char entered[] = "password-one";
 	STATE(d) = CON_GET_NEW_ACCT_PASSWD;
-	auto nanny_start = thread_cpu_us();
+
 	get_new_account_password(d, entered);
-	record(nanny_start, COMMAND_LATENCY_NANNY, STATE(d));
+
 	assert(d->password_request && !d->account->acct_password && !entered[0]);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(STATE(d) == CON_VERIFY_NEW_ACCT_PASSWD);
 	assert(pending_pulses > 0); // The pending-pulse check above actually ran.
 	char wrong[] = "different";
-	nanny_start = thread_cpu_us();
+
 	verify_new_account_password(d, wrong);
-	record(nanny_start, COMMAND_LATENCY_NANNY, STATE(d));
-	drain(d, COMMAND_LATENCY_NANNY);
+
+	drain(d);
 	assert(STATE(d) == CON_GET_NEW_ACCT_PASSWD && !d->account->acct_password);
 	strcpy(entered, "password-one");
 	get_new_account_password(d, entered);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	strcpy(entered, "password-one");
 	verify_new_account_password(d, entered);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(STATE(d) == CON_VERIFY_NEW_ACCT_INFO && saves == 0);
 	d->account->acct_confirmed = 1;
 	STATE(d) = CON_ACCT_CHANGE_PASSWD;
 	strcpy(entered, "password-one");
 	get_new_account_password(d, entered);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	strcpy(entered, "password-one");
 	verify_new_account_password(d, entered);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(STATE(d) == CON_DISPLAY_ACCT_MENU && saves == 1);
 	FREE(d->account->acct_password);
 	d->account->acct_password = nullptr;
@@ -214,7 +199,7 @@ int main(int argc, char **)
 	std::string hash;
 	int calls = 0;
 	STATE(d) = CON_GET_NEW_ACCT_PASSWD;
-	auto start = thread_cpu_us();
+
 	assert(password_async_start(d, password_work_submit("password-one", nullptr, nullptr, 0, 0),
 				    nullptr,
 				    [&](P_desc done, int valid, const char *result)
@@ -224,9 +209,9 @@ int main(int argc, char **)
 					    hash = result;
 					    ++calls;
 				    }));
-	record(start, COMMAND_LATENCY_NANNY, STATE(d));
+
 	assert(calls == 0);
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(calls == 1);
 	d->account->acct_password = hash.data();
 	STATE(d) = CON_VERIFY_NEW_ACCT_PASSWD;
@@ -237,7 +222,7 @@ int main(int argc, char **)
 					    assert(valid);
 					    ++calls;
 				    }));
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(calls == 2);
 	// Replacement hashing is conditional on successful verification.
 	std::string replacement;
@@ -248,7 +233,7 @@ int main(int argc, char **)
 			assert(!valid && !result);
 			++calls;
 		}));
-	drain(d, COMMAND_LATENCY_NANNY);
+	drain(d);
 	assert(password_async_start(
 		d, password_work_submit("password-one", hash.c_str(), "password-two", 0, 0),
 		hash.c_str(),
@@ -257,8 +242,11 @@ int main(int argc, char **)
 			assert(valid && result);
 			replacement = result;
 		}));
-	drain(d, COMMAND_LATENCY_NANNY);
-	assert(bcrypt_verify_password("password-two", replacement.c_str()));
+	drain(d);
+	assert(password_async_start(
+		d, password_login_submit("password-two", replacement.c_str(), 0),
+		replacement.c_str(), [](P_desc, int valid, const char *) { assert(valid); }));
+	drain(d);
 	// All session invalidations must discard completion, even if the worker finished.
 	for (int scenario = 0; scenario < 4; ++scenario)
 	{
@@ -275,7 +263,7 @@ int main(int argc, char **)
 		{
 			password_async_cancel(d);
 		}
-		drain(d, COMMAND_LATENCY_NANNY);
+		drain(d);
 		d->account = acct.get();
 		d->account->acct_password = hash.data();
 		STATE(d) = CON_VERIFY_NEW_ACCT_PASSWD;
@@ -291,7 +279,7 @@ int main(int argc, char **)
 	char legacy[65];
 	for (size_t i = 0; i < sizeof(digest); ++i)
 		snprintf(legacy + i * 2, 3, "%02x", digest[i]);
-	start = thread_cpu_us();
+
 	assert(password_async_start(d, password_work_submit("password-one", legacy, nullptr, 1, 1),
 				    legacy,
 				    [&](P_desc, int valid, const char *result)
@@ -299,8 +287,8 @@ int main(int argc, char **)
 					    assert(valid && result && is_bcrypt_hash(result));
 					    ++calls;
 				    }));
-	record(start, COMMAND_LATENCY_PLAYING, STATE(d));
-	drain(d, COMMAND_LATENCY_PLAYING);
+
+	drain(d);
 	for (int scenario = 0; scenario < 3; ++scenario)
 	{
 		assert(password_async_start(
@@ -312,14 +300,12 @@ int main(int argc, char **)
 			SET_POS(actor.get(), POS_PRONE + STAT_DEAD);
 		if (scenario == 2)
 			d->character = nullptr;
-		drain(d, COMMAND_LATENCY_PLAYING);
+		drain(d);
 		d->character = actor.get();
 		actor->in_room = 42;
 		SET_POS(actor.get(), POS_STANDING + STAT_NORMAL);
 	}
-	assert(tracker.slow_count == 0);
-	command_latency_report(&tracker, tracker.measured_us, "test", 1, 1, no_slow, nullptr);
 	password_async_cancel(d);
 	password_login_shutdown();
-	puts("PASS: real bcrypt jobs, state/credential/disconnect/room/death cancellation; no COMMAND OP SLOW");
+	puts("PASS: real bcrypt jobs, state/credential/disconnect/room/death cancellation; bcrypt stayed off the descriptor thread");
 }
