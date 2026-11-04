@@ -430,8 +430,8 @@ Include `"Char.SpellPreparation 1"` in both `Core.Supports.Set` and
 The snapshot describes the whole queue of unprepared spells for memorization
 and prayer, or the missing spell slots across all circles for slot recovery
 such as commune, deforest, assimilate, tupor, and focus. The estimate uses the
-scheduled step's remaining time and the current baseline cost of later steps.
-Actual timing can change with meditation, terrain, and combat delays. Seconds
+scheduled step's remaining time and the current baseline cost of later steps,
+including the possible extra half-interval during slot recovery. Actual timing can change with meditation, terrain, and combat delays. Seconds
 are rounded up to the nearest whole second.
 
 - `active` means a recovery event is scheduled. Count down locally from receipt

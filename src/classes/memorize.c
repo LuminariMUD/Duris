@@ -1325,7 +1325,8 @@ int64_t spell_preparation_estimate(P_char ch, bool &active)
 
 	int pending[MAX_CIRCLE + 1] = {};
 	int first = 0;
-	if (uses_slot_recovery(ch))
+	const bool slot_recovery = uses_slot_recovery(ch);
+	if (slot_recovery)
 	{
 		const int max_circle = get_max_circle(ch);
 		for (int circle = max_circle; circle > 0; --circle)
@@ -1354,7 +1355,8 @@ int64_t spell_preparation_estimate(P_char ch, bool &active)
 		return 0;
 
 	int64_t pulses = 0;
-	if (const P_nevent event = get_scheduled(ch, event_memorize))
+	const P_nevent event = get_scheduled(ch, event_memorize);
+	if (event)
 	{
 		active = true;
 		pulses = std::max(1, ne_event_time(event));
@@ -1366,9 +1368,24 @@ int64_t spell_preparation_estimate(P_char ch, bool &active)
 	// Future steps are estimates. Reading them must never roll a proc or train a skill.
 	for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
 	{
-		if (pending[circle] > 0)
-			pulses += static_cast<int64_t>(pending[circle]) *
-				  std::max(1, get_circle_memtime(ch, circle, true, false));
+		if (pending[circle] <= 0)
+			continue;
+		int64_t interval = get_circle_memtime(ch, circle, true, false);
+		if (slot_recovery)
+		{
+			if (!event && circle == first)
+			{
+				// The recovery command starts the first slot without a meditation check.
+				const bool full_interval = USES_COMMUNE(ch) || USES_FOCUS(ch) ||
+							   USES_DEFOREST(ch);
+				pulses += std::max<int64_t>(1, full_interval ? interval :
+									       interval / 2);
+				--pending[circle];
+			}
+			// Each subsequent slot can take another half-interval after meditation.
+			interval += interval / 2;
+		}
+		pulses += pending[circle] * std::max<int64_t>(1, interval);
 	}
 	return pulses;
 }

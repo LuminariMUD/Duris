@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inject scheduler rejection into the production spell/recovery submission helpers.
+"""Exercise scheduler rejection and queue timing in the production spell helpers.
 
 Compile extracted production bodies with real game types; the scheduler and UI
 are controlled doubles. No server or database is started.
@@ -77,11 +77,28 @@ bool abort_item_action(P_char) { return false; }
 void event_abort_spell(P_char, P_char, P_obj, void *) {}
 void event_wait(P_char, P_char, P_obj, void *) {}
 void event_memorize(P_char, P_char, P_obj, void *) {}
+static bool uses_slot_recovery(P_char ch) {
+    return ch->player.m_class == CLASS_DRUID || ch->player.m_class == CLASS_WARLOCK;
+}
+int get_max_circle(P_char) { return 2; }
+int max_spells_in_circle(P_char, int, int) { return 2; }
+int get_spell_circle(P_char, int spell) { return spell; }
+static int get_circle_memtime(P_char, int circle, bool stat_only, bool roll_nature_bonus) {
+    assert(stat_only && !roll_nature_bonus);
+    return 10 * circle;
+}
+P_nevent get_scheduled(P_char ch, event_func_type fn) {
+    assert(fn == event_memorize);
+    return ch->nevents;
+}
+int ne_event_time(P_nevent event) { return event->due_tick; }
 void __free(void *p, const char *, int) { ++frees; std::free(p); }
 bool meming_class(P_char) { return true; }
 // Every caster here memorizes, so show_abort_casting() never asks for the class; but
 // without optimisation (a coverage build) the call stays and needs a definition.
 int GET_CLASS(P_char, uint) { return 0; }
+int GET_PRIME_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
+int GET_SECONDARY_CLASS(P_char ch, uint cls) { return (ch->player.secondary_class & cls) != 0; }
 void send_to_char(const char *message, P_char) { ++message_count; last_message = message; }
 void disarm_char_nevents(P_char, event_func_type f) { disarmed.push_back(f); }
 void clear_links(P_char, ush_int type) {
@@ -109,7 +126,42 @@ nevent_schedule_result add_event(event_func f, int delay, P_char, P_char, P_obj,
 }
 '''
 DRIVER = r'''
+static void check_preparation_total() {
+    char_data ch{};
+    SET_POS(&ch, STAT_RESTING | POS_SITTING);
+    ch.player.m_class = CLASS_DRUID;
+    // One missing first-circle slot and two missing second-circle slots.
+    ch.specials.undead_spell_slots[1] = 1;
+    bool active = true;
+    assert(spell_preparation_estimate(&ch, active) == 65 && !active);
+    ch.player.m_class = CLASS_WARLOCK;
+    assert(spell_preparation_estimate(&ch, active) == 55 && !active);
+
+    ch.player.m_class = CLASS_DRUID;
+    nevent_data event{};
+    event.due_tick = 4;
+    ch.nevents = &event;
+    assert(spell_preparation_estimate(&ch, active) == 49 && active);
+    int current_interval = 20;
+    event.data = &current_interval;
+    assert(spell_preparation_estimate(&ch, active) == 59 && active);
+
+    ch.player.m_class = CLASS_CLERIC;
+    affected_type first{}, second{};
+    first.type = second.type = TAG_MEMORIZE;
+    first.modifier = 2;
+    second.modifier = 1;
+    first.next = &second;
+    ch.affected = &first;
+    assert(spell_preparation_estimate(&ch, active) == 24 && active);
+    ch.nevents = nullptr;
+    assert(spell_preparation_estimate(&ch, active) == 30 && !active);
+    first.flags = second.flags = MEMTYPE_FULL;
+    assert(spell_preparation_estimate(&ch, active) == 0 && !active);
+}
+
 int main() {
+    check_preparation_total();
     // Exercise every typed rejection, even those ordinary game-thread callers
     // cannot supply, so newly broadened rejection handling cannot strand state.
     for (int status = int(nevent_schedule_status::null_callback);
@@ -200,6 +252,7 @@ source = PRELUDE + '\n'.join([
     extract(CAST, 'void StopCasting('),
     extract(CAST, 'static bool schedule_spellcast('),
     extract(MEM, 'static bool schedule_memorize('),
+    extract(MEM, 'int64_t spell_preparation_estimate('),
 ]) + DRIVER
 with tempfile.TemporaryDirectory(prefix='spell-schedule-') as directory:
     cpp = Path(directory) / 'harness.cpp'
@@ -211,4 +264,4 @@ with tempfile.TemporaryDirectory(prefix='spell-schedule-') as directory:
     env = dict(os.environ, ASAN_OPTIONS='detect_leaks=1:halt_on_error=1',
                UBSAN_OPTIONS='halt_on_error=1')
     subprocess.run([str(binary)], env=env, check=True)
-print('Spell scheduling rejection and retry tests passed under ASan/UBSan')
+print('Spell scheduling rejection, retry and queue totals passed under ASan/UBSan')
