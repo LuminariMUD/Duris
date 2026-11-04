@@ -78,10 +78,10 @@ assert "Artifact data is temporarily unavailable." in listing
 assert "Cache error." not in listing
 
 redis = (SRC / "redis_report_cache.c").read_text(encoding="ascii")
-cache_start = redis.index("void redis_cache_artifact_list")
+cache_start = redis.index("bool redis_cache_artifact_list")
 cache_end = redis.index("char *redis_get_artifact_list", cache_start)
 cache = redis[cache_start:cache_end]
 assert "artifact_cache_ttl_seconds = 900" in redis
-assert "cache_set_ex" in cache
+assert "return cache_set_ex" in cache
 
 print("artifact cache schema and SQL fallback checks passed")

@@ -26,6 +26,7 @@
 #include <chrono>
 #include <thread>
 #include <memory>
+#include <optional>
 #include <dirent.h>
 #include <stdio.h>
 #include <string.h>
@@ -90,7 +91,7 @@ constexpr size_t ARTIFACT_WARS_OWNER_BATCH_SIZE = 4;
 
 // forward declarations for redis cache
 void nuke_eq(P_char ch);
-void arti_redis_cache(int type, bool Godlist);
+static bool arti_redis_cache(int type, bool Godlist);
 
 // Counts invalidations: a list read on the writer before the latest one is not cached.
 static unsigned int arti_cache_generation = 0;
@@ -1718,19 +1719,38 @@ static void artifact_bind_maintenance_update(int vnum, int owner_pid, long timer
 	artifact_bind_store(vnum, owner_pid, static_cast<int>(timer));
 }
 
-// Fills the Redis artifact lists. Called once the boot's world is final (game_loop()): an
-// artifact that boot loads after a list is read makes that read stale, and it is dropped.
+static std::optional<unsigned int> arti_report_generation;
+static bool arti_report_admitted[3][2];
+
+void arti_cache_retry(void)
+{
+	if (!arti_report_generation || !redis_report_cache_enabled())
+		return;
+	if (arti_report_generation != arti_cache_generation)
+	{
+		arti_report_generation = arti_cache_generation;
+		for (auto &views : arti_report_admitted)
+			for (bool &admitted : views)
+				admitted = false;
+	}
+
+	for (int type = 1; type <= 3; ++type)
+		for (int view = 0; view <= 1; ++view)
+		{
+			bool &admitted = arti_report_admitted[type - 1][view];
+			if (!admitted)
+				admitted = arti_redis_cache(type, view != 0);
+		}
+}
+
+// Start the warmup once the world is final. The pulse refreshes invalidated
+// batches and retries rejected keys after the writer and cache queues can drain.
 void arti_cache_init(void)
 {
-	if (!redis_report_cache_enabled())
+	if (!redis_report_cache_enabled() || arti_report_generation)
 		return;
-
-	int t;
-	for (t = 1; t <= 3; t++)
-	{
-		arti_redis_cache(t, FALSE);
-		arti_redis_cache(t, TRUE);
-	}
+	arti_report_generation = arti_cache_generation;
+	arti_cache_retry();
 }
 
 #ifndef __NO_MYSQL__
@@ -1838,28 +1858,25 @@ static char *arti_generate_json(int type, bool Godlist, const sql_rows &rows)
 }
 
 // Rebuilds the cached list from a read on the writer, on a later pulse.
-void arti_redis_cache(int type, bool Godlist)
+static bool arti_redis_cache(int type, bool Godlist)
 {
-	if (!redis_report_cache_enabled())
-		return;
-
 	const unsigned int generation = arti_cache_generation;
-	sql_read(artifact_list_query(type, Godlist),
-		 [type, Godlist, generation](bool ok, const sql_rows &rows)
-		 {
-			 if (!ok || generation != arti_cache_generation)
-				 return;
-			 char *json = arti_generate_json(type, Godlist, rows);
-			 if (!json)
-				 return;
-			 redis_cache_artifact_list(type, Godlist, json);
-			 free(json);
-			 logit(LOG_SYS, "redis: cached artifact list type=%d godlist=%d", type,
-			       Godlist ? 1 : 0);
-		 });
+	return sql_read(artifact_list_query(type, Godlist),
+			[type, Godlist, generation](bool ok, const sql_rows &rows)
+			{
+				if (generation != arti_cache_generation)
+					return;
+				char *json = ok ? arti_generate_json(type, Godlist, rows) : nullptr;
+				arti_report_admitted[type - 1][Godlist] =
+					json && redis_cache_artifact_list(type, Godlist, json);
+				free(json);
+			});
 }
 #else
-void arti_redis_cache(int /*type*/, bool /*Godlist*/) {}
+static bool arti_redis_cache(int /*type*/, bool /*Godlist*/)
+{
+	return false;
+}
 #endif
 
 // forward declarations

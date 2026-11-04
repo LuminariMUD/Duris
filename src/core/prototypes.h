@@ -731,6 +731,7 @@ std::vector<std::string> remove_all_artifacts_sql(int pid);
 void artifacts_forget_deleted_character(int pid);
 void setupMortArtiList_sql(void);
 void arti_cache_init(void);
+void arti_cache_retry(void);
 bool artifacts_load(void);
 void artifacts_forget_deleted_account_character(int pid);
 void artifact_feed_set_timer(int vnum, time_t timer);

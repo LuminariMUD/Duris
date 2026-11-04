@@ -51,7 +51,7 @@ void redis_cache_epic_zones_output(const char *output);
 char *redis_get_epic_zones(void);
 bool redis_invalidate_epic_zones(void);
 
-void redis_cache_artifact_list(int type, bool godlist, const char *json);
+bool redis_cache_artifact_list(int type, bool godlist, const char *json);
 char *redis_get_artifact_list(int type, bool godlist);
 bool redis_invalidate_artifact_list(int type, bool godlist);
 bool redis_invalidate_artifact_cache(void);
