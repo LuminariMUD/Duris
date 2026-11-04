@@ -1,4 +1,5 @@
 #include "sql/item_affect_rows.h"
+#include "sql/item_instance_fields.h"
 #include "combat/trap_legacy.h"
 #include "economy/divine_trade_runtime.h"
 // sql_player.c
@@ -3176,7 +3177,8 @@ static int sql_save_saved_item_recursive(const char *item_key, int room_vnum, P_
 		obj->value[2], obj->value[3], obj->value[4], obj->value[5], obj->value[6],
 		obj->value[7], name_str, short_str, desc_str, action_str, wear_str, type_str,
 		bv1_str, bv2_str, bv3_str, bv4_str, bv5_str, material_str, obj->obj_uid,
-		obj->extra2_flags, obj->anti_flags, obj->anti2_flags, obj->craftsmanship);
+		sql_item_permanent_extra2(*obj), obj->anti_flags, obj->anti2_flags,
+		obj->craftsmanship);
 
 	if (esc_key)
 		free(esc_key);
