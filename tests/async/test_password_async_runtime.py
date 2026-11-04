@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the real shared worker/session adapter and #191 latency recorder."""
+"""Exercise the real shared worker and keep bcrypt off the descriptor thread."""
 from pathlib import Path
 import signal
 import subprocess
@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 
 # Every expensive interactive path must be wired to the adapter. Runtime checks
-# below use its real descriptor lifecycle, bounded worker, and latency recorder.
+# below use its real descriptor lifecycle, bounded worker, and foreground-thread bcrypt guard.
 for path in ("account/account.c", "account/account_recovery_nanny.c",
              "net/ws_handlers.c", "item/storage_lockers.c", "sql/sql_player.c"):
     text = (SRC / path).read_text()
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix="duris-password-async-") as tmp:
         "-fsanitize=address,undefined", "-I", str(SRC), "-I/usr/include/mysql",
         str(harness),
         str(SRC / "account/password_hash.c"), str(SRC / "account/password_async.c"),
-        str(SRC / "core/memory.c"), str(SRC / "net/command_latency.c"), "-lcrypt", "-lcrypto", "-pthread",
+        str(SRC / "core/memory.c"), "-Wl,--wrap=crypt_r", "-lcrypt", "-lcrypto", "-pthread",
         str(HARNESS_STUBS), "-o", str(binary),
     ], check=True)
     allocator = subprocess.run([str(binary), "--free-null"], capture_output=True, text=True)
