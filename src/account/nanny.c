@@ -3094,9 +3094,13 @@ void select_class(P_desc d, char *arg)
 		if (creation_class_align(GET_RACE(d->character),
 					 flag2idx(d->character->player.m_class)) != 3)
 			SEND_TO_Q("&+rE)vil&n\r\n", d);
-		SEND_TO_Q(
-			"Alignment only affects your character's alignment and not the chosen racewar side.\n",
-			d);
+		if (OLD_RACE_NEUTRAL(GET_RACE(d->character)))
+			SEND_TO_Q(
+				"Your alignment determines your racewar side.\r\n"
+				"Evil joins the evil side. Good and Neutral join the good side.\r\n",
+				d);
+		else
+			SEND_TO_Q("Your race determines your racewar side.\r\n", d);
 		SEND_TO_Q("\r\nYour selection: ", d);
 		return;
 		break;

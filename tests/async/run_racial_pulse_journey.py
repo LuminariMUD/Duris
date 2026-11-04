@@ -76,7 +76,7 @@ def create_character(client: journey.MudClient) -> None:
     client.send("n")
     client.expect("Class Selection")
     client.send("w")
-    client.expect("Alignment only affects")
+    client.expect("Alignment Selection")
     client.send("g")
     client.expect("Your selection")
     client.send("p")

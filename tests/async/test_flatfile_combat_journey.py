@@ -444,8 +444,8 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
         require(not hardcore, "Hardcore creation was not offered")
     client.send(class_name)
     stat_prompt_seen = False
-    prompt, _ = client.expect_any(("Alignment only affects", "Hometown Selection", "Your stat rolling system [D]:"))
-    if prompt == "Alignment only affects":
+    prompt, _ = client.expect_any(("Alignment Selection", "Hometown Selection", "Your stat rolling system [D]:"))
+    if prompt == "Alignment Selection":
         client.expect("Your selection")
         client.send(alignment)
         prompt, _ = client.expect_any(("Hometown Selection", "Your stat rolling system [D]:"))

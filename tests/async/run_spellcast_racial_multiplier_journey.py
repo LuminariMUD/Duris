@@ -76,7 +76,7 @@ def create_mindflayer(client: journey.MudClient) -> None:
     client.send("m")
     client.expect("Class Selection")
     client.send("mindflayer")
-    client.expect("Alignment only affects")
+    client.expect("Alignment Selection")
     client.send("g")
     client.expect("Your selection")
     client.send("p")
