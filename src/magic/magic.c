@@ -15389,6 +15389,7 @@ void spell_feeblemind(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 						if (i >= 1)
 						{
 							victim->specials.undead_spell_slots[j]--;
+							gmcp_spell_preparation_changed(victim);
 							i--;
 							continue;
 						}

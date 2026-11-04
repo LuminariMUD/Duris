@@ -29,6 +29,7 @@
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "world/db.h"
 #include "world/events.h"
 #include "cmd/interp.h"
@@ -2563,6 +2564,7 @@ static void storage_locker_entered(P_char ch, P_char chLocker, int locker_room, 
 	{
 		REMOVE_BIT(ch->specials.affected_by2, AFF2_MEMORIZING);
 		disarm_char_nevents(ch, event_memorize);
+		gmcp_spell_preparation_changed(ch);
 		send_to_char("\n\r", ch);
 		display_no_mem(ch);
 		CharWait(ch, WAIT_SEC * 3);

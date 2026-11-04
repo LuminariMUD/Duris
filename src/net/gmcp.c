@@ -149,6 +149,8 @@ static void gmcp_session_observe(P_desc d)
 	if (changed)
 	{
 		d->gmcp_combat_state_sent = false;
+		d->gmcp_spell_preparation_pending = d->gmcp_interests &
+						    GMCP_SUPPORT_SPELL_PREPARATION;
 		gmcp_items_reset(d);
 		if (playing && gmcp_session_supported(d))
 			d->gmcp_initial_state_pending = true;
@@ -192,6 +194,8 @@ static void gmcp_flush_capabilities(P_desc d)
 	const uint32_t active = gmcp_gameplay_streams(d);
 	if (active != d->gmcp_active_streams)
 	{
+		if ((active ^ d->gmcp_active_streams) & GMCP_SUPPORT_SPELL_PREPARATION)
+			d->gmcp_spell_preparation_pending = active & GMCP_SUPPORT_SPELL_PREPARATION;
 		d->gmcp_control_pending = true;
 		d->gmcp_time_revision = 0;
 	}
@@ -204,6 +208,9 @@ static void gmcp_flush_capabilities(P_desc d)
 			result += (result.empty() ? "" : ",") + std::string("\"Duris.Combat\"");
 		if (streams & GMCP_SUPPORT_ITEMS)
 			result += (result.empty() ? "" : ",") + std::string("\"Char.Items\"");
+		if (streams & GMCP_SUPPORT_SPELL_PREPARATION)
+			result += (result.empty() ? "" : ",") +
+				  std::string("\"Char.SpellPreparation\"");
 		return result;
 	};
 	const std::string supported = names(d->gmcp_supports);
@@ -213,7 +220,8 @@ static void gmcp_flush_capabilities(P_desc d)
 	const int length = snprintf(
 		json, sizeof(json),
 		"{\"version\":1,\"enabled\":%s,\"features\":{\"Duris.Capabilities\":1,"
-		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1,\"Char.Items\":1,\"Char.Items.Get\":1},\"supported\":[%s],"
+		"\"Duris.Subscribe\":1,\"Duris.Time\":1,\"Duris.Session\":1,\"Duris.Combat\":1,\"Char.Items\":1,\"Char.Items.Get\":1,"
+		"\"Char.SpellPreparation\":1},\"supported\":[%s],"
 		"\"interested\":[%s],\"active\":[%s],\"control\":[%s]}",
 		gmcp_streaming_enabled(d) ? "true" : "false", supported.c_str(), interested.c_str(),
 		active_names.c_str(), gmcp_session_supported(d) ? "\"Duris.Session\"" : "");
@@ -480,6 +488,8 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 			requested |= GMCP_SUPPORT_COMBAT;
 		else if (!strcmp(entry->valuestring, "Char.Items 1"))
 			requested |= GMCP_SUPPORT_ITEMS;
+		else if (!strcmp(entry->valuestring, "Char.SpellPreparation 1"))
+			requested |= GMCP_SUPPORT_SPELL_PREPARATION;
 	}
 	const bool had_control = d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES;
 	if (kind == gmcp_control_kind::subscribe)
@@ -500,6 +510,10 @@ static void gmcp_apply_control(P_desc d, gmcp_control_kind kind, const cJSON *ar
 		if (!(d->gmcp_supports & GMCP_SUPPORT_CAPABILITIES))
 			d->gmcp_interests = 0;
 	}
+	if (!(d->gmcp_interests & GMCP_SUPPORT_SPELL_PREPARATION))
+		d->gmcp_spell_preparation_pending = false;
+	else if (kind == gmcp_control_kind::subscribe)
+		d->gmcp_spell_preparation_pending = true;
 	if (wanted_items != static_cast<bool>(d->gmcp_interests & GMCP_SUPPORT_ITEMS))
 		gmcp_items_reset(d);
 	d->gmcp_control_pending = d->gmcp_control_pending || had_control ||
@@ -593,6 +607,24 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 	}
 }
 
+static void gmcp_flush_spell_preparation(P_desc d)
+{
+	if (!d->gmcp_spell_preparation_pending || d->gmcp_control_pending ||
+	    (gmcp_session_supported(d) && d->gmcp_session_pending) ||
+	    !(gmcp_gameplay_streams(d) & GMCP_SUPPORT_SPELL_PREPARATION))
+		return;
+
+	// The stream belongs to the player's own body, including when staff switch bodies.
+	bool active = false;
+	const int64_t pulses = !d->original ? spell_preparation_estimate(d->character, active) : 0;
+	const char *state = active ? "active" : pulses > 0 ? "paused" : "complete";
+	char json[96];
+	snprintf(json, sizeof(json), "{\"state\":\"%s\",\"estimatedSeconds\":%lld}", state,
+		 static_cast<long long>((pulses + WAIT_SEC - 1) / WAIT_SEC));
+	if (gmcp_queue(d, "Char.SpellPreparation", json))
+		d->gmcp_spell_preparation_pending = false;
+}
+
 /* Coalesce option toggles until the next periodic GMCP flush. */
 void gmcp_flush_initial_states(void)
 {
@@ -611,6 +643,7 @@ void gmcp_flush_initial_states(void)
 			gmcp_session_update(d);
 		gmcp_flush_time(d);
 		gmcp_flush_combat(d);
+		gmcp_flush_spell_preparation(d);
 		interested_items |= (gmcp_gameplay_streams(d) & GMCP_SUPPORT_ITEMS) != 0;
 		if (d->descriptor == gmcp_items_resume_fd)
 			items_start = d->next ? d->next : descriptor_list;

@@ -1897,6 +1897,8 @@ void change_spells_in_circle(P_char, int, int);
 void check_for_scribe_nukage_object(P_obj);
 void do_forget(P_char, char *, int);
 void do_memorize(P_char, char *, int);
+// Returns estimated pulses left, including queued work after the scheduled event.
+int64_t spell_preparation_estimate(P_char ch, bool &active);
 void do_assimilate(P_char, char *, int);
 void do_scribe(P_char, char *, int);
 void do_teach(P_char, char *, int);

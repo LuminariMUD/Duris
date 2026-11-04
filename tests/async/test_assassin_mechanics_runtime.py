@@ -18,6 +18,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function
 PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "net/gmcp.h"
 #include "core/mm.h"
 #include "magic/spells.h"
 #include "world/events.h"

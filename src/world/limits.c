@@ -708,6 +708,7 @@ static void advance_level_impl(P_char ch, bool notify_player, bool process_boons
 		// Zero out the new spell slots gained..
 		ch->specials.undead_spell_slots[(GET_LEVEL(ch) + 4) / 5] = 0;
 	}
+	gmcp_spell_preparation_changed(ch);
 
 	if (notify_player)
 		notify_level_advancement(ch, GET_LEVEL(ch) - 1);

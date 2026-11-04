@@ -2864,6 +2864,7 @@ void die(P_char ch, P_char killer)
 			/* remove all undead/druid/harpy spells */
 			for (i = 1; i <= MAX_CIRCLE; i++)
 				ch->specials.undead_spell_slots[i] = 0;
+			gmcp_spell_preparation_changed(ch);
 
 			update_pos(ch);
 			SET_POS(ch, STAT_DEAD + GET_POS(ch));
@@ -4317,6 +4318,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 								  "nd" :
 								  ((circle == 1) ? "st" : "th"))));
 					victim->specials.undead_spell_slots[circle]++;
+					gmcp_spell_preparation_changed(victim);
 					return attack_back(ch, victim, FALSE);
 				}
 			}

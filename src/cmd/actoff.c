@@ -4166,6 +4166,7 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 			}
 
 			ch->specials.undead_spell_slots[circle]--;
+			gmcp_spell_preparation_changed(ch);
 
 			snprintf(
 				buf, MAX_STRING_LENGTH,
@@ -4555,6 +4556,7 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 			}
 
 			ch->specials.undead_spell_slots[circle]--;
+			gmcp_spell_preparation_changed(ch);
 
 			snprintf(
 				buf, MAX_STRING_LENGTH,

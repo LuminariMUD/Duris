@@ -13,6 +13,7 @@
 #define GMCP_H
 
 #include "core/structs.h"
+#include "magic/spells.h"
 #include "world/world_quest.h"
 
 /* forward declarations */
@@ -61,11 +62,29 @@ constexpr uint32_t GMCP_SUPPORT_TIME = 1U << 1;
 constexpr uint32_t GMCP_SUPPORT_SESSION = 1U << 2;
 constexpr uint32_t GMCP_SUPPORT_COMBAT = 1U << 3;
 constexpr uint32_t GMCP_SUPPORT_ITEMS = 1U << 4;
+constexpr uint32_t GMCP_SUPPORT_SPELL_PREPARATION = 1U << 5;
 constexpr uint32_t GMCP_IMPLEMENTED_SUPPORTS = GMCP_SUPPORT_CAPABILITIES | GMCP_SUPPORT_TIME |
 					       GMCP_SUPPORT_SESSION | GMCP_SUPPORT_COMBAT |
-					       GMCP_SUPPORT_ITEMS;
+					       GMCP_SUPPORT_ITEMS | GMCP_SUPPORT_SPELL_PREPARATION;
 constexpr uint32_t GMCP_INTEREST_STREAMS = GMCP_SUPPORT_TIME | GMCP_SUPPORT_COMBAT |
-					   GMCP_SUPPORT_ITEMS;
+					   GMCP_SUPPORT_ITEMS | GMCP_SUPPORT_SPELL_PREPARATION;
+
+// Gameplay updates coalesce until the GMCP flush has the final queue state.
+inline void gmcp_spell_preparation_changed(struct char_data *ch)
+{
+	if (ch && ch->desc && !ch->desc->original && ch->desc->character == ch &&
+	    (ch->desc->gmcp_interests & GMCP_SUPPORT_SPELL_PREPARATION))
+		ch->desc->gmcp_spell_preparation_pending = true;
+}
+
+inline void gmcp_spell_preparation_affect_changed(struct char_data *ch, const affected_type *af)
+{
+	// A form change can switch between the memorization queue and slot recovery.
+	if (af->type == TAG_MEMORIZE || af->type == TAG_RACE_CHANGE ||
+	    af->type == SPELL_DRACONIC_APOTHEOSIS || (af->bitvector & AFF_WRAITHFORM) ||
+	    (af->bitvector4 & AFF4_VAMPIRE_FORM))
+		gmcp_spell_preparation_changed(ch);
+}
 
 // Invalidate only protocol presentation; never cancel durable item work.
 void gmcp_items_changed(struct char_data *ch);

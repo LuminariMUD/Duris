@@ -10,6 +10,7 @@
 using namespace std;
 
 #include "core/prototypes.h"
+#include "net/gmcp.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -916,6 +917,7 @@ void event_zion_netheril(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj ob
 											    "th")));
 					send_to_char(buf, ch);
 					ch->specials.undead_spell_slots[circle]++;
+					gmcp_spell_preparation_changed(ch);
 					break;
 				}
 			}

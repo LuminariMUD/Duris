@@ -18,6 +18,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 PRELUDE = r'''
 #include "world/new_events.c"
 #include "net/comm.h"
+#include "net/gmcp.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
 #include "item/objmisc.h"
