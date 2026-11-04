@@ -700,12 +700,20 @@ bool materialize_item_graph(P_char character, std::vector<P_obj> *detached_roots
 		else
 			object->timer[0] = static_cast<time_t>(item.timers[0]);
 		object->extra_flags = item.extra_flags;
+		if (complete_snapshot_state ||
+		    (identity.override_mask & PLAYER_LOAD_ITEM_OVERRIDE_ANTI_FLAGS))
+			object->anti_flags = item.anti_flags;
+		if (complete_snapshot_state ||
+		    (identity.override_mask & PLAYER_LOAD_ITEM_OVERRIDE_ANTI2_FLAGS))
+			object->anti2_flags = item.anti2_flags;
+		if (complete_snapshot_state ||
+		    (identity.override_mask & PLAYER_LOAD_ITEM_OVERRIDE_EXTRA2_FLAGS))
+			object->extra2_flags = item.extra2_flags;
+		if (complete_snapshot_state ||
+		    (identity.override_mask & PLAYER_LOAD_ITEM_OVERRIDE_CRAFTSMANSHIP))
+			object->craftsmanship = item.craftsmanship;
 		if (complete_snapshot_state)
 		{
-			object->anti_flags = item.anti_flags;
-			object->anti2_flags = item.anti2_flags;
-			object->extra2_flags = item.extra2_flags;
-			object->craftsmanship = item.craftsmanship;
 			for (auto affect = item.dynamic_affects.rbegin();
 			     affect != item.dynamic_affects.rend(); ++affect)
 			{

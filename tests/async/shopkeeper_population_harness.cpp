@@ -28,6 +28,8 @@ struct object_affect
 struct Object
 {
 	unsigned long obj_uid = 0;
+	uint32_t extra2_flags = 0, anti_flags = 0, anti2_flags = 0;
+	int craftsmanship = 0;
 	int R_num = 0, weight = 0, cost = 0, value[8] = {}, str_mask = 0, loc_p = 0, wear_flags = 0,
 	    type = 0, material = 0, db_item_id = 0;
 	unsigned char runtime_flags = 0;
@@ -428,7 +430,7 @@ P_char spawn(int room, int rnum = 0)
 }
 void add_item(int keeper, int vnum, int slot = 0)
 {
-	std::vector<std::string> row(30, "0");
+	std::vector<std::string> row(34, "0");
 	row[0] = std::to_string(saved_items.size() + 1);
 	row[29] = std::to_string(1000 + saved_items.size() + 1);
 	row[1] = std::to_string(keeper);

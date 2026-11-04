@@ -73,12 +73,9 @@ assert "item_condition" not in schema_columns  # the drift that caused the outag
 
 for path in (ROOT / "migrations").rglob("*"):
     if path.is_file() and path.suffix in {".sql", ".sh"}:
-        schema_columns.update(
-            re.findall(
-                r"ALTER TABLE saved_items ADD COLUMN ([a-z_0-9]+)",
-                path.read_text(errors="ignore"),
-            )
-        )
+        for alter in re.findall(r"ALTER TABLE saved_items\s+([^;']+)",
+                                path.read_text(errors="ignore")):
+            schema_columns.update(re.findall(r"ADD COLUMN ([a-z_0-9]+)", alter))
 
 inserted = insert_columns()
 root = select_columns(ROOT_MARKER)
@@ -121,8 +118,10 @@ for marker, columns, name in (
         f"{name} reads row[{max(used)}] but its SELECT has only "
         f"{len(columns)} columns"
     )
-    # obj_uid is the final selected column in both paths and is always read.
-    assert columns[-1] == "obj_uid", f"{name}: obj_uid is no longer last"
-    assert max(used) == len(columns) - 1, f"{name}: obj_uid index drifted"
+    uid_index = 28 if marker == ROOT_MARKER else 26
+    assert columns[uid_index:] == [
+        "obj_uid", "extra2_flags", "anti_flags", "anti2_flags", "craftsmanship",
+    ], f"{name}: item instance fields drifted"
+    assert uid_index in used, f"{name}: obj_uid index drifted"
 
 print("saved items column contract passed")

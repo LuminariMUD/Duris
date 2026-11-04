@@ -778,6 +778,16 @@
       "compatibility": "mysql8-mariadb10",
       "apply_checksum": "939ddcba780f27c11b38a935e974994cf69c8b64c7129a43c8549f4eb319709f",
       "verify_checksum": "2aa02d7e1702a6883d62466f0de1bfc2b145526c6d5486e7b1837ff24542e2e2"
+    },
+    {
+      "id": "0060_item_instance_fields",
+      "sequence": 61,
+      "description": "Store permanent instance flags and craftsmanship on SQL items",
+      "apply": "immutable/0060_item_instance_fields.sql",
+      "verify": "immutable/0060_item_instance_fields.sh",
+      "compatibility": "mysql8-mariadb10",
+      "apply_checksum": "6fc0474017ce7411c93cb31f16a6a78fa0e1af2050be045324489274c33f5023",
+      "verify_checksum": "118cc7b780ad571ac39c3399c0def29b020b1e3d5fae5423847b5c992ba64b5e"
     }
   ],
   "engine_verifiers": [

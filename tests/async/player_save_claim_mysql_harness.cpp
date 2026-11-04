@@ -7,6 +7,8 @@
 #include "item/item_claim_repository.h"
 #include "account/account.h"
 #include "core/files.h"
+#include "core/structs.h"
+#include "magic/spells.h"
 #include "persistence/dupe_log.h"
 #include "player/player_save_worker.h"
 #include "player/player_snapshot_repository.h"
@@ -263,7 +265,30 @@ int main()
 		item(1051, 551, 11),
 		item(1053, 553, 11),
 	};
+	// Persist the same item with a live Bless overlay in the room and player stores.
+	auto &blessed = save.items[1];
+	blessed.extra2_flags = ITEM2_ENHANCED | ITEM2_BLESS;
+	blessed.dynamic_affects = { { SPELL_BLESS, 0, ITEM2_BLESS }, { TAG_ALTERED_EXTRA2, 0, 0 } };
+	auto floor_item = blessed;
+	floor_item.parent_index = PLAYER_SNAPSHOT_NO_PARENT;
+	const saved_item_snapshot floor_save = {
+		{ item_owner_type::room, 3001, 0 }, "bless-policy", 3001, false, { floor_item }
+	};
+	require(saved_item_snapshot_repository_apply(test_connection, floor_save).outcome ==
+			player_save_apply_outcome::applied,
+		"save the blessed room item");
+	const std::string permanent_flags = std::to_string(ITEM2_ENHANCED);
+	require(scalar(test_connection,
+		       "SELECT extra2_flags FROM saved_items WHERE obj_uid=1003") ==
+			permanent_flags,
+		"room save strips temporary Bless and keeps the permanent flag");
 	player_save_apply_result applied = player_snapshot_repository_apply(test_connection, save);
+	require(scalar(test_connection,
+		       "SELECT extra2_flags FROM player_items WHERE obj_uid=1003") ==
+			permanent_flags,
+		"player save strips the same item's temporary Bless and keeps the permanent flag");
+	execute(test_connection, "DELETE FROM saved_items WHERE item_key='bless-policy'");
+
 	require(applied.outcome == player_save_apply_outcome::applied,
 		"a save whose items other owners hold must still commit");
 

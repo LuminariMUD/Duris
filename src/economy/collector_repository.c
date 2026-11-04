@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "sql/item_affect_rows.h"
+#include "sql/item_instance_fields.h"
 #include "economy/collector_repository.h"
 #include "item/item_claim.h"
 
@@ -1029,7 +1030,8 @@ bool insert_player_item(MYSQL *connection, uint32_t pid, const player_item_snaps
 	sql << "INSERT INTO player_items(pid,vnum,equip_slot,container_id,quantity,weight,cost,"
 	       "timer,extra_flags,wear_flags,item_type,value0,value1,value2,value3,value4,value5,"
 	       "value6,value7,name,short_descr,description,action_descr,bitvector1,bitvector2,"
-	       "bitvector3,bitvector4,bitvector5,item_material,obj_uid,item_condition) VALUES("
+	       "bitvector3,bitvector4,bitvector5,item_material,obj_uid,item_condition,"
+	       "extra2_flags,anti_flags,anti2_flags,craftsmanship) VALUES("
 	    << pid << ',' << item.vnum << ",0,NULL,1," << item.weight << ',' << item.cost << ','
 	    << item.timers[0] << ',' << item.extra_flags << ',' << item.wear_flags << ','
 	    << static_cast<int>(item.type);
@@ -1042,7 +1044,8 @@ bool insert_player_item(MYSQL *connection, uint32_t pid, const player_item_snaps
 	for (uint64_t bitvector : item.bitvectors)
 		sql << ',' << bitvector;
 	sql << ',' << static_cast<int>(item.material) << ',' << item.object_uid << ','
-	    << item.condition << ')';
+	    << item.condition << ',' << sql_item_permanent_extra2(item) << ',' << item.anti_flags
+	    << ',' << item.anti2_flags << ',' << item.craftsmanship << ')';
 	if (!execute(connection, sql.str()))
 		return false;
 	const uint64_t item_id = mysql_insert_id(connection);
