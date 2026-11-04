@@ -19,6 +19,27 @@ connection details. The server checks metadata before reading: `.env` must be
 a regular file owned by the effective server user and must grant no permission
 beyond owner read/write (`0600`).
 
+## Scheduled roaming NPCs
+
+Set `random.mapmob.populationCap=45.000` in `lib/duris.properties`. Both the
+shipped setting and the missing-key fallback are 45. Add the shipped entry to
+retained configurations before using the staff `show` or `set` command on it.
+
+Use a nonnegative whole number within signed integer range after storage.
+The properties store uses floats, so large inputs can round and the largest
+accepted stored value is 2147483520. Invalid input is rejected and a failed
+reload keeps the active settings. Zero stops scheduled attempts. Lowering the
+cap stops attempts while the current population meets or exceeds it. Existing
+NPCs remain in the world, and the next scheduled tick reads the active value.
+
+The global cap applies to scheduled prototype-1255 generation, including
+off-map and owned members of the counted population. Staff `randobj mob`,
+themed prototype 1256, and zone resets are separate creation paths. Each
+scheduled tick can attempt at most one spawn, roughly every 120 seconds.
+
+See the [runtime commands](RUNBOOK.md#scheduled-roaming-npcs) for changing the
+cap while the game is running.
+
 ## Output profiles
 
 `DURIS_OUTPUT_PROFILES_FILE` optionally names an absolute path to a versioned JSON

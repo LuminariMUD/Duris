@@ -1630,6 +1630,28 @@ The code default is `0.0` (forced drop only), but `lib/duris.properties` ships
 offender's artifact timers on a first-level violation. Set it to `0` to disable
 the timer penalty.
 
+### Scheduled roaming NPCs
+
+The global scheduled roaming NPC cap defaults to 45. A cap of zero disables
+scheduled attempts. Lowering the cap stops attempts while the population is
+at or above the new limit. See the [setting and scope](CONFIGURATION.md#scheduled-roaming-npcs).
+
+```text
+properties show random.mapmob.populationCap
+properties set random.mapmob.populationCap 45
+properties diff
+properties save
+properties revert
+properties reload
+```
+
+`set` updates memory for the next scheduled attempt, and `diff` shows unsaved
+changes. `save` writes them to disk, `revert` restores the last loaded or saved
+baseline, and `reload` reads the file and replaces unsaved values. An invalid
+cap rejects a matching set command or file reload before applying changes. If
+an older file lacks the key, add the shipped entry and reload before using
+`show` or `set` on it.
+
 ## Development vs production checklist
 
 - Development: local/development/test `ENVIRONMENT`, loopback database host,

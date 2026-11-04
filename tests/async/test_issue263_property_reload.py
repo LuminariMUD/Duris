@@ -2,9 +2,10 @@
 """Execute property commands, including refreshing loaded PCs and NPCs after reload."""
 from pathlib import Path
 import os
+import shutil
 import subprocess
 import tempfile
-from _paths import HARNESS_STUBS
+from _paths import HARNESS_STUBS, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -14,11 +15,13 @@ def main():
     with tempfile.TemporaryDirectory(prefix="issue263-properties-", dir=output) as directory:
         work = Path(directory)
         (work / "lib").mkdir()
+        (work / "spawn_random_mapmob.inc").write_text(
+            extract_function("random.mob.c", "void spawn_random_mapmob()"))
         for mode, flags in [("sql", []), ("flatfile", ["-D__NO_MYSQL__", "-I" + str(ROOT / "src/no_mysql")])]:
             binary = work / mode
             subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-Wall", "-Wextra", "-Werror",
                             "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "src"),
-                            "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
+                            "-g", "-fsanitize=address,undefined,float-cast-overflow", "-I" + str(work), "-fno-omit-frame-pointer",
                             "-fno-pie", "-no-pie",
                             "-I/usr/include/libxml2", "-I/usr/include/mysql", *flags,
                             str(ROOT / "tests/async/issue263_property_reload.cpp"),
@@ -30,9 +33,11 @@ def main():
             for case in ("keys", "reload-missing", "reload-read", "reload-close-source",
                          "reload-malformed", "reload-limit", "save-missing", "save-open",
                          "save-read", "save-write", "save-flush", "save-close-source",
-                         "save-close-target", "save-rename", "save-malformed"):
+                         "save-close-target", "save-rename", "save-malformed", "mapmob-cap"):
                 with tempfile.TemporaryDirectory(prefix=case + "-", dir=work) as scenario:
                     (Path(scenario) / "lib").mkdir()
+                    if case == "mapmob-cap":
+                        shutil.copyfile(ROOT / "lib/duris.properties", Path(scenario) / "lib/duris.properties")
                     results.append(subprocess.run([str(binary), case], cwd=scenario).returncode)
             assert all(result == 0 for result in results), results
             print("real property-command journey passed:", mode, flush=True)

@@ -583,7 +583,9 @@ void spawn_random_mapmob()
 		}
 	}
 
-	if (count < 45)
+	// The properties loader and staff setter validate this value before publishing it.
+	const auto cap = static_cast<int>(get_property("random.mapmob.populationCap", 45.0));
+	if (count < cap)
 	{
 		create_random_mob(-1, 0);
 	}

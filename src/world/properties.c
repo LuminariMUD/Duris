@@ -20,6 +20,9 @@
 #include "net/comm.h"
 #include "net/ws_handlers.h"
 #include "core/utils.h"
+#include <cerrno>
+#include <climits>
+#include <cmath>
 #include <fnmatch.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -174,6 +177,27 @@ void apply_properties()
 	telemetry_config_reload_notify();
 }
 
+static constexpr char mapmob_cap_key[] = "random.mapmob.populationCap";
+
+static bool parse_mapmob_cap(const char *text, float &value)
+{
+	char *end;
+	errno = 0;
+	const double parsed = strtod(text, &end);
+	if (end == text || errno == ERANGE || !std::isfinite(parsed) || parsed < 0 ||
+	    parsed > INT_MAX || std::trunc(parsed) != parsed)
+		return false;
+
+	while (isspace((unsigned char)*end))
+		++end;
+	if (*end)
+		return false;
+
+	value = static_cast<float>(parsed);
+	// INT_MAX itself rounds up when stored as float. Compare in double.
+	return static_cast<double>(value) <= INT_MAX;
+}
+
 // 1 is a property, 0 a comment/blank line, -1 a malformed property.
 int parse_property(struct property *property, char *buf)
 {
@@ -191,12 +215,20 @@ int parse_property(struct property *property, char *buf)
 	if (strcspn(buf, "= \t\r\n") >= sizeof(key))
 		return -1;
 	*separator = ' ';
-	if (sscanf(buf, "%127s%f", key, &value) != 2)
+	int key_end;
+	bool valid = sscanf(buf, "%127s%n", key, &key_end) == 1;
+	if (valid && !strcmp(key, mapmob_cap_key))
 	{
-		*separator = '=';
-		return -1;
+		const char *tail = buf + key_end;
+		while (tail < separator && isspace((unsigned char)*tail))
+			++tail;
+		valid = tail == separator && parse_mapmob_cap(separator + 1, value);
 	}
+	else if (valid)
+		valid = sscanf(buf + key_end, "%f", &value) == 1;
 	*separator = '=';
+	if (!valid)
+		return -1;
 	property->key = (char *)str_dup(key);
 	property->value = value;
 	property->old_value = value;
@@ -528,7 +560,23 @@ void do_properties(P_char ch, char *args, int /*cmd*/)
 		}
 		else if (!strcmp(command, "set") && (GET_LEVEL(ch) >= FORGER))
 		{
-			if (val_string && sscanf(val_string, "%f", &new_value) == 1)
+			// Check the loaded key before a matching glob can change any values.
+			const bool sets_mapmob_cap =
+				pattern && fnmatch(pattern, mapmob_cap_key, FNM_CASEFOLD) == 0 &&
+				bsearch(mapmob_cap_key, duris_properties, properties_count,
+					sizeof(struct property), key_property_comp);
+			if (sets_mapmob_cap &&
+			    (!val_string || !parse_mapmob_cap(val_string, new_value) ||
+			     strtok(NULL, " ")))
+			{
+				send_to_char(
+					"random.mapmob.populationCap requires a nonnegative whole "
+					"number within integer range after storage.\r\n",
+					ch);
+				return;
+			}
+			if (sets_mapmob_cap ||
+			    (val_string && sscanf(val_string, "%f", &new_value) == 1))
 			{
 				bool success = FALSE;
 				bool hook_changed = FALSE;

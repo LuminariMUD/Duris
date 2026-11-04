@@ -1,6 +1,6 @@
 # Issue #655: configurable roaming-NPC cap and training-dummy accounting
 
-Status: plan only; implementation is paused pending the user's instruction to resume.
+Status: implementation resumed. Configurable cap ready for review as the first chunk.
 Date: 2026-11-04.
 Branch: `branch/issue-655-roaming-npc-cap`.
 Base: fetched `origin/master`, `af3829b85671480cdae23ae703da6ed1ca50a11a`.
@@ -11,9 +11,6 @@ It will then resolve the defects and verification gaps identified in
 [issue #655](https://github.com/LuminariMUD/Duris/issues/655), including the
 [independent full-world investigation](https://github.com/LuminariMUD/Duris/issues/655#issuecomment-6629410216)
 and [test/persistence findings](https://github.com/LuminariMUD/Duris/issues/655#issuecomment-6629412020).
-The present delivery contains this plan only. Do not start implementation,
-merge, deploy, or change a running world's population before resumption.
-
 ## Evidence and disposition of every finding
 
 1. **Hardcoded limit: implement formal configuration.**
@@ -289,10 +286,25 @@ claim the historical deployment date or individual Woodseer encounter was
 verified. Resolve any newly reproduced defect in these paths before closing
 the implementation, and report unresolved production questions explicitly.
 
-## Current handoff boundary
+## Implementation handoff
 
-Only this plan is to be committed and pushed now. The linked local worktree
-and the remote branch are separate from the user's existing dirty worktree.
-Verify the remote branch points to the plan commit and the new worktree is
-clean, then pause. Implementation tests and builds listed above have not been
-run as part of this documentation-only delivery.
+Use `/home/aiwithapex/projects/duris-issue655-roaming-npc-cap` for this stack.
+The user's original checkout is independent. The first branch remains
+`branch/issue-655-roaming-npc-cap`, based on `master`. Each later PR targets its
+immediate dependency. Keep this handoff current on the newest branch.
+
+- **Configuration** — the spawner reads the validated property at each
+  invocation. Both write boundaries share one parser. A malformed set glob
+  matching the loaded cap is rejected before editing any properties. The
+  existing transactional loader, setter, saver, and baseline handling do
+  the rest. The issue-263 harness now runs the actual spawner with a generator
+  double and both property backends, so a separate config harness is redundant.
+  Passed: both development builds (MariaDB and flat file), the expanded
+  issue-263 test with ASan/UBSan and float-cast checking, and formatting
+  and whitespace checks.
+- **Population and test invocation** — next. The first PR deliberately leaves
+  membership as all 1255 NPCs so the cap can be reviewed independently.
+- **Recovery and legacy** — pending the population change. Reuse the existing
+  generated-NPC and isolated DB/Redis journeys where they cover the required
+  path. Run the full-world acceptance against disposable data. No release tag,
+  deployment, or production-state inspection is part of the PR stack.
