@@ -153,32 +153,32 @@ below and their milestone gates while retaining current Duris rules as the autho
    adopts structured checks with reasons, so the info page can explain which current
    Duris requirement is missing. Luminari also has global gates and a separate native
    special-case branch in `feat_is_available`. Our coverage must account for those
-   kinds of checks as well as declarative records. [Feat rules and display](../../../Luminari-Source/src/character/feats.c)
+   kinds of checks as well as declarative records. [Feat rules and display](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/feats.c)
 2. **Acquisition, possession, and use are distinct.** `feat_info` separates implemented,
    learnable, and repeatable flags. Class/race grant tables distinguish automatic grants
    from selectable choices, while `get_feat_value` includes applicable stored, equipment,
    and form-specific contributions. Our context must preserve the source and effective
    meaning of a grant. This prevents a learning prerequisite from accidentally blocking
-   an independently granted innate. [Feat metadata](../../../Luminari-Source/src/character/feats.h),
-   [grant records](../../../Luminari-Source/src/character/class.h),
-   [effective values](../../../Luminari-Source/src/core/utils.c)
+   an independently granted innate. [Feat metadata](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/feats.h),
+   [grant records](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/class.h),
+   [effective values](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/core/utils.c)
 3. **Relationships can drive navigation and change review.** Luminari's feat page derives
    its prerequisite dependents and class/race acquisition lists from the registries.
    Our catalog can derive `requires`, `unlocks`, and `granted by` views and the affected
    consumers of an edit. Duris already has prerequisite and exclusion relationships in
-   `epic_teachers`, giving this a concrete local use. [Feat information](../../../Luminari-Source/src/character/feats.c),
+   `epic_teachers`, giving this a concrete local use. [Feat information](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/feats.c),
    [Duris epic prerequisites](../../src/classes/epic_skills.c)
 4. **Use limits need one inspected binding.** Luminari links daily-use feats to recovery
    events and provides separate queries and spending functions. Its racial ability table
    also connects a feat, delegated spell, target mode, flags, and command. Our plan adds
    explicit invocation and use bindings, allowing a spell-backed innate to share effect
-   math while retaining its own access, lag, and recovery contract. [Use queries and spending](../../../Luminari-Source/src/core/utils.c),
-   [racial ability bindings](../../../Luminari-Source/src/act/act.other.c)
+   math while retaining its own access, lag, and recovery contract. [Use queries and spending](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/core/utils.c),
+   [racial ability bindings](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/act/act.other.c)
 5. **Registry wiring deserves behavioral checks.** Luminari's tests cover automatic
    versus learnable grants, stacking, cooldown/event wiring, refusal without ownership,
    and the exact point where an action spends a use. Our acceptance matrix adds these
-   boundaries to numerical equivalence. [Racial feat tests](../../../Luminari-Source/unittests/CuTest/test_racial_innate_feats.c),
-   [converted skill tests](../../../Luminari-Source/unittests/CuTest/test_rol_feats.c)
+   boundaries to numerical equivalence. [Racial feat tests](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/unittests/CuTest/test_racial_innate_feats.c),
+   [converted skill tests](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/unittests/CuTest/test_rol_feats.c)
 
 The inspected feat descriptions remain authored text, and much of their effect logic
 lives in gameplay files. The advantages above concern metadata, relationships, and
@@ -851,29 +851,29 @@ Local reference paths are relative to this document. The inspected Rust and Lumi
 checkouts are recorded at the top of this plan so later changes can be distinguished
 from this review.
 
-- [Original tooltip design](../../../duris-rs/docs/TOOLTIP_DESIGN.md).
-- [Formula design and implementation history](../../../duris-rs/docs/TOOLTIP_FORMULAS_DESIGN.md), particularly arithmetic, roll ordering, ranges, migration, and sections 14-29.
+- [Original tooltip design](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/docs/TOOLTIP_DESIGN.md).
+- [Formula design and implementation history](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/docs/TOOLTIP_FORMULAS_DESIGN.md), particularly arithmetic, roll ordering, ranges, migration, and sections 14-29.
 - [Original formula proposal at 3ababc34](https://github.com/Community-Duris/DurisSTDB/blob/3ababc344fa0ae701d25b86bb1e97fb33105f142/docs/TOOLTIP_FORMULAS_DESIGN.md).
 - [Current pinned formula design](https://github.com/Community-Duris/DurisSTDB/blob/936261fb247ff78007ef0da1cb88c6b5cb3cd15c/docs/TOOLTIP_FORMULAS_DESIGN.md), at the upstream commit whose tree matches the Rust baseline.
-- [Shared formula/tooltip row definitions](../../../duris-rs/module/src/gamedata/abilities.rs).
-- [Compiler and catalog loading](../../../duris-rs/module/src/engine/formula/table.rs).
-- [Execution context and per-use evaluation](../../../duris-rs/module/src/engine/formula/game.rs).
-- [Range evaluation and dependency tracking](../../../duris-rs/module/src/engine/formula/range.rs).
-- [Native custom values](../../../duris-rs/module/src/engine/formula/custom.rs).
-- [Conversion proposal tool](../../../duris-rs/scripts/formula-codemod.py).
-- [Equivalence fixtures](../../../duris-rs/module/src/engine/formula/parity.rs).
-- [Coverage accounting](../../../duris-rs/module/src/engine/formula/coverage.rs).
-- [Data import and conflict handling](../../../duris-rs/scripts/data-sync.py).
-- [Staff preview implementation](../../../duris-rs/module/src/web/gamedata/preview.rs).
-- [Authoring workflow](../../../duris-rs/docs/CONTENT_EDITING.md).
-- [Luminari feat metadata and prerequisite types](../../../Luminari-Source/src/character/feats.h).
-- [Luminari feat registration, checks, and generated info](../../../Luminari-Source/src/character/feats.c), especially `feato`, `meets_prerequisite`, `feat_is_available`, and `display_feat_info`.
-- [Luminari grant structures](../../../Luminari-Source/src/character/class.h) and [grant processing](../../../Luminari-Source/src/character/class.c).
-- [Luminari effective feat and daily-use queries](../../../Luminari-Source/src/core/utils.c), especially `get_feat_value`, `get_daily_uses`, `daily_uses_remaining`, and `start_daily_use_cooldown`.
-- [Luminari recovery event registry](../../../Luminari-Source/src/events/mud_event_list.c) and [recovery execution](../../../Luminari-Source/src/events/mud_event.c).
-- [Luminari racial invocation table and handler](../../../Luminari-Source/src/act/act.other.c), especially `racial_sla_table` and `do_racial_sla`.
-- [Luminari racial feat registration, use, and grant tests](../../../Luminari-Source/unittests/CuTest/test_racial_innate_feats.c).
-- [Luminari converted feat prerequisites and cooldown tests](../../../Luminari-Source/unittests/CuTest/test_rol_feats.c).
+- [Shared formula/tooltip row definitions](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/gamedata/abilities.rs).
+- [Compiler and catalog loading](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/table.rs).
+- [Execution context and per-use evaluation](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/game.rs).
+- [Range evaluation and dependency tracking](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/range.rs).
+- [Native custom values](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/custom.rs).
+- [Conversion proposal tool](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/scripts/formula-codemod.py).
+- [Equivalence fixtures](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/parity.rs).
+- [Coverage accounting](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/engine/formula/coverage.rs).
+- [Data import and conflict handling](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/scripts/data-sync.py).
+- [Staff preview implementation](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/module/src/web/gamedata/preview.rs).
+- [Authoring workflow](https://github.com/moshehbenavraham/duris-rs/blob/4492942d68718fb0443539084d538f922e044b1e/docs/CONTENT_EDITING.md).
+- [Luminari feat metadata and prerequisite types](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/feats.h).
+- [Luminari feat registration, checks, and generated info](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/feats.c), especially `feato`, `meets_prerequisite`, `feat_is_available`, and `display_feat_info`.
+- [Luminari grant structures](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/class.h) and [grant processing](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/character/class.c).
+- [Luminari effective feat and daily-use queries](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/core/utils.c), especially `get_feat_value`, `get_daily_uses`, `daily_uses_remaining`, and `start_daily_use_cooldown`.
+- [Luminari recovery event registry](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/events/mud_event_list.c) and [recovery execution](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/events/mud_event.c).
+- [Luminari racial invocation table and handler](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/src/act/act.other.c), especially `racial_sla_table` and `do_racial_sla`.
+- [Luminari racial feat registration, use, and grant tests](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/unittests/CuTest/test_racial_innate_feats.c).
+- [Luminari converted feat prerequisites and cooldown tests](https://github.com/LuminariMUD/Luminari-Source/blob/85fed29152fca9ae5951686827c1e70bd1a22a1a/unittests/CuTest/test_rol_feats.c).
 - [Duris epic-skill prerequisite representation](../../src/classes/epic_skills.h).
 
 This plan was prepared from source, the historical proposal, current implementation

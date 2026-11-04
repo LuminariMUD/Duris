@@ -51,6 +51,9 @@ Some {name} coins lie here.~
     objects[390] = objects[390].replace("bag leather small~", "testbag bag leather small~")
     (area / "world.obj").write_text("".join(objects[v] for v in sorted(objects)) + "$~\n")
     mobiles = object_records((area / "world.mob").read_text())
+    # Sentinel questers also use ACT_PATROL so the humanoid coin pickup
+    # pulse leaves the player's dropped pile available to collect.
+    quester_flags = 10 | (1 << 29)
     for vnum, name in ((22810, "quartermaster"), (22811, "rewarder")):
         mobiles[vnum] = f"""#{vnum}
 {name} _nomoney_~
@@ -58,7 +61,7 @@ the {name}~
 The {name} waits here.
 ~
 ~
-10 0 0 0 0 0 0 0 S
+{quester_flags} 0 0 0 0 0 0 0 S
 PH 0 1 -1
 50 0 0 100d1+100 1d1+1
 0.0.0.0 0
