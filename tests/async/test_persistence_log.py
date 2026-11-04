@@ -19,6 +19,7 @@ submit_source = submit_source[:submit_source.index('\n}\n')]
 assert 'try_to_lock' not in submit_source and 'try_lock' not in submit_source
 harness = r'''
 #include "persistence/persistence_log.h"
+#include "item/item_removal_audit.h"
 #include "persistence/critical_command_completion.h"
 #include <atomic>
 #include <cassert>
@@ -135,6 +136,16 @@ int main(int argc, char **argv) {
     assert(read(file).find("operation=cd000000000000000000000000000000") != std::string::npos);
     assert(occurrences(read(file), "expected_revision=3 actual_revision=4") == 2);
 
+    const item_removal_location removed = { .uid = 82, .vnum = 1252, .room = 22800,
+                                            .placement = "worn", .wear_slot = 3, .holder_pid = 42 };
+    const item_removal_location result = { .uid = 83, .vnum = 1253, .room = 22800,
+                                           .placement = "inventory", .holder_pid = 42 };
+    audit_item_removal("enhance_replacement", removed, result);
+    assert(persistence_log_drain(3000));
+    assert(occurrences(read(file), "cause=enhance_replacement uid=82 vnum=1252") == 1);
+    assert(read(file).find("source_slot=3 holder_pid=42") != std::string::npos);
+    assert(read(file).find("result_uid=83 result_vnum=1253") != std::string::npos);
+
     // Rotate while an append is already open: it belongs to the old inode once,
     // and the following record goes to the newly created file.
     block_write = true; entered = false;
@@ -203,6 +214,11 @@ int main(int argc, char **argv) {
     assert(broadcasts.empty());
     assert(persistence_log_snapshot().accepted == before.accepted);
     assert(persistence_log_snapshot().rejected == before.rejected + 20000);
+    begin = clock_type::now();
+    for (int n = 0; n < 20000; ++n)
+        audit_item_removal("scrap", removed);
+    assert(clock_type::now() - begin < std::chrono::seconds(1));
+    assert(persistence_log_snapshot().rejected == before.rejected + 40000);
     persistence_alert(AVATAR, "player_save", "private", "private", "private", "terminal_save_failed", "retry=%d", 1);
     assert(broadcasts.size() == 1);
     assert(broadcasts[0].find("terminal_save_failed") != std::string::npos);
@@ -231,6 +247,7 @@ with tempfile.TemporaryDirectory(prefix='persistence-log-') as temp:
     subprocess.run(['g++', '-std=c++20', '-Wall', '-Wextra', '-Werror', '-pthread',
                     '-I', str(ROOT / 'src'), str(source),
                     str(ROOT / 'src/persistence/persistence_log.c'),
+                    str(ROOT / 'src/item/item_removal_audit.c'), '-ffunction-sections', '-Wl,--gc-sections',
                     str(ROOT / 'src/persistence/critical_command.c'), '-lcrypto',
                     '-Wl,--wrap=write', '-Wl,--wrap=close', '-o', str(binary)], check=True)
     subprocess.run([str(binary), temp], check=True, timeout=20)

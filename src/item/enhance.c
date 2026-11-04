@@ -20,6 +20,7 @@
 #include "core/structs.h"
 #include "core/utils.h"
 #include "item/enhance.h"
+#include "item/item_removal_audit.h"
 #include "economy/tradeskill.h"
 #include "economy/currency_transaction.h"
 #include "economy/currency_value.h"
@@ -343,6 +344,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 	act("&+BYour enhancement is a success! You now have &n$p&+B!", FALSE, ch, robj, 0, TO_CHAR);
 	snprintf(buf, MAX_STRING_LENGTH, "&+wFinal item value: %d.&n\r\n", final_value);
 	send_to_char(buf, ch);
+	const auto replaced = capture_item_removal(source);
 	obj_from_char(source);
 	extract_obj(source);
 	if (!pouch_material)
@@ -350,6 +352,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		obj_from_char(material);
 		extract_obj(material);
 	}
+	audit_item_removal("enhance_replacement", replaced, capture_item_removal(robj));
 	statuslog(ch->player.level,
 		  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!", GET_NAME(ch),
 		  obj_index[robj->R_num].virtual_number, robj->short_description, final_value,

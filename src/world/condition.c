@@ -26,6 +26,7 @@
 #include "combat/damage.h"
 #include "combat/justice.h"
 #include "item/objmisc.h"
+#include "item/item_removal_audit.h"
 #include "item/storage_lockers.h"
 #include "magic/spells.h"
 #include "world/weather.h"
@@ -134,15 +135,17 @@ int DamageOneItem(P_char ch, int dam_type, P_obj obj, bool destroy)
 		 item_damage_messages[dam_type - 1][destroy ? 1 : 0]);
 	act(buf, TRUE, ch, obj, 0, TO_ROOM);
 
-	if (destroy)
-	{
-		if (!force_destroy)
-			MakeScrap(ch, obj);
-		else
-			extract_obj(obj);
-	}
+	if (!destroy)
+		return false;
+	if (!force_destroy)
+		return MakeScrap(ch, obj);
 
-	return destroy;
+	const auto source = capture_item_removal(obj);
+	const bool attached = !OBJ_WORN(obj) || source.wear_slot >= 0;
+	extract_obj(obj);
+	if (attached)
+		audit_item_removal("damage", source, {}, dam_type);
+	return attached;
 }
 
 bool MakeScrap(P_char ch, P_obj obj)
@@ -180,6 +183,8 @@ bool MakeScrap(P_char ch, P_obj obj)
 
 	if (!t)
 		return false;
+
+	const auto scrapped = capture_item_removal(obj);
 
 	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_CHAR);
 	act("$p falls to the ground in scraps.", TRUE, ch, obj, 0, TO_ROOM);
@@ -305,6 +310,7 @@ bool MakeScrap(P_char ch, P_obj obj)
 
 	destroyed.Commit();
 	extract_obj(obj);
+	audit_item_removal("scrap", scrapped);
 	return true;
 }
 

@@ -14000,14 +14000,16 @@ void spell_shatter(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 						// 4% chance to destroy it outright.
 						int destroy = !number(0, 24);
 
-						DamageOneItem(victim, SPLDAM_SOUND, obj, destroy);
-						if (destroy)
+						const int vnum = OBJ_VNUM(obj);
+						const unsigned long uid = obj->obj_uid;
+						if (DamageOneItem(victim, SPLDAM_SOUND, obj,
+								  destroy) &&
+						    destroy)
 						{
 							statuslog(
 								AVATAR,
-								"%s just shattered %s from %s at [%d]",
-								GET_NAME(ch),
-								obj->short_description,
+								"%s just shattered item %d uid=%lu from %s at [%d]",
+								GET_NAME(ch), vnum, uid,
 								GET_NAME(victim),
 								world[ch->in_room].number);
 						}

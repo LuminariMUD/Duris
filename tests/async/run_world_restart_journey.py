@@ -194,13 +194,14 @@ class Rig:
         text = path.read_text(errors="replace") if path.exists() else ""
         return text[self.marks.get(name, 0):]
 
-    def boot(self) -> None:
+    def boot(self, *server_options: str) -> None:
         self.marks = {}
         self.marks = {name: len(self.log(name)) for name in ("sys", "status", "debug")}
         loops = self.output.read_text(errors="replace").count("Entering game loop.")
+        options = server_options or ("--minimal", "-s")
         with self.output.open("a") as output:
             self.server = subprocess.Popen(
-                [str(self.game / "bin/server/dms"), "--minimal", "-s", str(self.port)],
+                [str(self.game / "bin/server/dms"), *options, str(self.port)],
                 cwd=self.game, env=self.env, stdout=output, stderr=subprocess.STDOUT)
         deadline = time.monotonic() + 90
         while self.output.read_text(errors="replace").count("Entering game loop.") == loops:
