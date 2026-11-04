@@ -10,12 +10,26 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 import uuid
 
 import test_account_recovery_journey as account
 import test_creation_prompt_journey as creation
 from test_character_stat_choice_journey import WebSocketClient
+
+
+@contextmanager
+def kept_journey_binary(server: Path | None, backend: str):
+    if server is not None:
+        yield server.resolve()
+        return
+    if backend != "flatfile":
+        raise SystemExit("--server is required with --backend mariadb")
+    output = account.ROOT / "bin/tests"
+    output.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="kept-flatfile-build-", dir=output) as directory:
+        yield account.build_flatfile_server(Path(directory))
 
 
 @contextmanager
@@ -357,11 +371,12 @@ def run(binary, backend, *, override=None, delay=False, reject=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--backend", choices=("mariadb", "flatfile"), required=True)
-    parser.add_argument("--server", type=Path, required=True)
+    parser.add_argument("--backend", choices=("mariadb", "flatfile"), default="flatfile")
+    parser.add_argument("--server", type=Path)
     parser.add_argument("--override", choices=("telnet", "websocket"), nargs="?", const="telnet",
                         help="select the kept character while its original pre-entry socket remains open")
     parser.add_argument("--delay", action="store_true", help="hold the initial writer and disconnect before acknowledgment")
     parser.add_argument("--reject", action="store_true", help="refuse the delayed initial save and verify reservation cleanup")
     args = parser.parse_args()
-    run(args.server.resolve(), args.backend, override=args.override, delay=args.delay or args.reject, reject=args.reject)
+    with kept_journey_binary(args.server, args.backend) as binary:
+        run(binary, args.backend, override=args.override, delay=args.delay or args.reject, reject=args.reject)

@@ -29,6 +29,15 @@ started=$SECONDS
 # Longest first.
 xargs -P "${TEST_DB_JOBS:-12}" -L 1 bash -c 'run_one "$@"' _ <<EOF
 player_pid_exhaustion $DB python3 tests/async/run_player_pid_exhaustion_journey.py --server $SERVER
+kept_character_ambiguous_commit $DB python3 tests/async/test_kept_character_ambiguous_commit.py --server $SERVER
+kept_character_approval $DB python3 tests/async/test_kept_character_approval_journey.py --backend mariadb --server $SERVER
+kept_character_competition $DB python3 tests/async/test_kept_character_competition.py --backend mariadb --server $SERVER
+kept_character $DB python3 tests/async/test_kept_character_journey.py --backend mariadb --server $SERVER
+kept_character_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server $SERVER
+kept_character_chaos_matrix $DB python3 tests/async/test_kept_character_matrix.py --backend mariadb --server $SERVER --chaos
+kept_character_recovery $DB python3 tests/async/test_kept_character_recovery_journey.py --backend mariadb --server $SERVER
+kept_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server $SERVER
+kept_chaos_starter_grant $DB python3 tests/async/test_kept_starter_grant_journey.py --backend mariadb --server $SERVER --chaos --transport websocket
 artifact_guild_reward_journey $DB python3 tests/async/test_mysql_artifact_guild_reward_journey.py --server $SERVER
 artifact_owner_restart $DB python3 tests/async/test_artifact_owner_restart_journey.py --backend mariadb --server $SERVER
 divine_boon_zone $DB python3 tests/async/test_divine_boon_zone_journey.py --backend mariadb --server $SERVER
