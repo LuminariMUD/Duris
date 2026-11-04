@@ -424,5 +424,8 @@ The following PRs cover the four failures from the integration run.
   serial capture, artifact matrix, and loop benchmark after the two full
   gates finish.
 
-The second full test-all log is /tmp/duris-test-all-01d190929.log. Keep the
-original and integration DB logs separate from the focused follow-up logs.
+The second full test-all passed all 941 cases on master `01d190929` with
+zero failures or timeouts. Its log is `/tmp/duris-test-all-01d190929.log`.
+The serial DB retests use local revision `1dabede8d` and the exact three
+serial commands from the proposed runner. They write the revision, logs,
+and eventual exit status to `/home/aiwithapex/projects/duris-master-gate-contracts/bin/tests/gate-db-serial/`.
