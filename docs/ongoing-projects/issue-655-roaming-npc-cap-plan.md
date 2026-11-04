@@ -358,9 +358,9 @@ The implementation stack (#657–#661) landed through `7713fae16`.
 The first complete `make test-all` run on that revision recorded 912 passes
 and 30 failures across 942 cases. The baseline logs and exact revision are in
 `/home/aiwithapex/projects/duris-issue655-roaming-npc-cap/bin/tests/master-gates-7713fae16/`.
-The same checkout runs the original full `make test-db` gate and holds
-the per-case logs in `bin/tests/db/`. Archive those logs before rerunning
-because the gate recreates that directory.
+The same checkout finished the original full `make test-db` gate with
+97 passes and six failures across 103 cases. Its per-case logs are archived
+under `db-cases/` in the same baseline log directory.
 
 The focused `test-all` fixes in #663–#676 and #680 landed on master.
 PR #656 already covered the command-attribute issue raised in #662. The
@@ -377,12 +377,15 @@ tied to their exact tested revisions.
   fix showed an independent copyover bug. A player read can overlap startup
   writer work, and copyover drops the connection when artifact admission
   requests a fresh read. [#689](https://github.com/LuminariMUD/Duris/pull/689)
-  refreshes the read within the original player-load deadline. The standard
-  MariaDB journey passed through native copyover, clean restart, and the
-  canonical artifact swaps. The remaining artifact cases are running.
+  landed as `b1d5d2b97` and refreshes the read within the original player-load
+  deadline. The ground and NPC cases passed native copyover, clean restart,
+  and the canonical artifact swaps. All eight copyover regressions passed.
 - [#687](https://github.com/LuminariMUD/Duris/pull/687) qualified restart
   from a valid checkpoint after deliberately causing an overlapping capture
   to be rejected.
+- [#690](https://github.com/LuminariMUD/Duris/pull/690) repaired the shared
+  maintenance linkage for the address-retention and statistics harnesses.
+  Both passed in disposable MariaDB after reproducing the original failures.
 - The latency benchmark exceeded its 3-second re-entry budget during the
   parallel baseline. The local branch
   `branch/gate-isolate-mariadb-loop-budget` runs that benchmark after the
