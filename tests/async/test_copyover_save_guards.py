@@ -87,6 +87,12 @@ checks = {
         "request.include_items = true;" in recover and
         "request.include_pets = true;" in recover and
         "restoreItemsOnly(ch, 0)" not in recover,
+    "copyover refreshes artifact custody after an overlapping writer":
+        recover.index("player_load_pipeline_wait(") <
+        recover.index("!player_load_items_read_current(result)") <
+        recover.index("persistence_writer_wait_idle(remaining)") <
+        recover.index("player_load_pipeline_execute_sync(") <
+        recover.index("player_load_materialize(player, result)"),
     "copyover places the materialized pet graph": "player_load_pets_place(ch);" in recover,
     "copyover does not rebuild descriptor pets as permanent prototypes":
         "setup_pet(pet, ch, -1" not in recover and
