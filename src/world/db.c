@@ -579,6 +579,11 @@ void boot_db(int mini_mode)
 	logit(LOG_STATUS, "Generating index table for objects.");
 	obj_index = generate_indices(obj_f, &top_of_objt);
 	stage_artifact_population();
+#ifdef __NO_MYSQL__
+	// The catalog supports an atomic batch. Finish boot discoveries before the
+	// live writer's per-row retry limit can turn them into a long startup backlog.
+	artifacts_save_boot_population();
+#endif
 
 	/*
 	 * load_obj_limits();
