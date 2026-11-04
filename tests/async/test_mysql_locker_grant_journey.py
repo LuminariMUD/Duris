@@ -120,16 +120,21 @@ def run(binary):
                     time.sleep(.1)
 
             def leave(name):
-                command(clients[name], 'open door')
+                client = clients[name]
                 deadline = time.monotonic() + 30
-                while True:
-                    clients[name].send('north')
-                    outcome, _ = clients[name].expect_any(('applying magic locks', 'private chests are still being secured'), timeout=30)
-                    if outcome == 'applying magic locks':
-                        command(clients[name], 'score')
-                        return
-                    assert time.monotonic() < deadline, 'private chest save never became durable'
+                while time.monotonic() < deadline:
+                    opened = command(client, 'open door')
+                    if 'belongings are being secured for storage' not in opened:
+                        assert 'Ok.' in opened or "It's already open!" in opened, opened
+                        client.send('north')
+                        outcome, _ = client.expect_any((
+                            'applying magic locks', 'private chests are still being secured',
+                            'last item movement is still being secured'), timeout=30)
+                        if outcome == 'applying magic locks':
+                            command(client, 'score')
+                            return
                     time.sleep(.1)
+                raise AssertionError('private chest save never became durable')
 
             def denied(name, target=OWNER):
                 response = act(name, 'enter locker ' + target, DENIED)
