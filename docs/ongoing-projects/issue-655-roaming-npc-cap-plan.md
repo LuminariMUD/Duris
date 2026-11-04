@@ -417,12 +417,13 @@ The following PRs cover the four failures from the integration run.
   native exec retires its handoff file. The complete MariaDB telemetry
   journey passed with a paced injected outage, failed and successful
   copyover, and reconnect.
-- [#696](https://github.com/LuminariMUD/Duris/pull/696) refreshes stale report
-  reads once per artifact generation. The native regression passed, and the
-  restored world published all six distinct report caches. Its loaded
-  connection pulse exceeded 250 ms during the parallel retest. Repeat the
-  serial capture, artifact matrix, and loop benchmark after the two full
-  gates finish.
+- [#696](https://github.com/LuminariMUD/Duris/pull/696) refreshes invalidated
+  report batches and retries rejected SQL reads and Redis writes by key.
+  The first check counted callbacks, which could pass with missing Redis
+  keys. The revised full-world check clears the six keys before restarting,
+  then verifies all six values and a recovered artifact in its staff report.
+  That local rerun restored a 69.5 MiB generation with no pulses over 250 ms
+  during capture.
 
 The second full test-all passed all 941 cases on master `01d190929` with
 zero failures or timeouts. Its log is `/tmp/duris-test-all-01d190929.log`.
@@ -431,8 +432,8 @@ serial commands from the proposed runner. They write the revision, logs,
 and eventual exit status to `/home/aiwithapex/projects/duris-master-gate-contracts/bin/tests/gate-db-serial/`.
 
 The serial DB retest exited 0. World capture passed in 88 seconds and
-restored a 69.5 MiB generation plus all six report caches. No pulse
-exceeded 250 ms. All seven artifact scenarios passed in 1,069 seconds,
+restored a 69.5 MiB generation and logged all six report callbacks. This
+historical run used the log-only report check. No pulse exceeded 250 ms. All seven artifact scenarios passed in 1,069 seconds,
 including the NPC hotboot, and the loop benchmark passed in 177 seconds
 with a slowest re-entry of 1.00 second. The separate complete locker and
 telemetry retests also passed. All four failures from the full integration
