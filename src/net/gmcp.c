@@ -609,9 +609,9 @@ void gmcp_handle_negotiation(struct descriptor_data *d, int cmd)
 
 static void gmcp_flush_spell_preparation(P_desc d)
 {
-	if (!d->gmcp_spell_preparation_pending ||
-	    !(d->gmcp_active_streams & GMCP_SUPPORT_SPELL_PREPARATION) || d->gmcp_control_pending ||
-	    (gmcp_session_supported(d) && d->gmcp_session_pending))
+	if (!d->gmcp_spell_preparation_pending || d->gmcp_control_pending ||
+	    (gmcp_session_supported(d) && d->gmcp_session_pending) ||
+	    !(gmcp_gameplay_streams(d) & GMCP_SUPPORT_SPELL_PREPARATION))
 		return;
 
 	// The stream belongs to the player's own body, including when staff switch bodies.

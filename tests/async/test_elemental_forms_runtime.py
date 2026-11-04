@@ -12,6 +12,7 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
+#include "net/gmcp.h"
 #include "core/files.h"
 #include "core/mm.h"
 #include "magic/spells.h"

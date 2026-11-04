@@ -13,6 +13,7 @@
 #define GMCP_H
 
 #include "core/structs.h"
+#include "magic/spells.h"
 #include "world/world_quest.h"
 
 /* forward declarations */
@@ -74,6 +75,15 @@ inline void gmcp_spell_preparation_changed(struct char_data *ch)
 	if (ch && ch->desc && !ch->desc->original && ch->desc->character == ch &&
 	    (ch->desc->gmcp_interests & GMCP_SUPPORT_SPELL_PREPARATION))
 		ch->desc->gmcp_spell_preparation_pending = true;
+}
+
+inline void gmcp_spell_preparation_affect_changed(struct char_data *ch, const affected_type *af)
+{
+	// A form change can switch between the memorization queue and slot recovery.
+	if (af->type == TAG_MEMORIZE || af->type == TAG_RACE_CHANGE ||
+	    af->type == SPELL_DRACONIC_APOTHEOSIS || (af->bitvector & AFF_WRAITHFORM) ||
+	    (af->bitvector4 & AFF4_VAMPIRE_FORM))
+		gmcp_spell_preparation_changed(ch);
 }
 
 // Invalidate only protocol presentation; never cancel durable item work.

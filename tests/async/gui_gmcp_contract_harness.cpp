@@ -2131,9 +2131,15 @@ static void spell_preparation_contract()
 	assert(payload(&d, "Char.SpellPreparation") ==
 	       "{\"state\":\"complete\",\"estimatedSeconds\":0}");
 
+	affected_type form{};
+	gmcp_spell_preparation_affect_changed(&actor, &form);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 1);
+
 	preparation_pulses = WAIT_SEC * 12 + 1;
 	preparation_active = true;
-	gmcp_spell_preparation_changed(&actor);
+	form.bitvector4 = AFF4_VAMPIRE_FORM;
+	gmcp_spell_preparation_affect_changed(&actor, &form);
 	gmcp_spell_preparation_changed(&actor);
 	gmcp_flush_initial_states();
 	for (int flush = 0; flush < 4; ++flush)
@@ -2141,6 +2147,12 @@ static void spell_preparation_contract()
 	assert(preparation_estimates == 2);
 	assert(payload(&d, "Char.SpellPreparation") ==
 	       "{\"state\":\"active\",\"estimatedSeconds\":13}");
+
+	d.write_failed = true;
+	gmcp_spell_preparation_changed(&actor);
+	gmcp_flush_initial_states();
+	assert(preparation_estimates == 2);
+	d.write_failed = false;
 
 	gmcp_handle_negotiation(&d, TELNET_DONT);
 	preparation_active = false;

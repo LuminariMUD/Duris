@@ -1854,6 +1854,7 @@ struct affected_type *affect_to_char(P_char ch, struct affected_type *af)
 
 	affected_alloc->next = ch->affected;
 	ch->affected = affected_alloc;
+	gmcp_spell_preparation_affect_changed(ch, affected_alloc);
 	if (!IS_SET(af->flags, AFFTYPE_NOAPPLY))
 	{
 		ch->specials.affected_by |= af->bitvector;
@@ -2066,8 +2067,7 @@ void affect_remove(P_char ch, struct affected_type *af)
 		hjp->next = af->next;
 	}
 
-	if (af->type == TAG_MEMORIZE)
-		gmcp_spell_preparation_changed(ch);
+	gmcp_spell_preparation_affect_changed(ch, af);
 
 	// Handle race changes.
 	if (af->type == TAG_RACE_CHANGE || af->type == SPELL_DRACONIC_APOTHEOSIS)
