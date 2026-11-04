@@ -351,3 +351,42 @@ immediate dependency. Keep this handoff current on the newest branch.
 The [regression guide](../testing/REGRESSIONS.md#full-world-roaming-npc-cap-and-recovery)
 contains the reproduction commands and outcomes. The [runbook](../operations/RUNBOOK.md#scheduled-roaming-npcs)
 contains the runtime controls and legacy diagnosis procedure.
+
+## Merged-master gate follow-up
+
+The implementation stack (#657–#661) landed through `7713fae16`.
+The first complete `make test-all` run on that revision recorded 912 passes
+and 30 failures across 942 cases. The baseline logs and exact revision are in
+`/home/aiwithapex/projects/duris-issue655-roaming-npc-cap/bin/tests/master-gates-7713fae16/`.
+The same checkout runs the original full `make test-db` gate and holds
+the per-case logs in `bin/tests/db/`. Archive those logs before rerunning
+because the gate recreates that directory.
+
+The focused `test-all` fixes in #663–#676 and #680 landed on master.
+PR #656 already covered the command-attribute issue raised in #662. The
+separate full `test-all` rerun uses
+`/home/aiwithapex/projects/duris-master-test-all`. Keep both gate results
+tied to their exact tested revisions.
+
+- [#681](https://github.com/LuminariMUD/Duris/pull/681) qualified the playtime
+  journey with the current hotboot command.
+- [#683](https://github.com/LuminariMUD/Duris/pull/683) qualified epic training
+  after synchronously publishing the fixture's effective HP.
+- [#686](https://github.com/LuminariMUD/Duris/pull/686) waits for the effective
+  luck change before testing artifact and guild rewards. Tracing after that
+  fix showed an independent copyover bug. A player read can overlap startup
+  writer work, and copyover drops the connection when artifact admission
+  requests a fresh read. The follow-up branch is
+  `branch/gate-copyover-refresh-artifact` in
+  `/home/aiwithapex/projects/duris-master-gate-contracts`.
+- [#687](https://github.com/LuminariMUD/Duris/pull/687) qualified restart
+  from a valid checkpoint after deliberately causing an overlapping capture
+  to be rejected.
+- The latency benchmark exceeded its 3-second re-entry budget during the
+  parallel baseline. The local branch
+  `branch/gate-isolate-mariadb-loop-budget` runs that benchmark after the
+  parallel database tests and keeps the budget. Run the actual benchmark on
+  a quiet host before publishing the change.
+
+After the baseline finishes, rerun `make test-db` with the verified
+focused changes applied and record the integration revision and result.
