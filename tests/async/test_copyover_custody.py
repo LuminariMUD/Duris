@@ -34,6 +34,11 @@ support = next(ast.literal_eval(node.value) for node in module.body
 support = support[:support.index("struct publish_gate")]
 for signature in (
     "P_char copyover_restore_mob_from_buffer(",
+    "void extract_char(",
+    "P_obj unequip_char(",
+    "void equip_char(",
+    "void obj_to_char_at_end(",
+    "char affect_total(",
     "bool sql_persistence_reconcile_world_recovery_items(",
     "bool item_ownership_runtime_hydrate_many_atomic(",
     "bool item_ownership_runtime_lookup(",
@@ -47,7 +52,6 @@ for signature in (
     support = remove_function(support, signature)
 
 support = support.replace("bool fallback_fixture = false;", "bool fallback_fixture = false;\nbool restoring_npc_items = false;")
-support = support.replace("return vnum == 2000 ? 0 : -1;", "return vnum == 2000 || vnum == 1255 ? 0 : -1;")
 support = support.replace("void obj_to_room(P_obj object, int room)\n{", "void obj_to_room(P_obj object, int room)\n{\n    assert(!(restoring_npc_items && object->obj_uid>=910 && object->obj_uid<=914));")
 support += '\nint curr_ingame_good = 0, curr_ingame_evil = 0;\n'
 support += 'int max_ingame_good = 0, max_ingame_evil = 0;\n'
@@ -144,6 +148,9 @@ void check_cp437(P_desc) { std::abort(); }
 acct_entry *allocate_account() { std::abort(); }
 void account_read(P_desc, const char *, account_read_done) { std::abort(); }
 acct_entry *free_account(acct_entry *) { std::abort(); }
+// This fixture restores into static NPCs and models its own item placement.
+void extract_char(P_char) {}
+P_obj unequip_char(P_char, int, bool) { std::abort(); }
 static char_data npc_holder;
 static npc_only_data npc_holder_data;
 static char_data catalog_keeper;
@@ -230,9 +237,9 @@ item_ownership_runtime_entry custody(uint64_t uid)
 {
     item_ownership_runtime_entry entry = {};
     entry.item_uid = uid;
-    entry.root_item_uid = uid == 900 ? 900 : 901;
-    entry.parent_item_uid = uid == 902 ? 901 : 0;
-    entry.owner = {item_owner_type::corpse, 77, 12};
+    entry.root_item_uid = 900;
+    entry.parent_item_uid = uid == 902 ? 901 : uid == 901 ? 900 : 0;
+    entry.owner = {item_owner_type::room, 100, 0};
     entry.item_revision = uid;
     entry.owner_revision = !strcmp(getenv("COPYOVER_TEST_CASE"),"mixed-owner") ? uid-870 : 31;
     entry.vnum = 1000;
@@ -263,7 +270,17 @@ int main(int argc, char **argv)
         for (uint64_t uid : {900, 901, 902})
             assert(item_ownership_runtime_hydrate(custody(uid)));
         std::vector<char> buffer(WORLD_RECOVERY_MAX_RECORD_BYTES);
-        assert(world_recovery_write_object_to_buffer(corpse, 100, buffer.data(), buffer.size()) == 0);
+        // A fuzzy snapshot carries the ordinary NPC corpse but leaves custody
+        // to SQL at recovery. Native copyover preserves the live ledger below.
+        const int fuzzy_size = world_recovery_write_object_to_buffer(corpse, 100, buffer.data(), buffer.size());
+        assert(fuzzy_size > 0);
+        world_recovery_object_record fuzzy_record{};
+        std::vector<world_recovery_item_snapshot> fuzzy_items;
+        assert(world_recovery_read_object_record(reinterpret_cast<const unsigned char *>(buffer.data()),
+                                                  fuzzy_size, &fuzzy_record, &fuzzy_items));
+        assert(fuzzy_record.room_vnum == 100 && fuzzy_items.size() == 3);
+        for (const auto &item : fuzzy_items)
+            assert(!(item.flags & WORLD_RECOVERY_ITEM_AUTHORITY_REQUIRED));
 
         if(npc_case()) {
             auto *mob=read_mobile(0,REAL); mob->in_room=0; mob->only.npc->idnum=42;

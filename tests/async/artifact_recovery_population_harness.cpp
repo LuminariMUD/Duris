@@ -58,7 +58,8 @@ encoded_floor(const std::vector<world_recovery_item_snapshot> &items, int room =
 	return bytes;
 }
 static redis_world_boot_snapshot
-snapshot(const std::vector<std::vector<world_recovery_item_snapshot>> &trees, bool mob = true)
+snapshot(const std::vector<std::vector<world_recovery_item_snapshot>> &trees, bool mob = true,
+	 bool roamer = false)
 {
 	redis_world_boot_snapshot result;
 	result.sequence = UINT64_MAX;
@@ -80,7 +81,7 @@ snapshot(const std::vector<std::vector<world_recovery_item_snapshot>> &trees, bo
 	if (mob)
 	{
 		copyover_mob entry = {};
-		entry.vnum = 2000;
+		entry.vnum = roamer ? 1255 : 2000;
 		entry.idnum = 42;
 		entry.room = 200;
 		entry.birthplace = 100;
@@ -91,7 +92,19 @@ snapshot(const std::vector<std::vector<world_recovery_item_snapshot>> &trees, bo
 		append(world_recovery_record_type::mob, native);
 	}
 	for (const auto &items : trees)
-		append(world_recovery_record_type::object, tree(items));
+	{
+		auto native = tree(items, roamer ? 200 : 100);
+		if (roamer)
+		{
+			const int32_t carried = -1;
+			native.resize(native.size() + sizeof(carried));
+			memcpy(native.data() + native.size() - sizeof(carried), &carried,
+			       sizeof(carried));
+			append(world_recovery_record_type::roamer_item, native);
+		}
+		else
+			append(world_recovery_record_type::object, native);
+	}
 	world_recovery_header header = {};
 	memcpy(header.magic, "WR12", 4);
 	header.schema_version = WORLD_RECOVERY_SCHEMA_VERSION;
@@ -202,6 +215,18 @@ int main()
 		invalid.floor_records = { encoded_floor({ root, changed }) };
 		reject(invalid);
 	}
+	auto roamer = snapshot({ { item(50, 50, 0), item(51, 50, 50) } }, true, true);
+	assert(!artifact_population_read_recovery(roamer, &population));
+	assert(population.mobs[0].vnum == 1255 && population.items.size() == 2 &&
+	       population.items[1].parent_item_uid == 50 &&
+	       population.items[1].owner_reference == 200);
+	// A newer floor tree is canonical even when it has only one member of
+	// the older NPC tree. Neither the old root nor a duplicate child survives.
+	roamer.floor_records = { encoded_floor({ item(51, 51, 0) }, 100) };
+	assert(!artifact_population_read_recovery(roamer, &population) &&
+	       !population.restore_conflict);
+	assert(population.items.size() == 1 && population.items[0].item_uid == 51 &&
+	       population.items[0].domain == artifact_payload_domain::redis_floor);
 	world_recovery_object_record record_out = { -7, 99 };
 	std::vector<world_recovery_item_snapshot> items_out = { item(88, 88, 0) };
 	auto native = tree({ root, child });

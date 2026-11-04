@@ -97,13 +97,13 @@ P_char get_linked_char(P_char ch, ush_int type)
 
 int real_room(int vnum)
 {
-    if (vnum == 60005 && rooms[1].number == vnum) return 1;
+    if ((vnum == 60005 || vnum == 0) && rooms[1].number == vnum) return 1;
     return vnum == 100 ? 0 : vnum == 200 ? 1 : -1;
 }
 
 int real_mobile(int vnum)
 {
-    return vnum == 2000 ? 0 : -1;
+    return vnum == 2000 || vnum == 1255 ? 0 : -1;
 }
 
 int real_object(int vnum)
@@ -147,6 +147,18 @@ void obj_from_room(P_obj object) { object->loc_p=LOC_NOWHERE; object->loc.room=N
 
 void extract_obj(P_obj object, int)
 {
+    if (OBJ_WORN(object))
+        for (auto &slot : object->loc.wearing->equipment)
+            if (slot == object)
+                slot = nullptr;
+    if (OBJ_CARRIED(object))
+    {
+        P_obj *link = &object->loc.carrying->carrying;
+        while (*link && *link != object)
+            link = &(*link)->next_content;
+        if (*link)
+            *link = object->next_content;
+    }
     while (object->contains)
     {
         P_obj child = object->contains;
@@ -170,14 +182,65 @@ void extract_obj(P_obj object, int)
     ++objects_extracted;
 }
 
-void extract_char(P_char)
+void extract_char(P_char mob)
 {
+    assert(character_list == mob && !mob->carrying);
+    character_list = mob->next;
+    delete mob->only.npc;
+    delete mob;
 }
-P_obj unequip_char(P_char, int, bool) { std::abort(); }
 
-P_char copyover_restore_mob_from_buffer(const char *, size_t, size_t *)
+P_obj unequip_char(P_char mob, int slot, bool)
 {
-    return nullptr;
+    P_obj object = mob->equipment[slot];
+    mob->equipment[slot] = nullptr;
+    object->loc_p = LOC_NOWHERE;
+    return object;
+}
+
+void equip_char(P_char mob, P_obj object, int slot, int)
+{
+    assert(!mob->equipment[slot] && OBJ_NOWHERE(object));
+    mob->equipment[slot] = object;
+    object->loc_p = LOC_WORN;
+    object->loc.wearing = mob;
+}
+
+void obj_to_char_at_end(P_obj object, P_char mob)
+{
+    assert(OBJ_NOWHERE(object));
+    object->loc_p = LOC_CARRIED;
+    object->loc.carrying = mob;
+    object->next_content = mob->carrying;
+    mob->carrying = object;
+}
+
+char affect_total(P_char mob, int)
+{
+    // Model resource changes from a derived-stat recalculation after equipping.
+    GET_MAX_HIT(mob) = 999;
+    return 0;
+}
+
+P_char copyover_restore_mob_from_buffer(const char *data, size_t size, size_t *consumed)
+{
+    copyover_mob saved{};
+    if (size != sizeof(saved))
+        return nullptr;
+    memcpy(&saved, data, sizeof(saved));
+    if (saved.vnum != 1255)
+        return nullptr;
+    assert(!character_list);
+    P_char mob = new char_data{};
+    mob->only.npc = new npc_only_data{};
+    mob->specials.act = ACT_ISNPC;
+    mob->in_room = real_room(saved.room);
+    GET_IDNUM(mob) = saved.idnum;
+    GET_HIT(mob) = saved.hit;
+    GET_MAX_HIT(mob) = saved.max_hit;
+    character_list = mob;
+    *consumed = size;
+    return mob;
 }
 
 char *str_dup(const char *value)
@@ -212,7 +275,7 @@ bool sql_persistence_world_recovery_items_owned(const std::vector<world_recovery
                                                 std::unordered_set<uint64_t> *owned)
 {
     for (const auto &item : items) {
-        assert(item.room_vnum>0 && item.vnum>0 && item.root_item_uid);
+        assert(item.room_vnum>=0 && item.vnum>0 && item.root_item_uid);
         if (owned_items.count(item.item_uid))
             owned->insert(item.item_uid);
     }
@@ -631,6 +694,94 @@ int main()
     const world_recovery_health canceled = world_recovery_pipeline_health_copy();
     assert(!canceled.initialized && !canceled.worker_running && !canceled.worker_busy);
     world_recovery_pipeline_reset_for_tests();
+
+    // Publish through the production capture path. A dummy sharing the
+    // template contributes neither a mob record nor any of its item trees.
+    {
+        mob_indexes[0].virtual_number = 1255;
+        char_data roamer{}, dummy{};
+        npc_only_data npc{}, target{};
+        roamer.only.npc = &npc;
+        dummy.only.npc = &target;
+        roamer.specials.act = dummy.specials.act = ACT_ISNPC;
+        roamer.points.hit = roamer.points.max_hit = 123;
+        roamer.in_room = 1;
+        rooms[1].number = 0; // The Void is a valid mobile location.
+        npc.idnum = 77;
+        npc.shopkeeper_shop_id = -1;
+        target.training_dummy = true;
+        roamer.next = &dummy;
+        character_list = &roamer;
+        obj_data worn{}, carried{}, excluded{};
+        worn.obj_uid = 900;
+        worn.loc_p = LOC_WORN;
+        worn.loc.wearing = &roamer;
+        roamer.equipment[3] = &worn;
+        carried.obj_uid = 901;
+        carried.loc_p = LOC_CARRIED;
+        carried.loc.carrying = &roamer;
+        roamer.carrying = &carried;
+        excluded.obj_uid = 902;
+        excluded.loc_p = LOC_CARRIED;
+        excluded.loc.carrying = &dummy;
+        dummy.carrying = &excluded;
+
+        std::vector<unsigned char> published;
+        assert(world_recovery_pipeline_init(copying_publish, &published));
+        assert(world_recovery_pipeline_request());
+        world_recovery_completion completion{};
+        while (!world_recovery_pipeline_take_completion(&completion))
+        {
+            world_recovery_pipeline_pulse();
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        character_list = nullptr;
+        assert(completion.published);
+        world_recovery_header header{};
+        assert(world_recovery_validate(published.data(), published.size(), 300, 0, &header));
+        assert(header.mob_count == 1 && header.object_count == 2);
+        const auto restore = [&]() {
+            assert(world_recovery_restore(published.data(), published.size(), 300, 0, nullptr));
+            assert(character_list && GET_IDNUM(character_list) == 77 && character_list->in_room == 1);
+            assert(GET_HIT(character_list) == 123 && GET_MAX_HIT(character_list) == 123);
+        };
+        restore();
+        assert(character_list->equipment[3]->obj_uid == 900);
+        assert(character_list->carrying->obj_uid == 901 && !character_list->carrying->next_content);
+        world_recovery_discard_mob(character_list);
+        assert(!character_list && !object_list);
+
+        owned_items.insert(901);
+        restore();
+        assert(character_list->equipment[3]->obj_uid == 900 && !character_list->carrying);
+        world_recovery_discard_mob(character_list);
+        owned_items.clear();
+
+        // A post-capture floor record owns the moved tree, not the old slot.
+        const auto floor_generation = object_generation({{item(900, 900, 0)}});
+        const unsigned char *floor = floor_generation.data() + WORLD_RECOVERY_WIRE_HEADER_BYTES
+            + WORLD_RECOVERY_WIRE_RECORD_HEADER_BYTES;
+        const size_t floor_size = floor_generation.data() + floor_generation.size() - floor;
+        assert(world_recovery_restore_with_floor(published.data(), published.size(), 300, 0,
+                                                 &floor, &floor_size, 1, nullptr));
+        assert(!character_list->equipment[3] && character_list->carrying->obj_uid == 901);
+        world_recovery_discard_mob(character_list);
+        assert(object_list && OBJ_ROOM(object_list) && object_list->obj_uid == 900 && !object_list->next);
+        extract_obj(object_list, FALSE);
+
+        // Rewrite the last framed item to an invalid wear slot and reseal.
+        auto malformed = published;
+        malformed[malformed.size() - 4] = MAX_WEAR;
+        malformed[malformed.size() - 3] = malformed[malformed.size() - 2] = malformed.back() = 0;
+        finish(malformed, header);
+        assert(!world_recovery_restore(malformed.data(), malformed.size(), 300, 0, nullptr));
+        assert(!character_list && !object_list);
+
+        objects_read = objects_extracted = 0;
+        mob_indexes[0].virtual_number = 2000;
+        rooms[1].number = 200;
+        world_recovery_pipeline_reset_for_tests();
+    }
 
     // A world above the old 64 MiB ceiling: its capture publishes, and boot takes it.
     {
@@ -1347,7 +1498,7 @@ completion = section(
 assert "capture_failure_pending" in completion
 busy = section(PIPELINE, "bool world_recovery_pipeline_busy", "bool world_recovery_capture_age_expired")
 assert "capture_failure_pending" in busy
-worker = section(PIPELINE, "void publisher_main()", "bool capture_one_record()")
+worker = extract_function("world_recovery_pipeline.c", "void publisher_main()")
 for forbidden in ("character_list", "object_list", "world[", "zone_table", "P_char", "P_obj", "copyover_write_"):
     assert forbidden not in worker
 assert "publish_callback(generation.blob.data()" in worker
