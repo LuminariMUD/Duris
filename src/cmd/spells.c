@@ -127,20 +127,19 @@ bool in_book(P_char target, int spell)
 void personal_spells(P_char ch, P_char target)
 {
 	std::ostringstream out;
-	out << heading(string(GET_NAME(target)) + " : SPELLS") << "  Class:";
+	out << "&+C>====[ " << GET_NAME(target) << " |";
 	for (int cls = 1; cls <= CLASS_COUNT; ++cls)
 		if (target->player.m_class & (1U << (cls - 1)))
-			out << " " << class_names_table[cls].ansi << "&n";
+			out << " " << class_names_table[cls].ansi << "&+C";
 	const int cls = flag2idx(target->player.m_class);
 	if (target->player.spec && cls > 0 && named_spec(cls, target->player.spec))
-		out << " / " << specdata[cls][target->player.spec - 1] << "&n";
-	out << "\n";
+		out << " / " << specdata[cls][target->player.spec - 1] << "&+C";
 	if (target->player.secondary_class)
-		out << "  Secondary class: "
-		    << class_names_table[flag2idx(target->player.secondary_class)].ansi << "&n\n";
+		out << " + " << class_names_table[flag2idx(target->player.secondary_class)].ansi
+		    << "&+C";
 	const int maximum = get_max_circle(target);
+	out << " | Max Circle " << maximum << " ]====<&n\n";
 	const bool books = shows_book(target);
-	out << "  Current maximum Circle: " << maximum << "\n";
 	std::vector<std::pair<int, string>> entries;
 	for (int spell = FIRST_SPELL; spell <= LAST_SPELL; ++spell)
 	{
@@ -161,23 +160,21 @@ void personal_spells(P_char ch, P_char target)
 					 strcasecmp(left.second.c_str(), right.second.c_str()) < 0;
 		  });
 	int previous = 0;
+	const char *const suffixes[] = { "th", "st", "nd", "rd" };
 	for (const auto &[circle, name] : entries)
 	{
 		if (circle != previous)
-			out << "\n&+B  Circle " << circle << "&n"
-			    << (circle <= maximum ? " (circle accessible)" : " (future circle)")
-			    << "\n";
-		out << "  " << name << "\n";
+			out << "\n&+B" << circle << suffixes[circle <= 3 ? circle : 0]
+			    << " CIRCLE:&n\n";
+		if (circle <= maximum)
+			out << name << "\n";
+		else
+			out << "&+L" << name << "&n\n";
 		previous = circle;
 	}
 	if (entries.empty())
 		out << "\n  No eligible spells for this character's current classes/specialization.\n";
-	else
-		out << "\n  Circle access is separate from preparation and readiness to cast.\n";
-	if (books)
-		out << "  Book markers check inventory, hands and belt; they do not mean prepared.\n";
-	out << "  Reference: &+Wspells <class or specialization>&n\n"
-	       "  Details: &+Wspells info <spell name>&n\n";
+	out << "\nSee: &+Wspells <class or specialization>&n | &+Wspells info <spell name>&n\n";
 	send_to_char(out.str().c_str(), ch);
 }
 
@@ -189,20 +186,24 @@ void catalog(P_char ch, int cls, int spec)
 				    string(class_names_table[cls].ansi) + " : BASE CLASS";
 	out << heading(title);
 	int count = 0;
+	bool gained = false;
 	for (int circle = 1; circle <= MAX_CIRCLE; ++circle)
 	{
-		std::vector<string> entries;
+		std::vector<int> entries;
 		for (int spell = FIRST_SPELL; spell <= LAST_SPELL; ++spell)
 			if (defined_spell(spell) && reference_circle(spell, cls, spec) == circle)
-				entries.emplace_back(skills[spell].name);
+				entries.push_back(spell);
 		if (entries.empty())
 			continue;
-		std::sort(entries.begin(), entries.end(),
-			  [](const string &left, const string &right)
-			  { return strcasecmp(left.c_str(), right.c_str()) < 0; });
+		std::sort(entries.begin(), entries.end(), [](int left, int right)
+			  { return strcasecmp(skills[left].name, skills[right].name) < 0; });
 		out << "&+B  Circle " << circle << "&n\n";
-		for (const string &entry : entries)
-			out << "  " << entry << "\n";
+		for (int spell : entries)
+		{
+			const bool added = spec && !reference_circle(spell, cls, 0);
+			out << (added ? "  * " : "  ") << skills[spell].name << "\n";
+			gained |= added;
+		}
 		out << "\n";
 		count += entries.size();
 	}
@@ -215,12 +216,17 @@ void catalog(P_char ch, int cls, int spec)
 			if (defined_spell(spell) && reference_circle(spell, cls, 0) &&
 			    !reference_circle(spell, cls, spec))
 				lost.emplace_back(skills[spell].name);
+		if (gained)
+			out << "&+W  * indicates spells gained from spec.&n"
+			    << (lost.empty() ? "\n" : " ");
 		if (!lost.empty())
 		{
 			std::sort(lost.begin(), lost.end(),
 				  [](const string &left, const string &right)
 				  { return strcasecmp(left.c_str(), right.c_str()) < 0; });
-			out << "&+W  Spells lost from base class:&n\n";
+			if (!gained)
+				out << "  ";
+			out << "&+WSpells lost from base class:&n\n";
 			for (const string &name : lost)
 				out << "  " << name << "\n";
 		}

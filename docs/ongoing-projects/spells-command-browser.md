@@ -44,11 +44,11 @@ browser; a separate `levels` or `circles` command is unnecessary for this scope.
 ### Personal spells and staff inspection
 
 - Bare `spells` always selects the caller. Identify whose spells are displayed,
-  their class/spec, any secondary class, and their current maximum spell circle.
-- Group spells by ascending circle, alphabetically within each circle. Include
-  future spells belonging to the character's effective class/spec and distinguish
-  them from spells whose circle is already accessible. Do not rely on color
-  alone to communicate future access.
+  their class/spec, any secondary class, and their current maximum spell circle
+  in one header line.
+- Group spells by ascending circle under ordinal headings, alphabetically within
+  each circle. Dim spells above the maximum circle shown in the header.
+- End with one `See` line linking to the class/spec catalog and spell details.
 - Preserve relevant spellbook presence markers using the existing accessible
   book lookup modes. Display them only where the character's preparation path
   uses them; do not imply that every caster needs a spellbook or uses mana.
@@ -71,8 +71,9 @@ browser; a separate `levels` or `circles` command is unnecessary for this scope.
   with its parent class. Group entries by circle and then spell name.
 - A base-class lookup shows base grants. A specialization lookup shows its
   **complete effective spell set**, with inherited spells, additions, changed
-  circles, and removals applied. Include a concise list of spells lost from the
-  base class and `spells info <spell name>` navigation.
+  circles, and removals applied. Prefix additions with `*` and explain the
+  marker alongside the lost-spells heading when both apply. Include
+  `spells info <spell name>` navigation.
 - Use the initialized class/spec definitions and supported circle bounds.
   Treat zero/invalid circles and removed grants correctly; do not recover a
   removed spell by falling back to the base class.
