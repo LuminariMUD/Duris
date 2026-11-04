@@ -97,7 +97,8 @@ def run(binary, backend):
                 ):
                     client = journey.MudClient(plain)
                     clients.append(client)
-                    journey.create_character(client, expected_room=None, account=account, character=name,
+                    expected_room = None if name == BLIGHTER else "The Regression Arena"
+                    journey.create_character(client, expected_room=expected_room, account=account, character=name,
                                              email=name.lower() + "@example.invalid",
                                              class_name=class_key, race_name=race_key, alignment=alignment)
                     client.send("save")
@@ -111,7 +112,11 @@ def run(binary, backend):
                 god = login(GOD, GOD_ACCOUNT)
                 player = login(PLAYER, ACCOUNT)
                 blighter = login(BLIGHTER, BLIGHTER_ACCOUNT)
-                assert "deforest is your spell interface" in command(blighter, "spells")
+                raw_start = len(blighter.raw_transcript)
+                blighter_spells = command(blighter, "spells")
+                assert f">====[ {BLIGHTER} | Blighter | Max Circle 1 ]====<" in blighter_spells
+                assert "deforest is your spell interface" in blighter_spells
+                assert b"\x1b[0;1;37mdeforest\x1b[0m is your spell interface" in blighter.raw_transcript[raw_start:]
                 assert "spell slots available" in command(blighter, "deforest")
                 raw_start = len(player.raw_transcript)
                 own = command(player, "spells")
