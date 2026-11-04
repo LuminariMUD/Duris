@@ -26,6 +26,7 @@
 /* Forward declarations for hash functions used in enhance() and do_enhance() */
 static int enhance_hash(int key);
 static int enhance_stat_hash(int key);
+static bool is_enhance_pool_candidate(P_obj obj);
 static struct enhance_essence_zone_rule *enhance_find_essence_zone_rule(int zone_number);
 extern double enhance_stat_cap_multiplier;
 extern int enhance_stat_platinum_base;
@@ -93,7 +94,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	chluck = (GET_C_LUK(ch));
 	sval = itemvalue(source);
-	minval = itemvalue(source) - enhance_material_ival_delta;
+	minval = sval - enhance_material_ival_delta;
 	searchcount = 0;
 	maxsearch = enhance_search_max_attempts;
 	// Only search matching wear flags unless none matching, then just search source wear flags.
@@ -211,7 +212,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 								    (newval - cascade_step);
 			}
 
-			if (cascade_ival < 1 ||
+			if (cascade_ival <= sval ||
 			    cascade_ival > enhance_ival_cap + enhance_original_max_roll)
 				continue;
 
@@ -232,10 +233,13 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 				/* Found a match — read the object */
 				robj = read_object(entry->vnum, VIRTUAL);
-				if (robj)
-				{
+				if (!robj)
+					continue;
+				if ((wearflags & robj->wear_flags) &&
+				    is_enhance_pool_candidate(robj) && itemvalue(robj) > sval)
 					break;
-				}
+				extract_obj(robj);
+				robj = NULL;
 			}
 
 			if (robj)
@@ -250,8 +254,7 @@ void enhance(P_char ch, P_obj source, P_obj material)
 
 	if (!robj)
 	{
-		act("&+GThe &+ritem gods&+G could not find a better type of &+yitem &+Gthan your &n$p&+G this time. &+WTry again&+G. If your item's value is above &+W55&+G you may have the &+Wbest&+G "
-		    "item of that type!\r\n",
+		act("&+GThe &+ritem gods&+G could not find a higher-value replacement for your &n$p&+G.&n",
 		    FALSE, ch, source, 0, TO_CHAR);
 		return;
 	}
@@ -271,13 +274,26 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		set_obj_extra_flags(robj, robj->extra_flags & ~(ITEM_INVISIBLE));
 	}
 	SET_BIT(robj->extra_flags, ITEM_NOREPAIR);
+	const int final_value = itemvalue(robj);
+	if (final_value <= sval)
+	{
+		extract_obj(robj);
+		send_to_char("The replacement would not improve your item's value.\r\n", ch);
+		return;
+	}
+	// A failed transfer can destroy the replacement. Preserve the player's inputs.
+	if (!obj_to_char(robj, ch))
+	{
+		send_to_char("The replacement could not be delivered.\r\n", ch);
+		return;
+	}
+
 	SUB_MONEY(ch, cost, 0);
 	send_to_char("Your pockets feel &+Wlighter&n.\r\n", ch);
 
 	act("&+BYour enhancement is a success! You now have &n$p&+B!", FALSE, ch, robj, 0, TO_CHAR);
-	snprintf(buf, MAX_STRING_LENGTH, "&+wFinal item value: %d.&n\r\n", itemvalue(robj));
+	snprintf(buf, MAX_STRING_LENGTH, "&+wFinal item value: %d.&n\r\n", final_value);
 	send_to_char(buf, ch);
-	const bool object_survived = obj_to_char(robj, ch);
 	obj_from_char(source);
 	extract_obj(source);
 	if (!pouch_material)
@@ -285,12 +301,10 @@ void enhance(P_char ch, P_obj source, P_obj material)
 		obj_from_char(material);
 		extract_obj(material);
 	}
-	if (object_survived)
-		statuslog(ch->player.level,
-			  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!",
-			  GET_NAME(ch), obj_index[robj->R_num].virtual_number,
-			  robj->short_description, itemvalue(robj),
-			  (ch->in_room == NOWHERE) ? -1 : world[ch->in_room].number);
+	statuslog(ch->player.level,
+		  "&+BEnhancement&n:&n %s&n just got [%d] '%s&n' ival [%d] at [%d]!", GET_NAME(ch),
+		  obj_index[robj->R_num].virtual_number, robj->short_description, final_value,
+		  (ch->in_room == NOWHERE) ? -1 : world[ch->in_room].number);
 	return;
 }
 
@@ -1872,6 +1886,22 @@ static bool is_enhance_pool_banned(P_obj item)
 	return FALSE;
 }
 
+/* Use the same eligibility rules at index build time and when loading a result. */
+static bool is_enhance_pool_candidate(P_obj obj)
+{
+	if (!IS_SET(obj->wear_flags, ITEM_TAKE) ||
+	    IS_SET(obj->extra_flags,
+		   ITEM_ARTIFACT | ITEM_NOSELL | ITEM_NORENT | ITEM_NOSHOW | ITEM_TRANSIENT) ||
+	    IS_OBJ_STAT2(obj, ITEM2_QUESTITEM))
+		return false;
+	if (obj->type == ITEM_STAFF && obj->value[3] > 0)
+		return false;
+	if (obj->type == ITEM_TREASURE || obj->type == ITEM_POTION || obj->type == ITEM_MONEY ||
+	    obj->type == ITEM_KEY || obj->type == ITEM_WAND)
+		return false;
+	return !is_enhance_pool_banned(obj);
+}
+
 /* =============================================================================
 		 *  load_enhance_index() — Build ival and stat hash tables from vnum range
 		 * =============================================================================
@@ -1895,32 +1925,7 @@ void load_enhance_index(void)
 		if (!obj)
 			continue;
 
-		/* Validate with same criteria as enhance() */
-		if (!IS_SET(obj->wear_flags, ITEM_TAKE) ||
-		    IS_SET(obj->extra_flags, ITEM_ARTIFACT) ||
-		    IS_SET(obj->extra_flags, ITEM_NOSELL) ||
-		    IS_SET(obj->extra_flags, ITEM_NORENT) ||
-		    IS_SET(obj->extra_flags, ITEM_NOSHOW) ||
-		    IS_SET(obj->extra_flags, ITEM_TRANSIENT) || IS_OBJ_STAT2(obj, ITEM2_QUESTITEM))
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		if (obj->type == ITEM_STAFF && obj->value[3] > 0)
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		if (obj->type == ITEM_TREASURE || obj->type == ITEM_POTION ||
-		    obj->type == ITEM_MONEY || obj->type == ITEM_KEY || obj->type == ITEM_WAND)
-		{
-			extract_obj(obj);
-			continue;
-		}
-
-		if (is_enhance_pool_banned(obj))
+		if (!is_enhance_pool_candidate(obj))
 		{
 			extract_obj(obj);
 			continue;
