@@ -151,6 +151,8 @@ def main() -> None:
         program = Path(temporary) / "harness.cpp"
         binary = Path(temporary) / "harness"
         program.write_text(HARNESS + extract_function("utility.c", "bool FightingCheck(") +
+                           extract_function("fight.c", "float inertial_barrier_attack_share(") +
+                           extract_function("fight.c", "float combat_mind_attack_floor(") +
                            extract_function("fight.c", "void perform_violence(") + CASES)
         subprocess.run([
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc", "-I/usr/include/mysql",

@@ -110,6 +110,12 @@ functions = [
     ('magic.c', 'static int elemental_aura_duration('),
     ('magic.c', 'static int elemental_aura_max_stat('),
     ('magic.c', 'void spell_elemental_aura('),
+    ('psionics.c', 'static int fire_aura_duration('),
+    ('psionics.c', 'static int fire_aura_ac('),
+    ('psionics.c', 'static int fire_aura_str_max('),
+    ('psionics.c', 'static int fire_aura_nimbleness('),
+    ('psionics.c', 'static int fire_aura_con_max('),
+    ('psionics.c', 'static int fire_aura_full_form_save('),
     ('psionics.c', 'void spell_fire_aura('),
     ('magic.c', 'static int air_form_duration('),
     ('magic.c', 'void spell_air_form('),
@@ -131,6 +137,9 @@ functions = [
     ('magic.c', 'static int earthen_maul_terrain('),
     ('magic.c', 'void spell_earthen_maul('),
     ('fight.c', 'bool decrease_skin_counter('),
+    ('fight.c', 'int displacement_absorb_roll('),
+    ('fight.c', 'float biofeedback_melee_share('),
+    ('fight.c', 'int skin_spell_deduct('),
     ('fight.c', 'bool critical_attack('),
 ]
 skills = source('skills.c').read_text()

@@ -4661,6 +4661,12 @@ void do_area(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// Quick thinking and combat mind steady a potion in combat.
+int combat_mind_quaff_chance(int chance)
+{
+	return (int)(chance * 1.25);
+}
+
 void do_quaff(P_char ch, char *argument, int /*cmd*/)
 {
 	P_obj bottle;
@@ -4749,7 +4755,7 @@ void do_quaff(P_char ch, char *argument, int /*cmd*/)
 
 		if (has_innate(ch, INNATE_QUICK_THINKING) ||
 		    affected_by_spell(ch, SPELL_COMBAT_MIND))
-			chance = (int)(chance * 1.25);
+			chance = combat_mind_quaff_chance(chance);
 
 		if (number(0, 99) >= chance && OBJ_VNUM(bottle) != VOBJ_EPIC_BOTTLE_EPICS &&
 		    OBJ_VNUM(bottle) != VOBJ_EPIC_TOCORPSE_POTION)

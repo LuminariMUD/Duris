@@ -261,7 +261,7 @@ start = score.index('#ifdef STANCES_ALLOWED')
 start = score.index('#endif', start) + len('#endif')
 end = score.index('\n\tEpicBonusData ebdata;', start)
 render = 'void render_epics(P_char ch) { char buf[MAX_STRING_LENGTH]; int i; P_obj nexus;\n' + score[start:end] + '\n}\n'
-code = PRELUDE + context + functions + extract_function('actoth.c', 'void do_quaff(') + render + DRIVER
+code = PRELUDE + context + functions + extract_function('actoth.c', 'int combat_mind_quaff_chance(') + extract_function('actoth.c', 'void do_quaff(') + render + DRIVER
 build_root = ROOT / 'bin/tests'
 build_root.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix='epic-gain-', dir=build_root) as directory:

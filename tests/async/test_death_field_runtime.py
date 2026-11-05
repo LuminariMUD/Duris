@@ -19,6 +19,7 @@ PRELUDE = r'''
 #include "net/gmcp.h"
 #include "world/events.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "combat/damage.h"
 #include "combat/dam_mods.h"
 #include "combat/grapple.h"
@@ -95,6 +96,7 @@ bool divine_blessing_check(P_char, P_char, int) { return false; }
 int devotion_skill_check(P_char) { return 0; }
 void __free(void *p, const char *, int) { free(p); }
 int number(int low, int high) { return std::uniform_int_distribution<int>(low, high)(rng); }
+const Rolls live_rolls = { dice, number };
 float get_property(const char *name, double fallback)
 {
     if (!strcmp(name, "spell.area.minChance.deathField")) return minimum;
@@ -345,6 +347,13 @@ def main():
         ('utility.c', 'int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, P_char, P_obj),\n\t\t\tint level, P_char victim, float min_chance, float chance_step)'),
         ('fight.c', 'int check_damage_ward(P_char attacker,'),
         ('fight.c', 'int spell_damage(P_char ch,'),
+        ('utility.c', 'int dice(int num, int size)'),
+        ('psionics.c', 'static int death_field_damage('),
+        ('psionics.c', 'static int death_field_enslaver_damage('),
+        ('psionics.c', 'static int death_field_player_damage('),
+        ('psionics.c', 'static int death_field_stack_seconds('),
+        ('psionics.c', 'static int death_field_stacked_level('),
+        ('psionics.c', 'static int death_field_lag('),
         ('psionics.c', 'void spell_single_death_field('),
         ('psionics.c', 'void spell_death_field('),
         ('sparser.c', 'static bool schedule_spellcast('),

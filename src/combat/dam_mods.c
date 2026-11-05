@@ -35,6 +35,12 @@ double dreadnaught_spell_defense(const Rolls &rolls, const struct affected_type 
 	       (paf->level > 95 ? rolls.number(0, paf->level - 95) : 0);
 }
 
+// What holy sword adds to damage against the opposite alignment.
+int holy_sword_alignment_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, 6);
+}
+
 extern float dam_factor[LAST_DF + 1];
 extern float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 extern float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
@@ -702,7 +708,7 @@ if (IS_HARDCORE(victim))
 , { MAKE_DAM_MOD_PRED(){
 	  if ((IS_GOOD(caster) && affected_by_spell(caster, SPELL_HOLY_SWORD) && IS_EVIL(victim)) ||
 	      (IS_EVIL(caster) && affected_by_spell(caster, SPELL_HOLY_SWORD) && IS_GOOD(victim))){
-		  dam_mod->mod += dice(2, 6);
+		  dam_mod->mod += holy_sword_alignment_damage(live_rolls);
 dam_mod->type = dam_mod_type::Added;
 }
 }

@@ -51,6 +51,10 @@ void CharWait(P_char, int ticks) { waited += ticks; }
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
     ('magic.c', 'static int teleport_range('),
     ('magic.c', 'void spell_teleport('),
+    ('psionics.c', 'static int depart_range('),
+    ('psionics.c', 'static int depart_free_level('),
+    ('psionics.c', 'static int depart_lag('),
+    ('psionics.c', 'static int depart_limited_range('),
     ('psionics.c', 'void spell_depart('),
     ('ethermancer.c', 'void spell_etheric_gust('),
 ]) + r'''

@@ -154,6 +154,42 @@ float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 extern dam_mod_predicate spell_damage_modifiers[NUM_SPELL_PREDICATES];
 extern dam_mod_predicate raw_damage_modifiers[NUM_RAW_PREDICATES];
 
+// A nonzero roll lets a melee hit through displacement.
+int displacement_absorb_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+// The share of what is left of a melee hit that biofeedback lets through.
+float biofeedback_melee_share()
+{
+	return get_property("damage.reduction.biofeedback", 0.65);
+}
+
+// What a skin spell first takes off each melee hit.
+int skin_spell_deduct()
+{
+	return get_property("damage.reduction.skinSpell.deduct", 46);
+}
+
+// A psionicist's bare-handed damage under combat mind.
+int combat_mind_bare_hand_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(ch->points.damnodice, ch->points.damsizedice);
+}
+
+// The share of an attacker's melee attacks an inertial barrier lets through.
+float inertial_barrier_attack_share()
+{
+	return get_property("attacks.inertialBarrier.multiplier", 0.5);
+}
+
+// Combat mind never lets a multiplier cut its user's melee attacks below this share.
+float combat_mind_attack_floor()
+{
+	return get_property("attacks.combatMind.multiplier", 0.75);
+}
+
 #define SOUL_TRAP_SINGLE 0
 #define SOUL_TRAP_GROUP 1
 
@@ -308,6 +344,18 @@ void update_racial_dam_factors()
 }
 
 /* The Fight related routines */
+// The share of psionic damage tower of iron will lets through.
+float tower_iron_will_share()
+{
+	return get_property("damage.reduction.towerOfIronWill", 0.5);
+}
+
+// The share of elemental damage energy containment lets through.
+float energy_containment_share()
+{
+	return get_property("damage.reduction.EnergyContainment", 0.750);
+}
+
 void update_dam_factors()
 {
 	dam_factor[DF_SWASHBUCKLER_DEFENSE] = get_property("damage.reduction.swashbuckler", 0.800);
@@ -326,7 +374,7 @@ void update_dam_factors()
 	dam_factor[DF_ELSHIELDRED_TROLL] =
 		get_property("damage.reduction.fireColdShield.Troll", 0.80);
 	dam_factor[DF_ELSHIELDRED] = get_property("damage.reduction.fireColdShield", 0.55);
-	dam_factor[DF_IRONWILL] = get_property("damage.reduction.towerOfIronWill", 0.5);
+	dam_factor[DF_IRONWILL] = tower_iron_will_share();
 	dam_factor[DF_TIGERPALM] = get_property("damage.reduction.tigerpalm", 0.65);
 	dam_factor[DF_ELAFFINITY] = get_property("damage.reduction.elementalAffinity", 0.25);
 	dam_factor[DF_COLDWRITHE] = get_property("damage.increase.coldWrithe", 2.0);
@@ -356,8 +404,7 @@ void update_dam_factors()
 	dam_factor[DF_CHAOSSHIELD] = get_property("damage.reduction.chaosshield.mod", 0.90);
 	dam_factor[DF_BERSERKRAGE] = get_property("damage.increase.berserk.rage", 1.350);
 	dam_factor[DF_RAGED] = get_property("damage.increase.rage", 2.000);
-	dam_factor[DF_ENERGY_CONTAINMENT] =
-		get_property("damage.reduction.EnergyContainment", 0.750);
+	dam_factor[DF_ENERGY_CONTAINMENT] = energy_containment_share();
 	dam_factor[DF_GUARDIANS_BULWARK] =
 		get_property("damage.reduction.guardians.bulwark", 0.850);
 	dam_factor[DF_DAMROLL_MOD] = get_property("damroll.mod", 1.0);
@@ -5048,8 +5095,9 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 
 	// Combat mind bypasses displacement.
-	if (affected_by_spell(victim, SPELL_DISPLACEMENT) && (!number(0, 5)) &&
-	    !(flags & PHSDAM_NOREDUCE) && !affected_by_spell(ch, SPELL_COMBAT_MIND))
+	if (affected_by_spell(victim, SPELL_DISPLACEMENT) &&
+	    (!displacement_absorb_roll(live_rolls)) && !(flags & PHSDAM_NOREDUCE) &&
+	    !affected_by_spell(ch, SPELL_COMBAT_MIND))
 	{
 		dam = 0;
 		act("&+WThe aura of displacement around&n $n&+W absorbs most of the assault!&n",
@@ -5064,7 +5112,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_BIOFEEDBACK) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.biofeedback", 0.65);
+		reduction = 1. - biofeedback_melee_share();
 		skin = SPELL_BIOFEEDBACK;
 	}
 	else if (affected_by_spell(victim, SPELL_SHADOW_SHIELD) && !(flags & PHSDAM_NOREDUCE))
@@ -5116,7 +5164,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 
 	if (skin && !dragonfist)
 	{
-		dam -= get_property("damage.reduction.skinSpell.deduct", 46);
+		dam -= skin_spell_deduct();
 
 		if (dam > 10 && !(flags & PHSDAM_NOREDUCE))
 			dam -= dam * reduction;
@@ -5281,6 +5329,21 @@ static void holy_sacrifice_heal(P_char owner, int dam)
 	}
 }
 
+// Cannibalize takes mana from a hit that deals more than this.
+int cannibalize_least_damage()
+{
+	return 2;
+}
+
+// The mana cannibalize takes from a hit, before the target's own mana limits it.
+double cannibalize_mana(int dam, int level)
+{
+	double can_mana = MAX(10, dam);
+	can_mana = BOUNDED(0, can_mana, 100);
+	can_mana *= level / 30.;
+	return can_mana;
+}
+
 void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 {
 	int dam = (int)fdam, vamped = 0, wdam;
@@ -5296,11 +5359,9 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 		return;
 
 	// Allowing cannibalize through all weapons.
-	if (IS_AFFECTED3(ch, AFF3_CANNIBALIZE) && dam > 2)
+	if (IS_AFFECTED3(ch, AFF3_CANNIBALIZE) && dam > cannibalize_least_damage())
 	{
-		can_mana = MAX(10, dam);
-		can_mana = BOUNDED(0, can_mana, 100);
-		can_mana *= GET_LEVEL(ch) / 30.;
+		can_mana = cannibalize_mana(dam, GET_LEVEL(ch));
 		can_mana = BOUNDED(0, GET_MANA(victim), can_mana);
 
 		GET_MANA(ch) += (int)can_mana;
@@ -6234,6 +6295,12 @@ int calculate_ac(P_char ch)
 	return BOUNDED(-750, victim_ac, 100);
 }
 
+// Combat mind makes anyone hit at the warrior rate.
+int combat_mind_to_hit()
+{
+	return get_property("to.hit.WarriorTypes", 10);
+}
+
 int calculate_thac_zero(P_char ch, int skill)
 {
 	int to_hit = 0;
@@ -6247,7 +6314,7 @@ int calculate_thac_zero(P_char ch, int skill)
 		 GET_CLASS(ch, CLASS_ANTIPALADIN) || affected_by_spell(ch, SPELL_COMBAT_MIND) ||
 		 is_wearing_necroplasm(ch) || GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER))
 	{
-		to_hit = get_property("to.hit.WarriorTypes", 10);
+		to_hit = combat_mind_to_hit();
 	}
 	else if (GET_CLASS(ch, CLASS_MERCENARY) || GET_CLASS(ch, CLASS_REAVER) ||
 		 GET_CLASS(ch, CLASS_RANGER) || GET_CLASS(ch, CLASS_BERSERKER) ||
@@ -7331,7 +7398,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	}
 	else if (GET_CLASS(ch, CLASS_PSIONICIST) && affected_by_spell(ch, SPELL_COMBAT_MIND))
 	{
-		dam = dice(ch->points.damnodice, ch->points.damsizedice);
+		dam = combat_mind_bare_hand_damage(live_rolls, ch);
 	}
 	else
 	{
@@ -8539,6 +8606,17 @@ int MonkRiposte(P_char victim, P_char attacker, P_obj wpn)
 	return true;
 }
 
+// A psionicist's parry rating under combat mind gains both of these.
+int combat_mind_parry_skill(int level)
+{
+	return level;
+}
+
+int combat_mind_parry_bonus(int level)
+{
+	return (int)(level / 2);
+}
+
 int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 {
 	int learnedvictim = GET_CHAR_SKILL(victim, SKILL_PARRY);
@@ -8554,7 +8632,7 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 		return FALSE;
 
 	if (affected_by_spell(victim, SPELL_COMBAT_MIND) && GET_CLASS(victim, CLASS_PSIONICIST))
-		learnedvictim += GET_LEVEL(victim);
+		learnedvictim += combat_mind_parry_skill(GET_LEVEL(victim));
 
 	if (learnedvictim < 1)
 		return FALSE;
@@ -8589,7 +8667,7 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 	// Victim's parry:
 
 	if (affected_by_spell(victim, SPELL_COMBAT_MIND) && GET_CLASS(victim, CLASS_PSIONICIST))
-		learnedvictim += (int)(GET_LEVEL(victim) / 2);
+		learnedvictim += combat_mind_parry_bonus(GET_LEVEL(victim));
 	learnedvictim += dex_app[STAT_INDEX(GET_C_DEX(victim))].reaction * 15;
 	learnedvictim += wis_app[STAT_INDEX(GET_C_WIS(victim))].bonus * 5;
 
@@ -8908,6 +8986,12 @@ void event_windstrom(P_char ch, P_char vict, char *args)
 		     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &messages);
 }
 
+// Above this level a psionicist's combat mind adds a second attack, not one.
+int combat_mind_second_attack_above()
+{
+	return 51;
+}
+
 #define ADD_ATTACK(slot) (attacks[number_attacks++] = (slot))
 
 int calculate_attacks(P_char ch, int attacks[])
@@ -9126,7 +9210,7 @@ int calculate_attacks(P_char ch, int attacks[])
 		{
 			ADD_ATTACK(PRIMARY_WEAPON);
 
-			if (GET_LEVEL(ch) > 51)
+			if (GET_LEVEL(ch) > combat_mind_second_attack_above())
 				ADD_ATTACK(PRIMARY_WEAPON);
 		}
 
@@ -9587,7 +9671,7 @@ void perform_violence(void)
 		float attacksMultiplier = get_property("attacks.default.multiplier", 1.0);
 
 		if (IS_AFFECTED3(opponent, AFF3_INERTIAL_BARRIER))
-			attacksMultiplier = get_property("attacks.inertialBarrier.multiplier", 0.5);
+			attacksMultiplier = inertial_barrier_attack_share();
 		else if (IS_ARMLOCK(ch))
 			attacksMultiplier = get_property("attacks.armLock.multiplier", 0.5);
 		else if (affected_by_spell(ch, TAG_INTERCEPT))
@@ -9595,7 +9679,7 @@ void perform_violence(void)
 
 		if (affected_by_spell(ch, SPELL_COMBAT_MIND))
 		{
-			float cmMulti = get_property("attacks.combatMind.multiplier", 0.75);
+			float cmMulti = combat_mind_attack_floor();
 			if (attacksMultiplier < cmMulti)
 				attacksMultiplier = cmMulti;
 		}
