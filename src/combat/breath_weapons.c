@@ -146,7 +146,8 @@ void breath_weapon_lightning(int level, P_char ch, char * /*arg*/, int /*type*/,
 
 	if (IS_AFFECTED2(victim, AFF2_PROT_LIGHTNING))
 	{
-		dam = (int)((float)dam * .80);
+		extern double storm_empathy_lightning_breath_factor();
+		dam = (int)((float)dam * storm_empathy_lightning_breath_factor());
 	}
 
 	dam = BOUNDED(20, dam, 1000);
@@ -628,7 +629,8 @@ void breath_weapon_azure(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 
 	if (IS_AFFECTED2(victim, AFF2_PROT_LIGHTNING))
 	{
-		dam = (int)((float)dam * .80);
+		extern double storm_empathy_lightning_breath_factor();
+		dam = (int)((float)dam * storm_empathy_lightning_breath_factor());
 	}
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, SPLDAM_BREATH | SPLDAM_NODEFLECT,

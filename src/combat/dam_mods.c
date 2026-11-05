@@ -595,7 +595,9 @@ else if (get_linking_char(victim, LNK_ETHEREAL))
 
 if (IS_ALIVE(eth_ch))
 {
-	double localDam = damage * 0.5;
+	extern double ethereal_alliance_partner_damage(double damage);
+	extern double ethereal_alliance_damage_mod();
+	double localDam = ethereal_alliance_partner_damage(damage);
 
 	send_to_char(
 		"&+cThe damage passes through the &+Wether&+c being absorbed by your alliance!\n",
@@ -606,7 +608,7 @@ if (IS_ALIVE(eth_ch))
 	raw_damage(caster, eth_ch, localDam, RAWDAM_DEFAULT ^ flags, messages);
 
 	dam_mod->type = dam_mod_type::More;
-	dam_mod->mod += -0.5;
+	dam_mod->mod += ethereal_alliance_damage_mod();
 }
 }
 }

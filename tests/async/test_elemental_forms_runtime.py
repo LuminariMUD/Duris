@@ -190,9 +190,12 @@ PRODUCTION_DURATION_LOOP
 '''.replace('PRODUCTION_DURATION_LOOP', updates[tick_start:tick_end])
 
 physical = extract_function('fight.c', 'int melee_damage(')
+skin_helpers = ''.join(extract_function('fight.c', signature) for signature in (
+    'float iceflow_armor_melee_share(',
+    'float negative_feedback_barrier_melee_share('))
 skin_start = physical.index('\t// Earth elementals ignore earth aura.')
 skin_end = physical.index('\n\tif (affected_by_spell(ch, ACH_DRAGONSLAYER)', skin_start)
-skin_path = '''
+skin_path = skin_helpers + '''
 int physical_skin_path(P_char ch, P_char victim, double dam, unsigned int flags = 0) {
     double reduction = 0; unsigned int skin = 0; bool dragonfist = false;
 PRODUCTION_SKIN

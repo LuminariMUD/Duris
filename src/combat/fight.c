@@ -3451,6 +3451,18 @@ void dam_message(double fdam, P_char ch, P_char victim, struct damage_messages *
 #endif
 }
 
+// The share of what is left after skin_spell_deduct() that iceflow armor and the negative
+// feedback barrier let through.
+float iceflow_armor_melee_share()
+{
+	return get_property("damage.reduction.icearmor", .75);
+}
+
+float negative_feedback_barrier_melee_share()
+{
+	return get_property("damage.reduction.negarmor", .75);
+}
+
 /*
  * used for stone skin type spells, decreases modifier by 1 and
  * shows wear off message when it reaches 0
@@ -5127,12 +5139,12 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	}
 	else if (affected_by_spell(victim, SPELL_ICE_ARMOR) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.icearmor", .75);
+		reduction = 1. - iceflow_armor_melee_share();
 		skin = SPELL_ICE_ARMOR;
 	}
 	else if (affected_by_spell(victim, SPELL_NEG_ARMOR) && !(flags & PHSDAM_NOREDUCE))
 	{
-		reduction = 1. - get_property("damage.reduction.negarmor", .75);
+		reduction = 1. - negative_feedback_barrier_melee_share();
 		skin = SPELL_NEG_ARMOR;
 	}
 	else if (affected_by_spell(victim, SPELL_DRAKESCALE_AEGIS) && !(flags & PHSDAM_NOREDUCE))

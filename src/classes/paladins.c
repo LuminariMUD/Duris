@@ -12,6 +12,7 @@
  *
  ****************************************************************************/
 
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -255,6 +256,46 @@ void send_paladin_auras(P_char ch, P_char tar_ch)
 
 extern P_room world;
 
+// Added to each target's fear save; higher is harder.
+static int vortex_of_fear_save_mod(int level)
+{
+	return (int)level / 11 - 3;
+}
+
+// Healing for the group; dice() counts no targets who fled as one die.
+static int vortex_of_fear_healing(const Rolls &rolls, int num_hit)
+{
+	return 70 + rolls.number(0, 10) + rolls.dice(num_hit, 10);
+}
+
+// Healing stops this far below each member's maximum hit points.
+static int vortex_of_fear_cap_gap(const Rolls &rolls)
+{
+	return rolls.number(1, 4);
+}
+
+std::string vortex_of_fear_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch), mod = vortex_of_fear_save_mod(level);
+	const std::string save = mod > 0 ? "+" + std::to_string(mod) + ", harder" :
+					   (mod < 0 ? std::to_string(mod) + ", easier" : "0");
+	return fact("Fear save", save + " at your level, " + std::to_string(level)) +
+	       "  Those who fail flee; dragons, undead and golems ignore it.\n"
+	       "  So do elites, guardians, dreadlords, the fearless, those under\n"
+	       "  indomitability, greater NPC races from level 51, some raging berserkers.\n" +
+	       fact("Your group's healing", show({ vortex_of_fear_healing(lowest_rolls, 0),
+						   vortex_of_fear_healing(highest_rolls, 0) })) +
+	       fact("Each target fleeing after the first adds",
+		    show({ vortex_of_fear_healing(lowest_rolls, 2) -
+				   vortex_of_fear_healing(lowest_rolls, 1),
+			   vortex_of_fear_healing(highest_rolls, 2) -
+				   vortex_of_fear_healing(highest_rolls, 1) })) +
+	       fact("Healing stops below maximum hit points by",
+		    show({ vortex_of_fear_cap_gap(lowest_rolls),
+			   vortex_of_fear_cap_gap(highest_rolls) })) +
+	       "  It heals only group members in the room, and only if you are grouped.\n";
+}
+
 void spell_vortex_of_fear(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			  P_obj /*obj*/)
 {
@@ -273,14 +314,15 @@ void spell_vortex_of_fear(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		    IS_TRUSTED(vict))
 			continue;
 		if (should_area_hit(ch, vict) &&
-		    !NewSaves(vict, SAVING_FEAR, (int)level / 11 - 3) && !fear_check(vict))
+		    !NewSaves(vict, SAVING_FEAR, vortex_of_fear_save_mod(level)) &&
+		    !fear_check(vict))
 		{
 			do_flee(vict, 0, 1);
 			num_hit++;
 		}
 	}
 
-	int healpoints = 70 + number(0, 10) + dice(num_hit, 10);
+	int healpoints = vortex_of_fear_healing(live_rolls, num_hit);
 
 	if (ch && ch->group)
 	{
@@ -291,7 +333,8 @@ void spell_vortex_of_fear(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 				if (GET_HIT(gl->ch) < GET_MAX_HIT(gl->ch))
 				{
 					heal(gl->ch, ch, healpoints,
-					     GET_MAX_HIT(gl->ch) - number(1, 4));
+					     GET_MAX_HIT(gl->ch) -
+						     vortex_of_fear_cap_gap(live_rolls));
 					update_pos(gl->ch);
 
 					if (num_hit > 0)
@@ -372,6 +415,70 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 		  0, 0, 0, 0);
 }
 
+// A player's aura is shorter than an NPC's.
+static int righteous_aura_pc_duration()
+{
+	return 5;
+}
+
+static int righteous_aura_npc_duration()
+{
+	return 25;
+}
+
+// Pulses between the aura's checks.
+static int righteous_aura_interval()
+{
+	return WAIT_SEC;
+}
+
+// The soulshield and holy dharma it raises in a fight with a bleak foeman.
+static int righteous_aura_pc_blessing_duration(P_char ch)
+{
+	return (int)(5 + GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 5);
+}
+
+static int righteous_aura_npc_blessing_duration()
+{
+	return 25;
+}
+
+static int righteous_aura_soulshield_alignment()
+{
+	return 950;
+}
+
+static int righteous_aura_dharma_delay(const Rolls &rolls)
+{
+	return (PULSE_VIOLENCE * rolls.number(3, 6));
+}
+
+// An opponent this evil or worse turns on you.
+static int righteous_aura_taunt_alignment()
+{
+	return -500;
+}
+
+std::string righteous_aura_facts(P_char ch)
+{
+	return fact("Duration", game_hours(IS_PC(ch) ? righteous_aura_pc_duration() :
+						       righteous_aura_npc_duration())) +
+	       fact("Aura checks", "every " + seconds(righteous_aura_interval())) +
+	       "  A bleak foeman in the room attacks you when the aura checks.\n" +
+	       fact("Soulshield at alignment " +
+			    std::to_string(righteous_aura_soulshield_alignment()) + " up",
+		    game_hours(IS_PC(ch) ? righteous_aura_pc_blessing_duration(ch) :
+					   righteous_aura_npc_blessing_duration())) +
+	       fact("Holy dharma it adds to a soulshield",
+		    game_hours(IS_PC(ch) ? righteous_aura_pc_blessing_duration(ch) :
+					   righteous_aura_npc_blessing_duration())) +
+	       fact("Dharma's first effect after",
+		    seconds(righteous_aura_dharma_delay(lowest_rolls)) + " to " +
+			    seconds(righteous_aura_dharma_delay(highest_rolls))) +
+	       fact("An opponent turns on you at alignment",
+		    std::to_string(righteous_aura_taunt_alignment()) + " or lower");
+}
+
 void spell_righteous_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char /*victim*/, P_obj /*obj*/)
 {
@@ -387,14 +494,14 @@ void spell_righteous_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		af.type = SPELL_RIGHTEOUS_AURA;
 		if (IS_PC(ch))
 		{
-			af.duration = 5;
+			af.duration = righteous_aura_pc_duration();
 		}
 		else
 		{
-			af.duration = 25;
+			af.duration = righteous_aura_npc_duration();
 		}
 		affect_to_char(ch, &af);
-		add_event(event_righteous_aura_check, WAIT_SEC, ch, 0, 0, 0, 0, 0);
+		add_event(event_righteous_aura_check, righteous_aura_interval(), ch, 0, 0, 0, 0, 0);
 		act("&+WYou are bathed in bright light as a powerful barrier of holiness surrounds you!",
 		    FALSE, ch, 0, 0, TO_CHAR);
 		act("$n &+Wis suddenly surrounded by blinding, peaceful light.", FALSE, ch, 0, 0,
@@ -421,20 +528,20 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 			    GET_OPPONENT(ch) != tch && !IS_TRUSTED(ch) && !IS_TRUSTED(tch))
 			{ // Soulshield up!
 				if (!IS_AFFECTED2(ch, AFF2_SOULSHIELD) &&
-				    GET_ALIGNMENT(ch) >= 950 && !IS_AFFECTED4(ch, AFF4_NEG_SHIELD))
+				    GET_ALIGNMENT(ch) >= righteous_aura_soulshield_alignment() &&
+				    !IS_AFFECTED4(ch, AFF4_NEG_SHIELD))
 				{
 					bzero(&af, sizeof(af));
 					af.type = SPELL_SOULSHIELD;
 					if (IS_PC(ch))
 					{
 						af.duration =
-							(int)(5 +
-							      GET_CHAR_SKILL(ch, SKILL_DEVOTION) /
-								      5);
+							righteous_aura_pc_blessing_duration(ch);
 					}
 					else
 					{
-						af.duration = 25;
+						af.duration =
+							righteous_aura_npc_blessing_duration();
 					}
 					af.bitvector2 = AFF2_SOULSHIELD;
 					affect_to_char(ch, &af);
@@ -454,13 +561,12 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 					if (IS_PC(ch))
 					{
 						af.duration =
-							(int)(5 +
-							      GET_CHAR_SKILL(ch, SKILL_DEVOTION) /
-								      5);
+							righteous_aura_pc_blessing_duration(ch);
 					}
 					else
 					{
-						af.duration = 25;
+						af.duration =
+							righteous_aura_npc_blessing_duration();
 					}
 					af.bitvector5 = AFF5_HOLY_DHARMA;
 					affect_to_char(ch, &af);
@@ -470,8 +576,8 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 						ch);
 
 					add_event(event_holy_dharma,
-						  (PULSE_VIOLENCE * number(3, 6)), ch, ch, 0, 0, 0,
-						  0);
+						  righteous_aura_dharma_delay(live_rolls), ch, ch,
+						  0, 0, 0, 0);
 				}
 
 				act("&+WThe aura surrounding your body flares for a moment, and drives you forth to\n"
@@ -496,7 +602,7 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 		P_char opponent = GET_OPPONENT(ch);
 
 		if (GET_OPPONENT(opponent) != ch && CAN_ACT(opponent) &&
-		    (GET_ALIGNMENT(opponent) <= -500))
+		    (GET_ALIGNMENT(opponent) <= righteous_aura_taunt_alignment()))
 		{
 			act("&+WThe holy aura surrounding your body flares brightly, and&n $N &+Wrushes towards\n"
 			    "&+Wyou fiercely!",
@@ -520,7 +626,33 @@ void event_righteous_aura_check(P_char ch, P_char victim, P_obj /*obj*/, void * 
 		}
 	}
 
-	add_event(event_righteous_aura_check, WAIT_SEC, ch, 0, 0, 0, 0, 0);
+	add_event(event_righteous_aura_check, righteous_aura_interval(), ch, 0, 0, 0, 0, 0);
+}
+
+// A player's foeman is shorter than an NPC's.
+static int bleak_foeman_pc_duration()
+{
+	return 5;
+}
+
+static int bleak_foeman_npc_duration()
+{
+	return 25;
+}
+
+// Pulses between the foeman's checks.
+static int bleak_foeman_interval()
+{
+	return WAIT_SEC;
+}
+
+std::string bleak_foeman_facts(P_char ch)
+{
+	return fact("Duration", game_hours(IS_PC(ch) ? bleak_foeman_pc_duration() :
+						       bleak_foeman_npc_duration())) +
+	       fact("Foeman checks", "every " + seconds(bleak_foeman_interval())) +
+	       "  You attack a righteous aura in the room when you are able to act.\n"
+	       "  Anyone trying to rescue someone you are fighting fails.\n";
 }
 
 void spell_bleak_foeman(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -540,14 +672,14 @@ void spell_bleak_foeman(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused
 		af.type = SPELL_BLEAK_FOEMAN;
 		if (IS_PC(ch))
 		{
-			af.duration = 5;
+			af.duration = bleak_foeman_pc_duration();
 		}
 		else
 		{
-			af.duration = 25;
+			af.duration = bleak_foeman_npc_duration();
 		}
 		affect_to_char(ch, &af);
-		add_event(event_bleak_foeman_check, WAIT_SEC, ch, 0, 0, 0, 0, 0);
+		add_event(event_bleak_foeman_check, bleak_foeman_interval(), ch, 0, 0, 0, 0, 0);
 		act("&+LAs you complete your incantation, you are surrounded by a sickly black cloud.\n"
 		    "&+LThe cloud permeates your senses, and you let out an unearthly &+rROAR&+L as pure\n"
 		    "&+Levil seeps into your very soul!",
@@ -588,7 +720,51 @@ void event_bleak_foeman_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void 
 		}
 	}
 
-	add_event(event_bleak_foeman_check, WAIT_SEC, ch, 0, 0, 0, 0, 0);
+	add_event(event_bleak_foeman_check, bleak_foeman_interval(), ch, 0, 0, 0, 0, 0);
+}
+
+static int dread_blade_duration()
+{
+	return 16;
+}
+
+// A roll of 0 on a hit lets the blade loose.
+static int dread_blade_proc_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 32);
+}
+
+// The spell it casts, at a random level, with the target's spell save this much worse.
+static int dread_blade_spell_level(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(1, GET_LEVEL(ch));
+}
+
+static int dread_blade_spell_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
+static int dread_blade_save_penalty()
+{
+	return 15;
+}
+
+std::string dread_blade_facts(P_char ch)
+{
+	const int outcomes =
+		dread_blade_proc_roll(highest_rolls) - dread_blade_proc_roll(lowest_rolls) + 1;
+	return fact("Duration", game_hours(dread_blade_duration())) +
+	       fact("Chance on each hit in a fight", "1 in " + std::to_string(outcomes)) +
+	       fact("It casts at level", show({ dread_blade_spell_level(lowest_rolls, ch),
+						dread_blade_spell_level(highest_rolls, ch) })) +
+	       fact("Chance of each of disease, blindness, wither, harm, unholy word",
+		    "1 in " + std::to_string(dread_blade_spell_roll(highest_rolls) -
+					     dread_blade_spell_roll(lowest_rolls) + 1)) +
+	       "  It also casts darkness at your level unless the room is dark already.\n" +
+	       fact("Target's spell save against it",
+		    "+" + std::to_string(dread_blade_save_penalty()) + ", harder") +
+	       "  You must be wielding a weapon to cast it.\n";
 }
 
 void spell_dread_blade(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -618,7 +794,7 @@ void spell_dread_blade(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 		memset(&af, 0, sizeof(af));
 
 		af.type = SPELL_DREAD_BLADE;
-		af.duration = 16;
+		af.duration = dread_blade_duration();
 
 		affect_to_char(victim, &af);
 	}
@@ -635,7 +811,7 @@ bool dread_blade_proc(P_char ch, P_char victim)
 	spell_func_type spell_func;
 
 	if (!IS_FIGHTING(ch) || !(victim = GET_OPPONENT(ch)) || !IS_ALIVE(victim) || !(room) ||
-	    number(0, 32)) // 3%
+	    dread_blade_proc_roll(live_rolls)) // 3%
 		return false;
 
 	P_char vict = victim;
@@ -653,7 +829,7 @@ bool dread_blade_proc(P_char ch, P_char victim)
 		return false;
 
 	save = victim->specials.apply_saving_throw[SAVING_SPELL];
-	victim->specials.apply_saving_throw[SAVING_SPELL] += 15;
+	victim->specials.apply_saving_throw[SAVING_SPELL] += dread_blade_save_penalty();
 
 	act("&+LYour&n $p releases a torrent of pure foul &+revil!&n", TRUE, ch, wpn, vict,
 	    TO_CHAR);
@@ -667,11 +843,11 @@ bool dread_blade_proc(P_char ch, P_char victim)
 		spell_darkness(GET_LEVEL(ch), ch, 0, 0, 0, 0);
 	}
 
-	num = number(0, 4);
+	num = dread_blade_spell_roll(live_rolls);
 
 	spell_func = spells[num];
 
-	spell_func(number(1, GET_LEVEL(ch)), ch, 0, 0, victim, 0);
+	spell_func(dread_blade_spell_level(live_rolls, ch), ch, 0, 0, victim, 0);
 
 	P_char live_victim = find_character_by_runtime_id(victim_runtime_id);
 	const bool attacker_in_room = find_character_by_runtime_id(attacker_runtime_id) == ch &&
@@ -784,16 +960,80 @@ bool holy_weapon_proc(P_char ch, P_char victim)
  decays every round and powers a damage bonus for player groupmates in the room.
 */
 
+static float blood_tithe_decay()
+{
+	return get_property("spell.bloodTithe.decayPerRound", 0.25);
+}
+
+static float blood_tithe_hit_cap()
+{
+	return get_property("spell.bloodTithe.perHitCap", 0.05);
+}
+
+static float blood_tithe_max_bonus()
+{
+	return get_property("spell.bloodTithe.maxBonus", 0.12);
+}
+
+static float blood_tithe_reference_size()
+{
+	return get_property("spell.bloodTithe.refGroupSize", 3.0);
+}
+
+static float blood_tithe_pvp_mod()
+{
+	return get_property("spell.bloodTithe.pvpMod", 0.5);
+}
+
+static int blood_tithe_duration(P_char ch)
+{
+	return 15 + GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10;
+}
+
+// Pulses between the meter's decays.
+static int blood_tithe_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
 /* malice that sustains full charge: taking fullChargePerRound of max hp each round */
 static double blood_tithe_full_malice(P_char ap)
 {
 	return GET_MAX_HIT(ap) * get_property("spell.bloodTithe.fullChargePerRound", 0.15) /
-	       get_property("spell.bloodTithe.decayPerRound", 0.25);
+	       blood_tithe_decay();
 }
 
 static P_char blood_tithe_body(P_char player)
 {
 	return IS_PC(player) && player->only.pc->switched ? player->only.pc->switched : player;
+}
+
+// A fraction as a page shows it, such as 12%.
+static std::string blood_tithe_percent(double fraction)
+{
+	char text[32];
+	snprintf(text, sizeof(text), "%g%%", fraction * 100);
+	return text;
+}
+
+std::string blood_tithe_facts(P_char ch)
+{
+	char reference[32];
+	snprintf(reference, sizeof(reference), "%g", blood_tithe_reference_size());
+	return fact("Duration", game_hours(blood_tithe_duration(ch)) + " with your devotion") +
+	       fact("Your groupmates' damage bonus",
+		    "up to " + blood_tithe_percent(blood_tithe_max_bonus())) +
+	       fact("Against players", blood_tithe_percent(blood_tithe_pvp_mod()) + " of that") +
+	       "  The bonus follows your malice meter, filled by enemies hitting you.\n" +
+	       fact("Full meter", std::to_string((int)blood_tithe_full_malice(ch)) +
+					  " malice with your maximum hit points") +
+	       fact("Most malice from one hit",
+		    blood_tithe_percent(blood_tithe_hit_cap()) + " of your maximum hit points") +
+	       fact("The meter decays by", blood_tithe_percent(blood_tithe_decay()) + " every " +
+						   seconds(blood_tithe_interval())) +
+	       "  More than " + reference +
+	       " player groupmates here share a smaller bonus.\n"
+	       "  Those holding a tithe get no bonus, so tithes do not stack.\n";
 }
 
 void spell_blood_tithe(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -809,14 +1049,14 @@ void spell_blood_tithe(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 
 	memset(&af, 0, sizeof(af));
 	af.type = SPELL_BLOOD_TITHE;
-	af.duration = 15 + GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10;
+	af.duration = blood_tithe_duration(ch);
 	affect_to_char(ch, &af);
 
 	act("&+rYou pledge your blood to fuel your comrades' wrath.&n", FALSE, ch, 0, 0, TO_CHAR);
 	act("&+r$n&+r pledges $s blood to fuel $s comrades' wrath.&n", FALSE, ch, 0, 0, TO_ROOM);
 
 	disarm_char_nevents(ch, event_blood_tithe);
-	add_event(event_blood_tithe, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	add_event(event_blood_tithe, blood_tithe_interval(), ch, 0, 0, 0, 0, 0);
 }
 
 void event_blood_tithe(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -826,9 +1066,8 @@ void event_blood_tithe(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*dat
 	if (!af)
 		return;
 
-	af->modifier =
-		(int)(af->modifier * (1.0 - get_property("spell.bloodTithe.decayPerRound", 0.25)));
-	add_event(event_blood_tithe, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	af->modifier = (int)(af->modifier * (1.0 - blood_tithe_decay()));
+	add_event(event_blood_tithe, blood_tithe_interval(), ch, 0, 0, 0, 0, 0);
 }
 
 /* called for every hit that lands; only enemies of the tithe holder fill the meter */
@@ -849,8 +1088,7 @@ void blood_tithe_charge(P_char attacker, P_char victim, double dam)
 	    (IS_PC(source) && !opposite_racewar(source, victim)))
 		return;
 
-	double hit =
-		MIN(dam, GET_MAX_HIT(victim) * get_property("spell.bloodTithe.perHitCap", 0.05));
+	double hit = MIN(dam, GET_MAX_HIT(victim) * blood_tithe_hit_cap());
 	af->modifier = (int)MIN(af->modifier + hit, blood_tithe_full_malice(victim));
 }
 
@@ -867,7 +1105,7 @@ double blood_tithe_bonus(P_char ap)
 		return 0;
 
 	double charge = MIN(1.0, af->modifier / blood_tithe_full_malice(ap));
-	double reference = get_property("spell.bloodTithe.refGroupSize", 3.0);
+	double reference = blood_tithe_reference_size();
 	int members = 0;
 	for (struct group_list *gl = ap->group; gl; gl = gl->next)
 	{
@@ -879,7 +1117,7 @@ double blood_tithe_bonus(P_char ap)
 	}
 	double groupmates = MAX(reference, (double)members);
 
-	return get_property("spell.bloodTithe.maxBonus", 0.12) * charge *
+	return blood_tithe_max_bonus() * charge *
 	       pow(reference / groupmates, get_property("spell.bloodTithe.falloffExponent", 0.5));
 }
 
@@ -904,7 +1142,7 @@ double blood_tithe_damage_bonus(P_char ch, P_char victim)
 	}
 
 	if (IS_PC(GET_PLYR(victim)))
-		bonus *= get_property("spell.bloodTithe.pvpMod", 0.5);
+		bonus *= blood_tithe_pvp_mod();
 
 	return bonus;
 }

@@ -316,6 +316,8 @@ def main():
                  ("fight.c", "int displacement_absorb_roll("),
                  ("fight.c", "float biofeedback_melee_share("),
                  ("fight.c", "int skin_spell_deduct("),
+                 ("fight.c", "float iceflow_armor_melee_share("),
+                 ("fight.c", "float negative_feedback_barrier_melee_share("),
                  ("fight.c", "int melee_damage("),
                  ("actoff.c", "static int headbutt_position_lag("),
                  ("actoff.c", "static int headbutt_immaterial_lag("),
