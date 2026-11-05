@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Survive four Hardcore deaths, restart, and permanently delete on death five.
+"""Survive two Hardcore deaths, restart, and permanently delete on death three.
 
 Uses the real server and a newly created MariaDB schema. Run through
 with_disposable_mariadb.sh; no checkout .env or existing schema is used.
@@ -112,7 +112,7 @@ def run(binary):
                     pid = int(sql("SELECT pid FROM player_data WHERE name='" + journey.CHARACTER + "'"))
                     deaths = f"SELECT numb_deaths FROM player_data WHERE pid={pid}"
                     settle(deaths, 0)
-                    for death in range(1, 6):
+                    for death in range(1, 4):
                         start = len(client.transcript)
                         client.send("suicide")
                         client.expect("Please confirm that you wish to do this!")
@@ -120,7 +120,7 @@ def run(binary):
                         client.expect("ACCOUNT MENU", timeout=30)
                         client.expect("Please select an option")
                         result = client.transcript[start:].decode(errors="replace")
-                        if death == 5:
+                        if death == 3:
                             assert "Your character has been permanently deleted." in result
                             settle(f"SELECT COUNT(*) FROM player_data WHERE pid={pid}", 0)
                             settle(f"SELECT COUNT(*) FROM account_characters WHERE pid={pid} AND deleted_at IS NULL", 0)
@@ -131,13 +131,13 @@ def run(binary):
                         client.send("0")
                         client.close()
                         client = None
-                        if death == 4:
+                        if death == 2:
                             stop()
                             process = boot()
-                        if death < 5:
+                        if death < 3:
                             client = journey.reconnect_character(plain)
                             settle(deaths, death)
-                        print(f"MariaDB Hardcore death {death}: {'deleted' if death == 5 else 'reloaded'}",
+                        print(f"MariaDB Hardcore death {death}: {'deleted' if death == 3 else 'reloaded'}",
                               flush=True)
 
                     stop()
@@ -183,4 +183,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
     run(args.server.resolve())
-    print("MariaDB Hardcore fifth counted death and restart journey passed")
+    print("MariaDB Hardcore third counted death and restart journey passed")

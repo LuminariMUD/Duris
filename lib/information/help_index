@@ -8544,8 +8544,9 @@ non-hardcore characters. Hardcore characters also do not require the
 special "potions" as others do to move past level 50, they are able to
 simply exp right up to level 56. Their XP advancement can use two levels
 beyond the faction cap, bounded by 56; see HELP LEVEL CAP.
-Hardcore characters have five lives. Deaths one through four follow the ordinary
-death rules; the fifth counted death permanently deletes the character.
+Hardcore characters have three lives. Deaths one and two follow the ordinary
+death rules; the third counted death permanently deletes the character.
+This test policy remains open to balance discussion.
 Arena deaths do not consume a life.
 ===========================================================================
 
