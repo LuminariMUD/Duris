@@ -20,6 +20,7 @@ prelude = r'''
 #include "world/events.h"
 #include "combat/damage.h"
 #include "player/player_snapshot_codec.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstring>
 #include <string>
@@ -44,6 +45,7 @@ bool NewSaves(P_char, int, int) { return save_roll; }
 bool has_innate(P_char ch, int id) { return id == INNATE_LIVING_STONE && GET_SPEC(ch, CLASS_CONJURER, SPEC_EARTH); }
 int number(int low, int high) { return low == 1 && high == 4 ? die_roll : (low == 0 && high == 5 ? aura_roll : (low == 0 && high == 3 ? 2 : low)); }
 int dice(int count, int) { return count * 5; }
+const Rolls live_rolls = { dice, number };
 bool IS_OUTDOORS(int room) { return !IS_ROOM(room, ROOM_INDOORS); }
 int get_default_save_mod(P_char, P_char, int, int) { return 0; }
 int spell_damage(P_char, P_char, double dam, int type, uint, damage_messages *, int *) {
@@ -107,12 +109,20 @@ functions = [
     ('magic.c', 'const char *elemental_aura_failure_message('),
     ('magic.c', 'void spell_elemental_aura('),
     ('psionics.c', 'void spell_fire_aura('),
+    ('magic.c', 'static int air_form_duration('),
     ('magic.c', 'void spell_air_form('),
+    ('magic.c', 'static int earth_form_duration('),
     ('magic.c', 'void spell_earth_form('),
+    *(('magic.c', f'static int fire_form_{number}(')
+      for number in ('duration', 'armor_class', 'strength', 'dexterity', 'agility', 'constitution')),
     ('magic.c', 'void spell_fire_form('),
+    *(('magic.c', f'static int water_form_{number}(')
+      for number in ('duration', 'strength', 'dexterity', 'agility', 'constitution')),
     ('magic.c', 'void spell_water_form('),
     ('magic.c', 'static bool has_other_skin_spell('),
     ('magic.c', 'bool has_skin_spell('),
+    *(('magic.c', f'static int stone_skin_{number}(')
+      for number in ('absorb', 'living_stone', 'conjurer', 'sorcerer', 'other', 'duration', 'layers')),
     ('magic.c', 'void spell_stone_skin('),
     ('magic.c', 'void spell_earthen_maul('),
     ('fight.c', 'bool decrease_skin_counter('),

@@ -218,6 +218,7 @@ def production():
           ("lifeleak", "moveleak", "heart_toxin", "neurotoxin", "weakness", "slowness", "madness")],
         ("magic.c", "void spell_remove_poison("),
         ("magic.c", "static void purify_group_member("),
+        ("magic.c", "static int slow_duration("),
         ("magic.c", "void spell_slow("),
         ("actoff.c", "bool single_stab("),
         ("actoff.c", "bool backstab(P_char ch, P_char victim)"),

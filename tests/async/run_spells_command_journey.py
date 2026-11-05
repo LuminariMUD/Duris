@@ -225,6 +225,11 @@ def run(binary, backend):
                 # The converted fireball still plays through its real handler.
                 god.send("cast 'fireball' raoul")
                 god.expect_any(("You throw a fireball", "Your fireball hits"), timeout=30)
+                # Batch 2: heal shows its shared numbers and still plays through its handler.
+                heal_info = command(player, "spells info heal")
+                assert "Healing: 101-105 at your level, 1" in heal_info, heal_info
+                god.send("cast 'heal' " + GOD)
+                god.expect("A warm feeling fills your body", timeout=30)
                 command(god, "toggle paging yes")
                 god.send("spells all")
                 god.expect("BASE-CLASS CIRCLE REFERENCE")
@@ -233,7 +238,8 @@ def run(binary, backend):
                 god.expect(">", timeout=20)
                 command(god, "toggle paging no")
                 assert b"\x1b[" in player.raw_transcript
-                for name, text in (("info", info), ("all", table), ("personal", own), ("fire", fire)):
+                for name, text in (("info", info), ("all", table), ("personal", own), ("fire", fire),
+                                   ("heal", heal_info)):
                     (ROOT / "bin/tests" / ("spells-" + name + "-" + backend + ".txt")).write_text(text)
                     # Browser-generated sections, excluding authored help and the score fence.
                     generated = text.split("Helpfile details", 1)[0].split("Score information", 1)[0]

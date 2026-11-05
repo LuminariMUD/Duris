@@ -464,6 +464,8 @@ callbacks += '\n' + function(ROOT / 'src/specs/specs.object.c', 'int living_necr
 callbacks += '\n' + '\n'.join(function(ROOT / 'src/magic/magic.c', signature) for signature in (
     'static int vampire_duration(', 'static int vampire_str_max(', 'static int vampire_con_max(',
     'static int vampire_hitroll(', 'static int vampire_damroll(', 'void spell_vampire('))
+callbacks += '\n' + '\n'.join(function(ROOT / 'src/magic/magic.c', signature) for signature in (
+    'static int vitality_hit_points(', 'static int vitality_duration('))
 callbacks += '\n' + function(ROOT / 'src/magic/magic.c', 'void spell_vitality(').replace('void spell_vitality(', 'static void real_spell_vitality(', 1)
 hp_source = (ROOT / 'src/magic/affects.c').read_text()
 hp_start = hp_source.index('\tif (!mode && (GET_MAX_HIT(ch) == 0))')
