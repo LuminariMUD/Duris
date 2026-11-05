@@ -2887,7 +2887,8 @@ std::string dirt_toss_facts(P_char ch)
 			 "") +
 	       fact("Your lag", seconds(dirt_toss_lag())) +
 	       "  It needs no roll, but you and the target must both be on the front line.\n"
-	       "  Not on the eyeless, parasites, slimes or the already blind.\n";
+	       "  Not on the eyeless, parasites, slimes or the already blind.\n" +
+	       takedown_rest_note();
 }
 
 void do_dirttoss(P_char ch, char *arg, int /*cmd*/)

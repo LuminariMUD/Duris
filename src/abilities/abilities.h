@@ -44,6 +44,8 @@ struct Range
 
 // Info page formatting.
 std::string fact(const std::string &label, const std::string &text);
+// For the pages of commands refused during the rest a landed takedown sets.
+std::string takedown_rest_note();
 std::string show(Range range);
 std::string seconds(int pulses);
 std::string game_hours(int ticks);

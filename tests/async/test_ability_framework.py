@@ -171,6 +171,8 @@ int main() {
     assert(fingerprint() == untouched);
     assert(contains(text, "Damage on a hit: 14-22 with your strength and shield\n"));
     assert(contains(text, "Your lag on a hit: 8 seconds\n"));
+    assert(contains(text, "Before you can bash again after a hit: 11 seconds\n"));
+    assert(contains(text, "    (tackle, roundkick, legsweep, springleap and others wait on it too)\n"));
     assert(contains(text, "Your lag on a miss: 8 seconds, or 12 seconds if you fall prone\n"));
     assert(contains(text, "Your lag if the target is already down: 8 seconds\n"));
     assert(contains(text, "Your lag if the target is asleep: 4 seconds (you attack it instead)\n"));
@@ -202,8 +204,16 @@ def check_handlers_use_shared_numbers():
                  "CharWait(ch, bash_miss_lag(true));", "CharWait(ch, bash_miss_lag(false));",
                  "CharWait(victim, bash_target_lag(ch, GET_POS(victim) == POS_STANDING));",
                  "CharWait(ch, bash_target_down_lag());", "CharWait(ch, bash_takedown_penalty_lag());",
-                 "melee_damage(ch, victim, dmg, PHSDAM_TOUCH, 0)"):
+                 "melee_damage(ch, victim, dmg, PHSDAM_TOUCH, 0)",
+                 "set_short_affected_by(ch, SKILL_BASH, bash_rest(false));",
+                 "set_short_affected_by(ch, SKILL_BASH, bash_rest(true));"):
         assert call in bash, call
+    assert "2.8 * PULSE_VIOLENCE" not in bash
+
+    # Each command refused during a takedown's rest says so on its page.
+    for name in ("roundkick", "tackle", "maul", "springleap", "gaze", "restrain", "legsweep"):
+        assert "takedown_rest_note()" in extract_function("actoff.c", f"std::string {name}_facts(")
+    assert "takedown_rest_note()" in extract_function("actnew.c", "std::string dirt_toss_facts(")
 
     # Each lag helper sits in its own branch: from the branch's message to its return.
     def branch(body, marker):
@@ -235,6 +245,7 @@ def main():
                  extract_function("magic.c", "static int fireball_failed_save("),
                  extract_function("magic.c", "std::string fireball_facts("),
                  extract_function("actoff.c", "static int bash_damage("),
+                 extract_function("actoff.c", "static int bash_rest("),
                  extract_function("actoff.c", "static int bash_hit_lag("),
                  extract_function("actoff.c", "static int bash_miss_lag("),
                  extract_function("actoff.c", "static int takedown_sleeping_target_lag("),
