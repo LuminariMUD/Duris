@@ -44,6 +44,8 @@ static zone_data zones[] = {
     {.number=199,.name=const_cast<char *>("&+RAstral Plane, Tiamat&n")},
     {.number=740,.name=const_cast<char *>("&+rBloodstone Keep&n")},
     {.number=990,.name=const_cast<char *>("&+gNeverwinter Woods&n")},
+    {.number=150,.name=const_cast<char *>("Retired Misty Chasm prototypes")},
+    {.number=3000,.name=const_cast<char *>("&+LThe Chasm of the Misty Vale&n")},
 };
 zone_data *zone_table=zones;
 int top_of_zone_table=sizeof zones/sizeof zones[0]-1;
@@ -187,6 +189,11 @@ int main() {
         reset(); for(int i=0;i<3;++i) wear(i,i+1,808,false);
         wear(3,4,808); wear(4,5,808); process(0); process(3);
         assert(hp(-808) && hp(-808)->modifier==5 && hp(808) && hp(808)->modifier==0 && hp_count()==2 && spells.empty());
+        // Retired #150 and new #3000 share a historical title, never a proved origin.
+        reset(); for(int i=0;i<3;++i) {wear(i,i+1,3000,false); wear(i+3,i+4,3000);}
+        process(0); process(3);
+        assert(hp(-150) && hp(-150)->modifier==5 && hp(3000) && hp(3000)->modifier==5 && hp_count()==2);
+        for(int i=0;i<3;++i) assert(!gear[i].ex_description && named_set_origin(&gear[i]).zone==0);
         // Unique legacy armor and revealed weapons migrate lazily when worn.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,1325,false);
         gear[1].value[5]=spells_data[0].spell;

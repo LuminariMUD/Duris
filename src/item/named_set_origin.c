@@ -46,6 +46,12 @@ named_set_identity named_set_origin(const obj_data *object)
 				suffix = " of " + strip_ansi(spell.name);
 				break;
 			}
+	// c79fde573 replaced #150 with #3000. Their indistinguishable old tags
+	// cannot prove either origin, even if one producer is no longer loaded.
+	constexpr const char *misty_legacy_title = "The Chasm of the Misty Vale";
+	if (title == misty_legacy_title ||
+	    (!suffix.empty() && title == std::string(misty_legacy_title) + suffix))
+		return { 0, misty_legacy_title, 150 };
 	std::string matched_title;
 	int matches = 0;
 	int legacy_group = 0;

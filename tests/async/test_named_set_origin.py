@@ -35,6 +35,8 @@ static zone_data zones[] = {
     {.number = 204, .name = const_cast<char *>("Neverwind Valley")},
     {.number = 990, .name = const_cast<char *>("Neverwinter Woods")},
     {.number = 740, .name = const_cast<char *>("&+rBloodstone Keep&n")},
+    {.number = 150, .name = const_cast<char *>("Retired Misty Chasm prototypes")},
+    {.number = 3000, .name = const_cast<char *>("&+LThe &+yChasm &+Lof the &+WMisty &+GVale")},
 };
 zone_data *zone_table = zones;
 int top_of_zone_table = sizeof zones / sizeof zones[0] - 1;
@@ -65,7 +67,7 @@ int main() {
     indexes[1].virtual_number = VOBJ_RANDOM_WEAPON;
     for (int reverse : {0, 1}) {
         if (reverse) std::reverse(std::begin(zones), std::end(zones));
-        for (int zone : {13, 1350, 44, 300, 808, 811, 814, 196, 199, 204, 990, 740, INT_MAX}) {
+        for (int zone : {13, 1350, 44, 300, 808, 811, 814, 196, 199, 204, 990, 740, 150, 3000, INT_MAX}) {
             obj_data object{};
             object.short_description = const_cast<char *>("an item &+rfrom &+gCeothia&n");
             assert(set_named_set_origin(&object, zone));
@@ -82,7 +84,7 @@ int main() {
             clear_origin(*copy); delete copy;
             clear_origin(object);
         }
-        for (const char *title : {"Braddistock Mansion", "The Underworld", "Ceothia"}) {
+        for (const char *title : {"Braddistock Mansion", "The Underworld", "Ceothia", "The Chasm of the Misty Vale"}) {
             obj_data object{};
             std::string name = std::string("an item &+rfrom &+W") + title + "&n";
             object.short_description = name.data();
@@ -116,6 +118,16 @@ int main() {
             assert(named_set_origin(&object).zone == 0);
         }
     }
+    // Loading an older world cannot turn these indistinguishable historical tags into a proved ID.
+    auto old_zone = std::find_if(std::begin(zones), std::end(zones), [](const auto &zone){return zone.number==150;});
+    auto new_zone = std::find_if(std::begin(zones), std::end(zones), [](const auto &zone){return zone.number==3000;});
+    char *old_name=old_zone->name, *new_name=new_zone->name;
+    old_zone->name=const_cast<char *>("The Chasm of the Misty Vale");
+    new_zone->name=const_cast<char *>("Other area");
+    obj_data historical{};
+    historical.short_description=const_cast<char *>("an item &+rfrom The Chasm of the Misty Vale&n");
+    assert(named_set_origin(&historical).zone==0 && named_set_origin(&historical).legacy_group==150);
+    old_zone->name=old_name; new_zone->name=new_name;
     obj_data object{};
     object.short_description = const_cast<char *>("an item &+rfrom Bloodstone Keep&n");
     extra_descr_data marker{const_cast<char *>(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD),

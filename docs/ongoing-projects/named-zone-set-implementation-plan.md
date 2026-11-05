@@ -4,8 +4,8 @@ Status: implementation in progress; catalog/report, persistent-origin,
 membership/HP, and affect-provenance/shared-support chunks are open for review.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-effect-ownership`, based on
-`branch/named-zone-set-membership`.
+Working branch: `branch/named-zone-set-historical-origins`, based on
+`branch/named-zone-set-effect-ownership`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-05)
@@ -33,9 +33,9 @@ The playable Misty Vale remains #3000 in the 104-zone assignment roster. Use the
 current area registry for the remaining wider eligibility review, keeping the
 initial inventory counts distinct from the final reviewed denominator.
 History check: `c79fde573^:areas/zon/mist_chasm.zon` gives retired #150 the
-same normalized title as new #3000. The current resolver must be extended before
-expansion so unmarked Misty Vale gear cannot inherit #3000's newly assigned
-effect by guessing. Keep this as a separate identity correction after #722.
+same normalized title as new #3000. The historical-origin correction after #722
+keeps unmarked Misty Vale gear from inheriting #3000's newly assigned effect by
+guessing; see the checkpoint below.
 
 The first implementation chunk extracts the **115 existing loaded set rows,
 206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
@@ -277,6 +277,38 @@ durations and reactivation on ordinary expiry/removal if that path is used.
 The creation scope must continue to distinguish a set invocation from an
 ordinary invocation. Test actual spell entries, not just ordinary affect-node
 allocation, before checking off the both-orders acceptance gate.
+
+### Historical Misty Vale identity correction
+
+The history check above exposed a real collision hidden by the current world's
+retired title. Both old #150 and pre-metadata #3000 items can carry the same
+normalized `The Chasm of the Misty Vale` tag. They cannot be separated by current
+zone availability or presentation colors. `named_set_origin()` now keeps that
+unmarked title (including the registered revealed-weapon suffix) unresolved in
+the HP-only legacy group with context **-150**. Explicit #150 and #3000 markers
+remain authoritative. Newly marked #3000 pieces do not join the legacy group.
+
+**Ablation:** one confirmed collision guard precedes the existing live-title
+lookup. There is no new historical registry, runtime Git query, or migration.
+The 104 assignments and their home counts remain unchanged, and #150 stays
+excluded as inert metadata. Do not bulk rewrite unmarked items to either ID.
+
+The ASan/UBSan origin and real worn-membership tests cover both explicit IDs,
+old tags, revealed suffixes, zone reordering, an older world's loaded titles,
+and separate +5 HP groups for three legacy versus three marked #3000 pieces.
+The 1,480 generator cases and RNG sentinels still match their frozen fixtures.
+This extends the identity proof; actual #3000 effect activation belongs to the
+later installed-catalog/gameplay gate.
+
+```sh
+python3 tests/async/test_named_set_origin.py
+python3 tests/async/test_named_set_membership.py
+python3 tests/async/test_random_equipment_golden.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+./scripts/format.sh --check
+git diff --check
+```
 
 ## Start here
 

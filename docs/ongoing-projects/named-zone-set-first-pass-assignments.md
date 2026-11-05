@@ -259,6 +259,10 @@ metadata. Its authored zone has no rooms or resets, so it is excluded from set
 eligibility. The playable Chasm of the Misty Vale remains #3000 with its planned
 assignment in the original roster; #150 does not change the 104 assignments
 or their effect-home counts. See [mist_chasm.zon](../../areas/zon/mist_chasm.zon).
+Its old header before `c79fde573` has the same visible title as #3000, so
+unmarked historical Misty Vale items remain an HP-only legacy group. A current
+#3000 title match alone cannot prove their origin or grant the new assignment;
+new #3000 drops use their explicit origin marker.
 
 The original roster exclusions, including Thetis's Realm (#380), Valoisian
 Castle (#384), the Great Realm connector (#536), disconnected Crakkaros' Liar
