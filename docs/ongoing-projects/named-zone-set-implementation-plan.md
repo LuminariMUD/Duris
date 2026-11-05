@@ -1,7 +1,7 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; catalog/report, persistent-origin,
-membership/HP, and affect-provenance/shared-support chunks are open for review.
+Status: implementation in progress; five focused implementation PRs are pushed
+and ready for review in the stack below.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-historical-origins`, based on
@@ -22,7 +22,10 @@ worn membership and HP cleanup and targets the origin branch.
 [PR #722](https://github.com/LuminariMUD/Duris/pull/722)
 (`branch/named-zone-set-effect-ownership`, implementation commit `a0aebad6a`)
 contains affect provenance and shared support and targets the membership branch.
-All four PRs are ready for review; no implementation PR has been merged and no
+[PR #723](https://github.com/LuminariMUD/Duris/pull/723)
+(`branch/named-zone-set-historical-origins`, implementation commit `63160d454`)
+contains the historical Misty Vale correction and targets the provenance branch.
+All five PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
