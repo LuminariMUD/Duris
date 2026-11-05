@@ -276,6 +276,7 @@ static void check_minor_instruments(const char *path)
         assert(IS_SET(prototype.wear_flags, ITEM_TAKE));
         assert(IS_SET(prototype.wear_flags, ITEM_HOLD));
         assert(!!IS_SET(prototype.wear_flags, ITEM_ATTACH_BELT) == minor);
+        assert(CAN_WEAR(&prototype, ITEM_ATTACH_BELT));
         if (minor)
         {
             assert(prototype.weight == (nr == 0 ? 0 : 1));

@@ -240,20 +240,46 @@ def run(binary):
             command(player, "wear sash waist", "You clasp")
             # Load the control after the six cases so its shared "flute" keyword
             # cannot redirect staff's room-first lookup during those inspections.
+            for name, _ in INSTRUMENTS:
+                command(player, f"drop {name}", "You drop")
             staff_command(staff, "load obj 89177")
             staff_command(staff, f"give copper {NAME}")
-            command(player, "wear copper attach", "You can't attach that to your belt.")
-            inspect(staff, "copper", 89177, f"carried by {NAME}")
+            text = inspect(staff, "copper", 89177, f"carried by {NAME}")
+            assert "ATTACH_BELT" not in text, text
+            command(player, "wear copper attach", "You attach")
+            inspect(staff, "copper", 89177, f"equipped by {NAME}")
+            command(player, "remove copper", "You stop using")
+            command(player, "wear copper", "You attach")
+            inspect(staff, "copper", 89177, f"equipped by {NAME}")
+            command(player, "remove copper", "You stop using")
+            command(player, "wear all", "You attach")
+            inspect(staff, "copper", 89177, f"equipped by {NAME}")
+            command(player, "remove copper", "You stop using")
+            command(player, "save", f"Save complete for {NAME}.")
+            player.send("quit")
+            player.expect("ACCOUNT MENU", timeout=30)
+            player.close()
+            player = journey.reconnect_character(port, account=NAME, character=NAME)
+            player.expect_any(PROMPTS)
+            text = inspect(staff, "copper", 89177, f"carried by {NAME}")
+            assert "ATTACH_BELT" not in text, text
+            command(player, "wear copper attach", "You attach")
+            inspect(staff, "copper", 89177, f"equipped by {NAME}")
+            command(player, "remove sash", "You stop using")
+            command(player, "wear sash attach", "You can't attach that to your belt.")
             stop()
             assert process.returncode == 0, f"server shutdown failed: {process.returncode}"
             logs = output_path.read_text(errors="replace") + journey.runtime_logs(runtime)
             assert not any(marker in logs for marker in ("FATAL:", "assert:", "AddressSanitizer", "runtime error:")), logs[-6000:]
             result["controls"] = ["three slots", "full belt preserves inventory",
                                   "waist removal returns attachments", "belt required",
-                                  "hold/remove", "unflagged instrument refuses"]
+                                  "hold/remove", "unflagged instrument attaches",
+                                  "automatic wear", "wear all", "saved unflagged instrument attaches",
+                                  "unflagged non-instrument refuses"]
             REPORT.write_text(json.dumps(result, indent=2) + "\n")
             print("PASS: all six real mortal casts, room creation, pickup, attachment, flags, "
-                  "three-slot/full/no-belt controls, hold/remove and unflagged control.", flush=True)
+                  "three-slot/full/no-belt controls, hold/remove, unflagged instruments, "
+                  "automatic wear, save/reload and non-instrument refusal.", flush=True)
         except Exception:
             for client in (player, staff):
                 if client:
