@@ -1,7 +1,7 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; six focused implementation PRs are pushed
-and ready for review; the cooldown chunk is being verified next.
+Status: implementation in progress; seven focused implementation PRs are pushed
+and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-cooldowns`, based on
@@ -28,7 +28,10 @@ contains the historical Misty Vale correction and targets the provenance branch.
 [PR #727](https://github.com/LuminariMUD/Duris/pull/727)
 (`branch/named-zone-set-ordinary-casts`, implementation commit `a7d720db5`)
 contains ordinary-cast overlap handling and targets the historical-origin branch.
-All six PRs are ready for review; no implementation PR has been merged and no
+[PR #728](https://github.com/LuminariMUD/Duris/pull/728)
+(`branch/named-zone-set-cooldowns`, implementation commit `bf2b4ce9e`)
+contains persistent wearer cooldowns and targets the ordinary-cast branch.
+All seven PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
@@ -433,8 +436,8 @@ rollback must account for this existing recovery behavior.
 **Focused proof passed:** `test_named_set_cooldowns.py` uses the real grant dispatcher,
 affect allocation/removal, scheduler, snapshot wire, player affect restore loop,
 offline-login and final timer-reset loops, and pet capture/apply. Native spell
-consequences, output and stat totals are fixtures. It covers driver/zone swaps, transfer floors, independent
-wearers, trusted staff, equipment cleanup, actual expiry, player reload/offline
+consequences, output and stat totals are fixtures. It covers driver/zone swaps,
+transfer floors, independent wearers, trusted staff, equipment cleanup, actual expiry, player reload/offline
 expiry, ordinary casts and both ordinary/summoned pet deadlines. The existing
 pet-state codec test covers v1/v2 and malformed deadlines; the loader test adds
 ordinary v2 pet resource/charm compatibility. Full interpreter-driven grants and
@@ -469,6 +472,11 @@ record final piece requirements in the assignment document. Complete the wider
 world eligibility review before installing the expansion rows. The remaining
 end-to-end origin/gear/storage journeys, live Redis lifecycle, help/publication
 and compatibility rollback gates remain open below.
+
+Publication note (2026-11-06): native SSH/HTTPS pushes failed with GitHub's internal
+`commit_refs_rules` error, with no applicable branch rules. The Git data API
+published the exact local blobs, tree and commit after SHA verification and moved
+the branch forward without rewriting history. Local and remote revisions match.
 
 ## Start here
 
