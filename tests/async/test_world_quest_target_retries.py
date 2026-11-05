@@ -60,7 +60,15 @@ with tempfile.TemporaryDirectory(prefix="quest-live-targets-", dir=ROOT / "bin/t
         'bool aggressive_to_race(P_char, P_char);\nbool aggressive_to_class(P_char, P_char);\n'
         '#include "world/specs.prototypes.h"\n#include "world/vnum.obj.h"\n'
         '#include <cassert>\n'
+        '#include "item/named_set_origin.h"\n'
         'extern int top_of_zone_table;\n'
+        # ASK returns before these set consequences; asking must never reach them.
+        'void check_zone_spells(P_char, P_obj, int, int, const char *) { std::abort(); }\n'
+        'nevent_handle nevent_handle_from_event(P_nevent) { std::abort(); }\n'
+        'bool nevent_reschedule_after(nevent_handle, unsigned long long) { std::abort(); }\n'
+        'void *__malloc(size_t, const char *, const char *, int) { std::abort(); }\n'
+        'char *str_dup(const char *) { std::abort(); }\n'
+        + extract_function("utility.c", "string strip_ansi(") +
         'void event_random_set_proc(P_char, P_char, P_obj, void *);\n'
         'void event_balance_affects(P_char, P_char, P_obj, void *);\n'
         'void event_object_proc(P_char, P_char, P_obj, void *);\n'
@@ -147,7 +155,8 @@ void run_map_payment(P_char player, int fee)
         "tests/async/world_quest_live_targets_harness.cpp", str(HARNESS_STUBS),
         "src/world/world_quest_policy.c", "src/combat/forced_movement.c", "src/combat/trap.c",
         "src/core/safe_format.c",
-        "src/specs/specs.set.c",
+        "src/specs/specs.set.c", "src/item/named_set_origin.c", "src/item/named_sets.c",
+        "src/item/random_equipment_tables.c",
         "-Wl,--gc-sections",
     ]
     subprocess.run([*compile_command, str(adapters), "-o", str(binary)], cwd=ROOT, check=True)
