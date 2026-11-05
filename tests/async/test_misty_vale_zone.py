@@ -35,8 +35,16 @@ def check():
     assert {'gynaeros', 'shaman'} <= set(mobs[300006].split('~')[0].split()), (
         'Gynaeros must be targetable by her displayed name and role')
     assert set(objs) == set(range(300000, 300042))
-    for ext in ('wld', 'zon', 'qst'):
+    for ext in ('wld', 'qst'):
         assert not (areas / ext / f'mist_chasm.{ext}').read_text().strip()
+    # Retain a canonical owner for the legacy prototypes without reviving the
+    # retired world. Empty world/quest files must stay empty: an embedded world
+    # end sentinel would truncate the concatenated world before later areas.
+    retired_zones = records(areas / 'zon/mist_chasm.zon')
+    assert set(retired_zones) == {150}
+    retired_lines = retired_zones[150].splitlines()
+    assert list(map(int, retired_lines[1].split())) == [15099, 0, 0, 0, 0, 0]
+    assert [line for line in retired_lines[2:] if line.strip() and not line.startswith('*')] == ['S']
     # Retired prototype IDs must remain loadable for saved inventory/pets.
     assert 15012 in objects(areas / 'obj/mist_chasm.obj')
     assert 15000 in records(areas / 'mob/mist_chasm.mob')
