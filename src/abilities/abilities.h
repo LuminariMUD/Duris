@@ -49,6 +49,11 @@ std::string seconds(int pulses);
 std::string game_hours(int ticks);
 std::string real_time(int pulses);
 
+// Info page styling shared by spells info, skills info and innate info: labels in cyan,
+// numbers in bright white. Facts stay plain text; mechanics_section() styles them.
+std::string info_field(const std::string &label, const std::string &value);
+std::string mechanics_section(const std::string &facts);
+
 // The mechanics lines a converted ability shows to the viewing character.
 typedef std::string (*AbilityFacts)(char_data *ch);
 

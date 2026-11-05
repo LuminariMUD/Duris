@@ -190,17 +190,20 @@ void catalog(P_char ch, int cls, int spec)
 
 void skill_info(P_char ch, int skill)
 {
+	const auto white = [](int value) { return "&+W" + std::to_string(value) + "&n"; };
 	std::ostringstream out;
-	out << heading(string(skills[skill].name) + " : SKILL INFO");
+	out << heading("&+W" + string(skills[skill].name) + "&+C : SKILL INFO");
 	const bool epic = IS_EPIC_SKILL(skill);
-	out << "  Type: "
-	    << (epic			   ? "Epic skill" :
-		IS_INSTRUMENT_SKILL(skill) ? "Instrument" :
-		IS_BARD_SONG(skill)	   ? "Bard song" :
-					     "Skill")
-	    << "\n";
+	out << info_field("Type", string("&+W") +
+					  (epic			      ? "Epic skill" :
+					   IS_INSTRUMENT_SKILL(skill) ? "Instrument" :
+					   IS_BARD_SONG(skill)	      ? "Bard song" :
+									"Skill") +
+					  "&n");
 	if (epic)
-		out << "  Acquisition: separate epic skill rules; use &+Wepic skills&n and help below.\n";
+		out << info_field(
+			"Acquisition",
+			"separate epic skill rules; use &+Wepic skills&n and help below.");
 	else
 	{
 		out << "\n&+W  Class / specialization       Level  Cap&n\n";
@@ -209,8 +212,8 @@ void skill_info(P_char ch, int skill)
 			const ClassSkillInfo &data = skills[skill].m_class[cls - 1];
 			if (available(data, 0))
 				out << "  " << pad_ansi(class_names_table[cls].ansi, 29) << " "
-				    << static_cast<int>(data.rlevel[0]) << "     "
-				    << static_cast<int>(data.maxlearn[0]) << "\n";
+				    << white(data.rlevel[0]) << "     " << white(data.maxlearn[0])
+				    << "\n";
 			for (int spec = 1; spec <= MAX_SPEC; ++spec)
 			{
 				if (!*specdata[cls][spec - 1] ||
@@ -222,27 +225,27 @@ void skill_info(P_char ch, int skill)
 					continue;
 				out << "    " << pad_ansi(specdata[cls][spec - 1], 27) << " ";
 				if (available(data, spec))
-					out << static_cast<int>(data.rlevel[spec]) << "     "
-					    << static_cast<int>(data.maxlearn[spec]);
+					out << white(data.rlevel[spec]) << "     "
+					    << white(data.maxlearn[spec]);
 				else
-					out << "Unavailable";
+					out << "&+rUnavailable&n";
 				out << "\n";
 			}
 		}
-		out << "  Unlisted specializations inherit their base class's level and cap.\n";
+		out << "&+L  Unlisted specializations inherit their base class's level and cap.&n\n";
 	}
 	const ClassSkillInfo data = SKILL_DATA_ALL(ch, skill);
 	const int level = GET_LVL_FOR_SKILL(ch, skill);
-	out << "\n&+W  Your progress&n\n  Current rating: " << GET_CHAR_SKILL(ch, skill)
-	    << "  Learned: " << static_cast<int>(ch->only.pc->skills[skill].learned)
-	    << "  Taught: " << static_cast<int>(ch->only.pc->skills[skill].taught) << "\n";
+	out << "\n&+W  Your progress&n\n  &+cCurrent rating:&n " << white(GET_CHAR_SKILL(ch, skill))
+	    << "  &+cLearned:&n " << white(ch->only.pc->skills[skill].learned) << "  &+cTaught:&n "
+	    << white(ch->only.pc->skills[skill].taught) << "\n";
 	if (!epic && available(data, ch->player.spec))
-		out << "  Your unlock level: " << level
-		    << "  Your cap: " << static_cast<int>(data.maxlearn[ch->player.spec]) << "\n";
+		out << "  &+cYour unlock level:&n " << white(level) << "  &+cYour cap:&n "
+		    << white(data.maxlearn[ch->player.spec]) << "\n";
 	else if (!epic)
-		out << "  Not available through your current class/specialization.\n";
+		out << "&+L  Not available through your current class/specialization.&n\n";
 	if (AbilityFacts facts = ability_facts(skill))
-		out << "\n&+W  Mechanics&n\n" << facts(ch);
+		out << mechanics_section(facts(ch));
 	out << "\n&+W  Helpfile details&n\n" << wiki_help_single(skills[skill].name) << "\n";
 	send_to_char(out.str().c_str(), ch);
 }
