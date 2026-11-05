@@ -2251,6 +2251,13 @@ void do_do(P_char /*ch*/, char * /*argument*/, int /*cmd*/)
 	return;
 }
 
+// A spell knowledge rating against the 1-100 roll to name a spell in a book of another
+// class; a lower rating does better.
+bool spell_book_recognizes(int rating, int roll)
+{
+	return rating <= roll;
+}
+
 // func assumes only PCs get in here
 
 void ShowCharSpellBookSpells(P_char ch, P_obj obj, char *short_desc)
@@ -2314,7 +2321,7 @@ void ShowCharSpellBookSpells(P_char ch, P_obj obj, char *short_desc)
 		}
 		if (!((GET_CLASS(ch, obj->value[1]) &&
 		       get_spell_circle(ch, j) <= get_max_circle(ch)) ||
-		      (GET_CHAR_SKILL(ch, k) <= number(1, 100) &&
+		      (spell_book_recognizes(GET_CHAR_SKILL(ch, k), number(1, 100)) &&
 		       (GET_CHAR_SKILL(ch, k) && number(1, 70) <= GET_LEVEL(ch)))))
 		{
 			continue;

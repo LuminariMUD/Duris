@@ -145,6 +145,7 @@ functions = [
     ('sillusionist.c', 'int sound_suppression_noise_limit('),
     ('utility.c', 'bool has_water_form_travel('),
     ('utility.c', 'int move_cost('),
+    ('actmove.c', 'int crippled_move_cost('),
     ('actmove.c', 'static bool water_crossing_valid('),
     ('actmove.c', 'static bool completing_water_crossing('),
     ('actmove.c', 'static int can_enter_room_internal('),

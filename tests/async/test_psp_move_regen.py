@@ -145,6 +145,8 @@ HELPERS = "\n".join([
     extract_function("events.c", "void event_move_regen(P_char ch,"),
     extract_function("events.c", "void StartRegen(P_char ch,"),
     extract_function("memorize.c", "static int devotion_keep_spell_threshold("),
+    extract_function("memorize.c", "int spatial_focus_mana_threshold("),
+    extract_function("memorize.c", "int spatial_focus_mana_cost("),
     extract_function("memorize.c", "void use_spell("),
     *(extract_function("magic.c", "static " + signature) for signature in (
         "int restore_spirit_damage(", "bool restore_spirit_untrained(",

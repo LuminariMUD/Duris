@@ -34,6 +34,7 @@
 #include "sql/sql.h"
 #include "world/vnum.obj.h"
 #include "economy/crafting.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -524,12 +525,50 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 	return;
 }
 
+static int war_cry_hit_points(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_WAR_CRY) / 2);
+}
+
+static int war_cry_bonus(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_WAR_CRY) / 20);
+}
+
+static int war_cry_group_duration(int dampoints)
+{
+	return (dampoints);
+}
+
+static int war_cry_solo_duration(int dampoints)
+{
+	return (dampoints / 2);
+}
+
+static int war_cry_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string war_cry_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_WAR_CRY))
+		return "  You have not learned it, so you can't use it.\n";
+	const int bonus = war_cry_bonus(ch);
+	return fact("Hit points", "+" + std::to_string(war_cry_hit_points(ch))) +
+	       fact("Hitroll and damroll", "+" + std::to_string(bonus)) +
+	       fact("Duration in a group", game_hours(war_cry_group_duration(bonus))) +
+	       fact("Duration alone", game_hours(war_cry_solo_duration(bonus))) +
+	       fact("Your lag", seconds(war_cry_lag())) +
+	       "  In a group it covers those in the room. Anyone who has it is skipped.\n";
+}
+
 // SPEC SKILL FOR WARRIOR - Kvark
 void do_war_cry(P_char ch, char * /*arg*/, int /*cmd*/)
 {
-	int hpoints = (GET_CHAR_SKILL(ch, SKILL_WAR_CRY) / 2);
+	int hpoints = war_cry_hit_points(ch);
 	struct group_list *gl;
-	int dampoints = (GET_CHAR_SKILL(ch, SKILL_WAR_CRY) / 20);
+	int dampoints = war_cry_bonus(ch);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch))
@@ -556,7 +595,7 @@ void do_war_cry(P_char ch, char * /*arg*/, int /*cmd*/)
 				{
 					bzero(&af, sizeof(af));
 					af.type = SKILL_WAR_CRY;
-					af.duration = (dampoints);
+					af.duration = war_cry_group_duration(dampoints);
 					// HPS
 					af.modifier = hpoints;
 					af.location = APPLY_HIT;
@@ -586,7 +625,7 @@ void do_war_cry(P_char ch, char * /*arg*/, int /*cmd*/)
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_WAR_CRY;
-			af.duration = (dampoints / 2);
+			af.duration = war_cry_solo_duration(dampoints);
 			// HPS
 			af.modifier = hpoints;
 			af.location = APPLY_HIT;
@@ -607,7 +646,32 @@ void do_war_cry(P_char ch, char * /*arg*/, int /*cmd*/)
 		}
 	}
 
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, war_cry_lag());
+}
+
+static int roar_of_heroes_level()
+{
+	return 56;
+}
+
+static int roar_of_heroes_duration()
+{
+	return 5;
+}
+
+static int roar_of_heroes_con_max(const Rolls &rolls)
+{
+	return rolls.number(9, 13);
+}
+
+std::string roar_of_heroes_facts(P_char /*ch*/)
+{
+	return fact("Level needed to roar", std::to_string(roar_of_heroes_level())) +
+	       fact("Constitution maximum", "+" + show({ roar_of_heroes_con_max(lowest_rolls),
+							 roar_of_heroes_con_max(highest_rolls) })) +
+	       fact("Duration", game_hours(roar_of_heroes_duration())) +
+	       "  In a group it covers those in the room, each with its own roll. Anyone who\n"
+	       "  has it is skipped. While you have it, you can't roar again.\n";
 }
 
 int do_roar_of_heroes(P_char ch)
@@ -620,7 +684,7 @@ int do_roar_of_heroes(P_char ch)
 		return 0;
 	}
 
-	if (IS_NPC(ch) || GET_LEVEL(ch) < 56)
+	if (IS_NPC(ch) || GET_LEVEL(ch) < roar_of_heroes_level())
 	{
 		// send_to_char("Mmmm, in your wildest dreams...\r\n", ch);
 		return 0;
@@ -647,8 +711,8 @@ int do_roar_of_heroes(P_char ch)
 			{
 				bzero(&af, sizeof(af));
 				af.type = SKILL_ROAR_OF_HEROES;
-				af.duration = 5;
-				af.modifier = number(9, 13);
+				af.duration = roar_of_heroes_duration();
+				af.modifier = roar_of_heroes_con_max(live_rolls);
 				af.location = APPLY_CON_MAX;
 				affect_to_char(gl->ch, &af);
 
@@ -712,8 +776,8 @@ int do_roar_of_heroes(P_char ch)
 				{
 					bzero(&af, sizeof(af));
 					af.type = SKILL_ROAR_OF_HEROES;
-					af.duration = 5;
-					af.modifier = number(9, 13);
+					af.duration = roar_of_heroes_duration();
+					af.modifier = roar_of_heroes_con_max(live_rolls);
 
 					af.location = APPLY_CON_MAX;
 					affect_to_char(gl->ch, &af);
@@ -777,8 +841,8 @@ int do_roar_of_heroes(P_char ch)
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_ROAR_OF_HEROES;
-			af.duration = 5;
-			af.modifier = number(9, 13);
+			af.duration = roar_of_heroes_duration();
+			af.modifier = roar_of_heroes_con_max(live_rolls);
 			af.location = APPLY_CON_MAX;
 			affect_to_char(ch, &af);
 			update_pos(ch);
@@ -837,6 +901,45 @@ int do_roar_of_heroes(P_char ch)
 	CharWait(ch, PULSE_VIOLENCE * 1);
 }
 
+// The attacks a flurry can spend, and each target's share.
+static int flurry_total_attacks(int num_attacks)
+{
+	return num_attacks * 2;
+}
+
+static int flurry_hits_per_target(int max_num_attacks, int num_targets, int num_attacks)
+{
+	int num_hits_per_target = int(max_num_attacks / num_targets);
+	num_hits_per_target = BOUNDED(1, num_hits_per_target, num_attacks);
+	return num_hits_per_target;
+}
+
+static int flurry_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+static int flurry_rest()
+{
+	return 10 * WAIT_SEC;
+}
+
+std::string flurry_of_blows_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FLURRY_OF_BLOWS);
+	return (rating ? fact("Chance on each target", chance_under(rating + 2, 1, 101)) : "") +
+	       fact("Attacks to spend", std::to_string(flurry_total_attacks(1)) +
+						" times your attacks, shared by the targets") +
+	       fact("Hits on each target", "at least " +
+						   std::to_string(flurry_hits_per_target(
+							   flurry_total_attacks(1), 100, 1)) +
+						   ", at most your attacks") +
+	       fact("Your lag", seconds(flurry_lag())) + fact("Rest", seconds(flurry_rest())) +
+	       "  Hitall uses it. It takes those fighting you, or with 'all' everyone it can\n"
+	       "  reach. Not in a safe or single-file room, or with no targets (no lag then).\n"
+	       "  You need blindfighting to hit what you can't see.\n";
+}
+
 void do_flurry_of_blows(P_char ch, char *arg)
 {
 	P_char tch = NULL, next_tch = NULL;
@@ -871,7 +974,7 @@ void do_flurry_of_blows(P_char ch, char *arg)
 	one_argument(arg, buf);
 	hit_all = !str_cmp(buf, "all");
 	num_attacks = MonkNumberOfAttacks(ch);
-	max_num_attacks = num_attacks * 2;
+	max_num_attacks = flurry_total_attacks(num_attacks);
 
 	/* Get number of targets in room */
 
@@ -893,8 +996,7 @@ void do_flurry_of_blows(P_char ch, char *arg)
 	}
 
 	num_targets = MAX(1, num_targets);
-	num_hits_per_target = int(max_num_attacks / num_targets);
-	num_hits_per_target = BOUNDED(1, num_hits_per_target, num_attacks);
+	num_hits_per_target = flurry_hits_per_target(max_num_attacks, num_targets, num_attacks);
 
 	act("&+gFlowing into the stance of the &+Gviper &+gyou unleash a flurry of blows!&n", FALSE,
 	    ch, 0, 0, TO_CHAR);
@@ -936,8 +1038,34 @@ void do_flurry_of_blows(P_char ch, char *arg)
 				hit(ch, tch, NULL);
 		}
 	}
-	CharWait(ch, PULSE_VIOLENCE * 3);
-	set_short_affected_by(ch, SKILL_FLURRY_OF_BLOWS, 10 * WAIT_SEC);
+	CharWait(ch, flurry_lag());
+	set_short_affected_by(ch, SKILL_FLURRY_OF_BLOWS, flurry_rest());
+}
+
+static int hitall_lag(int count)
+{
+	return PULSE_VIOLENCE * MAX(2, (count / 2));
+}
+
+static int hitall_berserk_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string hitall_facts(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_FLURRY_OF_BLOWS))
+		return "  With flurry of blows, this command does that instead.\n";
+	const int rating = GET_CHAR_SKILL(ch, SKILL_HITALL);
+	return (rating ? fact("Chance on each target", chance_under(rating + 1, 1, 101)) : "") +
+	       fact("Your lag", seconds(hitall_lag(0)) + ", or " + seconds(hitall_lag(6)) +
+					" with 6 targets, and so on") +
+	       (GET_CLASS(ch, CLASS_BERSERKER) ?
+			fact("Your lag while raging", seconds(hitall_berserk_lag())) +
+				"  While raging, each target also takes a hit that needs no roll.\n" :
+			"") +
+	       "  It takes aggressive creatures, or with 'all' everyone it can reach. Not in a\n"
+	       "  safe or single-file room. You need blindfighting for what you can't see.\n";
 }
 
 /*
@@ -1062,16 +1190,16 @@ void do_hitall(P_char ch, char *arg, int /*cmd*/)
 		{
 			if (affected_by_spell(ch, SKILL_BERSERK))
 			{
-				CharWait(ch, 2 * PULSE_VIOLENCE);
+				CharWait(ch, hitall_berserk_lag());
 			}
 			else
 			{
-				CharWait(ch, PULSE_VIOLENCE * MAX(2, (count / 2)));
+				CharWait(ch, hitall_lag(count));
 			}
 		}
 		else
 		{
-			CharWait(ch, PULSE_VIOLENCE * MAX(2, (count / 2)));
+			CharWait(ch, hitall_lag(count));
 		}
 	}
 }
@@ -1264,6 +1392,31 @@ void do_commands(P_char ch, char *arg, int /*cmd*/)
 	page_string(ch->desc, Gbuf1, 1);
 }
 
+static int subterfuge_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 101) * 6 / 5;
+}
+
+// The score, rolled 1-101, that lets an NPC above your level see through it.
+static int subterfuge_resist_score(int npc_level, int ch_level)
+{
+	return (npc_level - ch_level) * 5;
+}
+
+std::string subterfuge_facts(P_char ch)
+{
+	return fact("Chance threshold",
+		    "your rating, " + std::to_string(GET_CHAR_SKILL(ch, SKILL_SUBTERFUGE)) +
+			    ", against a roll of " +
+			    show({ subterfuge_roll(lowest_rolls),
+				   subterfuge_roll(highest_rolls) })) +
+	       fact("Chance a target above your level resists",
+		    std::to_string(subterfuge_resist_score(1, 0)) +
+			    " for each level, against 1-101") +
+	       "  It makes an NPC forget those it remembers. It must have a memory. Failing\n"
+	       "  makes a target that can see you attack you. Not while fighting or bound.\n";
+}
+
 /*
  * ** Rogue's skill subterfuge.  Basically, confuse NPC's with ** memories
  * as to erase their entire memory.
@@ -1302,13 +1455,13 @@ void do_subterfuge(P_char ch, char *arg, int /*cmd*/)
 		send_to_char("Your target simply does not have the intellect to remember.\r\n", ch);
 		return;
 	}
-	percent = number(1, 101) * 6 / 5;
+	percent = subterfuge_roll(live_rolls);
 
 	if (ch->only.pc->skills[SKILL_SUBTERFUGE].learned < percent)
 	{
 		send_to_char("You failed to confuse your target.\r\n", ch);
 	}
-	else if ((GET_LEVEL(npc) - GET_LEVEL(ch)) * 5 > number(1, 101))
+	else if (subterfuge_resist_score(GET_LEVEL(npc), GET_LEVEL(ch)) > number(1, 101))
 	{
 		act("$N's mind is too clear to be confused.", FALSE, ch, 0, npc, TO_CHAR);
 	}
@@ -1329,6 +1482,71 @@ void do_subterfuge(P_char ch, char *arg, int /*cmd*/)
 		if (!IS_FIGHTING(npc))
 			MobStartFight(npc, ch);
 	}
+}
+
+// What a swashbuckler's threshold starts at when opening a fight or facing someone else.
+static int disarm_opening_penalty()
+{
+	return -15;
+}
+
+static int disarm_other_target_penalty()
+{
+	return -30;
+}
+
+// The chance threshold, rolled 1-100, before those.
+static int disarm_score(P_char ch, int victim_dex_index, int victim_level)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DISARM) + STAT_INDEX(GET_C_DEX(ch)) - victim_dex_index +
+		GET_LEVEL(ch) - victim_level) /
+	       2;
+}
+
+// A failed roll of this or more fumbles your own weapon.
+static int disarm_fumble_roll()
+{
+	return 90;
+}
+
+static int disarm_rest()
+{
+	return 3 * PULSE_VIOLENCE;
+}
+
+static int disarm_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string disarm_facts(P_char ch)
+{
+	std::string facts;
+	if (GET_CHAR_SKILL(ch, SKILL_DISARM))
+		facts +=
+			fact("Chance against a target of your dexterity and level",
+			     chance_under(disarm_score(ch, STAT_INDEX(GET_C_DEX(ch)),
+						       GET_LEVEL(ch)),
+					  1, 100)) +
+			"  Half of any dexterity index and level difference moves the threshold.\n";
+	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
+		facts += fact("Threshold change if it starts the fight",
+			      std::to_string(disarm_opening_penalty())) +
+			 fact("Threshold change on another foe while in a fight",
+			      std::to_string(disarm_other_target_penalty()));
+	else
+		facts += "  You must be fighting the target.\n";
+	facts += fact("Time before the weapon can be wielded again", seconds(disarm_rest())) +
+		 "  Elites can wield it at once.\n" +
+		 fact("A failed roll that fumbles your own weapon, with the same wait",
+		      std::to_string(disarm_fumble_roll()) + " or more") +
+		 fact("Your lag", seconds(disarm_lag())) +
+		 "  You must be wielding a weapon. It only takes weapons.\n";
+	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_THIEF) || GET_CLASS(ch, CLASS_THIEF))
+		facts += fact("Chance to disarm a trap",
+			      chance_under(GET_CHAR_SKILL(ch, SKILL_DISARM), 1, 91)) +
+			 "  Failing sets it off.\n";
+	return facts;
 }
 
 void do_disarm(P_char ch, char *arg, int /*cmd*/)
@@ -1415,13 +1633,13 @@ void do_disarm(P_char ch, char *arg, int /*cmd*/)
 			{
 				act("You attempt to enter battle with a disarm.", FALSE, ch, 0,
 				    victim, TO_CHAR);
-				percent = -15;
+				percent = disarm_opening_penalty();
 			}
 			else
 			{
 				act("You attempt to disarm $N while fighting someone else.", FALSE,
 				    ch, 0, victim, TO_CHAR);
-				percent = -30;
+				percent = disarm_other_target_penalty();
 			}
 		}
 		else
@@ -1452,9 +1670,7 @@ void do_disarm(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
-	percent += (GET_CHAR_SKILL(ch, SKILL_DISARM) + STAT_INDEX(GET_C_DEX(ch)) -
-		    STAT_INDEX(GET_C_DEX(victim)) + GET_LEVEL(ch) - GET_LEVEL(victim)) /
-		   2;
+	percent += disarm_score(ch, STAT_INDEX(GET_C_DEX(victim)), GET_LEVEL(victim));
 
 	rnd_num = number(1, 100);
 
@@ -1469,14 +1685,14 @@ void do_disarm(P_char ch, char *arg, int /*cmd*/)
 		notch_skill(ch, SKILL_DISARM, 10);
 		obj_to_char(unequip_char(victim, pos), victim);
 		strip_holy_sword(victim);
-		set_short_affected_by(victim, SKILL_DISARM, 3 * PULSE_VIOLENCE);
+		set_short_affected_by(victim, SKILL_DISARM, disarm_rest());
 		// Engage ch only if successful disarm..
 		if (!IS_FIGHTING(ch))
 		{
 			set_fighting(ch, victim);
 		}
 	}
-	else if (rnd_num >= 90)
+	else if (rnd_num >= disarm_fumble_roll())
 	{
 		act("$n fails $s disarming maneuver so badly, $e fumbles $s own weapon.", FALSE, ch,
 		    0, victim, TO_NOTVICT);
@@ -1486,7 +1702,7 @@ void do_disarm(P_char ch, char *arg, int /*cmd*/)
 		    TO_CHAR);
 		obj_to_char(unequip_char(ch, WIELD), ch);
 		strip_holy_sword(ch);
-		set_short_affected_by(ch, SKILL_DISARM, 3 * PULSE_VIOLENCE);
+		set_short_affected_by(ch, SKILL_DISARM, disarm_rest());
 	}
 	else if (rnd_num >= 60)
 	{
@@ -1512,7 +1728,91 @@ void do_disarm(P_char ch, char *arg, int /*cmd*/)
 	{
 		set_fighting(victim, ch);
 	}
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, disarm_lag());
+}
+
+static int advanced_meditation_cure_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) / 2;
+}
+
+// The rating above which it cures poison, on a fixed chance, and then disease.
+static int advanced_meditation_poison_rating()
+{
+	return 50;
+}
+
+static int advanced_meditation_poison_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int advanced_meditation_disease_rating()
+{
+	return 90;
+}
+
+static int advanced_meditation_cure_level()
+{
+	return 50;
+}
+
+static int advanced_meditation_interval()
+{
+	return get_property("timer.sec.advancedMeditation", 3) * WAIT_SEC;
+}
+
+static int advanced_meditation_hit_regen(P_char ch)
+{
+	return 25 + GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) / 2;
+}
+
+static int advanced_meditation_move_regen(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) - 50) / 10;
+}
+
+static int advanced_meditation_vitality_lag()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+static int advanced_meditation_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string advanced_meditation_facts(P_char ch)
+{
+	extern int advanced_meditation_stun_flee_bonus();
+	const int rating = GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION);
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	const bool vitality = rating > advanced_meditation_poison_rating();
+	return fact("Hit point regeneration",
+		    "+" + std::to_string(advanced_meditation_hit_regen(ch))) +
+	       (vitality ? fact("Vitality regeneration",
+				"+" + std::to_string(advanced_meditation_move_regen(ch))) :
+			   "") +
+	       fact("Your lag when you start",
+		    seconds(vitality ? advanced_meditation_vitality_lag() :
+				       advanced_meditation_lag())) +
+	       fact("Chance to cure yourself",
+		    chance_under(advanced_meditation_cure_threshold(ch), 0, 100) + " every " +
+			    seconds(advanced_meditation_interval())) +
+	       "  One cure ends these rolls until you meditate again.\n" +
+	       fact("It cures blindness, at level",
+		    std::to_string(advanced_meditation_cure_level())) +
+	       (vitality ? fact("It cures poison, on a further",
+				one_in(advanced_meditation_poison_roll)) :
+			   "") +
+	       (rating > advanced_meditation_disease_rating() ? "  It cures disease and plague.\n" :
+								"") +
+	       fact("Chance to keep meditating as you speak or emote",
+		    chance_under(rating + 1, 1, 60)) +
+	       fact("Added to fleeing while stunned, a threshold rolled 1-100",
+		    std::to_string(advanced_meditation_stun_flee_bonus())) +
+	       "  That means the stun never stops you fleeing.\n";
 }
 
 void event_meditation(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -1520,23 +1820,25 @@ void event_meditation(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 	if (!IS_AFFECTED(ch, AFF_MEDITATE))
 		return;
 
-	if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) / 2 > number(0, 100))
+	if (advanced_meditation_cure_threshold(ch) > number(0, 100))
 	{
 		if (IS_AFFECTED(ch, AFF_BLIND))
 		{
-			spell_cure_blind(50, ch, 0, 0, ch, 0);
+			spell_cure_blind(advanced_meditation_cure_level(), ch, 0, 0, ch, 0);
 			notch_skill(ch, SKILL_ADVANCED_MEDITATION, 2);
 			return;
 		}
-		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) > 50 && !number(0, 2) &&
-		    IS_AFFECTED2(ch, AFF2_POISONED))
+		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
+			    advanced_meditation_poison_rating() &&
+		    !advanced_meditation_poison_roll(live_rolls) && IS_AFFECTED2(ch, AFF2_POISONED))
 		{
 			poison_common_remove(ch);
 			notch_skill(ch, SKILL_ADVANCED_MEDITATION, 2);
 			send_to_char("You were able to fight the poison in your body!\n", ch);
 			return;
 		}
-		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) > 90 &&
+		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
+			    advanced_meditation_disease_rating() &&
 		    (affected_by_spell(ch, SPELL_DISEASE) || affected_by_spell(ch, SPELL_PLAGUE)))
 		{
 			spell_cure_disease(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, ch, NULL);
@@ -1545,8 +1847,7 @@ void event_meditation(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 		}
 	}
 
-	add_event(event_meditation, get_property("timer.sec.advancedMeditation", 3) * WAIT_SEC, ch,
-		  0, 0, 0, 0, 0);
+	add_event(event_meditation, advanced_meditation_interval(), ch, 0, 0, 0, 0, 0);
 }
 
 void stop_meditation(P_char ch)
@@ -1584,29 +1885,28 @@ void do_meditate(P_char ch, char * /*arg*/, int /*cmd*/)
 		af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 		af.bitvector = AFF_MEDITATE;
 		af.location = APPLY_HIT_REG;
-		af.modifier = 25 + GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) / 2;
+		af.modifier = advanced_meditation_hit_regen(ch);
 		af.duration = -1;
 		affect_to_char(ch, &af);
-		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) > 50)
+		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) >
+		    advanced_meditation_poison_rating())
 		{
 			af.location = APPLY_MOVE_REG;
-			af.modifier = (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) - 50) / 10;
+			af.modifier = advanced_meditation_move_regen(ch);
 			affect_to_char(ch, &af);
 			send_to_char(
 				"You feel completely aligned with your spirit as you sink in meditation...\n",
 				ch);
-			CharWait(ch, PULSE_VIOLENCE / 2);
+			CharWait(ch, advanced_meditation_vitality_lag());
 			StartRegen(ch, regen_resource::vitality);
 		}
 		else
 		{
 			send_to_char("You sink in meditation...\n", ch);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, advanced_meditation_lag());
 		}
 		StartRegen(ch, regen_resource::hit);
-		add_event(event_meditation,
-			  get_property("timer.sec.advancedMeditation", 3) * WAIT_SEC, ch, 0, 0, 0,
-			  0, 0);
+		add_event(event_meditation, advanced_meditation_interval(), ch, 0, 0, 0, 0, 0);
 	}
 	else
 	{
@@ -2441,6 +2741,29 @@ void do_shapechange(P_char ch, char *arg, int /*cmd*/)
 	extract_char(mob);
 }
 
+static int dirt_toss_blindness(int skl_lvl, int dex, int vict_agi)
+{
+	return BOUNDED(5 * WAIT_SEC, (skl_lvl * dex / 100) - vict_agi, WAIT_SEC * 10);
+}
+
+static int dirt_toss_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string dirt_toss_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DIRTTOSS);
+	return (rating ? fact("Blindness on a target with no agility",
+			      seconds(dirt_toss_blindness(rating, GET_C_DEX(ch), 0))) +
+				 fact("Blindness on the most agile target",
+				      seconds(dirt_toss_blindness(rating, GET_C_DEX(ch), 1000))) :
+			 "") +
+	       fact("Your lag", seconds(dirt_toss_lag())) +
+	       "  It needs no roll, but you and the target must both be on the front line.\n"
+	       "  Not on the eyeless, parasites, slimes or the already blind.\n";
+}
+
 void do_dirttoss(P_char ch, char *arg, int /*cmd*/)
 {
 	P_char vict = NULL;
@@ -2527,12 +2850,11 @@ void do_dirttoss(P_char ch, char *arg, int /*cmd*/)
 	    vict, TO_NOTVICT);
 
 	// 5 seconds to 10 seconds
-	int duration = BOUNDED(5 * WAIT_SEC, (skl_lvl * GET_C_DEX(ch) / 100) - GET_C_AGI(vict),
-			       WAIT_SEC * 10);
+	int duration = dirt_toss_blindness(skl_lvl, GET_C_DEX(ch), GET_C_AGI(vict));
 	blind(ch, vict, duration);
 
 	notch_skill(ch, SKILL_DIRTTOSS, get_property("skill.notch.offensive", 7));
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, dirt_toss_lag());
 
 	if (IS_NPC(vict) && CAN_SEE(vict, ch))
 	{
@@ -2552,6 +2874,54 @@ char *get_str_zone(P_obj obj)
 		zone++;
 
 	return zone_table[zone - 1].name;
+}
+
+static int lore_failed_lag()
+{
+	return 1;
+}
+
+static int lore_lag()
+{
+	return 3;
+}
+
+// The lowest level a bard and a minstrel know a character at.
+static int lore_famous_level()
+{
+	return 50;
+}
+
+static int lore_master_level()
+{
+	return 40;
+}
+
+// The level to lore an item that can't be identified.
+static int lore_unidentified_level()
+{
+	return 50;
+}
+
+std::string lore_facts(P_char ch)
+{
+	std::string facts =
+		fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_LORE) + 1, 1, 101)) +
+		fact("Your lag", seconds(lore_lag())) +
+		fact("Your lag if you fail", seconds(lore_failed_lag())) +
+		"  You always learn the zone of an item you carry. Not while fighting.\n";
+	if (GET_LEVEL(ch) < lore_unidentified_level())
+		facts += "  You can't lore an item that can't be identified until level " +
+			 std::to_string(lore_unidentified_level()) + ".\n";
+	if (GET_SPEC(ch, CLASS_BARD, SPEC_MINSTREL))
+		facts += fact("Lowest level character you can lore",
+			      std::to_string(lore_master_level()));
+	else if (GET_CLASS(ch, CLASS_BARD))
+		facts += fact("Lowest level character you can lore",
+			      std::to_string(lore_famous_level()));
+	else
+		facts += "  You can only lore items.\n";
+	return facts;
 }
 
 /* What a lorer recalls about a character, once it is loaded (null when there is none). */
@@ -2575,7 +2945,7 @@ static void lore_character(P_char ch, P_char target, int lore_power, int cmd)
 		notch_skill(ch, SKILL_LORE, 3);
 		send_to_char("You can't recall any legends or stories ever told about that!\r\n",
 			     ch);
-		CharWait(ch, 1);
+		CharWait(ch, lore_failed_lag());
 		free_char(target);
 		return;
 	}
@@ -2586,9 +2956,9 @@ static void lore_character(P_char ch, P_char target, int lore_power, int cmd)
 			 GET_NAME(target), GET_TITLE(target) == NULL ? "" : GET_TITLE(target));
 		send_to_char(Gbuf1, ch);
 	}
-	else if ((GET_LEVEL(target) >= 50 &&
+	else if ((GET_LEVEL(target) >= lore_famous_level() &&
 		  lore_power > 1) || // regular bards know only famous persons
-		 (GET_LEVEL(target) >= 40 && lore_power > 2) // masters knows more
+		 (GET_LEVEL(target) >= lore_master_level() && lore_power > 2) // masters knows more
 	)
 	{
 		snprintf(
@@ -2604,7 +2974,7 @@ static void lore_character(P_char ch, P_char target, int lore_power, int cmd)
 		send_to_char("You haven't heard anything about that person!\n", ch);
 	}
 	free_char(target);
-	CharWait(ch, 3);
+	CharWait(ch, lore_lag());
 }
 
 void do_lore(P_char ch, char *arg, int cmd)
@@ -2685,12 +3055,12 @@ void do_lore(P_char ch, char *arg, int cmd)
 	{
 		notch_skill(ch, SKILL_LORE, 3);
 		send_to_char("That's all you can recall about this item.\r\n", ch);
-		CharWait(ch, 1);
+		CharWait(ch, lore_failed_lag());
 		return;
 	}
 
 	lore_item(ch, obj);
-	CharWait(ch, 3);
+	CharWait(ch, lore_lag());
 }
 
 static void render_item_lore(P_char ch, P_obj obj, std::string *captured)
@@ -2711,7 +3081,7 @@ static void render_item_lore(P_char ch, P_obj obj, std::string *captured)
 
 	if (IS_SET(obj->extra_flags, ITEM_NOIDENTIFY))
 	{
-		if (GET_LEVEL(ch) < 50)
+		if (GET_LEVEL(ch) < lore_unidentified_level())
 		{
 			emit("You can't recall any legends or stories ever told about this item.\n\r");
 			return;
@@ -3171,6 +3541,66 @@ void make_key(P_char ch, char *arg)
 #endif
 }
 
+static int throat_crush_lag()
+{
+	return PULSE_VIOLENCE * 1;
+}
+
+static int throat_crush_miss_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// How many sizes bigger or smaller a target can be.
+static int throat_crush_size_reach()
+{
+	return 1;
+}
+
+static int throat_crush_damage()
+{
+	return 30;
+}
+
+static int throat_crush_silence(const Rolls &rolls)
+{
+	return rolls.number(1, 3) * PULSE_VIOLENCE;
+}
+
+static int throat_crush_cooldown(const Rolls &rolls)
+{
+	return rolls.number(2, 4) * PULSE_VIOLENCE;
+}
+
+static std::string throat_crush_cooldown_text()
+{
+	return seconds(throat_crush_cooldown(lowest_rolls)) + " to " +
+	       seconds(throat_crush_cooldown(highest_rolls));
+}
+
+std::string throat_crush_facts(P_char /*ch*/)
+{
+	return fact("Damage", std::to_string(throat_crush_damage())) +
+	       "  The target's defenses apply after.\n" +
+	       fact("Target can't speak or cast for",
+		    seconds(throat_crush_silence(lowest_rolls)) + " to " +
+			    seconds(throat_crush_silence(highest_rolls))) +
+	       "  It also stops the spell being cast. Silent spell gets past the silence.\n" +
+	       fact("Before you can do it again", throat_crush_cooldown_text()) +
+	       fact("Your lag", seconds(throat_crush_lag())) +
+	       fact("Your lag on a miss", seconds(throat_crush_miss_lag())) +
+	       "  It misses only when the attempt raises your rating.\n"
+	       "  Not on non-humanoids, greater races, elites, or a target whose throat is\n"
+	       "  still sore. The target must be on the front line and within " +
+	       std::to_string(throat_crush_size_reach()) + " size of you.\n";
+}
+
+std::string throat_crusher_facts(P_char /*ch*/)
+{
+	return fact("Before you can throat crush again", throat_crush_cooldown_text()) +
+	       fact("Your lag if you try sooner", seconds(throat_crush_lag()));
+}
+
 void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 {
 	P_char vict = NULL;
@@ -3234,7 +3664,7 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 	   return;
 	   }
 	   */
-	CharWait(ch, PULSE_VIOLENCE * 1);
+	CharWait(ch, throat_crush_lag());
 
 	if (affected_by_spell_flagged(ch, SKILL_THROAT_CRUSHER, 0))
 	{
@@ -3245,7 +3675,7 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 	if (affected_by_spell_flagged(vict, SKILL_THROAT_CRUSH, AFFTYPE_CUSTOM1))
 	{
 		send_to_char("This person's throat is already sore.\r\n", ch);
-		CharWait(ch, PULSE_VIOLENCE * 1);
+		CharWait(ch, throat_crush_lag());
 
 		return;
 	}
@@ -3264,14 +3694,14 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 		return;
 	}
 
-	if (GET_ALT_SIZE(vict) > GET_ALT_SIZE(ch) + 1)
+	if (GET_ALT_SIZE(vict) > GET_ALT_SIZE(ch) + throat_crush_size_reach())
 	{
 		act("You cannot reach $N's throat!", FALSE, ch, 0, vict, TO_CHAR);
 		act("$n close in on $N!", FALSE, ch, 0, vict, TO_NOTVICT);
 		return;
 	}
 
-	if (GET_ALT_SIZE(vict) < GET_ALT_SIZE(ch) - 1)
+	if (GET_ALT_SIZE(vict) < GET_ALT_SIZE(ch) - throat_crush_size_reach())
 	{
 		send_to_char("They are too small for you.\r\n", ch);
 		act("$n close in on $N!", FALSE, ch, 0, vict, TO_NOTVICT);
@@ -3306,23 +3736,76 @@ void do_throat_crush(P_char ch, char *arg, int /*cmd*/)
 		send_to_char("You miss their throat!\r\n", ch);
 		act("$n, lunges at $N, but misses!", FALSE, ch, 0, vict, TO_NOTVICT);
 		act("$n, lunges at you, but misses!", FALSE, ch, 0, vict, TO_VICT);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, throat_crush_miss_lag());
 		return;
 	}
 
-	melee_damage(ch, vict, 30, PHSDAM_TOUCH, &messages);
+	melee_damage(ch, vict, throat_crush_damage(), PHSDAM_TOUCH, &messages);
 	StopCasting(vict);
 
 	memset(&af, 0, sizeof(af));
 	af.type = SKILL_THROAT_CRUSH;
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_CUSTOM1;
-	af.duration = number(1, 3) * PULSE_VIOLENCE;
+	af.duration = throat_crush_silence(live_rolls);
 	affect_to_char(vict, &af);
 
 	af.type = SKILL_THROAT_CRUSHER;
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_CUSTOM2;
-	af.duration = number(2, 4) * PULSE_VIOLENCE;
+	af.duration = throat_crush_cooldown(live_rolls);
 	affect_to_char(ch, &af);
+}
+
+// What an aware target takes off your rating.
+static int hamstring_aware_penalty()
+{
+	return 10;
+}
+
+static int hamstring_threshold(int skl_lvl, int vict_agi)
+{
+	return (skl_lvl) - (vict_agi / 10);
+}
+
+static int hamstring_vitality_drain(const Rolls &rolls)
+{
+	return rolls.number(40, 70);
+}
+
+// The vitality a drain leaves.
+static int hamstring_vitality_floor()
+{
+	return 20;
+}
+
+static int hamstring_aware_duration()
+{
+	return 5;
+}
+
+static int hamstring_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string hamstring_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_HAMSTRING);
+	return (rating ? fact("Chance on a target with no agility",
+			      chance_under(hamstring_threshold(rating, 0), 1, 100)) :
+			 "") +
+	       fact("Threshold lost per 10 of the target's agility",
+		    std::to_string(hamstring_threshold(0, 0) - hamstring_threshold(0, 10))) +
+	       fact("Threshold lost if the target is aware",
+		    std::to_string(hamstring_aware_penalty()) + ", or its awareness") +
+	       fact("Vitality drained on a hit",
+		    show({ hamstring_vitality_drain(lowest_rolls),
+			   hamstring_vitality_drain(highest_rolls) }) +
+			    ", leaving at least " + std::to_string(hamstring_vitality_floor())) +
+	       fact("The target's awareness after a hit", game_hours(hamstring_aware_duration())) +
+	       fact("Your lag", seconds(hamstring_lag())) +
+	       "  It fails against demons, dragons and plants, and you land sitting down.\n"
+	       "  You need footing and a sword or backstabbing weapon. Not on ghosts, a\n"
+	       "  phantasmal form, non-humanoids or illithids.\n";
 }
 
 void do_hamstring(P_char ch, char *arg, int /*cmd*/)
@@ -3387,7 +3870,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 	appear(ch);
 
 	if (IS_AFFECTED(vict, AFF_AWARE) && IS_AWAKE(vict))
-		skl_lvl -= 10;
+		skl_lvl -= hamstring_aware_penalty();
 	else if (IS_AWAKE(vict) && IS_AFFECTED(vict, AFF_SKILL_AWARE))
 	{
 		for (af = vict->affected; af; af = af->next)
@@ -3454,7 +3937,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 		    vict, TO_VICT);
 		act("$n tries some fancy maneuver on $N, but winds up flat on $s ass.", TRUE, ch, 0,
 		    vict, TO_ROOM);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, hamstring_lag());
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_pos(ch);
 		return;
@@ -3484,7 +3967,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 	   return;
 	   }
 	   */
-	i = (skl_lvl) - (GET_C_AGI(vict) / 10);
+	i = hamstring_threshold(skl_lvl, GET_C_AGI(vict));
 
 	act("You sweep downward and try to slice the back of $N's knees!", FALSE, ch, 0, vict,
 	    TO_CHAR);
@@ -3503,9 +3986,9 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 		   af->location = APPLY_MOVE;
 		   */
 
-		i = number(40, 70);
-		if ((GET_VITALITY(vict) - i) < 20)
-			i = GET_VITALITY(vict) - 20;
+		i = hamstring_vitality_drain(live_rolls);
+		if ((GET_VITALITY(vict) - i) < hamstring_vitality_floor())
+			i = GET_VITALITY(vict) - hamstring_vitality_floor();
 
 		GET_VITALITY(vict) -= i;
 
@@ -3515,7 +3998,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 		{
 			bzero(&afs, sizeof(afs));
 			afs.type = SKILL_AWARENESS;
-			afs.duration = 5;
+			afs.duration = hamstring_aware_duration();
 			afs.bitvector = AFF_AWARE;
 			afs.flags = AFFTYPE_NODISPEL;
 			affect_to_char(vict, &afs);
@@ -3527,7 +4010,7 @@ void do_hamstring(P_char ch, char *arg, int /*cmd*/)
 		   */
 	}
 	notch_skill(ch, SKILL_HAMSTRING, get_property("skill.notch.offensive", 7));
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, hamstring_lag());
 
 	if (IS_NPC(vict) && CAN_SEE(vict, ch))
 	{
@@ -3759,6 +4242,55 @@ int chance_throw_potion(P_char ch, P_char /*victim*/)
 	return (int)chance;
 }
 
+static int throw_potion_lag()
+{
+	return (int)(get_property("alchemist.throwp.lag.rounds", 0.75) * PULSE_VIOLENCE);
+}
+
+// How long before you can throw again.
+static int throw_potion_rest(bool flurry, bool haste)
+{
+	float lag;
+
+	lag = get_property("alchemist.throwp.reorient.rounds", 1.75);
+
+	if (flurry)
+	{
+		lag *= 0.5;
+	}
+	else if (haste)
+	{
+		lag *= 0.8;
+	}
+	return (int)(lag * PULSE_VIOLENCE);
+}
+
+std::string throwpotion_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_THROW_POTIONS);
+	return (rating ?
+			fact("Chance a throw at someone is steady, from your agility",
+			     chance_under(GET_C_AGI(ch) + 1, 1, 140)) +
+				"  Otherwise the potion is lost.\n" +
+				(rating == 1 ?
+					 std::string("  At rating 1, no throw is steady.\n") :
+					 fact("Chance a steady throw goes astray, to anyone or the floor",
+					      chance_under(1, 0, rating))) :
+			"") +
+	       fact("Your lag", seconds(throw_potion_lag())) +
+	       fact("Before you can throw again", seconds(throw_potion_rest(false, false))) +
+	       fact("With haste", seconds(throw_potion_rest(false, true))) +
+	       fact("With flurry", seconds(throw_potion_rest(true, false))) +
+	       "  You can only throw potions with your name on them, of your level or below.\n"
+	       "  Their spells land at the potion's level. Not in a no-magic room.\n";
+}
+
+std::string remix_facts(P_char ch)
+{
+	return fact("Chance to keep a potion thrown at an NPC",
+		    chance_under(GET_CHAR_SKILL(ch, SKILL_REMIX), 1, 120));
+}
+
 bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 {
 	int i, j;
@@ -3767,7 +4299,6 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 	P_char temp = NULL;
 	int the_room;
 	int chance = 0;
-	float lag;
 
 	if (!(chance = chance_throw_potion(ch, victim)))
 	{
@@ -3786,19 +4317,10 @@ bool throw_potion(P_char ch, P_obj potion, P_char victim, P_obj obj)
 	if (potion == ch->equipment[HOLD])
 		equipped = TRUE;
 
-	lag = get_property("alchemist.throwp.reorient.rounds", 1.75);
-
-	if (IS_AFFECTED2(ch, AFF2_FLURRY))
-	{
-		lag *= 0.5;
-	}
-	else if (IS_AFFECTED(ch, AFF_HASTE))
-	{
-		lag *= 0.8;
-	}
-
-	CharWait(ch, (int)(get_property("alchemist.throwp.lag.rounds", 0.75) * PULSE_VIOLENCE));
-	set_short_affected_by(ch, SKILL_THROW_POTIONS, (int)(lag * PULSE_VIOLENCE));
+	CharWait(ch, throw_potion_lag());
+	set_short_affected_by(ch, SKILL_THROW_POTIONS,
+			      throw_potion_rest(IS_AFFECTED2(ch, AFF2_FLURRY),
+						IS_AFFECTED(ch, AFF_HASTE)));
 
 	notch_skill(ch, SKILL_THROW_POTIONS, 7);
 

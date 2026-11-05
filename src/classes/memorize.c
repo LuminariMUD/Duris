@@ -732,6 +732,17 @@ int calculate_harpy_time(P_char ch, int circle, bool bStatOnly)
 	return (int)remem_time;
 }
 
+// What the nature epics multiply a recovery by when they fire.
+double natures_sanctity_recovery_factor()
+{
+	return .65;
+}
+
+double natures_ruin_recovery_factor()
+{
+	return .65;
+}
+
 int get_circle_memtime(P_char ch, int circle, bool bStatOnly, bool roll_nature_bonus)
 {
 	float time_mult, time;
@@ -867,7 +878,7 @@ int get_circle_memtime(P_char ch, int circle, bool bStatOnly, bool roll_nature_b
 		if (roll_nature_bonus && OUTSIDE(ch) &&
 		    GET_CHAR_SKILL(ch, SKILL_NATURES_SANCTITY) > number(1, 100))
 		{
-			time = time * .65;
+			time = time * natures_sanctity_recovery_factor();
 		}
 
 		// randomly reduce the time by 33% based on level of caster
@@ -923,7 +934,7 @@ int get_circle_memtime(P_char ch, int circle, bool bStatOnly, bool roll_nature_b
 		if (roll_nature_bonus && OUTSIDE(ch) &&
 		    GET_CHAR_SKILL(ch, SKILL_NATURES_RUIN) > number(1, 100))
 		{
-			time = time * .65;
+			time = time * natures_ruin_recovery_factor();
 		}
 
 		// cant commune while in command lag, this makes sure they will
@@ -2180,6 +2191,17 @@ std::string devotion_facts(P_char ch)
 	return text + "  Many healing and holy spells count it too: see their pages.\n";
 }
 
+// Spatial focus: its chance threshold, rolled 1-100, and the mana it charges then.
+int spatial_focus_mana_threshold(int spatial)
+{
+	return (int)(spatial / 2);
+}
+
+int spatial_focus_mana_cost(int circle)
+{
+	return (int)(circle * 35 / 10);
+}
+
 void use_spell(P_char ch, int spell)
 {
 	struct affected_type *af;
@@ -2195,12 +2217,12 @@ void use_spell(P_char ch, int spell)
 	}
 	else if (USES_MANA(ch))
 	{
-		if ((int)(spatial / 2) > number(1, 100))
+		if (spatial_focus_mana_threshold(spatial) > number(1, 100))
 		{
 			send_to_char(
 				"&+MFocusing your mind, you bend reality a bit more easily...&n\n",
 				ch);
-			GET_MANA(ch) -= (int)(get_spell_circle(ch, spell) * 35 / 10);
+			GET_MANA(ch) -= spatial_focus_mana_cost(get_spell_circle(ch, spell));
 			StartRegen(ch, regen_resource::mana);
 		}
 		else

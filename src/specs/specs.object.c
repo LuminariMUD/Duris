@@ -12679,6 +12679,69 @@ int cutting_dagger(P_obj obj, P_char ch, int cmd, char *arg)
 	return FALSE;
 }
 
+static int trap_arm_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int trap_arm_lifetime()
+{
+	return 1800 * WAIT_SEC;
+}
+
+// An armed trap springs when this is nonzero.
+static int trap_spring_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int trap_dart_damage(const Rolls &rolls)
+{
+	return rolls.dice(5, 5);
+}
+
+static int trap_poison_level()
+{
+	return 56;
+}
+
+static int trap_cripple_duration()
+{
+	return 40;
+}
+
+static int trap_bleed_count(const Rolls &rolls)
+{
+	return rolls.number(3, 7);
+}
+
+std::string trap_facts(P_char /*ch*/)
+{
+	extern int crippled_move_cost();
+	extern int sneaky_strike_bleed_damage(const Rolls &rolls);
+	return fact("Your lag when you hide and arm a trap", seconds(trap_arm_lag())) +
+	       fact("How long it stays armed", real_time(trap_arm_lifetime())) +
+	       fact("Chance it springs as someone tries to leave",
+		    std::to_string(trap_spring_roll(highest_rolls)) + " in " +
+			    std::to_string(trap_spring_roll(highest_rolls) -
+					   trap_spring_roll(lowest_rolls) + 1)) +
+	       "  It takes a player outside your group, not a god, with you online elsewhere.\n"
+	       "  A ward just tells you who passed.\n" +
+	       fact("Dart trap damage, with no reductions",
+		    show({ trap_dart_damage(lowest_rolls), trap_dart_damage(highest_rolls) })) +
+	       fact("Poison trap's level", std::to_string(trap_poison_level())) +
+	       fact("Crippling trap's limp", seconds(trap_cripple_duration()) + ", " +
+						     std::to_string(crippled_move_cost()) +
+						     " more vitality per move") +
+	       fact("Its bleeding",
+		    show({ trap_bleed_count(lowest_rolls), trap_bleed_count(highest_rolls) }) +
+			    " rounds and 2 more, each " +
+			    show({ sneaky_strike_bleed_damage(lowest_rolls),
+				   sneaky_strike_bleed_damage(highest_rolls) })) +
+	       "  Wards and crippling traps have a thin string their victim's intelligence\n"
+	       "  may spot, against 0-120, as it snaps.\n";
+}
+
 int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 {
 	P_char tch;
@@ -12699,8 +12762,8 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 			act("$n arms $p and hides it from the eyes of any trespassers.", FALSE, ch,
 			    obj, NULL, TO_ROOM);
 			set_obj_extra_flags(obj, obj->extra_flags | (ITEM_SECRET));
-			set_obj_affected(obj, 1800 * WAIT_SEC, TAG_OBJ_DECAY, 0);
-			CharWait(ch, PULSE_VIOLENCE);
+			set_obj_affected(obj, trap_arm_lifetime(), TAG_OBJ_DECAY, 0);
+			CharWait(ch, trap_arm_lag());
 			if (IS_PC(ch))
 			{
 				obj->value[0] = GET_PID(ch);
@@ -12721,9 +12784,9 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 		return TRUE;
 	}
 
-	if (number(0, 2) && IS_SET(obj->extra_flags, ITEM_SECRET) && cmd_to_exitnumb(cmd) != -1 &&
-	    obj->value[0] && OBJ_ROOM(obj) && (IS_PC(ch) && obj->value[0] != GET_PID(ch)) &&
-	    !IS_TRUSTED(ch))
+	if (trap_spring_roll(live_rolls) && IS_SET(obj->extra_flags, ITEM_SECRET) &&
+	    cmd_to_exitnumb(cmd) != -1 && obj->value[0] && OBJ_ROOM(obj) &&
+	    (IS_PC(ch) && obj->value[0] != GET_PID(ch)) && !IS_TRUSTED(ch))
 	{
 		for (tch = character_list; tch; tch = tch->next)
 		{
@@ -12764,7 +12827,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				disarm_obj_nevents(obj, NULL);
 
 				// PHSDAM_NOREDUCE -> 5d5 damage total.
-				dam = dice(5, 5);
+				dam = trap_dart_damage(live_rolls);
 
 				act("Without warning, a hidden trap sends a flurry of tiny &+Lblack&n darts piercing $n's &+rflesh&n.",
 				    FALSE, ch, obj, 0, TO_NOTVICT);
@@ -12804,7 +12867,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 
 				af.type = TAG_CRIPPLED;
 				af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-				af.duration = 40;
+				af.duration = trap_cripple_duration();
 				affect_to_char(ch, &af);
 				act("&+ROUCH!!&+y Without warning, a &+rrusty &+yclamp suddenly tears at your legs!&n",
 				    FALSE, ch, 0, 0, TO_CHAR);
@@ -12812,7 +12875,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				    FALSE, ch, 0, 0, TO_ROOM);
 
 				// 3-7 * ~5 damage = 15-35 damage total.
-				int numb = number(3, 7);
+				int numb = trap_bleed_count(live_rolls);
 				add_event(event_bleedproc, PULSE_VIOLENCE, tch, ch, 0, 0, &numb,
 					  sizeof(numb));
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
@@ -12832,7 +12895,7 @@ int huntsman_ward(P_obj obj, P_char ch, int cmd, char *argument)
 				act("Without warning, a hidden trap injects a large dose of &+gpoison&n into your &+rflesh&n.",
 				    FALSE, ch, obj, 0, TO_CHAR);
 
-				spell_poison(56, ch, 0, 0, ch, NULL);
+				spell_poison(trap_poison_level(), ch, 0, 0, ch, NULL);
 
 				extract_obj(obj, TRUE); // Not an arti, but 'in game.'
 			}

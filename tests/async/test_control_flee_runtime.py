@@ -134,6 +134,7 @@ def production():
             ("actmove.c", "int do_simple_move("),
             ("actoff.c", "bool bad_flee_dir("),
             ("actoff.c", "static bool restore_equipment_sneak_after_flee("),
+            ("actoff.c", "int advanced_meditation_stun_flee_bonus("),
             ("actoff.c", "void do_flee("),
         ])
 
