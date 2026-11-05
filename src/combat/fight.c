@@ -620,6 +620,32 @@ int plague_heal_block_percent(const Rolls &rolls)
 	return rolls.number(30, 40);
 }
 
+float aura_healing_mod()
+{
+	return get_property("innate.paladin_aura.healing_mod", 0.2);
+}
+
+float enhancement_healing_mod()
+{
+	return get_property("enhancement.healing.mod", 1.5);
+}
+
+float divine_force_damage_mod()
+{
+	return get_property("damage.modifier.divineforce", 1.250);
+}
+
+// Against a mob, a spawner's death blow raises a pet when this comes up 0.
+int spawn_npc_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+int spawn_player_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
 int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 {
 	struct affected_type *af;
@@ -681,9 +707,7 @@ int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 		    !affected_by_skill(ch, SKILL_REGENERATE))
 		{
 			hits += (int)(hits *
-				      ((get_property("innate.paladin_aura.healing_mod", 0.2) *
-					aura_mod(ch, AURA_HEALING)) /
-				       100));
+				      ((aura_healing_mod() * aura_mod(ch, AURA_HEALING)) / 100));
 		}
 	}
 
@@ -717,7 +741,7 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 	if (affected_by_spell(ch, SPELL_BMANTLE) || affected_by_spell(ch, SPELL_FLAMESTRIKE))
 		hits = (int)(hits * get_property("blackmantle.healing.mod", .75));
 	if (IS_AFFECTED3(healer, AFF3_ENHANCE_HEALING))
-		hits = (int)(hits * get_property("enhancement.healing.mod", 1.5));
+		hits = (int)(hits * enhancement_healing_mod());
 	/*
 	   if(affected_by_spell(ch, TAG_NOMISFIRE)) //misfire code - drannak
 	   {
@@ -2858,7 +2882,8 @@ void die(P_char ch, P_char killer)
 			//     so should be same on NPC 1/2 the time and faster the other 1/2 and slower on a PC all the time.
 			//     A lot more NPCs die than PCs, and the slowdown is just the 2 dereferences on a PC 100% of the time,
 			//     so should be faster overall.
-			if ((IS_NPC(ch) && !number(0, 1)) || (IS_PC(ch) && !number(0, 3)))
+			if ((IS_NPC(ch) && !spawn_npc_roll(live_rolls)) ||
+			    (IS_PC(ch) && !spawn_player_roll(live_rolls)))
 			{
 				if (IS_PC(killer) && !affected_by_spell(killer, SPELL_SPAWN) &&
 				    !affected_by_spell(killer, TAG_SPAWN))
@@ -8219,7 +8244,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		*/
 
 	if (has_divine_force(ch))
-		dam *= get_property("damage.modifier.divineforce", 1.250);
+		dam *= divine_force_damage_mod();
 
 	/* Just commenting this out.. it's handled down below in minotaur_race_proc().
 		// Dropped this to 30sec and made it not stack.

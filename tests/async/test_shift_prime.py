@@ -243,7 +243,7 @@ with tempfile.TemporaryDirectory(prefix="shift-prime-", dir=build) as directory:
     innates = source("innates.c").read_text()
     selector = innates[innates.index("struct shift_prime_destination\n"):
                       innates.index("#define PLANE_ZONETARG_ROOMNUMB")]
-    cpp.write_text(prelude + selector + extract_function("innates.c", "void do_shift_prime(P_char ch") + driver)
+    cpp.write_text(prelude + selector + extract_function("innates.c", "static int shift_prime_innate_lag(") + extract_function("innates.c", "void do_shift_prime(P_char ch") + driver)
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Wpedantic",
                     "-Og", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     "-fno-pie", "-no-pie", "-I" + str(ROOT / "src"), str(cpp),

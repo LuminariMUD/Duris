@@ -226,6 +226,12 @@ production = "\n".join([
     extract_function("innates.c", "static int innate_uses("),
     extract_function("innates.c", "bool check_innate_time("),
     extract_function("affects.c", "void Stun("),
+    '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n',
+    extract_function("actnew.c", "static int stampede_innate_rest("),
+    extract_function("actnew.c", "static int stampede_hit_limit("),
+    extract_function("actnew.c", "static int stampede_sure_hit_roll("),
+    extract_function("actnew.c", "static int stampede_stun("),
+    extract_function("actnew.c", "static int stampede_lag("),
     extract_function("actnew.c", "void do_stampede("),
 ])
 driver = DRIVER.replace("REGISTRATIONS", registrations).replace("COMBAT_GATE", gate)

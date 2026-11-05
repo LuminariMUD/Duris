@@ -407,6 +407,46 @@ void do_consent(P_char ch, char *argument, int /*cmd*/)
 	act("$n has just given you $s consent.", FALSE, ch, 0, target, TO_VICT);
 }
 
+static int stampede_innate_rest()
+{
+	return get_property("innate.timer.secs.stampede", 60);
+}
+
+static int stampede_hit_limit(const Rolls &rolls)
+{
+	return rolls.number(2, 3);
+}
+
+// One result of this roll always hits.
+static int stampede_sure_hit_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 9);
+}
+
+static int stampede_stun()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+static int stampede_lag(int count)
+{
+	return PULSE_VIOLENCE * MIN(3, (count / 2));
+}
+
+std::string stampede_innate_facts(P_char /*ch*/)
+{
+	return fact("Foes it can hit",
+		    show({ stampede_hit_limit(lowest_rolls), stampede_hit_limit(highest_rolls) })) +
+	       fact("A front-line foe hit for sure", one_in(stampede_sure_hit_roll)) +
+	       fact("Stun and prone on a hit",
+		    seconds(stampede_stun()) + "; fear saves shorten or stop it") +
+	       innate_rest_facts(INNATE_STAMPEDE, stampede_innate_rest()) +
+	       fact("Your lag", seconds(stampede_lag(2)) + " after 2 or more hits, else none") +
+	       "  Players only. You need footing and the front line, not a single-file room.\n"
+	       "  Back-rank foes dodge it. Level, agility and awareness decide the rest.\n"
+	       "  Ghosts, air elementals, efreet, elites and phantasmal forms are immune.\n";
+}
+
 void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int missed;
@@ -441,7 +481,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 	/* Cooldown: 60 seconds by default, tunable via innate.timer.secs.stampede. */
-	if (!check_innate_time(ch, INNATE_STAMPEDE, get_property("innate.timer.secs.stampede", 60)))
+	if (!check_innate_time(ch, INNATE_STAMPEDE, stampede_innate_rest()))
 	{
 		send_to_char("You're too winded to stampede again so soon.\r\n", ch);
 		return;
@@ -464,7 +504,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 			break;
 		if (!char_in_list(vict) || !IS_ALIVE(vict) || vict->in_room != room)
 			continue;
-		if (count >= number(2, 3))
+		if (count >= stampede_hit_limit(live_rolls))
 			continue;
 		if (!CAN_SEE(ch, vict))
 			continue;
@@ -491,7 +531,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 
 		/* Back-ranked targets always dodge; otherwise 10% always hit. */
 		missed = !on_front_line(vict) ||
-			 (number(0, 9) &&
+			 (stampede_sure_hit_roll(live_rolls) &&
 			  number(1, 100) >
 				  (GET_LEVEL(ch) - GET_LEVEL(vict) - STAT_INDEX(GET_C_AGI(vict)) +
 				   dice(10, IS_AFFECTED(vict, AFF_AWARE) ? 5 : 10)));
@@ -506,7 +546,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 			act("You crash wildly into $N!", 0, ch, 0, vict, TO_CHAR);
 			act("$n crashes wildly into you!", 0, ch, 0, vict, TO_VICT);
 			SET_POS(vict, POS_PRONE + GET_STAT(vict));
-			Stun(vict, ch, PULSE_VIOLENCE / 2, TRUE);
+			Stun(vict, ch, stampede_stun(), TRUE);
 			count++;
 		}
 
@@ -520,7 +560,7 @@ void do_stampede(P_char ch, char * /*arg*/, int /*cmd*/)
 	count = MIN(2, count);
 
 	if (char_in_list(ch))
-		CharWait(ch, PULSE_VIOLENCE * MIN(3, (count / 2)));
+		CharWait(ch, stampede_lag(count));
 
 	return;
 }
@@ -2528,6 +2568,11 @@ int shapechange_levelNeeded(int race)
 	}
 }
 
+static int shapechange_memory_time()
+{
+	return get_property("innate.shapechange.memory.time", 500);
+}
+
 void event_learn_shape(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
 	struct affected_type af, *afp;
@@ -2545,7 +2590,7 @@ void event_learn_shape(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		if (afp->type == TAG_KNOWN_SHAPE && afp->modifier == vnum)
 		{
 			send_to_char("You refresh the knowledge of this creature.\n", ch);
-			afp->duration = get_property("innate.shapechange.memory.time", 500);
+			afp->duration = shapechange_memory_time();
 			return;
 		}
 
@@ -2553,13 +2598,37 @@ void event_learn_shape(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	af.type = TAG_KNOWN_SHAPE;
 	af.modifier = mob_index[GET_RNUM(victim)].virtual_number;
 	af.flags = AFFTYPE_PERM | AFFTYPE_NOSHOW | AFFTYPE_NOAPPLY | AFFTYPE_NODISPEL;
-	af.duration = get_property("innate.shapechange.memory.time", 500);
+	af.duration = shapechange_memory_time();
 
 	affect_to_char(ch, &af);
 	act("Sinking deeper in meditation you experience contact with\n"
 	    "eternal wisdom of mother nature as it flows into you.\n"
 	    "&+WYou are now able to take on shape of &n$N.",
 	    FALSE, ch, 0, victim, TO_CHAR);
+}
+
+// The level a learner counts as against a creature's shapechange_levelNeeded.
+static int shapechange_learn_level(P_char ch)
+{
+	int chLevel = GET_LEVEL(ch);
+	// multi-classes have a serious penalty to what shapes they can take
+	// while forest specs get a slight bonus
+	// non druids receive a sall penalty
+	if (IS_MULTICLASS_PC(ch))
+		chLevel -= 10;
+
+	if (!GET_CLASS(ch, CLASS_DRUID))
+		chLevel -= 5;
+
+	if (GET_SPEC(ch, CLASS_DRUID, SPEC_WOODLAND))
+		chLevel++;
+
+	return chLevel;
+}
+
+static int shapechange_learn_delay()
+{
+	return 3 * PULSE_VIOLENCE;
 }
 
 void shapechange_learn(P_char ch, char *mobname)
@@ -2590,18 +2659,7 @@ void shapechange_learn(P_char ch, char *mobname)
 		return;
 	}
 
-	int chLevel = GET_LEVEL(ch);
-	// multi-classes have a serious penalty to what shapes they can take
-	// while forest specs get a slight bonus
-	// non druids receive a sall penalty
-	if (IS_MULTICLASS_PC(ch))
-		chLevel -= 10;
-
-	if (!GET_CLASS(ch, CLASS_DRUID))
-		chLevel -= 5;
-
-	if (GET_SPEC(ch, CLASS_DRUID, SPEC_WOODLAND))
-		chLevel++;
+	int chLevel = shapechange_learn_level(ch);
 
 	if ((chLevel < shapechange_levelNeeded(GET_RACE(mob))) && !IS_TRUSTED(ch))
 	{
@@ -2623,7 +2681,44 @@ void shapechange_learn(P_char ch, char *mobname)
 	    "you begin to sense its spirit and slowly align with it.",
 	    FALSE, ch, 0, mob, TO_CHAR);
 
-	add_event(event_learn_shape, 3 * PULSE_VIOLENCE, ch, mob, 0, 0, 0, 0);
+	add_event(event_learn_shape, shapechange_learn_delay(), ch, mob, 0, 0, 0, 0);
+}
+
+static int shapechange_shift_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int shapechange_return_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+static int shapechange_form_hits(P_char ch)
+{
+	return GET_LEVEL(ch) * 2;
+}
+
+std::string shapechange_innate_facts(P_char ch)
+{
+	const auto need = [](int race) { return std::to_string(shapechange_levelNeeded(race)); };
+	return fact("You learn creatures as level", std::to_string(shapechange_learn_level(ch))) +
+	       fact("Level needed", "primates " + need(RACE_PRIMATE) + ", animals " +
+					    need(RACE_ANIMAL) + ", reptiles and spiders " +
+					    need(RACE_SNAKE) + ", fish " +
+					    need(RACE_AQUATIC_ANIMAL)) +
+	       fact("And", "quadrupeds " + need(RACE_QUADRUPED) + ", plants and fliers " +
+				   need(RACE_PLANT) + ", insects, worms and slimes " +
+				   need(RACE_INSECT)) +
+	       fact("Learning takes", seconds(shapechange_learn_delay())) +
+	       fact("A shape stays known for", game_hours(shapechange_memory_time())) +
+	       fact("A form's hit points",
+		    std::to_string(shapechange_form_hits(ch)) + ", worn down by damage and time") +
+	       fact("Your lag to shift", seconds(shapechange_shift_lag())) +
+	       fact("Your lag to shift back", seconds(shapechange_return_lag())) +
+	       "  Shapes must be natural and your size. No rest between uses.\n"
+	       "  Not in a fight, with a rider, or in a safe or no-mob room.\n" +
+	       (IS_TRUSTED(ch) ? "  As a god, you need no level to learn.\n" : "");
 }
 
 void do_shapechange(P_char ch, char *arg, int /*cmd*/)
@@ -2656,7 +2751,7 @@ void do_shapechange(P_char ch, char *arg, int /*cmd*/)
 		{
 			send_to_char("&+WYou shift back into your own shape.&N\r\n", ch);
 			act("&+W$n shifts back into $s own image.&N", FALSE, ch, 0, ch, TO_ROOM);
-			CharWait(ch, PULSE_VIOLENCE * 3);
+			CharWait(ch, shapechange_return_lag());
 			remove_disguise(ch, FALSE);
 		}
 		return;
@@ -2732,7 +2827,7 @@ void do_shapechange(P_char ch, char *arg, int /*cmd*/)
 	stop_riding(ch);
 	stop_riding(get_linking_char(ch, LNK_RIDING));
 
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, shapechange_shift_lag());
 	if (IS_DISGUISE(ch))
 		remove_disguise(ch, FALSE);
 	IS_DISGUISE_PC(ch) = FALSE;
@@ -2759,7 +2854,7 @@ void do_shapechange(P_char ch, char *arg, int /*cmd*/)
 	}
 	ch->disguise.m_class = mob->player.m_class;
 	ch->disguise.racewar = GET_RACEWAR(mob);
-	ch->disguise.hit = GET_LEVEL(ch) * 2;
+	ch->disguise.hit = shapechange_form_hits(ch);
 	snprintf(mobname, sizeof mobname, "&+WYou shift into the form of %s!\r\n",
 		 ch->disguise.name);
 	send_to_char(mobname, ch);

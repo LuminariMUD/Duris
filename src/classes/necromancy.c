@@ -1181,12 +1181,17 @@ void mummify(P_char ch, P_char vict, P_obj corpse)
 	spell_embalm(MAXLVL, ch, 0, SPELL_TYPE_SPELL, NULL, corpse);
 }
 
+static int spawn_tier_roll(const Rolls &rolls, int corpse_level)
+{
+	return corpse_level / 5 + rolls.number(1, 20);
+}
+
 void spawn_raise_undead(P_char ch, P_char vict, P_obj corpse)
 {
 	P_char follower;
 	struct follow_type *ft;
 	int sum, type = 0;
-	int roll = (corpse->value[CORPSE_LEVEL]) / 5 + number(1, 20);
+	int roll = spawn_tier_roll(live_rolls, corpse->value[CORPSE_LEVEL]);
 
 	if (!IS_ALIVE(ch))
 	{
@@ -3019,6 +3024,41 @@ void do_exhume(P_char ch, char * /*argument*/, int /*cmd*/)
 	spell_embalm(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, NULL, obj1);
 }
 
+// Shared by the spawn and ally innates, whose handler this is.
+std::string spawn_innate_facts(P_char ch)
+{
+	extern int spawn_npc_roll(const Rolls &rolls);
+	extern int spawn_player_roll(const Rolls &rolls);
+	const bool theurgist = GET_CLASS(ch, CLASS_THEURGIST);
+	const std::string lich = theurgist ? "a liberator" : "a lich";
+	const std::string vampire = theurgist ? "a knight errant" : "a vampire";
+	const std::string wraith = theurgist ? "a bralani" : "a wraith";
+	const std::string spectre = theurgist ? "an asura" : "a spectre";
+	return fact("Chance from a mob you kill", one_in(spawn_npc_roll)) +
+	       fact("From a player you kill", one_in(spawn_player_roll)) +
+	       fact("Pet roll",
+		    "corpse level / 5 + " + show({ spawn_tier_roll(lowest_rolls, 0),
+						   spawn_tier_roll(highest_rolls, 0) })) +
+	       fact("Over 27", (theurgist ? "a titan" : "a dracolich") +
+				       std::string(", if no other pets follow you")) +
+	       fact("Over 22", lich + ", if no other pets follow you") +
+	       fact("Over 20", vampire + ", with under 6 pet points following") +
+	       fact("Over 10", wraith + ", with under 6 pet points following") +
+	       fact("Over 6", spectre + ", with under 7 pet points following") +
+	       fact("Otherwise", "a lesser pet, with under 8 pet points following") +
+	       fact("Pet points", theurgist ?
+					  "hound archon 2, lantern archon or asura 3, bralani 4" :
+					  "skeleton 2, zombie or spectre 3, wraith or vampire 4") +
+	       fact("And",
+		    theurgist ? "knight errant 4, liberator 5, titan 9" : "lich 5, dracolich 9") +
+	       "  Using it turns this on or off, with no rest or lag.\n";
+}
+
+std::string ally_innate_facts(P_char ch)
+{
+	return spawn_innate_facts(ch);
+}
+
 void do_spawn(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	struct affected_type af;
@@ -3045,6 +3085,11 @@ void do_spawn(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.duration = -1;
 	af.flags = AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 	affect_to_char(ch, &af);
+}
+
+std::string summon_host_innate_facts(P_char ch)
+{
+	return fact("Effect", "raises an embalmed, soulless corpse in the room") + exhume_facts(ch);
 }
 
 void do_summon_host(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -3125,6 +3170,18 @@ void do_summon_host(P_char ch, char * /*argument*/, int /*cmd*/)
 	spell_embalm(GET_LEVEL(ch), ch, 0, SPELL_TYPE_SPELL, NULL, obj1);
 }
 
+static int remort_innate_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+std::string remort_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "ends your vampire or angelic form") +
+	       fact("Your lag", seconds(remort_innate_lag())) +
+	       "  It needs that form, and has no rest.\n";
+}
+
 void do_remort(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	if (!IS_PC(ch))
@@ -3146,7 +3203,7 @@ void do_remort(P_char ch, char * /*arg*/, int /*cmd*/)
 	send_to_char("Color fades slowly into your face.\r\n", ch);
 	affect_from_char(ch, SPELL_VAMPIRE);
 	affect_from_char(ch, SPELL_ANGELIC_COUNTENANCE);
-	CharWait(ch, PULSE_VIOLENCE * 3);
+	CharWait(ch, remort_innate_lag());
 }
 
 void spell_corpseform(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,

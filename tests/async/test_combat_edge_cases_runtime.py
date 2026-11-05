@@ -871,7 +871,12 @@ int main()
 '''
 
 functions = [
+    extract_function("utility.c", "int dice(int num, int size)"),
+    '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n',
     extract_function("utility.c", "int is_char_in_room("),
+    extract_function("innates.c", "static int venom_bite_damage("),
+    extract_function("innates.c", "static int venom_bite_poison_tries("),
+    extract_function("innates.c", "static int venom_bite_lag("),
     extract_function("innates.c", "void event_snakebite("),
     extract_function("utility.c", "int BOUNDED("),
     extract_function("utility.c", "bool is_ansi_char("),
@@ -884,10 +889,17 @@ functions = [
     extract_function("innates.c", "static int innate_uses("),
     extract_function("innates.c", "bool can_use_innate("),
     extract_function("innates.c", "bool check_innate_time("),
+    extract_function("innates.c", "static int bite_innate_rest("),
     extract_function("innates.c", "void do_bite_target("),
     extract_function("innates.c", "void do_bite(P_char ch, char *arg, int /*cmd*/)"),
+    extract_function("innates.c", "static int branch_roll("),
+    extract_function("innates.c", "static int branch_chance_cap("),
+    extract_function("innates.c", "static int branch_damage("),
+    extract_function("innates.c", "static int branch_target_lag("),
+    extract_function("innates.c", "static int branch_pet_lag("),
+    extract_function("innates.c", "static int branch_lag("),
     extract_function("innates.c", "void branch("),
-] + [extract_function("utility.c", "int dice(int num, int size)"), '#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n'] + [
+] + [
     extract_function("actoff.c", signature)
     for signature in (
         "static int kick_base_damage(",

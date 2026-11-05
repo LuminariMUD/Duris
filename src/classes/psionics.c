@@ -3993,6 +3993,42 @@ void spell_tower_iron_will(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	return;
 }
 
+static int innate_blast_appear_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int innate_blast_paralysis_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int innate_blast_major_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int innate_blast_duration(int lev)
+{
+	return (lev >> 5) + 1;
+}
+
+// The blast's paralysis, as do_blast casts it at the user's level.
+std::string blast_innate_facts(P_char ch)
+{
+	return fact("Paralysis chance",
+		    one_in(innate_blast_paralysis_roll) + ", if a power save also fails") +
+	       fact("Duration",
+		    game_hours(innate_blast_duration(GET_LEVEL(ch))) + " at your level") +
+	       (GET_LEVEL(ch) > 25 ?
+			fact("Major instead of minor", one_in(innate_blast_major_roll)) :
+			"  Paralysis is minor at your level.\n") +
+	       fact("You appear", one_in(innate_blast_appear_roll) + " if you are unseen") +
+	       innate_rest_facts(INNATE_BLAST, 0) +
+	       "  Freedom of movement, paralysis immunity and existing paralysis stop it.\n"
+	       "  A shopkeeper ignores it, but the use is still spent. It has no lag.\n";
+}
+
 void spell_innate_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj obj)
 {
@@ -4012,7 +4048,7 @@ void spell_innate_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		return;
 	}
 
-	if (number(0, 1))
+	if (innate_blast_appear_roll(live_rolls))
 		appear(ch);
 
 	if (check_freedom_of_movement(victim) && !IS_TRUSTED(ch))
@@ -4021,13 +4057,13 @@ void spell_innate_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		return;
 	}
 
-	if (!number(0, 2) &&
+	if (!innate_blast_paralysis_roll(live_rolls) &&
 	    !StatSave(victim, APPLY_POW, MAX(-3, (GET_LEVEL(ch) - GET_LEVEL(victim)) / 3)) &&
 	    !(IS_NPC(victim) && IS_SET(victim->specials.act, ACT_IMMUNE_TO_PARA)))
 	{
 		bzero(&af, sizeof(af));
 
-		if ((GET_LEVEL(ch) > 25) && number(0, 1))
+		if ((GET_LEVEL(ch) > 25) && innate_blast_major_roll(live_rolls))
 		{
 			af.type = SPELL_MAJOR_PARALYSIS;
 			af.bitvector2 = AFF2_MAJOR_PARALYSIS;
@@ -4041,7 +4077,7 @@ void spell_innate_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		if (!IS_AFFECTED2(victim, AFF2_MAJOR_PARALYSIS) &&
 		    !IS_AFFECTED2(victim, AFF2_MINOR_PARALYSIS))
 		{
-			af.duration = (lev >> 5) + 1;
+			af.duration = innate_blast_duration(lev);
 
 			affect_to_char(victim, &af);
 

@@ -2675,10 +2675,31 @@ void event_summon_book(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*dat
 	submit_summoned_replacement(ch, book, summoned_replacement_kind::book);
 }
 
+static int summon_book_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string summon_book_innate_facts(P_char /*ch*/)
+{
+	return fact("Your spellbook arrives after", seconds(summon_book_delay())) +
+	       "  It needs no rest, has no lag, and comes on its own when you enter the game.\n";
+}
+
 void do_summon_book(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	send_to_char("You utter a magical formula summoning your spellbook..\r\n", ch);
-	add_event(event_summon_book, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	add_event(event_summon_book, summon_book_delay(), ch, 0, 0, 0, 0, 0);
+}
+
+static int summon_totem_hit_points()
+{
+	return 10;
+}
+
+static int summon_totem_pulse()
+{
+	return -1;
 }
 
 void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -2704,12 +2725,12 @@ void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	if (GET_LEVEL(ch) >= 56)
 	{
 		totem->affected[2].location = APPLY_SPELL_PULSE;
-		totem->affected[2].modifier = -1;
+		totem->affected[2].modifier = summon_totem_pulse();
 	}
 	if (GET_LEVEL(ch) >= 51)
 	{
 		totem->affected[1].location = APPLY_HIT;
-		totem->affected[1].modifier = 10;
+		totem->affected[1].modifier = summon_totem_hit_points();
 	}
 	if (GET_LEVEL(ch) >= 41)
 	{
@@ -2727,12 +2748,61 @@ void event_summon_totem(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	submit_summoned_replacement(ch, totem, summoned_replacement_kind::totem);
 }
 
+static int summon_totem_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string summon_totem_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	std::string text = fact("Your totem arrives after", seconds(summon_totem_delay()));
+	if (level >= 31)
+		text += "  It grants farsee.\n";
+	if (level >= 36)
+		text += "  It grants sense life.\n";
+	if (level >= 41)
+		text += "  It grants soulshield.\n";
+	if (level >= 51)
+		text += fact("Hit points", "+" + std::to_string(summon_totem_hit_points()));
+	if (level >= 56)
+		text += fact("Spell pulse", std::to_string(summon_totem_pulse()));
+	if (level < 56)
+		text += "  More powers come with level: 31, 36, 41, 51 and 56.\n";
+	return text + "  It replaces your last totem, with no rest and no lag.\n";
+}
+
 void do_summon_totem(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	send_to_char(
 		"You thrust your arms skyward, uttering an incantation to &+GMaglubiyet&n.\r\n",
 		ch);
-	add_event(event_summon_totem, PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
+	add_event(event_summon_totem, summon_totem_delay(), ch, 0, 0, 0, 0, 0);
+}
+
+static int summoned_mount_factor(const Rolls &rolls, P_char ch)
+{
+	if (GET_LEVEL(ch) < 6) // TODO: hack for level 1 dragoon mounts dying
+		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
+			     rolls.number(1, 5));
+	else
+		return (int)(GET_LEVEL(ch) * get_property("mount.summoned.FactorMod", 0.750) +
+			     rolls.number(-5, 5));
+}
+
+static int summoned_mount_level(int factor)
+{
+	return 10 + factor;
+}
+
+static int summoned_mount_hit_points(P_char ch, int factor)
+{
+	return factor * (IS_SKELETON(ch) ? 15 : 50);
+}
+
+static int summoned_mount_skeleton_vitality(const Rolls &rolls)
+{
+	return 100 + rolls.number(-25, 25);
 }
 
 void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -2932,23 +3002,16 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 		// Level 30 mount factor average = 22.5 based on 0.750 mod.
 		// Level 56 mount factor average = 42 based on 0.750 mod. Nov08 -Lucrot
 
-		if (GET_LEVEL(ch) < 6) // TODO: hack for level 1 dragoon mounts dying
-			factor = (int)(GET_LEVEL(ch) *
-					       get_property("mount.summoned.FactorMod", 0.750) +
-				       number(1, 5));
-		else
-			factor = (int)(GET_LEVEL(ch) *
-					       get_property("mount.summoned.FactorMod", 0.750) +
-				       number(-5, 5));
+		factor = summoned_mount_factor(live_rolls, ch);
 
 		mount->base_stats.Str = BOUNDED(75, mount->base_stats.Str, 75 + factor);
 		mount->base_stats.Agi = BOUNDED(75, mount->base_stats.Agi, 75 + factor);
 		mount->base_stats.Con = BOUNDED(75, mount->base_stats.Con, 75 + factor);
 		mount->base_stats.Cha = 100;
-		mount->player.level = 10 + factor;
+		mount->player.level = summoned_mount_level(factor);
 		mount->points.base_hit = factor * (IS_SKELETON(ch) ? 25 : 50);
-		GET_HIT(mount) = factor * (IS_SKELETON(ch) ? 15 : 50);
-		GET_MAX_HIT(mount) = factor * (IS_SKELETON(ch) ? 15 : 50);
+		GET_HIT(mount) = summoned_mount_hit_points(ch, factor);
+		GET_MAX_HIT(mount) = summoned_mount_hit_points(ch, factor);
 		mount->player.m_class = CLASS_NONE;
 		MonkSetSpecialDie(mount);
 		SET_BIT(mount->specials.act, ACT_MOUNT);
@@ -2957,7 +3020,8 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 		{
 			// 100 - 25 + 50 (for being a mount) is a minimum of 125 moves, and max 175.
 			mount->points.vitality = mount->points.base_vitality =
-				mount->points.max_vitality = 100 + number(-25, 25);
+				mount->points.max_vitality =
+					summoned_mount_skeleton_vitality(live_rolls);
 		}
 
 		if (IS_SET(mount->specials.act, ACT_MEMORY))
@@ -2969,6 +3033,40 @@ void mount_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /
 	}
 	send_to_char("A mount didn't load. Please report this with the bug command.\r\n", ch);
 	return;
+}
+
+// How long a call for a mount or warg takes, in pulses.
+static int summon_mount_delay(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(70 - GET_LEVEL(ch), 100 + rolls.number(1, 200 - 2 * GET_LEVEL(ch)));
+}
+
+// What answers a call: the numbers the mount and warg pages share.
+static std::string summoned_mount_facts(P_char ch)
+{
+	const Range factor = { summoned_mount_factor(lowest_rolls, ch),
+			       summoned_mount_factor(highest_rolls, ch) };
+	std::string text =
+		fact("It arrives after", seconds(summon_mount_delay(lowest_rolls, ch)) + " to " +
+						 seconds(summon_mount_delay(highest_rolls, ch))) +
+		fact("Its level", show({ summoned_mount_level(factor.low),
+					 summoned_mount_level(factor.high) })) +
+		fact("Its hit points", show({ summoned_mount_hit_points(ch, factor.low),
+					      summoned_mount_hit_points(ch, factor.high) }));
+	if (IS_SKELETON(ch))
+		text += fact("Its vitality",
+			     show({ summoned_mount_skeleton_vitality(lowest_rolls),
+				    summoned_mount_skeleton_vitality(highest_rolls) }));
+	return text;
+}
+
+std::string summon_mount_innate_facts(P_char ch)
+{
+	return summoned_mount_facts(ch) + innate_rest_facts(INNATE_SUMMON_MOUNT, 0) +
+	       "  One mount at a time, and none in dragon form.\n"
+	       "  Paladins must be good and antipaladins evil.\n"
+	       "  Not in a locker, single-file room or ocean. A dragoon may call from\n"
+	       "  anywhere else; others need the outdoors or underworld on the prime plane.\n";
 }
 
 void do_summon_mount(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3057,8 +3155,15 @@ void do_summon_mount(P_char ch, char * /*arg*/, int /*cmd*/)
 	else
 		send_to_char("You begin calling for a mount..\r\n", ch);
 
-	sumtime = number(70 - GET_LEVEL(ch), 100 + number(1, 200 - 2 * GET_LEVEL(ch)));
+	sumtime = summon_mount_delay(live_rolls, ch);
 	add_event(mount_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+std::string summon_warg_innate_facts(P_char ch)
+{
+	return summoned_mount_facts(ch) + innate_rest_facts(INNATE_SUMMON_WARG, 0) +
+	       "  One at a time. It needs the outdoors or underworld on the prime plane,\n"
+	       "  and arrives nowhere that is a locker, single-file room or ocean.\n";
 }
 
 void do_summon_warg(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3090,8 +3195,23 @@ void do_summon_warg(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 	send_to_char("You begin calling for a warg..\r\n", ch);
-	sumtime = number(70 - GET_LEVEL(ch), 100 + number(1, 200 - 2 * GET_LEVEL(ch)));
+	sumtime = summon_mount_delay(live_rolls, ch);
 	add_event(mount_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+static int summon_horde_most(P_char ch)
+{
+	return BOUNDED(1, (int)(GET_LEVEL(ch) / 10), 20);
+}
+
+static int summon_horde_orc_level()
+{
+	return 1;
+}
+
+static int summon_horde_orc_hit_points()
+{
+	return 1;
 }
 
 void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -3121,7 +3241,7 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 		return;
 	}
 
-	max_respond = BOUNDED(1, (int)(GET_LEVEL(ch) / 10), 20);
+	max_respond = summon_horde_most(ch);
 
 	for (cld = ch->linked; cld; cld = cld->next_linked)
 		if (GET_RACE(cld->linking) == RACE_ORC && IS_NPC(cld->linking))
@@ -3149,8 +3269,8 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 		char_to_room(orc, ch->in_room, -2);
 
 		//      GET_LEVEL(orc) = 5;
-		orc->player.level = 1;
-		GET_MAX_HIT(orc) = GET_HIT(orc) = 1;
+		orc->player.level = summon_horde_orc_level();
+		GET_MAX_HIT(orc) = GET_HIT(orc) = summon_horde_orc_hit_points();
 
 		orc->only.npc->aggro_flags = 0;
 		setup_pet(orc, ch, -1, PET_NOCASH);
@@ -3159,6 +3279,24 @@ void orc_summoning_thing(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 
 	send_to_char("Your brethren answer your call for help!\r\n", ch);
 	act("A horde of orcs appear, charging in from every direction!", TRUE, ch, 0, 0, TO_ROOM);
+}
+
+static int summon_horde_delay(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(70 - GET_LEVEL(ch), 70);
+}
+
+std::string summon_horde_innate_facts(P_char ch)
+{
+	return fact("Orcs", "up to " + std::to_string(summon_horde_most(ch)) +
+				    " at your level, counting those you have") +
+	       fact("Each orc's level", std::to_string(summon_horde_orc_level())) +
+	       fact("Each orc's hit points", std::to_string(summon_horde_orc_hit_points())) +
+	       fact("They arrive after", seconds(summon_horde_delay(lowest_rolls, ch)) + " to " +
+						 seconds(summon_horde_delay(highest_rolls, ch))) +
+	       innate_rest_facts(INNATE_SUMMON_HORDE, 0) +
+	       "  Only an orc may call. Off the prime plane or on the ocean none come,\n"
+	       "  and the use is still spent; nor do they reach single-file rooms or lockers.\n";
 }
 
 void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3197,8 +3335,88 @@ void do_summon_orc(P_char ch, char * /*arg*/, int /*cmd*/)
 			     ch);
 	}
 
-	sumtime = number(70 - GET_LEVEL(ch), 70);
+	sumtime = summon_horde_delay(live_rolls, ch);
 	add_event(orc_summoning_thing, sumtime, ch, 0, 0, 0, 0, 0);
+}
+
+static int ogre_roar_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 101);
+}
+
+static int ogre_roar_worst_duration(int temp)
+{
+	return 10 + (temp / 7);
+}
+
+static int ogre_roar_best_duration(int temp)
+{
+	return 20 - (temp / 7);
+}
+
+static int ogre_roar_duration(int temp)
+{
+	return 15 - (temp / 7);
+}
+
+static int ogre_roar_best_ac(P_char ch)
+{
+	return GET_LEVEL(ch) + 10;
+}
+
+static int ogre_roar_ac(P_char ch)
+{
+	return GET_LEVEL(ch);
+}
+
+// How much of a hitroll each outcome takes, as hitroll * level / this.
+static int ogre_roar_hitroll_divisor()
+{
+	return 90;
+}
+
+static int ogre_roar_best_hitroll_divisor()
+{
+	return 60;
+}
+
+static int ogre_roar_worst_hitroll_divisor()
+{
+	return 100;
+}
+
+// The ogre's outcome: below this the target is scared, and 1 is the best roar.
+static int ogre_roar_threshold()
+{
+	return 68;
+}
+
+std::string ogre_roar_innate_facts(P_char ch)
+{
+	const int threshold = ogre_roar_threshold();
+	return fact("Normal roar, with no modifiers",
+		    chance_under(threshold - 1, ogre_roar_roll(lowest_rolls),
+				 ogre_roar_roll(highest_rolls))) +
+	       fact("Target's armor class", "+" + std::to_string(ogre_roar_ac(ch))) +
+	       fact("Its hitroll loss", "its hitroll * " + std::to_string(GET_LEVEL(ch)) + " / " +
+						std::to_string(ogre_roar_hitroll_divisor())) +
+	       fact("For", game_hours_range(
+				   { ogre_roar_duration(threshold - 1), ogre_roar_duration(2) })) +
+	       fact("Best roar, " + one_in(ogre_roar_roll) + ": armor class",
+		    "+" + std::to_string(ogre_roar_best_ac(ch))) +
+	       fact("Its hitroll loss", "its hitroll * " + std::to_string(GET_LEVEL(ch)) + " / " +
+						std::to_string(ogre_roar_best_hitroll_divisor())) +
+	       fact("For", game_hours(ogre_roar_best_duration(1))) +
+	       fact("Worst roar, " + one_in(ogre_roar_roll) + ": your hitroll loss",
+		    "your hitroll * its level / " +
+			    std::to_string(ogre_roar_worst_hitroll_divisor())) +
+	       fact("And the target's armor class", "+1 + its level / 2") +
+	       fact("For", game_hours(ogre_roar_worst_duration(101))) +
+	       innate_rest_facts(INNATE_OGREROAR, 0) +
+	       "  Only a plain ogre may roar. Level, power and wisdom shift the roll,\n"
+	       "  and a fearful or meditating target favors you. Not while prone.\n"
+	       "  Bigger targets and illithids ignore it, as do those who can't hear,\n"
+	       "  are already roared at, or stand in a silent room. It has no lag.\n";
 }
 
 /* Ogre roar: Ogre scares the wits out of enemy. Assumed to be innate2 */
@@ -3289,7 +3507,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 	/* chance modifier now bounded by -31 to +26 */
 
 	/* do random 1-101, add chance modifier */
-	temp = BOUNDED(1, number(1, 101) + temp, 101);
+	temp = BOUNDED(1, ogre_roar_roll(live_rolls) + temp, 101);
 
 	/* worst case for ogre */
 	if (temp == 101)
@@ -3302,11 +3520,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		/* apply a downgraded AC/HITROLL hurt to char instead of victim */
 		bzero(&af, sizeof(af));
 		af.type = SKILL_OGRE_ROAR;
-		af.duration = 10 + (temp / 7);
+		af.duration = ogre_roar_worst_duration(temp);
 		af.modifier = 1 + GET_LEVEL(vict) / 2;
 		af.location = APPLY_AC;
 		affect_to_char(vict, &af);
-		af.modifier = -(GET_HITROLL(ch) * GET_LEVEL(vict) / 100);
+		af.modifier =
+			-(GET_HITROLL(ch) * GET_LEVEL(vict) / ogre_roar_worst_hitroll_divisor());
 		af.location = APPLY_HITROLL;
 		affect_to_char(ch, &af);
 
@@ -3331,11 +3550,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 		/* this really messes the victim up... worse than normal roar */
 		bzero(&af, sizeof(af));
 		af.type = SKILL_OGRE_ROAR;
-		af.duration = 20 - (temp / 7);
-		af.modifier = GET_LEVEL(ch) + 10;
+		af.duration = ogre_roar_best_duration(temp);
+		af.modifier = ogre_roar_best_ac(ch);
 		af.location = APPLY_AC;
 		affect_to_char(vict, &af);
-		af.modifier = -(GET_HITROLL(vict) * GET_LEVEL(ch) / 60);
+		af.modifier =
+			-(GET_HITROLL(vict) * GET_LEVEL(ch) / ogre_roar_best_hitroll_divisor());
 		af.location = APPLY_HITROLL;
 		affect_to_char(vict, &af);
 		return;
@@ -3343,7 +3563,7 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 	else
 		/* now the usual, ogres has a 2/3 chance to succeed against a
 		   enemy with modifiers=0 */
-		if (temp < 68)
+		if (temp < ogre_roar_threshold())
 		{
 			act("$n roars loudly at $N, who is visibly shaken.", FALSE, ch, 0, vict,
 			    TO_ROOM);
@@ -3354,11 +3574,12 @@ void do_ogre_roar(P_char ch, char *argument, int /*cmd*/)
 			/* standard hurt to AC/HITROLL */
 			bzero(&af, sizeof(af));
 			af.type = SKILL_OGRE_ROAR;
-			af.duration = 15 - (temp / 7);
-			af.modifier = GET_LEVEL(ch);
+			af.duration = ogre_roar_duration(temp);
+			af.modifier = ogre_roar_ac(ch);
 			af.location = APPLY_AC;
 			affect_to_char(vict, &af);
-			af.modifier = -(GET_HITROLL(vict) * GET_LEVEL(ch) / 90);
+			af.modifier =
+				-(GET_HITROLL(vict) * GET_LEVEL(ch) / ogre_roar_hitroll_divisor());
 			af.location = APPLY_HITROLL;
 			affect_to_char(vict, &af);
 			return;

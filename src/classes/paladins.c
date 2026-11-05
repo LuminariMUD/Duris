@@ -97,6 +97,41 @@ int aura_mod(P_char ch, int aura_type)
 	return 0;
 }
 
+// How often an aura looks for group members, in pulses.
+int aura_group_check_interval()
+{
+	return WAIT_SEC * 5;
+}
+
+int aura_protection_ac(P_char ch)
+{
+	return (int)(-1 * get_property("innate.paladin_aura.protection_ac_mod", 1.0) *
+		     GET_LEVEL(ch));
+}
+
+int aura_precision_hitroll(P_char ch)
+{
+	return (int)(get_property("innate.paladin_aura.precision_hitroll_mod", 0.2) *
+		     GET_LEVEL(ch));
+}
+
+int aura_endurance_moves(P_char ch)
+{
+	return (int)(get_property("innate.paladin_aura.endurance_move_mod", 1.0) * GET_LEVEL(ch));
+}
+
+int aura_vigor_hit_points(P_char ch)
+{
+	return (int)(get_property("innate.paladin_aura.vigor_hp_mod", 1.0) * GET_LEVEL(ch));
+}
+
+int aura_spell_protection_percent(P_char ch)
+{
+	return (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) *
+		     GET_LEVEL(ch)) -
+	       3;
+}
+
 /*
  the function called by the innate (i.e., the caster)
 */
@@ -117,7 +152,8 @@ void do_aura(P_char ch, int aura)
 	apply_aura(ch, ch, aura);
 	apply_aura_to_group(ch, aura);
 
-	add_event(event_apply_group_auras, WAIT_SEC * 5, ch, 0, 0, 0, &aura, sizeof(aura));
+	add_event(event_apply_group_auras, aura_group_check_interval(), ch, 0, 0, 0, &aura,
+		  sizeof(aura));
 }
 
 /*
@@ -143,7 +179,8 @@ void event_apply_group_auras(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *
 	if (GET_STAT(ch) == STAT_NORMAL && GET_POS(ch) == POS_STANDING)
 		apply_aura_to_group(ch, aura);
 
-	add_event(event_apply_group_auras, WAIT_SEC * 5, ch, 0, 0, 0, &aura, sizeof(aura));
+	add_event(event_apply_group_auras, aura_group_check_interval(), ch, 0, 0, 0, &aura,
+		  sizeof(aura));
 }
 
 /* apply current aura to everyone in group */
@@ -179,14 +216,11 @@ void apply_aura(P_char ch, P_char victim, int aura)
 	{
 	case AURA_PROTECTION:
 		af.location = APPLY_AC;
-		af.modifier =
-			(int)(-1 * get_property("innate.paladin_aura.protection_ac_mod", 1.0) *
-			      GET_LEVEL(ch));
+		af.modifier = aura_protection_ac(ch);
 		break;
 	case AURA_PRECISION:
 		af.location = APPLY_HITROLL;
-		af.modifier = (int)(get_property("innate.paladin_aura.precision_hitroll_mod", 0.2) *
-				    GET_LEVEL(ch));
+		af.modifier = aura_precision_hitroll(ch);
 		break;
 	case AURA_BATTLELUST:
 		af.modifier = GET_LEVEL(ch);
@@ -196,18 +230,14 @@ void apply_aura(P_char ch, P_char victim, int aura)
 		break;
 	case AURA_ENDURANCE:
 		af.location = APPLY_MOVE;
-		af.modifier = (int)(get_property("innate.paladin_aura.endurance_move_mod", 1.0) *
-				    GET_LEVEL(ch));
+		af.modifier = aura_endurance_moves(ch);
 		break;
 	case AURA_VIGOR:
 		af.location = APPLY_HIT;
-		af.modifier = (int)(get_property("innate.paladin_aura.vigor_hp_mod", 1.0) *
-				    GET_LEVEL(ch));
+		af.modifier = aura_vigor_hit_points(ch);
 		break;
 	case AURA_SPELL_PROTECTION:
-		af.modifier = (int)(get_property("innate.paladin_aura.protection_spell_mod", 0.5) *
-				    GET_LEVEL(ch)) -
-			      3;
+		af.modifier = aura_spell_protection_percent(ch);
 		break;
 	default:
 		debug("apply_aura: Error - invalid aura to apply (%d)", aura);
