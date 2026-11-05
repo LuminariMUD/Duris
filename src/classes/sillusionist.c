@@ -18,6 +18,7 @@
 #include "world/events.h"
 #include "cmd/interp.h"
 #include "core/utils.h"
+#include <algorithm>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +33,7 @@
 #include "item/objmisc.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "player/player_load_offline.h"
 #include "sql/sql.h"
 #include "world/vnum.mob.h"
@@ -82,6 +84,50 @@ extern bool has_skin_spell(P_char);
 
 /* Let's do some spells yah! */
 
+// How many shadows, swarms or dragons one caster keeps.
+static int illusion_pet_limit(P_char ch)
+{
+	return MAX(1, GET_LEVEL(ch) / 14);
+}
+
+// How many ticks a summoned illusion stays under control.
+static int illusion_pet_control()
+{
+	return 1;
+}
+
+// A pet's dice as a fight rolls them: dice() clamps both numbers to at least 1.
+static std::string illusion_pet_dice(int count, int size)
+{
+	return std::to_string(std::max(count, 1)) + "d" + std::to_string(std::max(size, 1));
+}
+
+static std::string illusion_pet_control_facts()
+{
+	return fact("It serves you for", game_hours(illusion_pet_control())) +
+	       "  A globe of shadows or unholy alliance makes that permanent.\n";
+}
+
+static int phantom_armor_duration()
+{
+	return 15;
+}
+
+static int phantom_armor_ac(int level)
+{
+	return -(level);
+}
+
+std::string phantom_armor_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Armor class", std::to_string(phantom_armor_ac(level)) + " at your level, " +
+					   std::to_string(level)) +
+	       fact("Duration", game_hours(phantom_armor_duration())) +
+	       "  Recasting it only renews the duration.\n"
+	       "  It does nothing to a target with another armor-type spell.\n";
+}
+
 void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
@@ -98,8 +144,8 @@ void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_PHANTOM_ARMOR;
-		af.duration = 15;
-		af.modifier = -(level);
+		af.duration = phantom_armor_duration();
+		af.modifier = phantom_armor_ac(level);
 		af.bitvector = AFF_ARMOR;
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
@@ -119,7 +165,7 @@ void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 				send_to_char(
 					"&+LShadowy &+Wphantoms&N blur your image to the outside!\r\n",
 					victim);
-				af1->duration = 15;
+				af1->duration = phantom_armor_duration();
 				break;
 			}
 		}
@@ -129,6 +175,56 @@ void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 				     victim);
 		}
 	}
+}
+
+static int shadow_monster_level(const Rolls &rolls, int level)
+{
+	return BOUNDED(1, rolls.number(level - 5, level + 1), 55);
+}
+
+static int shadow_monster_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level, 3) + (mob_level * 2);
+}
+
+static int shadow_monster_hitroll(P_char ch)
+{
+	return GET_LEVEL(ch);
+}
+
+static int shadow_monster_damroll(P_char ch)
+{
+	return GET_LEVEL(ch) / 2;
+}
+
+static int shadow_monster_dice_count(P_char ch)
+{
+	return (int)GET_LEVEL(ch) / 5;
+}
+
+static int shadow_monster_dice_size(P_char ch)
+{
+	return (int)GET_LEVEL(ch) / 6;
+}
+
+std::string shadow_monster_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range mob = { shadow_monster_level(lowest_rolls, level),
+			    shadow_monster_level(highest_rolls, level) };
+	return fact("Shadows at once",
+		    std::to_string(GET_CLASS(ch, CLASS_ILLUSIONIST) ? illusion_pet_limit(ch) : 1) +
+			    " at your level, " + std::to_string(level)) +
+	       fact("Shadow's level", show(mob)) +
+	       fact("Its hit points",
+		    show({ shadow_monster_hit_points(lowest_rolls, mob.low),
+			   shadow_monster_hit_points(highest_rolls, mob.high) })) +
+	       fact("Its hitroll", std::to_string(shadow_monster_hitroll(ch))) +
+	       fact("Its damroll", std::to_string(shadow_monster_damroll(ch))) +
+	       fact("Its damage dice", illusion_pet_dice(shadow_monster_dice_count(ch),
+							 shadow_monster_dice_size(ch))) +
+	       illusion_pet_control_facts() +
+	       "  It attacks your target at once. Safe rooms block it.\n";
 }
 
 void spell_shadow_monster(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -158,8 +254,7 @@ void spell_shadow_monster(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 	}
 
 	// Non-illusionists get a limit of 1 (for weapon procs etc).
-	if (summoned >= MAX(1, GET_LEVEL(ch) / 14) ||
-	    (summoned && !GET_CLASS(ch, CLASS_ILLUSIONIST)))
+	if (summoned >= illusion_pet_limit(ch) || (summoned && !GET_CLASS(ch, CLASS_ILLUSIONIST)))
 	{
 		send_to_char("You cannot summon any more shadows!\r\n", ch);
 		return;
@@ -176,24 +271,92 @@ void spell_shadow_monster(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+wappears from nowhere!", TRUE, mob, 0, 0, TO_ROOM);
 
-	mob->player.level = BOUNDED(1, number(level - 5, level + 1), 55);
+	mob->player.level = shadow_monster_level(live_rolls, level);
 
 	mob->player.m_class = 0;
 	remove_plushit_bits(mob);
 
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob), 3) + (GET_LEVEL(mob) * 2);
+		shadow_monster_hit_points(live_rolls, GET_LEVEL(mob));
 
-	setup_pet(mob, ch, 1, PET_NOORDER | PET_NOCASH);
+	setup_pet(mob, ch, illusion_pet_control(), PET_NOORDER | PET_NOCASH);
 
 	GET_EXP(mob) = 0;
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(ch);
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(ch) / 2;
-	mob->points.damnodice = (int)GET_LEVEL(ch) / 5;
-	mob->points.damsizedice = (int)GET_LEVEL(ch) / 6;
+	mob->points.base_hitroll = mob->points.hitroll = shadow_monster_hitroll(ch);
+	mob->points.base_damroll = mob->points.damroll = shadow_monster_damroll(ch);
+	mob->points.damnodice = shadow_monster_dice_count(ch);
+	mob->points.damsizedice = shadow_monster_dice_size(ch);
 
 	group_add_member(ch, mob);
 	MobStartFight(mob, victim);
+}
+
+static int insects_level(const Rolls &rolls, int level)
+{
+	return MIN(30, MAX(1, rolls.number(level - 7, level - 2)));
+}
+
+static int insects_hit_points(const Rolls &rolls, int mob_level, int ch_level)
+{
+	return rolls.dice(mob_level, 3) + (ch_level);
+}
+
+// A swarm gains blur and flurry when its caster is above these levels.
+static int insects_blur_above()
+{
+	return 31;
+}
+
+static int insects_flurry_above()
+{
+	return 50;
+}
+
+static int insects_hitroll(P_char ch)
+{
+	return GET_LEVEL(ch);
+}
+
+static int insects_damroll(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) / 3);
+}
+
+static int insects_dice_count(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) / 8);
+}
+
+static int insects_dice_size(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) / 9);
+}
+
+std::string insects_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range mob = { insects_level(lowest_rolls, level),
+			    insects_level(highest_rolls, level) };
+	return fact("Swarms at once", std::to_string(illusion_pet_limit(ch)) + " at your level, " +
+					      std::to_string(level)) +
+	       (GET_CLASS(ch, CLASS_ILLUSIONIST) ?
+			"  A cast summons until you have that many.\n" :
+			"  A cast summons one, as you are no illusionist.\n") +
+	       fact("Swarm's level", show(mob)) +
+	       fact("Its hit points",
+		    show({ insects_hit_points(lowest_rolls, mob.low, level),
+			   insects_hit_points(highest_rolls, mob.high, level) })) +
+	       fact("Its hitroll", std::to_string(insects_hitroll(ch))) +
+	       fact("Its damroll", std::to_string(insects_damroll(ch))) +
+	       fact("Its damage dice",
+		    illusion_pet_dice(insects_dice_count(ch), insects_dice_size(ch))) +
+	       "  It is hasted.\n" +
+	       fact("It has blur",
+		    "if you are above level " + std::to_string(insects_blur_above())) +
+	       fact("It has flurry",
+		    "if you are above level " + std::to_string(insects_flurry_above())) +
+	       illusion_pet_control_facts() +
+	       "  It attacks your target at once. Safe rooms block it.\n";
 }
 
 void spell_insects(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -224,7 +387,7 @@ void spell_insects(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int ty
 		}
 	}
 
-	for (i = MAX(1, GET_LEVEL(ch) / 14); i > summoned; i--)
+	for (i = illusion_pet_limit(ch); i > summoned; i--)
 	{
 		mob = read_mobile(real_mobile(1107), REAL);
 
@@ -238,16 +401,16 @@ void spell_insects(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int ty
 		char_to_room(mob, ch->in_room, 0);
 		act("$n &+Lappears from nowhere!", TRUE, mob, 0, 0, TO_ROOM);
 
-		mob->player.level = MIN(30, MAX(1, number(level - 7, level - 2)));
+		mob->player.level = insects_level(live_rolls, level);
 
 		SET_BIT(mob->specials.affected_by, AFF_HASTE);
 		SET_BIT(mob->specials.act, ACT_SPEC_DIE);
 
-		if (GET_LEVEL(ch) > 31)
+		if (GET_LEVEL(ch) > insects_blur_above())
 		{
 			SET_BIT(mob->specials.affected_by3, AFF3_BLUR);
 		}
-		if (GET_LEVEL(ch) > 50)
+		if (GET_LEVEL(ch) > insects_flurry_above())
 		{
 			SET_BIT(mob->specials.affected_by2, AFF2_FLURRY);
 		}
@@ -255,21 +418,59 @@ void spell_insects(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int ty
 		mob->player.m_class = 0;
 		remove_plushit_bits(mob);
 		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			dice(GET_LEVEL(mob), 3) + (GET_LEVEL(ch));
+			insects_hit_points(live_rolls, GET_LEVEL(mob), GET_LEVEL(ch));
 
 		GET_EXP(mob) = 0;
-		mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(ch);
-		mob->points.base_damroll = mob->points.damroll = (int)(GET_LEVEL(ch) / 3);
-		mob->points.damnodice = (int)(GET_LEVEL(ch) / 8);
-		mob->points.damsizedice = (int)(GET_LEVEL(ch) / 9);
+		mob->points.base_hitroll = mob->points.hitroll = insects_hitroll(ch);
+		mob->points.base_damroll = mob->points.damroll = insects_damroll(ch);
+		mob->points.damnodice = insects_dice_count(ch);
+		mob->points.damsizedice = insects_dice_size(ch);
 
-		setup_pet(mob, ch, 1, PET_NOORDER | PET_NOCASH);
+		setup_pet(mob, ch, illusion_pet_control(), PET_NOORDER | PET_NOCASH);
 		group_add_member(ch, mob);
 		MobStartFight(mob, victim);
 
 		if (!GET_CLASS(ch, CLASS_ILLUSIONIST))
 			return;
 	}
+}
+
+static int boulder_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(2 * level, 8);
+}
+
+static int boulder_saved(int dam)
+{
+	dam >>= 1;
+	return dam;
+}
+
+// A roll of 0 knocks the target down.
+static int boulder_knockdown_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 9);
+}
+
+static int boulder_knockdown_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
+std::string boulder_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int low = boulder_damage(lowest_rolls, level);
+	const int high = boulder_damage(highest_rolls, level);
+	return fact("Damage", show({ low, high }) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves", show({ boulder_saved(low), boulder_saved(high) })) +
+	       "  A major globe stops it; minor globes and spirit wards do not.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n" +
+	       fact("Chance it knocks down a standing survivor",
+		    "1 in " + std::to_string(boulder_knockdown_roll(highest_rolls) -
+					     boulder_knockdown_roll(lowest_rolls) + 1)) +
+	       fact("Lag on the target knocked down", seconds(boulder_knockdown_lag())) +
+	       "  Elites and greater races do not fall.\n";
 }
 
 void spell_boulder(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
@@ -291,10 +492,10 @@ void spell_boulder(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 		return;
 	}
 
-	dam = dice(2 * level, 8);
+	dam = boulder_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_BOULDER);
 	if (NewSaves(victim, SAVING_SPELL, mod))
-		dam >>= 1;
+		dam = boulder_saved(dam);
 
 	if (spell_damage(ch, victim, dam, SPLDAM_GENERIC, SPLDAM_GLOBE, &messages) != DAM_NONEDEAD)
 		return;
@@ -302,7 +503,7 @@ void spell_boulder(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	if (!IS_AFFECTED2(victim, AFF2_GLOBE) && (GET_POS(victim) == POS_STANDING) &&
 	    !IS_ELITE(victim) && !IS_GREATER_RACE(victim))
 	{
-		if (!number(0, 9))
+		if (!boulder_knockdown_roll(live_rolls))
 		{
 			act("&+LYour &+Wboulder&n &+Lhit's $N dead on, knocking $M to the ground!&n",
 			    0, ch, 0, victim, TO_CHAR);
@@ -311,9 +512,60 @@ void spell_boulder(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 			act("$n's &+Wboulder hit's dead on knocking you to the ground!&n", 0, ch, 0,
 			    victim, TO_VICT);
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
-			CharWait(victim, (int)(PULSE_VIOLENCE * 0.5));
+			CharWait(victim, boulder_knockdown_lag());
 		}
 	}
+}
+
+// The caster's lag, in pulses, whether or not it works.
+static int shadow_travel_dreamer_lag()
+{
+	return 4;
+}
+
+static int shadow_travel_pc_lag()
+{
+	return 36;
+}
+
+static int shadow_travel_distance(int level)
+{
+	return (int)(level * get_property("spell.dim.perlevel.modifier", 1.35));
+}
+
+static int shadow_travel_dreamer_distance()
+{
+	return 15;
+}
+
+// A roll of 0 leaves one onlooker unaware of the caster going or coming.
+static int shadow_travel_unseen_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+std::string shadow_travel_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const bool dreamer = GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER);
+	const int distance =
+		shadow_travel_distance(level) + (dreamer ? shadow_travel_dreamer_distance() : 0);
+	return (IS_TRUSTED(ch) ?
+			fact("Range", "any, as an immortal") :
+			fact("Range", std::to_string(distance) +
+					      " rooms by exits, either way, at your level, " +
+					      std::to_string(level))) +
+	       fact("Your lag",
+		    seconds(dreamer ? shadow_travel_dreamer_lag() : shadow_travel_pc_lag()) +
+			    ", even if it fails") +
+	       fact("Chance each onlooker misses you going or coming",
+		    "1 in " + std::to_string(shadow_travel_unseen_roll(highest_rolls) -
+					     shadow_travel_unseen_roll(lowest_rolls) + 1)) +
+	       "  Non-detection, and no-locate players you do not know, hide a target.\n" +
+	       (IS_TRUSTED(ch) ? "" : "  So does a mount with a rider.\n") +
+	       "  A follower cannot reach a player.\n"
+	       "  No-teleport rooms, hometowns and castles block it, as does ocean around\n"
+	       "  you and the other racewar side. You, and a player target, must be raidable.\n";
 }
 
 void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -331,9 +583,9 @@ void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 	}
 
 	if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER))
-		CharWait(ch, 4);
+		CharWait(ch, shadow_travel_dreamer_lag());
 	else if (IS_PC(ch))
-		CharWait(ch, 36);
+		CharWait(ch, shadow_travel_pc_lag());
 	else
 		CharWait(ch, 5);
 
@@ -380,9 +632,9 @@ void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 		return;
 	}
 
-	distance = (int)(level * get_property("spell.dim.perlevel.modifier", 1.35));
+	distance = shadow_travel_distance(level);
 	if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER))
-		distance += 15;
+		distance += shadow_travel_dreamer_distance();
 
 	if (!IS_TRUSTED(ch) && how_close(ch->in_room, victim->in_room, distance) < 0 &&
 	    how_close(victim->in_room, ch->in_room, distance) < 0)
@@ -406,7 +658,7 @@ void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 	for (tmp = world[ch->in_room].people; tmp; tmp = tmp->next_in_room)
 	{
 		if ((IS_AFFECTED(tmp, AFF_BLIND) || (tmp->specials.z_cord != ch->specials.z_cord) ||
-		     (tmp == ch) || !number(0, 5)) &&
+		     (tmp == ch) || !shadow_travel_unseen_roll(live_rolls)) &&
 		    (IS_PC(ch) && !IS_TRUSTED(ch)))
 			continue;
 		if (CAN_SEE(tmp, ch))
@@ -423,7 +675,8 @@ void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 
 	for (tmp = world[ch->in_room].people; tmp; tmp = tmp->next_in_room)
 	{
-		if ((IS_AFFECTED(tmp, AFF_BLIND) || (tmp == ch) || !number(0, 5)) &&
+		if ((IS_AFFECTED(tmp, AFF_BLIND) || (tmp == ch) ||
+		     !shadow_travel_unseen_roll(live_rolls)) &&
 		    (IS_PC(ch) && !IS_TRUSTED(ch)))
 			continue;
 		if (CAN_SEE(tmp, ch))
@@ -436,10 +689,87 @@ void spell_shadow_travel(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 	}
 }
 
+static int stunning_visions_percent(const Rolls &rolls, int level)
+{
+	return level + rolls.number(-10, 10);
+}
+
+static int stunning_visions_power_bonus(int power_gap)
+{
+	return (int)(power_gap * .8);
+}
+
+// The stun each score band gives, in pulses; a score under the last band gives none.
+static int stunning_visions_deep_above()
+{
+	return 90;
+}
+
+static int stunning_visions_deep_stun()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int stunning_visions_trance_above()
+{
+	return 60;
+}
+
+static int stunning_visions_trance_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int stunning_visions_mesmerize_above()
+{
+	return 40;
+}
+
+static int stunning_visions_mesmerize_stun()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+static int stunning_visions_slight_from()
+{
+	return 25;
+}
+
+static int stunning_visions_slight_stun()
+{
+	return PULSE_VIOLENCE / 4;
+}
+
+std::string stunning_visions_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Score", show_signed({ stunning_visions_percent(lowest_rolls, level),
+					   stunning_visions_percent(highest_rolls, level) }) +
+				     " at your level, " + std::to_string(level)) +
+	       "  It halves if you make your own spell save, and doubles on a player's pet.\n"
+	       "  Your level minus the target's adds to it.\n" +
+	       fact("Every 10 power you have over the target adds",
+		    std::to_string(stunning_visions_power_bonus(10))) +
+	       fact("Stun at a score over " + std::to_string(stunning_visions_deep_above()),
+		    seconds(stunning_visions_deep_stun())) +
+	       fact("Over " + std::to_string(stunning_visions_trance_above()),
+		    seconds(stunning_visions_trance_stun())) +
+	       fact("Over " + std::to_string(stunning_visions_mesmerize_above()),
+		    seconds(stunning_visions_mesmerize_stun())) +
+	       fact("At " + std::to_string(stunning_visions_slight_from()) + " or more",
+		    seconds(stunning_visions_slight_stun())) +
+	       "  A lower score does nothing. Fear saves do not apply.\n"
+	       "  A stun stops your fight and the target's.\n"
+	       "  Zombies, golems, plants, greater races and immortals are immune.\n"
+	       "  Elites cannot be stunned, and the target's magic resistance can shrug it.\n"
+	       "  It does nothing to a target already stunned, or down and lagged, unless\n"
+	       "  it is bashed or you sprang at it.\n";
+}
+
 void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			    P_obj /*obj*/)
 {
-	int percent = level + number(-10, 10);
+	int percent = stunning_visions_percent(live_rolls, level);
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim) || GET_HIT(victim) < 1 || IS_TRUSTED(victim) ||
 	    IS_ZOMBIE(victim) || GET_RACE(victim) == RACE_GOLEM || GET_RACE(victim) == RACE_PLANT ||
@@ -484,7 +814,7 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 	percent += (level - GET_LEVEL(victim));
 
 	// percent += (GET_C_POW(ch) - GET_C_POW(victim)) / 3;
-	percent += (int)((GET_C_POW(ch) - GET_C_POW(victim)) * .8);
+	percent += stunning_visions_power_bonus(GET_C_POW(ch) - GET_C_POW(victim));
 
 	act("&+cYou send a wave of incredible visions toward&n $N.", FALSE, ch, 0, victim, TO_CHAR);
 
@@ -496,7 +826,7 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		return;
 	}
 
-	if (percent > 90)
+	if (percent > stunning_visions_deep_above())
 	{
 		act("&+cYour wave of visions seems to completely entrance&n $N!", FALSE, ch, 0,
 		    victim, TO_CHAR);
@@ -511,10 +841,10 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		}
 
 		stop_fighting(ch);
-		Stun(victim, ch, PULSE_VIOLENCE * 2, FALSE);
+		Stun(victim, ch, stunning_visions_deep_stun(), FALSE);
 		return;
 	}
-	else if (percent > 60)
+	else if (percent > stunning_visions_trance_above())
 	{
 		act("&+cYour wave of visions seems to entrance&n $N!", FALSE, ch, 0, victim,
 		    TO_CHAR);
@@ -529,10 +859,10 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		}
 
 		stop_fighting(ch);
-		Stun(victim, ch, PULSE_VIOLENCE, FALSE);
+		Stun(victim, ch, stunning_visions_trance_stun(), FALSE);
 		return;
 	}
-	else if (percent > 40)
+	else if (percent > stunning_visions_mesmerize_above())
 	{
 		act("&+cYour wave of visions seems to mesmerize&n $N!", FALSE, ch, 0, victim,
 		    TO_CHAR);
@@ -547,10 +877,10 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		}
 
 		stop_fighting(ch);
-		Stun(victim, ch, PULSE_VIOLENCE / 2, FALSE);
+		Stun(victim, ch, stunning_visions_mesmerize_stun(), FALSE);
 		return;
 	}
-	else if (percent >= 25)
+	else if (percent >= stunning_visions_slight_from())
 	{
 		act("&+cYour wave of visions seems to slightly mesmerize&n $N!", FALSE, ch, 0,
 		    victim, TO_CHAR);
@@ -565,9 +895,39 @@ void spell_stunning_visions(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		}
 
 		stop_fighting(ch);
-		Stun(victim, ch, PULSE_VIOLENCE / 4, FALSE);
+		Stun(victim, ch, stunning_visions_slight_stun(), FALSE);
 		return;
 	}
+}
+
+static int reflection_images(int level)
+{
+	return BOUNDED(1, (level - 26) / 5, 4);
+}
+
+static int reflection_image_hit_points(const Rolls &rolls, int level)
+{
+	return level * 4 + rolls.number(0, 50);
+}
+
+static int reflection_image_control()
+{
+	return 3;
+}
+
+std::string reflection_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Images", std::to_string(reflection_images(level)) + " at your level, " +
+				      std::to_string(level)) +
+	       fact("Each image's hit points",
+		    show({ reflection_image_hit_points(lowest_rolls, level),
+			   reflection_image_hit_points(highest_rolls, level) })) +
+	       fact("They serve you for", game_hours(reflection_image_control())) +
+	       "  A globe of shadows or unholy alliance makes that permanent.\n"
+	       "  Those fighting the target turn on one image.\n"
+	       "  Recasting replaces your images and the target's.\n"
+	       "  It cannot target an NPC, and not while you have a titan illusion.\n";
 }
 
 void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -630,7 +990,7 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		}
 	}
 
-	numb = BOUNDED(1, (level - 26) / 5, 4);
+	numb = reflection_images(level);
 
 	// make reflection always disengage target
 	spot = number(0, numb - 1);
@@ -682,7 +1042,7 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		}
 
 		image->points.base_hit = GET_MAX_HIT(image) = GET_HIT(image) =
-			level * 4 + number(0, 50);
+			reflection_image_hit_points(live_rolls, level);
 
 		while (image->affected)
 		{
@@ -698,7 +1058,7 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 
 		balance_affects(image);
 
-		setup_pet(image, ch, 3, PET_NOCASH);
+		setup_pet(image, ch, reflection_image_control(), PET_NOCASH);
 
 		add_follower(image, ch);
 
@@ -758,6 +1118,42 @@ void spell_reflection(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	}
 }
 
+// Fading back to your own image lags you, in pulses.
+static int illusion_fade_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+// How much damage and time a mask or clone takes before it falls.
+static int illusion_disguise_hits(P_char ch)
+{
+	return GET_LEVEL(ch) * 2;
+}
+
+// A mortal cannot copy anyone above this level.
+static int illusion_copy_highest_level()
+{
+	return 56;
+}
+
+static int mask_size_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string mask_facts(P_char ch)
+{
+	return fact("Disguise strength",
+		    std::to_string(illusion_disguise_hits(ch)) + ", worn down by damage and time") +
+	       fact("Your lag fading back with \"me\" or \"self\"", seconds(illusion_fade_lag())) +
+	       (IS_TRUSTED(ch) ?
+			fact("Highest level you can copy", "your own, as an immortal") :
+			fact("Your lag if over one size off the target", seconds(mask_size_lag())) +
+				fact("Highest level you can copy",
+				     std::to_string(illusion_copy_highest_level()))) +
+	       "  It only copies players, by name. You must be disguised to fade back.\n";
+}
+
 /* Masks ch as target, a loaded character (null when there is none), or back as itself. */
 static void mask_as(P_char ch, P_char target, bool casting_on_self)
 {
@@ -777,7 +1173,7 @@ static void mask_as(P_char ch, P_char target, bool casting_on_self)
 			send_to_char("&+WYou f&Nad&+Le back into your own image.&N\r\n", ch);
 			act("&+W$n &+Wf&Nad&+Les back into $s &+Lown image.&N", FALSE, ch, 0, ch,
 			    TO_ROOM);
-			CharWait(ch, PULSE_VIOLENCE * 3);
+			CharWait(ch, illusion_fade_lag());
 			remove_disguise(ch, FALSE);
 			if (target)
 				free_char(target);
@@ -791,7 +1187,7 @@ static void mask_as(P_char ch, P_char target, bool casting_on_self)
 		return;
 	}
 
-	if (!IS_TRUSTED(ch) && target && GET_LEVEL(target) > 56)
+	if (!IS_TRUSTED(ch) && target && GET_LEVEL(target) > illusion_copy_highest_level())
 	{
 		send_to_char(
 			"&+LYou don't know what the divine look like to make their illusions.&N\r\n",
@@ -816,12 +1212,12 @@ static void mask_as(P_char ch, P_char target, bool casting_on_self)
 		if ((GET_ALT_SIZE(ch) < (GET_ALT_SIZE(target) - 1)) && !IS_TRUSTED(ch))
 		{
 			send_to_char("You're too small for that!\r\n", ch);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, mask_size_lag());
 		}
 		else if ((GET_ALT_SIZE(ch) > (GET_ALT_SIZE(target) + 1)) && !IS_TRUSTED(ch))
 		{
 			send_to_char("You're too big for that!\r\n", ch);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, mask_size_lag());
 		}
 		else
 		{
@@ -836,7 +1232,7 @@ static void mask_as(P_char ch, P_char target, bool casting_on_self)
 				ch->disguise.m_class = target->player.m_class;
 				ch->disguise.race = GET_RACE(target);
 				ch->disguise.level = GET_LEVEL(target);
-				ch->disguise.hit = GET_LEVEL(ch) * 2;
+				ch->disguise.hit = illusion_disguise_hits(ch);
 				ch->disguise.racewar = GET_RACEWAR(target);
 				if (GET_TITLE(target))
 					ch->disguise.title = str_dup(GET_TITLE(target));
@@ -875,6 +1271,53 @@ void spell_mask([[maybe_unused]] int level, P_char ch, char *arg, int /*type*/, 
 				{ mask_as(caster, target, FALSE); });
 }
 
+// How long a watching or illusionary wall lasts, in pulses.
+static int illusion_wall_decay()
+{
+	return 1800;
+}
+
+static int watching_wall_strength(int level)
+{
+	return level;
+}
+
+// wall_generic rolls this when someone acts by the wall; a roll of 0 shows the caster.
+int watching_wall_vision_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+// More than this many seconds pass between two such rolls.
+int watching_wall_vision_gap()
+{
+	return 10;
+}
+
+std::string watching_wall_facts(P_char ch)
+{
+	extern int wall_climb_roll(const Rolls &rolls);
+	extern int wall_climb_above();
+	extern int wall_hit_lag();
+	const int level = GET_LEVEL(ch);
+	return fact("Wall lasts", real_time(illusion_wall_decay())) +
+	       fact("Strength", std::to_string(watching_wall_strength(level)) + " at your level, " +
+					std::to_string(level)) +
+	       fact("Chance someone acting by it shows you the room",
+		    "1 in " + std::to_string(watching_wall_vision_roll(highest_rolls) -
+					     watching_wall_vision_roll(lowest_rolls) + 1)) +
+	       fact("Seconds between those chances",
+		    "more than " + std::to_string(watching_wall_vision_gap())) +
+	       "  You must be elsewhere and in the game. Immortals show you nothing.\n"
+	       "  Hits wear it down by the hitter's damroll and level, and hurt the hitter.\n"
+	       "  Your own hit breaks it.\n" +
+	       fact("A hitter's lag", seconds(wall_hit_lag())) +
+	       fact("Wall climbers get over it",
+		    std::to_string(wall_climb_roll(highest_rolls) - wall_climb_above()) + "%") +
+	       "  Doors, blocked, secret, one-way and walled exits cannot take a wall, and\n"
+	       "  some rooms disperse the magic. You cannot cast it disguised in a town.\n";
+}
+
 void spell_watching_wall(int level, P_char ch, char *arg, int /*type*/, P_char /*tar_ch*/,
 			 P_obj /*tar_obj*/)
 {
@@ -895,7 +1338,8 @@ void spell_watching_wall(int level, P_char ch, char *arg, int /*type*/, P_char /
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, WATCHING_WALL, level, 1800,
+	if (create_walls(ch->in_room, var, ch, level, WATCHING_WALL, watching_wall_strength(level),
+			 illusion_wall_decay(),
 			 "&+La greyish stone wall covered with hundreds of eyes&n",
 			 "&+yA massive stone wall embedded with eyes is here to the %s.&n", 0))
 	{
@@ -912,6 +1356,23 @@ void spell_watching_wall(int level, P_char ch, char *arg, int /*type*/, P_char /
 		send_to_room(buf1, ch->in_room);
 		send_to_room(buf2, (world[ch->in_room].dir_option[var])->to_room);
 	}
+}
+
+// wall_generic rolls this as someone walks into the wall; a roll of 0 finds it out.
+int illusionary_wall_block_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+std::string illusionary_wall_facts(P_char /*ch*/)
+{
+	return fact("Wall lasts", real_time(illusion_wall_decay())) +
+	       fact("Chance a walker into it finds it out and passes",
+		    "1 in " + std::to_string(illusionary_wall_block_roll(highest_rolls) -
+					     illusionary_wall_block_roll(lowest_rolls) + 1)) +
+	       "  It hides the exit. Once found, the next walker blows it away.\n"
+	       "  Doors, blocked, secret, one-way and walled exits cannot take a wall, and\n"
+	       "  some rooms disperse the magic. You cannot cast it disguised in a town.\n";
 }
 
 void spell_illusionary_wall(int level, P_char ch, char *arg, int /*type*/, P_char /*victim*/,
@@ -934,8 +1395,8 @@ void spell_illusionary_wall(int level, P_char ch, char *arg, int /*type*/, P_cha
 		return;
 	}
 
-	if (create_walls(ch->in_room, var, ch, level, ILLUSIONARY_WALL, level, 1800,
-			 "&+wan illusionary wall&n",
+	if (create_walls(ch->in_room, var, ch, level, ILLUSIONARY_WALL, level,
+			 illusion_wall_decay(), "&+wan illusionary wall&n",
 			 "&+LAn &Nil&+Wlusiona&Nry&+L wall is here to the %s.&n", ITEM_SECRET))
 	{
 		snprintf(buf1, MAX_STRING_LENGTH, "&+LThe exit to the %s disappears!&n\r\n",
@@ -1092,11 +1553,45 @@ void spell_nightmare(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 	}
 }
 
+static int shadow_shield_absorb(const Rolls &rolls, int level)
+{
+	return (level / 6) + rolls.number(1, 4);
+}
+
+static int shadow_shield_duration()
+{
+	return 4;
+}
+
+// Shadow shield's facts when cast at `level`, which `at` names.
+static std::string shadow_shield_facts_at(int level, const std::string &at, const std::string &who)
+{
+	extern int skin_spell_deduct();
+	extern float stone_skin_melee_share();
+	return fact("Hits absorbed", show({ shadow_shield_absorb(lowest_rolls, level),
+					    shadow_shield_absorb(highest_rolls, level) }) +
+					     at) +
+	       fact("Each melee hit on " + who, std::to_string(skin_spell_deduct()) + " less") +
+	       fact("Then, if over 10 is left",
+		    share_percent(stone_skin_melee_share()) + " of that") +
+	       "  It applies before the raw damage modifiers.\n"
+	       "  Hits that ignore reductions go through it and use up nothing.\n"
+	       "  An attacker's fist of dragon can do the same.\n" +
+	       fact("Duration", game_hours(shadow_shield_duration())) +
+	       "  It does nothing to a target with any skin spell.\n";
+}
+
+std::string shadow_shield_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return shadow_shield_facts_at(level, " at your level, " + std::to_string(level), "you");
+}
+
 void spell_shadow_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
-	int absorb = (level / 6) + number(1, 4);
+	int absorb = shadow_shield_absorb(live_rolls, level);
 
 	if (!has_skin_spell(victim))
 	{
@@ -1113,9 +1608,23 @@ void spell_shadow_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_SHADOW_SHIELD;
-	af.duration = 4;
+	af.duration = shadow_shield_duration();
 	af.modifier = absorb;
 	affect_to_char(victim, &af);
+}
+
+static int vanish_duration(int level)
+{
+	return level / 2;
+}
+
+std::string vanish_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Invisibility", game_hours(vanish_duration(level)) + " at your level, " +
+					    std::to_string(level)) +
+	       "  Recasting it, or invisibility, only renews the duration.\n"
+	       "  It also hides you, except in water or on the ocean.\n";
 }
 
 void spell_vanish(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -1136,7 +1645,7 @@ void spell_vanish(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		bzero(&af, sizeof(af));
 
 		af.type = SPELL_INVISIBILITY;
-		af.duration = level / 2;
+		af.duration = vanish_duration(level);
 		af.bitvector = AFF_INVISIBLE;
 		affect_to_char(victim, &af);
 	}
@@ -1147,7 +1656,7 @@ void spell_vanish(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_INVISIBILITY)
 			{
-				af1->duration = level / 2;
+				af1->duration = vanish_duration(level);
 			}
 	}
 
@@ -1157,6 +1666,61 @@ void spell_vanish(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 	}
 	else
 		SET_BIT(ch->specials.affected_by, AFF_HIDE);
+}
+
+// Immortals cast it at this level at most.
+static int hammer_level(int level, P_char ch)
+{
+	if (level > 56 && IS_PC(ch))
+	{
+		level = 56;
+	}
+	return level;
+}
+
+static int hammer_damage(const Rolls &rolls, int level)
+{
+	return 9 * level + rolls.number(-25, 25);
+}
+
+static int hammer_saved(int dam)
+{
+	return (dam * 2) / 3;
+}
+
+// A deceiver's roll of 0 stuns.
+static int hammer_stun_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 19);
+}
+
+static int hammer_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string hammer_facts(P_char ch)
+{
+	const int level = hammer_level(GET_LEVEL(ch), ch);
+	const int low = hammer_damage(lowest_rolls, level);
+	const int high = hammer_damage(highest_rolls, level);
+	std::string text =
+		fact("Damage", show_landing({ low, high }) + " at your level, " +
+				       std::to_string(GET_LEVEL(ch))) +
+		fact("If the target saves",
+		     show_landing({ hammer_saved(low), hammer_saved(high) })) +
+		"  Magic resistance can shrug it first; damage cannot then be shrugged.\n"
+		"  Globes and spirit wards do not stop it.\n"
+		"  Spell damage modifiers and the target's defenses apply after.\n";
+	if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DECEIVER))
+		text += fact("Chance to stun if the target survives",
+			     "1 in " + std::to_string(hammer_stun_roll(highest_rolls) -
+						      hammer_stun_roll(lowest_rolls) + 1)) +
+			fact("Stun", seconds(hammer_stun()) + "; fear saves shorten or stop it") +
+			"  A target with deflect stuns you instead, with no fear save.\n"
+			"  Elites cannot be stunned. Greater races, plants, golems and constructs\n"
+			"  may resist.\n";
+	return text;
 }
 
 void spell_hammer(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
@@ -1188,18 +1752,15 @@ void spell_hammer(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vic
 	}
 
 	// Imms casting hammer lvl reduced to 56 for testing.
-	if (level > 56 && IS_PC(ch))
-	{
-		level = 56;
-	}
-	dam = 9 * level + number(-25, 25);
+	level = hammer_level(level, ch);
+	dam = hammer_damage(live_rolls, level);
 
 	// Adding a save for this since 115 damage for 7th circle is absurd.
 	//  This brings 115 down to 76, which is normal non-sorc 7th circle damage.
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_HAMMER);
 	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
-		dam = (dam * 2) / 3;
+		dam = hammer_saved(dam);
 	}
 
 	if (spell_damage(ch, victim, dam, SPLDAM_GENERIC, SPLDAM_NOSHRUG, &messages) !=
@@ -1210,14 +1771,27 @@ void spell_hammer(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vic
 
 	if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DECEIVER))
 	{
-		if (!number(0, 19))
+		if (!hammer_stun_roll(live_rolls))
 		{
 			if (stunself)
-				Stun(ch, ch, PULSE_VIOLENCE, FALSE);
+				Stun(ch, ch, hammer_stun(), FALSE);
 			else
-				Stun(victim, ch, PULSE_VIOLENCE, TRUE);
+				Stun(victim, ch, hammer_stun(), TRUE);
 		}
 	}
+}
+
+static int detect_illusion_duration(int level)
+{
+	return MAX(level, 10);
+}
+
+std::string detect_illusion_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Duration", game_hours(detect_illusion_duration(level)) + " at your level, " +
+					std::to_string(level)) +
+	       "  It also detects invisibility. Recasting it only renews the duration.\n";
 }
 
 void spell_detect_illusion(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1238,19 +1812,64 @@ void spell_detect_illusion(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_DETECT_ILLUSION)
 			{
-				af1->duration = MAX(level, 10);
+				af1->duration = detect_illusion_duration(level);
 			}
 		return;
 	}
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_DETECT_ILLUSION;
-	af.duration = MAX(level, 10);
+	af.duration = detect_illusion_duration(level);
 	af.bitvector = AFF_DETECT_INVISIBLE;
 	af.bitvector4 = AFF4_DETECT_ILLUSION;
 	affect_to_char(victim, &af);
 
 	send_to_char("&+WYour vision feels enhanced!\r\n", victim);
+}
+
+// The caster's lag, in pulses, whether or not it works.
+static int dream_travel_dreamer_lag(const Rolls &rolls)
+{
+	return rolls.number(4 * WAIT_SEC, 6 * WAIT_SEC);
+}
+
+static int dream_travel_pc_lag()
+{
+	return 12 * WAIT_SEC;
+}
+
+// What each group member brought to the caster is lagged, in pulses.
+static int dream_travel_dreamer_member_lag()
+{
+	return 6 * WAIT_SEC;
+}
+
+static int dream_travel_member_lag()
+{
+	return 12 * WAIT_SEC;
+}
+
+std::string dream_travel_facts(P_char ch)
+{
+	const bool dreamer = GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER);
+	const int low = dream_travel_dreamer_lag(lowest_rolls);
+	const int high = dream_travel_dreamer_lag(highest_rolls);
+	return fact("Your lag", (dreamer ? seconds(low) + " to " + seconds(high) :
+					   seconds(dream_travel_pc_lag())) +
+					", even if it fails") +
+	       "  Cast on another player, it takes you there, asleep.\n"
+	       "  Cast on yourself, it brings your group to you, asleep: NPCs and players\n"
+	       "  who consent and whom you can see, unless they are fighting.\n" +
+	       (IS_TRUSTED(ch) ? "" : "  Group members in no-teleport rooms or hometowns stay.\n") +
+	       fact("Each one's lag", seconds(dreamer ? dream_travel_dreamer_member_lag() :
+							dream_travel_member_lag())) +
+	       (IS_TRUSTED(ch) ?
+			"" :
+			"  It cannot reach an NPC, the other racewar side or an immortal,\n"
+			"  and single-file rooms block it.\n") +
+	       "  Non-detection, and no-locate players you do not know, hide a target.\n"
+	       "  No-teleport rooms, hometowns and rooms you cannot enter block it, as do\n"
+	       "  ocean around the target, and flying or swimming. Both must be raidable.\n";
 }
 
 void spell_dream_travel(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -1266,9 +1885,9 @@ void spell_dream_travel(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 	}
 
 	if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER))
-		CharWait(ch, number(4 * WAIT_SEC, 6 * WAIT_SEC));
+		CharWait(ch, dream_travel_dreamer_lag(live_rolls));
 	else if (IS_PC(ch))
-		CharWait(ch, 12 * WAIT_SEC);
+		CharWait(ch, dream_travel_pc_lag());
 	else
 		CharWait(ch, 5 * WAIT_SEC);
 
@@ -1357,9 +1976,9 @@ void spell_dream_travel(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 					act("$n falls asleep.", FALSE, targ, 0, 0, TO_ROOM);
 
 					if (GET_SPEC(ch, CLASS_ILLUSIONIST, SPEC_DARK_DREAMER))
-						CharWait(targ, 6 * WAIT_SEC);
+						CharWait(targ, dream_travel_dreamer_member_lag());
 					else
-						CharWait(targ, 12 * WAIT_SEC);
+						CharWait(targ, dream_travel_member_lag());
 				}
 			}
 		}
@@ -1429,6 +2048,20 @@ int is_illusion_obj(P_obj obj)
 	// Add what ever might wanna go in here!
 }
 
+std::string clone_form_facts(P_char ch)
+{
+	return fact("Disguise strength",
+		    std::to_string(illusion_disguise_hits(ch)) + ", worn down by damage and time") +
+	       fact("Your lag fading back with \"me\" or \"self\"", seconds(illusion_fade_lag())) +
+	       (IS_TRUSTED(ch) ?
+			fact("Highest level you can copy", "your own, as an immortal") :
+			fact("Highest level you can copy",
+			     std::to_string(illusion_copy_highest_level())) +
+				"  You cannot copy anything over one size smaller than you.\n") +
+	       "  You cannot copy a reflection image, the training dummy, or yourself.\n"
+	       "  You must be disguised to fade back.\n";
+}
+
 void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char victim, P_obj /*obj*/)
 {
 	bool casting_on_self = FALSE;
@@ -1447,7 +2080,7 @@ void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char vict
 	if (!IS_ALIVE(ch))
 		return;
 
-	if (!IS_TRUSTED(ch) && GET_LEVEL(victim) > 56)
+	if (!IS_TRUSTED(ch) && GET_LEVEL(victim) > illusion_copy_highest_level())
 	{
 		send_to_char("&+LTry to find something that is a lower level to clone.&N\r\n", ch);
 		return;
@@ -1470,7 +2103,7 @@ void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char vict
 	{
 		send_to_char("&+WYou f&Nad&+Le back into your own image.&N\r\n", ch);
 		act("&+W$n &+Wf&Nad&+Les back into $s &+Lown image.&N", FALSE, ch, 0, ch, TO_ROOM);
-		CharWait(ch, PULSE_VIOLENCE * 3);
+		CharWait(ch, illusion_fade_lag());
 		remove_disguise(ch, FALSE);
 		return;
 	}
@@ -1537,7 +2170,7 @@ void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char vict
 			ch->disguise.m_class = t_ch->player.m_class;
 			ch->disguise.racewar = GET_RACEWAR(target);
 			ch->disguise.race = GET_RACE(t_ch);
-			ch->disguise.hit = GET_LEVEL(ch) * 2;
+			ch->disguise.hit = illusion_disguise_hits(ch);
 			snprintf(tbuf, MAX_STRING_LENGTH,
 				 "&+LYou &+Bblur&N and take on the form of %s!\r\n",
 				 t_ch->player.short_descr);
@@ -1588,7 +2221,7 @@ void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char vict
 					ch->disguise.m_class = target->player.m_class;
 					ch->disguise.race = GET_RACE(target);
 					ch->disguise.level = GET_LEVEL(target);
-					ch->disguise.hit = GET_LEVEL(ch) * 2;
+					ch->disguise.hit = illusion_disguise_hits(ch);
 					ch->disguise.racewar = GET_RACEWAR(target);
 					if (GET_TITLE(target))
 						ch->disguise.title = str_dup(GET_TITLE(target));
@@ -1607,6 +2240,51 @@ void spell_clone_form(int level, P_char ch, char *arg, int /*type*/, P_char vict
 			}
 		}
 	}
+}
+
+// A roll above 0 gives the target a first fear save, at this modifier.
+static int imprison_first_save_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int imprison_first_save_mod()
+{
+	return 10;
+}
+
+static int imprison_shell_hit_points(int level)
+{
+	return 400 + MAX(0, MIN(level, 53) - 46) * 40;
+}
+
+static int imprison_second_save_mod()
+{
+	return 3;
+}
+
+static int imprison_saved_hit_points(int shell_hps)
+{
+	return (int)(shell_hps * 0.65);
+}
+
+std::string imprison_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int shell = imprison_shell_hit_points(level);
+	return fact("Chance of a first fear save that stops it",
+		    "1 in " +
+			    std::to_string(imprison_first_save_roll(highest_rolls) -
+					   imprison_first_save_roll(lowest_rolls) + 1) +
+			    ", at +" + std::to_string(imprison_first_save_mod()) + ", harder") +
+	       fact("Shell's strength",
+		    std::to_string(shell) + " at your level, " + std::to_string(level)) +
+	       fact("If it makes a fear save at +" + std::to_string(imprison_second_save_mod()) +
+			    ", harder",
+		    std::to_string(imprison_saved_hit_points(shell))) +
+	       "  The shell takes the damage meant for the target until a hit exceeds it.\n"
+	       "  It stops the target's fights. It only takes a player not in a fight, not\n"
+	       "  already imprisoned, and not you.\n";
 }
 
 void spell_imprison(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -1663,9 +2341,9 @@ void spell_imprison(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		return;
 	}
 
-	if (number(0, 1))
+	if (imprison_first_save_roll(live_rolls))
 	{
-		if (NewSaves(victim, SAVING_FEAR, 10))
+		if (NewSaves(victim, SAVING_FEAR, imprison_first_save_mod()))
 		{
 			act("$N is almost encased in a $q, but $E believes it is just an illusion.",
 			    TRUE, victim, shell, victim, TO_ROOM);
@@ -1675,11 +2353,11 @@ void spell_imprison(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		}
 	}
 
-	shell_hps = 400 + MAX(0, MIN(level, 53) - 46) * 40;
+	shell_hps = imprison_shell_hit_points(level);
 
-	if (NewSaves(victim, SAVING_FEAR, 3))
+	if (NewSaves(victim, SAVING_FEAR, imprison_second_save_mod()))
 	{
-		shell_hps = (int)(shell_hps * 0.65);
+		shell_hps = imprison_saved_hit_points(shell_hps);
 		act("$N blinks in &+cdi&+Csb&+cel&+Cie&+cf &nas a $q &nencases $M!", TRUE, victim,
 		    shell, victim, TO_ROOM);
 		act("You blink in &+cdi&+Csb&+cel&+Cie&+cf &nas a $q &ncreated by $n wraps around you!",
@@ -1762,6 +2440,12 @@ bool handle_imprison_damage(P_char ch, P_char victim, int dam)
 	return TRUE;
 }
 
+std::string nonexistence_facts(P_char ch)
+{
+	return fact("Casts", "invisibility on everyone in the room, at your level") +
+	       invisibility_facts(ch) + "  It also hides them, except in water or on the ocean.\n";
+}
+
 void spell_nonexistence(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			P_obj /*obj*/)
 {
@@ -1802,6 +2486,29 @@ void spell_nonexistence(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	*/
 }
 
+static int dragon_level(const Rolls &rolls, int level)
+{
+	return BOUNDED(1, rolls.number(level - 5, level + 1), 55);
+}
+
+static int dragon_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level, 5) + (mob_level * 4);
+}
+
+std::string dragon_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range mob = { dragon_level(lowest_rolls, level), dragon_level(highest_rolls, level) };
+	return fact("Dragons at once", std::to_string(illusion_pet_limit(ch)) + " at your level, " +
+					       std::to_string(level)) +
+	       fact("Dragon's level", show(mob)) +
+	       fact("Its hit points", show({ dragon_hit_points(lowest_rolls, mob.low),
+					     dragon_hit_points(highest_rolls, mob.high) })) +
+	       illusion_pet_control_facts() +
+	       "  It attacks your target at once. Safe rooms block it.\n";
+}
+
 void spell_dragon(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		  P_obj /*obj*/)
 {
@@ -1827,7 +2534,7 @@ void spell_dragon(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		}
 	}
 
-	if (summoned >= MAX(1, GET_LEVEL(ch) / 14))
+	if (summoned >= illusion_pet_limit(ch))
 	{
 		send_to_char("You cannot summon any more dragons right now!\r\n", ch);
 		return;
@@ -1844,7 +2551,7 @@ void spell_dragon(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+wappears from nowhere!", TRUE, mob, 0, 0, TO_ROOM);
 
-	mob->player.level = BOUNDED(1, number(level - 5, level + 1), 55);
+	mob->player.level = dragon_level(live_rolls, level);
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 	mob->player.m_class = CLASS_WARRIOR;
@@ -1852,11 +2559,11 @@ void spell_dragon(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 	remove_plushit_bits(mob);
 
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob), 5) + (GET_LEVEL(mob) * 4);
+		dragon_hit_points(live_rolls, GET_LEVEL(mob));
 
 	balance_affects(mob);
 
-	setup_pet(mob, ch, 1, PET_NOORDER | PET_NOCASH);
+	setup_pet(mob, ch, illusion_pet_control(), PET_NOORDER | PET_NOCASH);
 	if (ch->group)
 	{
 		group_add_member(ch->group->ch, mob);
@@ -1866,6 +2573,52 @@ void spell_dragon(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		group_add_member(ch, mob);
 	}
 	MobStartFight(mob, victim);
+}
+
+static int titan_level(const Rolls &rolls, int level)
+{
+	return BOUNDED(1, rolls.number(level - 5, level), 55);
+}
+
+static int titan_hit_points(P_char ch)
+{
+	return (int)(GET_MAX_HIT(ch) * 0.7);
+}
+
+static int titan_hitroll(int mob_level)
+{
+	return mob_level / 2;
+}
+
+static int titan_damroll(int mob_level)
+{
+	return mob_level / 3;
+}
+
+static int titan_dice_count(P_char ch)
+{
+	return (int)GET_LEVEL(ch) / 6;
+}
+
+static int titan_dice_size(P_char ch)
+{
+	return (int)GET_LEVEL(ch) / 8;
+}
+
+std::string titan_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range mob = { titan_level(lowest_rolls, level), titan_level(highest_rolls, level) };
+	return fact("Titan's level", show(mob) + " at your level, " + std::to_string(level)) +
+	       fact("Its hit points",
+		    std::to_string(titan_hit_points(ch)) + " with your maximum hit points") +
+	       fact("Its hitroll", show({ titan_hitroll(mob.low), titan_hitroll(mob.high) })) +
+	       fact("Its damroll", show({ titan_damroll(mob.low), titan_damroll(mob.high) })) +
+	       fact("Its damage dice",
+		    illusion_pet_dice(titan_dice_count(ch), titan_dice_size(ch))) +
+	       illusion_pet_control_facts() +
+	       "  It attacks your target at once. You can have only one, and none while\n"
+	       "  your reflection images follow you. Safe rooms block it.\n";
 }
 
 void spell_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -1926,21 +2679,21 @@ void spell_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 		return;
 	}
 
-	mob->player.level = BOUNDED(1, number(level - 5, level), 55);
+	mob->player.level = titan_level(live_rolls, level);
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 	SET_BIT(mob->specials.affected_by, AFF_DETECT_INVISIBLE);
 	mob->player.m_class = CLASS_ILLUSIONIST;
 
 	remove_plushit_bits(mob);
 
-	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit = (int)(GET_MAX_HIT(ch) * 0.7);
+	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit = titan_hit_points(ch);
 
 	GET_SIZE(mob) = SIZE_GIANT;
 
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 2;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) / 3;
-	mob->points.damnodice = (int)GET_LEVEL(ch) / 6;
-	mob->points.damsizedice = (int)GET_LEVEL(ch) / 8;
+	mob->points.base_hitroll = mob->points.hitroll = titan_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll = titan_damroll(GET_LEVEL(mob));
+	mob->points.damnodice = titan_dice_count(ch);
+	mob->points.damsizedice = titan_dice_size(ch);
 	mob->specials.act |= ACT_SPEC_DIE;
 
 	mob->only.npc->str_mask = (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
@@ -1963,9 +2716,37 @@ void spell_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+Lappears from nowhere!", TRUE, mob, 0, 0, TO_ROOM);
 
-	setup_pet(mob, ch, 1, PET_NOORDER | PET_NOCASH);
+	setup_pet(mob, ch, illusion_pet_control(), PET_NOORDER | PET_NOCASH);
 	group_add_member(ch, mob);
 	MobStartFight(mob, victim);
+}
+
+static int delirium_works_above()
+{
+	return 10;
+}
+
+static int delirium_duration()
+{
+	return 40;
+}
+
+// Each step of a delirious walker rolls this; a roll of 0 sends it a random way.
+int delirium_wander_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+std::string delirium_facts(P_char /*ch*/)
+{
+	return fact("Duration", seconds(delirium_duration())) +
+	       fact("Chance each step goes a random way",
+		    "1 in " + std::to_string(delirium_wander_roll(highest_rolls) -
+					     delirium_wander_roll(lowest_rolls) + 1)) +
+	       fact("It works if this is over " + std::to_string(delirium_works_above()),
+		    "your power minus the target's") +
+	       "    intelligence, plus its spell save modifier, plus your level advantage.\n"
+	       "  Recasting it on a confused target does nothing. You cannot target yourself.\n";
 }
 
 void spell_delirium(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1999,7 +2780,7 @@ void spell_delirium(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	act("You grin evilly as you send delirius ray streaking towards $N!", TRUE, ch, 0, victim,
 	    TO_CHAR);
 
-	if (percent > 10)
+	if (percent > delirium_works_above())
 	{
 		// if (!saves_spell(victim, SAVING_SPELL) && (!number(0, 1))) {
 
@@ -2008,7 +2789,7 @@ void spell_delirium(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] i
 			bzero(&af, sizeof(af));
 			af.type = SPELL_DELIRIUM;
 			af.flags = AFFTYPE_SHORT;
-			af.duration = 40;
+			af.duration = delirium_duration();
 			af.bitvector5 = AFF5_DELIRIUM;
 			affect_to_char(victim, &af);
 
@@ -2021,6 +2802,20 @@ void spell_delirium(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] i
 			act("It's confused enough!!&n", TRUE, ch, 0, victim, TO_CHAR);
 		}
 	}
+}
+
+static int flicker_shield_level(int level)
+{
+	return (level / 3) * 2;
+}
+
+std::string flicker_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return "  You need a group. It leaves the room in twilight.\n" +
+	       fact("Casts", "shadow shield on your group here, at level " +
+				     std::to_string(flicker_shield_level(level))) +
+	       shadow_shield_facts_at(flicker_shield_level(level), "", "them");
 }
 
 void spell_flicker(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
@@ -2043,12 +2838,13 @@ void spell_flicker(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 		gl = ch->group;
 		/* leader first */
 		if (gl->ch->in_room == ch->in_room)
-			spell_shadow_shield((level / 3) * 2, ch, 0, 0, gl->ch, 0);
+			spell_shadow_shield(flicker_shield_level(level), ch, 0, 0, gl->ch, 0);
 		/* followers */
 		for (gl = gl->next; gl; gl = gl->next)
 		{
 			if (gl->ch->in_room == ch->in_room)
-				spell_shadow_shield((level / 3) * 2, ch, 0, 0, gl->ch, 0);
+				spell_shadow_shield(flicker_shield_level(level), ch, 0, 0, gl->ch,
+						    0);
 		}
 	}
 }
@@ -2057,6 +2853,20 @@ void spell_greater_flicker(int /*level*/, P_char ch, char * /*arg*/, int /*type*
 			   P_char /*victim*/, P_obj /*obj*/)
 {
 	send_to_char("This spell is not yet implemented.\r\n", ch);
+}
+
+static int obscuring_mist_duration(int level)
+{
+	return (level / 4 + 1);
+}
+
+std::string obscuring_mist_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Duration", game_hours(obscuring_mist_duration(level)) + " at your level, " +
+					std::to_string(level)) +
+	       "  No mortal can look into, or scan, a room holding someone in the mist.\n"
+	       "  Recasting it on someone in the mist does nothing.\n";
 }
 
 void spell_obscuring_mist(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
@@ -2070,7 +2880,7 @@ void spell_obscuring_mist(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unus
 		act("&+cA &npale grey &+cmist swirls around you!", TRUE, victim, 0, 0, TO_CHAR);
 		bzero(&af, sizeof(af));
 		af.type = SPELL_OBSCURING_MIST;
-		af.duration = (level / 4 + 1);
+		af.duration = obscuring_mist_duration(level);
 		af.modifier = level;
 		af.bitvector5 = AFF5_OBSCURING_MIST;
 		affect_to_char(victim, &af);
@@ -2079,6 +2889,42 @@ void spell_obscuring_mist(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unus
 	}
 	else
 		send_to_char("You must are already surrounded by &+ctons of mist&n.\n", victim);
+}
+
+static int sound_suppression_duration()
+{
+	return 2;
+}
+
+// Sneak fails on a roll up to sound_suppression_sneak_fails_up_to().
+static int sound_suppression_sneak_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int sound_suppression_sneak_fails_up_to(int counter)
+{
+	return counter * 2;
+}
+
+// Moving on the world map with this much noise or less makes none under suppression.
+int sound_suppression_noise_limit()
+{
+	return 13;
+}
+
+std::string suppress_sound_facts(P_char /*ch*/)
+{
+	return "  You need a group. It covers everyone in it here.\n" +
+	       fact("Duration", game_hours(sound_suppression_duration())) +
+	       fact("Chance each member gets no sneak",
+		    std::to_string(sound_suppression_sneak_fails_up_to(1)) + " in " +
+			    std::to_string(sound_suppression_sneak_roll(highest_rolls)) +
+			    " per group member") +
+	       fact("On the world map, no noise moving with allies up to",
+		    std::to_string(sound_suppression_noise_limit()) + ", give or take 1") +
+	       "  Those under it cannot speak unless illithid, or use group chat or some\n"
+	       "  other voice commands. It cannot be dispelled, and recasting does nothing.\n";
 }
 
 void spell_suppress_sound(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
@@ -2118,10 +2964,11 @@ void spell_sound_suppression(int /*level*/, P_char ch, char * /*arg*/, [[maybe_u
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_SUPPRESSION;
-		af.duration = 2;
+		af.duration = sound_suppression_duration();
 		af.flags = AFFTYPE_NODISPEL;
 		// success = add sneak
-		if (number(1, 100) > (counter * 2))
+		if (sound_suppression_sneak_roll(live_rolls) >
+		    sound_suppression_sneak_fails_up_to(counter))
 		{
 			af.bitvector = AFF_SNEAK;
 			act("$n becomes deathly silent.&n", FALSE, victim, 0, 0, TO_ROOM);
@@ -2129,6 +2976,19 @@ void spell_sound_suppression(int /*level*/, P_char ch, char * /*arg*/, [[maybe_u
 		}
 		affect_to_char(victim, &af);
 	}
+}
+
+static int shadow_merge_duration()
+{
+	return 4;
+}
+
+std::string shadow_merge_facts(P_char /*ch*/)
+{
+	return fact("Duration", game_hours(shadow_merge_duration())) +
+	       "  It hides you, and you stay hidden moving with whoever you follow.\n"
+	       "  Any other command or move takes you out of the shadows.\n"
+	       "  Recasting it while merged does nothing.\n";
 }
 
 void spell_shadow_merge(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2141,7 +3001,7 @@ void spell_shadow_merge(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_SHADOW_MERGE;
-		af.duration = 4;
+		af.duration = shadow_merge_duration();
 
 		affect_to_char(ch, &af);
 
@@ -2165,6 +3025,58 @@ void spell_shadow_merge(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused
 		}
 		SET_BIT(ch->specials.affected_by, AFF_HIDE);
 	}
+}
+
+// The room the gate opens to.
+static int ardgral_room_roll(const Rolls &rolls)
+{
+	return rolls.number(30401, 30464);
+}
+
+// How many can pass. A portal only counts a positive number; zero or below has no limit.
+static int ardgral_throughput()
+{
+	return get_property("portals.gate.maxToPass", -1);
+}
+
+static int ardgral_init_timeout()
+{
+	return get_property("portals.gate.initTimeout", 0);
+}
+
+static int ardgral_post_enter_timeout()
+{
+	return get_property("portals.gate.postEnterTimeout", 0);
+}
+
+static int ardgral_post_enter_lag()
+{
+	return get_property("portals.gate.postEnterLag", 0);
+}
+
+static int ardgral_decay()
+{
+	return get_property("portals.gate.decayTimeout", 240);
+}
+
+std::string shdw_gate_ardgral_facts(P_char /*ch*/)
+{
+	const int pass = ardgral_throughput();
+	std::string text =
+		fact("Opens to", "one of " +
+					 std::to_string(ardgral_room_roll(highest_rolls) -
+							ardgral_room_roll(lowest_rolls) + 1) +
+					 " rooms of Ardgral, one way") +
+		fact("Can pass", pass > 0 ? std::to_string(pass) : "no limit") +
+		fact("Portal lasts", "up to " + real_time(ardgral_decay()));
+	if (ardgral_init_timeout() > 0)
+		text += fact("Wait before anyone can enter", seconds(ardgral_init_timeout()));
+	if (ardgral_post_enter_timeout() > 0)
+		text += fact("Wait between entries", seconds(ardgral_post_enter_timeout()));
+	if (ardgral_post_enter_lag() > 0)
+		text += fact("Lag stepping out", seconds(ardgral_post_enter_lag()));
+	return text +
+	       "  No-gate rooms, hometowns and castles block it, and you must be raidable.\n";
 }
 
 void cast_ardgral(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*tar_ch*/,
@@ -2202,7 +3114,7 @@ void cast_ardgral(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*t
 		return;
 	}
 
-	to_room = real_room0(number(30401, 30464));
+	to_room = real_room0(ardgral_room_roll(live_rolls));
 
 	if (IS_ROOM(ch->in_room, ROOM_NO_GATE) || IS_HOMETOWN(ch->in_room))
 	{
@@ -2217,11 +3129,11 @@ void cast_ardgral(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*t
 	}
 
 	set.to_room = to_room;
-	set.throughput = get_property("portals.gate.maxToPass", -1);
-	set.init_timeout = get_property("portals.gate.initTimeout", 0);
-	set.post_enter_timeout = get_property("portals.gate.postEnterTimeout", 0);
-	set.post_enter_lag = get_property("portals.gate.postEnterLag", 0);
-	set.decay_timer = get_property("portals.gate.decayTimeout", 240);
+	set.throughput = ardgral_throughput();
+	set.init_timeout = ardgral_init_timeout();
+	set.post_enter_timeout = ardgral_post_enter_timeout();
+	set.post_enter_lag = ardgral_post_enter_lag();
+	set.decay_timer = ardgral_decay();
 
 	// one way portal
 	spell_general_portal(level, ch, 0, &set, &msg, TRUE);
@@ -2235,6 +3147,132 @@ struct sbb_data
 	int waves;
 };
 
+static int shadow_spawn_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int shadow_spawn_waves()
+{
+	return 2;
+}
+
+// Before the first wave, and between waves, in pulses.
+static int shadow_spawn_wave_delay()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// A player's or pet's next wave comes on a roll of 0.
+static int shadow_spawn_player_splat()
+{
+	return 2;
+}
+
+static int shadow_spawn_wave_roll(const Rolls &rolls, int splat)
+{
+	return rolls.number(0, splat);
+}
+
+static int shadow_spawn_damage(const Rolls &rolls, int level)
+{
+	return level * 4 + rolls.number(-20, 40);
+}
+
+// A player's shadow spawn against another player.
+static int shadow_spawn_player_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.to.pc", 0.5);
+}
+
+static int shadow_spawn_undead_damage(int dam)
+{
+	return (int)(dam / 5);
+}
+
+// Added to the target's fear save against the blindness and terror.
+static int shadow_spawn_save_mod(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) / 10);
+}
+
+// Blindness and terror each land on a roll of 0, up to this.
+static int shadow_spawn_affect_odds(P_char ch)
+{
+	int affmod = 5;
+
+	// Level 56 npc have 50% to afflict each affect.
+	if (IS_NPC(ch) && !GET_MASTER(ch))
+	{
+		affmod -= 1;
+	}
+	if (GET_LEVEL(ch) > 49)
+	{
+		affmod -= 1;
+	}
+	if (GET_LEVEL(ch) > 53)
+	{
+		affmod -= 1;
+	}
+	if (GET_LEVEL(ch) > 55)
+	{
+		affmod -= 1;
+	}
+	return affmod;
+}
+
+static int shadow_spawn_affect_roll(const Rolls &rolls, int affmod)
+{
+	return rolls.number(0, affmod);
+}
+
+static int shadow_spawn_blind_duration()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string shadow_spawn_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int low = shadow_spawn_damage(lowest_rolls, level);
+	const int high = shadow_spawn_damage(highest_rolls, level);
+	const int player_low = shadow_spawn_player_damage(low);
+	const int player_high = shadow_spawn_player_damage(high);
+	const int odds = shadow_spawn_affect_odds(ch);
+	const int save = shadow_spawn_save_mod(ch);
+	const int splat = shadow_spawn_player_splat();
+	return fact("Your lag", seconds(shadow_spawn_lag())) +
+	       fact("First wave after", seconds(shadow_spawn_wave_delay())) +
+	       fact("Waves", "at most " + std::to_string(shadow_spawn_waves())) +
+	       fact("Chance of the next wave, after as long",
+		    "1 in " + std::to_string(shadow_spawn_wave_roll(highest_rolls, splat) -
+					     shadow_spawn_wave_roll(lowest_rolls, splat) + 1)) +
+	       "  Leaving the room collapses the vortex. Safe rooms stop it.\n" +
+	       fact("Spirit damage per wave",
+		    show_landing({ low, high }) + " at your level, " + std::to_string(level)) +
+	       fact("To another player", show_landing({ player_low, player_high })) +
+	       fact("To an undead NPC", show_landing({ shadow_spawn_undead_damage(low),
+						       shadow_spawn_undead_damage(high) })) +
+	       fact("To an undead player",
+		    show_landing({ shadow_spawn_undead_damage(player_low),
+				   shadow_spawn_undead_damage(player_high) })) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n" +
+	       fact("If a survivor fails a fear save",
+		    (save ? "at +" + std::to_string(save) + ", harder" :
+			    std::string("unmodified"))) +
+	       fact("Chance it is blinded",
+		    "1 in " +
+			    std::to_string(shadow_spawn_affect_roll(highest_rolls, odds) -
+					   shadow_spawn_affect_roll(lowest_rolls, odds) + 1) +
+			    ", for " + seconds(shadow_spawn_blind_duration())) +
+	       fact("Chance it flees",
+		    "1 in " + std::to_string(shadow_spawn_affect_roll(highest_rolls, odds) -
+					     shadow_spawn_affect_roll(lowest_rolls, odds) + 1)) +
+	       "  Undead, elites and greater races ignore both, and magic resistance can\n"
+	       "  shrug each. The blind and those who cannot be blinded stay as they are.\n";
+}
+
 void spell_shadow_burst(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			P_obj /*obj*/)
 {
@@ -2245,14 +3283,14 @@ void spell_shadow_burst(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 		return;
 	}
 
-	sbbdata.waves = 2;
+	sbbdata.waves = shadow_spawn_waves();
 	sbbdata.room = ch->in_room;
 	send_to_room(
 		"&+LThe room clouds with &nmists&+L as a v&+ror&+Rt&+re&+Lx starts to form..\n",
 		ch->in_room);
-	add_event(event_shadow_spawn, PULSE_VIOLENCE * 2, ch, 0, 0, 0, &sbbdata,
+	add_event(event_shadow_spawn, shadow_spawn_wave_delay(), ch, 0, 0, 0, &sbbdata,
 		  sizeof(struct sbb_data));
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, shadow_spawn_lag());
 }
 
 void event_shadow_spawn(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
@@ -2290,15 +3328,15 @@ void event_shadow_spawn(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	}
 	else
 	{
-		splat = 2;
+		splat = shadow_spawn_player_splat();
 	}
 
-	if ((sbbdata->waves > 0) && !number(0, splat))
+	if ((sbbdata->waves > 0) && !shadow_spawn_wave_roll(live_rolls, splat))
 	{
 		send_to_room(
 			"&+LA swirling v&+ror&+Rt&+re&+Lx continues to spill out n&+mi&+Lghtm&+ma&+Lr&+me&+Ls...\n",
 			ch->in_room);
-		add_event(event_shadow_spawn, PULSE_VIOLENCE * 2, ch, 0, 0, 0, sbbdata,
+		add_event(event_shadow_spawn, shadow_spawn_wave_delay(), ch, 0, 0, 0, sbbdata,
 			  sizeof(struct sbb_data));
 	}
 	else
@@ -2327,39 +3365,21 @@ void spell_shadow_spawn(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		return;
 	}
 
-	dam = level * 4 + number(-20, 40);
+	dam = shadow_spawn_damage(live_rolls, level);
 	// Meteorswarm damage is: 100 + level * 6 + number(1, 40);
-	savemod = (int)(GET_LEVEL(ch) / 10);
+	savemod = shadow_spawn_save_mod(ch);
 
-	affmod = 5;
-
-	// Level 56 npc have 50% to afflict each affect.
-	if (IS_NPC(ch) && !GET_MASTER(ch))
-	{
-		affmod -= 1;
-	}
-	if (GET_LEVEL(ch) > 49)
-	{
-		affmod -= 1;
-	}
-	if (GET_LEVEL(ch) > 53)
-	{
-		affmod -= 1;
-	}
-	if (GET_LEVEL(ch) > 55)
-	{
-		affmod -= 1;
-	}
+	affmod = shadow_spawn_affect_odds(ch);
 
 	if (IS_PC(ch) && IS_PC(victim))
 	{
-		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
+		dam = shadow_spawn_player_damage(dam);
 	}
 
 	// Undead just don't care too much about this.
 	if (IS_UNDEAD(victim))
 	{
-		dam = (int)(dam / 5);
+		dam = shadow_spawn_undead_damage(dam);
 	}
 
 	if (spell_damage(ch, victim, dam, SPLDAM_SPIRIT, 0, &messages) == DAM_NONEDEAD)
@@ -2381,7 +3401,7 @@ void spell_shadow_spawn(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 			  spell_disease(46, ch, NULL, SPELL_TYPE_SPELL, victim, 0);
 			}
 			*/
-			if (!number(0, affmod))
+			if (!shadow_spawn_affect_roll(live_rolls, affmod))
 			{
 				act("&+LThe n&+mi&+Lghtm&+ma&+Lr&+me&+L is too much for $N, whose eyes close!&n",
 				    FALSE, ch, 0, victim, TO_CHAR);
@@ -2391,10 +3411,10 @@ void spell_shadow_spawn(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 				    FALSE, ch, 0, victim, TO_NOTVICT);
 				if (ch && victim && !resists_spell(ch, victim))
 				{
-					blind(ch, victim, PULSE_VIOLENCE);
+					blind(ch, victim, shadow_spawn_blind_duration());
 				}
 			}
-			if (!number(0, affmod))
+			if (!shadow_spawn_affect_roll(live_rolls, affmod))
 			{
 				act("&+LThe n&+mi&+Lghtm&+ma&+Lr&+me&+L scares the bejesus out of $N!&n",
 				    FALSE, ch, 0, victim, TO_CHAR);
@@ -2409,6 +3429,42 @@ void spell_shadow_spawn(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 			}
 		}
 	}
+}
+
+static int asphyxiate_rounds()
+{
+	return 3;
+}
+
+static int asphyxiate_delay()
+{
+	return 1;
+}
+
+static int asphyxiate_saved_damage(const Rolls &rolls, P_char ch)
+{
+	return (5 * GET_LEVEL(ch) + 65) / 2 + rolls.number(0, 40);
+}
+
+static int asphyxiate_failed_damage(const Rolls &rolls, P_char ch)
+{
+	return 5 * GET_LEVEL(ch) + rolls.number(5, 45);
+}
+
+std::string asphyxiate_facts(P_char ch)
+{
+	return fact("Hits", std::to_string(asphyxiate_rounds()) + ", " +
+				    seconds(asphyxiate_delay()) + " apart") +
+	       fact("Damage per hit if the target fails its save",
+		    show({ asphyxiate_failed_damage(lowest_rolls, ch),
+			   asphyxiate_failed_damage(highest_rolls, ch) }) +
+			    " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("If it saves", show({ asphyxiate_saved_damage(lowest_rolls, ch),
+					  asphyxiate_saved_damage(highest_rolls, ch) })) +
+	       "  Each hit makes its own save. It stops if either of you dies.\n"
+	       "  It does nothing to a target with no lungs. It cannot be deflected.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 // Event to handle asphyxiate spell.
@@ -2440,19 +3496,20 @@ void event_asphyxiate(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
 		// 45 +/- 5 dam at 51.
-		dam = (5 * GET_LEVEL(ch) + 65) / 2 + number(0, 40);
+		dam = asphyxiate_saved_damage(live_rolls, ch);
 	}
 	else
 	{
 		// 70 +/- 5 dam at 56.
-		dam = 5 * GET_LEVEL(ch) + number(5, 45);
+		dam = asphyxiate_failed_damage(live_rolls, ch);
 	}
 
 	if (spell_damage(ch, victim, dam, SPLDAM_GENERIC, SPLDAM_NODEFLECT, &messages) ==
 		    DAM_NONEDEAD &&
 	    (--rounds > 0))
 	{
-		add_event(event_asphyxiate, 1, ch, victim, NULL, 0, &rounds, sizeof(int));
+		add_event(event_asphyxiate, asphyxiate_delay(), ch, victim, NULL, 0, &rounds,
+			  sizeof(int));
 	}
 }
 
@@ -2460,7 +3517,7 @@ void event_asphyxiate(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 void spell_asphyxiate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		      P_obj /*obj*/)
 {
-	int rounds = 3;
+	int rounds = asphyxiate_rounds();
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 	{
