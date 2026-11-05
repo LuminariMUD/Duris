@@ -693,5 +693,10 @@ std::string raise_wraith_facts(char_data *ch);
 std::string slashing_darkness_facts(char_data *ch);
 std::string taint_facts(char_data *ch);
 std::string undead_to_death_facts(char_data *ch);
+std::string flame_blade_facts(char_data *ch);
+std::string doom_blade_facts(char_data *ch);
+std::string dragoon_weapon_facts(char_data *ch);
+std::string essence_of_wolf_facts(char_data *ch);
+std::string banish_facts(char_data *ch);
 
 #endif

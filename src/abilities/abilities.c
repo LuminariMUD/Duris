@@ -1474,6 +1474,22 @@ AbilityFacts ability_facts(int skill)
 		return taint_facts;
 	case SPELL_UNDEAD_TO_DEATH:
 		return undead_to_death_facts;
+	case SPELL_FLAME_BLADE:
+		return flame_blade_facts;
+	case SPELL_DOOM_BLADE:
+		return doom_blade_facts;
+	case SPELL_HOLY_BLADE:
+		return doom_blade_facts;
+	case SPELL_ENSIS_UNGUIS:
+		return dragoon_weapon_facts;
+	case SPELL_LANCEA_CINERALAE:
+		return dragoon_weapon_facts;
+	case SPELL_SIMULACRUM_ANGUIS:
+		return dragoon_weapon_facts;
+	case SPELL_ESSENCE_OF_WOLF:
+		return essence_of_wolf_facts;
+	case SPELL_BANISH:
+		return banish_facts;
 	default:
 		return nullptr;
 	}

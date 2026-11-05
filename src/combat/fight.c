@@ -9044,6 +9044,22 @@ int combat_mind_second_attack_above()
 	return 51;
 }
 
+// Essence of the wolf: the extra attacks its target gets each round.
+int essence_of_wolf_attacks(const Rolls &rolls)
+{
+	return rolls.number(2, 4);
+}
+
+int essence_of_wolf_attack_cap(int level)
+{
+	return level / 10;
+}
+
+int essence_of_wolf_offhand_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
 #define ADD_ATTACK(slot) (attacks[number_attacks++] = (slot))
 
 int calculate_attacks(P_char ch, int attacks[])
@@ -9487,14 +9503,14 @@ int calculate_attacks(P_char ch, int attacks[])
 
 	if (get_linking_char(ch, LNK_ESSENCE_OF_WOLF))
 	{
-		int extra = number(2, 4);
+		int extra = essence_of_wolf_attacks(live_rolls);
 
-		extra = MIN(extra, GET_LEVEL(ch) / 10);
+		extra = MIN(extra, essence_of_wolf_attack_cap(GET_LEVEL(ch)));
 
 		if (ch->equipment[SECONDARY_WEAPON])
 		{
 			ADD_ATTACK(SECONDARY_WEAPON);
-			if (number(0, 1))
+			if (essence_of_wolf_offhand_roll(live_rolls))
 			{
 				extra--;
 				ADD_ATTACK(SECONDARY_WEAPON);

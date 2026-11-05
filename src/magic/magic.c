@@ -144,6 +144,12 @@ static int conjured_weapon_vnum(uint8_t kind)
 	return -1;
 }
 
+// The spirit damage most dragoon spells deal their caster, before spell_damage.
+static float dragoon_spell_cost(P_char ch)
+{
+	return GET_HIT(ch) * 0.10f;
+}
+
 static P_obj magic_find_object_by_uid(uint64_t item_uid)
 {
 	if (!item_uid)
@@ -243,14 +249,14 @@ static bool submit_conjured_weapon(P_char actor, P_obj blade, conjured_weapon_ki
 	if (!IS_PC(actor))
 	{
 		obj_to_char(blade, actor);
-		conjured_weapon_publish_effect(actor, blade, kind, GET_HIT(actor) * 0.10f);
+		conjured_weapon_publish_effect(actor, blade, kind, dragoon_spell_cost(actor));
 		return true;
 	}
 
 	const conjured_weapon_grant_context context = {
 		blade->obj_uid,
 		static_cast<uint32_t>(GET_PID(actor)),
-		GET_HIT(actor) * 0.10f,
+		dragoon_spell_cost(actor),
 		static_cast<uint8_t>(kind),
 	};
 	if (item_creation_grant_submit_to_player_with_completion(actor, blade, actor,
@@ -8076,6 +8082,110 @@ void spell_pulchritude(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]
 	affect_join(victim, &af, TRUE, FALSE);
 }
 
+// The spell a conjured blade casts on a melee hit, by the level of its caster. value[7]:
+// weapon_proc rolls number(0, this - 1) on each hit and casts on a 0.
+static int conjured_blade_sunray_level()
+{
+	return 51;
+}
+
+static int conjured_blade_sunray_chance()
+{
+	return 30;
+}
+
+static int conjured_blade_fast_fireball_level()
+{
+	return 41;
+}
+
+static int conjured_blade_fast_fireball_chance()
+{
+	return 25;
+}
+
+static int conjured_blade_fireball_level()
+{
+	return 36;
+}
+
+static int conjured_blade_fireball_chance()
+{
+	return 40;
+}
+
+static int conjured_blade_flameburst_level()
+{
+	return 21;
+}
+
+static int conjured_blade_flameburst_chance()
+{
+	return 40;
+}
+
+static std::string conjured_blade_spell_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const auto proc = [](const char *spell, int chance)
+	{
+		return fact("Blade's spell", std::string(spell) + " at your level, 1 in " +
+						     std::to_string(chance) + " hits");
+	};
+	if (level >= conjured_blade_sunray_level())
+		return proc("sunray", conjured_blade_sunray_chance());
+	if (level >= conjured_blade_fast_fireball_level())
+		return proc("fireball", conjured_blade_fast_fireball_chance());
+	if (level >= conjured_blade_fireball_level())
+		return proc("fireball", conjured_blade_fireball_chance());
+	if (level >= conjured_blade_flameburst_level())
+		return proc("flameburst", conjured_blade_flameburst_chance());
+	return "  Below level " + std::to_string(conjured_blade_flameburst_level()) +
+	       " the blade casts no spell.\n";
+}
+
+static int flame_blade_fire_aura_level()
+{
+	return 56;
+}
+
+static int flame_blade_fireshield_level()
+{
+	return 31;
+}
+
+static int flame_blade_prot_fire_level()
+{
+	return 26;
+}
+
+std::string flame_blade_facts(P_char ch)
+{
+	extern float dam_factor[LAST_DF + 1];
+	const int level = GET_LEVEL(ch);
+	std::string text = conjured_blade_spell_facts(ch);
+	if (level >= flame_blade_fireshield_level())
+		text += fact("Fire spell damage to you, wielded",
+			     share_percent(dam_factor[DF_ELSHIELDRED]) + " of normal") +
+			"  Other effects on fire damage add to that.\n";
+	else if (level >= flame_blade_prot_fire_level())
+		text += fact("Fire spell damage to you, wielded",
+			     share_percent(dam_factor[DF_PROTECTION]) + " of normal") +
+			"  Other effects on fire damage add to that.\n";
+	if (level >= flame_blade_fire_aura_level())
+		text += fact("Cold spell damage to you, wielded",
+			     share_percent(dam_factor[DF_ELSHIELDINC] + dam_factor[DF_VULNCOLD] -
+					   1) +
+				     " of normal") +
+			"  Fire spells from others heal you a quarter of their damage instead.\n";
+	else if (level >= flame_blade_fireshield_level())
+		text += fact("Cold spell damage to you, wielded",
+			     share_percent(dam_factor[DF_ELSHIELDINC]) + " of normal");
+	if (level >= flame_blade_prot_fire_level())
+		text += "  A wielder vulnerable to fire uses other factors.\n";
+	return text + "  If another player holds it, it loses its spell and protections.\n";
+}
+
 void spell_flame_blade(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 		       P_obj /*obj*/)
 {
@@ -8093,36 +8203,37 @@ void spell_flame_blade(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 	blade->value[6] = GET_LEVEL(ch);
 
 	/* how about some gay de procs for flame blade? Yeah baby! */
-	if (GET_LEVEL(ch) >= 51)
+	if (GET_LEVEL(ch) >= conjured_blade_sunray_level())
 	{
 		blade->value[5] = 124;
-		blade->value[7] = 30; // procs sunray
+		blade->value[7] = conjured_blade_sunray_chance(); // procs sunray
 	}
-	else if (GET_LEVEL(ch) >= 41)
+	else if (GET_LEVEL(ch) >= conjured_blade_fast_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 25; // procs fireball, better chance.
+		blade->value[7] =
+			conjured_blade_fast_fireball_chance(); // procs fireball, better chance.
 	}
-	else if (GET_LEVEL(ch) >= 36)
+	else if (GET_LEVEL(ch) >= conjured_blade_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 40; // procs fireball
+		blade->value[7] = conjured_blade_fireball_chance(); // procs fireball
 	}
-	else if (GET_LEVEL(ch) >= 21)
+	else if (GET_LEVEL(ch) >= conjured_blade_flameburst_level())
 	{
 		blade->value[5] = 195;
-		blade->value[7] = 40; // procs flameburst
+		blade->value[7] = conjured_blade_flameburst_chance(); // procs flameburst
 	}
 
-	if (GET_LEVEL(ch) >= 56)
+	if (GET_LEVEL(ch) >= flame_blade_fire_aura_level())
 	{
 		SET_BIT(blade->bitvector2, AFF2_FIRE_AURA);
 	}
-	if (GET_LEVEL(ch) >= 31)
+	if (GET_LEVEL(ch) >= flame_blade_fireshield_level())
 	{
 		SET_BIT(blade->bitvector2, AFF2_FIRESHIELD);
 	}
-	if (GET_LEVEL(ch) >= 26)
+	if (GET_LEVEL(ch) >= flame_blade_prot_fire_level())
 	{
 		SET_BIT(blade->bitvector, AFF_PROT_FIRE);
 	}
@@ -26451,6 +26562,69 @@ void spell_blink(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char 
 	}
 }
 
+// The chance before its changes. A page has no target, so this takes the target's level.
+static int banish_base_chance(int level, P_char ch, int target_level)
+{
+	return (int)(((40 * level) + (10 * GET_CHAR_SKILL(ch, SKILL_DEVOTION))) /
+		     (target_level + 1));
+}
+
+static int banish_outlevel_margin()
+{
+	return 10;
+}
+
+static int banish_outlevel_chance()
+{
+	return 95;
+}
+
+static int banish_zealot_chance(int chance)
+{
+	return (int)(chance * 1.25);
+}
+
+static int banish_greater_chance(int chance)
+{
+	return (int)(chance * 1 / 3);
+}
+
+static int banish_bounded_chance(int chance)
+{
+	return BOUNDED(1, chance, 95);
+}
+
+// The target goes when the final chance beats this roll.
+static int banish_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+std::string banish_facts(P_char ch)
+{
+	std::string text =
+		fact("Chance", std::to_string(banish_base_chance(GET_LEVEL(ch), ch, 0)) +
+				       " / (target's level + 1) at your level and devotion") +
+		fact("Target over " + std::to_string(banish_outlevel_margin()) +
+			     " levels below you",
+		     "chance is " + std::to_string(banish_outlevel_chance()));
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+		text += fact("As a zealot",
+			     std::to_string(banish_zealot_chance(100)) + "% of that chance");
+	return text +
+	       fact("Greater dracolich or avatar",
+		    std::to_string(banish_greater_chance(100)) + "% of that chance") +
+	       fact("Final chance",
+		    show({ banish_bounded_chance(0), banish_bounded_chance(1000) }) +
+			    ", and a roll of " +
+			    show({ banish_roll(lowest_rolls), banish_roll(highest_rolls) }) +
+			    " must be below it") +
+	       "  It affects pets only: elementals, efreet, undead, angels, conjured pets.\n"
+	       "  No save. It does not spare your own pets or your allies' pets.\n"
+	       "  Earth, fire, air and water elementals and efreet are safe on their own\n"
+	       "  plane, undead on the negative plane and angels on the ethereal plane.\n";
+}
+
 void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			 P_obj /*obj*/)
 {
@@ -26467,30 +26641,29 @@ void spell_single_banish(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 		return;
 	}
 
-	chance = (int)(((40 * level) + (10 * GET_CHAR_SKILL(ch, SKILL_DEVOTION))) /
-		       (GET_LEVEL(victim) + 1));
+	chance = banish_base_chance(level, ch, GET_LEVEL(victim));
 
-	if (GET_LEVEL(ch) > (10 + GET_LEVEL(victim)))
+	if (GET_LEVEL(ch) > (banish_outlevel_margin() + GET_LEVEL(victim)))
 	{
-		chance = 95;
+		chance = banish_outlevel_chance();
 	}
 
 	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
 	{
-		chance = (int)(chance * 1.25);
+		chance = banish_zealot_chance(chance);
 	}
 
 	if (IS_GREATER_DRACO(victim) || IS_GREATER_AVATAR(victim))
 	{
-		chance = (int)(chance * 1 / 3);
+		chance = banish_greater_chance(chance);
 	}
 
-	chance = BOUNDED(1, chance, 95);
+	chance = banish_bounded_chance(chance);
 
 	debug("(%s) attempts to banish (%s) with (%d) chance.", GET_NAME(ch), GET_NAME(victim),
 	      chance);
 
-	if (chance > number(1, 100))
+	if (chance > banish_roll(live_rolls))
 	{
 		if (IS_UNDEADRACE(victim) || IS_ANGEL(victim))
 		{
@@ -26688,6 +26861,25 @@ void spell_banish(int level, P_char ch, char *arg, int type, P_char /*victim*/, 
 	// cast_as_damage_area(ch, spell_single_banish, level, victim,
 	// get_property("spell.area.minChance.banish", 10),
 	// get_property("spell.area.chanceStep.banish", 25), can_banish);
+}
+
+std::string doom_blade_facts(P_char ch)
+{
+	extern int doom_blade_proc_roll(const Rolls &rolls, P_char ch);
+	extern int doom_blade_proc_level(P_char ch);
+	extern int doom_blade_effect_roll(const Rolls &rolls);
+	std::string text =
+		fact("Death cloud",
+		     "1 in " + std::to_string(doom_blade_proc_roll(highest_rolls, ch) + 1) +
+			     " hits at your level") +
+		fact("Cloud's spell level", std::to_string(doom_blade_proc_level(ch))) +
+		fact("Cloud's spell",
+		     "1 in " + std::to_string(doom_blade_effect_roll(highest_rolls) + 1) +
+			     " each: wither, blindness, disease, curse, poison");
+	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER) ||
+	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_THAUMATURGE))
+		text += "  An undead target always takes undead to death instead.\n";
+	return text;
 }
 
 void spell_doom_blade(int /*level*/, P_char ch, char * /*arg*/, int type, P_char /*victim*/,
@@ -29059,12 +29251,6 @@ void spell_contain_being(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unuse
 
 /* ---- DRAGOON SPELLS ----*/
 
-// The spirit damage most dragoon spells deal their caster, before spell_damage.
-static float dragoon_spell_cost(P_char ch)
-{
-	return GET_HIT(ch) * 0.10f;
-}
-
 static std::string dragoon_cost_fact(float cost)
 {
 	char text[64];
@@ -29172,6 +29358,13 @@ void spell_animae_cicatrix(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unu
 		     SPLDAM_GRSPIRIT | SPLDAM_NOSHRUG, NULL);
 }
 
+// Dragoon weapons all give the same spell and take the same price.
+std::string dragoon_weapon_facts(P_char ch)
+{
+	return conjured_blade_spell_facts(ch) + dragoon_cost_fact(dragoon_spell_cost(ch)) +
+	       "  You pay only if the weapon is delivered.\n";
+}
+
 void spell_ensis_unguis(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			P_obj /*obj*/)
 {
@@ -29194,25 +29387,26 @@ void spell_ensis_unguis(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, 
 	blade->value[6] = GET_LEVEL(ch);
 
 	/* how about some gay de procs for flame blade? Yeah baby! */
-	if (GET_LEVEL(ch) >= 51)
+	if (GET_LEVEL(ch) >= conjured_blade_sunray_level())
 	{
 		blade->value[5] = 124;
-		blade->value[7] = 30; // procs sunray
+		blade->value[7] = conjured_blade_sunray_chance(); // procs sunray
 	}
-	else if (GET_LEVEL(ch) >= 41)
+	else if (GET_LEVEL(ch) >= conjured_blade_fast_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 25; // procs fireball, better chance.
+		blade->value[7] =
+			conjured_blade_fast_fireball_chance(); // procs fireball, better chance.
 	}
-	else if (GET_LEVEL(ch) >= 36)
+	else if (GET_LEVEL(ch) >= conjured_blade_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 40; // procs fireball
+		blade->value[7] = conjured_blade_fireball_chance(); // procs fireball
 	}
-	else if (GET_LEVEL(ch) >= 21)
+	else if (GET_LEVEL(ch) >= conjured_blade_flameburst_level())
 	{
 		blade->value[5] = 195;
-		blade->value[7] = 40; // procs flameburst
+		blade->value[7] = conjured_blade_flameburst_chance(); // procs flameburst
 	}
 
 	blade->timer[0] = 180;
@@ -29246,25 +29440,26 @@ void spell_lancea_cineralae(int /*level*/, P_char ch, char * /*arg*/, int /*type
 	blade->value[6] = GET_LEVEL(ch);
 
 	/* how about some gay de procs for flame blade? Yeah baby! */
-	if (GET_LEVEL(ch) >= 51)
+	if (GET_LEVEL(ch) >= conjured_blade_sunray_level())
 	{
 		blade->value[5] = 124;
-		blade->value[7] = 30; // procs sunray
+		blade->value[7] = conjured_blade_sunray_chance(); // procs sunray
 	}
-	else if (GET_LEVEL(ch) >= 41)
+	else if (GET_LEVEL(ch) >= conjured_blade_fast_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 25; // procs fireball, better chance.
+		blade->value[7] =
+			conjured_blade_fast_fireball_chance(); // procs fireball, better chance.
 	}
-	else if (GET_LEVEL(ch) >= 36)
+	else if (GET_LEVEL(ch) >= conjured_blade_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 40; // procs fireball
+		blade->value[7] = conjured_blade_fireball_chance(); // procs fireball
 	}
-	else if (GET_LEVEL(ch) >= 21)
+	else if (GET_LEVEL(ch) >= conjured_blade_flameburst_level())
 	{
 		blade->value[5] = 195;
-		blade->value[7] = 40; // procs flameburst
+		blade->value[7] = conjured_blade_flameburst_chance(); // procs flameburst
 	}
 
 	blade->timer[0] = 180;
@@ -29298,25 +29493,26 @@ void spell_simulacrum_anguis(int /*level*/, P_char ch, char * /*arg*/, int /*typ
 	blade->value[6] = GET_LEVEL(ch);
 
 	/* how about some gay de procs for flame blade? Yeah baby! */
-	if (GET_LEVEL(ch) >= 51)
+	if (GET_LEVEL(ch) >= conjured_blade_sunray_level())
 	{
 		blade->value[5] = 124;
-		blade->value[7] = 30; // procs sunray
+		blade->value[7] = conjured_blade_sunray_chance(); // procs sunray
 	}
-	else if (GET_LEVEL(ch) >= 41)
+	else if (GET_LEVEL(ch) >= conjured_blade_fast_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 25; // procs fireball, better chance.
+		blade->value[7] =
+			conjured_blade_fast_fireball_chance(); // procs fireball, better chance.
 	}
-	else if (GET_LEVEL(ch) >= 36)
+	else if (GET_LEVEL(ch) >= conjured_blade_fireball_level())
 	{
 		blade->value[5] = 26;
-		blade->value[7] = 40; // procs fireball
+		blade->value[7] = conjured_blade_fireball_chance(); // procs fireball
 	}
-	else if (GET_LEVEL(ch) >= 21)
+	else if (GET_LEVEL(ch) >= conjured_blade_flameburst_level())
 	{
 		blade->value[5] = 195;
-		blade->value[7] = 40; // procs flameburst
+		blade->value[7] = conjured_blade_flameburst_chance(); // procs flameburst
 	}
 
 	blade->timer[0] = 180;
