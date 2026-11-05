@@ -1144,14 +1144,85 @@ int devotion_spell_check(int spell)
 	return FALSE;
 }
 
+static int chant_mastery_threshold(P_char ch)
+{
+	return 5 + GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 10;
+}
+
+// How well a chant goes when it fires, 0-3.
+static int chant_mastery_result(const Rolls &rolls, P_char ch)
+{
+	return MAX(0, GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + rolls.number(-1, 1));
+}
+
+// What each result leaves of a cast time of dura pulses: the lag and the cast time.
+static int chant_mastery_top_lag()
+{
+	return 1;
+}
+
+static int chant_mastery_top_time()
+{
+	return 1;
+}
+
+static int chant_mastery_good_lag(int dura)
+{
+	return dura >> 1;
+}
+
+static int chant_mastery_good_time()
+{
+	return 1;
+}
+
+static int chant_mastery_fair_lag(int dura)
+{
+	return dura * 0.8;
+}
+
+static int chant_mastery_fair_time(int dura)
+{
+	return (int)(dura * 0.6);
+}
+
+static int chant_mastery_low_time(int dura)
+{
+	return (int)(dura * 0.8);
+}
+
+std::string chant_mastery_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY))
+		return "  You have not learned it, so it does nothing for you.\n";
+	const int low = chant_mastery_result(lowest_rolls, ch),
+		  high = chant_mastery_result(highest_rolls, ch);
+	const auto share = [](int percent) { return std::to_string(percent) + "%"; };
+	std::string facts =
+		fact("Chance on each cast", chance_under(chant_mastery_threshold(ch), 0, 100));
+	if (low <= 3 && high >= 3)
+		facts += fact("Best result", "cast time " + seconds(chant_mastery_top_time()) +
+						     ", lag " + seconds(chant_mastery_top_lag()));
+	if (low <= 2 && high >= 2)
+		facts += fact("Good result", "cast time " + seconds(chant_mastery_good_time()) +
+						     ", lag " + share(chant_mastery_good_lag(100)));
+	if (low <= 1 && high >= 1)
+		facts += fact("Fair result", "cast time " + share(chant_mastery_fair_time(100)) +
+						     ", lag " + share(chant_mastery_fair_lag(100)));
+	if (low <= 0 && high >= 0)
+		facts += fact("Low result",
+			      "cast time " + share(chant_mastery_low_time(100)) + ", full lag");
+	return facts;
+}
+
 int chant_mastery_bonus(P_char ch, int dura)
 {
 	int chant_bonus;
 	char buffer[256];
 
-	if (5 + GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 10 > number(0, 100))
+	if (chant_mastery_threshold(ch) > number(0, 100))
 	{
-		chant_bonus = MAX(0, GET_CHAR_SKILL(ch, SKILL_CHANT_MASTERY) / 40 + number(-1, 1));
+		chant_bonus = chant_mastery_result(live_rolls, ch);
 		snprintf(buffer, 256, "%s magic surrounds you as you begin your chant.&n",
 			 chant_bonus == 0 ? "&+WSparkling&n" :
 			 chant_bonus == 1 ? "&+WSparkling" :
@@ -1171,24 +1242,42 @@ int chant_mastery_bonus(P_char ch, int dura)
 
 	if (chant_bonus == 3)
 	{
-		CharWait(ch, 1);
-		return 1;
+		CharWait(ch, chant_mastery_top_lag());
+		return chant_mastery_top_time();
 	}
 	else if (chant_bonus == 2)
 	{
-		CharWait(ch, dura >> 1);
-		return 1;
+		CharWait(ch, chant_mastery_good_lag(dura));
+		return chant_mastery_good_time();
 	}
 	else if (chant_bonus == 1)
 	{
-		CharWait(ch, dura * 0.8);
-		return (int)(dura * 0.6);
+		CharWait(ch, chant_mastery_fair_lag(dura));
+		return chant_mastery_fair_time(dura);
 	}
 	else
 	{
 		CharWait(ch, dura);
-		return (int)(dura * 0.8);
+		return chant_mastery_low_time(dura);
 	}
+}
+
+// The chance threshold, rolled 0-100, to cast with your hands in silence.
+static int silent_spell_threshold(int skill)
+{
+	return BOUNDED(25, skill, 100);
+}
+
+std::string silent_spell_facts(P_char ch)
+{
+	extern int silent_spell_failed_lag();
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SILENT_SPELL);
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	return fact("Chance to start a spell where you can't speak",
+		    chance_under(silent_spell_threshold(rating), 0, 100)) +
+	       fact("Your lag if your hands fail you", seconds(silent_spell_failed_lag())) +
+	       "  It gets you past a silenced room, silence and a crushed throat.\n";
 }
 
 bool silent_spell_check(P_char ch)
@@ -1198,7 +1287,7 @@ bool silent_spell_check(P_char ch)
 	if (skill <= 0)
 		return FALSE;
 
-	skill = BOUNDED(25, skill, 100);
+	skill = silent_spell_threshold(skill);
 
 	if (number(0, 100) < skill)
 	{

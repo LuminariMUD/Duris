@@ -2785,6 +2785,12 @@ int mounted_combat_calm_threshold(P_char rider)
 	return BOUNDED(5, GET_CHAR_SKILL(rider, SKILL_MOUNTED_COMBAT), 95);
 }
 
+// What advanced meditation adds to the chance threshold of fleeing while stunned.
+int advanced_meditation_stun_flee_bonus()
+{
+	return (int)(SKILL_ADVANCED_MEDITATION / 10);
+}
+
 void do_flee(P_char ch, char *argument, int cmd)
 {
 	int i, attempted_dir, start_room, atts;
@@ -2856,7 +2862,7 @@ void do_flee(P_char ch, char *argument, int cmd)
 		// Advanced meditation can add 10% more.
 
 		if (GET_CHAR_SKILL(ch, SKILL_ADVANCED_MEDITATION) > 0)
-			stun_chance_flee += (int)(SKILL_ADVANCED_MEDITATION / 10);
+			stun_chance_flee += advanced_meditation_stun_flee_bonus();
 
 		if (number(1, 100) > stun_chance_flee)
 			return;
@@ -6801,7 +6807,7 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 }
 
 // One round of an assassin's sneaky strike bleed.
-static int sneaky_strike_bleed_damage(const Rolls &rolls)
+int sneaky_strike_bleed_damage(const Rolls &rolls)
 {
 	return rolls.dice(3, 6);
 }

@@ -27,6 +27,7 @@ functions = [
     ('handler.c', 'P_obj unequip_char('),
     ('handler.c', 'void update_char_objects('),
     ('interp.c', 'char *one_argument('),
+    *(('actnew.c', 'static int ' + name + '(') for name in ('disarm_opening_penalty', 'disarm_other_target_penalty', 'disarm_score', 'disarm_fumble_roll', 'disarm_rest', 'disarm_lag')),
     ('actnew.c', 'void do_disarm('),
     ('magic.c', 'static int repair_one_item_condition('),
     ('magic.c', 'void spell_repair_one_item('),

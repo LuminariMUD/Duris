@@ -363,6 +363,8 @@ def main():
         ('psionics.c', 'static int death_field_lag('),
         ('psionics.c', 'void spell_single_death_field('),
         ('psionics.c', 'void spell_death_field('),
+        ('sparser.c', 'static int casting_progress_skill('),
+        ('sparser.c', 'static int spellweave_duration('),
         ('sparser.c', 'static bool schedule_spellcast('),
         ('sparser.c', 'void event_spellcast(P_char ch,'),
         ('mobact.c', 'bool MobCastSpell(P_char ch,'),

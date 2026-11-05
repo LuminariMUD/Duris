@@ -1303,6 +1303,12 @@ void blow_char_somewhere_else(P_char ch, int dir)
 	act("$n is suddenly blown in from elsewhere.", FALSE, ch, 0, 0, TO_ROOM);
 }
 
+// What a crippled character pays in extra vitality to move.
+int crippled_move_cost()
+{
+	return 5;
+}
+
 /*
  * This function is meant to be called from procs and do_simple_move only
  */
@@ -1549,7 +1555,7 @@ revalidate_movement:
 
 	if (affected_by_spell(moving, TAG_CRIPPLED))
 	{
-		need_movement += 5;
+		need_movement += crippled_move_cost();
 	}
 
 	if (sprung_traps.empty() && IS_PC(ch) && GET_CHAR_SKILL(ch, SKILL_SNEAK) > 0 &&

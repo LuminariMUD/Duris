@@ -812,6 +812,12 @@ int spell_class(int spl)
 #define IS_CLERICSPELL(spl) ((spell_class((spl)) & 2))
 #define IS_SHAMANSPELL(spl) ((spell_class((spl)) & 4))
 
+// Whether a bystander's 1-101 roll hears a spell's real name; a higher rating does worse.
+static bool spell_knowledge_hears_name(int rand, int rating)
+{
+	return rand >= rating && rating > 1;
+}
+
 void say_spell(P_char ch, int si)
 {
 	char splwd[MAX_INPUT_LENGTH];
@@ -905,14 +911,14 @@ void say_spell(P_char ch, int si)
 			int rand = number(1, 101);
 
 			if ((IS_MAGESPELL(si) &&
-			     rand >= GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_MAGICAL) &&
-			     GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_MAGICAL) > 1) ||
+			     spell_knowledge_hears_name(
+				     rand, GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_MAGICAL))) ||
 			    (IS_CLERICSPELL(si) &&
-			     rand >= GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_CLERICAL) &&
-			     GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_CLERICAL) > 1) ||
+			     spell_knowledge_hears_name(
+				     rand, GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_CLERICAL))) ||
 			    (IS_SHAMANSPELL(si) &&
-			     rand >= GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_SHAMAN) &&
-			     GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_SHAMAN) > 1))
+			     spell_knowledge_hears_name(
+				     rand, GET_CHAR_SKILL(tch, SKILL_SPELL_KNOWLEDGE_SHAMAN))))
 			{
 				act(Gbuf1, FALSE, ch, 0, tch, TO_VICT | ACT_SILENCEABLE);
 
@@ -965,6 +971,12 @@ int SpellCastTime(P_char ch, int spl)
 	return MAX(1, dura);
 }
 
+// The roll, 1-100, that a spell recognized as it starts must not pass to keep its name.
+static int spell_knowledge_name_threshold()
+{
+	return 60;
+}
+
 void SpellCastShow(P_char ch, int spl)
 {
 	P_char tch;
@@ -1010,7 +1022,7 @@ void SpellCastShow(P_char ch, int spl)
 			/*
 			   (and 100% chance of recognizing whether it is harmful or not)
 			 */
-			if (number(1, 100) > 60)
+			if (number(1, 100) > spell_knowledge_name_threshold())
 				idok = 0;
 		}
 		if (!detharm && (GET_C_INT(ch) > number(1, 100)))
@@ -1031,6 +1043,75 @@ void SpellCastShow(P_char ch, int spl)
 		else if (idok == 3)
 			notch_skill(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN, 1);
 	}
+}
+
+// The knowledge skill that decides whether you see your own casting progress.
+static int casting_progress_skill(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN))
+	{
+		return SKILL_SPELL_KNOWLEDGE_SHAMAN;
+	}
+	else if (GET_CHAR_SKILL(ch, SKILL_SPELL_KNOWLEDGE_CLERICAL))
+	{
+		return SKILL_SPELL_KNOWLEDGE_CLERICAL;
+	}
+	else
+	{
+		return SKILL_SPELL_KNOWLEDGE_MAGICAL;
+	}
+}
+
+static std::string spell_knowledge_facts(P_char ch, int skill)
+{
+	extern bool spell_book_recognizes(int rating, int roll);
+	const int rating = GET_CHAR_SKILL(ch, skill);
+	if (!rating)
+		return "  You have not learned it, so you recognize no spells by it.\n";
+	int heard = 0, named = 0;
+	for (int rand = 1; rand <= 101; rand++)
+		heard += spell_knowledge_hears_name(rand, rating);
+	for (int roll = 1; roll <= 100; roll++)
+		named += spell_book_recognizes(rating, roll);
+	std::string facts =
+		fact("Chance to recognize a spell someone starts",
+		     chance_under(rating + 1, 1, 101)) +
+		"  You then know whether it is offensive.\n" +
+		fact("Then the chance to know its name",
+		     chance_under(spell_knowledge_name_threshold() + 1, 1, 100)) +
+		fact("Chance to hear the name when it is cast", std::to_string(heard) + " in 101") +
+		"  That chance falls as your rating rises.\n";
+	if (skill != SKILL_SPELL_KNOWLEDGE_SHAMAN)
+		facts += fact("Chance to name a spell in a book not of your class",
+			      std::to_string(named) + " in 100, then " +
+				      chance_under(GET_LEVEL(ch) + 1, 1, 70)) +
+			 "  That first chance also falls as your rating rises.\n";
+	if (casting_progress_skill(ch) == skill)
+		facts += GET_CLASS(ch, CLASS_PSIONICIST | CLASS_MINDFLAYER | CLASS_DRUID |
+					       CLASS_BLIGHTER) ?
+				 "  You always see how your casting is going.\n" :
+				 fact("Chance to see how your casting is going",
+				      chance_under(rating + 1, 1, 100) + " at each step");
+	return facts;
+}
+
+std::string spell_knowledge_magical_facts(P_char ch)
+{
+	return spell_knowledge_facts(ch, SKILL_SPELL_KNOWLEDGE_MAGICAL);
+}
+
+std::string spell_knowledge_clerical_facts(P_char ch)
+{
+	return spell_knowledge_facts(ch, SKILL_SPELL_KNOWLEDGE_CLERICAL);
+}
+
+std::string spell_knowledge_shaman_facts(P_char ch)
+{
+	return spell_knowledge_facts(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN) +
+	       (GET_CHAR_SKILL(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN) ?
+			"  It also lengthens animae cicatrix, stigmata draconica, drakescale aegis,\n"
+			"  judicium fidei and sigillum negati, and helps sanguinis ignis.\n" :
+			"");
 }
 
 void update_saving_throws()
@@ -1314,6 +1395,19 @@ void do_abort(P_char ch, char * /*argument*/, int /*cmd*/)
 	send_to_char("You are not casting a spell to abort!\r\n", ch);
 }
 
+// The chance threshold, rolled 0-120, to keep preparing a spell from the ground.
+static int concentration_threshold(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_CONCENTRATION) / 2);
+}
+
+std::string concentration_facts(P_char ch)
+{
+	return fact("Chance to keep casting after being knocked to your knees or seat",
+		    chance_under(concentration_threshold(ch), 0, 120)) +
+	       "  It is tried if ground casting fails. Not for spells barred in combat.\n";
+}
+
 bool ground_casting_check(P_char ch, int spl)
 {
 	/* check for if they were casting but just bashed, then check their groundcast skill */
@@ -1321,7 +1415,7 @@ bool ground_casting_check(P_char ch, int spl)
 	if (IS_SET(ch->specials.affected_by2, AFF2_CASTING) &&
 	    !IS_SET(skills[spl].targets, TAR_NOCOMBAT) &&
 	    ((number(0, 100) < (int)(GET_CHAR_SKILL(ch, SKILL_GROUND_CASTING) / 2)) ||
-	     (number(0, 120) < (int)(GET_CHAR_SKILL(ch, SKILL_CONCENTRATION) / 2))))
+	     (number(0, 120) < concentration_threshold(ch))))
 	{
 		act("$n continues preparing $s spell from the ground...", FALSE, ch, 0, 0, TO_ROOM);
 		act("You continue preparing your spell from the ground...", FALSE, ch, 0, 0,
@@ -2075,6 +2169,43 @@ bool check_mob_retaliate(P_char ch, P_char tar_char, int spl)
 
 extern void DelayCommune(P_char ch, int delay);
 
+static int spatial_focus_threshold(P_char ch)
+{
+	return 5 + GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 10;
+}
+
+// How well it goes when it fires; only the best result, 3, changes the spell.
+static int spatial_focus_result(const Rolls &rolls, P_char ch)
+{
+	return MAX(0, GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 40 + rolls.number(-1, 1));
+}
+
+static int spatial_focus_lag()
+{
+	return 1;
+}
+
+std::string spatial_focus_facts(P_char ch)
+{
+	extern int spatial_focus_mana_threshold(int spatial);
+	extern int spatial_focus_mana_cost(int circle);
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS);
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	char cost[32];
+	snprintf(cost, sizeof(cost), "%g, not %d", spatial_focus_mana_cost(10) / 10.0,
+		 MANA_PER_CIRCLE);
+	return fact("Chance on each spell you will",
+		    chance_under(spatial_focus_threshold(ch), 0, 100)) +
+	       (spatial_focus_result(highest_rolls, ch) >= 3 ?
+			"  At its best, the spell comes at once, with " +
+				seconds(spatial_focus_lag()) + " of lag.\n" :
+			std::string("  At your rating, that only changes the message.\n")) +
+	       fact("Chance to pay less mana",
+		    chance_under(spatial_focus_mana_threshold(rating), 1, 100)) +
+	       fact("Mana per circle then", cost);
+}
+
 void do_will(P_char ch, char *argument, int /*cmd*/)
 {
 	int dura;
@@ -2110,10 +2241,9 @@ void do_will(P_char ch, char *argument, int /*cmd*/)
 	dura >>= 1;
 
 	if ((GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) > 0) &&
-	    (5 + GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 10 > number(0, 100)))
+	    (spatial_focus_threshold(ch) > number(0, 100)))
 	{
-		int chant_bonus =
-			MAX(0, GET_CHAR_SKILL(ch, SKILL_SPATIAL_FOCUS) / 40 + number(-1, 1));
+		int chant_bonus = spatial_focus_result(live_rolls, ch);
 		if (chant_bonus > 1)
 			send_to_char(
 				"&+MFocusing your mind, you bend reality a lot more easily...&n\n",
@@ -2125,7 +2255,7 @@ void do_will(P_char ch, char *argument, int /*cmd*/)
 
 		if (chant_bonus == 3)
 		{
-			CharWait(ch, 1);
+			CharWait(ch, spatial_focus_lag());
 			dura = 1;
 		}
 		else if (chant_bonus == 2)
@@ -2247,6 +2377,38 @@ void do_will(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+static int disruptive_blow_damage(const Rolls &rolls)
+{
+	return 4 * (rolls.dice(5, 10));
+}
+
+// The margin of your rating over a 0-130 roll to hit, and to stop the spell too.
+static int disruptive_blow_hit_margin()
+{
+	return 35;
+}
+
+static int disruptive_blow_stop_margin()
+{
+	return 75;
+}
+
+std::string disruptive_blow_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DISRUPTIVE_BLOW);
+	return (rating ?
+			fact("Chance to hit a caster that starts a spell",
+			     chance_under(rating - disruptive_blow_hit_margin(), 0, 130)) +
+				fact("Chance of those that also stop the spell",
+				     chance_under(rating - disruptive_blow_stop_margin(), 0, 130)) :
+			"") +
+	       fact("Damage", show({ disruptive_blow_damage(lowest_rolls),
+				     disruptive_blow_damage(highest_rolls) })) +
+	       "  The target's defenses apply after.\n"
+	       "  It takes an awake humanoid caster in a fight, one you are attacking, and you\n"
+	       "  must be a standing, solid humanoid.\n";
+}
+
 bool check_disruptive_blow(P_char ch)
 {
 	struct damage_messages messages = {
@@ -2297,18 +2459,19 @@ bool check_disruptive_blow(P_char ch)
 			if (notch_skill(ch, SKILL_DISRUPTIVE_BLOW, 17))
 				success = 100;
 
-			if (success > 75)
+			if (success > disruptive_blow_stop_margin())
 			{
-				if (melee_damage(tch, ch, 4 * (dice(5, 10)), 0, &messages) ==
-				    DAM_NONEDEAD)
+				if (melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
+						 &messages) == DAM_NONEDEAD)
 				{
 					StopCasting(ch);
 					return TRUE;
 				}
 			}
-			else if (success > 35)
+			else if (success > disruptive_blow_hit_margin())
 			{
-				melee_damage(tch, ch, 4 * (dice(5, 10)), 0, &messages2);
+				melee_damage(tch, ch, disruptive_blow_damage(live_rolls), 0,
+					     &messages2);
 			}
 			else
 			{
@@ -2319,6 +2482,109 @@ bool check_disruptive_blow(P_char ch)
 	}
 
 	return FALSE;
+}
+
+int silent_spell_failed_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int spellweave_duration(int level)
+{
+	return level / 10; // 3 mins at 30, 5 mins max at lvl 50+
+}
+
+std::string spellweave_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SPELLWEAVE);
+	if (!rating)
+		return "  You have not mastered it, so you can't weave.\n";
+	return fact("How long a woven spell keeps",
+		    game_hours(spellweave_duration(GET_LEVEL(ch)))) +
+	       fact("Chance it works when you call it forth", chance_under(rating, 0, 100)) +
+	       "  Casting that spell calls it forth at once, with no lag. Failing loses it.\n"
+	       "  The spell is spent when you finish weaving. You can hold one at a time.\n";
+}
+
+// Each of these hastens a cast to this part of its time, in do_cast's chain.
+static int totemic_mastery_cast_time(int dura)
+{
+	return (int)(dura * .75);
+}
+
+static int natures_sanctity_cast_time(int dura)
+{
+	return (int)(dura * .75);
+}
+
+static int natures_ruin_cast_time(int dura)
+{
+	return (int)(dura * .75);
+}
+
+static std::string percent_text(int percent)
+{
+	return std::to_string(percent) + "%";
+}
+
+std::string totemic_mastery_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_TOTEMIC_MASTERY);
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	return fact("Chance to prepare a spell without its totem", chance_under(rating, 1, 100)) +
+	       fact("Chance to hasten a cast when you have the totem",
+		    chance_under(rating, 50, 200)) +
+	       fact("Cast time and lag then", percent_text(totemic_mastery_cast_time(100)));
+}
+
+static std::string nature_epic_facts(int rating, int cast_time, double recovery)
+{
+	if (!rating)
+		return "  You have not learned it, so it does nothing for you.\n";
+	return fact("Chance outdoors to hasten a cast", chance_under(rating, 1, 100)) +
+	       fact("Cast time and lag then", percent_text(cast_time)) +
+	       fact("Chance outdoors to speed recovering a spell", chance_under(rating, 1, 100)) +
+	       fact("Recovery time then", share_percent(recovery));
+}
+
+std::string natures_sanctity_facts(P_char ch)
+{
+	extern double natures_sanctity_recovery_factor();
+	return nature_epic_facts(GET_CHAR_SKILL(ch, SKILL_NATURES_SANCTITY),
+				 natures_sanctity_cast_time(100),
+				 natures_sanctity_recovery_factor());
+}
+
+std::string natures_ruin_facts(P_char ch)
+{
+	extern double natures_ruin_recovery_factor();
+	return nature_epic_facts(GET_CHAR_SKILL(ch, SKILL_NATURES_RUIN),
+				 natures_ruin_cast_time(100), natures_ruin_recovery_factor());
+}
+
+// A chance of 1 in 2 that a caster under attack gets to try quick chant.
+static int quick_chant_tank_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int quick_chant_cast_time(int dura)
+{
+	return dura >> 1;
+}
+
+std::string quick_chant_facts(P_char ch)
+{
+	std::string facts =
+		fact("Chance", chance_under(GET_CHAR_SKILL(ch, SKILL_QUICK_CHANT), 1, 100)) +
+		fact("Cast time then", percent_text(quick_chant_cast_time(100)) + ", same lag") +
+		fact("Chance it is tried while you are being attacked",
+		     one_in(quick_chant_tank_roll)) +
+		"  You must have turned on quick chant.\n";
+	if ((GET_CLASS(ch, CLASS_DRUID) || GET_CLASS(ch, CLASS_BLIGHTER)) && !IS_MULTICLASS_PC(ch))
+		facts += "  As a single-class druid or blighter you always cast this fast.\n";
+	return facts;
 }
 
 void do_cast(P_char ch, char *argument, int cmd)
@@ -2432,7 +2698,7 @@ void do_cast(P_char ch, char *argument, int cmd)
 			}
 			else
 			{
-				CharWait(ch, PULSE_VIOLENCE);
+				CharWait(ch, silent_spell_failed_lag());
 				return;
 			}
 		}
@@ -2512,20 +2778,20 @@ void do_cast(P_char ch, char *argument, int cmd)
 		    FALSE, ch, 0, 0, TO_CHAR);
 		act("&+y$n &+ychannels the power of a totem and communes with the &+wspirits&+y.&n",
 		    TRUE, ch, 0, 0, TO_ROOM);
-		dura = (int)(dura * .75);
+		dura = totemic_mastery_cast_time(dura);
 		CharWait(ch, dura);
 	}
 	else if (OUTSIDE(ch) && GET_CHAR_SKILL(ch, SKILL_NATURES_SANCTITY) > number(1, 100))
 	{
 		send_to_char("&+GThe power of nature flows into you, hastening your incantation.\n",
 			     ch);
-		dura = (int)(dura * .75);
+		dura = natures_sanctity_cast_time(dura);
 		CharWait(ch, dura);
 	}
 	else if (OUTSIDE(ch) && GET_CHAR_SKILL(ch, SKILL_NATURES_RUIN) > number(1, 100))
 	{
 		send_to_char("&+yYou drain power from nature, hastening your incantation.\n", ch);
-		dura = (int)(dura * .75);
+		dura = natures_ruin_cast_time(dura);
 		CharWait(ch, dura);
 	}
 	else if (GET_CLASS(ch, CLASS_DRUID) && !IS_MULTICLASS_PC(ch))
@@ -2571,12 +2837,12 @@ void do_cast(P_char ch, char *argument, int cmd)
 	}
 	else if ((GET_CLASS(ch, CLASS_DRUID) && !IS_MULTICLASS_PC(ch)) ||
 		 (GET_CLASS(ch, CLASS_BLIGHTER) && !IS_MULTICLASS_PC(ch)) ||
-		 ((!is_tank || number(0, 1)) &&
+		 ((!is_tank || quick_chant_tank_roll(live_rolls)) &&
 		  (IS_NPC(ch) || IS_SET(ch->specials.act2, PLR2_QUICKCHANT)) &&
 		  (notch_skill(ch, SKILL_QUICK_CHANT, get_property("skill.notch.quickChant", 2.5)) ||
 		   (GET_CHAR_SKILL(ch, SKILL_QUICK_CHANT) > number(1, 100)))))
 	{
-		dura >>= 1;
+		dura = quick_chant_cast_time(dura);
 	}
 
 	tmp_spl.timeleft = dura;
@@ -2750,18 +3016,7 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		// Should probably change this to ch->desc since God switch.
 		if (IS_PC(ch))
 		{
-			if (GET_CHAR_SKILL(ch, SKILL_SPELL_KNOWLEDGE_SHAMAN))
-			{
-				skl = SKILL_SPELL_KNOWLEDGE_SHAMAN;
-			}
-			else if (GET_CHAR_SKILL(ch, SKILL_SPELL_KNOWLEDGE_CLERICAL))
-			{
-				skl = SKILL_SPELL_KNOWLEDGE_CLERICAL;
-			}
-			else
-			{
-				skl = SKILL_SPELL_KNOWLEDGE_MAGICAL;
-			}
+			skl = casting_progress_skill(ch);
 			// if (GET_CLASS(ch, CLASS_PSIONICIST | CLASS_DRUID | CLASS_ETHERMANCER) ||
 			if (GET_CLASS(ch, CLASS_PSIONICIST | CLASS_MINDFLAYER | CLASS_DRUID |
 						  CLASS_BLIGHTER) ||
@@ -2833,7 +3088,7 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		memset(&weave_effect, 0, sizeof(weave_effect));
 		weave_effect.type = SKILL_SPELLWEAVE;
 		weave_effect.modifier = arg->spell;
-		weave_effect.duration = GET_LEVEL(ch) / 10; // 3 mins at 30, 5 mins max at lvl 50+
+		weave_effect.duration = spellweave_duration(GET_LEVEL(ch));
 		affect_to_char(ch, &weave_effect);
 		send_to_char("You finish weaving a spell.\n", ch);
 		telemetry_runtime_game_combat_cast_complete(ch);
