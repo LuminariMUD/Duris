@@ -44,6 +44,7 @@
 #include "sql/sql.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -129,6 +130,31 @@ struct hold_data TmpAffs;
 //=================================================================================
 //=== AFFECTS - MODIFY/APPLY
 //=================================================================================
+
+// A shield's armor value with shield combat.
+static int shield_combat_value(P_char ch, int value)
+{
+	value += (int)((float)value * (float)GET_CHAR_SKILL(ch, SKILL_SHIELD_COMBAT) *
+		       shield_combat_mult) /
+		 100;
+	// Only Swashbucklers and Guardians get tank bonus (and Pal/AP/Mercs).  Why Mercs?  Dunno...
+	if (GET_CLASS(ch, CLASS_PALADIN | CLASS_ANTIPALADIN | CLASS_MERCENARY) ||
+	    GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN) ||
+	    GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
+	{
+		value *= shield_combat_tank_mult;
+	}
+	return value;
+}
+
+std::string shield_combat_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_SHIELD_COMBAT))
+		return "  You need this skill to fight well with a shield.\n";
+	return fact("Your shield's armor value",
+		    std::to_string(shield_combat_value(ch, 100)) + "%") +
+	       "  It also helps a shield punch and stopping fired arrows.\n";
+}
 
 int apply_ac(P_char ch, int eq_pos)
 {
@@ -296,17 +322,7 @@ int apply_ac(P_char ch, int eq_pos)
 		{
 			// We add a percentage of the skill * value * the multiplier.
 			// So, at 100 skill, we add value * multiplier (currently .5) -> value * 1.5.
-			value += (int)((float)value *
-				       (float)GET_CHAR_SKILL(ch, SKILL_SHIELD_COMBAT) *
-				       shield_combat_mult) /
-				 100;
-			// Only Swashbucklers and Guardians get tank bonus (and Pal/AP/Mercs).  Why Mercs?  Dunno...
-			if (GET_CLASS(ch, CLASS_PALADIN | CLASS_ANTIPALADIN | CLASS_MERCENARY) ||
-			    GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN) ||
-			    GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
-			{
-				value *= shield_combat_tank_mult;
-			}
+			value = shield_combat_value(ch, value);
 			/* Commented this out, it should be somewhere in calculate_ac or damage or such in fight.c.
 			 *   Somewhere where ac is used, not when shield is equipped.  It doesn't matter atm, since
 			 *   it's an epic skill right now.
@@ -332,6 +348,58 @@ int calculate_mana(P_char ch)
 	return mana + 6;
 }
 
+// An illithid's hit points from toughness.
+static float toughness_illithid_hit_points(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_TOUGHNESS) * get_property("epic.skill.toughness", 0.500) *
+	       (GET_CLASS(ch, CLASS_WARRIOR | CLASS_PALADIN | CLASS_ANTIPALADIN | CLASS_MERCENARY) ?
+			2 :
+			1);
+}
+
+// Anyone else's hit points from toughness.
+static int toughness_hit_points(P_char ch, int toughness)
+{
+	if (toughness > 0 && !GET_CLASS(ch, CLASS_MONK))
+	{
+		toughness = static_cast<double>(toughness) *
+			    get_property("epic.skill.toughness", 0.500) *
+			    (GET_CLASS(ch, CLASS_WARRIOR | CLASS_PALADIN | CLASS_ANTIPALADIN |
+						   CLASS_MERCENARY) ?
+				     2. :
+				     1.);
+	}
+	else
+	{
+		if (toughness < 50)
+		{
+			toughness = ((float)toughness *
+				     get_property("epic.skill.toughness.monk.low", 0.800));
+		}
+		else if (toughness >= 50 && toughness <= 90)
+		{
+			toughness = ((float)toughness *
+				     get_property("epic.skill.toughness.monk.medium", 1.000));
+		}
+		else
+		{
+			toughness = ((float)toughness *
+				     get_property("epic.skill.toughness.monk.high", 1.250));
+		}
+	}
+	return toughness;
+}
+
+std::string toughness_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_TOUGHNESS))
+		return "  You need this skill to be tougher.\n";
+	const int points = IS_ILLITHID(ch) ?
+				   (int)toughness_illithid_hit_points(ch) :
+				   toughness_hit_points(ch, GET_CHAR_SKILL(ch, SKILL_TOUGHNESS));
+	return fact("Hit points", "+" + std::to_string(points));
+}
+
 // This is a rewrite of calculate_hitpoints(ch).  It's a little faster for Illithid hps.
 // It's a little faster overall I think.
 // It also uses the racial bonus as figured with APPLY_CON_RACE eq instead of using ch's
@@ -347,12 +415,7 @@ int calculate_hitpoints2(P_char ch)
 	{
 		// Could simplify as there are no Warrior/Pal/AP/Merc Illithids, but just in case.
 		return GET_MAX_HIT(ch) + GET_LEVEL(ch) + 10 + MAX(GET_C_CON(ch), 100) - 100 +
-		       GET_CHAR_SKILL(ch, SKILL_TOUGHNESS) *
-			       get_property("epic.skill.toughness", 0.500) *
-			       (GET_CLASS(ch, CLASS_WARRIOR | CLASS_PALADIN | CLASS_ANTIPALADIN |
-						      CLASS_MERCENARY) ?
-					2 :
-					1);
+		       toughness_illithid_hit_points(ch);
 	}
 
 	// Calculate level
@@ -433,33 +496,7 @@ int calculate_hitpoints2(P_char ch)
 	}
 
 	// Calculate toughness bonus
-	if ((toughness = GET_CHAR_SKILL(ch, SKILL_TOUGHNESS)) > 0 && !GET_CLASS(ch, CLASS_MONK))
-	{
-		toughness = static_cast<double>(toughness) *
-			    get_property("epic.skill.toughness", 0.500) *
-			    (GET_CLASS(ch, CLASS_WARRIOR | CLASS_PALADIN | CLASS_ANTIPALADIN |
-						   CLASS_MERCENARY) ?
-				     2. :
-				     1.);
-	}
-	else
-	{
-		if (toughness < 50)
-		{
-			toughness = ((float)toughness *
-				     get_property("epic.skill.toughness.monk.low", 0.800));
-		}
-		else if (toughness >= 50 && toughness <= 90)
-		{
-			toughness = ((float)toughness *
-				     get_property("epic.skill.toughness.monk.medium", 1.000));
-		}
-		else
-		{
-			toughness = ((float)toughness *
-				     get_property("epic.skill.toughness.monk.high", 1.250));
-		}
-	}
+	toughness = toughness_hit_points(ch, GET_CHAR_SKILL(ch, SKILL_TOUGHNESS));
 
 	// Small bonus for the first 9 levels heh.
 	newbie = MAX(0, 10 - level);
@@ -1421,6 +1458,62 @@ void get_aura_affects(P_char ch)
 	}
 }
 
+// What an epic stat skill adds to that stat's maximum.
+static int epic_stat_bonus(P_char ch, int skill)
+{
+	return (GET_CHAR_SKILL(ch, skill) / 10);
+}
+
+static std::string epic_stat_facts(P_char ch, int skill, const std::string &stat)
+{
+	return fact("Your maximum " + stat, "+" + std::to_string(epic_stat_bonus(ch, skill)));
+}
+
+std::string epic_strength_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_STRENGTH, "strength");
+}
+
+std::string epic_power_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_POWER, "power");
+}
+
+std::string epic_agility_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_AGILITY, "agility");
+}
+
+std::string epic_intelligence_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_INTELLIGENCE, "intelligence");
+}
+
+std::string epic_dexterity_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_DEXTERITY, "dexterity");
+}
+
+std::string epic_wisdom_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_WISDOM, "wisdom");
+}
+
+std::string epic_constitution_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_CONSTITUTION, "constitution");
+}
+
+std::string epic_charisma_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_CHARISMA, "charisma");
+}
+
+std::string epic_luck_facts(P_char ch)
+{
+	return epic_stat_facts(ch, SKILL_EPIC_LUCK, "luck");
+}
+
 void get_epic_stat_affects(P_char ch)
 {
 	affected_type af;
@@ -1435,63 +1528,63 @@ void get_epic_stat_affects(P_char ch)
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_STRENGTH) > 0)
 	{
 		af.location = APPLY_STR_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_STRENGTH) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_STRENGTH);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_POWER) > 0)
 	{
 		af.location = APPLY_POW_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_POWER) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_POWER);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_AGILITY) > 0)
 	{
 		af.location = APPLY_AGI_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_AGILITY) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_AGILITY);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_INTELLIGENCE) > 0)
 	{
 		af.location = APPLY_INT_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_INTELLIGENCE) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_INTELLIGENCE);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_DEXTERITY) > 0)
 	{
 		af.location = APPLY_DEX_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_DEXTERITY) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_DEXTERITY);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_WISDOM) > 0)
 	{
 		af.location = APPLY_WIS_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_WISDOM) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_WISDOM);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_CONSTITUTION) > 0)
 	{
 		af.location = APPLY_CON_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_CONSTITUTION) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_CONSTITUTION);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_CHARISMA) > 0)
 	{
 		af.location = APPLY_CHA_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_CHARISMA) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_CHARISMA);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 
 	if (GET_CHAR_SKILL(ch, SKILL_EPIC_LUCK) > 0)
 	{
 		af.location = APPLY_LUCK_MAX;
-		af.modifier = (GET_CHAR_SKILL(ch, SKILL_EPIC_LUCK) / 10);
+		af.modifier = epic_stat_bonus(ch, SKILL_EPIC_LUCK);
 		affect_modify(af.location, af.modifier, &(af.bitvector), FALSE);
 	}
 }

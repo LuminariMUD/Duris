@@ -26,6 +26,7 @@
 #include "world/epic.h"
 #include "world/epic_transaction.h"
 #include "classes/skills.h"
+#include "abilities/abilities.h"
 #include "magic/spells.h"
 
 extern P_index mob_index;
@@ -1074,9 +1075,25 @@ int spell_penetration_check(P_char caster, P_char victim)
 // 7    1    2
 // 8    2    2
 
+// The devotion score an extra cast rolls against, its roll, and the extra cast's level.
+int devotion_power_score(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DEVOTION) - 40) / 10;
+}
+
+int devotion_power_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 50);
+}
+
+int devotion_power_level(int dev_power)
+{
+	return 10 * dev_power;
+}
+
 int devotion_skill_check(P_char ch)
 {
-	int dev_power = (GET_CHAR_SKILL(ch, SKILL_DEVOTION) - 40) / 10 - number(0, 50);
+	int dev_power = devotion_power_score(ch) - devotion_power_roll(live_rolls);
 
 	if (dev_power <= 0)
 		return 0;
@@ -1098,7 +1115,7 @@ int devotion_skill_check(P_char ch)
 
 	send_to_char(buf, ch);
 
-	return 10 * dev_power;
+	return devotion_power_level(dev_power);
 }
 
 int devotion_spell_check(int spell)

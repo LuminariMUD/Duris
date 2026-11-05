@@ -13,6 +13,7 @@
 #include "world/vnum.obj.h"
 
 #include <cstdint>
+#include "abilities/abilities.h"
 
 extern P_room world;
 
@@ -437,4 +438,14 @@ falling_step_result falling_step(P_char ch, int speed)
 		schedule_falling_event(ch, speed, falling_event_delay(speed));
 	return scheduled.was_scheduled() ? falling_step_result::continued :
 					   falling_step_result::schedule_rejected;
+}
+
+std::string safe_fall_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SAFE_FALL);
+	if (!rating)
+		return "  You need this skill to fall safely.\n";
+	return fact("Chance to halve a fall's damage", chance_under(rating, 1, 101)) +
+	       fact("Chance an earthquake that drops you lands you on your feet",
+		    chance_under(rating + 1, 1, 101));
 }

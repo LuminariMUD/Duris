@@ -23,6 +23,7 @@ SOURCE = "ship_combat.c"
 FUNCTIONS = "\n\n".join(
     extract_function(SOURCE, signature)
     for signature in (
+        "static float ship_damage_control_reduction(int dam, int skill)",
         "int epic_ship_damage_control(P_char ch, int dam)",
         "int damage_sail(P_ship attacker, P_ship target, int dam)",
         "int damage_hull(P_ship attacker, P_ship target, int dam, int arc, int armor_pierce)",

@@ -765,6 +765,28 @@ void bard_healing(int level, P_char ch, P_char victim, int /*song*/)
 	}
 }
 
+// A charmed target must be this many levels below a player bard.
+static int song_charming_level_gap()
+{
+	return 5;
+}
+
+// The most pets a charm allows.
+static int song_charming_pet_limit()
+{
+	return 3;
+}
+
+std::string song_charming_facts(P_char ch)
+{
+	const int highest = GET_LEVEL(ch) - song_charming_level_gap() - 1;
+	return (highest < 1 ? "  You are too low in level to charm anything yet.\n" :
+			      fact("Highest level you can charm", std::to_string(highest))) +
+	       fact("Most pets", std::to_string(song_charming_pet_limit())) +
+	       "  The target gets a save. Not players, warlocks, illusionists, shopkeepers,\n"
+	       "  conjured pets, followers, or a target with anything that blocks charm.\n";
+}
+
 void bard_charm(int /*l*/, P_char ch, P_char victim, int song)
 {
 	int i;
@@ -783,7 +805,8 @@ void bard_charm(int /*l*/, P_char ch, P_char victim, int song)
 	if (GET_MASTER(victim) || GET_MASTER(ch))
 		return;
 
-	if (IS_PC(victim) || ((GET_LEVEL(victim) >= (GET_LEVEL(ch) - 5)) && PC))
+	if (IS_PC(victim) ||
+	    ((GET_LEVEL(victim) >= (GET_LEVEL(ch) - song_charming_level_gap())) && PC))
 		return;
 
 	if ((victim == ch) || circle_follow(victim, ch))
@@ -825,7 +848,7 @@ void bard_charm(int /*l*/, P_char ch, P_char victim, int song)
 		}
 	}
 
-	if (count_pets(ch) >= 3)
+	if (count_pets(ch) >= song_charming_pet_limit())
 		return;
 
 	// Success!
@@ -881,6 +904,35 @@ void song_broken(struct char_link_data *cld)
 	}
 }
 
+// The affect's ticks at a song level.
+static int song_sleep_duration(int level)
+{
+	int duration = 4 + (level < 0 ? -level : level);
+	duration /= 10;
+	if (duration > 1)
+		duration--;
+	else
+		duration = 1;
+	return duration;
+}
+
+// A target above this level must also fail a roll against your charisma, 1-280.
+static int song_sleep_resisting_level()
+{
+	return 45;
+}
+
+std::string song_sleep_facts(P_char ch)
+{
+	return fact("Duration at song level " + std::to_string(GET_LEVEL(ch)),
+		    game_hours(song_sleep_duration(GET_LEVEL(ch)))) +
+	       fact("Chance against a target above level " +
+			    std::to_string(song_sleep_resisting_level()),
+		    chance_under(GET_C_CHA(ch) + 1, 1, 280) + ", then its save") +
+	       "  Not shopkeepers, greater races, elites, or a target with anything that blocks\n"
+	       "  sleep. The target gets a save.\n";
+}
+
 void bard_sleep(int l, P_char ch, P_char victim, int song)
 {
 	struct affected_type af;
@@ -918,7 +970,7 @@ void bard_sleep(int l, P_char ch, P_char victim, int song)
 		return;
 	}
 
-	if (GET_LEVEL(victim) > 45)
+	if (GET_LEVEL(victim) > song_sleep_resisting_level())
 	{
 		if (number(1, 280) > GET_C_CHA(ch))
 		{
@@ -934,12 +986,7 @@ void bard_sleep(int l, P_char ch, P_char victim, int song)
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_SLEEP;
-	af.duration = 4 + (level < 0 ? -level : level);
-	af.duration /= 10;
-	if (af.duration > 1)
-		af.duration--;
-	else
-		af.duration = 1;
+	af.duration = song_sleep_duration(level);
 	af.bitvector = AFF_SLEEP;
 
 	act("&+LYou feel very sleepy ..... zzzzzz", FALSE, victim, 0, 0, TO_CHAR);

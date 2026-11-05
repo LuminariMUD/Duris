@@ -2145,6 +2145,41 @@ void *has_memorized(P_char ch, int spell)
 	return NULL;
 }
 
+// The chance threshold, rolled 0-100, of keeping a spell as you cast it.
+static int devotion_keep_spell_threshold(P_char ch)
+{
+	return MIN(GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10, 5) + 4;
+}
+
+extern int devotion_zealot_bonus(int devotion);
+extern int zealot_regain_threshold(int bonus1);
+extern int devotion_power_score(P_char ch);
+extern int devotion_power_roll(const Rolls &rolls);
+extern int devotion_power_level(int dev_power);
+
+std::string devotion_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DEVOTION);
+	if (!rating)
+		return "  You need this skill to be devoted.\n";
+	const int top = devotion_power_score(ch) - devotion_power_roll(lowest_rolls);
+	std::string text;
+	if (!USES_MANA(ch))
+		text = fact("Chance a cast spell stays ready for you",
+			    chance_under(devotion_keep_spell_threshold(ch), 0, 100));
+	if (top > 0)
+		text += fact("Chance a harming or holy attack spell casts twice",
+			     chance_under(devotion_power_score(ch), 0, 50)) +
+			fact("The extra cast's level",
+			     show({ devotion_power_level(1), devotion_power_level(top) }));
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+		text += fact(
+			"Chance on a hit to regain a spell",
+			chance_under(zealot_regain_threshold(devotion_zealot_bonus(rating)) + 1, 1,
+				     100));
+	return text + "  Many healing and holy spells count it too: see their pages.\n";
+}
+
 void use_spell(P_char ch, int spell)
 {
 	struct affected_type *af;
@@ -2184,7 +2219,7 @@ void use_spell(P_char ch, int spell)
 
 		if (GET_CHAR_SKILL(ch, SKILL_DEVOTION))
 		{
-			if (MIN(GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10, 5) + 4 > number(0, 100))
+			if (devotion_keep_spell_threshold(ch) > number(0, 100))
 			{
 				snprintf(
 					buf, 128,
@@ -2216,7 +2251,7 @@ void use_spell(P_char ch, int spell)
 
 		if (GET_CHAR_SKILL(ch, SKILL_DEVOTION))
 		{
-			if (MIN(GET_CHAR_SKILL(ch, SKILL_DEVOTION) / 10, 5) + 4 > number(0, 100))
+			if (devotion_keep_spell_threshold(ch) > number(0, 100))
 			{
 				snprintf(
 					buf, 128,

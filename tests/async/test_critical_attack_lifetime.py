@@ -20,6 +20,7 @@ PRELUDE = r'''
 #include "combat/attack_continuation.h"
 #include "combat/damage.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "net/comm.h"
 #include <cassert>
 #include <cstdio>
@@ -47,6 +48,8 @@ P_char find_character_by_runtime_id(uint64_t id) {
     return nullptr;
 }
 int number(int low, int high) { return low == 0 && high == 3 ? 3 : low; }
+static int stub_dice(int, int) { return 1; }
+const Rolls live_rolls = { stub_dice, number };
 bool affected_by_spell(P_char, int) { return false; }
 void affect_from_char(P_char, int) {}
 bool critical_disarm(P_char, P_char) { assert(false); return false; }
@@ -140,6 +143,9 @@ int main() {
 
 production = "\n".join([
     extract_function("specs.ailvio.c", "int tutorial_mobile_mechanics_race("),
+    *(extract_function("fight.c", "static int " + name + "(") for name in (
+        "critical_attack_threshold", "critical_attack_roll", "critical_attack_disarm_roll",
+        "critical_attack_vitality", "critical_attack_vitality_floor")),
     extract_function("fight.c", "bool critical_attack("),
 ])
 

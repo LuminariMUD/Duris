@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
+#include "abilities/abilities.h"
 #include <vector>
 using namespace std;
 
@@ -143,6 +144,95 @@ int grapple_misfire_chance(P_char /*ch*/, P_char victim, int type)
 	}
 
 	return chance;
+}
+
+// The chance threshold, rolled 1-101, of getting a bearhug on.
+static int bearhug_threshold(P_char ch)
+{
+	return BOUNDED(0, GET_CHAR_SKILL(ch, SKILL_BEARHUG), 100);
+}
+
+// What grappler combat takes off the roll for pinning the arms.
+static int bearhug_pin_bonus(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_GRAPPLER_COMBAT) / 10);
+}
+
+// The target's arms stay free unless this comes to 0.
+static int bearhug_free_arms_roll(const Rolls &rolls, int gclvl)
+{
+	return BOUNDED(0, (rolls.number(0, 12) - gclvl), 10);
+}
+
+// How long the hold lasts on the target, and your lag and the target's when it takes.
+static int bearhug_duration()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("grapple.bearhug.duration", 3.00));
+}
+
+static int bearhug_lag()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("grapple.bearhug.duration", 3.00)) - 3;
+}
+
+static int bearhug_target_lag()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("grapple.bearhug.duration.victim", 2.00));
+}
+
+// Your lag when the target slips away.
+static int bearhug_miss_lag()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("grapple.bearhug.duration", 3.00));
+}
+
+// The pulses between squeezes.
+static int bearhug_interval()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+// A squeeze's damage from your level and strength against the target's, before its roll.
+static int bearhug_base_damage(P_char ch, int victim_str)
+{
+	return BOUNDED(
+		40,
+		(int)(GET_LEVEL(ch) + (3 * (int)(GET_C_STR(ch) - victim_str)) *
+					      (float)get_property("grapple.bearhug.dmgmod", 1.00) *
+					      ((float)GET_CHAR_SKILL(ch, SKILL_BEARHUG) / 100)),
+		300);
+}
+
+static int bearhug_damage_roll(const Rolls &rolls)
+{
+	return rolls.number(-20, 20);
+}
+
+// Before you can grapple again once the hold ends.
+static int bearhug_rest()
+{
+	return (WAIT_SEC * (int)get_property("grapple.cooldown.timer", 15));
+}
+
+std::string bearhug_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_BEARHUG))
+		return "  You need this skill to bearhug.\n";
+	const int base = bearhug_base_damage(ch, GET_C_STR(ch));
+	return fact("Chance", chance_under(bearhug_threshold(ch), 1, 101)) +
+	       fact("Chance it also pins the arms, leaving the target unable to speak",
+		    chance_under(bearhug_pin_bonus(ch) + 1, 0, 12)) +
+	       fact("The hold lasts", seconds(bearhug_duration())) +
+	       fact("Your lag when it takes", seconds(bearhug_lag())) +
+	       fact("Target's lag", seconds(bearhug_target_lag())) +
+	       fact("Your lag when the target slips away", seconds(bearhug_miss_lag())) +
+	       fact("Damage every " + seconds(bearhug_interval()) + " at equal strength",
+		    show({ base + bearhug_damage_roll(lowest_rolls),
+			   base + bearhug_damage_roll(highest_rolls) })) +
+	       "    (more strength than the target raises it; defenses apply after)\n" +
+	       fact("Before you can grapple again", seconds(bearhug_rest())) +
+	       "  Your hands must be free. The target must be a standing humanoid near your\n"
+	       "  size, not riding, in a hold or a wraith.\n";
 }
 
 void do_bearhug(P_char ch, char *argument, int /*cmd*/)
@@ -275,8 +365,8 @@ void do_bearhug(P_char ch, char *argument, int /*cmd*/)
 
 		// success chance
 		// CHECK_MODIFY
-		percent = BOUNDED(0, GET_CHAR_SKILL(ch, SKILL_BEARHUG), 100);
-		gclvl = (int)(GET_CHAR_SKILL(ch, SKILL_GRAPPLER_COMBAT) / 10);
+		percent = bearhug_threshold(ch);
+		gclvl = bearhug_pin_bonus(ch);
 
 		if (!IS_BEARHUG(victim) &&
 		    (percent > number(1, 101) ||
@@ -285,7 +375,7 @@ void do_bearhug(P_char ch, char *argument, int /*cmd*/)
 		     notch_skill(ch, SKILL_GRAPPLER_COMBAT,
 				 (int)get_property("skill.notch.grapplercombat", 17))))
 		{
-			if (BOUNDED(0, (number(0, 12) - gclvl), 10))
+			if (bearhug_free_arms_roll(live_rolls, gclvl))
 			{
 				type = TAG_BEARHUG;
 				act("$n wraps his arms around you but you manage to keep your arms free!",
@@ -309,8 +399,7 @@ void do_bearhug(P_char ch, char *argument, int /*cmd*/)
 			memset(&af, 0, sizeof(af));
 
 			af.type = type;
-			af.duration = (int)(PULSE_VIOLENCE *
-					    (float)get_property("grapple.bearhug.duration", 3.00));
+			af.duration = bearhug_duration();
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 			linked_affect_to_char(victim, &af, ch, LNK_GRAPPLED);
 
@@ -323,15 +412,11 @@ void do_bearhug(P_char ch, char *argument, int /*cmd*/)
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 			affect_to_char(ch, &af);
 
-			add_event(event_bearhug, PULSE_VIOLENCE / 2, ch, victim, 0, 0, 0, 0);
+			add_event(event_bearhug, bearhug_interval(), ch, victim, 0, 0, 0, 0);
 
 			engage(ch, victim);
-			CharWait(ch, (int)(PULSE_VIOLENCE *
-					   (float)get_property("grapple.bearhug.duration", 3.00)) -
-					     3);
-			CharWait(victim, (int)(PULSE_VIOLENCE *
-					       (float)get_property(
-						       "grapple.bearhug.duration.victim", 2.00)));
+			CharWait(ch, bearhug_lag());
+			CharWait(victim, bearhug_target_lag());
 		}
 		else
 		{
@@ -341,8 +426,7 @@ void do_bearhug(P_char ch, char *argument, int /*cmd*/)
 			    ch, 0, victim, TO_VICT);
 			act("$n tries to grab $N in a bearhug but $E manages to slip away.", TRUE,
 			    ch, 0, victim, TO_NOTVICT);
-			CharWait(ch, (int)(PULSE_VIOLENCE *
-					   (float)get_property("grapple.bearhug.duration", 3.00)));
+			CharWait(ch, bearhug_miss_lag());
 
 			engage(ch, victim);
 		}
@@ -387,7 +471,7 @@ void event_bearhug(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 			memset(&af, 0, sizeof(af));
 			af.type = SKILL_GRAPPLER_COMBAT;
-			af.duration = (WAIT_SEC * (int)get_property("grapple.cooldown.timer", 15));
+			af.duration = bearhug_rest();
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NOSHOW | AFFTYPE_NODISPEL;
 			affect_to_char(ch, &af);
 
@@ -406,19 +490,13 @@ void event_bearhug(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	}
 	else
 	{
-		int dam =
-			BOUNDED(40,
-				(int)(GET_LEVEL(ch) +
-				      (3 * (int)(GET_C_STR(ch) - GET_C_STR(victim))) *
-					      (float)get_property("grapple.bearhug.dmgmod", 1.00) *
-					      ((float)GET_CHAR_SKILL(ch, SKILL_BEARHUG) / 100)),
-				300);
-		dam += number(-20, 20);
+		int dam = bearhug_base_damage(ch, GET_C_STR(victim));
+		dam += bearhug_damage_roll(live_rolls);
 		melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages);
 		notch_skill(ch, SKILL_BEARHUG, (int)get_property("skill.notch.bearhug", 12.5));
 		// check_shields(ch, victim, dam, RAWDAM_DEFAULT);
 		if (IS_ALIVE(ch) && IS_ALIVE(victim))
-			add_event(event_bearhug, PULSE_VIOLENCE / 2, ch, victim, 0, 0, 0, 0);
+			add_event(event_bearhug, bearhug_interval(), ch, victim, 0, 0, 0, 0);
 	}
 }
 

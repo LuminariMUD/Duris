@@ -129,6 +129,19 @@ std::string show_landing(Range range)
 	return show({ 0, std::max(range.high, 0) }) + " (none below 1 lands)";
 }
 
+// "N in M": how many results of a roll from low to high come out below threshold.
+std::string chance_under(int threshold, int low, int high)
+{
+	return std::to_string(std::clamp(threshold - low, 0, high - low + 1)) + " in " +
+	       std::to_string(high - low + 1);
+}
+
+// "1 in N" for a fixed chance whose roll function hits on one result.
+std::string one_in(int (*roll)(const Rolls &rolls))
+{
+	return "1 in " + std::to_string(roll(highest_rolls) - roll(lowest_rolls) + 1);
+}
+
 std::string share_percent(float share)
 {
 	return std::to_string(std::lround(share * 100)) + "%";
@@ -1490,6 +1503,154 @@ AbilityFacts ability_facts(int skill)
 		return essence_of_wolf_facts;
 	case SPELL_BANISH:
 		return banish_facts;
+	case SKILL_1H_FLAYING:
+		return one_h_flaying_facts;
+	case SKILL_1H_PIERCING:
+		return one_h_piercing_facts;
+	case SKILL_1H_SLASHING:
+		return one_h_slashing_facts;
+	case SKILL_2H_FLAYING:
+		return two_h_flaying_facts;
+	case SKILL_ARCANE_RIPOSTE:
+		return arcane_riposte_facts;
+	case SKILL_BATTLE_SENSES:
+		return battle_senses_facts;
+	case SKILL_BLINDFIGHTING:
+		return blindfighting_facts;
+	case SKILL_BOILING_BLOOD:
+		return boiling_blood_facts;
+	case SKILL_CRITICAL_ATTACK:
+		return critical_attack_facts;
+	case SKILL_DEVASTATING_CRITICAL:
+		return devastating_critical_facts;
+	case SKILL_DISPERSE_FLAMES:
+		return disperse_flames_facts;
+	case SKILL_DODGE:
+		return dodge_facts;
+	case SKILL_DOUBLE_ATTACK:
+		return double_attack_facts;
+	case SKILL_DOUBLE_STRIKE:
+		return double_strike_facts;
+	case SKILL_DUAL_WIELD:
+		return dual_wield_facts;
+	case SKILL_EXPERT_PARRY:
+		return expert_parry_facts;
+	case SKILL_EXPERT_RIPOSTE:
+		return expert_riposte_facts;
+	case SKILL_FLAME_MASTERY:
+		return flame_mastery_facts;
+	case SKILL_FOLLOWUP_RIPOSTE:
+		return followup_riposte_facts;
+	case SKILL_HOLY_BLADE:
+		return holy_blade_facts;
+	case SKILL_IMPROVED_SHIELD_COMBAT:
+		return improved_shield_combat_facts;
+	case SKILL_IMPROVED_TWOWEAPON:
+		return improved_twoweapon_facts;
+	case SKILL_INDOMITABLE_RAGE:
+		return indomitable_rage_facts;
+	case SKILL_MANGLE:
+		return mangle_facts;
+	case SKILL_MARTIAL_ARTS:
+		return martial_arts_facts;
+	case SKILL_PARRY:
+		return parry_facts;
+	case SKILL_QUADRUPLE_ATTACK:
+		return quadruple_attack_facts;
+	case SKILL_QUICK_STEP:
+		return quick_step_facts;
+	case SKILL_RAGE:
+		return rage_facts;
+	case SKILL_REACH_WEAPONS:
+		return reach_weapons_facts;
+	case SKILL_RIPOSTE:
+		return riposte_facts;
+	case SKILL_SHADOW_MOVEMENT:
+		return shadow_movement_facts;
+	case SKILL_SHIELD_BLOCK:
+		return shield_block_facts;
+	case SKILL_SIDESTEP:
+		return sidestep_facts;
+	case SKILL_SOUL_TRAP:
+		return soul_trap_facts;
+	case SKILL_TAINTED_BLADE:
+		return tainted_blade_facts;
+	case SKILL_TRIPLE_ATTACK:
+		return triple_attack_facts;
+	case SKILL_UNARMED_DAMAGE:
+		return unarmed_damage_facts;
+	case SKILL_VICIOUS_ATTACK:
+		return vicious_attack_facts;
+	case SKILL_VICIOUS_STRIKE:
+		return vicious_strike_facts;
+	case SONG_CHARMING:
+		return song_charming_facts;
+	case SONG_SLEEP:
+		return song_sleep_facts;
+	case SKILL_EPIC_AGILITY:
+		return epic_agility_facts;
+	case SKILL_EPIC_CHARISMA:
+		return epic_charisma_facts;
+	case SKILL_EPIC_CONSTITUTION:
+		return epic_constitution_facts;
+	case SKILL_EPIC_DEXTERITY:
+		return epic_dexterity_facts;
+	case SKILL_EPIC_INTELLIGENCE:
+		return epic_intelligence_facts;
+	case SKILL_EPIC_LUCK:
+		return epic_luck_facts;
+	case SKILL_EPIC_POWER:
+		return epic_power_facts;
+	case SKILL_EPIC_STRENGTH:
+		return epic_strength_facts;
+	case SKILL_EPIC_WISDOM:
+		return epic_wisdom_facts;
+	case SKILL_SHIELD_COMBAT:
+		return shield_combat_facts;
+	case SKILL_TOUGHNESS:
+		return toughness_facts;
+	case SKILL_ARCHERY:
+		return archery_facts;
+	case SKILL_CRITICAL_SHOT:
+		return critical_shot_facts;
+	case SKILL_CURSED_ARROWS:
+		return cursed_arrows_facts;
+	case SKILL_ENCHANT_ARROWS:
+		return enchant_arrows_facts;
+	case SKILL_INDIRECT_SHOT:
+		return indirect_shot_facts;
+	case SKILL_POINT_BLANK_SHOT:
+		return point_blank_shot_facts;
+	case SKILL_SHADOW_ARCHERY:
+		return shadow_archery_facts;
+	case SKILL_ARCANE_BLOCK:
+		return arcane_block_facts;
+	case SKILL_TIGER_PALM:
+		return tiger_palm_facts;
+	case SKILL_BEARHUG:
+		return bearhug_facts;
+	case SKILL_GUARD:
+		return guard_facts;
+	case SKILL_BUDDHA_PALM:
+		return buddha_palm_facts;
+	case SKILL_FIST_OF_DRAGON:
+		return fist_of_dragon_facts;
+	case SKILL_HEROISM:
+		return heroism_facts;
+	case SKILL_JIN_TOUCH:
+		return jin_touch_facts;
+	case SKILL_QUIVERING_PALM:
+		return quivering_palm_facts;
+	case SKILL_SHIP_DAMAGE_CONTROL:
+		return ship_damage_control_facts;
+	case SKILL_ANATOMY:
+		return anatomy_facts;
+	case SKILL_DEVOTION:
+		return devotion_facts;
+	case SKILL_REGENERATE:
+		return regenerate_facts;
+	case SKILL_SAFE_FALL:
+		return safe_fall_facts;
 	default:
 		return nullptr;
 	}

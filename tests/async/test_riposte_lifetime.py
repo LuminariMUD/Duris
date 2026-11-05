@@ -17,6 +17,7 @@ PREFIX = r'''
 #include "net/comm.h"
 #include "combat/damage.h"
 #include "combat/attack_continuation.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdio>
 
@@ -86,6 +87,7 @@ bool hit(P_char ch, P_char victim, P_obj, int *) {
     return false; // This boolean deliberately does not promise participant survival.
 }
 int dice(int, int) { return 1; }
+const Rolls live_rolls = { dice, number };
 bool damage(P_char ch, P_char victim, double, int) {
     assert(IS_ALIVE(ch) && IS_ALIVE(victim));
     ++damages;
@@ -158,7 +160,11 @@ int main() {
 }
 '''
 
-body = extract_function('fight.c', 'int try_riposte(P_char ch, P_char victim, P_obj wpn)')
+body = ''.join(extract_function('fight.c', signature) for signature in (
+    'static double riposte_specialist_score(', 'static double riposte_lucky_share(',
+    'static double riposte_unlucky_share(', 'static double followup_riposte_threshold(',
+    'static double followup_riposte_blow(', 'static int followup_riposte_second_blow(',
+    'int try_riposte(P_char ch, P_char victim, P_obj wpn)'))
 # Also execute the unchanged production hit entry through its initial guards.
 # This narrowly probes ordering before the first gameplay effect, not the full
 # hit implementation; the full server is built and tested separately.

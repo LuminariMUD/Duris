@@ -25,6 +25,7 @@
 #include "item/objmisc.h"
 #include "magic/spells.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -177,6 +178,12 @@ void do_gather(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// Damage from an enchanted arrow's fire, cold, lightning or acid.
+static int enchant_arrow_damage(const Rolls &rolls)
+{
+	return rolls.number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1);
+}
+
 int arrow_spell_fire(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		     P_obj /*obj*/)
 {
@@ -191,7 +198,7 @@ int arrow_spell_fire(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 		0
 	};
 
-	dam = number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1);
+	dam = enchant_arrow_damage(live_rolls);
 
 	return spell_damage(ch, victim, dam, SPLDAM_FIRE, SPLDAM_NODEFLECT, &messages);
 }
@@ -210,7 +217,7 @@ int arrow_spell_lightning(int /*level*/, P_char ch, char * /*arg*/, int /*type*/
 		0
 	};
 
-	dam = number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1);
+	dam = enchant_arrow_damage(live_rolls);
 
 	return spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, SPLDAM_NODEFLECT, &messages);
 }
@@ -229,7 +236,7 @@ int arrow_spell_cold(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 		0
 	};
 
-	dam = number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1);
+	dam = enchant_arrow_damage(live_rolls);
 
 	return spell_damage(ch, victim, dam, SPLDAM_COLD, SPLDAM_NODEFLECT, &messages);
 }
@@ -248,7 +255,7 @@ int arrow_spell_acid(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 		0
 	};
 
-	dam = number(4, 16) * get_property("archery.enchantArrows.damage.mod", 1);
+	dam = enchant_arrow_damage(live_rolls);
 
 	return spell_damage(ch, victim, dam, SPLDAM_ACID, SPLDAM_NODEFLECT, &messages);
 }
@@ -258,6 +265,37 @@ void event_enchant_arrow(P_char /*ch*/, P_char /*victim*/, P_obj obj, void * /*d
 	set_keywords(obj, obj_index[obj->R_num].keys);
 	set_short_description(obj, obj_index[obj->R_num].desc2);
 	obj->timer[5] = ARROW_NONE;
+}
+
+// How long, in seconds, a fired arrow stays marked as yours.
+static int enchant_arrows_mark_duration()
+{
+	return WAIT_SEC * (int)get_property("archery.enchantArrows.mark.duration", 300);
+}
+
+// The range an arrow's effect is picked from: paralysis needs the highest mortal level.
+static int enchant_arrows_effect_top(P_char ch)
+{
+	return (GET_LEVEL(ch) >= MAXLVLMORTAL) ? 6 : 5;
+}
+
+std::string enchant_arrows_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_ENCHANT_ARROWS);
+	std::string text =
+		fact("Chance each arrow is marked yours", chance_under(rating + 1, 1, 100)) +
+		fact("A mark lasts", real_time(enchant_arrows_mark_duration())) +
+		"  An arrow that hits picks one effect, with a roll at your rating, unless a\n"
+		"  shield blocks it:\n" +
+		fact("    Fire or cold", chance_under(rating + 1, 60, 180)) +
+		fact("    Lightning", chance_under(rating + 1, 80, 180)) +
+		fact("    Acid", chance_under(rating + 1, 80, 190)) +
+		fact("    Their damage", show({ enchant_arrow_damage(lowest_rolls),
+						enchant_arrow_damage(highest_rolls) })) +
+		"      (spell damage: modifiers and defenses apply after)\n";
+	if (enchant_arrows_effect_top(ch) == 6)
+		text += fact("    Major paralysis at your level", chance_under(rating, 99, 199));
+	return text;
 }
 
 int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
@@ -294,7 +332,7 @@ int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
 		set_keywords(arrow, buf);
 
 		arrow->timer[5] = ARROW_MARK;
-		duration = WAIT_SEC * (int)get_property("archery.enchantArrows.mark.duration", 300);
+		duration = enchant_arrows_mark_duration();
 		add_event(event_enchant_arrow, duration, 0, 0, arrow, 0, 0, 0);
 		break;
 	case 2:
@@ -335,6 +373,162 @@ int enchant_arrows(P_char ch, P_char vict, P_obj arrow, int cmd)
 	return IS_ALIVE(ch)   ? (IS_ALIVE(vict) ? DAM_NONEDEAD : DAM_VICTDEAD) :
 	       IS_ALIVE(vict) ? DAM_CHARDEAD :
 				DAM_BOTHDEAD;
+}
+
+// The chance threshold, rolled 1-130, of firing while you are fighting.
+static int point_blank_shot_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_POINT_BLANK_SHOT);
+}
+
+// Your lag when you are too busy fighting to fire.
+static int point_blank_shot_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
+std::string point_blank_shot_facts(P_char ch)
+{
+	return fact("Chance to fire while fighting",
+		    chance_under(point_blank_shot_threshold(ch) + 1, 1, 130)) +
+	       fact("Your lag if you can't", seconds(point_blank_shot_lag()));
+}
+
+// The fastest your rating lets you shoot, and your to-hit skill in the target's room or at
+// a range of `rooms`.
+static int archery_speed_limit(P_char ch)
+{
+	return 2 * GET_CHAR_SKILL(ch, SKILL_ARCHERY);
+}
+
+static int archery_hit_skill(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_ARCHERY) *
+		     get_property("archery.hitSkill.percentage", 0.7));
+}
+
+static int archery_range_hit_skill(P_char ch, int i)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_ARCHERY) *
+			     get_property("archery.hitSkill.percentage", 0.7) -
+		     i * get_property("archery.rangePenalty", 10));
+}
+
+// The speed a shot needs per arrow.
+static int archery_speed_per_shot()
+{
+	return get_property("archery.speedPerShot", 30);
+}
+
+// Extra arrow damage from the rating.
+static int archery_skill_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(0, GET_CHAR_SKILL(ch, SKILL_ARCHERY) / 25);
+}
+
+// An arrow may lose damage when the rating is below this roll.
+static int archery_fumble_roll(const Rolls &rolls)
+{
+	return rolls.number(15, 40);
+}
+
+// The tenths of an arrow's damage left when it does.
+static int archery_fumble_tenths(const Rolls &rolls)
+{
+	return rolls.number(3, 10);
+}
+
+std::string archery_facts(P_char ch)
+{
+	std::string text =
+		fact("Your rating limits your speed to", std::to_string(archery_speed_limit(ch))) +
+		"    (your weapon and dexterity can limit it more)\n" +
+		fact("Speed for each arrow in a volley", std::to_string(archery_speed_per_shot())) +
+		fact("To-hit skill in the target's room", std::to_string(archery_hit_skill(ch))) +
+		fact("To-hit skill one room away", std::to_string(archery_range_hit_skill(ch, 1))) +
+		fact("Extra damage per arrow", show({ archery_skill_damage(lowest_rolls, ch),
+						      archery_skill_damage(highest_rolls, ch) }));
+	if (GET_CHAR_SKILL(ch, SKILL_ARCHERY) < archery_fumble_roll(highest_rolls))
+		text += fact(
+			"Chance a hit loses damage",
+			std::to_string(archery_fumble_roll(highest_rolls) -
+				       MAX(GET_CHAR_SKILL(ch, SKILL_ARCHERY) + 1,
+					   archery_fumble_roll(lowest_rolls)) +
+				       1) +
+				" in 26, leaving " +
+				std::to_string(archery_fumble_tenths(lowest_rolls) * 10) + "-" +
+				std::to_string(archery_fumble_tenths(highest_rolls) * 10) + "%");
+	return text;
+}
+
+// The chance threshold, rolled 1-130, of arcing a shot over a wall.
+static int indirect_shot_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_INDIRECT_SHOT);
+}
+
+std::string indirect_shot_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_INDIRECT_SHOT))
+		return "  You need this skill to shoot over a wall.\n";
+	return fact("Chance a shot over a wall can hit",
+		    chance_under(indirect_shot_threshold(ch) + 1, 1, 130));
+}
+
+// The chance threshold, rolled 1-100, of an arrow coming back.
+static int cursed_arrows_threshold(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_CURSED_ARROWS) *
+		     get_property("archery.cursedArrows.percentage", 0.5));
+}
+
+std::string cursed_arrows_facts(P_char ch)
+{
+	return fact("Chance an arrow returns to your quiver",
+		    chance_under(cursed_arrows_threshold(ch) + 1, 1, 100));
+}
+
+// The chance threshold, rolled 1-3000, of a critical shot.
+static int critical_shot_threshold(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_CRITICAL_SHOT) + GET_C_LUK(ch) - 100);
+}
+
+// A critical shot's factor on damage.
+static float critical_shot_factor()
+{
+	return get_property("archery.crit.bonus", 1.500);
+}
+
+std::string critical_shot_facts(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_CRITICAL_SHOT) <= 0)
+		return "  You need this skill for a critical shot.\n";
+	return fact("Chance on each arrow that hits",
+		    chance_under(critical_shot_threshold(ch) + 1, 1, 3000)) +
+	       fact("Damage", share_percent(critical_shot_factor()) + " of the arrow's");
+}
+
+// The chance threshold, rolled 1-105, of staying hidden after you fire.
+static int shadow_archery_threshold(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_SHADOW_ARCHERY) / 2);
+}
+
+std::string shadow_archery_facts(P_char ch)
+{
+	return fact("Chance to fire from hiding without showing yourself",
+		    chance_under(GET_CHAR_SKILL(ch, SKILL_SHADOW_ARCHERY) + 1, 1, 100)) +
+	       fact("Chance to stay hidden after that",
+		    chance_under(shadow_archery_threshold(ch), 1, 105));
+}
+
+// How much of a shot a fired-on shield can stop, rolled 1-1600.
+int arrow_block_chance(P_char victim)
+{
+	return (int)(GET_CHAR_SKILL(victim, SKILL_SHIELD_BLOCK) + (GET_C_AGI(victim) / 2) +
+		     (GET_CHAR_SKILL(victim, SKILL_SHIELD_COMBAT) / 2) + (GET_C_DEX(victim) / 5) +
+		     (GET_C_LUK(victim) / 5));
 }
 
 /*
@@ -554,7 +748,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 	{
 		// Max 100/130 -> about a 77% chance.
 		if (notch_skill(ch, SKILL_POINT_BLANK_SHOT, 10) ||
-		    number(1, 130) <= GET_CHAR_SKILL(ch, SKILL_POINT_BLANK_SHOT))
+		    number(1, 130) <= point_blank_shot_threshold(ch))
 		{
 			send_to_char("You take aim, and fire upon your enemy!\n", ch);
 			is_fighting_check = TRUE;
@@ -562,7 +756,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 		else
 		{
 			send_to_char("You're too busy fighting to fire your weapon!\n", ch);
-			CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+			CharWait(ch, point_blank_shot_lag());
 			return;
 		}
 	}
@@ -575,11 +769,11 @@ void do_fire(P_char ch, char *argument, int cmd)
 	// Value0 determines the fastest you can fire the weapon (where dex sets speed).
 	speed = MIN(weapon->value[0], (int)((float)GET_C_DEX(ch) * 1.5));
 	// Skill can slow you down, but not speed you up past the dex/weapon limit.
-	speed = MIN(speed, 2 * GET_CHAR_SKILL(ch, SKILL_ARCHERY));
+	speed = MIN(speed, archery_speed_limit(ch));
 	// Strength limit is value1.
 	strength = MIN(weapon->value[1], GET_C_STR(ch));
 
-	speed_per_shot = get_property("archery.speedPerShot", 30);
+	speed_per_shot = archery_speed_per_shot();
 
 	if (IS_AFFECTED(ch, AFF_HASTE))
 	{
@@ -645,20 +839,12 @@ void do_fire(P_char ch, char *argument, int cmd)
 			send_to_char("It's a long shot, but you try anyway!\n", ch);
 		}
 
-		to_hit = chance_to_hit(
-			ch, victim,
-			(int)(GET_CHAR_SKILL(ch, SKILL_ARCHERY) *
-				      get_property("archery.hitSkill.percentage", 0.7) -
-			      i * get_property("archery.rangePenalty", 10)),
-			0);
+		to_hit = chance_to_hit(ch, victim, archery_range_hit_skill(ch, i), 0);
 	}
 	else
 	{
 		room = victim->in_room;
-		to_hit = chance_to_hit(ch, victim,
-				       (int)(GET_CHAR_SKILL(ch, SKILL_ARCHERY) *
-					     get_property("archery.hitSkill.percentage", 0.7)),
-				       0);
+		to_hit = chance_to_hit(ch, victim, archery_hit_skill(ch), 0);
 	}
 
 	// If this is deemed overpowered, let's make it hit someone else if it fails instead of just missing.
@@ -667,7 +853,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 		act("You aim high, arcing $p skyward.\r\n", FALSE, ch, weapon, ch, TO_CHAR);
 		// A 77% chance at 100 skill.
 		if (!notch_skill(ch, SKILL_INDIRECT_SHOT, 1) &&
-		    GET_CHAR_SKILL(ch, SKILL_INDIRECT_SHOT) < number(1, 130))
+		    indirect_shot_threshold(ch) < number(1, 130))
 		{
 			to_hit = 0;
 		}
@@ -702,8 +888,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 
 		// Cursed is auto return arrows
 		if (notch_skill(ch, SKILL_CURSED_ARROWS, 10) ||
-		    number(1, 100) <= (int)(GET_CHAR_SKILL(ch, SKILL_CURSED_ARROWS) *
-					    get_property("archery.cursedArrows.percentage", 0.5)))
+		    number(1, 100) <= cursed_arrows_threshold(ch))
 		{
 			carrow = TRUE;
 		}
@@ -753,11 +938,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 			    !IS_IMMOBILE(victim) && IS_AWAKE(victim))
 			{
 				// Maxxed out char with 100 stats => 100 + 50 + 50 + 20 + 20 = 240
-				int block_chance =
-					(int)(GET_CHAR_SKILL(victim, SKILL_SHIELD_BLOCK) +
-					      (GET_C_AGI(victim) / 2) +
-					      (GET_CHAR_SKILL(victim, SKILL_SHIELD_COMBAT) / 2) +
-					      (GET_C_DEX(victim) / 5) + (GET_C_LUK(victim) / 5));
+				int block_chance = arrow_block_chance(victim);
 
 				if (IS_FIGHTING(victim))
 				{
@@ -851,12 +1032,12 @@ void do_fire(P_char ch, char *argument, int cmd)
 			dam += static_cast<double>(weapon->value[2]) *
 			       get_property("archery.weaponFactor", 0.500);
 			// +0-4 damage at 100 skill.
-			dam += number(0, GET_CHAR_SKILL(ch, SKILL_ARCHERY) / 25);
+			dam += archery_skill_damage(live_rolls, ch);
 
 			// Low skill might reduce damage by 0 to 70%.
-			if (GET_CHAR_SKILL(ch, SKILL_ARCHERY) < number(15, 40))
+			if (GET_CHAR_SKILL(ch, SKILL_ARCHERY) < archery_fumble_roll(live_rolls))
 			{
-				dam = (dam * number(3, 10)) / 10.0;
+				dam = (dam * archery_fumble_tenths(live_rolls)) / 10.0;
 			}
 
 			// Apply damage mod for race/class/etc.
@@ -884,12 +1065,11 @@ void do_fire(P_char ch, char *argument, int cmd)
 			messages->critical_known = true;
 			messages->critical = false;
 			if (GET_CHAR_SKILL(ch, SKILL_CRITICAL_SHOT) > 0 &&
-			    (GET_CHAR_SKILL(ch, SKILL_CRITICAL_SHOT) + GET_C_LUK(ch) - 100) >=
-				    number(1, 3000))
+			    critical_shot_threshold(ch) >= number(1, 3000))
 			{
 				messages->critical = true;
 				send_to_char("&=LWYou score a CRITICAL SHOT!!!&N\n", ch);
-				dam *= get_property("archery.crit.bonus", 1.500);
+				dam *= critical_shot_factor();
 				notch_skill(ch, SKILL_CRITICAL_SHOT, 5);
 			}
 
@@ -962,7 +1142,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 				{
 					result = enchant_arrows(
 						ch, victim, missile,
-						number(2, (GET_LEVEL(ch) >= MAXLVLMORTAL) ? 6 : 5));
+						number(2, enchant_arrows_effect_top(ch)));
 				}
 			}
 
@@ -1133,7 +1313,7 @@ void do_fire(P_char ch, char *argument, int cmd)
 	if (IS_AFFECTED(ch, AFF_HIDE))
 	{
 		if (notch_skill(ch, SKILL_SHADOW_ARCHERY, 7) ||
-		    (GET_CHAR_SKILL(ch, SKILL_SHADOW_ARCHERY) / 2) > number(1, 105))
+		    shadow_archery_threshold(ch) > number(1, 105))
 		{
 		}
 		else
@@ -1900,6 +2080,9 @@ P_obj find_throw(P_char ch, char *name, int first)
 
 /* fonction to find the number of attack for throwable weapon */
 
+extern int double_attack_threshold(P_char ch);
+extern int triple_attack_threshold(P_char ch);
+
 int number_throw(P_char ch, char *name)
 {
 	P_obj i;
@@ -1966,8 +2149,8 @@ int number_throw(P_char ch, char *name)
 
 	if (primary)
 	{
-		nb_att += GET_CHAR_SKILL(ch, SKILL_DOUBLE_ATTACK) > number(0, 100) ? 1 : 0;
-		nb_att += GET_CHAR_SKILL(ch, SKILL_TRIPLE_ATTACK) > number(0, 100) ? 1 : 0;
+		nb_att += double_attack_threshold(ch) > number(0, 100) ? 1 : 0;
+		nb_att += triple_attack_threshold(ch) > number(0, 100) ? 1 : 0;
 	}
 
 	if (IS_AFFECTED2(ch, AFF2_SLOW))

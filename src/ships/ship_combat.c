@@ -88,9 +88,27 @@
 #include "ships/ship_npc.h"
 #include "ships/ship_npc_ai.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 // char  arc[3];
 extern char buf[MAX_STRING_LENGTH];
+
+// The damage points a rating takes off `dam`.
+static float ship_damage_control_reduction(int dam, int skill)
+{
+	return dam * (4.0 + (float)skill / 5.0) / 100.0;
+}
+
+std::string ship_damage_control_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_SHIP_DAMAGE_CONTROL);
+	if (skill < 1)
+		return "  You need this skill to control ship damage.\n";
+	char percent[16];
+	snprintf(percent, sizeof(percent), "%g%%", ship_damage_control_reduction(100, skill));
+	return fact("Less damage to your hull and sails, aboard your own ship", percent) +
+	       "    (never below 1; a fraction of a point is a roll to remove one more)\n";
+}
 
 /*
  * Reduce incoming `dam` according to `ch`'s SKILL_SHIP_DAMAGE_CONTROL skill.
@@ -120,7 +138,7 @@ int epic_ship_damage_control(P_char ch, int dam)
 	}
 
 	// reduction_mod starts at dam * 4% - 24%.
-	reduction_mod = dam * (4.0 + (float)skill / 5.0) / 100.0;
+	reduction_mod = ship_damage_control_reduction(dam, skill);
 
 	// Here we reduce dam by the floor of reduction mod, down to dam == 1
 	while (reduction_mod >= 1.0 && dam > 1)

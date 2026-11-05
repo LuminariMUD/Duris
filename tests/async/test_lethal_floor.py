@@ -124,6 +124,8 @@ with tempfile.TemporaryDirectory(prefix="lethal-floor-") as directory:
     subprocess.run(
         [
             "g++",
+            "-ffunction-sections",
+            "-Wl,--gc-sections",
             "-std=c++20",
             "-g",
             "-fsanitize=address,undefined",

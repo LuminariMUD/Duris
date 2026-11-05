@@ -751,16 +751,53 @@ void heal(P_char ch, P_char healer, int hits, int cap)
 		gain_exp(healer, ch, hits, EXP_HEALING);
 }
 
+// Hit points a kill gives back, from the killer's rating and the victim's level.
+static int soul_trap_hit_points(P_char ch, int victim_level)
+{
+	return victim_level * 2 * GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP) / 100;
+}
+
+// The chance threshold, rolled 1-100, that your own kill traps a soul.
+static int soul_trap_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP) / 3;
+}
+
+// The chance threshold, rolled 1-100, that a group member's kill calls on your trap.
+static int soul_trap_group_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP) / 5;
+}
+
+// The hit points a trapped soul can raise you to.
+static int soul_trap_cap(P_char ch)
+{
+	return (int)(GET_MAX_HIT(ch) * 1.1);
+}
+
+std::string soul_trap_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP))
+		return "  You need this skill to trap a soul.\n";
+	return fact("Chance when you kill", chance_under(soul_trap_threshold(ch), 1, 100)) +
+	       fact("Hit points from a kill of your level",
+		    std::to_string(soul_trap_hit_points(ch, GET_LEVEL(ch)))) +
+	       fact("It can raise your hit points to", std::to_string(soul_trap_cap(ch))) +
+	       fact("Chance when a group member without it kills",
+		    chance_under(soul_trap_group_threshold(ch), 1, 100)) +
+	       "    (that kill's soul heals you nothing: its amount uses the killer's rating)\n";
+}
+
 bool soul_trap(P_char ch, P_char victim)
 {
-	int hps = GET_LEVEL(victim) * 2 * GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP) / 100;
+	int hps = soul_trap_hit_points(ch, GET_LEVEL(victim));
 	bool himself = false;
 	struct group_list *gl;
 
 	if (GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP))
 	{
 		if (!notch_skill(ch, SKILL_SOUL_TRAP, get_property("skill.notch.soulTrap", 1)) &&
-		    number(1, 100) >= GET_CHAR_SKILL(ch, SKILL_SOUL_TRAP) / 3)
+		    number(1, 100) >= soul_trap_threshold(ch))
 			return false;
 		himself = true;
 	}
@@ -771,7 +808,7 @@ bool soul_trap(P_char ch, P_char victim)
 			if (GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) &&
 			    (notch_skill(gl->ch, SKILL_SOUL_TRAP,
 					 get_property("skill.notch.soulTrap", 100) * 3) ||
-			     GET_CHAR_SKILL(gl->ch, SKILL_SOUL_TRAP) / 5 > number(1, 100)))
+			     soul_trap_group_threshold(gl->ch) > number(1, 100)))
 			{
 				ch = gl->ch;
 				break;
@@ -781,7 +818,7 @@ bool soul_trap(P_char ch, P_char victim)
 			return false;
 	}
 
-	vamp(ch, hps, (int)(GET_MAX_HIT(ch) * 1.1));
+	vamp(ch, hps, soul_trap_cap(ch));
 
 	if (himself)
 	{
@@ -3528,6 +3565,57 @@ bool decrease_skin_counter(P_char ch, unsigned int skin)
 	return FALSE;
 }
 
+// The rating a mangle needs, before and after the attacker's expert parry and dexterity.
+static int mangle_rating_needed()
+{
+	return 20;
+}
+
+// What an attacker's expert parry takes off a mangle's rating.
+static int expert_parry_mangle_penalty(P_char victim)
+{
+	return GET_CHAR_SKILL(victim, SKILL_EXPERT_PARRY) / 2;
+}
+
+// The chance threshold, rolled 1-100, from what is left of a mangle's rating.
+static int mangle_chance(int skl)
+{
+	skl /= 20;
+	skl = BOUNDED(0, skl, 5);
+	return skl;
+}
+
+// Damage from a mangle, before the attacker's defenses.
+static double mangle_damage(const Rolls &rolls)
+{
+	return 4. * rolls.dice(2, 4);
+}
+
+// A mangle disarms on a roll of 0.
+static int mangle_disarm_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+std::string mangle_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_MANGLE);
+	if (rating < mangle_rating_needed())
+		return "  You need a rating of " + std::to_string(mangle_rating_needed()) +
+		       " to mangle.\n";
+	return fact("Chance against an attacker of your dexterity",
+		    std::to_string(mangle_chance(rating)) + " in 100") +
+	       "    (the attacker's dexterity and expert parry move it; it never tops " +
+	       std::to_string(mangle_chance(100000)) + ")\n" +
+	       fact("Damage",
+		    show({ (int)mangle_damage(lowest_rolls), (int)mangle_damage(highest_rolls) }) +
+			    ", before the attacker's defenses") +
+	       fact("Chance the attacker then loses its weapon", one_in(mangle_disarm_roll)) +
+	       "    (not under combat mind)\n"
+	       "  You must be standing, and the attacker must be a humanoid wielding a weapon\n"
+	       "  it can drop.\n";
+}
+
 // Attempt by a berserker to slam weapon aside and deal damage, possibly disarming opponent in the process.
 // Similar to riposte, does not require a successful parry though.
 // ch is the mangler, and victim is the person attacking (that might be mangled).  It's important
@@ -3574,8 +3662,9 @@ bool mangleSucceed(P_char ch, P_char victim, P_obj weap)
 
 	if (IS_TRUSTED(victim) || IS_IMMOBILE(ch) || !IS_HUMANOID(victim) ||
 	    !MIN_POS(ch, POS_STANDING + STAT_NORMAL) ||
-	    (skl < 20 && !(skill_notch = notch_skill(ch, SKILL_MANGLE,
-						     get_property("skill.notch.defensive", 17)))))
+	    (skl < mangle_rating_needed() &&
+	     !(skill_notch =
+		       notch_skill(ch, SKILL_MANGLE, get_property("skill.notch.defensive", 17)))))
 	{
 		return FALSE;
 	}
@@ -3585,7 +3674,7 @@ bool mangleSucceed(P_char ch, P_char victim, P_obj weap)
 		// Epic parry now reduces mangle percentage. Jan08 -Lucrot
 		if (GET_CHAR_SKILL(victim, SKILL_EXPERT_PARRY))
 		{
-			if ((skl -= GET_CHAR_SKILL(victim, SKILL_EXPERT_PARRY) / 2) < 20)
+			if ((skl -= expert_parry_mangle_penalty(victim)) < mangle_rating_needed())
 				return FALSE;
 		}
 
@@ -3596,11 +3685,10 @@ bool mangleSucceed(P_char ch, P_char victim, P_obj weap)
 		if (IS_ELITE(ch))
 			skl += 100;
 
-		if ((skl -= (GET_C_DEX(victim) - GET_C_DEX(ch)) * 5) < 20)
+		if ((skl -= (GET_C_DEX(victim) - GET_C_DEX(ch)) * 5) < mangle_rating_needed())
 			return FALSE;
 
-		skl /= 20;
-		skl = BOUNDED(0, skl, 5);
+		skl = mangle_chance(skl);
 
 		// 5% max chance.
 		if (number(1, 100) > skl)
@@ -3614,11 +3702,13 @@ bool mangleSucceed(P_char ch, P_char victim, P_obj weap)
 	act("You block $N's attack and slash viciously at $S arm.", TRUE, ch, 0, victim, TO_CHAR);
 
 	// 2-8 damage - can be mitigated.
-	if (melee_damage(ch, victim, 4. * dice(2, 4), PHSDAM_NONE, &messages) != DAM_NONEDEAD)
+	if (melee_damage(ch, victim, mangle_damage(live_rolls), PHSDAM_NONE, &messages) !=
+	    DAM_NONEDEAD)
 		return TRUE;
 
 	// 25% chance to actually disarm.
-	if (weap && !number(0, 3) && !affected_by_spell(victim, SPELL_COMBAT_MIND))
+	if (weap && !mangle_disarm_roll(live_rolls) &&
+	    !affected_by_spell(victim, SPELL_COMBAT_MIND))
 	{
 		send_to_char(
 			"&=LYYou swing at your foe _really_ badly, losing control of your weapon!\r\n",
@@ -3640,6 +3730,88 @@ bool mangleSucceed(P_char ch, P_char victim, P_obj weap)
 	}
 
 	return TRUE;
+}
+
+// A blademaster's or swashbuckler's riposte score from a rating.
+static double riposte_specialist_score(P_char ch, double skl)
+{
+	if (GET_SPEC(ch, CLASS_RANGER, SPEC_BLADEMASTER))
+		skl *= 1.05;
+
+	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
+		skl *= 1.10;
+	return skl;
+}
+
+// The riposte score's share when luck favors you, and when it doesn't.
+static double riposte_lucky_share()
+{
+	return 1.05;
+}
+
+static double riposte_unlucky_share()
+{
+	return 0.95;
+}
+
+// The chance threshold, rolled 0-100, of each follow-up blow, from the follow-up rating.
+static double followup_riposte_threshold(double skl)
+{
+	return skl / 3;
+}
+
+// Damage from the first follow-up blow.
+static double followup_riposte_blow(P_char ch)
+{
+	return static_cast<double>(GET_DAMROLL(ch)) * ch->specials.damage_mod;
+}
+
+// Damage from the second follow-up blow.
+static int followup_riposte_second_blow(const Rolls &rolls)
+{
+	return rolls.dice(20, 6);
+}
+
+std::string riposte_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_RIPOSTE);
+	if (rating < 1)
+		return "  You need this skill for a riposte roll.\n";
+	const double score = riposte_specialist_score(ch, rating);
+	const int expert = GET_CHAR_SKILL(ch, SKILL_EXPERT_RIPOSTE);
+	return fact("Chance after you parry",
+		    show({ (int)(score * riposte_unlucky_share() + expert),
+			   (int)(score * riposte_lucky_share() + expert) }) +
+			    " in 1000") +
+	       "    (luck against the attacker's picks within that; being stunned or down, or\n"
+	       "    an attacker you aren't fighting, lowers it)\n";
+}
+
+std::string expert_riposte_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_EXPERT_RIPOSTE);
+	if (!rating)
+		return "  You need this skill to riposte expertly.\n";
+	return fact("Added to your riposte chance", std::to_string(rating) + " in 1000") +
+	       fact("Chance of an extra attack when you riposte your opponent",
+		    chance_under(rating, 1, 500)) +
+	       fact("Chance of a second extra attack after that", chance_under(rating, 1, 500));
+}
+
+std::string followup_riposte_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FOLLOWUP_RIPOSTE);
+	if (rating < 1)
+		return "  You need this skill to follow up a riposte.\n";
+	const std::string chance =
+		chance_under((int)ceil(followup_riposte_threshold(rating)), 0, 100);
+	return fact("Chance of a blow after each riposte", chance) +
+	       fact("Its damage, from your damroll",
+		    std::to_string((int)followup_riposte_blow(ch))) +
+	       fact("Chance of a second blow after that", chance) +
+	       fact("Its damage", show({ followup_riposte_second_blow(lowest_rolls),
+					 followup_riposte_second_blow(highest_rolls) })) +
+	       "  The target's defenses apply after.\n";
 }
 
 int try_riposte(P_char ch, P_char victim, P_obj wpn)
@@ -3714,18 +3886,13 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 	/*  Blademasters are slightly better, though they don't get
 	 *  the full riposte skill
 	 */
-	if (GET_SPEC(ch, CLASS_RANGER, SPEC_BLADEMASTER))
-		skl *= 1.05;
-
-	/*  Hey, lets do the same for Swashbucklers */
-	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
-		skl *= 1.10;
+	skl = riposte_specialist_score(ch, skl);
 
 	/* lucky or unlucky? */
 	if (number(0, GET_C_LUK(ch)) > number(0, GET_C_LUK(victim)))
-		skl *= 1.05;
+		skl *= riposte_lucky_share();
 	else
-		skl *= 0.95;
+		skl *= riposte_unlucky_share();
 
 	// Harder to riposte while stunned.
 	if (IS_STUNNED(ch))
@@ -3830,7 +3997,7 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 
 		if (number(0, 1) == 0)
 		{
-			if (skl / 3 > number(0, 100))
+			if (followup_riposte_threshold(skl) > number(0, 100))
 			{
 				act("Before $N can recover $n steps forward and slams $s fist into $S face.",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -3838,13 +4005,11 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 				    TRUE, ch, 0, victim, TO_CHAR);
 				act("Before you can recover $n steps forward and slams $s fist into your face!",
 				    TRUE, ch, 0, victim, TO_VICT);
-				victim_dead = damage(ch, victim,
-						     static_cast<double>(GET_DAMROLL(ch)) *
-							     ch->specials.damage_mod,
+				victim_dead = damage(ch, victim, followup_riposte_blow(ch),
 						     SKILL_FOLLOWUP_RIPOSTE);
 
 				if (!victim_dead && continuation_valid() &&
-				    skl / 3 > number(0, 100))
+				    followup_riposte_threshold(skl) > number(0, 100))
 				{
 					act("As $N staggers back $n follows-up with a well-placed kick.",
 					    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -3852,11 +4017,13 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 					    TRUE, ch, 0, victim, TO_CHAR);
 					act("As you stagger from the blow $n follows-up with a well-placed kick.",
 					    TRUE, ch, 0, victim, TO_VICT);
-					melee_damage(ch, victim, dice(20, 6), 0, 0);
+					melee_damage(ch, victim,
+						     followup_riposte_second_blow(live_rolls), 0,
+						     0);
 				}
 			}
 		}
-		else if (skl / 3 > number(0, 100))
+		else if (followup_riposte_threshold(skl) > number(0, 100))
 		{
 			act("Spinning around $n slams his elbow into $N's throat.", TRUE, ch, 0,
 			    victim, TO_NOTVICT);
@@ -3864,12 +4031,11 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 			    TRUE, ch, 0, victim, TO_VICT);
 			act("Spinning around you slam your elbow into $N's throat.", TRUE, ch, 0,
 			    victim, TO_CHAR);
-			victim_dead = damage(ch, victim,
-					     static_cast<double>(GET_DAMROLL(ch)) *
-						     ch->specials.damage_mod,
+			victim_dead = damage(ch, victim, followup_riposte_blow(ch),
 					     SKILL_FOLLOWUP_RIPOSTE);
 
-			if (!victim_dead && continuation_valid() && skl / 3 > number(0, 100))
+			if (!victim_dead && continuation_valid() &&
+			    followup_riposte_threshold(skl) > number(0, 100))
 			{
 				act("...then steps forward and brutally slams $s head into $N's face.",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -3877,7 +4043,8 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 				    TRUE, ch, 0, victim, TO_CHAR);
 				act("As you stagger and gasp for breath $e steps forward and slams $s head into your face. Yikes!",
 				    TRUE, ch, 0, victim, TO_VICT);
-				damage(ch, victim, dice(20, 6), SKILL_FOLLOWUP_RIPOSTE);
+				damage(ch, victim, followup_riposte_second_blow(live_rolls),
+				       SKILL_FOLLOWUP_RIPOSTE);
 			}
 		}
 	}
@@ -4033,6 +4200,89 @@ bool damage(P_char ch, P_char victim, double dam, int attacktype)
 		}
 		return FALSE;
 	}
+}
+
+// The chance threshold, rolled 1-100, of hurling a spell back.
+static int arcane_riposte_threshold(int skill_lvl)
+{
+	return skill_lvl / 4;
+}
+
+// The damage a hurled spell does back, from the damage it would have done.
+static double arcane_riposte_damage(int skill_lvl, double dam)
+{
+	return (skill_lvl * dam) / 100;
+}
+
+std::string arcane_riposte_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_ARCANE_RIPOSTE);
+	if (rating <= 0)
+		return "  You need this skill to hurl a spell back.\n";
+	return fact("Chance to hurl a spell back",
+		    chance_under(arcane_riposte_threshold(rating), 1, 100)) +
+	       fact("Damage to the caster",
+		    std::to_string((int)arcane_riposte_damage(rating, 100)) +
+			    "% of the spell's, and you take none") +
+	       "  Not while stunned. Some spells can't be deflected, so this can't stop them.\n";
+}
+
+// A fire spell dwindles past the rating's roll on a roll of 0 of this...
+static int disperse_flames_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+// ...and then needs this roll at or below your level.
+static int disperse_flames_level_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 56);
+}
+
+std::string disperse_flames_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DISPERSE_FLAMES);
+	if (!rating)
+		return "  You need this skill to disperse flames.\n";
+	return fact("Chance to stop a fire spell",
+		    chance_under(rating, 0, 100) + ", then " + one_in(disperse_flames_roll) +
+			    ", then " + chance_under(GET_LEVEL(ch) + 1, 1, 56)) +
+	       "  It stops the whole spell. Some spells can't be deflected, so this can't stop\n"
+	       "  them.\n";
+}
+
+// A fire spell comes back past the rating's roll on a roll of 0 of this...
+static int flame_mastery_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 10);
+}
+
+// ...and then needs this roll at or below the caster's level.
+static int flame_mastery_level_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 56);
+}
+
+// The damage fire hurled back does, from the damage it would have done.
+static double flame_mastery_damage(P_char victim, double dam)
+{
+	return GET_CHAR_SKILL(victim, SKILL_FLAME_MASTERY) * dam / 80;
+}
+
+std::string flame_mastery_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FLAME_MASTERY);
+	if (!rating)
+		return "  You need this skill to master flames.\n";
+	return fact("Chance to hurl a fire spell back",
+		    chance_under(rating, 0, 100) + ", then " + one_in(flame_mastery_roll)) +
+	       "    (and then the caster's level in 56)\n" +
+	       fact("Damage to the caster", std::to_string((int)flame_mastery_damage(ch, 100)) +
+						    "% of the spell's, and you take none") +
+	       fact("Chance your fire shield doesn't worsen a cold spell on you",
+		    chance_under(rating, 1, 101)) +
+	       "    (not while stunned, or from a caster you can't see)\n"
+	       "  Some spells can't be deflected, so this can't stop them.\n";
 }
 
 /**
@@ -4298,7 +4548,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			if (!IS_STUNNED(victim) &&
 			    ((dam > 10 && notch_skill(victim, SKILL_ARCANE_RIPOSTE,
 						      get_property("skill.notch.arcane", 10))) ||
-			     (number(1, 100) < skill_lvl / 4)))
+			     (number(1, 100) < arcane_riposte_threshold(skill_lvl))))
 			{
 				act("$N frowns in &+cconcentration&n as $E intercepts $n's spell and &+Churls it back at $m!&n",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -4307,7 +4557,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 				act("With &+cgreat mastery&n you intercept $n's spell and &+Churl it back at $m!&n",
 				    TRUE, ch, 0, victim, TO_VICT);
 
-				result = spell_damage(victim, ch, (skill_lvl * dam) / 100, type,
+				result = spell_damage(victim, ch,
+						      arcane_riposte_damage(skill_lvl, dam), type,
 						      flags, messages);
 
 				if (result == DAM_VICTDEAD)
@@ -4326,7 +4577,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			if ((dam > 10 &&
 			     notch_skill(victim, SKILL_DISPERSE_FLAMES,
 					 get_property("skill.notch.pyrokinetics", 2))) ||
-			    (!number(0, 2) && number(1, 56) <= GET_LEVEL(victim)))
+			    (!disperse_flames_roll(live_rolls) &&
+			     disperse_flames_level_roll(live_rolls) <= GET_LEVEL(victim)))
 			{
 				act("$N &+rsmiles slightly as the &+Yflames &+rdwindle and die before reaching $M.&n",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -4345,7 +4597,8 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 			if ((dam > 10 &&
 			     notch_skill(victim, SKILL_FLAME_MASTERY,
 					 get_property("skill.notch.pyrokinetics", 2))) ||
-			    (!number(0, 10) && number(1, 56) <= GET_LEVEL(ch)))
+			    (!flame_mastery_roll(live_rolls) &&
+			     flame_mastery_level_roll(live_rolls) <= GET_LEVEL(ch)))
 			{
 				act("$N &+rsmiles slightly as $E stops the &+Yflames &+rsummoned by&n $n &+rand hurls them back at $m!&n",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -4353,9 +4606,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 				    TRUE, ch, 0, victim, TO_CHAR);
 				act("&+rYou laugh as you send &+Yflames &+rand burning &+Wectoplasm &+rback towards&n $n.&n",
 				    TRUE, ch, 0, victim, TO_VICT);
-				result = spell_damage(victim, ch,
-						      GET_CHAR_SKILL(victim, SKILL_FLAME_MASTERY) *
-							      dam / 80,
+				result = spell_damage(victim, ch, flame_mastery_damage(victim, dam),
 						      type, flags, messages);
 				if (result == DAM_VICTDEAD)
 					return DAM_CHARDEAD;
@@ -4967,6 +5218,12 @@ double mounted_combat_redirect_threshold(P_char victim)
 	return GET_CHAR_SKILL_P(victim, SKILL_MOUNTED_COMBAT) * 0.3;
 }
 
+// Under fist of dragon, a hit goes through armor and skin spells on a roll of 0.
+int fist_of_dragon_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
 /* melee_damage
  * This functions handles physical damage and modifies it against stoneskin type spells,
  * calculates vamping from melee damage and also resolves damage from fireshield type
@@ -5022,7 +5279,8 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 		  100))) / 800), (int) ((dam - 1)));
 		  */
 		// If they have fist up, the have a 33% chance of hitting through ac.
-		if (get_spell_from_char(ch, SKILL_FIST_OF_DRAGON) && !number(0, 2))
+		if (get_spell_from_char(ch, SKILL_FIST_OF_DRAGON) &&
+		    !fist_of_dragon_roll(live_rolls))
 		{
 			dragonfist = TRUE;
 			// If the ac is > 0, apply it (increases damage), otherwise skip.
@@ -6441,6 +6699,44 @@ int calculate_thac_zero(P_char ch, int skill)
 	return to_hit;
 }
 
+// What a player's to-hit loses against a target they can't see.
+static int blindfighting_to_hit_penalty(P_char ch)
+{
+	return 40 * (120 - GET_CHAR_SKILL(ch, SKILL_BLINDFIGHTING)) / 100;
+}
+
+// What a blinded player's armor class gets worse by against attackers.
+static int blindfighting_ac_penalty(P_char victim)
+{
+	return (int)(40 * (120 - GET_CHAR_SKILL_P(victim, SKILL_BLINDFIGHTING)) / 100);
+}
+
+// The chance threshold, rolled 0-100, of defending against an attacker you can't see.
+static int blindfighting_defense_threshold(P_char opponent)
+{
+	return GET_CHAR_SKILL(opponent, SKILL_BLINDFIGHTING) / 3;
+}
+
+// A blind defender's parry score from a parry score and the blindfighting rating.
+static int parry_blind_score(int learnedvictim, int blindfightskl)
+{
+	return (int)(blindfightskl > 0 ? (learnedvictim * (blindfightskl / 200)) :
+					 (learnedvictim * 0.05));
+}
+
+std::string blindfighting_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_BLINDFIGHTING);
+	return fact("To-hit against a target you can't see",
+		    "-" + std::to_string(blindfighting_to_hit_penalty(ch))) +
+	       fact("Armor class worse by, while you are blind",
+		    std::to_string(blindfighting_ac_penalty(ch))) +
+	       fact("Chance to defend against an attacker you can't see",
+		    chance_under(blindfighting_defense_threshold(ch), 0, 100)) +
+	       fact("Your parry score while blind",
+		    std::to_string(parry_blind_score(100, rating)) + "% of normal");
+}
+
 int chance_to_hit(P_char ch, P_char victim, int skill, P_obj weapon)
 {
 	int to_hit, victim_ac;
@@ -6484,7 +6780,7 @@ int chance_to_hit(P_char ch, P_char victim, int skill, P_obj weapon)
 		}
 		else
 		{
-			to_hit -= 40 * (120 - GET_CHAR_SKILL(ch, SKILL_BLINDFIGHTING)) / 100;
+			to_hit -= blindfighting_to_hit_penalty(ch);
 			notch_skill(ch, SKILL_BLINDFIGHTING,
 				    get_property("skill.notch.blindFighting", 6.25));
 		}
@@ -6494,8 +6790,7 @@ int chance_to_hit(P_char ch, P_char victim, int skill, P_obj weapon)
 
 	if (IS_AFFECTED(victim, AFF_BLIND))
 	{
-		victim_ac +=
-			(int)(40 * (120 - GET_CHAR_SKILL_P(victim, SKILL_BLINDFIGHTING)) / 100);
+		victim_ac += blindfighting_ac_penalty(victim);
 	}
 
 #ifdef FIGHT_DEBUG
@@ -6603,6 +6898,68 @@ bool monk_critic(P_char ch, P_char victim, int *damAccumulator)
 	return FALSE;
 }
 
+// A blade proc on a melee hit, past the rating's roll, on a roll of 0.
+static int tainted_blade_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 19);
+}
+
+// Raw damage from the blow that starts it.
+static int tainted_blade_damage()
+{
+	return 60;
+}
+
+// Raw damage each round after it. MAX rolls again when the first roll beats 40.
+static int tainted_blade_bleed(const Rolls &rolls, P_char ch)
+{
+	return MAX(40, rolls.dice(3, (2 * GET_LEVEL(ch)) / 3));
+}
+
+// The count that sets its rounds; one more round runs after the count reaches 0.
+static int tainted_blade_rounds(P_char ch, int blade_skill)
+{
+	return 1 + GET_CHAR_SKILL(ch, blade_skill) / 33;
+}
+
+// The pulses before the first round.
+static int tainted_blade_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+static std::string blade_lines(P_char ch, int blade_skill)
+{
+	return fact("Chance on each melee hit",
+		    chance_under(GET_CHAR_SKILL(ch, blade_skill) + 1, 1, 100) + ", then " +
+			    one_in(tainted_blade_roll)) +
+	       fact("Raw damage from the blow", std::to_string(tainted_blade_damage())) +
+	       fact("Raw damage each round after it",
+		    show({ tainted_blade_bleed(lowest_rolls, ch),
+			   tainted_blade_bleed(highest_rolls, ch) })) +
+	       (tainted_blade_bleed(highest_rolls, ch) > tainted_blade_bleed(lowest_rolls, ch) ?
+			"    (a roll above the floor is rolled again, so it can land lower)\n" :
+			"") +
+	       fact("Rounds, " + seconds(tainted_blade_interval()) + " apart",
+		    std::to_string(tainted_blade_rounds(ch, blade_skill) + 1)) +
+	       "  Another hit on the same target renews the count. Not with an empty main hand,\n"
+	       "  and not against constructs.\n";
+}
+
+std::string holy_blade_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_AVENGER))
+		return "  Only avengers have a holy blade.\n";
+	return blade_lines(ch, SKILL_HOLY_BLADE);
+}
+
+std::string tainted_blade_facts(P_char ch)
+{
+	if (GET_CLASS(ch, CLASS_AVENGER))
+		return "  Avengers use holy blade instead.\n";
+	return blade_lines(ch, SKILL_TAINTED_BLADE);
+}
+
 void event_tainted_blade(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
 	int blade_skill = GET_CLASS(ch, CLASS_AVENGER) ? SKILL_HOLY_BLADE : SKILL_TAINTED_BLADE;
@@ -6632,7 +6989,7 @@ void event_tainted_blade(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*
 
 	// At 56, Min = MAX(40, 3) = 10dam, Simplified Avg = MAX(40, 57) = 14dam, Max = MAX(40, 112) = 28dam
 	//  Note: The real average is more complicated since for all X in Y: Y=dice(3, (2*lvl)/3) < 40: X = 40 or whatever.
-	if (raw_damage(ch, victim, MAX(40, dice(3, (2 * GET_LEVEL(ch)) / 3)),
+	if (raw_damage(ch, victim, tainted_blade_bleed(live_rolls, ch),
 		       RAWDAM_DEFAULT ^ RAWDAM_IMPRISON, messages) != DAM_NONEDEAD)
 		return;
 
@@ -6678,19 +7035,20 @@ bool tainted_blade(P_char ch, P_char victim)
 	if (IS_CONSTRUCT(victim) || !ch->equipment[WIELD])
 		return FALSE;
 
-	if (raw_damage(ch, victim, 60, RAWDAM_DEFAULT, messages) == DAM_NONEDEAD)
+	if (raw_damage(ch, victim, tainted_blade_damage(), RAWDAM_DEFAULT, messages) ==
+	    DAM_NONEDEAD)
 	{
 		if ((old_af = get_spell_from_char(victim, blade_skill)))
 		{
-			old_af->modifier = 1 + GET_CHAR_SKILL(ch, blade_skill) / 33;
+			old_af->modifier = tainted_blade_rounds(ch, blade_skill);
 			return FALSE;
 		}
 		memset(&af, 0, sizeof(af));
 		af.type = blade_skill;
 		af.duration = 1;
-		af.modifier = 1 + GET_CHAR_SKILL(ch, blade_skill) / 33;
+		af.modifier = tainted_blade_rounds(ch, blade_skill);
 		affect_to_char(victim, &af);
-		add_event(event_tainted_blade, PULSE_VIOLENCE, ch, victim, 0, 0, 0, 0);
+		add_event(event_tainted_blade, tainted_blade_interval(), ch, victim, 0, 0, 0, 0);
 	}
 	else
 	{
@@ -6728,6 +7086,69 @@ bool frightening_presence(P_char ch, P_char victim)
 
 int battle_frenzy(P_char, P_char);
 
+// The chance threshold, rolled 1-100, of an anatomy strike on a melee hit.
+static int anatomy_strike_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 25;
+}
+
+// What anatomy adds to a vicious strike's score.
+static int vicious_strike_anatomy_bonus(P_char ch)
+{
+	return (int)(GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 2);
+}
+
+// A strike on the torso.
+static int anatomy_torso_damage(int dam)
+{
+	return (int)(dam * 1.1);
+}
+
+// Vitality a strike across the leg takes.
+static int anatomy_leg_vitality()
+{
+	return 5;
+}
+
+// Damroll and hitroll a strike on the arm or wrist takes from the target.
+static int anatomy_arm_damroll(int skl)
+{
+	return -10 - skl / 10;
+}
+
+static int anatomy_wrist_hitroll(int skl)
+{
+	return -15 - skl / 10;
+}
+
+// How long a strike on the ear deafens.
+static int anatomy_deaf_duration()
+{
+	return 10 * PULSE_VIOLENCE;
+}
+
+std::string anatomy_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_ANATOMY);
+	if (!rating)
+		return "  You need this skill to strike with anatomy.\n";
+	return fact("Chance of a strike on a melee hit",
+		    chance_under(anatomy_strike_threshold(ch) + 1, 1, 100)) +
+	       "    (both of you humanoid; rarer effects below need a humanoid target too)\n" +
+	       fact("Torso: damage", std::to_string(anatomy_torso_damage(100)) + "% of the hit's") +
+	       fact("Leg: target's vitality", "-" + std::to_string(anatomy_leg_vitality())) +
+	       fact("Arm: target's damroll for a round",
+		    std::to_string(anatomy_arm_damroll(rating))) +
+	       fact("Wrist: target's hitroll for a round",
+		    std::to_string(anatomy_wrist_hitroll(rating))) +
+	       fact("Ear: target deaf for", seconds(anatomy_deaf_duration())) +
+	       "  It can also confuse the target or break its casting. Constructs take a plain\n"
+	       "  hit.\n" +
+	       fact("Added to your vicious strike score",
+		    std::to_string(vicious_strike_anatomy_bonus(ch))) +
+	       "  Healing spells, backstabs, gazes and palms also use it: see their pages.\n";
+}
+
 /* The caller lends its three message buffers; damage_messages itself only ever
    points at immutable text.  msg_size is the caller's real buffer size: this
    function used to format with MAX_STRING_LENGTH into hit()'s 512-byte
@@ -6761,7 +7182,7 @@ int anatomy_strike(P_char ch, P_char victim, int msg, struct damage_messages *me
 				 attack_hit_text[msg].singular);
 			messages->type = DAMMSG_HIT_EFFECT;
 		}
-		return (int)(dam * 1.1);
+		return anatomy_torso_damage(dam);
 	case 1:
 		if (!LEGLESS(victim))
 		{
@@ -6775,7 +7196,7 @@ int anatomy_strike(P_char ch, P_char victim, int msg, struct damage_messages *me
 				 "$n's%%s %s hits $N across the leg, resulting in a limp stride.",
 				 attack_hit_text[msg].singular);
 			messages->type = DAMMSG_HIT_EFFECT;
-			GET_VITALITY(victim) -= 5;
+			GET_VITALITY(victim) -= anatomy_leg_vitality();
 		}
 		return dam;
 	case 2:
@@ -6801,7 +7222,7 @@ int anatomy_strike(P_char ch, P_char victim, int msg, struct damage_messages *me
 				 attack_hit_text[msg].singular);
 			messages->type = DAMMSG_HIT_EFFECT;
 			af.duration = victim->specials.combat_tics + 1;
-			af.modifier = -10 - skl / 10;
+			af.modifier = anatomy_arm_damroll(skl);
 			af.location = APPLY_DAMROLL;
 			affect_to_char(victim, &af);
 		}
@@ -6816,7 +7237,7 @@ int anatomy_strike(P_char ch, P_char victim, int msg, struct damage_messages *me
 			act("$n strikes viciously at $N's wrist causing $M to swing about madly.",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
 			af.duration = victim->specials.combat_tics + 1;
-			af.modifier = -15 - skl / 10;
+			af.modifier = anatomy_wrist_hitroll(skl);
 			af.location = APPLY_HITROLL;
 			affect_to_char(victim, &af);
 		}
@@ -6846,7 +7267,7 @@ int anatomy_strike(P_char ch, P_char victim, int msg, struct damage_messages *me
 				 "$n's%%s %s reached $N's ear causing a gush of blood.",
 				 attack_hit_text[msg].singular);
 			messages->type = DAMMSG_HIT_EFFECT;
-			af.duration = 10 * PULSE_VIOLENCE;
+			af.duration = anatomy_deaf_duration();
 			af.bitvector4 = AFF4_DEAF;
 			affect_to_char(victim, &af);
 		}
@@ -6926,6 +7347,232 @@ int required_weapon_skill(P_obj wpn)
 		return 0;
 		break;
 	}
+}
+
+// The weapon skill behind a hit's critical and fumble checks.
+static int weapon_check_skill(P_char ch, int wpn_skill)
+{
+	return BOUNDED(GET_LEVEL(ch) / 2, wpn_skill, 95);
+}
+
+// A critical stands on a roll of 30-101 up to this.
+static int weapon_critical_check(P_char ch, int wpn_skill)
+{
+	return wpn_skill + (GET_C_LUK(ch) / 4);
+}
+
+// A fumble is saved on a roll of 1-101 up to this.
+static int weapon_fumble_check(P_char ch, int wpn_skill)
+{
+	return wpn_skill + (GET_C_AGI(ch) / 2);
+}
+
+static std::string weapon_skill_lines(P_char ch, int rating)
+{
+	const int checked = weapon_check_skill(ch, rating);
+	return "  Your rating adds to your chance to hit.\n" +
+	       fact("Chance of a critical hit",
+		    std::to_string(CRITRATE(ch)) + " in 100, if it stands") +
+	       fact("Chance a critical stands",
+		    chance_under(weapon_critical_check(ch, checked) + 1, 30, 101)) +
+	       fact("Chance a fumble is saved",
+		    chance_under(weapon_fumble_check(ch, checked) + 1, 1, 101));
+}
+
+std::string one_h_flaying_facts(P_char ch)
+{
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_FLAYING)) +
+	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n";
+}
+
+std::string two_h_flaying_facts(P_char ch)
+{
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_2H_FLAYING)) +
+	       "  A flaying weapon can't be parried, and you can't parry wielding one first.\n";
+}
+
+std::string one_h_piercing_facts(P_char ch)
+{
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_PIERCING));
+}
+
+std::string one_h_slashing_facts(P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_THIEF))
+		return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING)) +
+		       "    (with a short sword: as a thief, any other blade counts as rating 0)\n";
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_1H_SLASHING));
+}
+
+std::string reach_weapons_facts(P_char ch)
+{
+	return weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_REACH_WEAPONS)) +
+	       "  A two-handed polearm, spear or trident reaches past a player's front line.\n";
+}
+
+// A quick step on a critical, on a roll of 1-100 below the rating.
+static int quick_step_threshold(P_char victim)
+{
+	return GET_CHAR_SKILL(victim, SKILL_QUICK_STEP);
+}
+
+// A quick step turns the critical into a miss below this, rolled 0-40.
+static int quick_step_miss_threshold(P_char victim)
+{
+	return ((GET_LEVEL(victim) / 5) + STAT_INDEX(GET_C_AGI(victim)));
+}
+
+std::string quick_step_facts(P_char ch)
+{
+	return fact("Chance to escape a critical hit",
+		    chance_under(quick_step_threshold(ch), 1, 100)) +
+	       fact("Chance it then misses you outright",
+		    chance_under(quick_step_miss_threshold(ch), 0, 40)) +
+	       "    (otherwise it lands as a normal hit)\n"
+	       "  You must be kneeling or better, not stunned and able to move.\n";
+}
+
+// What indomitable rage hands the attacker for 5 pulses, as the code applies it.
+static int indomitable_rage_duration()
+{
+	return 5;
+}
+
+static int indomitable_rage_hitroll()
+{
+	return 5;
+}
+
+static int indomitable_rage_damroll()
+{
+	return 5;
+}
+
+static int indomitable_rage_fear_save()
+{
+	return -5;
+}
+
+std::string indomitable_rage_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_INDOMITABLE_RAGE);
+	if (!rating)
+		return "  You need this skill for indomitable rage.\n";
+	return "  Only while you are berserk:\n" +
+	       fact("Chance to stop a critical hit on you", chance_under(rating, 50, 160)) +
+	       "    (the attacker gains, " + seconds(indomitable_rage_duration()) + ": hitroll +" +
+	       std::to_string(indomitable_rage_hitroll()) + ", damroll +" +
+	       std::to_string(indomitable_rage_damroll()) + ", fear saves " +
+	       std::to_string(indomitable_rage_fear_save()) + ")\n" +
+	       fact("Chance to shrug off fear", chance_under(rating, 1, 150));
+}
+
+// A devastating hit's damage, and a plain critical's.
+static int devastating_critical_damage(double dam, P_char ch)
+{
+	return (int)(dam * (300 + GET_CHAR_SKILL(ch, SKILL_DEVASTATING_CRITICAL)) / 150);
+}
+
+static int plain_critical_damage(double dam)
+{
+	return (int)(dam * 2.0);
+}
+
+std::string devastating_critical_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DEVASTATING_CRITICAL);
+	if (!rating)
+		return "  You need this skill for a devastating hit.\n";
+	return fact("Chance a critical hit is devastating", chance_under(rating, 1, 100)) +
+	       fact("Its damage",
+		    std::to_string(devastating_critical_damage(100, ch)) + "%, against " +
+			    std::to_string(plain_critical_damage(100)) + "% for a plain critical");
+}
+
+// The chance threshold, rolled 1-100, of a critical attack's extra effect.
+static int critical_attack_threshold(P_char ch)
+{
+	return (1 * GET_CHAR_SKILL(ch, SKILL_CRITICAL_ATTACK));
+}
+
+// The chance threshold, rolled 0-100, of a vicious attack.
+static double vicious_attack_threshold(P_char ch)
+{
+	return 0.1 * GET_CHAR_SKILL(ch, SKILL_VICIOUS_ATTACK);
+}
+
+std::string vicious_attack_facts(P_char ch)
+{
+	if (GET_CHAR_SKILL(ch, SKILL_VICIOUS_ATTACK) <= 0)
+		return "  You need this skill for a vicious attack.\n";
+	return fact("Chance of an extra hit on each hit",
+		    chance_under((int)ceil(vicious_attack_threshold(ch)), 0, 100)) +
+	       "  You must be standing, not whirlwinding, and it can't chain or hit constructs.\n";
+}
+
+// Bare-hand damage for players other than monks and combat minds.
+static int bare_hand_damage(const Rolls &rolls)
+{
+	return rolls.number(1, 4);
+}
+
+// What unarmed damage adds to it.
+static int unarmed_damage_bonus(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE) / 25;
+}
+
+std::string unarmed_damage_facts(P_char ch)
+{
+	const std::string lines = weapon_skill_lines(ch, GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE));
+	if (GET_CLASS(ch, CLASS_MONK))
+		return lines + "  Monks hit with their own dice: see martial arts.\n";
+	return lines +
+	       fact("Bare-hand damage",
+		    show({ bare_hand_damage(lowest_rolls) + unarmed_damage_bonus(ch),
+			   bare_hand_damage(highest_rolls) + unarmed_damage_bonus(ch) })) +
+	       "    (a psionicist under combat mind uses that spell's damage instead)\n";
+}
+
+// The damage a player's vicious strike adds.
+static double vicious_strike_bonus_damage(P_char ch)
+{
+	return static_cast<double>(get_property("damage.modifier.vicious.strike", 1.050)) *
+	       GET_CHAR_SKILL(ch, SKILL_VICIOUS_STRIKE);
+}
+
+std::string vicious_strike_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_VICIOUS_STRIKE);
+	if (rating <= 0)
+		return "  You need this skill for a vicious strike.\n";
+	const int score =
+		rating +
+		(GET_CHAR_SKILL(ch, SKILL_ANATOMY) > 0 ? vicious_strike_anatomy_bonus(ch) : 0);
+	return fact("Chance on each melee hit", chance_under(score, 1, 1000)) +
+	       fact("Damage added", std::to_string(std::lround(vicious_strike_bonus_damage(ch)))) +
+	       "    (before your damage modifiers and the target's defenses)\n";
+}
+
+// The chance threshold, rolled 1-100, of a blow only grazing you.
+static int boiling_blood_threshold(P_char victim)
+{
+	return GET_CHAR_SKILL(victim, SKILL_BOILING_BLOOD) / 10;
+}
+
+// A graze's damage.
+static int boiling_blood_damage()
+{
+	return 1;
+}
+
+std::string boiling_blood_facts(P_char ch)
+{
+	return fact("Chance a melee hit only grazes you",
+		    chance_under(boiling_blood_threshold(ch), 1, 100)) +
+	       fact("A graze's damage",
+		    std::to_string(boiling_blood_damage()) + ", before defenses") +
+	       "    (a vicious strike on you doesn't graze)\n";
 }
 
 /*
@@ -7107,13 +7754,13 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		sic = 0;
 	}
 
-	wpn_skill = BOUNDED(GET_LEVEL(ch) / 2, wpn_skill, 95);
+	wpn_skill = weapon_check_skill(ch, wpn_skill);
 
 	// Crit to miss if they fail a weaponskill + luck check
-	if (sic == -1 && number(30, 101) > wpn_skill + (GET_C_LUK(ch) / 4))
+	if (sic == -1 && number(30, 101) > weapon_critical_check(ch, wpn_skill))
 		sic = 0;
 	// Fumble to miss if they make a weaponskill + agi check.
-	if (sic == 1 && number(1, 101) <= wpn_skill + (GET_C_AGI(ch) / 2))
+	if (sic == 1 && number(1, 101) <= weapon_fumble_check(ch, wpn_skill))
 		sic = 0;
 
 	// Quickstep stops crits if victim can respond
@@ -7121,7 +7768,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	if (sic == -1 && !IS_AFFECTED2(victim, AFF2_STUNNED) && !IS_IMMOBILE(victim) &&
 	    (notch_skill(victim, SKILL_QUICK_STEP,
 			 get_property("skill.notch.criticalAttack", 10)) ||
-	     GET_CHAR_SKILL(victim, SKILL_QUICK_STEP) > number(1, 100)))
+	     quick_step_threshold(victim) > number(1, 100)))
 	{
 		bool qs = FALSE;
 		if (GET_POS(victim) == POS_STANDING)
@@ -7149,8 +7796,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 
 		if (qs)
 		{
-			if (((GET_LEVEL(victim) / 5) + STAT_INDEX(GET_C_AGI(victim))) >
-			    number(0, 40))
+			if (quick_step_miss_threshold(victim) > number(0, 40))
 			{
 				// need to know this, as quick-step crit misses won't fumble to ground
 				bIsQuickStepMiss = TRUE;
@@ -7345,18 +7991,18 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 
 			bzero(&ir, sizeof(ir));
 			ir.type = SKILL_INDOMITABLE_RAGE;
-			ir.duration = 5;
+			ir.duration = indomitable_rage_duration();
 			ir.flags = AFFTYPE_SHORT;
 			// hitroll
-			ir.modifier = 5;
+			ir.modifier = indomitable_rage_hitroll();
 			ir.location = APPLY_HITROLL;
 			affect_to_char(ch, &ir);
 			// damroll
-			ir.modifier = 5;
+			ir.modifier = indomitable_rage_damroll();
 			ir.location = APPLY_DAMROLL;
 			affect_to_char(ch, &ir);
 			// save fear
-			ir.modifier = -5;
+			ir.modifier = indomitable_rage_fear_save();
 			ir.location = APPLY_SAVING_FEAR;
 			affect_to_char(ch, &ir);
 		}
@@ -7388,7 +8034,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 
 	if (sic == -1 && (notch_skill(ch, SKILL_CRITICAL_ATTACK,
 				      get_property("skill.notch.criticalAttack", 10)) ||
-			  (1 * GET_CHAR_SKILL(ch, SKILL_CRITICAL_ATTACK)) > number(1, 100)))
+			  critical_attack_threshold(ch) > number(1, 100)))
 	{
 		const attack_continuation continuation =
 			begin_attack_continuation(ch, victim, weapon);
@@ -7413,7 +8059,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	{
 		if (notch_skill(ch, SKILL_VICIOUS_ATTACK,
 				get_property("skill.notch.offensive.auto", 4)) ||
-		    0.1 * GET_CHAR_SKILL(ch, SKILL_VICIOUS_ATTACK) > number(0, 100))
+		    vicious_attack_threshold(ch) > number(0, 100))
 		{
 			act("$n slips beneath $N's guard dealing a vicious attack!!", TRUE, ch, 0,
 			    victim, TO_NOTVICT);
@@ -7453,10 +8099,10 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	}
 	else
 	{
-		dam = number(1, 4); /* 1d4 dam with bare hands */
+		dam = bare_hand_damage(live_rolls); /* 1d4 dam with bare hands */
 		// Those with unarmed damage get an additional 4 damage with skill at 100.
 		if (GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE))
-			dam += GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE) / 25;
+			dam += unarmed_damage_bonus(ch);
 	}
 
 	if (weapon)
@@ -7499,11 +8145,11 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	if (sic == -1 && GET_CHAR_SKILL(ch, SKILL_DEVASTATING_CRITICAL) > devcrit)
 	{
 		// Caps at 200% - 267% more damage
-		dam = (int)(dam * (300 + GET_CHAR_SKILL(ch, SKILL_DEVASTATING_CRITICAL)) / 150);
+		dam = devastating_critical_damage(dam, ch);
 	}
 	else if (sic == -1)
 	{
-		dam = (int)(dam * 2.0);
+		dam = plain_critical_damage(dam);
 	}
 
 	// What's this diceroll < level-40 ?  Monks get additional crits?
@@ -7582,7 +8228,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	if (vs_skill > 0)
 	{
 		if (GET_CHAR_SKILL(ch, SKILL_ANATOMY) > 0)
-			vs_skill += (int)(GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 2);
+			vs_skill += vicious_strike_anatomy_bonus(ch);
 
 		if (IS_NPC(ch) && IS_ELITE(ch))
 			vs_skill += number(25, 100);
@@ -7596,9 +8242,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	{
 		if (IS_PC(ch))
 		{
-			dam += static_cast<double>(
-				       get_property("damage.modifier.vicious.strike", 1.050)) *
-			       GET_CHAR_SKILL(ch, SKILL_VICIOUS_STRIKE);
+			dam += vicious_strike_bonus_damage(ch);
 		}
 		else if (IS_ELITE(ch))
 		{
@@ -7626,7 +8270,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 	}
 	else if (notch_skill(victim, SKILL_BOILING_BLOOD,
 			     get_property("skill.notch.defensive", 17)) ||
-		 GET_CHAR_SKILL(victim, SKILL_BOILING_BLOOD) / 10 > number(1, 100))
+		 boiling_blood_threshold(victim) > number(1, 100))
 	{
 		snprintf(attacker_msg, sizeof attacker_msg,
 			 "$N is so overcome with bloodlust, your %s barely grazes $M!",
@@ -7637,7 +8281,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		snprintf(room_msg, sizeof room_msg,
 			 "$N is so overcome with bloodlust, $n's %s barely grazes $M!",
 			 attack_hit_text[msg].singular);
-		dam = 1;
+		dam = boiling_blood_damage();
 	}
 	else if (get_linked_char(ch, LNK_FLANKING) == victim)
 	{
@@ -7678,7 +8322,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 				     sizeof attacker_msg, (int)dam);
 	}
 	else if (GET_CHAR_SKILL(ch, SKILL_ANATOMY) && IS_HUMANOID(victim) && IS_HUMANOID(ch) &&
-		 GET_CHAR_SKILL(ch, SKILL_ANATOMY) / 25 >= (number(1, 100)))
+		 anatomy_strike_threshold(ch) >= (number(1, 100)))
 	{
 		dam = anatomy_strike(ch, victim, msg, &messages, attacker_msg, victim_msg, room_msg,
 				     sizeof attacker_msg, (int)dam);
@@ -7768,7 +8412,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 
 	blade_skill = GET_CLASS(ch, CLASS_AVENGER) ? SKILL_HOLY_BLADE : SKILL_TAINTED_BLADE;
 	if (notch_skill(ch, blade_skill, get_property("skill.notch.offensive.auto", 4)) ||
-	    (GET_CHAR_SKILL(ch, blade_skill) >= number(1, 100) && !number(0, 19)))
+	    (GET_CHAR_SKILL(ch, blade_skill) >= number(1, 100) && !tainted_blade_roll(live_rolls)))
 	{
 		if (tainted_blade(ch, victim))
 			return TRUE;
@@ -8236,6 +8880,81 @@ int leapSucceed(P_char victim, P_char attacker)
 	return true;
 }
 
+// The chance threshold, rolled 0-100, of your mount sidestepping a blow.
+static int sidestep_threshold(P_char char_dodger)
+{
+	return GET_CHAR_SKILL(char_dodger, SKILL_SIDESTEP) / 5;
+}
+
+std::string sidestep_facts(P_char ch)
+{
+	return fact("Chance your mount sidesteps a blow",
+		    chance_under(sidestep_threshold(ch), 0, 100)) +
+	       "  You and your mount must both be up, not stunned and not blind.\n";
+}
+
+// A dodger's agility score, before the attacker's weapon skill.
+static int dodge_agility_score(P_char char_dodger)
+{
+	return (int)((GET_C_AGI(char_dodger)) * dam_factor[DF_DODGE_AGI_MODIFIER]);
+}
+
+// The floor and ceiling of a dodge's chance, before conditions.
+static int dodge_floor(P_char char_dodger)
+{
+	return (int)(GET_C_AGI(char_dodger) / 10);
+}
+
+static int dodge_ceiling()
+{
+	return 50;
+}
+
+// A monk's dodge chance from a chance.
+static int dodge_monk_chance(int percent)
+{
+	return (int)(percent * 1.20);
+}
+
+// What a zealot or scoundrel adds.
+static int dodge_specialist_bonus()
+{
+	return 5;
+}
+
+// A drow dodges for free on a roll of 0.
+static int dodge_drow_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 10);
+}
+
+std::string dodge_facts(P_char ch)
+{
+	int low = BOUNDED(dodge_floor(ch), -100000, dodge_ceiling());
+	int high = dodge_ceiling();
+	if (GET_CLASS(ch, CLASS_MONK))
+	{
+		low = dodge_monk_chance(low);
+		high = dodge_monk_chance(high);
+	}
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT) || GET_SPEC(ch, CLASS_BARD, SPEC_SCOUNDREL))
+	{
+		low += dodge_specialist_bonus();
+		high += dodge_specialist_bonus();
+	}
+	std::string text =
+		"  Your rating doesn't matter: dodging uses your agility.\n" +
+		fact("Your agility score", std::to_string(dodge_agility_score(ch))) +
+		"    (less the attacker's weapon skill; levels and stats shift it)\n" +
+		fact("Chance to dodge", show({ low, high }) + " in 101") +
+		"    (less when dazzled, stunned or gazed at; an attacker's stun helps)\n"
+		"  Not while down without groundfighting, or if raging at anyone but your foe.\n";
+	if (tutorial_mobile_mechanics_race(ch) == RACE_DROW)
+		text += fact("Chance of a free dodge as a drow, unstunned and lightly loaded",
+			     one_in(dodge_drow_roll));
+	return text;
+}
+
 /*
 	 * This function does all the necessary details for implementation
 	 * of skill "dodging".  Details include print out messages.
@@ -8256,7 +8975,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	    MIN_POS(char_dodger, POS_STANDING + STAT_NORMAL) && !IS_STUNNED(mount) &&
 	    !IS_BLIND(mount) && !IS_STUNNED(char_dodger) && !IS_BLIND(char_dodger) &&
 	    (notch_skill(char_dodger, SKILL_SIDESTEP, get_property("skill.notch.defensive", 17)) ||
-	     GET_CHAR_SKILL(char_dodger, SKILL_SIDESTEP) / 5 > number(0, 100)))
+	     sidestep_threshold(char_dodger) > number(0, 100)))
 	{
 		act("Your mount sidesteps $n's blow.", FALSE, attacker, 0, char_dodger,
 		    TO_VICT | ACT_NOTTERSE);
@@ -8287,8 +9006,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 		   learned = (int) ((GET_CHAR_SKILL(char_dodger, SKILL_DODGE)) * 1.25) -
 		   (WeaponSkill(attacker, wpn));
 		   */
-	learned = (int)((GET_C_AGI(char_dodger)) * dam_factor[DF_DODGE_AGI_MODIFIER]) -
-		  (WeaponSkill(attacker, wpn));
+	learned = dodge_agility_score(char_dodger) - (WeaponSkill(attacker, wpn));
 
 	// Dwarves now get the DnD 3.5 dodgeroll bonus vs giant races
 	if (has_innate(char_dodger, INNATE_GIANT_AVOIDANCE) &&
@@ -8317,9 +9035,9 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	/*
 		   minimum = (int) (GET_CHAR_SKILL(char_dodger, SKILL_DODGE) / 10);
 		   */
-	minimum = (int)(GET_C_AGI(char_dodger) / 10);
+	minimum = dodge_floor(char_dodger);
 
-	percent = BOUNDED(minimum, learned, 50);
+	percent = BOUNDED(minimum, learned, dodge_ceiling());
 
 	// Modifiers
 	if ((has_innate(char_dodger, INNATE_GROUNDFIGHTING) &&
@@ -8338,13 +9056,13 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 		percent = (6 * percent) / 100;
 
 	if (GET_CLASS(char_dodger, CLASS_MONK))
-		percent = (int)(percent * 1.20);
+		percent = dodge_monk_chance(percent);
 
 	// Improved Zealot/Scoundrel dodge.
 	if (GET_SPEC(char_dodger, CLASS_CLERIC, SPEC_ZEALOT) ||
 	    GET_SPEC(char_dodger, CLASS_BARD, SPEC_SCOUNDREL))
 	{
-		percent += 5;
+		percent += dodge_specialist_bonus();
 	}
 
 	if (IS_STUNNED(attacker))
@@ -8366,7 +9084,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	// This is actually a 9% dodge for all !stunned drow within weight limit..
 	//   I set the weight limit to 100 since the range for load_modifier is between 75 and 300.
 	if (tutorial_mobile_mechanics_race(char_dodger) == RACE_DROW && !IS_STUNNED(char_dodger) &&
-	    (load_modifier(char_dodger) < 100) && !number(0, 10))
+	    (load_modifier(char_dodger) < 100) && !dodge_drow_roll(live_rolls))
 	{
 		// debug("Drow dodge (%s).", GET_NAME(char_dodger));
 	}
@@ -8428,6 +9146,76 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	return 1;
 }
 
+// A blocker's score from the rating and dexterity.
+static int shield_block_rating_score(P_char victim)
+{
+	return GET_CHAR_SKILL(victim, SKILL_SHIELD_BLOCK) / 4;
+}
+
+static int shield_block_dex_score(P_char victim)
+{
+	return dex_app[STAT_INDEX(GET_C_DEX(victim))].reaction * 2;
+}
+
+// A block's score against a monk, and against a flaying weapon.
+static int shield_block_monk_score(int learned)
+{
+	return (int)(learned * 1.75);
+}
+
+static int shield_block_flaying_score(int learned)
+{
+	return (int)(learned * 1.5);
+}
+
+// The chance threshold, rolled 1-400, of slamming with the shield after a block.
+static int improved_shield_combat_threshold(P_char victim)
+{
+	return MAX(20, GET_CHAR_SKILL(victim, SKILL_IMPROVED_SHIELD_COMBAT));
+}
+
+// Damage from a shield slam.
+static int improved_shield_combat_damage(const Rolls &rolls, P_char victim)
+{
+	return rolls.number(
+		40, MAX(41, GET_CHAR_SKILL(victim, SKILL_IMPROVED_SHIELD_COMBAT) *
+				    (int)get_property("skill.improvedShieldCombat.damageMultiplier",
+						      1)));
+}
+
+extern int arrow_block_chance(P_char victim);
+
+std::string shield_block_facts(P_char ch)
+{
+	std::string text;
+	if (GET_CHAR_SKILL(ch, SKILL_SHIELD_BLOCK))
+		text = fact("Your block score", std::to_string(shield_block_rating_score(ch) +
+							       shield_block_dex_score(ch))) +
+		       "    (each side rolls up to its score; the attacker's comes from weapon skill)\n" +
+		       fact("Your score against a monk",
+			    std::to_string(shield_block_monk_score(100)) + "%") +
+		       fact("Your score against a flaying weapon",
+			    std::to_string(shield_block_flaying_score(100)) + "%") +
+		       "  You must wear a shield. Not if raging and it isn't your opponent.\n";
+	else
+		text = "  You need this skill to block blows with a shield.\n";
+	return text + fact("Chance a shield stops a fired arrow",
+			   std::to_string(arrow_block_chance(ch)) + " in 1600, a quarter of that" +
+				   " in melee");
+}
+
+std::string improved_shield_combat_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_IMPROVED_SHIELD_COMBAT))
+		return "  You need this skill to slam with your shield.\n";
+	return fact("Chance to slam after a block",
+		    chance_under(improved_shield_combat_threshold(ch), 1, 400)) +
+	       fact("Damage", show({ improved_shield_combat_damage(lowest_rolls, ch),
+				     improved_shield_combat_damage(highest_rolls, ch) }) +
+				      ", before the attacker's defenses") +
+	       "  You must be standing. A slam replaces the block, so that attack carries on.\n";
+}
+
 int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 {
 	int learned, attackerweaponskill, percent;
@@ -8447,16 +9235,16 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 	if (notch_skill(victim, SKILL_SHIELD_BLOCK, get_property("skill.notch.defensive", 17)))
 		return false;
 
-	learned = GET_CHAR_SKILL(victim, SKILL_SHIELD_BLOCK) / 4;
-	learned += dex_app[STAT_INDEX(GET_C_DEX(victim))].reaction * 2;
+	learned = shield_block_rating_score(victim);
+	learned += shield_block_dex_score(victim);
 
 	if (GET_CLASS(attacker, CLASS_MONK))
-		learned = (int)(learned * 1.75);
+		learned = shield_block_monk_score(learned);
 
 	// Shield block works well versus an attacker that is using a whip/flail.
 	if ((wpn && IS_FLAYING(wpn)) ||
 	    (attacker->equipment[WIELD] && IS_FLAYING(attacker->equipment[WIELD])))
-		learned = (int)(learned * 1.5);
+		learned = shield_block_flaying_score(learned);
 
 	if (IS_AFFECTED5(victim, AFF5_DAZZLEE))
 		learned -= 10;
@@ -8509,7 +9297,7 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 	}
 
 	if (GET_CHAR_SKILL(victim, SKILL_IMPROVED_SHIELD_COMBAT) &&
-	    number(1, 400) < MAX(20, GET_CHAR_SKILL(victim, SKILL_IMPROVED_SHIELD_COMBAT)) &&
+	    number(1, 400) < improved_shield_combat_threshold(victim) &&
 	    MIN_POS(victim, POS_STANDING + STAT_NORMAL))
 	{
 		struct damage_messages messages = {
@@ -8522,11 +9310,7 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 		};
 
 		/* Improved shield combat property can be adjusted on the fly - Lucrot */
-		int dmg = number(
-			40,
-			MAX(41, GET_CHAR_SKILL(victim, SKILL_IMPROVED_SHIELD_COMBAT) *
-					(int)get_property(
-						"skill.improvedShieldCombat.damageMultiplier", 1)));
+		int dmg = improved_shield_combat_damage(live_rolls, victim);
 
 		if (melee_damage(victim, attacker, dmg, 0, &messages) != DAM_NONEDEAD)
 			return true;
@@ -8564,6 +9348,18 @@ int blockSucceed(P_char victim, P_char attacker, P_obj wpn)
 		return true;
 	}
 	return false;
+}
+
+// A monk's counter chance, rolled 1-150, from the skill's floor.
+int monk_riposte_chance(int learned, int percent)
+{
+	return BOUNDED(learned / 25, percent, 15);
+}
+
+// How long a monk must wait before rolling back to its feet again.
+int monk_rise_rest()
+{
+	return PULSE_VIOLENCE;
 }
 
 int MonkRiposte(P_char victim, P_char attacker, P_obj wpn)
@@ -8615,7 +9411,7 @@ int MonkRiposte(P_char victim, P_char attacker, P_obj wpn)
 			SET_POS(victim, POS_STANDING + GET_STAT(victim));
 			// Clear the lag!
 			disarm_char_nevents(victim, event_wait);
-			set_short_affected_by(victim, SKILL_MARTIAL_ARTS, PULSE_VIOLENCE);
+			set_short_affected_by(victim, SKILL_MARTIAL_ARTS, monk_rise_rest());
 			REMOVE_BIT(victim->specials.act2, PLR2_WAIT);
 			update_pos(victim);
 			return FALSE;
@@ -8627,7 +9423,7 @@ int MonkRiposte(P_char victim, P_char attacker, P_obj wpn)
 	if (!MIN_POS(attacker, POS_STANDING + STAT_NORMAL))
 		percent *= 1.1;
 
-	percent = BOUNDED(learned / 25, percent, 15);
+	percent = monk_riposte_chance(learned, percent);
 
 	if (IS_GREATER_RACE(attacker) || IS_ELITE(attacker))
 		percent /= 2;
@@ -8667,6 +9463,70 @@ int combat_mind_parry_skill(int level)
 int combat_mind_parry_bonus(int level)
 {
 	return (int)(level / 2);
+}
+
+// What dexterity and wisdom add to a parry score.
+static int parry_dex_bonus(P_char victim)
+{
+	return dex_app[STAT_INDEX(GET_C_DEX(victim))].reaction * 15;
+}
+
+static int parry_wis_bonus(P_char victim)
+{
+	return wis_app[STAT_INDEX(GET_C_WIS(victim))].bonus * 5;
+}
+
+// Expert parry's score from a parry score; it divides in whole numbers.
+static int expert_parry_score(int learnedvictim, int expertparry)
+{
+	return (int)(learnedvictim * (1 + expertparry / 400));
+}
+
+// A blademaster's or swashbuckler's score, and a paladin or antipaladin's holy sword score.
+static int parry_specialist_score(int learnedvictim)
+{
+	return (int)(learnedvictim * 1.10);
+}
+
+static int parry_sword_score(int learnedvictim)
+{
+	return (int)(learnedvictim * 1.15);
+}
+
+std::string parry_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_PARRY);
+	if (rating < 1)
+		return "  You need this skill to parry, or combat mind as a psionicist.\n";
+	std::string text =
+		fact("Your parry score",
+		     std::to_string(rating + parry_dex_bonus(ch) + parry_wis_bonus(ch))) +
+		"    (rating, dexterity and wisdom; each side rolls up to its score, and the\n"
+		"    attacker's comes from weapon skill and strength)\n";
+	if (GET_SPEC(ch, CLASS_RANGER, SPEC_BLADEMASTER) ||
+	    GET_SPEC(ch, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
+		text += fact("Your specialization's score",
+			     std::to_string(parry_specialist_score(1000) / 10) + "%");
+	if (GET_CLASS(ch, CLASS_ANTIPALADIN) || GET_CLASS(ch, CLASS_PALADIN))
+		text += fact("Your score with a holy sword",
+			     std::to_string(parry_sword_score(1000) / 10) + "%");
+	return text +
+	       "  You must be standing with a weapon. Not with a flaying weapon first, or\n"
+	       "  against one, a bare-handed monk or ghost, or if raging at anyone but your\n"
+	       "  opponent. Harder if dazzled, gazed at, blind or stunned.\n";
+}
+
+std::string expert_parry_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_EXPERT_PARRY);
+	if (!rating)
+		return "  You need this skill to parry expertly.\n";
+	return fact("Your parry score",
+		    std::to_string(expert_parry_score(100, rating)) + "% of normal") +
+	       fact("Taken off a mangle's rating against you",
+		    std::to_string(expert_parry_mangle_penalty(ch))) +
+	       fact("Chance a parry shows as masterful, with no other effect",
+		    chance_under(rating, 1, 250));
 }
 
 int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
@@ -8720,8 +9580,8 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 
 	if (affected_by_spell(victim, SPELL_COMBAT_MIND) && GET_CLASS(victim, CLASS_PSIONICIST))
 		learnedvictim += combat_mind_parry_bonus(GET_LEVEL(victim));
-	learnedvictim += dex_app[STAT_INDEX(GET_C_DEX(victim))].reaction * 15;
-	learnedvictim += wis_app[STAT_INDEX(GET_C_WIS(victim))].bonus * 5;
+	learnedvictim += parry_dex_bonus(victim);
+	learnedvictim += parry_wis_bonus(victim);
 
 	if (learnedvictim < 1)
 		return FALSE;
@@ -8752,8 +9612,7 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 
 	// adding blindfighting check - Jexni 1/21/11
 	if (IS_BLIND(victim))
-		learnedvictim = (int)(blindfightskl > 0 ? (learnedvictim * (blindfightskl / 200)) :
-							  (learnedvictim * 0.05));
+		learnedvictim = parry_blind_score(learnedvictim, blindfightskl);
 
 	if (IS_STUNNED(victim))
 		learnedvictim = (int)(learnedvictim * 0.90);
@@ -8775,18 +9634,18 @@ int parrySucceed(P_char victim, P_char attacker, P_obj wpn)
 		expertparry = GET_CHAR_SKILL(victim, SKILL_EXPERT_PARRY);
 		// 125 percent max bonus
 
-		learnedvictim = (int)(learnedvictim * (1 + expertparry / 400));
+		learnedvictim = expert_parry_score(learnedvictim, expertparry);
 	}
 
 	//  Blademasters and swashbucklers have a better chance.
 	if (GET_SPEC(victim, CLASS_RANGER, SPEC_BLADEMASTER) ||
 	    GET_SPEC(victim, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
-		learnedvictim = (int)(learnedvictim * 1.10);
+		learnedvictim = parry_specialist_score(learnedvictim);
 
 	//  Better chance for ap's
 	if ((GET_CLASS(victim, CLASS_ANTIPALADIN) || GET_CLASS(victim, CLASS_PALADIN)) &&
 	    is_wielding_paladin_sword(victim))
-		learnedvictim = (int)(learnedvictim * 1.15);
+		learnedvictim = parry_sword_score(learnedvictim);
 
 	// Harder to parry a swashbuckler.
 	if (GET_SPEC(attacker, CLASS_WARRIOR, SPEC_SWASHBUCKLER))
@@ -9038,6 +9897,171 @@ void event_windstrom(P_char ch, P_char vict, char *args)
 		     SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &messages);
 }
 
+// The chance thresholds, rolled 1-100, of swinging a four-handed character's other hands.
+static int four_hand_threshold(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50);
+}
+
+static int four_hand_late_threshold(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 45);
+}
+
+std::string dual_wield_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD);
+	std::string text;
+	if (rating <= 0)
+		text = "  Without this skill you can't wield a second weapon.\n";
+	else
+		text = fact("Chance to swing your second weapon each round",
+			    chance_under(rating, 1, 100)) +
+		       "    (two different weapons; monks don't use it)\n";
+	if (HAS_FOUR_HANDS(ch))
+		text += fact("Chance your third or fourth hand joins a swing",
+			     chance_under(four_hand_threshold(ch) + 1, 1, 100)) +
+			fact("Later in the round",
+			     chance_under(four_hand_late_threshold(ch), 1, 100));
+	return text;
+}
+
+std::string improved_twoweapon_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_IMPROVED_TWOWEAPON);
+	if (!rating)
+		return "  You need this skill for an extra off-hand swing.\n";
+	return fact("Chance of another off-hand swing, if you swing your second weapon",
+		    chance_under(rating + 1, 1, 100));
+}
+
+// The chance thresholds, rolled 1-100, of each extra attack.
+int double_attack_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_DOUBLE_ATTACK);
+}
+
+int triple_attack_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_TRIPLE_ATTACK);
+}
+
+static int quadruple_attack_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_QUADRUPLE_ATTACK);
+}
+
+static std::string extra_attack_note(P_char ch)
+{
+	return HAS_FOUR_HANDS(ch) ?
+		       "    (monks don't use it; your other hands can join in: see dual wield)\n" :
+		       "    (monks don't use it)\n";
+}
+
+std::string double_attack_facts(P_char ch)
+{
+	return fact("Chance of an extra attack each round",
+		    chance_under(double_attack_threshold(ch) + 1, 1, 100)) +
+	       extra_attack_note(ch) +
+	       fact("Chance of an extra throw when you throw a weapon",
+		    chance_under(double_attack_threshold(ch), 0, 100));
+}
+
+std::string triple_attack_facts(P_char ch)
+{
+	return fact("Chance of an extra attack each round",
+		    chance_under(triple_attack_threshold(ch) + 1, 1, 100)) +
+	       extra_attack_note(ch) +
+	       fact("Chance of an extra throw when you throw a weapon",
+		    chance_under(triple_attack_threshold(ch), 0, 100));
+}
+
+std::string quadruple_attack_facts(P_char ch)
+{
+	return fact("Chance of an extra attack each round",
+		    chance_under(quadruple_attack_threshold(ch), 1, 100)) +
+	       extra_attack_note(ch);
+}
+
+// The chance threshold, rolled 1-100, of battle senses at each attack round on you.
+static int battle_senses_threshold(P_char opponent)
+{
+	return (1 + (GET_CHAR_SKILL(opponent, SKILL_BATTLE_SENSES) / 10));
+}
+
+static int battle_senses_duration()
+{
+	return 1;
+}
+
+std::string battle_senses_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_BATTLE_SENSES))
+		return "  You need this skill for battle senses.\n";
+	const std::string chance = chance_under(battle_senses_threshold(ch) + 1, 1, 100);
+	return fact("Chance when an attack round on you starts", chance + ", then " + chance) +
+	       fact("While it lasts your dodge never misses", seconds(battle_senses_duration())) +
+	       "    (the round it starts, if you can dodge at all)\n"
+	       "  You must be standing, not stunned and not blind.\n";
+}
+
+// The chance threshold, rolled 1-100, of slipping behind your opponent.
+static int shadow_movement_threshold(P_char ch)
+{
+	return 1 + GET_CHAR_SKILL(ch, SKILL_SHADOW_MOVEMENT) / 4;
+}
+
+static int shadow_movement_duration()
+{
+	return 4;
+}
+
+std::string shadow_movement_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_SHADOW_MOVEMENT))
+		return "  You need this skill to move through shadows.\n";
+	return fact("Chance at the start of your attack round",
+		    chance_under(shadow_movement_threshold(ch), 1, 100)) +
+	       fact("Your attacks can't be parried, blocked or dodged for",
+		    seconds(shadow_movement_duration())) +
+	       "  Not in sunlight. You must be standing, not stunned and not blind.\n";
+}
+
+// The chance threshold, rolled 0-100, of a second strike at another fighter.
+static int double_strike_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_DOUBLE_STRIKE) / 20;
+}
+
+std::string double_strike_facts(P_char ch)
+{
+	return fact("Chance after each attack", chance_under(double_strike_threshold(ch), 0, 100)) +
+	       "  It swings your other weapon at another front-line fighter outside your group,\n"
+	       "  if there is one.\n";
+}
+
+// What devotion adds to a zealot's chance to regain a spell, and that chance, rolled 1-100.
+int devotion_zealot_bonus(int devotion)
+{
+	int bonus1 = 0;
+
+	if (devotion && devotion > 0)
+	{
+		if (devotion >= 100)
+			bonus1 += 3;
+		else if (devotion >= 50)
+			bonus1 += 2;
+		else
+			bonus1 += 1;
+	}
+	return bonus1;
+}
+
+int zealot_regain_threshold(int bonus1)
+{
+	return (int)(get_property("zealots.memHitChance", 3)) + bonus1;
+}
+
 // Above this level a psionicist's combat mind adds a second attack, not one.
 int combat_mind_second_attack_above()
 {
@@ -9113,7 +10137,7 @@ int calculate_attacks(P_char ch, int attacks[])
 			ADD_ATTACK(PRIMARY_WEAPON);
 			// Can swing both primary hands at once - 50% for newbs, 100% for maxxed dual wield.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[THIRD_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50) >= number(1, 100)))
+			    (four_hand_threshold(ch) >= number(1, 100)))
 			{
 				ADD_ATTACK(THIRD_WEAPON);
 			}
@@ -9130,8 +10154,7 @@ int calculate_attacks(P_char ch, int attacks[])
 				ADD_ATTACK(SECONDARY_WEAPON);
 				// Can swing both secondary hands at once - 50% for newbs, 100% for maxxed dual wield.
 				if (HAS_FOUR_HANDS(ch) && ch->equipment[FOURTH_WEAPON] &&
-				    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50) >=
-				     number(1, 100)))
+				    (four_hand_threshold(ch) >= number(1, 100)))
 				{
 					ADD_ATTACK(FOURTH_WEAPON);
 				}
@@ -9141,8 +10164,7 @@ int calculate_attacks(P_char ch, int attacks[])
 					ADD_ATTACK(SECONDARY_WEAPON);
 					// Can swing both secondary hands at once - 50% for newbs, 100% for maxxed dual wield.
 					if (HAS_FOUR_HANDS(ch) && ch->equipment[FOURTH_WEAPON] &&
-					    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50) >=
-					     number(1, 100)))
+					    (four_hand_threshold(ch) >= number(1, 100)))
 					{
 						ADD_ATTACK(FOURTH_WEAPON);
 					}
@@ -9284,18 +10306,18 @@ int calculate_attacks(P_char ch, int attacks[])
 
 		if (notch_skill(ch, SKILL_DOUBLE_ATTACK,
 				get_property("skill.notch.offensive.auto", 4)) ||
-		    GET_CHAR_SKILL(ch, SKILL_DOUBLE_ATTACK) >= number(1, 100))
+		    double_attack_threshold(ch) >= number(1, 100))
 		{
 			ADD_ATTACK(PRIMARY_WEAPON);
 			// Can swing both primary hands at once - 99% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[THIRD_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50) > number(1, 100)))
+			    (four_hand_threshold(ch) > number(1, 100)))
 			{
 				ADD_ATTACK(THIRD_WEAPON);
 			}
 			// Can swing second secondary hand - 94% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[FOURTH_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 45) > number(1, 100)))
+			    (four_hand_late_threshold(ch) > number(1, 100)))
 			{
 				ADD_ATTACK(FOURTH_WEAPON);
 			}
@@ -9303,18 +10325,18 @@ int calculate_attacks(P_char ch, int attacks[])
 
 		if (notch_skill(ch, SKILL_TRIPLE_ATTACK,
 				get_property("skill.notch.offensive.auto", 4)) ||
-		    GET_CHAR_SKILL(ch, SKILL_TRIPLE_ATTACK) >= number(1, 100))
+		    triple_attack_threshold(ch) >= number(1, 100))
 		{
 			ADD_ATTACK(PRIMARY_WEAPON);
 			// Can swing both primary hands at once - 94% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[THIRD_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 45) > number(1, 100)))
+			    (four_hand_late_threshold(ch) > number(1, 100)))
 			{
 				ADD_ATTACK(THIRD_WEAPON);
 			}
 			// Can swing primary secondary hand - 94% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[SECONDARY_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 45) > number(1, 100)))
+			    (four_hand_late_threshold(ch) > number(1, 100)))
 			{
 				ADD_ATTACK(SECONDARY_WEAPON);
 			}
@@ -9322,12 +10344,12 @@ int calculate_attacks(P_char ch, int attacks[])
 
 		if (notch_skill(ch, SKILL_QUADRUPLE_ATTACK,
 				get_property("skill.notch.offensive.auto", 4)) ||
-		    GET_CHAR_SKILL(ch, SKILL_QUADRUPLE_ATTACK) > number(1, 100))
+		    quadruple_attack_threshold(ch) > number(1, 100))
 		{
 			ADD_ATTACK(PRIMARY_WEAPON);
 			// Can swing both primary hands at once - 94% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[THIRD_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 45) > number(1, 100)))
+			    (four_hand_late_threshold(ch) > number(1, 100)))
 			{
 				ADD_ATTACK(THIRD_WEAPON);
 			}
@@ -9342,7 +10364,7 @@ int calculate_attacks(P_char ch, int attacks[])
 			ADD_ATTACK(PRIMARY_WEAPON);
 			// Can swing both primary hands at once - 100% chance max.
 			if (HAS_FOUR_HANDS(ch) && ch->equipment[THIRD_WEAPON] &&
-			    ((GET_CHAR_SKILL(ch, SKILL_DUAL_WIELD) / 2 + 50) >= number(1, 100)))
+			    (four_hand_threshold(ch) >= number(1, 100)))
 			{
 				ADD_ATTACK(THIRD_WEAPON);
 			}
@@ -9767,8 +10789,7 @@ void perform_violence(void)
 					get_property("skill.notch.defensive", 17)))
 			{
 			}
-			else if ((1 + (GET_CHAR_SKILL(opponent, SKILL_BATTLE_SENSES) / 10)) >=
-				 number(1, 100))
+			else if (battle_senses_threshold(opponent) >= number(1, 100))
 			{
 				act("&+wA sense of awareness &+bflows &+wover you as you move into &+rbattle.&n",
 				    FALSE, opponent, 0, 0, TO_CHAR);
@@ -9777,7 +10798,8 @@ void perform_violence(void)
 				act("$n &+bflows into battle with the speed of a &+yviper.&n",
 				    FALSE, opponent, 0, 0, TO_NOTVICT);
 
-				set_short_affected_by(opponent, SKILL_BATTLE_SENSES, 1);
+				set_short_affected_by(opponent, SKILL_BATTLE_SENSES,
+						      battle_senses_duration());
 			}
 		}
 
@@ -9786,8 +10808,7 @@ void perform_violence(void)
 		    GET_POS(opponent) == POS_STANDING && !IS_STUNNED(opponent) &&
 		    !IS_BLIND(opponent))
 		{
-			if ((1 + (GET_CHAR_SKILL(opponent, SKILL_BATTLE_SENSES) / 10)) >=
-			    number(1, 100))
+			if (battle_senses_threshold(opponent) >= number(1, 100))
 			{
 				act("&+wA sense of awareness &+bflows &+wover you as you move into &+rbattle.&n",
 				    FALSE, opponent, 0, 0, TO_CHAR);
@@ -9796,7 +10817,8 @@ void perform_violence(void)
 				act("$n &+bflows into battle with the speed of a &+yviper.&n",
 				    FALSE, opponent, 0, 0, TO_NOTVICT);
 
-				set_short_affected_by(opponent, SKILL_BATTLE_SENSES, 1);
+				set_short_affected_by(opponent, SKILL_BATTLE_SENSES,
+						      battle_senses_duration());
 			}
 		}
 
@@ -9831,7 +10853,7 @@ void perform_violence(void)
 			    !IS_STUNNED(ch) && GET_POS(ch) == POS_STANDING &&
 			    (notch_skill(ch, SKILL_SHADOW_MOVEMENT,
 					 get_property("skill.notch.offensive.auto", 4)) ||
-			     (1 + GET_CHAR_SKILL(ch, SKILL_SHADOW_MOVEMENT) / 4 > number(1, 100))))
+			     (shadow_movement_threshold(ch) > number(1, 100))))
 			{
 				act("$n &+wblinks out of existence ... then reappears &+ybehind&n $N!&n",
 				    FALSE, ch, 0, opponent, TO_NOTVICT);
@@ -9840,7 +10862,8 @@ void perform_violence(void)
 				if (!IS_BLIND(opponent))
 					act("$n &+wblinks out of existence ... then reappears &+ybehind you!&n",
 					    FALSE, ch, 0, opponent, TO_VICT);
-				set_short_affected_by(ch, SKILL_SHADOW_MOVEMENT, 4);
+				set_short_affected_by(ch, SKILL_SHADOW_MOVEMENT,
+						      shadow_movement_duration());
 			}
 		}
 
@@ -10076,7 +11099,7 @@ int pv_common(P_char ch, P_char opponent, const P_obj wpn, int *damAccumulator)
 	      notch_skill(ch, wpn_skill, get_property("skill.notch.offensive.auto", 4))) &&
 	    GET_STAT(opponent) == STAT_NORMAL && !IS_IMMOBILE(ch) &&
 	    (has_innate(ch, INNATE_EYELESS) || CAN_SEE(opponent, ch) ||
-	     GET_CHAR_SKILL(opponent, SKILL_BLINDFIGHTING) / 3 > number(0, 100)))
+	     blindfighting_defense_threshold(opponent) > number(0, 100)))
 	{
 		if (affected_by_spell(ch, SKILL_SHADOW_MOVEMENT))
 		{
@@ -10133,22 +11156,14 @@ int pv_common(P_char ch, P_char opponent, const P_obj wpn, int *damAccumulator)
 	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT) && success && IS_ALIVE(ch))
 	{
 		int devotion = GET_CHAR_SKILL(ch, SKILL_DEVOTION);
-		int chance1 = 0, bonus1 = 0;
+		int chance1 = 0, bonus1;
 
 		if (IS_NPC(ch) && IS_ELITE(ch) && !IS_PC_PET(ch))
 			devotion = GET_LEVEL(ch) * 2;
 
-		if (devotion && devotion > 0)
-		{
-			if (devotion >= 100)
-				bonus1 += 3;
-			else if (devotion >= 50)
-				bonus1 += 2;
-			else
-				bonus1 += 1;
-		}
+		bonus1 = devotion_zealot_bonus(devotion);
 
-		chance1 = (int)(get_property("zealots.memHitChance", 3)) + bonus1;
+		chance1 = zealot_regain_threshold(bonus1);
 
 		//    debug("chance to recover spell is (%d).", chance1);
 
@@ -10172,7 +11187,7 @@ int pv_common(P_char ch, P_char opponent, const P_obj wpn, int *damAccumulator)
 	}
 	else if (notch_skill(ch, SKILL_DOUBLE_STRIKE,
 			     get_property("skill.notch.offensive.auto", 4)) ||
-		 GET_CHAR_SKILL(ch, SKILL_DOUBLE_STRIKE) / 20 > number(0, 100) ||
+		 double_strike_threshold(ch) > number(0, 100) ||
 		 (affected_by_spell(ch, SKILL_WHIRLWIND) && !number(0, 2)))
 	{
 		double_strike(ch, opponent, wpn);
@@ -10381,6 +11396,48 @@ bool fear_check(P_char ch, bool force)
 	return FALSE;
 }
 
+// Which follow-up a critical attack takes, and the 1 in 3 its disarm needs.
+static int critical_attack_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+static int critical_attack_disarm_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+// The vitality a target above the floor keeps after a blow to the bone.
+static int critical_attack_vitality(int vitality)
+{
+	return (int)(vitality * 0.75);
+}
+
+static int critical_attack_vitality_floor()
+{
+	return 20;
+}
+
+std::string critical_attack_facts(P_char ch)
+{
+	if (!critical_attack_threshold(ch))
+		return "  You need this skill for a critical attack.\n";
+	return fact("Chance on a critical hit",
+		    chance_under(critical_attack_threshold(ch), 1, 100)) +
+	       "  One of " +
+	       std::to_string(critical_attack_roll(highest_rolls) -
+			      critical_attack_roll(lowest_rolls) + 1) +
+	       " follow-ups, picked evenly:\n" +
+	       fact("    Vitality the target keeps above " +
+			    std::to_string(critical_attack_vitality_floor()),
+		    std::to_string(critical_attack_vitality(100)) + "%") +
+	       "      (a target that isn't humanoid gets the next one instead)\n"
+	       "      Shatters its stoneskin, biofeedback or shadow shield, if any.\n" +
+	       fact("    Knocks its weapon away", one_in(critical_attack_disarm_roll)) +
+	       "      An extra attack with your second weapon, bare-handed if you have none.\n"
+	       "  Constructs are immune.\n";
+}
+
 bool critical_attack(P_char ch, P_char victim, int msg)
 {
 	char attacker_msg[MAX_STRING_LENGTH];
@@ -10391,7 +11448,7 @@ bool critical_attack(P_char ch, P_char victim, int msg)
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim) || GET_RACE(victim) == RACE_CONSTRUCT)
 		return FALSE;
 
-	random = number(0, 3);
+	random = critical_attack_roll(live_rolls);
 
 	if (random == 0)
 	{
@@ -10411,13 +11468,14 @@ bool critical_attack(P_char ch, P_char victim, int msg)
 				 "$N's body &+yquivers&n as $n's hit strikes deep!&N");
 			act(room_msg, TRUE, ch, NULL, victim, TO_NOTVICT);
 
-			if (GET_VITALITY(victim) > 20)
-				victim->points.vitality = (int)(victim->points.vitality * 0.75);
+			if (GET_VITALITY(victim) > critical_attack_vitality_floor())
+				victim->points.vitality =
+					critical_attack_vitality(victim->points.vitality);
 
 			return TRUE;
 		}
 	}
-	if (random == 1 && !number(0, 2))
+	if (random == 1 && !critical_attack_disarm_roll(live_rolls))
 	{
 		snprintf(room_msg, MAX_STRING_LENGTH,
 			 "$n's mighty %s knocks $N's weapon from $S grasp!&n",

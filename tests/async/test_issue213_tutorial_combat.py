@@ -49,6 +49,7 @@ prelude = r'''
 #include "net/comm.h"
 #include "combat/dam_mods.h"
 #include "combat/damage.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
@@ -62,6 +63,8 @@ int berserks = 0, procs = 0; bool active_berserk = false;
 [[noreturn]] int panic_corruption_int(const char *, const char *, ...) { std::abort(); }
 float get_property(const char *, double fallback) { return fallback; }
 int number(int low, int high) { return low == 0 ? 0 : high; }
+static int no_dice(int, int) { return 0; }
+const Rolls live_rolls = { no_dice, number };
 bool affected_by_spell(P_char, int spell) { return active_berserk && spell == SKILL_BERSERK; }
 void berserk(P_char, int duration) { assert(duration == 6 * PULSE_VIOLENCE); ++berserks; }
 bool minotaur_race_proc(P_char, P_char victim) { ++procs; GET_HIT(victim) -= 7; return false; }
@@ -85,6 +88,7 @@ void npc(int slot, int vnum, int race) {
 '''
 functions = extract_function('specs.ailvio.c', 'int tutorial_mobile_mechanics_race(')
 functions += extract_function('fight.c', 'double orc_horde_dam_modifier(')
+functions += extract_function('fight.c', 'static int dodge_drow_roll(')
 functions += extract_function('sparser.c', 'int get_weight_allies_in_room(')
 functions += '\nvoid low_health(P_char victim) {\n' + low_health + '\n}\n'
 functions += '\nvoid racial_hit(P_char ch, P_char victim) {\n' + hit + '\n}\n'

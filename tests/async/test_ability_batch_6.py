@@ -1019,7 +1019,7 @@ def check_sources():
     assert re.search(r"displacement_absorb_roll\(live_rolls\)\)\s*&&\s*!\(flags & PHSDAM_NOREDUCE\)\s*&&\s*"
                      r"!affected_by_spell\(ch, SPELL_COMBAT_MIND\)\)\s*\{\s*dam = 0", melee)
     assert re.search(r"if \(sic == 1 && !affected_by_spell\(ch, SPELL_COMBAT_MIND\)\)", fight)
-    assert re.search(r"!number\(0, 3\) && !affected_by_spell\(victim, SPELL_COMBAT_MIND\)", fight)
+    assert re.search(r"!mangle_disarm_roll\(live_rolls\) &&\s*!affected_by_spell\(victim, SPELL_COMBAT_MIND\)", fight)
     assert re.search(r"SKILL_PARRY, get_property\(\"skill.notch.defensive\", 17\)\) &&\s*"
                      r"!affected_by_spell\(victim, SPELL_COMBAT_MIND\)", fight)
     assert "strip_holy_sword(victim)" in source("actnew.c").read_text()

@@ -143,6 +143,10 @@ functions = [
     ('fight.c', 'float ironwood_melee_share('),
     ('fight.c', 'float drakescale_aegis_melee_share('),
     ('fight.c', 'int skin_spell_deduct('),
+    ('fight.c', 'static int critical_attack_roll('),
+    ('fight.c', 'static int critical_attack_disarm_roll('),
+    ('fight.c', 'static int critical_attack_vitality('),
+    ('fight.c', 'static int critical_attack_vitality_floor('),
     ('fight.c', 'bool critical_attack('),
 ]
 skills = source('skills.c').read_text()
