@@ -1156,7 +1156,7 @@ static std::string innate_status(P_char ch, int innate)
 {
 	struct affected_type *afp = find_innate_timer(ch, innate);
 	if (!afp)
-		return "ready";
+		return "&+Gready&n";
 	int pulses = 0;
 	P_nevent event;
 	LOOP_EVENTS_CH(event, ch->nevents)
@@ -1171,9 +1171,10 @@ static std::string innate_status(P_char ch, int innate)
 	// check_innate_time refuses a use once the timer is down to its last one.
 	const int uses_left = afp->modifier - 1;
 	if (uses_left > 0)
-		return std::to_string(uses_left) + (uses_left == 1 ? " use" : " uses") +
-		       " left; all uses return in " + real_time(pulses);
-	return "resting; ready in " + real_time(pulses);
+		return "&+W" + std::to_string(uses_left) + "&n" +
+		       (uses_left == 1 ? " use" : " uses") + " left; all uses return in &+W" +
+		       real_time(pulses) + "&n";
+	return "&+Yresting&n; ready in &+W" + real_time(pulses) + "&n";
 }
 
 // innate info <name>: what an innate is, the viewer's access, its rest, and its mechanics.
@@ -1203,21 +1204,23 @@ void innate_info(P_char ch, const char *arg)
 	}
 
 	const int unlock = innate_unlock_level(ch, found);
-	std::string text = std::string("\n&+C  >====[ ") + innates_data[found].name +
-			   " : INNATE INFO&+C ]====<&n\n\n  Type: " +
-			   (innates_data[found].func ? "Active" : "Always active") + "\n";
+	const std::string level = "&+W" + std::to_string(unlock) + "&n";
+	std::string text =
+		std::string("\n&+C  >====[ &+W") + innates_data[found].name +
+		"&+C : INNATE INFO ]====<&n\n\n" +
+		info_field("Type", innates_data[found].func ? "&+WActive&n" : "&+WAlways active&n");
 	if (!unlock)
-		text += "  Not available to your race, class or specialization.\n";
+		text += "&+L  Not available to your race, class or specialization.&n\n";
 	else if (GET_LEVEL(ch) < unlock)
-		text += "  Unlocks for you at level " + std::to_string(unlock) + ".\n";
+		text += "  &+YUnlocks for you&n at level " + level + ".\n";
 	else
 	{
-		text += "  You have it (from level " + std::to_string(unlock) + ").\n";
+		text += "  &+GYou have it&n (from level " + level + ").\n";
 		if (innates_data[found].func)
-			text += "  Status: " + innate_status(ch, found) + "\n";
+			text += info_field("Status", innate_status(ch, found));
 	}
 	if (AbilityFacts facts = innate_facts(found))
-		text += "\n&+W  Mechanics&n\n" + facts(ch);
+		text += mechanics_section(facts(ch));
 	send_to_char(text.c_str(), ch);
 }
 
@@ -3637,7 +3640,11 @@ void do_innate(P_char ch, char *arg, int cmd)
 			}
 			send_to_char(buf, ch);
 		}
-		send_to_char("  Details: &+Winnate info <innate name>&n\n", ch);
+		send_to_char(
+			"\n  &+cUse:&n  &+Winnate <name>&n [arguments]\n"
+			"  &+cInfo:&n &+Winnate info <name>&n        access, status and mechanics\n"
+			"  &+cList:&n &+Winnate list&n [&+Wall&n|&+Wplayer&n]  every innate and who gets it\n",
+			ch);
 		return;
 	}
 

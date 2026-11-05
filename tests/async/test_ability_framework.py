@@ -96,6 +96,15 @@ int main() {
     assert(game_hours(-1) == "permanent");
     assert(game_hours(8001) == "8001-8002 game hours (10001.25-10002.5 minutes)");
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
+    // Info pages style facts at render time: cyan labels, bright numbers, dim notes.
+    assert(info_field("Type", "Skill") == "  &+cType:&n Skill\n");
+    assert(mechanics_section("  Fire damage: 84-504 at your level, 50\n  Armor class: -10\n"
+                             "  Your lag: 1.5 seconds\n  Defenses apply after.\n") ==
+           "\n&+W  Mechanics&n\n  &+cFire damage:&n &+W84-504&n at your level, &+W50&n\n"
+           "  &+cArmor class:&n &+W-10&n\n  &+cYour lag:&n &+W1.5&n seconds\n"
+           "&+L  Defenses apply after.&n\n");
+    assert(mechanics_section("  Every saving throw: +7\n    (or water: 2 more)\n") ==
+           "\n&+W  Mechanics&n\n  &+cEvery saving throw:&n &+W+7&n\n    (or water: &+W2&n more)\n");
     assert(ability_facts(SPELL_FIREBALL) == fireball_facts);
     assert(ability_facts(SKILL_BASH) == bash_facts);
     assert(ability_facts(UNCONVERTED) == nullptr);

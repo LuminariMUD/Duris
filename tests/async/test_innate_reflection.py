@@ -23,6 +23,7 @@ prelude = r'''
 #include "world/events.h"
 #include <cassert>
 #include <cstring>
+#include <regex>
 #include <string>
 Skill skills[MAX_SKILLS];
 index_data indexes[1]{};
@@ -64,7 +65,7 @@ static void clear(P_char ch) {
 }
 '''
 functions = [
-    ('utility.c', 'int flag2idx('),
+    ('utility.c', 'int flag2idx('), ('utility.c', 'string strip_ansi('),
     ('interp.c', 'void argument_interpreter('), ('interp.c', 'char *one_argument('),
     ('interp.c', 'bool is_abbrev('),
     ('utility.c', 'int strn_cmp('), ('sparser.c', 'char *skip_spaces('),
@@ -77,7 +78,8 @@ functions = [
     ('innates.c', 'bool can_use_innate('), ('innates.c', 'bool check_innate_time('),
     ('innates.c', 'static int reflection_innate_lag('), ('innates.c', 'void do_innate_reflection(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
     ('abilities.c', 'std::string fact('), ('abilities.c', 'std::string seconds('),
-    ('abilities.c', 'std::string real_time('),
+    ('abilities.c', 'std::string real_time('), ('abilities.c', 'std::string info_field('),
+    ('abilities.c', 'static std::string bright_numbers('), ('abilities.c', 'std::string mechanics_section('),
     ('innates.c', 'static std::string innate_rest_facts('), ('innates.c', 'static std::string innate_status('),
     ('innates.c', 'void innate_info(P_char ch'), ('innates.c', 'std::string reflection_innate_facts('),
 ]
@@ -88,9 +90,15 @@ static std::string info(P_char ch, const char *name) {
     output.clear();
     std::string args = std::string("info ") + name;
     do_innate(ch, args.data(), CMD_INNATE);
-    return output;
+    return strip_ansi(output.c_str());
 }
 static bool has(const std::string &text, const char *part) { return text.find(part) != std::string::npos; }
+static std::string innate_list(P_char ch) {
+    output.clear();
+    char args[] = "";
+    do_innate(ch, args, CMD_INNATE);
+    return strip_ansi(output.c_str());
+}
 int main() {
     assign_innates();
     assert(INNATE_WEB_SPRAY == 178 && INNATE_REFLECTION == 179);
@@ -155,6 +163,10 @@ int main() {
     ch.player.race = RACE_HUMAN;
     assert(has(info(&ch, "reflection"), "Not available to your race, class or specialization."));
     assert(has(info(&ch, "nothing such"), "Provide a known innate name"));
+    // The plain list ends with its subcommands, their descriptions in one column.
+    assert(has(innate_list(&ch), "\n  Use:  innate <name> [arguments]\n"
+                                 "  Info: innate info <name>        access, status and mechanics\n"
+                                 "  List: innate list [all|player]  every innate and who gets it\n"));
     // Names that share a first word resolve by the whole name.
     assert(has(info(&ch, "protection from cold"), "protection from cold : INNATE INFO"));
     assert(has(info(&ch, "summon warg  "), "summon warg : INNATE INFO"));

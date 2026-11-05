@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <regex>
 
 // dice() raises a count or size below 1 to 1; number() accepts its bounds in either order.
 static int lowest_dice(int count, int /*sides*/)
@@ -93,6 +94,42 @@ std::string real_time(int pulses)
 	std::string text = std::to_string(minutes) + (minutes == 1 ? " minute" : " minutes");
 	if (rest)
 		text += " " + std::to_string(rest) + (rest == 1 ? " second" : " seconds");
+	return text;
+}
+
+std::string info_field(const std::string &label, const std::string &value)
+{
+	return "  &+c" + label + ":&n " + value + "\n";
+}
+
+// Numbers and ranges such as 12, -10, +7, 1.5 and 84-504, in bright white.
+static std::string bright_numbers(const std::string &text)
+{
+	static const std::regex number(R"([-+]?\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?%?)");
+	return std::regex_replace(text, number, "&+W$&&n");
+}
+
+// A "  Label: value" fact gets a cyan label and bright numbers, a four-space line
+// continuing the fact above keeps its numbers bright, and a note line is dimmed.
+std::string mechanics_section(const std::string &facts)
+{
+	std::string text = "\n&+W  Mechanics&n\n";
+	for (size_t start = 0; start < facts.size();)
+	{
+		size_t end = facts.find('\n', start);
+		if (end == std::string::npos)
+			end = facts.size();
+		const std::string line = facts.substr(start, end - start);
+		const size_t colon = line.find(": ");
+		if (line.compare(0, 4, "    ") == 0)
+			text += bright_numbers(line) + "\n";
+		else if (line.compare(0, 2, "  ") == 0 && colon != std::string::npos)
+			text += info_field(line.substr(2, colon - 2),
+					   bright_numbers(line.substr(colon + 2)));
+		else
+			text += "&+L" + line + "&n\n";
+		start = end + 1;
+	}
 	return text;
 }
 

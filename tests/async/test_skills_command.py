@@ -18,6 +18,7 @@ HARNESS = r'''
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
+#include <regex>
 #include <string>
 extern const struct class_names class_names_table[];
 extern const char *specdata[][MAX_SPEC];
@@ -194,7 +195,10 @@ def main():
                  extract_function("utility.c", "ClassSkillInfo SKILL_DATA_ALL("),
                  extract_function("utility.c", "int GET_LVL_FOR_SKILL("),
                  extract_function("utility.c", "int GET_CHAR_SKILL_P("),
-                 extract_function("wikihelp.c", "string trim(")]
+                 extract_function("wikihelp.c", "string trim("),
+                 extract_function("abilities.c", "std::string info_field("),
+                 extract_function("abilities.c", "static std::string bright_numbers("),
+                 extract_function("abilities.c", "std::string mechanics_section(")]
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="skills-command-", dir=build) as temporary:
