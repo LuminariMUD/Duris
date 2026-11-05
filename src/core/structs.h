@@ -1199,6 +1199,9 @@ struct affected_type
 	ubyte location; /* Tells which ability to change(APPLY_XXX)*/
 	uint16_t loc2; // skill IDs extend beyond the byte-sized apply locations
 	void *context;
+	int set_zone; // Transient provenance of an affect created by named equipment.
+	int set_spell;
+	uint64_t set_owner;
 	unsigned short level;
 	unsigned long bitvector; /* Tells which bits to set (AFF_XXX)       */
 	unsigned long bitvector2; /* Tells which bits to set (AFF2_XXX)      */

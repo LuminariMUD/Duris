@@ -9,6 +9,7 @@
  */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/profile.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -2056,6 +2057,7 @@ struct affected_type *affect_to_char(P_char ch, struct affected_type *af)
 
 	affected_alloc = (struct affected_type *)mm_get(dead_affect_pool);
 	*affected_alloc = *af;
+	named_set_grant::mark(ch, affected_alloc);
 
 	affected_alloc->next = ch->affected;
 	ch->affected = affected_alloc;

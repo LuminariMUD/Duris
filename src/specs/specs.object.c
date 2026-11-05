@@ -19,6 +19,7 @@
 
 #include "core/prototypes.h"
 #include "item/named_sets.h"
+#include "item/named_set_effects.h"
 #include "item/named_set_origin.h"
 #include "abilities/abilities.h"
 #include "item/forced_weapon_drop.h"
@@ -13294,7 +13295,22 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 {
 	if (!named_set_effect_supported(spell))
 		return;
+	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
+	{
+		if ((affect->flags & AFFTYPE_SET_AFFECT) && affect->set_owner == ch->runtime_id &&
+		    affect->set_spell == spell)
+			return;
+		// Registered aliases can create a different native affect ID. Do not
+		// refresh an ordinary cast or a surviving multipart grant through its alias.
+		if (spell != SPELL_CONJURE_ELEMENTAL && spell != SPELL_INVIGORATE &&
+		    (affect->type == spell ||
+		     (affect->type > 0 && affect->type <= MAX_AFFECT_TYPES &&
+		      skills[spell].spell_pointer &&
+		      skills[affect->type].spell_pointer == skills[spell].spell_pointer)))
+			return;
+	}
 
+	named_set_grant grant(ch, ch, zone, spell);
 	int message = SETMSG_NONE;
 	char buffer[512];
 
@@ -13355,11 +13371,8 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		break;
 	case SPELL_STRENGTH:
 	case SPELL_BLESS:
-		if (!affected_by_spell(ch, spell))
-		{
-			(skills[spell].spell_pointer)(MIN(56, count * 10), ch, 0, 0, ch, 0);
-			message = SETMSG_STRENGTH;
-		}
+		(skills[spell].spell_pointer)(MIN(56, count * 10), ch, 0, 0, ch, 0);
+		message = SETMSG_STRENGTH;
 		break;
 	case SPELL_CONJURE_ELEMENTAL:
 		if (obj->timer[0] + get_property("timer.conjureElement.generic", 300) < time(NULL))
@@ -13379,43 +13392,29 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		}
 		break;
 	case SPELL_ENDURANCE:
-		if (!affected_by_spell(ch, spell) &&
-		    !affected_by_spell(ch, SPELL_MIELIKKI_VITALITY))
+		if (!affected_by_spell(ch, SPELL_MIELIKKI_VITALITY))
 		{
 			(skills[spell].spell_pointer)(MAX(30, count * 10), ch, 0, 0, ch, 0);
 			message = SETMSG_STRENGTH;
 		}
 		break;
 	case SONG_DRAGONS:
-		if (!affected_by_spell(ch, spell))
+	{
+		P_char tch = NULL, next = NULL;
+		for (tch = world[ch->in_room].people; tch; tch = next)
 		{
-			P_char tch = NULL, next = NULL;
-			for (tch = world[ch->in_room].people; tch; tch = next)
+			next = tch->next_in_room;
+
+			if ((ch != tch) && !grouped(ch, tch))
 			{
-				next = tch->next_in_room;
-
-				if ((ch != tch) && !grouped(ch, tch))
-				{
-					continue;
-				}
-
-				// Sing the song.
-				bard_dragons(MIN(56, count * 10), ch, tch, spell);
-				struct affected_type *paf = get_spell_from_char(tch, SONG_DRAGONS);
-				if (paf)
-				{
-					// hack to keep the song_dragons affect on the character
-					// for the same duration as the prot spells when proc'ing
-					// from an item, otherwise it has a duration of 1 and falls
-					// frequently, negating the !fear ability of the song for
-					// many group members
-					paf->duration = GET_LEVEL(ch) / 3;
-					SET_BIT(paf->flags, AFFTYPE_SET_AFFECT | AFFTYPE_NOSAVE);
-					paf->context = reinterpret_cast<void *>(zone);
-				}
+				continue;
 			}
+
+			named_set_grant group_grant(ch, tch, zone, spell);
+			bard_dragons(MIN(56, count * 10), ch, tch, spell);
 		}
 		break;
+	}
 	case SKILL_EPIC_STRENGTH:
 	case SKILL_EPIC_POWER:
 	case SKILL_EPIC_AGILITY:
@@ -13440,13 +13439,14 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		}
 		break;
 	default:
-		if (!affected_by_spell(ch, spell))
-		{
-			(skills[spell].spell_pointer)(MIN(56, count * 10), ch, 0, 0, ch, 0);
-			message = SETMSG_PROTECT;
-		}
+		(skills[spell].spell_pointer)(MIN(56, count * 10), ch, 0, 0, ch, 0);
+		message = SETMSG_PROTECT;
 		break;
 	}
+
+	if (spell != SPELL_CONJURE_ELEMENTAL && spell != SPELL_INVIGORATE &&
+	    !grant.created_affects())
+		message = SETMSG_NONE;
 
 	if (message == SETMSG_PROTECT)
 	{
@@ -13457,20 +13457,6 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 	{
 		snprintf(buffer, 512, "The spirits of %s grant you their strength.\n", zone_name);
 		send_to_char(buffer, ch);
-	}
-
-	if (message != SETMSG_NONE)
-	{
-		// mark all affects matching the skill as from a set and nosave
-		struct affected_type *paf = NULL;
-		for (paf = ch->affected; paf; paf = paf->next)
-		{
-			if (paf->type == spell)
-			{
-				SET_BIT(paf->flags, AFFTYPE_SET_AFFECT | AFFTYPE_NOSAVE);
-				paf->context = reinterpret_cast<void *>(zone);
-			}
-		}
 	}
 }
 
@@ -13500,7 +13486,6 @@ void check_zone_spells(P_char ch, P_obj obj, int count, int zone, const char *zo
 	{
 		if (set->proc_spells[i][0])
 		{
-			struct affected_type *paf;
 			// If the required num of eq is met for spell
 			if (set->proc_spells[i][0] <= count)
 			{
@@ -13508,16 +13493,8 @@ void check_zone_spells(P_char ch, P_obj obj, int count, int zone, const char *zo
 				apply_zone_spell(ch, count, zone_name, zone, obj,
 						 set->proc_spells[i][1]);
 			}
-			else if ((paf = get_spell_from_char(
-					  ch, set->proc_spells[i][1],
-					  reinterpret_cast<void *>(static_cast<intptr_t>(zone)),
-					  AFFTYPE_SET_AFFECT)) != NULL)
-			{
-				// remove the spell from the character
-				wear_off_message(ch, paf);
-				affect_from_char(ch, set->proc_spells[i][1]);
+			else if (reconcile_named_set_spell(ch, set->proc_spells[i][1]))
 				spellsRemoved = true;
-			}
 		}
 	}
 

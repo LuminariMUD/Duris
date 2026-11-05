@@ -21,6 +21,7 @@ harness = r'''
 #include "world/vnum.obj.h"
 #include "item/named_set_origin.h"
 #include "item/named_sets.h"
+#include "item/named_set_effects.h"
 #include "item/random_equipment.h"
 #include "magic/spells.h"
 #include <algorithm>
@@ -233,7 +234,7 @@ with tempfile.TemporaryDirectory(prefix="named-set-membership-", dir=build) as d
     subprocess.run([
         "g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
         "-ffunction-sections", "-fdata-sections", "-Isrc", str(cpp), "src/item/named_set_origin.c",
-        "src/item/named_sets.c", "src/item/random_equipment_tables.c", str(HARNESS_STUBS),
+        "src/item/named_set_effects.c", "src/item/named_sets.c", "src/item/random_equipment_tables.c", str(HARNESS_STUBS),
         "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)

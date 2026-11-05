@@ -4,8 +4,8 @@ Status: implementation in progress; catalog/report, persistent-origin, and worn
 membership/HP chunks are pushed and open for review as stacked PRs.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-membership`, based on
-`branch/named-zone-set-origin`.
+Working branch: `branch/named-zone-set-effect-ownership`, based on
+`branch/named-zone-set-membership`.
 Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-05)
@@ -176,10 +176,77 @@ make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-se
 git diff --check
 ```
 
-**Next:** repair actual effect ownership, shared-spell support, and cooldowns
-(section 5), with real spell/affect regressions, on a dependent branch. Existing
-ordinary-cast adoption and removal-by-spell-ID remain. Do not install expansion
-rows before those repairs pass. Actual in-game
+### Affect provenance and shared-support chunk
+
+The current branch uses `named_set_grant` at invocation and the real
+`affect_to_char()` allocation boundary. Only newly created affects receive
+`set_zone`, `set_spell`, `set_owner`, and the existing SET/NOSAVE flags. These
+three fields are transient provenance, not new stored item/character columns;
+the persisted affect wire format is unchanged. Native context and link data are
+preserved. The creator's existing process-local character runtime ID separates
+a received group song from a set the recipient wears.
+
+`reconcile_named_set_spell()` inspects current worn pieces, the armor driver,
+and the existing belt exclusions. It retains one shared grant under another
+qualifying zone without refreshing its duration, and removes only wearer-owned
+nodes for the configured source spell. Ordinary nodes and other casters' linked
+song markers survive. This replaces removal of every instance by native spell ID.
+Configured-source metadata also handles effects whose native ID differs, such
+as Vampire's Angelic Countenance branch.
+
+The application entry now recognizes an existing native effect, a registered
+callback alias, or its own source grant. This prevents set invocations from
+refreshing ordinary alias durations and prevents repeated epic-stat grants.
+Song of Dragons extends only newly created markers; its ordinary timed wards,
+instant Invigorate consequences, and summons retain their native behavior.
+
+**Ablation:** one creation scope and one shared-support pass replace bulk
+retagging and bulk spell removal. No effect-specific adapter, ownership registry,
+new persistence format, or timer layer was introduced. The creator ID is needed
+by the existing group-song path; the configured spell ID is needed when native
+affect IDs differ. One application-entry presence check replaces redundant
+per-branch checks. Existing ordinary durations are left alone, with no extra
+refresh when support changes zones.
+
+`test_named_set_effect_ownership.py` runs actual Armor, Endurance, Strength,
+multipart Vampiric Touch, Song of Dragons, affect allocation/removal, and song
+link creation/removal under ASan/UBSan. Stat totals, output, scheduler I/O, and
+unrelated handlers are boundaries. It proves ordinary-node preservation,
+creation provenance, native-context preservation, shared support/removal in
+both orders, armor/belt support checks, multipart cleanup, repeated epic grants,
+and linked-song ownership. A callback boundary additionally verifies the real
+Vampire/Angelic registration alias relationship. It **does not prove a successful
+ordinary cast after a set grant**: native Armor currently refreshes that set
+node in place, while native Endurance/Strength refuse the overlapping cast.
+
+Both backend builds, the pfile tool, snapshot codec/capture checks, and the
+existing Web Spray, poison lifecycle, Hatred, assassin, elemental-form and
+freedom-of-movement regressions pass. Their extracted-function fixtures now
+include the same owning header as production `affects.c`.
+
+```sh
+python3 tests/async/test_named_set_effect_ownership.py
+python3 tests/async/test_named_set_membership.py
+python3 tests/async/test_web_spray.py
+python3 tests/async/test_freedom_of_movement_procs.py
+python3 tests/async/test_assassin_mechanics_runtime.py
+python3 tests/async/test_poison_lifecycle_runtime.py
+python3 tests/async/test_innate_hatred.py
+python3 tests/async/test_elemental_forms_runtime.py
+python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_pfile_tool.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+./scripts/format.sh --check
+git diff --check
+```
+
+**Next:** complete ordinary-cast entry handling in both orders and cooldown
+ownership (section 5). Real ordinary casts after an existing set must gain their
+own duration/source without stacking the set's numeric benefit. Re-equipping,
+swapping the selected item, or alternating sets must not reset the three timed
+families' cooldowns. Do not install expansion rows before these gates pass. Actual in-game
 wear/transfer/save/reboot journeys, private chest/locker/shop journeys, live Redis
 lifecycle checks, balance, help publication, and the wider eligibility review
 remain outstanding. No production operation, release, or release tag has occurred.
@@ -216,7 +283,9 @@ this work, rather than reasons to bring excluded effect families back into scope
 **Files:** implement within the existing item, set-proc, persistence, report,
 area, and focused-test owners listed below. A small shared named-set catalog
 and origin resolver are justified by their generator, worn-gear, and report
-callers. Reuse the existing item persistence and event mechanisms.
+callers. The creation scope and shared-support helper serve affect allocation
+and set cleanup without a separate registry. Reuse the existing item persistence
+and event mechanisms.
 
 **Proof:** reconcile the source catalogs and assignments; exercise real set
 application/removal; round-trip item identity through MySQL and flat-file
@@ -393,7 +462,7 @@ Owning code: `set_proc()`, `random_set()`, `check_zone_spells()`, and
 - [x] Replace row-index contexts with unambiguous nonzero source identity.
   Index zero must not become a wildcard. Cancel or reconcile cleanup for the
   relevant set; one set's refresh must not cancel another set's wear-off.
-- [ ] Mark only affects actually created for a set invocation. Never adopt an
+- [x] Mark only affects actually created for a set invocation. Never adopt an
   existing ordinary cast by marking every affect of the same spell type.
   Remove only matching set-owned affects, not every instance of that spell ID.
 - [ ] Before removing a shared spell, reconcile all currently qualifying worn

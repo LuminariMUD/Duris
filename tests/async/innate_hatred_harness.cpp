@@ -1,5 +1,6 @@
 // The effect pool frees nodes immediately so invalid traversals fail under ASan.
 #include "world/new_events.c"
+#include "item/named_set_effects.h"
 #include "classes/necromancy.h"
 #include "classes/disguise.h"
 #include "world/falling.h"
