@@ -9,7 +9,7 @@ magic = (SRC / "magic.c").read_text()
 start = magic.rfind("typedef struct", 0, magic.index("} RemoveableSpellBit;"))
 spells = magic[start:magic.index("static int dispel_magic_wall_damage(", start)]
 spells += "\n".join(extract_function("magic.c", "static int dispel_magic_" + name + "(")
-                    for name in ("wall_damage", "destroy_odds", "fade_roll")) + "\n"
+                    for name in ("wall_damage", "destroy_roll", "fade_roll")) + "\n"
 spells += extract_function("magic.c", "static int minor_paralysis_duration(") + "\n"
 spells += "\n".join(extract_function("magic.c", "static int " + name + "(") for name in (
     "wither_undead_damage", "wither_armor_class", "wither_duration", "harm_damage",

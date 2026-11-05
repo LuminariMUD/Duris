@@ -342,6 +342,7 @@ def main():
                  ("actoff.c", "static int headbutt_daze_lag("),
                  ("actoff.c", "static int headbutt_daze_stun("),
                  ("actoff.c", "static int headbutt_weak_daze("),
+                 ("actoff.c", "static int headbutt_weak_daze_roll("),
                  ("actoff.c", "static int double_headbutt_threshold("),
                  ("actoff.c", "static int double_headbutt_damage("),
                  ("actoff.c", "void do_headbutt(")]

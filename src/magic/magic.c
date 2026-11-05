@@ -781,10 +781,15 @@ static int anti_magic_ray_saved(int dam)
 	return dam >> 1;
 }
 
-// The ray cannot be shrugged when number(0, 99) is at most this.
+// The ray cannot be shrugged when anti_magic_ray_noshrug_roll() is at most this.
 static int anti_magic_ray_noshrug_chance()
 {
 	return get_property("spell.shrug.chance.anti_magic_ray", 60);
+}
+
+static int anti_magic_ray_noshrug_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 99);
 }
 
 // How much worse the target's spell save is against the ray's dispel magic.
@@ -803,8 +808,9 @@ std::string anti_magic_ray_facts(P_char ch)
 	       fact("If the target saves",
 		    show({ anti_magic_ray_saved(hit.low), anti_magic_ray_saved(hit.high) })) +
 	       fact("Cannot be shrugged",
-		    std::to_string(BOUNDED(0, anti_magic_ray_noshrug_chance() + 1, 100)) +
-			    "% of the time") +
+		    chance_under(anti_magic_ray_noshrug_chance() + 1,
+				 anti_magic_ray_noshrug_roll(lowest_rolls),
+				 anti_magic_ray_noshrug_roll(highest_rolls))) +
 	       fact("If the target survives", "dispel magic, its spell save " +
 						      std::to_string(abs(penalty)) +
 						      (penalty < 0 ? " better" : " worse")) +
@@ -835,7 +841,7 @@ void spell_anti_magic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		dam = anti_magic_ray_saved(dam);
 
 	// This spell has a chance to be !shrug.
-	if (number(0, 99) <= anti_magic_ray_noshrug_chance())
+	if (anti_magic_ray_noshrug_roll(live_rolls) <= anti_magic_ray_noshrug_chance())
 		noshrug = SPLDAM_NOSHRUG;
 	else
 		noshrug = 0;
@@ -4914,10 +4920,15 @@ static int cyclone_halved(int dam)
 	return dam >> 1;
 }
 
-// A flying target that fails its save is stunned when number(1, 100) is at most the chance.
+// A flying target that fails its save is stunned when cyclone_stun_roll() is at most the chance.
 static int cyclone_stun_chance()
 {
 	return 50;
+}
+
+static int cyclone_stun_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
 }
 
 static int cyclone_stun()
@@ -4934,9 +4945,10 @@ std::string cyclone_facts(P_char ch)
 	       fact("If the target makes an agility save",
 		    show({ cyclone_halved(hit.low), cyclone_halved(hit.high) })) +
 	       "  Elites always take half unless you are a tempest magus.\n" +
-	       fact("A flying target that fails a save", std::to_string(cyclone_stun_chance()) +
-								 "% chance to be stunned up to " +
-								 seconds(cyclone_stun())) +
+	       fact("A flying target that fails a save",
+		    chance_under(cyclone_stun_chance() + 1, cyclone_stun_roll(lowest_rolls),
+				 cyclone_stun_roll(highest_rolls)) +
+			    " to be stunned up to " + seconds(cyclone_stun())) +
 	       "  Globes and spirit wards do not stop it.\n"
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
@@ -4969,7 +4981,7 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	if (IS_AFFECTED(victim, AFF_FLY) && !NewSaves(victim, SAVING_PARA, svchance) &&
 	    (!IS_ELITE(victim) || casterIsTempestMagus))
 	{
-		affchance = number(1, 100);
+		affchance = cyclone_stun_roll(live_rolls);
 
 		if (affchance <= cyclone_stun_chance()) /* && (!check_wall(tch->in_room, door)) */
 		{
@@ -16318,10 +16330,15 @@ void spell_grow_spike(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	 */
 }
 
-// In a forest, a paralyzed target is bound instead when number(1, 100) is below this.
+// In a forest, a paralyzed target is bound instead when entangle_bind_roll() is below this.
 static int entangle_bind_chance()
 {
 	return 5;
+}
+
+static int entangle_bind_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
 }
 
 // Entangle's paralysis at cast level `level`, in pulses.
@@ -16338,10 +16355,10 @@ std::string entangle_facts(P_char ch)
 		text = fact("Paralysis if the target fails its save",
 			    seconds(entangle_duration(level)) + " at your level, " +
 				    std::to_string(level));
-	// number(1, 100) < chance passes on chance - 1 of the 100 values.
 	return text + fact("In a forest, if it fails its save",
-			   std::to_string(entangle_bind_chance() - 1) +
-				   "% chance to bind it until freed instead");
+			   chance_under(entangle_bind_chance(), entangle_bind_roll(lowest_rolls),
+					entangle_bind_roll(highest_rolls)) +
+				   " to bind it until freed instead");
 }
 
 void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -16409,8 +16426,8 @@ void spell_entangle(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 		}
 		StopMercifulAttackers(victim);
 
-		if (world[ch->in_room].sector_type == SECT_FOREST && number(1, 100) < chance &&
-		    !IS_AFFECTED(victim, AFF_BOUND))
+		if (world[ch->in_room].sector_type == SECT_FOREST &&
+		    entangle_bind_roll(live_rolls) < chance && !IS_AFFECTED(victim, AFF_BOUND))
 		{
 			act("&+GThe vegetation closes tightly, completely entangling $n!", TRUE,
 			    victim, 0, 0, TO_ROOM);
@@ -17857,10 +17874,15 @@ static int obtenebration_damage(const Rolls &rolls, int level)
 	return dam;
 }
 
-// A target is blinded when number(1, 100) is below this.
+// A target is blinded when obtenebration_blind_roll() is below this.
 static int obtenebration_blind_chance()
 {
 	return 20;
+}
+
+static int obtenebration_blind_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
 }
 
 // Obtenebration's blindness, in pulses.
@@ -17876,11 +17898,11 @@ std::string obtenebration_facts(P_char ch)
 					   obtenebration_damage(highest_rolls, level) }) +
 					    " to each target at your level, " +
 					    std::to_string(level)) +
-	       // number(1, 100) < chance passes on chance - 1 of the 100 values.
-	       fact("Blindness", std::to_string(obtenebration_blind_chance() - 1) +
-					 "% chance, for " +
-					 seconds(obtenebration_blindness(lowest_rolls)) + " to " +
-					 seconds(obtenebration_blindness(highest_rolls))) +
+	       fact("Blindness", chance_under(obtenebration_blind_chance(),
+					      obtenebration_blind_roll(lowest_rolls),
+					      obtenebration_blind_roll(highest_rolls)) +
+					 ", for " + seconds(obtenebration_blindness(lowest_rolls)) +
+					 " to " + seconds(obtenebration_blindness(highest_rolls))) +
 	       fact("Globes and spirit wards", "do not stop it") +
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
@@ -17907,7 +17929,7 @@ void spell_single_obtenebration(int level, P_char ch, char * /*arg*/, int /*type
 
 	spell_damage(ch, victim, dam, SPLDAM_SOUND, 0, &messages);
 
-	if (IS_ALIVE(ch) && number(1, 100) < obtenebration_blind_chance())
+	if (IS_ALIVE(ch) && obtenebration_blind_roll(live_rolls) < obtenebration_blind_chance())
 	{
 		act("&+LYou direct a cloud of &+yu&+Lm&+yb&+Lr&+ya&+Ll &+yd&+Lu&+ys&+Lt in $N's face, blinding them!&n",
 		    FALSE, ch, 0, victim, TO_CHAR);
@@ -18742,20 +18764,18 @@ static int faerie_fire_armor()
 	return 20;
 }
 
-// A visible, disguised target loses its disguise when number(0, this) is 0.
-static int faerie_fire_disguise_odds()
+// A visible, disguised target loses its disguise when this rolls 0.
+static int faerie_fire_disguise_roll(const Rolls &rolls)
 {
-	return 1;
+	return rolls.number(0, 1);
 }
 
 std::string faerie_fire_facts(P_char /*ch*/)
 {
-	// !number(0, odds) passes on one of its odds + 1 values.
 	return fact("Target's armor class", "+" + std::to_string(faerie_fire_armor())) +
 	       fact("Duration", game_hours(faerie_fire_duration())) +
 	       fact("A visible, disguised target",
-		    std::to_string(100 / (faerie_fire_disguise_odds() + 1)) +
-			    "% chance to lose its disguise");
+		    one_in(faerie_fire_disguise_roll) + " to lose its disguise");
 }
 
 void spell_faerie_fire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -18790,7 +18810,7 @@ void spell_faerie_fire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 		REMOVE_BIT(victim->specials.affected_by, AFF_INVISIBLE);
 		REMOVE_BIT(victim->specials.affected_by2, AFF2_CONCEALMENT);
 	}
-	else if (!number(0, faerie_fire_disguise_odds()) && IS_DISGUISE(victim))
+	else if (!faerie_fire_disguise_roll(live_rolls) && IS_DISGUISE(victim))
 	{
 		remove_disguise(victim, TRUE);
 	}
@@ -18818,19 +18838,17 @@ void spell_faerie_fire(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 	}
 }
 
-// A visible, disguised creature loses its disguise when number(0, this) is 0.
-static int faerie_fog_disguise_odds()
+// A visible, disguised creature loses its disguise when this rolls 0.
+static int faerie_fog_disguise_roll(const Rolls &rolls)
 {
-	return 1;
+	return rolls.number(0, 1);
 }
 
 std::string faerie_fog_facts(P_char /*ch*/)
 {
-	// !number(0, odds) passes on one of its odds + 1 values.
 	return "  Reveals invisible and hidden creatures in the room that fail their save.\n" +
 	       fact("A visible, disguised creature",
-		    std::to_string(100 / (faerie_fog_disguise_odds() + 1)) +
-			    "% chance to lose its disguise");
+		    one_in(faerie_fog_disguise_roll) + " to lose its disguise");
 }
 
 void spell_faerie_fog(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
@@ -18889,7 +18907,7 @@ void spell_faerie_fog(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 		}
 		else if (ch != tmp_victim && IS_DISGUISE(tmp_victim))
 		{
-			if (!number(0, faerie_fog_disguise_odds()))
+			if (!faerie_fog_disguise_roll(live_rolls))
 			{
 				remove_disguise(tmp_victim, TRUE);
 			}
@@ -19989,16 +20007,16 @@ static int solar_flare_blindness(const Rolls &rolls)
 	return rolls.number(4, 12) * WAIT_SEC;
 }
 
-// A surviving target is blinded, if it then fails its save, when number(0, this) is 0.
-static int solar_flare_blind_odds()
+// A surviving target is blinded, if it then fails its save, when this rolls 0.
+static int solar_flare_blind_roll(const Rolls &rolls)
 {
-	return 1;
+	return rolls.number(0, 1);
 }
 
-// A surviving target is also immolated when number(0, this) is 0.
-static int solar_flare_immolate_odds()
+// A surviving target is also immolated when this rolls 0.
+static int solar_flare_immolate_roll(const Rolls &rolls)
 {
-	return 1;
+	return rolls.number(0, 1);
 }
 
 std::string solar_flare_facts(P_char ch)
@@ -20008,16 +20026,14 @@ std::string solar_flare_facts(P_char ch)
 		      solar_flare_damage(highest_rolls, level) };
 	if (solar_flare_boosted(ch))
 		hit = { solar_flare_boost(hit.low), solar_flare_boost(hit.high) };
-	// !number(0, odds) passes on one of its odds + 1 values.
 	return fact("Fire damage", show(hit) + " at your level, " + std::to_string(level)) +
 	       fact("Blindness if it survives",
-		    std::to_string(100 / (solar_flare_blind_odds() + 1)) + "% chance, " +
+		    one_in(solar_flare_blind_roll) + ", " +
 			    seconds(solar_flare_blindness(lowest_rolls)) + " to " +
 			    seconds(solar_flare_blindness(highest_rolls))) +
 	       "    if it fails its save\n" +
 	       fact("Immolate if it survives",
-		    std::to_string(100 / (solar_flare_immolate_odds() + 1)) +
-			    "% chance to also cast it on the target") +
+		    one_in(solar_flare_immolate_roll) + " to also cast it on the target") +
 	       fact("Globes and spirit wards", "do not stop it") +
 	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
@@ -20043,10 +20059,10 @@ void spell_solar_flare(int level, P_char ch, char * /*arg*/, int type, P_char vi
 		return;
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SOLAR_FLARE);
-	if (!number(0, solar_flare_blind_odds()) && !NewSaves(victim, SAVING_SPELL, mod))
+	if (!solar_flare_blind_roll(live_rolls) && !NewSaves(victim, SAVING_SPELL, mod))
 		blind(ch, victim, solar_flare_blindness(live_rolls));
 
-	if (!number(0, solar_flare_immolate_odds()))
+	if (!solar_flare_immolate_roll(live_rolls))
 		spell_immolate(level, ch, NULL, 0, victim, NULL);
 }
 
@@ -20699,10 +20715,10 @@ static int dispel_magic_wall_damage(const Rolls &rolls, int level)
 	return rolls.number(level / 4, level);
 }
 
-// A magic item is destroyed outright when number(0, this) is 0.
-static int dispel_magic_destroy_odds()
+// A magic item is destroyed outright when this rolls 0.
+static int dispel_magic_destroy_roll(const Rolls &rolls)
 {
-	return 4;
+	return rolls.number(0, 4);
 }
 
 // Otherwise the item's magic fades when this roll is below the cast level.
@@ -20721,8 +20737,7 @@ std::string dispel_magic_facts(P_char ch)
 		    show({ dispel_magic_wall_damage(lowest_rolls, level),
 			   dispel_magic_wall_damage(highest_rolls, level) }) +
 			    " at your level, " + std::to_string(level)) +
-	       fact("A magic item", std::to_string(100 / (dispel_magic_destroy_odds() + 1)) +
-					    "% chance to be destroyed") +
+	       fact("A magic item", one_in(dispel_magic_destroy_roll) + " to be destroyed") +
 	       fact("Otherwise its magic fades", std::to_string(BOUNDED(0, level - low, values)) +
 							 " in " + std::to_string(values) +
 							 " chance at your level, " +
@@ -20914,7 +20929,7 @@ void spell_dispel_magic(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		}
 
 		/* 5% chance of totally destroying the object <Cackle> */
-		if (!number(0, dispel_magic_destroy_odds()) && !IS_TRUSTED(ch))
+		if (!dispel_magic_destroy_roll(live_rolls) && !IS_TRUSTED(ch))
 		{
 			send_to_char("&+YUh oh!&N\n", ch);
 
@@ -25983,17 +25998,23 @@ static int chaos_shield_duration(P_char ch)
 	return GET_LEVEL(ch) / 3;
 }
 
-// The shield absorbs a spell unless number(0, 101) rolls above this.
+// The shield absorbs a spell unless chaos_shield_roll() rolls above this.
 static int chaos_shield_chance()
 {
 	return (int)get_property("spell.chaosshield.perc", 10.000);
+}
+
+static int chaos_shield_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 101);
 }
 
 std::string chaos_shield_facts(P_char ch)
 {
 	return fact("Duration", game_hours(chaos_shield_duration(ch))) +
 	       fact("Chance to absorb part of a spell",
-		    std::to_string(std::clamp(chaos_shield_chance() + 1, 0, 102)) + " in 102");
+		    chance_under(chaos_shield_chance() + 1, chaos_shield_roll(lowest_rolls),
+				 chaos_shield_roll(highest_rolls)));
 }
 
 void spell_chaos_shield(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -26041,7 +26062,7 @@ int parse_chaos_shield(P_char victim, P_char ch)
 
 	chance = chaos_shield_chance();
 
-	if (chance < number(0, 101))
+	if (chance < chaos_shield_roll(live_rolls))
 		return FALSE;
 
 	act("&+LThe chaotic shield surrounding $n flares as it absorbs some of $N's spell.&n",
@@ -26385,6 +26406,28 @@ static int chaotic_ripple_rays(const Rolls &rolls)
 	return rolls.number(2, 4);
 }
 
+// A cast adds a big surge of rays when this rolls 0.
+static int chaotic_ripple_big_surge_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 99);
+}
+
+static int chaotic_ripple_big_surge_rays(const Rolls &rolls)
+{
+	return rolls.number(2, 4);
+}
+
+// A cast with no big surge adds a small one when this rolls 0.
+static int chaotic_ripple_small_surge_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 19);
+}
+
+static int chaotic_ripple_small_surge_rays(const Rolls &rolls)
+{
+	return rolls.number(1, 2);
+}
+
 // A fireball or freezing ray deals part of the ripple's damage.
 static int chaotic_ripple_blast(int dam)
 {
@@ -26404,8 +26447,14 @@ std::string chaotic_ripple_facts(P_char ch)
 			    chaotic_ripple_damage(highest_rolls, level) };
 	return fact("Damage", show(hit) + " at your level, " + std::to_string(level)) +
 	       fact("Rays that follow", show({ chaotic_ripple_rays(lowest_rolls),
-					       chaotic_ripple_rays(highest_rolls) }) +
-						", rarely more") +
+					       chaotic_ripple_rays(highest_rolls) })) +
+	       "    (" + one_in(chaotic_ripple_big_surge_roll) + " add " +
+	       show({ chaotic_ripple_big_surge_rays(lowest_rolls),
+		      chaotic_ripple_big_surge_rays(highest_rolls) }) +
+	       " more, else " + one_in(chaotic_ripple_small_surge_roll) + " add " +
+	       show({ chaotic_ripple_small_surge_rays(lowest_rolls),
+		      chaotic_ripple_small_surge_rays(highest_rolls) }) +
+	       " more)\n" +
 	       fact("Fireball or freezing ray",
 		    show({ chaotic_ripple_blast(hit.low), chaotic_ripple_blast(hit.high) })) +
 	       fact("Twin bolts",
@@ -26448,13 +26497,13 @@ void spell_chaotic_ripple(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 		return;
 	}
 	rays = chaotic_ripple_rays(live_rolls);
-	if (!number(0, 99)) // 1%
+	if (!chaotic_ripple_big_surge_roll(live_rolls)) // 1%
 	{
-		rays += number(2, 4);
+		rays += chaotic_ripple_big_surge_rays(live_rolls);
 	}
-	else if (!number(0, 19)) // 5%
+	else if (!chaotic_ripple_small_surge_roll(live_rolls)) // 5%
 	{
-		rays += number(1, 2);
+		rays += chaotic_ripple_small_surge_rays(live_rolls);
 	}
 
 	while (rays > 0)
@@ -27045,10 +27094,15 @@ bool divine_blessing_check(P_char ch, P_char tar_char, int spl)
 	return FALSE;
 }
 
-// A blessed weapon parries when number(0, 99) rolls below this.
+// A blessed weapon parries when divine_blessing_parry_roll() rolls below this.
 static int divine_blessing_parry_chance()
 {
 	return get_property("spell.divineBlessing.parryChance", 10);
+}
+
+static int divine_blessing_parry_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 99);
 }
 
 // A blessed weapon parries only for a wielder above this alignment.
@@ -27063,7 +27117,7 @@ bool divine_blessing_parry(P_char ch, P_char victim)
 
 	if (affected_by_spell(ch, SPELL_DIVINE_BLESSING) && weapon &&
 	    GET_ALIGNMENT(ch) > divine_blessing_parry_alignment() &&
-	    number(0, 99) < divine_blessing_parry_chance())
+	    divine_blessing_parry_roll(live_rolls) < divine_blessing_parry_chance())
 	{
 		act("$n's $q moves with a blinding speed and successfully repels your attack!",
 		    FALSE, ch, weapon, victim, TO_VICT);
@@ -27098,8 +27152,10 @@ std::string divine_blessing_facts(P_char /*ch*/)
 {
 	return fact("Duration", game_hours(divine_blessing_duration())) +
 	       fact("Chance to parry an attack",
-		    std::to_string(std::clamp(divine_blessing_parry_chance(), 0, 100)) +
-			    "% above alignment " +
+		    chance_under(divine_blessing_parry_chance(),
+				 divine_blessing_parry_roll(lowest_rolls),
+				 divine_blessing_parry_roll(highest_rolls)) +
+			    " above alignment " +
 			    std::to_string(divine_blessing_parry_alignment())) +
 	       fact("If your alignment is below " + std::to_string(divine_blessing_min_alignment()),
 		    std::to_string(divine_blessing_penalty()) +

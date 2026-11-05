@@ -67,6 +67,7 @@ using namespace std;
 
 extern int ophidian_invisible_level();
 extern int evasion_remove_chance();
+extern int evasion_snake_roll(const Rolls &rolls);
 extern int combat_mind_quaff_chance(int chance);
 
 /*
@@ -3215,10 +3216,16 @@ static int quick_thinking_percent()
 	return get_property("saves.quickthinking.percentage", 15);
 }
 
+static int quick_thinking_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 std::string quick_thinking_innate_facts(P_char /*ch*/)
 {
 	return fact("Chance an intelligence or power save passes at once",
-		    chance_under(quick_thinking_percent() + 1, 1, 100)) +
+		    chance_under(quick_thinking_percent() + 1, quick_thinking_roll(lowest_rolls),
+				 quick_thinking_roll(highest_rolls))) +
 	       "  A saving throw you fail is rolled once more.\n" +
 	       fact("Your chance not to spill a potion in combat",
 		    std::to_string(combat_mind_quaff_chance(100)) + "% of normal");
@@ -3332,13 +3339,13 @@ bool StatSave(P_char ch, int stat, int mod)
 	case APPLY_INT:
 		save_num = STAT_INDEX(GET_C_INT(ch)) + mod;
 		if (has_innate(ch, INNATE_QUICK_THINKING) &&
-		    number(1, 100) <= quick_thinking_percent())
+		    quick_thinking_roll(live_rolls) <= quick_thinking_percent())
 			return TRUE;
 		break;
 	case APPLY_POW:
 		save_num = STAT_INDEX(GET_C_POW(ch)) + mod;
 		if (has_innate(ch, INNATE_QUICK_THINKING) &&
-		    number(1, 100) <= quick_thinking_percent())
+		    quick_thinking_roll(live_rolls) <= quick_thinking_percent())
 			return TRUE;
 		break;
 	case APPLY_CON:
@@ -5653,7 +5660,8 @@ int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, 
 		if (has_innate(area_target, INNATE_EVASION) &&
 		    GET_SPEC(area_target, CLASS_MONK, SPEC_WAYOFSNAKE))
 		{
-			if ((GET_LEVEL(area_target) - evasion_remove_chance()) > number(1, 100))
+			if ((GET_LEVEL(area_target) - evasion_remove_chance()) >
+			    evasion_snake_roll(live_rolls))
 			{
 				send_to_char(
 					"You twist out of the way avoiding the harmful magic!\n",
@@ -5802,12 +5810,27 @@ int evasion_remove_chance()
 	return ((int)get_property("innate.evasion.removechance", 15.000));
 }
 
+// Way of the dragon avoids spell damage when evasion_remove_chance() beats this.
+int evasion_dragon_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+// Way of the snake avoids an area spell when the level less that chance beats this.
+int evasion_snake_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 std::string evasion_innate_facts(P_char ch)
 {
 	return fact("Way of the dragon: chance to avoid spell damage",
-		    chance_under(evasion_remove_chance(), 1, 100)) +
+		    chance_under(evasion_remove_chance(), evasion_dragon_roll(lowest_rolls),
+				 evasion_dragon_roll(highest_rolls))) +
 	       fact("Way of the snake: chance to avoid an area spell",
-		    chance_under(GET_LEVEL(ch) - evasion_remove_chance(), 1, 100));
+		    chance_under(GET_LEVEL(ch) - evasion_remove_chance(),
+				 evasion_snake_roll(lowest_rolls),
+				 evasion_snake_roll(highest_rolls)));
 }
 
 int get_takedown_size(P_char ch)

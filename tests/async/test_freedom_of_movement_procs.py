@@ -138,6 +138,7 @@ def production():
         ("magic.c", "static int freedom_of_movement_duration("),
         ("magic.c", "void spell_freedom_of_movement("),
         ("magic.c", "static int entangle_bind_chance("),
+        ("magic.c", "static int entangle_bind_roll("),
         ("magic.c", "static int entangle_duration("),
         ("magic.c", "void spell_entangle("),
         ("beh_magic.c", "void spell_beholder_paralyze("),

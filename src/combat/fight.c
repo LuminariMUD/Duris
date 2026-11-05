@@ -128,6 +128,7 @@ extern bool check_reincarnate(P_char ch);
 bool handle_imprison_damage(P_char, P_char, int);
 extern bool innate_two_daggers(P_char);
 extern int evasion_remove_chance();
+extern int evasion_dragon_roll(const Rolls &rolls);
 extern bool divine_blessing_parry(P_char, P_char);
 extern int get_honing(P_obj);
 extern void apply_honing(P_obj, int);
@@ -4495,7 +4496,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 	if (has_innate(victim, INNATE_EVASION) && GET_SPEC(victim, CLASS_MONK, SPEC_WAYOFDRAGON))
 	{
-		if (evasion_remove_chance() > number(1, 100))
+		if (evasion_remove_chance() > evasion_dragon_roll(live_rolls))
 		{
 			send_to_char("You twist out of the way avoiding the harmful magic!\n",
 				     victim);

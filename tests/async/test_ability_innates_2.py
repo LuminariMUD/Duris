@@ -18,7 +18,7 @@ from _source_contract import function_bodies, strip_comments
 
 # Shared functions and their pages, by file. Order matters: later ones call earlier ones.
 SHARED = {
-    "classes/bard.c": "echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_delay".split(),
+    "classes/bard.c": "echo_song_level bard_pulse hasted_bard_pulse get_bard_pulse bard_blind_play_rating echo_chance echo_roll echo_delay".split(),
     "classes/drannak.c": "intercept_luck_roll intercept_attack_roll intercept_duration".split(),
     "combat/fight.c": """acid_blood_min_hit acid_blood_dodge_base acid_blood_dodge_divisor spell_absorb_damage_divisor leap_chance_floor leap_chance_top intercept_attack_share rapier_dirk_chance rapier_dirk_more_hits_roll rapier_dirk_more_hits
         two_daggers_riposte_roll rrakkma_ac_step spell_absorb_damage_roll spell_absorb_threshold aura_absorb_healing aura_absorb_cap
@@ -38,14 +38,14 @@ SHARED = {
     "cmd/actoff.c": """flee_vitality_cost flee_mount_vitality_cost dragonmind_roll dragonmind_steal_divisor
         trample_knight_multiplier""".split(),
     "cmd/actoth.c": "combat_mind_quaff_chance".split(),
-    "world/handler.c": """calming_delay calming_level_gap calming_gap_roll calming_notarget_percent
+    "world/handler.c": """calming_delay calming_level_gap calming_gap_roll calming_notarget_percent calming_notarget_roll
         calming_command_roll calming_chance_bonus calming_switch_threshold calming_switch_penalty
         vuln_sun_damage""".split(),
     "cmd/track.c": "perception_track_bonus farsee_track_bonus ophidian_track_penalty track_sense_chance".split(),
     "world/map.c": "eyeless_map_range forest_map_cap perception_map_bonus dayblind_infravision_bonus dayblind_underdark_range".split(),
     "cmd/actinf.c": "ophidian_farsee_level ophidian_invisible_level".split(),
-    "core/utility.c": """undead_fealty_gap two_handed_sword_mastery_rating quick_thinking_percent
-        haste_stat_save_bonus evasion_remove_chance""".split(),
+    "core/utility.c": """undead_fealty_gap two_handed_sword_mastery_rating quick_thinking_percent quick_thinking_roll
+        haste_stat_save_bonus evasion_remove_chance evasion_dragon_roll evasion_snake_roll""".split(),
     "net/sparser.c": """wildmagic_roll wildmagic_control_roll wildmagic_health_roll wildmagic_health_change
         wildmagic_bystander_roll haste_cast_time_share""".split(),
     "combat/range.c": "archery_haste_speed archery_blur_speed".split(),
@@ -523,14 +523,14 @@ int main() {
 # Each handler's text: the shared calls, in order. "ALL" looks through the whole file.
 HANDLER_CALLS = {
     ("classes/bard.c", "has_instrument"): ["bard_blind_play_rating()"],
-    ("classes/bard.c", "event_bardsong"): ["echoChance = echo_chance(terrainType);", "echoChance >= number(1, 100)", "add_event(event_echosong, echo_delay(ch),"],
+    ("classes/bard.c", "event_bardsong"): ["echoChance = echo_chance(terrainType);", "echoChance >= echo_roll(live_rolls)", "add_event(event_echosong, echo_delay(ch),"],
     ("classes/drannak.c", "intercept_defensiveproc"): ["int num1 = intercept_luck_roll(live_rolls, merc);", "int num2 = intercept_attack_roll(live_rolls);", "num1 < num2", "af.duration = intercept_duration();"],
     ("combat/fight.c", "rapier_dirk"): ["chance = rapier_dirk_chance(victim);", "chance > number(1, 1000)", "!rapier_dirk_more_hits_roll(live_rolls) && CanDoFightMove(victim, attacker)", "f = rapier_dirk_more_hits(live_rolls, GET_LEVEL(victim));"],
     ("combat/fight.c", "try_riposte"): ["innate_two_daggers(ch) && !two_daggers_riposte_roll(live_rolls)"],
     ("combat/fight.c", "calculate_ac"): ["victim_ac -= rrakkma_ac_step();"],
     ("combat/fight.c", "check_shields"): ["double ifshield = infernal_fury_shield();", "(int)(dam * ifshield), SPLDAM_NEGATIVE", "(dam > acid_blood_min_hit(flags)) && !acid_blood_roll(live_rolls)", "(acid_blood_dodge_base() + GET_C_AGI(ch) / acid_blood_dodge_divisor()) > number(0, 100)", "spell_damage(victim, ch, acid_blood_damage(live_rolls), SPLDAM_ACID, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,"],
     ("combat/fight.c", "check_vamp"): ["static_cast<double>(dam) * touch_vamp_share(ch)"],
-    ("combat/fight.c", "spell_damage"): ["vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));", "vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));", "evasion_remove_chance() > number(1, 100)", "(dam / spell_absorb_damage_divisor()) > spell_absorb_damage_roll(live_rolls)", "number(1, 100) <= spell_absorb_threshold(GET_LEVEL(victim))"],
+    ("combat/fight.c", "spell_damage"): ["vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));", "vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));", "evasion_remove_chance() > evasion_dragon_roll(live_rolls)", "(dam / spell_absorb_damage_divisor()) > spell_absorb_damage_roll(live_rolls)", "number(1, 100) <= spell_absorb_threshold(GET_LEVEL(victim))"],
     ("combat/fight.c", "melee_damage"): ["dam *= dam_factor[DF_TROLLSKIN];", "victim->equipment[WEAR_SHIELD]", "dam *= dam_factor[DF_GUARDIANS_BULWARK];", "dam *= dam_factor[DF_SWASHBUCKLER_DEFENSE];", "dam *= dam_factor[DF_SWASHBUCKLER_OFFENSE];"],
     ("combat/fight.c", "frightening_presence"): ["chance = frightening_presence_chance(live_rolls, GET_LEVEL(victim), GET_LEVEL(ch));", "number(0, 100) < chance && !fear_check(ch)"],
     ("combat/fight.c", "battle_frenzy"): ["dam = battle_frenzy_damage(live_rolls, ch);", "chance_to_hit(ch, victim, GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE), 0) > number(0, 100)"],
@@ -566,7 +566,7 @@ HANDLER_CALLS = {
     ("world/handler.c", "sun_damage_check"): ["IS_SWAMP_ROOM(ch->in_room) || IS_FOREST_ROOM(ch->in_room)", "int dam = vuln_sun_damage(live_rolls);", "GET_HIT(ch) = MAX(1, GET_HIT(ch) - dam);"],
     ("world/handler.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();", "!IS_BLOODLUST && has_innate(i, INNATE_VULN_SUN)"],
     ("cmd/actmove.c", "ALL"): ["<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
-    ("mob/mobact.c", "ALL"): ["number(0, 101) <= calming_notarget_percent()", "<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
+    ("mob/mobact.c", "ALL"): ["calming_notarget_roll(live_rolls) <= calming_notarget_percent()", "<= calming_level_gap()) || !calming_gap_roll(live_rolls)", "calming = calming_delay();"],
     ("cmd/interp.c", "ALL"): ["!has_innate(ch, INNATE_CALMING) || !calming_command_roll(live_rolls)", "calming_chance += calming_chance_bonus();", "(has_innate(exec_char, INNATE_CALMING) ? calming_chance_bonus() : 0)", "calming_chance >= number(1, 100)"],
     ("world/limits.c", "hit_regen"): ["regeneration_sleeping_multiple() * get_innate_regeneration(ch)", "regeneration_resting_multiple() * get_innate_regeneration(ch)"],
     ("world/map.c", "map_view_distance"): ["return eyeless_map_range();", "dayblind_infravision_bonus()", "n = dayblind_underdark_range();", "n > forest_map_cap()", "n = forest_map_cap();", "n += perception_map_bonus();"],
@@ -574,8 +574,8 @@ HANDLER_CALLS = {
     ("cmd/actinf.c", "ALL"): ["GET_LEVEL(ch) > ophidian_farsee_level()", "GET_LEVEL(ch) > ophidian_invisible_level()"],
     ("core/utility.c", "aggressive_to_at"): ["GET_LEVEL(ch) <= (GET_LEVEL(target) - undead_fealty_gap())"],
     ("core/utility.c", "GET_CHAR_SKILL_P"): ["return two_handed_sword_mastery_rating();"],
-    ("core/utility.c", "StatSave"): ["save_num += haste_stat_save_bonus();", "save_num += haste_stat_save_bonus();", "number(1, 100) <= quick_thinking_percent()", "number(1, 100) <= quick_thinking_percent()"],
-    ("core/utility.c", "ALL"): ["(GET_LEVEL(area_target) - evasion_remove_chance()) > number(1, 100)", "GET_LEVEL(sub) > ophidian_invisible_level()"],
+    ("core/utility.c", "StatSave"): ["save_num += haste_stat_save_bonus();", "save_num += haste_stat_save_bonus();", "quick_thinking_roll(live_rolls) <= quick_thinking_percent()", "quick_thinking_roll(live_rolls) <= quick_thinking_percent()"],
+    ("core/utility.c", "ALL"): ["(GET_LEVEL(area_target) - evasion_remove_chance()) > evasion_snake_roll(live_rolls)", "GET_LEVEL(sub) > ophidian_invisible_level()"],
     ("cmd/actoth.c", "do_quaff"): ["has_innate(ch, INNATE_QUICK_THINKING) || affected_by_spell(ch, SPELL_COMBAT_MIND)", "chance = combat_mind_quaff_chance(chance);"],
     ("net/sparser.c", "perform_chaos_check"): ["controlled = wildmagic_control_roll(live_rolls);", "!wildmagic_health_roll(live_rolls)", "!wildmagic_health_roll(live_rolls)", "GET_HIT(ch) -= wildmagic_health_change(live_rolls, GET_LEVEL(ch));", "GET_HIT(ch) += wildmagic_health_change(live_rolls, GET_LEVEL(ch));", "!wildmagic_bystander_roll(live_rolls)"],
     ("net/sparser.c", "SpellCastTime"): ["dura = (dura * .3);", "dura = (dura * haste_cast_time_share());"],

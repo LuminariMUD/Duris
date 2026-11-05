@@ -68,7 +68,7 @@ HANDLERS = {
                                   "prismatic_ray_orange_damage prismatic_ray_blue_damage prismatic_ray_saved",
     "spell_prismatic_ray": "prismatic_ray_extra_rays",
     "spell_prismatic_spray": "prismatic_spray_rays",
-    "spell_anti_magic_ray": "anti_magic_ray_damage anti_magic_ray_saved anti_magic_ray_noshrug_chance "
+    "spell_anti_magic_ray": "anti_magic_ray_damage anti_magic_ray_saved anti_magic_ray_noshrug_chance anti_magic_ray_noshrug_roll "
                             "anti_magic_ray_save_penalty",
     "spell_magic_missile": "magic_missile_count magic_missile_damage",
     "spell_chill_touch": "chill_touch_damage chill_touch_failed_save chill_touch_stat_cap "
@@ -121,7 +121,7 @@ HANDLERS = {
     "spell_single_chain_lightning": "chain_lightning_damage chain_lightning_leap "
                                     "chain_lightning_player_damage chain_lightning_area_damage",
     "spell_single_lightning_ring": "ring_lightning_damage ring_lightning_player_damage",
-    "spell_cyclone": "cyclone_damage cyclone_halved cyclone_stun_chance cyclone_stun",
+    "spell_cyclone": "cyclone_damage cyclone_halved cyclone_stun_chance cyclone_stun_roll cyclone_stun",
     "spell_single_meteorswarm": "meteorswarm_damage meteorswarm_player_damage meteorswarm_area_damage",
     "spell_entropy_storm": "entropy_storm_healing",
     "spell_earthquake": "earthquake_fall_damage earthquake_stagger_damage",
@@ -591,7 +591,7 @@ int main() {
     text = page(anti_magic_ray_facts);
     check(contains(text, "  Damage: 230-2300 at your level, 50\n"), "anti-magic ray", text);
     check(contains(text, "  If the target saves: 115-1150\n"), "anti-magic ray save", text);
-    check(contains(text, "  Cannot be shrugged: 61% of the time\n"), "anti-magic shrug", text);
+    check(contains(text, "  Cannot be shrugged: 61 in 100\n"), "anti-magic shrug", text);
     check(contains(text, "  If the target survives: dispel magic, its spell save 4 worse\n"),
           "anti-magic dispel", text);
 

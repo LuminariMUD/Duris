@@ -687,6 +687,11 @@ static int song_area_threshold()
 	return get_property("spell.area.minChance.aggroBardSong", 75);
 }
 
+static int song_area_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 // The lines every song's page ends with. bard_song_level() needs an active song, so the
 // pages use the viewer's level as the song level and say so.
 static std::string song_common_facts(P_char ch, int song)
@@ -720,7 +725,8 @@ static std::string song_save_facts()
 static std::string song_area_facts()
 {
 	return fact("Chance each verse reaches each target",
-		    chance_under(song_area_threshold() + 1, 1, 100)) +
+		    chance_under(song_area_threshold() + 1, song_area_roll(lowest_rolls),
+				 song_area_roll(highest_rolls))) +
 	       "  A riff always reaches them.\n";
 }
 
@@ -1816,6 +1822,11 @@ static int song_cowardice_flee_threshold()
 	return (int)get_property("song.bard.cowardice.flee.chance", 10.000);
 }
 
+static int song_cowardice_flee_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 100);
+}
+
 // Levels above the singer's that a fleeing target can be.
 static int song_cowardice_flee_levels(int empower)
 {
@@ -1835,8 +1846,10 @@ std::string song_cowardice_facts(P_char ch)
 		    std::to_string(song_cowardice_penalty(level, empower))) +
 	       "  It lasts while you sing and they stay in the room.\n" + song_area_facts() +
 	       fact("Chance a target flees each verse",
-		    chance_under(song_cowardice_flee_threshold(), 0, 100) + ", then " +
-			    chance_under(GET_CHAR_SKILL(ch, SONG_COWARDICE), 0, 100)) +
+		    chance_under(song_cowardice_flee_threshold(),
+				 song_cowardice_flee_roll(lowest_rolls),
+				 song_cowardice_flee_roll(highest_rolls)) +
+			    ", then " + chance_under(GET_CHAR_SKILL(ch, SONG_COWARDICE), 0, 100)) +
 	       fact("Highest level that flees",
 		    std::to_string(level + song_cowardice_flee_levels(empower))) +
 	       "  It must also fail its save and a fear check. These never flee:\n"
@@ -1850,7 +1863,7 @@ void bard_cowardice(int l, P_char ch, P_char victim, int song)
 	struct affected_type af;
 	int empower = GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG);
 
-	if ((number(0, 100) < song_cowardice_flee_threshold()) &&
+	if ((song_cowardice_flee_roll(live_rolls) < song_cowardice_flee_threshold()) &&
 	    (number(0, 100) < GET_CHAR_SKILL(ch, SONG_COWARDICE)) &&
 	    ((GET_LEVEL(ch) + song_cowardice_flee_levels(empower)) >= GET_LEVEL(victim)) &&
 	    !bard_saves(ch, victim, song) && !IS_TRUSTED(victim) && !fear_check(victim))
@@ -2605,6 +2618,12 @@ static int echo_chance(int terrainType)
 	return echoChance;
 }
 
+// A disharmonist's song echoes when echo_chance() is at least this.
+static int echo_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 // How long after a song beat its echo sounds, in pulses.
 static int echo_delay(P_char ch)
 {
@@ -2613,11 +2632,12 @@ static int echo_delay(P_char ch)
 
 std::string echo_innate_facts(P_char ch)
 {
-	return fact("Chance of an echo each song beat",
-		    chance_under(echo_chance(SECT_INSIDE) + 1, 1, 100)) +
-	       fact("In the mountains", chance_under(echo_chance(SECT_MOUNTAIN) + 1, 1, 100)) +
-	       fact("In the hills", chance_under(echo_chance(SECT_HILLS) + 1, 1, 100)) +
-	       fact("In a forest", chance_under(echo_chance(SECT_FOREST) + 1, 1, 100)) +
+	const auto chance = [](int threshold)
+	{ return chance_under(threshold + 1, echo_roll(lowest_rolls), echo_roll(highest_rolls)); };
+	return fact("Chance of an echo each song beat", chance(echo_chance(SECT_INSIDE))) +
+	       fact("In the mountains", chance(echo_chance(SECT_MOUNTAIN))) +
+	       fact("In the hills", chance(echo_chance(SECT_HILLS))) +
+	       fact("In a forest", chance(echo_chance(SECT_FOREST))) +
 	       fact("It sounds after", seconds(echo_delay(ch))) +
 	       fact("The echo's song level, from a song level of 100",
 		    std::to_string(echo_song_level(100))) +
@@ -2752,7 +2772,8 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			}
 
 			if (IS_SET(sd->flags, SONG_AGGRESSIVE) &&
-			    (!should_area_hit(ch, tch) || (number(1, 100) > aggr_chance)))
+			    (!should_area_hit(ch, tch) ||
+			     (song_area_roll(live_rolls) > aggr_chance)))
 			{
 				continue;
 			}
@@ -2804,7 +2825,7 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	{
 		echoChance = echo_chance(terrainType);
 
-		if (echoChance >= number(1, 100))
+		if (echoChance >= echo_roll(live_rolls))
 		{
 			echoDetails.song = song;
 			echoDetails.room = ch->in_room;

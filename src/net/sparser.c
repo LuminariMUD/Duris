@@ -1026,6 +1026,11 @@ static int spell_knowledge_name_threshold()
 	return 60;
 }
 
+static int spell_knowledge_name_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 void SpellCastShow(P_char ch, int spl)
 {
 	P_char tch;
@@ -1071,7 +1076,8 @@ void SpellCastShow(P_char ch, int spl)
 			/*
 			   (and 100% chance of recognizing whether it is harmful or not)
 			 */
-			if (number(1, 100) > spell_knowledge_name_threshold())
+			if (spell_knowledge_name_roll(live_rolls) >
+			    spell_knowledge_name_threshold())
 				idok = 0;
 		}
 		if (!detharm && (GET_C_INT(ch) > number(1, 100)))
@@ -1127,7 +1133,9 @@ static std::string spell_knowledge_facts(P_char ch, int skill)
 		     chance_under(rating + 1, 1, 101)) +
 		"  You then know whether it is offensive.\n" +
 		fact("Then the chance to know its name",
-		     chance_under(spell_knowledge_name_threshold() + 1, 1, 100)) +
+		     chance_under(spell_knowledge_name_threshold() + 1,
+				  spell_knowledge_name_roll(lowest_rolls),
+				  spell_knowledge_name_roll(highest_rolls))) +
 		fact("Chance to hear the name when it is cast", std::to_string(heard) + " in 101") +
 		"  That chance falls as your rating rises.\n";
 	if (skill != SKILL_SPELL_KNOWLEDGE_SHAMAN)

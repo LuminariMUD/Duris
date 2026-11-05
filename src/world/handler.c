@@ -393,6 +393,11 @@ int calming_notarget_percent()
 	return get_property("innate.calming.notarget.perc", 75);
 }
 
+int calming_notarget_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 101);
+}
+
 // A command only draws an aggression check when this roll comes up 0.
 int calming_command_roll(const Rolls &rolls)
 {
@@ -426,7 +431,9 @@ std::string calming_innate_facts(P_char ch)
 	       "  only " +
 	       one_in(calming_gap_roll) + " times.\n" +
 	       fact("Chance a mob picking a target passes you over",
-		    chance_under(calming_notarget_percent() + 1, 0, 101)) +
+		    chance_under(calming_notarget_percent() + 1,
+				 calming_notarget_roll(lowest_rolls),
+				 calming_notarget_roll(highest_rolls))) +
 	       fact("Your commands that draw an aggression check", one_in(calming_command_roll)) +
 	       fact("Chance an aggressive mob then leaves you be", chance_under(calm + 1, 1, 100)) +
 	       "  That chance is +" + std::to_string(calming_chance_bonus()) +

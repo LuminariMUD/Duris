@@ -413,6 +413,7 @@ int main()
                 extract_function("actoff.c", "static int tackle_combat_pulse("),
                 extract_function("actoff.c", "static int tackle_combat_pulse_duration("),
                 extract_function("actoff.c", "static int tackle_self_stun("),
+                extract_function("actoff.c", "static int tackle_carry_roll("),
                 extract_function("actoff.c", "static int bash_damage("),
                 extract_function("actoff.c", "static int bash_rest("),
                 extract_function("actoff.c", "static int bash_hit_lag("),
