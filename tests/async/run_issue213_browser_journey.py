@@ -226,6 +226,7 @@ def exercise(server, sql, args, evidence):
                 page.wait_for_timeout(100)
         assert player_count() == before_count, 'forged hometown allocated a player'
         page.get_by_role('button', name='Create Character', exact=True).click()
+        page.get_by_role('button', name='Enter', exact=True).click()
         field = page.get_by_placeholder('Enter command...')
         field.wait_for(timeout=15000)
         god = journey.reconnect_character(server['plain'], expected_room=None, account=GOD_ACCOUNT, character=GOD)

@@ -1344,7 +1344,8 @@ void gmcp_char_vitals(struct char_data *ch)
 {
 	char *json;
 
-	if (!ch || !ch->desc)
+	// Initialization also changes vitals while the character is still in chargen.
+	if (!ch || !ch->desc || STATE(ch->desc) != CON_PLAYING)
 		return;
 	if (!GMCP_ENABLED(ch))
 		return;

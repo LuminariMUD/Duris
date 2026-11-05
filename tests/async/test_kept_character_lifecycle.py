@@ -45,6 +45,7 @@ bool accepted = false, busy = false, publish_ok = true;
 int published = 0, released = 0, approved = 0, denied = 0, websocket_entries = 0;
 int ended = 0, deletions = 0;
 std::string output;
+std::string motd = "Test MOTD";
 std::map<int, std::string> reservations;
 acct_chars account_kept_character_projection(P_char ch) { acct_chars value{}; value.pid = GET_PID(ch); return value; }
 /* PRODUCTION_ACCOUNT_PUBLICATION */
@@ -127,12 +128,17 @@ int main() {
         complete(1, player_save_apply_outcome::applied);
         assert(published == 0 && account_creation_pending(1));
         busy = false; account_creation_pulse();
-        assert(!account_creation_pending(1) && published == 1 && STATE(&s.d) == CON_RMOTD);
+        assert(!account_creation_pending(1) && published == 1 && STATE(&s.d) == CON_DISPLAY_ACCT_MENU && !s.d.character);
         assert(s.account.num_chars == 1);
         assert(account_publish_kept_character(&s.account, account_kept_character_projection(&s.ch), s.name));
         assert(s.account.num_chars == 1); // retries do not consume another slot
 
-        assert(output.find("PRESS RETURN") != std::string::npos);
+        assert(output.find("PRESS RETURN") == std::string::npos);
+        // Selecting the committed body is an explicit first-play request.
+        s.d.character = &s.ch;
+        continue_kept_character(&s.d);
+        assert(STATE(&s.d) == CON_RMOTD && s.d.character == &s.ch);
+        assert(output.find("Test MOTD") != std::string::npos);
     }
     {
         session s(2); admission = player_save_pipeline_result::unavailable;
@@ -183,7 +189,7 @@ int main() {
         assert(STATE(&s.d) == CON_ACCEPTWAIT && IS_SET(s.ch.specials.act3, PLR3_APPROVAL_PENDING));
         assert(approve_kept_character(&s.d));
         complete(7, player_save_apply_outcome::applied);
-        assert(approved == before + 1 && STATE(&s.d) == CON_RMOTD);
+        assert(approved == before + 1 && STATE(&s.d) == CON_DISPLAY_ACCT_MENU && !s.d.character);
         assert(!IS_SET(s.ch.specials.act3, PLR3_APPROVAL_PENDING));
     }
     {
@@ -206,6 +212,13 @@ int main() {
         const int before = denied;
         deletion_reply(character_delete_result::deleted);
         assert(denied == before + 1); // staff decision persists after descriptor loss
+    }
+    {
+        session s(10);
+        continue_kept_character(&s.d); // a legacy snapshot selected for Play
+        assert(STATE(&s.d) == CON_CREATION_SAVE);
+        complete(10, player_save_apply_outcome::applied);
+        assert(STATE(&s.d) == CON_RMOTD && s.d.character);
     }
     assert(reservations.count(99));
 }
