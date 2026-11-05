@@ -46,6 +46,7 @@ struct Range
 std::string fact(const std::string &label, const std::string &text);
 std::string show(Range range);
 std::string seconds(int pulses);
+std::string game_hours(int ticks);
 
 // The mechanics lines a converted ability shows to the viewing character.
 typedef std::string (*AbilityFacts)(char_data *ch);
