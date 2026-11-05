@@ -142,6 +142,7 @@ def production():
         ("salchemist.c", "bool collect_required_objects("),
         ("salchemist.c", "P_obj get_vial("),
         ("salchemist.c", "char *print_poison_ingredients("),
+        ("salchemist.c", "static int mixpoison_lag("),
         ("salchemist.c", "void do_mixpoison("),
         ("actobj.c", "void do_apply_poison("),
     ])

@@ -248,9 +248,9 @@ def main():
     declared = re.findall(r"^std::string (\w+_facts)\(char_data \*ch\);", source("abilities.h").read_text(), re.M)
     functions += [f"std::string {name}(char_data *) {{ std::abort(); }}"
                   for name in declared if name not in ("fireball_facts", "bash_facts")]
-    # Any spell or skill still pending has no facts.
-    pending = (ROOT / "tests/fixtures/ability_coverage_pending.txt").read_text().split()
-    unconverted = next(name for name in pending if name.startswith(("SPELL_", "SKILL_")))
+    # Any spell or skill with no numbers has no facts.
+    no_numbers = (ROOT / "tests/fixtures/ability_coverage_no_numbers.txt").read_text().split()
+    unconverted = next(name for name in no_numbers if name.startswith(("SPELL_", "SKILL_")))
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ability-framework-", dir=build) as temporary:

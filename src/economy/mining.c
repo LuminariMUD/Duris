@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include "abilities/abilities.h"
 
 extern P_desc descriptor_list;
 extern P_index obj_index;
@@ -283,6 +284,49 @@ P_obj get_gem_from_mine(P_char /*ch*/, int mine_quality)
 	return gem;
 }
 
+static int mine_rounds(int base, int rating)
+{
+	return (base * 200) / (100 + rating);
+}
+
+static int mine_exp(int rating)
+{
+	return (rating * 4);
+}
+
+// Zero fumbles your pick while you mine mounted.
+static int mine_ride_roll(const Rolls &rolls, int rating)
+{
+	return rolls.number(0, rating / 20);
+}
+
+// Zero, after notching, turns up only worthless rock.
+static int mine_rock_roll(const Rolls &rolls, int rating)
+{
+	return rolls.number(0, (rating * 2));
+}
+
+std::string mine_facts(P_char ch)
+{
+	extern int tradeskill_vitality_cost(const Rolls &rolls, int rating);
+	const int rating = GET_CHAR_SKILL(ch, SKILL_MINE);
+	if (!rating)
+		return "  You have not learned to mine.\n";
+	return fact("Time a vein takes", std::to_string(mine_rounds(100, rating)) +
+						 "% of its base, give or take a round") +
+	       fact("Experience for what you find", std::to_string(mine_exp(rating))) +
+	       fact("Chance each round finds only rock",
+		    "1 in " + std::to_string(mine_rock_roll(highest_rolls, rating) + 1)) +
+	       fact("Chance each round fumbles the pick if you ride",
+		    "1 in " + std::to_string(mine_ride_roll(highest_rolls, rating) + 1)) +
+	       fact("Vitality each round",
+		    show({ tradeskill_vitality_cost(lowest_rolls, rating),
+			   tradeskill_vitality_cost(highest_rolls, rating) })) +
+	       "    (you stop below 10)\n"
+	       "  Ore's value scales with your level over 56 and your rating over 100.\n"
+	       "  It takes a wielded pick. You can know only one of forge, mine and craft.\n";
+}
+
 int mine(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 {
 	if (cmd == CMD_SET_PERIODIC)
@@ -350,8 +394,7 @@ int mine(P_obj obj, P_char ch, int cmd, char * /*arg*/)
 		else
 		{
 			// At 1 skill, roughly twice as long as 100 skill.  At 100 skill, ticks represented by val2 = mine_duration.
-			data.counter =
-				(obj->value[2] * 200) / (100 + GET_CHAR_SKILL(ch, SKILL_MINE));
+			data.counter = mine_rounds(obj->value[2], GET_CHAR_SKILL(ch, SKILL_MINE));
 			// Anti-cheater code: less than 16 sec?
 			if (data.counter < 4)
 			{
@@ -501,7 +544,7 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 		act("Your mining efforts turn up $p&n!", FALSE, ch, ore, 0, TO_CHAR);
 		act("$n finds $p&n!", FALSE, ch, ore, 0, TO_ROOM);
 
-		gain_exp(ch, NULL, (GET_CHAR_SKILL(ch, SKILL_MINE) * 4), EXP_BOON);
+		gain_exp(ch, NULL, mine_exp(GET_CHAR_SKILL(ch, SKILL_MINE)), EXP_BOON);
 		ore->cost = newcost;
 		obj_to_room(ore, ch->in_room);
 		return;
@@ -522,7 +565,7 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 	if (IS_RIDING(ch))
 	{
 		send_to_char("Mining while mounted?  Good luck!\n", ch);
-		if (!number(0, GET_CHAR_SKILL(ch, SKILL_MINE) / 20))
+		if (!mine_ride_roll(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE)))
 		{
 			act("You fumble your $p!", FALSE, ch, pick, 0, TO_CHAR);
 			if (ch->equipment[WIELD] == pick)
@@ -546,7 +589,7 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 	}
 
 	if (!notch_skill(ch, SKILL_MINE, get_property("skill.notch.mining", 2.5)) &&
-	    !number(0, (GET_CHAR_SKILL(ch, SKILL_MINE) * 2)))
+	    !mine_rock_roll(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE)))
 	{
 		send_to_char("You thought you found something, but it was just worthless rock.\n",
 			     ch);
@@ -566,7 +609,8 @@ void event_mine_check(P_char ch, P_char /*victim*/, P_obj, void *data)
 
 	send_to_char("You continue mining...\n", ch);
 	notch_skill(ch, SKILL_MINE, get_property("skill.notch.mining", 2.5));
-	GET_VITALITY(ch) -= (number(0, 100) > GET_CHAR_SKILL(ch, SKILL_MINE)) ? 3 : 2;
+	extern int tradeskill_vitality_cost(const Rolls &rolls, int rating);
+	GET_VITALITY(ch) -= tradeskill_vitality_cost(live_rolls, GET_CHAR_SKILL(ch, SKILL_MINE));
 
 	add_event(event_mine_check, PULSE_VIOLENCE, ch, 0, 0, 0, mdata, sizeof(struct mining_data));
 

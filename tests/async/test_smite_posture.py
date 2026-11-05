@@ -21,7 +21,7 @@ using event_func=void(*)(P_char,P_char,P_obj,void *);
 #define GET_HIT(c) ((c)->hp)
 #define GET_MAX_HIT(c) ((c)->maxhp)
 #define GET_RACEWAR(c) ((c)->racewar)
-#define GET_CHAR_SKILL(c,s) 100
+#define GET_CHAR_SKILL(c,s) ((void)(c), 100)
 constexpr int SKILL_SMITE_EVIL=1, WAIT_SEC=4, TO_NOTVICT=2, TO_CHAR=3, TO_VICT=1, FALSE=0;
 int attacks=0, scheduled=0;
 bool is_wielding_paladin_sword(P_char ch) { return ch->sword; }
@@ -32,6 +32,8 @@ int get_property(const char *,int fallback) { return fallback; }
 void act(const char *,int,P_char,P_obj,P_char,int) {}
 void damage(P_char,P_char,int,int) { ++attacks; }
 void add_event(event_func,int,P_char,P_char,P_obj,int,void *,int) { ++scheduled; }
+struct Rolls { int (*dice)(int,int); int (*number)(int,int); };
+const Rolls live_rolls = { nullptr, number };
 // PRODUCTION
 int main() {
     Character actor, enemy; enemy.evil=true; enemy.racewar=2; enemy.hp=5; world[0].people=&enemy;
@@ -48,7 +50,9 @@ int main() {
 (ROOT / "bin/tests").mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="smite-posture-", dir=ROOT / "bin/tests") as directory:
     source, binary = Path(directory) / "test.cpp", Path(directory) / "test"
-    source.write_text(HARNESS.replace("// PRODUCTION", extract_function("paladins.c", "void event_smite_evil(")))
+    source.write_text(HARNESS.replace("// PRODUCTION", "\n".join(
+        extract_function("paladins.c", signature) for signature in
+        ("int smite_evil_interval(", "static int smite_evil_threshold(", "static int smite_evil_damage(", "void event_smite_evil("))))
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-g", "-fsanitize=address,undefined",
                     str(source), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

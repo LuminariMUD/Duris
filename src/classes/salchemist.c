@@ -97,6 +97,40 @@ bool collect_required_objects(P_char ch, const int required[], bool poison,
 	return !objects->empty();
 }
 
+// A failed spellbind's roll of 0 damages the item. A success's roll of 0 damages it, and if
+// that roll misses, another's 0 brings strong magic.
+static int spellbind_failure_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 4);
+}
+
+static int spellbind_success_damage_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int spellbind_strong_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 40);
+}
+
+static int spellbind_condition_loss(const Rolls &rolls)
+{
+	return rolls.number(1, 20);
+}
+
+// What spellbinding adds to an item's affects.
+static int spellbind_bonus(int skill)
+{
+	return skill / 20;
+}
+
+// What it adds to a stat maximum, takes off a save, and multiplies armor by.
+static int spellbind_fine_bonus(int skill)
+{
+	return skill / 50;
+}
+
 struct spellbind_context
 {
 	unsigned long object_uid;
@@ -135,12 +169,12 @@ void spellbind_committed(P_char ch, bool committed, const epic_command_result &,
 	}
 	act("You successfully bind some magic to the item...", FALSE, ch, 0, 0, TO_CHAR);
 	int total = 0;
-	if (!number(0, 2) && !IS_TRUSTED(ch))
+	if (!spellbind_success_damage_roll(live_rolls) && !IS_TRUSTED(ch))
 	{
-		set_obj_condition(item, item->condition - (number(1, 20)));
+		set_obj_condition(item, item->condition - (spellbind_condition_loss(live_rolls)));
 		act("...however, you damaged it a bit...", FALSE, ch, 0, 0, TO_CHAR);
 	}
-	else if (!number(0, 40) || IS_TRUSTED(ch))
+	else if (!spellbind_strong_roll(live_rolls) || IS_TRUSTED(ch))
 	{
 		setsuffix_obj_new(item);
 		act("...you feel &+YSTRONG&n magic flowing this time...", FALSE, ch, 0, 0, TO_CHAR);
@@ -153,17 +187,19 @@ void spellbind_committed(P_char ch, bool committed, const epic_command_result &,
 		    item->affected[index].modifier == 0 || item->affected[index].modifier >= 120 ||
 		    item->affected[index].modifier <= -120)
 			continue;
-		const int bonus = context.skill / 20;
+		const int bonus = spellbind_bonus(context.skill);
 		if (is_stat_max(item->affected[index].location))
-			total += item->affected[index].modifier + context.skill / 50;
+			total += item->affected[index].modifier +
+				 spellbind_fine_bonus(context.skill);
 		else if (is_neg_good(item->affected[index].location))
 		{
 			if (item->affected[index].location >= APPLY_SAVING_PARA &&
 			    item->affected[index].location <= APPLY_SAVING_SPELL)
-				total = item->affected[index].modifier - total - context.skill / 50;
+				total = item->affected[index].modifier - total -
+					spellbind_fine_bonus(context.skill);
 			else if (item->affected[index].location == APPLY_ARMOR)
 				total = item->affected[index].modifier *
-					(context.skill / 50 + total);
+					(spellbind_fine_bonus(context.skill) + total);
 			else
 				total = item->affected[index].modifier + total + bonus;
 		}
@@ -682,6 +718,30 @@ char *print_poison_ingredients(int ingredients[])
 	return buffer;
 }
 
+static int mixpoison_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string mixpoison_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_MIXPOISON);
+	if (!rating)
+		return "  You have not learned to mix poison.\n";
+	int known = 0, all = 0;
+	for (int i = 0; poison_data[i].poison_type; i++)
+	{
+		all++;
+		if (GET_LEVEL(ch) >= poison_data[i].level_required &&
+		    rating >= poison_data[i].skill_required)
+			known++;
+	}
+	return fact("Poisons your level and rating can mix",
+		    std::to_string(known) + " of " + std::to_string(all)) +
+	       fact("Your lag", seconds(mixpoison_lag())) +
+	       "  It takes a poison vial and the ingredients. Type mixpoison list for them.\n";
+}
+
 void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 {
 	P_obj vial;
@@ -695,7 +755,7 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, mixpoison_lag());
 	one_argument(argument, arg);
 	if (*arg)
 	{
@@ -758,13 +818,66 @@ void do_mixpoison(P_char ch, char *argument, int /*cmd*/)
 			obj_to_char(poison_vial, ch);
 			notch_skill(ch, SKILL_MIXPOISON, 6.25);
 			send_to_char("You finish mixing the poison.\r\n", ch);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, mixpoison_lag());
 			return;
 		}
 	}
 
 	act("No poison created in the vial!", FALSE, ch, 0, 0, TO_CHAR);
 	return;
+}
+
+static int mix_start_lag()
+{
+	return PULSE_VIOLENCE * 1;
+}
+
+static int mix_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// A roll of 1-160 below this makes a potion from the bottle.
+static int mix_potion_threshold(P_char ch)
+{
+	return ((GET_C_WIS(ch) + GET_C_DEX(ch)) / 2);
+}
+
+// Unless this comes out zero, the bottle goes back for another try.
+static int mix_bottle_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+// A roll from zero to this ends the mixing when it comes out zero.
+static int mix_ingredients_top(const Rolls &rolls, P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_MIX) / 10 + rolls.number(1, 2);
+}
+
+std::string mix_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_MIX))
+		return "  You have not learned to mix.\n";
+	int known = 0, all = 0;
+	for (int i = 0; potion_data[i].spell_type; i++)
+	{
+		all++;
+		if (GET_LEVEL(ch) >= potion_data[i].spell_level)
+			known++;
+	}
+	return fact("Potions your level can mix",
+		    std::to_string(known) + " of " + std::to_string(all)) +
+	       fact("Chance each bottle makes one",
+		    chance_under(mix_potion_threshold(ch), 1, 160)) +
+	       "    (from your wisdom and dexterity)\n" +
+	       fact("Chance a bottle is used up", one_in(mix_bottle_roll)) +
+	       fact("Chance the ingredients run out after each bottle",
+		    "1 in " + show({ mix_ingredients_top(lowest_rolls, ch) + 1,
+				     mix_ingredients_top(highest_rolls, ch) + 1 })) +
+	       fact("Your lag", seconds(mix_lag())) +
+	       fact("Your lag if you have nothing to mix", seconds(mix_start_lag())) +
+	       "  It takes a potion bottle and the ingredients.\n";
 }
 
 void do_mix(P_char ch, char *argument, int /*cmd*/)
@@ -779,7 +892,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	CharWait(ch, PULSE_VIOLENCE * 1);
+	CharWait(ch, mix_start_lag());
 	one_argument(argument, arg);
 	if (*arg)
 	{
@@ -825,7 +938,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 			if (!current.generated)
 				consumed_bottles.push_back(current.object);
 
-			if (number(1, 160) < ((GET_C_WIS(ch) + GET_C_DEX(ch)) / 2))
+			if (number(1, 160) < mix_potion_threshold(ch))
 			{
 				P_obj potion = read_object(potion_data[i].vnum, VIRTUAL);
 				if (!potion)
@@ -846,10 +959,10 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 				produced_potion = true;
 			}
 
-			if (number(0, 5))
+			if (mix_bottle_roll(live_rolls))
 				available_bottles.push_front({ nullptr, true });
 
-			if (number(0, GET_CHAR_SKILL(ch, SKILL_MIX) / 10 + number(1, 2)))
+			if (number(0, mix_ingredients_top(live_rolls, ch)))
 			{
 				if (available_bottles.empty())
 					break;
@@ -891,7 +1004,7 @@ void do_mix(P_char ch, char *argument, int /*cmd*/)
 			send_to_char(
 				"You ran out of bottles before the ingredients were consumed.\r\n",
 				ch);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, mix_lag());
 		return;
 	}
 
@@ -912,6 +1025,29 @@ bool is_neg_good(sbyte location)
 	default:
 		return FALSE;
 	}
+}
+
+std::string spellbind_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_SPELLBIND);
+	if (!skill)
+		return "  You have not learned to spellbind.\n";
+	const std::string loss = show({ spellbind_condition_loss(lowest_rolls),
+					spellbind_condition_loss(highest_rolls) });
+	return fact("Chance", chance_under(skill + 1, 10, 140)) + "  A failure has a " +
+	       one_in(spellbind_failure_roll) + " chance to cost " + loss +
+	       " condition and stop repairs.\n"
+	       "  A success spends 1 epic point and stops repairs; " +
+	       one_in(spellbind_success_damage_roll) + " also costs " + loss +
+	       "\n  condition, and otherwise " + one_in(spellbind_strong_roll) +
+	       " brings strong magic.\n" +
+	       fact("Each of its first 3 affects improves by",
+		    std::to_string(spellbind_bonus(skill))) +
+	       fact("Stat maximums and saving throws improve by",
+		    std::to_string(spellbind_fine_bonus(skill))) +
+	       fact("Armor is multiplied by", std::to_string(spellbind_fine_bonus(skill))) +
+	       "    (later affects on the item also carry the total so far)\n"
+	       "  It takes a repairable item in perfect condition, and no artifacts.\n";
 }
 
 void do_spellbind(P_char ch, char *argument, int /*cmd*/)
@@ -988,11 +1124,12 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 	if (skill < number(10, 140))
 	{
 		act("You failed to spellbind this item ...", FALSE, ch, 0, 0, TO_CHAR);
-		if (!number(0, 4))
+		if (!spellbind_failure_roll(live_rolls))
 		{
 			act("... and severely damage it.", FALSE, ch, 0, 0, TO_CHAR);
 			SET_BIT(item->extra_flags, ITEM_NOREPAIR);
-			set_obj_condition(item, item->condition - number(1, 20));
+			set_obj_condition(item,
+					  item->condition - spellbind_condition_loss(live_rolls));
 		}
 		return;
 	}
@@ -1098,6 +1235,31 @@ void do_spellbind(P_char ch, char *argument, int /*cmd*/)
 		snprintf(tempbuf, MAX_STRING_LENGTH, "%s &+wenc&+Wha&+wnted by &+L%s&n",
 			 item->short_description, GET_NAME(ch));
 	set_short_description(item, tempbuf);
+}
+
+static int encrust_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// A roll of 0 casts the jewel's spell.
+static int encrust_proc_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 29);
+}
+
+std::string encrust_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_ENCRUST);
+	if (!skill)
+		return "  You have not learned to encrust.\n";
+	return fact("Chance", chance_under(skill + 1, 1, 110)) +
+	       "  A failure destroys the item and the jewel.\n" +
+	       fact("Your lag", seconds(encrust_lag())) +
+	       fact("Chance the worn item casts the jewel's spell",
+		    one_in(encrust_proc_roll) + " on each trigger") +
+	       "    (at your level when you encrusted it; it can't then be repaired)\n"
+	       "  Weapons, armor, shields, lights, instruments and worn gear, once each.\n";
 }
 
 void do_encrust(P_char ch, char *argument, int /*cmd*/)
@@ -1244,7 +1406,7 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 		act("You broke your item in the process.", FALSE, ch, 0, 0, TO_CHAR);
 		act("...and breaks it in the process.", TRUE, ch, 0, 0, TO_ROOM);
 		wizlog(56, "%s ruined an encrust attempt.", GET_NAME(ch));
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, encrust_lag());
 		return;
 	}
 
@@ -1322,7 +1484,7 @@ void do_encrust(P_char ch, char *argument, int /*cmd*/)
 	act("...creating a real masterpiece!", TRUE, ch, 0, 0, TO_ROOM);
 	act("Hurrah! Hurrah!", FALSE, ch, 0, 0, TO_CHAR);
 	wizlog(56, "Encrust committed for %s.", GET_NAME(ch));
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, encrust_lag());
 	return;
 }
 
@@ -1355,7 +1517,7 @@ int encrusted_eq_proc(P_obj obj, P_char ch, int cmd, char *arg)
 	j = obj->value[5];
 
 	// 1/30 chance.
-	if (!number(0, 29))
+	if (!encrust_proc_roll(live_rolls))
 	{
 		if (j != SPELL_ENERGY_DRAIN && j != 0)
 		{
@@ -1388,6 +1550,30 @@ int encrusted_eq_proc(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 	}
 	return TRUE;
+}
+
+static int fix_repaired_condition(const Rolls &rolls)
+{
+	return 100 - rolls.number(0, 10);
+}
+
+static int fix_failed_damage(const Rolls &rolls)
+{
+	return rolls.number(2, 30);
+}
+
+std::string fix_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_FIX);
+	if (!skill)
+		return "  You have not learned to fix things.\n";
+	return fact("Chance", chance_under(skill, 0, 105)) +
+	       fact("Condition afterward", show({ fix_repaired_condition(highest_rolls),
+						  fix_repaired_condition(lowest_rolls) })) +
+	       fact("Condition lost if you fail",
+		    show({ fix_failed_damage(lowest_rolls), fix_failed_damage(highest_rolls) })) +
+	       "  An item at 0 condition is destroyed.\n"
+	       "  Only at condition 20-90, and it uses up a piece of the item's material.\n";
 }
 
 void do_fix(P_char ch, char *argument, int /*cmd*/)
@@ -1467,11 +1653,11 @@ void do_fix(P_char ch, char *argument, int /*cmd*/)
 	{
 		act("$N fiddles with $p, fixing it quickly!", TRUE, ch, item, ch, TO_ROOM);
 		act("You fiddle with $p, fixing it quickly!", TRUE, ch, item, 0, TO_CHAR);
-		set_obj_condition(item, 100 - number(0, 10));
+		set_obj_condition(item, fix_repaired_condition(live_rolls));
 	}
 	else
 	{
-		set_obj_condition(item, item->condition - number(2, 30));
+		set_obj_condition(item, item->condition - fix_failed_damage(live_rolls));
 		if (item->condition < 1)
 		{
 			act("$N fiddles with $p, but fails, destroying it!", TRUE, ch, item, ch,
@@ -1517,6 +1703,23 @@ P_obj check_furnace(P_char ch)
 	}
 
 	return NULL;
+}
+
+// Smelting two things risks a mishap when this comes out zero.
+static int smelt_risk_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+std::string smelt_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SMELT);
+	if (!rating)
+		return "  You have not learned to smelt.\n";
+	return fact("Chance a smelt risks a mishap", one_in(smelt_risk_roll)) +
+	       fact("Chance you then avoid it", chance_under(rating + 1, 0, 99)) +
+	       "    (a mishap leaves alloy)\n"
+	       "  It takes a furnace in the room, holding one or two things. One is destroyed.\n";
 }
 
 void do_smelt(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -1642,7 +1845,7 @@ void do_smelt(P_char ch, char * /*arg*/, int /*cmd*/)
 			}
 		}
 
-		if (!number(0, 2))
+		if (!smelt_risk_roll(live_rolls))
 		{
 			if (GET_CHAR_SKILL(ch, SKILL_SMELT) < number(0, 99))
 			{
@@ -1870,6 +2073,71 @@ struct spell_target_data common_target_data;
 extern const struct class_names class_names_table[];
 extern const char *class_names[];
 
+static int enchant_circle_limit(int skill)
+{
+	return (skill / 10);
+}
+
+static int enchant_platinum(int circle)
+{
+	return (circle * 10);
+}
+
+static int enchant_min_condition()
+{
+	return get_property("skill.enchant.minItemCondition", 30);
+}
+
+static int enchant_lag()
+{
+	return PULSE_VIOLENCE * 1;
+}
+
+// Zero spoils the enchantment.
+static int enchant_fumble_roll(const Rolls &rolls, int skill)
+{
+	return rolls.number(0, skill - 10);
+}
+
+static int enchant_fumble_damage(const Rolls &rolls)
+{
+	return rolls.number(5, 10);
+}
+
+// A roll of 0 stops an enchanted item being repaired.
+static int enchant_norepair_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+static int enchant_duration(int skill)
+{
+	return (skill / 2) * WAIT_MIN;
+}
+
+std::string enchant_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_ENCHANT);
+	if (!skill)
+		return "  You have not learned to enchant.\n";
+	if (!enchant_circle_limit(skill))
+		return "  Your rating is too low to enchant with any spell.\n";
+	return fact("Highest spell circle you can bind",
+		    std::to_string(enchant_circle_limit(skill))) +
+	       fact("Platinum it costs per circle", std::to_string(enchant_platinum(1))) +
+	       fact("Lowest item condition", std::to_string(enchant_min_condition())) +
+	       fact("Duration", real_time(enchant_duration(skill))) +
+	       fact("Chance it spoils",
+		    "1 in " + std::to_string(enchant_fumble_roll(highest_rolls, skill) -
+					     enchant_fumble_roll(lowest_rolls, skill) + 1)) +
+	       fact("Condition that costs", show({ enchant_fumble_damage(lowest_rolls),
+						   enchant_fumble_damage(highest_rolls) })) +
+	       "    (and " + one_in(enchant_norepair_roll) + " stops repairs)\n" +
+	       fact("Your lag, and the wait for it to take", seconds(enchant_lag())) +
+	       "  The spell must be on you, harmless, and castable on others, and\n"
+	       "  wearing the item casts it at your level. No artifacts.\n";
+}
+
 void do_enchant(P_char ch, char *argument, int /*cmd*/)
 {
 	char arg[MAX_STRING_LENGTH];
@@ -1977,17 +2245,17 @@ void do_enchant(P_char ch, char *argument, int /*cmd*/)
 		}
 		i++;
 	}
-	if (circle > (skill / 10) || circle == 0)
+	if (circle > enchant_circle_limit(skill) || circle == 0)
 	{
 		send_to_char("That spell is too complicated for you! \r\n", ch);
 		return;
 	}
-	if (GET_PLATINUM(ch) < (circle * 10))
+	if (GET_PLATINUM(ch) < enchant_platinum(circle))
 	{
 		send_to_char("You do not have enough platinum on you.! \r\n", ch);
 		return;
 	}
-	if (item->condition < get_property("skill.enchant.minItemCondition", 30))
+	if (item->condition < enchant_min_condition())
 	{
 		send_to_char(
 			"No true alchemist would do something with a weapon in that condition. Repair it!! \r\n",
@@ -2014,9 +2282,9 @@ void do_enchant(P_char ch, char *argument, int /*cmd*/)
 
 	common_target_data.ttype = spl;
 	common_target_data.t_obj = item;
-	add_event(event_enchant, 1 * PULSE_VIOLENCE, ch, 0, 0, 0, &common_target_data,
+	add_event(event_enchant, enchant_lag(), ch, 0, 0, 0, &common_target_data,
 		  sizeof(common_target_data));
-	CharWait(ch, PULSE_VIOLENCE * 1);
+	CharWait(ch, enchant_lag());
 }
 
 void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
@@ -2053,7 +2321,7 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 		return;
 	}
 	skill = GET_CHAR_SKILL(ch, SKILL_ENCHANT);
-	if (!number(0, skill - 10))
+	if (!enchant_fumble_roll(live_rolls, skill))
 	{
 		act("$n utters a foul curse as $e pours too much acid on $q.\n"
 		    "$n's $q was damaged as the acid eats into it!",
@@ -2061,7 +2329,7 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 		act("You utter a foul curse as you pour too much acid on the $q.\n"
 		    "Your $q was damaged as the acid eats into it!",
 		    FALSE, ch, item, 0, TO_CHAR);
-		set_obj_condition(item, item->condition - number(5, 10));
+		set_obj_condition(item, item->condition - enchant_fumble_damage(live_rolls));
 
 		if (item->condition < 1)
 		{
@@ -2072,7 +2340,7 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 			return;
 		}
 
-		if (!number(0, 5))
+		if (!enchant_norepair_roll(live_rolls))
 		{
 			act("$q &+yglows bright and eerie!&n", FALSE, ch, item, 0, TO_ROOM);
 			act("$q &+yglows bright and eerie!&n", FALSE, ch, item, 0, TO_CHAR);
@@ -2107,7 +2375,7 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 
 	if (ch && item)
 	{
-		set_obj_affected(item, (skill / 2) * WAIT_MIN, SKILL_ENCHANT, spll);
+		set_obj_affected(item, enchant_duration(skill), SKILL_ENCHANT, spll);
 	}
 }
 

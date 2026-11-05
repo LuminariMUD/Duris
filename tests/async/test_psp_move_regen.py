@@ -139,6 +139,8 @@ HELPERS = "\n".join([
       if line.startswith("#define MOB_") and "_REGEN_DELAY" in line),
     extract_function("events.c", "static struct regen_event_state regen_state_from_data("),
     extract_function("events.c", "static unsigned long long regen_elapsed_ticks("),
+    extract_function("limits.c", "double meditate_mana_gain("),
+    extract_function("limits.c", "static int improved_endurance_regen("),
     extract_function("limits.c", "int mana_regen("),
     extract_function("limits.c", "int move_regen("),
     extract_function("events.c", "void event_mana_regen(P_char ch,"),

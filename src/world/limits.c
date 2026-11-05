@@ -52,6 +52,7 @@
 #include <cmath>
 #include <limits>
 #include <type_traits>
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -83,6 +84,28 @@ long global_exp_limit;
 float exp_mods[EXPMOD_MAX + 1];
 
 void checkPeriodOfFame(P_char ch, char killer[1024]);
+
+static int improved_endurance_vitality(int endurance)
+{
+	return (endurance / 2);
+}
+
+static int improved_endurance_regen(int endurance)
+{
+	return (endurance / 10);
+}
+
+std::string improved_endurance_facts(P_char ch)
+{
+	const int endurance = GET_CHAR_SKILL(ch, SKILL_IMPROVED_ENDURANCE);
+	if (endurance < 1)
+		return "  You have not learned improved endurance.\n";
+	return fact("Maximum vitality",
+		    "+" + std::to_string(improved_endurance_vitality(endurance))) +
+	       fact("Vitality recovery base",
+		    "+" + std::to_string(improved_endurance_regen(endurance))) +
+	       "    (the recovery formula then squares its base)\n";
+}
 
 int vitality_limit(P_char ch)
 {
@@ -116,10 +139,16 @@ int vitality_limit(P_char ch)
 	 */
 	if (endurance > 0)
 	{
-		max += (endurance / 2);
+		max += improved_endurance_vitality(endurance);
 	}
 
 	return (max);
+}
+
+// A meditating character's base mana recovery.
+double meditate_mana_gain(P_char ch)
+{
+	return (GET_C_POW(ch) + GET_C_INT(ch)) / .2;
 }
 
 /* PSP points per game tick, shared by admission, recovery and staff display. */
@@ -139,7 +168,7 @@ int mana_regen(P_char ch, bool display_only)
 		return MIN(-1, gain);
 	}
 
-	int gain = IS_AFFECTED(ch, AFF_MEDITATE) ? (GET_C_POW(ch) + GET_C_INT(ch)) / .2 :
+	int gain = IS_AFFECTED(ch, AFF_MEDITATE) ? meditate_mana_gain(ch) :
 						   (GET_C_POW(ch) + GET_C_INT(ch)) / 2.5;
 
 	if (affected_by_spell(ch, SPELL_FEEBLEMIND))
@@ -447,7 +476,7 @@ int move_regen(P_char ch, bool display_only)
 	 */
 
 	if (endurance > 0)
-		gain += (endurance / 10);
+		gain += improved_endurance_regen(endurance);
 
 	if (GET_RACE(ch) == RACE_QUADRUPED)
 		gain += dice(2, 3);

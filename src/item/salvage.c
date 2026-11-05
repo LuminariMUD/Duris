@@ -1,4 +1,5 @@
 /* Salvage subsystem: eligibility, examination, and player command. */
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -132,6 +133,34 @@ void salvage_examine_item(P_char ch, P_obj item)
 				"  It is eligible for a possible player-recipe discovery.\r\n" :
 				"  It cannot yield a player recipe under the current crafting policy.\r\n",
 			ch);
+}
+
+// Zero gives two pieces of material instead of one.
+static int salvage_pieces_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+// A roll of 1-10000, eased on cheap items and by scientific tools, below this finds a recipe.
+static int salvage_recipe_score(P_char ch)
+{
+	return GET_C_LUK(ch) + GET_LEVEL(ch) * 2 + GET_CHAR_SKILL(ch, SKILL_SALVAGE);
+}
+
+std::string salvage_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SALVAGE);
+	if (rating < 1)
+		return "  You have not learned to salvage.\n";
+	return fact("Chance it doesn't break", chance_under(rating + 1, 1, 105)) +
+	       (crafting_scientific_tools_prevent_breakage() ?
+			"    (Lantan scientific tools prevent that break)\n" :
+			"") +
+	       fact("Chance of two pieces of material", one_in(salvage_pieces_roll)) +
+	       "  Material's value scales with your level over 56 and your rating over 100.\n" +
+	       fact("Recipe score", std::to_string(salvage_recipe_score(ch))) +
+	       "    (from your luck, level and rating, against 1-10000: easier on cheap\n"
+	       "    items and with tools, impossible on the most valuable)\n";
 }
 
 void do_salvage(P_char ch, char *argument, int /*cmd*/)
@@ -488,7 +517,7 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 				 ", Newcost(skill): %d", newcost);
 
 	// 67% chance to get 2 salvaged materials.
-	if (!number(0, 2))
+	if (!salvage_pieces_roll(live_rolls))
 	{
 		act("&+w...and at least you &+ysalvaged&n a decent amount.", FALSE, ch, 0, 0,
 		    TO_CHAR);
@@ -578,7 +607,7 @@ void do_salvage(P_char ch, char *argument, int /*cmd*/)
 		reciperoll = 100000;
 	}
 
-	playerroll = GET_C_LUK(ch) + GET_LEVEL(ch) * 2 + GET_CHAR_SKILL(ch, SKILL_SALVAGE);
+	playerroll = salvage_recipe_score(ch);
 	if (scitools > 0)
 	{
 		if (crafting_scientific_tools_prevent_breakage())

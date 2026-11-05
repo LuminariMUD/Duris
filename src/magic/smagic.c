@@ -4319,6 +4319,28 @@ int can_summon_beast(P_char ch, int /*level*/)
 	return TRUE;
 }
 
+// The hit points infuse life adds to a summoned beast, before the non-animalist share.
+int summon_beast_life_hit_points(int life)
+{
+	return (life * 2);
+}
+
+int greater_beast_life_hit_points(int life)
+{
+	return (life * 5);
+}
+
+// The levels infuse life adds to a summoned beast.
+int summon_beast_life_level(const Rolls &rolls, int life)
+{
+	return (int)(life / 20) + rolls.number(0, 2);
+}
+
+int greater_beast_life_level(const Rolls &rolls, int life)
+{
+	return (int)(life / 15) + rolls.number(0, 2);
+}
+
 P_char summon_beast_common(int mobnumb, P_char ch, int max_summon, int dur, const char *appearsC,
 			   const char *appears, int level, bool is_greater)
 {
@@ -4358,20 +4380,20 @@ P_char summon_beast_common(int mobnumb, P_char ch, int max_summon, int dur, cons
 	{
 		if (is_greater)
 		{
-			sum = dice(level, 16) + (life * 5);
+			sum = dice(level, 16) + greater_beast_life_hit_points(life);
 		}
 		else
 		{
-			sum = dice(level, 12) + (life * 2);
+			sum = dice(level, 12) + summon_beast_life_hit_points(life);
 		}
 	}
 	else if (is_greater)
 	{
-		sum = (int)((dice(level, 16) + (life * 5)) * 0.66);
+		sum = (int)((dice(level, 16) + greater_beast_life_hit_points(life)) * 0.66);
 	}
 	else
 	{
-		sum = (int)((dice(level, 12) + (life * 2)) * 0.66);
+		sum = (int)((dice(level, 12) + summon_beast_life_hit_points(life)) * 0.66);
 	}
 
 	if (!is_greater)
@@ -4391,11 +4413,11 @@ P_char summon_beast_common(int mobnumb, P_char ch, int max_summon, int dur, cons
 	}
 	else if (is_greater && life)
 	{
-		mob->player.level = GET_LEVEL(mob) + (int)(life / 15) + number(0, 2);
+		mob->player.level = GET_LEVEL(mob) + greater_beast_life_level(live_rolls, life);
 	}
 	else if (life)
 	{
-		mob->player.level = GET_LEVEL(mob) + (int)(life / 20) + number(0, 2);
+		mob->player.level = GET_LEVEL(mob) + summon_beast_life_level(live_rolls, life);
 	}
 
 	if (!IS_SET(mob->specials.act, ACT_MEMORY))

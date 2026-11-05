@@ -41,6 +41,18 @@ int holy_sword_alignment_damage(const Rolls &rolls)
 	return rolls.dice(2, 6);
 }
 
+// The percent of its damage a spell that burst through magic resistance loses.
+int spell_penetration_damage_cut(const Rolls &rolls)
+{
+	return rolls.number(20, 70);
+}
+
+// What the properties file adds to that percent.
+float spell_penetration_damage_cut_bonus()
+{
+	return get_property("skill.spellPenetration.damageReductionMod", 1.00);
+}
+
 extern float dam_factor[LAST_DF + 1];
 
 // The chance threshold, rolled 1-250, of an arcane block on a spell.
@@ -549,11 +561,11 @@ dam_mod->type = dam_mod_type::More;
 }
 }
 , { MAKE_DAM_MOD_PRED(){ if (affected_by_spell(victim, SKILL_SPELL_PENETRATION)){
-	  int damageReductionMod = number(20, 70);
+	  int damageReductionMod = spell_penetration_damage_cut(live_rolls);
 dam_mod->type = dam_mod_type::More;
 dam_mod->mod = -(damageReductionMod / 100.0);
 // Use this properties file to make fine adjustments to this from now on.
-dam_mod->mod += -(get_property("skill.spellPenetration.damageReductionMod", 1.00) / 100.0);
+dam_mod->mod += -(spell_penetration_damage_cut_bonus() / 100.0);
 affect_from_char(victim, SKILL_SPELL_PENETRATION);
 }
 }

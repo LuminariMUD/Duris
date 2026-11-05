@@ -211,6 +211,53 @@ void spell_atonement(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 }
 
 // some skill type stuff, thrown in here for continuty
+static int holy_smite_failed_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int holy_smite_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int holy_smite_damage(const Rolls &rolls, P_char ch, int skl_lvl)
+{
+	return rolls.dice((GET_LEVEL(ch) / 2), (skl_lvl / 10)) / 2;
+}
+
+// A roll of 1-150 below this blinds the target.
+static int holy_smite_blind_threshold(P_char ch)
+{
+	return (GET_LEVEL(ch) / 2);
+}
+
+static int holy_smite_blind_duration(const Rolls &rolls)
+{
+	return rolls.number(8, 10) * WAIT_SEC;
+}
+
+std::string holy_smite_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_HOLY_SMITE);
+	if (!rating)
+		return "  You have not learned holy smite.\n";
+	std::string text =
+		fact("Chance", chance_under(rating + 1, 1, 101)) +
+		fact("Damage", show({ holy_smite_damage(lowest_rolls, ch, rating),
+				      holy_smite_damage(highest_rolls, ch, rating) })) +
+		"  Armor and skin spells don't reduce it, and shields don't answer it.\n" +
+		fact("Your lag", seconds(holy_smite_lag())) +
+		fact("Your lag if you fail", seconds(holy_smite_failed_lag()));
+	if (holy_smite_blind_threshold(ch) > 1)
+		text += fact("Chance it blinds a target it leaves alive",
+			     chance_under(holy_smite_blind_threshold(ch), 1, 150)) +
+			fact("  For", seconds(holy_smite_blind_duration(lowest_rolls)) + " to " +
+					      seconds(holy_smite_blind_duration(highest_rolls))) +
+			"    (not on a target that is already blind or can't be blinded)\n";
+	return text + "  Only on an evil target.\n";
+}
+
 void do_holy_smite(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char vict = NULL;
@@ -271,14 +318,14 @@ void do_holy_smite(P_char ch, char *argument, int /*cmd*/)
 		act("$N laughs derisively at $n, as $e attempts to purify $S soul.", FALSE, ch, 0,
 		    vict, TO_NOTVICT);
 		engage(ch, vict);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, holy_smite_failed_lag());
 		return;
 	}
 	else
 	{
-		melee_damage(ch, vict, (dice((GET_LEVEL(ch) / 2), (skl_lvl / 10)) / 2),
+		melee_damage(ch, vict, holy_smite_damage(live_rolls, ch, skl_lvl),
 			     PHSDAM_NOSHIELDS | PHSDAM_NOREDUCE | PHSDAM_NOPOSITION, &messages);
-		if ((GET_LEVEL(ch) / 2) > number(1, 150) && IS_ALIVE(vict))
+		if (holy_smite_blind_threshold(ch) > number(1, 150) && IS_ALIVE(vict))
 		{
 			act("&+L$N&+L is blinded by the &+Wholy&+L energy!&n", FALSE, ch, 0, vict,
 			    TO_CHAR);
@@ -286,10 +333,10 @@ void do_holy_smite(P_char ch, char *argument, int /*cmd*/)
 			    TO_VICT);
 			act("&+L$N &+Lis blinded by the &+Wholy&+L energy!&n", FALSE, ch, 0, vict,
 			    TO_NOTVICT);
-			blind(ch, vict, number(8, 10) * WAIT_SEC);
+			blind(ch, vict, holy_smite_blind_duration(live_rolls));
 		}
 	}
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, holy_smite_lag());
 }
 
 static int celestial_aura_duration()

@@ -3,6 +3,7 @@
  * Command ownership moves here in subsequent extraction slices; the plan is
  * already shared so preview and execution cannot drift on material costs.
  */
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -334,6 +335,36 @@ void boot_crafting_system(void)
 int crafting_level_gate_multiplier(void)
 {
 	return crafting_level_gate;
+}
+
+// The most valuable recipe a character's level can make.
+static int crafting_value_limit(P_char ch)
+{
+	return GET_LEVEL(ch) * crafting_level_gate_multiplier();
+}
+
+static std::string crafting_facts(P_char ch, const char *tool)
+{
+	return fact("Highest recipe value you can make",
+		    std::to_string(crafting_value_limit(ch)) + ", " +
+			    std::to_string(crafting_level_gate_multiplier()) + " per level") +
+	       "  Each recipe also takes its materials and " + tool +
+	       ".\n"
+	       "  You can know only one of forge, mine and craft.\n";
+}
+
+std::string craft_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_CRAFT))
+		return "  You have not learned to craft.\n";
+	return crafting_facts(ch, "a tool box");
+}
+
+std::string forge_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_FORGE))
+		return "  You have not learned to forge.\n";
+	return crafting_facts(ch, "flux");
 }
 
 int crafting_experience_per_ival(void)
@@ -755,8 +786,7 @@ static void crafting_handle_craft_command(P_char ch, char *argument, int cmd)
 			return;
 		}
 		int iVal = plan.item_value;
-		if (iVal > GET_LEVEL(ch) * crafting_level_gate_multiplier() ||
-		    IS_OBJ_STAT2(tobj, ITEM2_QUESTITEM))
+		if (iVal > crafting_value_limit(ch) || IS_OBJ_STAT2(tobj, ITEM2_QUESTITEM))
 		{
 			if (IS_OBJ_STAT2(tobj, ITEM2_QUESTITEM))
 				send_to_char(
@@ -1366,8 +1396,7 @@ static void crafting_handle_forge_command(P_char ch, char *argument, int /*cmd*/
 			return;
 		}
 		iVal = plan.item_value;
-		if (iVal > GET_LEVEL(ch) * crafting_level_gate_multiplier() ||
-		    IS_OBJ_STAT2(obj, ITEM2_QUESTITEM))
+		if (iVal > crafting_value_limit(ch) || IS_OBJ_STAT2(obj, ITEM2_QUESTITEM))
 		{
 			if (IS_OBJ_STAT2(obj, ITEM2_QUESTITEM))
 				send_to_char(

@@ -363,6 +363,12 @@ P_obj SpellInSpellBook(P_char ch, int spl, int mode)
 	return FindSpellBookWithSpell(ch, spl, mode);
 }
 
+// Epic scribing takes this many pages off a spell.
+static int scribe_mastery_pages(int skill)
+{
+	return MAX(1, (int)(skill / 5));
+}
+
 int GetSpellPages(P_char ch, int spl)
 {
 	int pages;
@@ -377,7 +383,7 @@ int GetSpellPages(P_char ch, int spl)
 	if (GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY))
 	{
 		int skill = GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY);
-		int mod = MAX(1, (int)(skill / 5));
+		int mod = scribe_mastery_pages(skill);
 		pages -= mod;
 	}
 
@@ -2525,14 +2531,75 @@ int FillMasterSpellBook(P_obj obj)
 
 struct scribing_data_type *scribing_base, *scribing_free_base = NULL;
 
-void AddScribingAffect(P_char ch)
+static int scribe_first_page_wait(P_char ch)
+{
+	return 4 - GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 33;
+}
+
+static int scribe_page_wait(P_char ch)
+{
+	return MAX(1, (int)4 - (GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 33) -
+			      (GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20));
+}
+
+static int scribe_affect_lag(P_char ch)
 {
 	int wait_rounds = 2;
 
 	if (GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY))
 		wait_rounds--;
 
-	CharWait(ch, MAX(1, wait_rounds * PULSE_VIOLENCE));
+	return MAX(1, wait_rounds * PULSE_VIOLENCE);
+}
+
+static int scribe_start_lag(P_char ch)
+{
+	int wait_rounds = 3;
+	wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 45);
+	wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20);
+	return MAX(1, wait_rounds * PULSE_VIOLENCE);
+}
+
+static int scribe_taught_lag(P_char ch)
+{
+	int wait_rounds = 3;
+	wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20);
+	return MAX(1, wait_rounds * PULSE_VIOLENCE);
+}
+
+// CharWait keeps the longest wait, so each path's lag is the longest of its waits.
+static std::string scribe_lag_lines(P_char ch)
+{
+	return fact("Your lag starting a spell",
+		    seconds(MAX(scribe_affect_lag(ch), scribe_start_lag(ch)))) +
+	       fact("Your lag starting one from a teacher",
+		    seconds(MAX(MAX(scribe_affect_lag(ch), scribe_start_lag(ch)),
+				scribe_taught_lag(ch))));
+}
+
+std::string scribe_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_SCRIBE))
+		return "  You have not learned to scribe.\n";
+	return fact("Time for the first page", seconds(scribe_first_page_wait(ch))) +
+	       fact("Time for each later page", seconds(scribe_page_wait(ch))) +
+	       scribe_lag_lines(ch);
+}
+
+std::string scribe_mastery_facts(P_char ch)
+{
+	const int skill = GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY);
+	if (!skill)
+		return "  You have not learned scribe mastery.\n";
+	return fact("Pages each spell takes",
+		    "-" + std::to_string(scribe_mastery_pages(skill)) + ", but at least 1") +
+	       fact("Time for each later page", seconds(scribe_page_wait(ch))) +
+	       scribe_lag_lines(ch);
+}
+
+void AddScribingAffect(P_char ch)
+{
+	CharWait(ch, scribe_affect_lag(ch));
 
 	SET_BIT(ch->specials.affected_by2, AFF2_SCRIBING);
 }
@@ -2573,8 +2640,7 @@ void add_scribe_data(int spl, P_char ch, P_obj book, int flag, P_obj obj, P_char
 	if (!flag)
 		if (teacher)
 			AddScribingAffect(teacher);
-	add_event(event_scribe, 4 - GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 33, ch, 0, 0, 0, &tmp,
-		  sizeof(tmp));
+	add_event(event_scribe, scribe_first_page_wait(ch), ch, 0, 0, 0, &tmp, sizeof(tmp));
 }
 
 /*
@@ -2599,18 +2665,11 @@ void add_scribing(P_char ch, int spl, P_obj book, int flag, P_obj obj, P_char te
 	}
 	add_scribe_data(spl, ch, book, flag, obj, teacher);
 
-	int wait_rounds = 3;
-	wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 45);
-	wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20);
-	//  debug("wait_rounds: %d", wait_rounds);
-	CharWait(ch, MAX(1, wait_rounds * PULSE_VIOLENCE));
+	CharWait(ch, scribe_start_lag(ch));
 
 	if (!flag)
 	{
-		wait_rounds = 3;
-		wait_rounds -= (int)(GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20);
-		//    debug("wait_rounds: %d", wait_rounds);
-		CharWait(ch, MAX(1, wait_rounds * PULSE_VIOLENCE));
+		CharWait(ch, scribe_taught_lag(ch));
 	}
 }
 
@@ -2976,10 +3035,7 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 		/*
 		   ok, let's schedule next event:
 		 */
-		add_event(event_scribe,
-			  MAX(1, (int)4 - (GET_CHAR_SKILL(ch, SKILL_SCRIBE) / 33) -
-					 (GET_CHAR_SKILL(ch, SKILL_SCRIBE_MASTERY) / 20)),
-			  ch, 0, 0, 0, s_data, sizeof(*s_data));
+		add_event(event_scribe, scribe_page_wait(ch), ch, 0, 0, 0, s_data, sizeof(*s_data));
 		return;
 	}
 	if (s_data->done_func)

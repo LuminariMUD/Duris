@@ -191,6 +191,12 @@ static bool can_equip_soulbound_item(P_char actor, P_obj object, bool show_rejec
 			logit(LOG_DEBUG, __VA_ARGS__); \
 	} while (0)
 
+// A roll of 0-100 below this gets something from a container unseen.
+int slip_get_threshold(P_char ch)
+{
+	return BOUNDED(5, (GET_CHAR_SKILL(ch, SKILL_SLIP) + (GET_C_DEX(ch) / 10)), 95);
+}
+
 namespace
 {
 struct synchronous_get_item
@@ -527,8 +533,7 @@ void get(P_char ch, P_obj o_obj, P_obj s_obj, int showit)
 
 	if (GET_CHAR_SKILL(ch, SKILL_SLIP))
 	{
-		if (number(0, 100) <
-		    BOUNDED(5, (GET_CHAR_SKILL(ch, SKILL_SLIP) + (GET_C_DEX(ch) / 10)), 95))
+		if (number(0, 100) < slip_get_threshold(ch))
 		{
 			slip = TRUE;
 		}

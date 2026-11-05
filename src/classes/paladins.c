@@ -362,6 +362,30 @@ bool is_wielding_paladin_sword(P_char ch)
 	return FALSE;
 }
 
+static int cleave_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(GET_LEVEL(ch) / 2, 10);
+}
+
+static int cleave_target_rest()
+{
+	return 4 * PULSE_VIOLENCE;
+}
+
+std::string cleave_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_CLEAVE);
+	if (rating < 1)
+		return "  You have not learned to cleave.\n";
+	return fact("Chance", chance_under(rating, 5, 100)) +
+	       fact("Damage",
+		    show({ cleave_damage(lowest_rolls, ch), cleave_damage(highest_rolls, ch) })) +
+	       "  Raw damage, past armor and most skin spells.\n" +
+	       fact("Before it can cleave the same target again", seconds(cleave_target_rest())) +
+	       "  It strikes the attacker when you rescue someone, not when you rescue all,\n"
+	       "  and only with a paladin sword wielded.\n";
+}
+
 bool cleave(P_char ch, P_char victim)
 {
 	if (is_wielding_paladin_sword(ch) && !affected_by_spell(victim, SKILL_CLEAVE) &&
@@ -375,14 +399,45 @@ bool cleave(P_char ch, P_char victim)
 		act("$n brings down $p in a mighty slash, cleaving you from your target!", TRUE, ch,
 		    ch->equipment[WIELD], victim, TO_VICT);
 
-		int dam = dice(GET_LEVEL(ch) / 2, 10);
+		int dam = cleave_damage(live_rolls, ch);
 
 		if (damage(ch, victim, dam, SKILL_CLEAVE) != DAM_VICTDEAD)
-			set_short_affected_by(victim, SKILL_CLEAVE, 4 * PULSE_VIOLENCE);
+			set_short_affected_by(victim, SKILL_CLEAVE, cleave_target_rest());
 		return TRUE;
 	}
 
 	return FALSE;
+}
+
+int smite_evil_interval()
+{
+	return get_property("skill.timer.secs.smiteEvil", 5) * WAIT_SEC;
+}
+
+// A roll of 0-100 below this smites.
+static int smite_evil_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL) / 2;
+}
+
+static int smite_evil_damage(const Rolls &rolls)
+{
+	return rolls.number(5, 25);
+}
+
+std::string smite_evil_facts(P_char ch)
+{
+	if (!GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL))
+		return "  You have not learned to smite evil.\n";
+	return fact("Chance for each dying evil target in the room",
+		    chance_under(smite_evil_threshold(ch), 0, 100) + " every " +
+			    seconds(smite_evil_interval())) +
+	       "    (below 15 hit points and a tenth of its maximum, and not in your group\n"
+	       "    or on the good side of the racewar)\n" +
+	       fact("Damage",
+		    show({ smite_evil_damage(lowest_rolls), smite_evil_damage(highest_rolls) })) +
+	       "  Raw damage, past armor and most skin spells.\n"
+	       "  You must be awake and free to move, with a paladin sword wielded.\n";
 }
 
 void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
@@ -398,7 +453,7 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 			    (GET_RACEWAR(tch) != 1) &&
 			    (notch_skill(ch, SKILL_SMITE_EVIL,
 					 get_property("skill.notch.smiteEvil", 10)) ||
-			     GET_CHAR_SKILL(ch, SKILL_SMITE_EVIL) / 2 > number(0, 100)))
+			     smite_evil_threshold(ch) > number(0, 100)))
 			{
 				act("A stern look appears on $n's face, and $e rushes to extinguish the evil being!",
 				    FALSE, ch, 0, tch, TO_NOTVICT);
@@ -406,13 +461,12 @@ void event_smite_evil(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 				    FALSE, ch, 0, 0, TO_CHAR);
 				act("$n looks at you sternly, and then dives in, $s blade rushing for your heart!",
 				    FALSE, ch, 0, tch, TO_VICT);
-				damage(ch, tch, number(5, 25), SKILL_SMITE_EVIL);
+				damage(ch, tch, smite_evil_damage(live_rolls), SKILL_SMITE_EVIL);
 			}
 		}
 	}
 
-	add_event(event_smite_evil, get_property("skill.timer.secs.smiteEvil", 5) * WAIT_SEC, ch, 0,
-		  0, 0, 0, 0);
+	add_event(event_smite_evil, smite_evil_interval(), ch, 0, 0, 0, 0, 0);
 }
 
 // A player's aura is shorter than an NPC's.

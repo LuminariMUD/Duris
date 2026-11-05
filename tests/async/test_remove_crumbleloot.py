@@ -17,6 +17,7 @@ production = '\n'.join([
     extract_function('actobj.c', 'int remove_and_wear('),
     extract_function('actobj.c', 'void do_remove('),
     extract_function('actobj.c', 'void do_give('),
+    extract_function('rogues.c', 'static int slip_fighting_penalty('),
     extract_function('rogues.c', 'void do_slip('),
     extract_function('magic.c', 'static bool give_soulbind_item('),
 ])

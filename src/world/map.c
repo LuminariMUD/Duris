@@ -464,6 +464,8 @@ static int kingdom_node_glyph(P_obj obj)
 
 /* takes rnum */
 
+extern int improved_track_map_range(P_char ch);
+
 int whats_in_maproom(P_char ch, int room, int distance, int show_regardless)
 {
 	P_obj obj; // For looping through objs in a room.
@@ -597,14 +599,12 @@ int whats_in_maproom(P_char ch, int room, int distance, int show_regardless)
 			}
 			// Using track scan ?
 			else if ((OBJ_VNUM(obj) == VNUM_TRACKS) && !IS_OWN_TRACK(ch, obj) &&
-				 ((distance <= (GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK) / 20)) ||
-				  IS_TRUSTED(ch)))
+				 ((distance <= improved_track_map_range(ch)) || IS_TRUSTED(ch)))
 			{
 				val = MIN(val, CONTAINS_TRACK);
 			}
 			else if ((OBJ_VNUM(obj) == VOBJ_BLOOD) &&
-				 ((distance <= (GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK) / 20)) ||
-				  IS_TRUSTED(ch)))
+				 ((distance <= improved_track_map_range(ch)) || IS_TRUSTED(ch)))
 			{
 				if ((obj->value[1] == BLOOD_FRESH) &&
 				    (GET_CHAR_SKILL(ch, SKILL_IMPROVED_TRACK) > number(50, 80)))
