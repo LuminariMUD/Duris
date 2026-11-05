@@ -4839,6 +4839,36 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 	return result;
 }
 
+// The damage multiplier on a flanked or circled standing target.
+float flank_damage_modifier()
+{
+	return get_property("damage.modifier.flank", 1.5);
+}
+
+float circle_damage_modifier()
+{
+	return get_property("damage.modifier.circle", 2.0);
+}
+
+// What dreadnaught leaves of the melee damage its user deals.
+float dreadnaught_attack_factor(const struct affected_type *paf)
+{
+	return BOUNDED(20, paf->level, 60) / 100.0;
+}
+
+// The percent dreadnaught takes off melee damage its user takes.
+float dreadnaught_melee_defense(const Rolls &rolls, const struct affected_type *paf)
+{
+	return BOUNDED(20, paf->level, 60) +
+	       (paf->level > 90 ? rolls.number((paf->level - 90) / 2, paf->level - 90) : 0);
+}
+
+// The chance threshold, rolled 0-100, that a hit on a rider goes to the mount instead.
+double mounted_combat_redirect_threshold(P_char victim)
+{
+	return GET_CHAR_SKILL_P(victim, SKILL_MOUNTED_COMBAT) * 0.3;
+}
+
 /* melee_damage
  * This functions handles physical damage and modifies it against stoneskin type spells,
  * calculates vamping from melee damage and also resolves damage from fireshield type
@@ -4955,17 +4985,17 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 		if (MIN_POS(victim, POS_STANDING + STAT_NORMAL))
 		{
 			if (get_linked_char(ch, LNK_FLANKING) == victim)
-				dam = (dam * get_property("damage.modifier.flank", 1.5));
+				dam = (dam * flank_damage_modifier());
 			if (get_linked_char(ch, LNK_CIRCLING) == victim)
-				dam = (dam * get_property("damage.modifier.circle", 2.0));
+				dam = (dam * circle_damage_modifier());
 		}
 		// They get 1/2 the bonus damage if target not standing.
 		else
 		{
 			if (get_linked_char(ch, LNK_FLANKING) == victim)
-				dam = dam * (1 + get_property("damage.modifier.flank", 1.5)) / 2;
+				dam = dam * (1 + flank_damage_modifier()) / 2;
 			if (get_linked_char(ch, LNK_CIRCLING) == victim)
-				dam = dam * (1 + get_property("damage.modifier.circle", 2.0)) / 2;
+				dam = dam * (1 + circle_damage_modifier()) / 2;
 		}
 
 		if (MIN_POS(victim, POS_STANDING + STAT_NORMAL))
@@ -5102,7 +5132,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	{
 		struct affected_type *paf = get_spell_from_char(ch, SKILL_DREADNAUGHT);
 		// 80% to 40% reduction based on skill level
-		float attacker_reduction = BOUNDED(20, paf->level, 60) / 100.0;
+		float attacker_reduction = dreadnaught_attack_factor(paf);
 		dam *= attacker_reduction;
 	}
 
@@ -5110,9 +5140,7 @@ int melee_damage(P_char ch, P_char victim, double dam, int flags, struct damage_
 	{
 		struct affected_type *paf = get_spell_from_char(victim, SKILL_DREADNAUGHT);
 		// 20% to 60% reduction based on skill level (with a chance for a few extra percent when skill is 91+)
-		float skill =
-			BOUNDED(20, paf->level, 60) +
-			(paf->level > 90 ? number((paf->level - 90) / 2, paf->level - 90) : 0);
+		float skill = dreadnaught_melee_defense(live_rolls, paf);
 		float victim_reduction = (100.0 - skill) / 100.0;
 		dam *= victim_reduction;
 	}
@@ -6854,7 +6882,7 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		if (GET_CHAR_SKILL(victim, SKILL_MOUNTED_COMBAT) &&
 		    (notch_skill(victim, SKILL_MOUNTED_COMBAT,
 				 get_property("skill.notch.defensive", 17)) ||
-		     GET_CHAR_SKILL_P(victim, SKILL_MOUNTED_COMBAT) * 0.3 > number(0, 100)))
+		     mounted_combat_redirect_threshold(victim) > number(0, 100)))
 		{
 			return hit(ch, mount, weapon);
 		}

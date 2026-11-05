@@ -119,6 +119,10 @@ def production():
     return "#define DRAGONSLAYER_VNUM 80569\n" + "\n".join(
         extract_function(file, signature) for file, signature in [
             ("utility.c", "int strn_cmp("),
+            ("actoff.c", "int mounted_combat_calm_threshold("),
+            ("actoff.c", "static int control_flee_threshold("),
+            ("actoff.c", "static int expeditious_retreat_threshold("),
+            ("actoff.c", "static int expeditious_retreat_duration("),
             ("utility.c", "int char_in_list(const P_char ch)"),
             ("interp.c", "int search_block("),
             ("interp.c", "int fill_word("),

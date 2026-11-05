@@ -21,6 +21,8 @@
 #include "world/graph.h"
 #include "world/transport.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
+#include <cmath>
 
 /*
    external variables
@@ -113,6 +115,27 @@ P_char get_dragoon_rider(P_char mount)
 	}
 
 	return NULL;
+}
+
+extern double mounted_combat_redirect_threshold(P_char victim);
+extern int mounted_combat_calm_threshold(P_char rider);
+
+// The chance threshold, rolled 0-100, to get on a mount while fighting.
+static double mounted_combat_mount_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT) / 1.5;
+}
+
+std::string mounted_combat_facts(P_char ch)
+{
+	return fact("Chance to mount while fighting",
+		    std::to_string((int)mounted_combat_mount_threshold(ch) + 1) + " in 101") +
+	       fact("Chance a hit on you lands on your mount",
+		    std::to_string((int)ceil(mounted_combat_redirect_threshold(ch))) + " in 101") +
+	       fact("Chance to calm a mount that tries to flee",
+		    std::to_string(mounted_combat_calm_threshold(ch) - 1) + " in 100") +
+	       "  With no rating you slide off when you attack, unless you are a passenger\n"
+	       "  in flight.\n";
 }
 
 void do_mount(P_char ch, char *argument, int /*cmd*/)
@@ -304,7 +327,7 @@ void do_mount(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (IS_FIGHTING(ch) && GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT) / 1.5 < number(0, 100))
+	if (IS_FIGHTING(ch) && mounted_combat_mount_threshold(ch) < number(0, 100))
 	{
 		act("Fending off the attackers you try to mount $N, but alas you fail.", FALSE, ch,
 		    0, mount, TO_CHAR);

@@ -47,6 +47,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -371,6 +372,40 @@ static int takedown_evade_lag()
 	return (int)(PULSE_VIOLENCE * 0.5);
 }
 
+// The chance threshold takedown_check() rolls 1-100 against for an evade.
+static int evade_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_EVADE) / 3;
+}
+
+// How long, in pulses, a successful evade keeps the next one from working.
+static int evade_rest()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+std::string evade_facts(P_char ch)
+{
+	return fact("Chance to evade a takedown", std::to_string(evade_threshold(ch)) + " in 100") +
+	       fact("Before you can evade again", seconds(evade_rest())) +
+	       fact("Attacker's lag when you evade",
+		    seconds(takedown_evade_lag()) + ", unless already lagged longer") +
+	       "  You can't evade while asleep or worse.\n";
+}
+
+// The chance threshold takedown_check() rolls 1-100 against for a grapple.
+static int grapple_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_GRAPPLE) / 6;
+}
+
+std::string grapple_facts(P_char ch)
+{
+	return fact("Chance to foil a takedown",
+		    std::to_string(grapple_threshold(ch)) + " in 100") +
+	       "  You can't foil one while asleep or worse.\n";
+}
+
 // TAKEDOWN_CANCELLED means the victim was able to prevent the full action.
 // TAKEDOWN_PENALTY means ch failed the action for some reason.
 float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong applicable)
@@ -421,10 +456,10 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 	// Evade - Dodges takedowns, max 33% chance.
 	if (GET_CHAR_SKILL(victim, SKILL_EVADE) && !get_spell_from_char(victim, SKILL_EVADE) &&
 	    (notch_skill(victim, SKILL_EVADE, get_property("skill.notch.offensive", 7)) ||
-	     GET_CHAR_SKILL(victim, SKILL_EVADE) / 3 >= number(1, 100)))
+	     evade_threshold(victim) >= number(1, 100)))
 	{
 		show_failed_takedown_messages(ch, victim, skill, TAKEDOWN_EVADE);
-		set_short_affected_by(victim, SKILL_EVADE, PULSE_VIOLENCE / 2);
+		set_short_affected_by(victim, SKILL_EVADE, evade_rest());
 		CharWait(ch, takedown_evade_lag());
 		return TAKEDOWN_CANCELLED;
 	}
@@ -441,7 +476,7 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 	if (GET_CHAR_SKILL(victim, SKILL_GRAPPLE))
 	{
 		if (notch_skill(victim, SKILL_GRAPPLE, get_property("skill.notch.offensive", 7)) ||
-		    GET_CHAR_SKILL(victim, SKILL_GRAPPLE) / 6 >= number(1, 100))
+		    grapple_threshold(victim) >= number(1, 100))
 		{
 			show_failed_takedown_messages(ch, victim, skill, TAKEDOWN_GRAPPLE);
 			return TAKEDOWN_PENALTY;
@@ -818,6 +853,126 @@ void do_murder(P_char ch, char *argument, int /*cmd*/)
 	do_hit(ch, argument, CMD_MURDER);
 }
 
+// How long, in pulses, the rider must wait between lance charges.
+static int lance_charge_rest()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// The rider's lag after a charge, in pulses.
+static int lance_charge_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("skill.lance.charge.CharLag", 1.500));
+}
+
+// The rider's lag after toppling off the mount, in pulses.
+static int lance_charge_topple_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// Falling damage after toppling off the mount.
+static int lance_charge_topple_damage(const Rolls &rolls)
+{
+	return rolls.number(1, 50);
+}
+
+// The target's lag after a hit, in pulses.
+static int lance_charge_target_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("skill.lance.charge.VictimLag", 1.000));
+}
+
+// The target's lag after being knocked down, in pulses.
+static int lance_charge_knockdown_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("skill.lance.charge.KnockdownLag", 2.000));
+}
+
+// The lance's own roll, before the rider's level scales it.
+static int lance_charge_weapon_damage(const Rolls &rolls, P_obj weapon)
+{
+	return rolls.dice(weapon->value[2], weapon->value[1]) + weapon->value[2];
+}
+
+// The lance's roll scaled by the rider's level.
+static int lance_charge_scaled_damage(int dam, int level)
+{
+	dam = (int)(dam * ((double)level) / 100 + 1);
+	dam *= MAX(2, (int)(level / 5));
+	return dam;
+}
+
+// The scaled damage of a charge from another room.
+static int lance_charge_ranged_damage(int dam)
+{
+	return (int)(dam * get_property("skill.lance.charge.RangeDamMod", 2.000));
+}
+
+// What each kind of blow adds to the scaled damage.
+static int lance_charge_impale_damage(const Rolls &rolls)
+{
+	return rolls.dice(20, 5);
+}
+
+static int lance_charge_glance_damage(const Rolls &rolls)
+{
+	return rolls.dice(15, 5);
+}
+
+static int lance_charge_ram_damage(const Rolls &rolls)
+{
+	return rolls.dice(20, 6);
+}
+
+static int lance_charge_through_damage(const Rolls &rolls)
+{
+	return rolls.dice(30, 6);
+}
+
+std::string lance_charge_facts(P_char ch)
+{
+	std::string facts =
+		fact("Your lag", seconds(lance_charge_lag())) +
+		fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+		fact("Before you can charge again", seconds(lance_charge_rest())) +
+		fact("Target's lag on a hit", seconds(lance_charge_target_lag())) +
+		fact("Target's lag if knocked down", seconds(lance_charge_knockdown_lag()));
+	if (GET_LEVEL(ch) <= 50)
+		facts += fact("Your lag if you topple off your mount",
+			      seconds(lance_charge_topple_lag())) +
+			 fact("Falling damage if you topple off",
+			      show({ lance_charge_topple_damage(lowest_rolls),
+				     lance_charge_topple_damage(highest_rolls) }));
+	P_obj weapon = ch->equipment[WIELD];
+	if (weapon && IS_LANCE(weapon))
+	{
+		const int low = lance_charge_scaled_damage(
+			lance_charge_weapon_damage(lowest_rolls, weapon), GET_LEVEL(ch));
+		const int high = lance_charge_scaled_damage(
+			lance_charge_weapon_damage(highest_rolls, weapon), GET_LEVEL(ch));
+		facts += fact("Base damage with your lance", show({ low, high })) +
+			 fact("Base damage from another room",
+			      show({ lance_charge_ranged_damage(low),
+				     lance_charge_ranged_damage(high) }));
+	}
+	return facts +
+	       fact("Impaling blow",
+		    "base + " + show({ lance_charge_impale_damage(lowest_rolls),
+				       lance_charge_impale_damage(highest_rolls) })) +
+	       fact("Glancing blow, which never knocks down",
+		    "half base + " + show({ lance_charge_glance_damage(lowest_rolls),
+					    lance_charge_glance_damage(highest_rolls) })) +
+	       fact("Blow that carries you both out of the room",
+		    "base + " + show({ lance_charge_ram_damage(lowest_rolls),
+				       lance_charge_ram_damage(highest_rolls) })) +
+	       fact("Blow that runs the target through",
+		    "base + " + show({ lance_charge_through_damage(lowest_rolls),
+				       lance_charge_through_damage(highest_rolls) })) +
+	       "  You must ride a mount and wield a lance.\n"
+	       "  The target's defenses apply to the damage after.\n";
+}
+
 void lance_charge(P_char ch, char *argument)
 {
 	P_char victim, mount;
@@ -927,7 +1082,7 @@ void lance_charge(P_char ch, char *argument)
 		return;
 	}
 
-	set_short_affected_by(ch, SKILL_LANCE_CHARGE, 2 * PULSE_VIOLENCE);
+	set_short_affected_by(ch, SKILL_LANCE_CHARGE, lance_charge_rest());
 
 	percent_chance = (int)(0.9 * MAX(70, GET_CHAR_SKILL(ch, SKILL_LANCE_CHARGE)));
 
@@ -948,13 +1103,11 @@ void lance_charge(P_char ch, char *argument)
 	knockdown_chance =
 		(int)(percent_chance * get_property("skill.lance.charge.KnockDownMod", 0.650));
 
-	dam = dice(weapon->value[2], weapon->value[1]) + weapon->value[2];
-	dam = (int)(dam * ((double)GET_LEVEL(ch)) / 100 + 1);
-	dam *= MAX(2, (int)(GET_LEVEL(ch) / 5));
+	dam = lance_charge_weapon_damage(live_rolls, weapon);
+	dam = lance_charge_scaled_damage(dam, GET_LEVEL(ch));
 
 	if (dir != -1)
-		dam = (int)(dam *
-			    get_property("skill.lance.charge.RangeDamMod", 2.000)); // ranged charge
+		dam = lance_charge_ranged_damage(dam); // ranged charge
 
 	knockdown_chance = takedown_check(ch, victim, knockdown_chance, SKILL_LANCE_CHARGE,
 					  TAKEDOWN_ALL ^ TAKEDOWN_FOOTING);
@@ -1036,7 +1189,7 @@ void lance_charge(P_char ch, char *argument)
 	if (IS_OP_GOLEM(victim) || IS_GH_GOLEM(victim) || GET_RACE(victim) == RACE_CONSTRUCT)
 		continue_dir = -1;
 
-	CharWait(ch, (int)(PULSE_VIOLENCE * get_property("skill.lance.charge.CharLag", 1.500)));
+	CharWait(ch, lance_charge_lag());
 
 	if (!notch_skill(ch, SKILL_LANCE_CHARGE, get_property("skill.notch.offensive", 7)) &&
 	    percent_chance < number(1, 100))
@@ -1058,8 +1211,8 @@ void lance_charge(P_char ch, char *argument)
 			act("$n misjudges the distance to $s target and topples off $s mount!",
 			    FALSE, ch, 0, ch, TO_ROOM);
 			unlink_char(ch, mount, LNK_RIDING);
-			CharWait(ch, PULSE_VIOLENCE * 2);
-			damage(ch, ch, number(1, 50), DAMAGE_FALLING);
+			CharWait(ch, lance_charge_topple_lag());
+			damage(ch, ch, lance_charge_topple_damage(live_rolls), DAMAGE_FALLING);
 			return;
 		}
 		else if (effect < 3)
@@ -1122,15 +1275,14 @@ void lance_charge(P_char ch, char *argument)
 	{
 		effect = number(0, 4);
 		// Successful charge now lags the victim a little. Nov08 -Lucrot
-		CharWait(victim, (int)(PULSE_VIOLENCE *
-				       get_property("skill.lance.charge.VictimLag", 1.000)));
+		CharWait(victim, lance_charge_target_lag());
 	}
 
 	switch (effect)
 	{
 	case 0:
 	case 1:
-		dam = dam + dice(20, 5);
+		dam = dam + lance_charge_impale_damage(live_rolls);
 		act("With a &+Wbone c&+wr&+Wu&+ws&+Wh&+wi&+Wn&+wg thud the $q slams into $N impaling $M.",
 		    FALSE, ch, weapon, victim, TO_NOTVICT);
 		act("With a &+Wbone c&+wr&+Wu&+ws&+Wh&+wi&+Wn&+wg thud the $q slams into $N impaling $M.",
@@ -1141,7 +1293,7 @@ void lance_charge(P_char ch, char *argument)
 			DamageOneItem(ch, SPLDAM_GENERIC, weapon, FALSE);
 		break;
 	case 2:
-		dam = dam / 2 + dice(15, 5);
+		dam = dam / 2 + lance_charge_glance_damage(live_rolls);
 		act("You glance $N with the tip of your $q causing a small surface wound.", FALSE,
 		    ch, weapon, victim, TO_CHAR);
 		act("$n glances $N with the tip of $s $q causing a small surface wound.", FALSE, ch,
@@ -1161,7 +1313,7 @@ void lance_charge(P_char ch, char *argument)
 		if (continue_dir != -1)
 		{
 			int target_room = world[ch->in_room].dir_option[continue_dir]->to_room;
-			dam = dam + dice(20, 6);
+			dam = dam + lance_charge_ram_damage(live_rolls);
 			snprintf(buf, sizeof buf,
 				 "You ram your $q through $N sending both veering out %s.",
 				 dirs[continue_dir]);
@@ -1190,7 +1342,7 @@ void lance_charge(P_char ch, char *argument)
 		}
 		[[fallthrough]];
 	case 4:
-		dam = dam + dice(30, 6);
+		dam = dam + lance_charge_through_damage(live_rolls);
 		act("You ram your $q right through $N causing &+Rb&+rl&+Ro&+ro&+Rd&n to pour from $S body.",
 		    FALSE, ch, weapon, victim, TO_CHAR);
 		act("$n rams $s $q right through $N causing &+Rb&+rl&+Ro&+ro&+Rd&n to pour from $S body.",
@@ -1227,9 +1379,60 @@ void lance_charge(P_char ch, char *argument)
 		SET_POS(victim, POS_SITTING + GET_STAT(victim));
 		update_group_vitals(victim);
 		gmcp_char_vitals(victim);
-		CharWait(victim, (int)(PULSE_VIOLENCE *
-				       get_property("skill.lance.charge.KnockdownLag", 2.000)));
+		CharWait(victim, lance_charge_knockdown_lag());
 	}
+}
+
+// The charger's lag, in pulses, once a charge at a valid target starts.
+static int charge_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// The vitality a charge needs and spends.
+static int charge_vitality_cost()
+{
+	return 30;
+}
+
+// How long, in pulses, a charger is knocked out by a low ceiling.
+static int charge_ceiling_knockout()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The target's lag after a hit, in pulses.
+static int charge_target_lag()
+{
+	return (int)(1.5 * PULSE_VIOLENCE);
+}
+
+// How long, in pulses, a hit keeps the charger from charging again.
+static int charge_rest()
+{
+	return (int)(3.0 * PULSE_VIOLENCE);
+}
+
+// Damage from a hit, before melee_damage applies the target's defenses.
+static int charge_damage(const Rolls &rolls, int level)
+{
+	return (rolls.number(1, level) + level) * 2;
+}
+
+std::string charge_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return "  These need the charge innate; without it, charge is a lance charge.\n" +
+	       fact("Damage on a hit", show({ charge_damage(lowest_rolls, level),
+					      charge_damage(highest_rolls, level) }) +
+					       " at your level") +
+	       fact("Vitality", "needs and spends " + std::to_string(charge_vitality_cost())) +
+	       fact("Your lag", seconds(charge_lag())) +
+	       fact("Before you can charge again after a hit", seconds(charge_rest())) +
+	       fact("Target's lag on a hit", seconds(charge_target_lag())) +
+	       fact("Knocked out by a low ceiling", seconds(charge_ceiling_knockout())) +
+	       "  A target 2 or more sizes bigger or smaller spills you to the ground.\n"
+	       "  The target's defenses apply to the damage after.\n";
 }
 
 void do_charge(P_char ch, char *argument, int /*cmd*/)
@@ -1291,7 +1494,7 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 		return;
 	case SECT_UNDRWLD_LOWCEIL:
 		send_to_char("You hit your head on the ceiling, and fall to the ground!\n\r", ch);
-		knock_out(ch, PULSE_VIOLENCE);
+		knock_out(ch, charge_ceiling_knockout());
 		return;
 	default:
 		break;
@@ -1435,14 +1638,14 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 	if (!CanDoFightMove(ch, victim))
 		return;
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, charge_lag());
 
-	if (GET_VITALITY(ch) < 30)
+	if (GET_VITALITY(ch) < charge_vitality_cost())
 	{
 		send_to_char("You need to gather your energy before attempting to charge.\r\n", ch);
 		return;
 	}
-	GET_VITALITY(ch) -= 30;
+	GET_VITALITY(ch) -= charge_vitality_cost();
 
 	if (dir != -1)
 	{
@@ -1468,7 +1671,7 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 			send_to_char(
 				"You hit your head on the ceiling, and fall to the ground!\n\r",
 				ch);
-			knock_out(ch, PULSE_VIOLENCE);
+			knock_out(ch, charge_ceiling_knockout());
 			return;
 		}
 	}
@@ -1610,11 +1813,11 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 			    0, ch, 0, victim, TO_VICT);
 		}
 
-		CharWait(victim, (int)(1.5 * PULSE_VIOLENCE));
-		set_short_affected_by(ch, SKILL_CHARGE, (int)(3.0 * PULSE_VIOLENCE));
+		CharWait(victim, charge_target_lag());
+		set_short_affected_by(ch, SKILL_CHARGE, charge_rest());
 
 		// Damage(final) is about 3/4 * level or about 42 dam at 56.
-		if (melee_damage(ch, victim, (number(1, level) + level) * 2, PHSDAM_TOUCH,
+		if (melee_damage(ch, victim, charge_damage(live_rolls, level), PHSDAM_TOUCH,
 				 &messages) != DAM_NONEDEAD)
 		{
 			return;
@@ -1858,6 +2061,56 @@ void circling_broken(struct char_link_data *cld)
 	    cld->linked, TO_CHAR);
 }
 
+// How long, in pulses, a circle attempt keeps the next one from working.
+static int circle_rest()
+{
+	return PULSE_VIOLENCE * 4;
+}
+
+// The circler's lag, in pulses.
+static int circle_lag()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+// The chance threshold a circle rolls 1-100 against: assassins learn it faster.
+static int circle_threshold(P_char ch)
+{
+	int skill = GET_CHAR_SKILL(ch, SKILL_CIRCLE);
+	// Old school assassin mobs learn circle faster.
+	if (GET_CLASS(ch, CLASS_ASSASSIN))
+	{
+		skill *= 2;
+		if (skill > 100)
+		{
+			skill = 100;
+		}
+	}
+	return skill;
+}
+
+extern float circle_damage_modifier();
+
+// How long, in pulses, the circle holds: shorter when something is fighting the circler.
+static int circle_duration(P_char ch, bool attacked)
+{
+	return (attacked ? 1 : 3) * ((int)ch->specials.base_combat_round + 1);
+}
+
+std::string circle_facts(P_char ch)
+{
+	const float modifier = circle_damage_modifier();
+	return fact("Chance to get behind the target",
+		    std::to_string(circle_threshold(ch)) + " in 100") +
+	       fact("Damage on the circled target",
+		    std::to_string((int)(modifier * 100)) + "% against a standing target, " +
+			    std::to_string((int)((1 + modifier) / 2 * 100)) + "% otherwise") +
+	       fact("How long it holds", seconds(circle_duration(ch, false))) +
+	       fact("Before you can circle again", seconds(circle_rest())) +
+	       fact("Your lag", seconds(circle_lag())) +
+	       "  You can't circle while something is fighting you.\n";
+}
+
 bool circle(P_char ch, P_char victim)
 {
 	P_char tch;
@@ -1899,18 +2152,9 @@ bool circle(P_char ch, P_char victim)
 		}
 	}
 
-	set_short_affected_by(ch, SKILL_CIRCLE, PULSE_VIOLENCE * 4);
-	CharWait(ch, PULSE_VIOLENCE / 2);
-	skill = GET_CHAR_SKILL(ch, SKILL_CIRCLE);
-	// Old school assassin mobs learn circle faster.
-	if (GET_CLASS(ch, CLASS_ASSASSIN))
-	{
-		skill *= 2;
-		if (skill > 100)
-		{
-			skill = 100;
-		}
-	}
+	set_short_affected_by(ch, SKILL_CIRCLE, circle_rest());
+	CharWait(ch, circle_lag());
+	skill = circle_threshold(ch);
 
 	if (!notch_skill(ch, SKILL_CIRCLE, get_property("skill.notch.offensive", 7)) &&
 	    skill < number(1, 100))
@@ -1940,8 +2184,7 @@ bool circle(P_char ch, P_char victim)
 	act("$n disappears from your vision for a moment, suddenly appearing behind you; you fail to counter $s advance...",
 	    FALSE, ch, 0, victim, TO_VICT);
 	link_char(ch, victim, LNK_CIRCLING);
-	add_event(event_uncircle, (tch ? 1 : 3) * ((int)ch->specials.base_combat_round + 1), ch,
-		  victim, 0, 0, 0, 0);
+	add_event(event_uncircle, circle_duration(ch, tch), ch, victim, 0, 0, 0, 0);
 	return 1;
 }
 /* old circle, once more commented out
@@ -2491,6 +2734,46 @@ static bool restore_equipment_sneak_after_flee(P_char ch)
 	return FALSE;
 }
 
+// The chance threshold flee rolls 1-100 against to go the way the rogue chose.
+static int control_flee_threshold(int control_skill)
+{
+	return control_skill * MAX_CHANCE_TO_CONTROL_FLEE / 100;
+}
+
+std::string control_flee_facts(P_char ch)
+{
+	if (!GET_CLASS(ch, CLASS_ROGUE))
+		return "  Only rogues can choose where they flee.\n";
+	return fact("Chance to flee the way you choose",
+		    std::to_string(control_flee_threshold(GET_CHAR_SKILL(ch, SKILL_CONTROL_FLEE))) +
+			    " in 100");
+}
+
+// The chance threshold a fleeing fighter rolls 1-100 against to slip away.
+static int expeditious_retreat_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_EXPEDITIOUS_RETREAT);
+}
+
+// How long, in ticks, the fleer stays sneaking after slipping away.
+static int expeditious_retreat_duration()
+{
+	return 1;
+}
+
+std::string expeditious_retreat_facts(P_char ch)
+{
+	return fact("Chance when you flee a fight",
+		    std::to_string(MAX(0, expeditious_retreat_threshold(ch) - 1)) + " in 100") +
+	       fact("Sneaking after you get away", game_hours(expeditious_retreat_duration()));
+}
+
+// The chance threshold a rider rolls 1-100 against to calm a fleeing mount.
+int mounted_combat_calm_threshold(P_char rider)
+{
+	return BOUNDED(5, GET_CHAR_SKILL(rider, SKILL_MOUNTED_COMBAT), 95);
+}
+
 void do_flee(P_char ch, char *argument, int cmd)
 {
 	int i, attempted_dir, start_room, atts;
@@ -2617,8 +2900,7 @@ void do_flee(P_char ch, char *argument, int cmd)
 	{
 		if (rider)
 		{
-			percent_chance =
-				BOUNDED(5, GET_CHAR_SKILL(rider, SKILL_MOUNTED_COMBAT), 95);
+			percent_chance = mounted_combat_calm_threshold(rider);
 
 			if (number(1, 100) < percent_chance)
 			{
@@ -2672,13 +2954,13 @@ void do_flee(P_char ch, char *argument, int cmd)
 	// Expeditious retreat check. Apr09 -Lucrot
 	if (!IS_SET(ch->specials.act, ACT_MOUNT) && IS_FIGHTING(ch) &&
 	    (notch_skill(ch, SKILL_EXPEDITIOUS_RETREAT, 10) ||
-	     (GET_CHAR_SKILL(ch, SKILL_EXPEDITIOUS_RETREAT) > number(1, 100))))
+	     (expeditious_retreat_threshold(ch) > number(1, 100))))
 		expeditious = true;
 
 	if (attempted_dir >= 0)
 	{
 		notch_skill(ch, SKILL_CONTROL_FLEE, get_property("skill.notch.offensive", 7));
-		int chance = control_skill * MAX_CHANCE_TO_CONTROL_FLEE / 100;
+		int chance = control_flee_threshold(control_skill);
 		if (number(1, 100) > chance)
 		{
 			send_to_char("You panic and lose control of your escape direction!\n", ch);
@@ -2807,7 +3089,7 @@ void do_flee(P_char ch, char *argument, int cmd)
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_EXPEDITIOUS_RETREAT;
-			af.duration = 1;
+			af.duration = expeditious_retreat_duration();
 			af.bitvector = AFF_SNEAK;
 			affect_to_char(ch, &af);
 
@@ -2882,6 +3164,90 @@ const char *monk_combos_messages[][2][3] = {
 	    "...then leaps into the air, delivering a crushing blow with $s foot down directly on your head!" } }
 };
 
+// Each blow's damage, before melee_damage applies the target's defenses.
+static int combination_damage(const Rolls &rolls, int stage)
+{
+	switch (stage)
+	{
+	case 0:
+		return rolls.number(1, 30);
+	case 1:
+		return rolls.number(30, 60);
+	case 2:
+		return rolls.number(40, 70);
+	case 3:
+		return rolls.number(50, 90);
+	case 4:
+		return rolls.number(60, 100);
+	case 5:
+		return rolls.number(60, 120);
+	default:
+		return rolls.number(100, 150);
+	}
+}
+
+// The rating each blow needs for the next one to follow; the last blow has no next.
+static int combination_skill_required(int stage)
+{
+	static const int required[] = { 25, 35, 40, 55, 70, 85 };
+	return required[stage];
+}
+
+// True when the combination falls apart before the first blow, 1 time in 51.
+static bool combination_fumble_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 50);
+}
+
+// The monk's lag after the blows, in pulses.
+static int combination_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// The final blow's stun, in pulses, from level 50.
+static int combination_stun()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// How long, in pulses, a combination keeps the next one from starting.
+static int combination_rest()
+{
+	return get_property("timer.secs.monkCombination", 30) * WAIT_SEC;
+}
+
+// How long, in pulses, the monk prepares before the blows land.
+static int combination_delay(int level)
+{
+	return level < 51 ? 2 * PULSE_VIOLENCE : PULSE_VIOLENCE;
+}
+
+std::string combination_facts(P_char ch)
+{
+	std::string facts;
+	for (int stage = 0; stage < 7; stage++)
+	{
+		std::string needs;
+		if (stage)
+			needs = " (rating " +
+				std::to_string(combination_skill_required(stage - 1)) + ")";
+		facts += fact("Blow " + std::to_string(stage + 1) + needs,
+			      show({ combination_damage(lowest_rolls, stage),
+				     combination_damage(highest_rolls, stage) }));
+	}
+	facts +=
+		fact("Preparing before the first blow", seconds(combination_delay(GET_LEVEL(ch)))) +
+		fact("Your lag after the blows", seconds(combination_lag())) +
+		fact("Before you can start another", real_time(combination_rest())) +
+		fact("Chance it falls apart", "1 in 51");
+	if (GET_LEVEL(ch) >= 50)
+		facts += fact("Blow 7 stuns unless the target saves", seconds(combination_stun()));
+	return facts + "  Each later blow also needs a roll; a miss ends the combination.\n"
+		       "  Needs empty hands. Golems, dragons, ghosts and phantasmal forms are\n"
+		       "  refused. The target's defenses apply to the damage after.\n";
+}
+
 void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
 	int percent = 100, skill, stage = 0, dam = 0, move, result, skill_req = 0;
@@ -2931,7 +3297,7 @@ void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 	skill = GET_CHAR_SKILL(ch, SKILL_COMBINATION);
 
-	if (!number(0, 50))
+	if (combination_fumble_roll(live_rolls))
 	{
 		act("&+R$n attempts a combination, but falls flat on $s face!", FALSE, ch, 0, 0,
 		    TO_ROOM);
@@ -2950,39 +3316,39 @@ void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		switch (stage)
 		{
 		case 0:
-			dam = number(1, 30);
+			dam = combination_damage(live_rolls, stage);
 			if (GET_LEVEL(ch) < 50)
 				percent -= 10;
-			skill_req = 25;
+			skill_req = combination_skill_required(stage);
 			break;
 		case 1:
 			if (GET_LEVEL(ch) < 50)
 				percent -= 5;
-			skill_req = 35;
-			dam = number(30, 60);
+			skill_req = combination_skill_required(stage);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		case 2:
 			if (GET_LEVEL(ch) < 50)
 				percent -= 5;
-			skill_req = 40;
-			dam = number(40, 70);
+			skill_req = combination_skill_required(stage);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		case 3:
 			percent -= 5;
-			skill_req = 55;
-			dam = number(50, 90);
+			skill_req = combination_skill_required(stage);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		case 4:
 			percent -= 5;
-			skill_req = 70;
-			dam = number(60, 100);
+			skill_req = combination_skill_required(stage);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		case 5:
-			skill_req = 85;
-			dam = number(60, 120);
+			skill_req = combination_skill_required(stage);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		case 6:
-			dam = number(100, 150);
+			dam = combination_damage(live_rolls, stage);
 			break;
 		}
 		move = number(0, 1);
@@ -2992,7 +3358,7 @@ void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		result = melee_damage(ch, victim, dam, PHSDAM_TOUCH, &messages);
 		if (result == DAM_NONEDEAD && stage == 6 && GET_LEVEL(ch) >= 50)
 		{
-			Stun(victim, ch, PULSE_VIOLENCE * 2, TRUE);
+			Stun(victim, ch, combination_stun(), TRUE);
 			if (IS_AFFECTED2(victim, AFF2_STUNNED))
 			{
 				act("Your final move stuns $N!", FALSE, ch, 0, victim, TO_CHAR);
@@ -3006,7 +3372,7 @@ void event_combination(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 	notch_skill(ch, SKILL_COMBINATION, get_property("skill.notch.offensive", 7));
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, combination_lag());
 }
 
 void do_combination(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -3026,8 +3392,7 @@ void do_combination(P_char ch, char * /*argument*/, int /*cmd*/)
 		send_to_char("You have no opponent.\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, get_property("timer.secs.monkCombination", 30) * WAIT_SEC,
-			  SKILL_COMBINATION))
+	if (!affect_timer(ch, combination_rest(), SKILL_COMBINATION))
 	{
 		send_to_char("You're still recovering from your last move.\n", ch);
 		return;
@@ -3049,10 +3414,56 @@ void do_combination(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.duration = 1;
 	affect_to_char(ch, &af);
 	/* Yes, the higher the skill, the longer it takes to prepare */
-	add_event(event_combination, GET_LEVEL(ch) < 51 ? 2 * PULSE_VIOLENCE : PULSE_VIOLENCE, ch,
-		  0, 0, 0, 0, 0);
+	add_event(event_combination, combination_delay(GET_LEVEL(ch)), ch, 0, 0, 0, 0, 0);
 	act("&+L$n begins moving into position for a combination...&n", TRUE, ch, 0, 0, TO_ROOM);
 	act("&+LYou begin moving into position for a combination...&n", TRUE, ch, 0, 0, TO_CHAR);
+}
+
+// True when the barrage falls apart before the first attack, 1 time in 31.
+static bool blade_barrage_fumble_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 30);
+}
+
+// The rating each attack needs for the next one to follow; the last attack has no next.
+static int blade_barrage_skill_required(int stage)
+{
+	static const int required[] = { 25, 35, 40, 55, 70, 85 };
+	return required[stage];
+}
+
+// The fighter's lag once the barrage starts, in pulses.
+static int blade_barrage_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// How long, in pulses, a barrage keeps the next one from starting.
+static int blade_barrage_rest()
+{
+	return get_property("timer.secs.monkCombination", 30) * WAIT_SEC;
+}
+
+// How long, in pulses, the fighter prepares before the attacks land.
+static int blade_barrage_delay(int level)
+{
+	return level < 51 ? 2 * PULSE_VIOLENCE : PULSE_VIOLENCE;
+}
+
+std::string blade_barrage_facts(P_char ch)
+{
+	int attacks = 1;
+	while (attacks < 7 &&
+	       GET_CHAR_SKILL(ch, SKILL_BLADE_BARRAGE) >= blade_barrage_skill_required(attacks - 1))
+		attacks++;
+	return fact("Most weapon attacks at your rating", std::to_string(attacks)) +
+	       fact("Preparing before the first attack",
+		    seconds(blade_barrage_delay(GET_LEVEL(ch)))) +
+	       fact("Your lag once it starts", seconds(blade_barrage_lag())) +
+	       fact("Before you can start another", real_time(blade_barrage_rest())) +
+	       fact("Chance it falls apart, with no lag", "1 in 31") +
+	       "  You must wield a weapon and be fighting. Each later attack also needs a\n"
+	       "  roll; a miss ends the barrage.\n";
 }
 
 // Drannak - Blade Barrage
@@ -3093,7 +3504,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 
 	skill = GET_CHAR_SKILL(ch, SKILL_BLADE_BARRAGE);
 
-	if (!number(0, 30))
+	if (blade_barrage_fumble_roll(live_rolls))
 	{
 		act("&+R$n attempts a fancy attack, but almost cuts $s fingers off in the process!",
 		    FALSE, ch, 0, 0, TO_ROOM);
@@ -3113,7 +3524,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	}
 
 	// Yes, we lag before the attacks; it doesn't stop them, and we don't have to worry about victim dying.
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, blade_barrage_lag());
 	stage = 0;
 	do
 	{
@@ -3127,7 +3538,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 			}
 			if (GET_LEVEL(ch) < 50)
 				percent -= 10;
-			skill_req = 25;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 1:
 			hit(ch, victim, ch->equipment[SECONDARY_WEAPON]);
@@ -3137,7 +3548,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 			}
 			if (GET_LEVEL(ch) < 50)
 				percent -= 5;
-			skill_req = 35;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 2:
 			hit(ch, victim, ch->equipment[PRIMARY_WEAPON]);
@@ -3147,7 +3558,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 			}
 			if (GET_LEVEL(ch) < 50)
 				percent -= 5;
-			skill_req = 40;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 3:
 			hit(ch, victim, ch->equipment[SECONDARY_WEAPON]);
@@ -3156,7 +3567,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 				return;
 			}
 			percent -= 5;
-			skill_req = 55;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 4:
 			hit(ch, victim, ch->equipment[PRIMARY_WEAPON]);
@@ -3165,7 +3576,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 				return;
 			}
 			percent -= 5;
-			skill_req = 70;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 5:
 			hit(ch, victim, ch->equipment[SECONDARY_WEAPON]);
@@ -3173,7 +3584,7 @@ void event_barrage(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 			{
 				return;
 			}
-			skill_req = 85;
+			skill_req = blade_barrage_skill_required(stage);
 			break;
 		case 6:
 			hit(ch, victim, ch->equipment[PRIMARY_WEAPON]);
@@ -3294,8 +3705,7 @@ void do_barrage(P_char ch, char * /*argument*/, int /*cmd*/)
 		send_to_char("You brandish your blades!... to no one in particular.\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, get_property("timer.secs.monkCombination", 30) * WAIT_SEC,
-			  SKILL_BLADE_BARRAGE))
+	if (!affect_timer(ch, blade_barrage_rest(), SKILL_BLADE_BARRAGE))
 	{
 		send_to_char("You're still recovering from your last attempt.\n", ch);
 		return;
@@ -3313,8 +3723,7 @@ void do_barrage(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.duration = 2;
 	affect_to_char(ch, &af);
 	/* Yes, the higher the skill, the longer it takes to prepare */
-	add_event(event_barrage, GET_LEVEL(ch) < 51 ? 2 * PULSE_VIOLENCE : PULSE_VIOLENCE, ch, 0, 0,
-		  0, 0, 0);
+	add_event(event_barrage, blade_barrage_delay(GET_LEVEL(ch)), ch, 0, 0, 0, 0, 0);
 	act("&+L$n &nbrandishes their &+Lweapons &nin a formal stance...&n", TRUE, ch, 0, 0,
 	    TO_ROOM);
 	act("&+LYou grasp your &+Lweapons &nand prepare for the &+Lonslaught&n...", TRUE, ch, 0, 0,
@@ -3356,6 +3765,20 @@ void do_buck(P_char ch, char * /*argument*/, int /*cmd*/)
 	buck(ch);
 }
 
+// The rusher's lag, in pulses.
+static int rush_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string rush_facts(P_char ch)
+{
+	return fact("Chance to reach the target",
+		    "up to " + std::to_string(GET_CHAR_SKILL(ch, SKILL_RUSH)) + " in 100") +
+	       fact("Your lag", seconds(rush_lag())) +
+	       "  Needs berserk. Your current opponent gets a free attack if it works.\n";
+}
+
 void rush(P_char ch, P_char victim)
 {
 	if (!IS_ALIVE(ch))
@@ -3382,7 +3805,7 @@ void rush(P_char ch, P_char victim)
 		return;
 	}
 
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, rush_lag());
 
 	if (notch_skill(ch, SKILL_RUSH, get_property("skill.notch.offensive", 7)) ||
 	    number(1, 100) > GET_CHAR_SKILL(ch, SKILL_RUSH))
@@ -3597,6 +4020,120 @@ void do_restrain(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 	restrain(ch, victim);
+}
+
+// A kick's damage before its roll: the better of half strength and martial arts, plus kick.
+static int kick_base_damage(P_char ch)
+{
+	return MAX((int)(GET_C_STR(ch) / 2), GET_CHAR_SKILL(ch, SKILL_MARTIAL_ARTS)) +
+	       GET_CHAR_SKILL(ch, SKILL_KICK);
+}
+
+// A kick's roll: half the base up to the base.
+static int kick_rolled_damage(const Rolls &rolls, int dam)
+{
+	return rolls.number((int)(dam / 2), dam);
+}
+
+static int kick_scaled_damage(int dam)
+{
+	return (int)(dam * get_property("kick.damage.modifier", 1.000));
+}
+
+// The extra scaling dragons, dracoliches and centaurs get by level.
+static int kick_quick_damage(int dam, int level)
+{
+	return (dam * 2 * level) / 60;
+}
+
+// The kicker's lag, in pulses, for dragons, dracoliches and centaurs.
+static int kick_quick_lag()
+{
+	return (int)((PULSE_VIOLENCE * 2) / 3);
+}
+
+// The kicker's lag for everyone else, in pulses.
+static int kick_lag(const Rolls &rolls)
+{
+	return (PULSE_VIOLENCE * 3) / 2 + rolls.number(-WAIT_SEC, WAIT_SEC);
+}
+
+// The target's lag, in pulses, after a kick out of the room.
+static int kick_room_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("kick.roomkick.victimlag", 1.000));
+}
+
+// The target's lag, in pulses, after a kick into a wall.
+static int kick_wall_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("kick.wallkick.victimlag", 1.5));
+}
+
+// The target's lag, in pulses, after a low kick from below.
+static int kick_groin_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("kick.groinkick.victimlag", 1.000));
+}
+
+// True on the 1 kick in 11 that lands low on a bigger humanoid.
+static bool kick_low_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 10);
+}
+
+// True on the 1 in 25 kick into a wall or low kick that stuns.
+static bool kick_stun_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 24);
+}
+
+// How long, in pulses, a kick into a wall stuns.
+static int kick_wall_stun(const Rolls &rolls)
+{
+	return (PULSE_VIOLENCE * rolls.number(4, 9)) / 4;
+}
+
+// How long, in pulses, a low kick stuns.
+static int kick_groin_stun(const Rolls &rolls)
+{
+	return (PULSE_VIOLENCE * rolls.number(4, 13)) / 4;
+}
+
+std::string kick_facts(P_char ch)
+{
+	const bool quick = IS_DRAGON(ch) || IS_CENTAUR(ch);
+	int low = kick_scaled_damage(kick_rolled_damage(lowest_rolls, kick_base_damage(ch)));
+	int high = kick_scaled_damage(kick_rolled_damage(highest_rolls, kick_base_damage(ch)));
+	if (quick)
+	{
+		low = kick_quick_damage(low, GET_LEVEL(ch));
+		high = kick_quick_damage(high, GET_LEVEL(ch));
+	}
+	std::string asleep;
+	if (quick)
+		asleep = fact("Your lag if it leaves a target 2+ sizes off incapacitated",
+			      seconds(takedown_sleeping_target_lag())) +
+			 "    (you attack it again; a sleeper just wakes when the kick lands)\n";
+	return fact("Damage on a hit", show({ low, high }) + " with your strength and ratings") +
+	       fact("Your lag", quick ? seconds(kick_quick_lag()) :
+					seconds(kick_lag(lowest_rolls)) + " to " +
+						seconds(kick_lag(highest_rolls))) +
+	       asleep + "  A target that evades being sent flying adds no lag to yours.\n" +
+	       fact("Target's lag if kicked out of the room", seconds(kick_room_lag())) +
+	       fact("Target's lag if kicked into a wall instead", seconds(kick_wall_lag())) +
+	       fact("  Chance that also stuns it",
+		    "1 in 25, for " + seconds(kick_wall_stun(lowest_rolls)) + " to " +
+			    seconds(kick_wall_stun(highest_rolls))) +
+	       "    (only a target 2 or more sizes smaller than you can be sent flying)\n" +
+	       fact("Target's lag after a low kick", seconds(kick_groin_lag())) +
+	       fact("  Chance that also stuns it",
+		    "1 in 25, for " + seconds(kick_groin_stun(lowest_rolls)) + " to " +
+			    seconds(kick_groin_stun(highest_rolls))) +
+	       "    (only a humanoid 2 or more sizes bigger than you, at most 1 kick in 11,\n"
+	       "    after the takedown roll)\n"
+	       "  An immaterial target takes no damage. A stun needs a failed save, and\n"
+	       "  elites can't be stunned. The target's defenses apply to the damage after.\n";
 }
 
 static bool kick_admitted(P_char ch, P_char victim)
@@ -3825,25 +4362,24 @@ void kick(P_char ch, P_char victim)
 		return;
 	}
 
-	dam = MAX((int)(GET_C_STR(ch) / 2), GET_CHAR_SKILL(ch, SKILL_MARTIAL_ARTS)) +
-	      GET_CHAR_SKILL(ch, SKILL_KICK);
+	dam = kick_base_damage(ch);
 
 	// Randomize damage a bit. Jan08 -Lucrot
-	dam = number((int)(dam / 2), dam);
+	dam = kick_rolled_damage(live_rolls, dam);
 
 	// Adjust property for dragon damage. Jan08 -Lucrot
-	dam = (int)(dam * get_property("kick.damage.modifier", 1.000));
+	dam = kick_scaled_damage(dam);
 
 	// Dragons do more damage and adjusted by level and a bit quicker.
 	// Includes dracoliches. Jan08 -Lucrot
 	if (IS_DRAGON(ch) || IS_CENTAUR(ch))
 	{
-		dam = (dam * 2 * GET_LEVEL(ch)) / 60;
-		CharWait(ch, (int)((PULSE_VIOLENCE * 2) / 3));
+		dam = kick_quick_damage(dam, GET_LEVEL(ch));
+		CharWait(ch, kick_quick_lag());
 	}
 	else
 	{
-		CharWait(ch, (PULSE_VIOLENCE * 3) / 2 + number(-WAIT_SEC, WAIT_SEC));
+		CharWait(ch, kick_lag(live_rolls));
 	}
 
 	// debug("&+gKick&n (%s) chance (%d) at (%s).", GET_NAME(ch), percent_chance, GET_NAME(victim));
@@ -3941,23 +4477,21 @@ void kick(P_char ch, P_char victim)
 		{
 			act("$n flies in, crashing on the floor!", TRUE, victim, 0, 0, TO_ROOM);
 			SET_POS(victim, POS_PRONE + GET_STAT(victim));
-			CharWait(victim, (int)(PULSE_VIOLENCE *
-					       get_property("kick.roomkick.victimlag", 1.000)));
+			CharWait(victim, kick_room_lag());
 		}
 		else if (movement.status == forced_move_status::blocked)
 		{
 			forced_rebound_messages(ch, victim, movement.reason, false);
 			SET_POS(victim, POS_PRONE + GET_STAT(victim));
-			if (!number(0, 24) && !IS_STUNNED(victim))
-				Stun(victim, ch, (PULSE_VIOLENCE * number(4, 9)) / 4, TRUE);
+			if (kick_stun_roll(live_rolls) && !IS_STUNNED(victim))
+				Stun(victim, ch, kick_wall_stun(live_rolls), TRUE);
 			stop_fighting(victim);
-			CharWait(victim, (int)(PULSE_VIOLENCE *
-					       get_property("kick.wallkick.victimlag", 1.5)));
+			CharWait(victim, kick_wall_lag());
 		}
 		return;
 	}
 	if (IS_HUMANOID(victim) && takedown_chance > random_number && csize < vsize &&
-	    !number(0, 10))
+	    kick_low_roll(live_rolls))
 	{
 		act("Your nimble kick slams into $N's groin, and $N whimpers before crashing to the ground!",
 		    FALSE, ch, 0, victim, TO_CHAR);
@@ -3969,24 +4503,120 @@ void kick(P_char ch, P_char victim)
 		update_group_vitals(victim);
 		gmcp_char_vitals(victim);
 
-		if (!number(0, 24))
+		if (kick_stun_roll(live_rolls))
 		{
 			// Added a little more play in the stun time (from 1 pulse vio. to 3 1/4 pulse vio's).
-			Stun(victim, ch, (PULSE_VIOLENCE * number(4, 13)) / 4, TRUE);
+			Stun(victim, ch, kick_groin_stun(live_rolls), TRUE);
 		}
 		stop_fighting(victim);
-		CharWait(victim,
-			 (int)(PULSE_VIOLENCE * get_property("kick.groinkick.victimlag", 1.000)));
+		CharWait(victim, kick_groin_lag());
 	}
 	return;
+}
+
+// What the dragoon's power adds to a mount command's chance threshold.
+static int dragoon_power(P_char ch)
+{
+	return MAX(0, (int)(((GET_C_POW(ch) - 100) / 2)));
+}
+
+// The hit points a roar gives the dragoon's group and mount.
+static int dragon_roar_hit_points(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 2);
+}
+
+// The hitroll and damroll a roar gives the dragoon's group and mount.
+static int dragon_roar_bonus(P_char ch)
+{
+	return (GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 20);
+}
+
+// How long, in ticks, a roar's effects last.
+static int dragon_roar_duration(int dampoints)
+{
+	return (dampoints) / 2;
+}
+
+// The chance threshold of a roar, before the dragoon's power.
+static int dragon_roar_threshold(P_char ch)
+{
+	int percent_chance = (95 * GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) / 100;
+	percent_chance = BOUNDED(1, percent_chance, 99);
+	return percent_chance;
+}
+
+// A dragon hunter roars at full rating, others at half.
+static int dragon_roar_empower(P_char ch, bool is_hunter)
+{
+	return is_hunter ? GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) :
+			   GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 2;
+}
+
+// What a roar takes from everyone else's hitroll and damroll, as a negative modifier.
+static int dragon_roar_penalty(P_char ch, int empower)
+{
+	return 0 - MAX(2, (GET_LEVEL(ch) / 8) + (empower / 10));
+}
+
+// How long, in pulses, a roar keeps the dragoon from another dragon command.
+static int dragon_roar_rest()
+{
+	return (int)(3 * PULSE_VIOLENCE);
+}
+
+// The dragoon's lag after a roar, in pulses.
+static int dragon_roar_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// A dragon hunter's roar: the threshold of its flee roll, and the highest level it scares.
+static int dragon_roar_flee_threshold()
+{
+	return (int)get_property("skill.dragon_roar.hunter.flee.chance", 10.000);
+}
+
+static int dragon_roar_flee_level(P_char ch, int empower)
+{
+	return GET_LEVEL(ch) + MIN(5, (empower / 20));
+}
+
+std::string dragon_roar_facts(P_char ch)
+{
+	const int bonus = dragon_roar_bonus(ch);
+	const bool is_hunter = GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER);
+	const int empower = dragon_roar_empower(ch, is_hunter);
+	const int penalty = dragon_roar_penalty(ch, empower);
+	std::string flee;
+	if (is_hunter)
+		flee = fact("Chance each other target also flees",
+			    std::to_string(dragon_roar_flee_threshold()) + " in 101, then " +
+				    std::to_string(GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) +
+				    " in 101") +
+		       "    (up to level " + std::to_string(dragon_roar_flee_level(ch, empower)) +
+		       ", on a failed fear check; not elites or greater races)\n";
+	return fact("Chance",
+		    std::to_string(MIN(100, dragon_roar_threshold(ch) + dragoon_power(ch) - 1)) +
+			    " in 100") +
+	       fact("Your group and dragon, hit points",
+		    "+" + std::to_string(dragon_roar_hit_points(ch))) +
+	       fact("Your group and dragon, hitroll and damroll", "+" + std::to_string(bonus)) +
+	       fact("Everyone else in the room, hitroll and damroll", std::to_string(penalty)) +
+	       fact("Duration", game_hours(dragon_roar_duration(bonus))) +
+	       fact("Your lag", seconds(dragon_roar_lag())) +
+	       fact("Before your next dragon command if it works", seconds(dragon_roar_rest())) +
+	       flee +
+	       "  Spends a prepared dragon circle; with none it does nothing. Each effect\n"
+	       "  skips anyone who already has it.\n";
 }
 
 void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	P_char victim = NULL, mount = NULL;
 	int skl_lvl = 0;
-	int hpoints = (GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 2);
-	int dampoints = (GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 20);
+	int hpoints = dragon_roar_hit_points(ch);
+	int dampoints = dragon_roar_bonus(ch);
 	int percent_chance;
 	bool is_hunter = FALSE;
 	struct affected_type af;
@@ -4049,9 +4679,8 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 	}
 
 	is_hunter = GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER);
-	percent_chance = (95 * GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR)) / 100;
-	percent_chance = BOUNDED(1, percent_chance, 99);
-	int power = MAX(0, (int)(((GET_C_POW(ch) - 100) / 2)));
+	percent_chance = dragon_roar_threshold(ch);
+	int power = dragoon_power(ch);
 
 	appear(ch);
 	appear(mount);
@@ -4073,8 +4702,7 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 			    mount, TO_ROOM);
 		}
 
-		int empower = is_hunter ? GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) :
-					  GET_CHAR_SKILL(ch, SKILL_DRAGON_ROAR) / 2;
+		int empower = dragon_roar_empower(ch, is_hunter);
 
 		// Will now drain spell circles but higher circles should do better shit IMHO
 		int circle = get_next_dragoon_circle(ch);
@@ -4107,7 +4735,7 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 					{
 						bzero(&af, sizeof(af));
 						af.type = SKILL_WAR_CRY;
-						af.duration = (dampoints) / 2;
+						af.duration = dragon_roar_duration(dampoints);
 						// HPS
 						af.modifier = hpoints;
 						af.location = APPLY_HIT;
@@ -4134,13 +4762,11 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 					{
 						bzero(&af, sizeof(af));
 						af.type = SONG_COWARDICE;
-						af.duration = (dampoints) / 2;
-						af.modifier = 0 - MAX(2, (GET_LEVEL(ch) / 8) +
-										 (empower / 10));
+						af.duration = dragon_roar_duration(dampoints);
+						af.modifier = dragon_roar_penalty(ch, empower);
 						af.location = APPLY_HITROLL;
 						affect_to_char(victim, &af);
-						af.modifier = 0 - MAX(2, (GET_LEVEL(ch) / 8) +
-										 (empower / 10));
+						af.modifier = dragon_roar_penalty(ch, empower);
 						af.location = APPLY_DAMROLL;
 						affect_to_char(victim, &af);
 						send_to_char(
@@ -4156,14 +4782,11 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 						if (is_hunter)
 						{
 							if ((number(0, 100) <
-							     (int)get_property(
-								     "skill.dragon_roar.hunter.flee.chance",
-								     10.000)) &&
+							     dragon_roar_flee_threshold()) &&
 							    (number(0, 100) <
 							     GET_CHAR_SKILL(ch,
 									    SKILL_DRAGON_ROAR)) &&
-							    ((GET_LEVEL(ch) +
-							      MIN(5, (empower / 20))) >=
+							    (dragon_roar_flee_level(ch, empower) >=
 							     GET_LEVEL(victim)) &&
 							    !IS_TRUSTED(victim) &&
 							    !fear_check(victim))
@@ -4195,7 +4818,7 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 				    get_property("skill.notch.defensive", 7));
 		}
 
-		set_short_affected_by(ch, SKILL_DRAGON_ROAR, (int)(3 * PULSE_VIOLENCE));
+		set_short_affected_by(ch, SKILL_DRAGON_ROAR, dragon_roar_rest());
 	}
 	else
 	{
@@ -4212,7 +4835,40 @@ void do_dragon_roar(P_char ch, char * /*argument*/, int /*cmd*/)
 		}
 	}
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, dragon_roar_lag());
+}
+
+// The chance threshold of a breath, before the dragoon's power.
+static int dragon_breath_threshold(P_char ch)
+{
+	int percent_chance = (95 * GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT)) / 100;
+	percent_chance = BOUNDED(1, percent_chance, 99);
+	return percent_chance;
+}
+
+// How long, in pulses, a breath keeps the dragoon from another dragon command.
+static int dragon_breath_rest()
+{
+	return (int)(3 * PULSE_VIOLENCE);
+}
+
+// The dragoon's lag after a breath, in pulses.
+static int dragon_breath_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string dragon_breath_facts(P_char ch)
+{
+	return fact("Chance",
+		    std::to_string(MIN(100, dragon_breath_threshold(ch) + dragoon_power(ch))) +
+			    " in 100, by your mounted combat") +
+	       fact("Your lag", seconds(dragon_breath_lag())) +
+	       fact("Before your next dragon command if it works", seconds(dragon_breath_rest())) +
+	       "  The circle it spends picks the spell, cast at your dragon's level:\n"
+	       "    1-2 burning hands, 3-4 flameburst, 5-6 molten spray,\n"
+	       "    7-8 fireball, 9-10 magma burst, 11-12 immolate.\n"
+	       "  With no circle prepared, it does nothing.\n";
 }
 
 void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
@@ -4374,10 +5030,8 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 
 	is_priest = GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_PRIEST);
 
-	percent_chance = (95 * GET_CHAR_SKILL(ch, SKILL_MOUNTED_COMBAT)) / 100;
-
-	percent_chance = BOUNDED(1, percent_chance, 99);
-	int power = MAX(0, (int)(((GET_C_POW(ch) - 100) / 2)));
+	percent_chance = dragon_breath_threshold(ch);
+	int power = dragoon_power(ch);
 
 	if ((!notch_skill(ch, SKILL_MOUNTED_COMBAT, get_property("skill.notch.offensive", 7)) &&
 	     (percent_chance + power) <
@@ -4584,10 +5238,77 @@ void do_dragon_breath(P_char ch, char *argument, int /*cmd*/)
 			DelayCommune(ch, (int)(3 * PULSE_VIOLENCE));
 		}
 
-		set_short_affected_by(ch, SKILL_DRAGON_BREATH, (int)(3 * PULSE_VIOLENCE));
+		set_short_affected_by(ch, SKILL_DRAGON_BREATH, dragon_breath_rest());
 	}
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, dragon_breath_lag());
+}
+
+// Damage from a tail strike, before a lancer's bonus and the target's defenses.
+static int dragon_strike_damage(const Rolls &rolls, P_char ch)
+{
+	return 30 + rolls.number(1, GET_LEVEL(ch));
+}
+
+// A dragon lancer's tail strike damage.
+static int dragon_strike_lancer_damage(int dam)
+{
+	return (int)(dam * get_property("skill.dragon_strike.lancer.DamageMultiplier", 2.000));
+}
+
+// The dragoon's lag after a strike, in pulses.
+static int dragon_strike_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The dragoon's lag, in pulses, after a miss that throws them hard to the ground.
+static int dragon_strike_face_plant_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+// Damage from falling off the dragon on a miss.
+static int dragon_strike_fall_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(1, GET_LEVEL(ch));
+}
+
+// How long, in pulses, a hit keeps the dragoon from another dragon command.
+static int dragon_strike_rest()
+{
+	return (int)(3 * PULSE_VIOLENCE);
+}
+
+// A knocked down target's lag in pulses: vict_lag is 2, or 1 for a size mismatch.
+static int dragon_strike_target_lag(int vict_lag)
+{
+	return vict_lag * PULSE_VIOLENCE;
+}
+
+std::string dragon_strike_facts(P_char ch)
+{
+	const bool is_lancer = GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER);
+	int low = dragon_strike_damage(lowest_rolls, ch);
+	int high = dragon_strike_damage(highest_rolls, ch);
+	if (is_lancer)
+	{
+		low = dragon_strike_lancer_damage(low);
+		high = dragon_strike_lancer_damage(high);
+	}
+	std::string facts =
+		fact("Damage on a hit", show({ low, high }) + " at your level") +
+		fact("Your lag", seconds(dragon_strike_lag())) +
+		fact("Before your next dragon command after a hit", seconds(dragon_strike_rest())) +
+		fact("Target's lag if knocked down", seconds(dragon_strike_target_lag(2))) +
+		fact("  If the sizes differ too much", seconds(dragon_strike_target_lag(1)));
+	if (!is_lancer)
+		facts += fact("Falling damage on a bad miss",
+			      show({ dragon_strike_fall_damage(lowest_rolls, ch),
+				     dragon_strike_fall_damage(highest_rolls, ch) })) +
+			 fact("Your lag if you crash to the ground",
+			      seconds(dragon_strike_face_plant_lag()));
+	return facts + "  The target's defenses apply to the damage after.\n";
 }
 
 void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
@@ -4775,12 +5496,11 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 	vict_size = get_takedown_size(victim);
 	ch_size = get_takedown_size(ch);
 
-	dam = 30 + number(1, GET_LEVEL(ch));
+	dam = dragon_strike_damage(live_rolls, ch);
 
 	if (is_lancer)
 	{
-		dam = (int)(dam *
-			    get_property("skill.dragon_strike.lancer.DamageMultiplier", 2.000));
+		dam = dragon_strike_lancer_damage(dam);
 	}
 
 	if (IS_NPC(victim) && (IS_SET(victim->specials.act, ACT_NO_BASH) || IS_ELITE(victim)))
@@ -4819,7 +5539,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 		knockdown_chance = 0;
 	}
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, dragon_strike_lag());
 
 	knockdown_chance = takedown_check(ch, victim, knockdown_chance, SKILL_DRAGON_STRIKE,
 					  TAKEDOWN_ALL & !TAKEDOWN_AGI_CHECK);
@@ -4842,7 +5562,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	percent_chance = BOUNDED(1, percent_chance, 99);
-	int power = MAX(0, (int)(((GET_C_POW(ch) - 100) / 2)));
+	int power = dragoon_power(ch);
 
 	if (IS_NPC(ch) && (number(0, 50) > percent_chance))
 	{
@@ -4904,9 +5624,10 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 				    TO_CHAR);
 				act("CRASH! $n face plants hard into the ground!", FALSE, ch, 0,
 				    victim, TO_ROOM);
-				CharWait(ch, PULSE_VIOLENCE * 3);
+				CharWait(ch, dragon_strike_face_plant_lag());
 			}
-			if (damage(ch, ch, number(1, GET_LEVEL(ch)), DAMAGE_FALLING))
+			if (damage(ch, ch, dragon_strike_fall_damage(live_rolls, ch),
+				   DAMAGE_FALLING))
 				return;
 
 			if (!IS_DRAGON_FORM(ch))
@@ -4937,7 +5658,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 			      GET_NAME(ch), knockdown_chance, GET_NAME(victim));
 		}
 
-		set_short_affected_by(ch, SKILL_DRAGON_STRIKE, (int)(3 * PULSE_VIOLENCE));
+		set_short_affected_by(ch, SKILL_DRAGON_STRIKE, dragon_strike_rest());
 
 		if (knockdown_chance > number(1, 100))
 		{
@@ -4946,7 +5667,7 @@ void do_dragon_strike(P_char ch, char *argument, int /*cmd*/)
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
 			update_group_vitals(victim);
 			gmcp_char_vitals(victim);
-			CharWait(victim, vict_lag * PULSE_VIOLENCE);
+			CharWait(victim, dragon_strike_target_lag(vict_lag));
 		}
 	}
 }
@@ -5046,6 +5767,52 @@ static int roundkick_admission(P_char ch, P_char victim)
 	return 1;
 }
 
+// The kicker's lag, in pulses, against an immaterial target.
+static int roundkick_immaterial_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.250);
+}
+
+// The kicker's lag, in pulses, on an ordinary attempt.
+static int roundkick_lag()
+{
+	return (int)(PULSE_VIOLENCE * 2.500);
+}
+
+// A roundkick's damage before the target's agility comes off.
+static int roundkick_damage(P_char ch)
+{
+	return GET_C_DEX(ch) + GET_CHAR_SKILL(ch, SKILL_ROUNDKICK);
+}
+
+// The target's lag after a hit, in pulses.
+static int roundkick_target_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// How long, in pulses, a hit keeps the kicker from another roundkick.
+static int roundkick_rest()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string roundkick_facts(P_char ch)
+{
+	return fact("Damage on a hit", std::to_string(roundkick_damage(ch)) +
+					       " less the target's agility, at least 1") +
+	       fact("Damage on a miss", "half of that, and you drop to your knees") +
+	       fact("Your lag", seconds(roundkick_lag())) +
+	       fact("Your lag if the target is immaterial", seconds(roundkick_immaterial_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Before you can roundkick again after a hit", seconds(roundkick_rest())) +
+	       fact("Target's lag on a hit", seconds(roundkick_target_lag())) +
+	       "  The target must be your size or one smaller, and on the front line.\n"
+	       "  The target's defenses apply to the damage after.\n";
+}
+
 int chance_roundkick(P_char ch, P_char victim)
 {
 	const int admission = roundkick_admission(ch, victim);
@@ -5060,7 +5827,7 @@ int chance_roundkick(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("$n's sweeping kick passes through $N, rearranging absolutely nothing.", FALSE,
 		    ch, 0, victim, TO_NOTVICT);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.250));
+		CharWait(ch, roundkick_immaterial_lag());
 		return TAKEDOWN_CANCELLED;
 	}
 
@@ -5130,7 +5897,7 @@ bool roundkick(P_char ch, P_char victim)
 		return FALSE;
 	}
 
-	CharWait(ch, (int)(PULSE_VIOLENCE * 2.500));
+	CharWait(ch, roundkick_lag());
 
 	if (percent_chance == TAKEDOWN_PENALTY)
 	{
@@ -5142,7 +5909,7 @@ bool roundkick(P_char ch, P_char victim)
 		return FALSE;
 	}
 
-	dam = GET_C_DEX(ch) + GET_CHAR_SKILL(ch, SKILL_ROUNDKICK) - GET_C_AGI(victim);
+	dam = roundkick_damage(ch) - GET_C_AGI(victim);
 
 	if (!notch_skill(ch, SKILL_ROUNDKICK, get_property("skill.notch.offensive", 7)) &&
 	    percent_chance < number(0, 100))
@@ -5157,8 +5924,8 @@ bool roundkick(P_char ch, P_char victim)
 	}
 	else if (melee_damage(ch, victim, MAX(1, dam), PHSDAM_TOUCH, &messages) == DAM_NONEDEAD)
 	{
-		CharWait(victim, PULSE_VIOLENCE);
-		set_short_affected_by(ch, SKILL_BASH, 2 * PULSE_VIOLENCE);
+		CharWait(victim, roundkick_target_lag());
+		set_short_affected_by(ch, SKILL_BASH, roundkick_rest());
 
 		if (GET_C_DEX(ch) - GET_C_AGI(victim) > number(0, 100))
 		{
@@ -5341,6 +6108,190 @@ void knock_out(P_char ch, int duration)
  * *   --TAM 7-1-94
  */
 
+// The headbutter's lag, in pulses, by what happened.
+static int headbutt_position_lag()
+{
+	return (int)(1 * WAIT_SEC);
+}
+
+static int headbutt_immaterial_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.0);
+}
+
+static int headbutt_refused_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.25);
+}
+
+static int headbutt_backfire_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static double headbutt_miss_lag()
+{
+	return PULSE_VIOLENCE * 1.5;
+}
+
+static int headbutt_hit_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+// How long, in pulses, each outcome keeps the headbutter from another headbutt.
+static int headbutt_backfire_rest()
+{
+	return (int)(PULSE_VIOLENCE * 3);
+}
+
+static int headbutt_miss_rest()
+{
+	return (int)(PULSE_VIOLENCE * 2);
+}
+
+static int headbutt_hit_rest()
+{
+	return (int)(PULSE_VIOLENCE * 2.5);
+}
+
+// Damage to the headbutter when it goes badly wrong, and when it merely fails.
+static int headbutt_backfire_damage(const Rolls &rolls)
+{
+	return rolls.number(5, 15);
+}
+
+static int headbutt_miss_damage(const Rolls &rolls)
+{
+	return rolls.number(1, 8);
+}
+
+// How long, in pulses, a knock out lasts.
+static int headbutt_knockout(const Rolls &rolls)
+{
+	return PULSE_VIOLENCE * rolls.number(2, 3);
+}
+
+// The roll in a hit's base damage.
+static int headbutt_hit_roll(const Rolls &rolls)
+{
+	return rolls.number(20, 30);
+}
+
+// A hit's damage before the target's size, from the rating, strength, level and race.
+static float headbutt_hit_damage(P_char ch, int roll)
+{
+	// Have the base run from 20 to 80 (20 = 1 skill, lowest possible, 80 = 100 skill highest possible).
+	float dam = (float)GET_CHAR_SKILL(ch, SKILL_HEADBUTT) / 2. + roll;
+	// Str modifier: We divide by 180 since that'll be about the average equipped character.
+	dam = (dam * (float)GET_C_STR(ch)) / 180.;
+	// 1/2 damage (+1/56th) for level 1s up to full damage at 56.
+	dam = dam * (GET_LEVEL(ch) / 2 + 28.) / 56.;
+	// Apply the damfactor property.
+	dam *= get_property("skill.headbutt.damfactor", 1.000);
+
+	if (GET_RACE(ch) == RACE_MINOTAUR)
+	{
+		dam *= get_property("damage.headbutt.damBonusMinotaur", 1.500);
+	}
+
+	// Added for Tieflings (they have horns!).
+	if (GET_RACE(ch) == RACE_TIEFLING)
+	{
+		dam *= get_property("damage.headbutt.damBonusTiefling", 1.250);
+	}
+	return dam;
+}
+
+// What a smaller or larger target does to a hit's damage.
+static float headbutt_smaller_factor()
+{
+	return get_property("damage.headbutt.damBonusVsSmaller", 1.10);
+}
+
+static float headbutt_larger_factor()
+{
+	return get_property("damage.headbutt.damPenaltyVsLarger", 0.900);
+}
+
+// What a target gets from a hit, in pulses: the strong and weak daze.
+static int headbutt_daze_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1);
+}
+
+static int headbutt_daze_stun()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+static int headbutt_weak_daze()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
+// The chance threshold a second headbutt rolls 0-300 against.
+static int double_headbutt_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_DOUBLE_HEADBUTT);
+}
+
+// The second headbutt's damage from the first's.
+static int double_headbutt_damage(float dam)
+{
+	return (int)(dam / 2);
+}
+
+std::string headbutt_facts(P_char ch)
+{
+	const float low = headbutt_hit_damage(ch, headbutt_hit_roll(lowest_rolls));
+	const float high = headbutt_hit_damage(ch, headbutt_hit_roll(highest_rolls));
+	return fact("Damage on a hit",
+		    show({ (int)low, (int)high }) + " with your rating, strength and level") +
+	       fact("If the target is smaller", show({ (int)(low * headbutt_smaller_factor()),
+						       (int)(high * headbutt_smaller_factor()) })) +
+	       fact("If the target is larger", show({ (int)(low * headbutt_larger_factor()),
+						      (int)(high * headbutt_larger_factor()) })) +
+	       "  Armor and other damage reductions don't apply to a hit.\n" +
+	       fact("Damage to you on a bad miss", show({ headbutt_miss_damage(lowest_rolls),
+							  headbutt_miss_damage(highest_rolls) })) +
+	       fact("Damage to you when it backfires, more on a smaller target",
+		    show({ headbutt_backfire_damage(lowest_rolls),
+			   headbutt_backfire_damage(highest_rolls) })) +
+	       fact("Knocked out when it backfires",
+		    seconds(headbutt_knockout(lowest_rolls)) + " to " +
+			    seconds(headbutt_knockout(highest_rolls))) +
+	       fact("Your lag on a hit", seconds(headbutt_hit_lag())) +
+	       fact("Your lag on a bad miss", seconds((int)headbutt_miss_lag())) +
+	       fact("Your lag when it backfires", seconds(headbutt_backfire_lag())) +
+	       fact("Your lag if the target isn't standing", seconds(headbutt_position_lag())) +
+	       fact("Your lag if the target is immaterial", seconds(headbutt_immaterial_lag())) +
+	       fact("Your lag against an elite or greater race", seconds(headbutt_refused_lag())) +
+	       fact("Your lag if you try again too soon", seconds(headbutt_refused_lag())) +
+	       fact("Before you can headbutt again after a hit", seconds(headbutt_hit_rest())) +
+	       fact("  After a miss", seconds(headbutt_miss_rest())) +
+	       fact("  After a backfire", seconds(headbutt_backfire_rest())) +
+	       "  A hit may also leave the target with one of these:\n" +
+	       fact("  Knocked out", seconds(headbutt_knockout(lowest_rolls)) + " to " +
+					     seconds(headbutt_knockout(highest_rolls))) +
+	       fact("  Stunned and lagged",
+		    seconds(headbutt_daze_stun()) + " and " + seconds(headbutt_daze_lag())) +
+	       fact("  Stunned and lagged, 4 times in 5", seconds(headbutt_weak_daze()) + " each") +
+	       fact("  Otherwise lagged", seconds(headbutt_daze_lag())) +
+	       "  The target must be standing and within one size of you.\n";
+}
+
+std::string double_headbutt_facts(P_char ch)
+{
+	const float low = headbutt_hit_damage(ch, headbutt_hit_roll(lowest_rolls));
+	const float high = headbutt_hit_damage(ch, headbutt_hit_roll(highest_rolls));
+	return fact("Chance of a second headbutt after a hit",
+		    std::to_string(double_headbutt_threshold(ch)) + " in 301") +
+	       fact("Its damage against a target your size",
+		    show({ double_headbutt_damage(low), double_headbutt_damage(high) })) +
+	       "  It is half of the first hit's damage, after the target's size.\n";
+}
+
 void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char victim, tch;
@@ -5460,7 +6411,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		act("$n attempted to headbutt you.", FALSE, ch, 0, victim, TO_VICT);
 		act("Headbutt requires you to be able to reach his head!", FALSE, ch, 0, 0,
 		    TO_CHAR);
-		CharWait(ch, (int)(1 * WAIT_SEC));
+		CharWait(ch, headbutt_position_lag());
 		return;
 	}
 
@@ -5471,14 +6422,14 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		    TO_VICT);
 		act("$n grunts as $s head simply passes through $N!", FALSE, ch, 0, victim,
 		    TO_NOTVICTROOM);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.0));
+		CharWait(ch, headbutt_immaterial_lag());
 		return;
 	}
 
 	if (IS_ELITE(victim) || IS_GREATER_RACE(victim))
 	{
 		send_to_char("They are far too skilled to fall for such a move.\n", ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.25));
+		CharWait(ch, headbutt_refused_lag());
 		return;
 	}
 
@@ -5491,7 +6442,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 	{
 		act("You're still spinning in circles from your last headbutt.", FALSE, ch, 0, 0,
 		    TO_CHAR);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.25));
+		CharWait(ch, headbutt_refused_lag());
 		return;
 	}
 
@@ -5564,7 +6515,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 	// failed catastrophically!
 	if (!notch_skill(ch, SKILL_HEADBUTT, get_property("skill.notch.offensive", 7)) && roll <= 2)
 	{
-		dam = number(5, 15);
+		dam = headbutt_backfire_damage(live_rolls);
 
 		if (get_takedown_size(victim) < get_takedown_size(ch))
 		{
@@ -5573,10 +6524,10 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_HEADBUTT;
-		af.duration = (int)(PULSE_VIOLENCE * 3);
+		af.duration = headbutt_backfire_rest();
 		af.flags = AFFTYPE_SHORT;
 		affect_to_char(ch, &af);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, headbutt_backfire_lag());
 
 		if (headbutt_damage(victim, ch, dam,
 				    PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
@@ -5584,19 +6535,19 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		{
 			return;
 		}
-		knock_out(ch, PULSE_VIOLENCE * number(2, 3));
+		knock_out(ch, headbutt_knockout(live_rolls));
 	}
 	// merely failed
 	else if (roll <= 5)
 	{
-		dam = number(1, 8);
+		dam = headbutt_miss_damage(live_rolls);
 
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_HEADBUTT;
-		af.duration = (int)(PULSE_VIOLENCE * 2);
+		af.duration = headbutt_miss_rest();
 		af.flags = AFFTYPE_SHORT;
 		affect_to_char(ch, &af);
-		CharWait(ch, PULSE_VIOLENCE * 1.5);
+		CharWait(ch, headbutt_miss_lag());
 
 		if (headbutt_damage(victim, ch, dam, PHSDAM_NOPOSITION, &fail_messages) !=
 		    DAM_NONEDEAD)
@@ -5614,38 +6565,21 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		dam /= 4;
 		 */
 
-		// Have the base run from 20 to 80 (20 = 1 skill, lowest possible, 80 = 100 skill highest possible).
-		dam = (float)GET_CHAR_SKILL(ch, SKILL_HEADBUTT) / 2. + number(20, 30);
-		// Str modifier: We divide by 180 since that'll be about the average equipped character.
-		dam = (dam * (float)GET_C_STR(ch)) / 180.;
-		// 1/2 damage (+1/56th) for level 1s up to full damage at 56.
-		dam = dam * (GET_LEVEL(ch) / 2 + 28.) / 56.;
-		// Apply the damfactor property.
-		dam *= get_property("skill.headbutt.damfactor", 1.000);
-
-		if (GET_RACE(ch) == RACE_MINOTAUR)
-		{
-			dam *= get_property("damage.headbutt.damBonusMinotaur", 1.500);
-		}
-		// Added for Tieflings (they have horns!).
-		if (GET_RACE(ch) == RACE_TIEFLING)
-		{
-			dam *= get_property("damage.headbutt.damBonusTiefling", 1.250);
-		}
+		dam = headbutt_hit_damage(ch, headbutt_hit_roll(live_rolls));
 
 		// if victim is smaller, do a bit more damage
 		if (get_takedown_size(victim) < get_takedown_size(ch))
 		{
-			dam *= get_property("damage.headbutt.damBonusVsSmaller", 1.10);
+			dam *= headbutt_smaller_factor();
 		}
 
 		// if victim is larger, do a bit less damage
 		if (get_takedown_size(victim) > get_takedown_size(ch))
 		{
-			dam *= get_property("damage.headbutt.damPenaltyVsLarger", 0.900);
+			dam *= headbutt_larger_factor();
 		}
 
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.5));
+		CharWait(ch, headbutt_hit_lag());
 		debug("do_headbutt: (%s) butting (%s) dam (%d) skill (%d).", GET_NAME(ch),
 		      GET_NAME(victim), (int)dam, GET_CHAR_SKILL(ch, SKILL_HEADBUTT));
 		if (headbutt_damage(ch, victim, (int)dam,
@@ -5655,7 +6589,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 			return;
 		}
 
-		if (GET_CHAR_SKILL(ch, SKILL_DOUBLE_HEADBUTT) > number(0, 300))
+		if (double_headbutt_threshold(ch) > number(0, 300))
 		{
 			act("You deftly pull back your head and ram it into $N again!", FALSE, ch,
 			    0, victim, TO_CHAR);
@@ -5666,7 +6600,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 			debug("do_headbutt: (%s) double butting (%s) dam (%d) skill (%d).",
 			      GET_NAME(ch), GET_NAME(victim), (int)dam / 2,
 			      GET_CHAR_SKILL(ch, SKILL_DOUBLE_HEADBUTT));
-			if (headbutt_damage(ch, victim, (int)(dam / 2),
+			if (headbutt_damage(ch, victim, double_headbutt_damage(dam),
 					    PHSDAM_NOPOSITION | PHSDAM_TOUCH | PHSDAM_NOREDUCE,
 					    messages) != DAM_NONEDEAD)
 			{
@@ -5676,7 +6610,7 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_HEADBUTT;
-		af.duration = (int)(PULSE_VIOLENCE * 2.5);
+		af.duration = headbutt_hit_rest();
 		af.flags = AFFTYPE_SHORT;
 		affect_to_char(ch, &af);
 
@@ -5685,13 +6619,13 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 		// 10% chance at 100% chance
 		if (roll < 6 && !IS_AFFECTED(victim, AFF_KNOCKED_OUT))
 		{
-			knock_out(victim, PULSE_VIOLENCE * number(2, 3));
+			knock_out(victim, headbutt_knockout(live_rolls));
 		}
 		else if (roll < 11)
 		{
 			send_to_char("Wow!  Look at all those stars!!\n", victim);
-			CharWait(victim, (int)(PULSE_VIOLENCE * 1));
-			Stun(victim, ch, (int)(PULSE_VIOLENCE * 1.5), FALSE);
+			CharWait(victim, headbutt_daze_lag());
+			Stun(victim, ch, headbutt_daze_stun(), FALSE);
 		}
 		else if (roll < 16)
 		{
@@ -5699,13 +6633,13 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 
 			if (number(0, 4))
 			{
-				CharWait(victim, (int)(PULSE_VIOLENCE * 0.5));
-				Stun(victim, ch, (int)(PULSE_VIOLENCE * 0.5), FALSE);
+				CharWait(victim, headbutt_weak_daze());
+				Stun(victim, ch, headbutt_weak_daze(), FALSE);
 			}
 		}
 		else
 		{
-			CharWait(victim, (int)(PULSE_VIOLENCE * 1));
+			CharWait(victim, headbutt_daze_lag());
 		}
 		if (roll < 25 && !IS_SET(ch->specials.act, PLR_VICIOUS) && IS_FIGHTING(ch))
 		{
@@ -5724,6 +6658,81 @@ void do_headbutt(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// The chance threshold a garrote rolls 1-105 against: assassins learn it faster.
+static int garrote_threshold(P_char ch)
+{
+	int success = GET_CHAR_SKILL(ch, SKILL_GARROTE);
+	// Old school assassin mobs learn garrote faster.
+	if (GET_CLASS(ch, CLASS_ASSASSIN))
+	{
+		success *= 2;
+		if (success > 100)
+		{
+			success = 100;
+		}
+	}
+	return success;
+}
+
+// How long, in pulses, a miss and a hit keep the attacker from another garrote.
+static int garrote_miss_rest()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int garrote_hit_rest()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The attacker's lag, in pulses, on a miss and on a hit.
+static int garrote_miss_lag()
+{
+	return (3 * WAIT_SEC) / 2;
+}
+
+static int garrote_hit_lag()
+{
+	return (WAIT_SEC * 3) / 2;
+}
+
+// The rounds a hit bleeds for, from the attacker's level.
+static int garrote_rounds(const Rolls &rolls, P_char ch)
+{
+	return (GET_LEVEL(ch) - 1) / 11 + rolls.number(0, 2);
+}
+
+// One round's bleeding; ch here is the target, whose level sets it.
+static int garrote_bleed_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(GET_LEVEL(ch) / 18, 4);
+}
+
+// True on the 1 round in 10 that stops the target's casting.
+static bool garrote_stops_casting_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 9);
+}
+
+std::string garrote_facts(P_char ch)
+{
+	// A round always happens, even when the roll leaves none to count down.
+	return fact("Chance", std::to_string(garrote_threshold(ch)) + " in 105") +
+	       fact("Rounds of bleeding", show({ MAX(1, garrote_rounds(lowest_rolls, ch)),
+						 MAX(1, garrote_rounds(highest_rolls, ch)) }) +
+						  " at your level") +
+	       fact("Bleeding per round on a target of your level",
+		    show({ garrote_bleed_damage(lowest_rolls, ch),
+			   garrote_bleed_damage(highest_rolls, ch) })) +
+	       "  Bleeding grows with the target's level, skips defenses and never kills.\n" +
+	       fact("Chance each round stops casting", "1 in 10, not elites or greater races") +
+	       fact("Your lag", seconds(garrote_hit_lag())) +
+	       fact("Before you can garrote again", seconds(garrote_hit_rest()) + " after a hit, " +
+							    seconds(garrote_miss_rest()) +
+							    " after a miss") +
+	       "  A hit also stops casting at once. The target must be within one size.\n";
+}
+
 // One round of bleeding from garrote (throat cut).
 // Input: ch is cutter, victim is bleeding, obj should be NULL,
 //   and data = int* to the number of rounds left to bleed.
@@ -5735,7 +6744,7 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	int count = *((int *)data);
 	int rand1 = number(1, 100);
 
-	dam = dice(GET_LEVEL(ch) / 18, 4);
+	dam = garrote_bleed_damage(live_rolls, ch);
 
 	if (GET_HIT(ch) - dam > 0)
 	{
@@ -5747,7 +6756,8 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			act("$n&+r's blo&+Rod spla&+rtter&+Rs as it hits the ground.&N", TRUE, ch,
 			    NULL, NULL, TO_NOTVICT);
 			make_bloodstain(ch);
-			if (!number(0, 9) && !IS_GREATER_RACE(ch) && !IS_ELITE(ch))
+			if (garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
+			    !IS_ELITE(ch))
 			{
 				StopCasting(ch);
 			}
@@ -5760,7 +6770,8 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			act("$n&+r's wound gushes &+Rblood &+rall over the surrounding area.", TRUE,
 			    ch, NULL, NULL, TO_NOTVICT);
 			make_bloodstain(ch);
-			if (!number(0, 9) && !IS_GREATER_RACE(ch) && !IS_ELITE(ch))
+			if (garrote_stops_casting_roll(live_rolls) && !IS_GREATER_RACE(ch) &&
+			    !IS_ELITE(ch))
 			{
 				StopCasting(ch);
 			}
@@ -5778,12 +6789,19 @@ void event_garroteproc(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	}
 }
 
+// One round of an assassin's sneaky strike bleed.
+static int sneaky_strike_bleed_damage(const Rolls &rolls)
+{
+	return rolls.dice(3, 6);
+}
+
 void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	int count = *((int *)data);
 
 	// Deliver damage with no reductions or messages.
-	if (raw_damage(ch, victim, dice(3, 6), PHSDAM_NOREDUCE, NULL) != DAM_NONEDEAD)
+	if (raw_damage(ch, victim, sneaky_strike_bleed_damage(live_rolls), PHSDAM_NOREDUCE, NULL) !=
+	    DAM_NONEDEAD)
 		return;
 
 	// Show messages..
@@ -5811,6 +6829,100 @@ void event_bleedproc(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	{
 		send_to_char("&+rYour bleeding appears to have stopped.&N\n", victim);
 	}
+}
+
+// The weapon's roll in a sneaky strike.
+static int sneaky_strike_weapon_damage(const Rolls &rolls, P_obj weapon)
+{
+	return (rolls.dice(weapon->value[1], MAX(1, weapon->value[2])) + weapon->value[2]);
+}
+
+// The multiplier rolled into a sneaky strike.
+static int sneaky_strike_multiplier(const Rolls &rolls)
+{
+	return rolls.number(25, 30);
+}
+
+// A sneaky strike's damage from the weapon's roll and the multiplier.
+static int sneaky_strike_damage(P_char ch, int dam, int multiplier, int skill)
+{
+	dam += str_app[STAT_INDEX(GET_C_STR(ch))].todam + GET_C_DEX(ch) / 4;
+	dam = (int)(dam * multiplier * (1 + ((double)GET_LEVEL(ch)) / MAXLVLMORTAL) *
+		    (((double)skill) / 100));
+
+	// dambonus for thiefs - roughly 10-15 damage more at 12
+	if (GET_SPEC(ch, CLASS_ROGUE,
+		     SPEC_THIEF)) // proc skill for thief - possibility to blind on sneaky strike
+	{
+		dam /= 16 * 4;
+	}
+	else
+	{
+		dam /= 20 * 4;
+	}
+	return dam;
+}
+
+// The rolled rounds of an assassin's bleed; event_bleedproc runs two more than this.
+static int sneaky_strike_bleed_rounds(const Rolls &rolls)
+{
+	return rolls.number(4, 7);
+}
+
+// The vitality a mercenary's strike takes from a player.
+static int sneaky_strike_drain(const Rolls &rolls)
+{
+	return rolls.number(20, 45);
+}
+
+// How long, in pulses, a thief's strike blinds.
+static int sneaky_strike_blind()
+{
+	return 1 * PULSE_VIOLENCE;
+}
+
+// The attacker's lag after a strike, in pulses.
+static int sneaky_strike_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string sneaky_strike_facts(P_char ch)
+{
+	std::string facts;
+	const int skill = GET_CHAR_SKILL(ch, SKILL_SNEAKY_STRIKE);
+	P_obj weapon = ch->equipment[WIELD];
+	if (weapon)
+		facts += fact("Damage with your weapon",
+			      show({ sneaky_strike_damage(
+					     ch, sneaky_strike_weapon_damage(lowest_rolls, weapon),
+					     sneaky_strike_multiplier(lowest_rolls), skill),
+				     sneaky_strike_damage(
+					     ch, sneaky_strike_weapon_damage(highest_rolls, weapon),
+					     sneaky_strike_multiplier(highest_rolls), skill) }));
+	facts += "  Armor and other damage reductions don't apply to it.\n" +
+		 fact("Your lag", seconds(sneaky_strike_lag()));
+	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_THIEF))
+		facts += fact("Follow-up", "stab an NPC, or blind a player for " +
+						   seconds(sneaky_strike_blind()));
+	if (GET_CLASS(ch, CLASS_BARD))
+		facts += fact("Follow-up", "a stab");
+	if (GET_SPEC(ch, CLASS_ROGUE, SPEC_ASSASSIN))
+		facts += fact("Follow-up",
+			      "a stab and " +
+				      show({ sneaky_strike_bleed_rounds(lowest_rolls) + 2,
+					     sneaky_strike_bleed_rounds(highest_rolls) + 2 }) +
+				      " rounds of bleeding") +
+			 fact("Bleeding per round",
+			      show({ sneaky_strike_bleed_damage(lowest_rolls),
+				     sneaky_strike_bleed_damage(highest_rolls) }));
+	if (GET_CLASS(ch, CLASS_MERCENARY))
+		facts += fact("Follow-up", "stun an NPC, or take " +
+						   show({ sneaky_strike_drain(lowest_rolls),
+							  sneaky_strike_drain(highest_rolls) }) +
+						   " vitality from a player");
+	return facts + "  A follow-up rolls against your rating less 1/6 of the target's agility.\n"
+		       "  You need a weapon, and the target must be within one size of you.\n";
 }
 
 void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
@@ -5883,7 +6995,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 	skill = GET_CHAR_SKILL(ch, SKILL_SNEAKY_STRIKE);
 
 	if ((weapon = ch->equipment[WIELD]))
-		dam = (dice(weapon->value[1], MAX(1, weapon->value[2])) + weapon->value[2]);
+		dam = sneaky_strike_weapon_damage(live_rolls, weapon);
 	else
 	{
 		dam = (IS_PC(ch) ? dice(1, skill / 5) :
@@ -5892,20 +7004,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 	/* notch_skill(ch, SKILL_SNEAKY_STRIKE, get_property("skill.notch.offensive", 7)); */
 	notch_skill(ch, SKILL_SNEAKY_STRIKE, 5);
 
-	dam += str_app[STAT_INDEX(GET_C_STR(ch))].todam + GET_C_DEX(ch) / 4;
-	dam = (int)(dam * number(25, 30) * (1 + ((double)GET_LEVEL(ch)) / MAXLVLMORTAL) *
-		    (((double)skill) / 100));
-
-	// dambonus for thiefs - roughly 10-15 damage more at 12
-	if (GET_SPEC(ch, CLASS_ROGUE,
-		     SPEC_THIEF)) // proc skill for thief - possibility to blind on sneaky strike
-	{
-		dam /= 16 * 4;
-	}
-	else
-	{
-		dam /= 20 * 4;
-	}
+	dam = sneaky_strike_damage(ch, dam, sneaky_strike_multiplier(live_rolls), skill);
 
 	if (DEBUG)
 	{
@@ -5957,7 +7056,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 				    TRUE, ch, 0, victim, TO_VICT);
 				act("$n &+Lfades into the sh&+wad&+Wows&+L and quickly strikes at $N's &+Wface&+L, causing them to see stars.",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
-				blind(ch, victim, 1 * PULSE_VIOLENCE);
+				blind(ch, victim, sneaky_strike_blind());
 			}
 		}
 	} // end thief|bard spec check
@@ -5970,7 +7069,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 		{
 			if (IS_NPC(victim))
 			{
-				int numb = number(4, 7);
+				int numb = sneaky_strike_bleed_rounds(live_rolls);
 				act("&+rYou sneak up on $N &+rand drive your &+Lweapon &+rdeep into a vital organ!&N",
 				    TRUE, ch, obj, victim, TO_CHAR);
 				act("&+L$n &+rsneaks up on $N&+r driving their &+Lweapon &+rdeep into a vital organ!&N",
@@ -5985,7 +7084,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 			}
 			else
 			{
-				int numb = number(4, 7);
+				int numb = sneaky_strike_bleed_rounds(live_rolls);
 				act("&+rYou sneak up on $N &+rand drive your &+Lweapon &+rdeep into a vital organ!&N",
 				    TRUE, ch, obj, victim, TO_CHAR);
 				act("&+L$n &+rsneaks up on $N&+r driving their &+Lweapon &+rdeep into a vital organ!&N",
@@ -6024,7 +7123,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 				    TRUE, ch, 0, victim, TO_VICT);
 				act("$n &+yseems to tense up before unleasing a &+Ypowerful &+ystrike to $N's &+yabdomen&+y, knocking the &+Cwind &+yout of them!",
 				    TRUE, ch, 0, victim, TO_NOTVICT);
-				i = number(20, 45);
+				i = sneaky_strike_drain(live_rolls);
 				if ((GET_VITALITY(victim) - i) < 20)
 				{
 					GET_VITALITY(victim) = 0;
@@ -6048,7 +7147,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 		}
 	} // endmercclasscheck
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, sneaky_strike_lag());
 } // drantemp
 
 bool is_preparing_for_sneaky_strike(P_char ch)
@@ -6155,6 +7254,199 @@ void do_sneaky_strike(P_char ch, char *argument, int /*cmd*/)
 	sneaky_strike(ch, victim);
 }
 
+// The rating a stab's damage uses: assassins learn it faster.
+static int backstab_skill(int skill, P_char ch)
+{
+	// Old school assassin mobs learn backstab faster.
+	if (GET_CLASS(ch, CLASS_ASSASSIN))
+	{
+		skill *= 2;
+		if (skill > 100)
+		{
+			skill = 100;
+		}
+	}
+	return skill;
+}
+
+// The luck roll in a stab's damage.
+static int backstab_luck_bonus(const Rolls &rolls, P_char ch)
+{
+	return (rolls.number(10, GET_C_LUK(ch)) / 10);
+}
+
+// A stab's damage from the rating, the luck roll and the weapon.
+static int backstab_damage(P_char ch, int skill, P_obj weapon, int luck_bonus)
+{
+	int dice_mult, dam = 0;
+	float dice_mod, level_mult, final_mult, damroll_mult, strdex_mod;
+
+	dice_mod = get_property("backstab.diceMultiplier", 1.000);
+	final_mult = get_property("backstab.finalMultiplier", 1.000);
+	damroll_mult = get_property("backstab.DamrollMultiplier", 0.500);
+	strdex_mod = get_property("backstab.StrDexMultiplier", 0.500);
+
+	dam = (int)((float)GET_DAMROLL(ch) * damroll_mult);
+
+	dam += (GET_C_DEX(ch) + GET_C_STR(ch)) * strdex_mod;
+
+	dam += luck_bonus;
+
+	// 50% damage at 0 skill ... 100% damage at 100 skill.
+	dam = (dam * (skill + 100)) / 200;
+
+	dice_mult = (int)(weapon->value[1] + (weapon->value[2] / 2)) / 2;
+	dice_mult += weapon->value[1] + (weapon->value[1] / 2);
+	// Range from .50 at lvl 1 to 1.00 at 56.
+	level_mult = .50 + (float)GET_LEVEL(ch) / 112.;
+
+	dam = (int)dam * (dice_mult * dice_mod);
+	dam = (int)dam * level_mult;
+	dam = (int)dam * final_mult;
+	return dam;
+}
+
+// What a target that notices the stab leaves of its damage; a repeat stab leaves less.
+static int backstab_noticed_damage(int dam, bool quarter)
+{
+	dam *= quarter ? .25 : .6;
+	return dam;
+}
+
+// The least a stab deals to an immobile or sleeping target, and to an incapacitated one.
+static int backstab_helpless_damage()
+{
+	return 80;
+}
+
+static int backstab_incapacitated_damage()
+{
+	return 200;
+}
+
+// How long, in pulses, a stabbed player counts as just stabbed.
+static int backstab_repeat_window()
+{
+	return 3 * WAIT_SEC;
+}
+
+// The stabber's lag, in pulses.
+static int backstab_lag()
+{
+	return 3 * WAIT_SEC / 2;
+}
+
+// True when a target's air aura foils the stab.
+static bool backstab_air_aura_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 20) < 7;
+}
+
+// The chance thresholds of a critical stab and a spinal tap, rolled 1-100.
+static float critical_stab_threshold(P_char ch)
+{
+	return get_property("backstab.CriticalStab", 0.200) *
+	       GET_CHAR_SKILL(ch, SKILL_CRITICAL_STAB);
+}
+
+static float spinal_tap_threshold(P_char ch)
+{
+	return get_property("backstab.SpinalTap", 0.150) * GET_CHAR_SKILL(ch, SKILL_SPINAL_TAP);
+}
+
+// A critical stab's damage from the stab's.
+static int critical_stab_damage(int dam)
+{
+	return dam + (dam * get_property("backstab.CriticalStab.Multiplier", 1.000));
+}
+
+// A spinal tap's extra damage; quarter is true on a repeat stab.
+static int spinal_tap_damage(const Rolls &rolls, P_char ch, bool quarter)
+{
+	return (rolls.number(-12, 12) + GET_LEVEL(ch)) / (quarter ? 4 : 1);
+}
+
+// The number of 1-100 rolls below a fractional threshold.
+static int rolls_below(float threshold)
+{
+	return MAX(0, (int)ceil(threshold) - 1);
+}
+
+// The wielded weapon a stab uses, or null when neither hand can stab.
+static P_obj backstab_weapon(P_char ch)
+{
+	P_obj first_w = ch->equipment[WIELD], second_w = ch->equipment[SECONDARY_WEAPON];
+	if (first_w && IS_BACKSTABBER(first_w))
+		return first_w;
+	return second_w && IS_BACKSTABBER(second_w) ? second_w : nullptr;
+}
+
+std::string backstab_facts(P_char ch)
+{
+	std::string facts;
+	P_obj weapon = backstab_weapon(ch);
+	if (weapon)
+	{
+		const int skill = backstab_skill(GET_CHAR_SKILL(ch, SKILL_BACKSTAB), ch);
+		const int low =
+			backstab_damage(ch, skill, weapon, backstab_luck_bonus(lowest_rolls, ch));
+		const int high =
+			backstab_damage(ch, skill, weapon, backstab_luck_bonus(highest_rolls, ch));
+		facts += fact("Damage with your weapon",
+			      show({ low, high }) + " by damroll, strength, dexterity and luck") +
+			 fact("If the target notices the stab",
+			      show({ backstab_noticed_damage(low, false),
+				     backstab_noticed_damage(high, false) })) +
+			 fact("A player stabbed again within " + seconds(backstab_repeat_window()),
+			      show({ backstab_noticed_damage(low, true),
+				     backstab_noticed_damage(high, true) }));
+	}
+	return facts +
+	       fact("Least against an immobile or sleeping target",
+		    std::to_string(backstab_helpless_damage())) +
+	       fact("Least against an incapacitated target",
+		    std::to_string(backstab_incapacitated_damage())) +
+	       fact("Your lag", seconds(backstab_lag())) +
+	       fact("Chance a target's air aura foils it", "6 in 20") +
+	       "  Armor and other damage reductions don't apply. Stoneskin, biofeedback,\n"
+	       "  shadow shield, drakescale aegis, vines and ironwood each absorb a stab,\n"
+	       "  leaving 1 damage, and then end. You need a piercing weapon, and a target\n"
+	       "  on its feet must be within one size of you.\n";
+}
+
+std::string critical_stab_facts(P_char ch)
+{
+	std::string facts =
+		fact("Chance on each stab",
+		     std::to_string(rolls_below(critical_stab_threshold(ch))) + " in 100");
+	P_obj weapon = backstab_weapon(ch);
+	if (weapon)
+	{
+		const int skill = backstab_skill(GET_CHAR_SKILL(ch, SKILL_BACKSTAB), ch);
+		facts += fact(
+			"Damage with your weapon",
+			show({ critical_stab_damage(backstab_damage(
+				       ch, skill, weapon, backstab_luck_bonus(lowest_rolls, ch))),
+			       critical_stab_damage(
+				       backstab_damage(ch, skill, weapon,
+						       backstab_luck_bonus(highest_rolls, ch))) }));
+	}
+	return facts +
+	       "  A critical stab gets past a target that would notice it, but a player you\n"
+	       "  stabbed moments ago still takes a quarter of the damage.\n";
+}
+
+std::string spinal_tap_facts(P_char ch)
+{
+	return fact("Chance on each stab that isn't critical",
+		    std::to_string(rolls_below(spinal_tap_threshold(ch))) + " in 100") +
+	       fact("Extra damage",
+		    "up to " + std::to_string(spinal_tap_damage(highest_rolls, ch, false)) +
+			    " at your level") +
+	       "  A repeat stab on a player gets a quarter of that. Armor and other damage\n"
+	       "  reductions don't apply.\n";
+}
+
 /* stabs with primary weapon, returns TRUE if stabber or victim dies or
    they end up in different rooms */
 bool single_stab(P_char ch, P_char victim, P_obj weapon)
@@ -6162,9 +7454,7 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 	// Note: This DEBUG should always match the one in bool backstab(...).
 	static bool DEBUG = TRUE;
 
-	int room = ch->in_room, skill, dice_mult, dam = 0;
-	float dice_mod, level_mult, final_mult, damroll_mult, strdex_mod, spinal_tap, critical_stab,
-		critical_stab_mult;
+	int room = ch->in_room, skill, dam = 0;
 	bool spinal = FALSE, quarter = FALSE, crit = FALSE;
 	struct damage_messages messages = {
 		"$N makes a strange sound as you place $p in $S back.",
@@ -6196,48 +7486,15 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 		return FALSE;
 	}
 
-	// Old school assassin mobs learn backstab faster.
-	if (GET_CLASS(ch, CLASS_ASSASSIN))
-	{
-		skill *= 2;
-		if (skill > 100)
-		{
-			skill = 100;
-		}
-	}
+	skill = backstab_skill(skill, ch);
 
-	dice_mod = get_property("backstab.diceMultiplier", 1.000);
-	final_mult = get_property("backstab.finalMultiplier", 1.000);
-	damroll_mult = get_property("backstab.DamrollMultiplier", 0.500);
-	strdex_mod = get_property("backstab.StrDexMultiplier", 0.500);
-
-	dam = (int)((float)GET_DAMROLL(ch) * damroll_mult);
-
-	dam += (GET_C_DEX(ch) + GET_C_STR(ch)) * strdex_mod;
-
-	dam += (number(10, GET_C_LUK(ch)) / 10);
-
-	// 50% damage at 0 skill ... 100% damage at 100 skill.
-	dam = (dam * (skill + 100)) / 200;
-
-	dice_mult = (int)(weapon->value[1] + (weapon->value[2] / 2)) / 2;
-	dice_mult += weapon->value[1] + (weapon->value[1] / 2);
-	// Range from .50 at lvl 1 to 1.00 at 56.
-	level_mult = .50 + (float)GET_LEVEL(ch) / 112.;
-
-	dam = (int)dam * (dice_mult * dice_mod);
-	dam = (int)dam * level_mult;
-	dam = (int)dam * final_mult;
-
-	spinal_tap = get_property("backstab.SpinalTap", 0.150);
-	critical_stab = get_property("backstab.CriticalStab", 0.200);
-	critical_stab_mult = get_property("backstab.CriticalStab.Multiplier", 1.000);
+	dam = backstab_damage(ch, skill, weapon, backstab_luck_bonus(live_rolls, ch));
 
 	if (GET_CHAR_SKILL(ch, SKILL_CRITICAL_STAB))
 	{
 		crit = notch_skill(ch, SKILL_CRITICAL_STAB,
 				   get_property("skill.notch.offensive", 7)) ||
-		       ((critical_stab * GET_CHAR_SKILL(ch, SKILL_CRITICAL_STAB)) > number(1, 100));
+		       (critical_stab_threshold(ch) > number(1, 100));
 	}
 
 	if (((IS_AFFECTED(victim, AFF_AWARE) || IS_AFFECTED(victim, AFF_SKILL_AWARE)) && !crit &&
@@ -6256,16 +7513,16 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 				"&+LSince your victim is &+raware&+L of your presence, you are unable to take full advantage of them...\r\n",
 				ch);
 			quarter = affected_by_spell(victim, SKILL_BACKSTAB);
-			dam *= quarter ? .25 : .6;
+			dam = backstab_noticed_damage(dam, quarter);
 		}
 	}
 
 	if (IS_IMMOBILE(victim) || GET_STAT(victim) <= STAT_SLEEPING)
-		dam = MAX(80, dam);
+		dam = MAX(backstab_helpless_damage(), dam);
 
 	// Yeah.. we want them really dead.
 	if (GET_STAT(victim) <= STAT_INCAP)
-		dam = MAX(200, dam);
+		dam = MAX(backstab_incapacitated_damage(), dam);
 
 	if (affected_by_spell(victim, SPELL_STONE_SKIN) && dam > 1)
 	{
@@ -6341,7 +7598,7 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 
 	if (crit)
 	{
-		dam = dam + (dam * critical_stab_mult);
+		dam = critical_stab_damage(dam);
 		send_to_char("&=LWYou score a CRITICAL HIT!!!&N\n", ch);
 		if (DEBUG)
 		{
@@ -6365,7 +7622,7 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 	// else if - can not spinal as well as critical stab. (drannak 1/7/14)
 	else if (GET_CHAR_SKILL(ch, SKILL_SPINAL_TAP) &&
 		 (notch_skill(ch, SKILL_SPINAL_TAP, get_property("skill.notch.offensive", 7)) ||
-		  (spinal_tap * GET_CHAR_SKILL(ch, SKILL_SPINAL_TAP)) > number(1, 100)))
+		  spinal_tap_threshold(ch) > number(1, 100)))
 	{
 		if (DEBUG)
 		{
@@ -6403,7 +7660,7 @@ bool single_stab(P_char ch, P_char victim, P_obj weapon)
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("With a swift tug $n wrenches the weapon free, ramming it into $N's spine!",
 		    FALSE, ch, 0, victim, TO_NOTVICTROOM);
-		if (melee_damage(ch, victim, (number(-12, 12) + GET_LEVEL(ch)) / (quarter ? 4 : 1),
+		if (melee_damage(ch, victim, spinal_tap_damage(live_rolls, ch, quarter),
 				 PHSDAM_NOREDUCE | PHSDAM_NOPOSITION, &messages) ||
 		    !char_in_list(ch))
 		{
@@ -6612,7 +7869,7 @@ bool backstab(P_char ch, P_char victim)
 		percent_chance = 101;
 	}
 
-	CharWait(ch, 3 * WAIT_SEC / 2);
+	CharWait(ch, backstab_lag());
 
 	if (IS_PC(ch) && (!on_front_line(ch) || !on_front_line(victim)))
 	{
@@ -6622,7 +7879,7 @@ bool backstab(P_char ch, P_char victim)
 
 	if (IS_AFFECTED2(victim, AFF2_AIR_AURA))
 	{
-		if (number(1, 20) < 7)
+		if (backstab_air_aura_roll(live_rolls))
 		{
 			act("As you try to backstab $N you simply pass through $M.", FALSE, ch, 0,
 			    victim, TO_CHAR);
@@ -6705,7 +7962,7 @@ bool backstab(P_char ch, P_char victim)
 	// Victim's timer resets each stab.. don't bother clearing it as it will auto-clear in a few sec anyway.
 	if (victim && IS_ALIVE(victim) && IS_PC(victim))
 	{
-		set_short_affected_by(victim, SKILL_BACKSTAB, 3 * WAIT_SEC);
+		set_short_affected_by(victim, SKILL_BACKSTAB, backstab_repeat_window());
 		/* Making this a short duration instead of PULSE_VIOLENCE ticks (like 20 min).
 		    bzero(&af, sizeof(af));
 		    af.type = SKILL_BACKSTAB;
@@ -6716,6 +7973,13 @@ bool backstab(P_char ch, P_char victim)
 	}
 
 	return TRUE;
+}
+
+std::string surprise_facts(P_char ch)
+{
+	return fact("Chance when you start a fight",
+		    std::to_string(MAX(0, GET_CHAR_SKILL(ch, SKILL_SURPRISE) - 1)) + " in 100") +
+	       "  It gives you two attacks in place of your one opening attack.\n";
 }
 
 int surprise(P_char ch, P_char victim)
@@ -6740,6 +8004,25 @@ int surprise(P_char ch, P_char victim)
 		return 1;
 	}
 	return 0;
+}
+
+// The attacker's lag, in pulses, after trying to switch opponents.
+static int switch_opponents_lag()
+{
+	return PULSE_VIOLENCE + 2;
+}
+
+std::string switch_opponents_facts(P_char ch)
+{
+	return fact("Chance to switch",
+		    std::to_string(GET_CHAR_SKILL(ch, SKILL_SWITCH_OPPONENTS)) +
+			    " in 101, plus your level if the new target can't") +
+	       "    act or isn't standing\n" +
+	       "  If your current opponent can't fight back, you switch for sure, with no lag.\n" +
+	       fact("Your lag otherwise, whether or not you switch",
+		    seconds(switch_opponents_lag())) +
+	       "  A miss drops you out of the fight. A target with a calming innate can\n"
+	       "  lower your chance.\n";
 }
 
 void attack(P_char ch, P_char victim)
@@ -6840,7 +8123,7 @@ void attack(P_char ch, P_char victim)
 
 			if (IS_PC(ch) || (ch->following && IS_PC(ch->following)))
 			{
-				CharWait(ch, PULSE_VIOLENCE + 2);
+				CharWait(ch, switch_opponents_lag());
 			}
 		}
 		else
@@ -6849,7 +8132,7 @@ void attack(P_char ch, P_char victim)
 			stop_fighting(ch);
 			if (IS_PC(ch) || (ch->following && IS_PC(ch->following)))
 			{
-				CharWait(ch, PULSE_VIOLENCE + 2);
+				CharWait(ch, switch_opponents_lag());
 			}
 		}
 	}
@@ -6999,6 +8282,87 @@ static int bash_target_lag(P_char ch, bool target_standing)
 	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))
 		return (int)(PULSE_VIOLENCE * 2.5);
 	return (int)(PULSE_VIOLENCE * 2);
+}
+
+// How far a shieldless bash scales the chance threshold, in percent; at least a fifth.
+static float shieldless_bash_modifier(P_char ch)
+{
+	float modifier = GET_CHAR_SKILL(ch, SKILL_SHIELDLESS_BASH);
+	if (modifier < 20.0)
+	{
+		modifier = 20.0;
+	}
+	return modifier;
+}
+
+std::string shieldless_bash_facts(P_char ch)
+{
+	return fact("Bash chance threshold with no shield",
+		    std::to_string((int)shieldless_bash_modifier(ch)) + "% of normal") +
+	       "  With no rating, a paladin or anti-paladin uses a holy sword's weight instead.\n";
+}
+
+// A skewer on a downed target: the rating needed against 1-100, and the damage and lags.
+static int skewer_down_threshold(int skewer)
+{
+	return skewer / 3;
+}
+
+static int skewer_off_target_rating(int skewer)
+{
+	return (int)(skewer * get_property("skill.skewer.OffTarget.Penalty", 0.500));
+}
+
+static int skewer_down_damage(const Rolls &rolls)
+{
+	return rolls.dice(20, 10);
+}
+
+static int skewer_down_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.75);
+}
+
+static int skewer_down_target_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// A skewer after a successful bash: the rating needed against 0-100, and the damage and lags.
+static int skewer_bash_threshold(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_SKEWER) / 2;
+}
+
+static int skewer_bash_damage(const Rolls &rolls)
+{
+	return rolls.dice(45, 10);
+}
+
+static int skewer_bash_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string skewer_facts(P_char ch)
+{
+	const int rating = GET_CHAR_SKILL(ch, SKILL_SKEWER);
+	return fact("Chance after a bash lands",
+		    std::to_string(skewer_bash_threshold(ch)) + " in 101") +
+	       fact("  Damage",
+		    show({ skewer_bash_damage(lowest_rolls), skewer_bash_damage(highest_rolls) })) +
+	       fact("  Your lag and the target's", seconds(skewer_bash_lag()) + " each") +
+	       fact("Chance when you bash a downed target",
+		    std::to_string(MAX(0, skewer_down_threshold(rating) - 1)) + " in 100, or " +
+			    std::to_string(
+				    MAX(0, skewer_down_threshold(skewer_off_target_rating(rating)) -
+						   1)) +
+			    " off target") +
+	       fact("  Damage",
+		    show({ skewer_down_damage(lowest_rolls), skewer_down_damage(highest_rolls) })) +
+	       fact("  Your lag", seconds(skewer_down_lag())) +
+	       fact("  Target's lag", seconds(skewer_down_target_lag())) +
+	       "  Needs a weapon that can skewer. The target's defenses apply to the damage.\n";
 }
 
 std::string bash_facts(P_char ch)
@@ -7198,11 +8562,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 				notch_skill(ch, SKILL_SHIELDLESS_BASH,
 					    get_property("skill.notch.offensive", 7));
 				// Minimum of 4/5 reduction.  Max no reduction.
-				modifier = GET_CHAR_SKILL(ch, SKILL_SHIELDLESS_BASH);
-				if (modifier < 20.0)
-				{
-					modifier = 20.0;
-				}
+				modifier = shieldless_bash_modifier(ch);
 				percent_chance *= modifier / 100.0;
 
 				if (GET_CHAR_SKILL(ch, SKILL_SHIELDLESS_BASH) < 1)
@@ -7219,23 +8579,23 @@ void bash(P_char ch, P_char victim, bool _debug)
 	if (skewer > 0 && IS_FIGHTING(ch) && GET_OPPONENT(victim) != ch &&
 	    GET_OPPONENT(ch) != victim)
 	{
-		skewer = (int)(skewer * get_property("skill.skewer.OffTarget.Penalty", 0.500));
+		skewer = skewer_off_target_rating(skewer);
 	}
 
 	if (skewer > 0 && GET_POS(victim) != POS_STANDING && weap && good_for_skewering(weap) &&
 	    (notch_skill(ch, SKILL_SKEWER, get_property("skill.notch.offensive", 7)) ||
-	     skewer / 3 > number(1, 100)))
+	     skewer_down_threshold(skewer) > number(1, 100)))
 	{
 		act("$n grins as $e skewers you with $s $q.", FALSE, ch, weap, victim, TO_VICT);
 		act("You dive at $N skewering $M with your $q.", FALSE, ch, weap, victim, TO_CHAR);
 		act("$n dives at $N skewering $M with $s $q.", FALSE, ch, weap, victim, TO_NOTVICT);
 
-		if (melee_damage(ch, victim, dice(20, 10), 0, 0) == DAM_NONEDEAD)
+		if (melee_damage(ch, victim, skewer_down_damage(live_rolls), 0, 0) == DAM_NONEDEAD)
 		{
-			CharWait(victim, PULSE_VIOLENCE);
+			CharWait(victim, skewer_down_target_lag());
 		}
 
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.75));
+		CharWait(ch, skewer_down_lag());
 
 		return;
 	}
@@ -7456,7 +8816,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 
 		if (GET_CHAR_SKILL(ch, SKILL_SKEWER) > 0 && weap && good_for_skewering(weap))
 		{
-			percent_chance = GET_CHAR_SKILL(ch, SKILL_SKEWER) / 2;
+			percent_chance = skewer_bash_threshold(ch);
 			if (notch_skill(ch, SKILL_SKEWER,
 					get_property("skill.notch.offensive", 7)) ||
 			    percent_chance > number(0, 100))
@@ -7477,14 +8837,14 @@ void bash(P_char ch, P_char victim, bool _debug)
 					act("$n dives at $N skewering $M with $s $q.", FALSE, ch,
 					    weap, victim, TO_NOTVICT);
 					// codemod dice(20, 10) - changed to make skewer do more damage instead of lag user longer
-					if (melee_damage(ch, victim, dice(45, 10), 0, 0) ==
-					    DAM_NONEDEAD)
+					if (melee_damage(ch, victim, skewer_bash_damage(live_rolls),
+							 0, 0) == DAM_NONEDEAD)
 					{
-						CharWait(victim, PULSE_VIOLENCE * 2);
+						CharWait(victim, skewer_bash_lag());
 					}
 					if (IS_ALIVE(ch))
 					{
-						CharWait(ch, PULSE_VIOLENCE * 2);
+						CharWait(ch, skewer_bash_lag());
 					}
 				}
 			}
@@ -7516,6 +8876,57 @@ void do_parlay(P_char ch, char *argument, int /*cmd*/)
 	parlay(ch, victim);
 }
 
+// The parlay score: rating plus level, before an elite target.
+static int parlay_score(int rating, int level)
+{
+	return rating + level;
+}
+
+// What an elite target takes off the score.
+static int parlay_elite_penalty(const Rolls &rolls)
+{
+	return rolls.number(50, 150);
+}
+
+// The rolls the score must beat to make the target flee, and then to end the fight.
+static int parlay_flee_roll(const Rolls &rolls)
+{
+	return rolls.number(85, 200);
+}
+
+static int parlay_truce_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+// The parlayer's lag, in pulses, when it works and when it doesn't.
+static int parlay_success_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int parlay_failure_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string parlay_facts(P_char ch)
+{
+	return fact("Your score",
+		    std::to_string(parlay_score(GET_CHAR_SKILL(ch, SKILL_PARLAY), GET_LEVEL(ch))) +
+			    " (rating plus level; luck can raise the rating)") +
+	       fact("The target flees if a roll is below it",
+		    show({ parlay_flee_roll(lowest_rolls), parlay_flee_roll(highest_rolls) })) +
+	       fact("Otherwise the fight ends if a roll is below it",
+		    show({ parlay_truce_roll(lowest_rolls), parlay_truce_roll(highest_rolls) })) +
+	       fact("An elite target takes off the score",
+		    show({ parlay_elite_penalty(lowest_rolls),
+			   parlay_elite_penalty(highest_rolls) })) +
+	       fact("Your lag", seconds(parlay_success_lag()) + " if it works, " +
+					seconds(parlay_failure_lag()) + " if not") +
+	       "  It only works on a target that is fighting.\n";
+}
+
 void parlay(P_char ch, P_char victim)
 {
 	int skl_lvl;
@@ -7541,14 +8952,14 @@ void parlay(P_char ch, P_char victim)
 		skl_lvl = (int)(skl_lvl * 1.1);
 	}
 
-	skl_lvl += (GET_LEVEL(ch));
+	skl_lvl = parlay_score(skl_lvl, GET_LEVEL(ch));
 
 	if (IS_ELITE(victim))
-		skl_lvl -= (number(50, 150));
+		skl_lvl -= parlay_elite_penalty(live_rolls);
 
 	if (GET_OPPONENT(victim))
 	{
-		if (number(85, 200) < skl_lvl)
+		if (parlay_flee_roll(live_rolls) < skl_lvl)
 		{
 			stop_fighting(victim);
 			stop_fighting(ch);
@@ -7561,10 +8972,10 @@ void parlay(P_char ch, P_char victim)
 			act("&+WYou convince $N&+W to lay down their arms!&n", FALSE, ch, 0, victim,
 			    TO_CHAR);
 			do_flee(victim, 0, 2);
-			CharWait(ch, PULSE_VIOLENCE * 2);
+			CharWait(ch, parlay_success_lag());
 			return;
 		}
-		else if (skl_lvl > number(1, 100))
+		else if (skl_lvl > parlay_truce_roll(live_rolls))
 		{
 			act("&+WYou convince $N &+Wstop the duel with you, in the name of &+Ypeace!&n",
 			    FALSE, ch, 0, victim, TO_CHAR);
@@ -7576,7 +8987,7 @@ void parlay(P_char ch, P_char victim)
 			stop_fighting(victim);
 			stop_fighting(ch);
 			forget(victim, ch);
-			CharWait(ch, PULSE_VIOLENCE * 2);
+			CharWait(ch, parlay_success_lag());
 			return;
 		}
 		else
@@ -7585,10 +8996,75 @@ void parlay(P_char ch, P_char victim)
 				"&+rYou fail to spread the message of &+Wpeace&+r and &+Gharmony&+r.&n\n",
 				ch);
 			notch_skill(ch, SKILL_PARLAY, 10);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, parlay_failure_lag());
 			return;
 		}
 	}
+}
+
+// The tackler's lag, in pulses, by what happened.
+static int tackle_body_lag()
+{
+	return PULSE_VIOLENCE * 1;
+}
+
+static int tackle_size_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
+static int tackle_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+static int tackle_prone_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+// How long, in pulses, a tackle keeps the tackler from the next takedown.
+static int tackle_rest()
+{
+	return (int)(3.5 * PULSE_VIOLENCE);
+}
+
+// What a tackled target adds to its combat pulse, and for how many ticks.
+static int tackle_combat_pulse()
+{
+	return 4;
+}
+
+static int tackle_combat_pulse_duration()
+{
+	return 0;
+}
+
+// How long, in pulses, a tackler who lands badly can be stunned.
+static int tackle_self_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string tackle_facts(P_char)
+{
+	return fact("Your lag and the target's on a hit", seconds(tackle_lag()) + " each") +
+	       fact("Your lag on a miss", seconds(tackle_lag()) + ", or " +
+						  seconds(tackle_prone_lag()) +
+						  " if you land prone") +
+	       fact("Stun if you land prone and fail a constitution roll",
+		    seconds(tackle_self_stun())) +
+	       fact("Your lag if the target is more than a size off", seconds(tackle_size_lag())) +
+	       fact("Your lag if a centaur or drider is at least your size",
+		    seconds(tackle_body_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Before your next takedown after a hit", seconds(tackle_rest())) +
+	       fact("Target's combat pulse", "+" + std::to_string(tackle_combat_pulse()) + ", " +
+						     game_hours(tackle_combat_pulse_duration())) +
+	       "  Centaurs, quadrupeds and driders can't tackle. Tackling outside a fight\n"
+	       "  can carry you both out of the room, 1 time in 5.\n";
 }
 
 void do_tackle(P_char ch, char *arg, int /*cmd*/)
@@ -7652,7 +9128,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		    TO_CHAR);
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE * 1);
+		CharWait(ch, tackle_body_lag());
 
 		if (!IS_FIGHTING(ch))
 			set_fighting(ch, vict);
@@ -7663,14 +9139,14 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 	if (get_takedown_size(vict) < (get_takedown_size(ch) - 1))
 	{
 		send_to_char("No way, they are way too small!\n", ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+		CharWait(ch, tackle_size_lag());
 		return;
 	}
 
 	if (get_takedown_size(vict) > (get_takedown_size(ch) + 1))
 	{
 		send_to_char("No way, they are way too big!\n", ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+		CharWait(ch, tackle_size_lag());
 		return;
 	}
 
@@ -7740,7 +9216,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 	    GET_POS(vict) == POS_STANDING)
 	{
 		if (!IS_TRUSTED(ch))
-			set_short_affected_by(ch, SKILL_BASH, (int)(3.5 * PULSE_VIOLENCE));
+			set_short_affected_by(ch, SKILL_BASH, tackle_rest());
 
 		if (!IS_FIGHTING(ch) && !number(0, 4) && GET_POS(vict) == POS_STANDING &&
 		    !IS_ROOM(ch->in_room, ROOM_GUILD)) // Prevents tackling past golems.
@@ -7765,8 +9241,8 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 		SET_POS(vict, POS_SITTING + GET_STAT(vict));
 		update_group_vitals(vict);
 		gmcp_char_vitals(vict);
-		CharWait(ch, PULSE_VIOLENCE * 2);
-		CharWait(vict, PULSE_VIOLENCE * 2);
+		CharWait(ch, tackle_lag());
+		CharWait(vict, tackle_lag());
 
 		act("You &+ctackle&n $N square in the chest knocking the &+Cwind&n out of $M!",
 		    FALSE, ch, 0, vict, TO_CHAR);
@@ -7787,8 +9263,8 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 			bzero(&af, sizeof(af));
 			af.type = SKILL_TACKLE;
 			af.location = APPLY_COMBAT_PULSE;
-			af.modifier = 4;
-			af.duration = 0;
+			af.modifier = tackle_combat_pulse();
+			af.duration = tackle_combat_pulse_duration();
 			affect_to_char(vict, &af);
 			act("You suddenly don't have the energy to fight!", FALSE, ch, 0, vict,
 			    TO_VICT);
@@ -7806,7 +9282,7 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 			    vict, TO_VICT);
 
 			SET_POS(ch, POS_SITTING + GET_STAT(ch));
-			CharWait(ch, PULSE_VIOLENCE * 2);
+			CharWait(ch, tackle_lag());
 		}
 		else
 		{
@@ -7820,16 +9296,16 @@ void do_tackle(P_char ch, char *arg, int /*cmd*/)
 			if ((GET_C_AGI(ch) + GET_LEVEL(ch)) > number(1, 200))
 			{
 				SET_POS(ch, POS_KNEELING + GET_STAT(ch));
-				CharWait(ch, PULSE_VIOLENCE * 2);
+				CharWait(ch, tackle_lag());
 			}
 			else
 			{
 				SET_POS(ch, POS_PRONE + GET_STAT(ch));
 
 				if (GET_C_CON(ch) < number(1, 125))
-					Stun(ch, ch, PULSE_VIOLENCE, FALSE);
+					Stun(ch, ch, tackle_self_stun(), FALSE);
 
-				CharWait(ch, PULSE_VIOLENCE * 3);
+				CharWait(ch, tackle_prone_lag());
 			}
 		}
 	}
@@ -7988,6 +9464,50 @@ void do_disengage(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 }
 
+// The chance threshold of a retreat, rolled 1-100. While tanking (found), it falls with each
+// attacker beyond the first. It drops by 10 unless going back the way the character came.
+static int retreat_chance(int retc, int expdr, bool found, int ct, bool backdir)
+{
+	int tankret = MAX(retc - 80, expdr);
+	int chance = found ? (tankret - (5 * (ct - 1))) : MAX(expdr, retc);
+
+	chance -= backdir ? 0 : 10;
+	return chance;
+}
+
+// The retreater's lag, in pulses, on every attempt, and again on a failure.
+static int retreat_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static std::string retreat_page(P_char ch)
+{
+	const int retc = GET_CHAR_SKILL(ch, SKILL_RETREAT);
+	const int expdr = GET_CHAR_SKILL(ch, SKILL_EXPEDITED_RETREAT);
+	return fact("Chance when nothing is fighting you",
+		    std::to_string(MAX(0, retreat_chance(retc, expdr, false, 0, true))) +
+			    " in 100, " +
+			    std::to_string(MAX(0, retreat_chance(retc, expdr, false, 0, false))) +
+			    " in a new direction") +
+	       fact("Chance while tanking one attacker",
+		    std::to_string(MAX(0, retreat_chance(retc, expdr, true, 1, true))) +
+			    " in 100; 5 less for each other attacker") +
+	       fact("Your lag", seconds(retreat_lag())) +
+	       "  A retreat while tanking can only go back the way you came, unless your\n"
+	       "  expedited retreat rating is between 1 and 19.\n";
+}
+
+std::string retreat_facts(P_char ch)
+{
+	return retreat_page(ch);
+}
+
+std::string expedited_retreat_facts(P_char ch)
+{
+	return retreat_page(ch);
+}
+
 void do_retreat(P_char ch, char *arg, int /*cmd*/)
 {
 	int dir, found = FALSE, ct = 0;
@@ -8104,7 +9624,7 @@ void do_retreat(P_char ch, char *arg, int /*cmd*/)
 	/*
 	 * once per combat round
 	 */
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, retreat_lag());
 
 	/*
 	 * Are they tanking?
@@ -8122,10 +9642,7 @@ void do_retreat(P_char ch, char *arg, int /*cmd*/)
 	bool backdir = (world[ch->in_room].dir_option[dir]->to_room == ch->specials.was_in_room);
 
 	//
-	int tankret = MAX(retc - 80, expdr);
-	int chance = found ? (tankret - (5 * (ct - 1))) : MAX(expdr, retc);
-
-	chance -= backdir ? 0 : 10;
+	int chance = retreat_chance(retc, expdr, found, ct, backdir);
 
 	if (found)
 	{
@@ -8258,9 +9775,26 @@ void do_retreat(P_char ch, char *arg, int /*cmd*/)
 			send_to_char("&+RYou spend some time trying, but you fail to retreat!\n",
 				     ch);
 
-		CharWait(ch, PULSE_VIOLENCE * 1);
+		CharWait(ch, retreat_lag());
 	}
 	return;
+}
+
+// The rescuer's lag, in pulses: a guardian's rescue all takes longer.
+static int rescue_lag(bool rescue_all)
+{
+	return rescue_all ? (WAIT_SEC * 6) : PULSE_VIOLENCE;
+}
+
+std::string rescue_facts(P_char ch)
+{
+	std::string facts =
+		fact("Chance",
+		     "up to " + std::to_string(GET_CHAR_SKILL(ch, SKILL_RESCUE)) + " in 100") +
+		fact("Your lag", seconds(rescue_lag(false)));
+	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))
+		facts += fact("Your lag on a rescue all", seconds(rescue_lag(true)));
+	return facts + "  Not while blind or in a single-file room.\n";
 }
 
 void rescue(P_char ch, P_char rescuee, bool rescue_all)
@@ -8415,12 +9949,92 @@ void rescue(P_char ch, P_char rescuee, bool rescue_all)
 	}
 
 	/* Guardian rescue all: 6 seconds of lag; normal rescue: 1 combat round */
-	CharWait(ch, rescue_all ? (WAIT_SEC * 6) : PULSE_VIOLENCE);
+	CharWait(ch, rescue_lag(rescue_all));
 
 	// CharWait(rescuee, PULSE_VIOLENCE / 2);
 
 	/*  if(!IS_FIGHTING(victim) && !victim->specials.next_fighting)
 	    set_fighting(victim, ch);*/
+}
+
+// Damage from a maul, before a mauler's bonus and the target's defenses.
+static int maul_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(MIN(30, GET_LEVEL(ch)), 6) *
+	       (get_property("skill.maul.damfactor", 1.000));
+}
+
+static int maul_mauler_damage(int dam)
+{
+	dam *= 1.5;
+	return dam;
+}
+
+// The mauler's lag, in pulses, by what happened.
+static int maul_penalty_lag()
+{
+	return (PULSE_VIOLENCE * 2);
+}
+
+static int maul_failed_lag()
+{
+	return (PULSE_VIOLENCE * get_property("skill.maul.failedmaul.lag", 1.500));
+}
+
+// A hit's lag and rest, in pulses, for mauler specialists (and elites) and for others.
+static int maul_hit_lag(bool mauler)
+{
+	return mauler ? (PULSE_VIOLENCE * 1.800) : (PULSE_VIOLENCE * 2.000);
+}
+
+static int maul_target_lag(bool mauler)
+{
+	return mauler ? (PULSE_VIOLENCE * 1.200) : (PULSE_VIOLENCE * 1.000);
+}
+
+static int maul_rest(bool mauler)
+{
+	return mauler ?
+		       (PULSE_VIOLENCE * get_property("skill.maul.IsMauler.ShieldBashlag", 2.000)) :
+		       (PULSE_VIOLENCE *
+			get_property("skill.maul.IsNotMauler.ShieldBashlag", 2.200));
+}
+
+// How long, in ticks, a mauled target stays aware.
+static int maul_aware_duration()
+{
+	return 1;
+}
+
+// True on the 1 maul in 4 that clips a target of the wrong size for half damage.
+static bool maul_clip_roll(const Rolls &rolls)
+{
+	return !rolls.number(0, 3);
+}
+
+std::string maul_facts(P_char ch)
+{
+	const bool mauler = GET_SPEC(ch, CLASS_BERSERKER, SPEC_MAULER);
+	int low = maul_damage(lowest_rolls, ch), high = maul_damage(highest_rolls, ch);
+	if (mauler)
+	{
+		low = maul_mauler_damage(low);
+		high = maul_mauler_damage(high);
+	}
+	return fact("Damage on a hit", show({ low, high }) + " at your level") +
+	       fact("Your lag on a hit", seconds(maul_hit_lag(mauler))) +
+	       fact("Your lag on a miss or a target of the wrong size",
+		    seconds(maul_failed_lag())) +
+	       fact("Chance the wrong size still takes half damage", "1 in 4") +
+	       fact("Your lag if the target foils the takedown", seconds(maul_penalty_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Before your next takedown after a hit", seconds(maul_rest(mauler))) +
+	       fact("Target's lag on a hit", seconds(maul_target_lag(mauler))) +
+	       fact("Target stays aware", game_hours(maul_aware_duration())) +
+	       "  Needs berserk. The right size is your own or one either way; a centaur or\n"
+	       "  drider must be smaller than you. The target's defenses apply to the damage.\n";
 }
 
 void maul(P_char ch, P_char victim)
@@ -8491,7 +10105,7 @@ void maul(P_char ch, P_char victim)
 	else if (percent_chance == TAKEDOWN_PENALTY)
 	{
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, (PULSE_VIOLENCE * 2));
+		CharWait(ch, maul_penalty_lag());
 		return;
 	}
 	else
@@ -8500,10 +10114,10 @@ void maul(P_char ch, P_char victim)
 	vict_size = get_takedown_size(victim);
 	ch_size = get_takedown_size(ch);
 
-	dam = dice(MIN(30, GET_LEVEL(ch)), 6) * (get_property("skill.maul.damfactor", 1.000));
+	dam = maul_damage(live_rolls, ch);
 
 	if (GET_SPEC(ch, CLASS_BERSERKER, SPEC_MAULER))
-		dam *= 1.5;
+		dam = maul_mauler_damage(dam);
 
 	percent_chance = (int)(percent_chance * (get_property("skill.maul.hitchance", 1.000)));
 
@@ -8544,7 +10158,7 @@ void maul(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("&+yYou slam up against&n $N!", FALSE, ch, 0, victim, TO_CHAR);
 
-		if (!number(0, 3))
+		if (maul_clip_roll(live_rolls))
 		{
 			act("$n &+ygrowls&n on impact, and slams $s head into $N before falling to $s knees!",
 			    FALSE, ch, 0, victim, TO_NOTVICT);
@@ -8556,7 +10170,7 @@ void maul(P_char ch, P_char victim)
 		}
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, (PULSE_VIOLENCE * get_property("skill.maul.failedmaul.lag", 1.500)));
+		CharWait(ch, maul_failed_lag());
 	}
 	else if (vict_size < ch_size - 1)
 	{
@@ -8566,7 +10180,7 @@ void maul(P_char ch, P_char victim)
 		    TO_VICT);
 		send_to_char("&+yMauling creatures of this minute size is hopeless at best.\n", ch);
 
-		if (!number(0, 3))
+		if (maul_clip_roll(live_rolls))
 		{
 			act("As $n falls, $e delivers a nasty backhand blow to $N!", FALSE, ch, 0,
 			    victim, TO_NOTVICT);
@@ -8579,7 +10193,7 @@ void maul(P_char ch, P_char victim)
 		}
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, (PULSE_VIOLENCE * get_property("skill.maul.failedmaul.lag", 1.500)));
+		CharWait(ch, maul_failed_lag());
 	}
 	else if (percent_chance > percentroll ||
 		 notch_skill(ch, SKILL_MAUL, get_property("skill.notch.offensive", 7)))
@@ -8597,21 +10211,15 @@ void maul(P_char ch, P_char victim)
 
 		if (GET_SPEC(ch, CLASS_BERSERKER, SPEC_MAULER) || IS_ELITE(ch))
 		{
-			CharWait(victim, (PULSE_VIOLENCE * 1.200));
-			CharWait(ch, (PULSE_VIOLENCE * 1.800));
-			set_short_affected_by(
-				ch, SKILL_BASH,
-				(PULSE_VIOLENCE *
-				 get_property("skill.maul.IsMauler.ShieldBashlag", 2.000)));
+			CharWait(victim, maul_target_lag(true));
+			CharWait(ch, maul_hit_lag(true));
+			set_short_affected_by(ch, SKILL_BASH, maul_rest(true));
 		}
 		else
 		{
-			CharWait(victim, (PULSE_VIOLENCE * 1.000));
-			CharWait(ch, (PULSE_VIOLENCE * 2.000));
-			set_short_affected_by(
-				ch, SKILL_BASH,
-				(PULSE_VIOLENCE *
-				 get_property("skill.maul.IsNotMauler.ShieldBashlag", 2.200)));
+			CharWait(victim, maul_target_lag(false));
+			CharWait(ch, maul_hit_lag(false));
+			set_short_affected_by(ch, SKILL_BASH, maul_rest(false));
 		}
 
 		melee_damage(ch, victim, dam, PHSDAM_TOUCH, 0);
@@ -8620,7 +10228,7 @@ void maul(P_char ch, P_char victim)
 		{
 			bzero(&af, sizeof(af));
 			af.type = SKILL_AWARENESS;
-			af.duration = 1;
+			af.duration = maul_aware_duration();
 			af.bitvector = AFF_AWARE;
 			af.flags = AFFTYPE_NODISPEL;
 			affect_to_char(victim, &af);
@@ -8636,8 +10244,40 @@ void maul(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_CHAR);
 		SET_POS(ch, POS_KNEELING + GET_STAT(ch));
 
-		CharWait(ch, (PULSE_VIOLENCE * get_property("skill.maul.failedmaul.lag", 1.500)));
+		CharWait(ch, maul_failed_lag());
 	}
+}
+
+// The puncher's lag, in pulses.
+static int shieldpunch_lag()
+{
+	return (int)(PULSE_VIOLENCE * get_property("skill.shieldpunch.lag", 1.000));
+}
+
+// The top of a punch's roll, from shield combat.
+static int shieldpunch_bonus(P_char ch)
+{
+	return (int)(MAX(20, GET_CHAR_SKILL(ch, SKILL_SHIELD_COMBAT) / 2));
+}
+
+// Damage from a punch, before the target's defenses.
+static int shieldpunch_damage(const Rolls &rolls, P_char ch, int dambonus)
+{
+	return 6 * (rolls.number(1, dambonus) + (ch->equipment[WEAR_SHIELD]->weight));
+}
+
+std::string shieldpunch_facts(P_char ch)
+{
+	std::string facts;
+	if (ch->equipment[WEAR_SHIELD])
+		facts = fact(
+			"Damage on a hit",
+			show({ shieldpunch_damage(lowest_rolls, ch, shieldpunch_bonus(ch)),
+			       shieldpunch_damage(highest_rolls, ch, shieldpunch_bonus(ch)) }) +
+				" with your shield");
+	return facts + fact("Your lag", seconds(shieldpunch_lag())) +
+	       "  You need a shield. The target can be up to 2 sizes bigger or 1 smaller, and\n"
+	       "  not immaterial. The target's defenses apply to the damage.\n";
 }
 
 void shieldpunch(P_char ch, P_char victim)
@@ -8699,7 +10339,7 @@ void shieldpunch(P_char ch, P_char victim)
 
 	appear(ch);
 
-	CharWait(ch, (int)(PULSE_VIOLENCE * get_property("skill.shieldpunch.lag", 1.000)));
+	CharWait(ch, shieldpunch_lag());
 
 	victim = guard_check(ch, victim);
 
@@ -8808,8 +10448,8 @@ void shieldpunch(P_char ch, P_char victim)
 	if (notch_skill(ch, SKILL_SHIELDPUNCH, get_property("skill.notch.offensive", 7)) ||
 	    number(0, 100) < percent_chance)
 	{
-		dambonus = (int)(MAX(20, GET_CHAR_SKILL(ch, SKILL_SHIELD_COMBAT) / 2));
-		dmg = 6 * (number(1, dambonus) + (ch->equipment[WEAR_SHIELD]->weight));
+		dambonus = shieldpunch_bonus(ch);
+		dmg = shieldpunch_damage(live_rolls, ch, dambonus);
 
 		if (melee_damage(ch, victim, dmg, 0, &messages) != DAM_NONEDEAD)
 		{
@@ -8852,11 +10492,54 @@ void do_shieldpunch(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// The thruster's lag, in pulses.
+static int sweeping_thrust_lag()
+{
+	return (int)(PULSE_VIOLENCE * (get_property("skill.SweepingThrust.lag", 1.500)));
+}
+
+// The top of the 0-based roll that knocks a target to its knees: 0 means it does.
+static int sweeping_thrust_odds(int level)
+{
+	int sweepthrustaffect = 4;
+	if (level > 46)
+	{
+		sweepthrustaffect--;
+	}
+
+	if (level > 51)
+	{
+		sweepthrustaffect--;
+	}
+	return sweepthrustaffect;
+}
+
+// The target's lag, in pulses, when knocked to its knees.
+static int sweeping_thrust_target_lag()
+{
+	return (int)(0.5 * PULSE_VIOLENCE);
+}
+
+std::string sweeping_thrust_facts(P_char ch)
+{
+	return fact("Chance a hit knocks the target to its knees",
+		    "1 in " + std::to_string(sweeping_thrust_odds(GET_LEVEL(ch)) + 1) +
+			    " at your level") +
+	       fact("Target's lag when knocked to its knees",
+		    seconds(sweeping_thrust_target_lag())) +
+	       fact("Your lag", seconds(sweeping_thrust_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       "  Otherwise it is a normal attack with your weapon. You need a weapon, and the\n"
+	       "  target can be up to 3 sizes bigger or 1 smaller, not immaterial or legless.\n";
+}
+
 void do_sweeping_thrust(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char victim = NULL;
 	int ch_size, vict_size, percent_chance, takedown_chance, levelc, levelvict;
-	int sweepthrustaffect = 4;
+	int sweepthrustaffect;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -8913,7 +10596,7 @@ void do_sweeping_thrust(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	CharWait(ch, (int)(PULSE_VIOLENCE * (get_property("skill.SweepingThrust.lag", 1.500))));
+	CharWait(ch, sweeping_thrust_lag());
 
 	appear(ch);
 
@@ -9043,16 +10726,7 @@ void do_sweeping_thrust(P_char ch, char *argument, int /*cmd*/)
 	if (notch_skill(ch, SKILL_SWEEPING_THRUST, get_property("skill.notch.offensive", 7)) ||
 	    number(1, 100) < percent_chance)
 	{
-		if (GET_LEVEL(ch) > 46)
-		{
-			sweepthrustaffect--;
-			;
-		}
-
-		if (GET_LEVEL(ch) > 51)
-		{
-			sweepthrustaffect--;
-		}
+		sweepthrustaffect = sweeping_thrust_odds(GET_LEVEL(ch));
 
 		if (!number(0, sweepthrustaffect) && GET_POS(victim) == POS_STANDING &&
 		    (takedown_chance != TAKEDOWN_PENALTY))
@@ -9066,7 +10740,7 @@ void do_sweeping_thrust(P_char ch, char *argument, int /*cmd*/)
 
 			SET_POS(victim, POS_KNEELING + GET_STAT(victim));
 			engage(ch, victim);
-			CharWait(victim, (int)(0.5 * PULSE_VIOLENCE));
+			CharWait(victim, sweeping_thrust_target_lag());
 		}
 		else
 		{
@@ -9861,6 +11535,82 @@ void bodyslam(P_char ch, P_char victim)
 	}
 }
 
+// The leaper's lag, in pulses, after a leap that fails.
+static int springleap_failed_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The leaper's lag, in pulses, after a leap that lands: on their feet, or falling.
+static int springleap_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int springleap_fall_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+// The target's lag after a leap lands, in pulses.
+static int springleap_target_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+// How long, in pulses, a landed leap keeps the leaper from another.
+static int springleap_rest()
+{
+	return (int)(2.8 * PULSE_VIOLENCE);
+}
+
+// Damage to the leaper for leaping at a target already down.
+static int springleap_crash_damage(P_char ch)
+{
+	return GET_MAX_HIT(ch) / 25;
+}
+
+// True on the 3 leaps in 4 that a dragon monk lands as a plain leap.
+static bool springleap_plain_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+// The damage of a dragon monk's stronger leap.
+static int springleap_super_damage(const Rolls &rolls)
+{
+	return rolls.number(20, 80) + 40;
+}
+
+// How long, in pulses, a dragon monk's stronger leap can stun.
+static int springleap_super_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string springleap_facts(P_char ch)
+{
+	std::string facts =
+		fact("Your lag", seconds(springleap_lag()) + ", or " +
+					 seconds(springleap_fall_lag()) + " if you fall too") +
+		fact("Your lag if it fails or the target is the wrong size",
+		     seconds(springleap_failed_lag())) +
+		fact("Your lag if the target is asleep",
+		     seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+		fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+		fact("Damage to you for leaping at a downed target",
+		     std::to_string(springleap_crash_damage(ch)) + ", 1/25 of your hit points") +
+		fact("Before you can leap again", seconds(springleap_rest())) +
+		fact("Target's lag", seconds(springleap_target_lag()));
+	if (GET_SPEC(ch, CLASS_MONK, SPEC_WAYOFDRAGON))
+		facts += fact("Chance of your dragon leap", "1 in 4") +
+			 fact("  Its damage", show({ springleap_super_damage(lowest_rolls),
+						     springleap_super_damage(highest_rolls) })) +
+			 fact("  Chance it also stuns, if the target fails a save",
+			      "1 in 2, for " + seconds(springleap_super_stun()));
+	return facts + "  The target must be your size or one bigger.\n";
+}
+
 void do_springleap(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char vict = NULL;
@@ -10016,7 +11766,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 	}
 	else if (percent_chance == TAKEDOWN_PENALTY)
 	{
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, springleap_failed_lag());
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_pos(ch);
 		return;
@@ -10031,7 +11781,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 	{
 		send_to_char("You're not quite the right size to springleap them.\n", ch);
 
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, springleap_failed_lag());
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_pos(ch);
 		return;
@@ -10051,8 +11801,8 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 		act("$n passes well above $s target and lands on $s head.", FALSE, ch, 0, 0,
 		    TO_NOTVICT);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE * 2);
-		damage(ch, ch, GET_MAX_HIT(ch) / 25, SKILL_SPRINGLEAP);
+		CharWait(ch, springleap_failed_lag());
+		damage(ch, ch, springleap_crash_damage(ch), SKILL_SPRINGLEAP);
 		return;
 	}
 
@@ -10066,7 +11816,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 		act("$n, in a show of awesome skill, tackles the ground with $s head.", FALSE, ch,
 		    0, 0, TO_NOTVICT);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, springleap_failed_lag());
 		return;
 	}
 
@@ -10074,7 +11824,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 		(int)(percent_chance *
 		      ((double)BOUNDED(80, 100 + GET_LEVEL(ch) - GET_LEVEL(vict), 125)) / 100);
 
-	set_short_affected_by(ch, SKILL_SPRINGLEAP, (int)(2.8 * PULSE_VIOLENCE));
+	set_short_affected_by(ch, SKILL_SPRINGLEAP, springleap_rest());
 	if (RANGED_LEAP)
 	{
 		act("$n dives in from nearby into a forward roll and leaps into $N!\nwho groans as $n spins around kicking $M in the chest.",
@@ -10085,7 +11835,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 		act("You fly into the room, twist around and leap into $N!", FALSE, ch, 0, vict,
 		    TO_CHAR);
 	}
-	if (!SUPER_SPRINGLEAP || (number(0, 3) && SUPER_SPRINGLEAP))
+	if (!SUPER_SPRINGLEAP || (springleap_plain_roll(live_rolls) && SUPER_SPRINGLEAP))
 	{
 		act("$n's leap knocks into you, sending you slightly off balance...", FALSE, ch, 0,
 		    vict, TO_VICT);
@@ -10133,10 +11883,10 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 			    FALSE, ch, 0, vict, TO_NOTVICT);
 		}
 
-		if (!damage(ch, vict, number(20, 80) + 40, SKILL_SPRINGLEAP))
+		if (!damage(ch, vict, springleap_super_damage(live_rolls), SKILL_SPRINGLEAP))
 		{
 			if (number(0, 1))
-				Stun(vict, ch, PULSE_VIOLENCE, TRUE);
+				Stun(vict, ch, springleap_super_stun(), TRUE);
 		}
 		else
 			return;
@@ -10144,7 +11894,7 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 
 	SET_POS(vict, POS_SITTING + GET_STAT(vict));
 
-	CharWait(vict, (int)(PULSE_VIOLENCE * 1.5));
+	CharWait(vict, springleap_target_lag());
 	update_pos(vict);
 	engage(ch, vict);
 
@@ -10157,20 +11907,63 @@ void do_springleap(P_char ch, char *argument, int /*cmd*/)
 		act("&+WHowever, $N grabs $n's leg after $s happy little maneuver and pulls $m to the ground!",
 		    FALSE, ch, 0, vict, TO_NOTVICT);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.5));
+		CharWait(ch, springleap_fall_lag());
 		update_pos(ch);
 	}
 	else
 	{
 		SET_POS(ch, POS_STANDING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, springleap_lag());
 	}
+}
+
+// The vitality a whirlwind needs, and what a failed try spends.
+static int whirlwind_vitality_needed()
+{
+	return 50;
+}
+
+static int whirlwind_failed_vitality()
+{
+	return 20;
+}
+
+// What a whirlwind takes from vitality regeneration.
+static int whirlwind_move_regen()
+{
+	return (int)(get_property("skill.whirlwind.movement.drain", 60));
+}
+
+// How long, in pulses, a whirlwind lasts.
+static int whirlwind_duration()
+{
+	return 3 * PULSE_VIOLENCE;
+}
+
+// The blindfighting rating a whirlwind needs while blinded by the spell.
+static int whirlwind_blindfighting_needed()
+{
+	return 80;
+}
+
+std::string whirlwind_facts(P_char ch)
+{
+	return fact("Chance",
+		    std::to_string(MAX(0, GET_CHAR_SKILL(ch, SKILL_WHIRLWIND) - 1)) + " in 100") +
+	       fact("Vitality needed", std::to_string(whirlwind_vitality_needed())) +
+	       fact("Vitality a failed try spends", std::to_string(whirlwind_failed_vitality())) +
+	       fact("Vitality regeneration", "-" + std::to_string(whirlwind_move_regen())) +
+	       fact("Duration", seconds(whirlwind_duration())) +
+	       fact("Blindfighting needed under the blindness spell",
+		    std::to_string(whirlwind_blindfighting_needed())) +
+	       "  You must be fighting. While it lasts your attacks come about twice as fast\n"
+	       "  and each round drains vitality; at none the whirlwind ends.\n";
 }
 
 void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	struct affected_type af;
-	int mod = (int)(get_property("skill.whirlwind.movement.drain", 60));
+	int mod = whirlwind_move_regen();
 
 	if (affected_by_spell(ch, SKILL_WHIRLWIND))
 	{
@@ -10188,7 +11981,7 @@ void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 
 	if (affected_by_spell(ch, SPELL_BLINDNESS))
 	{
-		if (GET_CHAR_SKILL(ch, SKILL_BLINDFIGHTING) < 80)
+		if (GET_CHAR_SKILL(ch, SKILL_BLINDFIGHTING) < whirlwind_blindfighting_needed())
 		{
 			send_to_char(
 				"You dare not attack any faster considering your current lack of sight!\n",
@@ -10209,7 +12002,7 @@ void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 		return;
 	}
 
-	if (GET_VITALITY(ch) < 50)
+	if (GET_VITALITY(ch) < whirlwind_vitality_needed())
 	{
 		send_to_char("You are too exhausted to fight any faster!\n", ch);
 		return;
@@ -10223,7 +12016,7 @@ void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 			ch);
 		act("$n attempts to fight even faster, but $s coordination failed $m.", FALSE, ch,
 		    0, 0, TO_ROOM);
-		GET_VITALITY(ch) -= 20;
+		GET_VITALITY(ch) -= whirlwind_failed_vitality();
 		return;
 	}
 
@@ -10236,7 +12029,7 @@ void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 	af.type = SKILL_WHIRLWIND;
 	af.location = APPLY_MOVE_REG;
 	af.modifier = -1 * mod;
-	af.duration = 3 * PULSE_VIOLENCE;
+	af.duration = whirlwind_duration();
 	af.flags = AFFTYPE_SHORT;
 	affect_to_char(ch, &af);
 	/* Not needed -- Eikel
@@ -10246,6 +12039,51 @@ void do_whirlwind(P_char ch, char * /*argument*/, int /*cmd*/)
 	  af.modifier = -12;
 	  af.duration = 5 * PULSE_VIOLENCE;
 	  affect_to_char(ch, &af);*/
+}
+
+// The tripper's lag, in pulses: at a target already down or foiling the takedown, on a miss
+// and on a hit.
+static int trip_foiled_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int trip_miss_lag()
+{
+	return PULSE_VIOLENCE * (5 / 2);
+}
+
+static int trip_lag()
+{
+	return (int)(PULSE_VIOLENCE * 2.3);
+}
+
+// The target's lag after a hit, in pulses.
+static int trip_target_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+// Damage to the tripper on a miss.
+static int trip_miss_damage(P_char ch)
+{
+	return GET_MAX_HIT(ch) / 25;
+}
+
+std::string trip_facts(P_char ch)
+{
+	return fact("Your lag on a hit", seconds(trip_lag())) +
+	       fact("Your lag on a miss", seconds(trip_miss_lag())) +
+	       fact("Damage to you on a miss",
+		    std::to_string(trip_miss_damage(ch)) + ", a 25th of your hit points") +
+	       fact("Your lag if the target is already down or foils it",
+		    seconds(trip_foiled_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Target's lag on a hit", seconds(trip_target_lag())) +
+	       "  The target must be your size or one bigger. Centaurs, quadrupeds and\n"
+	       "  driders can't trip.\n";
 }
 
 void do_trip(P_char ch, char *argument, int /*cmd*/)
@@ -10343,13 +12181,13 @@ void do_trip(P_char ch, char *argument, int /*cmd*/)
 		    TO_NOTVICT);
 		stop_singing(ch);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, trip_foiled_lag());
 		update_pos(ch);
 		return;
 	}
 	else if (percent_chance == TAKEDOWN_PENALTY)
 	{
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, trip_foiled_lag());
 		stop_singing(ch);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
 		update_pos(ch);
@@ -10380,8 +12218,8 @@ void do_trip(P_char ch, char *argument, int /*cmd*/)
 		    TO_ROOM);
 		stop_singing(ch);
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE * (5 / 2));
-		damage(ch, ch, GET_MAX_HIT(ch) / 25, SKILL_TRIP);
+		CharWait(ch, trip_miss_lag());
+		damage(ch, ch, trip_miss_damage(ch), SKILL_TRIP);
 		return;
 	}
 
@@ -10404,8 +12242,8 @@ void do_trip(P_char ch, char *argument, int /*cmd*/)
 		SET_POS(vict, POS_SITTING + GET_STAT(vict));
 	}
 
-	CharWait(vict, (int)(PULSE_VIOLENCE * 1.5));
-	CharWait(ch, (int)(PULSE_VIOLENCE * 2.3));
+	CharWait(vict, trip_target_lag());
+	CharWait(ch, trip_lag());
 	update_pos(vict);
 
 	if (number(0, 110) < (GET_C_AGI(vict) - GET_C_AGI(ch)))
@@ -10482,6 +12320,42 @@ void flanking_broken(struct char_link_data *cld)
 	    TO_CHAR);
 }
 
+extern float flank_damage_modifier();
+
+// How long, in pulses, a flank attempt keeps the next one from working.
+static int flank_rest()
+{
+	return PULSE_VIOLENCE * 4;
+}
+
+// The flanker's lag, in pulses.
+static int flank_lag()
+{
+	return PULSE_VIOLENCE * 1;
+}
+
+// How long, in pulses, the flank holds: shorter when something is fighting the flanker.
+static int flank_duration(P_char ch, bool attacked)
+{
+	return (attacked ? 1 : 3) * ((int)ch->specials.base_combat_round + 1);
+}
+
+std::string flank_facts(P_char ch)
+{
+	const float modifier = flank_damage_modifier();
+	const int rating = GET_CHAR_SKILL(ch, SKILL_FLANK);
+	return fact("Chance", std::to_string(rating ? MIN(101, rating + 1) : 0) + " in 101") +
+	       fact("Damage on the flanked target",
+		    std::to_string((int)(modifier * 100)) + "% against a standing target, " +
+			    std::to_string((int)((1 + modifier) / 2 * 100)) + "% otherwise") +
+	       fact("How long it holds", seconds(flank_duration(ch, false)) + ", or " +
+						 seconds(flank_duration(ch, true)) +
+						 " if something is fighting you") +
+	       fact("Your lag", seconds(flank_lag())) +
+	       fact("Before you can flank again", seconds(flank_rest())) +
+	       "  Not in a single-file room or while grappled.\n";
+}
+
 bool flank(P_char ch, P_char victim)
 {
 	P_char tch;
@@ -10512,11 +12386,11 @@ bool flank(P_char ch, P_char victim)
 		return FALSE;
 	}
 
-	set_short_affected_by(ch, SKILL_FLANK, PULSE_VIOLENCE * 4);
+	set_short_affected_by(ch, SKILL_FLANK, flank_rest());
 
 	appear(ch);
 
-	CharWait(ch, PULSE_VIOLENCE * 1);
+	CharWait(ch, flank_lag());
 
 	if (!notch_skill(ch, SKILL_FLANK, get_property("skill.notch.offensive", 15)) &&
 	    GET_CHAR_SKILL(ch, SKILL_FLANK) < number(0, 100))
@@ -10543,10 +12417,101 @@ bool flank(P_char ch, P_char victim)
 	act("$n moves around $N in an attempt to flank $M.", FALSE, ch, 0, victim, TO_NOTVICT);
 	act("$n sidesteps to the fight in an attempt to flank you.", FALSE, ch, 0, victim, TO_VICT);
 	link_char(ch, victim, LNK_FLANKING);
-	CharWait(ch, PULSE_VIOLENCE * 1);
-	add_event(event_unflank, (tch ? 1 : 3) * ((int)ch->specials.base_combat_round + 1), ch,
-		  victim, 0, 0, 0, 0);
+	CharWait(ch, flank_lag());
+	add_event(event_unflank, flank_duration(ch, tch), ch, victim, 0, 0, 0, 0);
 	return TRUE;
+}
+
+// The wait before the dead rise or the ground strikes, in pulses.
+static int call_grave_delay(const Rolls &rolls)
+{
+	return 4 * (5 + rolls.dice(1, 5));
+}
+
+// How long, in pulses, a call keeps the caller from another.
+static int call_grave_rest()
+{
+	return (int)(60 * PULSE_VIOLENCE);
+}
+
+// The caller's lag, in pulses.
+static int call_grave_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// The rating that sets the skeletons: a lich's comes from level.
+static int call_grave_skill(P_char ch)
+{
+	if (GET_RACE(ch) == RACE_LICH)
+	{
+		return GET_LEVEL(ch) + 50;
+	}
+	return GET_CHAR_SKILL(ch, SKILL_CALL_GRAVE);
+}
+
+// How many skeletons rise: the roll takes away from them.
+static int call_grave_count_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+static int call_grave_count(int skill, int roll)
+{
+	return BOUNDED(1, (skill / 10) - roll, 6);
+}
+
+// A skeleton's level: the roll takes away from it.
+static int call_grave_level_roll(const Rolls &rolls)
+{
+	return rolls.number(15, 35);
+}
+
+static int call_grave_level(P_char ch, int roll)
+{
+	return BOUNDED(6, (GET_LEVEL(ch) - roll), 42);
+}
+
+// A skeleton's hit points.
+static int call_grave_hit_points(const Rolls &rolls, P_char ch)
+{
+	return (int)(GET_LEVEL(ch) * rolls.number(3, 5));
+}
+
+// How long, in pulses, a skeleton stays.
+static int call_grave_lifetime(int skill)
+{
+	return WAIT_SEC * (60 + skill * 3);
+}
+
+// A deathlord's strike at a chosen target, before the floor of 1.
+static int call_grave_target_damage(const Rolls &rolls, P_char ch)
+{
+	return 4 * (GET_LEVEL(ch) - 10 + rolls.number(0, 20));
+}
+
+std::string call_grave_facts(P_char ch)
+{
+	const int skill = call_grave_skill(ch);
+	std::string facts =
+		fact("Delay", seconds(call_grave_delay(lowest_rolls)) + " to " +
+				      seconds(call_grave_delay(highest_rolls))) +
+		fact("Your lag", seconds(call_grave_lag())) +
+		fact("Before you can call again", real_time(call_grave_rest())) +
+		fact("Skeletons",
+		     show({ call_grave_count(skill, call_grave_count_roll(highest_rolls)),
+			    call_grave_count(skill, call_grave_count_roll(lowest_rolls)) })) +
+		fact("Skeleton level",
+		     show({ call_grave_level(ch, call_grave_level_roll(highest_rolls)),
+			    call_grave_level(ch, call_grave_level_roll(lowest_rolls)) })) +
+		fact("Skeleton hit points", show({ call_grave_hit_points(lowest_rolls, ch),
+						   call_grave_hit_points(highest_rolls, ch) })) +
+		fact("Skeletons stay", real_time(call_grave_lifetime(skill)));
+	if (GET_SPEC(ch, CLASS_DREADLORD, SPEC_DEATHLORD))
+		facts += fact("Damage if you name a target instead",
+			      show({ MAX(1, call_grave_target_damage(lowest_rolls, ch)),
+				     MAX(1, call_grave_target_damage(highest_rolls, ch)) }));
+	return facts + "  You need footing, and the dead can't rise in a single-file room.\n";
 }
 
 void do_call_grave(P_char ch, char *argument, int /*cmd*/)
@@ -10591,12 +12556,13 @@ void do_call_grave(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	if (GET_SPEC(ch, CLASS_DREADLORD, SPEC_DEATHLORD) && victim)
-		add_event(event_call_grave_target, 4 * (5 + dice(1, 5)), ch, victim, NULL, 0, 0, 0);
+		add_event(event_call_grave_target, call_grave_delay(live_rolls), ch, victim, NULL,
+			  0, 0, 0);
 	else
-		add_event(event_call_grave, 4 * (5 + dice(1, 5)), ch, NULL, NULL, 0, 0, 0);
+		add_event(event_call_grave, call_grave_delay(live_rolls), ch, NULL, NULL, 0, 0, 0);
 
-	set_short_affected_by(ch, SKILL_CALL_GRAVE, (int)(60 * PULSE_VIOLENCE));
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	set_short_affected_by(ch, SKILL_CALL_GRAVE, call_grave_rest());
+	CharWait(ch, call_grave_lag());
 	notch_skill(ch, SKILL_CALL_GRAVE, get_property("skill.notch.callGrave", 10));
 }
 
@@ -10617,14 +12583,9 @@ void event_call_grave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 	act("&+LThe ground trembles, only to buckle and crack as &+Wskeletons &+Lrise from their cold graves.",
 	    FALSE, ch, 0, 0, TO_NOTVICT);
 
-	if (GET_RACE(ch) == RACE_LICH)
-	{
-		skill = GET_LEVEL(ch) + 50;
-	}
-	else
-		skill = GET_CHAR_SKILL(ch, SKILL_CALL_GRAVE);
+	skill = call_grave_skill(ch);
 
-	num = BOUNDED(1, (skill / 10) - number(0, 5), 6);
+	num = call_grave_count(skill, call_grave_count_roll(live_rolls));
 
 	for (i = 0; i < num; i++)
 	{
@@ -10636,7 +12597,7 @@ void event_call_grave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 			return;
 		}
 
-		skeleton->player.level = BOUNDED(6, (GET_LEVEL(ch) - number(15, 35)), 42);
+		skeleton->player.level = call_grave_level(ch, call_grave_level_roll(live_rolls));
 
 		if (!number(0, 4))
 			skeleton->player.m_class = CLASS_WARRIOR;
@@ -10646,7 +12607,7 @@ void event_call_grave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 			skeleton->player.m_class = CLASS_NONE;
 
 		GET_MAX_HIT(skeleton) = GET_HIT(skeleton) = skeleton->points.base_hit =
-			(int)(GET_LEVEL(ch) * number(3, 5));
+			call_grave_hit_points(live_rolls, ch);
 
 		MonkSetSpecialDie(skeleton);
 		skeleton->points.hitroll = (int)GET_LEVEL(skeleton) / 2;
@@ -10658,7 +12619,7 @@ void event_call_grave(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data
 
 		add_follower(skeleton, ch);
 		// 1 Minute + 5 Mins at 100 skill.
-		add_event(event_bye_grave, WAIT_SEC * (60 + skill * 3), skeleton, NULL, NULL, 0, 0,
+		add_event(event_bye_grave, call_grave_lifetime(skill), skeleton, NULL, NULL, 0, 0,
 			  0);
 	}
 }
@@ -10677,7 +12638,7 @@ void event_call_grave_target(P_char ch, P_char victim, P_obj /*obj*/, void * /*d
 	    FALSE, ch, 0, victim, TO_VICT);
 
 	// damage: [dreadlord_level +- 1d10] hp
-	dmg = 4 * (GET_LEVEL(ch) - 10 + number(0, 20));
+	dmg = call_grave_target_damage(live_rolls, ch);
 
 	damage(ch, victim, MAX(1, dmg), TYPE_UNDEFINED);
 }
@@ -10732,6 +12693,27 @@ void do_battle_orders(P_char ch, char *argument, int /*cmd*/)
 	}
 
 	battle_orders(ch, victim);
+}
+
+// The commander's lag, in pulses.
+static int battle_orders_lag()
+{
+	return (int)(1.5 * PULSE_VIOLENCE);
+}
+
+// How long, in pulses, orders keep the commander from giving more.
+static int battle_orders_rest()
+{
+	return (int)(5 * PULSE_VIOLENCE);
+}
+
+std::string battle_orders_facts(P_char ch)
+{
+	return fact("Chance", std::to_string(GET_CHAR_SKILL(ch, SKILL_BATTLE_ORDERS)) +
+				      " in 101; luck can raise it") +
+	       fact("Your lag", seconds(battle_orders_lag())) +
+	       fact("Before you can give orders again", seconds(battle_orders_rest())) +
+	       "  You must lead a group. A failed order can send it at random targets.\n";
 }
 
 void battle_orders(P_char ch, P_char victim)
@@ -10801,8 +12783,8 @@ void battle_orders(P_char ch, P_char victim)
 		}
 	}
 
-	CharWait(ch, (int)(1.5 * PULSE_VIOLENCE));
-	set_short_affected_by(ch, SKILL_BATTLE_ORDERS, (int)(5 * PULSE_VIOLENCE));
+	CharWait(ch, battle_orders_lag());
+	set_short_affected_by(ch, SKILL_BATTLE_ORDERS, battle_orders_rest());
 }
 
 void do_gaze(P_char ch, char *argument, int /*cmd*/)
@@ -10842,6 +12824,75 @@ void do_gaze(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// The gazer's lag, in pulses, by what happened.
+static int gaze_refused_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int gaze_resisted_lag()
+{
+	return (int)(2.5 * PULSE_VIOLENCE);
+}
+
+static int gaze_size_lag()
+{
+	return (int)(0.5 * PULSE_VIOLENCE);
+}
+
+static int gaze_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// How long, in pulses, a hit dazes the target and keeps the gazer from the next takedown.
+static int gaze_target_duration()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+static int gaze_rest()
+{
+	return (int)(PULSE_VIOLENCE * 3.0);
+}
+
+// An NPC target's lag after a hit, in pulses.
+static int gaze_npc_lag()
+{
+	return (int)(0.75 * PULSE_VIOLENCE);
+}
+
+// The anatomy score in the hit points below which a gaze or restraint kills.
+static int anatomy_kill_bonus(P_char ch)
+{
+	return GET_CHAR_SKILL(ch, SKILL_ANATOMY) - 25;
+}
+
+// A target below this many hit points dies from a gaze.
+static int gaze_kill_hit_points(const Rolls &rolls, int anatomy_skill)
+{
+	return (int)(((rolls.number(0, 100) + anatomy_skill)) / 2);
+}
+
+std::string gaze_facts(P_char ch)
+{
+	return fact("Your lag", seconds(gaze_lag())) +
+	       fact("Your lag if refused",
+		    seconds(gaze_refused_lag()) + " (no eyes, no fear, or blind)") +
+	       fact("Your lag if already dazed, elite or a greater NPC",
+		    seconds(gaze_resisted_lag())) +
+	       fact("Your lag if the size is too far off", seconds(gaze_size_lag())) +
+	       fact("Target dazed on a hit", seconds(gaze_target_duration())) +
+	       fact("An NPC target's lag on a hit", seconds(gaze_npc_lag())) +
+	       fact("Before your next takedown after a hit", seconds(gaze_rest())) +
+	       fact("A hit kills a target below",
+		    "up to " +
+			    std::to_string(
+				    gaze_kill_hit_points(highest_rolls, anatomy_kill_bonus(ch))) +
+			    " hit points, with your anatomy") +
+	       "  The target can be up to 1 size bigger or 2 smaller.\n";
+}
+
 void gaze(P_char ch, P_char victim)
 {
 	int percent_chance, anatomy_skill, standing = 1, battling = 1;
@@ -10858,7 +12909,7 @@ void gaze(P_char ch, P_char victim)
 	{
 		send_to_char("You pull out a small mirror and stare into it for a few seconds.\n",
 			     ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, gaze_refused_lag());
 		return;
 	}
 
@@ -10876,7 +12927,7 @@ void gaze(P_char ch, P_char victim)
 		send_to_char(
 			"&+LYour victim is eyeless like you, thus your gaze has no effect!\r\n",
 			ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1));
+		CharWait(ch, gaze_refused_lag());
 		return;
 	}
 
@@ -10884,14 +12935,14 @@ void gaze(P_char ch, P_char victim)
 	{
 		act("$N &+Wgazes right back at you, completely immune to the fear.", FALSE, ch, 0,
 		    victim, TO_CHAR);
-		CharWait(ch, (int)(PULSE_VIOLENCE));
+		CharWait(ch, gaze_refused_lag());
 		return;
 	}
 
 	if (affected_by_spell(victim, SKILL_GAZE))
 	{
 		act("$N &+yis already &+Yterrifed!!!&n", FALSE, ch, 0, victim, TO_CHAR);
-		CharWait(ch, (int)(2.5 * PULSE_VIOLENCE));
+		CharWait(ch, gaze_resisted_lag());
 		return;
 	}
 
@@ -10900,7 +12951,7 @@ void gaze(P_char ch, P_char victim)
 		send_to_char("&+LThey can't see anything right now, especially you!\n", ch);
 		act("$N never notices $n's sightless &+Lstare.&n", FALSE, ch, 0, victim,
 		    TO_NOTVICT);
-		CharWait(ch, 1 * PULSE_VIOLENCE);
+		CharWait(ch, gaze_refused_lag());
 		return;
 	}
 
@@ -10919,7 +12970,7 @@ void gaze(P_char ch, P_char victim)
 		act("You turn towards $N and hiss a deep monotone sound...", FALSE, ch, 0, victim,
 		    TO_VICT);
 		do_action(ch, 0, CMD_SHIVER);
-		CharWait(ch, (int)(2.5 * PULSE_VIOLENCE));
+		CharWait(ch, gaze_resisted_lag());
 		return;
 	}
 
@@ -10931,7 +12982,7 @@ void gaze(P_char ch, P_char victim)
 		    victim, TO_NOTVICT);
 		act("$n tries to hold you with $s gaze but $E's just too short.", FALSE, ch, 0,
 		    victim, TO_VICT);
-		CharWait(ch, (int)(0.5 * PULSE_VIOLENCE));
+		CharWait(ch, gaze_size_lag());
 		return;
 	}
 
@@ -10943,7 +12994,7 @@ void gaze(P_char ch, P_char victim)
 		    victim, TO_NOTVICT);
 		act("$n tries to hold you with $s gaze but $E's just too tall.", FALSE, ch, 0,
 		    victim, TO_VICT);
-		CharWait(ch, (int)(0.5 * PULSE_VIOLENCE));
+		CharWait(ch, gaze_size_lag());
 		return;
 	}
 
@@ -10955,7 +13006,7 @@ void gaze(P_char ch, P_char victim)
 	}
 
 	// any conditions past this will lag the char for the full duration
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, gaze_lag());
 
 	if (!on_front_line(victim) && number(0, 2)) // 33% chance to gaze someone back'd
 	{
@@ -11037,9 +13088,9 @@ void gaze(P_char ch, P_char victim)
 	if (notch_skill(ch, SKILL_GAZE, get_property("skill.notch.offensive", 7)) ||
 	    percent_chance > number(0, 100))
 	{
-		anatomy_skill = GET_CHAR_SKILL(ch, SKILL_ANATOMY) - 25; // returns -25 to 70 int
+		anatomy_skill = anatomy_kill_bonus(ch); // returns -25 to 70 int
 
-		if (GET_HIT(victim) < (int)(((number(0, 100) + anatomy_skill)) / 2))
+		if (GET_HIT(victim) < gaze_kill_hit_points(live_rolls, anatomy_skill))
 		{
 			if (GET_CLASS(ch, CLASS_AVENGER))
 			{
@@ -11101,15 +13152,15 @@ void gaze(P_char ch, P_char victim)
 				    FALSE, ch, 0, victim, TO_VICT);
 			}
 
-			set_short_affected_by(victim, SKILL_GAZE, (int)(PULSE_VIOLENCE * 1.5));
-			set_short_affected_by(ch, SKILL_BASH, (int)(PULSE_VIOLENCE * 3.0));
+			set_short_affected_by(victim, SKILL_GAZE, gaze_target_duration());
+			set_short_affected_by(ch, SKILL_BASH, gaze_rest());
 			victim->specials.combat_tics = (int)victim->specials.base_combat_round;
 
 			if (IS_NPC(victim))
 			// they can't do any cmds anyway, so lag them so they can stack
 			// cmds the same as being bashed, etc.
 			{
-				CharWait(victim, (int)(0.75 * PULSE_VIOLENCE));
+				CharWait(victim, gaze_npc_lag());
 			}
 			StopCasting(victim);
 			engage(ch, victim);
@@ -11126,6 +13177,64 @@ void gaze(P_char ch, P_char victim)
 	}
 }
 
+// The restrainer's lag, in pulses, by what happened.
+static int restrain_refused_lag()
+{
+	return (int)(PULSE_VIOLENCE);
+}
+
+static int restrain_resisted_lag()
+{
+	return (int)(1.5 * PULSE_VIOLENCE);
+}
+
+static int restrain_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+// How long, in pulses, a hit restrains and keeps the restrainer from the next takedown.
+static int restrain_duration()
+{
+	return (PULSE_VIOLENCE * 2);
+}
+
+static int restrain_rest()
+{
+	return (int)(PULSE_VIOLENCE * 3.0);
+}
+
+// An NPC target's lag after a hit, in pulses.
+static int restrain_npc_lag()
+{
+	return (int)(2.0 * PULSE_VIOLENCE);
+}
+
+// A target below this many hit points dies from a restraint.
+static int restrain_kill_hit_points(const Rolls &rolls, int anatomy_skill)
+{
+	return (rolls.number(0, 100) + anatomy_skill) / 2;
+}
+
+std::string restrain_facts(P_char ch)
+{
+	return fact("Your lag", seconds(restrain_lag())) +
+	       fact("Your lag if the target just used a takedown",
+		    seconds(restrain_refused_lag())) +
+	       fact("Your lag if dazed, elite, greater or the wrong size",
+		    seconds(restrain_resisted_lag())) +
+	       fact("Target restrained on a hit", seconds(restrain_duration())) +
+	       fact("An NPC target's lag on a hit", seconds(restrain_npc_lag())) +
+	       fact("Before your next takedown after a hit", seconds(restrain_rest())) +
+	       fact("A hit kills a target below",
+		    "up to " +
+			    std::to_string(restrain_kill_hit_points(highest_rolls,
+								    anatomy_kill_bonus(ch))) +
+			    " hit points, with your anatomy") +
+	       "  The target must be within 2 sizes; one not standing is very hard to restrain.\n"
+	       "  A hit stops casting, 2 times in 3.\n";
+}
+
 void restrain(P_char ch, P_char victim)
 {
 	int percent_chance, anatomy_skill, standing = 1, battling = 1;
@@ -11140,7 +13249,7 @@ void restrain(P_char ch, P_char victim)
 	if (ch == victim)
 	{
 		send_to_char("&+LOh, but that would be way too much fun...\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, restrain_refused_lag());
 		return;
 	}
 
@@ -11149,14 +13258,14 @@ void restrain(P_char ch, P_char victim)
 	if (affected_by_spell(victim, SKILL_BASH))
 	{
 		send_to_char("&+LThey cannot be restrained in their current position.\n", ch);
-		CharWait(ch, (int)(PULSE_VIOLENCE));
+		CharWait(ch, restrain_refused_lag());
 		return;
 	}
 
 	if (affected_by_spell(victim, SKILL_GAZE))
 	{
 		act("$N &+Lappears to be paralyzed as it is!&n", FALSE, ch, 0, victim, TO_CHAR);
-		CharWait(ch, (int)(1.5 * PULSE_VIOLENCE));
+		CharWait(ch, restrain_resisted_lag());
 		return;
 	}
 
@@ -11175,7 +13284,7 @@ void restrain(P_char ch, P_char victim)
 		act("&+LYou simply shrug away&n $N's &+Lattempt to restrain you...", FALSE, ch, 0,
 		    victim, TO_VICT);
 		do_action(ch, 0, CMD_GROWL);
-		CharWait(ch, (int)(1.5 * PULSE_VIOLENCE));
+		CharWait(ch, restrain_resisted_lag());
 		return;
 	}
 
@@ -11187,7 +13296,7 @@ void restrain(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_NOTVICT);
 		act("$n's&+L minions attempt to restrain you, but you simply break free of the &+rrestraints&+L.&n",
 		    FALSE, ch, 0, victim, TO_VICT);
-		CharWait(ch, (int)(1.5 * PULSE_VIOLENCE));
+		CharWait(ch, restrain_resisted_lag());
 		return;
 	}
 
@@ -11199,12 +13308,12 @@ void restrain(P_char ch, P_char victim)
 		    FALSE, ch, 0, victim, TO_NOTVICT);
 		act("$n &+Ltries to restrain you, but you easily evade the attempt!&n", FALSE, ch,
 		    0, victim, TO_VICT);
-		CharWait(ch, (int)(1.5 * PULSE_VIOLENCE));
+		CharWait(ch, restrain_resisted_lag());
 		return;
 	}
 
 	// any conditions past this will lag the char for the full duration
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, restrain_lag());
 
 	percent_chance = GET_CHAR_SKILL(ch, SKILL_RESTRAIN); // Base percentage
 
@@ -11279,10 +13388,10 @@ void restrain(P_char ch, P_char victim)
 	if (notch_skill(ch, SKILL_RESTRAIN, get_property("skill.notch.offensive", 15)) ||
 	    percent_chance > number(0, 100))
 	{
-		anatomy_skill = GET_CHAR_SKILL(ch, SKILL_ANATOMY) - 25; // returns -25 to 70 int
+		anatomy_skill = anatomy_kill_bonus(ch); // returns -25 to 70 int
 
 		// If hps are low.. like under 100 or so low, we insta-kill?  WTF?
-		if (GET_HIT(victim) < (number(0, 100) + anatomy_skill) / 2)
+		if (GET_HIT(victim) < restrain_kill_hit_points(live_rolls, anatomy_skill))
 		{
 			{
 				act("&+LYou turn to &n$N &+Land make an un&+who&+Wly &+Lgesture.\n"
@@ -11332,12 +13441,12 @@ void restrain(P_char ch, P_char victim)
 			memset(&af, 0, sizeof(af));
 			af.type = SKILL_RESTRAIN;
 			af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-			af.duration = (PULSE_VIOLENCE * 2);
+			af.duration = restrain_duration();
 			affect_to_char_with_messages(
 				victim, &af,
 				"&+LThe &+rminions&+L finally release their hold on you!",
 				"$n &+Lfinally breaks free from the &+rminions &+Lrestraining them.");
-			set_short_affected_by(ch, SKILL_BASH, (int)(PULSE_VIOLENCE * 3.0));
+			set_short_affected_by(ch, SKILL_BASH, restrain_rest());
 			victim->specials.combat_tics = (int)victim->specials.base_combat_round;
 			// CharWait(victim, (int) (2.0 * PULSE_VIOLENCE));
 
@@ -11345,7 +13454,7 @@ void restrain(P_char ch, P_char victim)
 			// cmds the same as being bashed, etc.
 			if (IS_NPC(victim))
 			{
-				CharWait(victim, (int)(2.0 * PULSE_VIOLENCE));
+				CharWait(victim, restrain_npc_lag());
 			}
 			if (number(0, 2))
 			{
@@ -11363,6 +13472,41 @@ void restrain(P_char ch, P_char victim)
 		act("&+LYou quickly jump out of the way of&n $n's &+Levil &+rmionions&+L.&n", FALSE,
 		    ch, 0, victim, TO_VICT);
 	}
+}
+
+// How long, in pulses, a shriek keeps the shrieker from another.
+static int shriek_rest()
+{
+	return (int)(WAIT_SEC * SECS_PER_REAL_MIN * 5);
+}
+
+// A shriek's base damage, and the base on a target that saves.
+static int shriek_base_damage(int skl_lvl)
+{
+	return 2 * skl_lvl;
+}
+
+static int shriek_saved_damage(int basedamage)
+{
+	return basedamage / 2;
+}
+
+// What the roll adds to the base.
+static int shriek_roll_damage(const Rolls &rolls)
+{
+	return 4 * rolls.number(1, 20);
+}
+
+std::string shriek_facts(P_char ch)
+{
+	const int base = shriek_base_damage(GET_CHAR_SKILL(ch, SKILL_SHRIEK));
+	const int low = shriek_roll_damage(lowest_rolls), high = shriek_roll_damage(highest_rolls);
+	return fact("Sound damage to each target in the room", show({ base + low, base + high })) +
+	       fact("If the target saves",
+		    show({ shriek_saved_damage(base) + low, shriek_saved_damage(base) + high })) +
+	       fact("Before you can shriek again", real_time(shriek_rest())) +
+	       "  Your power makes the save harder or easier. It can't be shrugged off or\n"
+	       "  deflected. Not underwater or in a safe room.\n";
 }
 
 // Shriek:  skill level/2 + 1d20 area damage = 51 - 70 damage @100 skill, usable once every 5 minutes.
@@ -11422,7 +13566,7 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 	}
 
 	// Denote that this char is effected by shriek to start the timer
-	set_short_affected_by(ch, SKILL_SHRIEK, (int)(WAIT_SEC * SECS_PER_REAL_MIN * 5));
+	set_short_affected_by(ch, SKILL_SHRIEK, shriek_rest());
 
 	appear(ch);
 
@@ -11436,7 +13580,7 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 	};
 
 	// skl_lvl / 2 * 4 == 2 * skl_lvl; we multiply by 4 'cause of old damage reduction.
-	basedamage = 2 * skl_lvl;
+	basedamage = shriek_base_damage(skl_lvl);
 	// 92 - 100 pow has no bonus, < 92 pow means easier to save, > 100 pow means harder to save.
 	savemod = STAT_INDEX(GET_C_POW(ch)) - 15;
 
@@ -11461,7 +13605,7 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 		// If they save, halve base damage (only).  This guarentees final damage > 0.
 		if (NewSaves(person, SAVING_SPELL, savemod))
 		{
-			actualdam = basedamage / 2;
+			actualdam = shriek_saved_damage(basedamage);
 		}
 		else
 		{
@@ -11471,8 +13615,8 @@ void do_shriek(P_char ch, char * /*argument*/, int /*cmd*/)
 		// Apply the actualdamage to the person + 1d20 randomness.
 		// Note: spell_damage will engage victims (if they live), but not cause bashes/backstabs/etc so ch won't die.
 		//       Should this change, we might want to look at GET_POS(ch) vs POS_STANDING to see if they got knocked down.
-		res = spell_damage(ch, person, actualdam + 4 * number(1, 20), SPLDAM_SOUND,
-				   SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &messages);
+		res = spell_damage(ch, person, actualdam + shriek_roll_damage(live_rolls),
+				   SPLDAM_SOUND, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &messages);
 		// If, somehow, the shrieker dies mid-shriek, stop shrieking and return.
 		if (res == DAM_CHARDEAD || res == DAM_BOTHDEAD)
 		{
@@ -11559,6 +13703,56 @@ bool CheckMultiProcTiming(P_char ch)
 	return true;
 }
 
+extern float dreadnaught_attack_factor(const struct affected_type *paf);
+extern float dreadnaught_melee_defense(const Rolls &rolls, const struct affected_type *paf);
+extern double dreadnaught_spell_defense(const Rolls &rolls, const struct affected_type *paf);
+
+// How long, in pulses, a stance lasts.
+static int dreadnaught_duration(const Rolls &rolls, P_char ch, int skl_lvl)
+{
+	return PULSE_VIOLENCE * ((GET_LEVEL(ch) / 14) + rolls.number(0, skl_lvl / 50) + 1);
+}
+
+// How long, in pulses, a failed try keeps the user from another.
+static int dreadnaught_failed_rest()
+{
+	return 65;
+}
+
+// How long past the stance's end, in pulses, before another.
+static int dreadnaught_rest(int duration)
+{
+	return duration + PULSE_VIOLENCE;
+}
+
+std::string dreadnaught_facts(P_char ch)
+{
+	const int skl_lvl = GET_CHAR_SKILL(ch, SKILL_DREADNAUGHT);
+	const int low = dreadnaught_duration(lowest_rolls, ch, skl_lvl);
+	const int high = dreadnaught_duration(highest_rolls, ch, skl_lvl);
+	struct affected_type stance;
+	memset(&stance, 0, sizeof(stance));
+	stance.level = skl_lvl;
+	return fact("Chance", std::to_string(MAX(0, skl_lvl - 1)) + " in 101") +
+	       fact("Duration", seconds(low) + " to " + seconds(high)) +
+	       fact("Melee damage you deal",
+		    std::to_string(std::lround(dreadnaught_attack_factor(&stance) * 100)) +
+			    "% of normal") +
+	       fact("Less melee damage you take",
+		    show({ (int)dreadnaught_melee_defense(lowest_rolls, &stance),
+			   (int)dreadnaught_melee_defense(highest_rolls, &stance) }) +
+			    "%") +
+	       fact("Less spell damage you take",
+		    show({ (int)dreadnaught_spell_defense(lowest_rolls, &stance),
+			   (int)dreadnaught_spell_defense(highest_rolls, &stance) }) +
+			    "%") +
+	       fact("Before you can try again",
+		    seconds(dreadnaught_rest(low)) + " to " + seconds(dreadnaught_rest(high))) +
+	       fact("  After a failure", seconds(dreadnaught_failed_rest())) +
+	       "  It also makes you immune to fear while it lasts. Some attacks, such as a\n"
+	       "  backstab, skip the melee numbers.\n";
+}
+
 void do_dreadnaught(P_char ch, char *, int)
 {
 	struct affected_type af;
@@ -11579,7 +13773,7 @@ void do_dreadnaught(P_char ch, char *, int)
 	}
 
 	// (skl_lvl/2) rounds + (char_level/14) rounds + 1 round = 3 to 7 rounds
-	int duration = PULSE_VIOLENCE * ((GET_LEVEL(ch) / 14) + number(0, skl_lvl / 50) + 1);
+	int duration = dreadnaught_duration(live_rolls, ch, skl_lvl);
 
 	if (number(1, 101) < skl_lvl)
 	{
@@ -11608,7 +13802,7 @@ void do_dreadnaught(P_char ch, char *, int)
 			ch, &af, "&+yYou lower your &+Yguard&+y, and assume an offensive stance.",
 			"$n &+ylowers his guard, and assumes an offensive stance.&n");
 
-		set_short_affected_by(ch, TAG_DREADNAUGHT, duration + PULSE_VIOLENCE);
+		set_short_affected_by(ch, TAG_DREADNAUGHT, dreadnaught_rest(duration));
 		notch_skill(ch, SKILL_DREADNAUGHT, 6.67);
 		return;
 	}
@@ -11617,8 +13811,29 @@ void do_dreadnaught(P_char ch, char *, int)
 	    0, TO_CHAR);
 	act("$n &+yattempts to assume a &+Ydefensive&+y position, but fails horribly!&n", FALSE, ch,
 	    0, 0, TO_ROOM);
-	set_short_affected_by(ch, TAG_DREADNAUGHT, 65);
+	set_short_affected_by(ch, TAG_DREADNAUGHT, dreadnaught_failed_rest());
 	notch_skill(ch, SKILL_DREADNAUGHT, 6.67);
+}
+
+// How long, in pulses, a step's stance and its rest last.
+static int shadowstep_duration(P_char ch)
+{
+	return 140 - GET_CHAR_SKILL(ch, SKILL_SHADOWSTEP);
+}
+
+// How long, in pulses, a step hides the user.
+static int shadowstep_hide_duration()
+{
+	return 20;
+}
+
+std::string shadowstep_facts(P_char ch)
+{
+	return fact("Chance",
+		    std::to_string(MAX(0, GET_CHAR_SKILL(ch, SKILL_SHADOWSTEP) - 1)) + " in 102") +
+	       fact("Duration, and the rest after a failure", seconds(shadowstep_duration(ch))) +
+	       fact("Hidden", seconds(shadowstep_hide_duration())) +
+	       "  If you are fighting, it ends the fight and your attackers stop.\n";
 }
 
 void do_shadowstep(P_char ch, char *, int)
@@ -11639,7 +13854,7 @@ void do_shadowstep(P_char ch, char *, int)
 		return;
 	}
 
-	int dur = 140 - GET_CHAR_SKILL(ch, SKILL_SHADOWSTEP);
+	int dur = shadowstep_duration(ch);
 	if (number(1, 102) < GET_CHAR_SKILL(ch, SKILL_SHADOWSTEP))
 	{
 		act("&+LPooF! You perform an evasive maneouver, quickling darting into the sha&+wdo&+Wws&+L!&n",
@@ -11660,7 +13875,7 @@ void do_shadowstep(P_char ch, char *, int)
 		memset(&af, 0, sizeof(af));
 		af.type = SKILL_SHADOWSTEP;
 		af.bitvector = AFF_HIDE;
-		af.duration = 20;
+		af.duration = shadowstep_hide_duration();
 		af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL | AFFTYPE_NOSHOW;
 		affect_to_char(ch, &af);
 
@@ -11743,16 +13958,7 @@ void do_garrote(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	int success = GET_CHAR_SKILL(ch, SKILL_GARROTE);
-	// Old school assassin mobs learn garrote faster.
-	if (GET_CLASS(ch, CLASS_ASSASSIN))
-	{
-		success *= 2;
-		if (success > 100)
-		{
-			success = 100;
-		}
-	}
+	int success = garrote_threshold(ch);
 	notch_skill(ch, SKILL_GARROTE, 6.67);
 	if (number(1, 105) > success)
 	{
@@ -11762,8 +13968,8 @@ void do_garrote(P_char ch, char *argument, int /*cmd*/)
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("$N &+Ladeptly notices &n$n's attempt to &+rgarrote&+L them and blocks the attempt!",
 		    FALSE, ch, 0, victim, TO_NOTVICT);
-		set_short_affected_by(ch, SKILL_GARROTE, PULSE_VIOLENCE);
-		CharWait(ch, (3 * WAIT_SEC) / 2);
+		set_short_affected_by(ch, SKILL_GARROTE, garrote_miss_rest());
+		CharWait(ch, garrote_miss_lag());
 		return;
 	}
 
@@ -11777,16 +13983,53 @@ void do_garrote(P_char ch, char *argument, int /*cmd*/)
 	{
 		StopCasting(victim);
 	}
-	set_short_affected_by(ch, SKILL_GARROTE, PULSE_VIOLENCE * 2);
+	set_short_affected_by(ch, SKILL_GARROTE, garrote_hit_rest());
 	// @lvl 30: 2-4, @lvl 34: 3-5, @lvl 56: 5-7.
-	int numb = (GET_LEVEL(ch) - 1) / 11 + number(0, 2);
-	CharWait(ch, (WAIT_SEC * 3) / 2);
+	int numb = garrote_rounds(live_rolls, ch);
+	CharWait(ch, garrote_hit_lag());
 	if (!IS_FIGHTING(ch))
 	{
 		set_fighting(ch, victim);
 	}
 
 	add_event(event_garroteproc, PULSE_VIOLENCE, victim, 0, 0, 0, &numb, sizeof(numb));
+}
+
+// The sweeper's lag, in pulses, when the size is too far off, and otherwise.
+static int legsweep_size_lag()
+{
+	return (int)(PULSE_VIOLENCE * 0.5);
+}
+
+static int legsweep_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// How long, in pulses, a hit keeps the sweeper from the next takedown.
+static int legsweep_rest()
+{
+	return (int)(3.5 * PULSE_VIOLENCE);
+}
+
+// True on the 15 sweeps in 100 that leave the target prone.
+static bool legsweep_prone_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100) <= 15;
+}
+
+std::string legsweep_facts(P_char)
+{
+	return fact("Your lag and the target's on a hit", seconds(legsweep_lag()) + " each") +
+	       fact("Your lag on a miss", seconds(legsweep_lag())) +
+	       fact("Your lag if the size is too far off", seconds(legsweep_size_lag())) +
+	       fact("Your lag if the target is asleep",
+		    seconds(takedown_sleeping_target_lag()) + " (you attack it instead)") +
+	       fact("Your lag if the target evades", seconds(takedown_evade_lag())) +
+	       fact("Before your next takedown after a hit", seconds(legsweep_rest())) +
+	       fact("Chance a hit leaves the target prone", "15 in 100") +
+	       "  The target must be within one size of you. Centaurs, quadrupeds and\n"
+	       "  driders can't sweep.\n";
 }
 
 void do_legsweep(P_char ch, char *arg, int /*cmd*/)
@@ -11846,7 +14089,7 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		    vict, TO_NOTVICT);
 		act("$n attempts to legsweep you but loses $s &+Wbalance&n and lands on $s ass instead!",
 		    FALSE, ch, 0, vict, TO_VICT);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+		CharWait(ch, legsweep_size_lag());
 		SET_POS(ch, POS_PRONE + GET_STAT(ch));
 		return;
 	}
@@ -11859,7 +14102,7 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		    vict, TO_NOTVICT);
 		act("$n attempts to legsweep you but loses $s &+Wbalance&n and lands on $s ass instead!",
 		    FALSE, ch, 0, vict, TO_VICT);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 0.5));
+		CharWait(ch, legsweep_size_lag());
 		SET_POS(ch, POS_PRONE + GET_STAT(ch));
 		return;
 	}
@@ -11925,11 +14168,11 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 	{
 		if (!IS_TRUSTED(ch))
 		{
-			set_short_affected_by(ch, SKILL_BASH, (int)(3.5 * PULSE_VIOLENCE));
+			set_short_affected_by(ch, SKILL_BASH, legsweep_rest());
 		}
 
 		// 15% chance to ass target.
-		if (number(1, 100) <= 15)
+		if (legsweep_prone_roll(live_rolls))
 		{
 			act("You quickly maneuver alongside $N&n, drop low and &+RCOMPLETELY&n &+Wsweep&n $S legs out from under $M!",
 			    FALSE, ch, 0, vict, TO_CHAR);
@@ -11951,8 +14194,8 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 
 			SET_POS(vict, POS_SITTING + GET_STAT(vict));
 		}
-		CharWait(ch, PULSE_VIOLENCE * 2);
-		CharWait(vict, PULSE_VIOLENCE * 2);
+		CharWait(ch, legsweep_lag());
+		CharWait(vict, legsweep_lag());
 	}
 	else
 	{
@@ -11964,7 +14207,7 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		    vict, TO_VICT);
 
 		SET_POS(ch, POS_SITTING + GET_STAT(ch));
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, legsweep_lag());
 	}
 
 	if (!IS_FIGHTING(ch) && IS_ALIVE(ch) && IS_ALIVE(vict))
@@ -11972,6 +14215,79 @@ void do_legsweep(P_char ch, char *arg, int /*cmd*/)
 		set_fighting(ch, vict);
 	}
 	return;
+}
+
+// The roll taken from the rating; what is left picks the strike.
+static int crippling_strike_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 170);
+}
+
+// How long, in pulses, the best strike deafens.
+static int crippling_strike_deaf_duration(const Rolls &rolls)
+{
+	return rolls.number(25, 50) * WAIT_SEC;
+}
+
+// The vitality the two best strikes take.
+static int crippling_strike_best_vitality(const Rolls &rolls)
+{
+	return rolls.number(10, 25);
+}
+
+static int crippling_strike_second_vitality(const Rolls &rolls)
+{
+	return rolls.number(5, 25);
+}
+
+// Each strike's damage, best first.
+static int crippling_strike_best_damage(const Rolls &rolls)
+{
+	return 4 * (40 + (rolls.dice(2, 20)));
+}
+
+static int crippling_strike_second_damage(const Rolls &rolls)
+{
+	return 4 * (30 + (rolls.dice(2, 20)));
+}
+
+static int crippling_strike_third_damage(const Rolls &rolls)
+{
+	return 4 * (30 + (rolls.dice(1, 20)));
+}
+
+static int crippling_strike_fourth_damage(const Rolls &rolls)
+{
+	return 4 * (10 + (rolls.dice(1, 20)));
+}
+
+std::string crippling_strike_facts(P_char ch)
+{
+	const int skl = GET_CHAR_SKILL(ch, SKILL_CRIPPLING_STRIKE);
+	// Of the 171 rolls, how many leave more than `least`.
+	const auto above = [skl](int least) { return MAX(0, skl - least); };
+	const auto chance = [&](int least, int best)
+	{ return std::to_string(above(least) - above(best)) + " in 171"; };
+	return fact("Best strike", chance(85, 171)) +
+	       fact("  Damage", show({ crippling_strike_best_damage(lowest_rolls),
+				       crippling_strike_best_damage(highest_rolls) })) +
+	       fact("  Vitality lost", show({ crippling_strike_best_vitality(lowest_rolls),
+					      crippling_strike_best_vitality(highest_rolls) })) +
+	       fact("  Deafened", seconds(crippling_strike_deaf_duration(lowest_rolls)) + " to " +
+					  seconds(crippling_strike_deaf_duration(highest_rolls))) +
+	       fact("Second strike", chance(65, 85)) +
+	       fact("  Damage", show({ crippling_strike_second_damage(lowest_rolls),
+				       crippling_strike_second_damage(highest_rolls) })) +
+	       fact("  Vitality lost", show({ crippling_strike_second_vitality(lowest_rolls),
+					      crippling_strike_second_vitality(highest_rolls) })) +
+	       fact("Third strike", chance(45, 65)) +
+	       fact("  Damage", show({ crippling_strike_third_damage(lowest_rolls),
+				       crippling_strike_third_damage(highest_rolls) })) +
+	       fact("Fourth strike", chance(25, 45)) +
+	       fact("  Damage", show({ crippling_strike_fourth_damage(lowest_rolls),
+				       crippling_strike_fourth_damage(highest_rolls) })) +
+	       "  It is checked when a humanoid, non-elite target you attack while it fights\n"
+	       "  someone else gets back up or tries to flee. You must be standing.\n";
 }
 
 // Check for crippling strike skill
@@ -12017,7 +14333,7 @@ bool check_crippling_strike(P_char ch)
 			}
 
 			skl = GET_CHAR_SKILL(kala, SKILL_CRIPPLING_STRIKE);
-			success = skl - number(0, 170);
+			success = skl - crippling_strike_roll(live_rolls);
 
 			if (skl && success > 0)
 			{
@@ -12035,7 +14351,7 @@ bool check_crippling_strike(P_char ch)
 					af.type = SKILL_CRIPPLING_STRIKE;
 					af.bitvector4 = AFF4_DEAF;
 					af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-					af.duration = number(25, 50) * WAIT_SEC;
+					af.duration = crippling_strike_deaf_duration(live_rolls);
 					send_to_char("&+WDoh! You can't hear a thing!&n", ch);
 
 					affect_to_char_with_messages(
@@ -12043,8 +14359,9 @@ bool check_crippling_strike(P_char ch)
 						"&+WOooh, is that bird song you hear? How lovely.&n",
 						"$n&n seems to be listening to the birds singing.");
 
-					GET_VITALITY(ch) -= number(10, 25);
-					damage(kala, ch, 4 * (40 + (dice(2, 20))),
+					GET_VITALITY(ch) -=
+						crippling_strike_best_vitality(live_rolls);
+					damage(kala, ch, crippling_strike_best_damage(live_rolls),
 					       SKILL_CRIPPLING_STRIKE);
 					if (!IS_ALIVE(kala))
 					{
@@ -12059,8 +14376,9 @@ bool check_crippling_strike(P_char ch)
 					    FALSE, kala, 0, ch, TO_VICT);
 					act("$n stomps on $N's knee, twisting it.", FALSE, kala, 0,
 					    ch, TO_NOTVICT);
-					GET_VITALITY(ch) -= number(5, 25);
-					damage(kala, ch, 4 * (30 + (dice(2, 20))),
+					GET_VITALITY(ch) -=
+						crippling_strike_second_vitality(live_rolls);
+					damage(kala, ch, crippling_strike_second_damage(live_rolls),
 					       SKILL_CRIPPLING_STRIKE);
 					if (!IS_ALIVE(kala))
 					{
@@ -12075,7 +14393,7 @@ bool check_crippling_strike(P_char ch)
 					    FALSE, kala, 0, ch, TO_VICT);
 					act("$n slams his knee into $N's face.", FALSE, kala, 0, ch,
 					    TO_NOTVICT);
-					damage(kala, ch, 4 * (30 + (dice(1, 20))),
+					damage(kala, ch, crippling_strike_third_damage(live_rolls),
 					       SKILL_CRIPPLING_STRIKE);
 					if (!IS_ALIVE(kala))
 					{
@@ -12090,7 +14408,7 @@ bool check_crippling_strike(P_char ch)
 					    FALSE, kala, 0, ch, TO_VICT);
 					act("As $N stands, $n leaps forward and slams the hilt of his weapon into $s back.",
 					    FALSE, kala, 0, ch, TO_NOTVICT);
-					damage(kala, ch, 4 * (10 + (dice(1, 20))),
+					damage(kala, ch, crippling_strike_fourth_damage(live_rolls),
 					       SKILL_CRIPPLING_STRIKE);
 					if (!IS_ALIVE(kala))
 					{
@@ -12110,6 +14428,49 @@ bool check_crippling_strike(P_char ch)
 		}
 	}
 	return FALSE;
+}
+
+// What a taunt adds to make the target's fear save harder.
+static int taunt_save_modifier(int skl_lvl)
+{
+	return MAX(2, skl_lvl / 5);
+}
+
+// The chance threshold a taunt rolls 1-100 against.
+static int taunt_threshold(int skl_lvl)
+{
+	return MIN(skl_lvl, 99);
+}
+
+// How long, in pulses, a taunted target stays on the taunter; NPCs twice as long.
+static int taunt_duration(int skl_lvl, bool npc)
+{
+	return BOUNDED(2, skl_lvl / 10, 10) * WAIT_SEC * (npc ? 2 : 1);
+}
+
+// The target's lag after a taunt lands, in pulses.
+static int taunt_target_lag()
+{
+	return WAIT_SEC * 2;
+}
+
+// The taunter's lag, in pulses.
+static int taunt_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1);
+}
+
+std::string taunt_facts(P_char ch)
+{
+	const int skl_lvl = GET_CHAR_SKILL(ch, SKILL_TAUNT);
+	return fact("Chance", std::to_string(taunt_threshold(skl_lvl)) + " in 100") +
+	       fact("Modifier on the target's fear save",
+		    "+" + std::to_string(taunt_save_modifier(skl_lvl))) +
+	       fact("Target stays on you", seconds(taunt_duration(skl_lvl, false)) + ", a mob " +
+						   seconds(taunt_duration(skl_lvl, true))) +
+	       fact("Target's lag", seconds(taunt_target_lag())) +
+	       fact("Your lag", seconds(taunt_lag())) +
+	       "  The target's fear save stops both. Taunting it again adds to the time.\n";
 }
 
 void do_taunt(P_char ch, char *arg, int cmd)
@@ -12143,8 +14504,8 @@ void do_taunt(P_char ch, char *arg, int cmd)
 	}
 
 	// mod of 2 to 20, scaled linearly with skill level
-	saveMod = MAX(2, skl_lvl / 5);
-	percent_chance = MIN(skl_lvl, 99);
+	saveMod = taunt_save_modifier(skl_lvl);
+	percent_chance = taunt_threshold(skl_lvl);
 
 	if (!IS_ALIVE(vict))
 	{
@@ -12167,8 +14528,7 @@ void do_taunt(P_char ch, char *arg, int cmd)
 		if (IS_TRUSTED(ch) || !NewSaves(vict, SAVING_FEAR, saveMod))
 		{
 			paf = get_spell_from_char(vict, SKILL_TAUNT);
-			int duration =
-				BOUNDED(2, skl_lvl / 10, 10) * WAIT_SEC * (IS_NPC(vict) ? 2 : 1);
+			int duration = taunt_duration(skl_lvl, IS_NPC(vict));
 			if (paf && paf->context == (void *)ch)
 			{
 				// update taunt duration
@@ -12201,7 +14561,7 @@ void do_taunt(P_char ch, char *arg, int cmd)
 			act("$n &+Wseems to have riled up &n$N&+W!&n", TRUE, ch, NULL, vict,
 			    TO_NOTVICT);
 
-			CharWait(vict, WAIT_SEC * 2);
+			CharWait(vict, taunt_target_lag());
 		}
 		else
 		{
@@ -12221,5 +14581,5 @@ void do_taunt(P_char ch, char *arg, int cmd)
 		    TO_NOTVICT);
 	}
 
-	CharWait(ch, (int)(PULSE_VIOLENCE * 1));
+	CharWait(ch, taunt_lag());
 }

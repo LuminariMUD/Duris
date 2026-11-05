@@ -197,6 +197,7 @@ def production():
     parser = source("sparser.c").read_text()
     start = parser.index("typedef struct\n{\n\tconst char *name;")
     code += parser[start:parser.index("/*", start)]
+    code += extract_function("utility.c", "int dice(int num, int size)") + '\n#include "abilities/abilities.h"\nconst Rolls live_rolls = { dice, number };\n'
     return code + "\n".join(extract_function(file, signature) for file, signature in [
         ("utility.c", "int flag2idx("),
         ("utility.c", "int IS_MORPH("),
@@ -220,6 +221,19 @@ def production():
         ("magic.c", "static void purify_group_member("),
         ("magic.c", "static int slow_duration("),
         ("magic.c", "void spell_slow("),
+        ("actoff.c", "static int backstab_skill("),
+        ("actoff.c", "static int backstab_luck_bonus("),
+        ("actoff.c", "static int backstab_damage("),
+        ("actoff.c", "static int backstab_noticed_damage("),
+        ("actoff.c", "static int backstab_helpless_damage("),
+        ("actoff.c", "static int backstab_incapacitated_damage("),
+        ("actoff.c", "static int backstab_repeat_window("),
+        ("actoff.c", "static int backstab_lag("),
+        ("actoff.c", "static bool backstab_air_aura_roll("),
+        ("actoff.c", "static float critical_stab_threshold("),
+        ("actoff.c", "static float spinal_tap_threshold("),
+        ("actoff.c", "static int critical_stab_damage("),
+        ("actoff.c", "static int spinal_tap_damage("),
         ("actoff.c", "bool single_stab("),
         ("actoff.c", "bool backstab(P_char ch, P_char victim)"),
     ])

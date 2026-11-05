@@ -33,6 +33,7 @@
 #include "kingdom/kingdom.h"
 #include "persistence/persistence_checkpoint.h"
 #include "player/player_revision_state.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -3190,6 +3191,28 @@ void do_unlock(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// How long, in pulses, an attempt keeps the picker from another.
+static int pick_lock_rest()
+{
+	return get_property("timer.secs.pickLock", 5);
+}
+
+// The lag, in pulses, after an attempt.
+static int pick_lock_lag()
+{
+	return 8;
+}
+
+std::string pick_lock_facts(P_char ch)
+{
+	return fact("Chance", std::to_string(GET_CHAR_SKILL(ch, SKILL_PICK_LOCK)) +
+				      " in 100, plus your pick's bonus") +
+	       fact("Before you can try again", seconds(pick_lock_rest())) +
+	       fact("Your lag", seconds(pick_lock_lag())) +
+	       "  You need a lock pick. Pickproof locks always fail, and a failure can break\n"
+	       "  the pick.\n";
+}
+
 void do_pick(P_char ch, char *argument, int /*cmd*/)
 {
 	int percent, door, other_room, chance, retval;
@@ -3235,7 +3258,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		send_to_char("Using what?  Your teeth?\n", ch);
 		return;
 	}
-	if (!affect_timer(ch, get_property("timer.secs.pickLock", 5), SKILL_PICK_LOCK))
+	if (!affect_timer(ch, pick_lock_rest(), SKILL_PICK_LOCK))
 	{
 		send_to_char("Your hands are still shaking from that last attempt, rest a bit.\n",
 			     ch);
@@ -3281,7 +3304,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("You failed to pick the lock.\n", ch);
 			notch_skill(ch, SKILL_PICK_LOCK, 25);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 			percent = percent - chance + pick->value[1] -
 						  IS_SET(obj->value[1], CONT_HARDPICK) ?
 					  15 :
@@ -3308,7 +3331,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 			REMOVE_BIT(obj->value[1], CONT_LOCKED);
 			send_to_char("*Click*\n", ch);
 			act("$n fiddles with $p.", FALSE, ch, obj, 0, TO_ROOM);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 		}
 	else if ((door = find_door(ch, Gbuf2, Gbuf3)) >= 0)
 		if (IS_RIDING(ch))
@@ -3337,7 +3360,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 		{
 			send_to_char("You failed to pick the lock.\n", ch);
 			notch_skill(ch, SKILL_PICK_LOCK, 25);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 			percent = percent - chance + pick->value[1];
 			if (IS_SET(EXIT(ch, door)->exit_info, EX_PICKPROOF))
 				percent -= 20; /*
@@ -3373,7 +3396,7 @@ void do_pick(P_char ch, char *argument, int /*cmd*/)
 			else
 				act("$n picks the lock of the door.", TRUE, ch, 0, 0, TO_ROOM);
 			send_to_char("The lock quickly yields to your skills.\n", ch);
-			CharWait(ch, 8);
+			CharWait(ch, pick_lock_lag());
 
 			if (IS_SET(EXIT(ch, door)->exit_info, EX_PICKABLE))
 				pick->value[1] += 20; /*

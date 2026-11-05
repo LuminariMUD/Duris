@@ -9,7 +9,7 @@ and a refused publication cannot destroy an already-authoritative graph.
 
 import unittest
 
-from _paths import source
+from _paths import extract_function, source
 from _source_contract import function_body
 
 
@@ -50,7 +50,8 @@ class TrustedStealCustodyContractTests(unittest.TestCase):
         self.assertIn("if (trusted)\n\t\tpercent = 100;", steal)
         self.assertIn("roll = trusted ? 1 : number(0, 100);", steal)
         self.assertIn("if (!trusted && roll > MIN(percent, 99))", steal)
-        self.assertIn("if (!trusted)\n\t\tCharWait(ch, PULSE_VIOLENCE * 2);", steal)
+        self.assertIn("if (!trusted)\n\t\tCharWait(ch, steal_lag());", steal)
+        self.assertIn("return PULSE_VIOLENCE * 2;", extract_function("actoth.c", "static int steal_lag("))
         self.assertIn("if (trusted)\n\t\treturn;", steal)
 
     def test_trusted_steal_preserves_account_and_soul_binding(self):
