@@ -24,8 +24,14 @@ from _source_contract import function_body, strip_comments
 
 BOUNDED = extract_function("utility.c", "int BOUNDED(int a, int b, int c)")
 FREEDOM = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch)")
-GRASP = extract_function(
-    "smagic.c", "void earthen_grasp(int level, P_char ch, P_char victim, bool greater)"
+GRASP = "\n".join(
+    extract_function("smagic.c", signature)
+    for signature in (
+        "static int earthen_grasp_level(",
+        "static int earthen_grasp_damage(",
+        "static int earthen_grasp_saved_damage(",
+        "void earthen_grasp(int level, P_char ch, P_char victim, bool greater)",
+    )
 )
 SAVES = extract_function("sparser.c", "bool NewSaves(P_char ch, int save_type, int mod)").replace(
     "bool NewSaves(", "bool production_saves(", 1
@@ -41,6 +47,7 @@ PRELUDE = r'''
 #include "net/comm.h"
 #include "world/difficulty.h"
 #include "world/difficulty_math.h"
+#include "abilities/abilities.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -133,6 +140,7 @@ int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *)
 bool has_innate(P_char, int) { return false; }
 int get_default_save_mod(P_char, P_char, int, int) { return 0; }
 int dice(int, int) { return 1; }
+const Rolls live_rolls = { dice, number };
 void stop_fighting(P_char) {}
 void StopMercifulAttackers(P_char) {}
 ''' + BOUNDED + FREEDOM + SAVES
