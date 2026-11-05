@@ -128,16 +128,30 @@ template <typename IO, typename State> void fields(IO &io, State &s)
 	io.number(s.sex);
 	io.number(s.size);
 	io.number(s.alignment);
+	if (s.version == 2)
+		for (auto &deadline : s.named_set_cooldowns)
+			io.number(deadline);
 }
 
 bool valid(const pet_restore_state &s)
 {
+	if ((s.version != 1 && s.version != 2) ||
+	    !std::all_of(s.named_set_cooldowns.begin(), s.named_set_cooldowns.end(),
+			 [](int64_t v) { return v >= 0 && v <= INT64_MAX / 16; }) ||
+	    (s.version == 1 &&
+	     std::any_of(s.named_set_cooldowns.begin(), s.named_set_cooldowns.end(),
+			 [](int64_t v) { return v != 0; })))
+		return false;
+	// Ordinary pets retain their existing prototype/resource/charm restore path.
+	// Their v2 payload carries only cooldowns; the summon fields are unused.
+	if (s.version == 2 && s.kind == summoned_pet_kind::ordinary)
+		return true;
 	const auto text_ok = [](const std::string &v)
 	{
 		return !v.empty() && v.size() <= PET_RESTORE_STATE_MAX_TEXT &&
 		       v.find('\0') == std::string::npos;
 	};
-	return s.version == 1 && static_cast<uint32_t>(s.kind) <= 24 && s.charm_expires_at >= 0 &&
+	return static_cast<uint32_t>(s.kind) <= 24 && s.charm_expires_at >= 0 &&
 	       s.death_expires_at >= 0 && s.charm_expires_at <= INT64_MAX / 16 &&
 	       s.death_expires_at <= INT64_MAX / 16 && text_ok(s.name) &&
 	       text_ok(s.short_description) && text_ok(s.long_description) && s.level > 0 &&
@@ -218,6 +232,8 @@ bool legacy_summon_prototype(int vnum)
 
 bool summoned_pet_matches_prototype(summoned_pet_kind kind, int vnum)
 {
+	if (kind == summoned_pet_kind::ordinary)
+		return !legacy_summon_prototype(vnum);
 	const auto value = static_cast<uint32_t>(kind);
 	if (value >= 1 && value <= 14)
 		return vnum == 1201;

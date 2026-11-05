@@ -1,11 +1,11 @@
 # Named zone sets: end-to-end implementation plan
 
 Status: implementation in progress; six focused implementation PRs are pushed
-and ready for review in the stack below.
-Date: 2026-11-05.
+and ready for review; the cooldown chunk is being verified next.
+Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-ordinary-casts`, based on
-`branch/named-zone-set-historical-origins`.
+Working branch: `branch/named-zone-set-cooldowns`, based on
+`branch/named-zone-set-ordinary-casts`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -264,11 +264,9 @@ make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-se
 git diff --check
 ```
 
-**Next:** complete ordinary-cast entry handling in both orders and cooldown
-ownership (section 5). Real ordinary casts after an existing set must gain their
-own duration/source without stacking the set's numeric benefit. Re-equipping,
-swapping the selected item, or alternating sets must not reset the three timed
-families' cooldowns. Do not install expansion rows before these gates pass. Actual in-game
+**Subsequent work:** the ordinary-cast and cooldown chunks below implement these
+entry/ownership requirements (section 5). Do not install expansion rows before
+their required gameplay gates pass. Actual in-game
 wear/transfer/save/reboot journeys, private chest/locker/shop journeys, live Redis
 lifecycle checks, balance, help publication, and the wider eligibility review
 remain outstanding. No production operation, release, or release tag has occurred.
@@ -378,14 +376,13 @@ make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-se
 git diff --check
 ```
 
-Cooldown starting point: existing persisted short affects already capture the
+Cooldown investigation: existing persisted short affects already capture the
 remaining event pulses in `player_snapshot_capture.c`; `enter_game()` in
 `account/nanny.c` advances SHORT+OFFLINE events by elapsed offline pulses.
 `affect_timer()` uses `TAG_SKILL_TIMER` but deliberately bypasses trusted staff,
-so do not use that bypass for named-set timing. Check the existing spell-ID
-timer namespace and pet/NPC restore behavior before selecting the final reuse.
-Create persistent timer state outside a set grant's creation scope so it cannot
-inherit SET/NOSAVE ownership or disappear when the equipment is removed.
+so the implementation below creates timers directly. The spell-ID namespace and
+pet/NPC restore paths were checked before selecting that reuse. Explicit timer
+exclusion from grant provenance prevents SET/NOSAVE ownership and gear cleanup.
 
 The branch also includes parent review fixes through `db3967686`: shared level
 caps, legacy HP membership for retired/unloaded titles, no origin stamping on
@@ -393,6 +390,85 @@ unworn pieces, and regranting Song of Dragons to group members who lost theirs.
 The merge is history-preserving. Ownership, membership, and the added
 `test_named_set_effect_levels.py` pass after integration, as do both backend
 builds. Preserve those fixes when implementing the cooldown chunk.
+
+### Cooldown chunk
+
+**Outcome:** Stoneskin, Invigorate and Conjure Elemental share one cooldown per
+wearer and configured spell across driver replacements, re-equipping, alternating
+zone sets, and save/reload. The original object's `timer[0]` check remains a
+transfer floor. Existing property names/defaults (60/60/300 seconds), cast level
+caps, full-vitality/skin preconditions and native invocation consequences remain.
+An attempted native invocation consumes the cooldown as before, even if the
+native handler refuses a summon. Ordinary spell entry points ignore these timers.
+
+**Non-goals:** no new SQL columns, timer service, configuration or change to
+ordinary spell cooldowns. No expansion assignments are installed in this chunk.
+
+**Files/ablation:** `named_set_effects.{h,c}` reuses `TAG_SKILL_TIMER` and the
+existing short-affect scheduler. The three spell IDs have no existing skill-timer
+producer/consumer collision. Direct timer creation avoids `affect_timer()`'s staff
+bypass. Timers are STORE+SHORT+OFFLINE and are explicitly excluded by grant
+provenance; unlike set buffs, they are saved and survive equipment cleanup.
+The three cases in `specs.object.c` check the wearer timer before invoking and
+start it after invocation. This avoids a second timing mechanism or per-zone
+timer state. Generic data-only timer exclusion is narrower than restructuring
+every spell invocation's grant scope.
+
+PC snapshots already save the remaining short-event pulses and restore them
+through `affect_to_char()`; login advances OFFLINE events by elapsed offline time.
+The real reboot test exposed a later blanket `TAG_SKILL_TIMER` reset in login.
+`account/nanny.c` now resets only non-OFFLINE skill timers, preserving the ordinary
+notch timers' reset behavior and the named timers' already-adjusted countdowns.
+Pets did not save arbitrary affects, so `pet_restore_state` now supports a v2
+extension containing three absolute deadlines. `pet_restore_runtime.c` writes v2
+only while a cooldown exists and restores only unexpired time. Pet deadlines round
+up to whole seconds, never shortening the saved cooldown. V1 remains readable and
+is still emitted for summoned pets without active cooldowns. Ordinary pets without
+cooldowns still have no payload. Ordinary v2 pets restore only timers;
+`player_load_pets.c` retains their existing prototype, saved maxima and charm path.
+Summoned pets retain their full existing stat/identity/lifetime path. Older readers
+hold unknown v2 pet payloads and their equipment for review rather than guessing;
+rollback must account for this existing recovery behavior.
+
+**Focused proof passed:** `test_named_set_cooldowns.py` uses the real grant dispatcher,
+affect allocation/removal, scheduler, snapshot wire, player affect restore loop,
+offline-login and final timer-reset loops, and pet capture/apply. Native spell
+consequences, output and stat totals are fixtures. It covers driver/zone swaps, transfer floors, independent
+wearers, trusted staff, equipment cleanup, actual expiry, player reload/offline
+expiry, ordinary casts and both ordinary/summoned pet deadlines. The existing
+pet-state codec test covers v1/v2 and malformed deadlines; the loader test adds
+ordinary v2 pet resource/charm compatibility. Full interpreter-driven grants and
+gear swaps, live SQL cooldown storage, and an ordinary-pet reboot journey remain
+required before project completion.
+Both MariaDB and flat-file builds, the cooldown/ownership/level tests, pet-state
+codec, player item/pet loader, snapshot capture, and Conjurer fire runtime pass.
+The extended isolated flat-file server journey preserves player short timers and
+summoned-pet v2 deadlines through two reconnect/save/reboot cycles. Existing pet
+identity/stats/equipment, offline artifact expiry, finite-pet death and held-item
+recovery also pass. The new cooldown state in this journey is seeded offline;
+native grant/gear-swap guards are exercised by the separate scheduler regression.
+
+```sh
+python3 tests/async/test_named_set_cooldowns.py
+python3 tests/async/test_named_set_effect_ownership.py
+python3 tests/async/test_named_set_effect_levels.py
+python3 tests/async/test_pet_restore_state.py
+python3 tests/async/test_player_load_items.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_conjurer_fire_runtime.py
+python3 tests/async/test_pet_restart_journey.py "$PWD/bin/tests/named-set-flatfile-server"
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+./scripts/format.sh --check
+git diff --check
+```
+
+**Next:** audit every selected handler's actual power at 3/5/6 pieces and at its
+maximum effective level, including conditional class/alignment/light cases;
+record final piece requirements in the assignment document. Complete the wider
+world eligibility review before installing the expansion rows. The remaining
+end-to-end origin/gear/storage journeys, live Redis lifecycle, help/publication
+and compatibility rollback gates remain open below.
 
 ## Start here
 

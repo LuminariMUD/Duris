@@ -4,10 +4,38 @@
 #include "core/utils.h"
 #include "item/named_set_origin.h"
 #include "item/named_sets.h"
+#include "world/events.h"
 #include "world/vnum.obj.h"
 
 extern P_index obj_index;
 extern Skill skills[];
+
+int named_set_cooldown_remaining(P_char ch, int spell)
+{
+	for (const affected_type *affect = ch->affected; affect; affect = affect->next)
+		if (affect->type == TAG_SKILL_TIMER && affect->modifier == spell)
+		{
+			P_nevent event;
+			LOOP_EVENTS_CH(event, ch->nevents)
+				if (event->func == event_short_affect && event->data &&
+				    static_cast<event_short_affect_data *>(event->data)->af ==
+					    affect)
+					return MAX(0, ne_event_time(event));
+		}
+	return 0;
+}
+
+void start_named_set_cooldown(P_char ch, int spell, int pulses)
+{
+	if (pulses <= 0 || named_set_cooldown_remaining(ch, spell))
+		return;
+	affected_type affect{};
+	affect.type = TAG_SKILL_TIMER;
+	affect.modifier = spell;
+	affect.duration = pulses;
+	affect.flags = AFFTYPE_STORE | AFFTYPE_SHORT | AFFTYPE_OFFLINE;
+	affect_to_char(ch, &affect);
+}
 
 static bool same_spell(int first, int second)
 {

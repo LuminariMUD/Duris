@@ -33,6 +33,11 @@
 HARNESS_STUB named_set_ordinary_cast::named_set_ordinary_cast(P_char, P_char, int) {}
 HARNESS_STUB named_set_ordinary_cast::~named_set_ordinary_cast() {}
 HARNESS_STUB void update_named_set_suspension(P_char, const affected_type *) {}
+HARNESS_STUB int named_set_cooldown_remaining(P_char, int)
+{
+	return 0;
+}
+HARNESS_STUB void start_named_set_cooldown(P_char, int, int) {}
 // Ordinary item fixtures do not provide durable starter-kit storage. Dedicated
 // starter/revision tests link the real implementations, overriding these refusals.
 HARNESS_STUB bool starter_kit_intent_bind(uint32_t, const critical_command &)

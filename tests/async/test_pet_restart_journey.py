@@ -161,6 +161,28 @@ def run(binary):
             assert len(rows()) == 2, "expired pet remained in owner's checkpoint"
             assert any(row[1] == seeded[0][1] for row in rows()), "permanent pet expired"
             print("restored finite pet dies at its deadline; permanent pet remains", flush=True)
+            stop()
+            rows("arm-cooldowns")
+            initial_timers = rows("timers")
+            assert len(initial_timers) == 6, initial_timers
+            for cycle in range(2):
+                boot()
+                client = journey.reconnect_character(port)
+                client.send("save")
+                client.expect(f"Save complete for {journey.CHARACTER}.", timeout=30)
+                timers = rows("timers")
+                assert len(timers) == 6, timers
+                for kind, spell, remaining in timers:
+                    initial = next(int(row[2]) for row in initial_timers
+                                   if row[:2] == [kind, spell])
+                    if kind == "player":
+                        assert 0 < int(remaining) <= initial, timers
+                    else:
+                        # Pet payloads round remaining pulses up to seconds.
+                        assert time.time() < int(remaining) <= initial + cycle + 1, timers
+                print(f"cooldown restart {cycle + 1}: player short timers and v2 pet deadlines preserved", flush=True)
+                if cycle == 0:
+                    stop()
             client.send("quit")
             client.expect("ACCOUNT MENU", timeout=30)
             remaining = rows()

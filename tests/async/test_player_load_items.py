@@ -339,6 +339,7 @@ void extract_char(P_char pet)
 }
 
 int last_pet_flags = 0;
+int last_pet_duration = 0;
 int GET_CLASS(P_char ch, uint cls) { return (ch->player.m_class & cls) != 0; }
 int last_death_delay = 0;
 void schedule_pet_death(P_char, int delay) { last_death_delay = delay; }
@@ -353,6 +354,7 @@ char affect_total(P_char ch, int)
 int setup_pet(P_char, P_char, int duration, int flags)
 {
     last_pet_flags = flags;
+    last_pet_duration = duration;
     return duration;
 }
 
@@ -1330,6 +1332,33 @@ int main()
         assert(owner.pc.held_pets->pets[0].items[0].object_uid == 20);
         player_load_pets_commit(&owner.character, &pets, result);
         assert(!owner.character.followers);
+    }
+
+    {
+        // A cooldown-only ordinary pet retains the legacy resource/charm path.
+        reset_test_state();
+        test_character owner(42);
+        player_load_result result = base_result();
+        result.snapshot.room_vnum = 123;
+        add_pet(result, 3001, 200);
+        pet_restore_state state;
+        state.version = 2;
+        state.named_set_cooldowns = {time(nullptr) + 60, 0, 0};
+        assert(pet_restore_state_encode(state, &result.snapshot.pets[0].restore_state));
+        std::vector<P_char> pets;
+        player_load_pet_materialize_metrics metrics{};
+        assert(player_load_pets_stage(&owner.character, result, &pets, &metrics));
+        assert(pets.size() == 1 && pets[0] && !owner.pc.held_pets);
+        assert(GET_MAX_HIT(pets[0]) == 20 && GET_HIT(pets[0]) == 10);
+        assert(GET_MAX_MANA(pets[0]) == 5 && GET_MANA(pets[0]) == 3);
+        assert(GET_MAX_VITALITY(pets[0]) == 6 && GET_VITALITY(pets[0]) == 4);
+        assert(!pets[0]->only.npc->summon_kind);
+        player_load_pets_commit(&owner.character, &pets, result);
+        assert(owner.character.followers && (last_pet_flags & PET_RESTORE));
+        assert(last_pet_duration == 12);
+        extract_char(owner.character.followers->follower);
+        std::free(owner.character.followers);
+        owner.character.followers = nullptr;
     }
 
     for (bool mephit : {false,true}) for (int vnum : {1100,1110,1111,1112}) {

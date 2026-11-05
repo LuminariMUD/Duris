@@ -2125,7 +2125,13 @@ void enter_game(P_desc d)
 		REMOVE_BIT(ch->specials.act, PLR_ANONYMOUS);
 	}
 
-	affect_from_char(ch, TAG_SKILL_TIMER);
+	// Offline timers have already been advanced above and must survive login.
+	for (affected_type *timer = ch->affected, *next; timer; timer = next)
+	{
+		next = timer->next;
+		if (timer->type == TAG_SKILL_TIMER && !(timer->flags & AFFTYPE_OFFLINE))
+			affect_remove(ch, timer);
+	}
 
 	memset(&af1, 0, sizeof(af1));
 	af1.type = TAG_SKILL_TIMER;

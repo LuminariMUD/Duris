@@ -37,6 +37,9 @@ class named_set_grant
 		if (!current_ || !current_->wearer_ || current_->zone_ <= 0 ||
 		    (target != current_->wearer_ && target != current_->recipient_))
 			return;
+		// Cooldowns belong to the wearer, survive saves and outlive the gear.
+		if (affect->type == TAG_SKILL_TIMER)
+			return;
 		// Summons and instant vitality retain their native timed consequences.
 		if (current_->spell_ == SPELL_CONJURE_ELEMENTAL ||
 		    current_->spell_ == SPELL_INVIGORATE)
@@ -93,5 +96,11 @@ class named_set_ordinary_cast
 // Reconcile application only: removal/support remains with normal set cleanup.
 // The optional retiring node is ignored before its wear-off message/removal.
 void update_named_set_suspension(P_char ch, const affected_type *retiring = nullptr);
+
+// Existing short-affect pulses, shared by all sets granting this spell.
+inline constexpr int named_set_cooldown_spells[] = { SPELL_STONE_SKIN, SPELL_CONJURE_ELEMENTAL,
+						     SPELL_INVIGORATE };
+int named_set_cooldown_remaining(P_char ch, int spell);
+void start_named_set_cooldown(P_char ch, int spell, int pulses);
 
 #endif

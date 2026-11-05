@@ -1,6 +1,7 @@
 // Offline mutator for synthetic journey fixtures only. Never use on live state.
 #include "core/structs.h"
 #include "core/defines.h"
+#include "magic/spells.h"
 #include "flatfile/flatfile_player_snapshot_file.h"
 #include "flatfile/flatfile_store.h"
 #include "player/player_snapshot_codec.h"
@@ -107,7 +108,52 @@ int main(int argc, char **argv)
 		}
 		assert(armed);
 	}
-	if (mode == "seed" || mode == "arm-expiry")
+	if (mode == "arm-cooldowns")
+	{
+		bool armed = false;
+		for (auto &pet : snapshot.pets)
+		{
+			pet_restore_state state;
+			if (pet.hold_reason != pet_hold_reason::none ||
+			    !pet_restore_state_decode(pet.restore_state, &state))
+				continue;
+			state.version = 2;
+			state.named_set_cooldowns.fill(time(nullptr) + 300);
+			assert(pet_restore_state_encode(state, &pet.restore_state));
+			armed = true;
+		}
+		assert(armed);
+		for (int spell : { SPELL_STONE_SKIN, SPELL_CONJURE_ELEMENTAL, SPELL_INVIGORATE })
+		{
+			player_affect_snapshot timer{};
+			timer.type = TAG_SKILL_TIMER;
+			timer.modifier = spell;
+			timer.duration = 300 * WAIT_SEC;
+			timer.flags = AFFTYPE_STORE | AFFTYPE_SHORT | AFFTYPE_OFFLINE;
+			snapshot.affects.push_back(timer);
+		}
+	}
+	if (mode == "timers")
+	{
+		for (const auto &affect : snapshot.affects)
+			if (affect.type == TAG_SKILL_TIMER &&
+			    (affect.modifier == SPELL_STONE_SKIN ||
+			     affect.modifier == SPELL_CONJURE_ELEMENTAL ||
+			     affect.modifier == SPELL_INVIGORATE))
+				std::cout << "player|" << affect.modifier << '|' << affect.duration
+					  << '\n';
+		for (const auto &pet : snapshot.pets)
+		{
+			pet_restore_state state;
+			if (pet_restore_state_decode(pet.restore_state, &state))
+				for (size_t i = 0; i < state.named_set_cooldowns.size(); ++i)
+					if (state.named_set_cooldowns[i])
+						std::cout << "pet|" << i << '|'
+							  << state.named_set_cooldowns[i] << '\n';
+		}
+		return 0;
+	}
+	if (mode == "seed" || mode == "arm-expiry" || mode == "arm-cooldowns")
 	{
 		std::vector<uint8_t> payload, bytes;
 		snapshot.encoded_size_bound = PLAYER_SNAPSHOT_MAX_BYTES;

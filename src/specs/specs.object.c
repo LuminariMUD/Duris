@@ -13352,11 +13352,13 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		}
 		break;
 	case SPELL_STONE_SKIN:
-		if (!has_skin_spell(ch) &&
+		if (!has_skin_spell(ch) && !named_set_cooldown_remaining(ch, spell) &&
 		    obj->timer[0] + get_property("timer.stoneskin.generic", 60) < time(NULL))
 		{
 			spell_stone_skin(MIN(56, count * 5), ch, 0, 0, ch, 0);
 			obj->timer[0] = time(NULL);
+			start_named_set_cooldown(
+				ch, spell, get_property("timer.stoneskin.generic", 60) * WAIT_SEC);
 			message = SETMSG_PROTECT;
 		}
 		break;
@@ -13398,21 +13400,28 @@ void apply_zone_spell(P_char ch, int count, const char *zone_name, int zone, P_o
 		message = SETMSG_STRENGTH;
 		break;
 	case SPELL_CONJURE_ELEMENTAL:
-		if (obj->timer[0] + get_property("timer.conjureElement.generic", 300) < time(NULL))
+		if (!named_set_cooldown_remaining(ch, spell) &&
+		    obj->timer[0] + get_property("timer.conjureElement.generic", 300) < time(NULL))
 		{
 			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
 						      0);
 			obj->timer[0] = time(NULL);
+			start_named_set_cooldown(ch, spell,
+						 get_property("timer.conjureElement.generic", 300) *
+							 WAIT_SEC);
 			message = SETMSG_STRENGTH;
 		}
 		break;
 	case SPELL_INVIGORATE:
-		if (obj->timer[0] + get_property("timer.invigorate.generic", 60) < time(NULL) &&
+		if (!named_set_cooldown_remaining(ch, spell) &&
+		    obj->timer[0] + get_property("timer.invigorate.generic", 60) < time(NULL) &&
 		    GET_VITALITY(ch) < GET_MAX_VITALITY(ch))
 		{
 			(skills[spell].spell_pointer)(MIN(56, MAX(30, count * 10)), ch, 0, 0, ch,
 						      0);
 			obj->timer[0] = time(NULL);
+			start_named_set_cooldown(
+				ch, spell, get_property("timer.invigorate.generic", 60) * WAIT_SEC);
 			message = SETMSG_STRENGTH;
 		}
 		break;
