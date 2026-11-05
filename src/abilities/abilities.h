@@ -405,5 +405,8 @@ std::string infernal_fury_facts(char_data *ch);
 std::string freedom_of_movement_facts(char_data *ch);
 std::string divine_font_facts(char_data *ch);
 std::string charm_facts(char_data *ch);
+std::string group_stornog_facts(char_data *ch);
+std::string mass_invisibility_facts(char_data *ch);
+std::string mass_barkskin_facts(char_data *ch);
 
 #endif

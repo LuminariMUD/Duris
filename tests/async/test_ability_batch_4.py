@@ -42,6 +42,7 @@ SPELL_DAZZLE dazzle_facts
 SPELL_PASS_WITHOUT_TRACE pass_without_trace_facts
 SPELL_STARSHELL starshell_facts
 SPELL_STORNOGS_SPHERES stornogs_spheres_facts
+SPELL_STORNOGS_GREATER_SPHERES group_stornog_facts
 SPELL_CLOAK_OF_FEAR cloak_of_fear_facts
 SPELL_ACIDIMMOLATE acidimmolate_facts
 SPELL_IMMOLATE immolate_facts
@@ -135,6 +136,7 @@ sigillum_negati_duration draconic_apotheosis_duration draconic_apotheosis_cost
 # Calls each handler, event or helper must make, so the game uses the shared numbers.
 CALLS = {
     "spell_soulshield": ["af.duration = soulshield_duration(ch);"],
+    "spell_group_stornog": ["spell_stornogs_spheres(level, ch, 0, 0, gl->ch, 0);"],
     "spell_holy_sacrifice": ["af.duration = holy_sacrifice_duration(ch);"],
     "spell_battle_ecstasy": ["af.duration = battle_ecstasy_duration(ch);"],
     "spell_mass_heal": ["int maxhits = mass_heal_base(ch);",
@@ -674,6 +676,11 @@ int main() {
     assert(contains(acidimmolate_facts(&ch), "Burning, round 4 on: 100 each,"));
     ch.player.level = 56;
     assert(contains(stornogs_spheres_facts(&ch), "Spheres: 4,"));
+    assert(contains(stornogs_spheres_facts(&ch), "  It does nothing to a target that still has spheres.\n"));
+    assert(group_stornog_facts(&ch) ==
+           "  Casts: stornog's spheres on each group member in the room\n"
+           "  Each member gets the spheres that stornog's spheres would give them; yours:\n" +
+           stornogs_spheres_facts(&ch) + "  Nothing happens unless you are in a group.\n");
     assert(contains(command_facts(&ch), "save: 8 seconds\n"));
     ch.player.m_class = CLASS_DRUID;
     ch.player.spec = SPEC_WOODLAND;

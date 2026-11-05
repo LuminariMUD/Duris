@@ -46,6 +46,7 @@ invigorate_movement invigorate_facts_at invigorate_facts vigorize_serious_facts
 vigorize_light_facts devitalize_movement devitalize_floor devitalize_facts
 divine_warding_duration divine_warding_facts death_blessing_leader_level
 death_blessing_member_level vitality_hit_points vitality_duration vitality_facts miracle_facts
+mass_invisibility_facts mass_barkskin_facts
 vital_intercession_healing vital_intercession_pool vital_intercession_duration
 vital_intercession_facts_at vital_intercession_facts holy_intercession_level
 holy_intercession_facts vitalize_undead_hit_points vitalize_undead_duration
@@ -65,6 +66,9 @@ grow_spike_facts
 # Each handler's calls to its shared numbers, whitespace-insensitive.
 CALLS = {
     "spell_cure_serious": ["healpoints = cure_serious_healing(live_rolls);"],
+    "spell_mass_invisibility": ["spell_invisibility(level, ch, 0, 0, victim, 0);"],
+    "spell_mass_barkskin": ["if (ch->specials.z_cord == victim->specials.z_cord)",
+                            "spell_barkskin(level, ch, NULL, SPELL_TYPE_SPELL, victim, 0);"],
     "spell_cure_critic": ["healpoints = cure_critic_healing(live_rolls);"],
     "spell_cure_light": ["healpoints = cure_light_healing(live_rolls);"],
     "spell_curse": ["af.duration = curse_duration(ch);",
@@ -488,11 +492,12 @@ int main() {
         { SPELL_GROUP_GLOBE, group_globe_facts }, { SPELL_BARKSKIN, barkskin_facts },
         { SPELL_DIVINE_WARDING, divine_warding_facts },
         { SPELL_VITAL_INTERCESSION, vital_intercession_facts },
-        { SPELL_HOLY_INTERCESSION, holy_intercession_facts }, { SPELL_IDENTIFY, identify_facts } };
-    static_assert(std::size(registered) == 75);
+        { SPELL_HOLY_INTERCESSION, holy_intercession_facts }, { SPELL_IDENTIFY, identify_facts },
+        { SPELL_MASS_INVIS, mass_invisibility_facts }, { SPELL_MASS_BARKSKIN, mass_barkskin_facts } };
+    static_assert(std::size(registered) == 77);
     for (auto [spell, facts] : registered)
         assert(ability_facts(spell) == facts);
-    assert(ability_facts(SPELL_STORNOGS_GREATER_SPHERES) == nullptr);
+    assert(ability_facts(SPELL_STORNOGS_GREATER_SPHERES) == group_stornog_facts);
 
     // Building any page leaves the RNG untouched, and every line is indented and fits.
     for (int i = 0; i < 52; ++i)
@@ -599,6 +604,13 @@ int main() {
     assert(contains(ironwood_facts(&ch), "  Hits absorbed: 11-14 over barkskin, 6-9 over thornskin\n"));
     assert(contains(barkskin_facts(&ch), "  Armor class: -50 at your level, 50\n"
                                          "  Duration: 25-26 game hours (31.25-32.5 minutes)\n"));
+    assert(contains(barkskin_facts(&ch), "  A player on the enemy side of the race war may resist "
+                                         "with a paralysis save.\n"));
+    // The mass spells cast the single-target spell at the caster's own level.
+    assert(mass_barkskin_facts(&ch) ==
+           "  Casts: barkskin on everyone in the room at your height, at your level\n" + barkskin_facts(&ch));
+    assert(mass_invisibility_facts(&ch) == "  Casts: invisibility on everyone in the room, at your level\n" +
+                                               invisibility_facts(&ch) + "  A mortal caster skips immortals.\n");
     set_class(ch, CLASS_DRUID, SPEC_WOODLAND);
     assert(contains(barkskin_facts(&ch), "  Armor class: -62 at your level, 50\n"));
     set_class(ch, 0, 0);
