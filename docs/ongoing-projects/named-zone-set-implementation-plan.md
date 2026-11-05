@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; five focused implementation PRs are pushed
+Status: implementation in progress; six focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -25,7 +25,10 @@ contains affect provenance and shared support and targets the membership branch.
 [PR #723](https://github.com/LuminariMUD/Duris/pull/723)
 (`branch/named-zone-set-historical-origins`, implementation commit `63160d454`)
 contains the historical Misty Vale correction and targets the provenance branch.
-All five PRs are ready for review; no implementation PR has been merged and no
+[PR #727](https://github.com/LuminariMUD/Duris/pull/727)
+(`branch/named-zone-set-ordinary-casts`, implementation commit `a7d720db5`)
+contains ordinary-cast overlap handling and targets the historical-origin branch.
+All six PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
@@ -383,6 +386,13 @@ so do not use that bypass for named-set timing. Check the existing spell-ID
 timer namespace and pet/NPC restore behavior before selecting the final reuse.
 Create persistent timer state outside a set grant's creation scope so it cannot
 inherit SET/NOSAVE ownership or disappear when the equipment is removed.
+
+The branch also includes parent review fixes through `db3967686`: shared level
+caps, legacy HP membership for retired/unloaded titles, no origin stamping on
+unworn pieces, and regranting Song of Dragons to group members who lost theirs.
+The merge is history-preserving. Ownership, membership, and the added
+`test_named_set_effect_levels.py` pass after integration, as do both backend
+builds. Preserve those fixes when implementing the cooldown chunk.
 
 ## Start here
 
