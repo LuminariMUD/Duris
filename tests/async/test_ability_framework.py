@@ -89,8 +89,11 @@ int main() {
     assert(seconds(6) == "1.5 seconds");
     assert(real_time(30 * WAIT_SEC) == "30 seconds" && real_time(60 * WAIT_SEC) == "1 minute");
     assert(real_time(75 * WAIT_SEC) == "1 minute 15 seconds" && real_time(720 * WAIT_SEC) == "12 minutes");
-    assert(game_hours(1) == "1 game hour (about 1.25 minutes)");
-    assert(game_hours(24) == "24 game hours (about 30 minutes)");
+    assert(game_hours(1) == "1-2 game hours (1.25-2.5 minutes)");
+    assert(game_hours(24) == "24-25 game hours (30-31.25 minutes)");
+    assert(game_hours(0) == "up to 1 game hour (up to 1.25 minutes)");
+    assert(game_hours(-1) == "permanent");
+    assert(game_hours(8001) == "8001-8002 game hours (10001.25-10002.5 minutes)");
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
     assert(ability_facts(SPELL_FIREBALL) == fireball_facts);
     assert(ability_facts(SKILL_BASH) == bash_facts);

@@ -65,13 +65,21 @@ std::string seconds(int pulses)
 	return text;
 }
 
-// Affect durations count ticks, one game hour each. An affect lasts into the tick it
-// expires on, hence "about".
+// Affect durations count ticks, one game hour each; -1 never wears off. affect_update()
+// takes one off on each of the owner's ticks and removes the affect on the tick after it
+// reaches 0, so an affect set to `ticks` lasts more than `ticks` and up to `ticks + 1`
+// game hours.
 std::string game_hours(int ticks)
 {
-	char text[64];
-	snprintf(text, sizeof(text), "%d game hour%s (about %g minutes)", ticks,
-		 ticks == 1 ? "" : "s", ticks * SECS_PER_MUD_HOUR / 60.0);
+	if (ticks == -1)
+		return "permanent";
+	const double minutes = PULSES_IN_TICK / static_cast<double>(WAIT_SEC) / 60.0;
+	char text[96];
+	if (ticks == 0)
+		snprintf(text, sizeof(text), "up to 1 game hour (up to %.10g minutes)", minutes);
+	else
+		snprintf(text, sizeof(text), "%d-%d game hours (%.10g-%.10g minutes)", ticks,
+			 ticks + 1, ticks * minutes, (ticks + 1) * minutes);
 	return text;
 }
 
