@@ -28,6 +28,7 @@ assert "void remove_incoming_healing_aura(P_char victim)" in paladins
 
 PRELUDE = r'''
 #include "core/prototypes.h"
+#include "abilities/abilities.h"
 #include "core/utils.h"
 #include "magic/spells.h"
 #include "classes/paladins.h"
@@ -104,6 +105,7 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int,
 PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in (
     ("paladins.c", "bool has_aura("),
     ("paladins.c", "int aura_mod("),
+    ("fight.c", "int plague_heal_block_percent("),
     ("fight.c", "int vamp("),
     ("fight.c", "void heal("),
     ("magic.c", "void spell_cure_blind("),

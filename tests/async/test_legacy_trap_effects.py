@@ -8,6 +8,7 @@ from _paths import ROOT, SRC, HARNESS_STUBS, extract_function
 magic = (SRC / "magic.c").read_text()
 start = magic.rfind("typedef struct", 0, magic.index("} RemoveableSpellBit;"))
 spells = magic[start:magic.index("void spell_dispel_magic(", start)]
+spells += extract_function("magic.c", "static int minor_paralysis_duration(") + "\n"
 spells += "\n".join(extract_function("magic.c", "void " + name + "(") for name in (
     "spell_dispel_magic", "spell_wither", "spell_harm", "spell_poison", "spell_minor_paralysis"))
 spells += extract_function("affects.c", "void Stun(")

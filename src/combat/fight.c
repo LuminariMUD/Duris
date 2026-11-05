@@ -62,6 +62,7 @@
 #include "item/plushit.h"
 #include "classes/reavers.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "sql/sql.h"
 #include "sql/sql_async.h"
 #include "sql/sql_player.h"
@@ -528,6 +529,12 @@ bool opposite_racewar(P_char ch, P_char victim)
 	return IS_PC(ch) && IS_PC(victim) && GET_RACEWAR(ch) != GET_RACEWAR(victim);
 }
 
+// Plague blocks this percentage of each heal, until its pool of blocked healing runs out.
+int plague_heal_block_percent(const Rolls &rolls)
+{
+	return rolls.number(30, 40);
+}
+
 int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 {
 	struct affected_type *af;
@@ -545,7 +552,8 @@ int vamp(P_char ch, double fhits, double fcap, bool allow_improved_healing)
 
 	if ((af = get_spell_from_char(ch, SPELL_PLAGUE)) && !IS_AFFECTED4(ch, AFF4_CARRY_PLAGUE))
 	{
-		blocked = (int)(MIN(hits * (((float)number(30, 40)) / 100), af->modifier));
+		blocked = (int)(MIN(hits * (((float)plague_heal_block_percent(live_rolls)) / 100),
+				    af->modifier));
 		hits -= blocked;
 		if (af->modifier <= blocked)
 		{

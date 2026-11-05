@@ -123,6 +123,8 @@ functions = [
     ('affects.c','bool affected_by_spell('),
     ('magic.c','const char *elemental_summon_failure_message('),
     ('magic.c','const char *elemental_form_failure_message('),
+    *(('magic.c', f'static int fire_form_{number}(')
+      for number in ('duration', 'armor_class', 'strength', 'dexterity', 'agility', 'constitution')),
     ('magic.c','void spell_fire_form('),
     ('magic.c','static void make_fire_mephit('),
     ('magic.c','bool can_conjure_lesser_elem('),

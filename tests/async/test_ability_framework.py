@@ -20,6 +20,7 @@ HARNESS = r'''
 #include "abilities/abilities.h"
 #include <cassert>
 #include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -97,7 +98,7 @@ int main() {
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
     assert(ability_facts(SPELL_FIREBALL) == fireball_facts);
     assert(ability_facts(SKILL_BASH) == bash_facts);
-    assert(ability_facts(SPELL_HEAL) == nullptr);
+    assert(ability_facts(UNCONVERTED) == nullptr);
     assert(innate_facts(INNATE_REFLECTION) == reflection_innate_facts);
     assert(innate_facts(INNATE_DOORBASH) == nullptr);
 
@@ -227,17 +228,20 @@ def main():
                  extract_function("actoff.c", "static int bash_takedown_penalty_lag("),
                  extract_function("actoff.c", "static int bash_target_lag("),
                  extract_function("actoff.c", "std::string bash_facts(")]
-    # ability_facts() names every converted ability's facts; the ones not built here abort.
-    declared = re.findall(r"^std::string (\w+_facts)\(char_data \*ch\);",
-                          source("abilities.h").read_text(), re.M)
+    # abilities.c's table names every facts function; the ones not built here never run.
+    declared = re.findall(r"^std::string (\w+_facts)\(char_data \*ch\);", source("abilities.h").read_text(), re.M)
     functions += [f"std::string {name}(char_data *) {{ std::abort(); }}"
                   for name in declared if name not in ("fireball_facts", "bash_facts")]
+    # Any spell or skill still pending has no facts.
+    pending = (ROOT / "tests/fixtures/ability_coverage_pending.txt").read_text().split()
+    unconverted = next(name for name in pending if name.startswith(("SPELL_", "SKILL_")))
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ability-framework-", dir=build) as temporary:
         directory = Path(temporary)
         harness = directory / "abilities.cpp"
-        harness.write_text(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {"))
+        harness.write_text(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {")
+                           .replace("UNCONVERTED", unconverted))
         binary = directory / "abilities"
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",

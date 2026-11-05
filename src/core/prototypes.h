@@ -32,6 +32,7 @@ using namespace std;
 
 struct AccountBankBalances;
 struct OutputContext;
+struct Rolls;
 enum class regen_resource : uint8_t;
 
 /* Legacy special-procedure callbacks expose their tagged payload as char *.
@@ -1105,6 +1106,7 @@ int melee_damage(P_char ch, P_char vict, double dam, int type, struct damage_mes
 int PartySizeMod(int, int, int, int);
 int TryRiposte(P_char, P_char);
 int vamp(P_char, double, double, bool allow_improved_healing = true);
+int plague_heal_block_percent(const Rolls &rolls);
 void heal(P_char, P_char, int, int);
 bool blind(P_char, P_char, int);
 void retarget_event(P_char ch, P_char victim, P_obj obj, void *data);
