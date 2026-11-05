@@ -20,6 +20,7 @@
 #include "world/db.h"
 #include "magic/spells.h"
 #include "combat/damage.h"
+#include "item/named_set_origin.h"
 #include "item/random_equipment.h"
 #include "world/vnum.obj.h"
 #include "guild/assocs.h"
@@ -490,6 +491,17 @@ int64_t spell_preparation_estimate(P_char, bool &active)
 	++preparation_estimates;
 	active = preparation_active;
 	return preparation_pulses;
+}
+
+// Origin persistence has its own regression; these payloads never carry a marker.
+named_set_identity named_set_origin(const obj_data *)
+{
+	return {};
+}
+
+bool set_named_set_origin(obj_data *, int)
+{
+	return false;
 }
 
 #include "production.inc"
