@@ -7326,8 +7326,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		}
 		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING))
 		{
-			int rand1 = number(1, 100);
-			if (rand1 > 60)
+			int rand1 = wall_climb_roll(live_rolls);
+			if (rand1 > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7409,7 +7409,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 				spell_dispel_magic(70, ch, NULL, SPELL_TYPE_SPELL, 0, obj);
 			}
 			else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
-				 number(1, 100) > 60)
+				 wall_climb_roll(live_rolls) > wall_climb_above())
 			{
 				act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 				    TRUE, ch, obj, 0, TO_ROOM);
@@ -7428,7 +7428,8 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 					obj->value[2] -= 1;
 			}
 		}
-		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) && number(1, 100) > 60)
+		else if (IS_PC(ch) && has_innate(ch, INNATE_WALL_CLIMBING) &&
+			 wall_climb_roll(live_rolls) > wall_climb_above())
 		{
 			act("&+L$n&+L slams up against the wall, slinks into a shadow, and quickly darts over the wall.",
 			    TRUE, ch, obj, 0, TO_ROOM);

@@ -1109,6 +1109,13 @@ static std::string wall_climb_text()
 	return std::to_string(wall_climb_roll(highest_rolls) - wall_climb_above()) + "%";
 }
 
+std::string wall_climbing_innate_facts(P_char /*ch*/)
+{
+	return fact("Chance to get over a wall", wall_climb_text()) +
+	       "  It works on walls of ice, force, iron, stone and bones, and on prismatic\n"
+	       "  walls, life wards and watching walls. Ice and a life ward still hurt.\n";
+}
+
 static std::string wall_breakable_facts()
 {
 	return fact("Lag from hitting it", seconds(wall_hit_lag())) +

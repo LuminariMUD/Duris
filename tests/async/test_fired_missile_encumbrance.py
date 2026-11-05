@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 handler = "\n".join(extract_function("world/handler.c", signature) for signature in (
@@ -526,7 +527,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="fired-missile-weight-", dir=build) as temporary:
     source = Path(temporary) / "harness.cpp"
     binary = Path(temporary) / "harness"
-    source.write_text(harness)
+    source.write_text(with_innate_numbers(harness))
     subprocess.run([
         "g++", "-std=c++20", "-g", "-fsanitize=address,undefined",
         "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",

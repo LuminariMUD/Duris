@@ -61,6 +61,7 @@
 #include "core/safe_format.h"
 #include <algorithm>
 #include <array>
+#include "abilities/abilities.h"
 #include <cerrno>
 #include <climits>
 #include <cstdint>
@@ -369,6 +370,90 @@ void generic_char_event(P_char /*ch*/, P_char /*victim*/, P_obj /*obj*/, void * 
 
 void event_sundamage(P_char ch, P_char victim, P_obj obj, void *data);
 
+// Innate calming's numbers. An aggressive mob waits longer before it attacks unless it is
+// too far above its target, and even then on this roll coming up 0.
+int calming_delay()
+{
+	return (int)get_property("innate.calming.delay", 10);
+}
+
+int calming_level_gap()
+{
+	return 5;
+}
+
+int calming_gap_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+// A mob picking a target passes over a calming one on a 0-101 roll at or below this.
+int calming_notarget_percent()
+{
+	return get_property("innate.calming.notarget.perc", 75);
+}
+
+// A command only draws an aggression check when this roll comes up 0.
+int calming_command_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 19);
+}
+
+// What calming adds to the charisma chance that an aggressive mob leaves you be.
+int calming_chance_bonus()
+{
+	return 10;
+}
+
+// A foe switching to you is hindered on a 0-120 roll at or below this.
+int calming_switch_threshold(int level)
+{
+	return level * 2;
+}
+
+int calming_switch_penalty(int rating)
+{
+	return (110 - rating);
+}
+
+std::string calming_innate_facts(P_char ch)
+{
+	const int calm = CALMCHANCE(ch) + calming_chance_bonus();
+	return fact("Extra wait before an aggressive mob attacks", seconds(calming_delay())) +
+	       "  Elites and some hometowns ignore it. A mob over " +
+	       std::to_string(calming_level_gap()) +
+	       " levels above you waits\n"
+	       "  only " +
+	       one_in(calming_gap_roll) + " times.\n" +
+	       fact("Chance a mob picking a target passes you over",
+		    chance_under(calming_notarget_percent() + 1, 0, 101)) +
+	       fact("Your commands that draw an aggression check", one_in(calming_command_roll)) +
+	       fact("Chance an aggressive mob then leaves you be", chance_under(calm + 1, 1, 100)) +
+	       "  That chance is +" + std::to_string(calming_chance_bonus()) +
+	       " on what your charisma gives.\n" +
+	       fact("Chance a foe switching to you is hindered",
+		    chance_under(calming_switch_threshold(GET_LEVEL(ch)) + 1, 0, 120)) +
+	       "  It costs that foe " + std::to_string(calming_switch_penalty(0)) +
+	       " minus its switch rating.\n";
+}
+
+// What a burn in the sun takes from a vulnerable player.
+static int vuln_sun_damage(const Rolls &rolls)
+{
+	return rolls.number(5, 20);
+}
+
+std::string vuln_sun_innate_facts(P_char /*ch*/)
+{
+	return fact("Burn in direct sun",
+		    show({ vuln_sun_damage(lowest_rolls), vuln_sun_damage(highest_rolls) }) +
+			    " hit points every " + seconds(GENERIC_CHAR_EVENT_PERIOD)) +
+	       "  It never takes you below 1, and spares you at twilight, in a swamp or\n"
+	       "  forest, on Bloodlust day and under a globe of darkness.\n"
+	       "  In direct sun, outside a globe, you regain no mana, and no hit points\n"
+	       "  unless the room is magically dark.\n";
+}
+
 void sun_damage_check(P_char ch)
 {
 	if (IS_NPC(ch) || IS_TRUSTED(ch))
@@ -415,7 +500,7 @@ void sun_damage_check(P_char ch)
 		break;
 	}
 
-	int dam = number(5, 20);
+	int dam = vuln_sun_damage(live_rolls);
 	GET_HIT(ch) = MAX(1, GET_HIT(ch) - dam);
 
 	//  if( !get_scheduled(ch, event_sundamage) )
@@ -1791,9 +1876,10 @@ bool char_to_room(P_char ch, int room, int dir)
 		nocalming = 1;
 
 	if (t_ch && !IS_ELITE(t_ch) && !nocalming &&
-	    (((GET_LEVEL(t_ch) - GET_LEVEL(ch)) <= 5) || !number(0, 3)) &&
+	    (((GET_LEVEL(t_ch) - GET_LEVEL(ch)) <= calming_level_gap()) ||
+	     !calming_gap_roll(live_rolls)) &&
 	    has_innate(ch, INNATE_CALMING))
-		calming = (int)get_property("innate.calming.delay", 10);
+		calming = calming_delay();
 
 	if (t_ch && is_aggr_to(ch, t_ch))
 	{

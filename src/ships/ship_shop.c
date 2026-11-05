@@ -927,6 +927,8 @@ int summon_ship(P_char ch, P_ship ship, bool time_only)
 	return TRUE;
 }
 
+extern double seadog_sale_multiplier();
+
 /*
  * Sell the cargo in one slot at port `rroom`.
  *
@@ -967,12 +969,12 @@ int sell_cargo_slot(P_char ch, P_ship ship, int slot, int rroom, int already_pai
 	}
 	if (has_innate(ch, INNATE_SEADOG))
 	{
-		if (static_cast<double>(cost) * 1.10 > INT_MAX)
+		if (static_cast<double>(cost) * seadog_sale_multiplier() > INT_MAX)
 			return 0;
 		send_to_char(
 			"Your &+csea&+Cfaring&n heritage has earned you a &+Ybonus&n in your sale...&n\r\n",
 			ch);
-		cost *= 1.10;
+		cost *= seadog_sale_multiplier();
 	}
 	if (ship->slot[slot].val1 != 0)
 	{

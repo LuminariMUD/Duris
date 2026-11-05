@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 from _source_contract import function_body, strip_comments
 
 
@@ -370,7 +371,7 @@ with tempfile.TemporaryDirectory(prefix="duris-earthen-grasp-") as directory:
     temporary = Path(directory)
     harness = temporary / "harness.cpp"
     binary = temporary / "harness"
-    harness.write_text("\n".join((PRELUDE, GRASP, SINGLE, GREATER_TARGET, DRIVER)), encoding="utf-8")
+    harness.write_text(with_innate_numbers("\n".join((PRELUDE, GRASP, SINGLE, GREATER_TARGET, DRIVER))), encoding="utf-8")
     subprocess.run(
         [
             "g++",

@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 handler = source("handler.c").read_text()
 start = handler.index("\t// if anything has moved on the map")
@@ -141,7 +142,7 @@ with tempfile.TemporaryDirectory(prefix="map-observer-", dir=build) as tmp:
               extract_function("map.c", "bool map_view_contains("),
               "void map_update(P_char ch, int was_in) { P_desc d; P_char who;\n" + loop + "\n}",
               CASES]
-    cpp.write_text("\n".join(bodies))
+    cpp.write_text(with_innate_numbers("\n".join(bodies)))
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",
                     "-Isrc", str(cpp), "-o", str(binary)], cwd=ROOT, check=True)

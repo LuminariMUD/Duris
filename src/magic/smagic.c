@@ -982,13 +982,19 @@ void spell_corrosive_blast(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 	}
 }
 
+// Without improved healing, restoration heals this share.
+static double restoration_other_share()
+{
+	return 0.66;
+}
+
 static int restoration_healing(const Rolls &rolls, int level, P_char ch)
 {
 	int gain = (int)(level * 5 + rolls.number(0, 40));
 
 	// Non-spiritualist
 	if (!has_innate(ch, INNATE_IMPROVED_HEAL))
-		gain = (int)(gain * 0.66);
+		gain = (int)(gain * restoration_other_share());
 	return gain;
 }
 
@@ -1755,6 +1761,17 @@ void spell_arieks_shattering_iceball(int level, P_char ch, char * /*arg*/, int /
 
 /* owie! */
 
+// Elemental power: how much harder scathing wind's save is, and the factor on earthen spells.
+int elemental_power_save_change(int level)
+{
+	return (int)(level / 10);
+}
+
+float elemental_power_area_factor()
+{
+	return get_property("damage.increase.elementalist", 1.150);
+}
+
 static int scathing_wind_damage(const Rolls &rolls, int level)
 {
 	return rolls.dice(3 * level, 5);
@@ -1800,7 +1817,7 @@ void spell_single_scathing_wind(int level, P_char ch, char * /*arg*/, int /*type
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SCATHING_WIND);
 	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
 	{
-		mod += (int)(level / 10);
+		mod += elemental_power_save_change(level);
 	}
 	if (NewSaves(victim, SAVING_SPELL, mod))
 		dam >>= 1;
@@ -1912,7 +1929,7 @@ void spell_single_earthen_rain(int level, P_char ch, char * /*arg*/, int /*type*
 	// Spell does SPLDAM_EARTH now.
 	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
 	{
-		dam = (int)(dam * get_property("damage.increase.elementalist", 1.150));
+		dam = (int)(dam * elemental_power_area_factor());
 	}
 
 	if (IS_PC(ch) && IS_PC(victim))
@@ -1971,7 +1988,7 @@ static int earthen_grasp_level(int level, P_char ch)
 {
 	if (has_innate(ch, INNATE_ELEMENTAL_POWER))
 	{
-		level = (int)(level * get_property("damage.increase.elementalist", 1.150));
+		level = (int)(level * elemental_power_area_factor());
 	}
 	return level;
 }
@@ -4881,13 +4898,57 @@ void spell_summon_spirit(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 	send_to_char("&+gLohr pops up and goes, \"Eee Hee!\"!&n", ch);
 }
 
+// What improved healing adds to each healing spell.
+static int wellness_improved_bonus(P_char ch)
+{
+	return GET_LEVEL(ch);
+}
+
+static int lesser_mending_improved_bonus(const Rolls &rolls, int level)
+{
+	return (int)(rolls.number((int)(level / 2), (int)(level * 1.5)));
+}
+
+static int mending_improved_bonus(const Rolls &rolls, int level)
+{
+	return (int)(rolls.number((int)(level / 2), (int)(level)));
+}
+
+// From above this level greater mending also cures disease with improved healing.
+static int greater_mending_cure_level()
+{
+	return 46;
+}
+
+std::string improved_heal_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Healing your restoration gives",
+		    "full; " + share_percent(restoration_other_share()) +
+			    " of that without this innate") +
+	       fact("Healing your wellness gives each person",
+		    "+" + std::to_string(wellness_improved_bonus(ch))) +
+	       fact("Healing your lesser mending gives",
+		    "+" +
+			    show({ lesser_mending_improved_bonus(lowest_rolls, level),
+				   lesser_mending_improved_bonus(highest_rolls, level) }) +
+			    " at your level, " + std::to_string(level)) +
+	       fact("Healing your other mendings give",
+		    "+" +
+			    show({ mending_improved_bonus(lowest_rolls, level),
+				   mending_improved_bonus(highest_rolls, level) }) +
+			    " at your level, " + std::to_string(level)) +
+	       fact("Greater mending cures disease above level",
+		    std::to_string(greater_mending_cure_level()));
+}
+
 static int wellness_healing(const Rolls &rolls, int level, P_char ch)
 {
 	int gain = (int)(rolls.dice(4, 7 + (level / 10)));
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
 	{
-		gain += GET_LEVEL(ch);
+		gain += wellness_improved_bonus(ch);
 	}
 	return gain;
 }
@@ -4951,7 +5012,7 @@ static int lesser_mending_healing(const Rolls &rolls, int level, P_char ch)
 	int gain = (int)(level / 2 + rolls.number(0, 5));
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
-		gain += (int)(rolls.number((int)(level / 2), (int)(level * 1.5)));
+		gain += lesser_mending_improved_bonus(rolls, level);
 	return gain;
 }
 
@@ -5007,7 +5068,7 @@ static int mending_healing(const Rolls &rolls, int level, P_char ch)
 	int gain = (level * 2) + rolls.number(-20, 20);
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
-		gain += (int)(rolls.number((int)(level / 2), (int)(level)));
+		gain += mending_improved_bonus(rolls, level);
 	return gain;
 }
 
@@ -5055,7 +5116,7 @@ static int greater_mending_healing(const Rolls &rolls, int level, P_char ch)
 	int gain = (level * 3) + rolls.number(-30, 30);
 
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
-		gain += (int)(rolls.number((int)(level / 2), (int)(level)));
+		gain += mending_improved_bonus(rolls, level);
 	return gain;
 }
 
@@ -5083,7 +5144,7 @@ void spell_greater_mending(int level, P_char ch, char * /*arg*/, int /*type*/, P
 	// Spiritualists - Huh?
 	if (has_innate(ch, INNATE_IMPROVED_HEAL))
 	{
-		if (level > 46)
+		if (level > greater_mending_cure_level())
 		{
 			if (affected_by_spell(victim, SPELL_DISEASE) ||
 			    affected_by_spell(victim, SPELL_PLAGUE))

@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -153,7 +154,7 @@ build_root.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="visibility-room-bounds-", dir=build_root) as directory:
     harness = Path(directory) / "harness.cpp"
     binary = Path(directory) / "harness"
-    harness.write_text("\n".join((
+    harness.write_text(with_innate_numbers("\n".join((
         PRELUDE,
         extract_function("utility.c", "bool ac_can_see_from("),
         extract_function("utility.c", "bool ac_can_see(P_char sub, P_char obj, bool"),
@@ -161,7 +162,7 @@ with tempfile.TemporaryDirectory(prefix="visibility-room-bounds-", dir=build_roo
         extract_function("utility.c", "char *PERS(P_char ch, P_char vict, int short_d, bool noansi)"),
         extract_function("guard.c", "void guard_broken(struct char_link_data *cld)"),
         DRIVER,
-    )), encoding="utf-8")
+    ))), encoding="utf-8")
     subprocess.run([
         "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
         "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",

@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import HARNESS_STUBS, ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 prelude = r'''
@@ -531,7 +532,7 @@ build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="reflection-ownership-", dir=build) as directory:
     cpp = Path(directory) / "harness.cpp"
     binary = Path(directory) / "harness"
-    cpp.write_text(prelude + production + driver)
+    cpp.write_text(with_innate_numbers(prelude + production + driver))
     subprocess.run([
         *shlex.split(os.environ.get("CXX", "g++")), "-std=c++20", "-g",
         "-ffunction-sections", "-fdata-sections",

@@ -120,12 +120,55 @@ int compare_skills(const void *v1, const void *v2)
 	return strcmp(skills[*skill1].name, skills[*skill2].name);
 }
 
+// Wild magic strikes when this roll comes up 0, and goes out of control when that one does.
+static int wildmagic_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 5);
+}
+
+static int wildmagic_control_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+// A strike can also change the caster's health, and each bystander is a target on a 0.
+static int wildmagic_health_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+static int wildmagic_health_change(const Rolls &rolls, int level)
+{
+	return (int)(level / 4 + rolls.number(1, 5));
+}
+
+static int wildmagic_bystander_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 6);
+}
+
+std::string wildmagic_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Chance on each aggressive spell at one target", one_in(wildmagic_roll)) +
+	       "  It adds a random spell on your target, and your spell can hit others.\n" +
+	       fact("Chance each other being here is hit", one_in(wildmagic_bystander_roll)) +
+	       fact("Chance you lose control, which can hit your group",
+		    one_in(wildmagic_control_roll)) +
+	       "  A roll against your luck can stop it there.\n" +
+	       fact("Chance your health changes", one_in(wildmagic_health_roll)) +
+	       fact("By", show({ wildmagic_health_change(lowest_rolls, level),
+				 wildmagic_health_change(highest_rolls, level) }) +
+				  " hit points at your level, " + std::to_string(level)) +
+	       "  It heals you, or " + one_in(wildmagic_health_roll) + " times drains you.\n";
+}
+
 void perform_chaos_check(P_char ch, P_char tar, struct spellcast_datatype *arg)
 {
 	bool controlled;
 	P_char tch, next;
 	int randomness;
-	controlled = number(0, 2);
+	controlled = wildmagic_control_roll(live_rolls);
 	int level = GET_LEVEL(ch);
 
 	if (GET_STAT(ch) == STAT_DEAD)
@@ -205,16 +248,16 @@ void perform_chaos_check(P_char ch, P_char tar, struct spellcast_datatype *arg)
 		break;
 	}
 
-	if (!number(0, 3))
+	if (!wildmagic_health_roll(live_rolls))
 	{
-		if (!number(0, 3))
+		if (!wildmagic_health_roll(live_rolls))
 		{
-			GET_HIT(ch) -= (int)(GET_LEVEL(ch) / 4 + number(1, 5));
+			GET_HIT(ch) -= wildmagic_health_change(live_rolls, GET_LEVEL(ch));
 			send_to_char("&+rThe violent magic stream drains your health!&n\n", ch);
 		}
 		else
 		{
-			GET_HIT(ch) += (int)(GET_LEVEL(ch) / 4 + number(1, 5));
+			GET_HIT(ch) += wildmagic_health_change(live_rolls, GET_LEVEL(ch));
 			send_to_char("&+GYou barely control the magic. Energies flow into you!&n\n",
 				     ch);
 		}
@@ -230,8 +273,8 @@ void perform_chaos_check(P_char ch, P_char tar, struct spellcast_datatype *arg)
 	for (tch = world[ch->in_room].people; tch; tch = next)
 	{
 		next = tch->next_in_room;
-		if (!number(0, 6) && tar != tch && tch != ch && !IS_TRUSTED(tch) &&
-		    (!controlled || !grouped(ch, tch)))
+		if (!wildmagic_bystander_roll(live_rolls) && tar != tch && tch != ch &&
+		    !IS_TRUSTED(tch) && (!controlled || !grouped(ch, tch)))
 		{
 			// Luck influences chaos - Lucrot
 			if (!controlled && grouped(ch, tch) &&
@@ -943,6 +986,12 @@ void say_spell(P_char ch, int si)
 	}
 }
 
+// The share of its usual time a hasted caster takes.
+double haste_cast_time_share()
+{
+	return .8;
+}
+
 int SpellCastTime(P_char ch, int spl)
 {
 	int dura;
@@ -964,7 +1013,7 @@ int SpellCastTime(P_char ch, int spl)
 	}
 	else if (IS_AFFECTED(ch, AFF_HASTE))
 	{
-		dura = (dura * .8);
+		dura = (dura * haste_cast_time_share());
 	}
 
 	//  if( IS_PC(ch) ) debug( "SpellCastTime: beats final: %d", dura );
@@ -3247,7 +3296,7 @@ void event_spellcast(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 	{
 		if ((has_innate(ch, INNATE_WILDMAGIC) || IS_AFFECTED4(ch, AFF4_WILDMAGIC) ||
 		     (IS_NPC(ch) && IS_SET(ch->specials.act, ACT_WILDMAGIC))) &&
-		    !number(0, 5) && IS_AGG_SPELL(arg->spell) &&
+		    !wildmagic_roll(live_rolls) && IS_AGG_SPELL(arg->spell) &&
 		    !(IS_SET(skills[arg->spell].targets, TAR_IGNORE) ||
 		      IS_SET(skills[arg->spell].targets, TAR_AREA)))
 		{

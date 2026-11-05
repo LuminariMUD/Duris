@@ -3678,6 +3678,8 @@ static int steal_lag()
 	return PULSE_VIOLENCE * 2;
 }
 
+extern int dragonmind_steal_divisor();
+
 void do_steal(P_char ch, char *argument, int /*cmd*/)
 {
 	int skl;
@@ -3865,7 +3867,7 @@ void do_steal(P_char ch, char *argument, int /*cmd*/)
 		percent += (GET_LEVEL(ch) - GET_LEVEL(victim)) / 2;
 		// Hard to steal from Red Dragon - Monks?
 		if (has_innate(victim, INNATE_DRAGONMIND))
-			percent = percent / 2;
+			percent = percent / dragonmind_steal_divisor();
 		// At this point, ensure that percent is between 1 and 100
 		percent = BOUNDED(1, percent, 100);
 

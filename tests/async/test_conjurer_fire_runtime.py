@@ -9,6 +9,7 @@ import re
 import subprocess
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 prelude = r'''
 #include "core/prototypes.h"
@@ -204,7 +205,7 @@ start=mods.index('MAKE_DAM_MOD_PRED(){ if (damageType != SPLDAM_COLD) return;')
 opening=mods.index('{',start); depth=1; end=opening+1
 while depth:
     depth+=(mods[end]=='{')-(mods[end]=='}'); end+=1
-cold='dam_mod_predicate cold_response = '+mods[start:end]+';\n'
+cold=extract_function('dam_mods.c','static double fire_race_cold_mod(')+'\ndam_mod_predicate cold_response = '+mods[start:end]+';\n'
 
 driver = r'''
 static void clear(P_char ch) {
@@ -341,7 +342,7 @@ int main() {
 
 build=ROOT/'bin/tests/conjurer-fire'; build.mkdir(parents=True,exist_ok=True)
 cpp,binary=build/'harness.cpp',build/'harness'
-cpp.write_text(prelude+'\n'.join(extract_function(file,sig) for file,sig in functions)+damage_path+retaliation+recalc+cold+driver)
+cpp.write_text(with_innate_numbers(prelude+'\n'.join(extract_function(file,sig) for file,sig in functions)+damage_path+retaliation+recalc+cold+driver))
 subprocess.run(['g++','-std=c++20','-g','-ffunction-sections','-fdata-sections','-fsanitize=address,undefined',
                 '-fno-omit-frame-pointer','-fno-pie','-no-pie','-I'+str(ROOT/'src'),str(cpp),str(HARNESS_STUBS),
                 str(ROOT/'src/player/pet_restore_state.c'),

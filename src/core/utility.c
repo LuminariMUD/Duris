@@ -63,6 +63,11 @@ using namespace std;
 #include "sql/sql_pool.h"
 #include "sql/sql_player.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
+
+extern int ophidian_invisible_level();
+extern int evasion_remove_chance();
+extern int combat_mind_quaff_chance(int chance);
 
 /*
  * extern variables
@@ -1731,7 +1736,8 @@ bool ac_can_see_from(P_char sub, P_char obj, int viewer_room)
 		}
 
 		if (!IS_AFFECTED(sub, AFF_DETECT_INVISIBLE) &&
-		    !(has_innate(sub, INNATE_OPHIDIAN_EYES) && GET_LEVEL(sub) > 45) &&
+		    !(has_innate(sub, INNATE_OPHIDIAN_EYES) &&
+		      GET_LEVEL(sub) > ophidian_invisible_level()) &&
 		    !(IS_NPC(obj) && (obj->following == sub) &&
 		      IS_AFFECTED4(sub, AFF4_SENSE_FOLLOWER)))
 		{
@@ -2018,7 +2024,7 @@ bool ac_can_see_obj(P_char sub, P_obj obj, int zrange)
 
 	/* Check to see if object is invis */
 	if (IS_SET(obj->extra_flags, ITEM_INVISIBLE) && !IS_AFFECTED(sub, AFF_DETECT_INVISIBLE) &&
-	    !(has_innate(sub, INNATE_OPHIDIAN_EYES) && GET_LEVEL(sub) > 45))
+	    !(has_innate(sub, INNATE_OPHIDIAN_EYES) && GET_LEVEL(sub) > ophidian_invisible_level()))
 		return FALSE;
 
 	/* Check if subject is blind */
@@ -2886,6 +2892,18 @@ bool aggressive_to_class(P_char ch, P_char target)
 	return FALSE;
 }
 
+// Aggressive undead this many levels below a holder of undead fealty leave it be.
+static int undead_fealty_gap()
+{
+	return 10;
+}
+
+std::string undead_fealty_innate_facts(P_char /*ch*/)
+{
+	return fact("Undead that will not attack you first",
+		    std::to_string(undead_fealty_gap()) + " or more levels below you");
+}
+
 bool has_native_planar_affinity_at(P_char ch, int room)
 {
 	if (!ch || IS_NPC(ch) || room < 0 || room > top_of_world)
@@ -2969,7 +2987,7 @@ bool aggressive_to_at(P_char ch, P_char target, int target_room)
 				return FALSE;
 		}
 
-		if ((GET_LEVEL(ch) <= (GET_LEVEL(target) - 10)) &&
+		if ((GET_LEVEL(ch) <= (GET_LEVEL(target) - undead_fealty_gap())) &&
 		    has_innate(target, INNATE_UNDEAD_FEALTY) && IS_UNDEADRACE(ch) &&
 		    !affected_by_spell(ch, TAG_CTF) && !CheckFor_remember(ch, target))
 			return FALSE; // Liches are revered/feared by lower level undead - Jexni 8/18/08
@@ -3191,6 +3209,27 @@ bool aggressive_to_basic(P_char ch, P_char target) // For exp checks
 	return FALSE;
 }
 
+// Intelligence and power saves pass at once on a 1-100 roll at or below this.
+static int quick_thinking_percent()
+{
+	return get_property("saves.quickthinking.percentage", 15);
+}
+
+std::string quick_thinking_innate_facts(P_char /*ch*/)
+{
+	return fact("Chance an intelligence or power save passes at once",
+		    chance_under(quick_thinking_percent() + 1, 1, 100)) +
+	       "  A saving throw you fail is rolled once more.\n" +
+	       fact("Your chance not to spill a potion in combat",
+		    std::to_string(combat_mind_quaff_chance(100)) + "% of normal");
+}
+
+// What haste adds to dexterity saves, and to a non-monk's agility saves.
+int haste_stat_save_bonus()
+{
+	return 2;
+}
+
 /*
  * saving throws based on ch's stats, rather than magical saves.  Only DEX/AGI/INT
  * are imped so far, but all stats can be done with this function.  'mod' is
@@ -3225,7 +3264,7 @@ bool StatSave(P_char ch, int stat, int mod)
 		if (!GET_CLASS(ch, CLASS_MONK))
 		{
 			if (IS_AFFECTED(ch, AFF_HASTE))
-				save_num += 2;
+				save_num += haste_stat_save_bonus();
 
 			if (IS_AFFECTED2(ch, AFF2_SLOW))
 				save_num -= 2;
@@ -3266,7 +3305,7 @@ bool StatSave(P_char ch, int stat, int mod)
 			save_num += 3;
 
 		if (IS_AFFECTED(ch, AFF_HASTE))
-			save_num += 2;
+			save_num += haste_stat_save_bonus();
 
 		if (IS_AFFECTED2(ch, AFF2_SLOW))
 			save_num -= 2;
@@ -3293,13 +3332,13 @@ bool StatSave(P_char ch, int stat, int mod)
 	case APPLY_INT:
 		save_num = STAT_INDEX(GET_C_INT(ch)) + mod;
 		if (has_innate(ch, INNATE_QUICK_THINKING) &&
-		    number(1, 100) <= get_property("saves.quickthinking.percentage", 15))
+		    number(1, 100) <= quick_thinking_percent())
 			return TRUE;
 		break;
 	case APPLY_POW:
 		save_num = STAT_INDEX(GET_C_POW(ch)) + mod;
 		if (has_innate(ch, INNATE_QUICK_THINKING) &&
-		    number(1, 100) <= get_property("saves.quickthinking.percentage", 15))
+		    number(1, 100) <= quick_thinking_percent())
 			return TRUE;
 		break;
 	case APPLY_CON:
@@ -5166,6 +5205,18 @@ ClassSkillInfo SKILL_DATA_ALL(P_char ch, int skill)
 	return dummy;
 }
 
+// The two-handed slashing rating the mastery gives, whatever was trained.
+static int two_handed_sword_mastery_rating()
+{
+	return 100;
+}
+
+std::string two_handed_sword_mastery_innate_facts(P_char /*ch*/)
+{
+	return fact("Two-handed slashing rating",
+		    std::to_string(two_handed_sword_mastery_rating()));
+}
+
 int GET_CHAR_SKILL_P(P_char ch, int skl)
 {
 	struct affected_type *af;
@@ -5180,7 +5231,7 @@ int GET_CHAR_SKILL_P(P_char ch, int skl)
 	// Centaurs get innate 2h slashing at lvl 31.
 	if ((skl == SKILL_2H_SLASHING) && (has_innate(ch, TWO_HANDED_SWORD_MASTERY)))
 	{
-		return 100;
+		return two_handed_sword_mastery_rating();
 	}
 
 	if (skl <= 0)
@@ -5602,9 +5653,7 @@ int cast_as_damage_area(P_char ch, void (*spell_func)(int, P_char, char *, int, 
 		if (has_innate(area_target, INNATE_EVASION) &&
 		    GET_SPEC(area_target, CLASS_MONK, SPEC_WAYOFSNAKE))
 		{
-			if ((GET_LEVEL(area_target) -
-			     ((int)get_property("innate.evasion.removechance", 15.000))) >
-			    number(1, 100))
+			if ((GET_LEVEL(area_target) - evasion_remove_chance()) > number(1, 100))
 			{
 				send_to_char(
 					"You twist out of the way avoiding the harmful magic!\n",
@@ -5745,6 +5794,20 @@ bool grouped(P_char ch, P_char ch2)
 	}
 
 	return false;
+}
+
+// The percent innate evasion works from, in spell damage and area spells.
+int evasion_remove_chance()
+{
+	return ((int)get_property("innate.evasion.removechance", 15.000));
+}
+
+std::string evasion_innate_facts(P_char ch)
+{
+	return fact("Way of the dragon: chance to avoid spell damage",
+		    chance_under(evasion_remove_chance(), 1, 100)) +
+	       fact("Way of the snake: chance to avoid an area spell",
+		    chance_under(GET_LEVEL(ch) - evasion_remove_chance(), 1, 100));
 }
 
 int get_takedown_size(P_char ch)

@@ -167,6 +167,33 @@ extern void show_world_events(P_char ch, const char *arg);
 extern struct quest_data quest_index[];
 extern struct epic_bonus_data ebd[];
 extern long ne_event_counter;
+// Ophidian eyes: above these levels a dragoon gets farsee and sees invisible.
+int ophidian_farsee_level()
+{
+	return 40;
+}
+
+int ophidian_invisible_level()
+{
+	return 45;
+}
+
+std::string ophidian_eyes_innate_facts(P_char ch)
+{
+	extern int ophidian_track_penalty();
+	extern int track_sense_chance(int level);
+	return "  You see heat, as infravision does.\n" +
+	       fact("Farsee above level", std::to_string(ophidian_farsee_level())) +
+	       fact("Sees invisible above level", std::to_string(ophidian_invisible_level())) +
+	       "  Dragon priest: you see illusions and magic.\n"
+	       "  Dragon lancer: you see good and evil.\n"
+	       "  Dragon hunter: you sense life and traces beyond the veil.\n" +
+	       fact("Dragon hunter: chance to sense a trace",
+		    chance_under(track_sense_chance(GET_LEVEL(ch)), 1, 100)) +
+	       fact("Dragon hunter: improved tracking roll",
+		    std::to_string(ophidian_track_penalty()) + " harder");
+}
+
 extern int map_normal_modifier;
 extern int map_ultra_modifier;
 extern int map_dayblind_modifier;
@@ -2698,7 +2725,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			}
 
 			if (IS_AFFECTED(ch, AFF_FARSEE) ||
-			    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+			    (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+			     GET_LEVEL(ch) > ophidian_farsee_level()))
 			{
 				if (!IS_TRUSTED(ch) &&
 				    IS_SET(EXIT(ch, keyword_no)->exit_info, EX_CLOSED))
@@ -2732,7 +2760,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 				send_to_char("Looks like an exit.\n", ch);
 			}
 			if (!IS_TRUSTED(ch) && !IS_AFFECTED(ch, AFF_FARSEE) &&
-			    !(has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+			    !(has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+			      GET_LEVEL(ch) > ophidian_farsee_level()))
 			{
 				return;
 			}
@@ -2747,8 +2776,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 		/* real room we are peering into */
 		temp = world[room_no].dir_option[keyword_no]->to_room;
 
-		if (IS_AFFECTED(ch, AFF_FARSEE) ||
-		    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+		if (IS_AFFECTED(ch, AFF_FARSEE) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+						    GET_LEVEL(ch) > ophidian_farsee_level()))
 		{
 			snprintf(buffer, MAX_STRING_LENGTH, "You extend your sights %sward.\n",
 				 dirs[keyword_no]);
@@ -2774,8 +2803,8 @@ void new_look(P_char ch, const char *argument, int cmd, int room_no)
 			return;
 		}
 		if ((vis_mode == 1) &&
-		    (IS_AFFECTED(ch, AFF_FARSEE) ||
-		     (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40)))
+		    (IS_AFFECTED(ch, AFF_FARSEE) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
+						     GET_LEVEL(ch) > ophidian_farsee_level())))
 		{
 			vis_mode = 2;
 		}
@@ -6419,7 +6448,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, " &+MI&+Ll&+ml&+Mu&+Ls&+mi&+Mo&+Ln&+ms&n");
 	}
 	if (IS_AFFECTED(ch, AFF_DETECT_INVISIBLE) ||
-	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 45))
+	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > ophidian_invisible_level()))
 		strcat(buf, " &+CI&+cn&+Cv&+ci&+Cs&+ci&+Cb&+cl&+Ce&n");
 	if (IS_AFFECTED2(ch, AFF2_DETECT_EVIL) || (has_innate(ch, INNATE_OPHIDIAN_EYES) &&
 						   GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_LANCER)))
@@ -6513,7 +6542,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 		strcat(buf, " &+MUltravision&n");
 	}
 	if (IS_AFFECTED(ch, AFF_FARSEE) ||
-	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > 40))
+	    (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_LEVEL(ch) > ophidian_farsee_level()))
 	{
 		strcat(buf, " &+YFarsee&n");
 	}

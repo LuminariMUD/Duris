@@ -33,6 +33,10 @@ bool has_innate(P_char, int)
 {
 	return false;
 }
+int ophidian_invisible_level()
+{
+	return 45;
+}
 char *item_condition(P_obj)
 {
 	static char condition[] = "";

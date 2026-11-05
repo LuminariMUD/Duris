@@ -32,6 +32,7 @@ using namespace std;
 #include "world/vnum.obj.h"
 #include "world/weather.h"
 #include "classes/necromancy.h"
+#include "abilities/abilities.h"
 
 struct continent
 {
@@ -1166,6 +1167,58 @@ void do_mapglyphs(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// Map sight numbers for innates: an eyeless character's fixed range, the range forests
+// cut others down to, and what perception adds.
+static int eyeless_map_range()
+{
+	return 8;
+}
+
+static int forest_map_cap()
+{
+	return 3;
+}
+
+int perception_map_bonus()
+{
+	return 1;
+}
+
+// A dayblind character's map sight: extra in the sun with infravision, and fixed underground.
+static int dayblind_infravision_bonus()
+{
+	return 2;
+}
+
+static int dayblind_underdark_range()
+{
+	return 8;
+}
+
+std::string dayblind_innate_facts(P_char /*ch*/)
+{
+	return "  In a lit room you see only red shapes by infravision, and nothing without\n"
+	       "  it, unless someone there has a globe of darkness.\n" +
+	       fact("Your map sight in the sun at this hour",
+		    std::to_string(BOUNDED(0, map_dayblind_modifier, 8))) +
+	       fact("With infravision or ophidian eyes",
+		    "+" + std::to_string(dayblind_infravision_bonus())) +
+	       fact("Your map sight underground", std::to_string(dayblind_underdark_range()));
+}
+
+std::string eyeless_innate_facts(P_char /*ch*/)
+{
+	return fact("Your map sight range, whatever the light",
+		    std::to_string(eyeless_map_range())) +
+	       "  You cannot be blinded, dazzled or gazed at.\n";
+}
+
+std::string forest_sight_innate_facts(P_char /*ch*/)
+{
+	return "  Forests do not cut your map sight.\n" +
+	       fact("Others see this far in one", std::to_string(forest_map_cap()));
+}
+
 int map_view_distance(P_char ch, int room)
 {
 	int n;
@@ -1183,7 +1236,7 @@ int map_view_distance(P_char ch, int room)
 	// eyeless - this means that ANY other factors mean nothing.
 	else if (has_innate(ch, INNATE_EYELESS))
 	{
-		return 8;
+		return eyeless_map_range();
 	}
 	// if on the surface
 	else if (IS_SURFACE_MAP(room))
@@ -1194,7 +1247,9 @@ int map_view_distance(P_char ch, int room)
 			if (IS_AFFECTED(ch, AFF_INFRAVISION) ||
 			    has_innate(ch, INNATE_OPHIDIAN_EYES))
 			{
-				n = BOUNDED(0, (map_dayblind_modifier + 2), 8);
+				n = BOUNDED(0,
+					    (map_dayblind_modifier + dayblind_infravision_bonus()),
+					    8);
 			}
 			else
 			{
@@ -1228,7 +1283,7 @@ int map_view_distance(P_char ch, int room)
 	{
 		if (IS_DAYBLIND(ch))
 		{
-			n = 8;
+			n = dayblind_underdark_range();
 		}
 		else if (IS_AFFECTED2(ch, AFF2_ULTRAVISION))
 		{
@@ -1259,9 +1314,9 @@ int map_view_distance(P_char ch, int room)
 		}
 	}
 
-	if (IS_FOREST_ROOM(room) && !has_innate(ch, INNATE_FOREST_SIGHT) && n > 3)
+	if (IS_FOREST_ROOM(room) && !has_innate(ch, INNATE_FOREST_SIGHT) && n > forest_map_cap())
 	{
-		n = 3;
+		n = forest_map_cap();
 	}
 
 	if (IS_FOREST_ROOM(room) && IS_AFFECTED5(ch, AFF5_FOREST_SIGHT))
@@ -1271,7 +1326,7 @@ int map_view_distance(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_PERCEPTION))
 	{
-		n += 1;
+		n += perception_map_bonus();
 	}
 
 	if (IS_OCEAN_ROOM(room))

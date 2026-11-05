@@ -35,6 +35,10 @@
 #include "player/player_revision_state.h"
 #include "abilities/abilities.h"
 
+extern int calming_delay();
+extern int calming_level_gap();
+extern int calming_gap_roll(const Rolls &rolls);
+
 /*
  * external variables
  */
@@ -1796,10 +1800,11 @@ revalidate_movement:
 
 			calming = 0;
 			if (!IS_ELITE(tch) && !IS_INVADER(ch) &&
-			    (((GET_LEVEL(tch) - GET_LEVEL(ch)) <= 5) || !number(0, 3)) &&
+			    (((GET_LEVEL(tch) - GET_LEVEL(ch)) <= calming_level_gap()) ||
+			     !calming_gap_roll(live_rolls)) &&
 			    has_innate(ch, INNATE_CALMING))
 			{
-				calming = (int)get_property("innate.calming.delay", 10);
+				calming = calming_delay();
 			}
 
 			// A little randomness.

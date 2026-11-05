@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, extract_function, source
+from _innate_numbers import with_innate_numbers
 from _source_contract import function_bodies, strip_comments
 
 SMAGIC = source("smagic.c").read_text()
@@ -617,7 +618,8 @@ def check_sources():
 
 def main():
     check_sources()
-    shared = re.findall(r"^static [\w:]+ (\w+)\(", SMAGIC, re.M)
+    shared = [name for name in re.findall(r"^static [\w:]+ (\w+)\(", SMAGIC, re.M)
+              if name != "greater_mending_cure_level"]  # only innates batch 2's page reads it here
     functions = [extract_function("utility.c", "int dice(int num, int size)"),
                  extract_function("utility.c", "int BOUNDED(int a, int b, int c)"),
                  extract_function("utility.c", "int GET_CLASS(P_char ch, uint m_class)")]
@@ -630,7 +632,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ability-batch-5-", dir=build) as temporary:
         directory = Path(temporary)
         harness = directory / "batch5.cpp"
-        harness.write_text(HARNESS.replace("PAGES", pages).replace("FUNCTIONS", "\n".join(functions)))
+        harness.write_text(with_innate_numbers(HARNESS.replace("PAGES", pages).replace("FUNCTIONS", "\n".join(functions)), define_rolls=False))
         binary = directory / "batch5"
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",

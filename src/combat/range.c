@@ -414,6 +414,17 @@ static int archery_range_hit_skill(P_char ch, int i)
 		     i * get_property("archery.rangePenalty", 10));
 }
 
+// What haste and blur add to archery speed.
+int archery_haste_speed()
+{
+	return 20;
+}
+
+int archery_blur_speed()
+{
+	return 20;
+}
+
 // The speed a shot needs per arrow.
 static int archery_speed_per_shot()
 {
@@ -777,11 +788,11 @@ void do_fire(P_char ch, char *argument, int cmd)
 
 	if (IS_AFFECTED(ch, AFF_HASTE))
 	{
-		speed += 20;
+		speed += archery_haste_speed();
 	}
 	if (IS_AFFECTED3(ch, AFF3_BLUR))
 	{
-		speed += 20;
+		speed += archery_blur_speed();
 	}
 
 	// Sharpshooter spec bonuses.

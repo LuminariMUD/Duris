@@ -85,6 +85,7 @@
 #include "item/objmisc.h"
 #include "ships/ships.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 extern int top_of_world;
 
@@ -876,6 +877,26 @@ int get_maxspeed_without_cargo(P_ship ship)
 	return BOUNDED(1, (int)maxspeed, ceil);
 }
 
+// What a seadog adds to the top speed of a ship, and multiplies a cargo sale by.
+static int seadog_speed_bonus()
+{
+	return 2;
+}
+
+double seadog_sale_multiplier()
+{
+	return 1.10;
+}
+
+std::string seadog_innate_facts(P_char /*ch*/)
+{
+	return fact("Top speed of a ship at your helm",
+		    "+" + std::to_string(seadog_speed_bonus())) +
+	       fact("What you get for selling cargo",
+		    share_percent(seadog_sale_multiplier()) + " of normal") +
+	       "  It does not add to contraband sales.\n";
+}
+
 /* get max speed, includes player racial bonus if ch provided */
 /*
  * The ship's effective maximum speed, including flat bonuses.
@@ -888,7 +909,7 @@ int ShipData::get_maxspeed(P_char ch) const
 {
 	int speed = maxspeed + maxspeed_bonus;
 	if (ch && has_innate(ch, INNATE_SEADOG))
-		speed += 2;
+		speed += seadog_speed_bonus();
 	return speed;
 }
 

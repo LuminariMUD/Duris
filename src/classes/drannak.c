@@ -10,6 +10,7 @@
 
 #define TROPHY
 
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -499,6 +500,38 @@ bool lightbringer_proc(P_char ch, P_char victim, bool phys)
 	return TRUE;
 }
 
+// Intercept stops an attack when the mercenary's luck roll is at least the attack's roll.
+static int intercept_luck_roll(const Rolls &rolls, P_char merc)
+{
+	return rolls.number(1, GET_C_LUK(merc));
+}
+
+static int intercept_attack_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 800);
+}
+
+// How long an intercepted attacker stays twisted up, in pulses.
+static int intercept_duration()
+{
+	return 100;
+}
+
+std::string intercept_innate_facts(P_char ch)
+{
+	extern float intercept_attack_share();
+	return fact("Your luck roll against each attack",
+		    show({ intercept_luck_roll(lowest_rolls, ch),
+			   intercept_luck_roll(highest_rolls, ch) })) +
+	       fact("The attack's roll", show({ intercept_attack_roll(lowest_rolls),
+						intercept_attack_roll(highest_rolls) })) +
+	       "  At least as high stops an attack aimed at you, if you are standing.\n" +
+	       fact("If it works, attacker's attacks",
+		    share_percent(intercept_attack_share()) + " of normal") +
+	       fact("For", seconds(intercept_duration())) +
+	       "  An attacker it is already holding cannot be intercepted again.\n";
+}
+
 // The 'merc' is the mercenary being hit on by the 'hitter'.
 bool intercept_defensiveproc(P_char merc, P_char hitter)
 {
@@ -523,8 +556,8 @@ bool intercept_defensiveproc(P_char merc, P_char hitter)
 		return FALSE;
 	}
 
-	int num1 = number(1, GET_C_LUK(merc));
-	int num2 = number(1, 800);
+	int num1 = intercept_luck_roll(live_rolls, merc);
+	int num2 = intercept_attack_roll(live_rolls);
 
 	// Approx 1/8 chance for 100 luck, but really random.
 	//  debug("intercept_defensiveproc: merc: '%s', num1: %d, hitter: '%s', num2: %d", J_NAME(merc), num1, J_NAME(hitter), num2);
@@ -545,7 +578,7 @@ bool intercept_defensiveproc(P_char merc, P_char hitter)
 
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_INTERCEPT;
-	af.duration = 100;
+	af.duration = intercept_duration();
 	af.flags = AFFTYPE_SHORT;
 	affect_to_char(hitter, &af);
 

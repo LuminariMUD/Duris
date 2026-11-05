@@ -8,6 +8,7 @@
  * ***************************************************************************
  */
 
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -7444,7 +7445,8 @@ bool find_chance(P_char ch)
 	if (IS_TRUSTED(ch))
 		return TRUE;
 
-	if (has_innate(ch, INNATE_DRAGONMIND) && number(0, 1))
+	extern int dragonmind_roll(const Rolls &rolls);
+	if (has_innate(ch, INNATE_DRAGONMIND) && dragonmind_roll(live_rolls))
 		return TRUE;
 
 	if (((GET_C_INT(ch) + GET_C_WIS(ch) + GET_C_LUK(ch)) / 3) > number(1, 101))

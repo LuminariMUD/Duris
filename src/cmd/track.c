@@ -710,6 +710,43 @@ char *sickprocess(const char *arg)
 	return hmm;
 }
 
+// Changes to the improved tracking contest: rating against a roll that must come out lower.
+static int perception_track_bonus()
+{
+	return 30;
+}
+
+static int farsee_track_bonus()
+{
+	return 10;
+}
+
+int ophidian_track_penalty()
+{
+	return 5;
+}
+
+// The chance threshold, rolled 1-100, of the special senses that find tracks.
+int track_sense_chance(int level)
+{
+	return 10 + ((level > 46) ? (2 * (level - 46)) : 0);
+}
+
+std::string perception_innate_facts(P_char /*ch*/)
+{
+	extern int perception_map_bonus();
+	return fact("Your map sight range", "+" + std::to_string(perception_map_bonus())) +
+	       fact("Your improved tracking rating, if you have that skill",
+		    "+" + std::to_string(perception_track_bonus()));
+}
+
+std::string farsee_innate_facts(P_char /*ch*/)
+{
+	return "  You can look into the next rooms, unless a closed door blocks the view.\n" +
+	       fact("Your improved tracking roll, if you have that skill",
+		    std::to_string(farsee_track_bonus()) + " easier");
+}
+
 // Shows tracks / messages when appropriate to ch for tracks in room room.
 void show_tracks(P_char ch, int room)
 {
@@ -754,7 +791,7 @@ void show_tracks(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_PERCEPTION))
 	{
-		skill += 30;
+		skill += perception_track_bonus();
 	}
 
 	if (IS_AFFECTED(ch, AFF_FLY))
@@ -785,7 +822,7 @@ void show_tracks(P_char ch, int room)
 
 	if (IS_AFFECTED(ch, AFF_FARSEE))
 	{
-		percent -= 10;
+		percent -= farsee_track_bonus();
 	}
 	if (IS_AFFECTED4(ch, AFF4_HAWKVISION))
 	{
@@ -799,7 +836,7 @@ void show_tracks(P_char ch, int room)
 
 	if (has_innate(ch, INNATE_OPHIDIAN_EYES) && GET_SPEC(ch, CLASS_DRAGOON, SPEC_DRAGON_HUNTER))
 	{
-		percent += 5;
+		percent += ophidian_track_penalty();
 	}
 
 	switch (world[room].sector_type)
@@ -897,7 +934,7 @@ void show_tracks(P_char ch, int room)
 	 *   Special cases get a a 10% chance up to 46 and a 30% chance at 56 for detecting the track (as per below).
 	 * Now we have a skill, percent, & chance...
 	 */
-	chance = 10 + ((GET_LEVEL(ch) > 46) ? (2 * (GET_LEVEL(ch) - 46)) : 0);
+	chance = track_sense_chance(GET_LEVEL(ch));
 
 	for (obj = world[room].contents; obj; obj = next_obj)
 	{
