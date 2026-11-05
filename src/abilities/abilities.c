@@ -879,6 +879,12 @@ AbilityFacts ability_facts(int skill)
 		return wind_tunnel_facts;
 	case SPELL_BINDING_WIND:
 		return binding_wind_facts;
+	case SPELL_STORNOGS_GREATER_SPHERES:
+		return group_stornog_facts;
+	case SPELL_MASS_INVIS:
+		return mass_invisibility_facts;
+	case SPELL_MASS_BARKSKIN:
+		return mass_barkskin_facts;
 	default:
 		return nullptr;
 	}

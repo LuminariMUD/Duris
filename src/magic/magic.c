@@ -13291,6 +13291,13 @@ void spell_group_globe(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 	}
 }
 
+std::string group_stornog_facts(P_char ch)
+{
+	return fact("Casts", "stornog's spheres on each group member in the room") +
+	       "  Each member gets the spheres that stornog's spheres would give them; yours:\n" +
+	       stornogs_spheres_facts(ch) + "  Nothing happens unless you are in a group.\n";
+}
+
 void spell_group_stornog(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			 P_obj /*obj*/)
 {
@@ -15848,7 +15855,8 @@ std::string barkskin_facts(P_char ch)
 	return fact("Armor class", std::to_string(barkskin_armor_class(ch, level)) +
 					   " at your level, " + std::to_string(level)) +
 	       fact("Duration", game_hours(barkskin_duration())) +
-	       "  Over another armor spell it changes no armor class.\n";
+	       "  Over another armor spell it changes no armor class.\n"
+	       "  A player on the enemy side of the race war may resist with a paralysis save.\n";
 }
 
 void spell_barkskin(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -21465,6 +21473,12 @@ void spell_lesser_resurrect(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	extract_obj(obj);
 }
 
+std::string mass_invisibility_facts(P_char ch)
+{
+	return fact("Casts", "invisibility on everyone in the room, at your level") +
+	       invisibility_facts(ch) + "  A mortal caster skips immortals.\n";
+}
+
 void spell_mass_invisibility(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			     P_obj /*obj*/)
 {
@@ -22316,6 +22330,12 @@ void spell_prayer(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char
 				     tch);
 		}
 	}
+}
+
+std::string mass_barkskin_facts(P_char ch)
+{
+	return fact("Casts", "barkskin on everyone in the room at your height, at your level") +
+	       barkskin_facts(ch);
 }
 
 void spell_mass_barkskin(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -25123,7 +25143,8 @@ std::string stornogs_spheres_facts(P_char ch)
 {
 	return fact("Spheres", std::to_string(stornogs_spheres_count(ch)) +
 				       ", each stopping one damage spell that can be deflected") +
-	       fact("Duration", "until the spheres are used up");
+	       fact("Duration", "until the spheres are used up") +
+	       "  It does nothing to a target that still has spheres.\n";
 }
 
 void spell_stornogs_spheres(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
