@@ -86,6 +86,8 @@ int main() {
     assert(seconds(WAIT_SEC) == "1 second");
     assert(seconds(PULSE_VIOLENCE * 2) == "8 seconds");
     assert(seconds(6) == "1.5 seconds");
+    assert(game_hours(1) == "1 game hour (about 1.25 minutes)");
+    assert(game_hours(24) == "24 game hours (about 30 minutes)");
     assert(show({ 3, 3 }) == "3" && show({ 3, 9 }) == "3-9");
     assert(ability_facts(SPELL_FIREBALL) == fireball_facts);
     assert(ability_facts(SKILL_BASH) == bash_facts);
