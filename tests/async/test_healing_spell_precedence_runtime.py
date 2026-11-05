@@ -247,6 +247,7 @@ output.mkdir(parents=True, exist_ok=True)
 harness = output / 'harness.cpp'
 harness.write_text(PRELUDE + '\n'.join([
     extract_function('specs.eth2.c', 'static affected_type *find_aramus_crown_regeneration('),
+    extract_function('magic.c', 'static int regeneration_duration('),
     extract_function('magic.c', 'void spell_regeneration('),
     extract_function('magic.c', 'static int accel_healing_duration('),
     extract_function('magic.c', 'static int accel_healing_regen('),

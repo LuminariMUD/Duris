@@ -148,6 +148,12 @@ functions = [
     ('magic.c','static int fireball_failed_save('),
     ('magic.c','static bool fireball_passes_globes('),
     ('magic.c','void spell_fireball('),
+    ('magic.c','static int solar_flare_damage('),
+    ('magic.c','static bool solar_flare_boosted('),
+    ('magic.c','static int solar_flare_boost('),
+    ('magic.c','static int solar_flare_blindness('),
+    ('magic.c','static int solar_flare_blind_odds('),
+    ('magic.c','static int solar_flare_immolate_odds('),
     ('magic.c','void spell_solar_flare('),
 ]
 damage_source = extract_function('fight.c','int spell_damage(')

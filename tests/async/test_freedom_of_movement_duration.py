@@ -17,6 +17,8 @@ from _paths import ROOT, HARNESS_STUBS, extract_function, source
 
 
 FREEDOM_CHECK = extract_function("magic.c", "bool check_freedom_of_movement(P_char ch)")
+FREEDOM_ROLLS = "\n".join(extract_function("magic.c", signature) for signature in (
+    "static int freedom_of_movement_roll(", "static int freedom_of_movement_duration("))
 FREEDOM_SPELL = extract_function("magic.c", "void spell_freedom_of_movement(int level")
 GUARDIAN_SPELL = "\n".join(
     extract_function("smagic.c", signature)
@@ -32,8 +34,8 @@ PRELUDE = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
-#include "net/comm.h"
 #include "abilities/abilities.h"
+#include "net/comm.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -151,7 +153,7 @@ with tempfile.TemporaryDirectory(prefix="duris-fom-duration-") as directory:
     harness = temporary / "harness.cpp"
     binary = temporary / "harness"
     harness.write_text(
-        "\n".join((PRELUDE, FREEDOM_CHECK, FREEDOM_SPELL, GUARDIAN_SPELL, DRIVER)),
+        "\n".join((PRELUDE, FREEDOM_CHECK, FREEDOM_ROLLS, FREEDOM_SPELL, GUARDIAN_SPELL, DRIVER)),
         encoding="utf-8",
     )
     subprocess.run(

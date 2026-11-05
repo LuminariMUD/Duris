@@ -92,6 +92,7 @@ functions += '\ndouble racial_damage(P_char ch, P_char victim, double dam) {\n' 
 functions += '\nint racial_dodge(P_char char_dodger) { int percent=0; bool dragoon_dodge=false;\n' + dodge + '\nreturn dragoon_dodge ? 2 : 1; }\n'
 functions += '\ndouble cold_resistance(P_char victim) { damage_mod value{dam_mod_type::None, 0}; auto *dam_mod=&value;\n' + cold + '\nreturn value.mod; }\n'
 functions += '\ndouble racial_spell_damage(P_char caster, P_char victim, int damageType) { damage_mod value{dam_mod_type::None, 0}; auto *dam_mod=&value;\n' + racial_spell + '\nreturn value.mod; }\n'
+functions += extract_function('magic.c', 'static int holy_word_bane_damage(')
 for index, line in enumerate(gith):
     functions += f'\nint gith_word_{index}(P_char victim, int dam) {{ {line} return dam; }}\n'
 functions += '\nbool can_cast_berserk(P_char ch) {\n' + cast + '\nreturn true; }\n'
