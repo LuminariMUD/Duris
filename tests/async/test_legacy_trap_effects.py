@@ -11,6 +11,9 @@ spells = magic[start:magic.index("static int dispel_magic_wall_damage(", start)]
 spells += "\n".join(extract_function("magic.c", "static int dispel_magic_" + name + "(")
                     for name in ("wall_damage", "destroy_odds", "fade_roll")) + "\n"
 spells += extract_function("magic.c", "static int minor_paralysis_duration(") + "\n"
+spells += "\n".join(extract_function("magic.c", "static int " + name + "(") for name in (
+    "wither_undead_damage", "wither_armor_class", "wither_duration", "harm_damage",
+    "harm_zealot_damage")) + "\n"
 spells += "\n".join(extract_function("magic.c", "void " + name + "(") for name in (
     "spell_dispel_magic", "spell_wither", "spell_harm", "spell_poison", "spell_minor_paralysis"))
 spells += extract_function("affects.c", "void Stun(")

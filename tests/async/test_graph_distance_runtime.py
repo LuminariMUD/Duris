@@ -49,6 +49,7 @@ void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
 bool char_to_room(P_char ch, int room, int) { ++moved; ch->in_room = room; return true; }
 void CharWait(P_char, int ticks) { waited += ticks; }
 ''' + '\n'.join(extract_function(path, signature) for path, signature in [
+    ('magic.c', 'static int teleport_range('),
     ('magic.c', 'void spell_teleport('),
     ('psionics.c', 'void spell_depart('),
     ('ethermancer.c', 'void spell_etheric_gust('),

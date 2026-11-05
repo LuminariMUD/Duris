@@ -107,6 +107,8 @@ functions = [
     ('magic.c', 'const char *elemental_form_failure_message('),
     ('magic.c', 'const char *elemental_summon_failure_message('),
     ('magic.c', 'const char *elemental_aura_failure_message('),
+    ('magic.c', 'static int elemental_aura_duration('),
+    ('magic.c', 'static int elemental_aura_max_stat('),
     ('magic.c', 'void spell_elemental_aura('),
     ('psionics.c', 'void spell_fire_aura('),
     ('magic.c', 'static int air_form_duration('),
@@ -124,6 +126,9 @@ functions = [
     *(('magic.c', f'static int stone_skin_{number}(')
       for number in ('absorb', 'living_stone', 'conjurer', 'sorcerer', 'other', 'duration', 'layers')),
     ('magic.c', 'void spell_stone_skin('),
+    ('magic.c', 'static int earthen_maul_damage('),
+    ('magic.c', 'static int earthen_maul_saved('),
+    ('magic.c', 'static int earthen_maul_terrain('),
     ('magic.c', 'void spell_earthen_maul('),
     ('fight.c', 'bool decrease_skin_counter('),
     ('fight.c', 'bool critical_attack('),

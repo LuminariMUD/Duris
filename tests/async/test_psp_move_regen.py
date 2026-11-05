@@ -22,6 +22,7 @@ PRELUDE = r'''
 #include "world/events.h"
 #include "world/falling.h"
 #include "world/difficulty.c"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -107,6 +108,7 @@ P_nevent get_scheduled(P_char owner, event_func_type func) {
 // Non-mana spell paths must never be reached by these psionicist/mindflayer cases.
 struct s_skill skills[MAX_SKILLS]{};
 int number(int low, int) { return low; }
+const Rolls live_rolls = { dice, number };
 int get_spell_circle(P_char, int) { return 2; }
 const char *get_god_name(P_char) { assert(false); return ""; }
 void affect_to_end(P_char, affected_type *) { assert(false); }
@@ -143,6 +145,10 @@ HELPERS = "\n".join([
     extract_function("events.c", "void event_move_regen(P_char ch,"),
     extract_function("events.c", "void StartRegen(P_char ch,"),
     extract_function("memorize.c", "void use_spell("),
+    *(extract_function("magic.c", "static " + signature) for signature in (
+        "int restore_spirit_damage(", "bool restore_spirit_untrained(",
+        "int restore_spirit_untrained_damage(", "int restore_spirit_saved(",
+        "int restore_spirit_level_bonus(", "int restore_spirit_vamp(")),
     extract_function("magic.c", "void spell_restore_spirit("),
     extract_function("actmove.c", "static bool standing_and_resting("),
     extract_function("actmove.c", "static int resting_posture("),

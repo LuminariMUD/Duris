@@ -193,6 +193,9 @@ def run(binary, backend):
                 lost_info = command(player, "spells info solbeeps missile barrage")
                 assert "Wizard" in lost_info and "Unavailable (lost from base class)" in lost_info
                 assert "Circle 8 (changed)" in command(player, "spells info haste")
+                # Not converted yet: today's page unchanged.
+                blade = command(player, "spells info flame blade")
+                assert "Your access" in blade and "Mechanics" not in blade, blade
                 assert "Your required Circle:" in info and "Current maximum Circle: 1" in info
                 assert "Circle requirement: not yet met" in info and "Spellbook" in info
                 assert info.index("Class / specialization") < info.index("Your access") < info.index("Mechanics") < info.index("Helpfile details")
@@ -202,7 +205,10 @@ def run(binary, backend):
                 assert "Duration: 15-16 game hours (18.75-20 minutes)" in sanctuary, sanctuary
                 redirected = command(player, "spells info magic missile")
                 assert "Redirected spell details for the disposable journey" in redirected
-                assert "Mechanics" not in redirected
+                # Converted in batch 1: its numbers come before the redirected help.
+                assert "Missiles: 1 at your level, 1" in redirected, redirected
+                assert "Damage per missile: 5-17, the same for every missile" in redirected
+                assert redirected.index("Mechanics") < redirected.index("Redirected spell details")
                 missing = command(player, "spells info fire form")
                 assert "Circle 10 (added)" in missing and "Your access" in missing
                 assert "Help topic not found" in missing
@@ -232,6 +238,10 @@ def run(binary, backend):
                 assert "Healing: 101-105 at your level, 1" in heal_info, heal_info
                 god.send("cast 'heal' " + GOD)
                 god.expect("A warm feeling fills your body", timeout=30)
+                # So does batch 1's magic missile, on a fresh target.
+                command(god, "load mob 11")
+                god.send("cast 'magic missile' raoul")
+                god.expect_any(("the magic missile hits", "magic missile tears away"), timeout=30)
                 command(god, "toggle paging yes")
                 god.send("spells all")
                 god.expect("BASE-CLASS CIRCLE REFERENCE")
