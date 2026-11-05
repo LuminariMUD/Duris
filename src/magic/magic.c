@@ -19402,10 +19402,12 @@ void spell_heavens_aid(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 		return;
 	}
 
-	if (GET_LEVEL(victim) < heavens_aid_slay_level(level) &&
-	    spell_damage(ch, victim, heavens_aid_slay_damage(), SPLDAM_HOLY, SPLDAM_NODEFLECT,
-			 &messages) == DAM_NONEDEAD)
+	if (GET_LEVEL(victim) < heavens_aid_slay_level(level))
+	{
+		spell_damage(ch, victim, heavens_aid_slay_damage(), SPLDAM_HOLY, SPLDAM_NODEFLECT,
+			     &messages);
 		return;
+	}
 
 	int dam;
 	dam = heavens_aid_damage(live_rolls, level);

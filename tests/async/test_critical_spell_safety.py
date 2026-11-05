@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the real wave event, golem dispatch and radial spell under sanitizers."""
+"""Run critical spell handlers against released affects, targets and boundary casts."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,9 +28,12 @@ const int top_of_world = 1;
 int bfs_cur_marker = 1;
 int STAT_INDEX(int stat) { return stat; }
 int get_property(const char *, int fallback) { return fallback; }
+float get_property(const char *, double fallback) { return fallback; }
 static char_data master{};
 static bool mastered, shrug;
 static int scheduled, damage_calls, mana_before, removed, disarmed, moved, waited, golem_calls, golem_type;
+static int damage_result = DAM_NONEDEAD, last_damage;
+static bool release_on_damage;
 static std::string feedback;
 void send_to_char(const char *text, P_char) { feedback += text; }
 void act(const char *, int, P_char, P_obj, void *, int) {}
@@ -54,9 +57,15 @@ void disarm_char_nevents(P_char, event_func_type) { ++disarmed; }
 nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, const void *, int) {
     ++scheduled; return {};
 }
-int spell_damage(P_char, P_char, double, int, uint, damage_messages *, int *) {
-    ++damage_calls; return DAM_NONEDEAD;
+int spell_damage(P_char ch, P_char victim, double amount, int, uint, damage_messages *, int *) {
+    ++damage_calls; last_damage = amount;
+    if (release_on_damage) {
+        if (damage_result == DAM_VICTDEAD || damage_result == DAM_BOTHDEAD) delete victim;
+        if (damage_result == DAM_CHARDEAD || damage_result == DAM_BOTHDEAD) delete ch;
+    }
+    return damage_result;
 }
+void spell_minor_paralysis(int, P_char, char *, int, P_char, P_obj) {}
 void create_golem(int, P_char, P_char, P_obj, int type) {
     ++golem_calls; golem_type = type;
     assert(type >= NECROGOLEM_FLESH && type <= NECROGOLEM_LAST);
@@ -86,6 +95,12 @@ void KnockOut(P_char, int) { assert(false); }
     ('psionics.c', 'static int radial_navigation_lag('),
     ('psionics.c', 'static int radial_navigation_knockout('),
     ('psionics.c', 'void spell_radial_navigation('),
+    ('magic.c', 'static int heavens_aid_slay_level('),
+    ('magic.c', 'static int heavens_aid_slay_damage('),
+    ('magic.c', 'static int heavens_aid_damage('),
+    ('magic.c', 'static int heavens_aid_pc_damage('),
+    ('magic.c', 'static int heavens_aid_factor('),
+    ('magic.c', 'void spell_heavens_aid('),
 ]) + r'''
 static char_data alive() {
     char_data ch{};
@@ -170,11 +185,44 @@ static void radial() {
         }
     }
 }
+static void heavens() {
+    for (int result : {DAM_NONEDEAD, DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
+        auto caster = new char_data(alive()), victim = new char_data(alive());
+        victim->player.level = 9;
+        victim->player.race = RACE_ORC;
+        victim->player.racewar = RACEWAR_EVIL;
+        victim->specials.act = ACT_ISNPC;
+        damage_calls = 0;
+        damage_result = result;
+        release_on_damage = true;
+        spell_heavens_aid(50, caster, nullptr, SPELL_TYPE_SPELL, victim, nullptr);
+        assert(damage_calls == 1 && last_damage == 10000);
+        if (result != DAM_VICTDEAD && result != DAM_BOTHDEAD) delete victim;
+        if (result != DAM_CHARDEAD && result != DAM_BOTHDEAD) delete caster;
+    }
+    release_on_damage = false;
+    damage_result = DAM_NONEDEAD;
+    for (bool npc : {false, true}) {
+        char_data caster = alive(), victim = alive();
+        victim.player.level = 10; // The slay threshold is strict.
+        victim.player.race = RACE_ORC;
+        victim.player.racewar = RACEWAR_EVIL;
+        victim.specials.act = npc ? ACT_ISNPC : 0;
+        damage_calls = 0;
+        spell_heavens_aid(50, &caster, nullptr, SPELL_TYPE_SPELL, &victim, nullptr);
+        assert(damage_calls == 1 && last_damage == (npc ? 250 : 125));
+        victim.player.racewar = RACEWAR_GOOD;
+        damage_calls = 0;
+        spell_heavens_aid(50, &caster, nullptr, SPELL_TYPE_SPELL, &victim, nullptr);
+        assert(!damage_calls);
+    }
+}
 int main(int argc, char **argv) {
     assert(argc == 2);
     if (!std::strcmp(argv[1], "wave")) wave();
     else if (!std::strcmp(argv[1], "golem")) golem();
     else if (!std::strcmp(argv[1], "radial")) radial();
+    else if (!std::strcmp(argv[1], "heavens")) heavens();
     else assert(false);
     std::printf("PASS critical spell safety: %s\n", argv[1]);
 }
@@ -189,5 +237,5 @@ with tempfile.TemporaryDirectory(prefix='critical-spells-', dir=out) as temporar
                     '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
                     '-g', '-Isrc', str(cpp), '-o', str(binary)], cwd=ROOT, check=True)
     results = [subprocess.run([str(binary), case], timeout=30).returncode
-               for case in ('wave', 'golem', 'radial')]
+               for case in ('wave', 'golem', 'radial', 'heavens')]
     assert not any(results), results
