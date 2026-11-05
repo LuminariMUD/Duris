@@ -34,3 +34,12 @@ fourth mask as the next section marker, so an unlabeled value is ambiguous.
 Persistent object save/load already preserves `bitvector5`; this extension is
 only for static prototypes loaded from `areas/obj/*.obj` through
 `areas/world.obj`.
+
+## Retired prototype owners
+
+An area retained in `areas/AREA` for saved object/mobile prototypes keeps its
+canonical `.zon` header with reset mode zero and no commands before `S`.
+Its `.wld` and `.qst` files remain empty when no playable rooms or quests remain.
+Do not insert a world end sentinel into a retired area's `.wld`: area assembly
+concatenates those files, so that marker would hide subsequent active areas.
+The header supplies the prototype owner's identity without restoring the area.

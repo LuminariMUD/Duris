@@ -24,7 +24,9 @@ from test_account_recovery_journey import (
     require,
 )
 from test_creation_prompt_journey import (
+    MENU,
     finish_character_choices,
+    play_saved_character,
     reply,
     require_prompt_framed,
     start_character,
@@ -57,7 +59,8 @@ def create_character(client: MudClient) -> None:
     reply(client, "y", "meet these criteria?")
     reply(client, "y", "Your selection")
     finish_character_choices(client)
-    reply(client, "y", "PRESS RETURN")
+    reply(client, "y", MENU)
+    play_saved_character(client, CHARACTER)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >", timeout=30)
 

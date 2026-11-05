@@ -474,7 +474,12 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     if expected_hometown:
         require(f"HOMETOWN: {expected_hometown}" in summary.splitlines(), summary)
     client.send("y")
-    # No rules-agreement gate: keeping the character goes straight to the motd.
+    client.expect("Please select an option")
+    client.send("1")
+    client.expect(character)
+    client.send(character)
+    client.expect("(Y/N)")
+    client.send("y")
     client.expect("PRESS RETURN")
     client.send("")
     if expected_room:

@@ -17,7 +17,7 @@ import time
 
 from test_account_recovery_journey import ACCOUNT, OLD_PASSWORD, ROOT, IsolatedServer, MudClient, build_flatfile_server, require
 from test_game_loop_session_journey import CHARACTER, create_character, reconnect_character
-from test_creation_prompt_journey import reboot, start_character, reply, finish_character_choices
+from test_creation_prompt_journey import MENU, play_saved_character, reboot, start_character, reply, finish_character_choices
 from test_flatfile_combat_journey import make_overlord
 from test_character_stat_choice_journey import WebSocketClient
 
@@ -454,7 +454,8 @@ def run(binary, evidence):
             reply(client, "y", "meet these criteria?")
             reply(client, "y", "Your selection")
             finish_character_choices(client)
-            reply(client, "y", "PRESS RETURN")
+            reply(client, "y", MENU)
+            play_saved_character(client, SECOND_CHARACTER)
             reply(client, "", "Your starter kit is ready")
             client.expect("Pos: standing >")
             wait_telnet(client, "Duris.Time", before, lambda state: state["hour"] == 10)

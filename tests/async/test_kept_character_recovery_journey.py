@@ -58,7 +58,8 @@ def run(binary, backend):
                 clients.append(staff)
                 account.create_account(staff, account.OLD_PASSWORD)
                 character_choices(staff, STAFF)
-                creation.reply(staff, "y", "PRESS RETURN")
+                creation.reply(staff, "y", creation.MENU)
+                creation.play_saved_character(staff, STAFF)
                 creation.reply(staff, "", "Your starter kit is ready")
                 staff.expect("Pos: standing >")
                 creation.reply(staff, "save", f"Save complete for {STAFF}.")
@@ -68,7 +69,7 @@ def run(binary, backend):
                 records = {}
                 for name in ("Taverek", "Veralis", "Nariven", "Selanth"):
                     character_choices(mortal, name)
-                    creation.reply(mortal, "y", "PRESS RETURN")
+                    creation.reply(mortal, "y", creation.MENU)
                     records[name] = saved_character(server, sql, inspector, name)
                     mortal.close()
                     mortal = login(server, OWNER)
@@ -126,7 +127,8 @@ def run(binary, backend):
                 mortal = login(server, OWNER)
                 clients.append(mortal)
                 character_choices(mortal, "Veralis")
-                creation.reply(mortal, "y", "PRESS RETURN")
+                creation.reply(mortal, "y", creation.MENU)
+                creation.play_saved_character(mortal, "Veralis")
                 replacement = saved_character(server, sql, inspector, "Veralis")
                 assert replacement[0] > broken and replacement[1] == 0
                 creation.reply(staff, f"keptchar attach {replacement[0]} Veralis {OWNER} synthetic-live", "Refused: live/pending")
