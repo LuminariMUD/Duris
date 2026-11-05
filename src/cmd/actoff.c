@@ -5869,7 +5869,8 @@ std::string roundkick_facts(P_char ch)
 	       fact("Before you can roundkick again after a hit", seconds(roundkick_rest())) +
 	       fact("Target's lag on a hit", seconds(roundkick_target_lag())) +
 	       "  The target must be your size or one smaller, and on the front line.\n"
-	       "  The target's defenses apply to the damage after.\n";
+	       "  The target's defenses apply to the damage after.\n" +
+	       takedown_rest_note();
 }
 
 int chance_roundkick(P_char ch, P_char victim)
@@ -8327,6 +8328,12 @@ static int bash_hit_lag()
 	return PULSE_VIOLENCE * 2;
 }
 
+// How long a landed bash keeps the basher from bashing again, in pulses.
+static int bash_rest(bool legless)
+{
+	return legless ? (int)(1.5 * PULSE_VIOLENCE) : (int)(2.8 * PULSE_VIOLENCE);
+}
+
 // The basher's lag after a miss, in pulses; longer when the miss leaves them prone.
 static int bash_miss_lag(bool prone)
 {
@@ -8455,6 +8462,9 @@ std::string bash_facts(P_char ch)
 			    " with your strength and " +
 			    (ch->equipment[WEAR_SHIELD] ? "shield" : "no shield")) +
 	       fact("Your lag on a hit", seconds(bash_hit_lag())) +
+	       fact("Before you can bash again after a hit",
+		    seconds(bash_rest(!GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN) && LEGLESS(ch)))) +
+	       "    (tackle, roundkick, legsweep, springleap and others wait on it too)\n" +
 	       fact("Your lag on a miss", seconds(bash_miss_lag(false)) + ", or " +
 						  seconds(bash_miss_lag(true)) +
 						  " if you fall prone") +
@@ -8863,7 +8873,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 				    ch, 0, victim, TO_VICT);
 				act("$N is knocked to the ground by $n's skillful bash!", FALSE, ch,
 				    0, victim, TO_NOTVICT);
-				set_short_affected_by(ch, SKILL_BASH, (int)(2.8 * PULSE_VIOLENCE));
+				set_short_affected_by(ch, SKILL_BASH, bash_rest(false));
 			}
 			else if (!LEGLESS(ch))
 			{
@@ -8873,7 +8883,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 				    0, victim, TO_VICT);
 				act("$N is knocked to the ground by $n's mighty bash!", FALSE, ch,
 				    0, victim, TO_NOTVICT);
-				set_short_affected_by(ch, SKILL_BASH, (int)(2.8 * PULSE_VIOLENCE));
+				set_short_affected_by(ch, SKILL_BASH, bash_rest(false));
 			}
 			else
 			{
@@ -8883,7 +8893,7 @@ void bash(P_char ch, P_char victim, bool _debug)
 				    FALSE, ch, 0, victim, TO_VICT);
 				act("$n's mass &+rslams&n into $N, knocking $M to the &+yground!&n",
 				    FALSE, ch, 0, victim, TO_NOTVICT);
-				set_short_affected_by(ch, SKILL_BASH, (int)(1.5 * PULSE_VIOLENCE));
+				set_short_affected_by(ch, SKILL_BASH, bash_rest(true));
 			}
 
 			SET_POS(victim, POS_SITTING + GET_STAT(victim));
@@ -9147,7 +9157,8 @@ std::string tackle_facts(P_char)
 	       fact("Target's combat pulse", "+" + std::to_string(tackle_combat_pulse()) + ", " +
 						     game_hours(tackle_combat_pulse_duration())) +
 	       "  Centaurs, quadrupeds and driders can't tackle. Tackling outside a fight\n"
-	       "  can carry you both out of the room, 1 time in 5.\n";
+	       "  can carry you both out of the room, 1 time in 5.\n" +
+	       takedown_rest_note();
 }
 
 void do_tackle(P_char ch, char *arg, int /*cmd*/)
@@ -10117,7 +10128,8 @@ std::string maul_facts(P_char ch)
 	       fact("Target's lag on a hit", seconds(maul_target_lag(mauler))) +
 	       fact("Target stays aware", game_hours(maul_aware_duration())) +
 	       "  Needs berserk. The right size is your own or one either way; a centaur or\n"
-	       "  drider must be smaller than you. The target's defenses apply to the damage.\n";
+	       "  drider must be smaller than you. The target's defenses apply to the damage.\n" +
+	       (GET_CLASS(ch, CLASS_BERSERKER) ? takedown_rest_note() : std::string());
 }
 
 void maul(P_char ch, P_char victim)
@@ -11788,7 +11800,7 @@ std::string springleap_facts(P_char ch)
 						     springleap_super_damage(highest_rolls) })) +
 			 fact("  Chance it also stuns, if the target fails a save",
 			      "1 in 2, for " + seconds(springleap_super_stun()));
-	return facts + "  The target must be your size or one bigger.\n";
+	return facts + "  The target must be your size or one bigger.\n" + takedown_rest_note();
 }
 
 void do_springleap(P_char ch, char *argument, int /*cmd*/)
@@ -13075,7 +13087,7 @@ std::string gaze_facts(P_char ch)
 			    std::to_string(
 				    gaze_kill_hit_points(highest_rolls, anatomy_kill_bonus(ch))) +
 			    " hit points, with your anatomy") +
-	       "  The target can be up to 1 size bigger or 2 smaller.\n";
+	       "  The target can be up to 1 size bigger or 2 smaller.\n" + takedown_rest_note();
 }
 
 void gaze(P_char ch, P_char victim)
@@ -13417,7 +13429,8 @@ std::string restrain_facts(P_char ch)
 								    anatomy_kill_bonus(ch))) +
 			    " hit points, with your anatomy") +
 	       "  The target must be within 2 sizes; one not standing is very hard to restrain.\n"
-	       "  A hit stops casting, 2 times in 3.\n";
+	       "  A hit stops casting, 2 times in 3.\n" +
+	       takedown_rest_note();
 }
 
 void restrain(P_char ch, P_char victim)
@@ -14214,7 +14227,8 @@ std::string legsweep_facts(P_char)
 	       fact("Before your next takedown after a hit", seconds(legsweep_rest())) +
 	       fact("Chance a hit leaves the target prone", "15 in 100") +
 	       "  The target must be within one size of you. Centaurs, quadrupeds and\n"
-	       "  driders can't sweep.\n";
+	       "  driders can't sweep.\n" +
+	       takedown_rest_note();
 }
 
 void do_legsweep(P_char ch, char *arg, int /*cmd*/)

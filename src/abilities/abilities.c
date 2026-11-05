@@ -51,6 +51,11 @@ std::string fact(const std::string &label, const std::string &text)
 	return "  " + label + ": " + text + "\n";
 }
 
+std::string takedown_rest_note()
+{
+	return "  It waits out the rest after a bash or other takedown.\n";
+}
+
 std::string show(Range range)
 {
 	if (range.low == range.high)
