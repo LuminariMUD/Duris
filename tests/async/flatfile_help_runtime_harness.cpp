@@ -155,6 +155,28 @@ int main()
 		"Air travel help omitted its post-cast waits");
 	require(wiki_help("conjure water").find("5-minute cooldown") != string::npos,
 		"Conjure Water omitted its successful-use cooldown");
+	for (const char *topic : { "scourge", "ruiner" })
+	{
+		help_output.clear();
+		do_help(nullptr, const_cast<char *>(topic), 0);
+		for (const char *rule :
+		     { "Specialization bonuses", "Blight", "12%", "plants and slimes" })
+			require(help_output.find(rule) != string::npos,
+				"Blighter specialization help omitted its damage bonus or target limit");
+	}
+	const string scourge = wiki_help("scourge");
+	for (const char *rule : { "adds 50", "96 to 196", "terrain", "+5 movement regeneration",
+				  "+5 ticks", "caster's duration", "neither recalculates" })
+		require(scourge.find(rule) != string::npos,
+			"Scourge help omitted a healing or Sap Nature qualification");
+	const string ruiner = wiki_help("ruiner");
+	for (const char *spell : { "Flame sphere", "Horrid wilting", "Implosion", "Firelance" })
+		require(ruiner.find(spell) != string::npos, "Ruiner help omitted a boosted spell");
+	require(ruiner.find("Other damage spells do not") != string::npos,
+		"Ruiner help presented a universal damage bonus");
+	require(wiki_help("drain nature").find("half again") == string::npos &&
+			wiki_help("drain nature").find("Scourge adds 50") != string::npos,
+		"Drain Nature help retained its inaccurate fixed-percentage Scourge bonus");
 	require(wiki_help("water to life").find("232 at") != string::npos,
 		"Water to Life did not render the dedicated parsed formula topic");
 	require(wiki_help("water form").find("5 seconds BEFORE") != string::npos &&
