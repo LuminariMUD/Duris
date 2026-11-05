@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function
+from _innate_numbers import with_innate_numbers
 
 
 HARNESS = r'''
@@ -150,14 +151,14 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="melee-xp-", dir=directory) as temporary:
         program = Path(temporary) / "harness.cpp"
         binary = Path(temporary) / "harness"
-        program.write_text(HARNESS + extract_function("utility.c", "bool FightingCheck(") +
+        program.write_text(with_innate_numbers(HARNESS + extract_function("utility.c", "bool FightingCheck(") +
                            extract_function("fight.c", "float inertial_barrier_attack_share(") +
                            extract_function("fight.c", "float combat_mind_attack_floor(") +
                            extract_function("fight.c", "static int battle_senses_threshold(") +
                            extract_function("fight.c", "static int battle_senses_duration(") +
                            extract_function("fight.c", "static int shadow_movement_threshold(") +
                            extract_function("fight.c", "static int shadow_movement_duration(") +
-                           extract_function("fight.c", "void perform_violence(") + CASES)
+                           extract_function("fight.c", "void perform_violence(") + CASES))
         subprocess.run([
             "g++", "-std=c++20", "-Wall", "-Wextra", "-Werror", "-Isrc", "-I/usr/include/mysql",
             "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie",

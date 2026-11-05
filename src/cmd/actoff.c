@@ -2811,6 +2811,26 @@ int advanced_meditation_stun_flee_bonus()
 	return (int)(SKILL_ADVANCED_MEDITATION / 10);
 }
 
+// Vitality a flight costs: a player without improved flee, and a mount carrying its rider.
+static int flee_vitality_cost(const Rolls &rolls)
+{
+	return rolls.number(20, 30);
+}
+
+static int flee_mount_vitality_cost(const Rolls &rolls)
+{
+	return rolls.number(30, 40);
+}
+
+std::string improved_flee_innate_facts(P_char /*ch*/)
+{
+	return fact("Vitality you lose when you flee", "none") +
+	       fact("Without this innate, a non-rogue player loses",
+		    show({ flee_vitality_cost(lowest_rolls), flee_vitality_cost(highest_rolls) })) +
+	       fact("A mount you ride loses", show({ flee_mount_vitality_cost(lowest_rolls),
+						     flee_mount_vitality_cost(highest_rolls) }));
+}
+
 void do_flee(P_char ch, char *argument, int cmd)
 {
 	int i, attempted_dir, start_room, atts;
@@ -3096,12 +3116,14 @@ void do_flee(P_char ch, char *argument, int cmd)
 			StartRegen(ch, regen_resource::vitality);
 
 			if (GET_VITALITY(ch) > 0)
-				GET_VITALITY(ch) = MAX(0, (GET_VITALITY(ch) - (number(20, 30))));
+				GET_VITALITY(ch) = MAX(
+					0, (GET_VITALITY(ch) - (flee_vitality_cost(live_rolls))));
 		}
 		else if (GET_CLASS(ch, CLASS_ROGUE) && GET_VITALITY(ch) > 0)
 			GET_VITALITY(ch) = MAX(0, (GET_VITALITY(ch) - number(5, 15)));
 		else if (rider && mount && GET_VITALITY(mount) > 0)
-			GET_VITALITY(mount) = MAX(0, (GET_VITALITY(mount) - (number(30, 40))));
+			GET_VITALITY(mount) = MAX(
+				0, (GET_VITALITY(mount) - (flee_mount_vitality_cost(live_rolls))));
 
 		if (succeded)
 		{
@@ -6962,6 +6984,26 @@ std::string sneaky_strike_facts(P_char ch)
 		       "  You need a weapon, and the target must be within one size of you.\n";
 }
 
+// Mind of the dragon: this roll decides each check, and a thief's chance is divided by this.
+int dragonmind_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+int dragonmind_steal_divisor()
+{
+	return 2;
+}
+
+std::string dragonmind_innate_facts(P_char /*ch*/)
+{
+	return fact("Chance to dodge a sneaky strike", one_in(dragonmind_roll)) +
+	       fact("Chance to foil a backstab", one_in(dragonmind_roll)) +
+	       fact("Chance to find what you search for at once", one_in(dragonmind_roll)) +
+	       fact("A thief's chance to steal from you",
+		    "divided by " + std::to_string(dragonmind_steal_divisor()));
+}
+
 void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 {
 	static bool DEBUG = TRUE;
@@ -7017,7 +7059,7 @@ void event_sneaky_strike(P_char ch, P_char victim, P_obj obj, void *data)
 		return;
 	}
 
-	if (has_innate(victim, INNATE_DRAGONMIND) && !number(0, 1))
+	if (has_innate(victim, INNATE_DRAGONMIND) && !dragonmind_roll(live_rolls))
 	{
 		send_to_char("Your victim notice your attempt and rolls out of the way!\n", ch);
 		send_to_char("You sidestep $N's attack.\n", victim);
@@ -7885,7 +7927,7 @@ bool backstab(P_char ch, P_char victim)
 		percent_chance = (int)(percent_chance * 1.5);
 	}
 
-	if (has_innate(victim, INNATE_DRAGONMIND) && number(0, 1))
+	if (has_innate(victim, INNATE_DRAGONMIND) && dragonmind_roll(live_rolls))
 	{
 		act("$N notices your lethal attempt!", FALSE, ch, 0, victim, TO_CHAR);
 		act("$n tries to backstab $N but is too slow!", FALSE, ch, 0, victim, TO_NOTVICT);
@@ -8043,6 +8085,9 @@ int surprise(P_char ch, P_char victim)
 	return 0;
 }
 
+extern int calming_switch_threshold(int level);
+extern int calming_switch_penalty(int rating);
+
 // The attacker's lag, in pulses, after trying to switch opponents.
 static int switch_opponents_lag()
 {
@@ -8143,9 +8188,10 @@ void attack(P_char ch, P_char victim)
 			skl += GET_LEVEL(ch);
 		}
 
-		if (has_innate(victim, INNATE_CALMING) && (number(0, 120) <= GET_LEVEL(victim) * 2))
+		if (has_innate(victim, INNATE_CALMING) &&
+		    (number(0, 120) <= calming_switch_threshold(GET_LEVEL(victim))))
 		{
-			skl -= (110 - GET_CHAR_SKILL(ch, SKILL_SWITCH_OPPONENTS));
+			skl -= calming_switch_penalty(GET_CHAR_SKILL(ch, SKILL_SWITCH_OPPONENTS));
 		}
 
 		if (notch_skill(ch, SKILL_SWITCH_OPPONENTS,
@@ -11136,6 +11182,21 @@ void do_rearkick(P_char ch, char *argument, int /*cmd*/)
   }
 */
 
+// A knight's trample damage multiple.
+static float trample_knight_multiplier()
+{
+	return get_property("skill.trample.Knight.DamageMultiplier", 2.500);
+}
+
+std::string knight_innate_facts(P_char /*ch*/)
+{
+	return fact("Your trample damage",
+		    share_percent(trample_knight_multiplier()) + " of normal") +
+	       "  One size below a target, your knockdown chance is not halved.\n"
+	       "  Two sizes above one, your chances are not cut.\n"
+	       "  A mount that bucks never throws you.\n";
+}
+
 void do_trample(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char victim = NULL, mount = NULL;
@@ -11269,7 +11330,7 @@ void do_trample(P_char ch, char *argument, int /*cmd*/)
 
 	if (is_knight)
 	{
-		dam = (int)(dam * get_property("skill.trample.Knight.DamageMultiplier", 2.500));
+		dam = (int)(dam * trample_knight_multiplier());
 	}
 
 	if (IS_NPC(victim) && (IS_SET(victim->specials.act, ACT_NO_BASH) || IS_ELITE(victim)))

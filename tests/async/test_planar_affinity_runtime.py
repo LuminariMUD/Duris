@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 innates = source('innates.c').read_text()
 table = re.search(r'const struct innate_data innates_data\[LAST_INNATE \+ 1\] = .*?\n};', innates, re.S).group()
@@ -224,8 +225,8 @@ int main() {
 build = ROOT / 'bin/tests/planar-affinity'
 build.mkdir(parents=True, exist_ok=True)
 cpp, binary = build / 'harness.cpp', build / 'harness'
-cpp.write_text(prelude + macros + arrays + table + '\n'.join(
-    extract_function(file, signature) for file, signature in functions) + driver)
+cpp.write_text(with_innate_numbers(prelude + macros + arrays + table + '\n'.join(
+    extract_function(file, signature) for file, signature in functions) + driver))
 subprocess.run(['g++', '-std=c++20', '-g', '-ffunction-sections', '-fdata-sections',
                 '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-fno-pie', '-no-pie',
                 '-I' + str(ROOT / 'src'), str(cpp), str(HARNESS_STUBS), '-Wl,--gc-sections',

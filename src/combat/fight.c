@@ -127,6 +127,7 @@ extern P_char misfire_check(P_char ch, P_char spell_target, int flag);
 extern bool check_reincarnate(P_char ch);
 bool handle_imprison_damage(P_char, P_char, int);
 extern bool innate_two_daggers(P_char);
+extern int evasion_remove_chance();
 extern bool divine_blessing_parry(P_char, P_char);
 extern int get_honing(P_obj);
 extern void apply_honing(P_obj, int);
@@ -214,6 +215,12 @@ int skin_spell_deduct()
 int combat_mind_bare_hand_damage(const Rolls &rolls, P_char ch)
 {
 	return rolls.dice(ch->points.damnodice, ch->points.damsizedice);
+}
+
+// An intercepted attacker's share of its attacks.
+float intercept_attack_share()
+{
+	return get_property("attacks.intercept.multiplier", 0.5);
 }
 
 // The share of an attacker's melee attacks an inertial barrier lets through.
@@ -531,13 +538,30 @@ int check_damage_ward(P_char attacker, P_char ch, int dam)
 	return (int)ceil(absorbed / wardMitigation);
 }
 
+// A swashbuckler counters an attack when a 1-1000 roll comes out below this.
+int rapier_dirk_chance(P_char victim)
+{
+	return ((GET_C_AGI(victim) + GET_C_WIS(victim)) / 2 + GET_LEVEL(victim));
+}
+
+// A counter brings more hits when this roll comes up 0.
+int rapier_dirk_more_hits_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+int rapier_dirk_more_hits(const Rolls &rolls, int level)
+{
+	return rolls.number(1, (int)(level / 28));
+}
+
 // The swashbuckler is considered the victim. // May09 -Lucrot
 bool rapier_dirk(P_char victim, P_char attacker)
 {
 	int chance, i, f;
 
 	// The assumption made here is that the victim has 100 agi and wis.
-	chance = ((GET_C_AGI(victim) + GET_C_WIS(victim)) / 2 + GET_LEVEL(victim));
+	chance = rapier_dirk_chance(victim);
 
 	// Rapier_dirk_check() verifies the correct weapons in each hand. We now confirm
 	// there are two weapon objects.
@@ -586,14 +610,14 @@ bool rapier_dirk(P_char victim, P_char attacker)
 			return TRUE;
 
 		// if(wep1->craftsmanship == OBJCRAFT_HIGHEST &&
-		if (!number(0, 3) && CanDoFightMove(victim, attacker))
+		if (!rapier_dirk_more_hits_roll(live_rolls) && CanDoFightMove(victim, attacker))
 		{
 			act("$p slices through the air with incredible ease!", TRUE, victim, wep1,
 			    attacker, TO_CHAR);
 			act("$p slices through the air with incredible ease!", TRUE, victim, wep1,
 			    attacker, TO_ROOM);
 
-			f = number(1, (int)(GET_LEVEL(victim) / 28));
+			f = rapier_dirk_more_hits(live_rolls, GET_LEVEL(victim));
 
 			for (i = 0; i < f && IS_ALIVE(victim) && IS_ALIVE(attacker); i++)
 				hit(victim, attacker, wep1);
@@ -3839,6 +3863,12 @@ std::string followup_riposte_facts(P_char ch)
 	       "  The target's defenses apply after.\n";
 }
 
+// Two daggers counter an attack when this roll comes up 0.
+int two_daggers_riposte_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 19);
+}
+
 int try_riposte(P_char ch, P_char victim, P_obj wpn)
 {
 	int expertriposte = 0, victim_dead;
@@ -3863,7 +3893,7 @@ int try_riposte(P_char ch, P_char victim, P_obj wpn)
 		return FALSE;
 
 	// Innate two daggers is static at 5%.
-	if (innate_two_daggers(ch) && !number(0, 19))
+	if (innate_two_daggers(ch) && !two_daggers_riposte_roll(live_rolls))
 	{
 		act("$n flourishes $s dagger, intercepting $N's attack, and gracefully counters!",
 		    TRUE, ch, 0, victim, TO_NOTVICT);
@@ -4310,6 +4340,49 @@ std::string flame_mastery_facts(P_char ch)
 	       "  Some spells can't be deflected, so this can't stop them.\n";
 }
 
+// The chance threshold, rolled 1-100, of spell absorb.
+static int spell_absorb_threshold(int level)
+{
+	return (level / 2);
+}
+
+// A spell must first beat this roll with its damage over the divisor.
+static int spell_absorb_damage_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 9);
+}
+
+static int spell_absorb_damage_divisor()
+{
+	return 50;
+}
+
+std::string spell_absorb_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Chance to regain a spell slot",
+		    chance_under(spell_absorb_threshold(level) + 1, 1, 100) + " at your level, " +
+			    std::to_string(level)) +
+	       "  First the spell's damage/" + std::to_string(spell_absorb_damage_divisor()) +
+	       " must beat a " +
+	       show({ spell_absorb_damage_roll(lowest_rolls),
+		      spell_absorb_damage_roll(highest_rolls) }) +
+	       " roll, so bigger spells pass\n"
+	       "  more often. An absorbed spell refills your highest spent circle.\n"
+	       "  Only for spell slot users; not unshruggable spells or your own.\n";
+}
+
+// What absorbing a spell through a fire or ice aura heals, and where that healing stops.
+double aura_absorb_healing(double dam)
+{
+	return dam / 4;
+}
+
+double aura_absorb_cap(P_char victim)
+{
+	return GET_MAX_HIT(victim) * 1.1;
+}
+
 /**
  * this function performs checks for globe blocking, shrug, deflects, defensive nuke procs etc.
  * also recalculates the damage depending on type and some protecting spells like prot-cold, soulshield
@@ -4378,7 +4451,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 		act("$N&+R absorbs your spell!", FALSE, ch, 0, victim, TO_CHAR);
 		act("&+RYou absorb&n $n's&+R spell!", FALSE, ch, 0, victim, TO_VICT);
 		act("$N&+R absorbs&n $n's&+R spell!", FALSE, ch, 0, victim, TO_NOTVICT);
-		vamp(victim, dam / 4, GET_MAX_HIT(victim) * 1.1);
+		vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));
 
 		// Solving issue of fire elementals not unmorting after vamping from fire spell
 		update_pos(victim);
@@ -4393,7 +4466,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 		act("$N&+C absorbs your spell!", FALSE, ch, 0, victim, TO_CHAR);
 		act("&+CYou absorb&n $n's&+C spell!", FALSE, ch, 0, victim, TO_VICT);
 		act("$N&+C absorbs&n $n's &+Cspell!", FALSE, ch, 0, victim, TO_NOTVICT);
-		vamp(victim, dam / 4, GET_MAX_HIT(victim) * 1.1);
+		vamp(victim, aura_absorb_healing(dam), aura_absorb_cap(victim));
 
 		update_pos(victim);
 		if (IS_NPC(victim))
@@ -4422,7 +4495,7 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 	if (has_innate(victim, INNATE_EVASION) && GET_SPEC(victim, CLASS_MONK, SPEC_WAYOFDRAGON))
 	{
-		if ((((int)get_property("innate.evasion.removechance", 15.000))) > number(1, 100))
+		if (evasion_remove_chance() > number(1, 100))
 		{
 			send_to_char("You twist out of the way avoiding the harmful magic!\n",
 				     victim);
@@ -4675,9 +4748,11 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 		// @50dam: 1/10 chance, @100dam: 1/5chance, @499dam: 5/6 chance, @500dam: 100% chance to pass 1st check.
 		// Also, 1% chance per 2 levels: 28% at lvl 56 with 500+dam.
 		// So, 2.8% chance @lvl 56 with 50-99 dam, 5.6% chance @lvl 56 with 100-149 dam (most common).
-		if ((ch != victim) && (dam / 50) > number(0, 9) &&
+		if ((ch != victim) &&
+		    (dam / spell_absorb_damage_divisor()) > spell_absorb_damage_roll(live_rolls) &&
 		    has_innate(victim, INNATE_SPELL_ABSORB) &&
-		    number(1, 100) <= (GET_LEVEL(victim) / 2) && USES_SPELL_SLOTS(victim))
+		    number(1, 100) <= spell_absorb_threshold(GET_LEVEL(victim)) &&
+		    USES_SPELL_SLOTS(victim))
 		{
 			for (circle = get_max_circle(victim); circle >= 1; circle--)
 			{
@@ -4819,6 +4894,61 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 // End spell_damage()
 
+// A hit must deal over this to draw acid blood.
+static int acid_blood_min_hit(int flags)
+{
+	return ((flags & PHSDAM_TOUCH) ? 9 : 5);
+}
+
+// The attacker dodges it on a 0-100 roll below this base plus its agility over the divisor.
+static int acid_blood_dodge_base()
+{
+	return 15;
+}
+
+static int acid_blood_dodge_divisor()
+{
+	return 6;
+}
+
+// Acid blood spurts when this roll comes up 0, for this much acid damage.
+static int acid_blood_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 9);
+}
+
+static int acid_blood_damage(const Rolls &rolls)
+{
+	return 40 + rolls.number(1, 40);
+}
+
+std::string acid_blood_innate_facts(P_char /*ch*/)
+{
+	return fact("Chance when a hit wounds you", one_in(acid_blood_roll)) +
+	       "  The hit must deal over " + std::to_string(acid_blood_min_hit(0)) + ", or over " +
+	       std::to_string(acid_blood_min_hit(PHSDAM_TOUCH)) + " if it is a touch.\n" +
+	       fact("Acid damage to the attacker",
+		    show({ acid_blood_damage(lowest_rolls), acid_blood_damage(highest_rolls) })) +
+	       "  The attacker's agility can dodge it: " + std::to_string(acid_blood_dodge_base()) +
+	       " plus agility/" + std::to_string(acid_blood_dodge_divisor()) +
+	       ", in 101.\n"
+	       "  It cannot be shrugged or deflected; spell damage modifiers apply.\n";
+}
+
+// Infernal fury's share of each melee hit, turned back on the attacker.
+static double infernal_fury_shield()
+{
+	return get_property("damage.shield.infernalfuryshield", 0.90);
+}
+
+std::string infernal_fury_innate_facts(P_char /*ch*/)
+{
+	return fact("Negative damage back on each melee hit",
+		    share_percent(infernal_fury_shield()) + " of the hit") +
+	       "  A greater spirit ward stops it, but shrugs and deflections do not.\n"
+	       "  It takes the place of a fire, cold or lightning shield's damage.\n";
+}
+
 int check_shields(P_char ch, P_char victim, int dam, int flags)
 {
 	if (training_dummy_is(victim))
@@ -4830,7 +4960,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 	double fshield = get_property("damage.shield.fireshield", 0.750);
 	double cshield = get_property("damage.shield.coldshield", 0.750);
 	double lshield = get_property("damage.shield.lightningshield", 0.750);
-	double ifshield = get_property("damage.shield.infernalfuryshield", 0.90);
+	double ifshield = infernal_fury_shield();
 
 	uint sflags = SPLDAM_GLOBE | SPLDAM_NODEFLECT | RAWDAM_TRANCEVAMP;
 
@@ -5187,7 +5317,7 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 	}
 
 	if ((result == DAM_NONEDEAD) && has_innate(victim, INNATE_ACID_BLOOD) &&
-	    (dam > ((flags & PHSDAM_TOUCH) ? 9 : 5)) && !number(0, 9))
+	    (dam > acid_blood_min_hit(flags)) && !acid_blood_roll(live_rolls))
 	{
 		act("&+LBlack blood &+wspurts from your wound as&n $N's &+wweapon &+wrips your &+rflesh.&n",
 		    FALSE, victim, 0, ch, TO_CHAR);
@@ -5195,7 +5325,8 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 		    FALSE, victim, 0, ch, TO_VICT);
 		act("&+LBlack blood &+wspurts from $n &+was&n $N's &+Lweapon &+wrips $s &+rflesh.&n",
 		    FALSE, victim, 0, ch, TO_NOTVICT);
-		if ((15 + GET_C_AGI(ch) / 6) > number(0, 100))
+		if ((acid_blood_dodge_base() + GET_C_AGI(ch) / acid_blood_dodge_divisor()) >
+		    number(0, 100))
 		{
 			act("$N &+wjumps out of the way barely avoiding the &+rsp&+Ru&+rr&+Rt&+r of b&+Rlo&+rod.",
 			    FALSE, victim, 0, ch, TO_CHAR);
@@ -5206,8 +5337,9 @@ int check_shields(P_char ch, P_char victim, int dam, int flags)
 		}
 		else
 		{
-			result = spell_damage(victim, ch, 40 + number(1, 40), SPLDAM_ACID,
-					      SPLDAM_NOSHRUG | SPLDAM_NODEFLECT, &acid_blood);
+			result = spell_damage(victim, ch, acid_blood_damage(live_rolls),
+					      SPLDAM_ACID, SPLDAM_NOSHRUG | SPLDAM_NODEFLECT,
+					      &acid_blood);
 		}
 	}
 	return result;
@@ -5247,6 +5379,29 @@ double mounted_combat_redirect_threshold(P_char victim)
 int fist_of_dragon_roll(const Rolls &rolls)
 {
 	return rolls.number(0, 2);
+}
+
+std::string troll_skin_innate_facts(P_char /*ch*/)
+{
+	return fact("Melee damage you take",
+		    share_percent(dam_factor[DF_TROLLSKIN]) + " of normal") +
+	       "  Hits that ignore reductions go through it.\n";
+}
+
+std::string guardians_bulwark_innate_facts(P_char /*ch*/)
+{
+	return fact("Melee damage you take with a shield worn",
+		    share_percent(dam_factor[DF_GUARDIANS_BULWARK]) + " of normal") +
+	       "  Hits that ignore reductions go through it.\n";
+}
+
+std::string groundfighting_innate_facts(P_char /*ch*/)
+{
+	extern double groundfighting_dodge_share();
+	return fact("Your dodge chance when not standing",
+		    share_percent(groundfighting_dodge_share()) + " of normal") +
+	       "  Others cannot dodge at all when down.\n"
+	       "  Being down does not cost you attacks or add to the melee damage you take.\n";
 }
 
 /* melee_damage
@@ -5678,6 +5833,47 @@ double cannibalize_mana(int dam, int level)
 	return can_mana;
 }
 
+// The share of melee damage touch vamp heals a player.
+static float touch_vamp_share(P_char ch)
+{
+	// Illithids get full regular touch vamp (since they have lousy str).
+	if (IS_ILLITHID(ch))
+		return dam_factor[DF_TOUCHVAMP];
+	// The class order makes a difference to multiclass chars.
+	if (GET_CLASS(ch, CLASS_ANTIPALADIN))
+		return dam_factor[DF_ANTIPALADINVAMP];
+	if (GET_CLASS(ch, CLASS_MONK))
+		return dam_factor[DF_MONKVAMP];
+	if (GET_CLASS(ch, CLASS_MERCENARY))
+		return dam_factor[DF_MERCENARYVAMP];
+	if (GET_CLASS(ch, CLASS_WARRIOR))
+		return dam_factor[DF_WARRIORVAMP];
+	if (GET_CLASS(ch, CLASS_BERSERKER))
+		return dam_factor[DF_BERSERKERVAMP];
+	if (GET_CLASS(ch, CLASS_ROGUE))
+		return dam_factor[DF_ROGUEVAMP];
+	if (GET_CLASS(ch, CLASS_PALADIN))
+		return dam_factor[DF_PALADINVAMP];
+	if (GET_CLASS(ch, CLASS_RANGER))
+		return dam_factor[DF_RANGERVAMP];
+	if (GET_CLASS(ch, CLASS_AVENGER) || GET_CLASS(ch, CLASS_DREADLORD))
+		return dam_factor[DF_DLORDAVGRVAMP];
+	return dam_factor[DF_TOUCHVAMP];
+}
+
+std::string vampiric_touch_innate_facts(P_char ch)
+{
+	return fact("Healing from your melee touch",
+		    share_percent(touch_vamp_share(ch)) + " of the damage, for your class") +
+	       fact("From an arrow hit of 4 or more",
+		    share_percent(dam_factor[DF_ARROWVAMP]) + " of the damage") +
+	       fact("Your hit points stop at",
+		    share_percent(VAMPPERCENT(ch)) + " of your maximum") +
+	       "  That comes from your power. A construct target or one with a negative\n"
+	       "  energy barrier gives none. Touch healing stops in vampire form, and\n"
+	       "  arrow healing under battle ecstasy.\n";
+}
+
 void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 {
 	int dam = (int)fdam, vamped = 0, wdam;
@@ -5759,64 +5955,8 @@ void check_vamp(P_char ch, P_char victim, double fdam, uint flags)
 	    IS_PC(ch) &&
 	    !IS_AFFECTED4(ch, AFF4_VAMPIRE_FORM)) // && !IS_AFFECTED4(ch, AFF4_BATTLE_ECSTASY) )
 	{
-		// Illithids get full regular touch vamp (since they have lousy str).
-		if (IS_ILLITHID(ch))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_TOUCHVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		// The class order makes a difference to multiclass chars.
-		else if (GET_CLASS(ch, CLASS_ANTIPALADIN))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_ANTIPALADINVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_MONK))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_MONKVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_MERCENARY))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_MERCENARYVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_WARRIOR))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_WARRIORVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_BERSERKER))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_BERSERKERVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_ROGUE))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_ROGUEVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_PALADIN))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_PALADINVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_RANGER))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_RANGERVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else if (GET_CLASS(ch, CLASS_AVENGER) || GET_CLASS(ch, CLASS_DREADLORD))
-		{
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_DLORDAVGRVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
-		else
-		{
-			// vamped = vamp(ch, dam * dam_factor[DF_TOUCHVAMP], GET_MAX_HIT(ch) * 1.10); //113?
-			vamped = vamp(ch, static_cast<double>(dam) * dam_factor[DF_TOUCHVAMP],
-				      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
-		}
+		vamped = vamp(ch, static_cast<double>(dam) * touch_vamp_share(ch),
+			      static_cast<double>(GET_MAX_HIT(ch)) * VAMPPERCENT(ch));
 	}
 
 	// NPC vamp touch.
@@ -6596,6 +6736,12 @@ int raw_damage(P_char ch, P_char victim, double dam, uint flags, struct damage_m
 	return 0;
 }
 
+// Each other rrakkma holder in the group and room improves armor class by this.
+int rrakkma_ac_step()
+{
+	return 10;
+}
+
 int calculate_ac(P_char ch)
 {
 	int victim_ac = GET_AC(ch);
@@ -6621,7 +6767,7 @@ int calculate_ac(P_char ch)
 			if (ch != gl->ch && IS_PC(gl->ch) && ch->in_room == gl->ch->in_room &&
 			    has_innate(gl->ch, INNATE_RRAKKMA))
 			{
-				victim_ac -= 10;
+				victim_ac -= rrakkma_ac_step();
 			}
 		}
 	}
@@ -7083,6 +7229,27 @@ bool tainted_blade(P_char ch, P_char victim)
 	return FALSE;
 }
 
+// An attacker's fear threshold, rolled 0-100, from the holder's and the attacker's levels.
+static int frightening_presence_chance(const Rolls &rolls, int holder_level, int attacker_level)
+{
+	if (holder_level >= attacker_level)
+		return 15 + rolls.dice(1, 10);
+	return 15;
+}
+
+std::string fpresence_innate_facts(P_char /*ch*/)
+{
+	const int top = frightening_presence_chance(highest_rolls, 1, 1);
+	const int low = frightening_presence_chance(lowest_rolls, 1, 1);
+	return fact("Attacker at or below your level flees",
+		    chance_under(low, 0, 100) + " to " + chance_under(top, 0, 100)) +
+	       fact("Attacker above your level flees",
+		    chance_under(frightening_presence_chance(lowest_rolls, 1, 2), 0, 100)) +
+	       "  Each round, from an attacker you are not fighting. Elites, guardians,\n"
+	       "  dreadlords, the fearless, the indomitable and level 51+ greater races\n"
+	       "  resist it, and so can a berserker with indomitable rage.\n";
+}
+
 bool frightening_presence(P_char ch, P_char victim)
 {
 	int chance;
@@ -7090,10 +7257,7 @@ bool frightening_presence(P_char ch, P_char victim)
 	if (GET_OPPONENT(victim) == ch)
 		return FALSE;
 
-	if (GET_LEVEL(victim) >= GET_LEVEL(ch))
-		chance = 15 + dice(1, 10);
-	else
-		chance = 15;
+	chance = frightening_presence_chance(live_rolls, GET_LEVEL(victim), GET_LEVEL(ch));
 
 	if (number(0, 100) < chance && !fear_check(ch))
 	{
@@ -7107,6 +7271,54 @@ bool frightening_presence(P_char ch, P_char victim)
 	}
 
 	return FALSE;
+}
+
+std::string melee_master_innate_facts(P_char /*ch*/)
+{
+	return fact("Damage of your melee hits",
+		    share_percent(dam_factor[DF_MELEEMASTERY]) + " of normal");
+}
+
+// Battle frenzy strikes when this roll comes up 0.
+static int battle_frenzy_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 20);
+}
+
+static int battle_frenzy_damage(const Rolls &rolls, P_char ch)
+{
+	return GET_DAMROLL(ch) * GET_LEVEL(ch) * rolls.number(1, 2) / 40;
+}
+
+std::string battle_frenzy_innate_facts(P_char ch)
+{
+	return fact("Chance on each hit at a humanoid", one_in(battle_frenzy_roll)) +
+	       fact("Extra blow's damage, from your damroll and level",
+		    show_landing({ battle_frenzy_damage(lowest_rolls, ch),
+				   battle_frenzy_damage(highest_rolls, ch) })) +
+	       "  It needs a to-hit roll with your unarmed damage rating, against the\n"
+	       "  target's armor; the target's melee defenses apply.\n";
+}
+
+// The most a blow from a weapon that cannot hurt you deals.
+static int weapon_immunity_damage()
+{
+	return 1;
+}
+
+static int weapon_immunity_unarmed_level()
+{
+	return 51;
+}
+
+std::string weapon_immunity_innate_facts(P_char /*ch*/)
+{
+	return fact("A non-magic weapon's blow on you", std::to_string(weapon_immunity_damage())) +
+	       fact("An unarmed blow on you, below level " +
+			    std::to_string(weapon_immunity_unarmed_level()) +
+			    " without magic gloves",
+		    std::to_string(weapon_immunity_damage())) +
+	       "  A non-magic arrow does nothing, and a thrown non-magic weapon deals 1.\n";
 }
 
 int battle_frenzy(P_char, P_char);
@@ -8110,8 +8322,8 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		weapon = checked.weapon;
 	}
 
-	if (has_innate(ch, INNATE_BATTLE_FRENZY) && !number(0, 20) && IS_HUMANOID(victim) &&
-	    (battle_frenzy(ch, victim) != DAM_NONEDEAD))
+	if (has_innate(ch, INNATE_BATTLE_FRENZY) && !battle_frenzy_roll(live_rolls) &&
+	    IS_HUMANOID(victim) && (battle_frenzy(ch, victim) != DAM_NONEDEAD))
 	{
 		return FALSE;
 	}
@@ -8420,13 +8632,13 @@ bool hit(P_char ch, P_char victim, P_obj weapon, int *damAccumulator)
 		if (weapon)
 		{
 			if (!IS_SET(weapon->extra2_flags, ITEM2_MAGIC))
-				dam = 1;
+				dam = weapon_immunity_damage();
 		}
-		else if (GET_LEVEL(ch) < 51 &&
+		else if (GET_LEVEL(ch) < weapon_immunity_unarmed_level() &&
 			 (!ch->equipment[WEAR_HANDS] ||
 			  !IS_SET(ch->equipment[WEAR_HANDS]->extra2_flags, ITEM2_MAGIC)))
 		{
-			dam = 1;
+			dam = weapon_immunity_damage();
 		}
 	}
 
@@ -8904,6 +9116,39 @@ int WeaponSkill(P_char ch, P_obj weapon)
 		return GET_CHAR_SKILL(ch, required_weapon_skill(weapon));
 }
 
+static int leap_chance_floor()
+{
+	return 1;
+}
+
+static int leap_chance_top()
+{
+	return 20;
+}
+
+// The chance threshold, rolled 1-100, of a thri-kreen or harpy leaping clear of an attack.
+static int leap_chance(P_char victim, int attacker_level)
+{
+	int chance;
+
+	chance = (GET_C_AGI(victim) / 7);
+	chance -= load_modifier(victim) / 100;
+	chance += (GET_LEVEL(victim) - attacker_level) / 2;
+	chance = BOUNDED(leap_chance_floor(), chance, leap_chance_top());
+	return chance;
+}
+
+std::string leap_innate_facts(P_char ch)
+{
+	return fact("Thri-kreen or harpy: chance to avoid an attacker of your level",
+		    chance_under(leap_chance(ch, GET_LEVEL(ch)) + 1, 1, 100)) +
+	       fact("Lowest and highest chance",
+		    chance_under(leap_chance_floor() + 1, 1, 100) + ", " +
+			    chance_under(leap_chance_top() + 1, 1, 100)) +
+	       "  It compares your agility, your load, and your level with the attacker's.\n"
+	       "  It needs you standing and not gazed at. These races have it at any level.\n";
+}
+
 int leapSucceed(P_char victim, P_char attacker)
 {
 	int chance;
@@ -8915,10 +9160,7 @@ int leapSucceed(P_char victim, P_char attacker)
 	if (!MIN_POS(victim, POS_STANDING + STAT_NORMAL) || affected_by_spell(victim, SKILL_GAZE))
 		return false;
 
-	chance = (GET_C_AGI(victim) / 7);
-	chance -= load_modifier(victim) / 100;
-	chance += (GET_LEVEL(victim) - GET_LEVEL(attacker)) / 2;
-	chance = BOUNDED(1, chance, 20);
+	chance = leap_chance(victim, GET_LEVEL(attacker));
 
 	if (number(1, 100) > chance)
 		return false;
@@ -8989,6 +9231,24 @@ static int dodge_specialist_bonus()
 static int dodge_drow_roll(const Rolls &rolls)
 {
 	return rolls.number(0, 10);
+}
+
+// What giant avoidance does to the dodge score, and groundfighting to the dodge chance.
+static double giant_avoidance_factor()
+{
+	return 1.10;
+}
+
+double groundfighting_dodge_share()
+{
+	return 0.50;
+}
+
+std::string giant_avoidance_innate_facts(P_char /*ch*/)
+{
+	return fact("Dodge score against a troll, ogre or giant",
+		    share_percent(giant_avoidance_factor()) + " of normal") +
+	       "  It applies before your dodge limits and the level and stat comparisons.\n";
 }
 
 std::string dodge_facts(P_char ch)
@@ -9076,7 +9336,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	    ((GET_RACE(attacker) == RACE_TROLL) || (GET_RACE(attacker) == RACE_OGRE) ||
 	     (GET_RACE(attacker) == RACE_GIANT)))
 	{
-		learned *= 1.10;
+		learned *= giant_avoidance_factor();
 	}
 
 	// Everybody receives these values. -maybe change this? Drannak
@@ -9107,7 +9367,7 @@ int dodgeSucceed(P_char char_dodger, P_char attacker, P_obj wpn)
 	     !MIN_POS(char_dodger, POS_STANDING + STAT_NORMAL)) ||
 	    affected_by_spell(char_dodger, SKILL_GAZE))
 	{
-		percent = (int)(percent * 0.50);
+		percent = (int)(percent * groundfighting_dodge_share());
 	}
 
 	// 1/5 the chance if dazzled (typical 2% max 10%).
@@ -10830,7 +11090,7 @@ void perform_violence(void)
 		else if (IS_ARMLOCK(ch))
 			attacksMultiplier = get_property("attacks.armLock.multiplier", 0.5);
 		else if (affected_by_spell(ch, TAG_INTERCEPT))
-			attacksMultiplier = get_property("attacks.intercept.multiplier", 0.5);
+			attacksMultiplier = intercept_attack_share();
 
 		if (affected_by_spell(ch, SPELL_COMBAT_MIND))
 		{
@@ -11279,7 +11539,7 @@ int battle_frenzy(P_char ch, P_char victim)
 		"$n elbows $N hard, breaking $S ribs and crushing $S heart!&N"
 	};
 
-	dam = GET_DAMROLL(ch) * GET_LEVEL(ch) * number(1, 2) / 40;
+	dam = battle_frenzy_damage(live_rolls, ch);
 	if (chance_to_hit(ch, victim, GET_CHAR_SKILL(ch, SKILL_UNARMED_DAMAGE), 0) > number(0, 100))
 	{
 		if (number(0, 1))

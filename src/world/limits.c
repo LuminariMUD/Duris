@@ -194,8 +194,63 @@ int mana_regen(P_char ch, bool display_only)
 	return gain;
 }
 
-/* * calculate ch's hit regeneration rate, return regen/minute */
+// Sleeping and resting multiply innate regeneration.
+static int regeneration_sleeping_multiple()
+{
+	return 3;
+}
 
+static int regeneration_resting_multiple()
+{
+	return 2;
+}
+
+static std::string regeneration_lines(P_char ch)
+{
+	const int regen = get_innate_regeneration(ch);
+	return fact("Hit point regeneration here",
+		    "+" + std::to_string(regen) + " awake, +" +
+			    std::to_string(regeneration_resting_multiple() * regen) +
+			    " resting, +" +
+			    std::to_string(regeneration_sleeping_multiple() * regen) +
+			    " sleeping") +
+	       "  It uses your level, race, class and this room.\n";
+}
+
+std::string regeneration_innate_facts(P_char ch)
+{
+	std::string text =
+		regeneration_lines(ch) +
+		"  In combat all your regeneration is halved, unless a spell gives it too.\n";
+	if (GET_RACE(ch) == RACE_TROLL)
+	{
+		extern int troll_burn_duration();
+		extern int troll_burned_regeneration();
+		text += fact("After fire spell damage, awake",
+			     "+" + std::to_string(troll_burned_regeneration()) + " for " +
+				     seconds(troll_burn_duration()));
+	}
+	return text;
+}
+
+std::string woodland_renewal_innate_facts(P_char ch)
+{
+	extern float regen_factor[];
+	return regeneration_lines(ch) +
+	       "  It only works in a forest, where combat halves your regeneration\n"
+	       "  instead of stopping it.\n" +
+	       fact("A huntsman's regeneration per level in a forest",
+		    "+" + std::to_string((int)regen_factor[REG_HUNTSMAN]));
+}
+
+std::string elemental_body_innate_facts(P_char ch)
+{
+	return regeneration_lines(ch) +
+	       fact("Per level for this terrain", "+" + std::to_string(attuned_to_terrain(ch))) +
+	       "  Combat stops it.\n";
+}
+
+/* * calculate ch's hit regeneration rate, return regen/minute */
 int hit_regen(P_char ch, bool display_only)
 {
 	int gain;
@@ -302,10 +357,12 @@ int hit_regen(P_char ch, bool display_only)
 		switch (GET_STAT(ch))
 		{
 		case STAT_SLEEPING:
-			regeneration_gain = 3 * get_innate_regeneration(ch);
+			regeneration_gain =
+				regeneration_sleeping_multiple() * get_innate_regeneration(ch);
 			break;
 		case STAT_RESTING:
-			regeneration_gain = 2 * get_innate_regeneration(ch);
+			regeneration_gain =
+				regeneration_resting_multiple() * get_innate_regeneration(ch);
 			break;
 		default:
 			regeneration_gain = get_innate_regeneration(ch);

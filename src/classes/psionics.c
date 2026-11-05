@@ -4611,13 +4611,24 @@ static int wormhole_range(int level)
 	return (int)(level * get_property("spell.dim.perlevel.modifier", 1.35));
 }
 
+// Spacial focus: a longer wormhole, and more on its throughput roll.
+static int improved_wormhole_decay(int decay_timer)
+{
+	return (decay_timer / 2) * 3;
+}
+
+static int improved_wormhole_bonus()
+{
+	return 3;
+}
+
 // How long a wormhole lasts, in pulses, unless it closes sooner.
 static int wormhole_decay_timer(P_char ch)
 {
 	int decay_timer = get_property("portals.wormhole.decayTimeout", 60 * 2);
 
 	if (has_innate(ch, INNATE_IMPROVED_WORMHOLE))
-		decay_timer = (decay_timer / 2) * 3;
+		decay_timer = improved_wormhole_decay(decay_timer);
 	return decay_timer;
 }
 
@@ -4628,7 +4639,7 @@ static int wormhole_throughput(const Rolls &rolls, P_char ch)
 	int maxToPass = get_property("portals.wormhole.maxToPass", 3);
 
 	if (has_innate(ch, INNATE_IMPROVED_WORMHOLE))
-		specBonus = 3;
+		specBonus = improved_wormhole_bonus();
 	return (int)((ch->player.level - 46) / 2) + rolls.number(1, maxToPass + specBonus);
 }
 
@@ -4660,6 +4671,16 @@ std::string wormhole_facts(P_char ch)
 			     "refused") +
 			fact("Your lag for trying", seconds(wormhole_punishment_lag()));
 	return text;
+}
+
+std::string improved_wormhole_innate_facts(P_char ch)
+{
+	const int base = get_property("portals.wormhole.decayTimeout", 60 * 2);
+	return fact("Your wormholes last up to", seconds(improved_wormhole_decay(base))) +
+	       fact("Added to the top of the roll for how many can pass",
+		    "+" + std::to_string(improved_wormhole_bonus())) +
+	       fact("Range to an NPC", std::to_string(wormhole_range(GET_LEVEL(ch))) + " rooms") +
+	       "  A wormhole can reach an NPC, unless it cannot be summoned.\n";
 }
 
 void spell_wormhole(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,

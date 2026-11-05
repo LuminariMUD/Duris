@@ -7,6 +7,7 @@ on to use the missing affect when there was none. The real event_embrace_death()
 against a character with and without the affect.
 """
 from _paths import SRC
+from _innate_numbers import with_innate_numbers
 import subprocess
 import tempfile
 from pathlib import Path
@@ -90,7 +91,7 @@ int main()
 with tempfile.TemporaryDirectory(prefix="duris-embrace-death-") as directory:
     harness = Path(directory) / "harness.cpp"
     binary = Path(directory) / "harness"
-    harness.write_text(HARNESS)
+    harness.write_text(with_innate_numbers(HARNESS))
     subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                     "-fsanitize=address,undefined", "-fno-omit-frame-pointer",
                     str(harness), "-o", str(binary)], check=True)

@@ -39,6 +39,12 @@
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
+#include "abilities/abilities.h"
+
+extern int calming_delay();
+extern int calming_level_gap();
+extern int calming_gap_roll(const Rolls &rolls);
+extern int calming_notarget_percent();
 
 /*
  * external variables
@@ -6691,7 +6697,7 @@ P_char PickTarget(P_char ch)
 
 		// Reflection Kobolds don't get innate calming anymore.
 		if (has_innate(t_ch, INNATE_CALMING) &&
-		    number(0, 101) <= get_property("innate.calming.notarget.perc", 75) &&
+		    number(0, 101) <= calming_notarget_percent() &&
 		    !(IS_NPC(t_ch) && GET_VNUM(t_ch) == 250))
 		{
 			continue;
@@ -7900,11 +7906,12 @@ void event_mob_mundane(P_char ch, P_char /*victim*/, P_obj /*object*/, void * /*
 		//   if ch's level <= target's level - 5 or 25% hit,
 		//   and target has innate calming and isn't a reflection/image.
 		if (!IS_ELITE(ch) && !nocalming &&
-		    ((GET_LEVEL(ch) - GET_LEVEL(tmp_ch) <= 5) || !number(0, 3)) &&
+		    ((GET_LEVEL(ch) - GET_LEVEL(tmp_ch) <= calming_level_gap()) ||
+		     !calming_gap_roll(live_rolls)) &&
 		    (has_innate(tmp_ch, INNATE_CALMING) &&
 		     !(IS_NPC(tmp_ch) && GET_VNUM(tmp_ch) == 250)))
 		{
-			calming = (int)get_property("innate.calming.delay", 10);
+			calming = calming_delay();
 		}
 
 		// Statupdate2013 - Drannak

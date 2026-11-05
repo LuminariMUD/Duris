@@ -11,6 +11,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 from _paths import HARNESS_STUBS
 
 PRELUDE = r'''
@@ -265,7 +266,7 @@ def main():
     ]
     with tempfile.TemporaryDirectory(prefix='cast-lateness-', dir=build) as directory:
         source, binary = Path(directory) / 'harness.cpp', Path(directory) / 'harness'
-        source.write_text('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER]))
+        source.write_text(with_innate_numbers('\n'.join([PRELUDE, *[extract_function(*f) for f in functions], DRIVER])))
         subprocess.run(['g++', '-std=c++20', '-g', '-O1', '-fsanitize=address,undefined',
                         '-Isrc', '-D__NO_MYSQL__', '-Isrc/no_mysql', str(source), str(HARNESS_STUBS), '-o', str(binary)],
                        cwd=ROOT, check=True, timeout=120)

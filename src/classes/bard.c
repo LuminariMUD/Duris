@@ -61,6 +61,12 @@ static int bard_pulse(bool hasted)
 	return hasted ? PULSE_BARD_UPDATE - 10 : PULSE_BARD_UPDATE;
 }
 
+// The time between a hasted bard's song beats.
+int hasted_bard_pulse()
+{
+	return bard_pulse(true);
+}
+
 int get_bard_pulse(P_char ch)
 {
 	return bard_pulse(IS_AFFECTED(ch, AFF_HASTE));
@@ -214,6 +220,12 @@ void bard_aggro(P_char ch, P_char victim)
 static int bard_blind_play_rating()
 {
 	return 70;
+}
+
+std::string blindsinging_innate_facts(P_char /*ch*/)
+{
+	return fact("Instrument rating to play one you cannot see",
+		    std::to_string(bard_blind_play_rating()));
 }
 
 P_obj has_instrument(P_char ch)
@@ -2487,6 +2499,12 @@ void sing_verses(P_char ch, int song)
 	}
 }
 
+// The reduced song level an echo plays at.
+static int echo_song_level(int level)
+{
+	return level / 2;
+}
+
 void event_echosong(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
 	P_char victim2;
@@ -2517,7 +2535,7 @@ void event_echosong(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		song = echoDetails->song;
 
 		// get a reduced song level for the application of the echo
-		songLevel = bard_song_level(ch, song) / 2;
+		songLevel = echo_song_level(bard_song_level(ch, song));
 
 		// 1 is the minimum song level
 		if (songLevel <= 0)
@@ -2565,6 +2583,46 @@ void event_echosong(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 			}
 		}
 	}
+}
+
+// The chance threshold, rolled 1-100, of a disharmonist's song echoing in this terrain.
+static int echo_chance(int terrainType)
+{
+	int echoChance = 20;
+
+	if (terrainType == SECT_MOUNTAIN)
+	{
+		echoChance += 10;
+	}
+	else if (terrainType == SECT_HILLS)
+	{
+		echoChance += 5;
+	}
+	else if (terrainType == SECT_FOREST)
+	{
+		echoChance -= 5;
+	}
+	return echoChance;
+}
+
+// How long after a song beat its echo sounds, in pulses.
+static int echo_delay(P_char ch)
+{
+	return (get_bard_pulse(ch) / 6);
+}
+
+std::string echo_innate_facts(P_char ch)
+{
+	return fact("Chance of an echo each song beat",
+		    chance_under(echo_chance(SECT_INSIDE) + 1, 1, 100)) +
+	       fact("In the mountains", chance_under(echo_chance(SECT_MOUNTAIN) + 1, 1, 100)) +
+	       fact("In the hills", chance_under(echo_chance(SECT_HILLS) + 1, 1, 100)) +
+	       fact("In a forest", chance_under(echo_chance(SECT_FOREST) + 1, 1, 100)) +
+	       fact("It sounds after", seconds(echo_delay(ch))) +
+	       fact("The echo's song level, from a song level of 100",
+		    std::to_string(echo_song_level(100))) +
+	       "  At least 1. It plays in the room you sang in. Not underwater, and not\n"
+	       "  while another echo is waiting.\n";
 }
 
 void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
@@ -2744,28 +2802,16 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	// whether they like it or not, Disharmonists get an echo to their songs
 	if (has_innate(ch, INNATE_ECHO))
 	{
-		echoChance = 20;
+		echoChance = echo_chance(terrainType);
 
-		if (terrainType == SECT_MOUNTAIN)
-		{
-			echoChance += 10;
-		}
-		else if (terrainType == SECT_HILLS)
-		{
-			echoChance += 5;
-		}
-		else if (terrainType == SECT_FOREST)
-		{
-			echoChance -= 5;
-		}
 		if (echoChance >= number(1, 100))
 		{
 			echoDetails.song = song;
 			echoDetails.room = ch->in_room;
 			if (!get_scheduled(ch, event_echosong))
 			{
-				add_event(event_echosong, (get_bard_pulse(ch) / 6), ch, 0, 0, 0,
-					  &echoDetails, sizeof(echoDetails));
+				add_event(event_echosong, echo_delay(ch), ch, 0, 0, 0, &echoDetails,
+					  sizeof(echoDetails));
 			}
 		}
 	}

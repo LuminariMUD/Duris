@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 from _paths import HARNESS_STUBS
 
 PREFIX = r'''
@@ -174,7 +175,7 @@ entry = entry.replace('bool hit(', 'bool hit_entry(', 1)
 with tempfile.TemporaryDirectory(prefix='duris-riposte-lifetime-') as temporary:
     source = Path(temporary) / 'riposte.cpp'
     binary = Path(temporary) / 'riposte'
-    source.write_text(PREFIX + body + entry + SUFFIX)
+    source.write_text(with_innate_numbers(PREFIX + body + entry + SUFFIX))
     subprocess.run(['g++', '-std=c++20', '-g', '-Og', '-D__NO_MYSQL__',
                     '-Isrc', '-Isrc/no_mysql', '-I/usr/include/libxml2',
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',

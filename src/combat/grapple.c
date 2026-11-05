@@ -37,6 +37,31 @@ using namespace std;
 extern P_room world;
 extern int check_shields(P_char, P_char, int, int);
 
+// A fleeing target is thrown back on a 1-100 roll below this.
+static int entrapment_chance(int level, int gcskl)
+{
+	return (int)(((level / 2) + (gcskl / 10)) *
+		     (float)get_property("grapple.entrapment.chance.mod", 1.00));
+}
+
+// The lag on a target thrown back.
+static int entrapment_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string entrapment_innate_facts(P_char ch)
+{
+	return fact("Chance to stop your opponent fleeing",
+		    chance_under(entrapment_chance(GET_LEVEL(ch),
+						   GET_CHAR_SKILL(ch, SKILL_GRAPPLER_COMBAT)),
+				 1, 100) +
+			    " at your level") +
+	       "  It comes from your level and grappler combat rating.\n" +
+	       fact("Your opponent's lag if it works", seconds(entrapment_lag())) +
+	       "  You must be standing, able to act and see it. Immaterial foes get away.\n";
+}
+
 int grapple_check_entrapment(P_char ch)
 {
 	int gcskl, percent;
@@ -53,8 +78,7 @@ int grapple_check_entrapment(P_char ch)
 		{
 			// Percent of a level 50 grappler with 100 skill in grappler combat is 35% to prevent flee
 			gcskl = GET_CHAR_SKILL(attacker, SKILL_GRAPPLER_COMBAT);
-			percent = (int)(((GET_LEVEL(attacker) / 2) + (gcskl / 10)) *
-					(float)get_property("grapple.entrapment.chance.mod", 1.00));
+			percent = entrapment_chance(GET_LEVEL(attacker), gcskl);
 
 			if (number(1, 100) < percent)
 			{
@@ -65,7 +89,7 @@ int grapple_check_entrapment(P_char ch)
 				act("$n tries to flee, but $N grabs $m and throws $m back into the fight!",
 				    TRUE, ch, 0, attacker, TO_NOTVICT);
 
-				CharWait(ch, PULSE_VIOLENCE);
+				CharWait(ch, entrapment_lag());
 
 				return TRUE;
 			}

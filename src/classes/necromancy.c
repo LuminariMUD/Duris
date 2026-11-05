@@ -235,6 +235,18 @@ void event_pet_death(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*
 	die(ch, ch);
 }
 
+// What unholy alliance makes a new pet's charm last.
+static int unholy_alliance_charm_duration()
+{
+	return -1;
+}
+
+std::string unholy_alliance_innate_facts(P_char /*ch*/)
+{
+	return fact("Duration of a new pet's charm", game_hours(unholy_alliance_charm_duration())) +
+	       "  A new pet also never remembers you as an enemy.\n";
+}
+
 int setup_pet(P_char mob, P_char ch, int duration, int flag)
 {
 	struct affected_type af;
@@ -257,7 +269,7 @@ int setup_pet(P_char mob, P_char ch, int duration, int flag)
 
 	if (!(flag & PET_RESTORE) && (has_innate(ch, INNATE_UNHOLY_ALLIANCE) || globe))
 	{
-		af.duration = -1;
+		af.duration = unholy_alliance_charm_duration();
 	}
 
 	duration = af.duration;

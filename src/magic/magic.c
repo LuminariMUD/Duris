@@ -11284,6 +11284,16 @@ static std::string stone_skin_facts_at(P_char ch, int level, const std::string &
 	       fact("Layers on an earth conjurer", "up to " + std::to_string(stone_skin_layers()));
 }
 
+std::string living_stone_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Stone skin you cast absorbs",
+		    show({ stone_skin_living_stone(stone_skin_absorb(lowest_rolls, level)),
+			   stone_skin_living_stone(stone_skin_absorb(highest_rolls, level)) }) +
+			    " hits at your level, " + std::to_string(level)) +
+	       "  That replaces the bonus from your class.\n";
+}
+
 std::string stone_skin_facts(P_char ch)
 {
 	const int level = GET_LEVEL(ch);
@@ -12392,6 +12402,14 @@ static int blur_duration()
 	return 10;
 }
 
+std::string blur_innate_facts(P_char /*ch*/)
+{
+	extern int archery_blur_speed();
+	return fact("Your attacks each round", "+1") +
+	       fact("Archery speed", "+" + std::to_string(archery_blur_speed())) +
+	       "  You get it when you log in.\n";
+}
+
 std::string blur_facts(P_char /*ch*/)
 {
 	return fact("Duration", game_hours(blur_duration()));
@@ -12486,6 +12504,22 @@ int haste_duration(P_char ch, int level)
 		return 15;
 	else
 		return 10;
+}
+
+std::string haste_innate_facts(P_char /*ch*/)
+{
+	extern double haste_cast_time_share();
+	extern int haste_stat_save_bonus();
+	extern int archery_haste_speed();
+	extern int hasted_bard_pulse();
+	return fact("Your attacks each round", "+1, none while slowed") +
+	       fact("Time between your song beats", seconds(hasted_bard_pulse())) +
+	       fact("Your spell casting time",
+		    share_percent(haste_cast_time_share()) + " of normal") +
+	       fact("Your dexterity saves", "+" + std::to_string(haste_stat_save_bonus())) +
+	       fact("Your agility saves, not for monks",
+		    "+" + std::to_string(haste_stat_save_bonus())) +
+	       fact("Archery speed", "+" + std::to_string(archery_haste_speed()));
 }
 
 std::string haste_facts(P_char ch)
@@ -22103,6 +22137,23 @@ void spell_mass_preserve(int level, P_char ch, char * /*arg*/, [[maybe_unused]] 
 		if (obj->type == ITEM_CORPSE)
 			spell_preserve(level, ch, 0, 0, victim, obj);
 	}
+}
+
+// Mummify and requiem embalm a killed victim's corpse at the highest level.
+static std::string corpse_embalm_innate_facts()
+{
+	return fact("A corpse you kill is embalmed at level " + std::to_string(MAXLVL),
+		    std::to_string(embalm_hours(MAXLVL)) + " more game hours");
+}
+
+std::string mummify_innate_facts(P_char /*ch*/)
+{
+	return corpse_embalm_innate_facts();
+}
+
+std::string requiem_innate_facts(P_char /*ch*/)
+{
+	return corpse_embalm_innate_facts();
 }
 
 void spell_embalm(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,

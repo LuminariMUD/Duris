@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 innates = source("innates.c").read_text()
 macros = innates[innates.index("#define ADD_RACIAL_INNATE"):innates.index("float regen_factor")]
@@ -45,7 +46,7 @@ build = ROOT / "bin/tests"
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="hatred-", dir=build) as directory:
     directory = Path(directory)
-    (directory / "production.inc").write_text(production)
+    (directory / "production.inc").write_text(with_innate_numbers(production))
     binary = directory / "hatred"
     subprocess.run([
         os.environ.get("CXX", "g++"), "-std=c++20", "-g", "-O1", "-pthread",

@@ -14,6 +14,7 @@ import tempfile
 from pathlib import Path
 
 from _paths import ROOT, extract_function, source
+from _innate_numbers import with_innate_numbers
 from _source_contract import function_bodies, strip_comments
 
 PSIONICS = source("psionics.c").read_text()
@@ -1097,7 +1098,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="ability-batch-6-", dir=build) as temporary:
         directory = Path(temporary)
         harness = directory / "batch6.cpp"
-        harness.write_text(HARNESS.replace("PAGES", pages).replace("FUNCTIONS", "\n".join(functions)))
+        harness.write_text(with_innate_numbers(HARNESS.replace("PAGES", pages).replace("FUNCTIONS", "\n".join(functions)), define_rolls=False))
         binary = directory / "batch6"
         subprocess.run(["g++", "-std=c++20", "-Wall", "-Wextra", "-Werror",
                         "-ffunction-sections", "-fdata-sections", "-Wl,--gc-sections",

@@ -30,6 +30,8 @@
 #include <set>
 #include <memory>
 #include <openssl/sha.h>
+
+extern double seadog_sale_multiplier();
 extern P_char character_list;
 namespace
 {
@@ -975,7 +977,7 @@ try
 		const double base = static_cast<double>(live.val0) * unit;
 		ordinary += base * penalty *
 			    (goods == divine_trade_goods::cargo && has_innate(ch, INNATE_SEADOG) ?
-				     1.1 :
+				     seadog_sale_multiplier() :
 				     1.0);
 		extra += static_cast<double>(consumed.qualifying_quantity) * unit * .25 * penalty;
 		const double cumulative = std::floor(

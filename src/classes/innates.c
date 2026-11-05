@@ -1261,12 +1261,37 @@ bool check_innate_time(P_char ch, int innate, int duration)
 	return TRUE;
 }
 
+// A spiritualist comes back from death when this roll comes up 0.
+static int resurrection_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 8);
+}
+
+static int resurrection_hit_points(P_char ch)
+{
+	return BOUNDED(10, GET_MAX_HIT(ch), 100);
+}
+
+static int resurrection_lag(const Rolls &rolls)
+{
+	return rolls.dice(2, 2) * 4;
+}
+
+std::string resurrection_innate_facts(P_char ch)
+{
+	return fact("Chance when you die", one_in(resurrection_roll)) +
+	       fact("Hit points you come back with", std::to_string(resurrection_hit_points(ch))) +
+	       fact("Your lag", seconds(resurrection_lag(lowest_rolls)) + " to " +
+					seconds(resurrection_lag(highest_rolls))) +
+	       "  The fight ends for you and for those fighting you.\n";
+}
+
 bool check_reincarnate(P_char ch)
 {
 	// innate resurrect! shaman spec
 	if (has_innate(ch, INNATE_RESURRECTION))
 	{
-		if (!number(0, 8)) // this may be tweeked later
+		if (!resurrection_roll(live_rolls)) // this may be tweeked later
 		{
 			P_char t, t_next;
 
@@ -1313,9 +1338,9 @@ bool check_reincarnate(P_char ch)
 				}
 			}
 
-			GET_HIT(ch) = BOUNDED(10, GET_MAX_HIT(ch), 100);
+			GET_HIT(ch) = resurrection_hit_points(ch);
 			update_pos(ch);
-			CharWait(ch, dice(2, 2) * 4);
+			CharWait(ch, resurrection_lag(live_rolls));
 
 			act("&+M$n's broken body unexpectedly returns to life again!  The worst of $s wounds quickly knit themselves.&N",
 			    TRUE, ch, 0, 0, TO_ROOM);
@@ -1371,6 +1396,59 @@ void do_disappear(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 }
 
+// Embrace death's bands: at or below each share of hit points, this much maximum strength.
+static double embrace_death_first_share()
+{
+	return .75;
+}
+
+static double embrace_death_second_share()
+{
+	return .45;
+}
+
+static double embrace_death_third_share()
+{
+	return .25;
+}
+
+static int embrace_death_first_bonus()
+{
+	return 5;
+}
+
+static int embrace_death_second_bonus()
+{
+	return 10;
+}
+
+static int embrace_death_third_bonus()
+{
+	return 15;
+}
+
+// How often healing is rechecked.
+static int embrace_death_check_interval()
+{
+	return 2 * WAIT_SEC;
+}
+
+std::string embrace_death_innate_facts(P_char /*ch*/)
+{
+	const auto band = [](double share, int bonus)
+	{
+		return fact("Your maximum strength at " + share_percent(share) +
+				    " hit points or below",
+			    "+" + std::to_string(bonus));
+	};
+	return band(embrace_death_first_share(), embrace_death_first_bonus()) +
+	       band(embrace_death_second_share(), embrace_death_second_bonus()) +
+	       band(embrace_death_third_share(), embrace_death_third_bonus()) +
+	       "  It starts when you are hurt and ends once you are above the first share.\n"
+	       "  Healing lowers it at the next check, every " +
+	       seconds(embrace_death_check_interval()) + ".\n";
+}
+
 void event_embrace_death(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*/)
 {
 	float hp_state = ((float)GET_HIT(ch)) / GET_MAX_HIT(ch);
@@ -1379,19 +1457,19 @@ void event_embrace_death(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*d
 	if (!(afp = get_spell_from_char(ch, TAG_EMBRACE_DEATH)))
 		return;
 
-	if (hp_state > .75)
+	if (hp_state > embrace_death_first_share())
 	{
 		affect_remove(ch, afp);
 		send_to_char("Something leaves you as death is no longer close.\n", ch);
 	}
 	else
 	{
-		if (hp_state > .45)
-			afp->modifier = 5;
-		else if (hp_state > .25)
-			afp->modifier = 10;
+		if (hp_state > embrace_death_second_share())
+			afp->modifier = embrace_death_first_bonus();
+		else if (hp_state > embrace_death_third_share())
+			afp->modifier = embrace_death_second_bonus();
 		balance_affects(ch);
-		add_event(event_embrace_death, 2 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
+		add_event(event_embrace_death, embrace_death_check_interval(), ch, 0, 0, 0, 0, 0);
 	}
 }
 
@@ -1406,27 +1484,27 @@ void do_innate_embrace_death(P_char ch)
 	if (afp)
 		bonus = afp->modifier;
 
-	if (hp_state <= .25 && bonus < 15)
+	if (hp_state <= embrace_death_third_share() && bonus < embrace_death_third_bonus())
 	{
-		bonus = 15;
+		bonus = embrace_death_third_bonus();
 		send_to_char("&+LYou begin grin&+rning fever&+Lishly as death draws nearer!&n\r\n",
 			     ch);
 	}
-	else if (hp_state <= .45 && bonus < 10)
+	else if (hp_state <= embrace_death_second_share() && bonus < embrace_death_second_bonus())
 	{
-		bonus = 10;
+		bonus = embrace_death_second_bonus();
 		send_to_char(
 			"&+LYour bla&+rck blo&+Lod races with excitement as the pain washes over you!&n\r\n",
 			ch);
 	}
-	else if (hp_state <= .75 && bonus < 5)
+	else if (hp_state <= embrace_death_first_share() && bonus < embrace_death_first_bonus())
 	{
-		bonus = 5;
+		bonus = embrace_death_first_bonus();
 		send_to_char(
 			"&+LPain w&+rracks your bod&+Ly in angry spasms.  It feels... good.&n\r\n",
 			ch);
 	}
-	else if (hp_state > .75 && afp)
+	else if (hp_state > embrace_death_first_share() && afp)
 	{
 		affect_remove(ch, afp);
 	}
@@ -1439,12 +1517,45 @@ void do_innate_embrace_death(P_char ch)
 		af.location = APPLY_STR_MAX;
 		af.modifier = bonus;
 		affect_to_char(ch, &af);
-		add_event(event_embrace_death, 2 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
+		add_event(event_embrace_death, embrace_death_check_interval(), ch, 0, 0, 0, 0, 0);
 	}
 	else if (afp)
 	{
 		balance_affects(ch);
 	}
+}
+
+// A paladin's halo needs this alignment and adds this many hit points against evil.
+static int anti_evil_alignment()
+{
+	return 900;
+}
+
+static int anti_evil_hit_points(int target_level)
+{
+	return target_level * 2;
+}
+
+// Once your opponent is not evil, the extra hit points fade this much each interval.
+static int anti_evil_fade()
+{
+	return 2;
+}
+
+static int anti_evil_fade_interval()
+{
+	return 2 * WAIT_SEC;
+}
+
+std::string anti_evil_innate_facts(P_char /*ch*/)
+{
+	return fact("Alignment needed for the halo", std::to_string(anti_evil_alignment())) +
+	       fact("Your hit points while you hit evil",
+		    "+" + std::to_string(anti_evil_hit_points(1)) + " per level of your target") +
+	       "  They fade " + std::to_string(anti_evil_fade()) + " every " +
+	       seconds(anti_evil_fade_interval()) +
+	       " once your opponent is not evil.\n"
+	       "  You also stay aware, and you detect good and evil.\n";
 }
 
 void event_paladin_vit(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
@@ -1457,8 +1568,8 @@ void event_paladin_vit(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	{
 		af = get_spell_from_char(ch, TAG_PALADIN_VIT);
 		if (af)
-			if (af->modifier > 2)
-				af->modifier -= 2;
+			if (af->modifier > anti_evil_fade())
+				af->modifier -= anti_evil_fade();
 			else
 			{
 				wear_off_message(ch, af);
@@ -1470,14 +1581,14 @@ void event_paladin_vit(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		balance_affects(ch);
 	}
 
-	add_event(event_paladin_vit, 2 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
+	add_event(event_paladin_vit, anti_evil_fade_interval(), ch, 0, 0, 0, 0, 0);
 }
 
 void do_innate_anti_evil(P_char ch, P_char vict)
 {
 	struct affected_type af, *afp;
 
-	if (GET_ALIGNMENT(ch) < 900)
+	if (GET_ALIGNMENT(ch) < anti_evil_alignment())
 	{
 		return;
 	}
@@ -1497,16 +1608,30 @@ void do_innate_anti_evil(P_char ch, P_char vict)
 		af.location = APPLY_HIT;
 		af.bitvector = AFF_AWARE;
 		af.duration = 2;
-		af.modifier = GET_LEVEL(vict) * 2;
+		af.modifier = anti_evil_hit_points(GET_LEVEL(vict));
 		affect_to_char(ch, &af);
-		add_event(event_paladin_vit, 2 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
+		add_event(event_paladin_vit, anti_evil_fade_interval(), ch, 0, 0, 0, 0, 0);
 	}
 	else
 	{
 		afp->duration = 2;
-		afp->modifier = GET_LEVEL(vict) * 2;
+		afp->modifier = anti_evil_hit_points(GET_LEVEL(vict));
 		balance_affects(ch);
 	}
+}
+
+// How much worse an antipaladin's opponent saves; APPLY_CURSE adds this to its saves.
+static int decrepify_curse(int level)
+{
+	return BOUNDED(1, (int)(level / 10), 5);
+}
+
+std::string decrepify_innate_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Your opponent's saves", "worse by " + std::to_string(decrepify_curse(level)) +
+						     " at your level, " + std::to_string(level)) +
+	       "  It holds while you fight that opponent.\n";
 }
 
 void event_decrepify(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
@@ -1573,7 +1698,7 @@ void do_innate_decrepify(P_char ch, P_char victim)
 			af.type = TAG_DECREPIFY;
 			af.flags = AFFTYPE_NOSAVE;
 			af.location = APPLY_CURSE;
-			af.modifier = BOUNDED(1, (int)(GET_LEVEL(ch) / 10), 5);
+			af.modifier = decrepify_curse(GET_LEVEL(ch));
 			af.duration = 1;
 			affect_to_char(victim, &af);
 			add_event(event_decrepify, 2 * WAIT_SEC, ch, victim, 0, 0, 0, 0);
@@ -1918,6 +2043,18 @@ static int parasite_bite_disease_roll(const Rolls &rolls, int mod)
 static int parasite_bite_lag()
 {
 	return PULSE_VIOLENCE;
+}
+
+std::string diseased_bite_innate_facts(P_char ch)
+{
+	std::string text =
+		fact("Chance of disease on each parasite bite",
+		     "1 in " + std::to_string(parasite_bite_disease_roll(highest_rolls, 0) -
+					      parasite_bite_disease_roll(lowest_rolls, 0) + 1)) +
+		"  It casts your disease spell on the target at your level:\n";
+	if (AbilityFacts spell = ability_facts(SPELL_DISEASE))
+		text += spell(ch);
+	return text;
 }
 
 int parasitebite(P_char ch, P_char victim)
@@ -4715,6 +4852,12 @@ int attuned_to_terrain(P_char ch)
 	return 0;
 }
 
+// A burned troll's regeneration, whatever its level.
+int troll_burned_regeneration()
+{
+	return 1;
+}
+
 int get_innate_regeneration(P_char ch)
 {
 	int mult = 1;
@@ -4723,7 +4866,7 @@ int get_innate_regeneration(P_char ch)
 	{
 	case RACE_TROLL:
 		if (affected_by_spell(ch, TAG_TROLL_BURN))
-			return 1;
+			return troll_burned_regeneration();
 		else
 			mult += (int)regen_factor[REG_TROLL];
 		break;
@@ -4745,6 +4888,17 @@ int get_innate_regeneration(P_char ch)
 	mult += attuned_to_terrain(ch);
 
 	return GET_LEVEL(ch) * MAX(mult, 2);
+}
+
+// Each other rrakkma holder in the room adds this much shrug chance, up to the steps.
+static int rrakkma_max_steps()
+{
+	return (int)get_property("innate.rrakkma.maxSteps", 5);
+}
+
+static int rrakkma_step_percent()
+{
+	return (int)get_property("innate.rrakkma.stepPct", 5);
 }
 
 int get_innate_resistance(P_char ch)
@@ -4772,13 +4926,35 @@ int get_innate_resistance(P_char ch)
 
 		if (count > 0)
 		{
-			count = MIN(count, (int)get_property("innate.rrakkma.maxSteps", 5));
-			res += count * (int)get_property("innate.rrakkma.stepPct", 5);
+			count = MIN(count, rrakkma_max_steps());
+			res += count * rrakkma_step_percent();
 		}
 		//  debug("after: %d", res);
 	}
 	//  debug("resistance: %d", res);
 	return (res >= 100) ? 100 : res;
+}
+
+std::string rrakkma_innate_facts(P_char /*ch*/)
+{
+	extern int rrakkma_ac_step();
+	return fact("Your armor class per other holder grouped in the room",
+		    "-" + std::to_string(rrakkma_ac_step())) +
+	       fact("Your magic resistance per other holder",
+		    "+" + std::to_string(rrakkma_step_percent()) + ", for up to " +
+			    std::to_string(rrakkma_max_steps()) + " of them") +
+	       "  They must be players in your group.\n";
+}
+
+std::string magic_resistance_innate_facts(P_char ch)
+{
+	extern int desecrate_land_shrug_penalty();
+	const int resistance = get_innate_resistance(ch);
+	return fact("Your chance to shrug a spell", chance_under(resistance + 1, 1, 101)) +
+	       fact("In desecrated land",
+		    chance_under(resistance - desecrate_land_shrug_penalty() + 1, 1, 101)) +
+	       "  It comes from your race and level, and is never below 5.\n"
+	       "  Spell penetration can burst through it, and a god's spell ignores it.\n";
 }
 
 // A roll of 0-110 below this bursts through magic resistance.
@@ -5590,6 +5766,42 @@ void event_halfling_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*
 	add_event(event_halfling_check, 3 * WAIT_SEC, ch, 0, 0, 0, 0, 0);
 }
 
+// How often the watcher looks for a hated race, in pulses.
+static int hatred_check_delay()
+{
+	int delay = get_property("innate.timer.hatred", WAIT_SEC);
+	if (delay <= 0)
+		delay = WAIT_SEC;
+	return delay;
+}
+
+// Seeing a hated race changes both pulses by this much.
+static int hatred_pulse_modifier()
+{
+	return -1;
+}
+
+std::string hatred_innate_facts(P_char /*ch*/)
+{
+	std::string text;
+	for (int i = 0; race_hatred_data[i][0] != -1; ++i)
+	{
+		std::string races;
+		for (int z = 1; z < MAX_HATRED && race_hatred_data[i][z] != -1; ++z)
+			races += std::string(z > 1 ? ", " : "") +
+				 race_names_table[race_hatred_data[i][z]].normal;
+		text += fact(std::string(race_names_table[race_hatred_data[i][0]].normal) +
+				     " hated races",
+			     races);
+	}
+	return text +
+	       fact("Your combat pulse while you see one",
+		    std::to_string(hatred_pulse_modifier())) +
+	       fact("Your spell pulse while you see one", std::to_string(hatred_pulse_modifier())) +
+	       fact("It looks every", seconds(hatred_check_delay())) +
+	       "  It needs one in your room that you can see, and ends when none is.\n";
+}
+
 static P_char visible_hatred_enemy(P_char ch)
 {
 	if (!IS_ALIVE(ch) || ch->in_room == NOWHERE || !has_innate(ch, INNATE_HATRED))
@@ -5635,9 +5847,7 @@ bool start_hatred_check(P_char ch)
 
 	// Entry and rearm share one owner, even after repeated entry or reconnect.
 	disarm_char_nevents(ch, event_hatred_check);
-	int delay = get_property("innate.timer.hatred", WAIT_SEC);
-	if (delay <= 0)
-		delay = WAIT_SEC;
+	int delay = hatred_check_delay();
 	if (!add_event(event_hatred_check, delay, ch, 0, 0, 0, 0, 0))
 	{
 		logit(LOG_DEBUG, "Hatred watcher could not be scheduled; clearing its affects.");
@@ -5661,7 +5871,7 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 		if (af->type != TAG_HATRED)
 			continue;
 		++count;
-		if (af->modifier != -1 || af->duration != -1 ||
+		if (af->modifier != hatred_pulse_modifier() || af->duration != -1 ||
 		    af->flags != (AFFTYPE_NOSAVE | AFFTYPE_NODISPEL) || af->bitvector ||
 		    af->bitvector2 || af->bitvector3 || af->bitvector4 || af->bitvector5)
 			malformed = TRUE;
@@ -5680,7 +5890,7 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 			struct affected_type af = {};
 			af.type = TAG_HATRED;
 			af.flags = AFFTYPE_NOSAVE | AFFTYPE_NODISPEL;
-			af.modifier = -1;
+			af.modifier = hatred_pulse_modifier();
 			af.duration = -1;
 			af.location = APPLY_COMBAT_PULSE;
 			affect_to_char(ch, &af);
@@ -5695,6 +5905,40 @@ void event_hatred_check(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*da
 	{
 		clear_hatred(ch);
 	}
+}
+
+std::string rapier_dirk_innate_facts(P_char ch)
+{
+	extern float dam_factor[];
+	extern int rapier_dirk_chance(P_char victim);
+	extern int rapier_dirk_more_hits_roll(const Rolls &rolls);
+	extern int rapier_dirk_more_hits(const Rolls &rolls, int level);
+	const int level = GET_LEVEL(ch);
+	return fact("With a sword and a dagger or short sword, damage you deal",
+		    share_percent(dam_factor[DF_SWASHBUCKLER_OFFENSE]) + " of normal") +
+	       fact("Damage you take",
+		    share_percent(dam_factor[DF_SWASHBUCKLER_DEFENSE]) + " of normal") +
+	       fact("Chance a parry becomes a counter",
+		    chance_under(rapier_dirk_chance(ch), 1, 1000)) +
+	       fact("Hits in a counter",
+		    "2, or 1 plus " +
+			    show({ rapier_dirk_more_hits(lowest_rolls, level),
+				   rapier_dirk_more_hits(highest_rolls, level) }) +
+			    " on a " + one_in(rapier_dirk_more_hits_roll)) +
+	       "  The chance comes from your agility, wisdom and level. It needs you standing\n"
+	       "  and your opponent as the attacker, and it never works on a dragon.\n";
+}
+
+std::string two_daggers_innate_facts(P_char /*ch*/)
+{
+	extern float two_daggers_pulse();
+	extern int two_daggers_riposte_roll(const Rolls &rolls);
+	char pulse[32];
+	snprintf(pulse, sizeof(pulse), "%g", two_daggers_pulse());
+	return fact("With a dagger in each hand, your combat pulse", pulse) +
+	       fact("Chance to counter an attack with both daggers",
+		    one_in(two_daggers_riposte_roll)) +
+	       "  The counter comes before any riposte skill check.\n";
 }
 
 bool rapier_dirk_check(P_char ch) // now known as swashbuckling, single weapon.
@@ -6033,12 +6277,31 @@ void do_layhand(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+// What a crusader heals for killing evil, and the hit points that healing stops at.
+static int holy_crusade_healing(int victim_level)
+{
+	return 2 * victim_level;
+}
+
+static double holy_crusade_cap(P_char ch)
+{
+	return 1.1 * GET_MAX_HIT(ch);
+}
+
+std::string holy_crusade_innate_facts(P_char ch)
+{
+	return fact("Your healing when you kill an evil being",
+		    std::to_string(holy_crusade_healing(1)) + " per level of the victim") +
+	       fact("Up to", std::to_string((int)holy_crusade_cap(ch)) + " hit points") +
+	       "  Plague, blackmantle and flamestrike can block some of it.\n";
+}
+
 void holy_crusade_check(P_char ch, P_char victim)
 {
 	if (!has_innate(ch, INNATE_HOLY_CRUSADE) || !IS_EVIL(victim))
 		return;
 
-	if (vamp(ch, 2 * GET_LEVEL(victim), 1.1 * GET_MAX_HIT(ch)))
+	if (vamp(ch, holy_crusade_healing(GET_LEVEL(victim)), holy_crusade_cap(ch)))
 	{
 		act("As you execute the killing blow on the evil being, you feel the \n"
 		    "hand of your God reach down and imbue with heavenly might!",

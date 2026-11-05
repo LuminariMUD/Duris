@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, HARNESS_STUBS, extract_function, source
+from _innate_numbers import with_innate_numbers
 
 
 PRELUDE = r'''
@@ -662,7 +663,7 @@ def main():
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="poison-lifecycle-", dir=build) as directory:
         cpp, binary = Path(directory) / "harness.cpp", Path(directory) / "harness"
-        cpp.write_text(PRELUDE + production() + DRIVER)
+        cpp.write_text(with_innate_numbers(PRELUDE + production() + DRIVER))
         subprocess.run([
             "g++", "-std=c++20", "-g", "-Wall", "-Wextra", "-Werror",
             "-Wno-unused-parameter", "-fsanitize=address,undefined",

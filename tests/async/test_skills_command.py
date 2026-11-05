@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 from _paths import ROOT, extract_function
+from _innate_numbers import with_innate_numbers
 
 HARNESS = r'''
 #include "core/prototypes.h"
@@ -205,7 +206,7 @@ def main():
         from pathlib import Path
         directory = Path(temporary)
         source = directory / "skills.cpp"
-        source.write_text(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {"))
+        source.write_text(with_innate_numbers(HARNESS.replace("int main() {", "\n".join(functions) + "\nint main() {")))
         for backend in ("mariadb", "flatfile"):
             binary = directory / backend
             flags = ["-D__NO_MYSQL__", "-Isrc/no_mysql"] if backend == "flatfile" else []
