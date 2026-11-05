@@ -14,6 +14,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -40,6 +41,8 @@ float get_property(const char *, double fallback) { return fallback; }
 bool affected_by_spell(P_char, int) { return false; }
 P_char get_char_vis(P_char, const char *) { ++lookups; return visible; }
 std::string wiki_help_single(std::string name) { help_name = name; return help_result; }
+static std::string bash_mechanics(P_char) { return "  Damage on a hit: 1-2\n"; }
+AbilityFacts ability_facts(int skill) { return skill == SKILL_BASH ? bash_mechanics : nullptr; }
 static std::string run(P_char ch, std::string args) {
     output.clear(); help_name.clear(); lookups = 0;
     do_skills(ch, args.data(), 0);
@@ -116,6 +119,8 @@ int main() {
     assert(run(&ch, "info charge cooldown.").find("Provide a known") != std::string::npos);
     text = run(&ch, " info   BAsH  ");
     assert(help_name == "bash" && text.find("Syntax: bash <victim>") != std::string::npos);
+    assert(text.find("\n\n  Mechanics\n  Damage on a hit: 1-2\n\n  Helpfile details") != std::string::npos);
+    assert(run(&ch, "info guard").find("Mechanics") == std::string::npos);
     assert(text.find("Current rating: 60  Learned: 60  Taught: 70") != std::string::npos);
     assert(text.find("Swordsman") != std::string::npos && text.find("70") != std::string::npos);
     assert(text.find("Swashbuckler") != std::string::npos && text.find("Unavailable") != std::string::npos);

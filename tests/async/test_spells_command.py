@@ -12,6 +12,7 @@ HARNESS = r'''
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cstdarg>
 #include <cstdio>
@@ -40,6 +41,8 @@ P_obj SpellInSpellBook(P_char target, int spell, int mode) {
     return spell == SPELL_FIREBALL ? reinterpret_cast<P_obj>(1) : nullptr;
 }
 std::string wiki_help_single(std::string name) { help_name = name; return help_result; }
+static std::string fireball_mechanics(P_char) { return "  Fire damage: 1-2\n"; }
+AbilityFacts ability_facts(int spell) { return spell == SPELL_FIREBALL ? fireball_mechanics : nullptr; }
 static std::string run(P_char ch, std::string args) {
     output.clear(); help_name.clear(); lookups = book_checks = 0;
     do_spells(ch, args.data(), 0);
@@ -135,6 +138,7 @@ int main() {
     assert(run(&ch, "info Undefined").find("Provide a known") != std::string::npos);
     text = run(&ch, " info   FiReBaLl  ");
     assert(help_name == "fireball" && text.find("cast 'fireball'") != std::string::npos);
+    assert(text.find("readiness to cast.\n\n  Mechanics\n  Fire damage: 1-2\n\n  Helpfile details") != std::string::npos);
     assert(text.find("Registered aggression: Yes") != std::string::npos);
     assert(text.find("Circle 2 (changed)") != std::string::npos);
     assert(text.find("Unavailable (lost from base class)") != std::string::npos);
@@ -151,6 +155,7 @@ int main() {
     assert(run(&ch, "").starts_with(">====[ Scholar | Conjurer / Fire Magus + Cleric | Max Circle 3 ]====<\n"));
     ch.player.spec = 0;
     assert(run(&ch, "info heal").find("Your required Circle: 7") != std::string::npos);
+    assert(run(&ch, "info heal").find("readiness to cast.\n\n  Helpfile details") != std::string::npos);
     // A primary grant takes precedence even if a secondary grant is earlier.
     skills[SPELL_FIREBALL].m_class[flag2idx(CLASS_CLERIC)-1].rlevel[0] = 1;
     assert(run(&ch, "info fireball").find("Your required Circle: 3") != std::string::npos);

@@ -48,6 +48,7 @@
 #include "world/outposts.h"
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "sql/sql.h"
 #include "world/vnum.obj.h"
 #include "world/weather.h"
@@ -3489,6 +3490,37 @@ void spell_solbeeps_missile_barrage(int level, P_char ch, char *arg, int type, P
 	}
 }
 
+// Fireball damage at cast level `level`, before the target's save.
+static int fireball_damage(const Rolls &rolls, int level)
+{
+	return (rolls.dice(((int)(level / 3) + 5), 6) * 4);
+}
+
+// A failed save doubles fireball damage.
+static int fireball_failed_save(int dam)
+{
+	return (int)(dam * 2);
+}
+
+// A fire conjurer's fireball from level 51 is not stopped by a globe of invulnerability.
+static bool fireball_passes_globes(P_char ch)
+{
+	return IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_FIRE) && GET_LEVEL(ch) >= 51;
+}
+
+std::string fireball_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { fireball_damage(lowest_rolls, level),
+			    fireball_damage(highest_rolls, level) };
+	const Range failed = { fireball_failed_save(hit.low), fireball_failed_save(hit.high) };
+	return fact("Fire damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save", show(failed)) +
+	       fact("Globe of invulnerability",
+		    fireball_passes_globes(ch) ? "does not stop it" : "stops it") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_fireball(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		    P_obj /*tar_obj*/)
 {
@@ -3502,14 +3534,14 @@ void spell_fireball(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		0
 	};
 
-	int dam = (dice(((int)(level / 3) + 5), 6) * 4);
+	int dam = fireball_damage(live_rolls, level);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FIREBALL);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (int)(dam * 2);
+		dam = fireball_failed_save(dam);
 
 	uint flags = SPLDAM_GLOBE;
-	if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_FIRE) && GET_LEVEL(ch) >= 51)
+	if (fireball_passes_globes(ch))
 		flags = 0;
 	spell_damage(ch, victim, dam, SPLDAM_FIRE, flags, &messages);
 }

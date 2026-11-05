@@ -195,9 +195,12 @@ def run(binary, backend):
                 assert "Circle 8 (changed)" in command(player, "spells info haste")
                 assert "Your required Circle:" in info and "Current maximum Circle: 1" in info
                 assert "Circle requirement: not yet met" in info and "Spellbook" in info
-                assert info.index("Class / specialization") < info.index("Your access") < info.index("Helpfile details")
+                assert info.index("Class / specialization") < info.index("Your access") < info.index("Mechanics") < info.index("Helpfile details")
+                assert "Fire damage: 20-120 at your level, 1" in info, info
+                assert "If the target fails its save:" in info
                 redirected = command(player, "spells info magic missile")
                 assert "Redirected spell details for the disposable journey" in redirected
+                assert "Mechanics" not in redirected
                 missing = command(player, "spells info fire form")
                 assert "Circle 10 (added)" in missing and "Your access" in missing
                 assert "Help topic not found" in missing
@@ -214,6 +217,9 @@ def run(binary, backend):
                 for alias in ("cleric", "all", "s"):
                     assert ">====[ raoul cleric all s | None | Max Circle 1 ]====<" in command(
                         god, f"spells target {alias}")
+                # The converted fireball still plays through its real handler.
+                god.send("cast 'fireball' raoul")
+                god.expect_any(("You throw a fireball", "Your fireball hits"), timeout=30)
                 command(god, "toggle paging yes")
                 god.send("spells all")
                 god.expect("BASE-CLASS CIRCLE REFERENCE")

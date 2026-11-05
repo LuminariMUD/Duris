@@ -4,6 +4,7 @@
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 #include <algorithm>
 #include <cctype>
@@ -240,6 +241,8 @@ void skill_info(P_char ch, int skill)
 		    << "  Your cap: " << static_cast<int>(data.maxlearn[ch->player.spec]) << "\n";
 	else if (!epic)
 		out << "  Not available through your current class/specialization.\n";
+	if (AbilityFacts facts = ability_facts(skill))
+		out << "\n&+W  Mechanics&n\n" << facts(ch);
 	out << "\n&+W  Helpfile details&n\n" << wiki_help_single(skills[skill].name) << "\n";
 	send_to_char(out.str().c_str(), ch);
 }
