@@ -198,6 +198,8 @@ def run(binary, backend):
                 assert info.index("Class / specialization") < info.index("Your access") < info.index("Mechanics") < info.index("Helpfile details")
                 assert "Fire damage: 20-120 at your level, 1" in info, info
                 assert "If the target fails its save:" in info
+                sanctuary = command(player, "spells info sanctuary")
+                assert "Duration: 15-16 game hours (18.75-20 minutes)" in sanctuary, sanctuary
                 redirected = command(player, "spells info magic missile")
                 assert "Redirected spell details for the disposable journey" in redirected
                 assert "Mechanics" not in redirected

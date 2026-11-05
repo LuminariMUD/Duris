@@ -285,7 +285,8 @@ int main() {
 }
 '''
 
-functions = [extract_function("magic.c", "static void set_protection_duration(")]
+functions = [extract_function("magic.c", "static void set_protection_duration("),
+             extract_function("magic.c", "static int protection_spell_duration(")]
 functions += [extract_function("magic.c", "static int protection_from_" + name + "_duration(")
              for name in ("good", "evil")]
 functions += [extract_function("magic.c", "void spell_protection_from_" + name + "(")
