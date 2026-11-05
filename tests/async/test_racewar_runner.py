@@ -432,7 +432,8 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
                     ("n", "w) Warrior (W for help)\nYour selection"),
                     ("w", "Your stat rolling system [D]:"), ("", "first bonus"),
                     ("s", "second bonus"), ("d", "third bonus"), ("a", "fourth bonus"),
-                    ("l", "swap stats"), ("n", "keep this character"), ("y", "PRESS RETURN")]
+                    ("l", "swap stats"), ("n", "keep this character"), ("y", "Please select an option"),
+                    ("1", "Actor"), ("Actor", "(Y/N)"), ("y", "PRESS RETURN")]
         for entry in ("staff", "reconnect", "override", "create"):
             with self.subTest(entry=entry), tempfile.TemporaryDirectory() as directory:
                 premature = []

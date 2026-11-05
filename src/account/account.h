@@ -156,6 +156,7 @@ uint64_t wait_for_writer(struct descriptor_data *d);
 struct descriptor_data *writer_replied(uint64_t id);
 
 struct player_save_completion;
+bool account_character_body_held(int pid, struct descriptor_data *except);
 bool keep_new_character(struct descriptor_data *d);
 void continue_kept_character(struct descriptor_data *d, bool created = false);
 bool approve_kept_character(struct descriptor_data *d);

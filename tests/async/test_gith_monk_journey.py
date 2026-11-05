@@ -75,7 +75,8 @@ def telnet_journey(binary, inspector, race, name, alignment):
             for stat, next_prompt in zip('sdal', ('second bonus', 'third bonus', 'fourth bonus', 'swap stats (Y/N):')):
                 telnet.reply(client, stat, next_prompt)
             telnet.reply(client, 'n', telnet.KEEP)
-            telnet.reply(client, 'y', 'PRESS RETURN')
+            telnet.reply(client, 'y', telnet.MENU)
+            telnet.play_saved_character(client)
             telnet.reply(client, '', 'Your starter kit is ready')
             client.expect('Pos: standing >')
             telnet.reply(client, 'save', 'Save complete for Taverek.')
@@ -122,6 +123,7 @@ def websocket_journey(binary, inspector, race, name, alignment):
                 'class': monk['id'], 'sex': 1, 'alignment': 'good' if alignment > 0 else 'evil',
                 'hometown': homes['options'][0]['id'], 'newbie': True})
             require(created['status'] == 'created', f'WebSocket creation failed: {created}')
+            client.enter_created_character('Taverek')
             ws_save(client)
             before = inspect(server, inspector, race, alignment)
             client.close()

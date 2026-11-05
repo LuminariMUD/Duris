@@ -47,7 +47,8 @@ def run(binary, backend):
                 staff = account.MudClient(server.plain_port)
                 account.create_account(staff, account.OLD_PASSWORD)
                 choices(staff, STAFF)
-                creation.reply(staff, "y", "PRESS RETURN")
+                creation.reply(staff, "y", creation.MENU)
+                creation.play_saved_character(staff, STAFF)
                 creation.reply(staff, "", "Your starter kit is ready")
                 staff.expect("Pos: standing >")
                 creation.reply(staff, "save", f"Save complete for {STAFF}.")
@@ -144,7 +145,7 @@ def run(binary, backend):
                 choices(mortal, "Nariven")
                 # Approval is still on: the accepted-name exemption must commit
                 # the same baseline and reach Return rather than the wait queue.
-                creation.reply(mortal, "y", "PRESS RETURN")
+                creation.reply(mortal, "y", creation.MENU)
                 accepted_before = saved_character(server, sql, inspector, "Nariven")
                 assert accepted_before[1] == 0
                 server.shutdown()

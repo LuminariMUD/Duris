@@ -1158,6 +1158,13 @@ static void ws_reset_chargen(struct descriptor_data *d)
 	d->chargen_newbie = 0;
 }
 
+/* Only an account menu with no body or load in flight may log in or enter a character. */
+static bool ws_at_account_menu(struct descriptor_data *d)
+{
+	return !d->character && !d->player_load_request_id &&
+	       (STATE(d) == CON_ACCT_SELECT_CHAR || STATE(d) == CON_DISPLAY_ACCT_MENU);
+}
+
 /* handle login command */
 void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 {
@@ -1168,6 +1175,11 @@ void ws_cmd_login(struct descriptor_data *d, cJSON *data)
 	if (d && (d->durisweb_verified || d->durisweb_backend))
 	{
 		ws_send_auth_failed(d, "Service connection cannot log in as a player");
+		return;
+	}
+	if (STATE(d) != CON_GET_ACCT_NAME && !ws_at_account_menu(d))
+	{
+		ws_send_auth_failed(d, "Leave your character before logging in again");
 		return;
 	}
 	if (!ws_player_auth_attempt(d, 0))
@@ -1247,6 +1259,14 @@ void ws_finish_login(struct descriptor_data *d, int password_valid)
 	if (!password_valid)
 	{
 		ws_send_auth_failed(d, "Invalid account or password");
+		d->account = free_account(d->account);
+		return;
+	}
+	if (d->account->acct_blocked == ACCOUNT_BLOCK_DELETION)
+	{
+		ws_send_auth_failed(
+			d,
+			"This account is being deleted. Connect by Telnet to finish the deletion.");
 		d->account = free_account(d->account);
 		return;
 	}
@@ -1372,8 +1392,8 @@ void ws_cmd_enter(struct descriptor_data *d, cJSON *data)
 	struct acct_chars *c;
 	struct descriptor_data *k, *next_k;
 
-	/* prevent duplicate entry if already entering or playing */
-	if (d->connected == CON_ACCT_CONFIRM_CHAR || d->connected == CON_PLAYING)
+	/* prevent duplicate entry if already entering, waiting for approval or playing */
+	if (d->account && !ws_at_account_menu(d))
 	{
 		return;
 	}
@@ -2406,7 +2426,7 @@ void ws_finish_kept_character(P_desc d, bool created)
 	const int actual_hometown = d->chargen_hometown;
 	const bool is_hardcore = IS_SET(ch->specials.act2, PLR2_HARDCORE_CHAR);
 	const bool is_newbie = IS_SET(ch->specials.act2, PLR2_NEWBIE);
-	if (!waiting)
+	if (!created)
 	{
 		account_racewar_admission admission = {};
 		const auto *membership =
@@ -2443,16 +2463,15 @@ void ws_finish_kept_character(P_desc d, bool created)
 
 		/* send full game state via gmcp */
 		ws_send_full_game_state(d);
-	}
-	if (!created)
 		return;
+	}
 	/* Only a matching committed Keep reaches this response. */
 	cJSON *response = cJSON_CreateObject();
 	cJSON_AddStringToObject(response, "type", "create_character");
 	cJSON_AddStringToObject(response, "status", "created");
 	cJSON_AddStringToObject(response, "message",
 				waiting ? "Character saved; waiting for staff approval." :
-					  "Character created successfully!");
+					  "Character saved. Select it when you are ready to play.");
 	cJSON_AddBoolToObject(response, "waitingForApproval", waiting);
 	cJSON_AddStringToObject(response, "name", GET_NAME(ch));
 	cJSON_AddStringToObject(response, "race", race_names_table[race_id].normal);
@@ -3264,6 +3283,7 @@ void ws_cmd_delete_character(struct descriptor_data *d, cJSON *data)
 			    }
 			    // One in the game, linkdead or entering it would go on playing, unsaved.
 			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				account_character_body_held(GET_PID(loaded), nullptr) ||
 				player_load_pipeline_pid_pending(GET_PID(loaded)))
 			    {
 				    free_char(loaded);
@@ -3422,6 +3442,7 @@ static void admin_delete_character_loaded(P_desc d, P_acct target_acct, const ch
 			    }
 			    // One in the game, linkdead or entering it would go on playing, unsaved.
 			    if (is_pid_online(GET_PID(loaded), TRUE) ||
+				account_character_body_held(GET_PID(loaded), nullptr) ||
 				player_load_pipeline_pid_pending(GET_PID(loaded)))
 			    {
 				    free_char(loaded);
@@ -3589,9 +3610,10 @@ void ws_cmd_rested_bonus(struct descriptor_data *d, cJSON * /*data*/)
 
 		char_obj = cJSON_CreateObject();
 		cJSON_AddStringToObject(char_obj, "name", name_cap);
-		cJSON_AddNumberToObject(char_obj, "restedPercent", percent);
+		cJSON_AddBoolToObject(char_obj, "availableOnFirstEntry", c->level == 0);
+		cJSON_AddNumberToObject(char_obj, "restedPercent", c->level == 0 ? 100 : percent);
 		cJSON_AddNumberToObject(char_obj, "restedHours",
-					offline_hours > max_hours ? max_hours : offline_hours);
+					c->level == 0 ? 0 : MIN(offline_hours, max_hours));
 		cJSON_AddNumberToObject(char_obj, "maxHours", max_hours);
 		cJSON_AddItemToArray(characters, char_obj);
 	}
@@ -3606,6 +3628,11 @@ void ws_cmd_logout(struct descriptor_data *d, cJSON * /*data*/)
 	if (!d->account)
 	{
 		ws_send_account_message(d, "error", NULL, "Not logged in");
+		return;
+	}
+	if (STATE(d) == CON_PLAYING)
+	{
+		ws_send_account_message(d, "error", NULL, "Leave the game before logging out");
 		return;
 	}
 

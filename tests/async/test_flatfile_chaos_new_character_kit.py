@@ -392,7 +392,13 @@ def create_chaos_character(client: MudClient, class_name: str = "Warrior", align
     client.send("n")
     client.expect("keep this character")
     client.send("y")
-    # No rules-agreement gate: keeping the character goes straight to the motd.
+    # No rules-agreement gate: Keep returns to the menu and Play reaches the motd.
+    client.expect("Please select an option")
+    client.send("1")
+    client.expect(CHARACTER)
+    client.send(CHARACTER)
+    client.expect("(Y/N)")
+    client.send("y")
     client.expect("PRESS RETURN")
     client.send("")
     prepared = "Your Chaos Equipment has been prepared!!"

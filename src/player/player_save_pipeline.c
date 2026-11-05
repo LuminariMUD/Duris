@@ -732,7 +732,8 @@ bool player_save_pipeline_load_held(int pid)
 
 void player_save_pipeline_end_session(int pid)
 {
-	if (pid <= 0 || live_player(pid))
+	// A temporary load of this PID must not end the session of a body still in use.
+	if (pid <= 0 || live_player(pid) || account_character_body_held(pid, nullptr))
 		return;
 	player_revision_end_session(pid);
 	retire_ended_player(pid);

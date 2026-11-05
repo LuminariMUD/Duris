@@ -155,6 +155,7 @@ def create(server, name, race_name, class_name, alignment, *, rejects=True, expe
         created = client.command("create_character", data)
         assert created["status"] == "created" and created["alignment"] == alignment, created
         assert created["hardcore"] is False and created["newbie"] is True
+        client.enter_created_character(name)
         rooms = [m["data"]["num"] for m in client.messages if m.get("package") == "Room.Info"]
         if "Plane" in home["name"]:
             assert rooms[-1] == (91200 if alignment == "evil" and race["faction"] == "neutral" else 22800), rooms
@@ -278,6 +279,7 @@ def browser_case(server, args, name, race, cls, alignment, *, relog=False):
             page.screenshot(path=str(args.artifacts / (name + "-review.png")))
             before = server["count"]()
             page.get_by_role("button", name="Create Character", exact=True).click()
+            page.get_by_role("button", name="Enter", exact=True).click()
         field = page.get_by_placeholder("Command (↑ to repeat)")
         try:
             field.wait_for(timeout=20000)

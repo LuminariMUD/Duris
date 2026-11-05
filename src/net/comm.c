@@ -3773,8 +3773,10 @@ void close_socket(struct descriptor_data *d)
 		{
 			logit(LOG_COMM, "Losing player: %s [%s].", GET_NAME(d->character), d->host);
 			item_creation_grant_cancel_batch_before_entry(d->character);
-			free_char(d->character);
+			// Detached first: a held body keeps its save session alive.
+			P_char body = d->character;
 			d->character = NULL;
+			free_char(body);
 		}
 	}
 	else

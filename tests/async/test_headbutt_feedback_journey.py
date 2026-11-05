@@ -142,6 +142,7 @@ def create(server):
             result = client.command("create_character", {"name": name, "race": 1, "class": warrior["id"],
                 "sex": 1, "alignment": "good", "hometown": homes["options"][0]["id"], "newbie": True})
             require(result["status"] == "created", f"synthetic creation failed: {result}")
+            client.enter_created_character(name)
             game(client, "save", f"Save complete for {name}.")
         finally:
             client.close()

@@ -32,6 +32,13 @@ def reply(client, answer, prompt):
     return client.expect(prompt, timeout=5)
 
 
+def play_saved_character(client, name="Taverek"):
+    """Select a committed level-0 character; leave its MOTD Return pending."""
+    reply(client, "1", name)
+    reply(client, name, "(Y/N)")
+    return reply(client, "y", "PRESS RETURN")
+
+
 def require_prompt_framed(client, prompt, timeout=3):
     """Require Telnet IAC GA straight after the last copy of an unterminated prompt.
 
@@ -212,7 +219,8 @@ def invitation_rejection(client, server, *, invited=False):
     reply(client, "y", "meet these criteria?")
     reply(client, "y", RACE_MENU)
     finish_character_choices(client)
-    reply(client, "y", "PRESS RETURN")
+    reply(client, "y", MENU)
+    play_saved_character(client, STAFF)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >")
     reply(client, "save", f"Save complete for {STAFF}.")
@@ -341,7 +349,8 @@ def finish_character_choices(client, *, exercise_retries=False, choose_hardcore=
 def advanced_creation(client, server):
     reach_race(client)
     finish_character_choices(client, method="a", exercise_retries=True)
-    reply(client, "y", "PRESS RETURN")
+    reply(client, "y", MENU)
+    play_saved_character(client)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >")
     reply(client, "save", "Save complete for Taverek.")
@@ -408,7 +417,8 @@ def normal_after_hardcore(client, server):
     reply(client, "z", "Male or Female")
     reply(client, "z", RACE_MENU)
     finish_character_choices(client)
-    reply(client, "y", "PRESS RETURN")
+    reply(client, "y", MENU)
+    play_saved_character(client)
     reply(client, "", "Your starter kit is ready")
     client.expect("Pos: standing >")
     score = reply(client, "score", "Pos: standing >")
