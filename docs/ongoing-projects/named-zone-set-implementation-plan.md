@@ -6,7 +6,7 @@ Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-effect-ownership`, based on
 `branch/named-zone-set-membership`.
-Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
+Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-05)
 
@@ -22,7 +22,20 @@ worn membership and HP cleanup and targets the origin branch.
 [PR #722](https://github.com/LuminariMUD/Duris/pull/722)
 (`branch/named-zone-set-effect-ownership`, implementation commit `a0aebad6a`)
 contains affect provenance and shared support and targets the membership branch.
-All four PRs are ready for review; no merge or release has been performed.
+All four PRs are ready for review; no implementation PR has been merged and no
+release has been performed.
+
+The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
+into the foundation and propagated through each dependent branch without
+rewriting history. PR #721 adds inert #150 metadata for retired Misty Chasm
+prototypes, with no rooms or resets; it does not add a playable set candidate.
+The playable Misty Vale remains #3000 in the 104-zone assignment roster. Use the
+current area registry for the remaining wider eligibility review, keeping the
+initial inventory counts distinct from the final reviewed denominator.
+History check: `c79fde573^:areas/zon/mist_chasm.zon` gives retired #150 the
+same normalized title as new #3000. The current resolver must be extended before
+expansion so unmarked Misty Vale gear cannot inherit #3000's newly assigned
+effect by guessing. Keep this as a separate identity correction after #722.
 
 The first implementation chunk extracts the **115 existing loaded set rows,
 206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
@@ -253,6 +266,17 @@ families' cooldowns. Do not install expansion rows before these gates pass. Actu
 wear/transfer/save/reboot journeys, private chest/locker/shop journeys, live Redis
 lifecycle checks, balance, help publication, and the wider eligibility review
 remain outstanding. No production operation, release, or release tag has occurred.
+
+For the next ownership change, direct native calls matter: group armor and
+several item procedures call `spell_armor()` without the ordinary `sparser`
+dispatch. Handling only that dispatcher would leave valid cast paths broken.
+Match the source spell/registered alias, preserving other armor/light/shield
+exclusions. The existing `AFFTYPE_NOAPPLY` path in `all_affects()` can suppress
+a dormant source without changing numeric stacking rules; verify remaining
+durations and reactivation on ordinary expiry/removal if that path is used.
+The creation scope must continue to distinguish a set invocation from an
+ordinary invocation. Test actual spell entries, not just ordinary affect-node
+allocation, before checking off the both-orders acceptance gate.
 
 ## Start here
 

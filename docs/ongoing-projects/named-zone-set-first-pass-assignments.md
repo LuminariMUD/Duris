@@ -254,6 +254,12 @@ can function unambiguously or be generated as intended.
 
 ## Implementation handoff
 
+Upstream PR #721 adds **#150 Retired Misty Chasm prototypes** as inert ownership
+metadata. Its authored zone has no rooms or resets, so it is excluded from set
+eligibility. The playable Chasm of the Misty Vale remains #3000 with its planned
+assignment in the original roster; #150 does not change the 104 assignments
+or their effect-home counts. See [mist_chasm.zon](../../areas/zon/mist_chasm.zon).
+
 The original roster exclusions, including Thetis's Realm (#380), Valoisian
 Castle (#384), the Great Realm connector (#536), disconnected Crakkaros' Liar
 (#870), and the disabled Black Pearl entrance (#1422), remain outside this plan.
