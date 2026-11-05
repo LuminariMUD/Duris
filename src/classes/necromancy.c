@@ -25,6 +25,7 @@
 #include "player/pet_restore_runtime.h"
 #include "persistence/persistence_checkpoint.h"
 #include "redis/redis_floor_runtime.h"
+#include <climits>
 #include <cstdint>
 #include <ctime>
 #include <algorithm>
@@ -39,6 +40,7 @@
 #include "world/specs.prototypes.h"
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
+#include "abilities/abilities.h"
 
 extern P_room world;
 extern P_index mob_index;
@@ -370,6 +372,27 @@ int count_undead(P_char ch)
 	return (int)sum;
 }
 
+// What a caster can control of dracoliches, titans and avatars.
+static int draco_power(int level, P_char ch)
+{
+	int necro_power = level * 2;
+	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_NECROLYTE) ||
+	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_TEMPLAR))
+		necro_power += 10;
+	return necro_power;
+}
+
+static int draco_cost(bool bGreater)
+{
+	int cost = 0;
+	// 56 * 2 == 112 == 75 + 37 => at 56, can raise 1 greater and 1 regular dracolich.
+	if (bGreater)
+		cost = 75;
+	else
+		cost = 37;
+	return cost;
+}
+
 int can_raise_draco(P_char ch, int level, bool bGreater)
 {
 	int numb = count_undead(ch);
@@ -397,17 +420,8 @@ int can_raise_draco(P_char ch, int level, bool bGreater)
 
 	// return numb <= maxAllowed;
 
-	int necro_power = level * 2;
-	int cost = 0;
-	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_NECROLYTE) ||
-	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_TEMPLAR))
-		necro_power += 10;
-
-	// 56 * 2 == 112 == 75 + 37 => at 56, can raise 1 greater and 1 regular dracolich.
-	if (bGreater)
-		cost = 75;
-	else
-		cost = 37;
+	int necro_power = draco_power(level, ch);
+	int cost = draco_cost(bGreater);
 
 	// debug("numb %d + cost %d > np %d", numb, cost, necro_power);
 	if ((numb + cost > necro_power) && !IS_TRUSTED(ch))
@@ -428,6 +442,236 @@ int can_raise_draco(P_char ch, int level, bool bGreater)
 	return TRUE;
 }
 
+// A reaper's or thaumaturge's infuse life counts for more.
+static int raised_undead_spec_life(P_char ch, int life)
+{
+	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER) ||
+	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_THAUMATURGE))
+	{
+		life += (int)(life / 3);
+	}
+	return life;
+}
+
+// Below raised_undead_strict_below(), a corpse this far above the caster is refused.
+static int raised_undead_corpse_margin()
+{
+	return 4;
+}
+
+static int raised_undead_strict_below()
+{
+	return 49;
+}
+
+static int raised_undead_weakest_corpse()
+{
+	return 4;
+}
+
+// The globe of shadows adds this to infuse life.
+static int raised_undead_globe_life(const Rolls &rolls, int life)
+{
+	return (life + rolls.number(50, 100));
+}
+
+// The type animate dead and call archon roll; a corpse too weak for it rolls again.
+static int raised_undead_type_roll(const Rolls &rolls, P_char ch, int level)
+{
+	if (GET_CLASS(ch, CLASS_THEURGIST))
+		return (int)(rolls.number(0, MIN(level + 5, 45)) / 10) + ((NECROPET_LAST + 1) / 2);
+	// Blighters only raise skeletons/zombies.
+	else if (GET_CLASS(ch, CLASS_BLIGHTER))
+		return rolls.number(0, 1);
+	else
+		return (int)(rolls.number(0, MIN(level + 5, 45)) / 10);
+}
+
+static int raised_undead_power(int level, P_char ch)
+{
+	int necro_power = level * 2;
+	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_NECROLYTE) ||
+	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_TEMPLAR))
+	{
+		necro_power += 10;
+	}
+	// Lvl 15 : 1 pet, Lvl 30 : 2 pets, Lvl 45 : 3 pets, lvl 56 : 3 pets.
+	if (IS_PC(ch) && GET_CLASS(ch, CLASS_BLIGHTER))
+	{
+		necro_power = (necro_power) / 3;
+	}
+	return necro_power;
+}
+
+static int raised_undead_cap(int level, int typ)
+{
+	int cap;
+
+	if (level < 50)
+	{
+		cap = (int)((((float)level) / 4 + 37.5) * undead_data[typ].max_level / 50);
+	}
+	else
+	{
+		cap = undead_data[typ].max_level;
+	}
+	return cap;
+}
+
+static int raised_spectre_strength()
+{
+	return 90;
+}
+
+static int raised_spectre_agility()
+{
+	return 100;
+}
+
+static int raised_spectre_dexterity()
+{
+	return 100;
+}
+
+static int raised_undead_hit_points(const Rolls &rolls, int mob_level, int ch_level, int typ,
+				    int life)
+{
+	return (int)(rolls.dice(mob_level, 12) + ch_level * undead_data[typ].hps + (life * 3));
+}
+
+static int raised_undead_armor(int mob_level, int typ)
+{
+	return 100 - mob_level - (typ * 15);
+}
+
+static int raised_undead_hitroll(int mob_level)
+{
+	return (int)(0.7 * mob_level);
+}
+
+static int raised_undead_damroll(const Rolls &rolls, int mob_level)
+{
+	return (int)(0.55 * mob_level) + rolls.number(-6, 2);
+}
+
+static int raised_undead_dice_size(int level)
+{
+	return (level - 1) / 11;
+}
+
+static int raised_undead_control(int time_to_decay)
+{
+	return MAX(4, time_to_decay);
+}
+
+// A raised pet whose control can end dies this many minutes later, plus one.
+static int raised_undead_late_death_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 10);
+}
+
+static int raised_undead_death_delay(int duration)
+{
+	return (duration + 1) * 60 * 4;
+}
+
+// The lines every raise page ends with.
+static std::string raised_undead_shared_facts(P_char ch, int level)
+{
+	std::string text = fact("Control lasts at least", game_hours(raised_undead_control(0))) +
+			   "  It lasts longer on a fresher corpse.\n" +
+			   fact("It dies after its charm's ticks as minutes, plus",
+				real_time(raised_undead_death_delay(
+					raised_undead_late_death_roll(lowest_rolls))) +
+					" to " +
+					real_time(raised_undead_death_delay(
+						raised_undead_late_death_roll(highest_rolls)))) +
+			   "  A globe of shadows or unholy alliance makes the charm permanent,\n"
+			   "  and then it does not die.\n" +
+			   fact("A globe of shadows also adds to infuse life",
+				show({ raised_undead_globe_life(lowest_rolls, 0),
+				       raised_undead_globe_life(highest_rolls, 0) }));
+	if (!IS_TRUSTED(ch) && level < raised_undead_strict_below())
+		text += fact("Highest corpse level you can raise",
+			     std::to_string(level + raised_undead_corpse_margin()));
+	return text + "  Safe rooms block it, and the corpse must be on the ground here.\n"
+		      "  In vampire form you need necroplasm on. A good necromancer or an evil\n"
+		      "  theurgist is refused.\n";
+}
+
+static std::string raised_undead_power_text(P_char ch, const std::string &cost, int level)
+{
+	if (IS_TRUSTED(ch))
+		return "no limit, as an immortal";
+	return cost + " of your " + std::to_string(raised_undead_power(level, ch));
+}
+
+// One raise spell's page, for the undead type it always raises.
+static std::string raised_undead_facts(P_char ch, int typ)
+{
+	const int level = GET_LEVEL(ch);
+	const int mob = raised_undead_cap(level, typ);
+	const int life = raised_undead_spec_life(ch, GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE));
+	std::string text =
+		fact("Corpse level needed", std::to_string(undead_data[typ].corpse_level)) +
+		fact("Its top level", std::to_string(mob) + " at your level, " +
+					      std::to_string(level) + ", lower on a weak corpse") +
+		fact("At that level, its hit points",
+		     show({ raised_undead_hit_points(lowest_rolls, mob, level, typ, life),
+			    raised_undead_hit_points(highest_rolls, mob, level, typ, life) }) +
+			     " with your infuse life") +
+		fact("Its base armor class", std::to_string(raised_undead_armor(mob, typ))) +
+		fact("Its hitroll", std::to_string(raised_undead_hitroll(mob))) +
+		fact("Its damroll", show_signed({ raised_undead_damroll(lowest_rolls, mob),
+						  raised_undead_damroll(highest_rolls, mob) }));
+	if (raised_undead_dice_size(level) >= 1)
+		text += fact("Its damage die size", std::to_string(raised_undead_dice_size(level)));
+	if (typ == NECROPET_SPECTRE)
+		text += fact("Its strength, agility and dexterity",
+			     std::to_string(raised_spectre_strength()) + ", " +
+				     std::to_string(raised_spectre_agility()) + ", " +
+				     std::to_string(raised_spectre_dexterity()));
+	return text +
+	       fact("Power it costs",
+		    raised_undead_power_text(ch, std::to_string(undead_data[typ].cost), level)) +
+	       raised_undead_shared_facts(ch, level);
+}
+
+// The page of animate dead and call archon, which roll the type.
+static std::string raised_undead_random_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int life = raised_undead_spec_life(ch, GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE));
+	const int first = raised_undead_type_roll(lowest_rolls, ch, level);
+	const int last = raised_undead_type_roll(highest_rolls, ch, level);
+	std::string names;
+	Range top = { raised_undead_cap(level, first), raised_undead_cap(level, first) };
+	Range hit_points = { INT_MAX, INT_MIN }, cost = { INT_MAX, INT_MIN };
+	for (int typ = first; typ <= last; ++typ)
+	{
+		const std::string name = undead_data[typ].name;
+		const int mob = raised_undead_cap(level, typ);
+		names += (names.empty() ? "" : ", ") + name.substr(0, name.find(' '));
+		top = { std::min(top.low, mob), std::max(top.high, mob) };
+		hit_points = {
+			std::min(hit_points.low,
+				 raised_undead_hit_points(lowest_rolls, mob, level, typ, life)),
+			std::max(hit_points.high,
+				 raised_undead_hit_points(highest_rolls, mob, level, typ, life))
+		};
+		cost = { std::min(cost.low, undead_data[typ].cost),
+			 std::max(cost.high, undead_data[typ].cost) };
+	}
+	return fact("Raises at random", names) +
+	       "  A corpse too weak for the type it rolls rolls again.\n" +
+	       fact("Lowest corpse level", std::to_string(raised_undead_weakest_corpse())) +
+	       fact("Its top level", show(top) + " at your level, " + std::to_string(level) +
+					     ", lower on a weak corpse") +
+	       fact("At that level, its hit points", show(hit_points) + " with your infuse life") +
+	       fact("Power it costs", raised_undead_power_text(ch, show(cost), level)) +
+	       raised_undead_shared_facts(ch, level);
+}
+
 void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_type)
 {
 	P_char undead;
@@ -443,11 +687,7 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	if (!require_data(obj, "raise_undead", "bogus parms - missing obj"))
 		return;
 
-	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER) ||
-	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_THAUMATURGE))
-	{
-		life += (int)(life / 3);
-	}
+	life = raised_undead_spec_life(ch, life);
 
 	if (CHAR_IN_SAFE_ROOM(ch))
 	{
@@ -509,7 +749,8 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		clevel = -clevel;
 	}
 
-	if (clevel > (level + 4) && !IS_TRUSTED(ch) && (level < 49))
+	if (clevel > (level + raised_undead_corpse_margin()) && !IS_TRUSTED(ch) &&
+	    (level < raised_undead_strict_below()))
 	{
 		act("You are not powerful enough to animate that corpse!", FALSE, ch, 0, 0,
 		    TO_CHAR);
@@ -526,7 +767,7 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		return;
 	}
 
-	if (clevel < 4)
+	if (clevel < raised_undead_weakest_corpse())
 	{
 		send_to_char("The corpse is too weak to rise as undead!\r\n", ch);
 		return;
@@ -546,21 +787,14 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s abomination!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life = (life + number(50, 100));
+		life = raised_undead_globe_life(live_rolls, life);
 	}
 
 	if (which_type < 0)
 	{
 		do
 		{
-			if (GET_CLASS(ch, CLASS_THEURGIST))
-				typ = (int)(number(0, MIN(level + 5, 45)) / 10) +
-				      ((NECROPET_LAST + 1) / 2);
-			// Blighters only raise skeletons/zombies.
-			else if (GET_CLASS(ch, CLASS_BLIGHTER))
-				typ = number(0, 1);
-			else
-				typ = (int)(number(0, MIN(level + 5, 45)) / 10);
+			typ = raised_undead_type_roll(live_rolls, ch, level);
 		} while (clevel < undead_data[typ].corpse_level);
 	}
 	else
@@ -568,17 +802,7 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		typ = which_type;
 	}
 
-	int necro_power = level * 2;
-	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_NECROLYTE) ||
-	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_TEMPLAR))
-	{
-		necro_power += 10;
-	}
-	// Lvl 15 : 1 pet, Lvl 30 : 2 pets, Lvl 45 : 3 pets, lvl 56 : 3 pets.
-	if (IS_PC(ch) && GET_CLASS(ch, CLASS_BLIGHTER))
-	{
-		necro_power = (necro_power) / 3;
-	}
+	int necro_power = raised_undead_power(level, ch);
 
 	if ((sum + undead_data[typ].cost > necro_power) && !IS_TRUSTED(ch) && IS_PC(ch))
 	{
@@ -626,14 +850,7 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 
 	num = (int)(clevel + (level - clevel) / 1.5);
 
-	if (level < 50)
-	{
-		cap = (int)((((float)level) / 4 + 37.5) * undead_data[typ].max_level / 50);
-	}
-	else
-	{
-		cap = undead_data[typ].max_level;
-	}
+	cap = raised_undead_cap(level, typ);
 
 	undead->player.level = BOUNDED(1, num, cap);
 
@@ -660,30 +877,30 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	// Spectres get good stats for backstab (necromancers get str spell, so 90 str).
 	if (which_type == NECROPET_SPECTRE)
 	{
-		undead->base_stats.Str = 90;
-		undead->base_stats.Agi = 100;
-		undead->base_stats.Dex = 100;
+		undead->base_stats.Str = raised_spectre_strength();
+		undead->base_stats.Agi = raised_spectre_agility();
+		undead->base_stats.Dex = raised_spectre_dexterity();
 	}
 
 	/* max hp: 800 - really lucky lich.  */
 	GET_HIT(undead) = GET_MAX_HIT(undead) = undead->points.base_hit =
-		(int)(dice(GET_LEVEL(undead), 12) + GET_LEVEL(ch) * undead_data[typ].hps +
-		      (life * 3));
+		raised_undead_hit_points(live_rolls, GET_LEVEL(undead), GET_LEVEL(ch), typ, life);
 
 	undead->points.vitality = undead->points.base_vitality = undead->points.max_vitality =
 		MAX(50, undead->base_stats.Agi) +
 		(undead->base_stats.Str + undead->base_stats.Con) / 2;
 
-	undead->points.base_armor = 100 - GET_LEVEL(undead) - (typ * 15);
+	undead->points.base_armor = raised_undead_armor(GET_LEVEL(undead), typ);
 
 	MonkSetSpecialDie(undead);
-	undead->points.base_hitroll = undead->points.hitroll = (int)(0.7 * GET_LEVEL(undead));
+	undead->points.base_hitroll = undead->points.hitroll =
+		raised_undead_hitroll(GET_LEVEL(undead));
 	// 24 - 32 at 50.
 	undead->points.base_damroll = undead->points.damroll =
-		(int)(0.55 * GET_LEVEL(undead)) + number(-6, 2);
+		raised_undead_damroll(live_rolls, GET_LEVEL(undead));
 	undead->points.damnodice = (undead->points.damnodice / 2 + 2);
 	// 5 at 56.
-	undead->points.damsizedice = (level - 1) / 11;
+	undead->points.damsizedice = raised_undead_dice_size(level);
 
 	balance_affects(undead);
 	undead->only.npc->str_mask = (STRUNG_KEYS | STRUNG_DESC1 | STRUNG_DESC2);
@@ -781,18 +998,78 @@ void raise_undead(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	// Sunlight-sensitive mana regeneration reads the pet's room.
 	StartRegen(undead, regen_resource::mana);
 
-	int duration = setup_pet(undead, ch, MAX(4, timeToDecay), PET_NOCASH);
+	int duration = setup_pet(undead, ch, raised_undead_control(timeToDecay), PET_NOCASH);
 	add_follower(undead, ch);
 
 	/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 	if (duration >= 0)
 	{
-		duration += number(1, 10);
-		schedule_pet_death(undead, (duration + 1) * 60 * 4);
+		duration += raised_undead_late_death_roll(live_rolls);
+		schedule_pet_death(undead, raised_undead_death_delay(duration));
 	}
 }
 
 #undef UNDEAD_TYPES
+
+std::string raise_spectre_facts(P_char ch)
+{
+	return raised_undead_facts(ch, NECROPET_SPECTRE);
+}
+
+std::string raise_wraith_facts(P_char ch)
+{
+	return raised_undead_facts(ch, NECROPET_WRAITH);
+}
+
+std::string raise_shadow_facts(P_char ch)
+{
+	return raised_undead_facts(ch, NECROPET_SHADOW);
+}
+
+std::string raise_vampire_facts(P_char ch)
+{
+	return raised_undead_facts(ch, NECROPET_VAMPIRE);
+}
+
+std::string raise_lich_facts(P_char ch)
+{
+	return raised_undead_facts(ch, NECROPET_LICH);
+}
+
+std::string animate_dead_facts(P_char ch)
+{
+	return raised_undead_random_facts(ch);
+}
+
+std::string call_asura_facts(P_char ch)
+{
+	return raised_undead_facts(ch, THEURPET_SPECTRE);
+}
+
+std::string call_bralani_facts(P_char ch)
+{
+	return raised_undead_facts(ch, THEURPET_WRAITH);
+}
+
+std::string call_deva_facts(P_char ch)
+{
+	return raised_undead_facts(ch, THEURPET_SHADOW);
+}
+
+std::string call_knight_facts(P_char ch)
+{
+	return raised_undead_facts(ch, THEURPET_VAMPIRE);
+}
+
+std::string call_liberator_facts(P_char ch)
+{
+	return raised_undead_facts(ch, THEURPET_LICH);
+}
+
+std::string call_archon_facts(P_char ch)
+{
+	return raised_undead_random_facts(ch);
+}
 
 // Necro Spells
 void spell_raise_spectre(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -1051,6 +1328,103 @@ void spell_spawn(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 	    TO_ROOM);
 }
 
+static int corpse_pet_corpse_level()
+{
+	return 46;
+}
+
+static int greater_corpse_pet_corpse_level()
+{
+	return 51;
+}
+
+// A globe of shadows adds this to infuse life.
+static int corpse_pet_globe_life(P_char ch)
+{
+	return GET_LEVEL(ch) * 2;
+}
+
+// A player's pet turns on its caster on a roll of 0.
+static int corpse_pet_rebel_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 12);
+}
+
+// Poof in 5-10 sec.
+static int corpse_pet_rebel_death(const Rolls &rolls)
+{
+	return (4 + rolls.number(1, 6)) * WAIT_SEC;
+}
+
+static int corpse_pet_death_delay(int duration)
+{
+	return (duration + 1) * 60 * WAIT_SEC;
+}
+
+// A pet with strength or dexterity below the floor gets this for both.
+static int corpse_pet_stat_floor()
+{
+	return 95;
+}
+
+static int corpse_pet_stat()
+{
+	return 100;
+}
+
+static int call_titan_hit_points(const Rolls &rolls, int life)
+{
+	return rolls.dice(125, 15) + (life * 3);
+}
+
+static int call_titan_ac()
+{
+	return 50;
+}
+
+// What every corpse pet's page says: its power cost, rebellion, control and refusals.
+static std::string corpse_pet_shared_facts(P_char ch, int level, bool greater, int roll_high,
+					   int roll_low, bool globe_tames)
+{
+	std::string text = fact("Power it costs",
+				IS_TRUSTED(ch) ? std::string("no limit, as an immortal") :
+						 std::to_string(draco_cost(greater)) + " of your " +
+							 std::to_string(draco_power(level, ch)));
+	text += fact("Chance it turns on you", "1 in " + std::to_string(roll_high - roll_low + 1)) +
+		fact("It then attacks you and dies in",
+		     seconds(corpse_pet_rebel_death(lowest_rolls)) + " to " +
+			     seconds(corpse_pet_rebel_death(highest_rolls)));
+	if (globe_tames)
+		text += "  It never turns on you while you hold a globe of shadows.\n";
+	return text +
+	       "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
+	       "  A globe of shadows or unholy alliance makes the charm permanent,\n"
+	       "  and then it does not die.\n" +
+	       fact("A globe of shadows also adds to infuse life",
+		    std::to_string(corpse_pet_globe_life(ch))) +
+	       "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
+	       "  In vampire form you need necroplasm on.\n";
+}
+
+std::string call_titan_facts(P_char ch)
+{
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	return fact("Corpse level needed", std::to_string(corpse_pet_corpse_level())) +
+	       fact("Its hit points", show({ call_titan_hit_points(lowest_rolls, life),
+					     call_titan_hit_points(highest_rolls, life) }) +
+					      " with your infuse life") +
+	       fact("If it serves, its armor class improves by", std::to_string(call_titan_ac())) +
+	       corpse_pet_shared_facts(ch, GET_LEVEL(ch), false,
+				       corpse_pet_rebel_roll(highest_rolls),
+				       corpse_pet_rebel_roll(lowest_rolls), false) +
+	       fact("It dies after its charm's ticks as minutes, plus",
+		    real_time(raised_undead_death_delay(
+			    raised_undead_late_death_roll(lowest_rolls))) +
+			    " to " +
+			    real_time(raised_undead_death_delay(
+				    raised_undead_late_death_roll(highest_rolls))));
+}
+
 void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char /*victim*/, P_obj obj)
 {
@@ -1086,7 +1460,7 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		return;
 	}
 
-	if (obj->value[CORPSE_LEVEL] < 46)
+	if (obj->value[CORPSE_LEVEL] < corpse_pet_corpse_level())
 	{
 		send_to_char("This spell requires the corpse of a more powerful being!\r\n", ch);
 		return;
@@ -1133,7 +1507,7 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s titan!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life += GET_LEVEL(ch) * 2;
+		life += corpse_pet_globe_life(ch);
 	}
 
 	sum = number(0, 3);
@@ -1150,7 +1524,8 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	GET_SIZE(mob) = SIZE_GIANT;
 	GET_RACE(mob) = RACE_TITAN;
 	SET_BIT(mob->specials.act, ACT_MOUNT);
-	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit = dice(125, 15) + (life * 3);
+	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit =
+		call_titan_hit_points(live_rolls, life);
 	mob->specials.act |= ACT_SPEC_DIE;
 	// REMOVE_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 	SET_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
@@ -1229,13 +1604,13 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	   this spell, so I'm just gonna make it a straight random chance */
 
 	if (IS_PC(ch) &&
-     (!number(0, 12)) /*(GET_LEVEL(mob) > number((level - i * 2) * 2, level *
+     (!corpse_pet_rebel_roll(live_rolls)) /*(GET_LEVEL(mob) > number((level - i * 2) * 2, level *
                                            3)) */ )
 	{
 		act("$N is NOT pleased at being returned to life!", TRUE, ch, 0, mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		schedule_pet_death(mob, (4 + number(1, 6)) * WAIT_SEC);
+		schedule_pet_death(mob, corpse_pet_rebel_death(live_rolls));
 		MobStartFight(mob, ch);
 	}
 	else
@@ -1249,7 +1624,7 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 						       RMFR_PASS_DOOR | RMFR_CROSS_ZONE_BARRIER),
 					  0);
 
-		GET_AC(mob) -= 50;
+		GET_AC(mob) -= call_titan_ac();
 		int duration = setup_pet(
 			mob, ch, timeToDecay / 2 + (6000 / STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		add_follower(mob, ch);
@@ -1257,10 +1632,62 @@ void spell_call_titan(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_pet_death(mob, (duration + 1) * 60 * 4);
+			duration += raised_undead_late_death_roll(live_rolls);
+			schedule_pet_death(mob, raised_undead_death_delay(duration));
 		}
 	}
+}
+
+static int create_dracolich_hit_points(const Rolls &rolls, int life)
+{
+	return rolls.dice(125, 15) + (life * 5);
+}
+
+static int create_dracolich_dice_count(int level)
+{
+	return (level - 6) / 10;
+}
+
+static int create_dracolich_dice_size(int level)
+{
+	return (level + 10) / 11;
+}
+
+static int create_dracolich_damroll(const Rolls &rolls, int level)
+{
+	return level + rolls.number(4, 24);
+}
+
+static int create_dracolich_ac(P_char ch)
+{
+	return (GET_LEVEL(ch) * 7);
+}
+
+// A pet's dice as a fight rolls them: dice() clamps both numbers to at least 1.
+static std::string corpse_pet_dice(int count, int size)
+{
+	return std::to_string(std::max(count, 1)) + "d" + std::to_string(std::max(size, 1));
+}
+
+std::string create_dracolich_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	return fact("Corpse level needed", std::to_string(corpse_pet_corpse_level())) +
+	       fact("Its hit points", show({ create_dracolich_hit_points(lowest_rolls, life),
+					     create_dracolich_hit_points(highest_rolls, life) }) +
+					      " with your infuse life") +
+	       fact("Its damage dice", corpse_pet_dice(create_dracolich_dice_count(level),
+						       create_dracolich_dice_size(level)) +
+					       " at your level, " + std::to_string(level)) +
+	       fact("Its damroll", show({ create_dracolich_damroll(lowest_rolls, level),
+					  create_dracolich_damroll(highest_rolls, level) })) +
+	       fact("If it serves, its armor class improves by",
+		    std::to_string(create_dracolich_ac(ch))) +
+	       corpse_pet_shared_facts(ch, level, false, corpse_pet_rebel_roll(highest_rolls),
+				       corpse_pet_rebel_roll(lowest_rolls), true) +
+	       fact("It dies after its charm's ticks as minutes, plus",
+		    real_time(corpse_pet_death_delay(0)));
 }
 
 void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1306,7 +1733,7 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		return;
 	}
 
-	if (obj->value[CORPSE_LEVEL] < 46)
+	if (obj->value[CORPSE_LEVEL] < corpse_pet_corpse_level())
 	{
 		send_to_char("This spell requires the corpse of a more powerful being!\r\n", ch);
 		return;
@@ -1354,7 +1781,7 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s abomination!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life += GET_LEVEL(ch) * 2;
+		life += corpse_pet_globe_life(ch);
 	}
 
 	/*P_obj dragonscale = NULL;
@@ -1390,7 +1817,8 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	GET_SIZE(mob) = SIZE_GIANT;
 	GET_RACE(mob) = RACE_DRACOLICH;
 	SET_BIT(mob->specials.act, ACT_MOUNT);
-	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit = dice(125, 15) + (life * 5);
+	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit =
+		create_dracolich_hit_points(live_rolls, life);
 	mob->specials.act |= ACT_SPEC_DIE;
 	// REMOVE_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 	SET_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
@@ -1422,10 +1850,11 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	else
 	{
 		// 5d6 at level 56.
-		mob->points.damnodice = (level - 6) / 10;
-		mob->points.damsizedice = (level + 10) / 11;
+		mob->points.damnodice = create_dracolich_dice_count(level);
+		mob->points.damsizedice = create_dracolich_dice_size(level);
 		// 60 - 80 (actual 15 - 20) at level 56.
-		mob->points.base_damroll = mob->points.damroll = level + number(4, 24);
+		mob->points.base_damroll = mob->points.damroll =
+			create_dracolich_damroll(live_rolls, level);
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::dracolich);
@@ -1481,12 +1910,12 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	/* all dracoliches are around level 52, and PCs must be at least level 51 to cast
 	   this spell, so I'm just gonna make it a straight random chance */
 	// (GET_LEVEL(mob) > number((level - i * 2) * 2, level * 3))
-	if (IS_PC(ch) && !number(0, 12) && !globe)
+	if (IS_PC(ch) && !corpse_pet_rebel_roll(live_rolls) && !globe)
 	{
 		act("$N is NOT pleased at being returned to life!", TRUE, ch, 0, mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		schedule_pet_death(mob, (4 + number(1, 6)) * WAIT_SEC);
+		schedule_pet_death(mob, corpse_pet_rebel_death(live_rolls));
 		MobStartFight(mob, ch);
 	}
 	else
@@ -1500,7 +1929,7 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 						       RMFR_PASS_DOOR | RMFR_CROSS_ZONE_BARRIER),
 					  0);
 
-		GET_AC(mob) -= (GET_LEVEL(ch) * 7);
+		GET_AC(mob) -= create_dracolich_ac(ch);
 		int duration = setup_pet(
 			mob, ch, timeToDecay / 2 + (6000 / STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		if (corpse_trace_enabled())
@@ -1512,9 +1941,138 @@ void spell_create_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused
 		// if the undead will stop being charmed after a bit, also make it suicide 1 minute later.
 		if (duration >= 0)
 		{
-			schedule_pet_death(mob, (duration + 1) * 60 * WAIT_SEC);
+			schedule_pet_death(mob, corpse_pet_death_delay(duration));
 		}
 	}
+}
+
+// A golem takes the best type the caster's and the corpse's levels both reach.
+static int golem_flesh_level()
+{
+	return 41;
+}
+
+static int golem_blood_level()
+{
+	return 46;
+}
+
+static int golem_bone_level()
+{
+	return 51;
+}
+
+// Golems cost less, against this smaller budget.
+static int golem_power(P_char ch)
+{
+	return GET_LEVEL(ch) / 3;
+}
+
+static int golem_cap(int level, int which_type)
+{
+	int cap;
+
+	if (level < 50)
+		cap = (int)((((float)level) / 4 + 37.5) * golem_data[which_type].max_level / 50);
+	else
+		cap = golem_data[which_type].max_level;
+	return cap;
+}
+
+static int golem_armor(int mob_level)
+{
+	return 0 - mob_level;
+}
+
+// A roll above golem_form_above() gives the golem vampire form.
+static int golem_form_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 100);
+}
+
+static int golem_form_above()
+{
+	return 65;
+}
+
+static int golem_hit_points(const Rolls &rolls, int mob_level, int ch_level, int which_type,
+			    int life)
+{
+	return (int)(rolls.dice(mob_level, 11) + ch_level * golem_data[which_type].hps +
+		     (life * 3));
+}
+
+static int golem_hitroll(int mob_level)
+{
+	return (int)(0.90 * mob_level);
+}
+
+static int golem_damroll(int mob_level)
+{
+	return (int)(0.70 * mob_level);
+}
+
+// One golem type's lines at the viewer's level.
+static std::string golem_type_facts(P_char ch, int which_type)
+{
+	const int level = GET_LEVEL(ch);
+	const int mob = golem_cap(level, which_type);
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	std::string name = golem_data[which_type].name;
+	name[0] = toupper(name[0]);
+	return fact(name.substr(0, name.find(' ')) + " golem, corpse level needed",
+		    std::to_string(golem_data[which_type].corpse_lvl)) +
+	       fact("Its top level", std::to_string(mob) + ", lower on a weak corpse") +
+	       fact("At that level, its hit points",
+		    show({ golem_hit_points(lowest_rolls, mob, level, which_type, life),
+			   golem_hit_points(highest_rolls, mob, level, which_type, life) }) +
+			    " with your infuse life") +
+	       fact("Its armor class", show_signed({ golem_armor(mob), golem_armor(mob) })) +
+	       fact("Its hitroll", std::to_string(golem_hitroll(mob))) +
+	       fact("Its damroll", std::to_string(golem_damroll(mob))) +
+	       fact("Power it costs", IS_TRUSTED(ch) ? std::string("no limit, as an immortal") :
+						       std::to_string(golem_data[which_type].cost) +
+							       " of your " +
+							       std::to_string(golem_power(ch)));
+}
+
+std::string create_golem_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	std::string text;
+	if (GET_CLASS(ch, CLASS_THEURGIST))
+		text = golem_type_facts(ch, THEURGOLEM_VALOR);
+	else if (level < golem_flesh_level())
+		return fact("Level needed", std::to_string(golem_flesh_level()));
+	else
+	{
+		text = golem_type_facts(ch, NECROGOLEM_FLESH);
+		if (level >= golem_blood_level())
+			text += golem_type_facts(ch, NECROGOLEM_BLOOD);
+		if (level >= golem_bone_level())
+			text += golem_type_facts(ch, NECROGOLEM_BONE);
+	}
+	if (!IS_TRUSTED(ch) && level < raised_undead_strict_below())
+		text += fact("Highest corpse level you can raise",
+			     std::to_string(level + raised_undead_corpse_margin()));
+	return text +
+	       fact("Chance of vampire form",
+		    std::to_string(golem_form_roll(highest_rolls) - golem_form_above()) + " in " +
+			    std::to_string(golem_form_roll(highest_rolls) -
+					   golem_form_roll(lowest_rolls) + 1)) +
+	       "  Its control lasts longer on a fresher corpse and with a duller pet.\n"
+	       "  A globe of shadows or unholy alliance makes the charm permanent,\n"
+	       "  and then it does not die.\n" +
+	       fact("It dies after its charm's ticks as minutes, plus",
+		    real_time(raised_undead_death_delay(
+			    raised_undead_late_death_roll(lowest_rolls))) +
+			    " to " +
+			    real_time(raised_undead_death_delay(
+				    raised_undead_late_death_roll(highest_rolls)))) +
+	       fact("A globe of shadows replaces infuse life with",
+		    std::to_string(corpse_pet_globe_life(ch))) +
+	       "  Safe rooms block it, and the corpse must be here. You must be able to move.\n"
+	       "  In vampire form you need necroplasm on.\n";
 }
 
 void spell_create_golem(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -1543,13 +2101,13 @@ void spell_create_golem(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 
 	clevel = obj->value[CORPSE_LEVEL];
 
-	if (level >= 41)
+	if (level >= golem_flesh_level())
 		pet_type = NECROGOLEM_FLESH;
 
-	if (level >= 46 && clevel >= 46)
+	if (level >= golem_blood_level() && clevel >= golem_blood_level())
 		pet_type = NECROGOLEM_BLOOD;
 
-	if (level >= 51 && clevel >= 51)
+	if (level >= golem_bone_level() && clevel >= golem_bone_level())
 		pet_type = NECROGOLEM_BONE;
 
 	if (GET_CLASS(ch, CLASS_THEURGIST))
@@ -1631,7 +2189,7 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		return;
 	}
 
-	if ((sum + golem_data[which_type].cost > GET_LEVEL(ch) / 3) && !IS_TRUSTED(ch) && IS_PC(ch))
+	if ((sum + golem_data[which_type].cost > golem_power(ch)) && !IS_TRUSTED(ch) && IS_PC(ch))
 	{
 		act("You are too weak to animate more corpses!", FALSE, ch, 0, 0, TO_CHAR);
 		return;
@@ -1651,7 +2209,8 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	if (IS_SET(obj->value[CORPSE_FLAGS], PC_CORPSE) && (clevel < 0))
 		clevel = -clevel;
 
-	if (clevel > (level + 4) && !IS_TRUSTED(ch) && (level < 49))
+	if (clevel > (level + raised_undead_corpse_margin()) && !IS_TRUSTED(ch) &&
+	    (level < raised_undead_strict_below()))
 	{
 		act("You are not powerful enough to animate that corpse!", FALSE, ch, 0, 0,
 		    TO_CHAR);
@@ -1665,27 +2224,24 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s abomination!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life = GET_LEVEL(ch) * 2;
+		life = corpse_pet_globe_life(ch);
 	}
 
 	num = (int)(clevel + (level - clevel) / 1.5);
 
-	if (level < 50)
-		cap = (int)((((float)level) / 4 + 37.5) * golem_data[which_type].max_level / 50);
-	else
-		cap = golem_data[which_type].max_level;
+	cap = golem_cap(level, which_type);
 
 	mob->player.level = BOUNDED(1, num, cap);
 
 	mob->points.vitality = mob->points.base_vitality = mob->points.max_vitality =
 		MAX(50, mob->base_stats.Agi) + (mob->base_stats.Str + mob->base_stats.Con) / 2;
 
-	mob->points.base_armor = 0 - GET_LEVEL(mob);
+	mob->points.base_armor = golem_armor(GET_LEVEL(mob));
 	mob->specials.affected_by = AFF_FLY + AFF_DETECT_INVISIBLE;
 
-	percent = number(0, 100);
+	percent = golem_form_roll(live_rolls);
 
-	if (percent > 65)
+	if (percent > golem_form_above())
 	{
 		// All golems are already golems now.
 		// GET_RACE(mob) = RACE_GOLEM;
@@ -1694,12 +2250,11 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 
 	GET_SIZE(mob) = SIZE_HUGE;
 	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit =
-		(int)(dice(GET_LEVEL(mob), 11) + GET_LEVEL(ch) * golem_data[which_type].hps +
-		      (life * 3));
+		golem_hit_points(live_rolls, GET_LEVEL(mob), GET_LEVEL(ch), which_type, life);
 
 	MonkSetSpecialDie(mob);
-	mob->points.base_hitroll = mob->points.hitroll = (int)(0.90 * GET_LEVEL(mob));
-	mob->points.base_damroll = mob->points.damroll = (int)(0.70 * GET_LEVEL(mob));
+	mob->points.base_hitroll = mob->points.hitroll = golem_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll = golem_damroll(GET_LEVEL(mob));
 	mob->points.damnodice = (mob->points.damnodice / 2 + 2);
 
 	summoned_pet_mark(mob, static_cast<summoned_pet_kind>(which_type + 15));
@@ -1748,9 +2303,35 @@ void create_golem(int level, P_char ch, P_char /*victim*/, P_obj obj, int which_
 	/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 	if (duration >= 0)
 	{
-		duration += number(1, 10);
-		schedule_pet_death(mob, (duration + 1) * 60 * 4);
+		duration += raised_undead_late_death_roll(live_rolls);
+		schedule_pet_death(mob, raised_undead_death_delay(duration));
 	}
+}
+
+static int call_avatar_hit_points(const Rolls &rolls, int life)
+{
+	return 2500 + rolls.number(-10, 50) + (life * 5);
+}
+
+std::string call_avatar_facts(P_char ch)
+{
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	return fact("Corpse level needed", std::to_string(greater_corpse_pet_corpse_level())) +
+	       fact("Its hit points", show({ call_avatar_hit_points(lowest_rolls, life),
+					     call_avatar_hit_points(highest_rolls, life) }) +
+					      " with your infuse life") +
+	       fact("Its strength and dexterity", std::to_string(corpse_pet_stat()) +
+							  " if either is below " +
+							  std::to_string(corpse_pet_stat_floor())) +
+	       corpse_pet_shared_facts(ch, GET_LEVEL(ch), true,
+				       corpse_pet_rebel_roll(highest_rolls),
+				       corpse_pet_rebel_roll(lowest_rolls), false) +
+	       fact("It dies after its charm's ticks as minutes, plus",
+		    real_time(raised_undead_death_delay(
+			    raised_undead_late_death_roll(lowest_rolls))) +
+			    " to " +
+			    real_time(raised_undead_death_delay(
+				    raised_undead_late_death_roll(highest_rolls))));
 }
 
 void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1804,7 +2385,7 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		send_to_char("A mysterious force blocks your spell!\r\n", ch);
 		return;
 	}
-	if (obj->value[CORPSE_LEVEL] < 51)
+	if (obj->value[CORPSE_LEVEL] < greater_corpse_pet_corpse_level())
 	{
 		send_to_char("This spell requires the corpse of a more powerful being!\r\n", ch);
 		return;
@@ -1851,7 +2432,7 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s abomination!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life += GET_LEVEL(ch) * 2;
+		life += corpse_pet_globe_life(ch);
 	}
 
 	sum = number(0, 3);
@@ -1870,7 +2451,7 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	SET_BIT(mob->specials.act, ACT_MOUNT);
 	mob->specials.act |= ACT_SPEC_DIE;
 	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit =
-		2500 + number(-10, 50) + (life * 5);
+		call_avatar_hit_points(live_rolls, life);
 	// REMOVE_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 	SET_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 	mob->specials.alignment = 1000;
@@ -1903,10 +2484,10 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		}
 	}
 
-	if (GET_C_STR(mob) < 95 || GET_C_DEX(mob) < 95)
+	if (GET_C_STR(mob) < corpse_pet_stat_floor() || GET_C_DEX(mob) < corpse_pet_stat_floor())
 	{
-		mob->base_stats.Str = 100;
-		mob->base_stats.Dex = 100;
+		mob->base_stats.Str = corpse_pet_stat();
+		mob->base_stats.Dex = corpse_pet_stat();
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::avatar);
@@ -1956,13 +2537,13 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 	/* all dracoliches are around level 52, and PCs must be at least level 51 to cast
 	   this spell, so I'm just gonna make it a straight random chance */
 
-	if (IS_PC(ch) && (!number(0, 12)) /*(GET_LEVEL(mob) > number((level - i * 2) * 2, level *
+	if (IS_PC(ch) && (!corpse_pet_rebel_roll(live_rolls)) /*(GET_LEVEL(mob) > number((level - i * 2) * 2, level *
                                            3)) */ )
 	{
 		act("$N is NOT pleased at being returned to life!", TRUE, ch, 0, mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		schedule_pet_death(mob, (4 + number(1, 6)) * WAIT_SEC);
+		schedule_pet_death(mob, corpse_pet_rebel_death(live_rolls));
 		MobStartFight(mob, ch);
 	}
 	else
@@ -1976,10 +2557,74 @@ void spell_call_avatar(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		/* if the undead will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration += number(1, 10);
-			schedule_pet_death(mob, (duration + 1) * 60 * 4);
+			duration += raised_undead_late_death_roll(live_rolls);
+			schedule_pet_death(mob, raised_undead_death_delay(duration));
 		}
 	}
+}
+
+// Immortals cast it at this level at most.
+static int greater_dracolich_level(int level, P_char ch)
+{
+	if (IS_PC(ch) && level > 56)
+	{
+		level = 56;
+	}
+	return level;
+}
+
+static int greater_dracolich_hit_points(const Rolls &rolls, int life)
+{
+	return 2500 + rolls.number(-10, 50) + (life * 5);
+}
+
+static int greater_dracolich_dice_count(int level)
+{
+	return (level + 9) / 10;
+}
+
+static int greater_dracolich_dice_size(int level)
+{
+	return (level + 4) / 10 + 1;
+}
+
+static int greater_dracolich_damroll(const Rolls &rolls, int level)
+{
+	return level + rolls.number(24, 44);
+}
+
+static int greater_dracolich_rebel_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 9);
+}
+
+static int greater_dracolich_ac(int level)
+{
+	return (level * 4);
+}
+
+std::string create_greater_dracolich_facts(P_char ch)
+{
+	const int level = greater_dracolich_level(GET_LEVEL(ch), ch);
+	const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
+	return fact("Corpse level needed", std::to_string(greater_corpse_pet_corpse_level())) +
+	       fact("Its hit points", show({ greater_dracolich_hit_points(lowest_rolls, life),
+					     greater_dracolich_hit_points(highest_rolls, life) }) +
+					      " with your infuse life") +
+	       fact("Its damage dice", corpse_pet_dice(greater_dracolich_dice_count(level),
+						       greater_dracolich_dice_size(level)) +
+					       " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Its damroll", show({ greater_dracolich_damroll(lowest_rolls, level),
+					  greater_dracolich_damroll(highest_rolls, level) })) +
+	       fact("Its strength and dexterity", std::to_string(corpse_pet_stat()) +
+							  " if either is below " +
+							  std::to_string(corpse_pet_stat_floor())) +
+	       fact("If it serves, its armor class improves by",
+		    std::to_string(greater_dracolich_ac(level))) +
+	       corpse_pet_shared_facts(ch, level, true, greater_dracolich_rebel_roll(highest_rolls),
+				       greater_dracolich_rebel_roll(lowest_rolls), true) +
+	       fact("It dies after its charm's ticks as minutes, plus",
+		    real_time(corpse_pet_death_delay(0)));
 }
 
 void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2030,10 +2675,7 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	}
 
 	// For testing.
-	if (IS_PC(ch) && level > 56)
-	{
-		level = 56;
-	}
+	level = greater_dracolich_level(level, ch);
 
 	if (CHAR_IN_SAFE_ROOM(ch))
 	{
@@ -2045,7 +2687,7 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 		act("You can't animate $p!", FALSE, ch, obj, 0, TO_CHAR);
 		return;
 	}
-	if (obj->value[CORPSE_LEVEL] < 51)
+	if (obj->value[CORPSE_LEVEL] < greater_corpse_pet_corpse_level())
 	{
 		send_to_char("This spell requires the corpse of a more powerful being!\r\n", ch);
 		return;
@@ -2087,7 +2729,7 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 		    FALSE, ch, globe, 0, TO_CHAR);
 		act("&+L$n's $q &+Lthrobs with evil energy, combining its unholy power with $s abomination!&N",
 		    FALSE, ch, globe, 0, TO_ROOM);
-		life += GET_LEVEL(ch) * 2;
+		life += corpse_pet_globe_life(ch);
 	}
 
 	sum = number(0, 3);
@@ -2106,7 +2748,7 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	SET_BIT(mob->specials.act, ACT_MOUNT);
 	mob->specials.act |= ACT_SPEC_DIE;
 	GET_HIT(mob) = GET_MAX_HIT(mob) = mob->points.base_hit =
-		2500 + number(-10, 50) + (life * 5);
+		greater_dracolich_hit_points(live_rolls, life);
 	// REMOVE_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 	SET_BIT(mob->only.npc->aggro_flags, AGGR_ALL);
 
@@ -2140,16 +2782,17 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	else
 	{
 		// 6d7 at level 56.
-		mob->points.damnodice = (level + 9) / 10;
-		mob->points.damsizedice = (level + 4) / 10 + 1;
+		mob->points.damnodice = greater_dracolich_dice_count(level);
+		mob->points.damsizedice = greater_dracolich_dice_size(level);
 		// 80 - 100 (actual 20 - 25) at level 56.
-		mob->points.base_damroll = mob->points.damroll = level + number(24, 44);
+		mob->points.base_damroll = mob->points.damroll =
+			greater_dracolich_damroll(live_rolls, level);
 	}
 
-	if (GET_C_STR(mob) < 95 || GET_C_DEX(mob) < 95)
+	if (GET_C_STR(mob) < corpse_pet_stat_floor() || GET_C_DEX(mob) < corpse_pet_stat_floor())
 	{
-		mob->base_stats.Str = 100;
-		mob->base_stats.Dex = 100;
+		mob->base_stats.Str = corpse_pet_stat();
+		mob->base_stats.Dex = corpse_pet_stat();
 	}
 
 	summoned_pet_mark(mob, summoned_pet_kind::greater_dracolich);
@@ -2203,12 +2846,12 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 	/* all dracoliches are around level 52, and PCs must be at least level 51 to cast
 	   this spell, so I'm just gonna make it a straight random chance */
 	// (GET_LEVEL(mob) > number((level - i * 2) * 2, level * 3))
-	if (IS_PC(ch) && !number(0, 9) && !globe)
+	if (IS_PC(ch) && !greater_dracolich_rebel_roll(live_rolls) && !globe)
 	{
 		act("$N is NOT pleased at being returned to life!", TRUE, ch, 0, mob, TO_ROOM);
 		act("$N is NOT pleased with you at all!", TRUE, ch, 0, mob, TO_CHAR);
 		// Poof in 5-10 sec.
-		schedule_pet_death(mob, (4 + number(1, 6)) * WAIT_SEC);
+		schedule_pet_death(mob, corpse_pet_rebel_death(live_rolls));
 		MobStartFight(mob, ch);
 	}
 	else
@@ -2216,14 +2859,14 @@ void spell_create_greater_dracolich(int level, P_char ch, char * /*arg*/, [[mayb
 		act("&+W$N roars to the sky 'I LIVE!!!'", TRUE, ch, 0, mob, TO_ROOM);
 		act("&+W$N roars to the sky 'I LIVE!!!'", TRUE, ch, 0, mob, TO_CHAR);
 
-		GET_AC(mob) -= (level * 4);
+		GET_AC(mob) -= greater_dracolich_ac(level);
 		int duration = setup_pet(
 			mob, ch, timeToDecay / 2 + (6000 / STAT_INDEX(GET_C_INT(mob))), PET_NOCASH);
 		add_follower(mob, ch);
 		// if the undead will stop being charmed after a bit, also make it suicide 1 minute later
 		if (duration >= 0)
 		{
-			schedule_pet_death(mob, (duration + 1) * 60 * WAIT_SEC);
+			schedule_pet_death(mob, corpse_pet_death_delay(duration));
 		}
 	}
 }
@@ -2646,6 +3289,38 @@ void event_corpseform_wearoff(P_char ch, P_char /*victim*/, P_obj /*obj*/, void 
 	}
 }
 
+static int slashing_darkness_missiles(int level)
+{
+	return BOUNDED(1, (level / 3), 5);
+}
+
+static int slashing_darkness_damage(const Rolls &rolls, int level, int num_missiles)
+{
+	return (rolls.dice(1, 4) * 4 + rolls.number(1, level)) * num_missiles;
+}
+
+// It deals this twice, generic then negative.
+static int slashing_darkness_half(int dam)
+{
+	return (dam / 2);
+}
+
+std::string slashing_darkness_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int missiles = slashing_darkness_missiles(level);
+	return fact("Generic, then negative damage, each",
+		    show({ slashing_darkness_half(
+				   slashing_darkness_damage(lowest_rolls, level, missiles)),
+			   slashing_darkness_half(
+				   slashing_darkness_damage(highest_rolls, level, missiles)) }) +
+			    " at your level, " + std::to_string(level)) +
+	       "  The first part cannot kill. Magic resistance can shrug the spell first;\n"
+	       "  the damage cannot then be shrugged.\n"
+	       "  Any globe or spirit ward stops it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_slashing_darkness(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			     P_obj /*obj*/)
 {
@@ -2662,9 +3337,9 @@ void spell_slashing_darkness(int level, P_char ch, char * /*arg*/, int /*type*/,
 		return;
 
 	int dam;
-	int num_missiles = BOUNDED(1, (level / 3), 5);
+	int num_missiles = slashing_darkness_missiles(level);
 
-	dam = (dice(1, 4) * 4 + number(1, level)) * num_missiles;
+	dam = slashing_darkness_damage(live_rolls, level, num_missiles);
 
 	act("&+LYou utter a word of dark speech and a shadowy hand coalesces near $N!&n", FALSE, ch,
 	    0, victim, TO_CHAR);
@@ -2673,12 +3348,136 @@ void spell_slashing_darkness(int level, P_char ch, char * /*arg*/, int /*type*/,
 	act("&+L$n utters a word of dark speech, and a shadowy hand coalesces near YOU!&n", FALSE,
 	    ch, 0, victim, TO_VICT);
 
-	spell_damage(ch, victim, (dam / 2), SPLDAM_GENERIC,
+	spell_damage(ch, victim, slashing_darkness_half(dam), SPLDAM_GENERIC,
 		     SPLDAM_ALLGLOBES | RAWDAM_NOKILL | SPLDAM_NOSHRUG, 0);
 
 	if (IS_ALIVE(ch) && IS_ALIVE(victim))
-		spell_damage(ch, victim, (dam / 2), SPLDAM_NEGATIVE,
+		spell_damage(ch, victim, slashing_darkness_half(dam), SPLDAM_NEGATIVE,
 			     SPLDAM_ALLGLOBES | SPLDAM_NOSHRUG, &messages);
+}
+
+// A greater or elite caster, or a pet target, takes this save modifier.
+static int undead_to_death_fixed_save()
+{
+	return 5;
+}
+
+static int undead_to_death_save(int level_gap)
+{
+	return BOUNDED(-10, level_gap, 10);
+}
+
+static int undead_to_death_level(int level)
+{
+	if (level > 56)
+	{
+		level = 56;
+	}
+	return level;
+}
+
+static int undead_to_death_damage(const Rolls &rolls, int level)
+{
+	// Note: For destroy undead (5th circle) dam = 15*lvl +/- 40.
+	// (16 * 56 = 896) / 4 => 224 +/- 10.
+	return (16 * level) + rolls.number(-40, 40);
+}
+
+static int undead_to_death_soulshield_damage(int dam)
+{
+	return (int)(dam * 0.50);
+}
+
+static int undead_to_death_soulshield_save()
+{
+	return 2;
+}
+
+// After a made save, a roll of 0 still deals this much.
+static int undead_to_death_lucky_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 3);
+}
+
+static int undead_to_death_lucky_damage(int dam)
+{
+	return (int)(dam * 0.75);
+}
+
+static int undead_to_death_other_damage(int dam)
+{
+	return (int)(dam * .67);
+}
+
+static int undead_to_death_weak_duration(const Rolls &rolls)
+{
+	return rolls.number(1, 2);
+}
+
+// Magnitudes the handler negates.
+static int undead_to_death_strength_loss(const Rolls &rolls)
+{
+	return rolls.dice(3, 10);
+}
+
+static int undead_to_death_constitution_loss(const Rolls &rolls)
+{
+	return rolls.dice(3, 20);
+}
+
+static int undead_to_death_agility_loss(const Rolls &rolls)
+{
+	return rolls.dice(3, 10);
+}
+
+static int undead_to_death_dexterity_loss(const Rolls &rolls)
+{
+	return rolls.dice(3, 10);
+}
+
+std::string undead_to_death_facts(P_char ch)
+{
+	const int level = undead_to_death_level(GET_LEVEL(ch));
+	const int low = undead_to_death_damage(lowest_rolls, level);
+	const int high = undead_to_death_damage(highest_rolls, level);
+	const std::string fixed = std::to_string(undead_to_death_fixed_save());
+	return "  It only works on undead.\n" +
+	       fact("Holy damage if its save fails", show_landing({ low, high }) +
+							     " at your level, " +
+							     std::to_string(GET_LEVEL(ch))) +
+	       ((IS_GREATER_RACE(ch) || IS_ELITE(ch)) ?
+			fact("Its save modifier", "+" + fixed + ", harder, against you") :
+			fact("Its save modifier",
+			     "your level minus its, within " +
+				     std::to_string(undead_to_death_save(1000)) +
+				     "; more is harder") +
+				fact("Against a player's pet", "+" + fixed + ", harder")) +
+	       fact("If it makes the save, chance of less damage",
+		    "1 in " + std::to_string(undead_to_death_lucky_roll(highest_rolls) -
+					     undead_to_death_lucky_roll(lowest_rolls) + 1)) +
+	       fact("That damage", show_landing({ undead_to_death_lucky_damage(low),
+						  undead_to_death_lucky_damage(high) })) +
+	       "  Otherwise, hit points over its maximum are lost and that is all.\n"
+	       "  Otherwise, if it fails a paralysis save and is not weakened yet:\n" +
+	       fact("Strength lost", show({ undead_to_death_strength_loss(lowest_rolls),
+					    undead_to_death_strength_loss(highest_rolls) })) +
+	       fact("Constitution lost",
+		    show({ undead_to_death_constitution_loss(lowest_rolls),
+			   undead_to_death_constitution_loss(highest_rolls) })) +
+	       fact("Agility lost", show({ undead_to_death_agility_loss(lowest_rolls),
+					   undead_to_death_agility_loss(highest_rolls) })) +
+	       fact("Dexterity lost", show({ undead_to_death_dexterity_loss(lowest_rolls),
+					     undead_to_death_dexterity_loss(highest_rolls) })) +
+	       fact("For", game_hours_range({ undead_to_death_weak_duration(lowest_rolls),
+					      undead_to_death_weak_duration(highest_rolls) })) +
+	       fact("Otherwise, damage", show_landing({ undead_to_death_other_damage(low),
+							undead_to_death_other_damage(high) })) +
+	       fact("A soulshield halves the damage to",
+		    show_landing({ undead_to_death_soulshield_damage(low),
+				   undead_to_death_soulshield_damage(high) })) +
+	       fact("And eases its saves by", std::to_string(undead_to_death_soulshield_save())) +
+	       "  It cannot be shrugged. Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_undead_to_death(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -2709,34 +3508,30 @@ void spell_undead_to_death(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 
 	if (IS_GREATER_RACE(ch) || IS_ELITE(ch) || IS_PC_PET(victim))
 	{
-		save = 5;
+		save = undead_to_death_fixed_save();
 	}
 	else
 	{
-		save = BOUNDED(-10, GET_LEVEL(ch) - GET_LEVEL(victim), 10);
+		save = undead_to_death_save(GET_LEVEL(ch) - GET_LEVEL(victim));
 	}
 
-	if (level > 56)
-	{
-		level = 56;
-	}
-	// Note: For destroy undead (5th circle) dam = 15*lvl +/- 40.
-	// (16 * 56 = 896) / 4 => 224 +/- 10.
-	dam = (16 * level) + number(-40, 40);
+	level = undead_to_death_level(level);
+	dam = undead_to_death_damage(live_rolls, level);
 
 	if (IS_AFFECTED2(victim, AFF2_SOULSHIELD))
 	{
-		dam = (int)(dam * 0.50);
-		save -= 2;
+		dam = undead_to_death_soulshield_damage(dam);
+		save -= undead_to_death_soulshield_save();
 	}
 
 	if (!NewSaves(victim, SAVING_SPELL, save))
 	{
 		spell_damage(ch, victim, dam, SPLDAM_HOLY, SPLDAM_NOSHRUG, &messages);
 	}
-	else if (!number(0, 3))
+	else if (!undead_to_death_lucky_roll(live_rolls))
 	{
-		spell_damage(ch, victim, (int)(dam * 0.75), SPLDAM_HOLY, SPLDAM_NOSHRUG, &messages);
+		spell_damage(ch, victim, undead_to_death_lucky_damage(dam), SPLDAM_HOLY,
+			     SPLDAM_NOSHRUG, &messages);
 	}
 	else if (GET_HIT(victim) > GET_MAX_HIT(victim))
 	{
@@ -2757,28 +3552,53 @@ void spell_undead_to_death(int level, P_char ch, char * /*arg*/, [[maybe_unused]
 		bzero(&af, sizeof(af));
 		af.type = SPELL_UNDEAD_TO_DEATH;
 
-		af.duration = number(1, 2);
+		af.duration = undead_to_death_weak_duration(live_rolls);
 
 		af.location = APPLY_STR;
-		af.modifier = (int)(-1 * dice(3, 10));
+		af.modifier = (int)(-1 * undead_to_death_strength_loss(live_rolls));
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_CON;
-		af.modifier = (int)(-1 * dice(3, 20));
+		af.modifier = (int)(-1 * undead_to_death_constitution_loss(live_rolls));
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI;
-		af.modifier = (int)(-1 * dice(3, 10));
+		af.modifier = (int)(-1 * undead_to_death_agility_loss(live_rolls));
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX;
-		af.modifier = (int)(-1 * dice(3, 10));
+		af.modifier = (int)(-1 * undead_to_death_dexterity_loss(live_rolls));
 		affect_to_char(victim, &af);
 	}
 	else
 	{
-		spell_damage(ch, victim, (int)(dam * .67), SPLDAM_HOLY, SPLDAM_NOSHRUG, &messages);
+		spell_damage(ch, victim, undead_to_death_other_damage(dam), SPLDAM_HOLY,
+			     SPLDAM_NOSHRUG, &messages);
 	}
+}
+
+static int taint_damage(const Rolls &rolls, int level)
+{
+	return 9 * MIN(level, 56) + rolls.number(-40, 40);
+}
+
+static int taint_saved(int dam)
+{
+	dam >>= 1;
+	return dam;
+}
+
+std::string taint_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int low = taint_damage(lowest_rolls, level);
+	const int high = taint_damage(highest_rolls, level);
+	return "  It only works on angels.\n" +
+	       fact("Negative damage",
+		    show_landing({ low, high }) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves", show_landing({ taint_saved(low), taint_saved(high) })) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_taint(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
@@ -2806,11 +3626,11 @@ void spell_taint(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vict
 		return;
 	}
 
-	dam = 9 * MIN(level, 56) + number(-40, 40);
+	dam = taint_damage(live_rolls, level);
 
 	if (saves_spell(victim, SAVING_SPELL))
 	{
-		dam >>= 1;
+		dam = taint_saved(dam);
 	}
 
 	spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, 0, &messages);

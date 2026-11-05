@@ -60,6 +60,9 @@ extern const char *race_types[];
 // extern const char rev_dir[];
 extern const struct stat_data stat_factor[];
 extern int innate_abilities[];
+extern int watching_wall_vision_roll(const Rolls &rolls);
+extern int watching_wall_vision_gap();
+extern int illusionary_wall_block_roll(const Rolls &rolls);
 extern int planes_room_num[];
 extern const int top_of_world;
 extern int top_of_zone_table;
@@ -6866,7 +6869,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 	if (type == WATCHING_WALL && cmd >= 1 && cmd < 1000)
 	{
 		if (obj->loc_p == LOC_ROOM && ch && !IS_TRUSTED(ch) &&
-		    (time(NULL) - obj->value[6]) > 10)
+		    (time(NULL) - obj->value[6]) > watching_wall_vision_gap())
 		{
 			obj->value[6] = time(NULL);
 
@@ -6876,7 +6879,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 					break;
 
 			if (illusionist != NULL && ch->in_room != illusionist->in_room &&
-			    !number(0, 2))
+			    !watching_wall_vision_roll(live_rolls))
 			{
 				send_to_char("&=LWYou receive a vision from elsewhere.&n&n\n",
 					     illusionist);
@@ -7292,7 +7295,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			spell_dispel_magic(60, ch, NULL, SPELL_TYPE_SPELL, 0, obj);
 			return FALSE;
 		}
-		if (number(0, 5))
+		if (illusionary_wall_block_roll(live_rolls))
 		{
 			send_to_char("Alas, you cannot go that way. . . .\n", ch);
 			return TRUE;

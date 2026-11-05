@@ -141,6 +141,8 @@ move = source('actmove.c').read_text()
 structure = re.search(r'struct water_crossing_data\n\{.*?\n};',move,re.S)[0]
 functions = [
     ('magic/spells.c', 'int blood_to_stone_move_cost('),
+    ('sillusionist.c', 'int delirium_wander_roll('),
+    ('sillusionist.c', 'int sound_suppression_noise_limit('),
     ('utility.c', 'bool has_water_form_travel('),
     ('utility.c', 'int move_cost('),
     ('actmove.c', 'static bool water_crossing_valid('),

@@ -52,6 +52,8 @@ extern const char *short_dirs[];
 extern const char *dirs2[];
 extern const struct stat_data stat_factor[];
 extern const int innate_abilities[];
+extern int delirium_wander_roll(const Rolls &rolls);
+extern int sound_suppression_noise_limit();
 extern const int class_innates[][5];
 extern const int movement_loss[];
 extern const int rev_dir[];
@@ -2080,7 +2082,8 @@ revalidate_movement:
 				 {
 				   act("You can't follow $N!", FALSE, k->follower, 0, ch, TO_CHAR);
 				 }*/
-				if (affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
+				if (affected_by_spell(ch, SPELL_DELIRIUM) &&
+				    !delirium_wander_roll(live_rolls))
 				{
 					int attempts = 0;
 					cmd2 = number(1, 6);
@@ -2149,7 +2152,8 @@ revalidate_movement:
 			noise_var = noise_var + number(-1, 1);
 
 			// Sounds suppression threshold is 13.
-			if (affected_by_spell(ch, SPELL_SUPPRESSION) && noise_var <= 13)
+			if (affected_by_spell(ch, SPELL_SUPPRESSION) &&
+			    noise_var <= sound_suppression_noise_limit())
 			{ // Just a placeholder.
 			}
 			else
@@ -2338,7 +2342,8 @@ void do_move(P_char ch, char *argument, int cmd)
 	cmd = cmd_to_exitnumb(cmd);
 	const bool completing = completing_water_crossing(ch, cmd);
 
-	if (!completing && affected_by_spell(ch, SPELL_DELIRIUM) && !number(0, 2))
+	if (!completing && affected_by_spell(ch, SPELL_DELIRIUM) &&
+	    !delirium_wander_roll(live_rolls))
 	{
 		cmd2 = number(1, 6);
 
