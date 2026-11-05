@@ -3600,7 +3600,8 @@ bool decrease_skin_counter(P_char ch, unsigned int skin)
 	for (af = ch->affected; af; af = af2)
 	{
 		af2 = af->next;
-		if (static_cast<unsigned int>(af->type) == skin)
+		if (static_cast<unsigned int>(af->type) == skin &&
+		    !(af->flags & AFFTYPE_SET_SUSPENDED))
 		{
 			af->modifier--;
 			if (af->modifier <= 0)
@@ -4631,10 +4632,15 @@ int spell_damage(P_char ch, P_char victim, double dam, int type, uint flags,
 
 			if (af && --af->modifier == 0)
 			{
-				affect_from_char(victim, SPELL_STORNOGS_SPHERES);
-				REMOVE_BIT(victim->specials.affected_by4, AFF4_STORNOGS_SPHERES);
-				send_to_char("The last sphere protecting you disappears.\r\n",
-					     victim);
+				affect_remove(victim, af);
+				if (!affected_by_spell(victim, SPELL_STORNOGS_SPHERES))
+				{
+					REMOVE_BIT(victim->specials.affected_by4,
+						   AFF4_STORNOGS_SPHERES);
+					send_to_char(
+						"The last sphere protecting you disappears.\r\n",
+						victim);
+				}
 			}
 			attack_back(ch, victim, FALSE);
 			return DAM_NONEDEAD;

@@ -135,6 +135,7 @@ typedef struct combat_data *P_combat;
 #define AFFTYPE_LINKED_OBJ BIT_12
 #define AFFTYPE_SET_AFFECT BIT_13
 #define AFFTYPE_DAM_WARD BIT_14
+#define AFFTYPE_SET_SUSPENDED BIT_15 // dormant set grant while an ordinary cast applies
 #define AFFTYPE_STORE (AFFTYPE_NOAPPLY | AFFTYPE_NODISPEL | AFFTYPE_NOSHOW)
 #define MAX_FORGE_ITEMS 1000
 #define MEMTYPE_FULL AFFTYPE_CUSTOM1

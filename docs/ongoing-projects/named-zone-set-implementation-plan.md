@@ -4,11 +4,11 @@ Status: implementation in progress; five focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-historical-origins`, based on
-`branch/named-zone-set-effect-ownership`.
+Working branch: `branch/named-zone-set-ordinary-casts`, based on
+`branch/named-zone-set-historical-origins`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
-## Current handoff (2026-11-05)
+## Current handoff (2026-11-06)
 
 **Review stack:** [PR #714](https://github.com/LuminariMUD/Duris/pull/714)
 (`branch/named-zone-set-expansion`, `67c7fc7d9`) contains the catalog foundation
@@ -312,6 +312,77 @@ make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-se
 ./scripts/format.sh --check
 git diff --check
 ```
+
+### Ordinary cast overlap
+
+The current branch adds one `named_set_ordinary_cast` scope to the actual buff
+entries, covering direct item/group calls as well as `sparser`: **103 entries**
+from the existing and assigned effect pool. There are 104 registered spell
+callbacks plus Song of Dragons; instant Invigorate and Conjure Elemental have
+no owned buff nodes and need no entry scope, while the epic-stat skill has no
+ordinary spell callback. Each entry uses its actual affect recipient (92 use
+`victim`, ten use `ch`, and the song uses both), preserving unaffected caster
+stats and native exclusions. No effect's numeric formula was changed.
+
+During an ordinary native call the overlapping set nodes are temporarily
+detached, retaining their links and remaining duration. When the cast returns,
+the original nodes are restored; the existing `AFFTYPE_NOAPPLY` mechanism plus
+`AFFTYPE_SET_SUSPENDED` makes the set copy dormant while an ordinary equivalent
+applies. Both clocks continue to tick. Ordinary expiry or single-counter
+exhaustion resumes only the original surviving node, never a fresh set grant.
+Normal set cleanup still controls wearing eligibility and its existing grace
+period; removing the set first preserves the ordinary node.
+
+Explicit whole-spell removal (`affect_from_char`, including dispel/reveal)
+retains its native behavior of clearing that type across sources. Dispel
+selection snapshots active types before removal, so list order and resumed
+nodes do not change its targets. Generic active-affect queries and score/GMCP
+output skip suspended nodes. The skin and sphere consumers use the active
+counter rather than spending or bulk-removing a dormant copy. `affect_join`
+does not merge an ordinary node into an owned set grant or adopt an ordinary
+node during a set invocation.
+
+**Ablation:** reuse native nodes, the normal duration/update path, and NOAPPLY;
+no shadow registry, persisted suspension format, extra timer, or effect adapter.
+The scope has exactly two possible recipients, with no outer heap allocation.
+Its one-recipient form covers the usual entries; only the existing song path
+needs both. Source invocations bypass the ordinary guard. Existing native
+fixtures use empty weak boundaries when named equipment is outside their
+scope; the named-set regression links the real implementation.
+
+The extended ASan/UBSan ownership test passes actual Armor/Endurance entries,
+independent real affect ticks, recasting, set-first and ordinary-first removal,
+native refusal, Miracle's direct Armor call, active dispel traversal, Stoneskin
+and sphere counters, and received-song links. Stat totals, saving boundaries,
+unrelated Miracle components, and general world/output behavior remain fixtures.
+Full command/persistence gameplay and all-handler conditional/power gates remain
+outstanding; cooldown ownership is the next separate chunk.
+
+Both maintained backend builds and pfile checks pass. The prior Web Spray,
+freedom-of-movement, assassin, poison, Hatred, elemental-form, snapshot and capture
+regressions also pass on this branch. Additional checks cover the real scheduler,
+shoreline affect removal, and conjurer fire behavior. Direct commands include:
+
+```sh
+python3 tests/async/test_named_set_effect_ownership.py
+python3 tests/async/test_named_set_membership.py
+python3 tests/async/test_conjurer_fire_runtime.py
+python3 tests/async/test_water_shoreline_runtime.py
+python3 tests/async/test_nevent_scheduler_runtime.py
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+./scripts/format.sh --check
+git diff --check
+```
+
+Cooldown starting point: existing persisted short affects already capture the
+remaining event pulses in `player_snapshot_capture.c`; `enter_game()` in
+`account/nanny.c` advances SHORT+OFFLINE events by elapsed offline pulses.
+`affect_timer()` uses `TAG_SKILL_TIMER` but deliberately bypasses trusted staff,
+so do not use that bypass for named-set timing. Check the existing spell-ID
+timer namespace and pet/NPC restore behavior before selecting the final reuse.
+Create persistent timer state outside a set grant's creation scope so it cannot
+inherit SET/NOSAVE ownership or disappear when the equipment is removed.
 
 ## Start here
 

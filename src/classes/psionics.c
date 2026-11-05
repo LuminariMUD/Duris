@@ -6,6 +6,7 @@
  *************************************************************************** */
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -412,6 +413,7 @@ std::string adrenaline_control_facts(P_char ch)
 void spell_adrenaline_control(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			      P_char /*victim*/, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_ADRENALINE_CONTROL);
 	struct affected_type af;
 
 	if (affected_by_spell(ch, SPELL_ADRENALINE_CONTROL))
@@ -913,6 +915,7 @@ std::string biofeedback_facts(P_char ch)
 void spell_biofeedback(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BIOFEEDBACK);
 	struct affected_type af;
 
 	if (has_skin_spell(victim) && IS_PC(victim))
@@ -1094,6 +1097,7 @@ std::string combat_mind_facts(P_char ch)
 void spell_combat_mind(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_COMBAT_MIND);
 	struct affected_type af;
 
 	if (affected_by_spell(ch, SPELL_COMBAT_MIND))
@@ -2206,6 +2210,7 @@ std::string displacement_facts(P_char ch)
 void spell_displacement(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DISPLACEMENT);
 	struct affected_type af;
 
 	if (affected_by_spell(ch, SPELL_DISPLACEMENT))
@@ -2405,6 +2410,7 @@ std::string energy_containment_facts(P_char ch)
 void spell_energy_containment(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENERGY_CONTAINMENT);
 	struct affected_type af;
 
 	if (!(victim && ch))
@@ -2459,6 +2465,7 @@ std::string enhance_armor_facts(P_char ch)
 void spell_enhance_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENHANCE_ARMOR);
 	struct affected_type af;
 
 	if (!(victim && ch))
@@ -2519,6 +2526,7 @@ std::string enhanced_strength_facts(P_char ch)
 void spell_enhanced_strength(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			     P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENHANCED_STR);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_ENHANCED_STR))
@@ -2564,6 +2572,7 @@ std::string enhanced_dexterity_facts(P_char ch)
 void spell_enhanced_dexterity(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENHANCED_DEX);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_ENHANCED_DEX))
@@ -2607,6 +2616,7 @@ std::string enhanced_agility_facts(P_char ch)
 void spell_enhanced_agility(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENHANCED_AGI);
 	struct affected_type af;
 
 	if (affected_by_spell(victim, SPELL_ENHANCED_AGI))
@@ -2650,6 +2660,7 @@ std::string enhanced_constitution_facts(P_char ch)
 void spell_enhanced_constitution(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ENHANCED_CON);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch))
@@ -2697,6 +2708,7 @@ std::string flesh_armor_facts(P_char ch)
 void spell_flesh_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FLESH_ARMOR);
 	struct affected_type af;
 	bool shown;
 
@@ -2880,6 +2892,7 @@ std::string intellect_fortress_facts(P_char ch)
 void spell_intellect_fortress(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(ch, SPELL_INTELLECT_FORTRESS);
 	struct affected_type af;
 
 	if (affected_by_spell(ch, SPELL_INTELLECT_FORTRESS))

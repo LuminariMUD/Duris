@@ -15,6 +15,7 @@
 #ifndef _SHAMAN_MAGIC_C_
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "world/difficulty.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -208,6 +209,7 @@ std::string guardian_spirits_facts(P_char ch)
 void spell_guardian_spirits(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GUARDIAN_SPIRITS);
 	struct affected_type af;
 	int duration;
 
@@ -2353,6 +2355,7 @@ std::string bloodhound_facts(P_char ch)
 void spell_bloodhound(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_BLOODHOUND);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -2410,6 +2413,7 @@ std::string spirit_armor_facts(P_char ch)
 void spell_spirit_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SPIRIT_ARMOR);
 	struct affected_type af;
 	int duration;
 	int armor = level;
@@ -2683,6 +2687,7 @@ std::string wolfspeed_facts(P_char ch)
 void spell_wolfspeed(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_WOLFSPEED);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -2895,6 +2900,7 @@ std::string pantherspeed_facts(P_char ch)
 void spell_pantherspeed(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PANTHERSPEED);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -3281,6 +3287,7 @@ std::string hawkvision_facts(P_char ch)
 void spell_hawkvision(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_HAWKVISION);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -3486,6 +3493,7 @@ std::string elephantstrength_facts(P_char ch)
 void spell_elephantstrength(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_ELEPHANTSTRENGTH);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -3755,6 +3763,7 @@ std::string lionrage_facts(P_char ch)
 void spell_lionrage(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		    P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_LIONRAGE);
 	struct affected_type af;
 	int duration;
 
@@ -3862,6 +3871,7 @@ std::string greater_ravenflight_facts(P_char ch)
 void spell_ravenflight(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_RAVENFLIGHT);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -4117,6 +4127,7 @@ std::string spirit_sight_facts(P_char ch)
 void spell_spirit_sight(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SPIRIT_SIGHT);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -4179,6 +4190,7 @@ std::string greater_spirit_sight_facts(P_char ch)
 void spell_greater_spirit_sight(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 				P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GREATER_SPIRIT_SIGHT);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -4244,6 +4256,7 @@ std::string sense_spirit_facts(P_char ch)
 void spell_sense_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SENSE_SPIRIT);
 	struct affected_type af;
 	int duration;
 
@@ -5224,6 +5237,7 @@ std::string greater_spirit_ward_facts(P_char ch)
 void spell_spirit_ward(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SPIRIT_WARD);
 	struct affected_type af;
 	int duration;
 
@@ -5268,6 +5282,7 @@ void spell_spirit_ward(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 void spell_greater_spirit_ward(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			       P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_GREATER_SPIRIT_WARD);
 	struct affected_type af;
 	int duration;
 
@@ -5366,6 +5381,7 @@ std::string cold_ward_facts(P_char ch)
 void spell_cold_ward(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_COLD_WARD);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -5412,6 +5428,7 @@ std::string fire_ward_facts(P_char ch)
 void spell_fire_ward(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FIRE_WARD);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))

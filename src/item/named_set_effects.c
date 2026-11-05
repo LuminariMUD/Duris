@@ -7,6 +7,92 @@
 #include "world/vnum.obj.h"
 
 extern P_index obj_index;
+extern Skill skills[];
+
+static bool same_spell(int first, int second)
+{
+	return first == second || (first > 0 && first <= MAX_AFFECT_TYPES && second > 0 &&
+				   second <= MAX_AFFECT_TYPES && skills[first].spell_pointer &&
+				   skills[first].spell_pointer == skills[second].spell_pointer);
+}
+
+void update_named_set_suspension(P_char ch, const affected_type *retiring)
+{
+	for (affected_type *source = ch->affected; source; source = source->next)
+	{
+		if (!(source->flags & AFFTYPE_SET_AFFECT) || source == retiring ||
+		    (source->set_spell >= FIRST_SKILL && source->set_spell != SONG_DRAGONS) ||
+		    ((source->flags & AFFTYPE_NOAPPLY) && !(source->flags & AFFTYPE_SET_SUSPENDED)))
+			continue;
+		bool ordinary = false;
+		for (const affected_type *other = ch->affected; other; other = other->next)
+			if (other != retiring &&
+			    !(other->flags & (AFFTYPE_SET_AFFECT | AFFTYPE_NOAPPLY)) &&
+			    (other->type == source->type ||
+			     same_spell(other->type, source->set_spell)))
+			{
+				ordinary = true;
+				break;
+			}
+		if (ordinary && !(source->flags & AFFTYPE_SET_SUSPENDED))
+		{
+			source->flags |= AFFTYPE_NOAPPLY | AFFTYPE_SET_SUSPENDED;
+		}
+		else if (!ordinary && (source->flags & AFFTYPE_SET_SUSPENDED))
+		{
+			source->flags &= ~(AFFTYPE_NOAPPLY | AFFTYPE_SET_SUSPENDED);
+		}
+	}
+}
+
+named_set_ordinary_cast::named_set_ordinary_cast(P_char caster, P_char target, int spell)
+{
+	if (named_set_grant::active())
+		return;
+	held_[0].target = caster;
+	held_[1].target = target == caster ? nullptr : target;
+	for (auto &held : held_)
+	{
+		if (!IS_ALIVE(held.target))
+			continue;
+		for (affected_type *affect = held.target->affected; affect; affect = affect->next)
+			if ((affect->flags & AFFTYPE_SET_AFFECT) &&
+			    same_spell(affect->set_spell, spell))
+				held.affects.push_back(affect);
+	}
+	for (const auto &held : held_)
+	{
+		if (held.affects.empty())
+			continue;
+		all_affects(held.target, FALSE);
+		for (affected_type *affect : held.affects)
+		{
+			affected_type **cursor = &held.target->affected;
+			while (*cursor != affect)
+				cursor = &(*cursor)->next;
+			*cursor = affect->next;
+		}
+		all_affects(held.target, TRUE);
+	}
+}
+
+named_set_ordinary_cast::~named_set_ordinary_cast()
+{
+	for (const auto &held : held_)
+	{
+		if (held.affects.empty())
+			continue;
+		all_affects(held.target, FALSE);
+		for (affected_type *affect : held.affects)
+		{
+			affect->next = held.target->affected;
+			held.target->affected = affect;
+		}
+		update_named_set_suspension(held.target);
+		all_affects(held.target, TRUE);
+		balance_affects(held.target);
+	}
+}
 
 static int supporting_zone(P_char ch, int spell)
 {

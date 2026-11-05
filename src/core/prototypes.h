@@ -28,6 +28,7 @@
 #include "cmd/mail.h"
 #include "core/safe_format.h"
 #include "core/safe_io.h"
+#include "item/named_set_effects.h"
 using namespace std;
 
 struct AccountBankBalances;

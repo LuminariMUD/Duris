@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -1421,6 +1422,7 @@ std::string thryms_icerazor_facts(P_char ch)
 void spell_thryms_icerazor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			   P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_THRYMS_ICERAZOR);
 	bool weapon = false;
 
 	if (!IS_ALIVE(ch))

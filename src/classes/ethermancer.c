@@ -13,6 +13,7 @@
  ****************************************************************************/
 
 #include "abilities/abilities.h"
+#include "item/named_set_effects.h"
 #include "core/prototypes.h"
 #include "core/structs.h"
 #include "net/comm.h"
@@ -104,6 +105,7 @@ std::string vapor_armor_facts(P_char ch)
 void spell_vapor_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*tar_obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_VAPOR_ARMOR);
 	struct affected_type af;
 	bool shown;
 
@@ -299,6 +301,7 @@ std::string faerie_sight_facts(P_char ch)
 void spell_faerie_sight(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*tar_obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_FAERIE_SIGHT);
 	struct affected_type af;
 	P_obj t_obj;
 	bool refreshed;
@@ -1134,6 +1137,7 @@ std::string vapor_strike_facts(P_char ch)
 void spell_vapor_strike(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char victim, P_obj /*tar_obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_VAPOR_STRIKE);
 	struct affected_type af;
 
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
@@ -4416,6 +4420,7 @@ std::string negative_feedback_barrier_facts(P_char ch)
 void spell_negative_feedback_barrier(int level, P_char ch, char * /*arg*/,
 				     [[maybe_unused]] int type, P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_NEG_ARMOR);
 	struct affected_type af;
 	int absorb = negative_feedback_barrier_absorb(live_rolls, level);
 

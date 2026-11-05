@@ -3,6 +3,8 @@
 
 #include "core/structs.h"
 #include "magic/spells.h"
+#include <array>
+#include <vector>
 
 // Records only affects created during the invocation. Keep the native context
 // and character/object links independent of the equipment source.
@@ -22,13 +24,16 @@ class named_set_grant
 	named_set_grant(const named_set_grant &) = delete;
 	named_set_grant &operator=(const named_set_grant &) = delete;
 	bool created_affects() const { return created_; }
+	static bool active() { return current_ != nullptr; }
 
 	static void mark(P_char target, affected_type *affect)
 	{
 		affect->set_zone = 0;
 		affect->set_spell = 0;
 		affect->set_owner = 0;
-		affect->flags &= ~AFFTYPE_SET_AFFECT;
+		if (affect->flags & AFFTYPE_SET_SUSPENDED)
+			affect->flags &= ~AFFTYPE_NOAPPLY;
+		affect->flags &= ~(AFFTYPE_SET_AFFECT | AFFTYPE_SET_SUSPENDED);
 		if (!current_ || !current_->wearer_ || current_->zone_ <= 0 ||
 		    (target != current_->wearer_ && target != current_->recipient_))
 			return;
@@ -61,5 +66,32 @@ class named_set_grant
 // Retain one buff while any currently worn set supports it. Returns whether
 // unsupported, wearer-owned effects were removed; ordinary casts are untouched.
 bool reconcile_named_set_spell(P_char ch, int spell);
+
+// Temporarily hide only overlapping set nodes from a native ordinary cast.
+// Retain nodes, links and durations.
+class named_set_ordinary_cast
+{
+    public:
+	named_set_ordinary_cast(P_char target, int spell)
+		: named_set_ordinary_cast(nullptr, target, spell)
+	{
+	}
+	named_set_ordinary_cast(P_char caster, P_char target, int spell);
+	~named_set_ordinary_cast();
+	named_set_ordinary_cast(const named_set_ordinary_cast &) = delete;
+	named_set_ordinary_cast &operator=(const named_set_ordinary_cast &) = delete;
+
+    private:
+	struct held_affects
+	{
+		P_char target = nullptr;
+		std::vector<affected_type *> affects;
+	};
+	std::array<held_affects, 2> held_{};
+};
+
+// Reconcile application only: removal/support remains with normal set cleanup.
+// The optional retiring node is ignored before its wear-off message/removal.
+void update_named_set_suspension(P_char ch, const affected_type *retiring = nullptr);
 
 #endif

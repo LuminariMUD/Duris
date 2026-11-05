@@ -12,6 +12,7 @@
 #ifndef _ILLUSIONIST_MAGIC_C_
 
 #include "core/prototypes.h"
+#include "item/named_set_effects.h"
 #include "core/structs.h"
 #include "net/comm.h"
 #include "world/db.h"
@@ -131,6 +132,7 @@ std::string phantom_armor_facts(P_char ch)
 void spell_phantom_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_PHANTOM_ARMOR);
 	struct affected_type af;
 	bool shown;
 
@@ -1590,6 +1592,7 @@ std::string shadow_shield_facts(P_char ch)
 void spell_shadow_shield(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			 P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_SHADOW_SHIELD);
 	struct affected_type af;
 	int absorb = shadow_shield_absorb(live_rolls, level);
 
@@ -1797,6 +1800,7 @@ std::string detect_illusion_facts(P_char ch)
 void spell_detect_illusion(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			   P_char victim, P_obj /*obj*/)
 {
+	named_set_ordinary_cast ordinary_cast(victim, SPELL_DETECT_ILLUSION);
 	struct affected_type af;
 
 	if (!((level >= 0) && victim && ch))

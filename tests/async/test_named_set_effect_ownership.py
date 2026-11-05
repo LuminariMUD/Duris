@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Real spell bodies, affect allocation/removal, set provenance and shared support.
 
-World/stat recalculation, output and unrelated spell handlers are fixtures. This
-does not substitute for the remaining ordinary-cast entry and cooldown journeys.
+World/stat recalculation, output and unrelated spell handlers are fixtures. Full
+command/persistence gameplay and cooldown journeys remain in the project plan.
 """
 from pathlib import Path
 import subprocess
@@ -25,6 +25,9 @@ harness = r'''
 #include "item/random_equipment.h"
 #include "magic/spells.h"
 #include "abilities/abilities.h"
+#include "classes/disguise.h"
+#include "world/falling.h"
+#include "combat/damage.h"
 #include <cassert>
 #include <cstdlib>
 #include <string>
@@ -37,6 +40,10 @@ zone_data *zone_table=nullptr;
 int top_of_zone_table=-1;
 static room_data rooms[1];
 P_room world=rooms;
+P_char character_list=nullptr;
+extern const racial_data_type racial_data[LAST_RACE+1]{};
+static pc_only_data wearer_pc,companion_pc;
+static bool inherent_armor;
 static mm_ds affect_pool{},link_pool{};
 mm_ds *dead_affect_pool=&affect_pool,*dead_link_pool=&link_pool;
 link_description link_types[LNK_MAX+1];
@@ -67,6 +74,7 @@ void all_affects(P_char ch,int add) {
     ch->specials.affected_by=ch->specials.affected_by2=ch->specials.affected_by3=0;
     ch->specials.affected_by4=ch->specials.affected_by5=0;
     if(!add) return;
+    if(inherent_armor) ch->specials.affected_by|=AFF_ARMOR;
     for(auto *af=ch->affected;af;af=af->next) {
         if(af->flags&AFFTYPE_NOAPPLY) continue;
         ch->specials.affected_by|=af->bitvector; ch->specials.affected_by2|=af->bitvector2;
@@ -76,19 +84,31 @@ void all_affects(P_char ch,int add) {
 }
 void send_to_char(const char *text,P_char) {if(strstr(text,"spirits of")) ++grants;}
 void wear_off_message(P_char,affected_type *) {}
+int attack_back(P_char,P_char,int) {return 0;}
 void act(const char *,int,P_char,P_obj,void *,int) {}
 nevent_schedule_result add_event(event_func,int,P_char,P_char,P_obj,int,const void *,int) {return {};}
 void disarm_char_nevents(P_char,event_func_type) {}
 nevent_handle nevent_handle_from_event(P_nevent event) {return {event,event->sequence};}
 nevent_cancel_result nevent_cancel(nevent_handle) {return nevent_cancel_result::canceled;}
-bool has_skin_spell(P_char) {return false;}
-void spell_stone_skin(int,P_char,char *,int,P_char,P_obj) {assert(false);}
+int gain_exp(P_char,P_char,int,int) {assert(false);return 0;}
 void spell_haste(int,P_char,char *,int,P_char,P_obj) {assert(false);}
 void spell_fireshield(int,P_char,char *,int,P_char,P_obj) {assert(false);}
 void spell_infernal_fury(int,P_char,char *,int,P_char,P_obj) {assert(false);}
+void spell_vitality(int,P_char,char *,int,P_char,P_obj) {}
+void spell_bless(int,P_char,char *,int,P_char,P_obj) {}
 void unlink_char_affect(P_char,affected_type *);
 void internal_unlink_char(P_char,char_link_data *,char_link_data *);
 void dispose_link(char_link_data *);
+unsigned int char_slice(P_char,unsigned int) {return 0;}
+int IS_MORPH(P_char) {return FALSE;}
+int GET_PRIME_CLASS(P_char,uint) {return 0;}
+int GET_SECONDARY_CLASS(P_char,uint) {return 0;}
+void StartRegen(P_char,regen_resource) {}
+bool char_falling(P_char) {return false;}
+time_info_data age(P_char) {return {};}
+void remove_disguise(P_char,bool) {assert(false);}
+P_char un_morph(P_char) {assert(false);return nullptr;}
+falling_start_result falling_start(P_char) {return falling_start_result::not_applicable;}
 static void alias_effect(int,P_char ch,char *,int,P_char,P_obj) {
     ++alias_calls;
     affected_type affect{}; affect.type=SPELL_ANGELIC_COUNTENANCE; affect.duration=12;
@@ -112,11 +132,24 @@ for signature in (
         signature = signatures[signature]
     harness += extract_function("affects.c", signature) + "\n"
 
+import re
+affects_source = (ROOT / "src/magic/affects.c").read_text()
+harness += re.search(r"^#define AFFECT_UPDATE_SLICES .*", affects_source, re.M).group() + "\n"
+harness += extract_function("affects.c", "void affect_update(") + "\n"
+
+magic_source = (ROOT / "src/magic/magic.c").read_text()
+harness += re.search(r"^#define MACE_OF_EARTH_VNUM .*", magic_source, re.M).group() + "\n"
 for signature in ("static int armor_duration(", "static int armor_armor_class(", "void spell_armor(",
                   "static int strength_duration(", "static int strength_bonus(", "void spell_strength(",
                   "static int endurance_amount(", "void spell_endurance(",
                   "static int vampiric_touch_duration(", "static int vampiric_touch_hitroll(",
-                  "void spell_vampiric_touch("):
+                  "void spell_vampiric_touch(", "void spell_miracle(",
+                  "static bool has_other_skin_spell(", "bool has_skin_spell(",
+                  "static int stone_skin_absorb(", "static int stone_skin_living_stone(",
+                  "static int stone_skin_conjurer(", "static int stone_skin_sorcerer(",
+                  "static int stone_skin_other(", "static int stone_skin_duration(",
+                  "static int stone_skin_layers(", "void spell_stone_skin(",
+                  "static int stornogs_spheres_count(", "void spell_stornogs_spheres("):
     harness += extract_function("magic.c", signature) + "\n"
 for signature in ("static int song_dragons_duration(", "static int song_dragons_cold_level(",
                   "static int song_dragons_gas_level(", "static int song_dragons_acid_level(",
@@ -126,6 +159,18 @@ for signature in ("static int song_dragons_duration(", "static int song_dragons_
 
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
 harness += extract_function("specs.object.c", "void apply_zone_spell(")
+harness += extract_function("fight.c", "bool decrease_skin_counter(")
+# Run the production character-dispel traversal with a deterministic self-cast
+# save boundary. Object magic, permanent-NPC bits and retaliation are separate.
+magic_source = (ROOT / "src/magic/magic.c").read_text()
+dispel_start = magic_source.index("// Select active types before removal:")
+dispel_end = magic_source.index("\n\t\tsuccess = CheckMobRemoveableSpellBits", dispel_start)
+harness += "\nstatic void dispel_active(P_char victim) { P_char ch=victim,orig=nullptr; affected_type *af; int nosave=1,mod=0,success=0;\n"
+harness += magic_source[dispel_start:dispel_end]
+harness += "\n(void)orig; (void)success; }\n"
+harness += "\nstatic int hit_sphere(P_char victim) { P_char ch=&companion; affected_type *af;\n"
+harness += extract_function("fight.c", "if (IS_AFFECTED4(victim, AFF4_STORNOGS_SPHERES))")
+harness += "\nreturn 99; }\n"
 harness += r'''
 static void clear_marker(obj_data &item) {
     while(item.ex_description) {
@@ -140,8 +185,10 @@ static void reset() {
     wearer.runtime_id=1; companion.runtime_id=2;
     wearer.player.level=56; companion.player.level=56;
     wearer.specials.position=companion.specials.position=STAT_NORMAL|POS_STANDING;
+    wearer.only.pc=&wearer_pc; companion.only.pc=&companion_pc;
+    wearer.next=&companion; character_list=&wearer;
     wearer.next_in_room=&companion; rooms[0].people=&wearer;
-    grants=0;
+    grants=0; inherent_armor=false;
 }
 static void wear(int item,int slot,int zone,bool weapon=false) {
     gear[item].R_num=weapon ? 1 : 0;
@@ -152,6 +199,12 @@ static int count(P_char ch,int type,bool owned) {
     int result=0;
     for(auto *af=ch->affected;af;af=af->next)
         if(af->type==type && bool(af->flags&AFFTYPE_SET_AFFECT)==owned) ++result;
+    return result;
+}
+static int active_modifier(P_char ch,int type) {
+    int result=0;
+    for(auto *af=ch->affected;af;af=af->next)
+        if(af->type==type && !(af->flags&AFFTYPE_NOAPPLY)) result+=af->modifier;
     return result;
 }
 static void ordinary_armor(affected_type **saved) {
@@ -166,6 +219,8 @@ int main() {
     skills[SPELL_STRENGTH].name="strength"; skills[SPELL_STRENGTH].spell_pointer=spell_strength;
     skills[SPELL_ENDURANCE].name="endurance"; skills[SPELL_ENDURANCE].spell_pointer=spell_endurance;
     skills[SPELL_VAMPIRIC_TOUCH].name="vampiric touch"; skills[SPELL_VAMPIRIC_TOUCH].spell_pointer=spell_vampiric_touch;
+    skills[SPELL_STONE_SKIN].name="stone skin"; skills[SPELL_STONE_SKIN].spell_pointer=spell_stone_skin;
+    skills[SPELL_STORNOGS_SPHERES].name="spheres"; skills[SPELL_STORNOGS_SPHERES].spell_pointer=spell_stornogs_spheres;
     skills[SONG_DRAGONS].name="song of dragons"; skills[SKILL_EPIC_STRENGTH].name="epic strength";
     reset();
     affected_type *ordinary=nullptr;
@@ -186,6 +241,109 @@ int main() {
     apply_zone_spell(&wearer,8,"Barovia",583,&gear[0],SPELL_VAMPIRE);
     assert(alias_calls==1 && wearer.affected->type==SPELL_ANGELIC_COUNTENANCE && wearer.affected->set_spell==SPELL_VAMPIRE);
     assert(reconcile_named_set_spell(&wearer,SPELL_VAMPIRE) && !wearer.affected);
+
+    // Actual ordinary entries after a set create their own nodes and duration,
+    // while the original grant remains dormant with no extra numeric benefit.
+    reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
+    apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    auto *set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=8;
+    spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
+    auto *cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
+    assert(cast_armor!=set_armor && !(cast_armor->flags&AFFTYPE_SET_AFFECT) && cast_armor->duration==20);
+    assert(set_armor->duration==8 && (set_armor->flags&AFFTYPE_SET_SUSPENDED));
+    assert(active_modifier(&wearer,SPELL_ARMOR)==cast_armor->modifier && count(&wearer,SPELL_ARMOR,true)==1);
+    cast_armor->duration=2;
+    spell_armor(56,&companion,nullptr,0,&wearer,nullptr);
+    assert(cast_armor->duration==20 && set_armor->duration==8);
+    affect_update(0);
+    assert(set_armor->duration==7 && cast_armor->duration==19);
+    affect_remove(&wearer,cast_armor);
+    assert(get_spell_from_char(&wearer,SPELL_ARMOR)==set_armor && set_armor->duration==7 && !(set_armor->flags&AFFTYPE_NOAPPLY));
+    assert(grants==1); // no fresh set invocation was needed to resume it
+
+    // Removing the set first preserves the ordinary spell's independent lifetime.
+    reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
+    apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
+    cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
+    for(auto &item:wearer.equipment) item=nullptr;
+    assert(reconcile_named_set_spell(&wearer,SPELL_ARMOR));
+    assert(get_spell_from_char(&wearer,SPELL_ARMOR)==cast_armor && cast_armor->duration==20);
+
+    // A dormant grant still expires on its original clock, without replacing a cast.
+    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=1;
+    spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
+    cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
+    affect_update(0); affect_update(0);
+    assert(!count(&wearer,SPELL_ARMOR,true) && get_spell_from_char(&wearer,SPELL_ARMOR)==cast_armor && cast_armor->duration==18);
+
+    // Native refusals restore the old grant; inherent armor remains an exclusion.
+    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=7;
+    inherent_armor=true;
+    spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
+    assert(get_spell_from_char(&wearer,SPELL_ARMOR)==set_armor && set_armor->duration==7 && !count(&wearer,SPELL_ARMOR,false));
+
+    // Self casts and direct group calls use the same entries, beyond sparser.
+    reset(); apply_zone_spell(&wearer,5,"Tharnadia",1325,&gear[0],SPELL_ENDURANCE);
+    auto *set_endurance=get_spell_from_char(&wearer,SPELL_ENDURANCE); set_endurance->duration=6;
+    spell_endurance(40,&wearer,nullptr,0,&wearer,nullptr);
+    auto *cast_endurance=get_spell_from_char(&wearer,SPELL_ENDURANCE);
+    assert(cast_endurance!=set_endurance && cast_endurance->duration==9 && set_endurance->duration==6);
+    affect_remove(&wearer,cast_endurance);
+    assert(get_spell_from_char(&wearer,SPELL_ENDURANCE)==set_endurance && set_endurance->duration==6);
+    reset(); apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+    set_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
+    group_list group{}; group.ch=&wearer; wearer.group=&group;
+    spell_miracle(56,&wearer,nullptr,0,nullptr,nullptr);
+    assert(get_spell_from_char(&wearer,SPELL_ARMOR)!=set_armor && (set_armor->flags&AFFTYPE_SET_SUSPENDED));
+    wearer.group=nullptr;
+
+    // Explicit spell-type dispelling still clears the whole type, independently
+    // of which source is at the head; no dormant grant is left to break reveal.
+    for(bool source_first : {false,true}) {
+        reset(); for(int i=0;i<3;++i) wear(i,i+1,14);
+        apply_zone_spell(&wearer,3,"Kobolds",14,&gear[0],SPELL_ARMOR);
+        set_armor=get_spell_from_char(&wearer,SPELL_ARMOR); set_armor->duration=9;
+        spell_armor(40,&companion,nullptr,0,&wearer,nullptr);
+        cast_armor=get_spell_from_char(&wearer,SPELL_ARMOR);
+        if(!source_first) {wearer.affected=cast_armor; cast_armor->next=set_armor; set_armor->next=nullptr;}
+        dispel_active(&wearer);
+        assert(!get_spell_from_char(&wearer,SPELL_ARMOR) && !count(&wearer,SPELL_ARMOR,true) && !count(&wearer,SPELL_ARMOR,false));
+    }
+    // Consumable protections spend the active ordinary counter and resume only
+    // the original remaining set charges, without a fresh set invocation.
+    reset(); apply_zone_spell(&wearer,6,"Earth",238,&gear[0],SPELL_STONE_SKIN);
+    auto *set_skin=get_spell_from_char(&wearer,SPELL_STONE_SKIN);
+    const int original_charges=set_skin->modifier; set_skin->duration=3;
+    spell_stone_skin(40,&companion,nullptr,0,&wearer,nullptr);
+    auto *cast_skin=get_spell_from_char(&wearer,SPELL_STONE_SKIN);
+    assert(cast_skin!=set_skin && (set_skin->flags&AFFTYPE_SET_SUSPENDED));
+    const int cast_charges=cast_skin->modifier;
+    assert(decrease_skin_counter(&wearer,SPELL_STONE_SKIN));
+    assert(cast_skin->modifier==cast_charges-1 && set_skin->modifier==original_charges);
+    cast_skin->modifier=1;
+    assert(decrease_skin_counter(&wearer,SPELL_STONE_SKIN));
+    assert(get_spell_from_char(&wearer,SPELL_STONE_SKIN)==set_skin && set_skin->modifier==original_charges && set_skin->duration==3 && grants==1);
+    reset(); apply_zone_spell(&wearer,8,"Sea Kingdom",315,&gear[0],SPELL_STORNOGS_SPHERES);
+    auto *set_spheres=get_spell_from_char(&wearer,SPELL_STORNOGS_SPHERES);
+    spell_stornogs_spheres(40,&companion,nullptr,0,&wearer,nullptr);
+    auto *cast_spheres=get_spell_from_char(&wearer,SPELL_STORNOGS_SPHERES);
+    assert(cast_spheres!=set_spheres && (set_spheres->flags&AFFTYPE_SET_SUSPENDED));
+    assert(hit_sphere(&wearer)==DAM_NONEDEAD);
+    assert(get_spell_from_char(&wearer,SPELL_STORNOGS_SPHERES)==set_spheres && set_spheres->modifier==1 && IS_AFFECTED4(&wearer,AFF4_STORNOGS_SPHERES));
+    assert(hit_sphere(&wearer)==DAM_NONEDEAD && !affected_by_spell(&wearer,SPELL_STORNOGS_SPHERES) && !IS_AFFECTED4(&wearer,AFF4_STORNOGS_SPHERES));
+
+    // A received timed song and an ordinary song keep their separate links and clocks.
+    reset(); apply_zone_spell(&wearer,9,"Dragonnia",68,&gear[0],SONG_DRAGONS);
+    auto *received_song=get_spell_from_char(&companion,SONG_DRAGONS); received_song->duration=12;
+    bard_dragons(56,&companion,&companion,SONG_DRAGONS);
+    auto *ordinary_song=get_spell_from_char(&companion,SONG_DRAGONS);
+    assert(ordinary_song!=received_song && !(ordinary_song->flags&AFFTYPE_SET_AFFECT) && (received_song->flags&AFFTYPE_SET_SUSPENDED));
+    assert(ordinary_song->duration==1 && received_song->duration==12);
+    affect_remove(&companion,ordinary_song);
+    assert(get_spell_from_char(&companion,SONG_DRAGONS)==received_song && received_song->duration==12 && received_song->set_owner==1);
 
     // Fresh set nodes carry provenance; ordinary allocation during no grant cannot inherit it.
     reset(); apply_zone_spell(&wearer,3,"Tharnadia",1325,&gear[0],SPELL_ARMOR);
@@ -287,4 +445,4 @@ with tempfile.TemporaryDirectory(prefix="named-set-effects-", dir=build) as dire
         str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)
-print("real named-set spell provenance, shared support, ordinary-node preservation and linked songs: passed")
+print("real named-set casts, independent durations, counters, shared cleanup and linked songs: passed")

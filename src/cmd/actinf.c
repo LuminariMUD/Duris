@@ -6962,7 +6962,7 @@ void do_score(P_char ch, char * /*argument*/, int /*cmd*/)
 					break;
 				}
 
-				if (IS_SET(aff->flags, AFFTYPE_NOSHOW))
+				if (IS_SET(aff->flags, AFFTYPE_NOSHOW | AFFTYPE_SET_SUSPENDED))
 				{
 					continue;
 				}
