@@ -18,6 +18,7 @@
 #include "core/files.h"
 #include "classes/necromancy.h"
 #include "world/vnum.obj.h"
+#include "sql/item_extra_descr_codec.h"
 
 #include <algorithm>
 #include <limits>
@@ -182,11 +183,33 @@ bool decode_index_rows(decoder &in, std::vector<player_index_value_snapshot> &ro
 			 });
 }
 
+bool valid_named_set_origin(const player_item_snapshot &item)
+{
+	bool seen = false;
+	for (const auto &description : item.extra_descriptions)
+	{
+		int zone = 0;
+		const auto status = sql_decode_named_set_origin(description.keyword,
+								description.description, &zone);
+		if (status == sql_named_set_origin_decode_status::invalid ||
+		    (status == sql_named_set_origin_decode_status::decoded &&
+		     (seen || description.spellbook || !description.spell_ids.empty())))
+			return false;
+		seen = seen || status == sql_named_set_origin_decode_status::decoded;
+	}
+	return true;
+}
+
 void encode_items(encoder &out, const std::vector<player_item_snapshot> &items)
 {
 	out.vector(items,
 		   [&](const player_item_snapshot &row)
 		   {
+			   if (!valid_named_set_origin(row))
+			   {
+				   out.valid = false;
+				   return;
+			   }
 			   out.number<int32_t>(row.parent_index);
 			   out.number<int16_t>(row.equipment_slot);
 			   out.number<uint64_t>(row.object_uid);
@@ -285,7 +308,8 @@ bool decode_items(decoder &in, std::vector<player_item_snapshot> &items)
 							in.vector(description.spell_ids,
 								  [&](int32_t &skill_id)
 								  { return in.number(skill_id); });
-					 });
+					 }) &&
+			       valid_named_set_origin(row);
 		},
 		true);
 }

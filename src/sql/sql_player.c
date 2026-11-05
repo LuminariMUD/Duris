@@ -989,8 +989,31 @@ static bool sql_load_item_extra_descr_from_table(int item_id, P_obj obj, const c
 		return false;
 	struct extra_descr_data *loaded_spellbook = NULL;
 	MYSQL_ROW row;
+	bool origin_seen = false;
 	while ((row = mysql_fetch_row(result)))
+	{
+		if (row[0] && !strcmp(row[0], SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
+		{
+			int zone = 0;
+			const auto *lengths = mysql_fetch_lengths(result);
+			const auto status = sql_decode_named_set_origin(
+				std::string_view(row[0], lengths[0]),
+				row[1] ? std::string_view(row[1], lengths[1]) : std::string_view(),
+				&zone);
+			if (origin_seen || status != sql_named_set_origin_decode_status::decoded)
+			{
+				persistence_alert(
+					AVATAR, "named_set_origin", table, "none", "none",
+					"invalid_origin",
+					"item_id=%d has malformed or duplicate origin metadata",
+					item_id);
+				mysql_free_result(result);
+				return false;
+			}
+			origin_seen = true;
+		}
 		sql_add_item_extra_descr(obj, row[0], row[1], table, item_id, &loaded_spellbook);
+	}
 	mysql_free_result(result);
 	normalize_legacy_trap(obj, OBJ_VNUM(obj));
 	return true;
@@ -1092,12 +1115,19 @@ static bool sql_save_item_extra_descr(int item_id, P_obj obj, const char *table)
 	}
 
 	bool spellbook_emitted = false;
+	bool origin_seen = false;
 	std::unordered_set<std::string> description_keys;
 	struct extra_descr_data *ed;
 	for (ed = obj->ex_description; ed; ed = ed->next)
 	{
 		if (!ed->keyword)
 			continue;
+		if (!strcmp(ed->keyword, SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
+		{
+			if (origin_seen)
+				return false;
+			origin_seen = true;
+		}
 
 		const char *source_keyword = ed->keyword;
 		const char *source_description = ed->description;
@@ -2529,6 +2559,7 @@ bool sql_load_all_corpses(void)
 			}
 
 			// start new corpse
+			cur_corpse = NULL;
 			num_objs = 0;
 			last_item_id = -1;
 			last_item_stored = false;
@@ -2724,7 +2755,11 @@ bool sql_load_all_corpses(void)
 					    atoi(row[CORPSE_COL_ITEM_AFFECT_MODIFIER]),
 					    row[CORPSE_COL_ITEM_AFFECT_SLOT], affect_count);
 
-		sql_load_item_extra_descr_from_table(item_id, obj, "corpse_item");
+		if (!sql_load_item_extra_descr_from_table(item_id, obj, "corpse_item"))
+		{
+			extract_obj(obj, FALSE);
+			goto cleanup;
+		}
 
 		obj_map[num_objs] = obj;
 		id_map[num_objs] = item_id;
@@ -2813,6 +2848,15 @@ bool sql_load_all_corpses(void)
 	ok = true;
 
 cleanup:
+	if (!ok)
+	{
+		// The current graph has not been published. Keep its authoritative rows
+		// intact and let boot reject the failed restore rather than saving gaps.
+		for (int i = 0; i < num_objs; ++i)
+			extract_obj(obj_map[i], FALSE);
+		if (cur_corpse)
+			extract_obj(cur_corpse, FALSE);
+	}
 	if (result)
 		mysql_free_result(result);
 	skip_corpse_save = 0; // re-enable corpse saves

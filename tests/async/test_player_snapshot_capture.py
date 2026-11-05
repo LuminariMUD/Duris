@@ -193,6 +193,7 @@ HELD_PETS_HARNESS = r"""
 #include "magic/spells.h"
 #include "world/vnum.obj.h"
 #include "player/player_snapshot_capture.h"
+#include "sql/item_extra_descr_codec.h"
 #include "player/player_snapshot_codec.h"
 #include "player/pet_restore_runtime.h"
 #include "item/item_ownership_runtime.h"
@@ -447,6 +448,20 @@ int main()
         player_snapshot saved;
         assert(player_snapshot_capture(&ch, 99, PLAYER_COMPONENT_INVENTORY, RENT_QUIT, 22800, &saved) == player_snapshot_capture_result::ok);
         assert(saved.items.size() == 1 && saved.items[0].object_uid == 5001);
+    }
+    {
+        extra_descr_data origin{const_cast<char *>(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD),
+                                const_cast<char *>("808"), nullptr};
+        picked_up.ex_description = &origin;
+        player_snapshot saved;
+        assert(player_snapshot_capture(&ch,99,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&saved)==player_snapshot_capture_result::ok);
+        assert(saved.items[0].extra_descriptions[0].description=="808");
+        origin.description=const_cast<char *>("bad");
+        assert(player_snapshot_capture(&ch,99,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&saved)==player_snapshot_capture_result::malformed_source);
+        origin.description=const_cast<char *>("808");
+        extra_descr_data duplicate=origin; origin.next=&duplicate;
+        assert(player_snapshot_capture(&ch,99,PLAYER_COMPONENT_INVENTORY,RENT_QUIT,22800,&saved)==player_snapshot_capture_result::malformed_source);
+        picked_up.ex_description=nullptr;
     }
     assert(unowned_lines() == 0);
     trace = true;

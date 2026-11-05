@@ -1,12 +1,19 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; catalog/report foundation ready for review.
+Status: implementation in progress; catalog/report foundation open for review;
+persistent-origin chunk being finalized on its dependent branch.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-expansion`.
+Working branch: `branch/named-zone-set-origin`, based on
+`branch/named-zone-set-expansion`.
 Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-05)
+
+**Review stack:** [PR #714](https://github.com/LuminariMUD/Duris/pull/714)
+(`branch/named-zone-set-expansion`, `67c7fc7d9`) contains the catalog foundation
+and the original planning documents. The next chunk is on
+`branch/named-zone-set-origin`; open its PR against the foundation branch.
 
 The first implementation chunk extracts the **115 existing loaded set rows,
 206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
@@ -48,13 +55,85 @@ These cache boundaries are fixtures, **not a live Redis lifecycle test**.
 This chunk does not claim gameplay, persistence, or actual effect ownership
 verification. The existing pager test remains the pager integration check.
 
-**Next:** branch from this review chunk for persistent origin and exact legacy
-resolution (section 3), then ownership/cleanup (section 5). Name substring and
-first-room-derived membership, zero-index contexts, ordinary-cast adoption, and
-character-wide event cancellation remain unchanged and must be repaired before
-installing the expansion. Complete the balance and wider area review before
-claiming #706 done. No production operation, release, or release tag is part of
-this foundation chunk.
+### Persistent-origin chunk
+
+`src/item/named_set_origin.c` now resolves positive virtual IDs from the reserved
+`DURIS_NAMED_SET_ORIGIN_V1` extra description. An explicit marker wins even after
+a visible-name change and even when its zone has no catalog row. Invalid or
+duplicate markers return an invalid identity, never a guessed legacy origin.
+Unmarked random blanks require the complete generated ` &+rfrom ` tag and an
+exact color-normalized title, optionally followed by that weapon's registered
+revealed-proc suffix. Ceothia, Underworld, and Braddistock legacy titles stay
+ambiguous; the result carries their normalized title for the later HP-only
+membership path. Reversing the zone table changes none of these results.
+
+The generator stamps the selected room's virtual zone ID only for `ZONE_NAME`.
+`identify_random()` records a uniquely resolved legacy origin before its name
+mutation; cloning preserves the origin and refuses invalid source metadata.
+Normal player extra-description lookup hides the marker. The two authored title
+fixes are limited to #204 and #990. An isolated `make world` under
+`bin/tests/named-set-world` verified their generated colored headers; generated
+area files in the working checkout were not changed.
+
+Snapshot capture, the shared item wire codec, player/pet SQL metadata loading,
+SQL snapshot writers, direct saved-world/shop/corpse loaders, native legacy item
+readers, and account reward snapshots validate the marker. Internal trap state
+and origin each retain a separate slot outside the visible-description limit.
+Length-aware stored-field parsing rejects embedded NULs; the native decoder
+checks keywords before treating descriptions as text, preserving binary
+spellbooks. The MySQL corpse path now propagates description-read failure and
+refuses boot, retaining authoritative rows. The pfile extraction stub's pointer
+signature was corrected because native-reader error cleanup now calls it.
+
+**Ablation:** reuse ordinary extra descriptions, the current item codecs and load
+failure policies. No schema, per-item field, bulk conversion, custom storage
+service, or effect-specific adapter was added. Resolve legacy identities lazily
+when consumed; wearing must still stamp unique legacy items before normal saves.
+
+**Additional evidence:** the origin/runtime test and extended native restore
+harness run under ASan/UBSan. They cover numeric origins for all seven problem
+zones and counterparts, exact Tiamat titles, colored weapon suffixes, ambiguity,
+name changes, cloning, hidden metadata, invalid metadata, nested wire storage,
+native item files, saved-item SQL loader boundaries, and reward snapshots.
+Player-item materialization tests reject malformed/conflicting origins before
+allocation. The disposable MariaDB repository harness verifies player and pet
+origins beside 64 visible descriptions plus trap metadata, conflicts, overflow,
+and embedded NULs in both stored keyword and description. Flat-file repository
+tests retain origin through cross-owner transfer/restart reconciliation and
+corpse/saved-world catalogs. Exact equipment output and RNG sentinels still pass.
+
+Relevant direct commands for the origin chunk:
+
+```sh
+python3 tests/async/test_named_set_origin.py
+python3 tests/async/test_item_extra_descr_codec.py
+python3 tests/async/test_player_item_snapshot_codec.py
+python3 tests/async/test_player_snapshot_capture.py
+python3 tests/async/test_player_load_items.py
+python3 tests/async/test_legacy_trap_restore.py
+python3 tests/async/test_artifact_creation_admission.py
+python3 tests/async/test_item_transfer_codec.py
+python3 tests/async/test_flatfile_item_repository.py
+python3 tests/async/test_flatfile_world_item_repository.py
+python3 tests/async/test_random_equipment_golden.py
+python3 tests/async/test_account_reward_exact_contract.py
+python3 tests/async/test_spellbook_persistence_contract.py
+tests/async/run_player_load_repository_mysql.sh
+make -C src -j4
+make -C src -j4 PERSISTENCE_BACKEND=flatfile DMS_BINARY="$PWD/bin/tests/named-set-flatfile-server"
+make -C src -j4 pfile
+./scripts/format.sh --check
+git diff --check
+```
+
+**Next:** integrate the origin resolver into worn membership and spell lookup,
+then repair ownership/cleanup (sections 3 and 5) on another dependent branch.
+Name substring and first-room-derived membership, zero-index contexts,
+ordinary-cast adoption, and character-wide event cancellation remain unchanged.
+Do not install expansion rows before those repairs pass. Actual in-game
+wear/transfer/save/reboot journeys, private chest/locker/shop journeys, live Redis
+lifecycle checks, balance, help publication, and the wider eligibility review
+remain outstanding. No production operation, release, or release tag has occurred.
 
 ## Start here
 
@@ -176,13 +255,13 @@ Owning code: [random_equipment.c](../../src/item/random_equipment.c),
 [sql_player.c](../../src/sql/sql_player.c), and the legacy item serialization in
 [files.c](../../src/core/files.c).
 
-- [ ] Use a reserved internal item extra-description marker, proposed as
+- [x] Use a reserved internal item extra-description marker, proposed as
   `DURIS_NAMED_SET_ORIGIN_V1`, with a strictly parsed positive virtual zone ID.
   Reuse the existing canonical item extra-description storage pattern already
   used for internal trap state. Keep it out of normal player look/edit output,
   preserve it when visible names change, and validate duplicate or conflicting
   markers. This avoids a new per-item SQL column or a second metadata service.
-- [ ] Set the marker only after the generator chooses `ZONE_NAME`, using
+- [x] Set the marker only after the generator chooses `ZONE_NAME`, using
   `zone_table[world[finder->in_room].zone].number`. Store the origin even if that
   zone currently has no spell row: HP membership and future set definitions
   still need it. Owner-named and plain items do not become zone-set items.

@@ -9,6 +9,7 @@
 #include <mysql/mysql.h>
 
 #include <cassert>
+#include <algorithm>
 #include <climits>
 #include <cstdlib>
 #include <fstream>
@@ -599,11 +600,63 @@ int main()
 		const auto conflicting = execute_load(connection, request, 98);
 		assert(conflicting.outcome == player_load_outcome::limit_exceeded);
 		execute_sql(connection, "DELETE FROM " + table + " WHERE item_id=" + item_id);
+
+		const std::string origin_keyword = SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD;
+		const std::string origin = ",'" + origin_keyword + "','808')";
+		execute_sql(connection, insert + trap);
+		for (size_t index = 0; index < PLAYER_LOAD_ITEM_DESCRIPTION_MAX; ++index)
+			execute_sql(connection,
+				    insert + ",'detail" + std::to_string(index) + "','fixture')");
+		execute_sql(connection, insert + origin);
+		auto origin_loaded = execute_load(connection, request, 99);
+		assert(origin_loaded.outcome == player_load_outcome::applied);
+		const auto &origin_descriptions =
+			pet_item ? origin_loaded.snapshot.pets[0].items[0].extra_descriptions :
+				   origin_loaded.snapshot.items[0].extra_descriptions;
+		assert(origin_descriptions.size() == PLAYER_LOAD_ITEM_DESCRIPTION_MAX + 2);
+		assert(std::any_of(origin_descriptions.begin(), origin_descriptions.end(),
+				   [&](const auto &entry) {
+					   return entry.keyword == origin_keyword &&
+						  entry.description == "808";
+				   }));
+		for (const char *bad : { "''", "'0'", "'013'", "'808x'", "'2147483648'",
+					 "CONCAT('808',CHAR(0),'tail')" })
+		{
+			execute_sql(connection, "UPDATE " + table + " SET description=" + bad +
+							" WHERE item_id=" + item_id +
+							" AND keyword='" + origin_keyword + "'");
+			assert(execute_load(connection, request, 100).outcome ==
+			       player_load_outcome::limit_exceeded);
+		}
+		execute_sql(connection, "UPDATE " + table +
+						" SET description='808' WHERE item_id=" + item_id +
+						" AND keyword='" + origin_keyword + "'");
+		// SQL excludes identical rows; conflicting values can coexist.
+		for (const char *duplicate : { "811" })
+		{
+			execute_sql(connection,
+				    insert + ",'" + origin_keyword + "','" + duplicate + "')");
+			assert(execute_load(connection, request, 101).outcome ==
+			       player_load_outcome::limit_exceeded);
+			execute_sql(connection, "DELETE FROM " + table +
+							" WHERE item_id=" + item_id +
+							" AND keyword='" + origin_keyword + "'");
+			execute_sql(connection, insert + origin);
+		}
+		execute_sql(connection,
+			    "UPDATE " + table +
+				    " SET keyword=CONCAT(keyword,CHAR(0),'tail') WHERE item_id=" +
+				    item_id + " AND keyword='" + origin_keyword + "'");
+		assert(execute_load(connection, request, 102).outcome ==
+		       player_load_outcome::limit_exceeded);
+		execute_sql(connection, "DELETE FROM " + table + " WHERE item_id=" + item_id);
 	}
 	execute_sql(connection,
 		    "INSERT INTO player_pet_item_extra_descr(item_id,keyword,description) VALUES"
 		    "(3101,'detail','pet fixture')");
 	std::cout << "[PASS] player and pet trap metadata preserves the description limit\n";
+	std::cout
+		<< "[PASS] player and pet named origins preserve internal slots and reject corrupt metadata\n";
 
 	// A pet payload row whose custody row was reassigned is skipped, exactly as the
 	// character's own inventory rows are.

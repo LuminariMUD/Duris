@@ -47,6 +47,7 @@ static player_item_snapshot item(uint64_t uid, int32_t parent, int32_t vnum)
 	value.short_description = "a world item";
 	value.dynamic_affects.push_back({ 3, 4, 5 });
 	value.extra_descriptions.push_back({ "runes", "small runes", true, { 7, 8 } });
+	value.extra_descriptions.push_back({ "DURIS_NAMED_SET_ORIGIN_V1", "808", false, {} });
 	return value;
 }
 
@@ -356,7 +357,9 @@ int main(int argc, char **argv)
 			corpses[0].items.size() == 2 && corpses[0].items[1].parent_index == 0 &&
 			corpses[0].items[0].dynamic_affects[0].extra2 == 5 &&
 			saved_items.size() == 1 && saved_items[0].item_key == "item.statue.1" &&
-			saved_items[0].items[1].extra_descriptions[0].spell_ids[1] == 8,
+			saved_items[0].items[1].extra_descriptions[0].spell_ids[1] == 8 &&
+			saved_items[0].items[1].extra_descriptions[1].description == "808" &&
+			corpses[0].items[0].extra_descriptions[1].description == "808",
 		"world item catalog was not canonical or did not round trip nested state");
 	auto conflicting = first;
 	conflicting.weight++;

@@ -24,7 +24,9 @@ P_obj save_equip[MAX_WEAR] = {};
 unsigned long next_obj_uid = 1;
 static P_obj placed;
 static std::vector<P_obj> placed_objects;
-static bool sql_row_read;
+static int sql_rows_read;
+static int sql_row_limit = 1;
+static const char *sql_keyword = SQL_ITEM_TRAP_STATE_KEYWORD;
 static char sql_trap[128];
 MYSQL *DB = reinterpret_cast<MYSQL *>(1);
 
@@ -56,7 +58,15 @@ void extract_obj(P_obj object, int)
 		free(object->short_description);
 	if (object->str_mask & STRUNG_DESC3)
 		free(object->action_description);
-	assert(!object->ex_description && !object->affects);
+	while (object->ex_description)
+	{
+		auto *entry = object->ex_description;
+		object->ex_description = entry->next;
+		free(entry->keyword);
+		free(entry->description);
+		free(entry);
+	}
+	assert(!object->affects);
 	delete object;
 }
 P_obj read_object(int, int)
@@ -129,28 +139,36 @@ void writeSavedItem(P_obj)
 }
 MYSQL_RES *db_query(const char *, ...)
 {
-	sql_row_read = false;
+	sql_rows_read = 0;
 	return reinterpret_cast<MYSQL_RES *>(1);
 }
 extern "C" MYSQL_ROW mysql_fetch_row(MYSQL_RES *)
 {
-	if (sql_row_read)
+	if (sql_rows_read >= sql_row_limit)
 		return nullptr;
-	sql_row_read = true;
+	++sql_rows_read;
 	static char *row[2];
-	row[0] = const_cast<char *>(SQL_ITEM_TRAP_STATE_KEYWORD);
+	row[0] = const_cast<char *>(sql_keyword);
 	row[1] = sql_trap;
 	return row;
+}
+extern "C" unsigned long *mysql_fetch_lengths(MYSQL_RES *)
+{
+	static unsigned long lengths[2];
+	lengths[0] = strlen(sql_keyword);
+	lengths[1] = strlen(sql_trap);
+	return lengths;
 }
 extern "C" void mysql_free_result(MYSQL_RES *) {}
 static bool sql_merge_duplicate_spellbook(extra_descr_data *, extra_descr_data *)
 {
 	std::abort();
 }
-static void sql_load_item_extra_descr_values(const char *, const char *, extra_descr_data *,
-					     const char *, int)
+static void sql_load_item_extra_descr_values(const char *keyword, const char *description,
+					     extra_descr_data *entry, const char *, int)
 {
-	std::abort();
+	entry->keyword = str_dup(keyword);
+	entry->description = str_dup(description);
 }
 
 // FILE_FUNCTIONS
@@ -246,6 +264,69 @@ static void counted_round_trip(const row &entry, int charge)
 	placed_objects.clear();
 }
 
+static void origin_round_trip()
+{
+	obj_data object = prototype;
+	extra_descr_data origin{ const_cast<char *>(SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD),
+				 const_cast<char *>("808"), nullptr };
+	object.ex_description = &origin;
+	object.str_mask |= STRUNG_EDESC;
+	std::array<char, SAV_MAXSIZE> bytes{};
+	assert(write_one_object(&object, bytes.data(), true) > 0);
+	P_obj restored = read_one_object(bytes.data());
+	assert(restored && restored->ex_description &&
+	       !strcmp(restored->ex_description->description, "808"));
+	extract_obj(restored, FALSE);
+	placed = nullptr;
+	placed_objects.clear();
+	assert(restoreObjects(bytes.data(), nullptr, 0));
+	assert(placed && placed->ex_description &&
+	       !strcmp(placed->ex_description->description, "808"));
+	extract_obj(placed, FALSE);
+	placed = nullptr;
+	placed_objects.clear();
+	char *json = account_reward_snapshot_serialize(&object);
+	assert(json);
+	restored = read_object(0, REAL);
+	assert(account_reward_snapshot_apply(restored, json, ACCOUNT_REWARD_TEMPLATE_VERSION));
+	assert(restored->ex_description && !strcmp(restored->ex_description->description, "808"));
+	extract_obj(restored, FALSE);
+	for (const char *bad : { "x08", "808\\u0000tail" })
+	{
+		std::string corrupt = json;
+		auto at = corrupt.find("808");
+		assert(at != std::string::npos);
+		corrupt.replace(at, 3, bad);
+		restored = read_object(0, REAL);
+		assert(!account_reward_snapshot_apply(restored, corrupt.c_str(),
+						      ACCOUNT_REWARD_TEMPLATE_VERSION));
+		extract_obj(restored, FALSE);
+	}
+	free(json);
+	auto position = std::search(bytes.begin(), bytes.end(), "808", "808" + 3);
+	assert(position != bytes.end());
+	*position = 'x';
+	assert(!read_one_object(bytes.data()));
+	assert(!restoreObjects(bytes.data(), nullptr, 0) && !placed);
+
+	sql_keyword = SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD;
+	strcpy(sql_trap, "808");
+	restored = read_object(0, REAL);
+	assert(sql_load_item_extra_descr_from_table(1, restored, "saved_item"));
+	assert(restored->ex_description && !strcmp(restored->ex_description->description, "808"));
+	extract_obj(restored, FALSE);
+	for (int duplicates : { 0, 1 })
+	{
+		strcpy(sql_trap, duplicates ? "808" : "x08");
+		sql_row_limit = duplicates ? 2 : 1;
+		restored = read_object(0, REAL);
+		assert(!sql_load_item_extra_descr_from_table(1, restored, "saved_item"));
+		extract_obj(restored, FALSE);
+	}
+	sql_row_limit = 1;
+	sql_keyword = SQL_ITEM_TRAP_STATE_KEYWORD;
+}
+
 int main()
 {
 	prototype.type = ITEM_CONTAINER;
@@ -322,4 +403,5 @@ int main()
 			round_trip(&object, fields(&object));
 		}
 	}
+	origin_round_trip();
 }

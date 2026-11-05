@@ -68,6 +68,10 @@ canonicalize_snapshot_extra_description(const player_item_extra_description_snap
 	    !description.spell_ids.empty())
 		return { false, EINVAL };
 
+	int origin = 0;
+	if (sql_decode_named_set_origin(description.keyword, description.description, &origin) ==
+	    sql_named_set_origin_decode_status::invalid)
+		return { false, EINVAL };
 	*keyword_out = description.keyword;
 	*description_out = description.description;
 	if (!description.spellbook)
@@ -605,6 +609,7 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 		if (!result.ok)
 			return result;
 		std::unordered_set<std::string> description_keys;
+		bool origin_seen = false;
 		for (const auto &description : row.extra_descriptions)
 		{
 			if (description.keyword.empty())
@@ -612,6 +617,12 @@ query_result insert_item_rows(MYSQL *connection, const std::vector<player_item_s
 				if (description.spellbook || !description.spell_ids.empty())
 					return { false, EINVAL };
 				continue;
+			}
+			if (description.keyword == SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD)
+			{
+				if (origin_seen)
+					return { false, EINVAL };
+				origin_seen = true;
 			}
 			std::string encoded_keyword;
 			std::string encoded_description;

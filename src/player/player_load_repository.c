@@ -395,6 +395,21 @@ template <typename Callback> bool load_rows(MYSQL *connection, const std::string
 			result->outcome = player_load_outcome::limit_exceeded;
 			return false;
 		}
+		if (item_metadata && row[5] && !strcmp(row[5], SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD))
+		{
+			const auto *lengths = mysql_fetch_lengths(rows);
+			int origin = 0;
+			if (sql_decode_named_set_origin(
+				    std::string_view(row[5], lengths[5]),
+				    row[6] ? std::string_view(row[6], lengths[6]) :
+					     std::string_view(),
+				    &origin) != sql_named_set_origin_decode_status::decoded)
+			{
+				result->outcome = player_load_outcome::limit_exceeded;
+				mysql_free_result(rows);
+				return false;
+			}
+		}
 		if (!callback(row))
 		{
 			mysql_free_result(rows);
@@ -774,15 +789,35 @@ bool append_loaded_extra_description(
 		result->outcome = player_load_outcome::limit_exceeded;
 		return false;
 	}
+	const bool named_origin = !strcmp(normalized_keyword, SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD);
+	if (named_origin)
+	{
+		int zone = 0;
+		if (sql_decode_named_set_origin(normalized_keyword, normalized_description,
+						&zone) !=
+			    sql_named_set_origin_decode_status::decoded ||
+		    std::any_of(descriptions.begin(), descriptions.end(), [](const auto &existing)
+				{ return existing.keyword == SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD; }))
+		{
+			result->outcome = player_load_outcome::limit_exceeded;
+			return false;
+		}
+	}
 	if (duplicate_description(descriptions, normalized_keyword, normalized_description))
 		return true;
-	// Internal trap state must not consume one of the item's description slots.
-	// Bound it separately so conflicting state rows cannot bypass the limit.
-	const bool trap_state = !strcmp(normalized_keyword, SQL_ITEM_TRAP_STATE_KEYWORD);
-	const size_t count = std::count_if(
-		descriptions.begin(), descriptions.end(), [trap_state](const auto &existing)
-		{ return (existing.keyword == SQL_ITEM_TRAP_STATE_KEYWORD) == trap_state; });
-	if (count >= (trap_state ? 1 : PLAYER_LOAD_ITEM_DESCRIPTION_MAX))
+	// Each internal marker has its own slot, outside the visible description limit.
+	const bool internal = named_origin ||
+			      !strcmp(normalized_keyword, SQL_ITEM_TRAP_STATE_KEYWORD);
+	const size_t count =
+		std::count_if(descriptions.begin(), descriptions.end(),
+			      [internal, normalized_keyword](const auto &existing)
+			      {
+				      if (internal)
+					      return existing.keyword == normalized_keyword;
+				      return existing.keyword != SQL_ITEM_TRAP_STATE_KEYWORD &&
+					     existing.keyword != SQL_ITEM_NAMED_SET_ORIGIN_KEYWORD;
+			      });
+	if (count >= (internal ? 1 : PLAYER_LOAD_ITEM_DESCRIPTION_MAX))
 	{
 		result->outcome = player_load_outcome::limit_exceeded;
 		return false;
