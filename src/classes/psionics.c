@@ -3702,6 +3702,7 @@ void event_psionic_wave_blast(P_char ch, P_char victim, P_obj /*obj*/, void *dat
 
 		if (affected_by_spell(victim, SPELL_PSIONIC_WAVE_BLAST))
 			affect_from_char(victim, SPELL_PSIONIC_WAVE_BLAST);
+		return;
 	}
 
 	if ((af->modifier)-- == 0)
@@ -4150,6 +4151,9 @@ void spell_radial_navigation(int /*level*/, P_char ch, char *arg, int /*type*/, 
 	{
 		return;
 	}
+
+	if (!victim)
+		victim = ch;
 
 	argument_interpreter(arg, arg1, arg2);
 
