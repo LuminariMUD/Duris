@@ -475,6 +475,57 @@ void show_ray_messages(const char *color_string, P_char ch, P_char victim)
 	act(buffer, FALSE, ch, 0, victim, TO_NOTVICT);
 }
 
+// Prismatic ray damage at cast level `level`: the shimmering ray, then the red, orange and
+// blue rays before the target's save.
+static int prismatic_ray_shimmering_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(level, 9);
+}
+
+static int prismatic_ray_red_damage(const Rolls &rolls, int level)
+{
+	return 400 + rolls.dice(level, 2);
+}
+
+static int prismatic_ray_orange_damage(const Rolls &rolls, int level)
+{
+	return 275 + rolls.dice(level, 2);
+}
+
+static int prismatic_ray_blue_damage(const Rolls &rolls, int level)
+{
+	return 150 + rolls.dice(level, 2);
+}
+
+// A saved red, orange or blue ray deals half damage.
+static int prismatic_ray_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// The red, orange and blue ray lines of a prismatic page at `level`.
+static std::string prismatic_ray_colored_facts(int level)
+{
+	const Range red = { prismatic_ray_red_damage(lowest_rolls, level),
+			    prismatic_ray_red_damage(highest_rolls, level) };
+	const Range orange = { prismatic_ray_orange_damage(lowest_rolls, level),
+			       prismatic_ray_orange_damage(highest_rolls, level) };
+	const Range blue = { prismatic_ray_blue_damage(lowest_rolls, level),
+			     prismatic_ray_blue_damage(highest_rolls, level) };
+	return fact("Red ray",
+		    show(red) + " fire damage, " +
+			    show({ prismatic_ray_saved(red.low), prismatic_ray_saved(red.high) }) +
+			    " if the target saves") +
+	       fact("Orange ray", show(orange) + " fire damage, " +
+					  show({ prismatic_ray_saved(orange.low),
+						 prismatic_ray_saved(orange.high) }) +
+					  " if the target saves") +
+	       fact("Blue ray", show(blue) + " cold damage, " +
+					show({ prismatic_ray_saved(blue.low),
+					       prismatic_ray_saved(blue.high) }) +
+					" if the target saves");
+}
+
 void spell_single_prismatic_ray(int level, P_char ch, char *arg, int /*type*/, P_char victim,
 				P_obj /*obj*/)
 {
@@ -501,30 +552,31 @@ void spell_single_prismatic_ray(int level, P_char ch, char *arg, int /*type*/, P
 	case 0:
 		prepare_ray_messages("&+rsh&+Ri&+Ym&n&+gm&+be&+Br&+Mi&n&+mng&+L", char_message,
 				     victim_message, room_message, sizeof char_message);
-		spell_damage(ch, victim, dice(level, 9), SPLDAM_GENERIC, 0, &messages);
+		spell_damage(ch, victim, prismatic_ray_shimmering_damage(live_rolls, level),
+			     SPLDAM_GENERIC, 0, &messages);
 		break;
 	case RAY_RED:
-		dam = 400 + dice(level, 2);
+		dam = prismatic_ray_red_damage(live_rolls, level);
 		prepare_ray_messages("&+rred&+w", char_message, victim_message, room_message,
 				     sizeof char_message);
 		if (NewSaves(victim, SAVING_SPELL, mod))
-			dam >>= 1;
+			dam = prismatic_ray_saved(dam);
 		spell_damage(ch, victim, dam, SPLDAM_FIRE, 0, &messages);
 		break;
 	case RAY_ORANGE:
-		dam = 275 + dice(level, 2);
+		dam = prismatic_ray_orange_damage(live_rolls, level);
 		prepare_ray_messages("&+Rorange&n", char_message, victim_message, room_message,
 				     sizeof char_message);
 		if (NewSaves(victim, SAVING_SPELL, mod))
-			dam >>= 1;
+			dam = prismatic_ray_saved(dam);
 		spell_damage(ch, victim, dam, SPLDAM_FIRE, 0, &messages);
 		break;
 	case RAY_BLUE:
-		dam = 150 + dice(level, 2);
+		dam = prismatic_ray_blue_damage(live_rolls, level);
 		prepare_ray_messages("&+Bblue&n", char_message, victim_message, room_message,
 				     sizeof char_message);
 		if (NewSaves(victim, SAVING_SPELL, mod))
-			dam >>= 1;
+			dam = prismatic_ray_saved(dam);
 		spell_damage(ch, victim, dam, SPLDAM_COLD, 0, &messages);
 		break;
 	case RAY_YELLOW:
@@ -553,6 +605,28 @@ void spell_single_prismatic_ray(int level, P_char ch, char *arg, int /*type*/, P
 	}
 }
 
+// Prismatic ray follows its shimmering ray with this many rays of different colors.
+static int prismatic_ray_extra_rays()
+{
+	return 2;
+}
+
+std::string prismatic_ray_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Shimmering ray",
+		    show({ prismatic_ray_shimmering_damage(lowest_rolls, level),
+			   prismatic_ray_shimmering_damage(highest_rolls, level) }) +
+			    " damage at your level, " + std::to_string(level)) +
+	       fact("Then", std::to_string(prismatic_ray_extra_rays()) +
+				    " more rays, each a different one of eight random colors") +
+	       prismatic_ray_colored_facts(level) +
+	       "  Yellow and indigo rays paralyze, green poisons, violet dispels magic\n"
+	       "  and azure blinds.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_prismatic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			 P_obj /*obj*/)
 {
@@ -566,7 +640,7 @@ void spell_prismatic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 
 	spell_single_prismatic_ray(level, ch, 0, 0, victim, 0);
 
-	for (rays = 2, ray_flag = 0; rays;)
+	for (rays = prismatic_ray_extra_rays(), ray_flag = 0; rays;)
 	{
 		if (!is_char_in_room(victim, room) || !is_char_in_room(ch, room))
 			break;
@@ -580,6 +654,21 @@ void spell_prismatic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 		if (GET_STAT(victim) == STAT_DEAD)
 			break;
 	}
+}
+
+std::string color_spray_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range orange = { prismatic_ray_orange_damage(lowest_rolls, level),
+			       prismatic_ray_orange_damage(highest_rolls, level) };
+	return fact("Each target", "one random ray: yellow, orange, violet or green") +
+	       fact("Orange ray",
+		    show(orange) + " fire damage at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show({ prismatic_ray_saved(orange.low), prismatic_ray_saved(orange.high) })) +
+	       "  Yellow paralyzes, violet dispels magic and green poisons.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_color_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
@@ -603,6 +692,26 @@ void spell_color_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 	}
 }
 
+// Prismatic spray strikes each target with this many random rays.
+static int prismatic_spray_rays(const Rolls &rolls)
+{
+	return rolls.number(1, 2);
+}
+
+std::string prismatic_spray_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Each target", show({ prismatic_spray_rays(lowest_rolls),
+					  prismatic_spray_rays(highest_rolls) }) +
+					   " random rays of eight colors, at your level, " +
+					   std::to_string(level)) +
+	       prismatic_ray_colored_facts(level) +
+	       "  Yellow and indigo rays paralyze, green poisons, violet dispels magic\n"
+	       "  and azure blinds.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			   P_obj /*obj*/)
 {
@@ -622,7 +731,7 @@ void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P
 		next = tch->next_in_room;
 		if (should_area_hit(ch, tch))
 		{
-			for (rays = number(1, 2); rays; rays--)
+			for (rays = prismatic_spray_rays(live_rolls); rays; rays--)
 			{
 				ray_type = 1 << number(0, RAY_COUNT - 1);
 				spell_single_prismatic_ray(level, ch, (char *)&ray_type, 0, tch, 0);
@@ -647,10 +756,54 @@ void spell_prismatic_spray(int level, P_char ch, char * /*arg*/, int /*type*/, P
 #undef RAY_AZURE
 #undef RAY_VIOLET
 
+// Anti-magic ray damage at cast level `level`, before the target's save.
+static int anti_magic_ray_damage(const Rolls &rolls, int level)
+{
+	int temp = MIN(46, (level + 1));
+	return rolls.dice(5 * temp, 10);
+}
+
+// A saved anti-magic ray deals half damage.
+static int anti_magic_ray_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// The ray cannot be shrugged when number(0, 99) is at most this.
+static int anti_magic_ray_noshrug_chance()
+{
+	return get_property("spell.shrug.chance.anti_magic_ray", 60);
+}
+
+// How much worse the target's spell save is against the ray's dispel magic.
+static int anti_magic_ray_save_penalty(P_char ch)
+{
+	return 10 + (GET_LEVEL(ch) - 56);
+}
+
+std::string anti_magic_ray_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { anti_magic_ray_damage(lowest_rolls, level),
+			    anti_magic_ray_damage(highest_rolls, level) };
+	const int penalty = anti_magic_ray_save_penalty(ch);
+	return fact("Damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show({ anti_magic_ray_saved(hit.low), anti_magic_ray_saved(hit.high) })) +
+	       fact("Cannot be shrugged",
+		    std::to_string(BOUNDED(0, anti_magic_ray_noshrug_chance() + 1, 100)) +
+			    "% of the time") +
+	       fact("If the target survives", "dispel magic, its spell save " +
+						      std::to_string(abs(penalty)) +
+						      (penalty < 0 ? " better" : " worse")) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_anti_magic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			  P_obj obj)
 {
-	int dam, temp, save, noshrug;
+	int dam, save, noshrug;
 	struct damage_messages messages = {
 		"&+BReality &nseems to twist and bend as your &+Yray&n collides with $N's body!",
 		"$n laughs maniacally as their &+Ldevastating &+Yray&n of pure &+Benergy &ncollides with your body!",
@@ -664,14 +817,13 @@ void spell_anti_magic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 	if (!IS_ALIVE(ch))
 		return;
 
-	temp = MIN(46, (level + 1));
-	dam = dice(5 * temp, 10);
+	dam = anti_magic_ray_damage(live_rolls, level);
 
 	if (saves_spell(victim, SAVING_SPELL))
-		dam >>= 1;
+		dam = anti_magic_ray_saved(dam);
 
 	// This spell has a chance to be !shrug.
-	if (number(0, 99) <= get_property("spell.shrug.chance.anti_magic_ray", 60))
+	if (number(0, 99) <= anti_magic_ray_noshrug_chance())
 		noshrug = SPLDAM_NOSHRUG;
 	else
 		noshrug = 0;
@@ -679,12 +831,36 @@ void spell_anti_magic_ray(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 	if (spell_damage(ch, victim, dam, SPLDAM_GENERIC, noshrug, &messages) == DAM_NONEDEAD)
 	{
 		save = victim->specials.apply_saving_throw[SAVING_SPELL];
+		// 10-15 (roughly 50-75% increased chance to fail)
 		victim->specials.apply_saving_throw[SAVING_SPELL] +=
-			10 +
-			(GET_LEVEL(ch) - 56); // 10-15 (roughly 50-75% increased chance to fail)
+			anti_magic_ray_save_penalty(ch);
 		spell_dispel_magic(level, ch, 0, SPELL_TYPE_SPELL, victim, obj);
 		victim->specials.apply_saving_throw[SAVING_SPELL] = save;
 	}
+}
+
+// Magic missiles fired at cast level `level`.
+static int magic_missile_count(int level)
+{
+	return BOUNDED(1, (level / 3), 5);
+}
+
+// Damage of each magic missile; one roll serves every missile of a cast.
+static int magic_missile_damage(const Rolls &rolls, int level)
+{
+	return (rolls.dice(1, 4) * 4 + rolls.number(1, level));
+}
+
+std::string magic_missile_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Missiles", std::to_string(magic_missile_count(level)) + " at your level, " +
+					std::to_string(level)) +
+	       fact("Damage per missile", show({ magic_missile_damage(lowest_rolls, level),
+						 magic_missile_damage(highest_rolls, level) }) +
+						  ", the same for every missile") +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_magic_missile(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -700,12 +876,69 @@ void spell_magic_missile(int level, P_char ch, char * /*arg*/, int /*type*/, P_c
 	};
 	int dam;
 
-	int num_missiles = BOUNDED(1, (level / 3), 5);
-	dam = (dice(1, 4) * 4 + number(1, level));
+	int num_missiles = magic_missile_count(level);
+	dam = magic_missile_damage(live_rolls, level);
 
 	while (num_missiles-- && spell_damage(ch, victim, dam, SPLDAM_GENERIC, SPLDAM_ALLGLOBES,
 					      &messages) == DAM_NONEDEAD)
 		;
+}
+
+// Chill touch damage at cast level `level`, before the target's save.
+static int chill_touch_damage(const Rolls &rolls, int level)
+{
+	return (rolls.dice(1, 6) + 5 * 4 + level);
+}
+
+// A failed save doubles chill touch damage.
+static int chill_touch_failed_save(int dam)
+{
+	return dam << 1;
+}
+
+// The most of each stat a failed save's chill takes, from the damage dealt.
+static int chill_touch_stat_cap(int dam)
+{
+	return dam / 4;
+}
+
+// The stat loss of a chill capped at `dam`.
+static int chill_touch_stat_loss(const Rolls &rolls, int dam)
+{
+	return -(rolls.number(1, dam));
+}
+
+// The chill lasts this many ticks.
+static int chill_touch_duration()
+{
+	return 1;
+}
+
+// A specialized necromancer's chill also takes agility and dexterity.
+static bool chill_touch_drains_all(P_char ch)
+{
+	return GET_CLASS(ch, CLASS_NECROMANCER) && IS_SPECIALIZED(ch);
+}
+
+std::string chill_touch_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { chill_touch_damage(lowest_rolls, level),
+			    chill_touch_damage(highest_rolls, level) };
+	const Range failed = { chill_touch_failed_save(hit.low),
+			       chill_touch_failed_save(hit.high) };
+	const int loss = -chill_touch_stat_loss(highest_rolls, chill_touch_stat_cap(failed.high));
+	return fact("Cold damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save", show(failed)) +
+	       fact("If it then survives",
+		    "it loses up to " + std::to_string(loss) +
+			    (chill_touch_drains_all(ch) ? " strength, agility and dexterity" :
+							  " strength")) +
+	       "  Not if it is already chilled, elite, a greater race, or has a cold\n"
+	       "  shield or ice aura.\n" +
+	       fact("Weakness lasts", game_hours(chill_touch_duration())) +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_chill_touch(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -726,14 +959,14 @@ void spell_chill_touch(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		return;
 	}
 
-	int dam = (dice(1, 6) + 5 * 4 + level);
+	int dam = chill_touch_damage(live_rolls, level);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_CHILL_TOUCH);
 
 	bool failed_save = !NewSaves(victim, SAVING_SPELL, mod);
 
 	if (failed_save)
-		dam <<= 1;
+		dam = chill_touch_failed_save(dam);
 
 	// wizlog(56,"chill touch damage = %d", dam);
 	if (spell_damage(ch, victim, dam, SPLDAM_COLD, SPLDAM_ALLGLOBES, &messages) == DAM_NONEDEAD)
@@ -750,29 +983,64 @@ void spell_chill_touch(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 			act("&+B$N &+Bsags, apparently weakened from the frigid cold!&n", FALSE, ch,
 			    0, victim, TO_NOTVICT);
 
-			dam /= 4;
+			dam = chill_touch_stat_cap(dam);
 			//  wizlog(56,"chill touch stat damage = %d", dam);
 			struct affected_type af;
 			memset(&af, 0, sizeof(af));
 			af.type = SPELL_CHILL_TOUCH;
-			af.duration = 1;
+			af.duration = chill_touch_duration();
 
 			af.location = APPLY_STR;
-			af.modifier = -(number(1, dam));
+			af.modifier = chill_touch_stat_loss(live_rolls, dam);
 			affect_to_char(victim, &af);
 
-			if (GET_CLASS(ch, CLASS_NECROMANCER) && IS_SPECIALIZED(ch))
+			if (chill_touch_drains_all(ch))
 			{
 				af.location = APPLY_AGI;
-				af.modifier = -(number(1, dam));
+				af.modifier = chill_touch_stat_loss(live_rolls, dam);
 				affect_to_char(victim, &af);
 
 				af.location = APPLY_DEX;
-				af.modifier = -(number(1, dam));
+				af.modifier = chill_touch_stat_loss(live_rolls, dam);
 				affect_to_char(victim, &af);
 			}
 		}
 	}
+}
+
+// Frostbite damage at cast level `level`.
+static int frostbite_damage(const Rolls &rolls, int level)
+{
+	return (int)(MIN(40, level) * 5) + rolls.number(1, 20);
+}
+
+// The strength a failed save's frostbite takes.
+static int frostbite_strength(const Rolls &rolls)
+{
+	return -rolls.number(10, 15);
+}
+
+// The frostbite weakness lasts this many ticks.
+static int frostbite_duration()
+{
+	return 1;
+}
+
+std::string frostbite_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Cold damage", show({ frostbite_damage(lowest_rolls, level),
+					  frostbite_damage(highest_rolls, level) }) +
+					   " at your level, " + std::to_string(level)) +
+	       fact("If it survives and fails its save",
+		    "it loses " +
+			    show({ -frostbite_strength(lowest_rolls),
+				   -frostbite_strength(highest_rolls) }) +
+			    " strength") +
+	       "  Not if it is already frostbitten.\n" +
+	       fact("Weakness lasts", game_hours(frostbite_duration())) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_frostbite(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -788,7 +1056,7 @@ void spell_frostbite(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 		0
 	};
 
-	int dam = (int)(MIN(40, level) * 5) + number(1, 20);
+	int dam = frostbite_damage(live_rolls, level);
 
 	if (spell_damage(ch, victim, dam, SPLDAM_COLD, 0, &messages) != DAM_VICTDEAD)
 	{
@@ -806,13 +1074,30 @@ void spell_frostbite(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 			struct affected_type af;
 			memset(&af, 0, sizeof(af));
 			af.type = SPELL_FROSTBITE;
-			af.duration = 1;
+			af.duration = frostbite_duration();
 
-			af.modifier = -number(10, 15);
+			af.modifier = frostbite_strength(live_rolls);
 			af.location = APPLY_STR;
 			affect_to_char(victim, &af);
 		}
 	}
+}
+
+// Burning hands damage at cast level `level`.
+static int burning_hands_damage(const Rolls &rolls, int level)
+{
+	int num_dice = (level / 10);
+	return (rolls.dice((num_dice + 5), 6) * 4);
+}
+
+std::string burning_hands_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Fire damage", show({ burning_hands_damage(lowest_rolls, level),
+					  burning_hands_damage(highest_rolls, level) }) +
+					   " at your level, " + std::to_string(level)) +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_burning_hands(int level, P_char ch, char * /*arg*/, int type, P_char victim,
@@ -826,14 +1111,39 @@ void spell_burning_hands(int level, P_char ch, char * /*arg*/, int type, P_char 
 					    "$n has burned $N to death.",
 					    0 };
 
-	int num_dice = (level / 10);
-	int dam = (dice((num_dice + 5), 6) * 4);
+	int dam = burning_hands_damage(live_rolls, level);
 
 	// dragoon dragon priest bonus
 	if (type > 1)
 		dam += dam * 0.05;
 
 	spell_damage(ch, victim, dam, SPLDAM_FIRE, SPLDAM_ALLGLOBES, &messages);
+}
+
+// Shocking grasp damage at cast level `level`, before the target's save.
+static int shocking_grasp_damage(const Rolls &rolls, int level)
+{
+	int num_dice = (level / 6);
+	return (rolls.dice(num_dice + 5, 6) * 4);
+}
+
+// A failed save doubles shocking grasp damage.
+static int shocking_grasp_failed_save(int dam)
+{
+	return (int)(dam * 2);
+}
+
+std::string shocking_grasp_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { shocking_grasp_damage(lowest_rolls, level),
+			    shocking_grasp_damage(highest_rolls, level) };
+	return fact("Lightning damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save",
+		    show({ shocking_grasp_failed_save(hit.low),
+			   shocking_grasp_failed_save(hit.high) })) +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_shocking_grasp(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -849,13 +1159,38 @@ void spell_shocking_grasp(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		0
 	};
 
-	int num_dice = (level / 6);
-	int dam = (dice(num_dice + 5, 6) * 4);
+	int dam = shocking_grasp_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_SHOCKING_GRASP);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (int)(dam * 2);
+		dam = shocking_grasp_failed_save(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, SPLDAM_ALLGLOBES, &messages);
+}
+
+// Lightning bolt damage at cast level `level`, before the target's save.
+static int lightning_bolt_damage(const Rolls &rolls, int level)
+{
+	int num_dice = (level / 5);
+	return (rolls.dice(num_dice + 5, 6) * 4);
+}
+
+// A failed save adds a third to lightning bolt damage.
+static int lightning_bolt_failed_save(int dam)
+{
+	return (int)(dam * 1.33);
+}
+
+std::string lightning_bolt_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { lightning_bolt_damage(lowest_rolls, level),
+			    lightning_bolt_damage(highest_rolls, level) };
+	return fact("Lightning damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save",
+		    show({ lightning_bolt_failed_save(hit.low),
+			   lightning_bolt_failed_save(hit.high) })) +
+	       fact("Stopped by", "globe of invulnerability or greater spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_lightning_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -871,13 +1206,56 @@ void spell_lightning_bolt(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		0
 	};
 
-	int num_dice = (level / 5);
-	int dam = (dice(num_dice + 5, 6) * 4);
+	int dam = lightning_bolt_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_LIGHTNING_BOLT);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (int)(dam * 1.33);
+		dam = lightning_bolt_failed_save(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, SPLDAM_GLOBE | SPLDAM_GRSPIRIT, &messages);
+}
+
+// Cone of cold damage at cast level `level`.
+static int cone_of_cold_damage(const Rolls &rolls, int level)
+{
+	int num_dice = (level / 4);
+	return (rolls.dice(num_dice + 5, 6) * 4);
+}
+
+// The cold's weakness in pulses at cast level `level`, and the pulses a wet target adds.
+static int cone_of_cold_duration(int level)
+{
+	return (int)(WAIT_SEC * 1.5 * level / 50);
+}
+
+static int cone_of_cold_wet_duration()
+{
+	return 2;
+}
+
+// The strength the cold takes; a wet target loses it twice.
+static int cone_of_cold_strength(const Rolls &rolls)
+{
+	return -rolls.number(5, 10);
+}
+
+std::string cone_of_cold_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range loss = { -cone_of_cold_strength(lowest_rolls),
+			     -cone_of_cold_strength(highest_rolls) };
+	return fact("Cold damage", show({ cone_of_cold_damage(lowest_rolls, level),
+					  cone_of_cold_damage(highest_rolls, level) }) +
+					   " at your level, " + std::to_string(level)) +
+	       fact("If it survives and fails a save",
+		    "it loses " + show(loss) + " strength for " +
+			    seconds(cone_of_cold_duration(level))) +
+	       fact("If it is wet",
+		    "it loses " + show({ loss.low * 2, loss.high * 2 }) +
+			    " strength and is slowed for " +
+			    seconds(cone_of_cold_duration(level) + cone_of_cold_wet_duration())) +
+	       "  Not if it is already weakened by cone of cold.\n" +
+	       fact("Stopped by", "globe of invulnerability or greater spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_cone_of_cold(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -893,8 +1271,7 @@ void spell_cone_of_cold(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		0
 	};
 
-	int num_dice = (level / 4);
-	int dam = (dice(num_dice + 5, 6) * 4);
+	int dam = cone_of_cold_damage(live_rolls, level);
 
 	if (spell_damage(ch, victim, dam, SPLDAM_COLD, SPLDAM_GLOBE | SPLDAM_GRSPIRIT, &messages) ==
 	    DAM_NONEDEAD)
@@ -903,8 +1280,8 @@ void spell_cone_of_cold(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		if (!affected_by_spell(victim, SPELL_CONE_OF_COLD) &&
 		    !NewSaves(victim, SAVING_SPELL, is_wet ? 5 : 0))
 		{
-			int duration = (int)(WAIT_SEC * 1.5 * level / 50);
-			int modifier = -number(5, 10);
+			int duration = cone_of_cold_duration(level);
+			int modifier = cone_of_cold_strength(live_rolls);
 
 			struct affected_type af;
 			memset(&af, 0, sizeof(af));
@@ -917,8 +1294,8 @@ void spell_cone_of_cold(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 				    FALSE, ch, 0, victim, TO_VICT);
 				act("&+B$N &+Bsags, apparently weakened and slowed from the frigid cold!&n",
 				    FALSE, ch, 0, victim, TO_NOTVICT);
-				duration += 2;
-				modifier -= number(5, 10);
+				duration += cone_of_cold_wet_duration();
+				modifier += cone_of_cold_strength(live_rolls);
 				af.bitvector2 = AFF2_SLOW;
 			}
 			else
@@ -942,6 +1319,21 @@ void spell_cone_of_cold(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	}
 }
 
+// Invoke negative energy damage; it uses the caster's own level.
+static int invoke_negative_energy_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(5, 10) + GET_LEVEL(ch);
+}
+
+std::string invoke_negative_energy_facts(P_char ch)
+{
+	return fact("Negative damage", show({ invoke_negative_energy_damage(lowest_rolls, ch),
+					      invoke_negative_energy_damage(highest_rolls, ch) }) +
+					       " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Stopped by", "globe of invulnerability") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_invoke_negative_energy(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 				  P_char victim, P_obj /*obj*/)
 {
@@ -955,8 +1347,77 @@ void spell_invoke_negative_energy(int /*level*/, P_char ch, char * /*arg*/, int 
 		"&+L$N&+L howls in pain as $n's&+L unmakes $m!"
 	};
 
-	dam = dice(5, 10) + GET_LEVEL(ch);
+	dam = invoke_negative_energy_damage(live_rolls, ch);
 	spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, SPLDAM_GLOBE, &messages);
+}
+
+// spell_damage() deals no damage and vamp() heals nothing for an amount below 1, so a
+// range that starts there shows what lands. Every range shown this way reaches 1 at any
+// level.
+static std::string show_landing(Range range)
+{
+	if (range.low >= 1)
+		return show(range);
+	return show({ 0, range.high }) + " (none below 1 lands)";
+}
+
+// Restore spirit damage at cast level `level`, before training, save and level bonus.
+static int restore_spirit_damage(const Rolls &rolls, int level)
+{
+	return (int)((level * 2.5) + rolls.number(-10, 10));
+}
+
+// A player who is not a theurgist or paladin casts it at reduced damage.
+static bool restore_spirit_untrained(P_char ch)
+{
+	return IS_PC(ch) && !(GET_CLASS(ch, CLASS_THEURGIST | CLASS_PALADIN));
+}
+
+static int restore_spirit_untrained_damage(int dam)
+{
+	return (int)(dam * 0.80);
+}
+
+// A saved restore spirit deals half damage.
+static int restore_spirit_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// A caster of level 50 or more doubles the damage.
+static int restore_spirit_level_bonus(P_char ch, int dam)
+{
+	if (GET_LEVEL(ch) >= 50)
+		dam <<= 1;
+	return dam;
+}
+
+// The caster heals by this much of the damage, before vamp limits.
+static int restore_spirit_vamp(int dam)
+{
+	return (int)(dam / 4);
+}
+
+std::string restore_spirit_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	Range base = { restore_spirit_damage(lowest_rolls, level),
+		       restore_spirit_damage(highest_rolls, level) };
+	if (restore_spirit_untrained(ch))
+		base = { restore_spirit_untrained_damage(base.low),
+			 restore_spirit_untrained_damage(base.high) };
+	const Range hit = { restore_spirit_level_bonus(ch, base.low),
+			    restore_spirit_level_bonus(ch, base.high) };
+	return fact("Holy damage", show_landing(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show_landing(
+			    { restore_spirit_level_bonus(ch, restore_spirit_saved(base.low)),
+			      restore_spirit_level_bonus(ch, restore_spirit_saved(base.high)) })) +
+	       fact("You heal up to",
+		    show_landing({ restore_spirit_vamp(hit.low), restore_spirit_vamp(hit.high) }) +
+			    " on an unsaved hit") +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -991,22 +1452,19 @@ void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 		return;
 	}
 
-	dam = (int)((level * 2.5) + number(-10, 10));
+	dam = restore_spirit_damage(live_rolls, level);
 
-	if (IS_PC(ch) && !(GET_CLASS(ch, CLASS_THEURGIST | CLASS_PALADIN)))
+	if (restore_spirit_untrained(ch))
 	{
 		send_to_char(
 			"&+rLacking the proper training in divinity, you do not utilize the full potential of the spell!\r\n",
 			ch);
-		dam = (int)(dam * 0.80);
+		dam = restore_spirit_untrained_damage(dam);
 	}
 
 	if (IS_AFFECTED4(victim, AFF4_DEFLECT))
 	{
-		if (GET_LEVEL(ch) >= 50)
-		{
-			dam <<= 1;
-		}
+		dam = restore_spirit_level_bonus(ch, dam);
 
 		spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, &messages);
 		return;
@@ -1015,15 +1473,12 @@ void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 	if (saves_spell(victim, SAVING_SPELL))
 	{
 		saved = TRUE;
-		dam >>= 1;
+		dam = restore_spirit_saved(dam);
 	}
 
-	if (GET_LEVEL(ch) >= 50)
-	{
-		dam <<= 1;
-	}
+	dam = restore_spirit_level_bonus(ch, dam);
 
-	vamp(ch, (int)(dam / 4), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
+	vamp(ch, restore_spirit_vamp(dam), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
 
 	if (GET_VITALITY(victim) >= 10 && !IS_AFFECTED2(victim, AFF2_SOULSHIELD))
 	{
@@ -1077,6 +1532,83 @@ void spell_restore_spirit(int level, P_char ch, char * /*arg*/, [[maybe_unused]]
 	}
 }
 
+// Enervation damage at cast level `level`, before training, save and level bonus.
+static int enervation_damage(const Rolls &rolls, int level)
+{
+	return (int)((level * 2.75) + rolls.number(-10, 10));
+}
+
+// A player who is not a necromancer or anti-paladin casts it at reduced damage.
+static bool enervation_untrained(P_char ch)
+{
+	return IS_PC(ch) && !(GET_CLASS(ch, CLASS_NECROMANCER | CLASS_ANTIPALADIN));
+}
+
+static int enervation_untrained_damage(int dam)
+{
+	return (int)(dam * 0.80);
+}
+
+// A saved enervation deals half damage.
+static int enervation_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// A caster of level 50 or more doubles the damage.
+static int enervation_level_bonus(P_char ch, int dam)
+{
+	if (GET_LEVEL(ch) >= 50)
+		dam <<= 1;
+	return dam;
+}
+
+// The caster heals by this much of the damage, before vamp limits.
+static int enervation_vamp(int dam)
+{
+	return (int)(dam / 4);
+}
+
+// The lingering movement drain, in pulses and movement points.
+static int enervation_duration(const Rolls &rolls, P_char ch, bool saved)
+{
+	return rolls.number(GET_LEVEL(ch) / 4, saved ? (GET_LEVEL(ch) / 2) : GET_LEVEL(ch)) *
+	       PULSE_VIOLENCE;
+}
+
+static int enervation_movement(bool saved)
+{
+	return saved ? -7 : -15;
+}
+
+std::string enervation_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	Range base = { enervation_damage(lowest_rolls, level),
+		       enervation_damage(highest_rolls, level) };
+	if (enervation_untrained(ch))
+		base = { enervation_untrained_damage(base.low),
+			 enervation_untrained_damage(base.high) };
+	const Range hit = { enervation_level_bonus(ch, base.low),
+			    enervation_level_bonus(ch, base.high) };
+	return fact("Negative damage",
+		    show_landing(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show_landing({ enervation_level_bonus(ch, enervation_saved(base.low)),
+				   enervation_level_bonus(ch, enervation_saved(base.high)) })) +
+	       fact("You heal up to",
+		    show_landing({ enervation_vamp(hit.low), enervation_vamp(hit.high) }) +
+			    " on an unsaved hit") +
+	       fact("If it fails its save and survives",
+		    "its maximum movement drops by " +
+			    std::to_string(-enervation_movement(false))) +
+	       fact("Drain lasts", seconds(enervation_duration(lowest_rolls, ch, false)) + " to " +
+					   seconds(enervation_duration(highest_rolls, ch, false))) +
+	       "  Not on the undead; a negative energy shield blocks the drain.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_enervation(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char victim, P_obj /*tar_obj*/)
 {
@@ -1110,19 +1642,16 @@ void spell_enervation(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		return;
 	}
 
-	dam = (int)((level * 2.75) + number(-10, 10));
+	dam = enervation_damage(live_rolls, level);
 
-	if (IS_PC(ch) && !(GET_CLASS(ch, CLASS_NECROMANCER | CLASS_ANTIPALADIN)))
+	if (enervation_untrained(ch))
 	{
-		dam = (int)(dam * 0.80);
+		dam = enervation_untrained_damage(dam);
 	}
 
 	if (IS_AFFECTED4(victim, AFF4_DEFLECT))
 	{
-		if (GET_LEVEL(ch) >= 50)
-		{
-			dam <<= 1;
-		}
+		dam = enervation_level_bonus(ch, dam);
 		spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, 0, &messages);
 		return;
 	}
@@ -1132,15 +1661,12 @@ void spell_enervation(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
 		saved = TRUE;
-		dam >>= 1;
+		dam = enervation_saved(dam);
 	}
 
-	if (GET_LEVEL(ch) >= 50)
-	{
-		dam <<= 1;
-	}
+	dam = enervation_level_bonus(ch, dam);
 
-	vamp(ch, (int)(dam / 4), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
+	vamp(ch, enervation_vamp(dam), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
 
 	if (GET_VITALITY(victim) >= 10 && !IS_AFFECTED4(victim, AFF4_NEG_SHIELD))
 	{
@@ -1169,13 +1695,11 @@ void spell_enervation(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		memset(&af, 0, sizeof(af));
 		af.type = SPELL_ENERVATION;
 
-		af.duration =
-			number(GET_LEVEL(ch) / 4, saved ? (GET_LEVEL(ch) / 2) : GET_LEVEL(ch)) *
-			PULSE_VIOLENCE;
+		af.duration = enervation_duration(live_rolls, ch, saved);
 		af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
 
 		af.location = APPLY_MOVE;
-		af.modifier = saved ? -7 : -15;
+		af.modifier = enervation_movement(saved);
 		// Do not put them below 1 max movement point: the prompt does not like that.
 		if (af.modifier < -GET_MAX_VITALITY(victim) + 1)
 			af.modifier = -GET_MAX_VITALITY(victim) + 1;
@@ -1196,6 +1720,49 @@ void spell_enervation(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 			victim, &af, "&+LYour life energy was drained, leaving you a bit shaken.",
 			"&+LYou manage to shake off the negative effects of the enervation spell.");
 	}
+}
+
+// Life leech damage at cast level `level`, before the target's save.
+static int life_leech_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(1.5 * level, 5);
+}
+
+// A saved life leech deals 80% damage.
+static int life_leech_saved(int dam)
+{
+	return (int)(dam * 0.80);
+}
+
+// Life leech kills a target of this level or lower outright.
+static int life_leech_kill_level(int level)
+{
+	return (level / 10);
+}
+
+// The caster heals by this much of the damage, before vamp limits.
+static int life_leech_vamp(P_char ch, int dam)
+{
+	return (IS_PC(ch) || IS_PC_PET(ch)) ? (int)(dam / 5) : (int)(dam / 2);
+}
+
+std::string life_leech_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { life_leech_damage(lowest_rolls, level),
+			    life_leech_damage(highest_rolls, level) };
+	return fact("Negative damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show({ life_leech_saved(hit.low), life_leech_saved(hit.high) })) +
+	       fact("You heal up to",
+		    show({ life_leech_vamp(ch, hit.low), life_leech_vamp(ch, hit.high) }) +
+			    " on an unsaved hit") +
+	       "  You do not heal from the undead or a negative energy shield.\n" +
+	       fact("Kills outright", "a target of level " +
+					      std::to_string(life_leech_kill_level(level)) +
+					      " or lower") +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_life_leech(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -1220,7 +1787,7 @@ void spell_life_leech(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	if (resists_spell(ch, victim))
 		return;
 
-	dam = dice(1.5 * level, 5);
+	dam = life_leech_damage(live_rolls, level);
 
 	if (IS_AFFECTED4(victim, AFF4_DEFLECT))
 	{
@@ -1232,10 +1799,10 @@ void spell_life_leech(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_LIFE_LEECH);
 	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
-		dam = (int)(dam * 0.80);
+		dam = life_leech_saved(dam);
 	}
 
-	if (GET_LEVEL(victim) <= (level / 10))
+	if (GET_LEVEL(victim) <= life_leech_kill_level(level))
 	{
 		/*
 		 * Kill the sucker
@@ -1250,12 +1817,7 @@ void spell_life_leech(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	{
 		if (!IS_AFFECTED4(victim, AFF4_NEG_SHIELD) && !IS_UNDEADRACE(victim))
 		{
-			if (IS_PC(ch) || IS_PC_PET(ch))
-			{
-				vamp(ch, (int)(dam / 5), (int)(GET_MAX_HIT(ch) * 1.00));
-			}
-			else
-				vamp(ch, (int)(dam / 2), (int)(GET_MAX_HIT(ch) * 1.00));
+			vamp(ch, life_leech_vamp(ch, dam), (int)(GET_MAX_HIT(ch) * 1.00));
 		}
 
 		StartRegen(ch, regen_resource::vitality);
@@ -1268,6 +1830,108 @@ void spell_life_leech(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 
 	if (!IS_ALIVE(victim) || !IS_ALIVE(ch))
 		return;
+}
+
+// Reapers and thaumaturges drain at a raised level.
+static int energy_drain_level(P_char ch, int level)
+{
+	// 20% increase in level (lowered from 25%, but added to actual hps damage).
+	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER) ||
+	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_THAUMATURGE))
+	{
+		level = (int)(level * get_property("damage.increase.reaper", 1.200));
+	}
+	return level;
+}
+
+// Energy drain damage at its drain level `level`, before the target's save.
+static int energy_drain_damage(const Rolls &rolls, int level)
+{
+	// dam = dice(3 * level, 5);
+	// At level 56: 168 to 840 -> 336 + (56 to 280) = 392 to 616
+	// Avg stays 504 == 126 real damage
+	// But new range is 224 == 56 real as opposed to 672 == 168 real (+/- 28 vs 84).
+	return (6 * level) + rolls.dice(level, 5);
+}
+
+// A saved energy drain deals 80% damage.
+static int energy_drain_saved(int dam)
+{
+	return (int)(dam * 0.80);
+}
+
+// Energy drain kills a target of this level or lower outright.
+static int energy_drain_kill_level(int level)
+{
+	return (level / 10);
+}
+
+// The caster heals by this much of the damage, before vamp limits.
+static int energy_drain_vamp(P_char ch, int dam)
+{
+	return (IS_PC(ch) || IS_PC_PET(ch)) ? (int)(dam / 5) : (int)(dam / 2);
+}
+
+// A reaper also drains movement.
+static bool energy_drain_taps(P_char ch)
+{
+	return GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER);
+}
+
+// The movement a reaper drains.
+static int energy_drain_moves(const Rolls &rolls)
+{
+	return rolls.number(5, 30); // old value (5, level)
+}
+
+// The lingering regeneration loss, in pulses and points.
+static int energy_drain_duration(int level)
+{
+	return (level / 10) * WAIT_SEC;
+}
+
+static int energy_drain_regen(int level)
+{
+	return -(level / 20);
+}
+
+// On a target already drained, saved or not, the loss lasts this many pulses longer.
+static int energy_drain_extension()
+{
+	return 1;
+}
+
+std::string energy_drain_facts(P_char ch)
+{
+	const int level = energy_drain_level(ch, GET_LEVEL(ch));
+	const Range hit = { energy_drain_damage(lowest_rolls, level),
+			    energy_drain_damage(highest_rolls, level) };
+	std::string text =
+		fact("Negative damage", show(hit) + " at casting level " + std::to_string(level)) +
+		fact("If the target saves",
+		     show({ energy_drain_saved(hit.low), energy_drain_saved(hit.high) })) +
+		fact("You heal up to",
+		     show({ energy_drain_vamp(ch, hit.low), energy_drain_vamp(ch, hit.high) }) +
+			     " on an unsaved hit") +
+		"  You do not heal from the undead or a negative energy shield.\n" +
+		fact("Kills outright", "a target of level " +
+					       std::to_string(energy_drain_kill_level(level)) +
+					       " or lower");
+	if (energy_drain_taps(ch))
+		text += fact("You drain", show({ energy_drain_moves(lowest_rolls),
+						 energy_drain_moves(highest_rolls) }) +
+						  " movement, half if it is already drained") +
+			"  Not from a negative energy shield or a target low on movement.\n";
+	return text +
+	       fact("If it fails its save and survives",
+		    "its regeneration drops by " + std::to_string(-energy_drain_regen(level))) +
+	       fact("Hit point and movement regeneration loss lasts",
+		    seconds(energy_drain_duration(level))) +
+	       "  Not if it is already drained: its loss lasts " +
+	       seconds(energy_drain_extension()) + " longer instead,\n  even if it saves.\n" +
+	       "  A negative energy shield blocks the loss.\n" +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -1293,18 +1957,9 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	if (resists_spell(ch, victim))
 		return;
 
-	// 20% increase in level (lowered from 25%, but added to actual hps damage).
-	if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER) ||
-	    GET_SPEC(ch, CLASS_THEURGIST, SPEC_THAUMATURGE))
-	{
-		level = (int)(level * get_property("damage.increase.reaper", 1.200));
-	}
+	level = energy_drain_level(ch, level);
 
-	// dam = dice(3 * level, 5);
-	// At level 56: 168 to 840 -> 336 + (56 to 280) = 392 to 616
-	// Avg stays 504 == 126 real damage
-	// But new range is 224 == 56 real as opposed to 672 == 168 real (+/- 28 vs 84).
-	dam = (6 * level) + dice(level, 5);
+	dam = energy_drain_damage(live_rolls, level);
 
 	if (IS_AFFECTED4(victim, AFF4_DEFLECT))
 	{
@@ -1317,10 +1972,10 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	if (NewSaves(victim, SAVING_SPELL, mod))
 	{
 		saved = TRUE;
-		dam = (int)(dam * 0.80);
+		dam = energy_drain_saved(dam);
 	}
 
-	if (GET_LEVEL(victim) <= (level / 10))
+	if (GET_LEVEL(victim) <= energy_drain_kill_level(level))
 	{
 		/*
 		 * Kill the sucker
@@ -1335,22 +1990,16 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 	{
 		if (!IS_AFFECTED4(victim, AFF4_NEG_SHIELD) && !IS_UNDEADRACE(victim))
 		{
-			if (IS_PC(ch) || IS_PC_PET(ch))
-			{
-				vamp(ch, (int)(dam / 5), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
-			}
-			else
-			{
-				vamp(ch, (int)(dam / 2), (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
-			}
+			vamp(ch, energy_drain_vamp(ch, dam),
+			     (int)(GET_MAX_HIT(ch) * VAMPPERCENT(ch)));
 		}
 
-		if (GET_SPEC(ch, CLASS_NECROMANCER, SPEC_REAPER))
+		if (energy_drain_taps(ch))
 		{
 			send_to_char("&+LYour life energy is &+rtapped&+L.\n", victim);
 			if (GET_VITALITY(victim) >= 25 && !IS_AFFECTED4(victim, AFF4_NEG_SHIELD))
 			{
-				moves = number(5, 30); // old value (5, level)
+				moves = energy_drain_moves(live_rolls);
 
 				if (affected_by_spell(victim, SPELL_ENERGY_DRAIN))
 				{
@@ -1394,7 +2043,7 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		{
 			if (af1->type == SPELL_ENERGY_DRAIN)
 			{
-				af1->duration += 1;
+				af1->duration += energy_drain_extension();
 			}
 		}
 	}
@@ -1406,14 +2055,14 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		memset(&af, 0, sizeof(af));
 		af.type = SPELL_ENERGY_DRAIN;
 		af.flags = AFFTYPE_NODISPEL | AFFTYPE_SHORT;
-		af.duration = (level / 10) * WAIT_SEC;
+		af.duration = energy_drain_duration(level);
 
 		af.location = APPLY_MOVE_REG;
-		af.modifier = -(level / 20);
+		af.modifier = energy_drain_regen(level);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_HIT_REG;
-		af.modifier = -(level / 20);
+		af.modifier = energy_drain_regen(level);
 		affect_to_char(victim, &af);
 	}
 	send_to_char("&+LYour life energy was drained, leaving you a bit shaken.\r\n", victim);
@@ -1537,6 +2186,45 @@ void spell_energy_drain(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 // }
 // }
 
+// Wither damage to an undead target at cast level `level`.
+static int wither_undead_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(MIN(level, 46), 10);
+}
+
+// How much a withered living target's armor class worsens, by the wither's strength.
+static int wither_armor_class(int percent)
+{
+	if (percent > 90)
+		return +100;
+	if (percent > 70)
+		return +50;
+	if (percent > 40)
+		return +25;
+	return +20;
+}
+
+// Wither's weakening lasts this many ticks.
+static int wither_duration()
+{
+	return 1;
+}
+
+std::string wither_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Damage to undead", show({ wither_undead_damage(lowest_rolls, level),
+					       wither_undead_damage(highest_rolls, level) }) +
+						" at your level, " + std::to_string(level)) +
+	       "  A globe of invulnerability or greater spirit ward stops the damage.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n" +
+	       fact("Living targets", "armor class up to " +
+					      std::to_string(wither_armor_class(100)) +
+					      " worse, lower hitroll and damroll") +
+	       fact("Weakening lasts", game_hours(wither_duration())) +
+	       "  Constructs are immune.\n";
+}
+
 void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		  P_obj /*obj*/)
 {
@@ -1582,7 +2270,7 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 			0
 		};
 
-		dam = dice(MIN(level, 46), 10);
+		dam = wither_undead_damage(live_rolls, level);
 		spell_damage(ch, victim, dam, SPLDAM_GENERIC,
 			     SPLDAM_NOSHRUG | SPLDAM_GLOBE | SPLDAM_GRSPIRIT, &wither_undead);
 		return;
@@ -1644,7 +2332,7 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		    FALSE, ch, 0, victim, TO_VICT);
 		act("$N is &+Lwithered&n COMPLETELY by your touch!", FALSE, ch, 0, victim, TO_CHAR);
 		af.type = SPELL_WITHER;
-		af.duration = 1;
+		af.duration = wither_duration();
 		af.modifier = 0 - (int)(GET_HITROLL(victim) / 4);
 		af.location = APPLY_HITROLL;
 		af.bitvector2 = AFF2_SLOW;
@@ -1652,7 +2340,7 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		af.modifier = 0 - (int)(GET_DAMROLL(victim) / 4);
 		af.location = APPLY_DAMROLL;
 		affect_to_char(victim, &af);
-		af.modifier = +100;
+		af.modifier = wither_armor_class(percent);
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
 	}
@@ -1665,14 +2353,14 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		act("$N is &+Lwithered&n and starts to FADE by your touch!", FALSE, ch, 0, victim,
 		    TO_CHAR);
 		af.type = SPELL_WITHER;
-		af.duration = 1;
+		af.duration = wither_duration();
 		af.modifier = 0 - (int)(GET_HITROLL(victim) / 4);
 		af.location = APPLY_HITROLL;
 		affect_to_char(victim, &af);
 		af.modifier = 0 - (int)(GET_DAMROLL(victim) / 4);
 		af.location = APPLY_DAMROLL;
 		affect_to_char(victim, &af);
-		af.modifier = +50;
+		af.modifier = wither_armor_class(percent);
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
 	}
@@ -1685,7 +2373,7 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		act("$N is &+Lwithered&n and starts to DIMINISH by your touch!", FALSE, ch, 0,
 		    victim, TO_CHAR);
 		af.type = SPELL_WITHER;
-		af.duration = 1;
+		af.duration = wither_duration();
 		af.modifier = 0 - (int)(GET_HITROLL(victim) / 5);
 		af.location = APPLY_HITROLL;
 		// af.bitvector2 = AFF2_SLOW;
@@ -1693,7 +2381,7 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		af.modifier = 0 - (int)(GET_DAMROLL(victim) / 5);
 		af.location = APPLY_DAMROLL;
 		affect_to_char(victim, &af);
-		af.modifier = +25;
+		af.modifier = wither_armor_class(percent);
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
 	}
@@ -1706,14 +2394,14 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 		act("$N is &+Lwithered&n and begins to DECREASE in size by your touch!", FALSE, ch,
 		    0, victim, TO_CHAR);
 		af.type = SPELL_WITHER;
-		af.duration = 1;
+		af.duration = wither_duration();
 		af.modifier = 0 - (int)(GET_HITROLL(victim) / 8);
 		af.location = APPLY_HITROLL;
 		affect_to_char(victim, &af);
 		af.modifier = 0 - (int)(GET_DAMROLL(victim) / 8);
 		af.location = APPLY_DAMROLL;
 		affect_to_char(victim, &af);
-		af.modifier = +20;
+		af.modifier = wither_armor_class(percent);
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
 	}
@@ -1725,6 +2413,19 @@ void spell_wither(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int typ
 }
 
 P_char make_mirror(P_char);
+
+// Mirror images made at cast level `level`.
+static int mirror_image_count(int level)
+{
+	return BOUNDED(1, level / 6, 4);
+}
+
+std::string mirror_image_facts(P_char ch)
+{
+	return fact("Images", std::to_string(mirror_image_count(GET_LEVEL(ch))) +
+				      " at your level, " + std::to_string(GET_LEVEL(ch)));
+}
+
 void spell_mirror_image(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			P_obj /*obj*/)
 {
@@ -1770,7 +2471,7 @@ void spell_mirror_image(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		}
 	}
 
-	numb = BOUNDED(1, level / 6, 4);
+	numb = mirror_image_count(level);
 
 	for (i = 0; i < numb; i++)
 	{
@@ -1971,11 +2672,44 @@ int can_call_woodland_beings(P_char ch, int /*level*/)
 	return pets < allowed;
 }
 
+// The level of a woodland being called at cast level `level`.
+static int call_woodland_beings_level(const Rolls &rolls, int level)
+{
+	int mlvl = (level / 5) * 2;
+	int lvl = rolls.number(mlvl, mlvl * 3);
+	return BOUNDED(10, lvl, 42);
+}
+
+// A woodland being's hit points, and its hitroll and damroll, at its level.
+static int call_woodland_beings_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level / 2, 8) + mob_level;
+}
+
+static int call_woodland_beings_roll_bonus(int mob_level)
+{
+	return mob_level / 3;
+}
+
+std::string call_woodland_beings_facts(P_char ch)
+{
+	const Range level = { call_woodland_beings_level(lowest_rolls, GET_LEVEL(ch)),
+			      call_woodland_beings_level(highest_rolls, GET_LEVEL(ch)) };
+	return fact("Being's level",
+		    show(level) + " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Its hit points",
+		    show({ call_woodland_beings_hit_points(lowest_rolls, level.low),
+			   call_woodland_beings_hit_points(highest_rolls, level.high) })) +
+	       fact("Its hitroll and damroll",
+		    show({ call_woodland_beings_roll_bonus(level.low),
+			   call_woodland_beings_roll_bonus(level.high) }));
+}
+
 void spell_call_woodland_beings(int level, P_char ch, char * /*arg*/, int /*type*/,
 				P_char /*victim*/, P_obj /*obj*/)
 {
 	P_char mob;
-	int sum, mlvl, lvl;
+	int sum;
 
 	static struct
 	{
@@ -2041,18 +2775,17 @@ void spell_call_woodland_beings(int level, P_char ch, char * /*arg*/, int /*type
 	char_to_room(mob, ch->in_room, 0);
 	act(summons[sum].message, TRUE, mob, 0, 0, TO_ROOM);
 
-	mlvl = (level / 5) * 2;
-	lvl = number(mlvl, mlvl * 3);
-
-	mob->player.level = BOUNDED(10, lvl, 42);
+	mob->player.level = call_woodland_beings_level(live_rolls, level);
 
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob) / 2, 8) + GET_LEVEL(mob);
+		call_woodland_beings_hit_points(live_rolls, GET_LEVEL(mob));
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 3;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) / 3;
+	mob->points.base_hitroll = mob->points.hitroll =
+		call_woodland_beings_roll_bonus(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll =
+		call_woodland_beings_roll_bonus(GET_LEVEL(mob));
 	MonkSetSpecialDie(mob); /* 2d6 to 4d5 */
 	mob->points.damsizedice = (int)(0.5 * mob->points.damsizedice);
 
@@ -2069,11 +2802,57 @@ void event_elemental_swarm_death(P_char ch, P_char /*victim*/, P_obj /*obj*/, vo
 	extract_char(ch);
 }
 
+// The level of a swarm elemental conjured at cast level `level`.
+static int elemental_swarm_level(const Rolls &rolls, int level)
+{
+	int lvl = rolls.number(level - 3, level + 3);
+	return BOUNDED(1, lvl, 51);
+}
+
+// A swarm elemental's hit points, hitroll and damroll at its level.
+static int elemental_swarm_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level, 7) + (mob_level * 2);
+}
+
+static int elemental_swarm_hitroll(int mob_level)
+{
+	return mob_level / 2;
+}
+
+static int elemental_swarm_damroll(int mob_level)
+{
+	return mob_level + 10;
+}
+
+// A controlled swarm elemental leaves after this many pulses.
+static int elemental_swarm_lifetime(const Rolls &rolls)
+{
+	return rolls.number(5, 30) * WAIT_SEC;
+}
+
+std::string elemental_swarm_facts(P_char ch)
+{
+	const Range level = { elemental_swarm_level(lowest_rolls, GET_LEVEL(ch)),
+			      elemental_swarm_level(highest_rolls, GET_LEVEL(ch)) };
+	return fact("Elemental's level",
+		    show(level) + " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Its hit points",
+		    show({ elemental_swarm_hit_points(lowest_rolls, level.low),
+			   elemental_swarm_hit_points(highest_rolls, level.high) })) +
+	       fact("Its hitroll", show({ elemental_swarm_hitroll(level.low),
+					  elemental_swarm_hitroll(level.high) })) +
+	       fact("Its damroll", show({ elemental_swarm_damroll(level.low),
+					  elemental_swarm_damroll(level.high) })) +
+	       fact("It leaves after", seconds(elemental_swarm_lifetime(lowest_rolls)) + " to " +
+					       seconds(elemental_swarm_lifetime(highest_rolls)) +
+					       ", unless your charm is permanent");
+}
+
 void spell_elemental_swarm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			   P_obj /*obj*/)
 {
 	P_char mob;
-	int lvl;
 
 	if (CHAR_IN_SAFE_ROOM(ch))
 	{
@@ -2094,16 +2873,15 @@ void spell_elemental_swarm(int level, P_char ch, char * /*arg*/, int /*type*/, P
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+Lgrunts, and comes forth to join the swarm!!.", TRUE, mob, 0, 0, TO_ROOM);
 
-	lvl = number(level - 3, level + 3);
-	mob->player.level = BOUNDED(1, lvl, 51);
+	mob->player.level = elemental_swarm_level(live_rolls, level);
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 	SET_BIT(mob->specials.act, ACT_SPEC_DIE);
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob), 7) + (GET_LEVEL(mob) * 2);
+		elemental_swarm_hit_points(live_rolls, GET_LEVEL(mob));
 	GET_EXP(mob) = 0;
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 2;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) + 10;
+	mob->points.base_hitroll = mob->points.hitroll = elemental_swarm_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll = elemental_swarm_damroll(GET_LEVEL(mob));
 	MonkSetSpecialDie(mob); /* 2d6 to 4d5 */
 	apply_achievement(mob, TAG_CONJURED_PET);
 
@@ -2126,7 +2904,7 @@ void spell_elemental_swarm(int level, P_char ch, char * /*arg*/, int /*type*/, P
 		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration = number(5, 30) * WAIT_SEC;
+			duration = elemental_swarm_lifetime(live_rolls);
 			add_event(event_elemental_swarm_death, duration, mob, NULL, NULL, 0, NULL,
 				  0);
 		}
@@ -2183,12 +2961,97 @@ static void schedule_elemental_death(P_char mob, int delay)
 		add_event(event_pet_death, delay, mob, NULL, NULL, 0, NULL, 0);
 }
 
+// The charisma a conjurer brings to an elemental's hit points and control.
+static int conjure_elemental_charisma(P_char ch)
+{
+	return GET_C_CHA(ch) + (GET_LEVEL(ch) / 5);
+}
+
+// Specialized summoners manage their minions with the conjure command instead.
+static bool conjure_refused_to_summoner(P_char ch)
+{
+	return IS_SPECIALIZED(ch) && GET_CLASS(ch, CLASS_SUMMONER) && (IS_PC(ch) || IS_PC_PET(ch));
+}
+
+// An elemental conjured at cast level `level` comes 2-5 levels above it when the handler's
+// number(1, 100) is below 20, otherwise 5 below to 1 above; either way within 10-45.
+static int conjure_elemental_stronger_level(const Rolls &rolls, int level)
+{
+	return level + rolls.number(2, 5);
+}
+
+static int conjure_elemental_weaker_level(const Rolls &rolls, int level)
+{
+	return level - rolls.number(-1, 5);
+}
+
+static int conjure_elemental_level(int lvl)
+{
+	return BOUNDED(10, lvl, 45);
+}
+
+// The elemental's hit points, hitroll and damroll at its level, with the conjurer's infuse
+// life skill and charisma; a specialized conjurer's elemental is stronger in its home
+// terrain.
+static int conjure_elemental_hit_points(const Rolls &rolls, int mob_level, int life, int charisma)
+{
+	return rolls.dice(mob_level / 2, 10) + 3 * mob_level + life + charisma;
+}
+
+static int conjure_elemental_roll_bonus(int mob_level)
+{
+	return mob_level / 3;
+}
+
+static int conjure_elemental_home_hit_points(const Rolls &rolls, int mob_level, int life,
+					     int charisma)
+{
+	return (int)(rolls.dice(mob_level / 2, 12) + 6 * mob_level + life + charisma);
+}
+
+static int conjure_elemental_home_roll_bonus(int mob_level)
+{
+	return mob_level / 2;
+}
+
+std::string conjure_elemental_facts(P_char ch)
+{
+	if (conjure_refused_to_summoner(ch))
+		return "  Specialized summoners use the conjure command instead.\n";
+	const int level = GET_LEVEL(ch), life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE),
+		  charisma = conjure_elemental_charisma(ch);
+	// The weaker level subtracts its roll, so its highest roll gives the lowest level.
+	const Range mob = {
+		conjure_elemental_level(conjure_elemental_weaker_level(highest_rolls, level)),
+		conjure_elemental_level(conjure_elemental_stronger_level(highest_rolls, level))
+	};
+	std::string text =
+		fact("Elemental's level", show(mob) + " at your level, " + std::to_string(level)) +
+		fact("Its hit points",
+		     show({ conjure_elemental_hit_points(lowest_rolls, mob.low, life, charisma),
+			    conjure_elemental_hit_points(highest_rolls, mob.high, life,
+							 charisma) }) +
+			     " with your charisma and infuse life") +
+		fact("Its hitroll and damroll", show({ conjure_elemental_roll_bonus(mob.low),
+						       conjure_elemental_roll_bonus(mob.high) }));
+	if (GET_CLASS(ch, CLASS_CONJURER) && IS_SPECIALIZED(ch))
+		text += fact("In its home terrain",
+			     show({ conjure_elemental_home_hit_points(lowest_rolls, mob.low, life,
+								      charisma),
+				    conjure_elemental_home_hit_points(highest_rolls, mob.high, life,
+								      charisma) }) +
+				     " hit points, hitroll and damroll " +
+				     show({ conjure_elemental_home_roll_bonus(mob.low),
+					    conjure_elemental_home_roll_bonus(mob.high) }));
+	return text;
+}
+
 void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_char /*victim*/,
 			     P_obj /*obj*/)
 {
 	P_char mob;
 	int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
-	int charisma = GET_C_CHA(ch) + (GET_LEVEL(ch) / 5);
+	int charisma = conjure_elemental_charisma(ch);
 	int sum, lvl, duration, room = ch->in_room;
 	int good_terrain = 0;
 	static struct
@@ -2263,7 +3126,7 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		sum = number(0, 3);
 	}
 
-	if (IS_SPECIALIZED(ch) && GET_CLASS(ch, CLASS_SUMMONER) && (IS_PC(ch) || IS_PC_PET(ch)))
+	if (conjure_refused_to_summoner(ch))
 	{
 		send_to_char(
 			"Specialized &+Rsummoners&n use the &+cconjure&n command to manage their minions.\r\n",
@@ -2298,11 +3161,11 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 	*/
 
 	if (number(1, 100) < 20)
-		lvl = level + number(2, 5);
+		lvl = conjure_elemental_stronger_level(live_rolls, level);
 	else
-		lvl = level - number(-1, 5);
+		lvl = conjure_elemental_weaker_level(live_rolls, level);
 
-	mob->player.level = BOUNDED(10, lvl, 45);
+	mob->player.level = conjure_elemental_level(lvl);
 
 	MonkSetSpecialDie(mob);
 
@@ -2327,8 +3190,10 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 			SET_BIT(mob->specials.affected_by, AFF_HASTE);
 		}
 
-		mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 2;
-		mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) / 2;
+		mob->points.base_hitroll = mob->points.hitroll =
+			conjure_elemental_home_roll_bonus(GET_LEVEL(mob));
+		mob->points.base_damroll = mob->points.damroll =
+			conjure_elemental_home_roll_bonus(GET_LEVEL(mob));
 
 		mob->base_stats.Str = 100;
 		mob->base_stats.Dex = 100;
@@ -2336,7 +3201,8 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 		mob->base_stats.Pow = 100;
 
 		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			(int)(dice(GET_LEVEL(mob) / 2, 12) + 6 * GET_LEVEL(mob) + life + charisma);
+			conjure_elemental_home_hit_points(live_rolls, GET_LEVEL(mob), life,
+							  charisma);
 
 		if (GET_C_CHA(ch) > number(0, 400))
 		{
@@ -2346,10 +3212,12 @@ void spell_conjour_elemental(int level, P_char ch, char *arg, int /*type*/, P_ch
 	}
 	else
 	{
-		mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 3;
-		mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) / 3;
+		mob->points.base_hitroll = mob->points.hitroll =
+			conjure_elemental_roll_bonus(GET_LEVEL(mob));
+		mob->points.base_damroll = mob->points.damroll =
+			conjure_elemental_roll_bonus(GET_LEVEL(mob));
 		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			dice(GET_LEVEL(mob) / 2, 10) + 3 * GET_LEVEL(mob) + life + charisma;
+			conjure_elemental_hit_points(live_rolls, GET_LEVEL(mob), life, charisma);
 		mob->points.damsizedice = (int)(0.8 * mob->points.damsizedice);
 	}
 
@@ -2392,11 +3260,59 @@ void event_living_stone_death(P_char ch, P_char /*victim*/, P_obj /*obj*/, void 
 	extract_char(ch);
 }
 
+// The level of a living stone made at cast level `level`.
+static int living_stone_level(const Rolls &rolls, int level)
+{
+	int lvl = rolls.number(level - 3, level + 3);
+
+	//  GET_LEVEL(mob) = BOUNDED(10, lvl, 45);
+	return BOUNDED(1, lvl, 56);
+}
+
+// A living stone's hit points, hitroll and damroll at its level.
+static int living_stone_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level, 3) + (mob_level * 2);
+}
+
+static int living_stone_hitroll(int mob_level)
+{
+	return mob_level / 2;
+}
+
+static int living_stone_damroll(int mob_level)
+{
+	return mob_level + 10;
+}
+
+// A controlled living stone crumbles after this many pulses.
+static int living_stone_lifetime(const Rolls &rolls)
+{
+	return rolls.number(5, 10) * WAIT_SEC;
+}
+
+std::string living_stone_facts(P_char ch)
+{
+	const Range level = { living_stone_level(lowest_rolls, GET_LEVEL(ch)),
+			      living_stone_level(highest_rolls, GET_LEVEL(ch)) };
+	return fact("Stone's level",
+		    show(level) + " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Its hit points",
+		    show({ living_stone_hit_points(lowest_rolls, level.low),
+			   living_stone_hit_points(highest_rolls, level.high) })) +
+	       fact("Its hitroll",
+		    show({ living_stone_hitroll(level.low), living_stone_hitroll(level.high) })) +
+	       fact("Its damroll",
+		    show({ living_stone_damroll(level.low), living_stone_damroll(level.high) })) +
+	       fact("It leaves after", seconds(living_stone_lifetime(lowest_rolls)) + " to " +
+					       seconds(living_stone_lifetime(highest_rolls)) +
+					       ", unless your charm is permanent");
+}
+
 void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			P_obj /*obj*/)
 {
 	P_char mob;
-	int lvl;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -2422,18 +3338,15 @@ void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+Lcomes to life!.", TRUE, mob, 0, 0, TO_ROOM);
 
-	lvl = number(level - 3, level + 3);
-
-	//  GET_LEVEL(mob) = BOUNDED(10, lvl, 45);
-	mob->player.level = BOUNDED(1, lvl, 56);
+	mob->player.level = living_stone_level(live_rolls, level);
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 	SET_BIT(mob->specials.act, ACT_SPEC_DIE);
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob), 3) + (GET_LEVEL(mob) * 2);
+		living_stone_hit_points(live_rolls, GET_LEVEL(mob));
 	GET_EXP(mob) = 0;
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 2;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) + 10;
+	mob->points.base_hitroll = mob->points.hitroll = living_stone_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll = living_stone_damroll(GET_LEVEL(mob));
 	MonkSetSpecialDie(mob); /* 2d6 to 4d5 */
 
 	if (!can_conjure_lesser_elem(ch, level))
@@ -2455,7 +3368,7 @@ void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 		if (duration >= 0)
 		{
-			duration = number(5, 10) * WAIT_SEC;
+			duration = living_stone_lifetime(live_rolls);
 			add_event(event_living_stone_death, duration, mob, NULL, NULL, 0, NULL, 0);
 		}
 	}
@@ -2465,11 +3378,73 @@ void spell_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	group_add_member(ch, mob);
 }
 
+// The level of a greater living stone made at cast level `level`.
+static int greater_living_stone_level(const Rolls &rolls, int level)
+{
+	int lvl = rolls.number(level - 3, level + 3);
+
+	return BOUNDED(1, lvl, 56);
+}
+
+// A greater living stone's hit points, hitroll and damroll at its level, and its damage
+// dice.
+static int greater_living_stone_hit_points(const Rolls &rolls, int mob_level)
+{
+	return rolls.dice(mob_level, 3) + (mob_level * 2);
+}
+
+static int greater_living_stone_hitroll(int mob_level)
+{
+	return mob_level / 2;
+}
+
+static int greater_living_stone_damroll(int mob_level)
+{
+	return mob_level + 15;
+}
+
+static int greater_living_stone_damage_dice()
+{
+	return 15;
+}
+
+static int greater_living_stone_damage_sides()
+{
+	return 14;
+}
+
+// A greater living stone crumbles after this many pulses.
+static int greater_living_stone_lifetime(const Rolls &rolls)
+{
+	return rolls.number(7, 12) * WAIT_SEC;
+}
+
+std::string greater_living_stone_facts(P_char ch)
+{
+	const Range level = { greater_living_stone_level(lowest_rolls, GET_LEVEL(ch)),
+			      greater_living_stone_level(highest_rolls, GET_LEVEL(ch)) };
+	return fact("Stone's level",
+		    show(level) + " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Its hit points",
+		    show({ greater_living_stone_hit_points(lowest_rolls, level.low),
+			   greater_living_stone_hit_points(highest_rolls, level.high) })) +
+	       fact("Its hitroll", show({ greater_living_stone_hitroll(level.low),
+					  greater_living_stone_hitroll(level.high) })) +
+	       fact("Its damroll", show({ greater_living_stone_damroll(level.low),
+					  greater_living_stone_damroll(level.high) })) +
+	       fact("Its damage dice",
+		    std::to_string(greater_living_stone_damage_dice()) + "d" +
+			    std::to_string(greater_living_stone_damage_sides())) +
+	       fact("It leaves after",
+		    seconds(greater_living_stone_lifetime(lowest_rolls)) + " to " +
+			    seconds(greater_living_stone_lifetime(highest_rolls)) +
+			    ", unless your charm is permanent");
+}
+
 void spell_greater_living_stone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 				P_obj /*obj*/)
 {
 	P_char mob;
-	int lvl;
 
 	if (!IS_ALIVE(ch))
 	{
@@ -2495,27 +3470,27 @@ void spell_greater_living_stone(int level, P_char ch, char * /*arg*/, int /*type
 	char_to_room(mob, ch->in_room, 0);
 	act("$n &+Lcomes to life!.", TRUE, mob, 0, 0, TO_ROOM);
 
-	lvl = number(level - 3, level + 3);
-
-	mob->player.level = BOUNDED(1, lvl, 56);
+	mob->player.level = greater_living_stone_level(live_rolls, level);
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 	SET_BIT(mob->specials.act, ACT_SPEC_DIE);
 
 	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-		dice(GET_LEVEL(mob), 3) + (GET_LEVEL(mob) * 2);
+		greater_living_stone_hit_points(live_rolls, GET_LEVEL(mob));
 
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 2;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) + 15;
-	mob->points.damnodice = 15;
-	mob->points.damsizedice = 14;
+	mob->points.base_hitroll = mob->points.hitroll =
+		greater_living_stone_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll =
+		greater_living_stone_damroll(GET_LEVEL(mob));
+	mob->points.damnodice = greater_living_stone_damage_dice();
+	mob->points.damsizedice = greater_living_stone_damage_sides();
 
 	int duration = setup_pet(mob, ch, 1, PET_NOCASH | PET_NOORDER | PET_NOAGGRO);
 	add_follower(mob, ch);
 	/* if the pet will stop being charmed after a bit, also make it suicide 1-10 minutes later */
 	if (duration >= 0)
 	{
-		duration = number(7, 12) * WAIT_SEC;
+		duration = greater_living_stone_lifetime(live_rolls);
 		add_event(event_living_stone_death, duration, mob, NULL, NULL, 0, NULL, 0);
 	}
 
@@ -2922,13 +3897,77 @@ void conjure_specialized(P_char ch, [[maybe_unused]] int level, bool mephit)
 	}
 }
 
+// A greater elemental conjured without a conjurer's specialization: its level, its hit
+// points at that level with the conjurer's infuse life skill and charisma, and its hitroll
+// and damroll at that level.
+static int conjure_greater_elemental_level(const Rolls &rolls)
+{
+	return rolls.number(49, 53);
+}
+
+static int conjure_greater_elemental_hit_points(const Rolls &rolls, int mob_level, int life,
+						int charisma)
+{
+	if (mob_level == 49)
+		return 450 + rolls.number(0, 50) + (life * 3) + charisma;
+	else if (mob_level == 50)
+		return 500 + rolls.number(0, 50) + (life * 3) + charisma;
+	else if (mob_level == 51)
+		return 550 + rolls.number(0, 50) + (life * 3) + charisma;
+	else if (mob_level == 52)
+		return 600 + rolls.number(0, 50) + (life * 3) + charisma;
+	else
+		// big bonus for highest level pet, since it's rare
+		return 700 + rolls.number(0, 50) + (life * 3) + charisma;
+}
+
+static int conjure_greater_elemental_hitroll(int mob_level)
+{
+	return mob_level / 3;
+}
+
+static int conjure_greater_elemental_damroll(int mob_level)
+{
+	return mob_level / 4;
+}
+
+// A specialized conjurer gets conjure_specialized()'s elemental instead.
+std::string conjure_greater_elemental_facts(P_char ch)
+{
+	if (conjure_refused_to_summoner(ch))
+		return "  Specialized summoners use the conjure command instead.\n";
+	std::string text;
+	if (!(GET_CLASS(ch, CLASS_CONJURER) && IS_SPECIALIZED(ch)))
+	{
+		const int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE),
+			  charisma = conjure_elemental_charisma(ch);
+		const Range mob = { conjure_greater_elemental_level(lowest_rolls),
+				    conjure_greater_elemental_level(highest_rolls) };
+		text = fact("Elemental's level", show(mob)) +
+		       fact("Its hit points",
+			    show({ conjure_greater_elemental_hit_points(lowest_rolls, mob.low, life,
+									charisma),
+				   conjure_greater_elemental_hit_points(highest_rolls, mob.high,
+									life, charisma) }) +
+				    " with your charisma and infuse life") +
+		       fact("Its hitroll",
+			    show({ conjure_greater_elemental_hitroll(mob.low),
+				   conjure_greater_elemental_hitroll(mob.high) }) +
+				    ", damroll " +
+				    show({ conjure_greater_elemental_damroll(mob.low),
+					   conjure_greater_elemental_damroll(mob.high) }));
+	}
+	return text + "  A specialized conjurer summons one of its own element instead, with\n"
+		      "  numbers this page does not show.\n";
+}
+
 void spell_conjour_greater_elemental(int level, P_char ch, char *arg, int /*type*/,
 				     P_char /*victim*/, P_obj /*obj*/)
 {
 	P_char mob;
 	int sum, duration, room;
 	int life = GET_CHAR_SKILL(ch, SKILL_INFUSE_LIFE);
-	int charisma = GET_C_CHA(ch) + (GET_LEVEL(ch) / 5);
+	int charisma = conjure_elemental_charisma(ch);
 	static struct
 	{
 		const int mob_number;
@@ -2971,7 +4010,7 @@ void spell_conjour_greater_elemental(int level, P_char ch, char *arg, int /*type
 		return;
 	}
 
-	if (IS_SPECIALIZED(ch) && GET_CLASS(ch, CLASS_SUMMONER) && (IS_PC(ch) || IS_PC_PET(ch)))
+	if (conjure_refused_to_summoner(ch))
 	{
 		send_to_char(
 			"Specialized &+Rsummoners&n use the &+cconjure&n command to manage their minions.\r\n",
@@ -3006,30 +4045,18 @@ void spell_conjour_greater_elemental(int level, P_char ch, char *arg, int /*type
 	char_to_room(mob, room, 0);
 	act(summons[sum].message, TRUE, mob, 0, 0, TO_ROOM);
 
-	mob->player.level = number(49, 53);
-	if (mob->player.level == 49)
-		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			450 + number(0, 50) + (life * 3) + charisma;
-	else if (mob->player.level == 50)
-		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			500 + number(0, 50) + (life * 3) + charisma;
-	else if (mob->player.level == 51)
-		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			550 + number(0, 50) + (life * 3) + charisma;
-	else if (mob->player.level == 52)
-		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			600 + number(0, 50) + (life * 3) + charisma;
-	else
-		// big bonus for highest level pet, since it's rare
-		GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
-			700 + number(0, 50) + (life * 3) + charisma;
+	mob->player.level = conjure_greater_elemental_level(live_rolls);
+	GET_MAX_HIT(mob) = GET_HIT(mob) = mob->points.base_hit =
+		conjure_greater_elemental_hit_points(live_rolls, mob->player.level, life, charisma);
 
 	SET_BIT(mob->specials.affected_by, AFF_INFRAVISION);
 
 	apply_achievement(mob, TAG_CONJURED_PET);
 
-	mob->points.base_hitroll = mob->points.hitroll = GET_LEVEL(mob) / 3;
-	mob->points.base_damroll = mob->points.damroll = GET_LEVEL(mob) / 4;
+	mob->points.base_hitroll = mob->points.hitroll =
+		conjure_greater_elemental_hitroll(GET_LEVEL(mob));
+	mob->points.base_damroll = mob->points.damroll =
+		conjure_greater_elemental_damroll(GET_LEVEL(mob));
 
 	MonkSetSpecialDie(mob); /* 2d6 to 4d5 */
 	mob->points.damsizedice = (int)(0.8 * mob->points.damsizedice);
@@ -3150,10 +4177,61 @@ void spell_summon_greater_demon(int level, P_char ch, P_char /*victim*/, P_obj /
 	}
 }
 
+// Earthen maul damage at cast level `level`, before the save and terrain.
+static int earthen_maul_damage(const Rolls &rolls, int level)
+{
+	int temp = MIN(20, (level / 2 + 1));
+	int dam = rolls.dice(5 * temp, 9);
+
+	if (level > 50)
+	{
+		dam = rolls.dice(6 * temp, 9);
+	}
+	return dam;
+}
+
+// A saved earthen maul deals half damage.
+static int earthen_maul_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// Rougher terrain adds a tenth of the damage per step of the dam_flag that
+// spell_earthen_maul() picks: 1 by default, 2 to 4 only while the caster stands on the
+// ground.
+static int earthen_maul_terrain(int dam, int dam_flag)
+{
+	return (int)(dam + 0.1 * dam * dam_flag);
+}
+
+std::string earthen_maul_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { earthen_maul_damage(lowest_rolls, level),
+			    earthen_maul_damage(highest_rolls, level) };
+	auto at = [&](Range range, int dam_flag)
+	{
+		return show({ earthen_maul_terrain(range.low, dam_flag),
+			      earthen_maul_terrain(range.high, dam_flag) });
+	};
+	return fact("Damage", at(hit, 1) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    at({ earthen_maul_saved(hit.low), earthen_maul_saved(hit.high) }, 1)) +
+	       "  Rougher ground raises both while you stand on it, not flying or swimming:\n" +
+	       fact("On mountains or underdark land", at(hit, 2)) +
+	       fact("In an inside room, or indoors on ordinary land", at(hit, 3)) +
+	       fact("On lava", at(hit, 4) + ", as fire damage") +
+	       "  Ordinary land: city, field, forest, hills, road, desert, tundra, snowy\n"
+	       "  forest or underwater ground. Underdark land: all of the underdark but\n"
+	       "  its water, open air and inside rooms.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			P_obj /*obj*/)
 {
-	int dam, temp, dam_flag;
+	int dam, dam_flag;
 	struct damage_messages messages = {
 		0,
 		0,
@@ -3163,17 +4241,11 @@ void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		"$n's &+yearthen fist&N leaves only a battered corpse of $N behind!"
 	};
 
-	temp = MIN(20, (level / 2 + 1));
-	dam = dice(5 * temp, 9);
-
-	if (level > 50)
-	{
-		dam = dice(6 * temp, 9);
-	}
+	dam = earthen_maul_damage(live_rolls, level);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_EARTHEN_MAUL);
 	if (NewSaves(victim, SAVING_SPELL, mod))
-		dam >>= 1;
+		dam = earthen_maul_saved(dam);
 
 	dam_flag = 0;
 
@@ -3283,7 +4355,7 @@ void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		break;
 	}
 
-	dam = (int)(dam + 0.1 * dam * dam_flag);
+	dam = earthen_maul_terrain(dam, dam_flag);
 
 	if (spell_damage(ch, victim, dam, (dam_flag == 4) ? SPLDAM_FIRE : SPLDAM_GENERIC, 0,
 			 &messages) != DAM_NONEDEAD)
@@ -3306,6 +4378,34 @@ void spell_earthen_maul(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 	 */
 }
 
+// Clenched fist damage at cast level `level`, at most 50, before the target's save.
+static int bigbys_clenched_fist_damage(const Rolls &rolls, int level)
+{
+	if (level > 50)
+		level = 50;
+
+	return (10 * level) + rolls.number(1, 25);
+}
+
+// A failed save doubles clenched fist damage.
+static int bigbys_clenched_fist_failed_save(int dam)
+{
+	return dam * 2;
+}
+
+std::string bigbys_clenched_fist_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { bigbys_clenched_fist_damage(lowest_rolls, level),
+			    bigbys_clenched_fist_damage(highest_rolls, level) };
+	return fact("Damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save",
+		    show({ bigbys_clenched_fist_failed_save(hit.low),
+			   bigbys_clenched_fist_failed_save(hit.high) })) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_bigbys_clenched_fist(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 				P_obj /*obj*/)
 {
@@ -3319,15 +4419,27 @@ void spell_bigbys_clenched_fist(int level, P_char ch, char * /*arg*/, int /*type
 		0
 	};
 
-	if (level > 50)
-		level = 50;
-
-	int dam = (10 * level) + number(1, 25);
+	int dam = bigbys_clenched_fist_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_BIGBYS_CLENCHED_FIST);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = dam * 2;
+		dam = bigbys_clenched_fist_failed_save(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
+}
+
+// Channel negative energy damage, by whether the target saves.
+static int channel_negative_energy_damage(bool saved)
+{
+	return saved ? 150 : 300;
+}
+
+std::string channel_negative_energy_facts(P_char /*ch*/)
+{
+	return fact("Negative damage", std::to_string(channel_negative_energy_damage(false))) +
+	       fact("If the target saves", std::to_string(channel_negative_energy_damage(true))) +
+	       "  It never kills: the target keeps at least 1 hit point.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_channel_negative_energy(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
@@ -3344,12 +4456,34 @@ void spell_channel_negative_energy(int /*level*/, P_char ch, char * /*arg*/, int
 	int dam;
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_CHANNEL_NEG_ENERGY);
-	if (NewSaves(victim, SAVING_SPELL, mod))
-		dam = 150;
-	else
-		dam = 300;
+	dam = channel_negative_energy_damage(NewSaves(victim, SAVING_SPELL, mod));
 
 	spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, RAWDAM_NOKILL, &messages);
+}
+
+// Crushing hand damage at cast level `level`, before the target's save.
+static int bigbys_crushing_hand_damage(const Rolls &rolls, int level)
+{
+	return (12 * level) + rolls.number(1, 50);
+}
+
+// A failed save multiplies crushing hand damage by 1.75 or more, rising above level 45.
+static int bigbys_crushing_hand_failed_save(const Rolls &rolls, int dam, int level)
+{
+	return (int)(dam * (rolls.number(175, 175 + MAX(0, level - 45) * 2) / 100.0));
+}
+
+std::string bigbys_crushing_hand_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { bigbys_crushing_hand_damage(lowest_rolls, level),
+			    bigbys_crushing_hand_damage(highest_rolls, level) };
+	return fact("Damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save",
+		    show({ bigbys_crushing_hand_failed_save(lowest_rolls, hit.low, level),
+			   bigbys_crushing_hand_failed_save(highest_rolls, hit.high, level) })) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_bigbys_crushing_hand(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -3365,12 +4499,26 @@ void spell_bigbys_crushing_hand(int level, P_char ch, char * /*arg*/, int /*type
 		0
 	};
 
-	int dam = (12 * level) + number(1, 50);
+	int dam = bigbys_crushing_hand_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_BIGBYS_CRUSHING_HAND);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (int)(dam * (number(175, 175 + MAX(0, level - 45) * 2) / 100.0));
+		dam = bigbys_crushing_hand_failed_save(live_rolls, dam, level);
 
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
+}
+
+// Damage of one barrage missile, before the target's save: average ~45 per missile, so from
+// 135+ at 51 to 180 at 55 plus 25% chance of 225 at 56. Made damage level-independent,
+// since average number of missiles grows with level.
+static int missile_barrage_damage(const Rolls &rolls)
+{
+	return rolls.dice(30, 11);
+}
+
+// A failed save adds half to a missile's damage.
+static int missile_barrage_failed_save(int dam)
+{
+	return (int)(dam * 1.5);
 }
 
 // Return true for next missile if available.
@@ -3404,16 +4552,13 @@ bool spell_solbeeps_single_missile(int /*level*/, P_char ch, char * /*arg*/, int
 	if (resists_spell(ch, victim))
 		return TRUE;
 
-	int dam = dice(
-		30,
-		11); // average ~45 per missile, so from 135+ at 51 to 180 at 55 plus 25% chance of 225 at 56
-	// made damage level-independent, since average number of missiles grows with level
+	int dam = missile_barrage_damage(live_rolls);
 
 	bool saved = true;
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_MISSILE_BARRAGE);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
 	{
-		dam = (int)(dam * 1.5);
+		dam = missile_barrage_failed_save(dam);
 		saved = FALSE;
 	}
 
@@ -3466,16 +4611,41 @@ bool spell_solbeeps_single_missile(int /*level*/, P_char ch, char * /*arg*/, int
 	return FALSE;
 }
 
+// Missiles in a barrage at cast level `level`: a fourth always from level 56, and with a
+// 1 in (56 - level) chance below it.
+static int missile_barrage_count(const Rolls &rolls, int level)
+{
+	int num_missiles = 3;
+
+	if (level >= 56 || !rolls.number(0, 55 - level))
+		num_missiles++;
+	return num_missiles;
+}
+
+std::string missile_barrage_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { missile_barrage_damage(lowest_rolls),
+			    missile_barrage_damage(highest_rolls) };
+	// The count falls as its roll rises, so the highest roll gives the fewest missiles.
+	return fact("Missiles", show({ missile_barrage_count(highest_rolls, level),
+				       missile_barrage_count(lowest_rolls, level) }) +
+					" at your level, " + std::to_string(level)) +
+	       fact("Damage per missile", show(hit)) +
+	       fact("If the target fails its save",
+		    show({ missile_barrage_failed_save(hit.low),
+			   missile_barrage_failed_save(hit.high) })) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_solbeeps_missile_barrage(int level, P_char ch, char *arg, int type, P_char victim,
 				    P_obj tar_obj)
 {
 	if (!IS_ALIVE(ch))
 		return;
 
-	int num_missiles = 3, i = 0;
-
-	if (level >= 56 || !number(0, 55 - level))
-		num_missiles++;
+	int num_missiles = missile_barrage_count(live_rolls, level), i = 0;
 
 	/*
 	   if (level >= 56 && !number(0, 3))
@@ -3546,6 +4716,29 @@ void spell_fireball(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 	spell_damage(ch, victim, dam, SPLDAM_FIRE, flags, &messages);
 }
 
+// Chain lightning damage to its first target at cast level `level`.
+static int chain_lightning_damage(const Rolls &rolls, int level)
+{
+	return 8 * MIN(51, level) + rolls.number(level / 3, level) + 30;
+}
+
+// Each leap deals 80% of the damage before it.
+static int chain_lightning_leap(int dam)
+{
+	return (int)(dam * 0.8);
+}
+
+// A player's chain lightning against another player, then the area damage factor.
+static int chain_lightning_player_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.to.pc", 0.5);
+}
+
+static int chain_lightning_area_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.factor.chainlightning", 1.000);
+}
+
 /*
  * cast_as_damage_area passes pointer to the index of hit victim as arg
  */
@@ -3574,20 +4767,45 @@ void spell_single_chain_lightning(int level, P_char ch, char *arg, int /*type*/,
 
 	memcpy(&order, arg, sizeof(order));
 	const bool secondary_strike = order != 0;
-	dam = 8 * MIN(51, level) + number(level / 3, level) + 30;
+	dam = chain_lightning_damage(live_rolls, level);
 	while (order--)
 	{
-		dam = (int)(dam * 0.8);
+		dam = chain_lightning_leap(dam);
 	}
 
 	if (IS_PC(ch) && IS_PC(victim))
 	{
-		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
+		dam = chain_lightning_player_damage(dam);
 	}
-	dam = dam * get_property("spell.area.damage.factor.chainlightning", 1.000);
+	dam = chain_lightning_area_damage(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, 0,
 		     secondary_strike ? &secondary_messages : &primary_messages);
+}
+
+std::string chain_lightning_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { chain_lightning_damage(lowest_rolls, level),
+			    chain_lightning_damage(highest_rolls, level) };
+	std::string text =
+		fact("First target", show({ chain_lightning_area_damage(hit.low),
+					    chain_lightning_area_damage(hit.high) }) +
+					     " lightning damage at your level, " +
+					     std::to_string(level)) +
+		fact("Second target",
+		     show({ chain_lightning_area_damage(chain_lightning_leap(hit.low)),
+			    chain_lightning_area_damage(chain_lightning_leap(hit.high)) }) +
+			     ", each later one " + std::to_string(chain_lightning_leap(100)) +
+			     "% of the one before");
+	if (IS_PC(ch))
+		text += fact(
+			"A player as first target",
+			show({ chain_lightning_area_damage(chain_lightning_player_damage(hit.low)),
+			       chain_lightning_area_damage(
+				       chain_lightning_player_damage(hit.high)) }));
+	return text + "  Globes and spirit wards do not stop it.\n"
+		      "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_chain_lightning(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -3615,6 +4833,19 @@ void spell_chain_lightning(int level, P_char ch, char * /*arg*/, int /*type*/, P
 	}
 }
 
+// Lightning ring damage to each target at cast level `level`; ethermancers roll dice.
+static int ring_lightning_damage(const Rolls &rolls, P_char ch, int level)
+{
+	return (6 * MIN(51, level)) +
+	       (GET_CLASS(ch, CLASS_ETHERMANCER) ? rolls.dice(level, 4) : rolls.number(1, level));
+}
+
+// A player's lightning ring against another player.
+static int ring_lightning_player_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.to.pc", 0.5);
+}
+
 void spell_single_lightning_ring(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 				 P_obj /*obj*/)
 {
@@ -3629,14 +4860,27 @@ void spell_single_lightning_ring(int level, P_char ch, char * /*arg*/, int /*typ
 		0
 	};
 
-	dam = (6 * MIN(51, level)) +
-	      (GET_CLASS(ch, CLASS_ETHERMANCER) ? dice(level, 4) : number(1, level));
+	dam = ring_lightning_damage(live_rolls, ch, level);
 	if (IS_PC(ch) && IS_PC(victim))
 	{
-		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
+		dam = ring_lightning_player_damage(dam);
 	}
 
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, 0, &messages);
+}
+
+std::string ring_lightning_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { ring_lightning_damage(lowest_rolls, ch, level),
+			    ring_lightning_damage(highest_rolls, ch, level) };
+	std::string text = fact("Lightning damage", show(hit) + " to each target at your level, " +
+							    std::to_string(level));
+	if (IS_PC(ch))
+		text += fact("Against a player", show({ ring_lightning_player_damage(hit.low),
+							ring_lightning_player_damage(hit.high) }));
+	return text + "  Globes and spirit wards do not stop it.\n"
+		      "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_ring_lightning(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -3648,6 +4892,51 @@ void spell_ring_lightning(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 	cast_as_damage_area(ch, spell_single_lightning_ring, level, victim,
 			    get_property("spell.area.minChance.lightningRing", 30),
 			    get_property("spell.area.chanceStep.lightningRing", 15));
+}
+
+// Cyclone damage at cast level `level`; a tempest magus multiplies it.
+static int cyclone_damage(const Rolls &rolls, P_char ch, int level)
+{
+	// dam = dice(level * 2, 9);
+	int dam = rolls.dice((int)(MIN(level, 40) * 2), 10);
+	if (GET_SPEC(ch, CLASS_ETHERMANCER, SPEC_TEMPESTMAGUS))
+	{
+		dam = (int)(dam * (1.5 + MAX(level - 30, 20) / 40.0));
+	}
+	return dam;
+}
+
+// A target that makes its agility save takes half damage.
+static int cyclone_halved(int dam)
+{
+	return dam >> 1;
+}
+
+// A flying target that fails its save is stunned when number(1, 100) is at most the chance.
+static int cyclone_stun_chance()
+{
+	return 50;
+}
+
+static int cyclone_stun()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+std::string cyclone_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { cyclone_damage(lowest_rolls, ch, level),
+			    cyclone_damage(highest_rolls, ch, level) };
+	return fact("Damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target makes an agility save",
+		    show({ cyclone_halved(hit.low), cyclone_halved(hit.high) })) +
+	       "  Elites always take half unless you are a tempest magus.\n" +
+	       fact("A flying target that fails a save", std::to_string(cyclone_stun_chance()) +
+								 "% chance to be stunned up to " +
+								 seconds(cyclone_stun())) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
@@ -3671,12 +4960,7 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	}
 
 	casterIsTempestMagus = GET_SPEC(ch, CLASS_ETHERMANCER, SPEC_TEMPESTMAGUS);
-	// dam = dice(level * 2, 9);
-	dam = dice((int)(MIN(level, 40) * 2), 10);
-	if (casterIsTempestMagus)
-	{
-		dam = (int)(dam * (1.5 + MAX(level - 30, 20) / 40.0));
-	}
+	dam = cyclone_damage(live_rolls, ch, level);
 
 	svchance = (int)(level / 12);
 
@@ -3685,7 +4969,7 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	{
 		affchance = number(1, 100);
 
-		if (affchance <= 50) /* && (!check_wall(tch->in_room, door)) */
+		if (affchance <= cyclone_stun_chance()) /* && (!check_wall(tch->in_room, door)) */
 		{
 			act("The gail force of your spell sends $N flying through the room!", FALSE,
 			    ch, 0, victim, TO_CHAR);
@@ -3697,7 +4981,7 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 
 			if (!IS_STUNNED(victim))
 			{
-				Stun(victim, ch, PULSE_VIOLENCE / 2, TRUE);
+				Stun(victim, ch, cyclone_stun(), TRUE);
 			}
 		}
 		else if (affchance <= 5)
@@ -3724,7 +5008,7 @@ void spell_cyclone(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 	}
 	else
 	{
-		spell_damage(ch, victim, dam >> 1, SPLDAM_GENERIC, 0, &messages);
+		spell_damage(ch, victim, cyclone_halved(dam), SPLDAM_GENERIC, 0, &messages);
 	}
 }
 
@@ -3736,6 +5020,29 @@ void spell_negative_energy_vortex(int level, P_char ch, char * /*arg*/, int /*ty
 		if (ch->specials.z_cord == victim->specials.z_cord)
 			spell_heal(GET_CLASS(ch, CLASS_WARLOCK) ? level : -1, ch, 0, 0, victim, 0);
 	}
+}
+
+// Meteor swarm damage to each target at cast level `level`.
+static int meteorswarm_damage(const Rolls &rolls, int level)
+{
+	return 80 + level * 7 + rolls.number(1, 40);
+}
+
+// A player's meteor swarm against another player.
+static int meteorswarm_player_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.to.pc", 0.5);
+}
+
+// The area damage factor, then a wizard's bonus.
+static int meteorswarm_area_damage(P_char ch, int dam)
+{
+	dam = dam * get_property("spell.area.damage.factor.meteorSwarm", 1.000);
+	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_WIZARD))
+	{
+		dam = dam * 1.4;
+	}
+	return dam;
 }
 
 void spell_single_meteorswarm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -3757,17 +5064,32 @@ void spell_single_meteorswarm(int level, P_char ch, char * /*arg*/, int /*type*/
 		return;
 	}
 
-	dam = 80 + level * 7 + number(1, 40);
+	dam = meteorswarm_damage(live_rolls, level);
 	if (IS_PC(ch) && IS_PC(victim))
 	{
-		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
+		dam = meteorswarm_player_damage(dam);
 	}
-	dam = dam * get_property("spell.area.damage.factor.meteorSwarm", 1.000);
-	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_WIZARD))
-	{
-		dam = dam * 1.4;
-	}
+	dam = meteorswarm_area_damage(ch, dam);
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, 0, &messages);
+}
+
+std::string meteorswarm_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { meteorswarm_damage(lowest_rolls, level),
+			    meteorswarm_damage(highest_rolls, level) };
+	std::string text =
+		fact("Damage", show({ meteorswarm_area_damage(ch, hit.low),
+				      meteorswarm_area_damage(ch, hit.high) }) +
+				       " to each target at your level, " + std::to_string(level));
+	if (IS_PC(ch))
+		text += fact(
+			"Against a player",
+			show({ meteorswarm_area_damage(ch, meteorswarm_player_damage(hit.low)),
+			       meteorswarm_area_damage(ch, meteorswarm_player_damage(hit.high)) }));
+	return text + "  It must be cast outdoors.\n"
+		      "  Globes and spirit wards do not stop it.\n"
+		      "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_meteorswarm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -3803,6 +5125,19 @@ void spell_meteorswarm(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 			    get_property("spell.area.chanceStep.meteorSwarm", 20));
 }
 
+// Entropy storm heals each undead in the room by this much.
+static int entropy_storm_healing()
+{
+	return 70;
+}
+
+std::string entropy_storm_facts(P_char /*ch*/)
+{
+	return fact("Healing to undead",
+		    std::to_string(entropy_storm_healing()) + ", before healing modifiers") +
+	       "  The living may flee in fear unless they save.\n";
+}
+
 void spell_entropy_storm(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			 P_obj /*obj*/)
 {
@@ -3826,7 +5161,7 @@ void spell_entropy_storm(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 
 		if (IS_UNDEADRACE(tch))
 		{
-			healpoints = 70;
+			healpoints = entropy_storm_healing();
 			heal(tch, ch, healpoints, GET_MAX_HIT(tch));
 			update_pos(tch);
 			send_to_char(
@@ -3848,6 +5183,47 @@ void spell_entropy_storm(int /*level*/, P_char ch, char * /*arg*/, int /*type*/,
 			}
 		}
 	}
+}
+
+// Earthquake damage to a target that falls, at cast level `level`; zealots add a quarter.
+static int earthquake_fall_damage(const Rolls &rolls, P_char ch, int level)
+{
+	int dam = (int)(rolls.dice(1, 30) + level);
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+	{
+		dam = (int)(dam * 1.25);
+	}
+	return dam;
+}
+
+// Earthquake damage to a target that keeps its feet: 1 outdoors, 2 on mountains, 3
+// elsewhere indoors, in the underdark and on the earth plane.
+static int earthquake_stagger_damage(const Rolls &rolls, int level, int dam_flag)
+{
+	return (int)(rolls.dice(1, 4) + (dam_flag * (level / 2)));
+}
+
+std::string earthquake_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	auto stagger = [&](int dam_flag)
+	{
+		return show({ earthquake_stagger_damage(lowest_rolls, level, dam_flag),
+			      earthquake_stagger_damage(highest_rolls, level, dam_flag) });
+	};
+	return fact("If a target fails an agility save",
+		    show({ earthquake_fall_damage(lowest_rolls, ch, level),
+			   earthquake_fall_damage(highest_rolls, ch, level) }) +
+			    " damage at your level, " + std::to_string(level)) +
+	       "  It falls unless it is a player who lands a safe fall, avoiding the damage.\n" +
+	       fact("If it keeps its feet", stagger(1) + " earth damage outdoors") +
+	       fact("On mountains", stagger(2)) +
+	       fact("Elsewhere indoors, in the underdark or on the earth plane", stagger(3)) +
+	       "  Only standing targets your area spells can hit take damage; others that\n"
+	       "  fail the save fall to their knees.\n"
+	       "  Nothing quakes while you fly or swim.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_earthquake(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
@@ -4029,11 +5405,8 @@ void spell_earthquake(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 						    0, 0, TO_ROOM);
 						if (level >= 0)
 						{
-							dam = (int)(dice(1, 30) + level);
-							if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
-							{
-								dam = (int)(dam * 1.25);
-							}
+							dam = earthquake_fall_damage(live_rolls, ch,
+										     level);
 
 							if (spell_damage(ch, tch, dam,
 									 SPLDAM_GENERIC,
@@ -4074,7 +5447,8 @@ void spell_earthquake(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 					    ch, 0, tch, TO_VICT);
 					act("$n&n &+Lstaggers and almost falls!&n", TRUE, tch, 0, 0,
 					    TO_ROOM);
-					dam = (int)(dice(1, 4) + (dam_flag * (level / 2)));
+					dam = earthquake_stagger_damage(live_rolls, level,
+									dam_flag);
 					// lvl < 0 -> don't damage them as this is from earthen rain -> fall only.
 					if ((level >= 0) &&
 					    spell_damage(ch, tch, dam, SPLDAM_EARTH,
@@ -4097,6 +5471,29 @@ void spell_earthquake(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 	}
 }
 
+// Firestorm damage to each target at cast level `level`, before its save.
+static int firestorm_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(level, 10);
+}
+
+// A saved firestorm deals half damage.
+static int firestorm_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// A player's firestorm against another player, then the area damage factor.
+static int firestorm_player_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.to.pc", 0.5);
+}
+
+static int firestorm_area_damage(int dam)
+{
+	return dam * get_property("spell.area.damage.factor.fireStorm", 1.000);
+}
+
 void spell_single_firestorm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			    P_obj /*obj*/)
 {
@@ -4111,16 +5508,45 @@ void spell_single_firestorm(int level, P_char ch, char * /*arg*/, int /*type*/, 
 		0
 	};
 
-	dam = dice(level, 10);
+	dam = firestorm_damage(live_rolls, level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FIRESTORM);
 	if (NewSaves(victim, SAVING_SPELL, mod))
-		dam >>= 1;
+		dam = firestorm_saved(dam);
 
 	if (IS_PC(ch) && IS_PC(victim))
-		dam = dam * get_property("spell.area.damage.to.pc", 0.5);
+		dam = firestorm_player_damage(dam);
 
-	dam = dam * get_property("spell.area.damage.factor.fireStorm", 1.000);
+	dam = firestorm_area_damage(dam);
 	spell_damage(ch, victim, dam, SPLDAM_FIRE, 0, &messages);
+}
+
+// The firestorm lingers in the room this many pulses; longer from items.
+static int firestorm_room_duration(int type)
+{
+	if (type >= 1)
+		return (int)(2 * PULSE_VIOLENCE); // dragoon dragon priest
+	return (int)(1.5 * PULSE_VIOLENCE); // everyone else
+}
+
+std::string firestorm_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { firestorm_damage(lowest_rolls, level),
+			    firestorm_damage(highest_rolls, level) };
+	std::string text =
+		fact("Fire damage",
+		     show({ firestorm_area_damage(hit.low), firestorm_area_damage(hit.high) }) +
+			     " to each target at your level, " + std::to_string(level)) +
+		fact("If a target saves",
+		     show({ firestorm_area_damage(firestorm_saved(hit.low)),
+			    firestorm_area_damage(firestorm_saved(hit.high)) }));
+	if (IS_PC(ch))
+		text += fact("Against a player",
+			     show({ firestorm_area_damage(firestorm_player_damage(hit.low)),
+				    firestorm_area_damage(firestorm_player_damage(hit.high)) }));
+	return text + fact("The fire lingers", seconds(firestorm_room_duration(SPELL_TYPE_SPELL))) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_firestorm(int level, P_char ch, char * /*arg*/, int type, P_char victim, P_obj /*obj*/)
@@ -4139,10 +5565,7 @@ void spell_firestorm(int level, P_char ch, char * /*arg*/, int type, P_char vict
 
 	memset(&raf, 0, sizeof(raf));
 	raf.type = SPELL_FIRESTORM;
-	if (type >= 1)
-		raf.duration = (int)(2 * PULSE_VIOLENCE); // dragoon dragon priest
-	else
-		raf.duration = (int)(1.5 * PULSE_VIOLENCE); // everyone else
+	raf.duration = firestorm_room_duration(type);
 	affect_to_room(room, &raf);
 
 	for (tch = world[room].people; tch; tch = tch->next_in_room)
@@ -4151,6 +5574,31 @@ void spell_firestorm(int level, P_char ch, char * /*arg*/, int type, P_char vict
 			send_to_char("The heat of the firestorm dried up your clothes.\n", tch);
 			make_dry(tch);
 		}
+}
+
+// Dispel good damage at cast level `level`, before the target's save.
+static int dispel_good_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice(level, 8);
+}
+
+// A saved dispel good deals half damage.
+static int dispel_good_saved(int dam)
+{
+	return dam >> 1;
+}
+
+std::string dispel_good_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { dispel_good_damage(lowest_rolls, level),
+			    dispel_good_damage(highest_rolls, level) };
+	return fact("Holy damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show({ dispel_good_saved(hit.low), dispel_good_saved(hit.high) })) +
+	       "  It harms only good targets.\n" +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_dispel_good(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -4176,12 +5624,37 @@ void spell_dispel_good(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 		act("$N chuckles at $n's cluelessness.", FALSE, ch, 0, victim, TO_NOTVICT);
 		return;
 	}
-	dam = dice(level, 8);
+	dam = dispel_good_damage(live_rolls, level);
 
 	if (saves_spell(victim, SAVING_SPELL))
-		dam >>= 1;
+		dam = dispel_good_saved(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_HOLY, SPLDAM_ALLGLOBES, &messages);
+}
+
+// Dispel evil damage at cast level `level`, before the target's save.
+static int dispel_evil_damage(const Rolls &rolls, int level)
+{
+	return rolls.dice((level + 1), 5);
+}
+
+// A saved dispel evil deals half damage.
+static int dispel_evil_saved(int dam)
+{
+	return dam >> 1;
+}
+
+std::string dispel_evil_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { dispel_evil_damage(lowest_rolls, level),
+			    dispel_evil_damage(highest_rolls, level) };
+	return fact("Holy damage", show(hit) + " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show({ dispel_evil_saved(hit.low), dispel_evil_saved(hit.high) })) +
+	       "  It harms only evil targets.\n" +
+	       fact("Stopped by", "any globe of invulnerability or spirit ward") +
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_dispel_evil(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -4207,12 +5680,77 @@ void spell_dispel_evil(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 		act("$N chuckles at $n's cluelessness.", FALSE, ch, 0, victim, TO_NOTVICT);
 		return;
 	}
-	dam = dice((level + 1), 5);
+	dam = dispel_evil_damage(live_rolls, level);
 
 	if (saves_spell(victim, SAVING_SPELL))
-		dam >>= 1;
+		dam = dispel_evil_saved(dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_HOLY, SPLDAM_ALLGLOBES, &messages);
+}
+
+// Flame strike damage at cast level `level`, before the target's save.
+static int flamestrike_damage(const Rolls &rolls, int level)
+{
+	int num_dice = (level / 5);
+	return (rolls.dice(num_dice, 6) * 4);
+}
+
+// A failed save doubles flame strike damage.
+static int flamestrike_failed_save(int dam)
+{
+	return (int)(dam * 2);
+}
+
+// Zealots strike harder.
+static int flamestrike_zealot_damage(P_char ch, int dam)
+{
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+	{
+		dam = (int)(dam * get_property("zealots.flamestrike.damageMulti", 1.25));
+	}
+	return dam;
+}
+
+// Half lands as holy damage that cannot kill, then half as fire.
+static int flamestrike_half(int dam)
+{
+	return (dam / 2);
+}
+
+// A zealot's flame strike brands a surviving target for this many ticks.
+static bool flamestrike_brands(P_char ch)
+{
+	return GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT);
+}
+
+static int flamestrike_brand_duration(int level)
+{
+	return level / 10;
+}
+
+std::string flamestrike_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { flamestrike_damage(lowest_rolls, level),
+			    flamestrike_damage(highest_rolls, level) };
+	const Range saved = { flamestrike_zealot_damage(ch, hit.low),
+			      flamestrike_zealot_damage(ch, hit.high) };
+	const Range failed = { flamestrike_zealot_damage(ch, flamestrike_failed_save(hit.low)),
+			       flamestrike_zealot_damage(ch, flamestrike_failed_save(hit.high)) };
+	std::string text =
+		fact("Holy damage, then fire",
+		     show({ flamestrike_half(saved.low), flamestrike_half(saved.high) }) +
+			     " each at your level, " + std::to_string(level)) +
+		fact("If the target fails its save",
+		     show({ flamestrike_half(failed.low), flamestrike_half(failed.high) }) +
+			     " each") +
+		"  The holy half never kills: the target keeps at least 1 hit point.\n";
+	if (flamestrike_brands(ch))
+		text += fact("If it survives, your brand lasts",
+			     game_hours(flamestrike_brand_duration(level))) +
+			"  Healing on a branded target is weaker.\n";
+	return text + "  Globes and spirit wards do not stop it.\n"
+		      "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_flamestrike(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -4227,31 +5765,27 @@ void spell_flamestrike(int level, P_char ch, char * /*arg*/, [[maybe_unused]] in
 		"$n calls down a &+rflamestrike&N on $N, who turns into a pile of ash!",
 		0
 	};
-	int num_dice = (level / 5);
-	int dam = (dice(num_dice, 6) * 4);
+	int dam = flamestrike_damage(live_rolls, level);
 
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FLAMESTRIKE);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (int)(dam * 2);
+		dam = flamestrike_failed_save(dam);
 
-	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
-	{
-		dam = (int)(dam * get_property("zealots.flamestrike.damageMulti", 1.25));
-	}
+	dam = flamestrike_zealot_damage(ch, dam);
 
-	spell_damage(ch, victim, (dam / 2), SPLDAM_HOLY, RAWDAM_NOKILL, 0);
+	spell_damage(ch, victim, flamestrike_half(dam), SPLDAM_HOLY, RAWDAM_NOKILL, 0);
 	if (IS_ALIVE(victim))
 	{
-		spell_damage(ch, victim, (dam / 2), SPLDAM_FIRE, 0, &messages);
+		spell_damage(ch, victim, flamestrike_half(dam), SPLDAM_FIRE, 0, &messages);
 	}
 
 	if (!IS_ALIVE(victim) || !IS_ALIVE(ch))
 		return;
 
-	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+	if (flamestrike_brands(ch))
 	{
 		struct affected_type *paf = NULL;
-		int duration = level / 10;
+		int duration = flamestrike_brand_duration(level);
 		int healBlocked =
 			(int)(dam * get_property("zealots.flamestrike.blockedMulti", 2.0));
 
@@ -4377,6 +5911,46 @@ void spell_call_lightning(int level, P_char ch, P_char victim, P_obj /*obj*/)
 		  sizeof(struct call_lightning_data));
 }
 
+// Destroy undead damage at cast level `level`, before the save and zealot bonus.
+static int destroy_undead_damage(const Rolls &rolls, int level)
+{
+	// dam = 13 * level + number(0, level);
+	return (15 * MIN(level, 56)) + rolls.number(-40, 40);
+}
+
+// A saved destroy undead deals half damage.
+static int destroy_undead_saved(int dam)
+{
+	return dam >> 1;
+}
+
+// Zealots strike harder.
+static int destroy_undead_zealot_damage(P_char ch, int dam)
+{
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+	{
+		dam = (int)(dam * 1.25);
+	}
+	return dam;
+}
+
+std::string destroy_undead_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const Range hit = { destroy_undead_damage(lowest_rolls, level),
+			    destroy_undead_damage(highest_rolls, level) };
+	return fact("Holy damage", show_landing({ destroy_undead_zealot_damage(ch, hit.low),
+						  destroy_undead_zealot_damage(ch, hit.high) }) +
+					   " at your level, " + std::to_string(level)) +
+	       fact("If the target saves",
+		    show_landing(
+			    { destroy_undead_zealot_damage(ch, destroy_undead_saved(hit.low)),
+			      destroy_undead_zealot_damage(ch, destroy_undead_saved(hit.high)) })) +
+	       "  It harms only the undead and those in wraithform.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_destroy_undead(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			  P_obj /*obj*/)
 {
@@ -4410,17 +5984,39 @@ void spell_destroy_undead(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		return;
 	}
 
-	dam = (15 * MIN(level, 56)) + number(-40, 40);
-	// dam = 13 * level + number(0, level);
+	dam = destroy_undead_damage(live_rolls, level);
 	if (saves_spell(victim, SAVING_SPELL))
-		dam >>= 1;
+		dam = destroy_undead_saved(dam);
 
+	dam = destroy_undead_zealot_damage(ch, dam);
+
+	spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, IS_CLERIC(ch) ? &messages : &notcleric_msgs);
+}
+
+// Harm damage, by whether the target saves, before the zealot bonus.
+static int harm_damage(bool saved)
+{
+	return saved ? 100 : 200;
+}
+
+// Zealots strike harder.
+static int harm_zealot_damage(P_char ch, int dam)
+{
 	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
 	{
 		dam = (int)(dam * 1.25);
 	}
+	return dam;
+}
 
-	spell_damage(ch, victim, dam, SPLDAM_HOLY, 0, IS_CLERIC(ch) ? &messages : &notcleric_msgs);
+std::string harm_facts(P_char ch)
+{
+	return fact("Holy damage", std::to_string(harm_zealot_damage(ch, harm_damage(false)))) +
+	       fact("If the target saves",
+		    std::to_string(harm_zealot_damage(ch, harm_damage(true)))) +
+	       "  It never kills: the target keeps at least 1 hit point.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_harm(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -4437,17 +6033,46 @@ void spell_harm(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		0
 	};
 
-	if (saves_spell(victim, SAVING_SPELL))
-		dam = 100;
-	else
-		dam = 200;
+	dam = harm_damage(saves_spell(victim, SAVING_SPELL));
 
+	dam = harm_zealot_damage(ch, dam);
+
+	spell_damage(ch, victim, dam, SPLDAM_HOLY, RAWDAM_NOKILL, &messages);
+}
+
+// Full harm damage at cast level `level`, before the save and zealot bonus.
+static int full_harm_damage(int level)
+{
+	return (level / 3 * 11);
+}
+
+// A failed save doubles full harm damage.
+static int full_harm_failed_save(int dam)
+{
+	return (dam * 2);
+}
+
+// Zealots strike harder.
+static int full_harm_zealot_damage(P_char ch, int dam)
+{
 	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
 	{
 		dam = (int)(dam * 1.25);
 	}
+	return dam;
+}
 
-	spell_damage(ch, victim, dam, SPLDAM_HOLY, RAWDAM_NOKILL, &messages);
+std::string full_harm_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const int dam = full_harm_damage(level);
+	return fact("Holy damage", std::to_string(full_harm_zealot_damage(ch, dam)) +
+					   " at your level, " + std::to_string(level)) +
+	       fact("If the target fails its save",
+		    std::to_string(full_harm_zealot_damage(ch, full_harm_failed_save(dam)))) +
+	       "  It never kills: the target keeps at least 1 hit point.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_full_harm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -4464,17 +6089,25 @@ void spell_full_harm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char 
 		0
 	};
 
-	dam = (level / 3 * 11);
+	dam = full_harm_damage(level);
 	int mod = get_default_save_mod(victim, ch, SAVING_SPELL, SPELL_FULL_HARM);
 	if (!NewSaves(victim, SAVING_SPELL, mod))
-		dam = (dam * 2);
+		dam = full_harm_failed_save(dam);
 
-	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
-	{
-		dam = (int)(dam * 1.25);
-	}
+	dam = full_harm_zealot_damage(ch, dam);
 
 	spell_damage(ch, victim, dam, SPLDAM_HOLY, RAWDAM_NOKILL, &messages);
+}
+
+// Each wave of decaying flesh deals this damage, and waves come this many pulses apart.
+static int decaying_flesh_damage(const Rolls &rolls)
+{
+	return rolls.dice(5, 10);
+}
+
+static int decaying_flesh_interval()
+{
+	return PULSE_VIOLENCE;
 }
 
 // ch and victim is backwards so disarm will work right.
@@ -4505,7 +6138,7 @@ void event_fleshdecay(P_char victim, P_char ch, P_obj /*obj*/, void *data)
 	if (!IS_AFFECTED5(victim, AFF5_DECAYING_FLESH))
 		return;
 
-	dam = dice(5, 10);
+	dam = decaying_flesh_damage(live_rolls);
 
 	if ((GET_HIT(victim) - dam) > 0)
 	{
@@ -4522,8 +6155,8 @@ void event_fleshdecay(P_char victim, P_char ch, P_obj /*obj*/, void *data)
 	if (--num_waves > 0)
 	{
 		// ch and victim is backwards so disarm will work right.
-		add_event(event_fleshdecay, PULSE_VIOLENCE, victim, ch, NULL, 0, &num_waves,
-			  sizeof(num_waves));
+		add_event(event_fleshdecay, decaying_flesh_interval(), victim, ch, NULL, 0,
+			  &num_waves, sizeof(num_waves));
 	}
 	else
 	{
@@ -4531,11 +6164,30 @@ void event_fleshdecay(P_char victim, P_char ch, P_obj /*obj*/, void *data)
 	}
 }
 
+// Decaying flesh strikes this many waves.
+static int decaying_flesh_waves(const Rolls &rolls)
+{
+	return rolls.number(2, 6);
+}
+
+std::string decaying_flesh_facts(P_char /*ch*/)
+{
+	return fact("Damage", show({ decaying_flesh_damage(lowest_rolls),
+				     decaying_flesh_damage(highest_rolls) }) +
+				      " every " + seconds(decaying_flesh_interval()) + ", " +
+				      show({ decaying_flesh_waves(lowest_rolls),
+					     decaying_flesh_waves(highest_rolls) }) +
+				      " times") +
+	       "  A wave that would kill the target does no damage.\n"
+	       "  Physical damage that ignores armor, skin spells, displacement and other\n"
+	       "  damage reduction; wards and sanctuary still apply.\n";
+}
+
 void spell_decaying_flesh(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
-	int num_waves = number(2, 6);
+	int num_waves = decaying_flesh_waves(live_rolls);
 
 	if (ch == victim)
 	{
@@ -4575,8 +6227,8 @@ void spell_decaying_flesh(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		}
 		disarm_char_nevents(victim, event_fleshdecay);
 		// This is backwards so disarm will work right.
-		add_event(event_fleshdecay, PULSE_VIOLENCE, victim, ch, NULL, 0, &num_waves,
-			  sizeof(num_waves));
+		add_event(event_fleshdecay, decaying_flesh_interval(), victim, ch, NULL, 0,
+			  &num_waves, sizeof(num_waves));
 	}
 	else
 	{
@@ -4598,8 +6250,8 @@ void spell_decaying_flesh(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		af.modifier = 1;
 		affect_to_char(victim, &af);
 		// This is backwards so disarm will work right.
-		add_event(event_fleshdecay, PULSE_VIOLENCE, victim, ch, NULL, 0, &num_waves,
-			  sizeof(num_waves));
+		add_event(event_fleshdecay, decaying_flesh_interval(), victim, ch, NULL, 0,
+			  &num_waves, sizeof(num_waves));
 	}
 
 	attack_back(ch, victim, TRUE);
@@ -4608,23 +6260,52 @@ void spell_decaying_flesh(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 /*
  * spells2.c - Not directly offensive spells
  */
+// Fortitude lasts this many ticks at cast level `level`.
+static int fortitude_duration(int level)
+{
+	int temp = (int)(level / 10);
+	return 2 * (1 + temp);
+}
+
+// Fortitude's constitution bonus, from the caster's own level.
+static int fortitude_constitution(P_char ch)
+{
+	return BOUNDED(1, GET_LEVEL(ch) / 4, 5);
+}
+
+std::string fortitude_facts(P_char ch)
+{
+	return fact("Constitution", "+" + std::to_string(fortitude_constitution(ch))) +
+	       fact("Duration", game_hours(fortitude_duration(GET_LEVEL(ch))));
+}
+
 void spell_fortitude(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 		     P_obj /*obj*/)
 {
 	struct affected_type af;
-	int temp;
 
-	temp = (int)(level / 10);
 	if (!affected_by_spell(victim, SPELL_FORTITUDE))
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_FORTITUDE;
-		af.duration = 2 * (1 + temp);
+		af.duration = fortitude_duration(level);
 		af.location = APPLY_CON;
-		af.modifier = BOUNDED(1, GET_LEVEL(ch) / 4, 5);
+		af.modifier = fortitude_constitution(ch);
 		affect_to_char(victim, &af);
 		send_to_char("&+WYour will to live grows stronger!\n", victim);
 	}
+}
+
+// The nova grows this many pulses before it may explode.
+static int nova_delay()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The sunray level of a nova's explosion; players' novas are weaker.
+static int nova_level(P_char ch)
+{
+	return IS_NPC(ch) ? GET_LEVEL(ch) : (int)(GET_LEVEL(ch) * 0.6);
 }
 
 void event_nova(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
@@ -4637,7 +6318,7 @@ void event_nova(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			"&+WA massive &+Yball of light&+W slowly throbs, sucking all light from every corner of this area...\n",
 			room);
 
-		add_event(event_nova, PULSE_VIOLENCE * 2, ch, 0, 0, 0, &room, sizeof(room));
+		add_event(event_nova, nova_delay(), ch, 0, 0, 0, &room, sizeof(room));
 		return;
 	}
 	resolve_nova(ch);
@@ -4657,10 +6338,16 @@ void resolve_nova(P_char ch)
 		"&+YT&+yh&+Yi&+yn &+Yr&+ya&+Yy&+ys of &+Yli&+ygh&+Yt &+rex&+Rplo&+rde &+ythroughout the &+Warea!\n",
 		"&+YT&+yh&+Yi&+yn &+Yr&+ya&+Yy&+ys of &+Yli&+ygh&+Yt &+rex&+Rplo&+rde &+ythroughout the &+Warea to the %s!\n");
 
-	cast_as_damage_area(ch, spell_sunray,
-			    IS_NPC(ch) ? GET_LEVEL(ch) : (int)(GET_LEVEL(ch) * 0.6), NULL,
+	cast_as_damage_area(ch, spell_sunray, nova_level(ch), NULL,
 			    get_property("spell.area.minChance.nova", 90),
 			    get_property("spell.area.chanceStep.nova", 10));
+}
+
+std::string nova_facts(P_char ch)
+{
+	return fact("It explodes after", seconds(nova_delay()) + " or more") +
+	       fact("Explosion",
+		    "sunray at level " + std::to_string(nova_level(ch)) + " on those around you");
 }
 
 void spell_nova(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
@@ -4672,7 +6359,7 @@ void spell_nova(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /
 		"&+YA point of light appears in the middle of the room, slowly growing larger!\n",
 		ch->in_room);
 
-	add_event(event_nova, PULSE_VIOLENCE * 2, ch, 0, 0, 0, &room, sizeof(room));
+	add_event(event_nova, nova_delay(), ch, 0, 0, 0, &room, sizeof(room));
 }
 
 void spell_harmonic_resonance(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -4740,6 +6427,18 @@ void spell_harmonic_resonance(int level, P_char ch, char * /*arg*/, int /*type*/
 		break;
 	}
 }
+
+// The farthest a siren song reaches, in rooms.
+static int siren_song_distance()
+{
+	return (int)get_property("spell.siren.song.dist", 30);
+}
+
+std::string siren_song_facts(P_char /*ch*/)
+{
+	return fact("Range", std::to_string(siren_song_distance()) + " rooms");
+}
+
 void spell_siren_song(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		      P_obj /*obj*/)
 {
@@ -4751,8 +6450,7 @@ void spell_siren_song(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_
 		send_to_char("That person is already near you.\n", ch);
 		return;
 	}
-	if (how_close(ch->in_room, victim->in_room,
-		      (int)get_property("spell.siren.song.dist", 30)) <= 0)
+	if (how_close(ch->in_room, victim->in_room, siren_song_distance()) <= 0)
 	{
 		send_to_char("Your voice strains from the distance to reach your target.\n", ch);
 		return;
@@ -4857,6 +6555,60 @@ const char *elemental_aura_failure_message(P_char ch)
 	}
 }
 
+// Elemental aura lasts this many ticks.
+static int elemental_aura_duration()
+{
+	return (SECS_PER_MUD_DAY / 60);
+}
+
+// The change to a stat maximum (`location`) on an elemental plane (`sector`).
+static int elemental_aura_max_stat(int sector, int location)
+{
+	switch (sector)
+	{
+	case SECT_FIREPLANE:
+		return location == APPLY_STR_MAX ? 50 :
+		       location == APPLY_DEX_MAX ? -20 :
+		       location == APPLY_AGI_MAX ? -10 :
+						   25;
+	case SECT_WATER_PLANE:
+		return location == APPLY_STR_MAX ? -20 :
+		       location == APPLY_DEX_MAX ? 50 :
+		       location == APPLY_AGI_MAX ? 25 :
+						   -10;
+	case SECT_AIR_PLANE:
+		return location == APPLY_STR_MAX ? -25 :
+		       location == APPLY_DEX_MAX ? 25 :
+		       location == APPLY_AGI_MAX ? 100 :
+						   -20;
+	default: // SECT_EARTH_PLANE
+		return location == APPLY_STR_MAX ? 75 :
+		       location == APPLY_DEX_MAX ? -25 :
+		       location == APPLY_AGI_MAX ? -20 :
+						   75;
+	}
+}
+
+std::string elemental_aura_facts(P_char /*ch*/)
+{
+	auto plane = [](const char *name, int sector)
+	{
+		auto stat = [&](const char *stat_name, int location)
+		{
+			const int change = elemental_aura_max_stat(sector, location);
+			return std::string(stat_name) + (change > 0 ? " +" : " ") +
+			       std::to_string(change);
+		};
+		return fact(name, stat("Str", APPLY_STR_MAX) + ", " + stat("Dex", APPLY_DEX_MAX) +
+					  ", " + stat("Agi", APPLY_AGI_MAX) + ", " +
+					  stat("Con", APPLY_CON_MAX));
+	};
+	return "  Stat maximums by the plane you cast it on:\n" + plane("Fire", SECT_FIREPLANE) +
+	       plane("Water", SECT_WATER_PLANE) + plane("Air", SECT_AIR_PLANE) +
+	       plane("Earth", SECT_EARTH_PLANE) +
+	       fact("Duration", game_hours(elemental_aura_duration()));
+}
+
 void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char victim, P_obj /*obj*/)
 {
@@ -4875,7 +6627,7 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_ELEMENTAL_AURA;
-	af.duration = (SECS_PER_MUD_DAY / 60);
+	af.duration = elemental_aura_duration();
 
 	/* We do not want it going off in a non-plane room
 	  af.location = APPLY_AC;
@@ -4887,19 +6639,19 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		act("&+rYour body glows with an aura of fire!", FALSE, ch, 0, 0, TO_CHAR);
 		act("&+r$n's&+r body glows with an aura of fire!", FALSE, ch, 0, 0, TO_ROOM);
 		af.location = APPLY_STR_MAX;
-		af.modifier = 50;
+		af.modifier = elemental_aura_max_stat(SECT_FIREPLANE, APPLY_STR_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX_MAX;
-		af.modifier = -20;
+		af.modifier = elemental_aura_max_stat(SECT_FIREPLANE, APPLY_DEX_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI_MAX;
-		af.modifier = -10;
+		af.modifier = elemental_aura_max_stat(SECT_FIREPLANE, APPLY_AGI_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_CON_MAX;
-		af.modifier = 25;
+		af.modifier = elemental_aura_max_stat(SECT_FIREPLANE, APPLY_CON_MAX);
 		affect_to_char(victim, &af);
 
 		if (NewSaves(ch, SAVING_FEAR, 4) || IS_NPC(ch))
@@ -4921,19 +6673,19 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		act("&+bYour body flows with an aura of water!", FALSE, ch, 0, 0, TO_CHAR);
 		act("&+b$n's&+b body flows with an aura of water!", FALSE, ch, 0, 0, TO_ROOM);
 		af.location = APPLY_STR_MAX;
-		af.modifier = -20;
+		af.modifier = elemental_aura_max_stat(SECT_WATER_PLANE, APPLY_STR_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX_MAX;
-		af.modifier = 50;
+		af.modifier = elemental_aura_max_stat(SECT_WATER_PLANE, APPLY_DEX_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI_MAX;
-		af.modifier = 25;
+		af.modifier = elemental_aura_max_stat(SECT_WATER_PLANE, APPLY_AGI_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_CON_MAX;
-		af.modifier = -10;
+		af.modifier = elemental_aura_max_stat(SECT_WATER_PLANE, APPLY_CON_MAX);
 		affect_to_char(victim, &af);
 
 		if (NewSaves(ch, SAVING_FEAR, 4) || IS_NPC(ch))
@@ -4952,19 +6704,19 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		act("&+cYour body fumes with an aura of air!", FALSE, ch, 0, 0, TO_CHAR);
 		act("&+c$n's&+c body fumes with an aura of air!", FALSE, ch, 0, 0, TO_ROOM);
 		af.location = APPLY_STR_MAX;
-		af.modifier = -25;
+		af.modifier = elemental_aura_max_stat(SECT_AIR_PLANE, APPLY_STR_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX_MAX;
-		af.modifier = 25;
+		af.modifier = elemental_aura_max_stat(SECT_AIR_PLANE, APPLY_DEX_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI_MAX;
-		af.modifier = 100;
+		af.modifier = elemental_aura_max_stat(SECT_AIR_PLANE, APPLY_AGI_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_CON_MAX;
-		af.modifier = -20;
+		af.modifier = elemental_aura_max_stat(SECT_AIR_PLANE, APPLY_CON_MAX);
 		affect_to_char(victim, &af);
 
 		if (NewSaves(ch, SAVING_FEAR, 4) || IS_NPC(ch))
@@ -4983,19 +6735,19 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		act("&+yYour body hardens with an aura of earth!", FALSE, ch, 0, 0, TO_CHAR);
 		act("&+y$n's&+y body hardens with an aura of earth!", FALSE, ch, 0, 0, TO_ROOM);
 		af.location = APPLY_STR_MAX;
-		af.modifier = 75;
+		af.modifier = elemental_aura_max_stat(SECT_EARTH_PLANE, APPLY_STR_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_DEX_MAX;
-		af.modifier = -25;
+		af.modifier = elemental_aura_max_stat(SECT_EARTH_PLANE, APPLY_DEX_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_AGI_MAX;
-		af.modifier = -20;
+		af.modifier = elemental_aura_max_stat(SECT_EARTH_PLANE, APPLY_AGI_MAX);
 		affect_to_char(victim, &af);
 
 		af.location = APPLY_CON_MAX;
-		af.modifier = 75;
+		af.modifier = elemental_aura_max_stat(SECT_EARTH_PLANE, APPLY_CON_MAX);
 		affect_to_char(victim, &af);
 
 		if (NewSaves(ch, SAVING_FEAR, 4) || IS_NPC(ch))
@@ -5016,17 +6768,16 @@ void spell_elemental_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 	}
 }
 
-void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
-		 P_obj /*obj*/)
+// Armor lasts this many ticks.
+static int armor_duration()
 {
-	struct affected_type af;
-	double mod;
-	bool shown;
+	return 20;
+}
 
-	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
-	{
-		return;
-	}
+// Armor's armor class change at cast level `level`; holymen add a quarter.
+static int armor_armor_class(const Rolls &rolls, P_char ch, int level)
+{
+	double mod;
 
 	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_HOLYMAN))
 	{
@@ -5036,13 +6787,37 @@ void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 	{
 		mod = 1;
 	}
+	return (int)(-1 * (mod * level) - rolls.number(0, 10));
+}
+
+std::string armor_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	// The change falls as its roll rises.
+	return fact("Armor class",
+		    std::to_string(armor_armor_class(lowest_rolls, ch, level)) + " to " +
+			    std::to_string(armor_armor_class(highest_rolls, ch, level)) +
+			    " at your level, " + std::to_string(level)) +
+	       fact("Duration", game_hours(armor_duration()));
+}
+
+void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
+		 P_obj /*obj*/)
+{
+	struct affected_type af;
+	bool shown;
+
+	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
+	{
+		return;
+	}
 
 	if (!IS_AFFECTED(victim, AFF_ARMOR))
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_ARMOR;
-		af.duration = 20;
-		af.modifier = (int)(-1 * (mod * level) - number(0, 10));
+		af.duration = armor_duration();
+		af.modifier = armor_armor_class(live_rolls, ch, level);
 		af.location = APPLY_AC;
 		af.bitvector = AFF_ARMOR;
 		affect_to_char(victim, &af);
@@ -5062,7 +6837,7 @@ void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 						     victim);
 					shown = TRUE;
 				}
-				af1->duration = 20;
+				af1->duration = armor_duration();
 			}
 		}
 		if (!shown)
@@ -5075,6 +6850,17 @@ void spell_armor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 
 // end spell_armor
 
+// Virtue lasts this many ticks at cast level `level`.
+static int virtue_duration(int level)
+{
+	return level / 2;
+}
+
+std::string virtue_facts(P_char ch)
+{
+	return fact("Duration", game_hours(virtue_duration(GET_LEVEL(ch))));
+}
+
 void spell_virtue(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		  P_char victim, P_obj /*obj*/)
 {
@@ -5085,7 +6871,7 @@ void spell_virtue(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int
 		bzero(&af, sizeof(af));
 		af.type = SPELL_VIRTUE;
 		af.modifier = level;
-		af.duration = level / 2;
+		af.duration = virtue_duration(level);
 		affect_to_char(victim, &af);
 		send_to_char("&+WYou feel overwhelmed to honor the gods!\n", victim);
 	}
@@ -5097,10 +6883,41 @@ void spell_virtue(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int
 		{
 			if (af1->type == SPELL_VIRTUE)
 			{
-				af1->duration = level / 2;
+				af1->duration = virtue_duration(level);
 			}
 		}
 	}
+}
+
+// Dispel lifeforce lasts this many ticks.
+static int dispel_lifeforce_duration()
+{
+	return 25;
+}
+
+// Dispel lifeforce's change to armor class, strength, hitroll or damroll (`location`).
+static int dispel_lifeforce_modifier(int location)
+{
+	switch (location)
+	{
+	case APPLY_AC:
+		return 30;
+	case APPLY_STR:
+		return -30;
+	default: // APPLY_HITROLL, APPLY_DAMROLL
+		return -10;
+	}
+}
+
+std::string dispel_lifeforce_facts(P_char /*ch*/)
+{
+	return "  If the target fails its save:\n" +
+	       fact("Armor class", "+" + std::to_string(dispel_lifeforce_modifier(APPLY_AC))) +
+	       fact("Strength", std::to_string(dispel_lifeforce_modifier(APPLY_STR))) +
+	       fact("Hitroll", std::to_string(dispel_lifeforce_modifier(APPLY_HITROLL))) +
+	       fact("Damroll", std::to_string(dispel_lifeforce_modifier(APPLY_DAMROLL))) +
+	       fact("Duration", game_hours(dispel_lifeforce_duration())) +
+	       "  The undead are immune.\n";
 }
 
 void spell_dispel_lifeforce(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -5118,17 +6935,17 @@ void spell_dispel_lifeforce(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_DISPEL_LIFEFORCE;
-		af.duration = 25;
-		af.modifier = 30;
+		af.duration = dispel_lifeforce_duration();
+		af.modifier = dispel_lifeforce_modifier(APPLY_AC);
 		af.location = APPLY_AC;
 		affect_to_char(victim, &af);
-		af.modifier = -30;
+		af.modifier = dispel_lifeforce_modifier(APPLY_STR);
 		af.location = APPLY_STR;
 		affect_to_char(victim, &af);
-		af.modifier = -10;
+		af.modifier = dispel_lifeforce_modifier(APPLY_HITROLL);
 		af.location = APPLY_HITROLL;
 		affect_to_char(victim, &af);
-		af.modifier = -10;
+		af.modifier = dispel_lifeforce_modifier(APPLY_DAMROLL);
 		af.location = APPLY_DAMROLL;
 		affect_to_char(victim, &af);
 
@@ -5137,6 +6954,19 @@ void spell_dispel_lifeforce(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 		act("&+LYou are completely sapped of your lifeforce!!", FALSE, victim, 0, 0,
 		    TO_CHAR);
 	}
+}
+
+// Reversed polarity lasts this many ticks.
+static int alter_energy_polarity_duration()
+{
+	return 7;
+}
+
+std::string alter_energy_polarity_facts(P_char /*ch*/)
+{
+	return fact("If the target fails its save", "its polarity reverses") +
+	       fact("Duration", game_hours(alter_energy_polarity_duration())) +
+	       "  Not if it is already reversed.\n";
 }
 
 void spell_alter_energy_polarity(int /*level*/, P_char /*ch*/, char * /*arg*/,
@@ -5149,7 +6979,7 @@ void spell_alter_energy_polarity(int /*level*/, P_char /*ch*/, char * /*arg*/,
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_ALTER_ENERGY_POLARITY;
-		af.duration = 7;
+		af.duration = alter_energy_polarity_duration();
 		af.bitvector4 = AFF4_REV_POLARITY;
 		affect_to_char(victim, &af);
 
@@ -5158,6 +6988,17 @@ void spell_alter_energy_polarity(int /*level*/, P_char /*ch*/, char * /*arg*/,
 		act("&+LYour vision goes black for a brief moment..... hrmmm.", FALSE, victim, 0, 0,
 		    TO_CHAR);
 	}
+}
+
+// Sense holiness lasts this many ticks.
+static int sense_holiness_duration()
+{
+	return 25;
+}
+
+std::string sense_holiness_facts(P_char /*ch*/)
+{
+	return fact("Duration", game_hours(sense_holiness_duration()));
 }
 
 void spell_sense_holiness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
@@ -5169,7 +7010,7 @@ void spell_sense_holiness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_SENSE_HOLINESS;
-		af.duration = 25;
+		af.duration = sense_holiness_duration();
 		af.bitvector4 = AFF4_SENSE_HOLINESS;
 		affect_to_char(victim, &af);
 		send_to_char("&+WYou can now sense holy auras!\n", victim);
@@ -5181,9 +7022,21 @@ void spell_sense_holiness(int /*level*/, P_char /*ch*/, char * /*arg*/, [[maybe_
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_SENSE_HOLINESS)
 			{
-				af1->duration = 25;
+				af1->duration = sense_holiness_duration();
 			}
 	}
+}
+
+// How far wizard eye sees across the map at cast level `level`, in rooms.
+static int wizard_eye_distance(int level)
+{
+	return MAX(level * 2, (int)get_property("spell.wizardEye.maxDistance", 100));
+}
+
+std::string wizard_eye_facts(P_char ch)
+{
+	return fact("Range on the map", std::to_string(wizard_eye_distance(GET_LEVEL(ch))) +
+						" rooms, within the same zone");
 }
 
 void spell_wizard_eye(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -5203,7 +7056,7 @@ void spell_wizard_eye(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 
 	target = victim->in_room;
 
-	distance = MAX(level * 2, (int)get_property("spell.wizardEye.maxDistance", 100));
+	distance = wizard_eye_distance(level);
 
 	if (IS_TRUSTED(victim) || racewar(ch, victim) ||
 	    !(world[ch->in_room].zone == world[victim->in_room].zone) || IS_NPC(victim) ||
@@ -5311,6 +7164,35 @@ void spell_teleimage(int /*level*/, P_char ch, P_char victim, P_obj /*obj*/)
 	}
 }
 
+// The caster's lag after dimension door, in pulses.
+static int dimension_door_lag(P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
+		return WAIT_SEC;
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		return WAIT_SEC * 3;
+	else if (IS_PC(ch))
+		return WAIT_SEC * 9;
+	else
+		return WAIT_SEC * 1 + 1;
+}
+
+// How far dimension door reaches at cast level `level`, in rooms.
+static int dimension_door_distance(P_char ch, int level)
+{
+	int distance = (int)(level * get_property("spell.dim.perlevel.modifier", 1.35));
+	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
+		distance += 15;
+	return distance;
+}
+
+std::string dimension_door_facts(P_char ch)
+{
+	return fact("Range", std::to_string(dimension_door_distance(ch, GET_LEVEL(ch))) +
+				     " rooms at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Your lag", seconds(dimension_door_lag(ch)));
+}
+
 void spell_dimension_door(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 			  P_obj /*obj*/)
 {
@@ -5322,14 +7204,7 @@ void spell_dimension_door(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 	if (!IS_ALIVE(ch) || !IS_ALIVE(victim))
 		return;
 
-	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
-		CharWait(ch, WAIT_SEC);
-	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
-		CharWait(ch, WAIT_SEC * 3);
-	else if (IS_PC(ch))
-		CharWait(ch, WAIT_SEC * 9);
-	else
-		CharWait(ch, WAIT_SEC * 1 + 1);
+	CharWait(ch, dimension_door_lag(ch));
 
 	if (IS_AFFECTED3(victim, AFF3_NON_DETECTION) || IS_ROOM(ch->in_room, ROOM_NO_TELEPORT) ||
 	    IS_HOMETOWN(ch->in_room) || world[ch->in_room].sector_type == SECT_OCEAN ||
@@ -5379,9 +7254,7 @@ void spell_dimension_door(int level, P_char ch, char * /*arg*/, int /*type*/, P_
 		return;
 	}
 
-	distance = (int)(level * get_property("spell.dim.perlevel.modifier", 1.35));
-	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
-		distance += 15;
+	distance = dimension_door_distance(ch, level);
 
 	if (!IS_TRUSTED(ch) && how_close(ch->in_room, victim->in_room, distance) < 0 &&
 	    how_close(victim->in_room, ch->in_room, distance) < 0)
@@ -5503,6 +7376,24 @@ void spell_dark_compact(int /*level*/, P_char /*ch*/, char * /*arg*/, int /*type
 	*/
 }
 
+// The caster's lag after relocate or way of the wind, in pulses.
+static int relocate_lag(P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
+		return 4;
+	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
+		return WAIT_SEC * 5;
+	else if (IS_PC(ch))
+		return 80;
+	else
+		return 5;
+}
+
+std::string relocate_facts(P_char ch)
+{
+	return fact("Your lag", seconds(relocate_lag(ch)));
+}
+
 void spell_relocate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		    P_obj /*obj*/)
 {
@@ -5511,14 +7402,7 @@ void spell_relocate(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		return;
 	}
 
-	if (GET_SPEC(ch, CLASS_SORCERER, SPEC_SHADOW))
-		CharWait(ch, 4);
-	else if (IS_PC(ch) && GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
-		CharWait(ch, WAIT_SEC * 5);
-	else if (IS_PC(ch))
-		CharWait(ch, 80);
-	else
-		CharWait(ch, 5);
+	CharWait(ch, relocate_lag(ch));
 
 	if (!can_relocate_to(ch, victim))
 	{
@@ -5672,6 +7556,18 @@ void spell_group_teleport(int /*level*/, P_char ch, char * /*arg*/, int /*type*/
 	}
 }
 
+// Teleport takes up to this many random steps across the map.
+static int teleport_range()
+{
+	return get_property("spell.teleport.range", 30);
+}
+
+std::string teleport_facts(P_char /*ch*/)
+{
+	return fact("On the map", "up to " + std::to_string(teleport_range()) + " rooms away") +
+	       "  Elsewhere it takes the target to a random room in the zone.\n";
+}
+
 void spell_teleport(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		    P_obj /*obj*/)
 {
@@ -5700,7 +7596,7 @@ void spell_teleport(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		return;
 	}
 
-	int range = get_property("spell.teleport.range", 30);
+	int range = teleport_range();
 	to_room = vict->in_room;
 	if (IS_MAP_ROOM(vict->in_room))
 	{
@@ -5795,6 +7691,25 @@ void teleport_to(P_char ch, int to_room, int flag)
 		act("$n slowly fades into existence.", FALSE, ch, 0, 0, TO_ROOM);
 }
 
+// Lifelust lasts this many ticks and adds this hitroll and damroll at cast level `level`.
+static int lifelust_duration(int level)
+{
+	return MAX(5, level / 2);
+}
+
+static int lifelust_bonus(int level)
+{
+	return ((int)(level / 25)) + 2;
+}
+
+std::string lifelust_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Hitroll and damroll", "+" + std::to_string(lifelust_bonus(level)) +
+						   " at your level, " + std::to_string(level)) +
+	       fact("Duration", game_hours(lifelust_duration(level)));
+}
+
 void spell_lifelust(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		    P_char victim, P_obj /*obj*/)
 {
@@ -5805,12 +7720,12 @@ void spell_lifelust(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] i
 		bzero(&af, sizeof(af));
 		send_to_char("&+LYou begin to drool... &+rmust kill the living!\n", victim);
 		af.type = SPELL_LIFELUST;
-		af.duration = MAX(5, level / 2);
-		af.modifier = ((int)(level / 25)) + 2;
+		af.duration = lifelust_duration(level);
+		af.modifier = lifelust_bonus(level);
 		af.location = APPLY_HITROLL;
 		affect_to_char(victim, &af);
 		af.location = APPLY_DAMROLL;
-		af.modifier = ((int)(level / 25)) + 2;
+		af.modifier = lifelust_bonus(level);
 		affect_to_char(victim, &af);
 	}
 	else
@@ -5820,16 +7735,38 @@ void spell_lifelust(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] i
 		for (af1 = victim->affected; af1; af1 = af1->next)
 			if (af1->type == SPELL_LIFELUST)
 			{
-				af1->duration = MAX(5, level / 2);
+				af1->duration = lifelust_duration(level);
 			}
 	}
+}
+
+// Aid shortens curses and similar spells by this many ticks at cast level `level`.
+static int aid_shortening(int level)
+{
+	int temp = (int)(level / 10);
+	return 2 * (1 + temp);
+}
+
+// Aid lasts this many ticks.
+static int aid_duration(int level)
+{
+	return MAX(3, (level + 4 / 10));
+}
+
+std::string aid_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Shortens harmful spells by",
+		    std::to_string(aid_shortening(level)) + " game hours, to at least 1") +
+	       "  Those are curse, apocalypse, blindness, disease, paralysis and\n"
+	       "  enfeeblement, when they last by the game hour.\n" +
+	       fact("Duration", game_hours(aid_duration(level)));
 }
 
 void spell_aid(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
 	       P_obj obj)
 {
 	struct affected_type *af, *next_af_dude;
-	int temp = (int)(level / 10);
 
 	if (!ch)
 		return;
@@ -5853,7 +7790,7 @@ void spell_aid(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, 
 			    (af->type == SPELL_MAJOR_PARALYSIS) ||
 			    (af->type == SPELL_RAY_OF_ENFEEBLEMENT))
 			{
-				af->duration = MAX(1, af->duration - (2 * (1 + temp)));
+				af->duration = MAX(1, af->duration - aid_shortening(level));
 			}
 		}
 		// 1 in 6 chance to instantly cure the poison at level 50
@@ -5879,12 +7816,37 @@ void spell_aid(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, 
 				"&+WYou suddenly feel blessed by the protective spirits of the nature!\n",
 				victim);
 			af.type = SPELL_AID;
-			af.duration = MAX(3, (level + 4 / 10));
+			af.duration = aid_duration(level);
 			affect_to_char(victim, &af);
 		}
 		send_to_char("&+GYou feel the power of nature course through your veins.\n",
 			     victim);
 	}
+}
+
+// Bless lasts this many ticks at cast level `level`, with this hitroll and spell save.
+static int bless_duration(int level)
+{
+	return MAX(5, level / 2);
+}
+
+static int bless_hitroll(int level)
+{
+	return ((int)(level / 20)) + 1;
+}
+
+static int bless_saving_spell(int level)
+{
+	return -((int)(level / 30) + 1); /* Make better */
+}
+
+std::string bless_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Hitroll", "+" + std::to_string(bless_hitroll(level)) + " at your level, " +
+				       std::to_string(level)) +
+	       fact("Saving throw against spells", std::to_string(bless_saving_spell(level))) +
+	       fact("Duration", game_hours(bless_duration(level)));
 }
 
 void spell_bless(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type, P_char victim,
@@ -5914,13 +7876,13 @@ void spell_bless(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 			bzero(&af, sizeof(af));
 			send_to_char("&+WYou suddenly feel blessed!\n", victim);
 			af.type = SPELL_BLESS;
-			af.duration = MAX(5, level / 2);
-			af.modifier = ((int)(level / 20)) + 1;
+			af.duration = bless_duration(level);
+			af.modifier = bless_hitroll(level);
 			af.location = APPLY_HITROLL;
 			affect_to_char(victim, &af);
 
 			af.location = APPLY_SAVING_SPELL;
-			af.modifier = -((int)(level / 30) + 1); /* Make better */
+			af.modifier = bless_saving_spell(level);
 			affect_to_char(victim, &af);
 		}
 		else
@@ -5930,7 +7892,7 @@ void spell_bless(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type
 			for (af1 = victim->affected; af1; af1 = af1->next)
 				if (af1->type == SPELL_BLESS)
 				{
-					af1->duration = MAX(5, level / 2);
+					af1->duration = bless_duration(level);
 				}
 		}
 	}
@@ -5970,6 +7932,18 @@ void spell_healing_blade(int level, P_char ch, char *arg, int type,
 }
 */
 
+// Blindness lasts this many pulses.
+static int blindness_duration(const Rolls &rolls)
+{
+	return rolls.number(4, 12) * WAIT_SEC;
+}
+
+std::string blindness_facts(P_char /*ch*/)
+{
+	return fact("Duration", seconds(blindness_duration(lowest_rolls)) + " to " +
+					seconds(blindness_duration(highest_rolls)));
+}
+
 void spell_blindness(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
 		     P_obj /*obj*/)
 {
@@ -5986,7 +7960,7 @@ void spell_blindness(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_c
 	if (resists_spell(ch, victim))
 		return;
 
-	blind(ch, victim, number(4, 12) * WAIT_SEC);
+	blind(ch, victim, blindness_duration(live_rolls));
 
 	if (IS_AFFECTED(ch, AFF_INVISIBLE) || IS_AFFECTED2(ch, AFF2_CONCEALMENT))
 		appear(ch);
@@ -6015,13 +7989,31 @@ void spell_minor_creation(int /*level*/, P_char ch, P_char /*victim*/, P_obj obj
 	act("$p &+Wsuddenly appears.", FALSE, ch, obj, 0, TO_CHAR);
 }
 
+// Pulchritude lasts this many ticks and adds this charisma at cast level `level`.
+static int pulchritude_duration(int level)
+{
+	return level;
+}
+
+static int pulchritude_charisma(int level)
+{
+	int temp = (int)(level / 10);
+	return 5 * (1 + temp);
+}
+
+std::string pulchritude_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Charisma", "+" + std::to_string(pulchritude_charisma(level)) +
+					" at your level, " + std::to_string(level)) +
+	       fact("Duration", game_hours(pulchritude_duration(level)));
+}
+
 void spell_pulchritude(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
-	int temp;
 
-	temp = (int)(level / 10);
 	if (affected_by_spell(victim, SPELL_PULCHRITUDE))
 	{
 		send_to_char("&+CYou can't get much prettier than this!\n", victim);
@@ -6032,8 +8024,8 @@ void spell_pulchritude(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_PULCHRITUDE;
-	af.duration = level;
-	af.modifier = 5 * (1 + temp);
+	af.duration = pulchritude_duration(level);
+	af.modifier = pulchritude_charisma(level);
 	af.location = APPLY_CHA;
 
 	affect_join(victim, &af, TRUE, FALSE);
@@ -6101,13 +8093,30 @@ void spell_flame_blade(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 	obj_to_char(blade, ch);
 }
 
+// Serendipity lasts this many ticks and adds this luck at cast level `level`.
+static int serendipity_duration(int level)
+{
+	return level;
+}
+
+static int serendipity_luck(int level)
+{
+	int skl_lvl = (int)(level / 10);
+	return 3 * (1 + skl_lvl);
+}
+
+std::string serendipity_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Luck", "+" + std::to_string(serendipity_luck(level)) + " at your level, " +
+				    std::to_string(level)) +
+	       fact("Duration", game_hours(serendipity_duration(level)));
+}
+
 void spell_serendipity(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]] int type,
 		       P_char victim, P_obj /*obj*/)
 {
 	struct affected_type af;
-	int skl_lvl;
-
-	skl_lvl = (int)(level / 10);
 
 	if (affected_by_spell(victim, SPELL_SERENDIPITY))
 	{
@@ -6119,8 +8128,8 @@ void spell_serendipity(int level, P_char /*ch*/, char * /*arg*/, [[maybe_unused]
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_SERENDIPITY;
-	af.duration = level;
-	af.modifier = 3 * (1 + skl_lvl);
+	af.duration = serendipity_duration(level);
+	af.modifier = serendipity_luck(level);
 	af.location = APPLY_LUCK;
 
 	affect_join(victim, &af, TRUE, FALSE);
@@ -6169,6 +8178,18 @@ void spell_create_food(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P
 	obj_to_room(food, ch->in_room);
 }
 
+// Create water makes up to this much water at cast level `level`.
+static int create_water_amount(int level)
+{
+	return 2 * level;
+}
+
+std::string create_water_facts(P_char ch)
+{
+	return fact("Water", "up to " + std::to_string(create_water_amount(GET_LEVEL(ch))) +
+				     " units, as much as the container holds");
+}
+
 void spell_create_water(int level, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			P_obj obj)
 {
@@ -6184,7 +8205,7 @@ void spell_create_water(int level, P_char ch, char * /*arg*/, int /*type*/, P_ch
 		}
 		else
 		{
-			water = 2 * level;
+			water = create_water_amount(level);
 
 			/* Calculate water it can contain, or water created */
 			water = MIN(obj->value[0] - obj->value[1], water);
@@ -6220,10 +8241,9 @@ void spell_cure_blind(int /*level*/, P_char /*ch*/, char * /*arg*/, int /*type*/
 	}
 }
 
-void spell_wandering_woods(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
-			   P_char /*victim*/, P_obj /*obj*/)
+// The wandering woods last this many pulses, longer for higher level casters.
+static int wandering_woods_duration(P_char ch)
 {
-	struct room_affect af;
 	int temp;
 
 	if (GET_LEVEL(ch) < 50)
@@ -6238,6 +8258,19 @@ void spell_wandering_woods(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unu
 	{
 		temp = 4;
 	}
+	return (1 + temp) * 40;
+}
+
+std::string wandering_woods_facts(P_char ch)
+{
+	return fact("Duration", seconds(wandering_woods_duration(ch)) + " at your level, " +
+					std::to_string(GET_LEVEL(ch)));
+}
+
+void spell_wandering_woods(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
+			   P_char /*victim*/, P_obj /*obj*/)
+{
+	struct room_affect af;
 
 	if (!ch)
 		return;
@@ -6253,9 +8286,21 @@ void spell_wandering_woods(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unu
 
 	memset(&af, 0, sizeof(struct room_affect));
 	af.type = SPELL_WANDERING_WOODS;
-	af.duration = (1 + temp) * 40;
+	af.duration = wandering_woods_duration(ch);
 	af.ch = ch;
 	affect_to_room(ch->in_room, &af);
+}
+
+// Consecrated land lasts this many pulses, by the caster's own level.
+static int consecrate_land_duration(P_char ch)
+{
+	return (GET_LEVEL(ch) * 4);
+}
+
+std::string consecrate_land_facts(P_char ch)
+{
+	return fact("Duration", seconds(consecrate_land_duration(ch)) + " at your level, " +
+					std::to_string(GET_LEVEL(ch)));
 }
 
 void spell_consecrate_land(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6311,7 +8356,7 @@ void spell_consecrate_land(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unu
 		    0, ch, 0, 0, TO_ROOM);
 		memset(&af, 0, sizeof(struct room_affect));
 		af.type = SPELL_CONSECRATE_LAND;
-		af.duration = (GET_LEVEL(ch) * 4);
+		af.duration = consecrate_land_duration(ch);
 		af.ch = ch;
 		affect_to_room(ch->in_room, &af);
 		break;
@@ -6342,6 +8387,18 @@ void spell_consecrate_land(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unu
 		return;
 		break;
 	}
+}
+
+// The insects stay this many pulses.
+static int summon_insects_duration()
+{
+	return 250;
+}
+
+std::string summon_insects_facts(P_char /*ch*/)
+{
+	return fact("Duration", seconds(summon_insects_duration())) +
+	       "  It uses up a mandrake root.\n";
 }
 
 void spell_summon_insects(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6383,9 +8440,20 @@ void spell_summon_insects(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 
 	memset(&af, 0, sizeof(struct room_affect));
 	af.type = SPELL_SUMMON_INSECTS;
-	af.duration = 250;
+	af.duration = summon_insects_duration();
 	af.ch = ch;
 	affect_to_room(ch->in_room, &af);
+}
+
+// The binding wind blows this many pulses.
+static int binding_wind_duration()
+{
+	return 250;
+}
+
+std::string binding_wind_facts(P_char /*ch*/)
+{
+	return fact("Duration", seconds(binding_wind_duration()));
 }
 
 void spell_binding_wind(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6410,7 +8478,7 @@ void spell_binding_wind(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused
 
 	memset(&af, 0, sizeof(struct room_affect));
 	af.type = SPELL_BINDING_WIND;
-	af.duration = 250;
+	af.duration = binding_wind_duration();
 	af.ch = ch;
 	affect_to_room(ch->in_room, &af);
 
@@ -6419,6 +8487,17 @@ void spell_binding_wind(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused
 		affect_room_remove(ch->in_room, afp);
 	}
 	return;
+}
+
+// The wind tunnel blows this many pulses.
+static int wind_tunnel_duration()
+{
+	return 250;
+}
+
+std::string wind_tunnel_facts(P_char /*ch*/)
+{
+	return fact("Duration", seconds(wind_tunnel_duration()));
 }
 
 void spell_wind_tunnel(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6433,7 +8512,7 @@ void spell_wind_tunnel(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 
 	memset(&af, 0, sizeof(struct room_affect));
 	af.type = SPELL_WIND_TUNNEL;
-	af.duration = 250;
+	af.duration = wind_tunnel_duration();
 	af.ch = ch;
 	affect_to_room(ch->in_room, &af);
 
@@ -6444,18 +8523,61 @@ void spell_wind_tunnel(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]
 	return;
 }
 
+// Vitalize mana turns this much of the caster's movement into mana.
+static int vitalize_mana_amount(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(33, GET_MAX_MANA(ch));
+}
+
+std::string vitalize_mana_facts(P_char ch)
+{
+	return fact("Movement turned into mana", show({ vitalize_mana_amount(lowest_rolls, ch),
+							vitalize_mana_amount(highest_rolls, ch) }) +
+							 ", or all of it if you have less") +
+	       "  Mana stops at its maximum; the movement is spent in full.\n";
+}
+
 void spell_vitalize_mana(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char /*victim*/,
 			 P_obj /*obj*/)
 {
 	int trans;
 
-	trans = MIN(GET_VITALITY(ch), number(33, GET_MAX_MANA(ch)));
+	trans = MIN(GET_VITALITY(ch), vitalize_mana_amount(live_rolls, ch));
 
 	act("You feel more energized!", FALSE, ch, 0, 0, TO_CHAR);
 
 	ch->points.mana += trans;
 	ch->points.mana = MIN(GET_MANA(ch), GET_MAX_MANA(ch));
 	ch->points.vitality -= trans;
+}
+
+// Rejuvenate minor makes the target this many years younger, for as many ticks.
+static int rejuvenate_minor_years(const Rolls &rolls, int level)
+{
+	return rolls.dice(2, level) / 2;
+}
+
+// Its movement and hit point regeneration bonuses, by the caster's own level.
+static int rejuvenate_minor_move_regen(P_char ch)
+{
+	return BOUNDED(1, GET_LEVEL(ch) / 10, 5);
+}
+
+static int rejuvenate_minor_hit_regen(P_char ch)
+{
+	return GET_LEVEL(ch) / 5;
+}
+
+std::string rejuvenate_minor_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Years younger", show({ rejuvenate_minor_years(lowest_rolls, level),
+					    rejuvenate_minor_years(highest_rolls, level) }) +
+					     " at your level, " + std::to_string(level)) +
+	       "  It lasts one game hour per year, plus up to one more.\n" +
+	       fact("Movement regeneration",
+		    "+" + std::to_string(rejuvenate_minor_move_regen(ch))) +
+	       fact("Hit point regeneration", "+" + std::to_string(rejuvenate_minor_hit_regen(ch)));
 }
 
 void spell_rejuvenate_minor(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6465,7 +8587,7 @@ void spell_rejuvenate_minor(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	int t_age;
 
 	act("You feel younger.", FALSE, victim, 0, 0, TO_CHAR);
-	t_age = dice(2, level) / 2;
+	t_age = rejuvenate_minor_years(live_rolls, level);
 
 	bzero(&af, sizeof(af));
 
@@ -6478,13 +8600,52 @@ void spell_rejuvenate_minor(int level, P_char ch, char * /*arg*/, [[maybe_unused
 	affect_join(victim, &af, TRUE, FALSE);
 
 	af.location = APPLY_MOVE_REG;
-	af.modifier = BOUNDED(1, GET_LEVEL(ch) / 10, 5);
+	af.modifier = rejuvenate_minor_move_regen(ch);
 	affect_to_char(victim, &af);
 
 	af.location = APPLY_HIT_REG;
-	af.modifier = GET_LEVEL(ch) / 5;
+	af.modifier = rejuvenate_minor_hit_regen(ch);
 	affect_to_char_with_messages(victim, &af, "You feel older again.",
 				     "$n suddenly looks a little older than a moment before.");
+}
+
+// The ray takes hold when number(1, 100) is below this, by the caster's and target's levels.
+static int ray_of_enfeeblement_chance(P_char ch, int victim_level)
+{
+	return BOUNDED(50, 70 + GET_LEVEL(ch) - victim_level, 80);
+}
+
+// The weakness lasts this many ticks, shorter if the target saves.
+static int ray_of_enfeeblement_duration(bool saved)
+{
+	return saved ? 1 : 2;
+}
+
+// The damroll lost at cast level `level` when the target fails its save.
+static int ray_of_enfeeblement_damroll(const Rolls &rolls, int level)
+{
+	return level / 10 + rolls.number(1, 6);
+}
+
+std::string ray_of_enfeeblement_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	// number(1, 100) falls below a chance of N in N - 1 draws of 100.
+	auto percent = [&](int victim_level)
+	{ return std::to_string(ray_of_enfeeblement_chance(ch, victim_level) - 1) + "%"; };
+	return fact("Takes hold", percent(level) + " of the time on a target of your level") +
+	       fact("On other targets", percent(level + 100) + " to " + percent(level - 100) +
+						", more often on lower levels") +
+	       "  Not on elites, greater races, or targets already enfeebled or withered.\n" +
+	       fact("If the target fails its save",
+		    "it loses some strength and " +
+			    show({ ray_of_enfeeblement_damroll(lowest_rolls, level),
+				   ray_of_enfeeblement_damroll(highest_rolls, level) }) +
+			    " damroll") +
+	       "  Damroll loss never takes it below 0.\n" +
+	       fact("Weakness lasts", game_hours(ray_of_enfeeblement_duration(false))) +
+	       fact("If it saves",
+		    "less weakness for " + game_hours(ray_of_enfeeblement_duration(true)));
 }
 
 void spell_ray_of_enfeeblement(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -6536,7 +8697,7 @@ void spell_ray_of_enfeeblement(int level, P_char ch, char * /*arg*/, [[maybe_unu
 
 	mod /= 2;
 
-	int success_chance = BOUNDED(50, 70 + GET_LEVEL(ch) - GET_LEVEL(victim), 80);
+	int success_chance = ray_of_enfeeblement_chance(ch, GET_LEVEL(victim));
 
 	if (success_chance > number(1, 100))
 	{
@@ -6548,12 +8709,12 @@ void spell_ray_of_enfeeblement(int level, P_char ch, char * /*arg*/, [[maybe_unu
 
 		if (!NewSaves(victim, SAVING_PARA, 0))
 		{
-			af.duration = 2;
+			af.duration = ray_of_enfeeblement_duration(false);
 			af.modifier = -(mod);
 			af.location = APPLY_STR;
 			affect_to_char(victim, &af);
 
-			mod = level / 10 + number(1, 6);
+			mod = ray_of_enfeeblement_damroll(live_rolls, level);
 			// Don't go below 0 or it'll jump up to 255 'cause damroll is an unsigned byte.
 			if (mod > victim->points.damroll)
 				af.modifier = 0 - victim->points.damroll;
@@ -6564,7 +8725,7 @@ void spell_ray_of_enfeeblement(int level, P_char ch, char * /*arg*/, [[maybe_unu
 		}
 		else
 		{
-			af.duration = 1;
+			af.duration = ray_of_enfeeblement_duration(true);
 			af.modifier = -1 * mod / 10 - number(1, 6);
 			af.location = APPLY_STR;
 			affect_to_char(victim, &af);
@@ -6600,6 +8761,17 @@ void AgeChar(P_char ch, int years)
 		ch->player.time.birth = curr_time;
 }
 
+// Age makes the target this many years older.
+static int age_years(const Rolls &rolls)
+{
+	return rolls.dice(2, 8);
+}
+
+std::string age_facts(P_char /*ch*/)
+{
+	return fact("Years older", show({ age_years(lowest_rolls), age_years(highest_rolls) }));
+}
+
 void spell_age(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
 {
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -6621,8 +8793,20 @@ void spell_age(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char vi
 		}
 	}
 
-	AgeChar(victim, dice(2, 8));
+	AgeChar(victim, age_years(live_rolls));
 	send_to_char("You feel a bit older all of a sudden!\n", victim);
+}
+
+// Rejuvenate major makes the target this many years younger.
+static int rejuvenate_major_years(const Rolls &rolls)
+{
+	return rolls.dice(2, 4);
+}
+
+std::string rejuvenate_major_facts(P_char /*ch*/)
+{
+	return fact("Years younger", show({ rejuvenate_major_years(lowest_rolls),
+					    rejuvenate_major_years(highest_rolls) }));
 }
 
 void spell_rejuvenate_major(int /*level*/, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -6646,7 +8830,7 @@ void spell_rejuvenate_major(int /*level*/, P_char ch, char * /*arg*/, int /*type
 		send_to_char(Gbuf1, ch);
 		return;
 	}
-	AgeChar(victim, -(dice(2, 4)));
+	AgeChar(victim, -(rejuvenate_major_years(live_rolls)));
 	send_to_char("You feel a bit younger all of a sudden!\n", victim);
 }
 
