@@ -127,7 +127,8 @@ def run(binary, backend):
                 mortal = login(server, OWNER)
                 clients.append(mortal)
                 character_choices(mortal, "Veralis")
-                creation.reply(mortal, "y", "PRESS RETURN")
+                creation.reply(mortal, "y", creation.MENU)
+                creation.play_saved_character(mortal, "Veralis")
                 replacement = saved_character(server, sql, inspector, "Veralis")
                 assert replacement[0] > broken and replacement[1] == 0
                 creation.reply(staff, f"keptchar attach {replacement[0]} Veralis {OWNER} synthetic-live", "Refused: live/pending")

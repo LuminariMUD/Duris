@@ -1672,9 +1672,10 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	if ((argc == 4 && std::string(argv[2]) == "stale-membership") ||
-	    (argc == 5 && std::string(argv[2]) == "age-last-save"))
+	    (argc == 5 && (std::string(argv[2]) == "age-last-save" ||
+			   std::string(argv[2]) == "block-membership")))
 	{
-		// The level-projection journey calls this only with its synthetic server stopped.
+		// Disposable journeys seed membership metadata only with their server stopped.
 		std::string error;
 		flatfile_identity_record identity;
 		require(flatfile_identity_lookup_pid(argv[1], std::stoi(argv[3]), &identity,
@@ -1689,6 +1690,8 @@ int main(int argc, char **argv)
 			{
 				if (std::string(argv[2]) == "age-last-save")
 					member.last_save = time(nullptr) - std::stoll(argv[4]);
+				else if (std::string(argv[2]) == "block-membership")
+					member.blocked = std::stoi(argv[4]) != 0;
 				else
 					member.level = 1;
 			}

@@ -1,43 +1,127 @@
 # Character creation returns to the account menu
 
-Status: server implementation locally qualified; browser companion and final acceptance in progress.
+Status: implemented and locally qualified; paired PRs are ready for review.
 Date: 2026-11-05.
 Implementation base: fetched `origin/master`, `44d3760d2`.
 Inspected DurisWeb revision: `dae44ef41c93381a9142ccb72bae73c2462e574d`.
 
-## Implementation progress
+## Implementation and review handoff
 
-Server worktree: `/home/aiwithapex/projects/duris-creation-menu`.
-Server branch: `branch/creation-account-menu`.
-Browser worktree: `/home/aiwithapex/projects/durisweb-creation-menu`, same branch name.
+- Server: [Duris PR #711](https://github.com/LuminariMUD/Duris/pull/711),
+  `branch/creation-account-menu`, worktree
+  `/home/aiwithapex/projects/duris-creation-menu`.
+- Browser: [DurisWeb PR #155](https://github.com/LuminariMUD/DurisWeb/pull/155),
+  `branch/creation-account-menu`, commit `1c2ac3f`, worktree
+  `/home/aiwithapex/projects/durisweb-creation-menu`.
+- Both PRs target their repository's `master` and are ready for review. They
+  require coordinated rollout; neither has been merged or deployed by this task.
+  No migration, player-data rewrite, release tag, or live announcement was needed.
 
-The server now returns committed ordinary Keep and connected approval to the
-account menu; pending applications retain the queue. Explicit Play retains the
-MOTD/entry route. Account rested responses distinguish level 0, and WebSocket
-waiting status covers resumed applications. A real-socket regression also found
-initialization publishing `Char.Vitals` during chargen; that sender now requires
-`CON_PLAYING`. No schema or bonus-timer change was necessary.
+The server returns committed ordinary Keep and connected approval to the menu;
+pending applications retain the queue. Explicit Play retains the MOTD/entry
+route. Rested responses distinguish level 0, and structured WebSocket waiting
+status covers resumed applications. A socket regression found initialization
+publishing `Char.Vitals` during chargen; that sender now requires `CON_PLAYING`.
+The pre-entry cleanup/menu helper also replaces the duplicated failed-Keep
+cleanup. Persistence, timers and starter-grant machinery are reused.
 
-Passing local checks so far (2026-11-05):
+The browser closes creation on its saved receipt, refreshes the account menu,
+and establishes its playing character/timers only from actual entry. It has a
+resumable approval waiting view and first-entry rested explanation. The existing
+creation-view flag moved into the MUD store; no separate completion state machine
+was needed. Its development guide and unpublished changelog payload are included
+in PR #155.
 
-- Both `make -C src -j6` and the separate flat-file build under
-  `bin/creation-menu-flatfile`.
-- `test_kept_character_lifecycle.py`: executable production completion and
-  failure routing for both compiled backends, including explicit Play and
-  legacy-policy continuation.
-- `test_kept_character_journey.py`: basic commit/reconnect/restart on both
-  backends; MariaDB `--delay` and flat-file `--reject`.
-- `test_kept_character_approval_journey.py`: both backends.
-- `test_creation_deferred_play_journey.py`: all four backend/transport pairs.
-  Verifies no starting affect/items at Keep, a full persisted 150-tick affect
-  after a simulated week before first Play, offline subtraction afterward,
-  preserved PID/stats and stable starter item UIDs after restart.
-- `test_kept_character_matrix.py`: ordinary MariaDB combinations passed.
-- Changed C/C++ formatting and `git diff --check`.
+### Local verification, 2026-11-05
 
-Extended matrix/fault/starter controls and the actual browser acceptance journey
-remain to be finished and recorded. Tests use disposable storage and synthetic
-accounts; no production operation or release tag is part of these PRs.
+All checks below passed using disposable storage and synthetic accounts.
+Build/test logs are ignored under `bin/tests/creation-menu-*` in the server
+worktree; frontend/browser evidence is under `/tmp/creation-menu-*`. The listed
+Python journeys live under `tests/async/`.
+
+- Both native builds: `make -C src -j6` and
+  `make -C src PERSISTENCE_BACKEND=flatfile BIN_ROOT=../bin/creation-menu-flatfile -j6`.
+- `test_kept_character_lifecycle.py`: production completion/failure routing,
+  explicit Play, legacy-policy continuation, approval and decline, compiled for
+  both backends.
+- `test_creation_deferred_play_journey.py --backend BACKEND --server BINARY
+  --transport TRANSPORT`: all four MariaDB/flat-file × Telnet/WebSocket pairs.
+  Proves a framed menu/refreshed list with no starting affect or items, denied
+  blocked first Play without changing the saved level-0 character, a full
+  persisted 150-tick affect after a simulated week before first Play, normal
+  offline subtraction afterward, preserved PID/stats, and stable starter UIDs
+  after restart. Timestamp/block fixture mutations occur only while its
+  synthetic server is stopped.
+- `test_kept_character_journey.py --backend BACKEND --server BINARY`: basic
+  commit/reconnect/restart, `--override telnet`, `--override websocket`,
+  `--delay`, and `--reject`, on both backends. WebSocket entry leaves the old
+  independent account-menu socket usable because Keep has released its body;
+  Telnet account authentication retains its existing connection takeover.
+- `test_kept_character_approval_journey.py`: both backends, including saved
+  pending policy, mode changes, offline approval acknowledgment, decline,
+  accepted names and cold first entry.
+- `test_kept_character_matrix.py`: all four approval/accepted-name combinations
+  with and without `--chaos`, on each backend (16 cases).
+- `test_kept_starter_grant_journey.py`: ordinary Telnet and Chaos WebSocket on
+  each backend, including bound receipt replay and unchanged item UIDs after
+  restart. The deferred-play journey separately covers ordinary WebSocket and
+  the matrix covers Chaos Telnet first entry/reward nonduplication.
+- `test_kept_character_ambiguous_commit.py`: a real MariaDB COMMIT success reply
+  is lost, then reconciled without losing the character or duplicating entry.
+- `test_kept_character_competition.py` and
+  `test_kept_character_recovery_journey.py`: both backends. Recovery's explicit
+  pre-entry selection preserves its live-body refusal test after Keep now
+  returns to the menu.
+- `test_creation_prompt_journey.py::run_journeys()` using the built flat-file
+  binary: the complete scenario set. `test_character_stat_choice_journey.py`:
+  full-world Telnet Default/Advanced and WebSocket Default/Advanced/legacy,
+  preserving all ten numeric stats across save/restart/relogin. Valid Telnet
+  results were reused when rerunning the three WebSocket cases after fixing a
+  test's missing explicit re-entry.
+- `test_gith_monk_journey.py --binary BINARY`: both Gith races on both transports,
+  including fixed alignment, equipment identity and restart/relogin. Raw
+  creation helpers in the headbutt/alignment and historical browser journeys
+  were also updated to explicitly enter after Keep; those complete unrelated
+  suites were not rerun. Their Python syntax was checked, and the shared
+  WebSocket entry helper was executed by the Gith journeys.
+- `run_mysql_rested_checkpoint_journey.py --server BINARY`: grant/upgrade/refresh
+  checkpoints survive SIGKILL, full-save/rent controls, offline aging, expiration,
+  the zero boundary and short reconnect without replacement.
+- `test_creation_hometowns.py`, `test_chaos_hardcore_creation.py`,
+  `test_gmcp_prompt_regressions.py`, changed-file formatting and `git diff --check`.
+
+MariaDB invocations use `bash tests/async/with_disposable_mariadb.sh python3 ...`.
+For flat-file, BINARY is `bin/creation-menu-flatfile/server/dms_new`; for MariaDB
+it is `bin/server/dms_new`. Existing `--backend`/`--server` options were used for
+approval, matrix, starter, competition and recovery. This is local qualification;
+CI was not used as a completion gate.
+
+### Browser proof
+
+Frontend commands passed: focused Vitest runs for
+`useMudConnectionChargen.spec.ts` and `RestedBonusPanel.spec.ts` (114 tests),
+`format:check`, `lint`, `type-check`, and `build`. Commands use
+`pnpm --dir frontend --config.verifyDepsBeforeRun=false ...` because the isolated
+worktree reuses installed dependencies. Builds supply explicit loopback public
+endpoint settings; no environment file or credential was copied.
+
+Installed Playwright with Chromium exercised the actual `/play` view at
+`http://127.0.0.1:5198/play` against the changed isolated MUD, with a temporary
+loopback TLS proxy for its WebSocket. Browser plugin was unavailable. Website
+read APIs were fixture responses; MUD registration, creation, persistence,
+approval and entry used real sockets and production handlers.
+
+Verified: wizard through Keep -> menu/rested display -> explicit Enter;
+1440×1000 desktop and 390×844 mobile with no horizontal overflow; pending Keep
+-> waiting view -> disconnect -> login/select -> resumed waiting -> approval
+-> level-0 menu -> explicit Enter. Page identity, meaningful content, absence
+of a Vite overlay, and a normal played-character login were checked. The final
+control captured no console warnings/errors or page errors. Screenshots were
+visually inspected; key files include `creation-menu-browser-mobile.png`,
+`creation-menu-browser-waiting.png` and `creation-menu-browser-approved-menu.png`.
+The timer regression proves no creation-time start and one start across repeated
+real-entry status updates. Firefox, WebKit and production deployment are outside
+this local acceptance.
 
 ## Outcome
 

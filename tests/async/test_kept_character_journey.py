@@ -174,9 +174,10 @@ def override_entry(original, server, sql, inspector, protocol):
             creation.reply(replacement, "save", "Save complete for Taverek.")
         after = saved_character(server, sql, inspector)
         assert after == (before[0], 1, before[2]), (before, after)
-        original.socket.settimeout(3)
-        while original.socket.recv(4096):
-            pass
+        if protocol == "websocket":
+            # Keep has released the old body. An independent authenticated
+            # menu socket no longer needs to be taken over by first Play.
+            creation.reply(original, "8", creation.MENU)
         original.close()
         replacement.close()
         server.shutdown()

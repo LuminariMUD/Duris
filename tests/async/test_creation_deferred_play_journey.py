@@ -52,6 +52,14 @@ def run(binary, backend, transport):
                     subprocess.run([str(inspector), str(server.state_root), "age-last-save",
                                     str(pid), str(seconds)], check=True)
 
+            def block(pid, blocked):
+                assert server.process.poll() is not None
+                if sql:
+                    sql(f"UPDATE account_characters SET blocked={int(blocked)} WHERE pid={pid}")
+                else:
+                    subprocess.run([str(inspector), str(server.state_root), "block-membership",
+                                    str(pid), str(int(blocked))], check=True)
+
             def connect():
                 if transport == "telnet":
                     return login(server)
@@ -109,6 +117,20 @@ def run(binary, backend, transport):
                 assert not affects(pid) and not items(pid)
                 client.close()
                 server.shutdown()
+                block(pid, True)
+                creation.reboot(server)
+                client = connect()
+                if transport == "telnet":
+                    creation.reply(client, "1", "Taverek")
+                    creation.reply(client, "Taverek", "blocked and cannot be played")
+                else:
+                    denied = client.command("enter", {"character": "Taverek"}, "error")
+                    assert "blocked and cannot be played" in json.dumps(denied), denied
+                assert saved_character(server, sql, inspector) == before
+                assert not affects(pid) and not items(pid)
+                client.close()
+                server.shutdown()
+                block(pid, False)
                 age(pid, 7 * 24 * 3600)
                 creation.reboot(server)
                 client = connect()
@@ -135,7 +157,7 @@ def run(binary, backend, transport):
                 assert items(pid) == starter_uids, "starter kit duplicated after restart"
                 assert saved_character(server, sql, inspector) == after
                 print(f"PASS {backend} {transport}: menu, no affect/items, week deferred, "
-                      "full 150 ticks, offline countdown and stable starter UIDs", flush=True)
+                      "blocked Play preserved, full 150 ticks, offline countdown and stable starter UIDs", flush=True)
                 server.shutdown()
             except Exception:
                 print(server.server_output()[-3000:])
