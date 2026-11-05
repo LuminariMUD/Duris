@@ -60,7 +60,10 @@ nevent_schedule_result add_event(event_func, int, P_char, P_char, P_obj, int, co
 int spell_damage(P_char ch, P_char victim, double amount, int, uint, damage_messages *, int *) {
     ++damage_calls; last_damage = amount;
     if (release_on_damage) {
-        if (damage_result == DAM_VICTDEAD || damage_result == DAM_BOTHDEAD) delete victim;
+        if (damage_result == DAM_VICTDEAD || damage_result == DAM_BOTHDEAD) {
+            delete victim->affected;
+            delete victim;
+        }
         if (damage_result == DAM_CHARDEAD || damage_result == DAM_BOTHDEAD) delete ch;
     }
     return damage_result;
@@ -70,8 +73,9 @@ void create_golem(int, P_char, P_char, P_obj, int type) {
     ++golem_calls; golem_type = type;
     assert(type >= NECROGOLEM_FLESH && type <= NECROGOLEM_LAST);
 }
+static const char *radial_distance = "1";
 void argument_interpreter(char *, char *direction, char *distance) {
-    std::strcpy(direction, "n"); std::strcpy(distance, "1");
+    std::strcpy(direction, "n"); std::strcpy(distance, radial_distance);
 }
 bool is_number(char *) { return true; }
 void char_from_room(P_char ch) { ch->in_room = NOWHERE; }
@@ -139,6 +143,27 @@ static void wave() {
     int level = 50;
     event_psionic_wave_blast(&caster, &victim, nullptr, &level);
     assert(!scheduled && !damage_calls && !IS_AFFECTED2(&caster, AFF2_CASTING));
+
+    release_on_damage = true;
+    for (int result : {DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
+        auto dying_caster = new char_data(alive()), dying_victim = new char_data(alive());
+        dying_victim->affected = new affected_type{};
+        dying_victim->affected->type = SPELL_PSIONIC_WAVE_BLAST;
+        dying_victim->affected->modifier = 6;
+        dying_caster->specials.affected_by2 = AFF2_CASTING;
+        damage_result = result;
+        scheduled = 0;
+        event_psionic_wave_blast(dying_caster, dying_victim, nullptr, &level);
+        assert(!scheduled);
+        if (result == DAM_VICTDEAD) assert(!IS_AFFECTED2(dying_caster, AFF2_CASTING));
+        if (result == DAM_CHARDEAD) {
+            delete dying_victim->affected;
+            delete dying_victim;
+        }
+        if (result == DAM_VICTDEAD) delete dying_caster;
+    }
+    release_on_damage = false;
+    damage_result = DAM_NONEDEAD;
 }
 static void golem() {
     for (bool theurgist : {false, true}) {
@@ -184,6 +209,17 @@ static void radial() {
             }
         }
     }
+    mastered = false;
+    rooms[1].room_flags = 0;
+    for (const char *distance : {"-1000", "-1", "0"}) {
+        char_data caster = alive();
+        moved = waited = 0;
+        radial_distance = distance;
+        char args[] = "n distance";
+        spell_radial_navigation(50, &caster, args, SPELL_TYPE_SPELL, nullptr, nullptr);
+        assert(!moved && !waited && caster.in_room == 0 && GET_MANA(&caster) == 500);
+    }
+    radial_distance = "1";
 }
 static void heavens() {
     for (int result : {DAM_NONEDEAD, DAM_VICTDEAD, DAM_CHARDEAD, DAM_BOTHDEAD}) {
