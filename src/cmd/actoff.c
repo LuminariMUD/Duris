@@ -63,6 +63,7 @@
 #include "item/objmisc.h"
 #include "classes/paladins.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 /*
  * external variables
@@ -6927,6 +6928,59 @@ int good_for_skewering(P_obj obj)
 	}
 }
 
+// Damage from a successful bash, before melee_damage applies the target's defenses.
+static int bash_damage(const Rolls &rolls, P_char ch)
+{
+	int dmg = 1 + str_app[STAT_INDEX(GET_C_STR(ch))].todam;
+	if (ch->equipment[WEAR_SHIELD])
+	{
+		dmg += rolls.number(0, 4) + ch->equipment[WEAR_SHIELD]->weight / 2;
+		if (strstr(ch->equipment[WEAR_SHIELD]->name, "spiked"))
+		{
+			dmg *= 2;
+		}
+	}
+	return MAX(1, dmg);
+}
+
+// The basher's lag after a hit, in pulses.
+static int bash_hit_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The basher's lag after a miss, in pulses; longer when the miss leaves them prone.
+static int bash_miss_lag(bool prone)
+{
+	return prone ? PULSE_VIOLENCE * 3 : PULSE_VIOLENCE * 2;
+}
+
+// The bashed target's lag, in pulses.
+static int bash_target_lag(P_char ch, bool target_standing)
+{
+	if (!target_standing)
+		return PULSE_VIOLENCE * 1;
+	if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))
+		return (int)(PULSE_VIOLENCE * 2.5);
+	return (int)(PULSE_VIOLENCE * 2);
+}
+
+std::string bash_facts(P_char ch)
+{
+	return fact("Damage on a hit",
+		    show({ bash_damage(lowest_rolls, ch), bash_damage(highest_rolls, ch) }) +
+			    " with your strength and " +
+			    (ch->equipment[WEAR_SHIELD] ? "shield" : "no shield")) +
+	       fact("Your lag on a hit", seconds(bash_hit_lag())) +
+	       fact("Your lag on a miss", seconds(bash_miss_lag(false)) + ", or " +
+						  seconds(bash_miss_lag(true)) +
+						  " if you fall prone") +
+	       fact("Target's lag", seconds(bash_target_lag(ch, true)) + ", or " +
+					    seconds(bash_target_lag(ch, false)) +
+					    " if the target was already down") +
+	       "  The target's defenses apply to the damage after.\n";
+}
+
 void bash(P_char ch, P_char victim, bool _debug)
 {
 	static bool DEBUG = TRUE;
@@ -7292,44 +7346,23 @@ void bash(P_char ch, P_char victim, bool _debug)
 		if (rolled > (percent_chance * 3))
 		{
 			SET_POS(ch, POS_PRONE + GET_STAT(ch));
-			CharWait(ch, PULSE_VIOLENCE * 3);
+			CharWait(ch, bash_miss_lag(true));
 		}
 		else
 		{
 			SET_POS(ch, POS_KNEELING + GET_STAT(ch));
-			CharWait(ch, PULSE_VIOLENCE * 2);
+			CharWait(ch, bash_miss_lag(false));
 		}
 		update_group_vitals(ch);
 		gmcp_char_vitals(ch);
 	}
 	else
 	{
-		dmg = 1 + str_app[STAT_INDEX(GET_C_STR(ch))].todam;
-		if (ch->equipment[WEAR_SHIELD])
-		{
-			dmg += number(0, 4) + ch->equipment[WEAR_SHIELD]->weight / 2;
-			if (strstr(ch->equipment[WEAR_SHIELD]->name, "spiked"))
-			{
-				dmg *= 2;
-			}
-		}
+		dmg = bash_damage(live_rolls, ch);
+		CharWait(ch, bash_hit_lag());
+		CharWait(victim, bash_target_lag(ch, GET_POS(victim) == POS_STANDING));
 
-		CharWait(ch, PULSE_VIOLENCE * 2);
-
-		if (GET_POS(victim) != POS_STANDING)
-		{
-			CharWait(victim, PULSE_VIOLENCE * 1);
-		}
-		else if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))
-		{
-			CharWait(victim, (int)(PULSE_VIOLENCE * 2.5));
-		}
-		else
-		{
-			CharWait(victim, (int)(PULSE_VIOLENCE * 2));
-		}
-
-		if (melee_damage(ch, victim, MAX(1, dmg), PHSDAM_TOUCH, 0) == DAM_NONEDEAD)
+		if (melee_damage(ch, victim, dmg, PHSDAM_TOUCH, 0) == DAM_NONEDEAD)
 		{
 			// act("Your bash knocks $N to the ground!", FALSE, ch, 0, victim, TO_CHAR);
 			if (GET_SPEC(ch, CLASS_WARRIOR, SPEC_GUARDIAN))

@@ -120,6 +120,15 @@ def run(binary, backend):
                 assert "Swordsman" in info and "Swashbuckler" in info and "Unavailable" in info
                 assert "Your unlock level: 1  Your cap: 100" in info
                 assert "Current rating:" in info and "Learned:" in info and "Taught:" in info
+                assert info.index("Your progress") < info.index("Mechanics") < info.index("Helpfile details")
+                assert "with your strength and no shield" in info, info
+                assert "Your lag on a miss: 8 seconds, or 12 seconds if you fall prone" in info, info
+                assert "Target's lag: 8 seconds, or 4 seconds if the target was already down" in info, info
+                assert "Mechanics" not in command(player, "skills info parry")
+                # The converted bash still plays through its real handler.
+                command(god, "load mob 11")
+                bashed = command(god, "bash raoul")
+                assert "to the ground" in bashed, bashed
                 assert "Epic skill" in command(player, "skills info anatomy")
                 assert "Instrument" in command(player, "skills info drums")
                 assert "Bard song" in command(player, "skills info song of heroism")

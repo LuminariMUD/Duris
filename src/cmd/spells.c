@@ -4,6 +4,7 @@
 #include "core/utils.h"
 #include "cmd/wikihelp.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 #include <algorithm>
 #include <cctype>
@@ -298,9 +299,10 @@ void spell_info(P_char ch, int spell)
 	}
 	else
 		out << "  Not available through your current classes/specialization.\n";
-	out << "  Class/circle access and book presence do not establish readiness to cast.\n"
-	       "\n&+W  Helpfile details&n\n"
-	    << wiki_help_single(skills[spell].name) << "\n";
+	out << "  Class/circle access and book presence do not establish readiness to cast.\n";
+	if (AbilityFacts facts = ability_facts(spell))
+		out << "\n&+W  Mechanics&n\n" << facts(ch);
+	out << "\n&+W  Helpfile details&n\n" << wiki_help_single(skills[spell].name) << "\n";
 	send_to_char(out.str().c_str(), ch);
 }
 

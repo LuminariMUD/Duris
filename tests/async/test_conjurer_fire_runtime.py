@@ -14,6 +14,7 @@ prelude = r'''
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "classes/necromancy.h"
 #include "combat/damage.h"
 #include "combat/dam_mods.h"
@@ -53,6 +54,7 @@ int GET_CHAR_SKILL_P(P_char,int id) { return id==SKILL_INFUSE_LIFE?infuse:0; }
 bool has_innate(P_char ch,int id) { return id==INNATE_FIRE_AURA && GET_RACE(ch)==RACE_F_ELEMENTAL; }
 int number(int low,int high) { ++draws; rng=rng*1664525+1013904223; return low==0&&high==2?variant:low+int(rng%unsigned(high-low+1)); }
 int dice(int count,int sides) { int result=0; while(count--) result+=number(1,sides); return result; }
+const Rolls live_rolls = { dice, number };
 int BOUNDED(int low,int value,int high) { return std::max(low,std::min(value,high)); }
 int STAT_INDEX(int) { return 10; }
 float get_property(const char *,double fallback) { return fallback; }
@@ -140,6 +142,9 @@ functions = [
     ('magic.c','void spell_conjour_elemental('),
     ('magic.c','void conjure_specialized('),
     ('magic.c','void spell_conjour_greater_elemental('),
+    ('magic.c','static int fireball_damage('),
+    ('magic.c','static int fireball_failed_save('),
+    ('magic.c','static bool fireball_passes_globes('),
     ('magic.c','void spell_fireball('),
     ('magic.c','void spell_solar_flare('),
 ]
