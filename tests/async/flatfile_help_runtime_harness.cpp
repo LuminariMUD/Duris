@@ -1,12 +1,23 @@
 #include <string>
 using namespace std;
 
+#include "core/prototypes.h"
 #include "cmd/wikihelp.h"
 
 #include <cstdlib>
 #include <iostream>
 
-/** Provide the logging symbol required by the isolated help runtime. */
+static string help_output;
+
+void send_to_char(const char *text, P_char)
+{
+	help_output += text;
+}
+
+void fatal_boot_error(const char *, const char *, ...)
+{
+	abort();
+}
 
 /** Exit the test harness with a diagnostic when a requirement fails. */
 static void require(bool condition, const string &message)
@@ -21,6 +32,29 @@ static void require(bool condition, const string &message)
 /** Exercise flat-file help lookup, including the supported No Locate aliases. */
 int main()
 {
+	load_cmd_attributes();
+	for (const char *topic : { "skills", "look" })
+	{
+		help_output.clear();
+		do_help(nullptr, const_cast<char *>(topic), 0);
+		require(help_output == wiki_help(topic) + "\n",
+			"Stat-free help changed the authored topic or appended an empty footer");
+	}
+	const string attribute_heading =
+		"The following character attributes are used in execution of this ability (if any):\n";
+	for (const auto &[topic, attributes] :
+	     { pair{ "bash", "Char's Strength.\nChar's Dexterity.\nVictim's Agility.\n"
+			     "Char's Luck.\nVictim's Luck.\n" },
+	       pair{ "barrage", "Char's Luck.\n" }, pair{ "hamstring", "Victim's Agility.\n" } })
+	{
+		help_output.clear();
+		do_help(nullptr, const_cast<char *>(topic), 0);
+		require(help_output == wiki_help(topic) + "\n" + attribute_heading + attributes,
+			"Ability help lost or changed its character/victim attribute footer");
+	}
+	require(attrib_help(const_cast<char *>("definitely missing topic")) == nullptr,
+		"Unknown command unexpectedly acquired attribute metadata");
+
 	for (const char *topic : { "Rogue Assassin", "Rogue Thief" })
 	{
 		const string prose = wiki_help_prose(topic, "");

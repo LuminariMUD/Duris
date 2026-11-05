@@ -47,9 +47,9 @@ The `help` command (`do_help`, `src/cmd/actinf.c`) does two things:
     that are not commands (`apply poison`, `parry`, ...) which serve
     `help <ability>` lookups. Each entry lists the `GET_C_*` stats its
     handler (or skill-gated helper chain) actually uses; commands whose
-    handlers consult no stats carry just the header line. The loader holds
-    up to `CMD_ATTRIB_MAX` entries (1024, `src/cmd/wikihelp.h`) and bounds-checks
-    the count, logging and skipping anything beyond the cap.
+    handlers consult no stats keep an empty entry and emit no attribute footer.
+    The loader holds up to `CMD_ATTRIB_MAX` entries (1024, `src/cmd/wikihelp.h`)
+    and bounds-checks the count, logging and skipping anything beyond the cap.
 
 Without MySQL (`-D__NO_MYSQL__` builds), the same command loads and caches the
 tracked source files that feed the database importer. It applies the importer's
