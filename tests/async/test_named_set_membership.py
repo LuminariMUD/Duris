@@ -130,6 +130,14 @@ static void wear(int item,int slot,int zone,bool marked=true) {
     if(marked) assert(set_named_set_origin(&object,zone));
     wearer.equipment[slot]=&object;
 }
+static void wear_tagged(int item,int slot,const char *title) {
+    auto &object=gear[item]; clear_marker(object); object={};
+    object.R_num=item%2; object.loc_p=LOC_WORN; object.loc.wearing=&wearer;
+    object.type=object.R_num ? ITEM_WEAPON : ITEM_ARMOR;
+    names[item]=std::string("a random item &+rfrom &+L")+title+"&n";
+    object.short_description=names[item].data();
+    wearer.equipment[slot]=&object;
+}
 static void process(int item) {
     for(auto &object:gear) REMOVE_BIT(object.extra2_flags,ITEM2_NOTIMER);
     set_proc(&gear[item],&wearer,CMD_PERIODIC,nullptr);
@@ -194,6 +202,35 @@ int main() {
         process(0); process(3);
         assert(hp(-150) && hp(-150)->modifier==5 && hp(3000) && hp(3000)->modifier==5 && hp_count()==2);
         for(int i=0;i<3;++i) assert(!gear[i].ex_description && named_set_origin(&gear[i]).zone==0);
+        // A title no zone carries any more keeps HP and its timer, with no spells or marker.
+        for(const char *retired : {"The Ruins of Desecration","Vecnas Tomb"}) {
+            reset();
+            for(int i=0;i<3;++i) wear_tagged(i,i+1,retired);
+            // A revealed weapon still joins by its base tag.
+            gear[1].value[5]=spells_data[0].spell;
+            names[1]+=std::string(" of ")+spells_data[0].name+"&n";
+            gear[1].short_description=names[1].data();
+            process(0);
+            const int group=named_set_origin(&gear[0]).legacy_group;
+            assert(group>=1<<24 && hp(-group) && hp(-group)->modifier==5);
+            assert(hp_count()==1 && spells.empty() && !disabled_timers);
+            for(int i=0;i<3;++i) assert(!gear[i].ex_description && named_set_origin(&gear[i]).zone==0);
+        }
+        // A different retired title is a different group.
+        reset();
+        for(int i=0;i<2;++i) {wear_tagged(i,i+1,"Newhaven"); wear_tagged(i+2,i+3,"Village of Miaeril");}
+        process(0); process(2);
+        assert(hp_count()==2 && !spells.size());
+        // An untagged item still loses its timer, and carrying a piece never stamps it.
+        reset();
+        wear(0,1,740,false); gear[0].short_description=const_cast<char *>("a plain item");
+        gear[0].loc_p=LOC_CARRIED; wearer.equipment[1]=nullptr;
+        set_proc(&gear[0],&wearer,CMD_PERIODIC,nullptr);
+        assert(disabled_timers==1 && !gear[0].ex_description);
+        reset();
+        wear(0,1,740,false); gear[0].loc_p=LOC_CARRIED; wearer.equipment[1]=nullptr;
+        set_proc(&gear[0],&wearer,CMD_PERIODIC,nullptr);
+        assert(!disabled_timers && !gear[0].ex_description && named_set_origin(&gear[0]).zone==740);
         // Unique legacy armor and revealed weapons migrate lazily when worn.
         reset(); for(int i=0;i<3;++i) wear(i,i+1,1325,false);
         gear[1].value[5]=spells_data[0].spell;
