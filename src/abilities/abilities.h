@@ -48,6 +48,9 @@ std::string show(Range range);
 std::string seconds(int pulses);
 std::string game_hours(int ticks);
 std::string real_time(int pulses);
+std::string game_hours_range(Range ticks);
+std::string show_signed(Range range);
+std::string show_landing(Range range);
 
 // Info page styling shared by spells info, skills info and innate info: labels in cyan,
 // numbers in bright white. Facts stay plain text; mechanics_section() styles them.
@@ -62,6 +65,9 @@ AbilityFacts ability_facts(int skill);
 
 // The facts of a converted innate, or nullptr when it is not converted.
 AbilityFacts innate_facts(int innate);
+
+// An innate's uses and rest, as check_innate_time(ch, innate, duration) applies them.
+std::string innate_rest_facts(int innate, int duration);
 
 // Facts functions, defined beside their handlers.
 std::string fireball_facts(char_data *ch);

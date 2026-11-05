@@ -156,28 +156,6 @@ static int animalist_level(int level, P_char ch)
 	return level;
 }
 
-// A duration in ticks that may vary, shown as game_hours() shows one: an affect set to
-// `ticks.low` to `ticks.high` ticks lasts more than `ticks.low` and up to `ticks.high + 1`
-// game hours.
-static std::string game_hours_range(Range ticks)
-{
-	if (ticks.low == ticks.high)
-		return game_hours(ticks.low);
-	const double minutes = PULSES_IN_TICK / static_cast<double>(WAIT_SEC) / 60.0;
-	char text[96];
-	snprintf(text, sizeof(text), "%d-%d game hours (%.10g-%.10g minutes)", ticks.low,
-		 ticks.high + 1, ticks.low * minutes, (ticks.high + 1) * minutes);
-	return text;
-}
-
-// A range that may hold negative numbers, which show() would join with a second dash.
-static std::string show_signed(Range range)
-{
-	if (range.low < 0 && range.low != range.high)
-		return std::to_string(range.low) + " to " + std::to_string(range.high);
-	return show(range);
-}
-
 // Guardian spirit messages that is called from combat related functions.
 void guardian_spirits_messages(P_char ch, P_char victim)
 {

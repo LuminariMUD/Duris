@@ -1351,16 +1351,6 @@ void spell_invoke_negative_energy(int /*level*/, P_char ch, char * /*arg*/, int 
 	spell_damage(ch, victim, dam, SPLDAM_NEGATIVE, SPLDAM_GLOBE, &messages);
 }
 
-// spell_damage() deals no damage and vamp() heals nothing for an amount below 1, so a
-// range that starts there shows what lands. Every range shown this way reaches 1 at any
-// level.
-static std::string show_landing(Range range)
-{
-	if (range.low >= 1)
-		return show(range);
-	return show({ 0, range.high }) + " (none below 1 lands)";
-}
-
 // Restore spirit damage at cast level `level`, before training, save and level bonus.
 static int restore_spirit_damage(const Rolls &rolls, int level)
 {
