@@ -28,6 +28,7 @@ functions = [
     ('handler.c', 'void update_char_objects('),
     ('interp.c', 'char *one_argument('),
     ('actnew.c', 'void do_disarm('),
+    ('magic.c', 'static int repair_one_item_condition('),
     ('magic.c', 'void spell_repair_one_item('),
     ('handler.c', 'void set_obj_extra_flags('),
     ('handler.c', 'void set_obj_extra2_flags('),

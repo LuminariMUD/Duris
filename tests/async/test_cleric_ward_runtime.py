@@ -36,6 +36,7 @@ PRELUDE = r'''
 #include "world/events.h"
 #include "telemetry/telemetry_runtime.h"
 #include "net/comm.h"
+#include "abilities/abilities.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -88,6 +89,7 @@ void affect_from_char(P_char ch, int type) {
     }
 }
 int number(int low, int) { return low; }
+const Rolls live_rolls = { dice, number };
 void gmcp_char_vitals(P_char) {}
 void update_achievements(P_char, P_char, int amount, int) { healing_done = amount; }
 int gain_exp(P_char, P_char, int amount, int) { healing_xp = amount; return 0; }
@@ -110,6 +112,8 @@ PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in 
     ("magic.c", "bool can_relocate_to("),
     ("magic.c", "void spell_dimension_door("),
     ("magic.c", "void spell_relocate("),
+    ("magic.c", "static int group_heal_base("),
+    ("magic.c", "static int group_heal_amount("),
     ("magic.c", "void spell_group_heal("),
     ("magic.c", "void event_natures_touch("),
 ))
