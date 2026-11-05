@@ -10,6 +10,7 @@
 
 #define TROPHY
 
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "net/gmcp.h"
 #include "core/structs.h"
@@ -2110,6 +2111,23 @@ void event_enchant(P_char ch, P_char /*victim*/, P_obj item, void *data)
 	}
 }
 
+// Thrown flasks work at the level they were mixed at, so a page shows the viewer's own.
+static int napalm_damage(const Rolls &rolls, int level)
+{
+	return MIN(40, level) * 4 + rolls.number(0, level);
+}
+
+std::string napalm_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Fire damage", show({ napalm_damage(lowest_rolls, level),
+					  napalm_damage(highest_rolls, level) }) +
+					   " from a flask mixed at your level, " +
+					   std::to_string(level)) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
+}
+
 void spell_napalm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim, P_obj /*obj*/)
 {
 	int dam;
@@ -2123,9 +2141,25 @@ void spell_napalm(int level, P_char ch, char * /*arg*/, int /*type*/, P_char vic
 		0
 	};
 
-	dam = MIN(40, level) * 4 + number(0, level);
+	dam = napalm_damage(live_rolls, level);
 
 	spell_damage(ch, victim, dam, SPLDAM_FIRE, SPLDAM_NODEFLECT, &messages);
+}
+
+static int strong_acid_damage(const Rolls &rolls, int level)
+{
+	return (int)(10.5 * MIN(level, 50)) + rolls.number(1, 25);
+}
+
+std::string strong_acid_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Acid damage", show({ strong_acid_damage(lowest_rolls, level),
+					  strong_acid_damage(highest_rolls, level) }) +
+					   " from a flask mixed at your level, " +
+					   std::to_string(level)) +
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_strong_acid(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -2142,9 +2176,25 @@ void spell_strong_acid(int level, P_char ch, char * /*arg*/, int /*type*/, P_cha
 		0
 	};
 
-	dam = (int)(10.5 * MIN(level, 50)) + number(1, 25);
+	dam = strong_acid_damage(live_rolls, level);
 
 	spell_damage(ch, victim, dam, SPLDAM_ACID, SPLDAM_NODEFLECT, &messages);
+}
+
+static int glass_bomb_damage(const Rolls &rolls, int level)
+{
+	return 6 * MIN(level, 45) + rolls.number(1, 25);
+}
+
+std::string glass_bomb_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Damage", show({ glass_bomb_damage(lowest_rolls, level),
+				     glass_bomb_damage(highest_rolls, level) }) +
+				      " from a flask mixed at your level, " +
+				      std::to_string(level)) +
+	       "  It cannot be shrugged, and globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_glass_bomb(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -2161,9 +2211,25 @@ void spell_glass_bomb(int level, P_char ch, char * /*arg*/, int /*type*/, P_char
 		0
 	};
 
-	dam = 6 * MIN(level, 45) + number(1, 25);
+	dam = glass_bomb_damage(live_rolls, level);
 
 	spell_damage(ch, victim, dam, SPLDAM_GENERIC, SPLDAM_NODEFLECT | SPLDAM_NOSHRUG, &messages);
+}
+
+static int nitrogen_damage(const Rolls &rolls, int level)
+{
+	return 4 * MIN(26, level) + rolls.number(0, 9);
+}
+
+std::string nitrogen_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Cold damage", show({ nitrogen_damage(lowest_rolls, level),
+					  nitrogen_damage(highest_rolls, level) }) +
+					   " from a flask mixed at your level, " +
+					   std::to_string(level)) +
+	       "  It cannot be shrugged, and globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void spell_nitrogen(int level, P_char ch, char * /*arg*/, int /*type*/, P_char victim,
@@ -2180,17 +2246,53 @@ void spell_nitrogen(int level, P_char ch, char * /*arg*/, int /*type*/, P_char v
 		0
 	};
 
-	dam = 4 * MIN(26, level) + number(0, 9);
+	dam = nitrogen_damage(live_rolls, level);
 
 	spell_damage(ch, victim, dam, SPLDAM_COLD, SPLDAM_NODEFLECT | SPLDAM_NOSHRUG, &messages);
+}
+
+static int grease_duration()
+{
+	return 1;
+}
+
+// Slips left after the next; the grease comes off on the slip that finds none.
+static int grease_slips(const Rolls &rolls)
+{
+	return rolls.number(1, 4);
+}
+
+// A move can slip when the first roll is 0 and agility is below the second.
+static int grease_slip_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 2);
+}
+
+static int grease_agility_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 115);
+}
+
+std::string grease_facts(P_char /*ch*/)
+{
+	const int outcomes = grease_slip_roll(highest_rolls) - grease_slip_roll(lowest_rolls) + 1;
+	return fact("Duration", game_hours(grease_duration())) +
+	       fact("Slips before it comes off",
+		    show({ grease_slips(lowest_rolls) + 1, grease_slips(highest_rolls) + 1 })) +
+	       fact("Chance each move slips",
+		    "1 in " + std::to_string(outcomes) + ", if the target's agility is below") +
+	       fact("Agility check", "a roll of " + show({ grease_agility_roll(lowest_rolls),
+							   grease_agility_roll(highest_rolls) })) +
+	       "  A slip stops the move and sits the target down.\n"
+	       "  Recasting restarts the duration and rerolls the slips.\n";
 }
 
 bool grease_check(P_char ch)
 {
 	struct affected_type *af;
 
-	if ((af = get_spell_from_char(ch, SPELL_GREASE)) && !number(0, 2) &&
-	    GET_C_AGI(ch) < number(0, 115))
+	if ((af = get_spell_from_char(ch, SPELL_GREASE)) && !grease_slip_roll(live_rolls) &&
+	    GET_C_AGI(ch) < grease_agility_roll(live_rolls))
 	{
 		act("$n tries to run but slips on a greasy substance dripping off $s cloths!",
 		    FALSE, ch, 0, 0, TO_ROOM);
@@ -2221,15 +2323,15 @@ void spell_grease(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int
 
 	if ((afp = get_spell_from_char(victim, SPELL_GREASE)))
 	{
-		afp->duration = 1;
-		afp->modifier = number(1, 4);
+		afp->duration = grease_duration();
+		afp->modifier = grease_slips(live_rolls);
 	}
 	else
 	{
 		memset(&af, 0, sizeof(af));
 		af.type = SPELL_GREASE;
-		af.duration = 1;
-		af.modifier = number(1, 4);
+		af.duration = grease_duration();
+		af.modifier = grease_slips(live_rolls);
 
 		affect_to_char(victim, &af);
 	}

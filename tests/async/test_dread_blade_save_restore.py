@@ -9,9 +9,15 @@ source = (SRC / "classes/paladins.c").read_text(encoding="utf-8", errors="replac
 body = function_body(source, r"\bbool\s+dread_blade_proc\s*\(")
 assert body is not None, "dread_blade_proc definition is missing"
 
-adjustment = "victim->specials.apply_saving_throw[SAVING_SPELL] += 15;"
-spell_call = "spell_func(number(1, GET_LEVEL(ch)), ch, 0, 0, victim, 0);"
+adjustment = "victim->specials.apply_saving_throw[SAVING_SPELL] += dread_blade_save_penalty();"
+spell_call = "spell_func(dread_blade_spell_level(live_rolls, ch), ch, 0, 0, victim, 0);"
 restore = "victim->specials.apply_saving_throw[SAVING_SPELL] = save;"
+
+# The numbers the proc reads through shared functions.
+assert "return 15;" in function_body(source, r"\bstatic\s+int\s+dread_blade_save_penalty\s*\(")
+assert "return rolls.number(1, GET_LEVEL(ch));" in function_body(
+    source, r"\bstatic\s+int\s+dread_blade_spell_level\s*\("
+)
 
 adjustment_at = body.index(adjustment)
 spell_call_at = body.index(spell_call, adjustment_at)

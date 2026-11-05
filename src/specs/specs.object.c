@@ -7,6 +7,7 @@
  ***************************************************************************
  */
 
+#include "abilities/abilities.h"
 #include <algorithm>
 #include <ctype.h>
 #include <list>
@@ -7410,41 +7411,16 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 		return TRUE;
 	case WALL_OF_AIR:
 		int chance, fall_chance;
-
-		switch (GET_SIZE(ch))
-		{
-		case SIZE_NONE:
-		case SIZE_TINY:
-		case SIZE_SMALL:
-			chance = 15;
-			fall_chance = 20;
-			break;
-		case SIZE_MEDIUM:
-			chance = 25;
-			fall_chance = 15;
-			break;
-		case SIZE_LARGE:
-		case SIZE_HUGE:
-			chance = 50;
-			fall_chance = 10;
-			break;
-		case SIZE_GIANT:
-		case SIZE_GARGANTUAN:
-			chance = 70;
-			fall_chance = 0;
-			break;
-		case SIZE_DEFAULT:
-		default:
-			chance = 0;
-			fall_chance = 100;
-			break;
-		}
+		extern void wall_of_air_chances(int size, int &chance, int &fall_chance);
+		wall_of_air_chances(GET_SIZE(ch), chance, fall_chance);
 
 		// Let stats play a minor role.
-		chance += (GET_C_AGI(ch) + GET_C_STR(ch)) / 50;
-		fall_chance -= (GET_C_AGI(ch) + GET_C_STR(ch)) / 50;
+		extern int wall_of_air_stat_bonus(P_char ch);
+		extern int wall_of_air_roll(const Rolls &rolls);
+		chance += wall_of_air_stat_bonus(ch);
+		fall_chance -= wall_of_air_stat_bonus(ch);
 
-		if (chance >= number(1, 100))
+		if (chance >= wall_of_air_roll(live_rolls))
 		{
 			act("$n steps through $p!", TRUE, ch, obj, NULL, TO_ROOM);
 			act("&+cYou manage to break through the high winds on to the other side!&n",
@@ -7453,7 +7429,7 @@ int wall_generic(P_obj obj, P_char ch, int cmd, char *arg)
 			update_pos(ch);
 			drag_followers = TRUE;
 		}
-		else if (fall_chance >= number(1, 100))
+		else if (fall_chance >= wall_of_air_roll(live_rolls))
 		{
 			// They got knocked down.
 			act("&+WThe &+CHIGH winds &+Wsend you flying back into the room, crashing to the ground &+RH&+rA&+RR&+rD&+W!&n",
@@ -11809,8 +11785,9 @@ int frost_beacon(P_obj obj, P_char ch, int cmd, char * /*argument*/)
 	if (!ch || (ch->specials.z_cord != 0))
 		return FALSE;
 
-	if (number(0, 2) && IS_SET(obj->extra_flags, ITEM_SECRET) && cmd_to_exitnumb(cmd) != -1 &&
-	    obj->value[0] && obj->loc_p == LOC_ROOM &&
+	extern int frost_beacon_alert_roll(const Rolls &rolls);
+	if (frost_beacon_alert_roll(live_rolls) && IS_SET(obj->extra_flags, ITEM_SECRET) &&
+	    cmd_to_exitnumb(cmd) != -1 && obj->value[0] && obj->loc_p == LOC_ROOM &&
 	    (IS_PC(ch) && obj->value[0] != GET_PID(ch)) && !IS_TRUSTED(ch))
 	{
 		for (tch = character_list; tch; tch = tch->next)

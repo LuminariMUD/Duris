@@ -14,6 +14,7 @@ from _paths import ROOT, extract_function
 
 
 PRELUDE = r'''
+#include "abilities/abilities.h"
 #include "core/prototypes.h"
 #include "core/utils.h"
 #include "combat/damage.h"
@@ -129,7 +130,15 @@ int main() {
 '''
 
 production = extract_function("specs.ailvio.c", "int tutorial_mobile_mechanics_race(")
-production += SAVE + extract_function("ethermancer.c", "void spell_frost_beam(")
+production += extract_function("utility.c", "int dice(int num, int size)")
+production += "\nconst Rolls live_rolls = { dice, number };\n"
+production += SAVE + "\n".join(extract_function("ethermancer.c", signature) for signature in (
+    "static int frost_beam_damage(",
+    "static int frost_beam_noshrug_roll(",
+    "static int frost_beam_noshrug_chance(",
+    "static int frost_beam_paralysis(",
+    "void spell_frost_beam(",
+))
 directory = ROOT / "bin/tests"
 directory.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="frost-beam-", dir=directory) as temporary:
