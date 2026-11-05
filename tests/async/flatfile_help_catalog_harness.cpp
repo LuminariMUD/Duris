@@ -28,6 +28,14 @@ int main(int argc, char **argv)
 	const flatfile_help_entry *help = flatfile_help_catalog_find(catalog, "help advanced");
 	require(help && help->text.find("SOCIETY EXAMPLES") != std::string::npos,
 		"individual help source was not loaded");
+	const flatfile_help_entry *hardcore = flatfile_help_catalog_find(catalog, "HARDCORE");
+	require(hardcore && hardcore->text.find("three lives") != std::string::npos &&
+			hardcore->text.find(
+				"third counted death permanently deletes the character") !=
+				std::string::npos &&
+			hardcore->text.find("Arena deaths do not consume a life") !=
+				std::string::npos,
+		"Hardcore help did not publish the three-life policy");
 
 	const auto matches = flatfile_help_catalog_search(catalog, "celest", 101);
 	require(matches.size() > 1, "substring search did not find multiple topics");

@@ -13127,14 +13127,15 @@ lost by the death.
 #0
 
 Hardcore
-Hardcore - Last Edited: 2026-11-03
+Hardcore - Last Edited: 2026-11-05
 ====================================================
 Hardcore characters receive their configured combat and hitpoint bonuses.
 Their XP path can continue beyond the ordinary level-50 XP ceiling, up to their
 chosen faction cap plus two, bounded by level 56. This allowance is separate
 from the normal one-level Good/Evil cap gap. Read HELP LEVEL CAP for the race.
-Hardcore characters have five lives. Deaths one through four follow the ordinary
-death rules; the fifth counted death permanently deletes the character.
+Hardcore characters have three lives. Deaths one and two follow the ordinary
+death rules; the third counted death permanently deletes the character.
+This test policy remains open to balance discussion.
 Arena deaths do not consume a life.
 
 #0
