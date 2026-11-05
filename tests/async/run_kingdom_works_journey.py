@@ -154,6 +154,12 @@ def create_character(client: journey.MudClient, name: str) -> None:
     client.send("n")
     client.expect("keep this character")
     client.send("y")
+    client.expect("Please select an option")
+    client.send("1")
+    client.expect(name)
+    client.send(name)
+    client.expect("(Y/N)")
+    client.send("y")
     client.expect("PRESS RETURN")
     client.send("")
     client.expect_any(PROMPTS, timeout=60)
@@ -357,7 +363,7 @@ def run(binary: pathlib.Path) -> None:
         (run_root / "logs/log/.gitignore").write_text("*\n!.gitignore\n")
         journey.make_fixture(run_root)
         journey.generate_certificate(run_root)
-        (run_root / "journals/critical").mkdir(mode=0o700)
+        (run_root / "journals/critical").mkdir(mode=0o700, parents=True)
 
         # The journey's own settings, on its own copy of the file.
         cfg = run_root / "lib/kingdom.cfg"

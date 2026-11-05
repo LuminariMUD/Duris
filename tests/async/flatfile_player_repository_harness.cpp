@@ -205,6 +205,15 @@ static void inspect_authority(const std::string &root, int32_t pid)
 				"invalid acknowledgement in inspection fixture");
 			std::cout << ",\"last_read_news_hash\":\"" << entry.value << '"';
 		}
+	std::cout << ",\"affects\":[";
+	for (size_t i = 0; i < snapshot.affects.size(); ++i)
+	{
+		if (i)
+			std::cout << ',';
+		const auto &af = snapshot.affects[i];
+		std::cout << '[' << af.type << ',' << af.duration << ',' << af.flags << ']';
+	}
+	std::cout << ']';
 	std::cout << ",\"base_stats\":[";
 	for (size_t i = 0; i < domains.domains.base_stats.size(); ++i)
 	{
@@ -1654,7 +1663,7 @@ int main(int argc, char **argv)
 				flatfile_account_result::ok,
 			"synthetic account lookup: " + error);
 		const int blocked = std::stoi(argv[4]);
-		require(blocked == 0 || blocked == 1, "synthetic block must be 0 or 1");
+		require(blocked >= 0 && blocked <= 2, "synthetic block must be 0, 1 or 2");
 		account.blocked = blocked;
 		uint64_t revision = 0;
 		require(flatfile_account_save(argv[1], account, account.revision, &revision,
@@ -1662,9 +1671,11 @@ int main(int argc, char **argv)
 			"synthetic account block: " + error);
 		return 0;
 	}
-	if (argc == 4 && std::string(argv[2]) == "stale-membership")
+	if ((argc == 4 && std::string(argv[2]) == "stale-membership") ||
+	    (argc == 5 && (std::string(argv[2]) == "age-last-save" ||
+			   std::string(argv[2]) == "block-membership")))
 	{
-		// The level-projection journey calls this only with its synthetic server stopped.
+		// Disposable journeys seed membership metadata only with their server stopped.
 		std::string error;
 		flatfile_identity_record identity;
 		require(flatfile_identity_lookup_pid(argv[1], std::stoi(argv[3]), &identity,
@@ -1676,7 +1687,14 @@ int main(int argc, char **argv)
 			"seed stale account membership: " + error);
 		for (auto &member : members)
 			if (member.pid == identity.pid)
-				member.level = 1;
+			{
+				if (std::string(argv[2]) == "age-last-save")
+					member.last_save = time(nullptr) - std::stoll(argv[4]);
+				else if (std::string(argv[2]) == "block-membership")
+					member.blocked = std::stoi(argv[4]) != 0;
+				else
+					member.level = 1;
+			}
 		require(flatfile_identity_sync_account(argv[1], identity.account, members,
 						       &error) == flatfile_identity_result::ok,
 			"seed stale membership: " + error);

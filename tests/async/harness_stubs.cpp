@@ -51,6 +51,10 @@ HARNESS_STUB bool account_creation_pending(int)
 {
 	return false;
 }
+HARNESS_STUB bool account_character_body_held(int, struct descriptor_data *)
+{
+	return false;
+}
 HARNESS_STUB bool account_creation_owner_pending(const char *)
 {
 	return false;
