@@ -75,6 +75,19 @@ std::string game_hours(int ticks)
 	return text;
 }
 
+// A real-time span for longer waits: "12 minutes", "1 minute 15 seconds".
+std::string real_time(int pulses)
+{
+	const int total = pulses / WAIT_SEC;
+	if (total < 60)
+		return seconds(pulses);
+	const int minutes = total / 60, rest = total % 60;
+	std::string text = std::to_string(minutes) + (minutes == 1 ? " minute" : " minutes");
+	if (rest)
+		text += " " + std::to_string(rest) + (rest == 1 ? " second" : " seconds");
+	return text;
+}
+
 AbilityFacts ability_facts(int skill)
 {
 	switch (skill)
@@ -83,6 +96,17 @@ AbilityFacts ability_facts(int skill)
 		return bash_facts;
 	case SPELL_FIREBALL:
 		return fireball_facts;
+	default:
+		return nullptr;
+	}
+}
+
+AbilityFacts innate_facts(int innate)
+{
+	switch (innate)
+	{
+	case INNATE_REFLECTION:
+		return reflection_innate_facts;
 	default:
 		return nullptr;
 	}

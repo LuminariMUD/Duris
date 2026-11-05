@@ -113,6 +113,7 @@ functions = [
     ('innates.c', 'void assign_innates('),
     ('innates.c', 'void get_property_format('),
     ('innates.c', 'int get_innate_property('),
+    ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'static int innate_rest_seconds('), ('innates.c', 'static int innate_uses('), 
     ('innates.c', 'bool can_use_innate('),
     ('innates.c', 'bool check_innate_time('),
     ('innates.c', 'static bool conjured_spring_in_room('),

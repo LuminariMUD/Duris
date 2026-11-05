@@ -2457,6 +2457,7 @@ const char *missing_shaman_totem(P_char ch, int skill);
 void wear_off_message(P_char, struct affected_type *);
 bool has_innate(P_char, int);
 bool check_innate_time(P_char, int, int duration = 0);
+void innate_info(P_char, const char *);
 const char *get_god_name(P_char);
 
 /* spec.assign.c */

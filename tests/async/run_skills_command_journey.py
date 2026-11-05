@@ -125,6 +125,11 @@ def run(binary, backend):
                 assert "Your lag on a miss: 8 seconds, or 12 seconds if you fall prone" in info, info
                 assert "Target's lag: 8 seconds, or 4 seconds if the target was already down" in info, info
                 assert "Mechanics" not in command(player, "skills info parry")
+                innate = command(player, "innate info reflection")
+                assert "reflection : INNATE INFO" in innate and "Type: Active" in innate, innate
+                assert "Not available to your race, class or specialization." in innate, innate
+                assert "Uses: 1 before it rests" in innate and "Your lag: 4 seconds" in innate, innate
+                assert "Provide a known innate name" in command(player, "innate info nosuchinnate")
                 # The converted bash still plays through its real handler.
                 command(god, "load mob 11")
                 bashed = command(god, "bash raoul")

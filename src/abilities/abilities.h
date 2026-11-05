@@ -47,6 +47,7 @@ std::string fact(const std::string &label, const std::string &text);
 std::string show(Range range);
 std::string seconds(int pulses);
 std::string game_hours(int ticks);
+std::string real_time(int pulses);
 
 // The mechanics lines a converted ability shows to the viewing character.
 typedef std::string (*AbilityFacts)(char_data *ch);
@@ -54,8 +55,12 @@ typedef std::string (*AbilityFacts)(char_data *ch);
 // The facts of a converted spell or skill, or nullptr when it is not converted.
 AbilityFacts ability_facts(int skill);
 
+// The facts of a converted innate, or nullptr when it is not converted.
+AbilityFacts innate_facts(int innate);
+
 // Facts functions, defined beside their handlers.
 std::string fireball_facts(char_data *ch);
 std::string bash_facts(char_data *ch);
+std::string reflection_innate_facts(char_data *ch);
 
 #endif
