@@ -4,10 +4,61 @@
 &+R                   PWIPE HAPPENED &+YOCT 28TH 1800 UTC!&n
 &+G                     A NEW SEASON OF BLOOD BEGINS&n
 &+W======================================================================&n
-&+WUpdated: November 04, 2026&n
+&+WUpdated: November 05, 2026&n
 
-Welcome back! Clearer spell lists and totems that leave your hands free.
+Welcome back! Read your abilities and keep your hard-earned gear.
 Newest first; later updates replace older rules. Longer archive on web.
+
+&+R11/04/26 - 11/05/26&n &+L-&n &+YKnow your abilities, guard your gear&n
+&+W----------------------------------------------------------------------&n
+
+&+CRead your abilities&n
+&+Y-&n Try &+C'spells info <spell>'&n, &+C'skills info <skill>'&n and
+  &+C'innate info <name>'&n for mechanics, costs, ranges, durations and
+  recovery rules. Pages show your access and applicable current status;
+  reading them does not activate or spend the ability.
+&+Y-&n Duration ranges include the final game-hour tick; skin spells explain
+  mitigation per hit, and takedown pages explain recovery waits.
+  Help omits empty attribute footers. See &+C'help ability information'&n.
+
+&+CThree Hardcore lives&n
+&+Y-&n Hardcore now has &+Ythree lives&n: the third counted death permanently
+  deletes the character. Arena deaths do not count. This test policy
+  replaces the earlier five-life rule; read &+C'help hardcore'&n.
+
+&+CKeep what you improve&n
+&+Y-&n Replacement, essence and superior enhancements must raise item value.
+  Rejected upgrades and failed payments keep your gear and materials;
+  essence upgrades preserve existing bonuses and refuse incompatible slots.
+&+Y-&n Equipment saves preserve repeated bonuses, their fixed slots, permanent
+  flags and craftsmanship in inventory, pets, lockers, corpses, shops and
+  saved ground storage. Previously lost properties are not reconstructed.
+&+Y-&n All instruments, including saved epic instruments, can attach to a
+  worn belt through normal wear commands; you still need the belt.
+
+&+CSave now, play when ready&n
+&+Y-&n Keeping a new character returns you to the account menu. Its full
+  &+Y150-tick&n starting well-rested bonus begins when you first select Play;
+  starter rewards follow the game mode at that first entry.
+&+Y-&n Browser login and repeated entry requests no longer disrupt a live
+  character or pending approval. Characters held by another connection
+  cannot be deleted while they are entering or playing.
+&+Y-&n Creation explains how alignment affects racewar side. Evil Tiefling
+  hometown choices now agree with where the character actually starts.
+
+&+CKeep the world moving&n
+&+Y-&n Training dummies no longer block replacement roaming NPCs. Ordinary
+  roaming NPCs retain carried and worn gear through supported recovery;
+  fixed shopkeepers return to their configured rooms with their stock.
+&+Y-&n Artifact recovery and reports refresh changed ownership information
+  instead of reusing outdated results during world recovery.
+
+&+CFind the explanation&n
+&+Y-&n New help: &+C'ketch'&n, &+C'ramming'&n, &+C'planes'&n, &+C'bleeding'&n,
+  &+C'mind of the dragon'&n, &+C'earthen fist'&n, &+C'illusionist spells'&n,
+  &+C'takedowns'&n and &+C'epic costs'&n. Use &+C'help <topic>'&n.
+&+Y-&n Scourge and Ruiner help details their spell-specific bonuses;
+  Song of Healing help now states its Charisma dependence.
 
 &+R11/04/26&n &+L-&n &+YKnow your spells, free your hands&n
 &+W----------------------------------------------------------------------&n
