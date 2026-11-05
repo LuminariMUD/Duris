@@ -29,6 +29,12 @@ DEFAULT_MANIFEST = ROOT / "migrations" / "migration_manifest.json"
 MAX_MANIFEST_BYTES = 1024 * 1024
 MAX_MIGRATION_BYTES = 8 * 1024 * 1024
 MAX_PRODUCTION_BACKUP_AGE_SECONDS = 2 * 60 * 60
+ONLINE_ITEM_FIELDS = (
+    ("0059_item_affect_slots", "939ddcba780f27c11b38a935e974994cf69c8b64c7129a43c8549f4eb319709f",
+     "2aa02d7e1702a6883d62466f0de1bfc2b145526c6d5486e7b1837ff24542e2e2"),
+    ("0060_item_instance_fields", "6fc0474017ce7411c93cb31f16a6a78fa0e1af2050be045324489274c33f5023",
+     "118cc7b780ad571ac39c3399c0def29b020b1e3d5fae5423847b5c992ba64b5e"),
+)
 MANIFEST_FIELDS = {"manifest_version", "runner_version", "baseline", "migrations"}
 BASELINE_FIELDS = {
     "id", "required_table_count", "required_table_fingerprint", "required_tables",
@@ -416,7 +422,8 @@ class MysqlExecutor:
                  online_pwipe_roster: bool = False,
                  online_world_quest: bool = False,
                  online_chest_frag: bool = False,
-                 online_quest_reward_count: bool = False):
+                 online_quest_reward_count: bool = False,
+                 online_item_fields: bool = False):
         environment = os.environ.get("ENVIRONMENT", "").casefold()
         host = os.environ.get("DB_HOST", "")
         database = os.environ.get("DB_NAME", "")
@@ -428,6 +435,7 @@ class MysqlExecutor:
         self.online_divine_boon = online_divine_boon
         self.online_divine_trade = online_divine_trade
         self.online_chest_frag = online_chest_frag
+        self.online_item_fields = online_item_fields
         self.lock_process = None
         self.lock_errors = None
         self.lock_connection_id = 0
@@ -461,14 +469,15 @@ class MysqlExecutor:
                 online_player_updates, online_artifact_pvp, online_nexus_phase1,
                 online_artifact_rejections, online_divine_boon, online_outbox_expectations,
                 online_divine_trade, online_pwipe_roster, online_world_quest,
-                online_chest_frag, online_quest_reward_count)) > 1:
+                online_chest_frag, online_quest_reward_count, online_item_fields)) > 1:
             raise MigrationContractError("select only one reviewed online migration")
         for enabled, count, pair in (
                 (online_player_updates, 43, ONLINE_PLAYER_UPDATES),
                 (online_artifact_pvp, 45, ONLINE_ARTIFACT_PVP),
                 (online_divine_boon, 49, ONLINE_DIVINE_BOON),
                 (online_divine_trade, 52, ONLINE_DIVINE_TRADE),
-                (online_chest_frag, 58, ONLINE_CHEST_FRAG)):
+                (online_chest_frag, 58, ONLINE_CHEST_FRAG),
+                (online_item_fields, 61, ONLINE_ITEM_FIELDS)):
             if not enabled:
                 continue
             reviewed = tuple((step.migration_id, step.apply_checksum, step.verify_checksum)
@@ -703,7 +712,7 @@ class MysqlExecutor:
         if self.online_migration is not None:
             reviewed = self.online_migration
             if (self.online_player_updates or self.online_artifact_pvp or self.online_divine_boon or
-                    self.online_divine_trade or self.online_chest_frag) and \
+                    self.online_divine_trade or self.online_chest_frag or self.online_item_fields) and \
                     migration.migration_id == self.manifest.migrations[-2].migration_id:
                 reviewed = self.manifest.migrations[-2]
             if self.online_artifact_pvp:
@@ -719,6 +728,10 @@ class MysqlExecutor:
             if self.online_chest_frag:
                 tables = (("private_chests", "private_chest_log") if migration.sequence == 57
                           else ("level_cap",))
+            if self.online_item_fields:
+                suffix = "item_affects" if migration.sequence == 60 else "items"
+                tables = tuple(f"{prefix}_{suffix}" for prefix in
+                               ("player", "player_pet", "locker", "corpse", "shopkeeper", "saved"))
             for table in tables:
                 if self.sql("SELECT ENGINE FROM information_schema.TABLES WHERE "
                             f"TABLE_SCHEMA=DATABASE() AND TABLE_NAME='{table}';") != "InnoDB":
@@ -729,6 +742,16 @@ class MysqlExecutor:
             if checksum(payload) != reviewed.apply_checksum:
                 raise MigrationContractError("online migration apply checksum changed")
             algorithm = b"INSTANT"
+            if self.online_item_fields:
+                # Existing named-column writers leave these nullable additions NULL.
+                # Only the new binary writes slots/instance overrides. Slot indexes
+                # need INPLACE; ONLINE forbids a blocking table lock in either step.
+                for table in tables:
+                    old = f"'ALTER TABLE {table} ".encode()
+                    if payload.count(old) != 1:
+                        raise MigrationContractError("reviewed online ALTER was not found")
+                    payload = payload.replace(old, old.replace(b"ALTER TABLE", b"ALTER ONLINE TABLE"))
+                algorithm = b"INPLACE" if migration.sequence == 60 else b"INSTANT"
             if self.online_chest_frag:
                 # Nullable additions preserve the named-column legacy writers.
                 # Receipt indexes need INPLACE; LOCK=NONE forbids blocking DDL.
@@ -888,6 +911,9 @@ def main() -> int:
     online.add_argument("--online-quest-reward-count", action="store_true",
                         help="apply only reviewed 0058 on MariaDB 11.8 using online INSTANT DDL; "
                              "requires production confirmation, backup and compatible live writers")
+    online.add_argument("--online-item-fields", action="store_true",
+                        help="apply only sealed 0059/0060 on MariaDB 11.8 with LOCK=NONE; "
+                             "requires production confirmation, backup and compatible live writers")
     parser.add_argument("command", choices=("inspect", "adopt", "run"))
     parser.add_argument("--kind", choices=("fresh_bootstrap", "verified_legacy_adoption"))
     arguments = parser.parse_args()
@@ -899,7 +925,7 @@ def main() -> int:
                 arguments.online_divine_boon or arguments.online_outbox_expectations or
                 arguments.online_divine_trade or arguments.online_pwipe_roster or
                 arguments.online_world_quest or arguments.online_chest_frag or
-                arguments.online_quest_reward_count) and \
+                arguments.online_quest_reward_count or arguments.online_item_fields) and \
                 arguments.command != "run":
             raise MigrationContractError("online migration option requires run")
         if arguments.command == "inspect":
@@ -923,7 +949,7 @@ def main() -> int:
                                  arguments.online_divine_boon, arguments.online_outbox_expectations,
                                  arguments.online_divine_trade, arguments.online_pwipe_roster,
                                  arguments.online_world_quest, arguments.online_chest_frag,
-                                 arguments.online_quest_reward_count)
+                                 arguments.online_quest_reward_count, arguments.online_item_fields)
         if arguments.command == "adopt":
             if arguments.kind is None:
                 raise MigrationContractError("adopt requires --kind")
