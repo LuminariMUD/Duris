@@ -45,7 +45,7 @@ int main()
 	for (const auto &[topic, attributes] :
 	     { pair{ "bash", "Char's Strength.\nChar's Dexterity.\nVictim's Agility.\n"
 			     "Char's Luck.\nVictim's Luck.\n" },
-	       pair{ "barrage", "Char's Luck.\n" } })
+	       pair{ "barrage", "Char's Luck.\n" }, pair{ "hamstring", "Victim's Agility.\n" } })
 	{
 		help_output.clear();
 		do_help(nullptr, const_cast<char *>(topic), 0);
