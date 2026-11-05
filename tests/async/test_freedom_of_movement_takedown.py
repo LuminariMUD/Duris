@@ -23,6 +23,8 @@ TAKEDOWN_DEFINES = re.search(
 ).group(0)
 BOUNDED = extract_function("utility.c", "int BOUNDED(int a, int b, int c)")
 TAKEDOWN_CHECK = "\n".join((
+    extract_function("actoff.c", "int displacement_takedown_chance("),
+    extract_function("actoff.c", "int displacement_takedown_roll("),
     extract_function("actoff.c", "static int takedown_sleeping_target_lag("),
     extract_function("actoff.c", "static int takedown_evade_lag("),
     extract_function("actoff.c", "static int evade_threshold("),
@@ -40,6 +42,7 @@ PRELUDE = r'''
 #include "combat/grapple.h"
 #include "magic/spells.h"
 #include "net/comm.h"
+#include "abilities/abilities.h"
 
 #include <cmath>
 #include <cstdio>
@@ -60,6 +63,8 @@ void show_failed_takedown_messages(P_char, P_char, int, int) { std::abort(); }
 
 float get_property(const char *, double fallback) { return (float)fallback; }
 int number(int, int high) { return high; }
+int dice(int, int) { std::abort(); }
+const Rolls live_rolls = { dice, number };
 int on_front_line(P_char) { return 1; }
 int GET_CHAR_SKILL_P(P_char, int) { return 0; }
 bool notch_skill(P_char, int, float) { return false; }

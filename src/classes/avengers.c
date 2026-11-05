@@ -24,6 +24,36 @@
 #include "combat/damage.h"
 #include "item/objmisc.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
+
+extern int holy_sword_alignment_damage(const Rolls &rolls);
+
+static int holy_sword_duration(int level)
+{
+	return level / 2;
+}
+
+// The damroll and the hitroll holy sword adds.
+static int holy_sword_bonus()
+{
+	return 5;
+}
+
+std::string holy_sword_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Duration", game_hours(holy_sword_duration(level)) + " at your level, " +
+					std::to_string(level)) +
+	       fact("Hitroll", "+" + std::to_string(holy_sword_bonus())) +
+	       fact("Damroll", "+" + std::to_string(holy_sword_bonus())) +
+	       fact("Added to damage against the opposite alignment",
+		    show({ holy_sword_alignment_damage(lowest_rolls),
+			   holy_sword_alignment_damage(highest_rolls) })) +
+	       "  It is added before other damage multipliers.\n"
+	       "  It also gives you an extra attack with your main weapon.\n"
+	       "  Removing your main weapon or being disarmed ends it.\n"
+	       "  You must be wielding a sword. It has no effect while you already have it.\n";
+}
 
 void spell_holy_sword(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 		      P_char /*victim*/, P_obj /*obj*/)
@@ -45,13 +75,13 @@ void spell_holy_sword(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 	bzero(&af, sizeof(af));
 
 	af.type = SPELL_HOLY_SWORD;
-	af.duration = level / 2;
+	af.duration = holy_sword_duration(level);
 	af.location = APPLY_DAMROLL;
-	af.modifier = 5;
+	af.modifier = holy_sword_bonus();
 	affect_to_char(ch, &af);
 
 	af.location = APPLY_HITROLL;
-	af.modifier = 5;
+	af.modifier = holy_sword_bonus();
 	affect_to_char(ch, &af);
 
 	send_to_char(
@@ -59,11 +89,50 @@ void spell_holy_sword(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int
 		ch);
 }
 
+static int divine_power_duration(int level)
+{
+	return level / 2;
+}
+
+// Each of the hitroll and maximum strength bonuses.
+static int divine_power_bonus(const Rolls &rolls)
+{
+	return rolls.number(2, 5);
+}
+
+// The hit points divine power adds.
+static int divine_power_health(int level)
+{
+	return level;
+}
+
+// Above this caster level divine power also adds hit points.
+static int divine_power_health_above()
+{
+	return 49;
+}
+
+std::string divine_power_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	const std::string bonus = "+" + std::to_string(divine_power_bonus(lowest_rolls)) + " to +" +
+				  std::to_string(divine_power_bonus(highest_rolls));
+	std::string text = fact("Duration", game_hours(divine_power_duration(level)) +
+						    " at your level, " + std::to_string(level)) +
+			   fact("Hitroll", bonus) + fact("Maximum strength", bonus);
+	if (GET_LEVEL(ch) > divine_power_health_above())
+		text += fact("Hit points", "+" + std::to_string(divine_power_health(level)));
+	else
+		text += fact("Hit points",
+			     "above level " + std::to_string(divine_power_health_above()));
+	return text + "  Only a good caster can use it, and only while not already affected.\n";
+}
+
 void spell_divine_power(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			P_char /*victim*/, P_obj /*obj*/)
 {
 	struct affected_type af;
-	int healpoints = level;
+	int healpoints = divine_power_health(level);
 
 	if (!IS_GOOD(ch))
 	{
@@ -79,22 +148,41 @@ void spell_divine_power(int level, P_char ch, char * /*arg*/, [[maybe_unused]] i
 		bzero(&af, sizeof(af));
 
 		af.type = SPELL_DIVINE_POWER;
-		af.duration = level / 2;
+		af.duration = divine_power_duration(level);
 		af.location = APPLY_HITROLL;
-		af.modifier = number(2, 5);
+		af.modifier = divine_power_bonus(live_rolls);
 		affect_to_char(ch, &af);
 
 		af.location = APPLY_STR_MAX;
-		af.modifier = number(2, 5);
+		af.modifier = divine_power_bonus(live_rolls);
 		affect_to_char(ch, &af);
 
-		if (GET_LEVEL(ch) > 49)
+		if (GET_LEVEL(ch) > divine_power_health_above())
 		{
 			af.location = APPLY_HIT;
 			af.modifier = healpoints;
 			affect_to_char(ch, &af);
 		}
 	}
+}
+
+static int atonement_duration(int level)
+{
+	return level / 2;
+}
+
+static int atonement_regeneration(int level)
+{
+	return level * 2;
+}
+
+std::string atonement_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Duration", game_hours(atonement_duration(level)) + " at your level, " +
+					std::to_string(level)) +
+	       fact("Health regeneration", "+" + std::to_string(atonement_regeneration(level))) +
+	       "  It has no effect while you already have it.\n";
 }
 
 void spell_atonement(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -115,9 +203,9 @@ void spell_atonement(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int 
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_ATONEMENT;
-	af.duration = level / 2;
+	af.duration = atonement_duration(level);
 	af.location = APPLY_HIT_REG;
-	af.modifier = level * 2;
+	af.modifier = atonement_regeneration(level);
 	send_to_char(Gbuf1, ch);
 	affect_to_char(ch, &af);
 }
@@ -204,6 +292,33 @@ void do_holy_smite(P_char ch, char *argument, int /*cmd*/)
 	CharWait(ch, 2 * PULSE_VIOLENCE);
 }
 
+static int celestial_aura_duration()
+{
+	return 4;
+}
+
+// How much armor class celestial aura improves.
+static int celestial_aura_ac(const Rolls &rolls)
+{
+	return rolls.number(80, 150);
+}
+
+static int celestial_aura_health(const Rolls &rolls)
+{
+	return rolls.number(50, 150);
+}
+
+std::string celestial_aura_facts(P_char /*ch*/)
+{
+	return fact("Armor class", show_signed({ -celestial_aura_ac(highest_rolls),
+						 -celestial_aura_ac(lowest_rolls) })) +
+	       fact("Hit points", "+" + std::to_string(celestial_aura_health(lowest_rolls)) +
+					  " to +" +
+					  std::to_string(celestial_aura_health(highest_rolls))) +
+	       fact("Duration", game_hours(celestial_aura_duration())) +
+	       "  It has no effect over another armor-type spell.\n";
+}
+
 void spell_celestial_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			  P_char /*victim*/, P_obj /*obj*/)
 {
@@ -218,14 +333,14 @@ void spell_celestial_aura(int /*level*/, P_char ch, char * /*arg*/, [[maybe_unus
 		    TRUE, ch, 0, 0, TO_CHAR);
 		bzero(&af, sizeof(af));
 		af.type = SPELL_CELESTIAL_AURA;
-		af.duration = 4;
+		af.duration = celestial_aura_duration();
 		af.location = APPLY_AC;
-		af.modifier = -number(80, 150);
+		af.modifier = -celestial_aura_ac(live_rolls);
 		af.bitvector = AFF_ARMOR;
 		affect_to_char(ch, &af);
 
 		af.location = APPLY_HIT;
-		af.modifier = number(50, 150);
+		af.modifier = celestial_aura_health(live_rolls);
 		affect_to_char(ch, &af);
 	}
 	else

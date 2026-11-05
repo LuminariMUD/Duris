@@ -22,6 +22,7 @@
 #include <string.h>
 #include "guild/guildhall.h"
 #include "persistence/persistence_checkpoint.h"
+#include "abilities/abilities.h"
 #include "core/profile.h"
 #include "magic/spells.h"
 
@@ -2928,6 +2929,27 @@ void event_scribe(P_char ch, P_char /*victim*/, [[maybe_unused]] P_obj obj, void
 		s_data->done_func(ch);
 }
 
+// Each spent spell or spell slot comes back on a roll below the chance.
+static int lucubration_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 100);
+}
+
+static int lucubration_chance()
+{
+	return (int)get_property("spell.mordenkainensLucubration.spellMemChance", 80);
+}
+
+std::string mordenkainens_lucubration_facts(P_char /*ch*/)
+{
+	return fact("Chance to regain each spent spell or slot",
+		    std::to_string(lucubration_chance()) + " in " +
+			    std::to_string(lucubration_roll(highest_rolls) -
+					   lucubration_roll(lowest_rolls) + 1)) +
+	       "  Among memorized spells, it does not regain itself.\n"
+	       "  Slot casters regain only circles below their highest.\n";
+}
+
 void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 				     [[maybe_unused]] int type, P_char /*victim*/, P_obj /*obj*/)
 {
@@ -2956,9 +2978,7 @@ void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 		{
 			if (af->type == TAG_MEMORIZE && !IS_SET(af->flags, MEMTYPE_FULL) &&
 			    af->modifier != SPELL_MORDENKAINENS_LUCUBRATION &&
-			    number(0, 100) <
-				    (int)get_property(
-					    "spell.mordenkainensLucubration.spellMemChance", 80))
+			    lucubration_roll(live_rolls) < lucubration_chance())
 			{
 				af->flags |= MEMTYPE_FULL;
 				gmcp_spell_preparation_changed(ch);
@@ -2980,9 +3000,7 @@ void spell_mordenkainens_lucubration(int /*level*/, P_char ch, char * /*arg*/,
 			for (int j = ch->specials.undead_spell_slots[i];
 			     j < max_spells_in_circle(ch, i); j++)
 			{
-				if (number(0, 100) <
-				    (int)get_property(
-					    "spell.mordenkainensLucubration.spellMemChance", 80))
+				if (lucubration_roll(live_rolls) < lucubration_chance())
 				{
 					ch->specials.undead_spell_slots[i]++;
 					gmcp_spell_preparation_changed(ch);

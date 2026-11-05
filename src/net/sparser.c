@@ -38,6 +38,7 @@
 #include "magic/spells.h"
 #include "sql/sql.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 
 /*
    external variables
@@ -65,6 +66,8 @@ extern struct continent_misfire_data continent_misfire;
 
 extern Skill skills[MAX_AFFECT_TYPES + 1];
 int SortedSkills[MAX_AFFECT_TYPES + 1];
+extern int memory_block_forget_roll(const Rolls &rolls);
+
 int MobSpellIndex[MAX_SKILLS];
 const char *spells[MAX_AFFECT_TYPES + 1];
 extern const struct class_names class_names_table[];
@@ -2164,7 +2167,7 @@ void do_will(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (IS_AFFECTED5(ch, AFF5_MEMORY_BLOCK) && number(0, 1))
+	if (IS_AFFECTED5(ch, AFF5_MEMORY_BLOCK) && memory_block_forget_roll(live_rolls))
 	{
 		send_to_char("You seem to have forgotten how to cast!\n", ch);
 		StopCasting(ch);
@@ -2461,7 +2464,7 @@ void do_cast(P_char ch, char *argument, int cmd)
 		return;
 	}
 
-	if (IS_AFFECTED5(ch, AFF5_MEMORY_BLOCK) && number(0, 1))
+	if (IS_AFFECTED5(ch, AFF5_MEMORY_BLOCK) && memory_block_forget_roll(live_rolls))
 	{
 		send_to_char("You seem to have forgotten how to cast!\n", ch);
 		StopCasting(ch);

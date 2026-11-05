@@ -372,6 +372,17 @@ static int takedown_evade_lag()
 	return (int)(PULSE_VIOLENCE * 0.5);
 }
 
+// The chance displacement dodges a takedown, against displacement_takedown_roll().
+int displacement_takedown_chance(int level)
+{
+	return (5 + level / 10);
+}
+
+int displacement_takedown_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
 // The chance threshold takedown_check() rolls 1-100 against for an evade.
 static int evade_threshold(P_char ch)
 {
@@ -522,7 +533,7 @@ float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong ap
 
 	// Displacement - Dodges takedowns, max 10% chance @ lvl 50.
 	if (affected_by_spell(victim, SPELL_DISPLACEMENT) &&
-	    (5 + GET_LEVEL(ch) / 10) >= number(1, 100))
+	    displacement_takedown_chance(GET_LEVEL(ch)) >= displacement_takedown_roll(live_rolls))
 	{
 		show_failed_takedown_messages(ch, victim, skill, TAKEDOWN_GHOST);
 		return TAKEDOWN_PENALTY;

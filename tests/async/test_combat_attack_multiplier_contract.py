@@ -11,7 +11,9 @@ fight = (SRC / "fight.c").read_text()
 combat_mind = fight.split("if (affected_by_spell(ch, SPELL_COMBAT_MIND))", 1)[1]
 combat_mind = combat_mind.split("// we ceil to not round off attacks", 1)[0]
 
-assert 'get_property("attacks.combatMind.multiplier", 0.75)' in combat_mind
+floor = fight.split("float combat_mind_attack_floor()", 1)[1].split("}", 1)[0]
+assert 'get_property("attacks.combatMind.multiplier", 0.75)' in floor
+assert "float cmMulti = combat_mind_attack_floor();" in combat_mind
 assert "if (attacksMultiplier < cmMulti)" in combat_mind
 assert "attacksMultiplier = cmMulti;" in combat_mind
 assert "cmMulti = cmMulti;" not in combat_mind

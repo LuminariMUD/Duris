@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include "classes/epic_skills.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 #include "string.h"
 /*
  * external variables
@@ -165,6 +166,12 @@ void update_skills(P_char ch)
 	}
 }
 
+// After each notch under the spell of learning, another comes on a nonzero roll.
+static int learning_extra_notch_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
 bool notch_skill(P_char ch, int skill, float chance)
 {
 	int t, l, i;
@@ -297,10 +304,26 @@ again:
 		}
 	}
 
-	if (l < t && number(0, 1) && affected_by_spell(ch, SPELL_LEARNING))
+	if (l < t && learning_extra_notch_roll(live_rolls) && affected_by_spell(ch, SPELL_LEARNING))
 		goto again; // 2 notches on average
 
 	return TRUE;
+}
+
+static int learning_duration(int level)
+{
+	return 2 * level;
+}
+
+std::string learning_facts(P_char ch)
+{
+	const int level = GET_LEVEL(ch);
+	return fact("Duration", game_hours(learning_duration(level)) + " at your level, " +
+					std::to_string(level)) +
+	       fact("Chance of another notch after each skill notch",
+		    "1 in " + std::to_string(learning_extra_notch_roll(highest_rolls) -
+					     learning_extra_notch_roll(lowest_rolls) + 1)) +
+	       "  It never takes a skill past what you have been taught.\n";
 }
 
 void spell_learning(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
@@ -312,7 +335,7 @@ void spell_learning(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int t
 	bzero(&af, sizeof(af));
 	af.type = SPELL_LEARNING;
 	af.flags = AFFTYPE_NOAPPLY;
-	af.duration = 2 * level;
+	af.duration = learning_duration(level);
 	affect_to_char(ch, &af);
 
 	act("&+cYou feel more capable of improving your skills.", FALSE, ch, 0, 0, TO_CHAR);
