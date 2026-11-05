@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const struct hardcore_config defaults = { true, true,  5,      false, true,  true,  true,
+static const struct hardcore_config defaults = { true, true,  3,      false, true,  true,  true,
 						 true, true,  50,     2,     1.20f, 1.09f, 0.91f,
 						 110,  1.60f, 1.50f,  1000,  10000, 100,   100,
 						 2,    100,   100000, true,  true,  100 };
