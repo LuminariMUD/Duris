@@ -205,7 +205,7 @@ std::string guardian_spirits_facts(P_char ch)
 							guardian_spirits_ac(lowest_rolls) }));
 }
 
-// Only specialized shamans may cast guardian spirits.
+// Only Shamans may call guardian spirits; any specialization is allowed.
 void spell_guardian_spirits(int level, P_char ch, char * /*arg*/, [[maybe_unused]] int type,
 			    P_char victim, P_obj /*obj*/)
 {

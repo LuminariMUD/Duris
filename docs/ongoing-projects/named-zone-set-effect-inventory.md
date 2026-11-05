@@ -1,7 +1,7 @@
 # Named zone sets: effect usage and unused candidates
 
 Status: baseline effect inventory for [issue #706](https://github.com/LuminariMUD/Duris/issues/706); the 115 loaded definitions have been extracted unchanged into the canonical catalog. Expansion assignments remain uninstalled.
-Date: 2026-11-05.
+Date: 2026-11-06.
 Inspected `master`: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 Implementation entry point: [end-to-end plan](named-zone-set-implementation-plan.md).
@@ -219,8 +219,8 @@ the number of matching pieces.
 
 | Effect (game ID; all have zone count 0) | Benefit in plain language | Integration notes |
 |---|---|---|
-| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | Protective spirits and armor. | Conditional: current implementation requires a Shaman. |
-| [Virtue](../../src/magic/magic.c#L6927) (#515) | Improved accuracy against opposed alignment. | Conditional: alignment-dependent combat benefit. |
+| [Guardian Spirits](../../src/magic/smagic.c#L208) (#579) | 150–200 AC protection. | Conditional: requires a Shaman wearer, any specialization. Both proposed assignments require six pieces. |
+| [Virtue](../../src/magic/magic.c#L6927) (#515) | Native 10% accuracy bonus against eligible targets. | Good wearers benefit against non-good targets; evil wearers against non-evil targets, including neutral targets. Neutral wearers receive no accuracy bonus. |
 
 ## Effects screened out of this wearer-bonus catalog
 

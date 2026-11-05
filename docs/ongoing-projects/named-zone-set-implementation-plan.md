@@ -4,8 +4,8 @@ Status: implementation in progress; seven focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
-Working branch: `branch/named-zone-set-cooldowns`, based on
-`branch/named-zone-set-ordinary-casts`.
+Working branch: `branch/named-zone-set-effect-qualification`, based on
+`branch/named-zone-set-cooldowns`.
 Initial inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 ## Current handoff (2026-11-06)
@@ -478,6 +478,49 @@ Publication note (2026-11-06): native SSH/HTTPS pushes failed with GitHub's inte
 published the exact local blobs, tree and commit after SHA verification and moved
 the branch forward without rewriting history. Local and remote revisions match.
 
+### Effect qualification and piece requirements
+
+**Outcome:** preserve the 104 planned pairings and 50-effect reuse pool, record
+every final threshold, and qualify actual native grants before installing data.
+The [assignment document](named-zone-set-first-pass-assignments.md#balance-qualification-and-final-piece-requirements)
+now records **98 three-piece, four five-piece and two six-piece assignments**.
+Adrenaline Control and Battletide require five pieces at both new homes; Guardian
+Spirits requires six at #422/#780. Those fixed, larger grants justify the higher
+requirements. The other assignments remain at the proposed three pieces. No
+home count or zone/effect pairing changed and no expansion row is installed yet.
+
+**Files/ablation:** extend `test_named_set_effect_ownership.py` instead of adding
+another harness, and keep the thresholds with the existing assignment owner.
+Native spell formulas, class rules, effect durations and flags are unchanged.
+The Guardian Spirits source comment and companion inventory now correctly say
+any Shaman specialization. Virtue's recorded rule is corrected to good against
+non-good and evil against non-evil, including neutral targets; neutral wearers
+receive no accuracy bonus. This is a documentation correction to the existing
+combat branch, not a new combat rule. No adapters or balance configuration added.
+
+**Proof:** the expanded ASan/UBSan executable qualifies all 50 handlers at
+3/5/6/12/40 pieces, wearer levels 12/56, non-Shaman/Shaman/Animalist classes and
+both RNG endpoints. IDs and callbacks must match the actual registrations and
+the assignment pool. Frozen expectations check modifier/duration/bitvector and
+provenance fields, ordinary casts in both orders, no periodic refresh, cleanup,
+expiry and native dispel flags. Additional cases execute Virtue's real combat
+branch across all good/neutral/evil boundaries, light conflicts in both orders,
+armor/vision/Shaman-movement exclusions and shared detection bits. Recalculation
+calls are checked for successful light creation/removal. Derived character stat
+totals, actual room-light totals and interpreter/world behavior remain fixture
+boundaries and require the full gameplay gates below. Do not treat this native
+qualification as proof of those journeys.
+
+Run `python3 tests/async/test_named_set_effect_ownership.py` for this qualification.
+Both backend builds, the unchanged-catalog regression, worn membership regression,
+format and diff checks also pass. The issue body was rechecked on 2026-11-06;
+its `updated_at` remains `2026-11-05T08:15:32Z`. All 104 issue IDs and the original
+zone/effect pairings match the assignment document exactly; its piece-count
+distribution was independently recounted.
+The next independent chunk is the wider area eligibility review, followed by
+catalog installation with the recorded thresholds and end-to-end gameplay,
+storage, report/cache, help/publication and rollback checks.
+
 ## Start here
 
 1. Read this plan for implementation order, compatibility decisions, and proof.
@@ -529,7 +572,7 @@ for these checks.
   simple effects. Every initially unused candidate has two or three proposed
   homes; 60 of the 62 reuse choices favored an effect with one home at that
   pass's start.
-- [ ] Give each of the 104 additions one effect tier. Start the balance review
+- [x] Give each of the 104 additions one effect tier. Start the balance review
   with **three matching pieces** as the proposed threshold, giving the existing
   +5 maximum-HP bonus at that count. Record the final threshold for every row
   in the assignment document before installing the data.
@@ -540,6 +583,8 @@ for these checks.
   existing caps rather than assuming the candidate list proves numeric balance.
   If an assignment needs a special adapter or proves too powerful, revise that
   pairing using the retained simple pool and update its home counts explicitly.
+  Native grant/conditional qualification now passes as recorded above; derived
+  character totals and the full gameplay gates remain open.
 - [ ] Preserve the Shaman restriction for Guardian Spirits (#780 and #422),
   Virtue's alignment condition, and light/darkness exclusions. Describe those
   restrictions in player-facing help/report notes so a set is not presented

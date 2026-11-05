@@ -51,8 +51,11 @@ static char_data wearer,companion;
 static obj_data gear[12];
 static int grants;
 static int alias_calls;
-int number(int low,int) {return low;}
-int dice(int count,int) {return count;}
+static bool high_roll;
+static bool innate_eyes;
+static int light_updates,room_light_updates;
+int number(int low,int high) {return high_roll ? high : low;}
+int dice(int count,int sides) {return high_roll ? count*sides : count;}
 const Rolls live_rolls={dice,number};
 int GET_CLASS(P_char ch,uint cls) {return (ch->player.m_class&cls)!=0;}
 int GET_CHAR_SKILL_P(P_char,int) {return 0;}
@@ -66,8 +69,8 @@ void *_mm_get(mm_ds *pool,const char *,int) {return calloc(1,pool==&affect_pool 
 void mm_release(mm_ds *,void *memory) {free(memory);}
 void balance_affects(P_char) {}
 void gmcp_char_affects(P_char) {}
-int char_light(P_char) {return 0;}
-int room_light(int,int) {return 0;}
+int char_light(P_char) {++light_updates;return 0;}
+int room_light(int,int) {++room_light_updates;return 0;}
 void unlink_char_obj_affect(P_char,affected_type *) {assert(false);}
 void clear_links(P_char,ush_int) {assert(false);}
 void all_affects(P_char ch,int add) {
@@ -82,6 +85,9 @@ void all_affects(P_char ch,int add) {
         ch->specials.affected_by5|=af->bitvector5;
     }
 }
+char affect_total(P_char ch,int) {all_affects(ch,TRUE);return 0;}
+bool SanityCheck(P_char ch,const char *) {return IS_ALIVE(ch);}
+bool has_innate(P_char,int innate) {return innate_eyes && innate==INNATE_OPHIDIAN_EYES;}
 void send_to_char(const char *text,P_char) {if(strstr(text,"spirits of")) ++grants;}
 void wear_off_message(P_char,affected_type *) {}
 int attack_back(P_char,P_char,int) {return 0;}
@@ -157,6 +163,149 @@ for signature in ("static int song_dragons_duration(", "static int song_dragons_
                   "void bard_dragons(int l,"):
     harness += extract_function("bard.c", signature) + "\n"
 
+
+# Every native body/helper used by the 50-effect expansion pool.
+for file, signatures in {
+    'classes/ethermancer.c': (
+        'static int vapor_armor_duration(',
+        'static int vapor_armor_ac(',
+        'void spell_vapor_armor(',
+        'static int vapor_strike_duration(',
+        'static int vapor_strike_hitroll(',
+        'void spell_vapor_strike(',
+    ),
+    'classes/psionics.c': (
+        'static int adrenaline_control_duration(',
+        'static int adrenaline_control_bonus(',
+        'void spell_adrenaline_control(',
+        'static int combat_mind_duration(',
+        'static int combat_mind_hitroll(',
+        'static int combat_mind_damroll(',
+        'void spell_combat_mind(',
+        'static int displacement_duration(',
+        'static int displacement_ac(',
+        'void spell_displacement(',
+        'static int energy_containment_duration(',
+        'static int energy_containment_save(',
+        'void spell_energy_containment(',
+        'static int enhance_armor_duration(',
+        'static int enhance_armor_ac(',
+        'void spell_enhance_armor(',
+        'static int enhanced_strength_duration(',
+        'static int enhanced_strength_bonus(',
+        'void spell_enhanced_strength(',
+        'static int enhanced_dexterity_duration(',
+        'static int enhanced_dexterity_bonus(',
+        'void spell_enhanced_dexterity(',
+        'static int enhanced_agility_duration(',
+        'static int enhanced_agility_bonus(',
+        'void spell_enhanced_agility(',
+        'static int enhanced_constitution_duration(',
+        'static int enhanced_constitution_bonus(',
+        'void spell_enhanced_constitution(',
+    ),
+    'classes/sillusionist.c': (
+        'static int phantom_armor_duration(',
+        'static int phantom_armor_ac(',
+        'void spell_phantom_armor(',
+        'static int detect_illusion_duration(',
+        'void spell_detect_illusion(',
+    ),
+    'magic/magic.c': (
+        'static int fortitude_duration(',
+        'static int fortitude_constitution(',
+        'void spell_fortitude(',
+        'static int virtue_duration(',
+        'void spell_virtue(',
+        'static int sense_holiness_duration(',
+        'void spell_sense_holiness(',
+        'static int lifelust_duration(',
+        'static int lifelust_bonus(',
+        'void spell_lifelust(',
+        'static int pulchritude_duration(',
+        'static int pulchritude_charisma(',
+        'void spell_pulchritude(',
+        'static int serendipity_duration(',
+        'static int serendipity_luck(',
+        'void spell_serendipity(',
+        'static int detect_evil_duration(',
+        'void spell_detect_evil(',
+        'static int detect_good_duration(',
+        'void spell_detect_good(',
+        'static void set_protection_duration(',
+        'static int protection_from_evil_duration(',
+        'void spell_protection_from_evil(',
+        'static int protection_from_good_duration(',
+        'void spell_protection_from_good(',
+        'static int dexterity_duration(',
+        'static int dexterity_bonus(',
+        'void spell_dexterity(',
+        'static int agility_duration(',
+        'static int agility_bonus(',
+        'void spell_agility(',
+        'static int sense_life_duration(',
+        'void spell_sense_life(',
+        'static int lodestone_vision_duration(',
+        'void spell_lodestone_vision(',
+        'static int farsee_duration(',
+        'void spell_farsee(',
+        'int KludgeDuration(',
+        'static int battletide_damroll(',
+        'static int battletide_hitroll(',
+        'static int battletide_duration(',
+        'void spell_battletide(',
+        'static int mage_flame_duration(',
+        'void spell_holy_light(',
+        'void spell_mage_flame(',
+        'static int globe_of_darkness_duration(',
+        'void spell_globe_of_darkness(',
+        'static int slow_poison_duration(',
+        'void spell_slow_poison(',
+        'static int comprehend_languages_duration(',
+        'void spell_comprehend_languages(',
+        'static int waterbreath_duration(',
+        'void spell_waterbreath(',
+        'static int protection_spell_duration(',
+        'void spell_protection_from_fire(',
+        'void spell_protection_from_cold(',
+        'void spell_protection_from_animals(',
+        'void spell_protection_from_gas(',
+        'void spell_protection_from_acid(',
+        'void spell_protection_from_lightning(',
+        'static int infravision_duration(',
+        'void spell_infravision(',
+        'static int divine_fury_duration(',
+        'static int divine_fury_damroll(',
+        'static int divine_fury_hitroll(',
+        'void spell_divine_fury(',
+        'static int sense_follower_duration(',
+        'void spell_sense_follower(',
+        'static int warring_zeal_duration(',
+        'static int warring_zeal_hitroll(',
+        'void spell_warring_zeal(',
+    ),
+    'magic/smagic.c': (
+        'void do_point(',
+        'static int animalist_level_bonus(',
+        'static int animalist_level(',
+        'static int guardian_spirits_renewal(',
+        'static int guardian_spirits_duration(',
+        'static int guardian_spirits_ac(',
+        'void spell_guardian_spirits(',
+        'static int bloodhound_duration(',
+        'void spell_bloodhound(',
+        'static int wolfspeed_duration(',
+        'static int wolfspeed_move(',
+        'void spell_wolfspeed(',
+        'static int hawkvision_duration(',
+        'void spell_hawkvision(',
+        'static int sense_spirit_duration(',
+        'void spell_sense_spirit(',
+    ),
+}.items():
+    for signature in signatures:
+        harness += extract_function(file, signature) + "\n"
+
 harness += "\n#define SETMSG_NONE 0\n#define SETMSG_PROTECT 1\n#define SETMSG_STRENGTH 2\n"
 harness += extract_function("specs.object.c", "static void grant_dragons_to_group(")
 harness += extract_function("specs.object.c", "void apply_zone_spell(")
@@ -172,6 +321,9 @@ harness += "\n(void)orig; (void)success; }\n"
 harness += "\nstatic int hit_sphere(P_char victim) { P_char ch=&companion; affected_type *af;\n"
 harness += extract_function("fight.c", "if (IS_AFFECTED4(victim, AFF4_STORNOGS_SPHERES))")
 harness += "\nreturn 99; }\n"
+harness += "\nstatic int virtue_accuracy(P_char ch,P_char victim) {int to_hit=1000;\n"
+harness += extract_function("fight.c", "if ((IS_EVIL(ch) && !IS_EVIL(victim)) || (IS_GOOD(ch) && !IS_GOOD(victim)))")
+harness += "\nreturn to_hit;}\n"
 harness += r'''
 static void clear_marker(obj_data &item) {
     while(item.ex_description) {
@@ -207,6 +359,210 @@ static int active_modifier(P_char ch,int type) {
     for(auto *af=ch->affected;af;af=af->next)
         if(af->type==type && !(af->flags&AFFTYPE_NOAPPLY)) result+=af->modifier;
     return result;
+}
+// Frozen native grants at invocation levels 30, 50 and 56. These are affect
+// modifiers before the character's normal stat caps, not derived character totals.
+struct expansion_case {
+    int spell;
+    decltype(Skill::spell_pointer) callback;
+    int location;
+    int modifiers[3];
+    int durations[3];
+    uint64_t bits[5]{};
+    int second_location=0;
+    int second_modifiers[3]{};
+};
+static const expansion_case expansion_cases[]={
+    {34,spell_protection_from_evil,0,{}, {30,50,56},{AFF_PROTECT_EVIL}},
+    {44,spell_sense_life,0,{}, {30,50,56},{AFF_SENSE_LIFE}},
+    {53,spell_farsee,0,{}, {60,100,112},{AFF_FARSEE}},
+    {73,spell_dexterity,APPLY_DEX,{10,10,10},{30,50,56}},
+    {81,spell_protection_from_good,0,{}, {30,50,56},{AFF_PROTECT_GOOD}},
+    {85,spell_waterbreath,0,{}, {30,50,56},{AFF_WATERBREATH}},
+    {90,spell_detect_evil,0,{}, {30,50,56},{0,AFF2_DETECT_EVIL}},
+    {91,spell_detect_good,0,{}, {30,50,56},{0,AFF2_DETECT_GOOD}},
+    {96,spell_protection_from_fire,0,{}, {30,50,56},{AFF_PROT_FIRE}},
+    {97,spell_protection_from_cold,0,{}, {30,50,56},{0,AFF2_PROT_COLD}},
+    {98,spell_protection_from_lightning,0,{}, {30,50,56},{0,AFF2_PROT_LIGHTNING}},
+    {104,spell_protection_from_gas,0,{}, {30,50,56},{0,AFF2_PROT_GAS}},
+    {105,spell_protection_from_acid,0,{}, {30,50,56},{0,AFF2_PROT_ACID}},
+    {106,spell_infravision,0,{}, {30,50,56},{AFF_INFRAVISION}},
+    {130,spell_slow_poison,0,{}, {15,25,28},{AFF_SLOW_POISON}},
+    {132,spell_comprehend_languages,0,{}, {60,100,112}},
+    {157,spell_adrenaline_control,APPLY_STR,{15,15,15},{35,55,61},{},APPLY_CON,{15,15,15}},
+    {163,spell_combat_mind,APPLY_HITROLL,{5,8,9},{33,53,59},{},APPLY_DAMROLL,{3,6,7}},
+    {169,spell_displacement,APPLY_AC,{-60,-100,-112},{26,46,52}},
+    {173,spell_energy_containment,APPLY_SAVING_SPELL,{-3,-6,-7},{22,32,35}},
+    {174,spell_enhance_armor,APPLY_AC,{-30,-50,-56},{25,25,25}},
+    {175,spell_enhanced_strength,APPLY_STR,{8,13,15},{30,50,56}},
+    {176,spell_enhanced_dexterity,APPLY_DEX,{8,13,15},{30,50,56}},
+    {177,spell_enhanced_agility,APPLY_AGI,{8,13,15},{30,50,56}},
+    {178,spell_enhanced_constitution,APPLY_CON,{7,11,12},{30,50,56}},
+    {193,spell_wolfspeed,APPLY_MOVE,{17,27,30},{31,51,57}},
+    {204,spell_hawkvision,0,{}, {15,25,28},{0,0,0,AFF4_HAWKVISION}},
+    {211,spell_sense_spirit,0,{}, {20,30,33},{AFF_SENSE_LIFE}},
+    {279,spell_sense_follower,0,{}, {30,50,56},{0,0,0,AFF4_SENSE_FOLLOWER}},
+    {297,spell_mage_flame,0,{30,50,56},{18,28,31},{0,0,0,AFF4_MAGE_FLAME}},
+    {302,spell_globe_of_darkness,0,{30,50,56},{8,13,15},{0,0,0,AFF4_GLOBE_OF_DARKNESS}},
+    {310,spell_divine_fury,APPLY_HITROLL,{6,10,11},{2,2,2},{},APPLY_DAMROLL,{6,10,11}},
+    {316,spell_sense_holiness,0,{}, {25,25,25},{0,0,0,AFF4_SENSE_HOLINESS}},
+    {321,spell_lifelust,APPLY_HITROLL,{3,4,4},{15,25,28},{},APPLY_DAMROLL,{3,4,4}},
+    {347,spell_pulchritude,APPLY_CHA,{20,30,30},{30,50,56}},
+    {348,spell_fortitude,APPLY_CON,{5,5,5},{8,12,12}},
+    {352,spell_serendipity,APPLY_LUCK,{12,18,18},{30,50,56}},
+    {383,spell_protection_from_animals,0,{}, {30,50,56},{0,0,AFF3_PROT_ANIMAL}},
+    {395,spell_battletide,APPLY_DAMROLL,{10,10,10},{10,10,10},{0,0,0,AFF4_BATTLETIDE},APPLY_HITROLL,{10,10,10}},
+    {400,spell_phantom_armor,APPLY_AC,{-30,-50,-56},{15,15,15},{AFF_ARMOR}},
+    {414,spell_detect_illusion,0,{}, {30,50,56},{AFF_DETECT_INVISIBLE,0,0,AFF4_DETECT_ILLUSION}},
+    {452,spell_vapor_armor,APPLY_AC,{-37,-62,-70},{15,25,28},{AFF_ARMOR}},
+    {467,spell_vapor_strike,APPLY_HITROLL,{3,3,3},{15,25,28}},
+    {515,spell_virtue,0,{30,50,56},{15,25,28}},
+    {517,spell_bloodhound,0,{}, {30,50,56}},
+    {579,spell_guardian_spirits,APPLY_AC,{-150,-150,-150},{11,21,24}},
+    {584,spell_agility,APPLY_AGI,{10,10,10},{30,50,56}},
+    {615,spell_holy_light,0,{30,50,56},{18,28,31},{0,0,0,AFF4_MAGE_FLAME}},
+    {617,spell_lodestone_vision,0,{}, {5,5,5},{0,0,0,0,AFF5_MINE}},
+    {680,spell_warring_zeal,APPLY_HITROLL,{6,10,11},{2,2,2}},
+};
+static void qualify_expansion_effects() {
+    static_assert(std::size(expansion_cases)==50);
+    for(const auto &entry:expansion_cases) {
+        skills[entry.spell].name="qualification";
+        skills[entry.spell].spell_pointer=entry.callback;
+    }
+    for(const auto &entry:expansion_cases) for(int pieces:{3,5,6,12,40})
+        for(int actor_level:{12,56}) for(int kind:{0,1,2}) for(bool endpoint:{false,true}) {
+            reset(); high_roll=endpoint;
+            wearer.player.level=actor_level;
+            wearer.player.m_class=kind?CLASS_SHAMAN:CLASS_WARRIOR;
+            wearer.player.spec=kind==2?SPEC_ANIMALIST:0;
+            const int sample=pieces==3?0:pieces==5?1:2;
+            const int level=sample==0?30:sample==1?50:56;
+            apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+            if(entry.spell==SPELL_GUARDIAN_SPIRITS && !kind) {
+                assert(!wearer.affected && !grants); continue;
+            }
+            int modifiers[]={entry.modifiers[sample],entry.second_modifiers[sample]};
+            int duration=entry.durations[sample];
+            if(entry.spell==SPELL_FORTITUDE && actor_level==12) modifiers[0]=3;
+            if((entry.spell==SPELL_DETECT_EVIL || entry.spell==SPELL_DETECT_GOOD) && actor_level==12) duration=1;
+            if(entry.spell==SPELL_GUARDIAN_SPIRITS && endpoint) {modifiers[0]=-200;duration+=4;}
+            if(entry.spell==SPELL_LODESTONE && endpoint) duration=7;
+            if(entry.spell==SPELL_VAPOR_STRIKE && endpoint) modifiers[0]=11;
+            if(entry.spell==SPELL_SENSE_SPIRIT && kind) duration=level+5;
+            if(entry.spell==SPELL_HAWKVISION && kind==2) duration=(level+20)/2;
+            if(entry.spell==SPELL_WOLFSPEED) {
+                const int bonus=kind==2?(endpoint?actor_level/2:10):0;
+                duration=level+bonus+1;
+                modifiers[0]=(level+bonus)/2+(endpoint?4:2);
+            }
+            const int nodes=entry.second_location?2:1;
+            if(count(&wearer,entry.spell,true)!=nodes)
+                fprintf(stderr,"missing effect=%d pieces=%d actor=%d class=%d roll=%d: nodes=%d expected=%d\n",
+                    entry.spell,pieces,actor_level,kind,endpoint,count(&wearer,entry.spell,true),nodes);
+            assert(count(&wearer,entry.spell,true)==nodes);
+            for(auto *af=wearer.affected;af;af=af->next) {
+                const bool second=entry.second_location && af->location==entry.second_location;
+                const bool correct=af->type==entry.spell &&
+                    af->location==(second?entry.second_location:entry.location) &&
+                    af->modifier==modifiers[second] && af->duration==duration &&
+                    af->set_owner==wearer.runtime_id && af->set_spell==entry.spell &&
+                    af->set_zone==10000+entry.spell && (af->flags&AFFTYPE_NOSAVE);
+                if(!correct) fprintf(stderr,"effect=%d pieces=%d actor=%d class=%d roll=%d: location=%d mod=%d duration=%d, expected mod=%d duration=%d\n",
+                    entry.spell,pieces,actor_level,kind,endpoint,af->location,af->modifier,af->duration,modifiers[second],duration);
+                assert(correct);
+                const uint64_t bits[]={af->bitvector,af->bitvector2,af->bitvector3,af->bitvector4,af->bitvector5};
+                for(int bank=0;bank<5;++bank) assert(bits[bank]==(second?0:entry.bits[bank]));
+            }
+            auto *source=wearer.affected; source->duration=1;
+            apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+            assert(wearer.affected==source && source->duration==1); // no periodic refresh
+            entry.callback(30,&wearer,nullptr,0,&wearer,nullptr);
+            assert(count(&wearer,entry.spell,false)==nodes);
+            for(auto *af=wearer.affected;af;af=af->next)
+                if(af->flags&AFFTYPE_SET_AFFECT)
+                    assert((af->flags&(AFFTYPE_SET_SUSPENDED|AFFTYPE_NOAPPLY))==(AFFTYPE_SET_SUSPENDED|AFFTYPE_NOAPPLY));
+            assert(reconcile_named_set_spell(&wearer,entry.spell));
+            assert(count(&wearer,entry.spell,true)==0 && count(&wearer,entry.spell,false)==nodes);
+            auto *ordinary=wearer.affected; ordinary->duration=1;
+            apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+            assert(wearer.affected==ordinary && ordinary->duration==1 && count(&wearer,entry.spell,true)==0);
+            // The same native nodes also expire through the real affect tick.
+            for(auto *af=wearer.affected;af;af=af->next) af->duration=0;
+            affect_update(0); assert(!wearer.affected);
+            apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+            dispel_active(&wearer);
+            assert(count(&wearer,entry.spell,true)==(entry.spell==SPELL_DIVINE_FURY?nodes:0));
+            if(!wearer.affected)
+                apply_zone_spell(&wearer,pieces,"Qualification",10000+entry.spell,&gear[0],entry.spell);
+            for(auto *af=wearer.affected;af;af=af->next) af->duration=0;
+            affect_update(0); assert(!wearer.affected); // set-owned expiry too
+        }
+    high_roll=false; reset();
+    for(int alignment:{-1000,-350,-349,0,349,350,1000})
+        for(int target_alignment:{-1000,-350,-349,0,349,350,1000}) {
+            reset(); wearer.specials.alignment=alignment; companion.specials.alignment=target_alignment;
+            assert(virtue_accuracy(&wearer,&companion)==1000);
+            apply_zone_spell(&wearer,3,"Virtue",10515,&gear[0],SPELL_VIRTUE);
+            const bool applies=(alignment>=350 && target_alignment<350) ||
+                               (alignment<=-350 && target_alignment>-350);
+            assert(virtue_accuracy(&wearer,&companion)==(applies?1100:1000));
+            reconcile_named_set_spell(&wearer,SPELL_VIRTUE);
+            assert(virtue_accuracy(&wearer,&companion)==1000);
+        }
+    for(int first:{SPELL_HOLY_LIGHT,SPELL_MAGE_FLAME,SPELL_GLOBE_OF_DARKNESS})
+        for(int second:{SPELL_HOLY_LIGHT,SPELL_MAGE_FLAME,SPELL_GLOBE_OF_DARKNESS}) {
+            if(first==second) continue;
+            reset();
+            int before=light_updates,room_before=room_light_updates;
+            apply_zone_spell(&wearer,3,"First light",10000+first,&gear[0],first);
+            auto *original=wearer.affected;
+            assert(original && light_updates>before && room_light_updates>room_before);
+            original->duration=1; before=light_updates; room_before=room_light_updates;
+            apply_zone_spell(&wearer,6,"Conflicting light",10000+second,&gear[0],second);
+            assert(wearer.affected==original && !original->next && original->duration==1);
+            assert(light_updates==before && room_light_updates==room_before);
+            reconcile_named_set_spell(&wearer,first);
+            assert(!wearer.affected && light_updates>before && room_light_updates>room_before);
+            apply_zone_spell(&wearer,3,"Now available",10000+second,&gear[0],second);
+            assert(count(&wearer,second,true)==1);
+            reset();
+            skills[first].spell_pointer(30,&wearer,nullptr,0,&wearer,nullptr);
+            original=wearer.affected;
+            apply_zone_spell(&wearer,6,"Ordinary light retained",10000+second,&gear[0],second);
+            assert(wearer.affected==original && !original->next && !(original->flags&AFFTYPE_SET_AFFECT));
+        }
+    for(int spell:{SPELL_PHANTOM_ARMOR,SPELL_VAPOR_ARMOR}) {
+        reset(); inherent_armor=true; all_affects(&wearer,TRUE);
+        apply_zone_spell(&wearer,3,"Inherent armor",10000+spell,&gear[0],spell);
+        assert(!wearer.affected && !grants);
+        reset(); spell_armor(40,&wearer,nullptr,0,&wearer,nullptr);
+        auto *ordinary=wearer.affected;
+        apply_zone_spell(&wearer,3,"Ordinary armor",10000+spell,&gear[0],spell);
+        assert(wearer.affected==ordinary && !ordinary->next && ordinary->type==SPELL_ARMOR);
+    }
+    for(bool innate:{false,true}) {
+        reset(); innate_eyes=innate;
+        if(!innate) wearer.specials.affected_by|=AFF_INFRAVISION;
+        apply_zone_spell(&wearer,3,"Inherent sight",10106,&gear[0],SPELL_INFRAVISION);
+        assert(!wearer.affected && !grants);
+    }
+    innate_eyes=false;
+    for(int other:{SPELL_MOLEVISION,SPELL_SNAILSPEED,SPELL_PANTHERSPEED}) {
+        reset(); affected_type ordinary{}; ordinary.type=other; ordinary.duration=13;
+        auto *existing=affect_to_char(&wearer,&ordinary);
+        const int spell=other==SPELL_MOLEVISION?SPELL_HAWKVISION:SPELL_WOLFSPEED;
+        apply_zone_spell(&wearer,3,"Shaman exclusion",10000+spell,&gear[0],spell);
+        assert(wearer.affected==existing && !existing->next && existing->duration==13);
+    }
+    reset(); affected_type detection{}; detection.type=SPELL_DETECT_INVISIBLE;
+    detection.bitvector=AFF_DETECT_INVISIBLE; detection.duration=13;
+    auto *ordinary=affect_to_char(&wearer,&detection);
+    apply_zone_spell(&wearer,3,"Illusion",10414,&gear[0],SPELL_DETECT_ILLUSION);
+    reconcile_named_set_spell(&wearer,SPELL_DETECT_ILLUSION);
+    assert(wearer.affected==ordinary && IS_AFFECTED((&wearer),AFF_DETECT_INVISIBLE));
+    assert(!IS_AFFECTED4((&wearer),AFF4_DETECT_ILLUSION));
+    reset();
 }
 static void ordinary_armor(affected_type **saved) {
     spell_armor(40,&wearer,nullptr,0,&wearer,nullptr);
@@ -446,20 +802,34 @@ int main() {
     assert(received && received->set_owner==1 && received->duration==56/3);
     assert(!reconcile_named_set_spell(&companion,SONG_DRAGONS) && get_spell_from_char(&companion,SONG_DRAGONS)==received);
     reset();
+    qualify_expansion_effects();
 }
 '''
 
 build = ROOT / "bin/tests"
+# Keep the fixture's IDs and callbacks aligned with the recorded pool and actual
+# registration, so a missing/rebound entry cannot silently evade qualification.
+assignments = (ROOT / "docs/ongoing-projects/named-zone-set-first-pass-assignments.md").read_text()
+pool = assignments.split("## Effect homes after both passes")[1].split("## Remaining work")[0]
+pool_ids = {int(value) for value in re.findall(r"\(#(\d+)\)", pool)}
+tested = {int(value): callback for value, callback in re.findall(r"^    \{(\d+),(spell_\w+),", harness, re.M)}
+assert set(tested) == pool_ids and len(tested) == 50
+defines = dict(re.findall(r"^#define\s+(\w+)\s+(\d+)\s*(?://[^\n]*)?$", (ROOT / "src/magic/spells.h").read_text(), re.M))
+registered = {}
+for token, callback in re.findall(r'SPELL_CREATE(?:_MSG)?\(\s*"[^"\n]*"\s*,\s*(\w+)\s*,(?:(?!SPELL_CREATE)[\s\S])*?\b(spell_\w+)\s*[,)]', (ROOT / "src/classes/skills.c").read_text()):
+    if token in defines and int(defines[token]) in pool_ids:
+        registered[int(defines[token])] = callback
+assert tested == registered
 build.mkdir(parents=True, exist_ok=True)
 with tempfile.TemporaryDirectory(prefix="named-set-effects-", dir=build) as directory:
     cpp = Path(directory) / "test.cpp"
     binary = Path(directory) / "test"
     cpp.write_text(harness)
     subprocess.run([
-        "g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined", "-fno-pie", "-no-pie",
+        "g++", "-std=c++20", "-g", "-O1", "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-pie", "-no-pie",
         "-ffunction-sections", "-fdata-sections", "-Isrc", str(cpp), "src/item/named_set_effects.c",
         "src/item/named_set_origin.c", "src/item/named_sets.c", "src/item/random_equipment_tables.c",
         str(HARNESS_STUBS), "-Wl,--gc-sections", "-o", str(binary),
     ], cwd=ROOT, check=True)
     subprocess.run([str(binary)], cwd=ROOT, check=True)
-print("real named-set casts, independent durations, counters, shared cleanup and linked songs: passed")
+print("real named-set ownership plus all 50 expansion handlers, power, classes, alignment, exclusions, expiry and dispel: passed")
