@@ -2400,7 +2400,7 @@ void bard_dissonance(int /*l*/, P_char ch, P_char t, int /*song*/)
 	}
 
 	if (IS_NPC(t) && get_linked_char(t, LNK_PET) &&
-	    get_linked_char(t, LNK_PET)->in_room == ch->in_room && c_roll > number(1, 2000))
+	    get_linked_char(t, LNK_PET)->in_room == t->in_room && c_roll > number(1, 2000))
 	{
 		act("$N &+Wshudders and quivers&n for a moment...", TRUE, ch, 0, t, TO_ROOM);
 		act("$N &+Wshudders and quivers&n for a moment.", TRUE, ch, 0, t, TO_CHAR);
@@ -2480,6 +2480,28 @@ void sing_verses(P_char ch, int song)
 	}
 }
 
+// Sings to one target. A song's effect can kill and release anyone in the room, so this clears
+// target and next when they are gone. Returns false when the singer is gone and must not be read.
+static bool sing_to_target(song_function *funct, int level, P_char ch, P_char *target, P_char *next,
+			   int song)
+{
+	const uint64_t removal_before = character_removal_generation;
+	const uint64_t singer_id = ch->runtime_id, target_id = (*target)->runtime_id;
+	const uint64_t next_id = *next ? (*next)->runtime_id : 0;
+
+	funct(level, ch, *target, song);
+
+	if (removal_before == character_removal_generation)
+		return true;
+	if (!find_character_by_runtime_id(singer_id))
+		return false;
+	if (!find_character_by_runtime_id(target_id))
+		*target = NULL;
+	if (*next && !find_character_by_runtime_id(next_id))
+		*next = NULL;
+	return true;
+}
+
 // The reduced song level an echo plays at.
 static int echo_song_level(int level)
 {
@@ -2554,7 +2576,9 @@ void event_echosong(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 			}
 
 			// Sing the song.
-			(songDescrip->funct)(songLevel, ch, victim, song);
+			if (!sing_to_target(songDescrip->funct, songLevel, ch, &victim, &victim2,
+					    song))
+				return;
 
 			if (IS_SET(songDescrip->flags, SONG_AGGRESSIVE) && IS_ALIVE(ch) &&
 			    IS_ALIVE(victim) && bard_saves(ch, victim, song) &&
@@ -2752,7 +2776,8 @@ void event_bardsong(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 			}
 
 			// Sing the song.
-			(sd->funct)(l, ch, tch, song);
+			if (!sing_to_target(sd->funct, l, ch, &tch, &next, song))
+				return;
 
 			if (IS_SET(sd->flags, SONG_AGGRESSIVE) && IS_ALIVE(ch) && IS_ALIVE(tch) &&
 			    bard_saves(ch, tch, song) && !IS_FIGHTING(tch))
@@ -3157,7 +3182,8 @@ void do_riff(P_char ch, char *arg, int /*cmd*/)
 			}
 			if (is_char_in_room(tch, room))
 			{
-				(sd->funct)(l, ch, tch, s);
+				if (!sing_to_target(sd->funct, l, ch, &tch, &next, s))
+					return;
 			}
 		}
 	}

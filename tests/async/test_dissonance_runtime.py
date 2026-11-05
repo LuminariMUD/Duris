@@ -85,6 +85,21 @@ int main(int argc, char **argv) {
             bard_dissonance(50, &caster, &targets[1], SONG_DISSONANCE);
             assert(stopped == 1 && lagged == 1 && !IS_AFFECTED3(&targets[1], AFF3_SINGING));
         }
+        // An echo reaches targets in the song's room after the bard has walked away.
+        setup(false);
+        pet_roll = 1;
+        caster.in_room = 1;
+        bard_dissonance(50, &caster, targets, SONG_DISSONANCE);
+        assert(freed == 1 && scheduled == 1);
+        // A pet whose master stayed elsewhere keeps its link.
+        setup(false);
+        pet_roll = 1;
+        master.in_room = 1;
+        bard_dissonance(50, &caster, targets, SONG_DISSONANCE);
+        assert(!freed && !scheduled);
+        master.in_room = 0;
+        caster.in_room = 0;
+        pet_roll = 308;
         // Refused targets and a stopped caster make no contest or pet rolls.
         for (int refusal = 0; refusal < 4; ++refusal) {
             setup(true);
