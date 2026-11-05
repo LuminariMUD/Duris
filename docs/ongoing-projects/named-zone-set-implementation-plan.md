@@ -1,6 +1,6 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; seven focused implementation PRs are pushed
+Status: implementation in progress; eight focused implementation PRs are pushed
 and ready for review in the stack below.
 Date: 2026-11-06.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
@@ -31,7 +31,11 @@ contains ordinary-cast overlap handling and targets the historical-origin branch
 [PR #728](https://github.com/LuminariMUD/Duris/pull/728)
 (`branch/named-zone-set-cooldowns`, implementation commit `bf2b4ce9e`)
 contains persistent wearer cooldowns and targets the ordinary-cast branch.
-All seven PRs are ready for review; no implementation PR has been merged and no
+[PR #729](https://github.com/LuminariMUD/Duris/pull/729)
+(`branch/named-zone-set-effect-qualification`, implementation commit `41f777a93`)
+contains native effect qualification and the 104 recorded piece requirements;
+it targets the cooldown branch.
+All eight PRs are ready for review; no implementation PR has been merged and no
 release has been performed.
 
 The stack includes upstream `master` through `d4b3469c0` (#711 and #721), merged
@@ -477,6 +481,7 @@ Publication note (2026-11-06): native SSH/HTTPS pushes failed with GitHub's inte
 `commit_refs_rules` error, with no applicable branch rules. The Git data API
 published the exact local blobs, tree and commit after SHA verification and moved
 the branch forward without rewriting history. Local and remote revisions match.
+Subsequent native pushes succeeded; ordinary Git publishing is working again.
 
 ### Effect qualification and piece requirements
 
@@ -517,6 +522,13 @@ format and diff checks also pass. The issue body was rechecked on 2026-11-06;
 its `updated_at` remains `2026-11-05T08:15:32Z`. All 104 issue IDs and the original
 zone/effect pairings match the assignment document exactly; its piece-count
 distribution was independently recounted.
+The parent harness fixes through historical-origin head `389e6d331` were merged
+without rewriting history into ordinary casts (`8ae7887cc`), cooldowns
+(`f7de76f10`) and this qualification branch (`57697bb5b`). They add origin
+declarations to the GMCP harness and link the real resolver into the quest target
+audit; neither changes production behavior. Both
+`python3 tests/async/test_gui_gmcp_contract.py` and
+`python3 tests/async/test_world_quest_target_retries.py` pass after integration.
 The next independent chunk is the wider area eligibility review, followed by
 catalog installation with the recorded thresholds and end-to-end gameplay,
 storage, report/cache, help/publication and rollback checks.
