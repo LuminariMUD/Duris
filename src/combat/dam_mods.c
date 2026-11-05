@@ -26,6 +26,14 @@
 #include "classes/paladins.h"
 #include "magic/spells.h"
 #include "core/utils.h"
+#include "abilities/abilities.h"
+
+// The percent dreadnaught takes off the spell damage its user takes.
+double dreadnaught_spell_defense(const Rolls &rolls, const struct affected_type *paf)
+{
+	return BOUNDED(5, paf->level / 5, 20) +
+	       (paf->level > 95 ? rolls.number(0, paf->level - 95) : 0);
+}
 
 extern float dam_factor[LAST_DF + 1];
 extern float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
@@ -600,7 +608,7 @@ if (IS_ALIVE(eth_ch))
 , { MAKE_DAM_MOD_PRED(){ if (affected_by_spell(victim, SKILL_DREADNAUGHT)){
 	  struct affected_type *paf = get_spell_from_char(victim, SKILL_DREADNAUGHT);
 // 5% to 20% reduction based on skill level (with a chance for a few extra percent when skill is 95+)
-double skill = BOUNDED(5, paf->level / 5, 20) + (paf->level > 95 ? number(0, paf->level - 95) : 0);
+double skill = dreadnaught_spell_defense(live_rolls, paf);
 double reduction = (100.0 - skill) / 100.0;
 dam_mod->type = dam_mod_type::Increased;
 dam_mod->mod = reduction - 1.0;

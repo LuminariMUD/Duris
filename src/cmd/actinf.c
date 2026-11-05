@@ -85,6 +85,7 @@ using namespace std;
 #include "world/weather.h"
 #include "cmd/wikihelp.h"
 #include "core/safe_format.h"
+#include "abilities/abilities.h"
 
 /* * external variables */
 
@@ -710,6 +711,18 @@ char *find_ex_description(char *word, struct extra_descr_data *list)
 	return (0);
 }
 
+// How far off, in percent of its true age, a corpse's age can be guessed.
+static int age_corpse_error_percent(P_char ch)
+{
+	return 100 - GET_CHAR_SKILL(ch, SKILL_AGE_CORPSE);
+}
+
+std::string age_corpse_facts(P_char ch)
+{
+	return fact("How far your guess can be off",
+		    std::to_string(age_corpse_error_percent(ch)) + "% of the corpse's age");
+}
+
 int ageCorpse(P_char ch, P_obj obj, char *s)
 {
 	int maxErrorPercent, maxError, error;
@@ -735,7 +748,7 @@ int ageCorpse(P_char ch, P_obj obj, char *s)
 
 	realAge = obj_affect_time(obj, af) / PULSES_IN_TICK;
 
-	maxErrorPercent = 100 - GET_CHAR_SKILL(ch, SKILL_AGE_CORPSE);
+	maxErrorPercent = age_corpse_error_percent(ch);
 	maxError = (realAge * maxErrorPercent) / 100;
 	error = number(0, maxError);
 	if (number(0, 1))
@@ -3705,6 +3718,20 @@ void do_read(P_char ch, char *argument, int /*cmd*/)
 	do_look(ch, buf, -4);
 }
 
+// The lag, in pulses, after legend lore names an item.
+static int legend_lore_lag()
+{
+	return (int)(PULSE_VIOLENCE * 1.5);
+}
+
+std::string legend_lore_facts(P_char ch)
+{
+	return fact("Chance when you examine an item",
+		    std::to_string(GET_CHAR_SKILL(ch, SKILL_LEGEND_LORE)) + " in 111") +
+	       fact("Your lag when it works", seconds(legend_lore_lag())) +
+	       "  It identifies the item at your level. Not containers or corpses.\n";
+}
+
 void do_examine(P_char ch, char *argument, int /*cmd*/)
 {
 	char name[MAX_INPUT_LENGTH], buf[MAX_INPUT_LENGTH + 4], buf2[MAX_INPUT_LENGTH];
@@ -3759,7 +3786,7 @@ void do_examine(P_char ch, char *argument, int /*cmd*/)
 	{
 		notch_skill(ch, SKILL_LEGEND_LORE, 5);
 		spell_identify(GET_LEVEL(ch), ch, 0, 0, 0, tmp_object);
-		CharWait(ch, (int)(PULSE_VIOLENCE * 1.5));
+		CharWait(ch, legend_lore_lag());
 		return;
 	}
 

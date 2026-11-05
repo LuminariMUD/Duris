@@ -26,6 +26,7 @@
 #include "item/item_movement_transaction.h"
 #include "magic/spells.h"
 #include "world/weather.h"
+#include "abilities/abilities.h"
 /*
    external variables
  */
@@ -418,6 +419,31 @@ int CountNumGreaterElementalFollowersInSameRoom(P_char ch)
 
 /* Awareness skill for assassins and rangers.   --TAM 7-8-94 */
 
+// The most ticks awareness can last at this rating, before its roll.
+static int awareness_max_duration(P_char ch, int skl_lvl)
+{
+	int duration = (int)((1 + (GET_LEVEL(ch) >> 3) * skl_lvl / 75));
+	duration *= STAT_INDEX(GET_C_INT(ch)) / 9;
+	return duration;
+}
+
+// The roll that picks awareness's duration, given a positive maximum.
+static int awareness_rolled_duration(const Rolls &rolls, int duration)
+{
+	return rolls.number(1, duration);
+}
+
+std::string awareness_facts(P_char ch)
+{
+	const int most = awareness_max_duration(ch, GET_CHAR_SKILL(ch, SKILL_AWARENESS));
+	return fact("Duration",
+		    most > 0 ?
+			    game_hours_range({ awareness_rolled_duration(lowest_rolls, most),
+					       awareness_rolled_duration(highest_rolls, most) }) :
+			    game_hours(most)) +
+	       "  It always works. It lasts longer with intelligence, level and rating.\n";
+}
+
 void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
 {
 	struct affected_type af, *af_ptr;
@@ -440,15 +466,14 @@ void do_awareness(P_char ch, char * /*argument*/, int /*cmd*/)
 	{
 		lev_aware = number((lev_aware >> 1), lev_aware);
 	}
-	duration = (int)((1 + (GET_LEVEL(ch) >> 3) * skl_lvl / 75));
-	duration *= STAT_INDEX(GET_C_INT(ch)) / 9; /*
+	duration = awareness_max_duration(ch, skl_lvl); /*
 	                                              lower than 13 and player
 	                                              suffers 'lack of attn span'
 	                                              penalty
 	                                            */
 	if (duration > 0)
 	{
-		duration = number(1, duration);
+		duration = awareness_rolled_duration(live_rolls, duration);
 	}
 	bzero(&af, sizeof(af));
 	af.type = SKILL_AWARENESS;

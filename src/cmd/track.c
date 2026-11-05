@@ -20,6 +20,7 @@
 #include "world/graph.h"
 #include "world/map.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 extern P_desc descriptor_list;
 extern P_index mob_index;
@@ -286,6 +287,36 @@ void do_track_not_in_use(P_char ch, char *arg, int /*cmd*/)
 	return;
 }
 
+int MaxTrackDist(P_char ch);
+
+// The tracker's lag, in pulses.
+static int track_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// The tracker's lag, in pulses, after abandoning the hunt.
+static int track_abandon_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+// The tracker's lag, in pulses, after track scan on the world map.
+static int track_scan_lag()
+{
+	return (int)(PULSE_VIOLENCE * (float)get_property("track.scan.lag", 1));
+}
+
+std::string track_facts(P_char ch)
+{
+	const int distance = MaxTrackDist(ch);
+	return fact("Farthest you can track",
+		    distance >= MAX_ROOMS ? "no limit" : std::to_string(distance) + " rooms") +
+	       fact("Your lag", seconds(track_lag())) +
+	       fact("Your lag if you abandon the hunt (track stop)", seconds(track_abandon_lag())) +
+	       fact("Your lag after track scan on the map", seconds(track_scan_lag()));
+}
+
 void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 {
 	P_char victim;
@@ -322,8 +353,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 		if (IS_MAP_ROOM(ch->in_room))
 		{
 			show_tracking_map(ch);
-			CharWait(ch,
-				 (int)(PULSE_VIOLENCE * (float)get_property("track.scan.lag", 1)));
+			CharWait(ch, track_scan_lag());
 			return;
 		}
 		else
@@ -338,7 +368,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 		send_to_char("You abandon the hunt.\r\n", ch);
 		ch->specials.tracking = 0;
 		REMOVE_BIT(ch->specials.affected_by3, AFF3_TRACKING);
-		CharWait(ch, PULSE_VIOLENCE * 2);
+		CharWait(ch, track_abandon_lag());
 		return;
 	}
 	if (IS_AFFECTED3(ch, AFF3_TRACKING))
@@ -390,7 +420,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 			ch->specials.tracking = 0; // Mark as invalid target
 			send_to_char("You attempt your skills at tracking.\r\n", ch);
 			add_event(event_track_move, 5, ch, NULL, 0, 0, 0, 0);
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, track_lag());
 			notch_skill(ch, SKILL_TRACK, 20);
 			return;
 		}
@@ -401,7 +431,7 @@ void do_track(P_char ch, char *arg, int /*cmd*/) // do_track_not_in_use
 	ch->specials.was_fighting = victim;
 	send_to_char("You attempt your skills at tracking.\r\n", ch);
 	add_event(event_track_move, 5, ch, victim, 0, 0, 0, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, track_lag());
 	notch_skill(ch, SKILL_TRACK, 20);
 
 	return;

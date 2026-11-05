@@ -20,6 +20,7 @@
 #include "combat/justice.h"
 #include "combat/training_dummy.h"
 #include "magic/spells.h"
+#include "abilities/abilities.h"
 
 /*
  * External variables
@@ -1149,6 +1150,45 @@ void bard_flight(int l, P_char ch, P_char victim, int song)
 	//  linked_affect_to_char(ch, NULL, ch, LNK_SONG);
 }
 
+// The singer levels that add minor globe, skin and globe.
+static int bard_protection_minor_globe_level()
+{
+	return 31;
+}
+
+static int bard_protection_skin_level()
+{
+	return 46;
+}
+
+static int bard_protection_globe_level()
+{
+	return 51;
+}
+
+// A song's armor class change, as a negative modifier, at song level l.
+static int bard_protection_ac(int l, int empower)
+{
+	return -l - (empower / 2);
+}
+
+std::string song_protection_facts(P_char ch)
+{
+	const int empowered = bard_protection_ac(0, GET_CHAR_SKILL(ch, SKILL_EMPOWER_SONG));
+	std::string facts = fact("Armor class", empowered ? std::to_string(empowered) +
+								    " and minus your song level" :
+							    "minus your song level");
+	if (GET_LEVEL(ch) >= bard_protection_globe_level())
+		facts += "  It also casts globe of invulnerability on those without it, and minor\n"
+			 "  globe on those with it who lack that.\n";
+	else if (GET_LEVEL(ch) >= bard_protection_minor_globe_level())
+		facts += "  It also casts minor globe of invulnerability on those without it.\n";
+	if (GET_LEVEL(ch) >= bard_protection_skin_level())
+		facts += "  It also casts stoneskin (protection from undead on the undead) on\n"
+			 "  those without a skin spell.\n";
+	return facts + "  The spells use your song level. It covers your allies while you sing.\n";
+}
+
 void bard_protection(int l, P_char ch, P_char victim, int song)
 {
 	struct affected_type af;
@@ -1157,17 +1197,18 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 	if (IS_NPC(ch))
 		empower += 100;
 
-	if (GET_LEVEL(ch) >= 51 && !IS_AFFECTED2(victim, AFF2_GLOBE))
+	if (GET_LEVEL(ch) >= bard_protection_globe_level() && !IS_AFFECTED2(victim, AFF2_GLOBE))
 	{
 		// if(ch == victim)
 		spell_globe(l, ch, 0, 0, victim, NULL);
 		// else if(!number(0, 9))
 		// spell_globe(l, ch, 0, 0, victim, NULL);
 	}
-	else if (GET_LEVEL(ch) >= 31 && !IS_AFFECTED(victim, AFF_MINOR_GLOBE))
+	else if (GET_LEVEL(ch) >= bard_protection_minor_globe_level() &&
+		 !IS_AFFECTED(victim, AFF_MINOR_GLOBE))
 		spell_minor_globe(l, ch, 0, 0, victim, NULL);
 
-	if (GET_LEVEL(ch) >= 46 && !has_skin_spell(victim))
+	if (GET_LEVEL(ch) >= bard_protection_skin_level() && !has_skin_spell(victim))
 	{
 		if (IS_UNDEAD(victim) || IS_ANGEL(ch))
 			spell_prot_undead(l, ch, 0, 0, victim, NULL);
@@ -1180,7 +1221,7 @@ void bard_protection(int l, P_char ch, P_char victim, int song)
 		memset(&af, 0, sizeof(af));
 		af.type = song;
 		af.location = APPLY_ARMOR;
-		af.modifier = -l - (empower / 2);
+		af.modifier = bard_protection_ac(l, empower);
 		linked_affect_to_char(victim, &af, ch, LNK_SONG);
 		send_to_char("&+WBands of AMAZINGLY strong armor wrap around you.\r\n", victim);
 	}

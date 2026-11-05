@@ -25,6 +25,9 @@ BOUNDED = extract_function("utility.c", "int BOUNDED(int a, int b, int c)")
 TAKEDOWN_CHECK = "\n".join((
     extract_function("actoff.c", "static int takedown_sleeping_target_lag("),
     extract_function("actoff.c", "static int takedown_evade_lag("),
+    extract_function("actoff.c", "static int evade_threshold("),
+    extract_function("actoff.c", "static int evade_rest("),
+    extract_function("actoff.c", "static int grapple_threshold("),
     extract_function(
         "actoff.c",
         "float takedown_check(P_char ch, P_char victim, float chance, int skill, ulong applicable)",
