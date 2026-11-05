@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prove Hardcore's fifth counted death through real flat-file save and restart.
+"""Prove Hardcore's third counted death through real flat-file save and restart.
 
 The synthetic authority includes the empty catalogs required by permanent
 character deletion, which the minimal-world boot deliberately skips.
@@ -84,7 +84,7 @@ def run(binary):
                 client.send("save")
                 client.expect("Save complete for " + journey.CHARACTER + ".")
                 assert_deaths(0)
-                for death in range(1, 6):
+                for death in range(1, 4):
                     start = len(client.transcript)
                     client.send("suicide")
                     client.expect("Please confirm that you wish to do this!")
@@ -92,7 +92,7 @@ def run(binary):
                     client.expect("ACCOUNT MENU", timeout=30)
                     client.expect("Please select an option")
                     result = client.transcript[start:].decode(errors="replace")
-                    if death == 5:
+                    if death == 3:
                         assert "Your character has been permanently deleted." in result
                         assert_empty_account()
                         assert not (state / "players/1.snapshot").exists()
@@ -102,13 +102,13 @@ def run(binary):
                     client.send("0")
                     client.close()
                     client = None
-                    if death == 4:
+                    if death == 2:
                         stop()
                         process = boot()
-                    if death < 5:
+                    if death < 3:
                         client = journey.reconnect_character(plain)
                         assert_deaths(death)
-                    print(f"flat-file Hardcore death {death}: {'deleted' if death == 5 else 'reloaded'}",
+                    print(f"flat-file Hardcore death {death}: {'deleted' if death == 3 else 'reloaded'}",
                           flush=True)
 
                 stop()
@@ -156,4 +156,4 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="hardcore-build-", dir=ROOT / "bin/tests") as directory:
         binary = args.server.resolve() if args.server else journey.build_flatfile_server(Path(directory))
         run(binary)
-    print("flat-file Hardcore fifth counted death and restart journey passed")
+    print("flat-file Hardcore third counted death and restart journey passed")

@@ -436,8 +436,8 @@ def create_character(client: MudClient, expected_room: str | None = "The Regress
     prompt, warning = client.expect_any(("Please select either H", "Class Selection"))
     if prompt == "Please select either H":
         if hardcore:
-            require("Hardcore char can only die 5 times" in warning,
-                    "Hardcore creation did not warn about five counted deaths")
+            require("Hardcore char can only die 3 times" in warning,
+                    "Hardcore creation did not warn about three counted deaths")
         client.send("h" if hardcore else "n")
         client.expect("Class Selection")
     else:
