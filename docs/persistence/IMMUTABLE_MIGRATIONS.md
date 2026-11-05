@@ -1,5 +1,24 @@
 # Immutable Migration Ledger
 
+## Online item affect slots and instance fields (0059/0060)
+
+`run --online-item-fields` accepts only the sealed 61-step manifest ending at
+`0060_item_instance_fields`, with all 59 earlier steps already applied. It keeps
+the production target, allow-list, fresh backup, advisory lock, checksums,
+ordered history and success-last verification safeguards. The November 5 live
+review found MariaDB 11.8.6 and all twelve affected tables InnoDB/Dynamic, with
+the new columns absent. The running 7d722a314 binary uses named columns and
+deduplicates legacy affects before insertion; nullable additions preserve its
+behavior. Only the new binary writes explicit slots and instance overrides, so
+do not restart the old binary after the new writer has run.
+
+The runner strengthens only these sealed ALTERs to `ALTER ONLINE TABLE`
+(`LOCK=NONE`), requiring INPLACE for the six affect-column/index changes and
+INSTANT for the six item-column additions. Metadata and row-lock waits are
+bounded to one second; unsupported DDL or contention leaves services running.
+Hold the backup job lock across DDL, then verify runtime compatibility before
+installing the new server. Immutable files and ledger checksums are unchanged.
+
 Duris has two deliberately separate histories:
 
 - `migrations/run_migration.sh` is the legacy additive upgrade path. Its 147 progress

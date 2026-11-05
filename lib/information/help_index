@@ -28100,3 +28100,130 @@ See also: SALVAGE, RECIPES, CRAFT, FORGE
 ===========================================================================
 
 #
+
+#
+"Epic Costs Epic Skills Cost"
+Epic training spends epic points and platinum. Use 'epic skills' to find
+skills and teachers; ask the appropriate teacher about a skill to see the
+next step's cost. 'help epic skill cost' lists step and mastery prices.
+Training begins at level 30 and still requires the skill's eligibility.
+
+==See also==
+
+Epic skill cost, Epic skills, Epics
+
+#
+"Ketch"
+The Ketch is a merchant ship hull. Its base requirements are level 25 and
+2,500,000 copper (2,500 platinum), before sails, weapons and other fittings.
+It has eight equipment slots, cargo capacity 20, contraband capacity 3,
+and room for eight people. Its listed maximum speed is 78.
+A hull needs suitable sails before it can travel. Consult the ship shop's
+current list for the actual purchase and fitting options.
+
+==See also==
+
+Ships, Ship1, Ship3
+
+#
+"Mind of the Dragon"
+Mind of the Dragon is a passive innate for Way of the Dragon Monks,
+obtained at level 30. It needs no activation command or resource payment.
+It gives a separate 50% check against sneaky strikes and backstabs, a 50%
+check for immediate search success, and halves a thief's steal chance.
+These checks do not guarantee protection against every attack or theft.
+
+==See also==
+
+Mind of dragon, Way of the Dragon, Monk, Innate
+
+#
+"Planes"
+Planes are separate regions of the world, including the Astral and
+Ethereal planes and the elemental planes of Air, Earth, Fire and Water.
+Travel depends on the specific spell, portal or innate you use: consult
+'help plane shift', 'help gate' or 'help nether gate' for that method.
+A route to another plane does not guarantee a return route. Read the
+individual plane's help and prepare for its hazards before entering.
+
+==See also==
+
+Astral Plane, Ethereal Plane, Elemental Plane of Air,
+Elemental Plane of Earth, Elemental Plane of Fire, Elemental Plane of Water,
+Plane shift, Gate, Nether Gate
+
+#
+"Ramming"
+To ram a ship, first lock a target and reach a current speed of at least
+20, then use 'order ram'. Your ship must be afloat, undocked, and ready
+after its previous ram. This arms ramming mode; impact occurs when your
+ship reaches the target, rather than immediately when you give the order.
+Use 'order ram off' to cancel. Losing your target or dropping below the
+required speed cancels ramming mode. Ramming can damage your own ship.
+
+==See also==
+
+Ship2, Ship4, Ships
+
+#
+"Bleeding"
+A negative hit-point total can leave you incapacitated or dying, unable
+to use many normal commands. These conditions lose hit points instead of
+regenerating normally, so seek healing promptly. 'help bandage' explains
+first aid, and 'help fortitude' describes that spell's limited protection.
+Bleeding from a specific attack, such as garrote, follows that attack's
+own rules; the word is not one universal damage effect.
+
+==See also==
+
+Bandage, Fortitude, Garrote, Death
+
+#
+"Earthen Fist"
+The earthen fist described in spell messages is Earthen Grasp, not a
+separate spell named Earthen Fist. Read 'help earthen grasp' for the
+single-target spell or 'help greater earthen grasp' for its group version.
+
+==See also==
+
+Earthen Grasp, Greater Earthen Grasp
+
+#
+"Illusionist Spells"
+Use 'spells illusionist' for the base Illusionist spell catalog, or
+'spells' for your own available spell list. 'help illusionist skills'
+lists the class's base spells and skills. Specializations change that
+base list; consult your specialization's help for additions and removals.
+Spell listings do not mean that you have learned or prepared every spell.
+
+==See also==
+
+Illusionist, Illusionist Skills, Spells, Memorize
+
+#
+"Takedown Takedowns"
+Takedowns are maneuvers that knock an opponent down, including bash,
+trip and several class-specific attacks. There is no standalone 'takedown'
+command. Use the maneuver you know and read its help for targets, size
+restrictions, defenses and recovery time.
+A maneuver can wait for your recovery after a previous bash or takedown;
+repeating the command does not bypass that wait. 'skills info <skill>'
+shows the maneuver's current rules and recovery information.
+
+==See also==
+
+Bash, Trip, Tackle, Kneel, Skills
+
+#
+"Ability Information"
+Use 'spells info <spell>', 'skills info <skill>' or 'innate info <name>'
+to read an ability's requirements and mechanics. Names can be multiword;
+for example, 'spells info fireball' or 'skills info bash'.
+Pages show applicable costs, ranges, durations, recovery rules and your
+access or current status. Numbers depend on your character and the
+ability's stated conditions; they do not promise a hit or successful cast.
+Reading a page does not cast, activate, train or spend an ability.
+
+==See also==
+
+Spells, Skills, Innate
