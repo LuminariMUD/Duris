@@ -1565,7 +1565,8 @@ def main() -> None:
     functions += ["static void credit_group_kill(P_char killer, P_char ch) { P_char tmp_ch;\n" +
                   death[hook_start:hook_end] + "\n}"]
     functions += [extract_function("achievements.c", "void update_addicted_to_blood(")]
-    functions += [extract_function("magic.c", "void spell_contain_being(")]
+    functions += [extract_function("magic.c", "static int contain_being_duration("),
+                  extract_function("magic.c", "void spell_contain_being(")]
     functions += [extract_function("fight.c", "void kill_gain(P_char ch, P_char victim)\n")]
     quest = source("world_quest.c").read_text(encoding="utf-8")
     if "static void world_quest_reward_completed(" in quest:

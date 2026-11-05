@@ -248,6 +248,8 @@ harness = output / 'harness.cpp'
 harness.write_text(PRELUDE + '\n'.join([
     extract_function('specs.eth2.c', 'static affected_type *find_aramus_crown_regeneration('),
     extract_function('magic.c', 'void spell_regeneration('),
+    extract_function('magic.c', 'static int accel_healing_duration('),
+    extract_function('magic.c', 'static int accel_healing_regen('),
     extract_function('magic.c', 'void spell_accel_healing('),
     extract_function('limits.c', 'int hit_regen('),
     extract_function('specs.eth2.c', 'void event_aramus_crown_sleep_check('),

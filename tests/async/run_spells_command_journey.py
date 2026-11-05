@@ -217,6 +217,11 @@ def run(binary, backend):
                 for alias in ("cleric", "all", "s"):
                     assert ">====[ raoul cleric all s | None | Max Circle 1 ]====<" in command(
                         god, f"spells target {alias}")
+                # Batch 4 spells show their shared numbers and still play through their handlers.
+                doom = command(player, "spells info creeping doom")
+                assert "Damage per wave: 41-61 at your level, 1" in doom and "Waves: 4-5" in doom, doom
+                god.send("cast 'true seeing'")
+                god.expect("Your vision sharpens considerably", timeout=30)
                 # The converted fireball still plays through its real handler.
                 god.send("cast 'fireball' raoul")
                 god.expect_any(("You throw a fireball", "Your fireball hits"), timeout=30)
