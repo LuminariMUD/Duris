@@ -1,1 +1,7 @@
 # Abilities with nothing numeric to show, each reviewed against its handler.
+SPELL_GREATER_SUST
+SPELL_PURIFY_SPIRIT
+SPELL_REVEAL_SPIRIT_ESSENCE
+SPELL_REVEAL_TRUE_FORM
+SPELL_SUMMON_SPIRIT
+SPELL_SUSTENANCE

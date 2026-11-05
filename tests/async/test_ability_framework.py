@@ -5,6 +5,7 @@ Builds src/abilities/abilities.c and the real RNG with the converted abilities' 
 functions extracted from their handler files, under sanitizers. The pre-conversion
 expressions are kept below as the oracle.
 """
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,7 +25,6 @@ HARNESS = r'''
 #include <string>
 
 void randomize(uint64_t seed);
-std::string reflection_innate_facts(P_char) { return ""; }
 struct str_app_type str_app[52];
 
 // The next draw after a roll; equal fingerprints after equal seeds mean equal draw counts.
@@ -227,6 +227,11 @@ def main():
                  extract_function("actoff.c", "static int bash_takedown_penalty_lag("),
                  extract_function("actoff.c", "static int bash_target_lag("),
                  extract_function("actoff.c", "std::string bash_facts(")]
+    # ability_facts() names every converted ability's facts; the ones not built here abort.
+    declared = re.findall(r"^std::string (\w+_facts)\(char_data \*ch\);",
+                          source("abilities.h").read_text(), re.M)
+    functions += [f"std::string {name}(char_data *) {{ std::abort(); }}"
+                  for name in declared if name not in ("fireball_facts", "bash_facts")]
     build = ROOT / "bin/tests"
     build.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="ability-framework-", dir=build) as temporary:
