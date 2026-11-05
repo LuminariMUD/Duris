@@ -167,7 +167,8 @@ def test_player_gear_grants_pulse_again() -> None:
 def test_spirit_totem_gives_spell_pulse() -> None:
     totem = source("classes/new_skills.c").read_text()
     assert "totem->affected[2].location = APPLY_SPELL_PULSE;" in totem
-    assert "totem->affected[2].modifier = -1;" in totem
+    assert "totem->affected[2].modifier = summon_totem_pulse();" in totem
+    assert re.search(r"static int summon_totem_pulse\(\)\s*\{\s*return -1;", totem)
     assert "totem->affected[2].location = APPLY_WIS;" not in totem
 
 

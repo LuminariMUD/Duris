@@ -541,6 +541,7 @@ functions = [
     extract_function("paladins.c", "bool has_aura("),
     extract_function("paladins.c", "int aura_mod("),
     extract_function("fight.c", "int plague_heal_block_percent("),
+    extract_function("fight.c", "float aura_healing_mod("),
     extract_function("fight.c", "int vamp("),
     extract_function("utility.c", "int IS_MORPH("),
     extract_function("utility.c", "float BOUNDEDF("),

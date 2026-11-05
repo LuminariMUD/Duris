@@ -65,8 +65,8 @@ functions = [
     ('innates.c', 'bool has_innate('), ('innates.c', 'void assign_innates('),
     ('innates.c', 'static struct affected_type *find_innate_timer('), ('innates.c', 'static int innate_rest_seconds('), ('innates.c', 'static int innate_uses('), 
     ('innates.c', 'bool can_use_innate('), ('innates.c', 'bool check_innate_time('),
-    ('innates.c', 'void do_plane_shift(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
-    ('innates.c', 'void do_fireshield(P_char ch'),
+    ('innates.c', 'static int plane_shift_innate_lag('), ('innates.c', 'void do_plane_shift(P_char ch'), ('innates.c', 'void do_innate(P_char ch,'),
+    ('innates.c', 'static int fireshield_innate_lag('), ('innates.c', 'void do_fireshield(P_char ch'),
 ]
 production = '\n'.join(extract_function(file, signature) for file, signature in functions)
 driver = r'''

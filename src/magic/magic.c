@@ -12477,7 +12477,7 @@ void spell_lodestone_vision(int /*level*/, P_char ch, char * /*arg*/, [[maybe_un
 	}
 }
 
-static int haste_duration(P_char ch, int level)
+int haste_duration(P_char ch, int level)
 {
 	if (GET_SPEC(ch, CLASS_CONJURER, SPEC_AIR))
 		return (int)(level / 2);

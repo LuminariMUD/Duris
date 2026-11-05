@@ -106,6 +106,8 @@ PRODUCTION = "\n".join(extract_function(file, signature) for file, signature in 
     ("paladins.c", "bool has_aura("),
     ("paladins.c", "int aura_mod("),
     ("fight.c", "int plague_heal_block_percent("),
+    ("fight.c", "float aura_healing_mod("),
+    ("fight.c", "float enhancement_healing_mod("),
     ("fight.c", "int vamp("),
     ("fight.c", "void heal("),
     ("magic.c", "void spell_cure_blind("),

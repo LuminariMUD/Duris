@@ -1446,6 +1446,25 @@ std::string charge_facts(P_char ch)
 	       "  The target's defenses apply to the damage after.\n";
 }
 
+static int charge_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static float charge_base_chance()
+{
+	return get_property("innate.charge.base.chance", 60.00);
+}
+
+std::string charge_innate_facts(P_char ch)
+{
+	return charge_facts(ch) +
+	       fact("Base chance",
+		    chance_under((int)charge_base_chance() + 1, charge_roll(lowest_rolls),
+				 charge_roll(highest_rolls)) +
+			    ", before level, strength and agility");
+}
+
 void do_charge(P_char ch, char *argument, int /*cmd*/)
 {
 	static bool DEBUG = TRUE;
@@ -1743,7 +1762,7 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	percent_chance = get_property("innate.charge.base.chance", 60.00);
+	percent_chance = charge_base_chance();
 
 	if (GET_C_LUK(ch) / 2 > number(0, 100))
 	{
@@ -1791,7 +1810,8 @@ void do_charge(P_char ch, char *argument, int /*cmd*/)
 		      GET_NAME(victim), (int)percent_chance);
 	}
 
-	if (number(1, 100) <= (int)percent_chance || IS_IMMOBILE(victim) || !IS_AWAKE(victim))
+	if (charge_roll(live_rolls) <= (int)percent_chance || IS_IMMOBILE(victim) ||
+	    !IS_AWAKE(victim))
 	{
 		if (get_takedown_size(victim) <= get_takedown_size(ch) && !number(0, 2))
 		{
@@ -11373,6 +11393,90 @@ void do_trample(P_char ch, char *argument, int /*cmd*/)
 	}
 }
 
+static int bodyslam_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static float bodyslam_base_chance()
+{
+	return get_property("innate.bodyslam.base.chance", 60.00);
+}
+
+static int bodyslam_vitality_cost()
+{
+	return 30;
+}
+
+static int bodyslam_damage(P_char ch)
+{
+	return str_app[STAT_INDEX(GET_C_STR(ch))].todam + 5;
+}
+
+static int bodyslam_lag()
+{
+	return 3 * PULSE_VIOLENCE;
+}
+
+static int bodyslam_slip_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int bodyslam_target_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+static int bodyslam_slip_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int bodyslam_stun_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int bodyslam_stun(const Rolls &rolls)
+{
+	return rolls.number(PULSE_VIOLENCE, (int)(PULSE_VIOLENCE * 2.5));
+}
+
+static int bodyslam_slip_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
+}
+
+static int bodyslam_awareness_duration()
+{
+	return 2;
+}
+
+std::string bodyslam_innate_facts(P_char ch)
+{
+	return fact("Base chance",
+		    chance_under((int)bodyslam_base_chance() + 1, bodyslam_roll(lowest_rolls),
+				 bodyslam_roll(highest_rolls)) +
+			    ", before level and agility") +
+	       fact("Damage", std::to_string(bodyslam_damage(ch)) + " with your strength") +
+	       fact("Vitality", "needs and spends " + std::to_string(bodyslam_vitality_cost())) +
+	       fact("Target's lag on a hit", seconds(bodyslam_target_lag())) +
+	       fact("Stun on a hit",
+		    one_in(bodyslam_stun_roll) + ", " + seconds(bodyslam_stun(lowest_rolls)) +
+			    " to " + seconds(bodyslam_stun(highest_rolls)) + "; fear saves apply") +
+	       fact("Your lag", seconds(bodyslam_lag())) +
+	       fact("Your lag on a sleeping target", seconds(takedown_sleeping_target_lag())) +
+	       fact("Your lag if it evades", seconds(takedown_evade_lag())) +
+	       fact("Your lag if you slip", seconds(bodyslam_slip_lag())) +
+	       fact("If you slip, a stun",
+		    one_in(bodyslam_slip_roll) + ", " + seconds(bodyslam_slip_stun())) +
+	       fact("The target stays aware for", game_hours(bodyslam_awareness_duration())) +
+	       "  Not while riding or in combat. A target must stand on its feet, and be no\n"
+	       "  bigger than you or more than 2 sizes smaller, or the slam fails with lag.\n"
+	       "  The target's defenses apply to the damage after.\n";
+}
+
 void do_bodyslam(P_char ch, char *arg, int /*cmd*/)
 {
 	char Gbuf1[MAX_STRING_LENGTH];
@@ -11425,7 +11529,7 @@ void bodyslam(P_char ch, P_char victim)
 	if (should_not_kill(ch, victim))
 		return;
 
-	if (GET_VITALITY(ch) < 30)
+	if (GET_VITALITY(ch) < bodyslam_vitality_cost())
 	{
 		send_to_char(
 			"You need to gather your energy before attempting to slam someone.\r\n",
@@ -11435,7 +11539,7 @@ void bodyslam(P_char ch, P_char victim)
 
 	appear(ch);
 
-	percent_chance = get_property("innate.bodyslam.base.chance", 60.00);
+	percent_chance = bodyslam_base_chance();
 
 	percent_chance =
 		(int)(percent_chance *
@@ -11456,7 +11560,7 @@ void bodyslam(P_char ch, P_char victim)
 	percent_chance =
 		takedown_check(ch, victim, percent_chance, SKILL_BODYSLAM, ~TAKEDOWN_AGI_CHECK);
 
-	GET_VITALITY(ch) -= 30;
+	GET_VITALITY(ch) -= bodyslam_vitality_cost();
 
 	if (percent_chance == TAKEDOWN_CANCELLED)
 	{
@@ -11474,7 +11578,7 @@ void bodyslam(P_char ch, P_char victim)
 		    ch, 0, victim, TO_CHAR);
 		act("$n trips over you, in a futile attempt to slam you down even further.", FALSE,
 		    ch, 0, victim, TO_VICT);
-		CharWait(ch, 3 * PULSE_VIOLENCE);
+		CharWait(ch, bodyslam_lag());
 	}
 	else if (get_takedown_size(victim) > get_takedown_size(ch))
 	{
@@ -11483,7 +11587,7 @@ void bodyslam(P_char ch, P_char victim)
 		act("$N is too huge for you to bodyslam!", FALSE, ch, 0, victim, TO_CHAR);
 		act("$n tries to bodyslam you but merely bounces off your huge girth.", FALSE, ch,
 		    0, victim, TO_VICT);
-		CharWait(ch, 3 * PULSE_VIOLENCE);
+		CharWait(ch, bodyslam_lag());
 	}
 	else if (get_takedown_size(victim) < get_takedown_size(ch) - 2)
 	{
@@ -11493,9 +11597,9 @@ void bodyslam(P_char ch, P_char victim)
 		    TO_VICT);
 		send_to_char("You may as well try and bodyslam a speck of dust!  Too small..\n",
 			     ch);
-		CharWait(ch, 3 * PULSE_VIOLENCE);
+		CharWait(ch, bodyslam_lag());
 	}
-	else if (percent_chance >= number(1, 100))
+	else if (percent_chance >= bodyslam_roll(live_rolls))
 	{
 		act("$n suddenly looks a bit dumb, and madly slams at $N!", TRUE, ch, 0, victim,
 		    TO_NOTVICT);
@@ -11503,16 +11607,14 @@ void bodyslam(P_char ch, P_char victim)
 		    TO_VICT);
 		act("You mindlessly slam $M with your mass!\n", TRUE, ch, 0, victim, TO_CHAR);
 		fall = FALSE;
-		CharWait(victim, PULSE_VIOLENCE * 3);
+		CharWait(victim, bodyslam_target_lag());
 		SET_POS(victim, POS_PRONE + GET_STAT(victim));
 		engage(ch, victim);
-		CharWait(ch, 3 * PULSE_VIOLENCE);
-		if (!damage(ch, victim, str_app[STAT_INDEX(GET_C_STR(ch))].todam + 5,
-			    SKILL_BODYSLAM))
+		CharWait(ch, bodyslam_lag());
+		if (!damage(ch, victim, bodyslam_damage(ch), SKILL_BODYSLAM))
 		{
-			if (number(0, 1))
-				Stun(victim, ch,
-				     number(PULSE_VIOLENCE, (int)(PULSE_VIOLENCE * 2.5)), TRUE);
+			if (bodyslam_stun_roll(live_rolls))
+				Stun(victim, ch, bodyslam_stun(live_rolls), TRUE);
 		}
 		else
 			return;
@@ -11524,12 +11626,12 @@ void bodyslam(P_char ch, P_char victim)
 		    TO_NOTVICT);
 		act("In $s haste to slam you around, $n slips and falls!", FALSE, ch, 0, victim,
 		    TO_VICT);
-		CharWait(ch, 2 * PULSE_VIOLENCE);
-		if (number(0, 1))
+		CharWait(ch, bodyslam_slip_lag());
+		if (bodyslam_slip_roll(live_rolls))
 		{
 			SET_POS(ch, POS_PRONE + GET_STAT(ch));
 			fall = FALSE;
-			Stun(ch, ch, PULSE_VIOLENCE, FALSE);
+			Stun(ch, ch, bodyslam_slip_stun(), FALSE);
 		}
 	}
 
@@ -11545,7 +11647,7 @@ void bodyslam(P_char ch, P_char victim)
 	{
 		bzero(&af, sizeof(af));
 		af.type = SKILL_AWARENESS;
-		af.duration = 2;
+		af.duration = bodyslam_awareness_duration();
 		af.bitvector = AFF_AWARE;
 		af.flags = AFFTYPE_NODISPEL;
 		affect_to_char(victim, &af);
@@ -12529,6 +12631,11 @@ std::string call_grave_facts(P_char ch)
 			      show({ MAX(1, call_grave_target_damage(lowest_rolls, ch)),
 				     MAX(1, call_grave_target_damage(highest_rolls, ch)) }));
 	return facts + "  You need footing, and the dead can't rise in a single-file room.\n";
+}
+
+std::string call_grave_innate_facts(P_char ch)
+{
+	return call_grave_facts(ch);
 }
 
 void do_call_grave(P_char ch, char *argument, int /*cmd*/)

@@ -1007,6 +1007,10 @@ def check_sources():
             if name in ("holy_smite_damage", "holy_smite_blind_duration"):
                 assert re.search(rf"SAME\(.*\b{name}\(rolls", (ROOT / "tests/async/test_ability_skills_4.py").read_text()), name
                 continue
+            # Innate blast's rolls came with the innates, and have their oracles in that test.
+            if name.startswith("innate_blast_"):
+                assert re.search(rf"SAME\(.*\b{name}\(rolls", (ROOT / "tests/async/test_ability_innates_1.py").read_text()), name
+                continue
             assert re.search(rf"SAME\(.*\b{name}\(rolls", HARNESS), f"{name} has no oracle"
     for file, signature in SHARED_ELSEWHERE:
         if "const Rolls" in source(file).read_text().split(signature)[1].split(")")[0]:

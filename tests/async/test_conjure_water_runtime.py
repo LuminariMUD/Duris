@@ -117,7 +117,10 @@ functions = [
     ('innates.c', 'bool can_use_innate('),
     ('innates.c', 'bool check_innate_time('),
     ('innates.c', 'static bool conjured_spring_in_room('),
+    ('innates.c', 'static int conjure_water_spring_life('),
     ('innates.c', 'void event_conjure_water('),
+    ('innates.c', 'static int conjure_water_delay('),
+    ('innates.c', 'static int conjure_water_lag('),
     ('innates.c', 'void do_conjure_water(P_char ch,'),
 ]
 driver = r'''

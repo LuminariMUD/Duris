@@ -116,7 +116,7 @@ int main() {
     assert(ability_facts(SKILL_BASH) == bash_facts);
     assert(ability_facts(UNCONVERTED) == nullptr);
     assert(innate_facts(INNATE_REFLECTION) == reflection_innate_facts);
-    assert(innate_facts(INNATE_DOORBASH) == nullptr);
+    assert(innate_facts(INNATE_TUPOR) == nullptr);
 
     // Fireball rolls exactly as before at every level, and its facts never roll.
     for (int level = 1; level <= 62; ++level)

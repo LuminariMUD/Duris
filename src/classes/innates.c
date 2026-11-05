@@ -1330,6 +1330,26 @@ bool check_reincarnate(P_char ch)
 	return FALSE;
 }
 
+// The Effect line and spell page of an innate that casts a spell at the viewer's level.
+static std::string innate_spell_facts(P_char ch, int spell, const std::string &effect)
+{
+	std::string text = fact("Effect", effect);
+	if (AbilityFacts facts = ability_facts(spell))
+		text += facts(ch);
+	return text;
+}
+
+static int disappear_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string disappear_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "hides you") + fact("Your lag", seconds(disappear_innate_lag())) +
+	       "  Only while someone in the room is fighting.\n";
+}
+
 void do_disappear(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	if (has_innate(ch, INNATE_DISAPPEAR))
@@ -1343,7 +1363,7 @@ void do_disappear(P_char ch, char * /*arg*/, int /*cmd*/)
 		act("You suddenly disappear.", FALSE, ch, 0, 0, TO_CHAR);
 		act("$n suddenly disappears.", TRUE, ch, 0, 0, TO_ROOM);
 		SET_BIT(ch->specials.affected_by, AFF_HIDE);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, disappear_innate_lag());
 	}
 	else
 	{
@@ -1567,6 +1587,11 @@ void do_innate_decrepify(P_char ch, P_char victim)
 	return;
 }
 
+static int throw_lightning_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(3 * GET_LEVEL(ch), 5);
+}
+
 void event_throw_lightning(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 {
 	int dam;
@@ -1593,8 +1618,33 @@ void event_throw_lightning(P_char ch, P_char victim, P_obj /*obj*/, void * /*dat
 		return;
 	}
 
-	dam = dice(3 * GET_LEVEL(ch), 5);
+	dam = throw_lightning_damage(live_rolls, ch);
 	spell_damage(ch, victim, dam, SPLDAM_LIGHTNING, 0, &messages);
+}
+
+static int throw_lightning_delay()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int throw_lightning_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string throw_lightning_innate_facts(P_char ch)
+{
+	return fact("Lightning damage", show({ throw_lightning_damage(lowest_rolls, ch),
+					       throw_lightning_damage(highest_rolls, ch) }) +
+						" at your level, " +
+						std::to_string(GET_LEVEL(ch))) +
+	       fact("It strikes after", seconds(throw_lightning_delay())) +
+	       innate_rest_facts(INNATE_THROW_LIGHTNING, 0) +
+	       fact("Your lag", seconds(throw_lightning_lag())) +
+	       "  In combat only, and it hits your opponent when it strikes.\n"
+	       "  Trying out of combat still spends a use.\n"
+	       "  Globes and spirit wards do not stop it.\n"
+	       "  Spell damage modifiers and the target's defenses apply after.\n";
 }
 
 void do_throw_lightning(P_char ch, char * /*argument*/, int /*cmd*/)
@@ -1614,8 +1664,21 @@ void do_throw_lightning(P_char ch, char * /*argument*/, int /*cmd*/)
 	act("&+BYou begin charging for an electric discharge!&N", FALSE, ch, 0, 0, TO_CHAR);
 	act("&+BSparks begin to arc between $n and $N!&N", TRUE, ch, 0, GET_OPPONENT(ch), TO_ROOM);
 
-	add_event(event_throw_lightning, 2 * PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	add_event(event_throw_lightning, throw_lightning_delay(), ch, 0, 0, 0, 0, 0);
+	CharWait(ch, throw_lightning_lag());
+}
+
+static int levitate_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string levitate_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_LEVITATE, "casts levitate on you at your level") +
+	       innate_rest_facts(INNATE_LEVITATE, 0) +
+	       fact("Your lag", seconds(levitate_innate_lag()) + ", even if it refuses") +
+	       "  It refuses if you already float, or are too tired.\n";
 }
 
 void do_levitate(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -1632,7 +1695,42 @@ void do_levitate(P_char ch, char * /*arg*/, int /*cmd*/)
 		send_to_char("After a period of brief concentration, ", ch);
 		spell_levitate(GET_LEVEL(ch), ch, NULL, 0, ch, 0);
 	}
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, levitate_innate_lag());
+}
+
+static int vampire_bite_lag()
+{
+	return 3 * PULSE_VIOLENCE;
+}
+
+static int vampire_bite_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.dice(2, GET_LEVEL(ch));
+}
+
+static int vampire_bite_stun_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 100);
+}
+
+static int vampire_bite_stun_threshold()
+{
+	return 30;
+}
+
+static int vampire_bite_stun()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int vampire_bite_con_duration(const Rolls &rolls)
+{
+	return rolls.number(2, 4);
+}
+
+static int vampire_bite_con_loss(P_char ch)
+{
+	return 0 - MAX(1, GET_LEVEL(ch) / 10);
 }
 
 void vampire_bite(P_char ch, P_char victim)
@@ -1648,23 +1746,25 @@ void vampire_bite(P_char ch, P_char victim)
 		"$n's savage bite opens a deadly wound in $N's neck!"
 	};
 
-	CharWait(ch, 3 * PULSE_VIOLENCE);
+	CharWait(ch, vampire_bite_lag());
 
-	if (melee_damage(ch, victim, dice(2, GET_LEVEL(ch)), 0, &messages) != DAM_NONEDEAD ||
+	if (melee_damage(ch, victim, vampire_bite_damage(live_rolls, ch), 0, &messages) !=
+		    DAM_NONEDEAD ||
 	    affected_by_spell(victim, TAG_VAMPIRE_BITE))
 		return;
 
-	if (!IS_STUNNED(victim) && number(0, 100) < 30)
+	if (!IS_STUNNED(victim) &&
+	    vampire_bite_stun_roll(live_rolls) < vampire_bite_stun_threshold())
 	{
 		send_to_char("You are stunned and unable to defend yourself properly!\n", victim);
-		Stun(victim, ch, PULSE_VIOLENCE, TRUE);
+		Stun(victim, ch, vampire_bite_stun(), TRUE);
 	}
 
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_VAMPIRE_BITE;
-	af.duration = number(2, 4);
+	af.duration = vampire_bite_con_duration(live_rolls);
 	af.location = APPLY_CON;
-	af.modifier = 0 - MAX(1, GET_LEVEL(ch) / 10);
+	af.modifier = vampire_bite_con_loss(ch);
 	affect_to_char(victim, &af);
 }
 
@@ -1691,6 +1791,22 @@ int bite_poison(P_char ch, P_char victim, int mod)
 	return TRUE;
 }
 
+// An insect's or snake's venomous bite.
+static int venom_bite_damage(const Rolls &rolls, P_char ch)
+{
+	return rolls.number(GET_LEVEL(ch), GET_LEVEL(ch) * 3);
+}
+
+static int venom_bite_poison_tries(P_char ch)
+{
+	return 1 + GET_LEVEL(ch) / 12;
+}
+
+static int venom_bite_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
 void insectbite(P_char ch, P_char victim)
 {
 	struct damage_messages messages = {
@@ -1708,14 +1824,14 @@ void insectbite(P_char ch, P_char victim)
 	{
 		send_to_char("You miss them by inches with your jaws!\n", ch);
 		act("$n tries to sting $s foe with venom but misses.", FALSE, ch, 0, 0, TO_ROOM);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, venom_bite_lag());
 		return;
 	}
 
-	if (raw_damage(ch, victim, number(GET_LEVEL(ch), GET_LEVEL(ch) * 3), RAWDAM_DEFAULT,
-		       &messages) == DAM_NONEDEAD)
+	if (raw_damage(ch, victim, venom_bite_damage(live_rolls, ch), RAWDAM_DEFAULT, &messages) ==
+	    DAM_NONEDEAD)
 	{
-		i = 1 + GET_LEVEL(ch) / 12;
+		i = venom_bite_poison_tries(ch);
 		while (i-- && !bite_poison(ch, victim, i))
 			;
 		/*	replaced by the above statement, to prevent magical shrug working on non-magical innate */
@@ -1723,7 +1839,7 @@ void insectbite(P_char ch, P_char victim)
 		      spell_poison(GET_LEVEL(ch), ch, 0, 0, victim, 0);*/
 		if (IS_ALIVE(ch))
 		{
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, venom_bite_lag());
 		}
 	}
 }
@@ -1751,14 +1867,14 @@ void event_snakebite(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 	{
 		act("$n misses $N by inches with $s fangs!", FALSE, ch, 0, victim, TO_NOTVICT);
 		act("$n misses you by inches with $s fangs!", FALSE, ch, 0, victim, TO_VICT);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, venom_bite_lag());
 		return;
 	}
 
-	if (raw_damage(ch, victim, number(GET_LEVEL(ch), GET_LEVEL(ch) * 3), RAWDAM_DEFAULT,
-		       &messages) == DAM_NONEDEAD)
+	if (raw_damage(ch, victim, venom_bite_damage(live_rolls, ch), RAWDAM_DEFAULT, &messages) ==
+	    DAM_NONEDEAD)
 	{
-		i = 1 + GET_LEVEL(ch) / 12;
+		i = venom_bite_poison_tries(ch);
 		while (i-- && !bite_poison(ch, victim, i))
 			;
 		/*	replaced by the above statement, to prevent magical shrug working on non-magical innate */
@@ -1766,9 +1882,14 @@ void event_snakebite(P_char ch, P_char victim, P_obj /*obj*/, void * /*data*/)
 		      spell_poison(GET_LEVEL(ch), ch, 0, 0, victim, 0);*/
 		if (IS_ALIVE(ch))
 		{
-			CharWait(ch, PULSE_VIOLENCE);
+			CharWait(ch, venom_bite_lag());
 		}
 	}
+}
+
+static int snakebite_delay()
+{
+	return PULSE_VIOLENCE;
 }
 
 void snakebite(P_char ch, P_char victim)
@@ -1776,7 +1897,27 @@ void snakebite(P_char ch, P_char victim)
 	send_to_char("You hiss preparing to attack..\n", ch);
 	act("$n hisses dangerously!", FALSE, ch, 0, 0, TO_ROOM);
 
-	add_event(event_snakebite, PULSE_VIOLENCE, ch, victim, 0, 0, 0, 0);
+	add_event(event_snakebite, snakebite_delay(), ch, victim, 0, 0, 0, 0);
+}
+
+static int parasite_bite_damage(const Rolls &rolls, int level)
+{
+	return 40 + rolls.dice(4, level);
+}
+
+static int parasite_bite_saved(int damage)
+{
+	return damage >> 1;
+}
+
+static int parasite_bite_disease_roll(const Rolls &rolls, int mod)
+{
+	return rolls.number(0, 7 - mod);
+}
+
+static int parasite_bite_lag()
+{
+	return PULSE_VIOLENCE;
 }
 
 int parasitebite(P_char ch, P_char victim)
@@ -1792,7 +1933,7 @@ int parasitebite(P_char ch, P_char victim)
 
 	level = GET_LEVEL(ch);
 
-	damage = 40 + dice(4, level);
+	damage = parasite_bite_damage(live_rolls, level);
 	if (IS_NPC(ch))
 		damage += dice(4, level);
 
@@ -1812,15 +1953,16 @@ int parasitebite(P_char ch, P_char victim)
 	}
 	else
 	{
-		melee_damage(ch, victim, damage >> 1, 0, &messages);
+		melee_damage(ch, victim, parasite_bite_saved(damage), 0, &messages);
 	}
 
-	if (IS_ALIVE(victim) && has_innate(ch, INNATE_DISEASED_BITE) && !number(0, 7 - mod))
+	if (IS_ALIVE(victim) && has_innate(ch, INNATE_DISEASED_BITE) &&
+	    !parasite_bite_disease_roll(live_rolls, mod))
 		spell_disease(level, ch, 0, SPELL_TYPE_SPELL, victim, 0);
 
 	if (IS_ALIVE(ch))
 	{
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, parasite_bite_lag());
 	}
 	/*if (IS_ALIVE(victim) && has_innate(ch, INNATE_INFEST) && !number(0, 7-mod) && IS_ATTACHED_TO(ch, victim))
 	    infest(ch, victim); FOR LATER USE */
@@ -1930,6 +2072,72 @@ void bite(P_char ch, P_char victim)
 	insectbite(ch, victim);
 }
 
+static int bite_innate_rest()
+{
+	return get_property("innate.timer.bite", 12);
+}
+
+// The venom page, shared by insects and snakes and whoever else bites as they do.
+static std::string venom_bite_facts(P_char ch)
+{
+	return fact("Damage", show({ venom_bite_damage(lowest_rolls, ch),
+				     venom_bite_damage(highest_rolls, ch) }) +
+				      " at your level, " + std::to_string(GET_LEVEL(ch))) +
+	       fact("Poison tries", std::to_string(venom_bite_poison_tries(ch)) +
+					    ", ending when a spell save fails") +
+	       fact("Your lag", seconds(venom_bite_lag()) + " on a miss, or if it lands and no "
+							    "one dies") +
+	       "  Level and agility against the target's decide if it lands.\n"
+	       "  Gods and the undead shrug off the poison.\n";
+}
+
+std::string bite_innate_facts(P_char ch)
+{
+	std::string text;
+	const int race = GET_RACE2(ch);
+	if (race == RACE_SNAKE)
+		text = fact("It strikes after", seconds(snakebite_delay())) + venom_bite_facts(ch);
+	else if (race == RACE_PARASITE)
+	{
+		const Range damage = { parasite_bite_damage(lowest_rolls, GET_LEVEL(ch)),
+				       parasite_bite_damage(highest_rolls, GET_LEVEL(ch)) };
+		text = fact("Damage",
+			    show(damage) + " at your level, " + std::to_string(GET_LEVEL(ch))) +
+		       fact("If the target makes an agility save",
+			    show({ parasite_bite_saved(damage.low),
+				   parasite_bite_saved(damage.high) })) +
+		       fact("With the diseased bite innate",
+			    "1 in " +
+				    std::to_string(parasite_bite_disease_roll(highest_rolls, 0) -
+						   parasite_bite_disease_roll(lowest_rolls, 0) +
+						   1) +
+				    " to cast disease") +
+		       fact("Your lag", seconds(parasite_bite_lag()) + " if you live") +
+		       "  The target's defenses apply to the damage after.\n";
+	}
+	else if (race == RACE_PVAMPIRE || race == RACE_VAMPIRE)
+		text = fact("Damage", show({ vampire_bite_damage(lowest_rolls, ch),
+					     vampire_bite_damage(highest_rolls, ch) }) +
+					      " at your level, " + std::to_string(GET_LEVEL(ch))) +
+		       fact("Your lag", seconds(vampire_bite_lag())) +
+		       "  The target's defenses apply to the damage after.\n"
+		       "  These need the target to live and not be bitten already:\n" +
+		       fact("Stun chance, if not stunned yet",
+			    chance_under(vampire_bite_stun_threshold(),
+					 vampire_bite_stun_roll(lowest_rolls),
+					 vampire_bite_stun_roll(highest_rolls))) +
+		       fact("Stun",
+			    seconds(vampire_bite_stun()) + "; fear saves shorten or stop it") +
+		       fact("Target's constitution", std::to_string(vampire_bite_con_loss(ch))) +
+		       fact("For", game_hours_range({ vampire_bite_con_duration(lowest_rolls),
+						      vampire_bite_con_duration(highest_rolls) })) +
+		       "  Elites can't be stunned.\n";
+	else
+		text = venom_bite_facts(ch);
+	return text + innate_rest_facts(INNATE_BITE, bite_innate_rest()) +
+	       "  It goes by your race or shape: vampires, snakes and parasites differ.\n";
+}
+
 void do_bite_target(P_char ch, P_char victim)
 {
 	if (!CanDoFightMove(ch, victim))
@@ -1944,7 +2152,7 @@ void do_bite_target(P_char ch, P_char victim)
 	victim = guard_check(ch, victim);
 	if (!CanDoFightMove(ch, victim))
 		return;
-	if (!check_innate_time(ch, INNATE_BITE, get_property("innate.timer.bite", 12)))
+	if (!check_innate_time(ch, INNATE_BITE, bite_innate_rest()))
 	{
 		send_to_char("You have no &+gvenom&N left!\n", ch);
 		return;
@@ -1962,6 +2170,11 @@ void do_bite(P_char ch, char *arg, int /*cmd*/)
 	}
 
 	do_bite_target(ch, victim);
+}
+
+static int gaze_innate_target_lag()
+{
+	return PULSE_VIOLENCE;
 }
 
 void innate_gaze(P_char ch, P_char victim)
@@ -2000,10 +2213,21 @@ void innate_gaze(P_char ch, P_char victim)
 		else
 		{
 			stop_fighting(victim);
-			CharWait(victim, PULSE_VIOLENCE);
+			CharWait(victim, gaze_innate_target_lag());
 			act("&+MOooh, the pretty &+Rflames&+M.&n", TRUE, ch, 0, victim, TO_VICT);
 		}
 	}
+}
+
+std::string gaze_innate_facts(P_char /*ch*/)
+{
+	return "  It falls on a random group member of the target, or the target alone.\n"
+	       "  It needs you standing and a target you could bash, not blind or eyeless,\n"
+	       "  at most 1 size bigger and 2 smaller than you. A fear save avoids it.\n"
+	       "  If a group member takes it, the target attacks that member.\n" +
+	       fact("The target alone stops fighting, and lags",
+		    seconds(gaze_innate_target_lag())) +
+	       innate_rest_facts(INNATE_GAZE, 0);
 }
 
 void do_innate_gaze(P_char ch, char *arg, int /*cmd*/)
@@ -2025,6 +2249,18 @@ void do_innate_gaze(P_char ch, char *arg, int /*cmd*/)
 	innate_gaze(ch, victim);
 }
 
+static int darkness_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string darkness_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_DARKNESS, "casts darkness at your level") +
+	       innate_rest_facts(INNATE_DARKNESS, 0) +
+	       fact("Your lag", seconds(darkness_innate_lag()) + ", even if too tired");
+}
+
 void do_darkness(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	if (!check_innate_time(ch, INNATE_DARKNESS))
@@ -2038,7 +2274,21 @@ void do_darkness(P_char ch, char * /*arg*/, int /*cmd*/)
 		spell_darkness(GET_LEVEL(ch), ch, 0, 0, 0, 0);
 	}
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, darkness_innate_lag());
+}
+
+static int shift_astral_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string shift_astral_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_PLANE_SHIFT, "shifts you to the astral plane") +
+	       innate_rest_facts(INNATE_SHIFT_ASTRAL, 0) +
+	       fact("Your lag",
+		    seconds(shift_astral_innate_lag()) + ", also if you try in a fight") +
+	       "  It refuses in a fight, or soon after player combat.\n";
 }
 
 void do_shift_astral(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2046,7 +2296,7 @@ void do_shift_astral(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (IS_FIGHTING(ch))
 	{
 		send_to_char("You're too busy fighting!\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, shift_astral_innate_lag());
 		return;
 	}
 
@@ -2064,7 +2314,7 @@ void do_shift_astral(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 
 	cast_plane_shift(GET_LEVEL(ch), ch, writable_arg("astral"), SPELL_TYPE_SPELL, NULL, NULL);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, shift_astral_innate_lag());
 }
 
 void do_shift_ethereal(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2143,6 +2393,21 @@ static int select_shift_prime_room(P_char ch, const shift_prime_destination (&de
 
 #define PLANE_ZONETARG_ROOMNUMB 19701 /* astral */
 
+static int shift_prime_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string shift_prime_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "takes you from the astral plane to a random prime destination") +
+	       innate_rest_facts(INNATE_SHIFT_PRIME, 0) +
+	       fact("Your lag",
+		    seconds(shift_prime_innate_lag()) + ", also if you try in a fight") +
+	       "  It refuses in a fight, soon after player combat, or off the astral plane.\n"
+	       "  Finding no open destination still spends a use.\n";
+}
+
 void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	int r_room = NOWHERE;
@@ -2169,7 +2434,7 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (IS_FIGHTING(ch))
 	{
 		send_to_char("You're too busy fighting!\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, shift_prime_innate_lag());
 		return;
 	}
 
@@ -2213,7 +2478,7 @@ void do_shift_prime(P_char ch, char * /*arg*/, int /*cmd*/)
 	if (!char_to_room(ch, r_room, -1))
 		return;
 	act("$n slowly materializes...", 0, ch, 0, 0, TO_ROOM);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, shift_prime_innate_lag());
 }
 
 void do_blast(P_char ch, char *arg, int /*cmd*/)
@@ -2239,6 +2504,18 @@ void do_blast(P_char ch, char *arg, int /*cmd*/)
 		spell_innate_blast(GET_LEVEL(ch), ch, 0, 0, victim, 0);
 }
 
+static int faerie_fire_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string faerie_fire_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_FAERIE_FIRE, "casts faerie fire at your level") +
+	       fact("Your lag", seconds(faerie_fire_innate_lag())) +
+	       "  It needs no rest between uses.\n";
+}
+
 void do_faerie_fire(P_char ch, char *arg, int /*cmd*/)
 {
 	P_char victim;
@@ -2256,7 +2533,21 @@ void do_faerie_fire(P_char ch, char *arg, int /*cmd*/)
 	}*/
 
 	spell_faerie_fire(GET_LEVEL(ch), ch, NULL, 0, victim, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, faerie_fire_innate_lag());
+}
+
+static int ud_invisibility_innate_duration()
+{
+	return 45;
+}
+
+std::string ud_invisibility_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "makes you invisible") +
+	       fact("Duration", game_hours(ud_invisibility_innate_duration())) +
+	       innate_rest_facts(INNATE_UD_INVISIBILITY, 0) +
+	       "  Only in the underdark or underworld; trying elsewhere still spends a use.\n"
+	       "  It does nothing if you are already invisible.\n";
 }
 
 void do_ud_invisibility(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2280,10 +2571,34 @@ void do_ud_invisibility(P_char ch, char * /*arg*/, int /*cmd*/)
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_INVISIBILITY;
-	af.duration = 45;
+	af.duration = ud_invisibility_innate_duration();
 	af.bitvector = AFF_INVISIBLE;
 	affect_to_char(ch, &af);
 	send_to_char("You find a deep shadow and meld into it.\n", ch);
+}
+
+static int strength_innate_duration()
+{
+	return 5;
+}
+
+static int strength_innate_bonus()
+{
+	return 7;
+}
+
+static int strength_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string strength_innate_facts(P_char /*ch*/)
+{
+	return fact("Strength maximum", "+" + std::to_string(strength_innate_bonus())) +
+	       fact("Duration", game_hours(strength_innate_duration())) +
+	       innate_rest_facts(INNATE_STRENGTH, 0) +
+	       fact("Your lag", seconds(strength_innate_lag()) + " if it works") +
+	       "  Trying with strength already on you still spends a use.\n";
 }
 
 void do_strength(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2304,12 +2619,12 @@ void do_strength(P_char ch, char * /*arg*/, int /*cmd*/)
 
 	bzero(&af, sizeof(af));
 	af.type = SPELL_STRENGTH;
-	af.duration = 5;
+	af.duration = strength_innate_duration();
 	af.location = APPLY_STR_MAX;
-	af.modifier = 7;
+	af.modifier = strength_innate_bonus();
 	affect_to_char(ch, &af);
 	send_to_char("You feel much stronger!\n", ch);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, strength_innate_lag());
 }
 
 void do_reduce(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2339,6 +2654,25 @@ void do_reduce(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, PULSE_VIOLENCE);
 }
 
+static int enlarge_innate_duration()
+{
+	return 5;
+}
+
+static int enlarge_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string enlarge_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "you grow one size") +
+	       fact("Duration", game_hours(enlarge_innate_duration())) +
+	       innate_rest_facts(INNATE_ENLARGE, 0) +
+	       fact("Your lag", seconds(enlarge_innate_lag())) +
+	       "  Already enlarged or in titan form, it spends a use for nothing.\n";
+}
+
 void do_enlarge(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type af;
@@ -2354,7 +2688,7 @@ void do_enlarge(P_char ch, char * /*arg*/, int /*cmd*/)
 		act("You try to grow, but, alas, you're already as big as you're going to get.",
 		    TRUE, ch, 0, 0, TO_CHAR);
 		act("$N screws up $S face trying to grow!", TRUE, ch, 0, 0, TO_ROOM);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, enlarge_innate_lag());
 		return;
 	}
 
@@ -2362,14 +2696,14 @@ void do_enlarge(P_char ch, char * /*arg*/, int /*cmd*/)
 	{
 		bzero(&af, sizeof(af));
 		af.type = SPELL_ENLARGE;
-		af.duration = 5;
+		af.duration = enlarge_innate_duration();
 		af.bitvector3 = AFF3_ENLARGE;
 		affect_to_char(ch, &af);
 
 		act("You grow to about twice your normal size!", TRUE, ch, 0, 0, TO_CHAR);
 		act("$N grows to about twice $S normal size!", TRUE, ch, 0, ch, TO_NOTVICT);
 	}
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, enlarge_innate_lag());
 }
 
 void do_wall_climbing(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2420,6 +2754,20 @@ void do_flurry(P_char ch, char * /*arg*/, int /*cmd*/)
 	// CharWait(ch, PULSE_VIOLENCE);
 }
 
+static int plane_shift_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string plane_shift_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_PLANE_SHIFT, "shifts you to a plane you name") +
+	       innate_rest_facts(INNATE_PLANE_SHIFT, 0) +
+	       fact("Your lag",
+		    seconds(plane_shift_innate_lag()) + ", also if you try in a fight") +
+	       "  It refuses in a fight, or soon after player combat.\n";
+}
+
 void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 {
 	char plane[MAX_INPUT_LENGTH];
@@ -2428,7 +2776,7 @@ void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 	if (IS_FIGHTING(ch))
 	{
 		send_to_char("You're too busy fighting!\n", ch);
-		CharWait(ch, PULSE_VIOLENCE);
+		CharWait(ch, plane_shift_innate_lag());
 		return;
 	}
 
@@ -2463,7 +2811,19 @@ void do_plane_shift(P_char ch, char *arg, int /*cmd*/)
 	}
 
 	cast_plane_shift(GET_LEVEL(ch), ch, arg, SPELL_TYPE_SPELL, NULL, NULL);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, plane_shift_innate_lag());
+}
+
+static int charm_animal_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string charm_animal_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_CHARM_ANIMAL, "casts charm animal at your level") +
+	       innate_rest_facts(INNATE_CHARM_ANIMAL, 0) +
+	       fact("Your lag", seconds(charm_animal_innate_lag()));
 }
 
 void do_charm_animal(P_char ch, char *arg, int /*cmd*/)
@@ -2483,7 +2843,7 @@ void do_charm_animal(P_char ch, char *arg, int /*cmd*/)
 	}
 
 	spell_charm_animal(GET_LEVEL(ch), ch, 0, 0, victim, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, charm_animal_innate_lag());
 }
 
 void do_dispel_magic(P_char ch, char *arg, int /*cmd*/)
@@ -2526,6 +2886,19 @@ void do_mass_dispel(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, PULSE_VIOLENCE * 4);
 }
 
+static int globe_of_darkness_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string globe_of_darkness_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_GLOBE_OF_DARKNESS,
+				  "casts globe of darkness on you at your level") +
+	       innate_rest_facts(INNATE_GLOBE_OF_DARKNESS, 0) +
+	       fact("Your lag", seconds(globe_of_darkness_innate_lag()));
+}
+
 void do_globe_of_darkness(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	if (!check_innate_time(ch, INNATE_GLOBE_OF_DARKNESS))
@@ -2535,7 +2908,19 @@ void do_globe_of_darkness(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 
 	spell_globe_of_darkness(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, ch, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, globe_of_darkness_innate_lag());
+}
+
+static int hide_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string hide_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "hides you") + innate_rest_facts(INNATE_HIDE, 0) +
+	       fact("Your lag", seconds(hide_innate_lag())) +
+	       "  It refuses if you are already hidden.\n";
 }
 
 void do_innate_hide(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2559,7 +2944,19 @@ void do_innate_hide(P_char ch, char * /*arg*/, int /*cmd*/)
 	    0, TO_ROOM);
 	ch->specials.affected_by |= AFF_HIDE;
 	//  send_to_char("&+LYou find a shadow and meld deeply into it.\n", ch);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, hide_innate_lag());
+}
+
+static int project_image_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string project_image_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "makes an image of you here; a direction sends it walking") +
+	       fact("Your lag", seconds(project_image_innate_lag())) +
+	       "  It needs no rest between uses.\n";
 }
 
 void do_project_image(P_char ch, char *arg, int /*cmd*/)
@@ -2603,7 +3000,7 @@ void do_project_image(P_char ch, char *arg, int /*cmd*/)
 			command_interpreter(image, arg);
 		}
 	}
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, project_image_innate_lag());
 }
 
 void do_fireball(P_char ch, char *arg, int /*cmd*/)
@@ -2627,17 +3024,49 @@ void do_fireball(P_char ch, char *arg, int /*cmd*/)
 		CharWait(ch, PULSE_VIOLENCE * 5);
 }
 
+static int fireshield_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string fireshield_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_FIRESHIELD, "casts fireshield on you at your level") +
+	       fact("Your lag", seconds(fireshield_innate_lag())) +
+	       "  It needs no rest between uses.\n";
+}
+
 void do_fireshield(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	spell_fireshield(GET_LEVEL(ch), ch, NULL, 0, ch, 0);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, fireshield_innate_lag());
+}
+
+static int firestorm_innate_lag()
+{
+	return PULSE_VIOLENCE * 4;
+}
+
+std::string firestorm_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_FIRESTORM, "casts firestorm at your level") +
+	       fact("Your lag", seconds(firestorm_innate_lag())) +
+	       "  It needs no rest between uses.\n";
 }
 
 void do_firestorm(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	spell_firestorm(GET_LEVEL(ch), ch, NULL, 0, 0, 0);
 	if (char_in_list(ch))
-		CharWait(ch, PULSE_VIOLENCE * 4);
+		CharWait(ch, firestorm_innate_lag());
+}
+
+std::string shadow_door_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_DIMENSION_DOOR,
+				  "casts dimension door at your level, to someone you name") +
+	       innate_rest_facts(INNATE_SHADOW_DOOR, 0) +
+	       "  It refuses in a fight, or soon after player combat.\n";
 }
 
 void do_dimension_door(P_char ch, char *arg, int /*cmd*/)
@@ -2676,6 +3105,27 @@ void do_dimension_door(P_char ch, char *arg, int /*cmd*/)
 	spell_dimension_door(GET_LEVEL(ch), ch, NULL, SPELL_TYPE_SPELL, victim, 0);
 }
 
+static int battle_rage_haste_level()
+{
+	return 60;
+}
+
+static int battle_rage_lag()
+{
+	return PULSE_VIOLENCE * 2;
+}
+
+std::string battle_rage_innate_facts(P_char ch)
+{
+	extern int haste_duration(P_char ch, int level);
+	return fact("Effect",
+		    "casts haste on you at level " + std::to_string(battle_rage_haste_level())) +
+	       fact("Duration", game_hours(haste_duration(ch, battle_rage_haste_level()))) +
+	       innate_rest_facts(INNATE_BATTLE_RAGE, 0) +
+	       fact("Your lag", seconds(battle_rage_lag())) +
+	       "  If you are slowed it only removes the slow, and if hasted it does nothing.\n";
+}
+
 void do_battle_rage(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	if (!check_innate_time(ch, INNATE_BATTLE_RAGE))
@@ -2683,13 +3133,38 @@ void do_battle_rage(P_char ch, char * /*arg*/, int /*cmd*/)
 		send_to_char("You are too tired to do that right now!\n", ch);
 		return;
 	}
-	CharWait(ch, PULSE_VIOLENCE * 2);
+	CharWait(ch, battle_rage_lag());
 	act("&+L$n suddenly enters a &+rfe&+Rro&+rci&+Rou&+rs &+Rrage&+L!&N", TRUE, ch, 0, 0,
 	    TO_ROOM);
 	send_to_char(
 		"&+LYou feel the &+rR&+RAG&+rE &+Lbegin to &+rp&+Ru&+rm&+Rp &+Lthrough your &+rveins&+L.&N\n",
 		ch);
-	spell_haste(60, ch, 0, 0, ch, 0);
+	spell_haste(battle_rage_haste_level(), ch, 0, 0, ch, 0);
+}
+
+static int phantasmal_form_duration()
+{
+	return 980;
+}
+
+static int phantasmal_form_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string phantasmal_form_innate_facts(P_char /*ch*/)
+{
+	extern float dam_factor[LAST_DF + 1];
+	const double percent = (dam_factor[DF_PHANTFORM] - 1.0) * 100.0;
+	char change[32];
+	snprintf(change, sizeof(change), "%g%% %s", percent < 0 ? -percent : percent,
+		 percent < 0 ? "less" : "more");
+	return fact("Effect", "you turn invisible and pass through doors") +
+	       fact("Duration", real_time(phantasmal_form_duration())) +
+	       fact("Elemental spell damage to you", change) +
+	       innate_rest_facts(INNATE_PHANTASMAL_FORM, 0) +
+	       fact("Your lag", seconds(phantasmal_form_lag())) +
+	       "  Using it again ends the form at no cost. Awe armor cancels the extra damage.\n";
 }
 
 void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -2717,23 +3192,40 @@ void do_phantasmal_form(P_char ch, char * /*arg*/, int /*cmd*/)
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_PHANTASMAL_FORM;
 	af.flags = AFFTYPE_SHORT;
-	af.duration = 980;
+	af.duration = phantasmal_form_duration();
 	af.bitvector = AFF_INVISIBLE;
 	af.bitvector2 = AFF2_PASSDOOR;
 	af.bitvector4 = AFF4_PHANTASMAL_FORM;
 	affect_to_char(ch, &af);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, phantasmal_form_lag());
+}
+
+static int stone_skin_innate_rest()
+{
+	return 300;
+}
+
+static int stone_skin_innate_lag()
+{
+	return PULSE_VIOLENCE * 3;
+}
+
+std::string stone_skin_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_STONE_SKIN, "casts stone skin on you at your level") +
+	       innate_rest_facts(INNATE_STONE, stone_skin_innate_rest()) +
+	       fact("Your lag", seconds(stone_skin_innate_lag()));
 }
 
 void do_stone_skin(P_char ch, char * /*arg*/, int /*cmd*/)
 {
-	if (!check_innate_time(ch, INNATE_STONE, 300))
+	if (!check_innate_time(ch, INNATE_STONE, stone_skin_innate_rest()))
 	{
 		send_to_char("You're too tired to do that right now.\n", ch);
 		return;
 	}
 	spell_stone_skin(GET_LEVEL(ch), ch, 0, 0, ch, 0);
-	CharWait(ch, PULSE_VIOLENCE * 3);
+	CharWait(ch, stone_skin_innate_lag());
 }
 
 // The Reflection innate's lag, in pulses.
@@ -2775,6 +3267,20 @@ void do_innate_reflection(P_char ch, char * /*arg*/, int /*cmd*/)
 	CharWait(ch, reflection_innate_lag());
 }
 
+static int shade_movement_duration(P_char ch)
+{
+	return 1 + (int)(GET_LEVEL(ch) / 10);
+}
+
+std::string shade_movement_innate_facts(P_char ch)
+{
+	return fact("Effect", "hides you, and you can walk unseen through shadows") +
+	       fact("Duration", game_hours(shade_movement_duration(ch)) + " at your level") +
+	       innate_rest_facts(INNATE_SHADE_MOVEMENT, 0) +
+	       "  It refuses in full sunlight or if already in effect.\n"
+	       "  Stepping into light or twilight, or any other command, ends it.\n";
+}
+
 void do_shade_movement(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	struct affected_type af;
@@ -2800,12 +3306,60 @@ void do_shade_movement(P_char ch, char * /*arg*/, int /*cmd*/)
 	send_to_char("&+LYou slowly &+wdispate&+L into the shadows.&n\n", ch);
 	act("&+L$n seems to slowly &+wdissipates&+L into the shadows&n", FALSE, ch, 0, 0, TO_ROOM);
 	bzero(&af, sizeof(af));
-	af.duration = 1 + (int)(GET_LEVEL(ch) / 10);
+	af.duration = shade_movement_duration(ch);
 	af.bitvector5 = AFF5_SHADE_MOVEMENT;
 	affect_to_char(ch, &af);
 
 	SET_BIT(ch->specials.affected_by, AFF_HIDE);
 	SET_BIT(ch->specials.affected_by, AFF_SNEAK);
+}
+
+// God call waits this long before its effect.
+static int god_call_delay()
+{
+	return PULSE_VIOLENCE / 2;
+}
+
+static int god_call_fury_level(P_char ch)
+{
+	int level = GET_LEVEL(ch);
+
+	if (!IS_SPECIALIZED(ch))
+		level = level / 2;
+	return level;
+}
+
+static int god_call_fury_duration(P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
+		return (int)(get_property("innate.timer.dura.godCall.Tempus.Cleric", 5));
+	else
+		return (int)(get_property("innate.timer.dura.godCall.Tempus.Other", 3));
+}
+
+static int god_call_fury_bonus(int level)
+{
+	return (int)(level / 5);
+}
+
+static int god_call_fury_strength()
+{
+	return 5;
+}
+
+static int god_call_blessing_duration(int level)
+{
+	return level / 15;
+}
+
+static int god_call_protection_duration(P_char ch)
+{
+	return GET_LEVEL(ch) / 18;
+}
+
+static int god_call_peace_roll(const Rolls &rolls)
+{
+	return rolls.number(0, 1);
 }
 
 void event_tempus(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*args*/)
@@ -2824,20 +3378,14 @@ void event_tempus(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*args*/)
 		return;
 	}
 
-	level = GET_LEVEL(ch);
+	level = god_call_fury_level(ch);
 
-	if (!IS_SPECIALIZED(ch))
-		level = level / 2;
-
-	if (GET_SPEC(ch, CLASS_CLERIC, SPEC_ZEALOT))
-		dura = (int)(get_property("innate.timer.dura.godCall.Tempus.Cleric", 5));
-	else
-		dura = (int)(get_property("innate.timer.dura.godCall.Tempus.Other", 3));
+	dura = god_call_fury_duration(ch);
 
 	memset(&af, 0, sizeof(af));
 	af.type = SPELL_DIVINE_FURY;
 	af.duration = dura;
-	af.modifier = (int)(level / 5);
+	af.modifier = god_call_fury_bonus(level);
 	af.flags = AFFTYPE_NODISPEL;
 
 	af.location = APPLY_DAMROLL;
@@ -2851,7 +3399,7 @@ void event_tempus(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*args*/)
 		memset(&af1, 0, sizeof(af1));
 		af1.bitvector4 = AFF4_HOLY_SACRIFICE;
 		af1.duration = dura;
-		af1.modifier = 5;
+		af1.modifier = god_call_fury_strength();
 		af1.flags = AFFTYPE_NODISPEL | AFFTYPE_NOMSG;
 		af1.location = APPLY_STR;
 		affect_to_char(ch, &af1);
@@ -2882,7 +3430,7 @@ void event_lathander(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*args*
 			memset(&af, 0, sizeof(af));
 			af.type = TAG_ENHANCE_HEALING;
 			af.bitvector3 = AFF3_ENHANCE_HEALING;
-			af.duration = level / 15;
+			af.duration = god_call_blessing_duration(level);
 			affect_to_char(tch, &af);
 			send_to_char(
 				"&+WSlowly the light engulfs your body, as a greater being starts to watch over you.&n\n",
@@ -2907,7 +3455,7 @@ void event_torm(P_char ch, P_char victim, P_obj /*obj*/, void * /*args*/)
 		af.type = SPELL_DIVINE_FURY;
 		af.bitvector2 = AFF2_SOULSHIELD;
 		af.bitvector4 = AFF4_SANCTUARY;
-		af.duration = GET_LEVEL(ch) / 18;
+		af.duration = god_call_protection_duration(ch);
 		affect_to_char_with_messages(ch, &af, "Your god no longer protects you.", "");
 		return;
 	}
@@ -2943,7 +3491,7 @@ void event_torm(P_char ch, P_char victim, P_obj /*obj*/, void * /*args*/)
 		stop_fighting(tch);
 		update_pos(tch);
 
-		if (IS_NPC(tch) && !number(0, 1) && !IS_ELITE(tch))
+		if (IS_NPC(tch) && !god_call_peace_roll(live_rolls) && !IS_ELITE(tch))
 		{
 			act("As a &+Wgentle light&n from above touches $n, $e looks reborn.", FALSE,
 			    tch, 0, 0, TO_ROOM);
@@ -3034,6 +3582,78 @@ const char *get_god_name(P_char ch)
 	return god_list_data[i].healer;
 }
 
+static int god_call_rest(P_char ch)
+{
+	if (GET_CLASS(ch, CLASS_CLERIC) && IS_SPECIALIZED(ch))
+		return get_property("innate.timer.secs.godCallSpec", 600);
+	return 0;
+}
+
+// Which god answers: a spec's own, or an unspecialized caller's luck of the draw.
+static int god_call_choice(const Rolls &rolls, P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_AVENGER, SPEC_INQUISITOR))
+		return SPEC_ZEALOT;
+	else if (GET_SPEC(ch, CLASS_AVENGER, SPEC_LIGHTBRINGER))
+		return SPEC_HOLYMAN;
+	else if (IS_SPECIALIZED(ch))
+		return ch->player.spec;
+	else
+		return rolls.number(1, 3);
+}
+
+static std::string god_call_blessing_facts(P_char ch)
+{
+	extern float enhancement_healing_mod();
+	return "  Healing blessing on you and your group in the room:\n" +
+	       fact("Heals they cast",
+		    share_percent(enhancement_healing_mod() - 1.0f) + " stronger") +
+	       fact("Duration on you",
+		    game_hours(god_call_blessing_duration(GET_LEVEL(ch))) + ", by level") +
+	       "  It stops at the first member who already has it.\n";
+}
+
+static std::string god_call_calm_facts(P_char ch)
+{
+	if (GET_SPEC(ch, CLASS_AVENGER, SPEC_LIGHTBRINGER))
+		return "  Soulshield and sanctuary on you:\n" +
+		       fact("Duration", game_hours(god_call_protection_duration(ch)));
+	const std::string forgive = "all mobs forget you\n";
+	if (!IS_SPECIALIZED(ch))
+		return "  Forgiveness: " + forgive;
+	return "  Naming yourself: " + forgive +
+	       "  Otherwise fights in the room stop. Each non-elite mob has " +
+	       one_in(god_call_peace_roll) + "\n  to forget everyone.\n";
+}
+
+static std::string god_call_fury_facts(P_char ch)
+{
+	const int bonus = god_call_fury_bonus(god_call_fury_level(ch));
+	std::string text = "  Divine fury on you, unless you already have it:\n" +
+			   fact("Hitroll and damroll", "+" + std::to_string(bonus)) +
+			   fact("Duration", game_hours(god_call_fury_duration(ch)));
+	if (GET_CLASS(ch, CLASS_AVENGER))
+		text += fact("Strength", "+" + std::to_string(god_call_fury_strength()));
+	return text;
+}
+
+std::string god_call_innate_facts(P_char ch)
+{
+	const int low = god_call_choice(lowest_rolls, ch);
+	std::string text = fact("It answers after", seconds(god_call_delay()));
+	if (low != god_call_choice(highest_rolls, ch))
+		text += "  Unspecialized, one of the three comes at random:\n" +
+			god_call_blessing_facts(ch) + god_call_calm_facts(ch) +
+			god_call_fury_facts(ch);
+	else if (low == SPEC_HEALER)
+		text += god_call_blessing_facts(ch);
+	else if (low == SPEC_HOLYMAN)
+		text += god_call_calm_facts(ch);
+	else if (low == SPEC_ZEALOT)
+		text += god_call_fury_facts(ch);
+	return text + innate_rest_facts(INNATE_GOD_CALL, god_call_rest(ch));
+}
+
 void do_god_call(P_char ch, char *args, int /*cmd*/)
 {
 	int choice;
@@ -3048,8 +3668,7 @@ void do_god_call(P_char ch, char *args, int /*cmd*/)
 
 	god_name = get_god_name(ch);
 
-	if (GET_CLASS(ch, CLASS_CLERIC) && IS_SPECIALIZED(ch))
-		duration = get_property("innate.timer.secs.godCallSpec", 600);
+	duration = god_call_rest(ch);
 
 	if (!check_innate_time(ch, INNATE_GOD_CALL, duration))
 	{
@@ -3060,14 +3679,7 @@ void do_god_call(P_char ch, char *args, int /*cmd*/)
 		return;
 	}
 
-	if (GET_SPEC(ch, CLASS_AVENGER, SPEC_INQUISITOR))
-		choice = SPEC_ZEALOT;
-	else if (GET_SPEC(ch, CLASS_AVENGER, SPEC_LIGHTBRINGER))
-		choice = SPEC_HOLYMAN;
-	else if (IS_SPECIALIZED(ch))
-		choice = ch->player.spec;
-	else
-		choice = number(1, 3);
+	choice = god_call_choice(live_rolls, ch);
 
 	switch (choice)
 	{
@@ -3082,8 +3694,8 @@ void do_god_call(P_char ch, char *args, int /*cmd*/)
 			"&+CAs you raise your hands and send a prayer to %s, &+Ca &+Wsoft glow&n &+Cdescends from above.&n",
 			god_name);
 		act(Gbuf1, FALSE, ch, 0, 0, TO_CHAR);
-		add_event(event_lathander, PULSE_VIOLENCE / 2, ch, get_char_room_vis(ch, args), 0,
-			  0, 0, 0);
+		add_event(event_lathander, god_call_delay(), ch, get_char_room_vis(ch, args), 0, 0,
+			  0, 0);
 		break;
 	case SPEC_HOLYMAN:
 		snprintf(
@@ -3097,9 +3709,9 @@ void do_god_call(P_char ch, char *args, int /*cmd*/)
 			god_name);
 		act(Gbuf1, FALSE, ch, 0, 0, TO_CHAR);
 		if (ch == get_char_room_vis(ch, args))
-			add_event(event_torm, PULSE_VIOLENCE / 2, ch, ch, 0, 0, 0, 0);
+			add_event(event_torm, god_call_delay(), ch, ch, 0, 0, 0, 0);
 		else
-			add_event(event_torm, PULSE_VIOLENCE / 2, ch, 0, 0, 0, 0, 0);
+			add_event(event_torm, god_call_delay(), ch, 0, 0, 0, 0, 0);
 		break;
 	case SPEC_ZEALOT:
 		snprintf(
@@ -3112,11 +3724,58 @@ void do_god_call(P_char ch, char *args, int /*cmd*/)
 			"&+wAs you raise your hands calling for aid of %s, &+wa &+rpurple haze&n &+wdescends from above waking &+RA&+rnG&+ReR&n and &+RF&+ruR&+Ry!&n",
 			god_name);
 		act(Gbuf1, FALSE, ch, 0, 0, TO_CHAR);
-		add_event(event_tempus, PULSE_VIOLENCE / 2, ch, ch, 0, 0, 0, 0);
+		add_event(event_tempus, god_call_delay(), ch, ch, 0, 0, 0, 0);
 		break;
 	default:
 		break;
 	}
+}
+
+static int doorbash_chance(P_char ch)
+{
+	return 40 + GET_LEVEL(ch);
+}
+
+static int doorbash_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int doorbash_stuck_damage(const Rolls &rolls)
+{
+	return rolls.dice(3, rolls.number(2, 10));
+}
+
+static int doorbash_success_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, rolls.number(1, 10));
+}
+
+static int doorbash_failed_damage(const Rolls &rolls)
+{
+	return rolls.dice(3, rolls.number(2, 8));
+}
+
+static int doorbash_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string doorbash_innate_facts(P_char ch)
+{
+	return fact("Chance", chance_under(doorbash_chance(ch) + 1, doorbash_roll(lowest_rolls),
+					   doorbash_roll(highest_rolls)) +
+				      " at your level") +
+	       fact("You take if the door breaks",
+		    show({ doorbash_success_damage(lowest_rolls),
+			   doorbash_success_damage(highest_rolls) })) +
+	       fact("You take if it holds", show({ doorbash_failed_damage(lowest_rolls),
+						   doorbash_failed_damage(highest_rolls) })) +
+	       fact("You take from a door that can't break",
+		    show({ doorbash_stuck_damage(lowest_rolls),
+			   doorbash_stuck_damage(highest_rolls) })) +
+	       fact("Your lag", seconds(doorbash_lag()) + " if you live") +
+	       "  Pickproof and unbreakable doors never give.\n  A broken door lets you through. Not while riding.\n";
 }
 
 void do_doorbash(P_char ch, char *arg, int /*cmd*/)
@@ -3186,7 +3845,7 @@ void do_doorbash(P_char ch, char *arg, int /*cmd*/)
 	 * Even dumb-ish warriortypes _don't_ go thru some doors..
 	 */
 
-	chance = 40 + GET_LEVEL(ch);
+	chance = doorbash_chance(ch);
 
 	if (IS_SET(EXIT(ch, dir)->exit_info, EX_PICKPROOF) || (EXIT(ch, dir)->to_room == NOWHERE) ||
 	    isname("_nobash_", EXIT(ch, dir)->keyword))
@@ -3198,10 +3857,10 @@ void do_doorbash(P_char ch, char *arg, int /*cmd*/)
 			"door", dirs[dir]);
 		act(Gbuf1, FALSE, ch, 0, 0, TO_ROOM);
 
-		if (damage(ch, ch, dice(3, number(2, 10)), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorbash_stuck_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
-	else if (number(1, 100) <= chance)
+	else if (doorbash_roll(live_rolls) <= chance)
 	{
 		send_to_char(
 			"You did it!  The door budges under your weight, and you charge into a new place!\n",
@@ -3230,7 +3889,7 @@ void do_doorbash(P_char ch, char *arg, int /*cmd*/)
 			REMOVE_BIT(EXIT(ch, rev_dir[dir])->exit_info, EX_CLOSED);
 			REMOVE_BIT(EXIT(ch, rev_dir[dir])->exit_info, EX_SECRET);
 		}
-		if (damage(ch, ch, dice(2, number(1, 10)), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorbash_success_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
 	else
@@ -3242,11 +3901,58 @@ void do_doorbash(P_char ch, char *arg, int /*cmd*/)
 			 "$n charges the %s to the %s, but it withstands the attack!", "door",
 			 dirs[dir]);
 		act(Gbuf1, TRUE, ch, 0, 0, TO_ROOM);
-		if (damage(ch, ch, dice(3, number(2, 8)), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorbash_failed_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
 
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, doorbash_lag());
+}
+
+static int doorkick_chance(P_char ch)
+{
+	return 45 + GET_LEVEL(ch);
+}
+
+static int doorkick_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int doorkick_stuck_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, rolls.number(2, 10));
+}
+
+static int doorkick_success_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, 5);
+}
+
+static int doorkick_failed_damage(const Rolls &rolls)
+{
+	return rolls.dice(2, rolls.number(1, 10));
+}
+
+static int doorkick_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string doorkick_innate_facts(P_char ch)
+{
+	return fact("Chance", chance_under(doorkick_chance(ch) + 1, doorkick_roll(lowest_rolls),
+					   doorkick_roll(highest_rolls)) +
+				      " at your level") +
+	       fact("You take if the door breaks",
+		    show({ doorkick_success_damage(lowest_rolls),
+			   doorkick_success_damage(highest_rolls) })) +
+	       fact("You take if it holds", show({ doorkick_failed_damage(lowest_rolls),
+						   doorkick_failed_damage(highest_rolls) })) +
+	       fact("You take from a door that can't break",
+		    show({ doorkick_stuck_damage(lowest_rolls),
+			   doorkick_stuck_damage(highest_rolls) })) +
+	       fact("Your lag", seconds(doorkick_lag()) + " if you live") +
+	       "  Pickproof and unbreakable doors never give.\n  You stay where you are. Not while riding.\n";
 }
 
 /* doorkick (for centaurs) - like doorbash, except centaur takes a bit less
@@ -3320,7 +4026,7 @@ void do_doorkick(P_char ch, char *arg, int /*cmd*/)
 	 * Even dumb-ish warriortypes _don't_ go thru some doors..
 	 */
 
-	chance = 45 + GET_LEVEL(ch);
+	chance = doorkick_chance(ch);
 
 	if (IS_SET(EXIT(ch, dir)->exit_info, EX_PICKPROOF) || (EXIT(ch, dir)->to_room == NOWHERE) ||
 	    isname("_nobash_", EXIT(ch, dir)->keyword))
@@ -3338,10 +4044,10 @@ void do_doorkick(P_char ch, char *arg, int /*cmd*/)
                                                  */
     StartRegen(ch, regen_resource::hit);
 #endif
-		if (damage(ch, ch, dice(2, number(2, 10)), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorkick_stuck_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
-	else if (number(1, 100) <= chance)
+	else if (doorkick_roll(live_rolls) <= chance)
 	{
 		send_to_char(
 			"You did it!  The door shatters under the enormous force of your kick!\n",
@@ -3381,7 +4087,7 @@ void do_doorkick(P_char ch, char *arg, int /*cmd*/)
 		    GET_HIT(ch) -= dice(2, 5);
 		    StartRegen(ch, regen_resource::hit);
 		*/
-		if (damage(ch, ch, dice(2, 5), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorkick_success_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
 	else
@@ -3396,10 +4102,10 @@ void do_doorkick(P_char ch, char *arg, int /*cmd*/)
 		    GET_HIT(ch) -= dice(2, number(1, 10));
 		    StartRegen(ch, regen_resource::hit);
 		*/
-		if (damage(ch, ch, dice(2, number(1, 10)), TYPE_UNDEFINED))
+		if (damage(ch, ch, doorkick_failed_damage(live_rolls), TYPE_UNDEFINED))
 			return;
 	}
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	CharWait(ch, doorkick_lag());
 }
 
 void do_tupor(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3765,6 +4471,11 @@ static bool conjured_spring_in_room(int room)
 	return false;
 }
 
+static int conjure_water_spring_life()
+{
+	return 15 * 60 * WAIT_SEC;
+}
+
 void event_conjure_water(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *data)
 {
 	if (!ch || !data || !IS_ALIVE(ch))
@@ -3795,10 +4506,31 @@ void event_conjure_water(P_char ch, P_char /*vict*/, P_obj /*obj*/, void *data)
 		send_to_char("The spring fails to take shape.\n", ch);
 		return;
 	}
-	set_obj_affected(spring, 15 * 60 * WAIT_SEC, TAG_OBJ_DECAY, 0);
+	set_obj_affected(spring, conjure_water_spring_life(), TAG_OBJ_DECAY, 0);
 	send_to_room(
 		"A &+bsmall spring&n shoots from the &+yground&n obeying a powerful summoning.\n",
 		room);
+}
+
+static int conjure_water_delay()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int conjure_water_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string conjure_water_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "a spring rises from the ground") +
+	       fact("It appears after", seconds(conjure_water_delay())) +
+	       fact("It lasts", real_time(conjure_water_spring_life())) +
+	       innate_rest_facts(INNATE_CONJURE_WATER, 0) +
+	       fact("Your lag", seconds(conjure_water_lag())) +
+	       "  Stay in the room: the use is spent when the spring appears.\n"
+	       "  One spring to a room.\n";
 }
 
 void do_conjure_water(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3827,7 +4559,8 @@ void do_conjure_water(P_char ch, char * /*arg*/, int /*cmd*/)
 	}
 
 	const int room = ch->in_room;
-	if (!add_event(event_conjure_water, PULSE_VIOLENCE, ch, 0, 0, 0, &room, sizeof(room)))
+	if (!add_event(event_conjure_water, conjure_water_delay(), ch, 0, 0, 0, &room,
+		       sizeof(room)))
 	{
 		send_to_char("The spring fails to take shape.\n", ch);
 		return;
@@ -3838,10 +4571,15 @@ void do_conjure_water(P_char ch, char * /*arg*/, int /*cmd*/)
 	send_to_char(
 		"&+LThe earth rumbles as your incantation summons &+bliving water&+L from the depths.\n",
 		ch);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, conjure_water_lag());
 }
 
 // ------ Foundry ---------
+
+static int foundry_forge_life()
+{
+	return 15 * 60 * 4;
+}
 
 void event_foundry(P_char ch, P_char /*vict*/, P_obj /*obj*/, void * /*data*/)
 {
@@ -3859,7 +4597,25 @@ void event_foundry(P_char ch, P_char /*vict*/, P_obj /*obj*/, void * /*data*/)
 		return;
 	}
 	obj_to_room(forge, ch->in_room);
-	set_obj_affected(forge, 15 * 60 * 4, TAG_OBJ_DECAY, 0);
+	set_obj_affected(forge, foundry_forge_life(), TAG_OBJ_DECAY, 0);
+}
+
+static int foundry_delay()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int foundry_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string foundry_innate_facts(P_char /*ch*/)
+{
+	return fact("Effect", "you build a forge in the room") +
+	       fact("It is ready after", seconds(foundry_delay())) +
+	       fact("It lasts", real_time(foundry_forge_life())) +
+	       innate_rest_facts(INNATE_FOUNDRY, 0) + fact("Your lag", seconds(foundry_lag()));
 }
 
 void do_foundry(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -3874,8 +4630,8 @@ void do_foundry(P_char ch, char * /*arg*/, int /*cmd*/)
 	    TO_ROOM);
 	act("&+LYou open your toolkit and eagerly begin construction on a work center.&n", FALSE,
 	    ch, 0, 0, TO_CHAR);
-	add_event(event_foundry, 2 * PULSE_VIOLENCE, ch, 0, 0, 0, 0, 0);
-	CharWait(ch, 2 * PULSE_VIOLENCE);
+	add_event(event_foundry, foundry_delay(), ch, 0, 0, 0, 0, 0);
+	CharWait(ch, foundry_lag());
 }
 
 // ------ End Foundry ---------
@@ -4168,6 +4924,56 @@ void slime(P_char /*ch*/, P_char /*victim*/) {}
 
 void do_slime(P_char /*ch*/, char * /*argument*/, int /*cmd*/) {}
 
+static int branch_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int branch_chance_cap(int chance)
+{
+	return BOUNDED(40, chance, 95);
+}
+
+static int branch_damage(P_char ch)
+{
+	return 2 * GET_LEVEL(ch);
+}
+
+static int branch_target_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+static int branch_pet_lag()
+{
+	return 4 * PULSE_VIOLENCE;
+}
+
+static int branch_lag()
+{
+	return 2 * PULSE_VIOLENCE;
+}
+
+std::string branch_innate_facts(P_char ch)
+{
+	return fact("Damage", std::to_string(branch_damage(ch)) + " at your level") +
+	       fact("Chance",
+		    "from " +
+			    chance_under(branch_chance_cap(0) + 1, branch_roll(lowest_rolls),
+					 branch_roll(highest_rolls)) +
+			    " to " +
+			    chance_under(branch_chance_cap(1000) + 1, branch_roll(lowest_rolls),
+					 branch_roll(highest_rolls))) +
+	       fact("Target's lag on a hit", seconds(branch_target_lag())) +
+	       fact("Your lag",
+		    seconds(branch_lag()) + ", or " + seconds(branch_pet_lag()) + " as a pet") +
+	       "  Your level, strength and dexterity against the target's level, constitution\n"
+	       "  and agility set the chance, and being bigger helps.\n"
+	       "  A hit leaves the target prone. Its defenses apply to the damage after.\n"
+	       "  A target bigger than you can't be lifted, with no lag.\n"
+	       "  A target not standing always avoids it.\n";
+}
+
 void do_branch(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char victim = NULL;
@@ -4223,9 +5029,9 @@ void branch(P_char ch, P_char victim)
 
 	chance = (int)(chance * get_property("innate.branchDumper", 0.90));
 
-	chance = BOUNDED(40, chance, 95);
+	chance = branch_chance_cap(chance);
 
-	if ((GET_POS(victim) < POS_STANDING) || (chance < number(1, 100)))
+	if ((GET_POS(victim) < POS_STANDING) || (chance < branch_roll(live_rolls)))
 	{
 		act("$N narrowly avoids your grasp.", FALSE, ch, 0, victim, TO_CHAR);
 		act("$N narrowly avoids $n's grasp.", FALSE, ch, 0, victim, TO_NOTVICT);
@@ -4233,15 +5039,35 @@ void branch(P_char ch, P_char victim)
 	}
 	else
 	{
-		CharWait(victim, 2 * PULSE_VIOLENCE);
-		melee_damage(ch, victim, 2 * GET_LEVEL(ch), PHSDAM_NOENGAGE | PHSDAM_NOSHIELDS,
+		CharWait(victim, branch_target_lag());
+		melee_damage(ch, victim, branch_damage(ch), PHSDAM_NOENGAGE | PHSDAM_NOSHIELDS,
 			     &messages);
 		SET_POS(victim, POS_PRONE + GET_STAT(victim));
 	}
 	if (IS_NPC(ch) && IS_PC_PET(ch))
-		CharWait(ch, 4 * PULSE_VIOLENCE);
+		CharWait(ch, branch_pet_lag());
 	else
-		CharWait(ch, 2 * PULSE_VIOLENCE);
+		CharWait(ch, branch_lag());
+}
+
+static int webwrap_duration(const Rolls &rolls)
+{
+	return rolls.number(5, 10) * PULSE_VIOLENCE;
+}
+
+static int webwrap_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+std::string webwrap_innate_facts(P_char /*ch*/)
+{
+	return fact("Paralysis if it works", seconds(webwrap_duration(lowest_rolls)) + " to " +
+						     seconds(webwrap_duration(highest_rolls))) +
+	       fact("Your lag", seconds(webwrap_lag()) + " if it works") +
+	       "  Freedom of movement stops it, unless you are a god.\n"
+	       "  The target can be at most 1 size bigger than you.\n"
+	       "  Level and the target's agility decide if it works.\n";
 }
 
 void webwrap(P_char ch, P_char victim)
@@ -4284,11 +5110,11 @@ void webwrap(P_char ch, P_char victim)
 	af.type = SPELL_MINOR_PARALYSIS;
 	af.bitvector2 = AFF2_MINOR_PARALYSIS;
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-	af.duration = number(5, 10) * PULSE_VIOLENCE;
+	af.duration = webwrap_duration(live_rolls);
 
 	affect_to_char(victim, &af);
 
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, webwrap_lag());
 	stop_fighting(victim);
 }
 
@@ -4298,6 +5124,55 @@ void do_webwrap(P_char ch, char *argument, int /*cmd*/)
 
 	victim = parse_victim(ch, argument, 0);
 	webwrap(ch, victim);
+}
+
+static int web_spray_interval()
+{
+	return PULSE_VIOLENCE;
+}
+
+static int web_spray_rest()
+{
+	return 300;
+}
+
+static int web_spray_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+// Tackle's roll with level * 1.5 in place of skill: 70% that, 30% agi vs agi.
+static float web_spray_chance(P_char ch, int cagi, int vagi)
+{
+	float chance = GET_LEVEL(ch) * 1.5;
+	chance = .70 * chance +
+		 .30 * BOUNDED(0.0, 100.0 + (cagi - vagi) * ((cagi - vagi <= 0) ? 2.0 : .5), 125.0);
+	return BOUNDED(5, chance, 90);
+}
+
+static int web_spray_duration()
+{
+	return 30 * WAIT_SEC;
+}
+
+static int web_spray_drain(P_char ch)
+{
+	return GET_LEVEL(ch) / 8;
+}
+
+static int web_spray_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int web_spray_tear_roll(const Rolls &rolls)
+{
+	return rolls.number(1, 100);
+}
+
+static int web_spray_tear_threshold()
+{
+	return 10;
 }
 
 // Web Spray (drider, lvl 31): sticky webbing that saps the target's moves every
@@ -4314,7 +5189,32 @@ void event_web_spray(P_char ch, P_char /*victim*/, P_obj /*obj*/, void * /*data*
 	send_to_char("&+WThe sticky webbing drags at your every movement.&n\n", ch);
 	GET_VITALITY(ch) = MAX(0, GET_VITALITY(ch) - af->modifier);
 
-	add_event(event_web_spray, PULSE_VIOLENCE, ch, NULL, NULL, 0, NULL, 0);
+	add_event(event_web_spray, web_spray_interval(), ch, NULL, NULL, 0, NULL, 0);
+}
+
+std::string web_spray_innate_facts(P_char ch)
+{
+	// A hit needs number(1, 100) at or below the chance, as a whole number.
+	const int low = (int)web_spray_chance(ch, 0, 1000),
+		  high = (int)web_spray_chance(ch, 1000, 0);
+	return fact("Chance", "from " +
+				      chance_under(low + 1, web_spray_roll(lowest_rolls),
+						   web_spray_roll(highest_rolls)) +
+				      " to " +
+				      chance_under(high + 1, web_spray_roll(lowest_rolls),
+						   web_spray_roll(highest_rolls)) +
+				      " by agility") +
+	       fact("Target's vitality lost", std::to_string(web_spray_drain(ch)) + " every " +
+						      seconds(web_spray_interval())) +
+	       fact("It lasts", seconds(web_spray_duration())) +
+	       fact("Each room the target moves",
+		    chance_under(web_spray_tear_threshold() + 1, web_spray_tear_roll(lowest_rolls),
+				 web_spray_tear_roll(highest_rolls)) +
+			    " to tear free") +
+	       innate_rest_facts(INNATE_WEB_SPRAY, web_spray_rest()) +
+	       fact("Your lag", seconds(web_spray_lag())) +
+	       "  Freedom of movement stops it, and the target\'s evade can dodge it.\n" +
+	       (IS_TRUSTED(ch) ? "  As a god, you never miss.\n" : "");
 }
 
 void do_web_spray(P_char ch, char *argument, int /*cmd*/)
@@ -4335,14 +5235,14 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	if (!check_innate_time(ch, INNATE_WEB_SPRAY, 300))
+	if (!check_innate_time(ch, INNATE_WEB_SPRAY, web_spray_rest()))
 	{
 		send_to_char("Your spinnerets are still empty.\n", ch);
 		return;
 	}
 
 	appear(ch);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, web_spray_lag());
 
 	act("You rear back and spray a mass of &+Wsticky webbing&n at $N!", FALSE, ch, 0, victim,
 	    TO_CHAR);
@@ -4373,13 +5273,9 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 		return;
 	}
 
-	// Tackle's roll with level * 1.5 in place of skill: 70% that, 30% agi vs agi.
 	cagi = GET_C_AGI(ch);
 	vagi = GET_C_AGI(victim);
-	chance = GET_LEVEL(ch) * 1.5;
-	chance = .70 * chance +
-		 .30 * BOUNDED(0.0, 100.0 + (cagi - vagi) * ((cagi - vagi <= 0) ? 2.0 : .5), 125.0);
-	chance = BOUNDED(5, chance, 90);
+	chance = web_spray_chance(ch, cagi, vagi);
 
 	if (IS_PC(ch))
 	{
@@ -4387,7 +5283,7 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 		      GET_NAME(victim), (int)chance);
 	}
 
-	if (number(1, 100) > chance && !IS_TRUSTED(ch))
+	if (web_spray_roll(live_rolls) > chance && !IS_TRUSTED(ch))
 	{
 		act("$N dodges aside and your webbing misses.", FALSE, ch, 0, victim, TO_CHAR);
 		act("You dodge aside and the webbing misses.", FALSE, ch, 0, victim, TO_VICT);
@@ -4405,8 +5301,8 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_WEB_SPRAY;
 	af.flags = AFFTYPE_SHORT | AFFTYPE_NODISPEL;
-	af.duration = 30 * WAIT_SEC;
-	af.modifier = GET_LEVEL(ch) / 8;
+	af.duration = web_spray_duration();
+	af.modifier = web_spray_drain(ch);
 	affect_to_char(victim, &af);
 
 	engage(ch, victim);
@@ -4415,7 +5311,8 @@ void do_web_spray(P_char ch, char *argument, int /*cmd*/)
 // Called after every room move: a webbed character has a 10% chance to tear free.
 void web_spray_move_check(P_char ch)
 {
-	if (!affected_by_spell(ch, TAG_WEB_SPRAY) || number(1, 100) > 10)
+	if (!affected_by_spell(ch, TAG_WEB_SPRAY) ||
+	    web_spray_tear_roll(live_rolls) > web_spray_tear_threshold())
 	{
 		return;
 	}
@@ -4426,6 +5323,30 @@ void web_spray_move_check(P_char ch)
 }
 
 #define DEVIL_IMP 63
+
+static int summon_imp_home_level(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) * 0.9);
+}
+
+static int summon_imp_level(P_char ch)
+{
+	return (int)(GET_LEVEL(ch) * 0.6);
+}
+
+static int summon_imp_bonus()
+{
+	return 25;
+}
+
+std::string summon_imp_innate_facts(P_char ch)
+{
+	return fact("Imp's level", std::to_string(summon_imp_level(ch)) + ", or " +
+					   std::to_string(summon_imp_home_level(ch)) +
+					   " on Avernus or the fire plane") +
+	       fact("Imp's hitroll and damroll", "+" + std::to_string(summon_imp_bonus())) +
+	       "  One imp at a time, with no rest and no lag. It joins your fight.\n";
+}
 
 void do_summon_imp(P_char ch, char * /*argument*/, int /*cmd*/)
 {
@@ -4463,11 +5384,11 @@ void do_summon_imp(P_char ch, char * /*argument*/, int /*cmd*/)
 	if (world[ch->in_room].sector_type == SECT_PLANE_OF_AVERNUS ||
 	    world[ch->in_room].sector_type == SECT_FIREPLANE)
 	{
-		imp->player.level = (int)(GET_LEVEL(ch) * 0.9);
+		imp->player.level = summon_imp_home_level(ch);
 	}
 	else
 	{
-		imp->player.level = (int)(GET_LEVEL(ch) * 0.6);
+		imp->player.level = summon_imp_level(ch);
 	}
 
 	act("$n &+Rdraws a &+Wglowing portal &+Rwith $s claw in the air.", FALSE, ch, 0, 0,
@@ -4475,8 +5396,8 @@ void do_summon_imp(P_char ch, char * /*argument*/, int /*cmd*/)
 	act("&+RMoments later &n$N &+Rpops out and charges at $n's foes!&n", FALSE, ch, 0, imp,
 	    TO_ROOM);
 
-	imp->points.base_hitroll += 25;
-	imp->points.base_damroll += 25;
+	imp->points.base_hitroll += summon_imp_bonus();
+	imp->points.base_damroll += summon_imp_bonus();
 
 	char_to_room(imp, ch->in_room, 0);
 
@@ -4487,6 +5408,21 @@ void do_summon_imp(P_char ch, char * /*argument*/, int /*cmd*/)
 }
 
 #undef DEVIL_IMP
+
+static int lifedrain_step()
+{
+	return 5;
+}
+
+static int lifedrain_interval()
+{
+	return WAIT_SEC;
+}
+
+static int lifedrain_gain(P_char ch)
+{
+	return GET_LEVEL(ch) * 2;
+}
 
 void event_lifedrain(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 {
@@ -4515,22 +5451,34 @@ void event_lifedrain(P_char ch, P_char victim, P_obj /*obj*/, void *data)
 		return;
 	}
 
-	GET_HIT(victim) -= 5;
+	GET_HIT(victim) -= lifedrain_step();
 	if (victim->desc)
 		victim->desc->prompt_mode = TRUE;
-	GET_HIT(ch) += 5;
+	GET_HIT(ch) += lifedrain_step();
 	if (ch->desc)
 		ch->desc->prompt_mode = TRUE;
-	gain -= 5;
+	gain -= lifedrain_step();
 
-	add_event(event_lifedrain, WAIT_SEC, ch, victim, 0, 0, &gain, sizeof(gain));
+	add_event(event_lifedrain, lifedrain_interval(), ch, victim, 0, 0, &gain, sizeof(gain));
 	attack_back(ch, victim, FALSE);
+}
+
+std::string lifedrain_innate_facts(P_char ch)
+{
+	// Each step spends lifedrain_step() of the gain, and any left means one more.
+	const int steps = (lifedrain_gain(ch) + lifedrain_step() - 1) / lifedrain_step();
+	return fact("Drain", std::to_string(lifedrain_step()) + " hit points every " +
+				     seconds(lifedrain_interval())) +
+	       fact("Most it moves", std::to_string(steps * lifedrain_step()) + " at your level") +
+	       innate_rest_facts(INNATE_LIFEDRAIN, 0) +
+	       "  No save or defense applies. It ends if either of you leaves the room,\n"
+	       "  once you reach 110% of your hit points, or at 6 hit points on the target.\n";
 }
 
 void do_lifedrain(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char victim = NULL;
-	int gain = GET_LEVEL(ch) * 2;
+	int gain = lifedrain_gain(ch);
 
 	if (get_scheduled(ch, event_lifedrain))
 	{
@@ -4557,7 +5505,22 @@ void do_lifedrain(P_char ch, char *argument, int /*cmd*/)
 	    FALSE, ch, 0, victim, TO_VICT);
 	act("&+LA dark beam of energy shoots from&n $n &+Ltowards&n $N.&n", FALSE, ch, 0, victim,
 	    TO_NOTVICT);
-	add_event(event_lifedrain, WAIT_SEC, ch, victim, 0, 0, &gain, sizeof(gain));
+	add_event(event_lifedrain, lifedrain_interval(), ch, victim, 0, 0, &gain, sizeof(gain));
+}
+
+static int immolate_innate_lag()
+{
+	return PULSE_VIOLENCE * 4;
+}
+
+std::string immolate_innate_facts(P_char ch)
+{
+	return innate_spell_facts(ch, SPELL_INCENDIARY_CLOUD,
+				  "spends your fireshield on an incendiary cloud at your level") +
+	       innate_rest_facts(INNATE_IMMOLATE, 0) +
+	       fact("Your lag", seconds(immolate_innate_lag())) +
+	       "  It needs fireshield, and does no damage in a safe room.\n"
+	       "  With several players in the room, not all may be hit.\n";
 }
 
 void do_immolate(P_char ch, char *argument, int /*cmd*/)
@@ -4599,7 +5562,7 @@ void do_immolate(P_char ch, char *argument, int /*cmd*/)
 			    get_property("spell.area.minChance.incendiaryCloud", 50),
 			    get_property("spell.area.chanceStep.incendiaryCloud", 20));
 
-	CharWait(ch, PULSE_VIOLENCE * 4);
+	CharWait(ch, immolate_innate_lag());
 
 	return;
 }
@@ -4774,6 +5737,16 @@ bool innate_two_daggers(P_char ch)
 	return FALSE;
 }
 
+static int fade_counter()
+{
+	return get_property("innate.fade.secs.duration", 180);
+}
+
+static int fade_interval()
+{
+	return WAIT_SEC;
+}
+
 struct fade_data
 {
 	int room;
@@ -4794,7 +5767,7 @@ void event_fade(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 	if (fdata->counter > 0)
 	{
 		fdata->counter--;
-		add_event(event_fade, WAIT_SEC, ch, 0, 0, 0, fdata, sizeof(*fdata));
+		add_event(event_fade, fade_interval(), ch, 0, 0, 0, fdata, sizeof(*fdata));
 	}
 	else
 	{
@@ -4804,6 +5777,15 @@ void event_fade(P_char ch, P_char /*victim*/, P_obj /*obj*/, void *data)
 		act("&+L$n steps out of the darkness.", TRUE, ch, 0, 0, TO_ROOM);
 		act("&+LYou step out of the darkness.", TRUE, ch, 0, 0, TO_CHAR);
 	}
+}
+
+std::string fade_innate_facts(P_char /*ch*/)
+{
+	return fact("It takes", real_time((fade_counter() + 1) * fade_interval())) +
+	       "  It carries you to your birthplace and marks where you were.\n"
+	       "  'return' carries you back to that mark instead.\n"
+	       "  Not from no-recall rooms or the ocean, with no rest and no lag.\n"
+	       "  Fighting, hiding, falling unconscious or going link-dead breaks it.\n";
 }
 
 void do_fade(P_char ch, char *argument, int /*cmd*/)
@@ -4842,14 +5824,14 @@ void do_fade(P_char ch, char *argument, int /*cmd*/)
 		else
 		{
 			fdata.room = afp->modifier;
-			fdata.counter = get_property("innate.fade.secs.duration", 180);
+			fdata.counter = fade_counter();
 			send_to_char(
 				"You start to fade from existance and become dimmer and dimmer.\n",
 				ch);
 			act("$n starts to fade from existance and becomes dimmer and dimmer.",
 			    FALSE, ch, 0, ch, TO_ROOM);
 
-			add_event(event_fade, WAIT_SEC, ch, 0, 0, 0, &fdata, sizeof(fdata));
+			add_event(event_fade, fade_interval(), ch, 0, 0, 0, &fdata, sizeof(fdata));
 			return;
 		}
 	}
@@ -4867,22 +5849,45 @@ void do_fade(P_char ch, char *argument, int /*cmd*/)
 	    TO_ROOM);
 
 	fdata.room = real_room(GET_BIRTHPLACE(ch));
-	fdata.counter = get_property("innate.fade.secs.duration", 180);
-	add_event(event_fade, WAIT_SEC, ch, 0, 0, 0, &fdata, sizeof(fdata));
+	fdata.counter = fade_counter();
+	add_event(event_fade, fade_interval(), ch, 0, 0, 0, &fdata, sizeof(fdata));
+}
+
+static int lay_hands_amount(const Rolls &rolls, P_char ch)
+{
+	return ((GET_LEVEL(ch) / 10) * GET_C_CHA(ch) + rolls.number(1, 100));
+}
+
+static int lay_hands_revenant_amount(int healpoints)
+{
+	return healpoints * 2;
+}
+
+std::string lay_hands_innate_facts(P_char ch)
+{
+	Range amount = { lay_hands_amount(lowest_rolls, ch), lay_hands_amount(highest_rolls, ch) };
+	if (GET_RACE(ch) == RACE_REVENANT)
+		amount = { lay_hands_revenant_amount(amount.low),
+			   lay_hands_revenant_amount(amount.high) };
+	return fact("Healing", show(amount) + " with your level and charisma") +
+	       innate_rest_facts(INNATE_LAY_HANDS, 0) +
+	       "  Only while you are good. It heals up to the target's full hit points.\n"
+	       "  It also cures blindness, poison, disease and carried plague.\n"
+	       "  Healing modifiers apply after. It has no lag.\n";
 }
 
 void do_layhand(P_char ch, char *argument, int /*cmd*/)
 {
 	P_char vict = NULL;
 	char name[MAX_INPUT_LENGTH];
-	int healpoints = ((GET_LEVEL(ch) / 10) * GET_C_CHA(ch) + number(1, 100));
+	int healpoints = lay_hands_amount(live_rolls, ch);
 
 	/* Okay, lets change layhands a bit to make it more charisma based,
 	 * like D&D
 	 */
 
 	if (GET_RACE(ch) == RACE_REVENANT)
-		healpoints *= 2;
+		healpoints = lay_hands_revenant_amount(healpoints);
 
 	if (IS_NPC(ch))
 	{
@@ -5043,46 +6048,136 @@ void holy_crusade_check(P_char ch, P_char victim)
 	}
 }
 
+static int aura_innate_lag()
+{
+	return PULSE_VIOLENCE;
+}
+
+static std::string aura_common_facts()
+{
+	return fact("Your lag", seconds(aura_innate_lag())) +
+	       fact("New group members join within", seconds(aura_group_check_interval())) +
+	       "  It reaches you and your group in the room, while you stand awake.\n"
+	       "  One aura at a time: a new one ends the last. It needs no rest.\n";
+}
+
+// A percent from a property share of the user's level, as apply_aura sets it.
+static std::string aura_percent(float mod, P_char ch)
+{
+	char text[32];
+	snprintf(text, sizeof(text), "+%.3g%%", mod * GET_LEVEL(ch));
+	return text;
+}
+
+std::string aura_protection_innate_facts(P_char ch)
+{
+	return fact("Armor class", std::to_string(aura_protection_ac(ch)) + " at your level") +
+	       aura_common_facts();
+}
+
+std::string aura_precision_innate_facts(P_char ch)
+{
+	return fact("Hitroll",
+		    "+" + std::to_string(aura_precision_hitroll(ch)) + " at your level") +
+	       aura_common_facts();
+}
+
+std::string aura_battlelust_innate_facts(P_char ch)
+{
+	return fact("Damage dealt", aura_percent(aura_battlelust_mod(), ch) + " at your level") +
+	       aura_common_facts();
+}
+
+std::string aura_healing_innate_facts(P_char ch)
+{
+	return fact("Healing received", aura_percent(aura_healing_mod(), ch) + " at your level") +
+	       aura_common_facts() +
+	       "  Players only, and not healers or heals cast by healers.\n"
+	       "  No bonus under regeneration or accelerated healing.\n";
+}
+
+std::string aura_endurance_innate_facts(P_char ch)
+{
+	return fact("Moves", "+" + std::to_string(aura_endurance_moves(ch)) + " at your level") +
+	       aura_common_facts();
+}
+
+std::string aura_vigor_innate_facts(P_char ch)
+{
+	return fact("Hit points",
+		    "+" + std::to_string(aura_vigor_hit_points(ch)) + " at your level") +
+	       aura_common_facts();
+}
+
+std::string aura_spell_protection_innate_facts(P_char ch)
+{
+	const int percent = aura_spell_protection_percent(ch);
+	const std::string change = !percent ? "no change" :
+					      std::to_string(percent < 0 ? -percent : percent) +
+						      (percent < 0 ? "% more" : "% less");
+	return fact("Spell damage taken", change + " at your level") + aura_common_facts();
+}
+
 void do_aura_protection(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_PROTECTION);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_spell_protection(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_SPELL_PROTECTION);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_precision(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_PRECISION);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_battlelust(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_BATTLELUST);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_healing(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_HEALING);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_endurance(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_ENDURANCE);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
 }
 
 void do_aura_vigor(P_char ch, char * /*arg*/, int /*cmd*/)
 {
 	do_aura(ch, AURA_VIGOR);
-	CharWait(ch, PULSE_VIOLENCE);
+	CharWait(ch, aura_innate_lag());
+}
+
+// The two timers are short affects, and count pulses despite the property names.
+static int divine_force_duration()
+{
+	return get_property("innate.timer.secs.divineforceAffect", 20);
+}
+
+static int divine_force_rest()
+{
+	return get_property("innate.timer.secs.divineforceTimer", 600);
+}
+
+std::string divine_force_innate_facts(P_char /*ch*/)
+{
+	extern float divine_force_damage_mod();
+	return fact("Melee damage", share_percent(divine_force_damage_mod() - 1.0f) + " more") +
+	       fact("Duration", seconds(divine_force_duration())) +
+	       fact("Before you can use it again", real_time(divine_force_rest())) +
+	       "  It has no lag.\n";
 }
 
 void do_divine_force(P_char ch, char * /*arg*/, int /*cmd*/)
@@ -5116,7 +6211,7 @@ void do_divine_force(P_char ch, char * /*arg*/, int /*cmd*/)
 		return;
 	}
 
-	timer1 = get_property("innate.timer.secs.divineforceAffect", 20);
+	timer1 = divine_force_duration();
 
 	memset(&af1, 0, sizeof(af1));
 	af1.type = TAG_DIVINE_FORCE_AFFECT;
@@ -5125,7 +6220,7 @@ void do_divine_force(P_char ch, char * /*arg*/, int /*cmd*/)
 	af1.flags = AFFTYPE_SHORT | AFFTYPE_NOSAVE | AFFTYPE_NODISPEL | AFFTYPE_NOAPPLY;
 	affect_to_char(ch, &af1);
 
-	timer = get_property("innate.timer.secs.divineforceTimer", 600);
+	timer = divine_force_rest();
 
 	memset(&af, 0, sizeof(af));
 	af.type = TAG_DIVINE_FORCE_TIMER;

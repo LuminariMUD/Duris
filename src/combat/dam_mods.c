@@ -85,6 +85,11 @@ std::string arcane_block_facts(P_char ch)
 extern float racial_spldam_offensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 extern float racial_spldam_defensive_factor[LAST_RACE + 1][LAST_SPLDAM_TYPE];
 
+float aura_battlelust_mod()
+{
+	return get_property("innate.paladin_aura.battlelust_mod", 0.2);
+}
+
 dam_mod_predicate spell_damage_modifiers[] = {
 	{ MAKE_DAM_MOD_PRED(){ if (get_linked_char(victim, LNK_PET) && IS_PC(caster)){
 		dam_mod->mod += get_property("damage.pcs.vs.pets", 2.000) - 1.0;
@@ -791,9 +796,7 @@ dam_mod->type = dam_mod_type::More;
 }
 , { MAKE_DAM_MOD_PRED(){ if (IS_AFFECTED3(caster, AFF3_PALADIN_AURA) &&
 			     has_aura(caster, AURA_BATTLELUST) && !(flags & PHSDAM_NOREDUCE)){
-	  dam_mod->mod += ((get_property("innate.paladin_aura.battlelust_mod", 0.2) *
-			    aura_mod(caster, AURA_BATTLELUST)) /
-			   100.0);
+	  dam_mod->mod += ((aura_battlelust_mod() * aura_mod(caster, AURA_BATTLELUST)) / 100.0);
 dam_mod->type = dam_mod_type::More;
 }
 }
