@@ -78,7 +78,7 @@ assert "bool item_creation_grant_batches_pending(void);" in TRANSACTION_H
 # the actor. The active journaled head remains covered by the linked harness.
 close_socket = COMM.split("void close_socket(", 1)[1]
 cancel_at = close_socket.index("item_creation_grant_cancel_batch_before_entry(d->character);")
-assert cancel_at < close_socket.index("free_char(d->character);", cancel_at)
+assert cancel_at < close_socket.index("free_char(body);", cancel_at)
 assert "void item_creation_grant_cancel_batch_before_entry(P_char actor);" in TRANSACTION_H
 assert "item creation grant batch cancelled before entry" in TRANSACTION_C
 

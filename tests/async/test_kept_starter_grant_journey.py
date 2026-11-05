@@ -34,6 +34,7 @@ def run(binary, backend, chaos, transport):
                                    "password": account.OLD_PASSWORD,
                                    "email": "kept@example.invalid"}, "auth")
                     websocket_character(client)
+                    client.command("enter", {"character": "Taverek"}, "gmcp")
                     websocket_text(client, "Your Chaos Equipment has been prepared!!" if chaos
                                    else "Your starter kit is ready")
                     client.close()
@@ -47,7 +48,7 @@ def run(binary, backend, chaos, transport):
                     client = account.MudClient(server.plain_port)
                     account.create_account(client, account.OLD_PASSWORD)
                     character_choices(client, chaos=chaos)
-                    creation.reply(client, "y", "PRESS RETURN")
+                    creation.reply(client, "y", creation.MENU)
                     # Pre-entry disconnect may not prepare or publish any kit.
                     assert not list((server.run_root / "journals/critical/starter-kits").glob("*.kit"))
                     client.close()

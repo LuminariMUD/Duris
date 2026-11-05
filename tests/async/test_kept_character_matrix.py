@@ -30,7 +30,8 @@ def run(binary, backend, chaos):
                 clients.append(staff)
                 account.create_account(staff, account.OLD_PASSWORD)
                 character_choices(staff, STAFF, chaos=chaos)
-                creation.reply(staff, "y", "PRESS RETURN")
+                creation.reply(staff, "y", creation.MENU)
+                creation.play_saved_character(staff, STAFF)
                 creation.reply(staff, "", ready)
                 staff.expect("Pos: standing >")
                 creation.reply(staff, "save", f"Save complete for {STAFF}.")
@@ -57,7 +58,7 @@ def run(binary, backend, chaos):
                     account.create_account(mortal, account.OLD_PASSWORD, name=owner)
                     character_choices(mortal, name, chaos=chaos)
                     waiting = approval and not accepted
-                    prompt = "waiting for staff approval" if waiting else "PRESS RETURN"
+                    prompt = "waiting for staff approval" if waiting else creation.MENU
                     creation.reply(mortal, "y", prompt)
                     before = saved_character(server, sql, inspector, name)
                     assert before[1] == 0 and len(before[2]) == 10
@@ -71,11 +72,12 @@ def run(binary, backend, chaos):
                     clients.append(mortal)
                     creation.reply(mortal, "1", name)
                     creation.reply(mortal, "1", "(Y/N)")
-                    creation.reply(mortal, "y", prompt)
+                    creation.reply(mortal, "y", "waiting for staff approval" if waiting else "PRESS RETURN")
                     assert saved_character(server, sql, inspector, name) == before
                     if waiting:
                         creation.reply(staff, "approve " + name, "Pos: standing >")
-                        mortal.expect("PRESS RETURN")
+                        mortal.expect(creation.MENU)
+                        creation.play_saved_character(mortal, name)
                     creation.reply(mortal, "", ready)
                     mortal.expect("Pos: standing >")
                     creation.reply(mortal, "save", f"Save complete for {name}.")
