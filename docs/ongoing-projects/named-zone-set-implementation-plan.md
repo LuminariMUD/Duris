@@ -1,7 +1,7 @@
 # Named zone sets: end-to-end implementation plan
 
-Status: implementation in progress; catalog/report foundation open for review;
-persistent-origin chunk being finalized on its dependent branch.
+Status: implementation in progress; catalog/report and persistent-origin chunks
+are pushed and open for review as stacked PRs.
 Date: 2026-11-05.
 Issue: [#706 — Extend named random equipment set bonuses to all eligible zones](https://github.com/LuminariMUD/Duris/issues/706).
 Working branch: `branch/named-zone-set-origin`, based on
@@ -12,8 +12,11 @@ Inspected source baseline: `2d2a7d48dea91dbe773701790239db76f59806c2`.
 
 **Review stack:** [PR #714](https://github.com/LuminariMUD/Duris/pull/714)
 (`branch/named-zone-set-expansion`, `67c7fc7d9`) contains the catalog foundation
-and the original planning documents. The next chunk is on
-`branch/named-zone-set-origin`; open its PR against the foundation branch.
+and the original planning documents.
+[PR #717](https://github.com/LuminariMUD/Duris/pull/717)
+(`branch/named-zone-set-origin`, implementation commit `ac527a659`) contains the
+persistent-origin chunk and targets the foundation branch. Both PRs are ready
+for review; no merge or release has been performed.
 
 The first implementation chunk extracts the **115 existing loaded set rows,
 206 tiers, and 64 effect IDs** into `src/item/named_sets.c`. No expansion rows
