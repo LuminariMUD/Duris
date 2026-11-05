@@ -13673,8 +13673,6 @@ int set_proc(P_obj obj, P_char ch, int cmd, char *arg)
 			disarm_obj_nevents(obj, event_object_proc);
 			return FALSE;
 		}
-		if (identity.zone > 0)
-			set_named_set_origin(obj, identity.zone);
 	}
 
 	// No proc if not worn.
